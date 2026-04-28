@@ -1,0 +1,18 @@
+// Per-module Prisma schema for the `matching` module.
+//
+// Per Architecture v2.0 Section 7 (Schema-per-Module data architecture) and
+// doc/05-conventions.md "Database Conventions". Cross-schema references
+// elsewhere in the program are UUID-only without FK constraints.
+//
+// PR-1 scaffolding only: this file declares the datasource and generator
+// configuration. Zero models exist yet.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

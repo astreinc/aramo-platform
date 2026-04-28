@@ -1,7 +1,42 @@
+# Dependencies
 node_modules/
-.env
+
+# Build output
 dist/
 build/
+out-tsc/
+tmp/
+
+# Nx
+.nx/cache
+.nx/workspace-data
+
+# Coverage
 coverage/
+
+# Per-module Prisma generated clients (output = "../generated/client")
+**/prisma/generated/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Editor / OS
 .vscode/
+.idea/
 .DS_Store
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Pact
+pact/logs/
+pact/pacts/

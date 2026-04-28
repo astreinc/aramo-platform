@@ -1,0 +1,10 @@
+openapi: 3.1.0
+info:
+  title: Aramo Ingestion API
+  version: 0.0.0
+  description: |
+    The ingestion adapter surface. Empty PR-1 scaffold; future PRs populate
+    operations per API Contracts v1.0 Phase 4.
+paths: {}
+components:
+  schemas: {}

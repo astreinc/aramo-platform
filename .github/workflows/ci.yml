@@ -1,0 +1,170 @@
+# Aramo Core CI — PR-1 baseline.
+#
+# Wired gates run against the empty scaffolding. Placeholder gates print a
+# GitHub Actions ::notice:: and exit 0 — they are reserved slots that future
+# PRs will fill in without restructuring this workflow (per PR-1 Acceptance
+# Criteria).
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    name: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx nx run-many --target=lint --all
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx nx run-many --target=build --all
+
+  test-unit:
+    name: test:unit
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx nx run-many --target=test --all
+
+  openapi-validate:
+    name: openapi:validate
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run openapi:validate
+
+  openapi-lint:
+    name: openapi:lint
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run openapi:lint
+
+  lint-nx-boundaries:
+    name: lint:nx-boundaries
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint:nx-boundaries
+
+  verify-vocabulary:
+    name: verify:vocabulary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - run: bash scripts/verify-vocabulary.sh
+
+  # ---------------------------------------------------------------------------
+  # Placeholder gates — deferred until product artifacts exist.
+  # Each prints a GitHub Actions ::notice:: and exits 0. Future PRs that
+  # introduce the relevant artifacts will replace the echo with the real check.
+  # ---------------------------------------------------------------------------
+
+  openapi-drift-check:
+    name: openapi:drift-check
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::openapi:drift-check deferred — no endpoints defined yet (PR-1 scaffolding only)"
+
+  portal-refusal-check:
+    name: portal:refusal-check
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::portal:refusal-check deferred — no Portal schemas defined yet (PR-1 scaffolding only)"
+
+  ats-refusal-check:
+    name: ats:refusal-check
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::ats:refusal-check deferred — no ATS schemas defined yet (PR-1 scaffolding only)"
+
+  version-sync-check:
+    name: version:sync-check
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::version:sync-check deferred — no endpoints defined yet (PR-1 scaffolding only)"
+
+  error-codes-check:
+    name: error-codes:check
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::error-codes:check deferred — no error codes defined yet (PR-1 scaffolding only)"
+
+  pact-consumer:
+    name: pact:consumer
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::pact:consumer deferred — no Pact consumer tests defined yet (PR-1 scaffolding only)"
+
+  pact-provider:
+    name: pact:provider
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::pact:provider deferred — no Pact provider verification defined yet (PR-1 scaffolding only)"
+
+  tests-integration:
+    name: tests:integration
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::tests:integration deferred — no integration tests defined yet (PR-1 scaffolding only)"

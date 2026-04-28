@@ -1,0 +1,25 @@
+apis:
+  common:
+    root: openapi/common.yaml
+  ats:
+    root: openapi/ats.yaml
+  portal:
+    root: openapi/portal.yaml
+  ingestion:
+    root: openapi/ingestion.yaml
+extends:
+  - minimal
+rules:
+  # Disabled because PR-1 OpenAPI files are deliberate empty scaffolds.
+  # The prompt's Acceptance Criteria fixes the file shape to exactly
+  # `openapi`, `info`, `paths: {}`, `components: { schemas: {} }`.
+  # Future PRs that introduce real operations will re-enable these
+  # rules (and add `servers`, `license`) at that time.
+  no-empty-servers: off
+  info-license: off
+  info-license-url: off
+  info-contact: off
+  tag-description: off
+  operation-description: off
+  operation-2xx-response: off
+  operation-operationId: off
