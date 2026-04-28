@@ -1,0 +1,29 @@
+# CODEOWNERS for aramo-platform
+#
+# Routes PR review based on changed paths. Per doc/06-lead-review-checklist.md,
+# certain surfaces are Tier 3 and require specific reviewer roles.
+#
+# During M0 bootstrap, all paths route to @purush2800 (acting
+# as Lead + Architect). When separate role-holders join, this file is
+# updated.
+
+# Default reviewer for everything
+*  @purush2800
+
+# Refusal-layer-relevant surfaces (Tier 3, Architect-level review per
+# doc/02-claude-code-discipline.md Rule 4 and doc/03-refusal-layer.md)
+/openapi/                       @purush2800
+/scripts/verify-vocabulary.sh   @purush2800
+/eslint.config.mjs              @purush2800
+/redocly.yaml                   @purush2800
+
+# Architect-owned files per doc/00-README.md mutability table
+/doc/00-README.md               @purush2800
+/doc/01-locked-baselines.md     @purush2800
+/doc/03-refusal-layer.md        @purush2800
+
+# ADR folder (Architect approval per ADR conventions)
+/doc/adr/                       @purush2800
+
+# Shared common.yaml (Architect-owned per doc/04-risks.md C3)
+/openapi/common.yaml            @purush2800
