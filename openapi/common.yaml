@@ -1,0 +1,11 @@
+openapi: 3.1.0
+info:
+  title: Aramo Common
+  version: 0.0.0
+  description: |
+    Common foundations shared across the Aramo Core API surfaces (ATS, Portal,
+    Ingestion). Empty PR-1 scaffold; future PRs populate schemas (error envelope,
+    consent types, pagination) per API Contracts v1.0 Phase 1.
+paths: {}
+components:
+  schemas: {}

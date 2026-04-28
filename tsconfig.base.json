@@ -1,0 +1,42 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "rootDir": ".",
+    "sourceMap": true,
+    "declaration": false,
+    "moduleResolution": "nodenext",
+    "module": "nodenext",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "es2022",
+    "lib": ["es2022"],
+    "types": ["node"],
+    "strict": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "useUnknownInCatchVariables": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@aramo/audit": ["libs/audit/src/index.ts"],
+      "@aramo/auth": ["libs/auth/src/index.ts"],
+      "@aramo/common": ["libs/common/src/index.ts"],
+      "@aramo/consent": ["libs/consent/src/index.ts"],
+      "@aramo/engagement": ["libs/engagement/src/index.ts"],
+      "@aramo/entrustability": ["libs/entrustability/src/index.ts"],
+      "@aramo/events": ["libs/events/src/index.ts"],
+      "@aramo/evidence": ["libs/evidence/src/index.ts"],
+      "@aramo/examination": ["libs/examination/src/index.ts"],
+      "@aramo/ingestion": ["libs/ingestion/src/index.ts"],
+      "@aramo/matching": ["libs/matching/src/index.ts"],
+      "@aramo/skills-taxonomy": ["libs/skills-taxonomy/src/index.ts"],
+      "@aramo/talent": ["libs/talent/src/index.ts"]
+    }
+  },
+  "exclude": ["node_modules", "tmp", "dist", "build", "**/prisma/generated"]
+}

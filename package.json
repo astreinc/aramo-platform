@@ -1,13 +1,66 @@
 {
-  "name": "aramo-platform",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "name": "aramo-core",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Aramo Core monorepo (modular monolith). See README.md and doc/00-README.md.",
+  "type": "commonjs",
+  "engines": {
+    "node": "~24.4",
+    "npm": "~11.4"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs"
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ],
+  "scripts": {
+    "build": "nx run-many --target=build --all",
+    "lint": "nx run-many --target=lint --all",
+    "lint:nx-boundaries": "nx run-many --target=lint --all --skip-nx-cache",
+    "test": "nx run-many --target=test --all",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "openapi:validate": "swagger-cli validate openapi/common.yaml && swagger-cli validate openapi/ats.yaml && swagger-cli validate openapi/portal.yaml && swagger-cli validate openapi/ingestion.yaml",
+    "openapi:lint": "redocly lint openapi/common.yaml openapi/ats.yaml openapi/portal.yaml openapi/ingestion.yaml",
+    "verify:vocabulary": "bash scripts/verify-vocabulary.sh"
+  },
+  "dependencies": {
+    "@nestjs/common": "~11.1.19",
+    "@nestjs/core": "~11.1.19",
+    "@nestjs/platform-express": "~11.1.19",
+    "@prisma/client": "~7.8.0",
+    "reflect-metadata": "~0.2.2",
+    "rxjs": "~7.8.0"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-cli": "~4.0.4",
+    "@eslint/js": "~9.39.0",
+    "@nx/eslint": "~22.7.0",
+    "@nx/eslint-plugin": "~22.7.0",
+    "@nx/js": "~22.7.0",
+    "@nx/nest": "~22.7.0",
+    "@nx/vite": "~22.7.0",
+    "@nx/workspace": "~22.7.0",
+    "@pact-foundation/pact": "~16.3.0",
+    "@playwright/test": "~1.59.1",
+    "@redocly/cli": "~2.30.1",
+    "@types/node": "~24.12.2",
+    "@types/supertest": "~6.0.2",
+    "@typescript-eslint/eslint-plugin": "~8.59.1",
+    "@typescript-eslint/parser": "~8.59.1",
+    "@vitest/coverage-v8": "~4.1.5",
+    "bullmq": "~5.76.3",
+    "eslint": "~10.2.1",
+    "eslint-config-prettier": "~10.1.0",
+    "eslint-plugin-import-x": "~4.16.2",
+    "globals": "~16.4.0",
+    "nx": "~22.7.0",
+    "prettier": "~3.8.3",
+    "prisma": "~7.8.0",
+    "supertest": "~7.2.2",
+    "testcontainers": "~11.14.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "~8.59.1",
+    "vitest": "~4.1.5"
+  }
 }
