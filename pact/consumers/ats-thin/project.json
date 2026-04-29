@@ -1,0 +1,21 @@
+{
+  "name": "ats-thin-pact",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "pact/consumers/ats-thin/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["pact/consumers/ats-thin/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root pact/consumers/ats-thin"
+      }
+    }
+  }
+}

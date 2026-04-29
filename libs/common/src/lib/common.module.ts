@@ -1,4 +1,9 @@
 import { Module } from '@nestjs/common';
 
-@Module({})
+import { RequestIdMiddleware } from './middleware/request-id.middleware.js';
+
+@Module({
+  providers: [RequestIdMiddleware],
+  exports: [RequestIdMiddleware],
+})
 export class CommonModule {}

@@ -10,16 +10,23 @@ apis:
 extends:
   - minimal
 rules:
-  # Disabled because PR-1 OpenAPI files are deliberate empty scaffolds.
-  # The prompt's Acceptance Criteria fixes the file shape to exactly
-  # `openapi`, `info`, `paths: {}`, `components: { schemas: {} }`.
-  # Future PRs that introduce real operations will re-enable these
-  # rules (and add `servers`, `license`) at that time.
+  # PR-2 re-enables four of the seven PR-1-disabled rules. They are now
+  # satisfied by the populated common.yaml and pass vacuously against the
+  # three still-empty scaffolds (no operations / no tags = nothing to check).
+  tag-description: error
+  operation-description: error
+  operation-2xx-response: error
+  operation-operationId: error
+
+  # Still disabled — these need a per-file source of truth that has not
+  # been decided yet:
+  #   no-empty-servers — ats.yaml, portal.yaml, ingestion.yaml are still
+  #     PR-1 empty scaffolds (no `servers` block). Re-enable once each
+  #     file is populated by its own PR.
+  #   info-license / info-license-url — license decision pending
+  #     (ADR-0001 deferred-strict list).
+  #   info-contact — contact info decision pending.
   no-empty-servers: off
   info-license: off
   info-license-url: off
   info-contact: off
-  tag-description: off
-  operation-description: off
-  operation-2xx-response: off
-  operation-operationId: off

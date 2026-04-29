@@ -44,6 +44,12 @@ R7_ALLOWLIST=(
   "scripts/verify-vocabulary.sh"      # PR-1: this script itself defines the search pattern and allowlist
 )
 
+# Glob-form exclusions for paths whose entire subtree is allowed to mention
+# the term in legitimate "do not use" prompt / spec documentation.
+R7_ALLOWLIST_GLOB=(
+  "doc/prompts"                       # PR-2: local prompt drafts use "linkedin_*" in "do not add" guardrails
+)
+
 # =============================================================================
 # Tier 2 — Vocabulary-discipline exclusions
 # =============================================================================
@@ -67,6 +73,7 @@ TIER2_EXCLUDES=(
   "doc/05-conventions.md"             # PR-1: naming-conventions section uses anti-terms in "Never use" list
   "doc/06-lead-review-checklist.md"   # PR-1: review checks reference vocabulary anti-terms
   "doc/07-prompt-template.md"         # PR-1: prompt template uses anti-terms in worked examples
+  "doc/prompts/**"                    # PR-2: local prompt drafts use anti-terms in "do not use" guardrails
   "eslint.config.mjs"                 # PR-1: ESLint vocabulary rule patterns literally contain anti-terms
   "scripts/verify-vocabulary.sh"      # PR-1: this script contains the patterns being searched for
 )
@@ -105,8 +112,14 @@ COMMON_GLOBS=(
 # -----------------------------------------------------------------------------
 # Tier 1 — strict LinkedIn gate
 # -----------------------------------------------------------------------------
+R7_GLOB_FLAGS=()
+for g in "${R7_ALLOWLIST_GLOB[@]}"; do
+  R7_GLOB_FLAGS+=(--glob "!${g}")
+done
+
 matches="$(rg -i --no-heading --line-number --color=never \
   "${COMMON_GLOBS[@]}" \
+  "${R7_GLOB_FLAGS[@]}" \
   'linkedin' . || true)"
 
 filtered="$matches"

@@ -6,8 +6,13 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "declaration": true,
-    "types": ["node"]
+    "tsBuildInfoFile": "../../dist/libs/consent/.tsbuildinfo",
+    "types": ["node"],
+    "paths": {
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"]
+    }
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/tests/**/*"]
+  "exclude": ["src/tests/**/*", "**/*.spec.ts"]
 }
