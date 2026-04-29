@@ -20,6 +20,7 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 | ID | Title | Status | Date |
 |---|---|---|---|
 | [0001](0001-pr1-precedent-decisions.md) | PR-1 Precedent Decisions | Accepted | 2026-04-28 |
+| [0002](0002-bootstrap-branch-protection-relaxations.md) | Bootstrap-Phase Branch Protection Relaxations | Accepted | 2026-04-28 |
 
 ## When to write an ADR
 
