@@ -40,6 +40,10 @@ A Claude Code instance new to the program should read in this order:
 5. `04-risks.md` — failure modes specific to this team model
 6. `05-conventions.md` — code-level patterns and naming
 7. `07-prompt-template.md` — how to structure new PR prompts
+8. `adr/README.md` — ADR conventions and how decisions are
+   documented; followed by individual ADRs (`adr/0001-*.md`,
+   `adr/0002-*.md`, etc.) that capture decisions not locked in
+   Charter / Group 2 / Architecture / API Contracts
 
 `06-lead-review-checklist.md` is for Lead Engineers, not Claude Code. Claude Code instances do not need to read it but may reference it to understand what their output will be reviewed against.
 
@@ -60,6 +64,10 @@ Some files are mutable; some are not.
 - `05-conventions.md` — code conventions evolve as patterns stabilize
 - `06-lead-review-checklist.md` — review depth calibrates to reality
 - `07-prompt-template.md` — template improves with use
+- `adr/` — ADR folder. New ADRs are added as decisions are made;
+  existing ADRs are immutable once Status: Accepted (a
+  superseding decision creates a new ADR with Status: Supersedes
+  ADR-NNNN, rather than editing the old one)
 
 When mutable files are updated, the change is recorded in the file's "Revision History" section at the bottom.
 
@@ -109,3 +117,4 @@ If a `doc/*.md` file exceeds 800 lines or takes longer than 5 minutes to review,
 | Date | Change | By |
 |---|---|---|
 | 2026-04-27 | Initial seeding | Architect |
+| 2026-04-28 | Added `adr/` reference to Reading order and File mutability | Architect (acting Lead) |
