@@ -20,6 +20,7 @@
     "test": "nx run-many --target=test --all",
     "tests:integration": "ARAMO_RUN_INTEGRATION=1 vitest run --root libs/consent",
     "pact:consumer": "vitest run --root pact/consumers/ats-thin",
+    "prisma:generate": "prisma generate --schema libs/consent/prisma/schema.prisma",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "openapi:validate": "swagger-cli validate openapi/common.yaml && swagger-cli validate openapi/ats.yaml && swagger-cli validate openapi/portal.yaml && swagger-cli validate openapi/ingestion.yaml",
