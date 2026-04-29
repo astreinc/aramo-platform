@@ -1,13 +1,21 @@
 import 'reflect-metadata';
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module.js';
 
 async function bootstrap(): Promise<void> {
-  // Local default; production deployments must set PORT explicitly.
-  const port = process.env.PORT ?? 3000;
+  const port = process.env['PORT'] ?? 3000;
   const app = await NestFactory.create(AppModule);
+  // class-validator at the controller boundary. whitelist+forbidNonWhitelisted
+  // enforces the OpenAPI `additionalProperties: false` contract for every DTO.
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
   Logger.log('aramo-core api starting', 'Bootstrap');
   await app.listen(port);
 }

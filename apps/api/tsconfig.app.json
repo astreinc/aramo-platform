@@ -6,8 +6,14 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "declaration": false,
-    "types": ["node"]
+    "tsBuildInfoFile": "../../dist/apps/api/.tsbuildinfo",
+    "types": ["node"],
+    "paths": {
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
+      "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"]
+    }
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/tests/**/*"]
+  "exclude": ["src/tests/**/*", "**/*.spec.ts"]
 }

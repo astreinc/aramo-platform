@@ -1,11 +1,294 @@
 openapi: 3.1.0
 info:
-  title: Aramo Common
-  version: 0.0.0
+  title: Aramo Common API
+  version: 0.1.0
   description: |
-    Common foundations shared across the Aramo Core API surfaces (ATS, Portal,
-    Ingestion). Empty PR-1 scaffold; future PRs populate schemas (error envelope,
-    consent types, pagination) per API Contracts v1.0 Phase 1.
-paths: {}
+    Universal endpoints used by all external consumers
+    (ATS, Portal, Ingestion adapters).
+
+    PR-2 introduces the first endpoint (POST /consent/grant) and the
+    locked nested error envelope with a closed 5-code subset of the
+    locked 36-code registry. Future PRs extend the path set and the
+    error code enum.
+
+servers:
+  - url: https://api.aramo.ai/v1
+  - url: https://staging-api.aramo.ai/v1
+
+tags:
+  - name: Consent
+    description: |
+      Consent ledger endpoints. The consent module is the runtime
+      enforcement point for Charter refusals R4 (no consent inference
+      from behavior), R6 (no acting on stale consent), R11 and R13
+      (consent integrity over engagement velocity).
+
+security:
+  - BearerAuth: []
+
+paths:
+  /consent/grant:
+    post:
+      operationId: grantConsent
+      tags: [Consent]
+      summary: Record a consent grant event
+      description: |
+        Append-only write to the TalentConsentEvent ledger. The action
+        is set server-side to "granted"; the request body does not
+        accept a writable action field. Idempotent per the
+        program-wide Idempotency-Key precedent (PR-2 #7): same
+        Idempotency-Key + same body returns the original response;
+        same key + different body returns 409.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            Required per program-wide idempotency precedent. Replays
+            return the original response. Same key with a different
+            request hash returns 409 IDEMPOTENCY_KEY_CONFLICT.
+        - name: X-Request-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: |
+            Optional. Generated server-side as UUID v7 if absent. Echoed
+            on outgoing responses and threaded into error envelopes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsentGrantRequest'
+      responses:
+        '201':
+          description: Consent event recorded
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentGrantResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Tenant access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Idempotency key conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
-  schemas: {}
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ConsentScope:
+      type: string
+      description: |
+        Closed enum (Group 2 §2.2): the five consent scopes. Future PRs
+        do not add values to this enum without Architect-reviewed PR.
+      enum:
+        - profile_storage
+        - resume_processing
+        - matching
+        - contacting
+        - cross_tenant_visibility
+
+    ConsentDecisionAction:
+      type: string
+      description: |
+        Closed enum (Group 2 §2.2): three lifecycle actions. PR-2 writes
+        only "granted"; PR-3 writes "revoked"; the staleness background
+        job is the future writer of "expired".
+      enum:
+        - granted
+        - revoked
+        - expired
+
+    ConsentCapturedMethod:
+      type: string
+      description: |
+        Closed enum (Group 2 §2.2): four capture methods, mapping to the
+        flow that produced the consent decision.
+      enum:
+        - self_signup
+        - recruiter_capture
+        - upload_flow
+        - import
+
+    ConsentGrantRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Request body for POST /consent/grant. The `action` field is
+        deliberately absent — server sets `action = granted`.
+      required:
+        - talent_id
+        - scope
+        - captured_method
+        - consent_version
+        - occurred_at
+      properties:
+        talent_id:
+          type: string
+          format: uuid
+        scope:
+          $ref: '#/components/schemas/ConsentScope'
+        captured_method:
+          $ref: '#/components/schemas/ConsentCapturedMethod'
+        consent_version:
+          type: string
+        consent_text_snapshot:
+          type: string
+        consent_document_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+          description: |
+            Per-event context. Documented OpenAPI exception to the
+            program-wide additionalProperties: false rule (PR-2 schema
+            checklist).
+
+    ConsentGrantResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - event_id
+        - tenant_id
+        - talent_id
+        - scope
+        - action
+        - captured_method
+        - consent_version
+        - occurred_at
+        - recorded_at
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        talent_id:
+          type: string
+          format: uuid
+        scope:
+          $ref: '#/components/schemas/ConsentScope'
+        action:
+          type: string
+          const: granted
+          description: |
+            Locked: this endpoint always returns "granted". Future
+            endpoints (PR-3 revoke) return their own action.
+        captured_method:
+          $ref: '#/components/schemas/ConsentCapturedMethod'
+        captured_by_actor_id:
+          type: string
+          format: uuid
+        consent_version:
+          type: string
+        consent_document_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+          description: |
+            Server-side insertion timestamp (TalentConsentEvent.created_at).
+            Distinct from occurred_at (when the consent decision happened).
+        metadata:
+          type: object
+          additionalProperties: true
+          description: |
+            Echoed from the request. Documented OpenAPI exception to
+            additionalProperties: false (PR-2 schema checklist).
+
+    ErrorCode:
+      type: string
+      description: |
+        Closed subset of the locked 36-code error registry. PR-2
+        introduces these 6 codes; future PRs extend via
+        Architect-reviewed PR per doc/02-claude-code-discipline.md
+        Rule 4. INTERNAL_ERROR is the registry's catch-all for
+        unexpected 5xx failures (Phase 5 "System & Processing"
+        category).
+      enum:
+        - AUTH_REQUIRED
+        - INVALID_TOKEN
+        - TENANT_ACCESS_DENIED
+        - VALIDATION_ERROR
+        - IDEMPOTENCY_KEY_CONFLICT
+        - INTERNAL_ERROR
+
+    ErrorObject:
+      type: object
+      additionalProperties: false
+      required: [code, message, request_id, details]
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+        display_message:
+          type: string
+        log_message:
+          type: string
+        request_id:
+          type: string
+          format: uuid
+        details:
+          type: object
+          additionalProperties: true
+          description: |
+            Per-error context. Documented OpenAPI exception to the
+            program-wide additionalProperties: false rule.
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorObject'

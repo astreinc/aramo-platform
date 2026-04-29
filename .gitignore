@@ -28,6 +28,9 @@ coverage/
 .DS_Store
 *.swp
 
+# Local working artifacts (not program history)
+doc/prompts/
+
 # Logs
 *.log
 npm-debug.log*

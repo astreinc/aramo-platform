@@ -4,15 +4,111 @@
 // doc/05-conventions.md "Database Conventions". Cross-schema references
 // elsewhere in the program are UUID-only without FK constraints.
 //
-// PR-1 scaffolding only: this file declares the datasource and generator
-// configuration. Zero models exist yet.
+// Per PR-2 precedent (Lead decision): the consent module owns BOTH the
+// "consent" schema (TalentConsentEvent, IdempotencyKey, OutboxEvent) and
+// the "audit" schema (ConsentAuditEvent). Two schemas in one Prisma client
+// because the consent grant transaction must atomically write to both —
+// distinct Prisma clients cannot share a transaction.
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/client"
+  output   = "./generated/client"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  schemas  = ["consent", "audit"]
+}
+
+// TalentConsentEvent — Group 2 §2.2 canonical entity.
+// Immutable ledger; UPDATE blocked by DB trigger AND by missing repo method
+// (belt-and-suspenders per PR-2 precedent decision #4).
+//
+// Field source of truth: pasted Group 2 §2.2 in PR-2 prompt; matches
+// $ARAMO_SPECS/group-2-baseline.md lines 650–678.
+model TalentConsentEvent {
+  // UUID v7, generated app-side via uuid.v7(). Postgres 17 has no native
+  // uuidv7() function (PR-2 precedent decision #3).
+  id                     String    @id @db.Uuid
+  talent_id              String    @db.Uuid
+  tenant_id              String    @db.Uuid
+  // Closed enum (Group 2 §2.2, 5 values):
+  //   profile_storage | resume_processing | matching | contacting | cross_tenant_visibility
+  scope                  String
+  // Closed enum (Group 2 §2.2, 3 values): granted | revoked | expired.
+  // PR-2 writes "granted" only; PR-3 writes "revoked"; staleness job writes "expired".
+  action                 String
+  // Optional: self-signup flows have no recruiter actor.
+  captured_by_actor_id   String?   @db.Uuid
+  // Closed enum (Group 2 §2.2, 4 values):
+  //   self_signup | recruiter_capture | upload_flow | import
+  captured_method        String
+  consent_version        String
+  consent_text_snapshot  String?   @db.Text
+  consent_document_id    String?   @db.Uuid
+  // When the consent decision happened (from the request body).
+  occurred_at            DateTime  @db.Timestamptz
+  // Optional explicit expiration set by the recorder. Distinct from
+  // staleness (R6) which is computed from occurred_at in a future PR.
+  expires_at             DateTime? @db.Timestamptz
+  metadata               Json?
+
+  // When the row was inserted.
+  created_at             DateTime  @default(now()) @db.Timestamptz
+
+  @@index([tenant_id, talent_id, occurred_at])
+  @@index([tenant_id, scope, action])
+  @@schema("consent")
+}
+
+// IdempotencyKey — keyed by (tenant_id, key) per spec.
+// Same Idempotency-Key in different tenants is allowed.
+model IdempotencyKey {
+  id              String   @id @db.Uuid
+  tenant_id       String   @db.Uuid
+  key             String
+  // SHA-256 of canonicalized request body. Same key + same hash → replay.
+  // Same key + different hash → 409 IDEMPOTENCY_KEY_CONFLICT.
+  request_hash    String
+  response_status Int
+  response_body   Json
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  @@unique([tenant_id, key])
+  @@schema("consent")
+}
+
+// OutboxEvent — per-module outbox per Architecture v2.0 §7.6.
+// PR-2 writes outbox rows but does not implement a publisher.
+model OutboxEvent {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  event_type    String
+  event_payload Json
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  published_at  DateTime? @db.Timestamptz
+
+  @@index([published_at])
+  @@schema("consent")
+}
+
+// ConsentAuditEvent — separate "audit" schema (PR-2 precedent decision #8).
+// Outbox is async-event propagation; audit is forensic record. Both written
+// in the same transaction as the consent event.
+model ConsentAuditEvent {
+  id            String   @id @db.Uuid
+  tenant_id     String   @db.Uuid
+  // Optional: self-signup flows have no actor.
+  actor_id      String?  @db.Uuid
+  // recruiter | system | self
+  actor_type    String
+  // e.g., consent.grant.recorded
+  event_type    String
+  // talent_id (cross-schema reference, UUID-only per Architecture §7).
+  subject_id    String   @db.Uuid
+  event_payload Json
+  created_at    DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenant_id, subject_id, created_at])
+  @@schema("audit")
 }
