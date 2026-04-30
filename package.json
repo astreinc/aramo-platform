@@ -21,6 +21,7 @@
     "tests:integration": "ARAMO_RUN_INTEGRATION=1 vitest run --root libs/consent",
     "pact:consumer": "vitest run --root pact/consumers/ats-thin",
     "prisma:generate": "prisma generate --schema libs/consent/prisma/schema.prisma",
+    "prisma:validate": "prisma validate --schema libs/audit/prisma/schema.prisma && prisma validate --schema libs/auth/prisma/schema.prisma && prisma validate --schema libs/common/prisma/schema.prisma && prisma validate --schema libs/consent/prisma/schema.prisma && prisma validate --schema libs/engagement/prisma/schema.prisma && prisma validate --schema libs/entrustability/prisma/schema.prisma && prisma validate --schema libs/events/prisma/schema.prisma && prisma validate --schema libs/evidence/prisma/schema.prisma && prisma validate --schema libs/examination/prisma/schema.prisma && prisma validate --schema libs/ingestion/prisma/schema.prisma && prisma validate --schema libs/matching/prisma/schema.prisma && prisma validate --schema libs/skills-taxonomy/prisma/schema.prisma && prisma validate --schema libs/talent/prisma/schema.prisma",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "openapi:validate": "swagger-cli validate openapi/common.yaml && swagger-cli validate openapi/ats.yaml && swagger-cli validate openapi/portal.yaml && swagger-cli validate openapi/ingestion.yaml",
