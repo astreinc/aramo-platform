@@ -21,6 +21,7 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 |---|---|---|---|
 | [0001](0001-pr1-precedent-decisions.md) | PR-1 Precedent Decisions | Accepted | 2026-04-28 |
 | [0002](0002-bootstrap-branch-protection-relaxations.md) | Bootstrap-Phase Branch Protection Relaxations | Accepted | 2026-04-28 |
+| [0003](0003-infrastructure-conventions-prisma7-build-ci.md) | Infrastructure Conventions (Prisma 7 + Build/CI Patterns) | Accepted | 2026-04-30 |
 
 ## When to write an ADR
 
