@@ -7,9 +7,11 @@ info:
     (ATS, Portal, Ingestion adapters).
 
     PR-2 introduces the first endpoint (POST /consent/grant) and the
-    locked nested error envelope with a closed 5-code subset of the
-    locked 36-code registry. Future PRs extend the path set and the
-    error code enum.
+    locked nested error envelope with a closed 6-code subset of the
+    locked 36-code registry. PR-3 adds POST /consent/revoke as the
+    second endpoint and defines the canonical revoke contract per
+    Group 2 §2.7. Future PRs extend the path set; new error codes
+    require Architect-reviewed PR.
 
 servers:
   - url: https://api.aramo.ai/v1
@@ -102,6 +104,87 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /consent/revoke:
+    post:
+      operationId: revokeConsent
+      tags: [Consent]
+      summary: Record a consent revocation event
+      description: |
+        Append-only write to the TalentConsentEvent ledger. The
+        action is set server-side to "revoked"; the request body
+        does not accept a writable action field. Inside the same
+        transaction, the server performs a single-event lookup for
+        the most recent prior grant event by (tenant_id, talent_id,
+        scope) and records its id as `revoked_event_id` in the
+        response, audit, and outbox payloads. If no prior grant
+        exists, `revoked_event_id` is null (revoke without grant is
+        allowed).
+
+        Audit payload follows Group 2 §2.7 canonical structure:
+        `revoked_event_id`, `in_flight_operations_halted: []`
+        (empty until the engagement-halt worker exists),
+        `propagation_completed_at: null` (deferred until propagation
+        is implemented).
+
+        Idempotent per the program-wide Idempotency-Key precedent:
+        same key + same body returns the original response; same
+        key + different body returns 409.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Request-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsentRevokeRequest'
+      responses:
+        '201':
+          description: Consent revocation event recorded
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentRevokeResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Tenant access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Idempotency key conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -126,8 +209,8 @@ components:
       type: string
       description: |
         Closed enum (Group 2 §2.2): three lifecycle actions. PR-2 writes
-        only "granted"; PR-3 writes "revoked"; the staleness background
-        job is the future writer of "expired".
+        "granted"; PR-3 writes "revoked"; the staleness background job
+        is the future writer of "expired".
       enum:
         - granted
         - revoked
@@ -244,6 +327,113 @@ components:
           description: |
             Echoed from the request. Documented OpenAPI exception to
             additionalProperties: false (PR-2 schema checklist).
+
+    ConsentRevokeRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Request body for POST /consent/revoke. The `action` field is
+        deliberately absent — server sets `action = revoked`. The
+        `expires_at` and `consent_text_snapshot` fields are also
+        absent; both are grant-time concepts. Per PR-3 canonical
+        contract.
+      required:
+        - talent_id
+        - scope
+        - captured_method
+        - consent_version
+        - occurred_at
+      properties:
+        talent_id:
+          type: string
+          format: uuid
+        scope:
+          $ref: '#/components/schemas/ConsentScope'
+        captured_method:
+          $ref: '#/components/schemas/ConsentCapturedMethod'
+        consent_version:
+          type: string
+        consent_document_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+          description: |
+            Per-event context. Documented OpenAPI exception to the
+            program-wide additionalProperties: false rule.
+
+    ConsentRevokeResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - event_id
+        - tenant_id
+        - talent_id
+        - scope
+        - action
+        - captured_method
+        - consent_version
+        - occurred_at
+        - recorded_at
+        - revoked_event_id
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        talent_id:
+          type: string
+          format: uuid
+        scope:
+          $ref: '#/components/schemas/ConsentScope'
+        action:
+          type: string
+          const: revoked
+          description: |
+            Locked: this endpoint always returns "revoked". Mirrors
+            the grant endpoint's `const: granted` pattern.
+        captured_method:
+          $ref: '#/components/schemas/ConsentCapturedMethod'
+        captured_by_actor_id:
+          type: string
+          format: uuid
+        consent_version:
+          type: string
+        consent_document_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+          description: |
+            Server-side insertion timestamp. Distinct from
+            occurred_at (when the revocation decision happened).
+        revoked_event_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+          description: |
+            ID of the prior grant event being revoked. Server-derived
+            via single-event lookup against the ledger for the latest
+            matching granted event by (tenant_id, talent_id, scope).
+            Null if no prior grant exists (revoke without grant is
+            allowed per PR-3 Decision D).
+        metadata:
+          type: object
+          additionalProperties: true
+          description: |
+            Echoed from the request. Documented OpenAPI exception to
+            additionalProperties: false.
 
     ErrorCode:
       type: string

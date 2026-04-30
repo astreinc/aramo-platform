@@ -5,6 +5,7 @@ export { ConsentRepository } from './lib/consent.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export {
   ConsentGrantRequestDto,
+  ConsentRevokeRequestDto,
   CONSENT_SCOPES,
   CONSENT_CAPTURED_METHODS,
 } from './lib/dto/index.js';
@@ -12,4 +13,5 @@ export type {
   ConsentScopeValue,
   ConsentCapturedMethodValue,
   ConsentGrantResponseDto,
+  ConsentRevokeResponseDto,
 } from './lib/dto/index.js';

@@ -8,3 +8,5 @@ export type {
   ConsentCapturedMethodValue,
 } from './consent-grant-request.dto.js';
 export type { ConsentGrantResponseDto } from './consent-grant-response.dto.js';
+export { ConsentRevokeRequestDto } from './consent-revoke-request.dto.js';
+export type { ConsentRevokeResponseDto } from './consent-revoke-response.dto.js';

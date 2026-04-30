@@ -1,23 +1,28 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ConsentRepository, type RecordGrantEventInput } from '../lib/consent.repository.js';
+import {
+  ConsentRepository,
+  type RecordConsentEventInput,
+} from '../lib/consent.repository.js';
 import type { PrismaService } from '../lib/prisma/prisma.service.js';
 
 // Charter Refusal R13: consent integrity over engagement velocity.
-// If any write in the grant transaction fails (audit, outbox, idempotency
-// row), the entire request fails with a structured error. No partial
-// writes, no "best effort" paths.
-//
-// Verified by: forcing each downstream write to fail in turn and
-// asserting the transaction throws — Prisma's $transaction wrapper rolls
-// back the prior writes when the callback throws.
+// If any write in the consent-event transaction fails (audit, outbox,
+// idempotency row), the entire request fails with a structured error.
+// PR-3 extends the rollback surface to the revoke lookup
+// (tx.talentConsentEvent.findFirst for revoked_event_id): a lookup
+// failure must abort the transaction before any write happens.
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const TALENT_ID = '00000000-0000-0000-0000-0000000000aa';
+const PRIOR_GRANT_ID = '00000000-0000-0000-0000-0000000000cc';
 
 interface MockTx {
   idempotencyKey: { findUnique: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
-  talentConsentEvent: { create: ReturnType<typeof vi.fn> };
+  talentConsentEvent: {
+    create: ReturnType<typeof vi.fn>;
+    findFirst: ReturnType<typeof vi.fn>;
+  };
   consentAuditEvent: { create: ReturnType<typeof vi.fn> };
   outboxEvent: { create: ReturnType<typeof vi.fn> };
 }
@@ -30,6 +35,7 @@ function makeTx(): MockTx {
     },
     talentConsentEvent: {
       create: vi.fn().mockResolvedValue({ created_at: new Date() }),
+      findFirst: vi.fn().mockResolvedValue({ id: PRIOR_GRANT_ID }),
     },
     consentAuditEvent: { create: vi.fn() },
     outboxEvent: { create: vi.fn() },
@@ -42,10 +48,11 @@ function makePrisma(tx: MockTx): PrismaService {
   } as unknown as PrismaService;
 }
 
-function makeInput(): RecordGrantEventInput {
+function makeGrantInput(): RecordConsentEventInput {
   return {
     tenant_id: TENANT_ID,
     talent_id: TALENT_ID,
+    action: 'granted',
     scope: 'matching',
     captured_method: 'recruiter_capture',
     captured_by_actor_id: null,
@@ -57,34 +64,66 @@ function makeInput(): RecordGrantEventInput {
   };
 }
 
+function makeRevokeInput(): RecordConsentEventInput {
+  return { ...makeGrantInput(), action: 'revoked' };
+}
+
 describe('Refusal R13 — consent integrity over engagement velocity', () => {
-  it('propagates audit-write failure (no partial-success swallow)', async () => {
+  it('grant: propagates audit-write failure (no partial-success swallow)', async () => {
     const tx = makeTx();
     tx.consentAuditEvent.create.mockRejectedValue(new Error('audit DB down'));
     const repo = new ConsentRepository(makePrisma(tx));
-    await expect(repo.recordGrantEvent(makeInput())).rejects.toThrow('audit DB down');
+    await expect(repo.recordConsentEvent(makeGrantInput())).rejects.toThrow('audit DB down');
   });
 
-  it('propagates outbox-write failure (no partial-success swallow)', async () => {
+  it('grant: propagates outbox-write failure (no partial-success swallow)', async () => {
     const tx = makeTx();
     tx.outboxEvent.create.mockRejectedValue(new Error('outbox unavailable'));
     const repo = new ConsentRepository(makePrisma(tx));
-    await expect(repo.recordGrantEvent(makeInput())).rejects.toThrow('outbox unavailable');
+    await expect(repo.recordConsentEvent(makeGrantInput())).rejects.toThrow('outbox unavailable');
   });
 
-  it('propagates idempotency-key persist failure (no partial-success swallow)', async () => {
+  it('grant: propagates idempotency-key persist failure (no partial-success swallow)', async () => {
     const tx = makeTx();
     tx.idempotencyKey.create.mockRejectedValue(new Error('idempotency conflict at db'));
     const repo = new ConsentRepository(makePrisma(tx));
-    await expect(repo.recordGrantEvent(makeInput())).rejects.toThrow(
+    await expect(repo.recordConsentEvent(makeGrantInput())).rejects.toThrow(
       'idempotency conflict at db',
     );
   });
 
-  it('propagates consent-event-write failure (no fallback path)', async () => {
+  it('grant: propagates consent-event-write failure (no fallback path)', async () => {
     const tx = makeTx();
     tx.talentConsentEvent.create.mockRejectedValue(new Error('consent insert failed'));
     const repo = new ConsentRepository(makePrisma(tx));
-    await expect(repo.recordGrantEvent(makeInput())).rejects.toThrow('consent insert failed');
+    await expect(repo.recordConsentEvent(makeGrantInput())).rejects.toThrow('consent insert failed');
+  });
+
+  it('revoke: propagates audit-write failure', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.create.mockRejectedValue(new Error('audit DB down'));
+    const repo = new ConsentRepository(makePrisma(tx));
+    await expect(repo.recordConsentEvent(makeRevokeInput())).rejects.toThrow('audit DB down');
+  });
+
+  it('revoke: propagates outbox-write failure', async () => {
+    const tx = makeTx();
+    tx.outboxEvent.create.mockRejectedValue(new Error('outbox unavailable'));
+    const repo = new ConsentRepository(makePrisma(tx));
+    await expect(repo.recordConsentEvent(makeRevokeInput())).rejects.toThrow('outbox unavailable');
+  });
+
+  it('revoke: lookup failure aborts the transaction with no writes', async () => {
+    // PR-3 extension: if findFirst (the revoked_event_id lookup) fails,
+    // the whole transaction must abort BEFORE any write — preserves R13
+    // and prevents a half-written revocation lacking referential linkage.
+    const tx = makeTx();
+    tx.talentConsentEvent.findFirst.mockRejectedValue(new Error('lookup DB down'));
+    const repo = new ConsentRepository(makePrisma(tx));
+    await expect(repo.recordConsentEvent(makeRevokeInput())).rejects.toThrow('lookup DB down');
+    expect(tx.talentConsentEvent.create).not.toHaveBeenCalled();
+    expect(tx.consentAuditEvent.create).not.toHaveBeenCalled();
+    expect(tx.outboxEvent.create).not.toHaveBeenCalled();
+    expect(tx.idempotencyKey.create).not.toHaveBeenCalled();
   });
 });
