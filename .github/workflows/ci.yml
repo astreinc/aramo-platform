@@ -28,6 +28,19 @@ jobs:
           cache: npm
       - run: npm ci
 
+  prisma-validate:
+    name: prisma:validate
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run prisma:validate
+
   lint:
     name: lint
     runs-on: ubuntu-latest
