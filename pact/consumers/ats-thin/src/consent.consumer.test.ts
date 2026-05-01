@@ -632,5 +632,250 @@ describe('ATS thin consumer → POST /v1/consent/check', () => {
   });
 });
 
+// ----------------------------------------------------------------------
+// PR-5 — GET /v1/consent/state/{talent_id} interactions. Informational
+// read endpoint; no Idempotency-Key (Phase 1 §6 N/A); always returns 5
+// scopes; no decision-log written (Decision H).
+// ----------------------------------------------------------------------
+
+describe('ATS thin consumer → GET /v1/consent/state/{talent_id}', () => {
+  it('returns 200 with all 5 scopes when the talent has full consent', async () => {
+    await provider
+      .addInteraction()
+      .given('a talent with all 5 consent scopes granted')
+      .uponReceiving('a state read for the talent')
+      .withRequest('GET', `/v1/consent/state/${TALENT_ID}`, (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+        });
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          talent_id: uuid(TALENT_ID),
+          tenant_id: uuid(TENANT_ID),
+          is_anonymized: false,
+          computed_at: regex(
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            '2026-05-01T12:00:00Z',
+          ),
+          scopes: [
+            {
+              scope: 'profile_storage',
+              status: 'granted',
+              granted_at: regex(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                '2026-04-01T10:00:00Z',
+              ),
+              revoked_at: null,
+              expires_at: null,
+            },
+            {
+              scope: 'resume_processing',
+              status: 'granted',
+              granted_at: regex(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                '2026-04-01T10:00:00Z',
+              ),
+              revoked_at: null,
+              expires_at: null,
+            },
+            {
+              scope: 'matching',
+              status: 'granted',
+              granted_at: regex(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                '2026-04-01T10:00:00Z',
+              ),
+              revoked_at: null,
+              expires_at: null,
+            },
+            {
+              scope: 'contacting',
+              status: 'granted',
+              granted_at: regex(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                '2026-04-01T10:00:00Z',
+              ),
+              revoked_at: null,
+              expires_at: null,
+            },
+            {
+              scope: 'cross_tenant_visibility',
+              status: 'no_grant',
+              granted_at: null,
+              revoked_at: null,
+              expires_at: null,
+            },
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/consent/state/${TALENT_ID}`, {
+          method: 'GET',
+          headers: { Authorization: 'Bearer eyJfake.token' },
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          talent_id: string;
+          tenant_id: string;
+          is_anonymized: boolean;
+          scopes: Array<{ scope: string; status: string }>;
+        };
+        expect(body.scopes).toHaveLength(5);
+        expect(body.is_anonymized).toBe(false);
+      });
+  });
+
+  it('returns 200 with mixed states (granted + revoked + no_grant)', async () => {
+    await provider
+      .addInteraction()
+      .given('a talent with profile granted and contacting revoked')
+      .uponReceiving('a state read for the talent')
+      .withRequest('GET', `/v1/consent/state/${TALENT_ID}`, (b) => {
+        b.headers({ Authorization: like('Bearer eyJfake.token') });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          talent_id: uuid(TALENT_ID),
+          tenant_id: uuid(TENANT_ID),
+          is_anonymized: false,
+          computed_at: regex(
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            '2026-05-01T12:00:00Z',
+          ),
+          scopes: [
+            {
+              scope: 'profile_storage',
+              status: 'granted',
+              granted_at: regex(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                '2026-04-01T10:00:00Z',
+              ),
+              revoked_at: null,
+              expires_at: null,
+            },
+            {
+              scope: 'resume_processing',
+              status: 'no_grant',
+              granted_at: null,
+              revoked_at: null,
+              expires_at: null,
+            },
+            {
+              scope: 'matching',
+              status: 'no_grant',
+              granted_at: null,
+              revoked_at: null,
+              expires_at: null,
+            },
+            {
+              scope: 'contacting',
+              status: 'revoked',
+              granted_at: regex(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                '2026-04-01T11:00:00Z',
+              ),
+              revoked_at: regex(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                '2026-04-15T14:22:00Z',
+              ),
+              expires_at: null,
+            },
+            {
+              scope: 'cross_tenant_visibility',
+              status: 'no_grant',
+              granted_at: null,
+              revoked_at: null,
+              expires_at: null,
+            },
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/consent/state/${TALENT_ID}`, {
+          method: 'GET',
+          headers: { Authorization: 'Bearer eyJfake.token' },
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          scopes: Array<{ scope: string; status: string }>;
+        };
+        const contacting = body.scopes.find((s) => s.scope === 'contacting');
+        expect(contacting?.status).toBe('revoked');
+      });
+  });
+
+  it('returns 200 with all scopes no_grant for an unseen talent', async () => {
+    await provider
+      .addInteraction()
+      .given('a talent with no consent events')
+      .uponReceiving('a state read for the unseen talent')
+      .withRequest('GET', `/v1/consent/state/${TALENT_ID}`, (b) => {
+        b.headers({ Authorization: like('Bearer eyJfake.token') });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          talent_id: uuid(TALENT_ID),
+          tenant_id: uuid(TENANT_ID),
+          is_anonymized: false,
+          computed_at: regex(
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            '2026-05-01T12:00:01Z',
+          ),
+          scopes: [
+            { scope: 'profile_storage', status: 'no_grant', granted_at: null, revoked_at: null, expires_at: null },
+            { scope: 'resume_processing', status: 'no_grant', granted_at: null, revoked_at: null, expires_at: null },
+            { scope: 'matching', status: 'no_grant', granted_at: null, revoked_at: null, expires_at: null },
+            { scope: 'contacting', status: 'no_grant', granted_at: null, revoked_at: null, expires_at: null },
+            { scope: 'cross_tenant_visibility', status: 'no_grant', granted_at: null, revoked_at: null, expires_at: null },
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/consent/state/${TALENT_ID}`, {
+          method: 'GET',
+          headers: { Authorization: 'Bearer eyJfake.token' },
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          scopes: Array<{ status: string }>;
+        };
+        expect(body.scopes).toHaveLength(5);
+        for (const s of body.scopes) {
+          expect(s.status).toBe('no_grant');
+        }
+      });
+  });
+
+  it('returns 400 VALIDATION_ERROR when talent_id is not a UUID', async () => {
+    await provider
+      .addInteraction()
+      .given('a valid recruiter token')
+      .uponReceiving('a state read with a malformed talent_id')
+      .withRequest('GET', '/v1/consent/state/not-a-uuid', (b) => {
+        b.headers({ Authorization: like('Bearer eyJfake.token') });
+      })
+      .willRespondWith(400, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: like('talent_id must be a UUID'),
+            request_id: uuid(),
+            details: { invalid_field: 'talent_id' },
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/consent/state/not-a-uuid`, {
+          method: 'GET',
+          headers: { Authorization: 'Bearer eyJfake.token' },
+        });
+        expect(res.status).toBe(400);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('VALIDATION_ERROR');
+      });
+  });
+});
+
 beforeAll(() => undefined);
 afterAll(() => undefined);

@@ -19,4 +19,6 @@ export type {
   ConsentRevokeResponseDto,
   ConsentDecisionDto,
   ConsentCheckOperation,
+  TalentConsentScopeStateDto,
+  TalentConsentStateResponseDto,
 } from './lib/dto/index.js';

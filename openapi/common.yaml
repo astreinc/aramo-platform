@@ -300,6 +300,95 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /consent/state/{talent_id}:
+    get:
+      operationId: getTalentConsentState
+      tags: [Consent]
+      summary: Return current consent state per scope for a talent
+      description: |
+        Informational read endpoint. Returns the current consent
+        state per scope for the requested talent within the JWT's
+        tenant context. Always returns all 5 ConsentScope values;
+        scopes without ledger events return status: "no_grant"
+        (Decision D, PR-5).
+
+        Per ADR-0006 Decision D, the resolver applies source-aware
+        most-restrictive intersection across captured_method
+        partitions to derive each scope's state. Per ADR-0006
+        Precedent O, the resolver-region allow-list covers the
+        batch findMany call.
+
+        Idempotency: N/A per Phase 1 §6 endpoint table (line 500).
+        No request body. talent_id is a path parameter (UUID).
+
+        This is the program's first informational read endpoint.
+        Per Decision H (PR-5), informational endpoints do NOT
+        write decision-log audit entries; only enforcement
+        endpoints (check/grant/revoke) do. ADR-0007 (forthcoming
+        retroactive PR) documents this distinction.
+
+        Multi-tenant honesty (Group 2 §2.8): the response covers
+        ONLY the JWT's tenant_id. Callers needing multi-tenant
+        view issue multiple per-tenant calls, matching ADR-0006
+        Decision J's "partial consent NOT flattened" pattern.
+
+        Right-to-be-forgotten (Decision F, PR-5): the endpoint
+        continues to function for anonymized talent_ids and
+        signals anonymization via is_anonymized at root level.
+        PR-5 limitation: the talent module providing identity-
+        existence detection does not exist yet, so is_anonymized
+        is always false in PR-5. The schema field is in place
+        for forward-compatibility.
+      parameters:
+        - name: talent_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Request-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Current consent state per scope (always 5 entries)
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentConsentStateResponse'
+        '400':
+          description: Invalid talent_id (not a UUID)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Tenant access denied (caller-blocked)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: System error (resolver failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -381,6 +470,28 @@ components:
         - packaging
         - submittal
         - cross_tenant
+
+    ConsentScopeStatus:
+      type: string
+      description: |
+        Closed enum for current consent state per scope, derived by the
+        resolver. PR-5 introduces this enum (8th in the program's
+        vocabulary). Distinct from ConsentDecisionAction (which represents
+        the action recorded on a write event); ConsentScopeStatus
+        represents the state derived on a read.
+
+        `no_grant` is unique to derivation — there is no
+        TalentConsentEvent with action: "no_grant". This is why
+        ConsentScopeStatus is a separate enum from ConsentDecisionAction,
+        not a superset.
+
+        Adding a value requires Architect approval per
+        doc/02-claude-code-discipline.md Rule 4.
+      enum:
+        - granted
+        - revoked
+        - expired
+        - no_grant
 
     ConsentGrantRequest:
       type: object
@@ -655,6 +766,90 @@ components:
         computed_at:
           type: string
           format: date-time
+
+    TalentConsentScopeState:
+      type: object
+      additionalProperties: false
+      description: |
+        Per-scope state in the /consent/state response. PR-5
+        Decision C: universal common-API surface. Distinct from
+        Phase 3's PortalConsentScopeState which adds Portal-only
+        fields (`is_stale`, `display_label`).
+
+        Timestamps:
+          - granted_at: latest grant event's occurred_at, or null
+                        if no grant event exists for this scope
+          - revoked_at: latest revocation event's occurred_at,
+                        or null if not revoked
+          - expires_at: explicit expiration set on the controlling
+                        grant event (TalentConsentEvent.expires_at);
+                        null when absent
+      required:
+        - scope
+        - status
+      properties:
+        scope:
+          $ref: '#/components/schemas/ConsentScope'
+        status:
+          $ref: '#/components/schemas/ConsentScopeStatus'
+        granted_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        revoked_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        expires_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+
+    TalentConsentStateResponse:
+      type: object
+      additionalProperties: false
+      description: |
+        Wrapped response shape for GET /consent/state/{talent_id}
+        (PR-5 Decision A). Metadata fields plus a `scopes` array
+        that always contains all 5 ConsentScope values (Decision D:
+        always-5-scopes deterministic response).
+
+        `is_anonymized` is the right-to-be-forgotten signal
+        (Decision F). PR-5 limitation: always false because the
+        talent module providing identity-existence detection does
+        not exist yet. Schema field present for forward-
+        compatibility; future PRs wire detection.
+      required:
+        - talent_id
+        - tenant_id
+        - is_anonymized
+        - computed_at
+        - scopes
+      properties:
+        talent_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        is_anonymized:
+          type: boolean
+          description: |
+            True if the talent identity has been removed
+            (right-to-be-forgotten) but consent ledger events are
+            retained per Group 2 §2.7. Always false in PR-5; the
+            talent module that provides identity-existence
+            detection does not exist yet.
+        computed_at:
+          type: string
+          format: date-time
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/TalentConsentScopeState'
 
     ErrorCode:
       type: string

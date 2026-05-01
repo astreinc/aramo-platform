@@ -248,3 +248,52 @@ describe('ConsentService.check', () => {
     expect(result).toEqual(decision);
   });
 });
+
+describe('ConsentService.getState', () => {
+  const stateResponse = {
+    talent_id: TALENT_ID,
+    tenant_id: TENANT_ID,
+    is_anonymized: false,
+    computed_at: '2026-05-01T12:00:00Z',
+    scopes: [
+      {
+        scope: 'matching',
+        status: 'granted',
+        granted_at: '2026-04-01T10:00:00Z',
+        revoked_at: null,
+        expires_at: null,
+      },
+    ],
+  };
+
+  it('forwards talent_id, requestId, and JWT-derived tenant_id to the resolver', async () => {
+    const repo = { resolveAllScopes: vi.fn().mockResolvedValue(stateResponse) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    await service.getState(TALENT_ID, recruiterContext(), 'req-state-1');
+    expect(repo.resolveAllScopes).toHaveBeenCalledOnce();
+    const args = repo.resolveAllScopes.mock.calls[0][0] as {
+      tenant_id: string;
+      talent_id: string;
+      requestId: string;
+    };
+    expect(args.tenant_id).toBe(TENANT_ID);
+    expect(args.talent_id).toBe(TALENT_ID);
+    expect(args.requestId).toBe('req-state-1');
+  });
+
+  it('uses tenant_id from JWT, not from any other source', async () => {
+    const repo = { resolveAllScopes: vi.fn().mockResolvedValue(stateResponse) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    const overriddenContext = recruiterContext({ tenant_id: 'aa000000-0000-0000-0000-000000000099' });
+    await service.getState(TALENT_ID, overriddenContext, 'req-state-2');
+    const args = repo.resolveAllScopes.mock.calls[0][0] as { tenant_id: string };
+    expect(args.tenant_id).toBe('aa000000-0000-0000-0000-000000000099');
+  });
+
+  it('returns the resolver response unchanged', async () => {
+    const repo = { resolveAllScopes: vi.fn().mockResolvedValue(stateResponse) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    const result = await service.getState(TALENT_ID, portalContext(), 'req-state-3');
+    expect(result).toEqual(stateResponse);
+  });
+});

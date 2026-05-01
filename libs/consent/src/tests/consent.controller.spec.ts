@@ -183,3 +183,56 @@ describe('ConsentController.checkConsent', () => {
     expect(service.check).not.toHaveBeenCalled();
   });
 });
+
+describe('ConsentController.getTalentConsentState', () => {
+  const stateResponse = {
+    talent_id: TALENT_ID,
+    tenant_id: TENANT_ID,
+    is_anonymized: false,
+    computed_at: '2026-05-01T12:00:00Z',
+    scopes: [
+      {
+        scope: 'matching',
+        status: 'granted',
+        granted_at: '2026-04-01T10:00:00Z',
+        revoked_at: null,
+        expires_at: null,
+      },
+    ],
+  };
+
+  it('delegates to ConsentService.getState on a valid talent_id', async () => {
+    const service = {
+      grant: vi.fn(),
+      revoke: vi.fn(),
+      check: vi.fn(),
+      getState: vi.fn().mockResolvedValue(stateResponse),
+    };
+    const controller = new ConsentController(service as unknown as ConsentService);
+    const result = await controller.getTalentConsentState(TALENT_ID, makeAuth(), 'req-s1');
+    expect(service.getState).toHaveBeenCalledOnce();
+    expect(service.getState.mock.calls[0][0]).toBe(TALENT_ID);
+    expect(result).toEqual(stateResponse);
+  });
+
+  it('throws VALIDATION_ERROR when talent_id is not a UUID', async () => {
+    const service = { grant: vi.fn(), revoke: vi.fn(), check: vi.fn(), getState: vi.fn() };
+    const controller = new ConsentController(service as unknown as ConsentService);
+    await expect(
+      controller.getTalentConsentState('not-a-uuid', makeAuth(), 'req-s2'),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { invalid_field: 'talent_id' } },
+    });
+    expect(service.getState).not.toHaveBeenCalled();
+  });
+
+  it('throws VALIDATION_ERROR when talent_id is malformed (random string)', async () => {
+    const service = { grant: vi.fn(), revoke: vi.fn(), check: vi.fn(), getState: vi.fn() };
+    const controller = new ConsentController(service as unknown as ConsentService);
+    await expect(
+      controller.getTalentConsentState('12345', makeAuth(), 'req-s3'),
+    ).rejects.toBeInstanceOf(AramoError);
+    expect(service.getState).not.toHaveBeenCalled();
+  });
+});
