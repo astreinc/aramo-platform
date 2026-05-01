@@ -24,6 +24,7 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 | [0003](0003-infrastructure-conventions-prisma7-build-ci.md) | Infrastructure Conventions (Prisma 7 + Build/CI Patterns) | Accepted | 2026-04-30 |
 | [0004](0004-pact-contract-test-convention.md) | Pact Contract Test Convention | Accepted | 2026-04-30 |
 | [0005](0005-consent-revoke-contract-and-audit-semantics.md) | Consent Revoke Contract & Audit Semantics | Accepted | 2026-04-30 |
+| [0006](0006-consent-check-contract-and-resolver-path-conventions.md) | Consent Check Contract & Resolver Path Conventions | Accepted | 2026-05-01 |
 
 ## When to write an ADR
 
