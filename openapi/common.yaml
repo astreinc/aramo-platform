@@ -227,6 +227,22 @@ components:
         - upload_flow
         - import
 
+    ContactChannel:
+      type: string
+      description: |
+        Closed enum of contact channels permitted under the contacting
+        consent scope. Locked at API Contracts Phase 1 §1. ContactChannel
+        is a dimension within contacting scope, not a separate scope.
+        Used by /consent/check (PR-4) for channel constraint validation
+        when the derived scope is contacting.
+      enum:
+        - email
+        - phone
+        - sms
+        - indeed
+        - portal
+        - other
+
     ConsentGrantRequest:
       type: object
       additionalProperties: false
@@ -438,12 +454,14 @@ components:
     ErrorCode:
       type: string
       description: |
-        Closed subset of the locked 36-code error registry. PR-2
-        introduces these 6 codes; future PRs extend via
-        Architect-reviewed PR per doc/02-claude-code-discipline.md
-        Rule 4. INTERNAL_ERROR is the registry's catch-all for
-        unexpected 5xx failures (Phase 5 "System & Processing"
-        category).
+        Closed subset of the locked 36-code error registry (API
+        Contracts Phase 5). Drawn incrementally; adding a new code
+        requires Architect approval per
+        doc/02-claude-code-discipline.md Rule 4. INTERNAL_ERROR is
+        the registry's catch-all for unexpected 5xx failures (Phase 5
+        "System & Processing" category). PR-3.2 adds
+        INVALID_SCOPE_COMBINATION (HTTP 422) for consent scope
+        dependency violations on /consent/check (PR-4).
       enum:
         - AUTH_REQUIRED
         - INVALID_TOKEN
@@ -451,6 +469,7 @@ components:
         - VALIDATION_ERROR
         - IDEMPOTENCY_KEY_CONFLICT
         - INTERNAL_ERROR
+        - INVALID_SCOPE_COMBINATION
 
     ErrorObject:
       type: object
