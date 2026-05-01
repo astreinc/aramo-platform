@@ -25,6 +25,7 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 | [0004](0004-pact-contract-test-convention.md) | Pact Contract Test Convention | Accepted | 2026-04-30 |
 | [0005](0005-consent-revoke-contract-and-audit-semantics.md) | Consent Revoke Contract & Audit Semantics | Accepted | 2026-04-30 |
 | [0006](0006-consent-check-contract-and-resolver-path-conventions.md) | Consent Check Contract & Resolver Path Conventions | Accepted | 2026-05-01 |
+| [0007](0007-consent-state-read-endpoint-and-read-endpoint-conventions.md) | Consent State Read Endpoint and Read-Endpoint Conventions | Accepted | 2026-05-01 |
 
 ## When to write an ADR
 
