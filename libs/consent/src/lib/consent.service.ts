@@ -10,6 +10,9 @@ import type { ConsentGrantResponseDto } from './dto/consent-grant-response.dto.j
 import type { ConsentRevokeRequestDto } from './dto/consent-revoke-request.dto.js';
 import type { ConsentRevokeResponseDto } from './dto/consent-revoke-response.dto.js';
 import type { TalentConsentStateResponseDto } from './dto/talent-consent-state-response.dto.js';
+import type { ConsentHistoryResponseDto } from './dto/consent-history-response.dto.js';
+import type { ConsentScopeValue } from './dto/consent-grant-request.dto.js';
+import type { HistoryCursorPayload } from './util/history-cursor.js';
 
 // Service trusts the controller boundary's class-validator pass.
 // Tenant id and (when applicable) actor id come from the JWT, not the body.
@@ -106,6 +109,37 @@ export class ConsentService {
     return this.consentRepo.resolveAllScopes({
       tenant_id: authContext.tenant_id,
       talent_id,
+      requestId,
+    });
+  }
+
+  /**
+   * Informational history read (PR-6). Returns a keyset-paginated page
+   * of consent ledger events for the requested talent within the JWT's
+   * tenant context. No idempotency, no decision log write (Decision H).
+   *
+   * The controller is responsible for:
+   *   - validating talent_id format
+   *   - clamping/validating limit per directive §5
+   *   - decoding the cursor and mapping decode errors to HTTP 400
+   *     VALIDATION_ERROR (cursor errors must not propagate as 500)
+   *
+   * The service trusts those guarantees and forwards to the resolver.
+   */
+  async getHistory(
+    talent_id: string,
+    scope: ConsentScopeValue | undefined,
+    limit: number,
+    cursor: HistoryCursorPayload | undefined,
+    authContext: AuthContextType,
+    requestId: string,
+  ): Promise<ConsentHistoryResponseDto> {
+    return this.consentRepo.resolveHistory({
+      tenant_id: authContext.tenant_id,
+      talent_id,
+      scope,
+      limit,
+      cursor,
       requestId,
     });
   }

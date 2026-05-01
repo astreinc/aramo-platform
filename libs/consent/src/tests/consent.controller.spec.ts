@@ -236,3 +236,215 @@ describe('ConsentController.getTalentConsentState', () => {
     expect(service.getState).not.toHaveBeenCalled();
   });
 });
+
+describe('ConsentController.getTalentConsentHistory (PR-6)', () => {
+  const historyResponse = {
+    events: [],
+    next_cursor: null,
+    is_anonymized: false,
+  };
+
+  function makeFullService() {
+    return {
+      grant: vi.fn(),
+      revoke: vi.fn(),
+      check: vi.fn(),
+      getState: vi.fn(),
+      getHistory: vi.fn().mockResolvedValue(historyResponse),
+    };
+  }
+
+  it('delegates to ConsentService.getHistory with parsed query params (defaults)', async () => {
+    const service = makeFullService();
+    const controller = new ConsentController(service as unknown as ConsentService);
+    const result = await controller.getTalentConsentHistory(
+      TALENT_ID,
+      undefined,
+      undefined,
+      undefined,
+      makeAuth(),
+      'req-h-c1',
+    );
+    expect(service.getHistory).toHaveBeenCalledOnce();
+    const args = service.getHistory.mock.calls[0];
+    expect(args[0]).toBe(TALENT_ID);
+    expect(args[1]).toBeUndefined(); // scope
+    expect(args[2]).toBe(50); // limit default
+    expect(args[3]).toBeUndefined(); // cursor
+    expect(result).toEqual(historyResponse);
+  });
+
+  it('clamps limit > 200 to 200', async () => {
+    const service = makeFullService();
+    const controller = new ConsentController(service as unknown as ConsentService);
+    await controller.getTalentConsentHistory(
+      TALENT_ID,
+      undefined,
+      '500',
+      undefined,
+      makeAuth(),
+      'req-h-c2',
+    );
+    expect(service.getHistory.mock.calls[0][2]).toBe(200);
+  });
+
+  it('accepts limit in [1, 200] as-is', async () => {
+    const service = makeFullService();
+    const controller = new ConsentController(service as unknown as ConsentService);
+    await controller.getTalentConsentHistory(
+      TALENT_ID,
+      undefined,
+      '25',
+      undefined,
+      makeAuth(),
+      'req-h-c3',
+    );
+    expect(service.getHistory.mock.calls[0][2]).toBe(25);
+  });
+
+  it('rejects limit < 1 with VALIDATION_ERROR', async () => {
+    const service = makeFullService();
+    const controller = new ConsentController(service as unknown as ConsentService);
+    await expect(
+      controller.getTalentConsentHistory(
+        TALENT_ID,
+        undefined,
+        '0',
+        undefined,
+        makeAuth(),
+        'req-h-c4',
+      ),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { invalid_field: 'limit' } },
+    });
+    expect(service.getHistory).not.toHaveBeenCalled();
+  });
+
+  it('rejects negative limit with VALIDATION_ERROR', async () => {
+    const service = makeFullService();
+    const controller = new ConsentController(service as unknown as ConsentService);
+    await expect(
+      controller.getTalentConsentHistory(
+        TALENT_ID,
+        undefined,
+        '-1',
+        undefined,
+        makeAuth(),
+        'req-h-c5',
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(service.getHistory).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-integer limit with VALIDATION_ERROR', async () => {
+    const service = makeFullService();
+    const controller = new ConsentController(service as unknown as ConsentService);
+    await expect(
+      controller.getTalentConsentHistory(
+        TALENT_ID,
+        undefined,
+        'abc',
+        undefined,
+        makeAuth(),
+        'req-h-c6',
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(service.getHistory).not.toHaveBeenCalled();
+  });
+
+  it('accepts a valid scope filter', async () => {
+    const service = makeFullService();
+    const controller = new ConsentController(service as unknown as ConsentService);
+    await controller.getTalentConsentHistory(
+      TALENT_ID,
+      'contacting',
+      undefined,
+      undefined,
+      makeAuth(),
+      'req-h-c7',
+    );
+    expect(service.getHistory.mock.calls[0][1]).toBe('contacting');
+  });
+
+  it('rejects an unknown scope value with VALIDATION_ERROR', async () => {
+    const service = makeFullService();
+    const controller = new ConsentController(service as unknown as ConsentService);
+    await expect(
+      controller.getTalentConsentHistory(
+        TALENT_ID,
+        'not-a-real-scope',
+        undefined,
+        undefined,
+        makeAuth(),
+        'req-h-c8',
+      ),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { invalid_field: 'scope' } },
+    });
+    expect(service.getHistory).not.toHaveBeenCalled();
+  });
+
+  it('decodes a valid cursor and forwards the payload', async () => {
+    const service = makeFullService();
+    const controller = new ConsentController(service as unknown as ConsentService);
+    // Encode a valid cursor inline (using the same primitive the resolver
+    // emits) — controller decodes it back to the payload.
+    const payload = { c: '2026-04-15T12:00:00.000Z', e: 'd2d7a0f0-0000-7000-8000-000000000001' };
+    const cursorString = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+    await controller.getTalentConsentHistory(
+      TALENT_ID,
+      undefined,
+      undefined,
+      cursorString,
+      makeAuth(),
+      'req-h-c9',
+    );
+    const cursorArg = service.getHistory.mock.calls[0][3] as {
+      created_at: Date;
+      event_id: string;
+    };
+    expect(cursorArg.event_id).toBe('d2d7a0f0-0000-7000-8000-000000000001');
+    expect(cursorArg.created_at.toISOString()).toBe('2026-04-15T12:00:00.000Z');
+  });
+
+  it('maps malformed cursor to HTTP 400 VALIDATION_ERROR (never propagates as 500)', async () => {
+    const service = makeFullService();
+    const controller = new ConsentController(service as unknown as ConsentService);
+    await expect(
+      controller.getTalentConsentHistory(
+        TALENT_ID,
+        undefined,
+        undefined,
+        '!!!malformed!!!',
+        makeAuth(),
+        'req-h-c10',
+      ),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      statusCode: 400,
+      context: { details: { invalid_field: 'cursor' } },
+    });
+    expect(service.getHistory).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed talent_id with VALIDATION_ERROR (before decoding cursor)', async () => {
+    const service = makeFullService();
+    const controller = new ConsentController(service as unknown as ConsentService);
+    await expect(
+      controller.getTalentConsentHistory(
+        'not-a-uuid',
+        undefined,
+        undefined,
+        undefined,
+        makeAuth(),
+        'req-h-c11',
+      ),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { invalid_field: 'talent_id' } },
+    });
+    expect(service.getHistory).not.toHaveBeenCalled();
+  });
+});

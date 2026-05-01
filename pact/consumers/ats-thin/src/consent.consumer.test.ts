@@ -877,5 +877,155 @@ describe('ATS thin consumer → GET /v1/consent/state/{talent_id}', () => {
   });
 });
 
+// ----------------------------------------------------------------------
+// PR-6 — GET /v1/consent/history/{talent_id} interactions. Informational
+// read endpoint; no Idempotency-Key (Phase 1 §6 N/A); cursor-paginated;
+// no decision-log written (Decision H).
+// ----------------------------------------------------------------------
+
+describe('ATS thin consumer → GET /v1/consent/history/{talent_id}', () => {
+  it('§7 test 13: happy-path — wrapped shape with one event', async () => {
+    await provider
+      .addInteraction()
+      .given('a talent with one consent grant event')
+      .uponReceiving('a history read for the talent')
+      .withRequest('GET', `/v1/consent/history/${TALENT_ID}`, (b) => {
+        b.headers({ Authorization: like('Bearer eyJfake.token') });
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          events: [
+            {
+              event_id: uuid('00000000-0000-7000-8000-000000000a01'),
+              scope: 'matching',
+              action: 'granted',
+              created_at: regex(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                '2026-04-15T12:00:00Z',
+              ),
+              expires_at: null,
+            },
+          ],
+          next_cursor: null,
+          is_anonymized: false,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/consent/history/${TALENT_ID}`, {
+          method: 'GET',
+          headers: { Authorization: 'Bearer eyJfake.token' },
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          events: Array<{ event_id: string; scope: string; action: string }>;
+          next_cursor: string | null;
+          is_anonymized: boolean;
+        };
+        expect(body.events).toHaveLength(1);
+        expect(body.events[0]?.scope).toBe('matching');
+        expect(body.events[0]?.action).toBe('granted');
+        expect(body.next_cursor).toBeNull();
+        expect(body.is_anonymized).toBe(false);
+      });
+  });
+
+  it('§7 test 14: pagination — cursor-driven request returns next page', async () => {
+    const cursorPayload = {
+      c: '2026-04-15T12:00:00.000Z',
+      e: '00000000-0000-7000-8000-000000000a01',
+    };
+    const cursorString = Buffer.from(JSON.stringify(cursorPayload), 'utf8').toString(
+      'base64url',
+    );
+
+    await provider
+      .addInteraction()
+      .given('a talent with 5 consent events; cursor at end of first page')
+      .uponReceiving('a history read with cursor + limit=2')
+      .withRequest('GET', `/v1/consent/history/${TALENT_ID}`, (b) => {
+        b.headers({ Authorization: like('Bearer eyJfake.token') }).query({
+          limit: '2',
+          cursor: cursorString,
+        });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          events: [
+            {
+              event_id: uuid('00000000-0000-7000-8000-000000000a02'),
+              scope: 'profile_storage',
+              action: 'granted',
+              created_at: regex(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                '2026-04-14T08:00:00Z',
+              ),
+              expires_at: null,
+            },
+            {
+              event_id: uuid('00000000-0000-7000-8000-000000000a03'),
+              scope: 'contacting',
+              action: 'revoked',
+              created_at: regex(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                '2026-04-13T15:30:00Z',
+              ),
+              expires_at: null,
+            },
+          ],
+          next_cursor: like('encoded-opaque-cursor-string'),
+          is_anonymized: false,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/consent/history/${TALENT_ID}?limit=2&cursor=${encodeURIComponent(cursorString)}`,
+          {
+            method: 'GET',
+            headers: { Authorization: 'Bearer eyJfake.token' },
+          },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          events: unknown[];
+          next_cursor: string | null;
+        };
+        expect(body.events).toHaveLength(2);
+        expect(typeof body.next_cursor).toBe('string');
+      });
+  });
+
+  it('§7 test 15: empty history — returns 200 with empty array, never 404', async () => {
+    await provider
+      .addInteraction()
+      .given('a talent with no consent events')
+      .uponReceiving('a history read for the unseen talent')
+      .withRequest('GET', `/v1/consent/history/${TALENT_ID}`, (b) => {
+        b.headers({ Authorization: like('Bearer eyJfake.token') });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          events: [],
+          next_cursor: null,
+          is_anonymized: false,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/consent/history/${TALENT_ID}`, {
+          method: 'GET',
+          headers: { Authorization: 'Bearer eyJfake.token' },
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          events: unknown[];
+          next_cursor: string | null;
+          is_anonymized: boolean;
+        };
+        expect(body.events).toEqual([]);
+        expect(body.next_cursor).toBeNull();
+        expect(body.is_anonymized).toBe(false);
+      });
+  });
+});
+
 beforeAll(() => undefined);
 afterAll(() => undefined);

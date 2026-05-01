@@ -58,6 +58,11 @@ model TalentConsentEvent {
 
   @@index([tenant_id, talent_id, occurred_at])
   @@index([tenant_id, scope, action])
+  // PR-6: keyset pagination support for /consent/history. Ordering is
+  // (created_at DESC, id DESC); the index matches that exactly so the
+  // cursor predicate can seek without sort. Per directive §6, ordering
+  // and pagination must execute in the database.
+  @@index([tenant_id, talent_id, created_at(sort: Desc), id(sort: Desc)])
   @@schema("consent")
 }
 

@@ -21,4 +21,6 @@ export type {
   ConsentCheckOperation,
   TalentConsentScopeStateDto,
   TalentConsentStateResponseDto,
+  ConsentHistoryEventDto,
+  ConsentHistoryResponseDto,
 } from './lib/dto/index.js';
