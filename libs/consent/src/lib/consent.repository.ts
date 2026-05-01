@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { AramoError } from '@aramo/common';
+import { AramoError, type ContactChannel } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 
+import {
+  OPERATION_SCOPE_MAP,
+  type ConsentCheckOperation,
+} from './dto/consent-check-operation.js';
+import type { ConsentDecisionDto } from './dto/consent-decision.dto.js';
 import type {
   ConsentCapturedMethodValue,
   ConsentScopeValue,
@@ -43,10 +48,50 @@ export type ConsentEventResponseShape<T extends ConsentActionValue> =
       ? ConsentRevokeResponseDto
       : never;
 
-// Single-event lookup is the only cross-event query allowed in this repo
-// per ADR-0005 (pending) Decision E refinement: "no cross-event consent
-// state derivation; single-event lookups for referential linkage are
-// allowed". Used here to populate revoked_event_id (Decision A).
+export interface ResolveConsentStateInput {
+  tenant_id: string;
+  talent_id: string;
+  operation: ConsentCheckOperation;
+  channel?: ContactChannel;
+  // Optional per Phase 1 §6 line 497. Same key + same body → cached
+  // ConsentDecision returned without re-running the resolver. Same key
+  // + different body → 409.
+  idempotencyKey?: string;
+  requestHash: string;
+  requestId: string;
+}
+
+// Decision E (PR-4): scope dependency chain. Locked from Group 2 §2.7
+// "Scope Dependencies (Explicit Hierarchy)" (lines 2352-2361):
+//   contacting requires matching requires profile_storage
+//   cross_tenant_visibility requires all lower scopes
+//   resume_processing is independent
+// The chain for a given scope is the ordered list of *prerequisite* scopes
+// (the requested scope itself is checked separately by Decision D after
+// dependency validation).
+const SCOPE_DEPENDENCY_CHAIN: Record<ConsentScopeValue, readonly ConsentScopeValue[]> = {
+  profile_storage: [],
+  resume_processing: [],
+  matching: ['profile_storage'],
+  contacting: ['profile_storage', 'matching'],
+  cross_tenant_visibility: ['profile_storage', 'matching', 'contacting'],
+};
+
+// Decision F (PR-4): 12-month staleness window for the contacting scope.
+// Computed in calendar months from the latest grant's occurred_at.
+const STALENESS_WINDOW_MONTHS = 12;
+
+// Single-event lookup is the only cross-event query allowed in the
+// write-path methods per ADR-0005 Decision E refinement: "no cross-event
+// consent state derivation; single-event lookups for referential linkage
+// are allowed". Used in recordConsentEvent to populate revoked_event_id.
+//
+// PR-4 introduces a SECOND category — the resolver path — that performs
+// controlled cross-event reads for consent state derivation, bounded to
+// the body of resolveConsentState() only. ADR-0006 (forthcoming
+// retroactive PR-4.1) documents this two-category model. The R4 static
+// guardrail (consent.refusal-r4.spec.ts) enforces the boundary
+// mechanically.
 
 // PR-2 precedent #6: transaction boundary lives in the repository.
 // PR-2 precedent #4: no update method — the immutable ledger is enforced
@@ -261,4 +306,440 @@ export class ConsentRepository {
       return response as ConsentEventResponseShape<T>;
     });
   }
+
+  /**
+   * Resolver-path read. Per ADR-0005 Decision E, write paths are bound by
+   * "no cross-event consent state derivation." ADR-0006 (forthcoming
+   * retroactive PR-4.1) extends Decision E to permit controlled
+   * cross-event derivation in resolver paths under strict constraints.
+   * This method is the only ledger reader permitted to do cross-event
+   * derivation for consent state.
+   *
+   * Operations permitted within this method body (per ADR-0006):
+   *   - tx.talentConsentEvent.findMany  (cross-event read for partition + latest-per-source)
+   *   - tx.consentAuditEvent.create     (decision-log write)
+   *
+   * Operations forbidden in this method body:
+   *   - tx.talentConsentEvent.update / delete (immutability preserved)
+   *   - Any read from non-ledger tables (R4)
+   *
+   * Algorithm (Decisions A through L, PR-4):
+   *   1. Decision C: derive required scope from operation
+   *   2. Decision G validation: channel required when scope is contacting
+   *   3. Read all ledger events for (tenant_id, talent_id) — partition in memory
+   *   4. Decision K: empty ledger → result: error, reason: consent_state_unknown
+   *   5. Decision E: validate scope dependency chain — 422 if any dep denied
+   *   6. Decision D: most-restrictive computation for the requested scope
+   *   7. Decision F: staleness check (contacting only, 12 months)
+   *   8. Decision G: channel constraint check (contacting only)
+   *   9. Decision H: persist ConsentAuditEvent decision-log row
+   *   10. Return ConsentDecisionDto
+   *
+   * The resolver computation + audit write happen in a single transaction
+   * (R13). Failure of either rolls back atomically.
+   */
+  async resolveConsentState(
+    input: ResolveConsentStateInput,
+  ): Promise<ConsentDecisionDto> {
+    const requiredScope = OPERATION_SCOPE_MAP[input.operation] as ConsentScopeValue;
+
+    // Decision G validation (pre-transaction): channel required when scope
+    // is contacting. Returns 400 VALIDATION_ERROR; not logged to audit
+    // because the request itself is malformed, not a consent decision.
+    if (requiredScope === 'contacting' && input.channel === undefined) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'channel field is required when operation maps to contacting scope',
+        400,
+        {
+          requestId: input.requestId,
+          details: {
+            missing_field: 'channel',
+            operation: input.operation,
+            derived_scope: requiredScope,
+          },
+        },
+      );
+    }
+
+    // The transaction returns either:
+    //   - { decision }              for the 200 path (allowed/denied/error)
+    //   - { decision, deferredThrow } for the 422 path; the AramoError is
+    //                                 thrown AFTER the tx commits so the
+    //                                 decision-log audit row persists per
+    //                                 Decision H.
+    type ResolverTxResult =
+      | { decision: ConsentDecisionDto; deferredThrow?: undefined }
+      | { decision: ConsentDecisionDto; deferredThrow: AramoError };
+
+    const txResult = await this.prisma.$transaction(async (tx): Promise<ResolverTxResult> => {
+      // Idempotency check (optional per Phase 1 §6). Inside the same
+      // transaction so a concurrent same-key call serializes via the
+      // idempotencyKey unique constraint. Cache hit short-circuits before
+      // any resolver computation or audit write — preserves the directive's
+      // "do not re-run resolver, do not emit new decision-log entry"
+      // requirement.
+      if (input.idempotencyKey !== undefined) {
+        const existing = await tx.idempotencyKey.findUnique({
+          where: {
+            tenant_id_key: {
+              tenant_id: input.tenant_id,
+              key: input.idempotencyKey,
+            },
+          },
+        });
+        if (existing !== null) {
+          if (existing.request_hash !== input.requestHash) {
+            throw new AramoError(
+              'IDEMPOTENCY_KEY_CONFLICT',
+              'Same idempotency key used with a different request body',
+              409,
+              { requestId: input.requestId },
+            );
+          }
+          return { decision: existing.response_body as unknown as ConsentDecisionDto };
+        }
+      }
+
+      const decisionId = uuidv7();
+      const computedAt = new Date();
+
+      // Cross-event ledger read. Permitted here (resolver path) per
+      // ADR-0006. Partitioning + latest-per-source happens in memory.
+      const events = await tx.talentConsentEvent.findMany({
+        where: {
+          tenant_id: input.tenant_id,
+          talent_id: input.talent_id,
+        },
+        orderBy: { occurred_at: 'desc' },
+      });
+
+      // Decision K: empty ledger → result: error
+      if (events.length === 0) {
+        const decision = await this.completeDecision(tx, input, {
+          result: 'error',
+          scope: requiredScope,
+          reason_code: 'consent_state_unknown',
+          log_message: `consent_state_missing for talent ${input.talent_id}`,
+          decision_id: decisionId,
+          computed_at: computedAt.toISOString(),
+        });
+        return { decision };
+      }
+
+      // Decision E: validate scope dependency chain
+      const dependencyChain = SCOPE_DEPENDENCY_CHAIN[requiredScope];
+      const failedDependencies: ConsentScopeValue[] = [];
+      for (const depScope of dependencyChain) {
+        if (computeMostRestrictiveStateForScope(events, depScope) !== 'allowed') {
+          failedDependencies.push(depScope);
+        }
+      }
+      if (failedDependencies.length > 0) {
+        const decision: ConsentDecisionDto = {
+          result: 'denied',
+          scope: requiredScope,
+          denied_scopes: failedDependencies,
+          reason_code: 'scope_dependency_unmet',
+          display_message: `Required consent scope(s) not granted: ${failedDependencies.join(', ')}`,
+          log_message: `scope_dependency_unmet: ${failedDependencies.join(', ')}`,
+          decision_id: decisionId,
+          computed_at: computedAt.toISOString(),
+        };
+        // Persist decision-log row inside the tx so Decision H ("every
+        // check generates a decision-log entry") holds even for the 422
+        // path. Idempotency is NOT cached for 422 because a state change
+        // (e.g., a new grant for a missing dependency) should re-evaluate
+        // on retry.
+        await persistDecisionAudit(tx, input, decision);
+        // The 422 throw is DEFERRED until after the tx commits. Throwing
+        // inside the tx would roll back the audit write. The 422 envelope
+        // embeds the ConsentDecision in error.details.consent_decision
+        // per Phase 1 §1 canonical pattern.
+        return {
+          decision,
+          deferredThrow: new AramoError(
+            'INVALID_SCOPE_COMBINATION',
+            'Required consent scope dependency unmet',
+            422,
+            {
+              requestId: input.requestId,
+              details: { consent_decision: decision },
+            },
+          ),
+        };
+      }
+
+      // Decision D: most-restrictive computation for the requested scope
+      const requestedScopeState = computeMostRestrictiveStateForScope(
+        events,
+        requiredScope,
+      );
+      if (requestedScopeState !== 'allowed') {
+        const decision = await this.completeDecision(tx, input, {
+          result: 'denied',
+          scope: requiredScope,
+          denied_scopes: [requiredScope],
+          reason_code:
+            requestedScopeState === 'no_grant'
+              ? 'consent_not_granted'
+              : 'consent_revoked',
+          log_message: `${requiredScope}_denied: ${requestedScopeState}`,
+          decision_id: decisionId,
+          computed_at: computedAt.toISOString(),
+        });
+        return { decision };
+      }
+
+      // Decision F: staleness — contacting only, 12 months
+      if (requiredScope === 'contacting') {
+        const latestGrant = findLatestGrantForScope(events, 'contacting');
+        if (latestGrant !== null && isStale(latestGrant.occurred_at, computedAt)) {
+          const decision = await this.completeDecision(tx, input, {
+            result: 'denied',
+            scope: 'contacting',
+            denied_scopes: ['contacting'],
+            reason_code: 'stale_consent',
+            display_message: 'Consent has expired. Refresh required.',
+            log_message: 'contacting_denied: stale_consent',
+            decision_id: decisionId,
+            computed_at: computedAt.toISOString(),
+          });
+          return { decision };
+        }
+      }
+
+      // Decision G: channel constraint check (contacting only). The
+      // input.channel presence was already validated above.
+      if (requiredScope === 'contacting') {
+        const channel = input.channel as ContactChannel;
+        const permittedChannels = computePermittedChannelsIntersection(
+          events,
+          'contacting',
+        );
+        if (permittedChannels !== null && !permittedChannels.includes(channel)) {
+          const decision = await this.completeDecision(tx, input, {
+            result: 'denied',
+            scope: 'contacting',
+            denied_scopes: ['contacting'],
+            reason_code: 'channel_not_consented',
+            display_message: `Channel '${channel}' is not permitted by current consent.`,
+            log_message: `contacting_denied: channel_not_consented (${channel})`,
+            decision_id: decisionId,
+            computed_at: computedAt.toISOString(),
+          });
+          return { decision };
+        }
+      }
+
+      // All checks passed — allowed
+      const decision = await this.completeDecision(tx, input, {
+        result: 'allowed',
+        scope: requiredScope,
+        log_message: `${requiredScope}_allowed`,
+        decision_id: decisionId,
+        computed_at: computedAt.toISOString(),
+      });
+      return { decision };
+    });
+
+    if (txResult.deferredThrow !== undefined) {
+      throw txResult.deferredThrow;
+    }
+    return txResult.decision;
+  }
+
+  // Wraps the persist-and-return pattern used in every non-throwing
+  // resolver branch. Keeps the resolver body readable without leaking
+  // the audit-write detail at every return statement.
+  //
+  // Persists the decision-log audit row (Decision H) and, when an
+  // Idempotency-Key was provided, the cached response. Failure of either
+  // write rolls back the whole transaction.
+  private async completeDecision(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    input: ResolveConsentStateInput,
+    decision: ConsentDecisionDto,
+  ): Promise<ConsentDecisionDto> {
+    await persistDecisionAudit(tx, input, decision);
+    if (input.idempotencyKey !== undefined) {
+      await tx.idempotencyKey.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: input.tenant_id,
+          key: input.idempotencyKey,
+          request_hash: input.requestHash,
+          response_status: 200,
+          response_body: decision as never,
+        },
+      });
+    }
+    return decision;
+  }
+}
+
+// ----------------------------------------------------------------------
+// Resolver-path helpers. These are module-private (not exported) so the
+// R4 guardrail (which scans the repository file for table accesses) can
+// classify them as part of the resolver-path category.
+// ----------------------------------------------------------------------
+
+type LedgerEvent = {
+  id: string;
+  scope: string;
+  action: string;
+  captured_method: string;
+  occurred_at: Date;
+  metadata: unknown;
+};
+
+type ScopeState = 'allowed' | 'denied' | 'no_grant';
+
+// Decision D: source-aware most-restrictive. Partition by captured_method,
+// take latest per partition by occurred_at, apply most-restrictive across
+// partitions. A revoked or expired latest in any source produces denied.
+// All-granted across sources (with at least one source contributing)
+// produces allowed. No events for the scope from any source produces
+// no_grant. The Counterintuitive Example from §2.7 lines 2416-2422
+// (Indeed restricted + signup full → contacting restricted) is the
+// canonical case this function must produce correctly.
+function computeMostRestrictiveStateForScope(
+  events: LedgerEvent[],
+  scope: ConsentScopeValue,
+): ScopeState {
+  const scopeEvents = events.filter((e) => e.scope === scope);
+  if (scopeEvents.length === 0) {
+    return 'no_grant';
+  }
+  const latestPerSource = new Map<string, LedgerEvent>();
+  for (const ev of scopeEvents) {
+    const prior = latestPerSource.get(ev.captured_method);
+    if (prior === undefined || ev.occurred_at.getTime() > prior.occurred_at.getTime()) {
+      latestPerSource.set(ev.captured_method, ev);
+    }
+  }
+  let anyDenied = false;
+  let anyGranted = false;
+  for (const ev of latestPerSource.values()) {
+    if (ev.action === 'revoked' || ev.action === 'expired') {
+      anyDenied = true;
+    } else if (ev.action === 'granted') {
+      anyGranted = true;
+    }
+  }
+  if (anyDenied) {
+    return 'denied';
+  }
+  return anyGranted ? 'allowed' : 'no_grant';
+}
+
+// Decision F: latest grant for the scope (across all sources). Used for
+// the 12-month staleness window check.
+function findLatestGrantForScope(
+  events: LedgerEvent[],
+  scope: ConsentScopeValue,
+): LedgerEvent | null {
+  let latest: LedgerEvent | null = null;
+  for (const ev of events) {
+    if (ev.scope !== scope || ev.action !== 'granted') {
+      continue;
+    }
+    if (latest === null || ev.occurred_at.getTime() > latest.occurred_at.getTime()) {
+      latest = ev;
+    }
+  }
+  return latest;
+}
+
+function isStale(occurredAt: Date, now: Date): boolean {
+  // 12 calendar months. Computed via month arithmetic so a grant on
+  // 2025-04-30 becomes stale on 2026-04-30, regardless of leap days.
+  const cutoff = new Date(now);
+  cutoff.setMonth(cutoff.getMonth() - STALENESS_WINDOW_MONTHS);
+  return occurredAt.getTime() < cutoff.getTime();
+}
+
+// Decision G: intersection of permitted channels across the latest grant
+// per source for the scope. Each TalentConsentEvent.metadata MAY carry
+// `permitted_channels: ContactChannel[]`. Absence means "all channels
+// permitted by default" for that grant (sources without an explicit
+// restriction contribute the full ContactChannel set to the intersection).
+//
+// The metadata convention is locked here (PR-4): grants that need to
+// restrict channels carry `permitted_channels` as a string[] of
+// ContactChannel values. Returns null when no source carries an explicit
+// restriction (i.e., all channels permitted everywhere); returns the
+// intersected permitted set otherwise.
+function computePermittedChannelsIntersection(
+  events: LedgerEvent[],
+  scope: ConsentScopeValue,
+): ContactChannel[] | null {
+  const scopeGrants = events.filter(
+    (e) => e.scope === scope && e.action === 'granted',
+  );
+  if (scopeGrants.length === 0) {
+    return null;
+  }
+  const latestGrantPerSource = new Map<string, LedgerEvent>();
+  for (const ev of scopeGrants) {
+    const prior = latestGrantPerSource.get(ev.captured_method);
+    if (prior === undefined || ev.occurred_at.getTime() > prior.occurred_at.getTime()) {
+      latestGrantPerSource.set(ev.captured_method, ev);
+    }
+  }
+  let intersection: Set<ContactChannel> | null = null;
+  let anyExplicitRestriction = false;
+  for (const ev of latestGrantPerSource.values()) {
+    const meta = ev.metadata as Record<string, unknown> | null;
+    const permitted = meta?.['permitted_channels'];
+    if (Array.isArray(permitted)) {
+      anyExplicitRestriction = true;
+      const sourceSet = new Set<ContactChannel>(
+        permitted.filter((v): v is ContactChannel => typeof v === 'string'),
+      );
+      if (intersection === null) {
+        intersection = sourceSet;
+      } else {
+        intersection = new Set(
+          [...intersection].filter((c) => sourceSet.has(c)),
+        );
+      }
+    }
+  }
+  return anyExplicitRestriction && intersection !== null
+    ? [...intersection]
+    : null;
+}
+
+// Decision H: persists a ConsentAuditEvent row with event_type
+// 'consent.check.decision' for every check call (allowed/denied/error).
+// event_payload carries the full ConsentDecision shape plus the
+// resolver inputs (operation, channel) for forensic traceability.
+async function persistDecisionAudit(
+  tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+  input: ResolveConsentStateInput,
+  decision: ConsentDecisionDto,
+): Promise<void> {
+  await tx.consentAuditEvent.create({
+    data: {
+      id: uuidv7(),
+      tenant_id: input.tenant_id,
+      actor_id: null,
+      actor_type: 'system',
+      event_type: 'consent.check.decision',
+      subject_id: input.talent_id,
+      event_payload: {
+        decision_id: decision.decision_id,
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        operation: input.operation,
+        scope: decision.scope ?? null,
+        channel: input.channel ?? null,
+        result: decision.result,
+        denied_scopes: decision.denied_scopes ?? [],
+        reason_code: decision.reason_code ?? null,
+        computed_at: decision.computed_at,
+      } as never,
+    },
+  });
 }

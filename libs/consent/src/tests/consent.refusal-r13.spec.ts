@@ -22,6 +22,7 @@ interface MockTx {
   talentConsentEvent: {
     create: ReturnType<typeof vi.fn>;
     findFirst: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
   };
   consentAuditEvent: { create: ReturnType<typeof vi.fn> };
   outboxEvent: { create: ReturnType<typeof vi.fn> };
@@ -36,6 +37,7 @@ function makeTx(): MockTx {
     talentConsentEvent: {
       create: vi.fn().mockResolvedValue({ created_at: new Date() }),
       findFirst: vi.fn().mockResolvedValue({ id: PRIOR_GRANT_ID }),
+      findMany: vi.fn().mockResolvedValue([]),
     },
     consentAuditEvent: { create: vi.fn() },
     outboxEvent: { create: vi.fn() },
@@ -125,5 +127,64 @@ describe('Refusal R13 — consent integrity over engagement velocity', () => {
     expect(tx.consentAuditEvent.create).not.toHaveBeenCalled();
     expect(tx.outboxEvent.create).not.toHaveBeenCalled();
     expect(tx.idempotencyKey.create).not.toHaveBeenCalled();
+  });
+
+  // ===================================================================
+  // PR-4 extension: resolver path (resolveConsentState). The resolver
+  // computation + decision-log audit write live in the same transaction;
+  // failure of either rolls back atomically. R13 holds for the
+  // resolver-path category as well.
+  // ===================================================================
+
+  it('resolver: ledger findMany failure aborts before any audit write', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockRejectedValue(new Error('ledger read DB down'));
+    const repo = new ConsentRepository(makePrisma(tx));
+    await expect(
+      repo.resolveConsentState({
+        tenant_id: TENANT_ID,
+        talent_id: TALENT_ID,
+        operation: 'matching',
+        requestHash: 'r13-h-1',
+        requestId: 'r13-req-1',
+      }),
+    ).rejects.toThrow('ledger read DB down');
+    expect(tx.consentAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('resolver: decision-log audit write failure rolls back the resolver state', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    tx.consentAuditEvent.create.mockRejectedValue(new Error('audit DB down'));
+    const repo = new ConsentRepository(makePrisma(tx));
+    await expect(
+      repo.resolveConsentState({
+        tenant_id: TENANT_ID,
+        talent_id: TALENT_ID,
+        operation: 'matching',
+        requestHash: 'r13-h-2',
+        requestId: 'r13-req-2',
+      }),
+    ).rejects.toThrow('audit DB down');
+  });
+
+  it('resolver: idempotency-cache persist failure rolls back the audit write', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    tx.idempotencyKey.create.mockRejectedValue(new Error('idempotency persist failed'));
+    const repo = new ConsentRepository(makePrisma(tx));
+    await expect(
+      repo.resolveConsentState({
+        tenant_id: TENANT_ID,
+        talent_id: TALENT_ID,
+        operation: 'matching',
+        idempotencyKey: 'aabbccdd-0000-7000-8000-000000000400',
+        requestHash: 'r13-h-3',
+        requestId: 'r13-req-3',
+      }),
+    ).rejects.toThrow('idempotency persist failed');
+    // The audit write happened inside the transaction but rolls back atomically.
+    // We can verify the call was attempted (tx semantics live in the real DB).
+    expect(tx.consentAuditEvent.create).toHaveBeenCalled();
   });
 });

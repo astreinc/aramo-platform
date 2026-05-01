@@ -299,6 +299,243 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(payload['talent_id']).toBe(TALENT_ID);
       expect(revokeResult.revoked_event_id).toBe(grantResult.event_id);
     });
+
+    // ===================================================================
+    // Resolver cases (PR-4) — exercise resolveConsentState end-to-end
+    // against real Postgres. Each case seeds via recordConsentEvent so
+    // the ledger state is normal app-shape data.
+    // ===================================================================
+
+    const RESOLVER_TENANT = '33333333-3333-7333-8333-333333333333';
+    const RESOLVER_TALENT = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
+
+    async function seedGrant(
+      scope: string,
+      occurredAt: string,
+      capturedMethod = 'recruiter_capture',
+      idempKey?: string,
+      metadata?: Record<string, unknown>,
+    ): Promise<void> {
+      await repo.recordConsentEvent({
+        tenant_id: RESOLVER_TENANT,
+        talent_id: RESOLVER_TALENT,
+        action: 'granted',
+        scope: scope as never,
+        captured_method: capturedMethod as never,
+        captured_by_actor_id: RECRUITER_ID,
+        consent_version: 'v1',
+        occurred_at: occurredAt,
+        idempotencyKey:
+          idempKey ?? `aabbccdd-0000-7000-8000-${Math.random().toString(16).slice(2, 14).padEnd(12, '0')}`,
+        requestHash: `seed-${scope}-${capturedMethod}-${occurredAt}`,
+        requestId: `seed-req-${scope}`,
+        ...(metadata ? { metadata } : {}),
+      });
+    }
+
+    it('resolver: empty ledger for an unseen talent → result=error reason=consent_state_unknown', async () => {
+      const decision = await repo.resolveConsentState({
+        tenant_id: RESOLVER_TENANT,
+        talent_id: 'dddddddd-dddd-7ddd-8ddd-dddddddddddd', // unseeded
+        operation: 'matching',
+        requestHash: 'res-empty-h',
+        requestId: 'res-empty-req',
+      });
+      expect(decision.result).toBe('error');
+      expect(decision.reason_code).toBe('consent_state_unknown');
+    });
+
+    it('resolver: Counterintuitive Example — Indeed-source revoke + signup grant → contacting denied', async () => {
+      const tenant = '44444444-4444-7444-8444-444444444444';
+      const talent = 'cccccccc-cccc-7ccc-8ccc-ccccccccdd11';
+      // Self-signup: full grants
+      for (const [scope, idx] of [
+        ['profile_storage', 0],
+        ['matching', 1],
+        ['contacting', 2],
+      ] as const) {
+        await repo.recordConsentEvent({
+          tenant_id: tenant,
+          talent_id: talent,
+          action: 'granted',
+          scope: scope as never,
+          captured_method: 'self_signup',
+          captured_by_actor_id: null,
+          consent_version: 'v1',
+          occurred_at: '2026-01-15T00:00:00Z',
+          idempotencyKey: `aabbccdd-0000-7000-8000-cce${idx}00000010`,
+          requestHash: `cci-self-${scope}`,
+          requestId: 'cci-req-self',
+        });
+      }
+      // Indeed-import: contacting revoked (the restriction)
+      await repo.recordConsentEvent({
+        tenant_id: tenant,
+        talent_id: talent,
+        action: 'revoked',
+        scope: 'contacting',
+        captured_method: 'import',
+        captured_by_actor_id: null,
+        consent_version: 'v1',
+        occurred_at: '2026-02-10T00:00:00Z',
+        idempotencyKey: 'aabbccdd-0000-7000-8000-cce300000099',
+        requestHash: 'cci-indeed-rev',
+        requestId: 'cci-req-indeed',
+      });
+
+      const decision = await repo.resolveConsentState({
+        tenant_id: tenant,
+        talent_id: talent,
+        operation: 'engagement',
+        channel: 'email',
+        requestHash: 'cci-check-h',
+        requestId: 'cci-check-req',
+      });
+      expect(decision.result).toBe('denied');
+      expect(decision.denied_scopes).toContain('contacting');
+    });
+
+    it('resolver: dependency unmet → 422 with embedded ConsentDecision in error.details', async () => {
+      const tenant = '55555555-5555-7555-8555-555555555555';
+      const talent = 'cccccccc-cccc-7ccc-8ccc-ccccccccdd22';
+      // Only profile_storage + contacting; matching dep missing
+      await repo.recordConsentEvent({
+        tenant_id: tenant,
+        talent_id: talent,
+        action: 'granted',
+        scope: 'profile_storage',
+        captured_method: 'recruiter_capture',
+        captured_by_actor_id: RECRUITER_ID,
+        consent_version: 'v1',
+        occurred_at: '2026-04-01T00:00:00Z',
+        idempotencyKey: 'aabbccdd-0000-7000-8000-dd2200000001',
+        requestHash: 'dep-h-1',
+        requestId: 'dep-req-1',
+      });
+      await repo.recordConsentEvent({
+        tenant_id: tenant,
+        talent_id: talent,
+        action: 'granted',
+        scope: 'contacting',
+        captured_method: 'recruiter_capture',
+        captured_by_actor_id: RECRUITER_ID,
+        consent_version: 'v1',
+        occurred_at: '2026-04-01T00:00:00Z',
+        idempotencyKey: 'aabbccdd-0000-7000-8000-dd2200000002',
+        requestHash: 'dep-h-2',
+        requestId: 'dep-req-2',
+      });
+      try {
+        await repo.resolveConsentState({
+          tenant_id: tenant,
+          talent_id: talent,
+          operation: 'engagement',
+          channel: 'email',
+          requestHash: 'dep-check-h',
+          requestId: 'dep-check-req',
+        });
+        throw new Error('expected 422 to be thrown');
+      } catch (err) {
+        const aramoErr = err as {
+          code: string;
+          statusCode: number;
+          context: { details: { consent_decision: { reason_code: string; denied_scopes: string[] } } };
+        };
+        expect(aramoErr.code).toBe('INVALID_SCOPE_COMBINATION');
+        expect(aramoErr.statusCode).toBe(422);
+        expect(aramoErr.context.details.consent_decision.reason_code).toBe('scope_dependency_unmet');
+        expect(aramoErr.context.details.consent_decision.denied_scopes).toContain('matching');
+      }
+
+      // Decision H: audit row persists for the 422 path
+      const auditRows = await prisma.consentAuditEvent.findMany({
+        where: { tenant_id: tenant, event_type: 'consent.check.decision' },
+      });
+      expect(auditRows.length).toBeGreaterThan(0);
+    });
+
+    it('resolver: 13-month-old contacting grant → denied with reason=stale_consent', async () => {
+      const tenant = '66666666-6666-7666-8666-666666666666';
+      const talent = 'cccccccc-cccc-7ccc-8ccc-ccccccccdd33';
+      const thirteenMonthsAgo = new Date();
+      thirteenMonthsAgo.setMonth(thirteenMonthsAgo.getMonth() - 13);
+      const stamp = thirteenMonthsAgo.toISOString();
+      for (const [scope, idx] of [
+        ['profile_storage', 0],
+        ['matching', 1],
+        ['contacting', 2],
+      ] as const) {
+        await repo.recordConsentEvent({
+          tenant_id: tenant,
+          talent_id: talent,
+          action: 'granted',
+          scope: scope as never,
+          captured_method: 'recruiter_capture',
+          captured_by_actor_id: RECRUITER_ID,
+          consent_version: 'v1',
+          occurred_at: stamp,
+          idempotencyKey: `aabbccdd-0000-7000-8000-dd33${idx.toString().padStart(8, '0')}`,
+          requestHash: `stale-h-${scope}`,
+          requestId: `stale-req-${scope}`,
+        });
+      }
+      const decision = await repo.resolveConsentState({
+        tenant_id: tenant,
+        talent_id: talent,
+        operation: 'engagement',
+        channel: 'email',
+        requestHash: 'stale-check-h',
+        requestId: 'stale-check-req',
+      });
+      expect(decision.result).toBe('denied');
+      expect(decision.reason_code).toBe('stale_consent');
+      expect(decision.display_message).toBe('Consent has expired. Refresh required.');
+    });
+
+    it('resolver: persists decision-log audit row queryable post-check (Decision H)', async () => {
+      const tenant = '77777777-7777-7777-8777-777777777777';
+      const talent = 'cccccccc-cccc-7ccc-8ccc-ccccccccdd44';
+      // Grant matching dep + the matching scope itself
+      for (const [scope, idx] of [
+        ['profile_storage', 0],
+        ['matching', 1],
+      ] as const) {
+        await repo.recordConsentEvent({
+          tenant_id: tenant,
+          talent_id: talent,
+          action: 'granted',
+          scope: scope as never,
+          captured_method: 'recruiter_capture',
+          captured_by_actor_id: RECRUITER_ID,
+          consent_version: 'v1',
+          occurred_at: '2026-04-15T00:00:00Z',
+          idempotencyKey: `aabbccdd-0000-7000-8000-dd44${idx.toString().padStart(8, '0')}`,
+          requestHash: `audit-h-${scope}`,
+          requestId: `audit-req-${scope}`,
+        });
+      }
+      const decision = await repo.resolveConsentState({
+        tenant_id: tenant,
+        talent_id: talent,
+        operation: 'matching',
+        requestHash: 'audit-check-h',
+        requestId: 'audit-check-req',
+      });
+      expect(decision.result).toBe('allowed');
+
+      const auditRows = await prisma.consentAuditEvent.findMany({
+        where: { tenant_id: tenant, event_type: 'consent.check.decision' },
+      });
+      expect(auditRows).toHaveLength(1);
+      const payload = auditRows[0]?.event_payload as Record<string, unknown>;
+      expect(payload['decision_id']).toBe(decision.decision_id);
+      expect(payload['result']).toBe('allowed');
+      expect(payload['operation']).toBe('matching');
+    });
+
+    // Suppress unused-variable warning — seedGrant kept for future
+    // resolver scenarios that don't fit the inline seed pattern above.
+    void seedGrant;
   },
 );
 

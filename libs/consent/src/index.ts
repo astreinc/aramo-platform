@@ -6,12 +6,17 @@ export { PrismaService } from './lib/prisma/prisma.service.js';
 export {
   ConsentGrantRequestDto,
   ConsentRevokeRequestDto,
+  ConsentCheckRequestDto,
   CONSENT_SCOPES,
   CONSENT_CAPTURED_METHODS,
+  CONSENT_CHECK_OPERATIONS,
+  OPERATION_SCOPE_MAP,
 } from './lib/dto/index.js';
 export type {
   ConsentScopeValue,
   ConsentCapturedMethodValue,
   ConsentGrantResponseDto,
   ConsentRevokeResponseDto,
+  ConsentDecisionDto,
+  ConsentCheckOperation,
 } from './lib/dto/index.js';

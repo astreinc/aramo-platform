@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ConsentController } from '../lib/consent.controller.js';
 import type { ConsentService } from '../lib/consent.service.js';
+import type { ConsentCheckRequestDto } from '../lib/dto/consent-check-request.dto.js';
 import type { ConsentGrantRequestDto } from '../lib/dto/consent-grant-request.dto.js';
 import type { ConsentRevokeRequestDto } from '../lib/dto/consent-revoke-request.dto.js';
 
@@ -125,5 +126,60 @@ describe('ConsentController.revokeConsent', () => {
       code: 'VALIDATION_ERROR',
       context: { details: { invalid_field: 'Idempotency-Key' } },
     });
+  });
+});
+
+function makeCheckRequest(
+  overrides: Partial<ConsentCheckRequestDto> = {},
+): ConsentCheckRequestDto {
+  return {
+    talent_id: TALENT_ID,
+    operation: 'matching',
+    ...overrides,
+  } as ConsentCheckRequestDto;
+}
+
+describe('ConsentController.checkConsent', () => {
+  const decisionResponse = {
+    result: 'allowed',
+    scope: 'matching',
+    decision_id: 'd2d7a0f0-0000-7000-8000-0000000000ff',
+    computed_at: '2026-04-30T12:00:00Z',
+  };
+
+  it('delegates to ConsentService.check on a valid request with idempotency key', async () => {
+    const service = { grant: vi.fn(), revoke: vi.fn(), check: vi.fn().mockResolvedValue(decisionResponse) };
+    const controller = new ConsentController(service as unknown as ConsentService);
+    const result = await controller.checkConsent(makeCheckRequest(), VALID_KEY, makeAuth(), 'req-c1');
+    expect(service.check).toHaveBeenCalledOnce();
+    expect(result).toEqual(decisionResponse);
+  });
+
+  it('delegates to ConsentService.check WITHOUT an idempotency key (optional per Phase 1 §6)', async () => {
+    const service = { grant: vi.fn(), revoke: vi.fn(), check: vi.fn().mockResolvedValue(decisionResponse) };
+    const controller = new ConsentController(service as unknown as ConsentService);
+    const result = await controller.checkConsent(makeCheckRequest(), undefined, makeAuth(), 'req-c2');
+    expect(service.check).toHaveBeenCalledOnce();
+    expect(service.check.mock.calls[0][1]).toBeUndefined();
+    expect(result).toEqual(decisionResponse);
+  });
+
+  it('treats empty Idempotency-Key the same as absent', async () => {
+    const service = { grant: vi.fn(), revoke: vi.fn(), check: vi.fn().mockResolvedValue(decisionResponse) };
+    const controller = new ConsentController(service as unknown as ConsentService);
+    await controller.checkConsent(makeCheckRequest(), '', makeAuth(), 'req-c3');
+    expect(service.check).toHaveBeenCalledOnce();
+  });
+
+  it('throws VALIDATION_ERROR when Idempotency-Key is present but malformed', async () => {
+    const service = { grant: vi.fn(), revoke: vi.fn(), check: vi.fn() };
+    const controller = new ConsentController(service as unknown as ConsentService);
+    await expect(
+      controller.checkConsent(makeCheckRequest(), 'not-a-uuid', makeAuth(), 'req-c4'),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { invalid_field: 'Idempotency-Key' } },
+    });
+    expect(service.check).not.toHaveBeenCalled();
   });
 });
