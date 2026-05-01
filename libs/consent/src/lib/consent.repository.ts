@@ -700,9 +700,12 @@ function computePermittedChannelsIntersection(
       if (intersection === null) {
         intersection = sourceSet;
       } else {
-        intersection = new Set(
-          [...intersection].filter((c) => sourceSet.has(c)),
-        );
+        // Snapshot to a local const so TS narrowing (intersection !== null
+        // → Set<ContactChannel>) survives across the filter closure. The
+        // inline form ([...intersection].filter(...)) widens to never[]
+        // under the consent lib's strict tsconfig.
+        const prev: Set<ContactChannel> = intersection;
+        intersection = new Set([...prev].filter((c) => sourceSet.has(c)));
       }
     }
   }
