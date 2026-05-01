@@ -536,6 +536,169 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Suppress unused-variable warning — seedGrant kept for future
     // resolver scenarios that don't fit the inline seed pattern above.
     void seedGrant;
+
+    // ===================================================================
+    // State endpoint cases (PR-5) — exercise resolveAllScopes end-to-end
+    // against real Postgres. Verifies:
+    //   - Always 5 scopes in response (Decision D)
+    //   - Per-scope state derivation against real ledger
+    //   - is_anonymized always false (Decision F PR-5 limitation)
+    //   - No ConsentAuditEvent rows written (Decision H)
+    //   - No idempotency rows written
+    // ===================================================================
+
+    const STATE_TENANT = '88888888-8888-7888-8888-888888888888';
+
+    it('state: empty ledger for an unseen talent → 5 scopes all no_grant, no audit row', async () => {
+      const talent = 'cccccccc-cccc-7ccc-8ccc-ccccccccdd55';
+      const auditCountBefore = await prisma.consentAuditEvent.count({
+        where: { tenant_id: STATE_TENANT },
+      });
+      const result = await repo.resolveAllScopes({
+        tenant_id: STATE_TENANT,
+        talent_id: talent,
+        requestId: 'state-empty-req',
+      });
+      expect(result.scopes).toHaveLength(5);
+      for (const s of result.scopes) {
+        expect(s.status).toBe('no_grant');
+        expect(s.granted_at).toBeNull();
+        expect(s.revoked_at).toBeNull();
+        expect(s.expires_at).toBeNull();
+      }
+      expect(result.is_anonymized).toBe(false);
+      expect(result.tenant_id).toBe(STATE_TENANT);
+      expect(result.talent_id).toBe(talent);
+      // Decision H: no audit row written for state reads
+      const auditCountAfter = await prisma.consentAuditEvent.count({
+        where: { tenant_id: STATE_TENANT },
+      });
+      expect(auditCountAfter).toBe(auditCountBefore);
+    });
+
+    it('state: mixed ledger (matching granted, contacting revoked) → correct per-scope status', async () => {
+      const tenant = '99999999-9999-7999-8999-999999999999';
+      const talent = 'cccccccc-cccc-7ccc-8ccc-ccccccccdd66';
+      // Profile + matching granted
+      for (const [scope, idx] of [
+        ['profile_storage', 0],
+        ['matching', 1],
+      ] as const) {
+        await repo.recordConsentEvent({
+          tenant_id: tenant,
+          talent_id: talent,
+          action: 'granted',
+          scope: scope as never,
+          captured_method: 'recruiter_capture',
+          captured_by_actor_id: RECRUITER_ID,
+          consent_version: 'v1',
+          occurred_at: '2026-04-01T10:00:00Z',
+          idempotencyKey: `aabbccdd-0000-7000-8000-dd66${idx.toString().padStart(8, '0')}`,
+          requestHash: `state-mixed-h-${scope}-grant`,
+          requestId: `state-mixed-req-${scope}-grant`,
+        });
+      }
+      // Contacting granted then revoked
+      await repo.recordConsentEvent({
+        tenant_id: tenant,
+        talent_id: talent,
+        action: 'granted',
+        scope: 'contacting',
+        captured_method: 'recruiter_capture',
+        captured_by_actor_id: RECRUITER_ID,
+        consent_version: 'v1',
+        occurred_at: '2026-04-01T11:00:00Z',
+        idempotencyKey: 'aabbccdd-0000-7000-8000-dd6600000010',
+        requestHash: 'state-mixed-h-contacting-grant',
+        requestId: 'state-mixed-req-contacting-grant',
+      });
+      await repo.recordConsentEvent({
+        tenant_id: tenant,
+        talent_id: talent,
+        action: 'revoked',
+        scope: 'contacting',
+        captured_method: 'recruiter_capture',
+        captured_by_actor_id: RECRUITER_ID,
+        consent_version: 'v1',
+        occurred_at: '2026-04-15T14:22:00Z',
+        idempotencyKey: 'aabbccdd-0000-7000-8000-dd6600000011',
+        requestHash: 'state-mixed-h-contacting-revoke',
+        requestId: 'state-mixed-req-contacting-revoke',
+      });
+
+      const result = await repo.resolveAllScopes({
+        tenant_id: tenant,
+        talent_id: talent,
+        requestId: 'state-mixed-req',
+      });
+
+      expect(result.scopes).toHaveLength(5);
+
+      const profile = result.scopes.find((s) => s.scope === 'profile_storage');
+      expect(profile?.status).toBe('granted');
+      const matching = result.scopes.find((s) => s.scope === 'matching');
+      expect(matching?.status).toBe('granted');
+      const contacting = result.scopes.find((s) => s.scope === 'contacting');
+      expect(contacting?.status).toBe('revoked');
+      expect(contacting?.granted_at).toBe('2026-04-01T11:00:00.000Z');
+      expect(contacting?.revoked_at).toBe('2026-04-15T14:22:00.000Z');
+      const resume = result.scopes.find((s) => s.scope === 'resume_processing');
+      expect(resume?.status).toBe('no_grant');
+      const xtenant = result.scopes.find((s) => s.scope === 'cross_tenant_visibility');
+      expect(xtenant?.status).toBe('no_grant');
+    });
+
+    it('state: Counterintuitive Example end-to-end (Indeed-import revoked + signup full → contacting=revoked)', async () => {
+      const tenant = 'aaaa1111-aaaa-7aaa-8aaa-111111111111';
+      const talent = 'cccccccc-cccc-7ccc-8ccc-ccccccccdd77';
+      // Self-signup: full grants
+      for (const [scope, idx] of [
+        ['profile_storage', 0],
+        ['matching', 1],
+        ['contacting', 2],
+      ] as const) {
+        await repo.recordConsentEvent({
+          tenant_id: tenant,
+          talent_id: talent,
+          action: 'granted',
+          scope: scope as never,
+          captured_method: 'self_signup',
+          captured_by_actor_id: null,
+          consent_version: 'v1',
+          occurred_at: '2026-01-15T00:00:00Z',
+          idempotencyKey: `aabbccdd-0000-7000-8000-dd77${idx.toString().padStart(8, '0')}`,
+          requestHash: `cci-state-self-${scope}`,
+          requestId: 'cci-state-req-self',
+        });
+      }
+      // Indeed-import: contacting revoked
+      await repo.recordConsentEvent({
+        tenant_id: tenant,
+        talent_id: talent,
+        action: 'revoked',
+        scope: 'contacting',
+        captured_method: 'import',
+        captured_by_actor_id: null,
+        consent_version: 'v1',
+        occurred_at: '2026-02-10T00:00:00Z',
+        idempotencyKey: 'aabbccdd-0000-7000-8000-dd7700000099',
+        requestHash: 'cci-state-indeed-rev',
+        requestId: 'cci-state-req-indeed',
+      });
+
+      const result = await repo.resolveAllScopes({
+        tenant_id: tenant,
+        talent_id: talent,
+        requestId: 'cci-state-req',
+      });
+
+      const contacting = result.scopes.find((s) => s.scope === 'contacting');
+      expect(contacting?.status).toBe('revoked');
+      // Latest grant timestamp preserved (self_signup grant)
+      expect(contacting?.granted_at).toBe('2026-01-15T00:00:00.000Z');
+      // Latest revoke timestamp (Indeed import)
+      expect(contacting?.revoked_at).toBe('2026-02-10T00:00:00.000Z');
+    });
   },
 );
 

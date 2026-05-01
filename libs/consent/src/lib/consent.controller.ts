@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -17,6 +19,7 @@ import { ConsentGrantRequestDto } from './dto/consent-grant-request.dto.js';
 import type { ConsentGrantResponseDto } from './dto/consent-grant-response.dto.js';
 import { ConsentRevokeRequestDto } from './dto/consent-revoke-request.dto.js';
 import type { ConsentRevokeResponseDto } from './dto/consent-revoke-response.dto.js';
+import type { TalentConsentStateResponseDto } from './dto/talent-consent-state-response.dto.js';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -79,6 +82,21 @@ export class ConsentController {
     );
   }
 
+  // PR-5: GET /consent/state/{talent_id}. Informational read endpoint;
+  // no Idempotency-Key handling (Phase 1 §6: N/A for read endpoints).
+  // No request body. talent_id is a path parameter; UUID format
+  // validated explicitly because @Param doesn't run class-validator.
+  @Get('state/:talent_id')
+  @HttpCode(HttpStatus.OK)
+  async getTalentConsentState(
+    @Param('talent_id') talent_id: string,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<TalentConsentStateResponseDto> {
+    this.assertTalentIdFormat(talent_id, requestId);
+    return this.consentService.getState(talent_id, authContext, requestId);
+  }
+
   private assertIdempotencyKeyRequired(
     idempotencyKey: string | undefined,
     requestId: string,
@@ -116,6 +134,17 @@ export class ConsentController {
         'Idempotency-Key must be a UUID',
         400,
         { requestId, details: { invalid_field: 'Idempotency-Key' } },
+      );
+    }
+  }
+
+  private assertTalentIdFormat(talent_id: string, requestId: string): void {
+    if (!UUID_REGEX.test(talent_id)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'talent_id must be a UUID',
+        400,
+        { requestId, details: { invalid_field: 'talent_id' } },
       );
     }
   }

@@ -364,6 +364,7 @@ interface LedgerRow {
   action: string;
   captured_method: string;
   occurred_at: Date;
+  expires_at: Date | null;
   metadata: Record<string, unknown> | null;
 }
 
@@ -374,6 +375,7 @@ function makeLedgerRow(overrides: Partial<LedgerRow> = {}): LedgerRow {
     action: 'granted',
     captured_method: 'recruiter_capture',
     occurred_at: new Date('2026-04-01T00:00:00Z'),
+    expires_at: null,
     metadata: null,
     ...overrides,
   };
@@ -987,5 +989,337 @@ describe('ConsentRepository.resolveConsentState — Decision L (R4: ledger-only 
     // engagement, talentResponse, etc., so any access would throw — but
     // also the static R4 guardrail enforces source-level absence).
     expect(tx.talentConsentEvent.findMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ----------------------------------------------------------------------
+// PR-5 — Resolver tests for resolveAllScopes (state read endpoint).
+// Covers Decisions A, C, D, F, H from PR-5. Reuses ADR-0006 Decision D
+// source-aware most-restrictive intersection unchanged.
+// ----------------------------------------------------------------------
+
+const ALL_SCOPES = [
+  'profile_storage',
+  'resume_processing',
+  'matching',
+  'contacting',
+  'cross_tenant_visibility',
+] as const;
+
+function makeAllScopesInput(): {
+  tenant_id: string;
+  talent_id: string;
+  requestId: string;
+} {
+  return {
+    tenant_id: TENANT_ID,
+    talent_id: TALENT_ID,
+    requestId: 'req-state-1',
+  };
+}
+
+describe('ConsentRepository.resolveAllScopes — Decision D (always 5 scopes)', () => {
+  it('empty ledger → all 5 scopes return status=no_grant with null timestamps', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveAllScopes(makeAllScopesInput());
+
+    expect(result.scopes).toHaveLength(5);
+    expect(result.is_anonymized).toBe(false);
+    expect(result.tenant_id).toBe(TENANT_ID);
+    expect(result.talent_id).toBe(TALENT_ID);
+    for (const scope of ALL_SCOPES) {
+      const entry = result.scopes.find((s) => s.scope === scope);
+      expect(entry).toBeDefined();
+      expect(entry?.status).toBe('no_grant');
+      expect(entry?.granted_at).toBeNull();
+      expect(entry?.revoked_at).toBeNull();
+      expect(entry?.expires_at).toBeNull();
+    }
+  });
+
+  it('always returns exactly 5 entries, one per ConsentScope value', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeLedgerRow({ scope: 'matching', action: 'granted' }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveAllScopes(makeAllScopesInput());
+
+    expect(result.scopes).toHaveLength(5);
+    const scopesReturned = result.scopes.map((s) => s.scope).sort();
+    expect(scopesReturned).toEqual([...ALL_SCOPES].sort());
+  });
+});
+
+describe('ConsentRepository.resolveAllScopes — single-scope and multi-scope mix', () => {
+  it('single-scope grant: that scope returns granted, others no_grant', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeLedgerRow({
+        scope: 'matching',
+        action: 'granted',
+        occurred_at: new Date('2026-04-01T10:00:00Z'),
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveAllScopes(makeAllScopesInput());
+
+    const matching = result.scopes.find((s) => s.scope === 'matching');
+    expect(matching?.status).toBe('granted');
+    expect(matching?.granted_at).toBe('2026-04-01T10:00:00.000Z');
+    expect(matching?.revoked_at).toBeNull();
+
+    const others = result.scopes.filter((s) => s.scope !== 'matching');
+    expect(others).toHaveLength(4);
+    for (const other of others) {
+      expect(other.status).toBe('no_grant');
+    }
+  });
+
+  it('multi-scope mix: profile granted, contacting revoked, others no_grant', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeLedgerRow({
+        id: '00000000-0000-7000-8000-000000000200',
+        scope: 'profile_storage',
+        action: 'granted',
+        occurred_at: new Date('2026-04-01T10:00:00Z'),
+      }),
+      makeLedgerRow({
+        id: '00000000-0000-7000-8000-000000000201',
+        scope: 'contacting',
+        action: 'granted',
+        occurred_at: new Date('2026-04-01T11:00:00Z'),
+      }),
+      makeLedgerRow({
+        id: '00000000-0000-7000-8000-000000000202',
+        scope: 'contacting',
+        action: 'revoked',
+        occurred_at: new Date('2026-04-15T14:22:00Z'),
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveAllScopes(makeAllScopesInput());
+
+    const profile = result.scopes.find((s) => s.scope === 'profile_storage');
+    expect(profile?.status).toBe('granted');
+    expect(profile?.granted_at).toBe('2026-04-01T10:00:00.000Z');
+    expect(profile?.revoked_at).toBeNull();
+
+    const contacting = result.scopes.find((s) => s.scope === 'contacting');
+    expect(contacting?.status).toBe('revoked');
+    expect(contacting?.granted_at).toBe('2026-04-01T11:00:00.000Z');
+    expect(contacting?.revoked_at).toBe('2026-04-15T14:22:00.000Z');
+
+    for (const scope of ['resume_processing', 'matching', 'cross_tenant_visibility'] as const) {
+      const entry = result.scopes.find((s) => s.scope === scope);
+      expect(entry?.status).toBe('no_grant');
+    }
+  });
+
+  it('expires_at timestamp populated from latest grant event when set', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeLedgerRow({
+        scope: 'matching',
+        action: 'granted',
+        occurred_at: new Date('2026-04-01T10:00:00Z'),
+        expires_at: new Date('2027-04-01T10:00:00Z'),
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveAllScopes(makeAllScopesInput());
+    const matching = result.scopes.find((s) => s.scope === 'matching');
+    expect(matching?.expires_at).toBe('2027-04-01T10:00:00.000Z');
+  });
+});
+
+describe('ConsentRepository.resolveAllScopes — ADR-0006 Decision D (source-aware most-restrictive)', () => {
+  it('Counterintuitive Example: Indeed-import revoked + signup full grant → contacting=revoked', async () => {
+    // §2.7 lines 2416-2422 inherited from ADR-0006 Decision D.
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      // Self-signup full
+      makeLedgerRow({
+        id: '00000000-0000-7000-8000-000000000300',
+        scope: 'profile_storage',
+        action: 'granted',
+        captured_method: 'self_signup',
+      }),
+      makeLedgerRow({
+        id: '00000000-0000-7000-8000-000000000301',
+        scope: 'matching',
+        action: 'granted',
+        captured_method: 'self_signup',
+      }),
+      makeLedgerRow({
+        id: '00000000-0000-7000-8000-000000000302',
+        scope: 'contacting',
+        action: 'granted',
+        captured_method: 'self_signup',
+        occurred_at: new Date('2026-01-15T00:00:00Z'),
+      }),
+      // Indeed-sourced contacting revoked
+      makeLedgerRow({
+        id: '00000000-0000-7000-8000-000000000303',
+        scope: 'contacting',
+        action: 'revoked',
+        captured_method: 'import',
+        occurred_at: new Date('2026-02-10T00:00:00Z'),
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveAllScopes(makeAllScopesInput());
+
+    const contacting = result.scopes.find((s) => s.scope === 'contacting');
+    expect(contacting?.status).toBe('revoked');
+    expect(contacting?.granted_at).toBe('2026-01-15T00:00:00.000Z');
+    expect(contacting?.revoked_at).toBe('2026-02-10T00:00:00.000Z');
+
+    const matching = result.scopes.find((s) => s.scope === 'matching');
+    expect(matching?.status).toBe('granted');
+  });
+
+  it('multiple sources all granted → status=granted', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeLedgerRow({
+        id: '00000000-0000-7000-8000-000000000400',
+        scope: 'matching',
+        action: 'granted',
+        captured_method: 'self_signup',
+      }),
+      makeLedgerRow({
+        id: '00000000-0000-7000-8000-000000000401',
+        scope: 'matching',
+        action: 'granted',
+        captured_method: 'recruiter_capture',
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveAllScopes(makeAllScopesInput());
+    expect(result.scopes.find((s) => s.scope === 'matching')?.status).toBe('granted');
+  });
+
+  it('expired status surfaces when a source has expired and none revoked', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeLedgerRow({
+        id: '00000000-0000-7000-8000-000000000500',
+        scope: 'matching',
+        action: 'granted',
+        captured_method: 'self_signup',
+        occurred_at: new Date('2025-01-01T00:00:00Z'),
+      }),
+      // Latest event for this source is 'expired'
+      makeLedgerRow({
+        id: '00000000-0000-7000-8000-000000000501',
+        scope: 'matching',
+        action: 'expired',
+        captured_method: 'self_signup',
+        occurred_at: new Date('2026-04-01T00:00:00Z'),
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveAllScopes(makeAllScopesInput());
+    expect(result.scopes.find((s) => s.scope === 'matching')?.status).toBe('expired');
+  });
+
+  it('revoked takes priority over expired when both present in different sources', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      // Source A: latest is expired
+      makeLedgerRow({
+        id: '00000000-0000-7000-8000-000000000600',
+        scope: 'matching',
+        action: 'expired',
+        captured_method: 'self_signup',
+      }),
+      // Source B: latest is revoked
+      makeLedgerRow({
+        id: '00000000-0000-7000-8000-000000000601',
+        scope: 'matching',
+        action: 'revoked',
+        captured_method: 'recruiter_capture',
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveAllScopes(makeAllScopesInput());
+    // PR-5 priority: revoked > expired > granted > no_grant
+    expect(result.scopes.find((s) => s.scope === 'matching')?.status).toBe('revoked');
+  });
+});
+
+describe('ConsentRepository.resolveAllScopes — Decision F (is_anonymized always false in PR-5)', () => {
+  it('returns is_anonymized=false regardless of ledger contents', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveAllScopes(makeAllScopesInput());
+    expect(result.is_anonymized).toBe(false);
+  });
+
+  it('returns is_anonymized=false even with seeded events (PR-5 deferral)', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeLedgerRow({ scope: 'matching', action: 'granted' }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveAllScopes(makeAllScopesInput());
+    expect(result.is_anonymized).toBe(false);
+  });
+});
+
+describe('ConsentRepository.resolveAllScopes — Decision H (no decision-log write)', () => {
+  it('does NOT call tx.consentAuditEvent.create on any state read', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeLedgerRow({ scope: 'matching', action: 'granted' }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveAllScopes(makeAllScopesInput());
+    expect(tx.consentAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('does NOT call tx.idempotencyKey.findUnique or .create (no idempotency on reads)', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveAllScopes(makeAllScopesInput());
+    expect(tx.idempotencyKey.findUnique).not.toHaveBeenCalled();
+    expect(tx.idempotencyKey.create).not.toHaveBeenCalled();
+  });
+
+  it('does NOT call tx.outboxEvent.create (no propagation on reads)', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveAllScopes(makeAllScopesInput());
+    expect(tx.outboxEvent.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('ConsentRepository.resolveAllScopes — root metadata', () => {
+  it('echoes tenant_id from input (which the service derives from JWT)', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveAllScopes({
+      tenant_id: TENANT_ID,
+      talent_id: TALENT_ID,
+      requestId: 'req-state-meta-1',
+    });
+    expect(result.tenant_id).toBe(TENANT_ID);
+    expect(result.talent_id).toBe(TALENT_ID);
+  });
+
+  it('computed_at is an ISO-8601 timestamp', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveAllScopes(makeAllScopesInput());
+    expect(result.computed_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
   });
 });

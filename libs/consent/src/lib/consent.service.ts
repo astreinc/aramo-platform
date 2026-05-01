@@ -9,6 +9,7 @@ import type { ConsentGrantRequestDto } from './dto/consent-grant-request.dto.js'
 import type { ConsentGrantResponseDto } from './dto/consent-grant-response.dto.js';
 import type { ConsentRevokeRequestDto } from './dto/consent-revoke-request.dto.js';
 import type { ConsentRevokeResponseDto } from './dto/consent-revoke-response.dto.js';
+import type { TalentConsentStateResponseDto } from './dto/talent-consent-state-response.dto.js';
 
 // Service trusts the controller boundary's class-validator pass.
 // Tenant id and (when applicable) actor id come from the JWT, not the body.
@@ -87,6 +88,24 @@ export class ConsentService {
       channel: request.channel,
       idempotencyKey,
       requestHash: hashCanonicalizedBody(request),
+      requestId,
+    });
+  }
+
+  /**
+   * Informational state read (PR-5). Returns the current consent state
+   * per scope for the requested talent within the JWT's tenant context.
+   * No idempotency, no operation/channel parameters, no decision log
+   * write (Decision H — informational endpoints don't log).
+   */
+  async getState(
+    talent_id: string,
+    authContext: AuthContextType,
+    requestId: string,
+  ): Promise<TalentConsentStateResponseDto> {
+    return this.consentRepo.resolveAllScopes({
+      tenant_id: authContext.tenant_id,
+      talent_id,
       requestId,
     });
   }

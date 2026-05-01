@@ -17,3 +17,5 @@ export {
   OPERATION_SCOPE_MAP,
 } from './consent-check-operation.js';
 export type { ConsentCheckOperation } from './consent-check-operation.js';
+export type { TalentConsentScopeStateDto } from './talent-consent-scope-state.dto.js';
+export type { TalentConsentStateResponseDto } from './talent-consent-state-response.dto.js';

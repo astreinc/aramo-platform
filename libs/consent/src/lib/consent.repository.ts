@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { AramoError, type ContactChannel } from '@aramo/common';
+import {
+  AramoError,
+  type ConsentScopeStatus,
+  type ContactChannel,
+} from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import {
@@ -7,12 +11,15 @@ import {
   type ConsentCheckOperation,
 } from './dto/consent-check-operation.js';
 import type { ConsentDecisionDto } from './dto/consent-decision.dto.js';
-import type {
-  ConsentCapturedMethodValue,
-  ConsentScopeValue,
+import {
+  CONSENT_SCOPES,
+  type ConsentCapturedMethodValue,
+  type ConsentScopeValue,
 } from './dto/consent-grant-request.dto.js';
 import type { ConsentGrantResponseDto } from './dto/consent-grant-response.dto.js';
 import type { ConsentRevokeResponseDto } from './dto/consent-revoke-response.dto.js';
+import type { TalentConsentScopeStateDto } from './dto/talent-consent-scope-state.dto.js';
+import type { TalentConsentStateResponseDto } from './dto/talent-consent-state-response.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 export type ConsentActionValue = 'granted' | 'revoked';
@@ -58,6 +65,12 @@ export interface ResolveConsentStateInput {
   // + different body → 409.
   idempotencyKey?: string;
   requestHash: string;
+  requestId: string;
+}
+
+export interface ResolveAllScopesInput {
+  tenant_id: string;
+  talent_id: string;
   requestId: string;
 }
 
@@ -576,6 +589,68 @@ export class ConsentRepository {
     }
     return decision;
   }
+
+  /**
+   * Batch resolver-path read for the state endpoint (PR-5). Per ADR-0006
+   * Decision G (this PR), this is the canonical batch resolver: one
+   * transactional findMany + in-memory derivation across all 5 scopes,
+   * vs. five sequential resolveConsentState calls (which would do 5x
+   * redundant reads, each in its own transaction).
+   *
+   * Per ADR-0006 Implementation Precedent O, this method sits in the
+   * resolver region. The findMany call is in the existing
+   * resolver-region allow-list (no R4 guardrail update).
+   *
+   * Per ADR-0006 Decision D, the source-aware most-restrictive
+   * intersection algorithm is reused unchanged: partition by
+   * captured_method, latest per partition by occurred_at, most
+   * restrictive across partitions.
+   *
+   * Per Decision D (this PR-5), the response always returns all 5
+   * ConsentScope values; scopes without events return status: "no_grant"
+   * with all timestamps null. Deterministic contract — callers do not
+   * have to infer which scopes are "missing."
+   *
+   * Per Decision E (this PR-5), no staleness logic in response.
+   * Staleness is the check endpoint's concern, not the state endpoint's.
+   *
+   * Per Decision F (this PR-5), is_anonymized is always false in PR-5;
+   * the talent module that provides identity-existence detection does
+   * not exist yet (deferred to a future PR). The schema field is in
+   * place for forward-compatibility.
+   *
+   * Per Decision H (this PR-5), informational read endpoints do NOT
+   * write ConsentAuditEvent rows. Only enforcement endpoints
+   * (check/grant/revoke) write decision-log entries. The
+   * enforcement-vs-informational distinction is the most structurally
+   * significant precedent ADR-0007 will document.
+   */
+  async resolveAllScopes(
+    input: ResolveAllScopesInput,
+  ): Promise<TalentConsentStateResponseDto> {
+    return this.prisma.$transaction(async (tx) => {
+      const computedAt = new Date();
+
+      const events = await tx.talentConsentEvent.findMany({
+        where: {
+          tenant_id: input.tenant_id,
+          talent_id: input.talent_id,
+        },
+      });
+
+      const scopes: TalentConsentScopeStateDto[] = CONSENT_SCOPES.map(
+        (scope) => deriveScopeStateForReadEndpoint(events, scope),
+      );
+
+      return {
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        is_anonymized: false,
+        computed_at: computedAt.toISOString(),
+        scopes,
+      };
+    });
+  }
 }
 
 // ----------------------------------------------------------------------
@@ -590,6 +665,7 @@ type LedgerEvent = {
   action: string;
   captured_method: string;
   occurred_at: Date;
+  expires_at: Date | null;
   metadata: unknown;
 };
 
@@ -745,4 +821,96 @@ async function persistDecisionAudit(
       } as never,
     },
   });
+}
+
+// PR-5 Decision C/D: derive per-scope state for the read endpoint.
+// Distinct from computeMostRestrictiveStateForScope (PR-4) which collapses
+// revoked + expired into "denied" for the check endpoint's
+// allowed/denied/error semantic. The state endpoint distinguishes them.
+//
+// Status priority (most-restrictive across sources):
+//   - any latest-per-source revoked  → 'revoked'
+//   - else any latest-per-source expired → 'expired'
+//   - else any latest-per-source granted → 'granted'
+//   - else (no events for this scope) → 'no_grant'
+//
+// Timestamps:
+//   - granted_at: latest event with action='granted' across all sources;
+//                 null if no grant event exists for this scope
+//   - revoked_at: latest event with action='revoked' across all sources;
+//                 null if not revoked
+//   - expires_at: from the latest grant event's expires_at field
+//                 (TalentConsentEvent.expires_at); null when absent
+function deriveScopeStateForReadEndpoint(
+  events: LedgerEvent[],
+  scope: ConsentScopeValue,
+): TalentConsentScopeStateDto {
+  const scopeEvents = events.filter((e) => e.scope === scope);
+  if (scopeEvents.length === 0) {
+    return {
+      scope,
+      status: 'no_grant',
+      granted_at: null,
+      revoked_at: null,
+      expires_at: null,
+    };
+  }
+
+  const latestPerSource = new Map<string, LedgerEvent>();
+  for (const ev of scopeEvents) {
+    const prior = latestPerSource.get(ev.captured_method);
+    if (prior === undefined || ev.occurred_at.getTime() > prior.occurred_at.getTime()) {
+      latestPerSource.set(ev.captured_method, ev);
+    }
+  }
+
+  let anyRevoked = false;
+  let anyExpired = false;
+  let anyGranted = false;
+  for (const ev of latestPerSource.values()) {
+    if (ev.action === 'revoked') {
+      anyRevoked = true;
+    } else if (ev.action === 'expired') {
+      anyExpired = true;
+    } else if (ev.action === 'granted') {
+      anyGranted = true;
+    }
+  }
+  let status: ConsentScopeStatus;
+  if (anyRevoked) {
+    status = 'revoked';
+  } else if (anyExpired) {
+    status = 'expired';
+  } else if (anyGranted) {
+    status = 'granted';
+  } else {
+    status = 'no_grant';
+  }
+
+  const latestGrant = findLatestForAction(scopeEvents, 'granted');
+  const latestRevoke = findLatestForAction(scopeEvents, 'revoked');
+
+  return {
+    scope,
+    status,
+    granted_at: latestGrant?.occurred_at.toISOString() ?? null,
+    revoked_at: latestRevoke?.occurred_at.toISOString() ?? null,
+    expires_at: latestGrant?.expires_at?.toISOString() ?? null,
+  };
+}
+
+function findLatestForAction(
+  events: LedgerEvent[],
+  action: string,
+): LedgerEvent | null {
+  let latest: LedgerEvent | null = null;
+  for (const ev of events) {
+    if (ev.action !== action) {
+      continue;
+    }
+    if (latest === null || ev.occurred_at.getTime() > latest.occurred_at.getTime()) {
+      latest = ev;
+    }
+  }
+  return latest;
 }
