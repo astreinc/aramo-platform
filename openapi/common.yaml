@@ -185,6 +185,121 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /consent/check:
+    post:
+      operationId: checkConsent
+      tags: [Consent]
+      summary: Runtime consent check for an intended operation
+      description: |
+        Resolver-path read endpoint. Computes the consent decision
+        for an intended operation against the talent's consent
+        ledger state. Per API Contracts Phase 1 §6 Processing
+        Rules: resolves tenant from JWT, derives required scope
+        from operation (Group 2 §2.7 Enforcement Points), validates
+        scope dependencies, applies source-aware most-restrictive
+        derivation, applies staleness rule (12 months, contacting
+        scope only), applies channel constraints when scope is
+        contacting, returns allowed/denied/error result, persists
+        a decision-log audit row with the decision_id.
+
+        Per Phase 1 §6 Consent Failure Mode (Locked): Aramo fails
+        safe, never open. Resolver timeout or unexpected error
+        returns HTTP 500; never falls back to "allowed".
+
+        Idempotency is OPTIONAL per Phase 1 §6 (line 497). When a
+        valid Idempotency-Key is provided AND a prior request used
+        the same key + same body, the original response is returned
+        from the idempotency table without re-running the resolver
+        or emitting a new decision-log entry. Same key + different
+        body returns 409 IDEMPOTENCY_KEY_CONFLICT. When absent,
+        every call runs the resolver and writes a fresh
+        decision-log entry.
+
+        Returns 200 for allowed/denied/error decisions (the result
+        is in the body's `result` field). Returns 422
+        INVALID_SCOPE_COMBINATION with the ConsentDecision embedded
+        in `error.details.consent_decision` when a scope dependency
+        chain is unmet. Returns 403 only for caller-side blocks
+        (tenant access denial); consent denial is 200 with
+        `result: "denied"`.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: |
+            Optional per Phase 1 §6. When present, the call is
+            idempotent: same key + same body returns the original
+            ConsentDecision; same key + different body returns 409.
+        - name: X-Request-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsentCheckRequest'
+      responses:
+        '200':
+          description: |
+            Consent decision computed. The body's `result` field
+            discriminates allowed/denied/error.
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentDecision'
+        '400':
+          description: Validation error (e.g., missing channel for contacting operation)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Tenant access denied (caller-blocked, NOT consent denial)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Idempotency key conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: |
+            Invalid scope combination — scope dependency chain
+            unmet. The error envelope embeds the ConsentDecision
+            in `error.details.consent_decision` per Phase 1 §1
+            canonical embedding pattern.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: System error (resolver failure; per Consent Failure Mode locked, NOT a fallback to allowed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -242,6 +357,30 @@ components:
         - indeed
         - portal
         - other
+
+    ConsentCheckOperation:
+      type: string
+      description: |
+        Closed enum of operations checkable via /consent/check. 7 values
+        derived from Group 2 §2.7 Enforcement Points table. Each operation
+        maps to exactly one required scope (Decision C, locked):
+          ingestion    → profile_storage
+          matching     → matching
+          examination  → matching
+          engagement   → contacting
+          packaging    → contacting
+          submittal    → contacting
+          cross_tenant → cross_tenant_visibility
+        Adding a value requires Architect approval per
+        doc/02-claude-code-discipline.md Rule 4.
+      enum:
+        - ingestion
+        - matching
+        - examination
+        - engagement
+        - packaging
+        - submittal
+        - cross_tenant
 
     ConsentGrantRequest:
       type: object
@@ -450,6 +589,72 @@ components:
           description: |
             Echoed from the request. Documented OpenAPI exception to
             additionalProperties: false.
+
+    ConsentCheckRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Request body for POST /consent/check. Per Decision B,
+        tenant_id is NOT a body field (resolved from JWT per Phase
+        1 §1). The `channel` field is conditionally required when
+        the operation maps to contacting scope (Decision G); the
+        resolver returns 400 VALIDATION_ERROR if absent in that
+        case.
+      required:
+        - talent_id
+        - operation
+      properties:
+        talent_id:
+          type: string
+          format: uuid
+        operation:
+          $ref: '#/components/schemas/ConsentCheckOperation'
+        channel:
+          $ref: '#/components/schemas/ContactChannel'
+
+    ConsentDecision:
+      type: object
+      additionalProperties: false
+      description: |
+        Locked response shape for POST /consent/check. Source: API
+        Contracts Phase 1 §1 Common Schemas (lines 469-489). Returned
+        directly in 200 responses. Embedded in
+        error.details.consent_decision for 422 dependency-unmet
+        responses (Phase 1 §1 canonical embedding pattern).
+
+        `result` discriminates allowed/denied/error. `reason_code`
+        carries the denial reason (e.g., "stale_consent",
+        "scope_dependency_unmet", "channel_not_consented",
+        "consent_state_unknown").
+      required:
+        - result
+        - decision_id
+        - computed_at
+      properties:
+        result:
+          type: string
+          enum:
+            - allowed
+            - denied
+            - error
+        scope:
+          $ref: '#/components/schemas/ConsentScope'
+        denied_scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsentScope'
+        reason_code:
+          type: string
+        display_message:
+          type: string
+        log_message:
+          type: string
+        decision_id:
+          type: string
+          format: uuid
+        computed_at:
+          type: string
+          format: date-time
 
     ErrorCode:
       type: string

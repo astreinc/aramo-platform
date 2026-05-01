@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ConsentRepository } from '../lib/consent.repository.js';
 import { ConsentService } from '../lib/consent.service.js';
+import type { ConsentCheckRequestDto } from '../lib/dto/consent-check-request.dto.js';
+import type { ConsentDecisionDto } from '../lib/dto/consent-decision.dto.js';
 import type { ConsentGrantRequestDto } from '../lib/dto/consent-grant-request.dto.js';
 import type { ConsentRevokeRequestDto } from '../lib/dto/consent-revoke-request.dto.js';
 
@@ -156,5 +158,93 @@ describe('ConsentService.revoke', () => {
     await service.revoke(makeRevokeRequest(), 'd2d7a0f0-0000-7000-8000-000000000016', recruiterContext(), 'req-r7');
     const secondHash = (repo.recordConsentEvent.mock.calls[0][0] as { requestHash: string }).requestHash;
     expect(firstHash).toBe(secondHash);
+  });
+});
+
+function makeCheckRequest(
+  overrides: Partial<ConsentCheckRequestDto> = {},
+): ConsentCheckRequestDto {
+  return {
+    talent_id: TALENT_ID,
+    operation: 'matching',
+    ...overrides,
+  } as ConsentCheckRequestDto;
+}
+
+function makeDecision(): ConsentDecisionDto {
+  return {
+    result: 'allowed',
+    scope: 'matching',
+    decision_id: 'd2d7a0f0-0000-7000-8000-0000000000ff',
+    computed_at: '2026-04-30T12:00:00Z',
+  };
+}
+
+describe('ConsentService.check', () => {
+  it('forwards talent_id, operation, channel, idempotencyKey, requestId, and JWT-derived tenant', async () => {
+    const repo = { resolveConsentState: vi.fn().mockResolvedValue(makeDecision()) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    await service.check(
+      makeCheckRequest({ operation: 'engagement', channel: 'email' }),
+      'aabbccdd-0000-7000-8000-000000000001',
+      recruiterContext(),
+      'req-c1',
+    );
+    expect(repo.resolveConsentState).toHaveBeenCalledOnce();
+    const args = repo.resolveConsentState.mock.calls[0][0] as {
+      tenant_id: string;
+      talent_id: string;
+      operation: string;
+      channel: string;
+      idempotencyKey: string;
+      requestId: string;
+    };
+    expect(args.tenant_id).toBe(TENANT_ID);
+    expect(args.talent_id).toBe(TALENT_ID);
+    expect(args.operation).toBe('engagement');
+    expect(args.channel).toBe('email');
+    expect(args.idempotencyKey).toBe('aabbccdd-0000-7000-8000-000000000001');
+    expect(args.requestId).toBe('req-c1');
+  });
+
+  it('uses tenant_id from JWT, never from request body', async () => {
+    const repo = { resolveConsentState: vi.fn().mockResolvedValue(makeDecision()) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    const request = {
+      ...makeCheckRequest(),
+      tenant_id: 'aa000000-0000-0000-0000-000000000099',
+    } as unknown as ConsentCheckRequestDto;
+    await service.check(request, undefined, recruiterContext(), 'req-c2');
+    const args = repo.resolveConsentState.mock.calls[0][0] as { tenant_id: string };
+    expect(args.tenant_id).toBe(TENANT_ID);
+  });
+
+  it('passes idempotencyKey=undefined when header was absent', async () => {
+    const repo = { resolveConsentState: vi.fn().mockResolvedValue(makeDecision()) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    await service.check(makeCheckRequest(), undefined, portalContext(), 'req-c3');
+    const args = repo.resolveConsentState.mock.calls[0][0] as {
+      idempotencyKey: string | undefined;
+    };
+    expect(args.idempotencyKey).toBeUndefined();
+  });
+
+  it('produces a stable request hash for the same canonical check body', async () => {
+    const repo = { resolveConsentState: vi.fn().mockResolvedValue(makeDecision()) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    await service.check(makeCheckRequest(), undefined, recruiterContext(), 'req-c4');
+    const firstHash = (repo.resolveConsentState.mock.calls[0][0] as { requestHash: string }).requestHash;
+    repo.resolveConsentState.mockClear();
+    await service.check(makeCheckRequest(), undefined, recruiterContext(), 'req-c5');
+    const secondHash = (repo.resolveConsentState.mock.calls[0][0] as { requestHash: string }).requestHash;
+    expect(firstHash).toBe(secondHash);
+  });
+
+  it('returns the ConsentDecision unchanged from the resolver', async () => {
+    const decision = makeDecision();
+    const repo = { resolveConsentState: vi.fn().mockResolvedValue(decision) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    const result = await service.check(makeCheckRequest(), undefined, recruiterContext(), 'req-c6');
+    expect(result).toEqual(decision);
   });
 });

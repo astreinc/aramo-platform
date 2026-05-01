@@ -369,5 +369,268 @@ describe('ATS thin consumer → POST /v1/consent/revoke', () => {
   });
 });
 
+// ----------------------------------------------------------------------
+// PR-4 — POST /v1/consent/check interactions. The endpoint is the
+// resolver-path entry point and returns ConsentDecision per Phase 1 §1.
+// Each interaction exercises a different result branch (allowed,
+// denied with stale_consent, validation 400 for missing channel, 422
+// dependency unmet with embedded ConsentDecision, 200 error for
+// consent_state_unknown).
+// ----------------------------------------------------------------------
+
+const CHECK_DECISION_ID = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1a02';
+
+describe('ATS thin consumer → POST /v1/consent/check', () => {
+  it('returns 200 allowed for an operation backed by valid consent', async () => {
+    await provider
+      .addInteraction()
+      .given('a talent with all required scopes granted for matching')
+      .uponReceiving('a consent check for matching operation')
+      .withRequest('POST', '/v1/consent/check', (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'Content-Type': 'application/json',
+        }).jsonBody({
+          talent_id: TALENT_ID,
+          operation: 'matching',
+        });
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          result: 'allowed',
+          scope: 'matching',
+          decision_id: uuid(CHECK_DECISION_ID),
+          computed_at: regex(
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            '2026-04-30T12:00:00Z',
+          ),
+          log_message: like('matching_allowed'),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/consent/check`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            talent_id: TALENT_ID,
+            operation: 'matching',
+          }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { result: string; decision_id: string };
+        expect(body.result).toBe('allowed');
+        expect(body.decision_id).toBeTruthy();
+      });
+  });
+
+  it('returns 200 denied with reason=stale_consent for an old contacting grant', async () => {
+    await provider
+      .addInteraction()
+      .given('a talent with contacting consent older than 12 months')
+      .uponReceiving('a consent check for engagement (contacting + email)')
+      .withRequest('POST', '/v1/consent/check', (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'Content-Type': 'application/json',
+        }).jsonBody({
+          talent_id: TALENT_ID,
+          operation: 'engagement',
+          channel: 'email',
+        });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          result: 'denied',
+          scope: 'contacting',
+          denied_scopes: ['contacting'],
+          reason_code: 'stale_consent',
+          display_message: 'Consent has expired. Refresh required.',
+          log_message: like('contacting_denied: stale_consent'),
+          decision_id: uuid(),
+          computed_at: regex(
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            '2026-04-30T12:00:01Z',
+          ),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/consent/check`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            talent_id: TALENT_ID,
+            operation: 'engagement',
+            channel: 'email',
+          }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { result: string; reason_code: string };
+        expect(body.result).toBe('denied');
+        expect(body.reason_code).toBe('stale_consent');
+      });
+  });
+
+  it('returns 400 VALIDATION_ERROR when channel is missing for a contacting operation', async () => {
+    await provider
+      .addInteraction()
+      .given('a valid recruiter token')
+      .uponReceiving('a consent check for engagement without channel')
+      .withRequest('POST', '/v1/consent/check', (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'Content-Type': 'application/json',
+        }).jsonBody({
+          talent_id: TALENT_ID,
+          operation: 'engagement',
+        });
+      })
+      .willRespondWith(400, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: like('channel field is required when operation maps to contacting scope'),
+            request_id: uuid(),
+            details: {
+              missing_field: 'channel',
+              operation: 'engagement',
+              derived_scope: 'contacting',
+            },
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/consent/check`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            talent_id: TALENT_ID,
+            operation: 'engagement',
+          }),
+        });
+        expect(res.status).toBe(400);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('VALIDATION_ERROR');
+      });
+  });
+
+  it('returns 422 INVALID_SCOPE_COMBINATION with embedded ConsentDecision for unmet dependency', async () => {
+    await provider
+      .addInteraction()
+      .given('a talent with profile_storage but no matching consent')
+      .uponReceiving('a consent check for engagement (contacting + email)')
+      .withRequest('POST', '/v1/consent/check', (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'd2d7a0f0-0000-7000-8000-000000000200',
+        }).jsonBody({
+          talent_id: TALENT_ID,
+          operation: 'engagement',
+          channel: 'email',
+        });
+      })
+      .willRespondWith(422, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INVALID_SCOPE_COMBINATION',
+            message: like('Required consent scope dependency unmet'),
+            request_id: uuid(),
+            details: {
+              consent_decision: {
+                result: 'denied',
+                scope: 'contacting',
+                denied_scopes: ['matching'],
+                reason_code: 'scope_dependency_unmet',
+                display_message: like('Required consent scope(s) not granted: matching'),
+                log_message: like('scope_dependency_unmet: matching'),
+                decision_id: uuid(),
+                computed_at: regex(
+                  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                  '2026-04-30T12:00:02Z',
+                ),
+              },
+            },
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/consent/check`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'Content-Type': 'application/json',
+            'Idempotency-Key': 'd2d7a0f0-0000-7000-8000-000000000200',
+          },
+          body: JSON.stringify({
+            talent_id: TALENT_ID,
+            operation: 'engagement',
+            channel: 'email',
+          }),
+        });
+        expect(res.status).toBe(422);
+        const body = (await res.json()) as {
+          error: { code: string; details: { consent_decision: { reason_code: string } } };
+        };
+        expect(body.error.code).toBe('INVALID_SCOPE_COMBINATION');
+        expect(body.error.details.consent_decision.reason_code).toBe('scope_dependency_unmet');
+      });
+  });
+
+  it('returns 200 error with reason=consent_state_unknown when the ledger is empty for the talent', async () => {
+    await provider
+      .addInteraction()
+      .given('a talent with no consent events')
+      .uponReceiving('a consent check for matching operation on an unseen talent')
+      .withRequest('POST', '/v1/consent/check', (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'Content-Type': 'application/json',
+        }).jsonBody({
+          talent_id: TALENT_ID,
+          operation: 'matching',
+        });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          result: 'error',
+          scope: 'matching',
+          reason_code: 'consent_state_unknown',
+          log_message: like('consent_state_missing for talent'),
+          decision_id: uuid(),
+          computed_at: regex(
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            '2026-04-30T12:00:03Z',
+          ),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/consent/check`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            talent_id: TALENT_ID,
+            operation: 'matching',
+          }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { result: string; reason_code: string };
+        expect(body.result).toBe('error');
+        expect(body.reason_code).toBe('consent_state_unknown');
+      });
+  });
+});
+
 beforeAll(() => undefined);
 afterAll(() => undefined);
