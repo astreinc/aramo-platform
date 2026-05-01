@@ -297,3 +297,84 @@ describe('ConsentService.getState', () => {
     expect(result).toEqual(stateResponse);
   });
 });
+
+describe('ConsentService.getHistory (PR-6)', () => {
+  const historyResponse = {
+    events: [],
+    next_cursor: null,
+    is_anonymized: false,
+  };
+
+  it('forwards talent_id, scope, limit, cursor, requestId, and JWT-derived tenant_id', async () => {
+    const repo = { resolveHistory: vi.fn().mockResolvedValue(historyResponse) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    const cursor = {
+      created_at: new Date('2026-04-15T12:00:00Z'),
+      event_id: 'aabbccdd-0000-7000-8000-000000000099',
+    };
+    await service.getHistory(
+      TALENT_ID,
+      'contacting',
+      25,
+      cursor,
+      recruiterContext(),
+      'req-h-1',
+    );
+    expect(repo.resolveHistory).toHaveBeenCalledOnce();
+    const args = repo.resolveHistory.mock.calls[0][0] as {
+      tenant_id: string;
+      talent_id: string;
+      scope: string;
+      limit: number;
+      cursor: { created_at: Date; event_id: string };
+      requestId: string;
+    };
+    expect(args.tenant_id).toBe(TENANT_ID);
+    expect(args.talent_id).toBe(TALENT_ID);
+    expect(args.scope).toBe('contacting');
+    expect(args.limit).toBe(25);
+    expect(args.cursor).toEqual(cursor);
+    expect(args.requestId).toBe('req-h-1');
+  });
+
+  it('uses tenant_id from JWT, never from any other source', async () => {
+    const repo = { resolveHistory: vi.fn().mockResolvedValue(historyResponse) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    await service.getHistory(
+      TALENT_ID,
+      undefined,
+      50,
+      undefined,
+      recruiterContext({ tenant_id: 'aa000000-0000-0000-0000-000000000099' }),
+      'req-h-2',
+    );
+    const args = repo.resolveHistory.mock.calls[0][0] as { tenant_id: string };
+    expect(args.tenant_id).toBe('aa000000-0000-0000-0000-000000000099');
+  });
+
+  it('passes scope=undefined and cursor=undefined through unchanged', async () => {
+    const repo = { resolveHistory: vi.fn().mockResolvedValue(historyResponse) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    await service.getHistory(TALENT_ID, undefined, 50, undefined, portalContext(), 'req-h-3');
+    const args = repo.resolveHistory.mock.calls[0][0] as {
+      scope: unknown;
+      cursor: unknown;
+    };
+    expect(args.scope).toBeUndefined();
+    expect(args.cursor).toBeUndefined();
+  });
+
+  it('returns the resolver response unchanged', async () => {
+    const repo = { resolveHistory: vi.fn().mockResolvedValue(historyResponse) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    const result = await service.getHistory(
+      TALENT_ID,
+      undefined,
+      50,
+      undefined,
+      portalContext(),
+      'req-h-4',
+    );
+    expect(result).toEqual(historyResponse);
+  });
+});

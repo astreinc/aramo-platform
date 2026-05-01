@@ -389,6 +389,129 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /consent/history/{talent_id}:
+    get:
+      operationId: getTalentConsentHistory
+      tags: [Consent]
+      summary: Return consent ledger event history for a talent
+      description: |
+        Informational read endpoint. Returns the consent ledger
+        events for the requested talent within the JWT's tenant
+        context, ordered by row insertion time (created_at DESC,
+        event_id DESC).
+
+        Pagination is keyset-based via an opaque cursor encoding
+        the last item of the prior page. The cursor is opaque to
+        consumers; its internal structure is not part of the API
+        contract and may evolve without versioning. The API/DTO
+        surface uses `event_id`; the underlying DB column is `id`.
+
+        Per directive §6, ordering and pagination execute in the
+        database; the schema includes the supporting index
+        (tenant_id, talent_id, created_at DESC, id DESC).
+
+        Per ADR-0007 Decision E (extended to history): historical
+        events preserve their original status. Staleness is
+        enforcement metadata applied at check time only and is
+        never written into historical records.
+
+        Per ADR-0007 Decision H (read-vs-enforcement distinction):
+        this endpoint does NOT write decision-log entries.
+        Idempotency: N/A.
+
+        Right-to-be-forgotten (Decision F, hardcoded false in
+        PR-6): is_anonymized signals identity removal. Always
+        false in PR-6; the talent module providing detection does
+        not exist yet. Schema field present for forward-
+        compatibility.
+
+        Empty history returns 200 with
+        { events: [], next_cursor: null, is_anonymized: false }.
+        Never 404 on empty.
+      parameters:
+        - name: talent_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: scope
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ConsentScope'
+          description: |
+            Optional, single-valued filter. When present, only events
+            for the named scope are returned. Filter is applied before
+            pagination; the cursor traverses the filtered set.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          description: |
+            Page size. Omitted → 50; > 200 → clamped to 200; < 1 or
+            non-integer → HTTP 400 VALIDATION_ERROR.
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Opaque pagination cursor. Pass the next_cursor from the
+            previous response to fetch the next page. Invalid cursors
+            (non-base64, malformed, structurally invalid) return HTTP
+            400 VALIDATION_ERROR; never 500.
+        - name: X-Request-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: |
+            Consent history page. The response is wrapped (events array
+            plus metadata); empty history returns 200 with empty array.
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentHistoryResponse'
+        '400':
+          description: |
+            Validation error (invalid talent_id, invalid limit,
+            invalid cursor)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Tenant access denied (caller-blocked)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: System error (resolver failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -850,6 +973,83 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TalentConsentScopeState'
+
+    ConsentHistoryEvent:
+      type: object
+      additionalProperties: false
+      description: |
+        Per-event entry in the /consent/history response (PR-6 §4).
+        Field set is closed at exactly five fields; adding a field
+        requires a new ADR (directive §9 halt condition).
+
+        `event_id` is the API/DTO surface name; the underlying DB
+        column is `id`. The mapping is documented in PR-6 §5 (the
+        only renaming permitted in PR-6) and matches the precedent
+        set by `ConsentRevokeResponse.event_id` and
+        `ConsentDecision.decision_id`.
+
+        `action` corresponds to ConsentDecisionAction values
+        (granted | revoked | expired). Historical events preserve
+        their original action; staleness is enforcement metadata
+        applied at check time only and is never written into
+        historical records (ADR-0007 Decision E extension).
+
+        `expires_at` is nullable and originates from the underlying
+        `TalentConsentEvent.expires_at` column.
+      required:
+        - event_id
+        - scope
+        - action
+        - created_at
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        scope:
+          $ref: '#/components/schemas/ConsentScope'
+        action:
+          $ref: '#/components/schemas/ConsentDecisionAction'
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+
+    ConsentHistoryResponse:
+      type: object
+      additionalProperties: false
+      description: |
+        Wrapped response shape for GET /consent/history/{talent_id}
+        (PR-6 §4). Wrapped, never bare. Never 404 on empty.
+
+        `next_cursor` is null when there are no more pages,
+        otherwise an opaque base64url string. The internal cursor
+        structure is not part of the API contract and may evolve
+        without versioning.
+
+        `is_anonymized` is the right-to-be-forgotten signal
+        (ADR-0007 Decision F). Hardcoded `false` in PR-6; the
+        talent module providing identity-existence detection does
+        not exist yet. Schema field present for forward-
+        compatibility.
+      required:
+        - events
+        - next_cursor
+        - is_anonymized
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsentHistoryEvent'
+        next_cursor:
+          oneOf:
+            - type: string
+            - type: 'null'
+        is_anonymized:
+          type: boolean
 
     ErrorCode:
       type: string

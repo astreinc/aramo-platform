@@ -18,9 +18,15 @@ import {
 } from './dto/consent-grant-request.dto.js';
 import type { ConsentGrantResponseDto } from './dto/consent-grant-response.dto.js';
 import type { ConsentRevokeResponseDto } from './dto/consent-revoke-response.dto.js';
+import type { ConsentHistoryEventDto } from './dto/consent-history-event.dto.js';
+import type { ConsentHistoryResponseDto } from './dto/consent-history-response.dto.js';
 import type { TalentConsentScopeStateDto } from './dto/talent-consent-scope-state.dto.js';
 import type { TalentConsentStateResponseDto } from './dto/talent-consent-state-response.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import {
+  encodeCursor,
+  type HistoryCursorPayload,
+} from './util/history-cursor.js';
 
 export type ConsentActionValue = 'granted' | 'revoked';
 
@@ -71,6 +77,20 @@ export interface ResolveConsentStateInput {
 export interface ResolveAllScopesInput {
   tenant_id: string;
   talent_id: string;
+  requestId: string;
+}
+
+// PR-6 §4 + §5: history read input. `scope` is optional single-valued
+// filter (multi-valued explicitly out of scope per §12). `limit` is the
+// resolved page size (controller already clamped/validated per §5).
+// `cursor` is the decoded payload (controller already decoded + handled
+// 400 mapping per §3).
+export interface ResolveHistoryInput {
+  tenant_id: string;
+  talent_id: string;
+  scope?: ConsentScopeValue;
+  limit: number;
+  cursor?: HistoryCursorPayload;
   requestId: string;
 }
 
@@ -648,6 +668,112 @@ export class ConsentRepository {
         is_anonymized: false,
         computed_at: computedAt.toISOString(),
         scopes,
+      };
+    });
+  }
+
+  /**
+   * Resolver-path read for the history endpoint (PR-6). Per ADR-0007
+   * Decision G pattern, this is the third sibling resolver: write seam
+   * `recordConsentEvent`, point read `resolveConsentState` (PR-4), batch
+   * read `resolveAllScopes` (PR-5), keyset-paginated history `resolveHistory`
+   * (PR-6).
+   *
+   * Per ADR-0006 Implementation Precedent O, this method sits in the
+   * resolver region. It uses only `tx.talentConsentEvent.findMany` from
+   * the existing resolver-region allow-list (no R4 guardrail update).
+   * `findFirst`, `aggregate`, `groupBy`, and raw SQL are forbidden per
+   * directive §6.
+   *
+   * Per ADR-0007 Decision E (extended to history per directive §6):
+   * historical events preserve their original `action`. No staleness
+   * computation; staleness is enforcement metadata applied at check
+   * time only and is never written into historical records.
+   *
+   * Per ADR-0007 Decision H (read endpoints don't write decision-log
+   * entries): no `tx.consentAuditEvent.create` call.
+   *
+   * Per directive §5 ordering and pagination:
+   *   - ORDER BY created_at DESC, id DESC (database-side, not in memory)
+   *   - cursor predicate (created_at, id) < (cursor.created_at, cursor.event_id)
+   *     in Prisma OR/AND form
+   *   - LIMIT applied in the database
+   *   - Scope filter applied before pagination; cursor traverses the
+   *     filtered set
+   *   - Supporting index added in PR-6 schema migration:
+   *     @@index([tenant_id, talent_id, created_at(sort: Desc), id(sort: Desc)])
+   *
+   * Per directive §5 field naming: the DB column `id` maps to the
+   * API/DTO field `event_id`. Prisma references `id`; the cursor and
+   * response surface reference `event_id`. The mapping is the only
+   * renaming permitted.
+   *
+   * Per directive §4 + §7 test 7: never 404 on empty. Empty result
+   * returns { events: [], next_cursor: null, is_anonymized: false }
+   * with HTTP 200.
+   *
+   * Per ADR-0007 Decision F (PR-5 precedent): is_anonymized hardcoded
+   * `false` until the talent module ships RTBF detection.
+   */
+  async resolveHistory(
+    input: ResolveHistoryInput,
+  ): Promise<ConsentHistoryResponseDto> {
+    return this.prisma.$transaction(async (tx) => {
+      // Build the where clause: tenant + talent (always); scope (optional);
+      // cursor predicate (optional). The cursor predicate uses Prisma's
+      // OR/AND form per directive §5.
+      const where: Record<string, unknown> = {
+        tenant_id: input.tenant_id,
+        talent_id: input.talent_id,
+      };
+      if (input.scope !== undefined) {
+        where['scope'] = input.scope;
+      }
+      if (input.cursor !== undefined) {
+        const cursor = input.cursor;
+        where['OR'] = [
+          { created_at: { lt: cursor.created_at } },
+          {
+            AND: [
+              { created_at: cursor.created_at },
+              { id: { lt: cursor.event_id } },
+            ],
+          },
+        ];
+      }
+
+      // findMany with database-side ordering + limit. Fetch limit+1 to
+      // detect whether a next page exists without a separate count query.
+      const rows = await tx.talentConsentEvent.findMany({
+        where,
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        take: input.limit + 1,
+      });
+
+      const hasMore = rows.length > input.limit;
+      const pageRows = hasMore ? rows.slice(0, input.limit) : rows;
+
+      const events: ConsentHistoryEventDto[] = pageRows.map((row) => ({
+        event_id: row.id,
+        scope: row.scope as ConsentScopeValue,
+        action: row.action,
+        created_at: row.created_at.toISOString(),
+        expires_at: row.expires_at !== null ? row.expires_at.toISOString() : null,
+      }));
+
+      const lastRow = pageRows[pageRows.length - 1];
+      const next_cursor =
+        hasMore && lastRow !== undefined
+          ? encodeCursor({
+              created_at: lastRow.created_at,
+              event_id: lastRow.id,
+            })
+          : null;
+
+      return {
+        events,
+        next_cursor,
+        is_anonymized: false,
       };
     });
   }

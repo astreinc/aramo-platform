@@ -1323,3 +1323,388 @@ describe('ConsentRepository.resolveAllScopes — root metadata', () => {
     expect(result.computed_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
   });
 });
+
+// ----------------------------------------------------------------------
+// PR-6 — Resolver tests for resolveHistory (history read endpoint).
+// Covers §7 unit tests 3, 4, 5, 8, 9 (cursor unit tests 1+2 are in
+// history-cursor.spec.ts; integration tests 10-12 in
+// consent.integration.spec.ts; Pact tests 13-15 in the consumer spec).
+// ----------------------------------------------------------------------
+
+interface HistoryRow {
+  id: string;
+  scope: string;
+  action: string;
+  created_at: Date;
+  expires_at: Date | null;
+}
+
+function makeHistoryRow(overrides: Partial<HistoryRow> = {}): HistoryRow {
+  return {
+    id: '00000000-0000-7000-8000-000000000010',
+    scope: 'matching',
+    action: 'granted',
+    created_at: new Date('2026-04-01T10:00:00Z'),
+    expires_at: null,
+    ...overrides,
+  };
+}
+
+function makeHistoryInput(overrides: Partial<{
+  tenant_id: string;
+  talent_id: string;
+  scope: string;
+  limit: number;
+  cursor: { created_at: Date; event_id: string };
+  requestId: string;
+}> = {}) {
+  const base: {
+    tenant_id: string;
+    talent_id: string;
+    limit: number;
+    requestId: string;
+    scope?: string;
+    cursor?: { created_at: Date; event_id: string };
+  } = {
+    tenant_id: TENANT_ID,
+    talent_id: TALENT_ID,
+    limit: 50,
+    requestId: 'req-history-1',
+  };
+  if (overrides.scope !== undefined) base.scope = overrides.scope;
+  if (overrides.cursor !== undefined) base.cursor = overrides.cursor;
+  if (overrides.tenant_id !== undefined) base.tenant_id = overrides.tenant_id;
+  if (overrides.talent_id !== undefined) base.talent_id = overrides.talent_id;
+  if (overrides.limit !== undefined) base.limit = overrides.limit;
+  if (overrides.requestId !== undefined) base.requestId = overrides.requestId;
+  return base;
+}
+
+describe('ConsentRepository.resolveHistory — §7 test 3 (resolver ordering) + DTO mapping', () => {
+  it('events returned in created_at DESC, id DESC order across mixed scopes', async () => {
+    const tx = makeTx();
+    // findMany should be called with orderBy: [created_at desc, id desc].
+    // The mock just returns whatever we tell it; we verify the orderBy
+    // arg shape and that the DTO mapping (id -> event_id) works.
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeHistoryRow({
+        id: '00000000-0000-7000-8000-000000000a01',
+        scope: 'contacting',
+        created_at: new Date('2026-04-15T12:00:00Z'),
+      }),
+      makeHistoryRow({
+        id: '00000000-0000-7000-8000-000000000a02',
+        scope: 'matching',
+        created_at: new Date('2026-04-10T08:00:00Z'),
+      }),
+      makeHistoryRow({
+        id: '00000000-0000-7000-8000-000000000a03',
+        scope: 'profile_storage',
+        created_at: new Date('2026-04-01T10:00:00Z'),
+      }),
+    ]);
+
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveHistory(makeHistoryInput());
+
+    // Verify the resolver called findMany with the canonical orderBy
+    expect(tx.talentConsentEvent.findMany).toHaveBeenCalledOnce();
+    const findManyArgs = tx.talentConsentEvent.findMany.mock.calls[0][0] as {
+      orderBy: Array<Record<string, string>>;
+    };
+    expect(findManyArgs.orderBy).toEqual([
+      { created_at: 'desc' },
+      { id: 'desc' },
+    ]);
+
+    // Verify DTO mapping: row.id -> dto.event_id (the only renaming
+    // permitted per directive §5)
+    expect(result.events).toHaveLength(3);
+    expect(result.events[0]?.event_id).toBe('00000000-0000-7000-8000-000000000a01');
+    expect(result.events[1]?.event_id).toBe('00000000-0000-7000-8000-000000000a02');
+    expect(result.events[2]?.event_id).toBe('00000000-0000-7000-8000-000000000a03');
+    // Mixed scopes preserved on each event
+    expect(result.events.map((e) => e.scope)).toEqual([
+      'contacting',
+      'matching',
+      'profile_storage',
+    ]);
+  });
+});
+
+describe('ConsentRepository.resolveHistory — §7 test 4 (tie-breaking by id DESC)', () => {
+  it('two events with identical created_at are ordered by id DESC and exposed as event_id', async () => {
+    const tx = makeTx();
+    const sameTime = new Date('2026-04-15T12:00:00Z');
+    // The DB does the ordering; the mock returns rows already in id-desc
+    // order. The test verifies the resolver issues the correct orderBy
+    // (the actual id-desc tie-break happens in Postgres).
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeHistoryRow({
+        id: '00000000-0000-7000-8000-0000000000ff',
+        created_at: sameTime,
+      }),
+      makeHistoryRow({
+        id: '00000000-0000-7000-8000-0000000000aa',
+        created_at: sameTime,
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveHistory(makeHistoryInput());
+
+    const findManyArgs = tx.talentConsentEvent.findMany.mock.calls[0][0] as {
+      orderBy: Array<Record<string, string>>;
+    };
+    // Tie-break clause is the second orderBy entry: id DESC
+    expect(findManyArgs.orderBy[1]).toEqual({ id: 'desc' });
+    expect(result.events.map((e) => e.event_id)).toEqual([
+      '00000000-0000-7000-8000-0000000000ff',
+      '00000000-0000-7000-8000-0000000000aa',
+    ]);
+  });
+});
+
+describe('ConsentRepository.resolveHistory — §7 test 5 (scope filter pre-pagination)', () => {
+  it('passes scope filter to the query (pre-pagination, applied in WHERE)', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeHistoryRow({
+        id: '00000000-0000-7000-8000-0000000000bb',
+        scope: 'contacting',
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveHistory(
+      makeHistoryInput({
+        scope: 'contacting',
+        cursor: {
+          created_at: new Date('2026-05-01T00:00:00Z'),
+          event_id: 'aabbccdd-0000-7000-8000-000000000099',
+        },
+      }),
+    );
+
+    const findManyArgs = tx.talentConsentEvent.findMany.mock.calls[0][0] as {
+      where: Record<string, unknown>;
+    };
+    expect(findManyArgs.where['scope']).toBe('contacting');
+    // The cursor predicate must also be in the WHERE — both filters apply
+    // to the same query (cursor traverses the filtered set per §5).
+    expect(findManyArgs.where['OR']).toBeDefined();
+    expect(findManyArgs.where['tenant_id']).toBe(TENANT_ID);
+    expect(findManyArgs.where['talent_id']).toBe(TALENT_ID);
+  });
+});
+
+describe('ConsentRepository.resolveHistory — Cursor predicate shape (§5 Prisma OR/AND form)', () => {
+  it('cursor predicate uses OR/AND with id (DB column) compared to cursor.event_id', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const cursorTime = new Date('2026-04-15T12:00:00Z');
+    const cursorId = 'aabbccdd-0000-7000-8000-000000000099';
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveHistory(
+      makeHistoryInput({
+        cursor: { created_at: cursorTime, event_id: cursorId },
+      }),
+    );
+
+    const findManyArgs = tx.talentConsentEvent.findMany.mock.calls[0][0] as {
+      where: { OR: Array<Record<string, unknown>> };
+    };
+    expect(findManyArgs.where.OR).toHaveLength(2);
+    // Branch 1: created_at < cursor.created_at
+    expect(findManyArgs.where.OR[0]).toEqual({
+      created_at: { lt: cursorTime },
+    });
+    // Branch 2: created_at == cursor.created_at AND id < cursor.event_id
+    // (uses DB column name `id`, not `event_id`)
+    expect(findManyArgs.where.OR[1]).toEqual({
+      AND: [{ created_at: cursorTime }, { id: { lt: cursorId } }],
+    });
+  });
+
+  it('omits cursor predicate when no cursor provided', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveHistory(makeHistoryInput());
+
+    const findManyArgs = tx.talentConsentEvent.findMany.mock.calls[0][0] as {
+      where: Record<string, unknown>;
+    };
+    expect(findManyArgs.where['OR']).toBeUndefined();
+  });
+});
+
+describe('ConsentRepository.resolveHistory — Pagination (next_cursor + take limit+1)', () => {
+  it('fetches limit+1 rows to detect if there is a next page', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveHistory(makeHistoryInput({ limit: 10 }));
+
+    const findManyArgs = tx.talentConsentEvent.findMany.mock.calls[0][0] as {
+      take: number;
+    };
+    expect(findManyArgs.take).toBe(11);
+  });
+
+  it('returns next_cursor=null when result count <= limit', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeHistoryRow(),
+      makeHistoryRow({ id: '00000000-0000-7000-8000-0000000000c1' }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveHistory(makeHistoryInput({ limit: 5 }));
+    expect(result.next_cursor).toBeNull();
+    expect(result.events).toHaveLength(2);
+  });
+
+  it('returns next_cursor (opaque base64url string) when result count > limit, slicing to limit', async () => {
+    const tx = makeTx();
+    // Return 3 rows with limit 2 (resolver fetches limit+1=3)
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeHistoryRow({
+        id: '00000000-0000-7000-8000-0000000000d1',
+        created_at: new Date('2026-04-15T12:00:00Z'),
+      }),
+      makeHistoryRow({
+        id: '00000000-0000-7000-8000-0000000000d2',
+        created_at: new Date('2026-04-14T12:00:00Z'),
+      }),
+      makeHistoryRow({
+        id: '00000000-0000-7000-8000-0000000000d3',
+        created_at: new Date('2026-04-13T12:00:00Z'),
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveHistory(makeHistoryInput({ limit: 2 }));
+    expect(result.events).toHaveLength(2);
+    expect(result.next_cursor).not.toBeNull();
+    expect(result.next_cursor).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+});
+
+describe('ConsentRepository.resolveHistory — §7 test 7 (empty history)', () => {
+  it('talent with zero events returns { events: [], next_cursor: null, is_anonymized: false }', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveHistory(makeHistoryInput());
+    expect(result.events).toEqual([]);
+    expect(result.next_cursor).toBeNull();
+    expect(result.is_anonymized).toBe(false);
+  });
+});
+
+describe('ConsentRepository.resolveHistory — §7 test 8 (no decision-log write)', () => {
+  it('does NOT call tx.consentAuditEvent.create', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeHistoryRow(),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveHistory(makeHistoryInput());
+    expect(tx.consentAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('does NOT call tx.idempotencyKey.findUnique or .create', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveHistory(makeHistoryInput());
+    expect(tx.idempotencyKey.findUnique).not.toHaveBeenCalled();
+    expect(tx.idempotencyKey.create).not.toHaveBeenCalled();
+  });
+
+  it('does NOT call tx.outboxEvent.create', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveHistory(makeHistoryInput());
+    expect(tx.outboxEvent.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('ConsentRepository.resolveHistory — §7 test 9 (is_anonymized always false)', () => {
+  it('is_anonymized=false for empty history', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveHistory(makeHistoryInput());
+    expect(result.is_anonymized).toBe(false);
+  });
+
+  it('is_anonymized=false with seeded events', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([makeHistoryRow()]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveHistory(makeHistoryInput());
+    expect(result.is_anonymized).toBe(false);
+  });
+});
+
+describe('ConsentRepository.resolveHistory — DTO field mapping (event_id, expires_at nullable)', () => {
+  it('expires_at populated from row when set', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeHistoryRow({
+        expires_at: new Date('2027-04-01T10:00:00Z'),
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveHistory(makeHistoryInput());
+    expect(result.events[0]?.expires_at).toBe('2027-04-01T10:00:00.000Z');
+  });
+
+  it('expires_at null when row has no expiration', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeHistoryRow({ expires_at: null }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveHistory(makeHistoryInput());
+    expect(result.events[0]?.expires_at).toBeNull();
+  });
+
+  it('all five fields present on each event (event_id, scope, action, created_at, expires_at)', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([
+      makeHistoryRow({
+        id: '00000000-0000-7000-8000-0000000000e1',
+        scope: 'contacting',
+        action: 'revoked',
+        created_at: new Date('2026-04-15T14:22:00Z'),
+        expires_at: null,
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveHistory(makeHistoryInput());
+    const ev = result.events[0];
+    expect(ev).toBeDefined();
+    expect(Object.keys(ev as object).sort()).toEqual([
+      'action',
+      'created_at',
+      'event_id',
+      'expires_at',
+      'scope',
+    ]);
+  });
+});
+
+describe('ConsentRepository.resolveHistory — Tenant scoping (§3 + ADR-0007 Decision B)', () => {
+  it('tenant_id and talent_id flow into where clause from input', async () => {
+    const tx = makeTx();
+    tx.talentConsentEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveHistory(makeHistoryInput());
+
+    const findManyArgs = tx.talentConsentEvent.findMany.mock.calls[0][0] as {
+      where: Record<string, unknown>;
+    };
+    expect(findManyArgs.where['tenant_id']).toBe(TENANT_ID);
+    expect(findManyArgs.where['talent_id']).toBe(TALENT_ID);
+  });
+});

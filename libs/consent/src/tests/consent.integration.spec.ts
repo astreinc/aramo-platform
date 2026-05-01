@@ -699,6 +699,199 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Latest revoke timestamp (Indeed import)
       expect(contacting?.revoked_at).toBe('2026-02-10T00:00:00.000Z');
     });
+
+    // ===================================================================
+    // History endpoint cases (PR-6) — exercise resolveHistory end-to-end
+    // against real Postgres. Verifies §7 tests 10, 11, 12.
+    // ===================================================================
+
+    it('history §7 test 10: strictly-older invariant under identical timestamps', async () => {
+      // The fencepost-bug catcher. Insert N events with the SAME
+      // created_at, page through with limit=2, assert no duplicates and
+      // no skips across page boundaries. Setup: direct prisma.createMany
+      // (recordConsentEvent doesn't accept explicit created_at).
+      const tenant = 'eeeeee01-eeee-7eee-8eee-eeeeeeeeeeee';
+      const talent = 'cccccccc-cccc-7ccc-8ccc-cccccccceeee';
+      const sameTime = new Date('2026-04-15T12:00:00Z');
+      const ids = [
+        'aabbccdd-0000-7000-8000-000010000001',
+        'aabbccdd-0000-7000-8000-000010000002',
+        'aabbccdd-0000-7000-8000-000010000003',
+        'aabbccdd-0000-7000-8000-000010000004',
+        'aabbccdd-0000-7000-8000-000010000005',
+      ];
+      // Direct prisma.createMany — precedented in this file
+      // (lines 88+ use direct prisma.* access for setup/assertions).
+      await prisma.talentConsentEvent.createMany({
+        data: ids.map((id) => ({
+          id,
+          tenant_id: tenant,
+          talent_id: talent,
+          scope: 'matching',
+          action: 'granted',
+          captured_method: 'recruiter_capture',
+          captured_by_actor_id: RECRUITER_ID,
+          consent_version: 'v1',
+          occurred_at: sameTime,
+          created_at: sameTime, // explicit override; identical timestamps
+        })),
+      });
+
+      // Page through with limit=2, collecting all event_ids
+      const collected: string[] = [];
+      let cursor: string | null | undefined = undefined;
+      let pages = 0;
+      const maxPages = 10; // safety: should converge in 3 pages (5 events / limit 2)
+      while (pages < maxPages) {
+        const page = await repo.resolveHistory({
+          tenant_id: tenant,
+          talent_id: talent,
+          limit: 2,
+          ...(cursor !== null && cursor !== undefined
+            ? {
+                cursor: (() => {
+                  const decoded = JSON.parse(
+                    Buffer.from(cursor, 'base64url').toString('utf8'),
+                  ) as { c: string; e: string };
+                  return {
+                    created_at: new Date(decoded.c),
+                    event_id: decoded.e,
+                  };
+                })(),
+              }
+            : {}),
+          requestId: `history-page-${pages}`,
+        });
+        for (const ev of page.events) {
+          collected.push(ev.event_id);
+        }
+        cursor = page.next_cursor;
+        pages += 1;
+        if (cursor === null) break;
+      }
+
+      // No duplicates
+      const unique = [...new Set(collected)];
+      expect(unique.length).toBe(collected.length);
+      // No skips: all 5 ids returned exactly once
+      expect(unique.length).toBe(5);
+      expect([...unique].sort()).toEqual([...ids].sort());
+    });
+
+    it('history §7 test 11: staleness preservation — 14-month-old grant returns as granted', async () => {
+      const tenant = 'eeeeee02-eeee-7eee-8eee-eeeeeeeeeeee';
+      const talent = 'cccccccc-cccc-7ccc-8ccc-cccccccceee2';
+      const fourteenMonthsAgo = new Date();
+      fourteenMonthsAgo.setMonth(fourteenMonthsAgo.getMonth() - 14);
+      // Direct createMany so we can pin created_at to 14 months ago
+      await prisma.talentConsentEvent.createMany({
+        data: [
+          {
+            id: 'aabbccdd-0000-7000-8000-000020000001',
+            tenant_id: tenant,
+            talent_id: talent,
+            scope: 'contacting',
+            action: 'granted',
+            captured_method: 'recruiter_capture',
+            captured_by_actor_id: RECRUITER_ID,
+            consent_version: 'v1',
+            occurred_at: fourteenMonthsAgo,
+            created_at: fourteenMonthsAgo,
+          },
+        ],
+      });
+
+      const page = await repo.resolveHistory({
+        tenant_id: tenant,
+        talent_id: talent,
+        limit: 50,
+        requestId: 'history-stale-req',
+      });
+
+      expect(page.events).toHaveLength(1);
+      const ev = page.events[0];
+      expect(ev?.action).toBe('granted'); // preserved, NOT 'expired'/'stale'
+      // No staleness indicator anywhere on the response
+      expect(Object.keys(ev as object).sort()).toEqual([
+        'action',
+        'created_at',
+        'event_id',
+        'expires_at',
+        'scope',
+      ]);
+      expect(Object.keys(page).sort()).toEqual([
+        'events',
+        'is_anonymized',
+        'next_cursor',
+      ]);
+    });
+
+    it('history §7 test 12: cross-tenant isolation — same talent_id in two tenants returns disjoint event sets', async () => {
+      const tenantA = 'eeeeee03-eeee-7eee-8eee-eeeeeeeeeeea';
+      const tenantB = 'eeeeee03-eeee-7eee-8eee-eeeeeeeeeeeb';
+      const sharedTalent = 'cccccccc-cccc-7ccc-8ccc-cccccccceee3';
+
+      await prisma.talentConsentEvent.createMany({
+        data: [
+          {
+            id: 'aabbccdd-0000-7000-8000-000030000001',
+            tenant_id: tenantA,
+            talent_id: sharedTalent,
+            scope: 'matching',
+            action: 'granted',
+            captured_method: 'recruiter_capture',
+            captured_by_actor_id: RECRUITER_ID,
+            consent_version: 'v1',
+            occurred_at: new Date('2026-04-01T10:00:00Z'),
+            created_at: new Date('2026-04-01T10:00:00Z'),
+          },
+          {
+            id: 'aabbccdd-0000-7000-8000-000030000002',
+            tenant_id: tenantB,
+            talent_id: sharedTalent,
+            scope: 'profile_storage',
+            action: 'granted',
+            captured_method: 'self_signup',
+            captured_by_actor_id: null,
+            consent_version: 'v1',
+            occurred_at: new Date('2026-04-02T10:00:00Z'),
+            created_at: new Date('2026-04-02T10:00:00Z'),
+          },
+        ],
+      });
+
+      const tenantAResult = await repo.resolveHistory({
+        tenant_id: tenantA,
+        talent_id: sharedTalent,
+        limit: 50,
+        requestId: 'history-iso-a',
+      });
+      const tenantBResult = await repo.resolveHistory({
+        tenant_id: tenantB,
+        talent_id: sharedTalent,
+        limit: 50,
+        requestId: 'history-iso-b',
+      });
+
+      expect(tenantAResult.events).toHaveLength(1);
+      expect(tenantAResult.events[0]?.event_id).toBe(
+        'aabbccdd-0000-7000-8000-000030000001',
+      );
+      expect(tenantAResult.events[0]?.scope).toBe('matching');
+
+      expect(tenantBResult.events).toHaveLength(1);
+      expect(tenantBResult.events[0]?.event_id).toBe(
+        'aabbccdd-0000-7000-8000-000030000002',
+      );
+      expect(tenantBResult.events[0]?.scope).toBe('profile_storage');
+
+      // No cross-contamination
+      const tenantAIds = tenantAResult.events.map((e) => e.event_id);
+      const tenantBIds = tenantBResult.events.map((e) => e.event_id);
+      for (const id of tenantAIds) {
+        expect(tenantBIds).not.toContain(id);
+      }
+    });
   },
 );
 
