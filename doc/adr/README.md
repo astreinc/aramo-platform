@@ -27,6 +27,7 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 | [0006](0006-consent-check-contract-and-resolver-path-conventions.md) | Consent Check Contract & Resolver Path Conventions | Accepted | 2026-05-01 |
 | [0007](0007-consent-state-read-endpoint-and-read-endpoint-conventions.md) | Consent State Read Endpoint and Read-Endpoint Conventions | Accepted | 2026-05-01 |
 | [0008](0008-read-endpoint-maturation-and-handoff-conventions.md) | Read-Endpoint Maturation, Directive-Tier Discipline, and Artifact Handoff Conventions | Accepted | 2026-05-01 |
+| [0009](0009-resolver-region-allow-list-expansion-for-audit-event-reads.md) | Resolver-Region Allow-List Expansion for Audit-Event Read Paths | Accepted | 2026-05-01 |
 
 ## When to write an ADR
 
