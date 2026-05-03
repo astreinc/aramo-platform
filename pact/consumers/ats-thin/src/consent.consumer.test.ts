@@ -1027,5 +1027,190 @@ describe('ATS thin consumer → GET /v1/consent/history/{talent_id}', () => {
   });
 });
 
+// ----------------------------------------------------------------------
+// PR-7 — GET /v1/consent/decision-log/{talent_id} interactions.
+// Informational read endpoint; no Idempotency-Key (Phase 1 §6 N/A);
+// cursor-paginated; no decision-log written (Decision H sharpest in
+// PR-7 because the endpoint reads the very table the convention
+// prohibits writing to). event_type is a closed set
+// {consent.grant.recorded, consent.revoke.recorded,
+// consent.check.decision} per ADR-0009 §4. event_payload is opaque
+// JSON pass-through.
+// ----------------------------------------------------------------------
+
+describe('ATS thin consumer → GET /v1/consent/decision-log/{talent_id}', () => {
+  it('§9 test 14: happy-path — wrapped shape with one entry containing populated event_payload', async () => {
+    await provider
+      .addInteraction()
+      .given('a talent with one consent grant audit entry')
+      .uponReceiving('a decision-log read for the talent')
+      .withRequest('GET', `/v1/consent/decision-log/${TALENT_ID}`, (b) => {
+        b.headers({ Authorization: like('Bearer eyJfake.token') });
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          entries: [
+            {
+              event_id: uuid('00000000-0000-7000-8000-000000000a01'),
+              talent_id: uuid(TALENT_ID),
+              event_type: 'consent.grant.recorded',
+              created_at: regex(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                '2026-04-15T12:00:00Z',
+              ),
+              actor_id: uuid('00000000-0000-7000-8000-000000000bb1'),
+              actor_type: 'recruiter',
+              event_payload: {
+                event_id: like('inner-event-id'),
+                scope: like('matching'),
+              },
+            },
+          ],
+          next_cursor: null,
+          is_anonymized: false,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/consent/decision-log/${TALENT_ID}`,
+          {
+            method: 'GET',
+            headers: { Authorization: 'Bearer eyJfake.token' },
+          },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          entries: Array<{
+            event_id: string;
+            talent_id: string;
+            event_type: string;
+            actor_type: string;
+            event_payload: Record<string, unknown>;
+          }>;
+          next_cursor: string | null;
+          is_anonymized: boolean;
+        };
+        expect(body.entries).toHaveLength(1);
+        expect(body.entries[0]?.event_type).toBe('consent.grant.recorded');
+        expect(body.entries[0]?.actor_type).toBe('recruiter');
+        expect(body.entries[0]?.event_payload).toBeDefined();
+        expect(body.next_cursor).toBeNull();
+        expect(body.is_anonymized).toBe(false);
+      });
+  });
+
+  it('§9 test 15: pagination — cursor-driven request returns next page', async () => {
+    const cursorPayload = {
+      c: '2026-04-15T12:00:00.000Z',
+      e: '00000000-0000-7000-8000-000000000a01',
+    };
+    const cursorString = Buffer.from(JSON.stringify(cursorPayload), 'utf8').toString(
+      'base64url',
+    );
+
+    await provider
+      .addInteraction()
+      .given('a talent with 5 audit entries; cursor at end of first page')
+      .uponReceiving('a decision-log read with cursor + limit=2')
+      .withRequest('GET', `/v1/consent/decision-log/${TALENT_ID}`, (b) => {
+        b.headers({ Authorization: like('Bearer eyJfake.token') }).query({
+          limit: '2',
+          cursor: cursorString,
+        });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          entries: [
+            {
+              event_id: uuid('00000000-0000-7000-8000-000000000a02'),
+              talent_id: uuid(TALENT_ID),
+              event_type: 'consent.revoke.recorded',
+              created_at: regex(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                '2026-04-14T08:00:00Z',
+              ),
+              actor_id: uuid('00000000-0000-7000-8000-000000000bb1'),
+              actor_type: 'recruiter',
+              event_payload: {
+                event_id: like('inner-revoke-id'),
+                scope: like('matching'),
+                revoked_event_id: like('inner-grant-id'),
+              },
+            },
+            {
+              event_id: uuid('00000000-0000-7000-8000-000000000a03'),
+              talent_id: uuid(TALENT_ID),
+              event_type: 'consent.check.decision',
+              created_at: regex(
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                '2026-04-13T15:30:00Z',
+              ),
+              actor_id: null,
+              actor_type: 'system',
+              event_payload: {
+                decision_id: like('inner-decision-id'),
+                result: like('denied'),
+                reason_code: like('consent_revoked'),
+              },
+            },
+          ],
+          next_cursor: like('encoded-opaque-cursor-string'),
+          is_anonymized: false,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/consent/decision-log/${TALENT_ID}?limit=2&cursor=${encodeURIComponent(cursorString)}`,
+          {
+            method: 'GET',
+            headers: { Authorization: 'Bearer eyJfake.token' },
+          },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          entries: unknown[];
+          next_cursor: string | null;
+        };
+        expect(body.entries).toHaveLength(2);
+        expect(typeof body.next_cursor).toBe('string');
+      });
+  });
+
+  it('§9 test 16: empty decision-log — returns 200 with empty array, never 404', async () => {
+    await provider
+      .addInteraction()
+      .given('a talent with no audit entries')
+      .uponReceiving('a decision-log read for the unseen talent')
+      .withRequest('GET', `/v1/consent/decision-log/${TALENT_ID}`, (b) => {
+        b.headers({ Authorization: like('Bearer eyJfake.token') });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          entries: [],
+          next_cursor: null,
+          is_anonymized: false,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/consent/decision-log/${TALENT_ID}`,
+          {
+            method: 'GET',
+            headers: { Authorization: 'Bearer eyJfake.token' },
+          },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          entries: unknown[];
+          next_cursor: string | null;
+          is_anonymized: boolean;
+        };
+        expect(body.entries).toEqual([]);
+        expect(body.next_cursor).toBeNull();
+        expect(body.is_anonymized).toBe(false);
+      });
+  });
+});
+
 beforeAll(() => undefined);
 afterAll(() => undefined);

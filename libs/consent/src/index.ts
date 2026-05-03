@@ -11,6 +11,7 @@ export {
   CONSENT_CAPTURED_METHODS,
   CONSENT_CHECK_OPERATIONS,
   OPERATION_SCOPE_MAP,
+  CONSENT_DECISION_LOG_EVENT_TYPES,
 } from './lib/dto/index.js';
 export type {
   ConsentScopeValue,
@@ -23,4 +24,8 @@ export type {
   TalentConsentStateResponseDto,
   ConsentHistoryEventDto,
   ConsentHistoryResponseDto,
+  ConsentDecisionLogEntryDto,
+  ConsentDecisionLogEventType,
+  ConsentDecisionLogActorType,
+  ConsentDecisionLogResponseDto,
 } from './lib/dto/index.js';

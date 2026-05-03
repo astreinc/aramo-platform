@@ -378,3 +378,91 @@ describe('ConsentService.getHistory (PR-6)', () => {
     expect(result).toEqual(historyResponse);
   });
 });
+
+describe('ConsentService.getDecisionLog (PR-7)', () => {
+  const decisionLogResponse = {
+    entries: [],
+    next_cursor: null,
+    is_anonymized: false,
+  };
+
+  it('forwards talent_id, event_type, limit, cursor, requestId, and JWT-derived tenant_id', async () => {
+    const repo = { resolveDecisionLog: vi.fn().mockResolvedValue(decisionLogResponse) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    const cursor = {
+      created_at: new Date('2026-04-15T12:00:00Z'),
+      event_id: 'aabbccdd-0000-7000-8000-000000000099',
+    };
+    await service.getDecisionLog(
+      TALENT_ID,
+      'consent.check.decision',
+      25,
+      cursor,
+      recruiterContext(),
+      'req-dl-1',
+    );
+    expect(repo.resolveDecisionLog).toHaveBeenCalledOnce();
+    const args = repo.resolveDecisionLog.mock.calls[0][0] as {
+      tenant_id: string;
+      talent_id: string;
+      event_type: string;
+      limit: number;
+      cursor: { created_at: Date; event_id: string };
+      requestId: string;
+    };
+    expect(args.tenant_id).toBe(TENANT_ID);
+    expect(args.talent_id).toBe(TALENT_ID);
+    expect(args.event_type).toBe('consent.check.decision');
+    expect(args.limit).toBe(25);
+    expect(args.cursor).toEqual(cursor);
+    expect(args.requestId).toBe('req-dl-1');
+  });
+
+  it('uses tenant_id from JWT, never from any other source', async () => {
+    const repo = { resolveDecisionLog: vi.fn().mockResolvedValue(decisionLogResponse) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    await service.getDecisionLog(
+      TALENT_ID,
+      undefined,
+      50,
+      undefined,
+      recruiterContext({ tenant_id: 'aa000000-0000-0000-0000-000000000099' }),
+      'req-dl-2',
+    );
+    const args = repo.resolveDecisionLog.mock.calls[0][0] as { tenant_id: string };
+    expect(args.tenant_id).toBe('aa000000-0000-0000-0000-000000000099');
+  });
+
+  it('passes event_type=undefined and cursor=undefined through unchanged', async () => {
+    const repo = { resolveDecisionLog: vi.fn().mockResolvedValue(decisionLogResponse) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    await service.getDecisionLog(
+      TALENT_ID,
+      undefined,
+      50,
+      undefined,
+      portalContext(),
+      'req-dl-3',
+    );
+    const args = repo.resolveDecisionLog.mock.calls[0][0] as {
+      event_type: unknown;
+      cursor: unknown;
+    };
+    expect(args.event_type).toBeUndefined();
+    expect(args.cursor).toBeUndefined();
+  });
+
+  it('returns the resolver response unchanged', async () => {
+    const repo = { resolveDecisionLog: vi.fn().mockResolvedValue(decisionLogResponse) };
+    const service = new ConsentService(repo as unknown as ConsentRepository);
+    const result = await service.getDecisionLog(
+      TALENT_ID,
+      undefined,
+      50,
+      undefined,
+      portalContext(),
+      'req-dl-4',
+    );
+    expect(result).toEqual(decisionLogResponse);
+  });
+});
