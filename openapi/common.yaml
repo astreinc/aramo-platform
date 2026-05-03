@@ -512,6 +512,141 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /consent/decision-log/{talent_id}:
+    get:
+      operationId: getTalentConsentDecisionLog
+      tags: [Consent]
+      summary: Return consent decision-log audit-event entries for a talent
+      description: |
+        Informational read endpoint. Returns the audit-event entries
+        recorded for the requested talent within the JWT's tenant
+        context, ordered by row insertion time
+        (created_at DESC, event_id DESC).
+
+        Reads from the consentAuditEvent table. The endpoint is
+        read-only; per ADR-0007 Decision H — sharpest in PR-7 because
+        the endpoint reads the very table the convention prohibits
+        writing to — it does NOT write decision-log entries.
+        Idempotency: N/A.
+
+        Pagination is keyset-based via an opaque cursor encoding the
+        last item of the prior page. The cursor is opaque to consumers
+        and shares its encoding contract with /consent/history; clients
+        cannot distinguish history cursors from decision-log cursors.
+
+        Field name mapping (PR-7 §5):
+          DB id          → API event_id   (PR-6 precedent)
+          DB subject_id  → API talent_id  (PR-7 exception)
+
+        event_payload is opaque JSON pass-through; clients inspect it
+        for finer-grained selection. The directive forbids extraction
+        or transformation of payload fields into top-level entry
+        fields.
+
+        event_type is a closed set per PR-7 §7 + ADR-0009 §4 four-clause
+        principle: {consent.grant.recorded, consent.revoke.recorded,
+        consent.check.decision}. Adding a value requires a directive
+        amendment. actor_type is similarly closed:
+        {recruiter, self, system}.
+
+        Right-to-be-forgotten (Decision F, hardcoded false in PR-7):
+        is_anonymized signals identity removal. Always false in PR-7;
+        the talent module providing detection does not exist yet.
+
+        Empty decision log returns 200 with
+        { entries: [], next_cursor: null, is_anonymized: false }.
+        Never 404 on empty (ADR-0007 Decision D).
+      parameters:
+        - name: talent_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: event_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - consent.grant.recorded
+              - consent.revoke.recorded
+              - consent.check.decision
+          description: |
+            Optional, single-valued filter. When present, only
+            audit-event entries matching the named event_type are
+            returned. Filter is applied before pagination; the cursor
+            traverses the filtered set. Multi-valued filtering is
+            explicitly out of scope.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          description: |
+            Page size. Omitted → 50; > 200 → clamped to 200; < 1 or
+            non-integer → HTTP 400 VALIDATION_ERROR.
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Opaque pagination cursor. Pass the next_cursor from the
+            previous response to fetch the next page. Invalid cursors
+            (non-base64, malformed, structurally invalid) return HTTP
+            400 VALIDATION_ERROR; never 500.
+        - name: X-Request-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: |
+            Consent decision-log page. The response is wrapped (entries
+            array plus metadata); empty decision log returns 200 with
+            empty array.
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentDecisionLogResponse'
+        '400':
+          description: |
+            Validation error (invalid talent_id, invalid event_type,
+            invalid limit, invalid cursor)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Tenant access denied (caller-blocked)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: System error (resolver failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -1044,6 +1179,98 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ConsentHistoryEvent'
+        next_cursor:
+          oneOf:
+            - type: string
+            - type: 'null'
+        is_anonymized:
+          type: boolean
+
+    ConsentDecisionLogEntry:
+      type: object
+      additionalProperties: false
+      description: |
+        Per-entry shape for /consent/decision-log (PR-7 §4). Field set
+        is closed (additionalProperties: false); only `event_payload`
+        is open (heterogeneous JSON pass-through). Adding a field
+        requires a directive amendment (PR-7 §11 halt condition).
+
+        Field name mapping (PR-7 §5):
+          DB id          → API event_id   (PR-6 precedent)
+          DB subject_id  → API talent_id  (PR-7 exception)
+
+        `event_type` is a closed set per PR-7 §7 + ADR-0009 §4.
+        `actor_type` is a closed set: {recruiter, self, system}.
+        Adding a value to either requires a directive amendment.
+
+        `event_payload` is opaque JSON; clients inspect it for
+        finer-grained selection. The directive forbids extracting or
+        transforming payload fields into top-level entry fields.
+      required:
+        - event_id
+        - talent_id
+        - event_type
+        - created_at
+        - event_payload
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        talent_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          enum:
+            - consent.grant.recorded
+            - consent.revoke.recorded
+            - consent.check.decision
+        created_at:
+          type: string
+          format: date-time
+        actor_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        actor_type:
+          type: string
+          enum:
+            - recruiter
+            - self
+            - system
+        event_payload:
+          type: object
+          additionalProperties: true
+
+    ConsentDecisionLogResponse:
+      type: object
+      additionalProperties: false
+      description: |
+        Wrapped response shape for GET /consent/decision-log/{talent_id}
+        (PR-7 §4). Wrapped, never bare. Never 404 on empty (ADR-0007
+        Decision D).
+
+        `next_cursor` is null when there are no more pages, otherwise
+        an opaque base64url string. The internal cursor structure is
+        not part of the API contract and may evolve without
+        versioning. Cursor encoding is shared with /consent/history;
+        clients cannot distinguish history cursors from decision-log
+        cursors (PR-7 §6 + ADR-0008 Decision B).
+
+        `is_anonymized` is the right-to-be-forgotten signal (ADR-0007
+        Decision F). Hardcoded `false` in PR-7; the talent module
+        providing identity-existence detection does not exist yet.
+        Schema field present for forward-compatibility.
+      required:
+        - entries
+        - next_cursor
+        - is_anonymized
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsentDecisionLogEntry'
         next_cursor:
           oneOf:
             - type: string

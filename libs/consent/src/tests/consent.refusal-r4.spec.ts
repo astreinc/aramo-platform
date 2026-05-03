@@ -178,11 +178,12 @@ describe('Refusal R4 — two-category enforcement (PR-4: write path + resolver p
 
     it('uses only the PR-4 resolver allow-list operations on the ledger', () => {
       // Allowed resolver-region operations:
-      //   tx.idempotencyKey.findUnique  (idempotency cache lookup; Phase 1
-      //                                  §6 optional idempotency)
-      //   tx.idempotencyKey.create      (idempotency cache persist on 200)
+      //   tx.idempotencyKey.findUnique    (idempotency cache lookup; Phase 1
+      //                                    §6 optional idempotency)
+      //   tx.idempotencyKey.create        (idempotency cache persist on 200)
       //   tx.talentConsentEvent.findMany  (PR-4 cross-event read for derivation)
       //   tx.consentAuditEvent.create     (PR-4 decision-log write; Decision H)
+      //   tx.consentAuditEvent.findMany   (PR-7 decision-log read; ADR-0009 §3)
       // Note: the resolver does NOT need findFirst on talentConsentEvent
       // because partition + latest-per-source is computed in memory from
       // the findMany result.
@@ -192,6 +193,7 @@ describe('Refusal R4 — two-category enforcement (PR-4: write path + resolver p
         'tx.idempotencyKey.create(',
         'tx.talentConsentEvent.findMany(',
         'tx.consentAuditEvent.create(',
+        'tx.consentAuditEvent.findMany(',
       ]);
       for (const call of new Set(operationCalls)) {
         expect(ALLOWED_RESOLVER_OPERATIONS).toContain(call);
@@ -236,6 +238,7 @@ describe('Refusal R4 — two-category enforcement (PR-4: write path + resolver p
         'tx.idempotencyKey.create(',
         'tx.talentConsentEvent.findMany(',
         'tx.consentAuditEvent.create(',
+        'tx.consentAuditEvent.findMany(',
       ]);
       const violations = [...new Set(operationCalls)].filter(
         (call) => !ALLOWED.has(call),

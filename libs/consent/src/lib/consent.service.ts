@@ -11,6 +11,8 @@ import type { ConsentRevokeRequestDto } from './dto/consent-revoke-request.dto.j
 import type { ConsentRevokeResponseDto } from './dto/consent-revoke-response.dto.js';
 import type { TalentConsentStateResponseDto } from './dto/talent-consent-state-response.dto.js';
 import type { ConsentHistoryResponseDto } from './dto/consent-history-response.dto.js';
+import type { ConsentDecisionLogEventType } from './dto/consent-decision-log-entry.dto.js';
+import type { ConsentDecisionLogResponseDto } from './dto/consent-decision-log-response.dto.js';
 import type { ConsentScopeValue } from './dto/consent-grant-request.dto.js';
 import type { HistoryCursorPayload } from './util/history-cursor.js';
 
@@ -138,6 +140,40 @@ export class ConsentService {
       tenant_id: authContext.tenant_id,
       talent_id,
       scope,
+      limit,
+      cursor,
+      requestId,
+    });
+  }
+
+  /**
+   * Informational decision-log read (PR-7). Returns a keyset-paginated
+   * page of audit-event entries for the requested talent within the JWT's
+   * tenant context. No idempotency, no decision-log write (Decision H —
+   * sharpest in PR-7 because the endpoint reads the very table the
+   * convention prohibits writing to).
+   *
+   * The controller is responsible for:
+   *   - validating talent_id format
+   *   - validating event_type against the closed set per PR-7 §7
+   *   - clamping/validating limit per PR-6 §5
+   *   - decoding the cursor and mapping decode errors to HTTP 400
+   *     VALIDATION_ERROR (cursor errors must not propagate as 500)
+   *
+   * The service trusts those guarantees and forwards to the resolver.
+   */
+  async getDecisionLog(
+    talent_id: string,
+    event_type: ConsentDecisionLogEventType | undefined,
+    limit: number,
+    cursor: HistoryCursorPayload | undefined,
+    authContext: AuthContextType,
+    requestId: string,
+  ): Promise<ConsentDecisionLogResponseDto> {
+    return this.consentRepo.resolveDecisionLog({
+      tenant_id: authContext.tenant_id,
+      talent_id,
+      event_type,
       limit,
       cursor,
       requestId,

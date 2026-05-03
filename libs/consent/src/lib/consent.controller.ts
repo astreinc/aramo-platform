@@ -25,6 +25,11 @@ import type { ConsentGrantResponseDto } from './dto/consent-grant-response.dto.j
 import { ConsentRevokeRequestDto } from './dto/consent-revoke-request.dto.js';
 import type { ConsentRevokeResponseDto } from './dto/consent-revoke-response.dto.js';
 import type { ConsentHistoryResponseDto } from './dto/consent-history-response.dto.js';
+import {
+  CONSENT_DECISION_LOG_EVENT_TYPES,
+  type ConsentDecisionLogEventType,
+} from './dto/consent-decision-log-entry.dto.js';
+import type { ConsentDecisionLogResponseDto } from './dto/consent-decision-log-response.dto.js';
 import type { TalentConsentStateResponseDto } from './dto/talent-consent-state-response.dto.js';
 import {
   CursorDecodeError,
@@ -137,6 +142,36 @@ export class ConsentController {
     );
   }
 
+  // PR-7: GET /consent/decision-log/{talent_id}. Informational read
+  // endpoint; no Idempotency-Key (Phase 1 §6: N/A for read endpoints).
+  // Query params (event_type, limit, cursor) all optional. event_type is
+  // validated against the closed set per PR-7 §7 + ADR-0009 §4. limit and
+  // cursor parsing reuse the PR-6 helpers; cursor decode errors mapped to
+  // HTTP 400 VALIDATION_ERROR per PR-6 §3 pattern; never propagate as 500.
+  @Get('decision-log/:talent_id')
+  @HttpCode(HttpStatus.OK)
+  async getTalentConsentDecisionLog(
+    @Param('talent_id') talent_id: string,
+    @Query('event_type') eventTypeRaw: string | undefined,
+    @Query('limit') limitRaw: string | undefined,
+    @Query('cursor') cursorRaw: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ConsentDecisionLogResponseDto> {
+    this.assertTalentIdFormat(talent_id, requestId);
+    const event_type = this.parseEventTypeFilter(eventTypeRaw, requestId);
+    const limit = this.parseLimit(limitRaw, requestId);
+    const cursor = this.parseCursor(cursorRaw, requestId);
+    return this.consentService.getDecisionLog(
+      talent_id,
+      event_type,
+      limit,
+      cursor,
+      authContext,
+      requestId,
+    );
+  }
+
   private assertIdempotencyKeyRequired(
     idempotencyKey: string | undefined,
     requestId: string,
@@ -237,6 +272,28 @@ export class ConsentController {
       );
     }
     return scopeRaw as ConsentScopeValue;
+  }
+
+  // PR-7 §7 event_type filter: optional, single-valued, must be a member
+  // of the closed set {consent.grant.recorded, consent.revoke.recorded,
+  // consent.check.decision} per ADR-0009 §4 four-clause principle. Adding
+  // a new value requires a directive amendment (PR-7 §7 + §14).
+  private parseEventTypeFilter(
+    eventTypeRaw: string | undefined,
+    requestId: string,
+  ): ConsentDecisionLogEventType | undefined {
+    if (eventTypeRaw === undefined || eventTypeRaw === '') {
+      return undefined;
+    }
+    if (!(CONSENT_DECISION_LOG_EVENT_TYPES as readonly string[]).includes(eventTypeRaw)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `event_type must be one of ${CONSENT_DECISION_LOG_EVENT_TYPES.join(', ')}`,
+        400,
+        { requestId, details: { invalid_field: 'event_type' } },
+      );
+    }
+    return eventTypeRaw as ConsentDecisionLogEventType;
   }
 
   // PR-6 §5 cursor decoding: optional. Decode errors mapped to HTTP 400

@@ -26,7 +26,10 @@ interface MockTx {
     findFirst: ReturnType<typeof vi.fn>;
     findMany: ReturnType<typeof vi.fn>;
   };
-  consentAuditEvent: { create: ReturnType<typeof vi.fn> };
+  consentAuditEvent: {
+    create: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
+  };
   outboxEvent: { create: ReturnType<typeof vi.fn> };
 }
 
@@ -38,7 +41,10 @@ function makeTx(): MockTx {
       findFirst: vi.fn(),
       findMany: vi.fn().mockResolvedValue([]),
     },
-    consentAuditEvent: { create: vi.fn() },
+    consentAuditEvent: {
+      create: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     outboxEvent: { create: vi.fn() },
   };
 }
@@ -1706,5 +1712,440 @@ describe('ConsentRepository.resolveHistory — Tenant scoping (§3 + ADR-0007 De
     };
     expect(findManyArgs.where['tenant_id']).toBe(TENANT_ID);
     expect(findManyArgs.where['talent_id']).toBe(TALENT_ID);
+  });
+});
+
+// ----------------------------------------------------------------------
+// PR-7 — Resolver tests for resolveDecisionLog (decision-log read endpoint).
+// Covers §9 unit tests 1, 2, 3, 5, 6, 7, 8, 9. Test 4 (event_type enum
+// validation → 400) lives in consent.controller.spec.ts because the
+// validator runs at the controller boundary. Integration tests 10-12 in
+// consent.integration.spec.ts; R4 guardrail test 13 in
+// consent.refusal-r4.spec.ts; Pact tests 14-16 in the consumer spec.
+// ----------------------------------------------------------------------
+
+interface DecisionLogRow {
+  id: string;
+  tenant_id: string;
+  subject_id: string;
+  actor_id: string | null;
+  actor_type: string;
+  event_type: string;
+  event_payload: Record<string, unknown>;
+  created_at: Date;
+}
+
+function makeDecisionLogRow(overrides: Partial<DecisionLogRow> = {}): DecisionLogRow {
+  return {
+    id: '00000000-0000-7000-8000-000000000010',
+    tenant_id: TENANT_ID,
+    subject_id: TALENT_ID,
+    actor_id: RECRUITER_ID,
+    actor_type: 'recruiter',
+    event_type: 'consent.grant.recorded',
+    event_payload: { event_id: 'inner-event-id', scope: 'matching' },
+    created_at: new Date('2026-04-01T10:00:00Z'),
+    ...overrides,
+  };
+}
+
+function makeDecisionLogInput(overrides: Partial<{
+  tenant_id: string;
+  talent_id: string;
+  event_type: string;
+  limit: number;
+  cursor: { created_at: Date; event_id: string };
+  requestId: string;
+}> = {}) {
+  const base: {
+    tenant_id: string;
+    talent_id: string;
+    limit: number;
+    requestId: string;
+    event_type?: string;
+    cursor?: { created_at: Date; event_id: string };
+  } = {
+    tenant_id: TENANT_ID,
+    talent_id: TALENT_ID,
+    limit: 50,
+    requestId: 'req-decision-log-1',
+  };
+  if (overrides.event_type !== undefined) base.event_type = overrides.event_type;
+  if (overrides.cursor !== undefined) base.cursor = overrides.cursor;
+  if (overrides.tenant_id !== undefined) base.tenant_id = overrides.tenant_id;
+  if (overrides.talent_id !== undefined) base.talent_id = overrides.talent_id;
+  if (overrides.limit !== undefined) base.limit = overrides.limit;
+  if (overrides.requestId !== undefined) base.requestId = overrides.requestId;
+  return base;
+}
+
+describe('ConsentRepository.resolveDecisionLog — §9 test 1 (resolver ordering) + DTO mapping', () => {
+  it('entries returned in created_at DESC, id DESC order across mixed event types', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([
+      makeDecisionLogRow({
+        id: '00000000-0000-7000-8000-000000000a01',
+        event_type: 'consent.grant.recorded',
+        created_at: new Date('2026-04-15T12:00:00Z'),
+      }),
+      makeDecisionLogRow({
+        id: '00000000-0000-7000-8000-000000000a02',
+        event_type: 'consent.check.decision',
+        created_at: new Date('2026-04-10T08:00:00Z'),
+      }),
+      makeDecisionLogRow({
+        id: '00000000-0000-7000-8000-000000000a03',
+        event_type: 'consent.revoke.recorded',
+        created_at: new Date('2026-04-01T10:00:00Z'),
+      }),
+    ]);
+
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveDecisionLog(makeDecisionLogInput());
+
+    // Verify the resolver called findMany with the canonical orderBy
+    expect(tx.consentAuditEvent.findMany).toHaveBeenCalledOnce();
+    const findManyArgs = tx.consentAuditEvent.findMany.mock.calls[0][0] as {
+      orderBy: Array<Record<string, string>>;
+    };
+    expect(findManyArgs.orderBy).toEqual([
+      { created_at: 'desc' },
+      { id: 'desc' },
+    ]);
+
+    // Verify DTO mapping: row.id -> dto.event_id (PR-6 precedent)
+    expect(result.entries).toHaveLength(3);
+    expect(result.entries[0]?.event_id).toBe('00000000-0000-7000-8000-000000000a01');
+    expect(result.entries[1]?.event_id).toBe('00000000-0000-7000-8000-000000000a02');
+    expect(result.entries[2]?.event_id).toBe('00000000-0000-7000-8000-000000000a03');
+    // Mixed event types preserved on each entry
+    expect(result.entries.map((e) => e.event_type)).toEqual([
+      'consent.grant.recorded',
+      'consent.check.decision',
+      'consent.revoke.recorded',
+    ]);
+  });
+});
+
+describe('ConsentRepository.resolveDecisionLog — §9 test 2 (tie-breaking by id DESC)', () => {
+  it('two entries with identical created_at are ordered by id DESC and exposed as event_id', async () => {
+    const tx = makeTx();
+    const sameTime = new Date('2026-04-15T12:00:00Z');
+    tx.consentAuditEvent.findMany.mockResolvedValue([
+      makeDecisionLogRow({
+        id: '00000000-0000-7000-8000-0000000000ff',
+        created_at: sameTime,
+      }),
+      makeDecisionLogRow({
+        id: '00000000-0000-7000-8000-0000000000aa',
+        created_at: sameTime,
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveDecisionLog(makeDecisionLogInput());
+
+    const findManyArgs = tx.consentAuditEvent.findMany.mock.calls[0][0] as {
+      orderBy: Array<Record<string, string>>;
+    };
+    // Tie-break clause is the second orderBy entry: id DESC
+    expect(findManyArgs.orderBy[1]).toEqual({ id: 'desc' });
+    expect(result.entries.map((e) => e.event_id)).toEqual([
+      '00000000-0000-7000-8000-0000000000ff',
+      '00000000-0000-7000-8000-0000000000aa',
+    ]);
+  });
+});
+
+describe('ConsentRepository.resolveDecisionLog — §9 test 3 (event_type filter pre-pagination)', () => {
+  it('passes event_type filter to the query (pre-pagination, applied in WHERE alongside cursor)', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([
+      makeDecisionLogRow({
+        id: '00000000-0000-7000-8000-0000000000bb',
+        event_type: 'consent.check.decision',
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveDecisionLog(
+      makeDecisionLogInput({
+        event_type: 'consent.check.decision',
+        cursor: {
+          created_at: new Date('2026-05-01T00:00:00Z'),
+          event_id: 'aabbccdd-0000-7000-8000-000000000099',
+        },
+      }),
+    );
+
+    const findManyArgs = tx.consentAuditEvent.findMany.mock.calls[0][0] as {
+      where: Record<string, unknown>;
+    };
+    expect(findManyArgs.where['event_type']).toBe('consent.check.decision');
+    // Cursor predicate co-applies (cursor traverses the filtered set)
+    expect(findManyArgs.where['OR']).toBeDefined();
+    expect(findManyArgs.where['tenant_id']).toBe(TENANT_ID);
+    // §5 mapping: input.talent_id → DB subject_id at the where clause
+    expect(findManyArgs.where['subject_id']).toBe(TALENT_ID);
+    expect(findManyArgs.where['talent_id']).toBeUndefined();
+  });
+});
+
+describe('ConsentRepository.resolveDecisionLog — Cursor predicate shape (§6 Prisma OR/AND form)', () => {
+  it('cursor predicate uses OR/AND with id (DB column) compared to cursor.event_id', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([]);
+    const cursorTime = new Date('2026-04-15T12:00:00Z');
+    const cursorId = 'aabbccdd-0000-7000-8000-000000000099';
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveDecisionLog(
+      makeDecisionLogInput({
+        cursor: { created_at: cursorTime, event_id: cursorId },
+      }),
+    );
+
+    const findManyArgs = tx.consentAuditEvent.findMany.mock.calls[0][0] as {
+      where: { OR: Array<Record<string, unknown>> };
+    };
+    expect(findManyArgs.where.OR).toHaveLength(2);
+    // Branch 1: created_at < cursor.created_at
+    expect(findManyArgs.where.OR[0]).toEqual({
+      created_at: { lt: cursorTime },
+    });
+    // Branch 2: created_at == cursor.created_at AND id < cursor.event_id
+    expect(findManyArgs.where.OR[1]).toEqual({
+      AND: [{ created_at: cursorTime }, { id: { lt: cursorId } }],
+    });
+  });
+
+  it('omits cursor predicate when no cursor provided', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveDecisionLog(makeDecisionLogInput());
+
+    const findManyArgs = tx.consentAuditEvent.findMany.mock.calls[0][0] as {
+      where: Record<string, unknown>;
+    };
+    expect(findManyArgs.where['OR']).toBeUndefined();
+  });
+});
+
+describe('ConsentRepository.resolveDecisionLog — Pagination (next_cursor + take limit+1)', () => {
+  it('fetches limit+1 rows to detect if there is a next page', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveDecisionLog(makeDecisionLogInput({ limit: 10 }));
+
+    const findManyArgs = tx.consentAuditEvent.findMany.mock.calls[0][0] as {
+      take: number;
+    };
+    expect(findManyArgs.take).toBe(11);
+  });
+
+  it('returns next_cursor=null when result count <= limit', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([
+      makeDecisionLogRow(),
+      makeDecisionLogRow({ id: '00000000-0000-7000-8000-0000000000c1' }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveDecisionLog(makeDecisionLogInput({ limit: 5 }));
+    expect(result.next_cursor).toBeNull();
+    expect(result.entries).toHaveLength(2);
+  });
+
+  it('returns next_cursor (opaque base64url string) when result count > limit, slicing to limit', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([
+      makeDecisionLogRow({
+        id: '00000000-0000-7000-8000-0000000000d1',
+        created_at: new Date('2026-04-15T12:00:00Z'),
+      }),
+      makeDecisionLogRow({
+        id: '00000000-0000-7000-8000-0000000000d2',
+        created_at: new Date('2026-04-14T12:00:00Z'),
+      }),
+      makeDecisionLogRow({
+        id: '00000000-0000-7000-8000-0000000000d3',
+        created_at: new Date('2026-04-13T12:00:00Z'),
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveDecisionLog(makeDecisionLogInput({ limit: 2 }));
+    expect(result.entries).toHaveLength(2);
+    expect(result.next_cursor).not.toBeNull();
+    expect(result.next_cursor).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+});
+
+describe('ConsentRepository.resolveDecisionLog — §9 test 5 (subject_id → talent_id mapping)', () => {
+  it('Prisma query references subject_id; DTO output references talent_id', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([
+      makeDecisionLogRow({ subject_id: TALENT_ID }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveDecisionLog(makeDecisionLogInput());
+
+    // Resolver query: subject_id at the database boundary
+    const findManyArgs = tx.consentAuditEvent.findMany.mock.calls[0][0] as {
+      where: Record<string, unknown>;
+    };
+    expect(findManyArgs.where['subject_id']).toBe(TALENT_ID);
+    expect(findManyArgs.where['talent_id']).toBeUndefined();
+
+    // DTO output: talent_id at the response boundary
+    expect(result.entries[0]?.talent_id).toBe(TALENT_ID);
+    expect((result.entries[0] as Record<string, unknown>)['subject_id']).toBeUndefined();
+  });
+});
+
+describe('ConsentRepository.resolveDecisionLog — §9 test 6 (event_payload passthrough)', () => {
+  it('complex JSON payload (multiple keys, nested object) round-trips without normalization', async () => {
+    const tx = makeTx();
+    const richPayload = {
+      decision_id: 'aaaa1111-0000-7000-8000-000000000001',
+      result: 'denied',
+      denied_scopes: ['contacting'],
+      reason_code: 'channel_not_consented',
+      computed_at: '2026-04-15T12:00:00.000Z',
+      nested: {
+        operation: 'send_email',
+        channel: 'email',
+        meta: { foo: 'bar', baz: [1, 2, 3] },
+      },
+    };
+    tx.consentAuditEvent.findMany.mockResolvedValue([
+      makeDecisionLogRow({
+        event_type: 'consent.check.decision',
+        event_payload: richPayload,
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveDecisionLog(makeDecisionLogInput());
+
+    expect(result.entries[0]?.event_payload).toEqual(richPayload);
+  });
+});
+
+describe('ConsentRepository.resolveDecisionLog — §9 test 7 (empty decision log)', () => {
+  it('talent with zero audit events returns { entries: [], next_cursor: null, is_anonymized: false }', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveDecisionLog(makeDecisionLogInput());
+    expect(result.entries).toEqual([]);
+    expect(result.next_cursor).toBeNull();
+    expect(result.is_anonymized).toBe(false);
+  });
+});
+
+describe('ConsentRepository.resolveDecisionLog — §9 test 8 (no decision-log write — Decision H sharpest)', () => {
+  it('does NOT call tx.consentAuditEvent.create (reading the audit table must not write to it)', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([makeDecisionLogRow()]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveDecisionLog(makeDecisionLogInput());
+    expect(tx.consentAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('does NOT call tx.idempotencyKey.findUnique or .create', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveDecisionLog(makeDecisionLogInput());
+    expect(tx.idempotencyKey.findUnique).not.toHaveBeenCalled();
+    expect(tx.idempotencyKey.create).not.toHaveBeenCalled();
+  });
+
+  it('does NOT call tx.outboxEvent.create', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveDecisionLog(makeDecisionLogInput());
+    expect(tx.outboxEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('does NOT call tx.talentConsentEvent (any operation)', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveDecisionLog(makeDecisionLogInput());
+    expect(tx.talentConsentEvent.create).not.toHaveBeenCalled();
+    expect(tx.talentConsentEvent.findFirst).not.toHaveBeenCalled();
+    expect(tx.talentConsentEvent.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('ConsentRepository.resolveDecisionLog — §9 test 9 (is_anonymized always false)', () => {
+  it('is_anonymized=false for empty decision log', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveDecisionLog(makeDecisionLogInput());
+    expect(result.is_anonymized).toBe(false);
+  });
+
+  it('is_anonymized=false with seeded entries', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([makeDecisionLogRow()]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveDecisionLog(makeDecisionLogInput());
+    expect(result.is_anonymized).toBe(false);
+  });
+});
+
+describe('ConsentRepository.resolveDecisionLog — DTO field set (§4 closed entry shape)', () => {
+  it('seven entry-level fields present (event_id, talent_id, event_type, created_at, actor_id, actor_type, event_payload)', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([
+      makeDecisionLogRow({
+        id: '00000000-0000-7000-8000-0000000000e1',
+        event_type: 'consent.revoke.recorded',
+        created_at: new Date('2026-04-15T14:22:00Z'),
+        actor_id: RECRUITER_ID,
+        actor_type: 'recruiter',
+        event_payload: { event_id: 'inner', scope: 'contacting' },
+      }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveDecisionLog(makeDecisionLogInput());
+    const entry = result.entries[0];
+    expect(entry).toBeDefined();
+    expect(Object.keys(entry as object).sort()).toEqual([
+      'actor_id',
+      'actor_type',
+      'created_at',
+      'event_id',
+      'event_payload',
+      'event_type',
+      'talent_id',
+    ]);
+  });
+
+  it('actor_id null when row has no actor (self-signup flow)', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([
+      makeDecisionLogRow({ actor_id: null, actor_type: 'self' }),
+    ]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    const result = await repo.resolveDecisionLog(makeDecisionLogInput());
+    expect(result.entries[0]?.actor_id).toBeNull();
+    expect(result.entries[0]?.actor_type).toBe('self');
+  });
+});
+
+describe('ConsentRepository.resolveDecisionLog — Tenant scoping (§3 + ADR-0007 Decision B)', () => {
+  it('tenant_id and subject_id flow into where clause from input', async () => {
+    const tx = makeTx();
+    tx.consentAuditEvent.findMany.mockResolvedValue([]);
+    const repo = new ConsentRepository(makePrisma(tx));
+    await repo.resolveDecisionLog(makeDecisionLogInput());
+
+    const findManyArgs = tx.consentAuditEvent.findMany.mock.calls[0][0] as {
+      where: Record<string, unknown>;
+    };
+    expect(findManyArgs.where['tenant_id']).toBe(TENANT_ID);
+    expect(findManyArgs.where['subject_id']).toBe(TALENT_ID);
   });
 });

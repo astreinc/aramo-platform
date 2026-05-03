@@ -892,6 +892,221 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(tenantBIds).not.toContain(id);
       }
     });
+
+    // ===================================================================
+    // Decision-log endpoint cases (PR-7) — exercise resolveDecisionLog
+    // end-to-end against real Postgres. Verifies §9 tests 10, 11, 12.
+    // Uses direct prisma.consentAuditEvent.createMany for setup; the
+    // resolver under test only reads (Decision H sharpest in PR-7 — the
+    // resolver must NOT write to consentAuditEvent).
+    // ===================================================================
+
+    it('decision-log §9 test 10: strictly-older invariant under identical timestamps', async () => {
+      // Insert N audit events with the SAME created_at, page through
+      // with limit=2, assert no duplicates and no skips. Mirrors the
+      // PR-6 history fencepost-bug catcher against consentAuditEvent.
+      const tenant = 'eeeeee04-eeee-7eee-8eee-eeeeeeeeeeee';
+      const talent = 'cccccccc-cccc-7ccc-8ccc-cccccccceee4';
+      const sameTime = new Date('2026-04-15T12:00:00Z');
+      const ids = [
+        'aabbccdd-0000-7000-8000-000040000001',
+        'aabbccdd-0000-7000-8000-000040000002',
+        'aabbccdd-0000-7000-8000-000040000003',
+        'aabbccdd-0000-7000-8000-000040000004',
+        'aabbccdd-0000-7000-8000-000040000005',
+      ];
+      await prisma.consentAuditEvent.createMany({
+        data: ids.map((id) => ({
+          id,
+          tenant_id: tenant,
+          actor_id: RECRUITER_ID,
+          actor_type: 'recruiter',
+          event_type: 'consent.grant.recorded',
+          subject_id: talent, // §5: DB subject_id ↔ API talent_id
+          event_payload: { event_id: id, scope: 'matching' },
+          created_at: sameTime,
+        })),
+      });
+
+      const collected: string[] = [];
+      let cursor: string | null | undefined = undefined;
+      let pages = 0;
+      const maxPages = 10;
+      while (pages < maxPages) {
+        const page = await repo.resolveDecisionLog({
+          tenant_id: tenant,
+          talent_id: talent,
+          limit: 2,
+          ...(cursor !== null && cursor !== undefined
+            ? {
+                cursor: (() => {
+                  const decoded = JSON.parse(
+                    Buffer.from(cursor, 'base64url').toString('utf8'),
+                  ) as { c: string; e: string };
+                  return {
+                    created_at: new Date(decoded.c),
+                    event_id: decoded.e,
+                  };
+                })(),
+              }
+            : {}),
+          requestId: `decision-log-page-${pages}`,
+        });
+        for (const entry of page.entries) {
+          collected.push(entry.event_id);
+        }
+        cursor = page.next_cursor;
+        pages += 1;
+        if (cursor === null) break;
+      }
+
+      const unique = [...new Set(collected)];
+      expect(unique.length).toBe(collected.length);
+      expect(unique.length).toBe(5);
+      expect([...unique].sort()).toEqual([...ids].sort());
+    });
+
+    it('decision-log §9 test 11: cross-tenant isolation — same talent_id (subject_id) in two tenants returns disjoint sets', async () => {
+      const tenantA = 'eeeeee05-eeee-7eee-8eee-eeeeeeeeeeea';
+      const tenantB = 'eeeeee05-eeee-7eee-8eee-eeeeeeeeeeeb';
+      const sharedTalent = 'cccccccc-cccc-7ccc-8ccc-cccccccceee5';
+
+      await prisma.consentAuditEvent.createMany({
+        data: [
+          {
+            id: 'aabbccdd-0000-7000-8000-000050000001',
+            tenant_id: tenantA,
+            actor_id: RECRUITER_ID,
+            actor_type: 'recruiter',
+            event_type: 'consent.grant.recorded',
+            subject_id: sharedTalent,
+            event_payload: { event_id: 'inner-a', scope: 'matching' },
+            created_at: new Date('2026-04-01T10:00:00Z'),
+          },
+          {
+            id: 'aabbccdd-0000-7000-8000-000050000002',
+            tenant_id: tenantB,
+            actor_id: null,
+            actor_type: 'self',
+            event_type: 'consent.grant.recorded',
+            subject_id: sharedTalent,
+            event_payload: { event_id: 'inner-b', scope: 'profile_storage' },
+            created_at: new Date('2026-04-02T10:00:00Z'),
+          },
+        ],
+      });
+
+      const tenantAResult = await repo.resolveDecisionLog({
+        tenant_id: tenantA,
+        talent_id: sharedTalent,
+        limit: 50,
+        requestId: 'decision-log-iso-a',
+      });
+      const tenantBResult = await repo.resolveDecisionLog({
+        tenant_id: tenantB,
+        talent_id: sharedTalent,
+        limit: 50,
+        requestId: 'decision-log-iso-b',
+      });
+
+      expect(tenantAResult.entries).toHaveLength(1);
+      expect(tenantAResult.entries[0]?.event_id).toBe(
+        'aabbccdd-0000-7000-8000-000050000001',
+      );
+      expect(tenantAResult.entries[0]?.actor_type).toBe('recruiter');
+      expect(tenantAResult.entries[0]?.talent_id).toBe(sharedTalent);
+
+      expect(tenantBResult.entries).toHaveLength(1);
+      expect(tenantBResult.entries[0]?.event_id).toBe(
+        'aabbccdd-0000-7000-8000-000050000002',
+      );
+      expect(tenantBResult.entries[0]?.actor_type).toBe('self');
+
+      const tenantAIds = tenantAResult.entries.map((e) => e.event_id);
+      const tenantBIds = tenantBResult.entries.map((e) => e.event_id);
+      for (const id of tenantAIds) {
+        expect(tenantBIds).not.toContain(id);
+      }
+    });
+
+    it('decision-log §9 test 12: mixed-event-type history — grant + revoke + check entries returned in order; ?event_type= narrows correctly', async () => {
+      const tenant = 'eeeeee06-eeee-7eee-8eee-eeeeeeeeeeee';
+      const talent = 'cccccccc-cccc-7ccc-8ccc-cccccccceee6';
+
+      await prisma.consentAuditEvent.createMany({
+        data: [
+          {
+            id: 'aabbccdd-0000-7000-8000-000060000001',
+            tenant_id: tenant,
+            actor_id: RECRUITER_ID,
+            actor_type: 'recruiter',
+            event_type: 'consent.grant.recorded',
+            subject_id: talent,
+            event_payload: { event_id: 'inner-grant', scope: 'matching' },
+            created_at: new Date('2026-04-01T10:00:00Z'),
+          },
+          {
+            id: 'aabbccdd-0000-7000-8000-000060000002',
+            tenant_id: tenant,
+            actor_id: RECRUITER_ID,
+            actor_type: 'recruiter',
+            event_type: 'consent.revoke.recorded',
+            subject_id: talent,
+            event_payload: {
+              event_id: 'inner-revoke',
+              scope: 'matching',
+              revoked_event_id: 'inner-grant',
+            },
+            created_at: new Date('2026-04-02T10:00:00Z'),
+          },
+          {
+            id: 'aabbccdd-0000-7000-8000-000060000003',
+            tenant_id: tenant,
+            actor_id: null,
+            actor_type: 'system',
+            event_type: 'consent.check.decision',
+            subject_id: talent,
+            event_payload: {
+              decision_id: 'inner-check',
+              result: 'denied',
+              reason_code: 'consent_revoked',
+            },
+            created_at: new Date('2026-04-03T10:00:00Z'),
+          },
+        ],
+      });
+
+      // Unfiltered: all three entries, ordered by created_at DESC
+      const allEntries = await repo.resolveDecisionLog({
+        tenant_id: tenant,
+        talent_id: talent,
+        limit: 50,
+        requestId: 'decision-log-mixed-all',
+      });
+      expect(allEntries.entries).toHaveLength(3);
+      expect(allEntries.entries.map((e) => e.event_type)).toEqual([
+        'consent.check.decision',
+        'consent.revoke.recorded',
+        'consent.grant.recorded',
+      ]);
+
+      // Filter narrows to just the matching event_type
+      for (const target of [
+        'consent.grant.recorded',
+        'consent.revoke.recorded',
+        'consent.check.decision',
+      ] as const) {
+        const filtered = await repo.resolveDecisionLog({
+          tenant_id: tenant,
+          talent_id: talent,
+          event_type: target,
+          limit: 50,
+          requestId: `decision-log-mixed-${target}`,
+        });
+        expect(filtered.entries).toHaveLength(1);
+        expect(filtered.entries[0]?.event_type).toBe(target);
+      }
+    });
   },
 );
 

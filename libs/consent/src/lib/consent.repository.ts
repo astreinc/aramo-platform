@@ -20,6 +20,12 @@ import type { ConsentGrantResponseDto } from './dto/consent-grant-response.dto.j
 import type { ConsentRevokeResponseDto } from './dto/consent-revoke-response.dto.js';
 import type { ConsentHistoryEventDto } from './dto/consent-history-event.dto.js';
 import type { ConsentHistoryResponseDto } from './dto/consent-history-response.dto.js';
+import type {
+  ConsentDecisionLogActorType,
+  ConsentDecisionLogEntryDto,
+  ConsentDecisionLogEventType,
+} from './dto/consent-decision-log-entry.dto.js';
+import type { ConsentDecisionLogResponseDto } from './dto/consent-decision-log-response.dto.js';
 import type { TalentConsentScopeStateDto } from './dto/talent-consent-scope-state.dto.js';
 import type { TalentConsentStateResponseDto } from './dto/talent-consent-state-response.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -89,6 +95,21 @@ export interface ResolveHistoryInput {
   tenant_id: string;
   talent_id: string;
   scope?: ConsentScopeValue;
+  limit: number;
+  cursor?: HistoryCursorPayload;
+  requestId: string;
+}
+
+// PR-7 §3 + §7: decision-log read input. `event_type` is optional
+// single-valued filter (closed set per §7 + ADR-0009 §4; multi-valued
+// explicitly out of scope per §14). `limit` is the resolved page size
+// (controller already clamped/validated per PR-6 §5 pattern). `cursor`
+// is the decoded payload (controller already decoded + handled 400
+// mapping per PR-6 §3 pattern).
+export interface ResolveDecisionLogInput {
+  tenant_id: string;
+  talent_id: string;
+  event_type?: ConsentDecisionLogEventType;
   limit: number;
   cursor?: HistoryCursorPayload;
   requestId: string;
@@ -772,6 +793,117 @@ export class ConsentRepository {
 
       return {
         events,
+        next_cursor,
+        is_anonymized: false,
+      };
+    });
+  }
+
+  /**
+   * Resolver-path read for the decision-log endpoint (PR-7). Per ADR-0007
+   * Decision G pattern, this is the fourth sibling resolver: write seam
+   * recordConsentEvent, point read resolveConsentState (PR-4), batch read
+   * resolveAllScopes (PR-5), keyset-paginated history resolveHistory
+   * (PR-6), keyset-paginated decision log resolveDecisionLog (PR-7).
+   *
+   * Per ADR-0009 §3 + §4: this method uses tx.consentAuditEvent.findMany,
+   * which was added to the resolver-region allow-list under the four-clause
+   * principle (read path; audit/event-log table; paginated, ordered
+   * results; no staleness or enforcement semantics). The R4 guardrail
+   * (consent.refusal-r4.spec.ts) was updated in the same PR to reflect
+   * the addition.
+   *
+   * Per ADR-0007 Decision H (no decision-log writes from read endpoints),
+   * sharpest in PR-7 because the endpoint reads the very table the
+   * convention prohibits writing to: NO tx.consentAuditEvent.create call
+   * in this method body. Reading audit events does not produce an audit
+   * trail entry of "someone read the audit trail".
+   *
+   * Per directive §6 ordering and pagination:
+   *   - ORDER BY created_at DESC, id DESC (database-side, not in memory)
+   *   - cursor predicate (created_at, id) < (cursor.created_at, cursor.event_id)
+   *     in Prisma OR/AND form
+   *   - LIMIT applied in the database
+   *   - event_type filter applied before pagination; cursor traverses
+   *     the filtered set (§7)
+   *   - Supporting index added in PR-7 schema migration:
+   *     @@index([tenant_id, subject_id, created_at(sort: Desc), id(sort: Desc)])
+   *
+   * Per directive §5 field name mapping:
+   *   - DB id          → API event_id   (PR-6 precedent)
+   *   - DB subject_id  → API talent_id  (PR-7 exception, this directive)
+   *   The Prisma query references `subject_id`; the response DTO and
+   *   cursor reference `talent_id` and `event_id` respectively.
+   *
+   * Per directive §4: event_payload is opaque JSON pass-through. No
+   * extraction or transformation of payload fields into top-level entry
+   * fields (§11 halt condition).
+   *
+   * Per directive §4: never 404 on empty. Empty result returns
+   * { entries: [], next_cursor: null, is_anonymized: false } with HTTP 200.
+   *
+   * Per ADR-0007 Decision F (PR-5 precedent): is_anonymized hardcoded
+   * `false` until the talent module ships RTBF detection.
+   */
+  async resolveDecisionLog(
+    input: ResolveDecisionLogInput,
+  ): Promise<ConsentDecisionLogResponseDto> {
+    return this.prisma.$transaction(async (tx) => {
+      // Build the where clause: tenant + subject (always); event_type
+      // (optional); cursor predicate (optional). The cursor predicate
+      // uses Prisma's OR/AND form per directive §6 + PR-6 §5 pattern.
+      const where: Record<string, unknown> = {
+        tenant_id: input.tenant_id,
+        subject_id: input.talent_id,
+      };
+      if (input.event_type !== undefined) {
+        where['event_type'] = input.event_type;
+      }
+      if (input.cursor !== undefined) {
+        const cursor = input.cursor;
+        where['OR'] = [
+          { created_at: { lt: cursor.created_at } },
+          {
+            AND: [
+              { created_at: cursor.created_at },
+              { id: { lt: cursor.event_id } },
+            ],
+          },
+        ];
+      }
+
+      // findMany with database-side ordering + limit. Fetch limit+1 to
+      // detect whether a next page exists without a separate count query.
+      const rows = await tx.consentAuditEvent.findMany({
+        where,
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        take: input.limit + 1,
+      });
+
+      const hasMore = rows.length > input.limit;
+      const pageRows = hasMore ? rows.slice(0, input.limit) : rows;
+
+      const entries: ConsentDecisionLogEntryDto[] = pageRows.map((row) => ({
+        event_id: row.id,
+        talent_id: row.subject_id,
+        event_type: row.event_type as ConsentDecisionLogEventType,
+        created_at: row.created_at.toISOString(),
+        actor_id: row.actor_id,
+        actor_type: row.actor_type as ConsentDecisionLogActorType,
+        event_payload: (row.event_payload ?? {}) as Record<string, unknown>,
+      }));
+
+      const lastRow = pageRows[pageRows.length - 1];
+      const next_cursor =
+        hasMore && lastRow !== undefined
+          ? encodeCursor({
+              created_at: lastRow.created_at,
+              event_id: lastRow.id,
+            })
+          : null;
+
+      return {
+        entries,
         next_cursor,
         is_anonymized: false,
       };
