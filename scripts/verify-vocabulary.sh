@@ -73,6 +73,7 @@ TIER2_EXCLUDES=(
   "doc/05-conventions.md"             # PR-1: naming-conventions section uses anti-terms in "Never use" list
   "doc/06-lead-review-checklist.md"   # PR-1: review checks reference vocabulary anti-terms
   "doc/07-prompt-template.md"         # PR-1: prompt template uses anti-terms in worked examples
+  "doc/adr/0010-verification-byte-fidelity-and-additive-index-maturation.md"  # PR-7.1: ADR codifies vocabulary check at verify-before-drafting tier; cites locked anti-terms in Decision A rationale
   "doc/prompts/**"                    # PR-2: local prompt drafts use anti-terms in "do not use" guardrails
   "eslint.config.mjs"                 # PR-1: ESLint vocabulary rule patterns literally contain anti-terms
   "scripts/verify-vocabulary.sh"      # PR-1: this script contains the patterns being searched for
