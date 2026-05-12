@@ -32,6 +32,7 @@
       "@aramo/events": ["libs/events/src/index.ts"],
       "@aramo/evidence": ["libs/evidence/src/index.ts"],
       "@aramo/examination": ["libs/examination/src/index.ts"],
+      "@aramo/identity": ["libs/identity/src/index.ts"],
       "@aramo/ingestion": ["libs/ingestion/src/index.ts"],
       "@aramo/matching": ["libs/matching/src/index.ts"],
       "@aramo/skills-taxonomy": ["libs/skills-taxonomy/src/index.ts"],

@@ -19,6 +19,7 @@ export default defineConfig({
       '@aramo/events': resolve(root, 'libs/events/src/index.ts'),
       '@aramo/evidence': resolve(root, 'libs/evidence/src/index.ts'),
       '@aramo/examination': resolve(root, 'libs/examination/src/index.ts'),
+      '@aramo/identity': resolve(root, 'libs/identity/src/index.ts'),
       '@aramo/ingestion': resolve(root, 'libs/ingestion/src/index.ts'),
       '@aramo/matching': resolve(root, 'libs/matching/src/index.ts'),
       '@aramo/skills-taxonomy': resolve(root, 'libs/skills-taxonomy/src/index.ts'),
