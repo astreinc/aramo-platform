@@ -1,0 +1,168 @@
+// Per-module Prisma schema for the `identity` module.
+//
+// Per Architecture v2.0 Section 7 (Schema-per-Module data architecture) and
+// doc/05-conventions.md "Database Conventions". Cross-schema references
+// elsewhere in the program are UUID-only without FK constraints.
+//
+// PR-8.0a-prereq establishes the identity substrate: ten durable identity
+// primitives + audit stream. No HTTP controllers, no token issuance, no
+// runtime user creation.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["identity"]
+}
+
+model User {
+  id              String   @id @db.Uuid
+  email           String   @unique
+  display_name    String?
+  is_active       Boolean  @default(true)
+  deactivated_at  DateTime? @db.Timestamptz
+  created_at      DateTime @default(now()) @db.Timestamptz
+  updated_at      DateTime @updatedAt @db.Timestamptz
+
+  memberships     UserTenantMembership[]
+  external_identities ExternalIdentity[]
+
+  @@index([is_active])
+  @@schema("identity")
+}
+
+model Tenant {
+  id           String   @id @db.Uuid
+  name         String
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @updatedAt @db.Timestamptz
+
+  memberships  UserTenantMembership[]
+
+  @@index([is_active])
+  @@schema("identity")
+}
+
+model UserTenantMembership {
+  id           String   @id @db.Uuid
+  user_id      String   @db.Uuid
+  tenant_id    String   @db.Uuid
+  is_active    Boolean  @default(true)
+  joined_at    DateTime @default(now()) @db.Timestamptz
+  deactivated_at DateTime? @db.Timestamptz
+  created_at   DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @updatedAt @db.Timestamptz
+
+  user         User     @relation(fields: [user_id], references: [id])
+  tenant       Tenant   @relation(fields: [tenant_id], references: [id])
+  role_assignments UserTenantMembershipRole[]
+
+  @@unique([user_id, tenant_id])
+  @@index([tenant_id, is_active])
+  @@index([user_id, is_active])
+  @@schema("identity")
+}
+
+model Role {
+  id           String   @id @db.Uuid
+  key          String   @unique
+  description  String?
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @updatedAt @db.Timestamptz
+
+  role_scopes  RoleScope[]
+  membership_assignments UserTenantMembershipRole[]
+
+  @@index([is_active])
+  @@schema("identity")
+}
+
+model Scope {
+  id           String   @id @db.Uuid
+  key          String   @unique
+  description  String?
+  created_at   DateTime @default(now()) @db.Timestamptz
+
+  role_scopes  RoleScope[]
+
+  @@schema("identity")
+}
+
+model RoleScope {
+  id           String   @id @db.Uuid
+  role_id      String   @db.Uuid
+  scope_id     String   @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz
+
+  role         Role     @relation(fields: [role_id], references: [id])
+  scope        Scope    @relation(fields: [scope_id], references: [id])
+
+  @@unique([role_id, scope_id])
+  @@schema("identity")
+}
+
+model UserTenantMembershipRole {
+  id            String   @id @db.Uuid
+  membership_id String   @db.Uuid
+  role_id       String   @db.Uuid
+  created_at    DateTime @default(now()) @db.Timestamptz
+
+  membership    UserTenantMembership @relation(fields: [membership_id], references: [id])
+  role          Role                 @relation(fields: [role_id], references: [id])
+
+  @@unique([membership_id, role_id])
+  @@schema("identity")
+}
+
+model ServiceAccount {
+  id           String   @id @db.Uuid
+  name         String   @unique
+  description  String?
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @updatedAt @db.Timestamptz
+
+  @@index([is_active])
+  @@schema("identity")
+}
+
+model ExternalIdentity {
+  id               String   @id @db.Uuid
+  provider         String
+  provider_subject String
+  user_id          String   @db.Uuid
+  email_snapshot   String?
+  created_at       DateTime @default(now()) @db.Timestamptz
+  updated_at       DateTime @updatedAt @db.Timestamptz
+
+  user             User     @relation(fields: [user_id], references: [id])
+
+  @@unique([provider, provider_subject])
+  @@index([user_id])
+  @@schema("identity")
+}
+
+// IdentityAuditEvent — parallel to ConsentAuditEvent, separate audit stream.
+// tenant_id is nullable for global/system events; see directive §6
+// event_type → index-category mapping for which events target which index.
+model IdentityAuditEvent {
+  id             String   @id @db.Uuid
+  tenant_id      String?  @db.Uuid
+  actor_id       String?  @db.Uuid
+  actor_type     String
+  event_type     String
+  subject_id     String   @db.Uuid
+  event_payload  Json
+  created_at     DateTime @default(now()) @db.Timestamptz
+
+  // Tenant-scoped keyset traversal: (tenant_id, subject_id, created_at DESC, id DESC).
+  @@index([tenant_id, subject_id, created_at(sort: Desc), id(sort: Desc)])
+  // Global/system keyset traversal: (created_at DESC, id DESC).
+  @@index([created_at(sort: Desc), id(sort: Desc)])
+  @@schema("identity")
+}
