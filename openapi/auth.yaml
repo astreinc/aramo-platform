@@ -1,0 +1,478 @@
+openapi: 3.1.0
+info:
+  title: Aramo Auth API
+  version: 0.1.0
+  description: |
+    Aramo Auth Service surface. Authored by PR-8.0a-Reground.
+
+    OAuth-based session establishment via federated IdP (AWS Cognito);
+    cookie-driven session lifecycle (login → callback → refresh →
+    logout) plus introspection (session) and public-key publication
+    (jwks). Per directive §3 Topic 4: all session cookies are
+    `HttpOnly` + `Secure` (production) and bound by `SameSite` policy
+    per cookie; the access cookie is verified RS256 by the issuer's
+    public key.
+
+    The shared error envelope is referenced from openapi/common.yaml
+    (ErrorResponse, ErrorObject, ErrorCode). PR-8.0a-Reground extends
+    the `ErrorCode` enum with `TENANT_SELECTION_REQUIRED` (HTTP 409)
+    and `REFRESH_TOKEN_INVALID` (HTTP 401).
+
+servers:
+  - url: https://api.aramo.ai/v1
+  - url: https://staging-api.aramo.ai/v1
+
+tags:
+  - name: Auth
+    description: |
+      Authentication endpoints. OAuth-based session establishment
+      via federated IdP (Cognito); cookie-driven session lifecycle
+      (refresh, logout, session, jwks).
+
+paths:
+  /auth/{consumer}/login:
+    get:
+      operationId: startLogin
+      tags: [Auth]
+      summary: Begin OAuth Authorization Code + PKCE flow
+      description: |
+        Issues a PKCE state cookie and redirects the user agent to
+        the Cognito hosted-UI authorize endpoint. Per directive §8.1.
+        Anonymous (no JWT or cookie required).
+      security: []
+      parameters:
+        - name: consumer
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [recruiter, portal, ingestion]
+      responses:
+        '302':
+          description: Redirect to Cognito authorize endpoint; sets aramo_pkce_state cookie.
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: Cognito authorize URL with PKCE challenge.
+            Set-Cookie:
+              schema:
+                type: string
+              description: |
+                aramo_pkce_state — HttpOnly; Secure (production);
+                SameSite=Lax; Path=/auth; Max-Age=600.
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+        '400':
+          description: Invalid `consumer` path parameter
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: PKCE generation, encryption, or env failure
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/{consumer}/callback:
+    get:
+      operationId: completeLogin
+      tags: [Auth]
+      summary: Cognito redirect target — completes the OAuth flow
+      description: |
+        Validates pkce_state cookie, exchanges Cognito `code` for an
+        ID token, resolves the user, applies tenant resolution,
+        derives scopes, issues an access JWT + refresh token, sets
+        cookies, and emits `identity.session.issued` audit event.
+        Per directive §8.2. Anonymous (the Cognito `code` is the
+        auth credential).
+      security: []
+      parameters:
+        - name: consumer
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [recruiter, portal, ingestion]
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: error
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: error_description
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Session established; sets access + refresh cookies; clears pkce_state.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: |
+                Three Set-Cookie headers — aramo_access_token (Path=/,
+                SameSite=Lax, Max-Age=900), aramo_refresh_token
+                (Path=/auth, SameSite=Strict, Max-Age=2592000),
+                aramo_pkce_state (Max-Age=0 to clear).
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+        '400':
+          description: |
+            Validation error. Triggers: invalid consumer; Cognito-side
+            error; missing/malformed pkce_state; state mismatch;
+            consumer mismatch; expired pkce_state.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            Tenant selection required — user has >1 active membership.
+            `error.details.tenants` carries the list of selectable
+            tenants per `TenantSelectionRequiredDetails`.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: |
+            Internal error. Triggers (carried in `error.details.reason`):
+            cognito_exchange_failed, cognito_verification_failed,
+            user_not_provisioned, no_active_tenant, JWT signing
+            failure, DB write failure.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/{consumer}/refresh:
+    post:
+      operationId: refreshSession
+      tags: [Auth]
+      summary: Rotate refresh token and issue a new access JWT
+      description: |
+        Validates the refresh cookie (presence, lookup, expiry,
+        explicit revocation, consumer binding), detects reuse past
+        the grace window (R.2 cascade), rotates the token under a
+        FOR UPDATE lock with a conditional update guard, signs a
+        new access JWT, and emits `identity.session.refreshed`
+        audit event. Per directive §8.3.
+      security:
+        - CookieRefreshAuth: []
+      parameters:
+        - name: consumer
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [recruiter, portal, ingestion]
+      responses:
+        '200':
+          description: |
+            Refresh succeeded; rotates access + refresh cookies.
+            Empty body per directive RF.6 lock.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Two Set-Cookie headers (new access + new refresh).
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+        '400':
+          description: Invalid consumer path parameter.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: |
+            Refresh token invalid. Triggers: cookie missing; token
+            not found; token expired; token explicitly revoked;
+            consumer mismatch; reuse detected (after R.2 cascade);
+            rotation race (conditional update failed). On 401, BOTH
+            access and refresh cookies are cleared via Max-Age=0.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error (DB write failure non-race; JWT signing failure).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/{consumer}/logout:
+    post:
+      operationId: logoutSession
+      tags: [Auth]
+      summary: Revoke the refresh token and clear session cookies
+      description: |
+        Idempotent. With cookie present and matching consumer:
+        revokes the refresh token row, emits
+        `identity.session.revoked` audit event, clears both cookies.
+        With cookie missing or non-matching consumer: silently
+        clears cookies (LO.2.s lenient lock). Per directive §8.4.
+      security:
+        - CookieRefreshAuth: []
+      parameters:
+        - name: consumer
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [recruiter, portal, ingestion]
+      responses:
+        '204':
+          description: Logout completed; access + refresh cookies cleared.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Two Set-Cookie clearing headers (Max-Age=0).
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+        '400':
+          description: Invalid consumer path parameter.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error (DB write failure on revocation, rare).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/{consumer}/session:
+    get:
+      operationId: getSession
+      tags: [Auth]
+      summary: Introspect the current access JWT
+      description: |
+        Reads the `aramo_access_token` cookie, verifies it (RS256,
+        AUTH_PUBLIC_KEY, issuer "Aramo Core Auth", audience
+        AUTH_AUDIENCE, 0s clock tolerance), checks consumer binding
+        (path consumer must match JWT claim), and returns the 6-field
+        SessionResponse. No audit emission per SE.4.k lock. Per
+        directive §8.5.
+      security:
+        - CookieAccessAuth: []
+      parameters:
+        - name: consumer
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [recruiter, portal, ingestion]
+      responses:
+        '200':
+          description: Session payload (6 fields; SE.3.g lock).
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '400':
+          description: Invalid consumer path parameter.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: |
+            Invalid token. Triggers: cookie missing; JWT
+            invalid/expired/signature-bad/claim-missing; consumer
+            mismatch (path vs JWT claim).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Crypto failure during verification or missing AUTH_PUBLIC_KEY env.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /.well-known/jwks.json:
+    get:
+      operationId: getJwks
+      tags: [Auth]
+      summary: Public-key publication for Aramo-issued JWTs
+      description: |
+        Derives the JWKS from `AUTH_PRIVATE_KEY` (jose.exportJWK +
+        SHA-256 fingerprint for `kid`). Single key, `use: "sig"`,
+        `alg: "RS256"`. Cache-Control: public, max-age=300. Per
+        directive §3 JWKS sub-block + §8.6. Anonymous.
+      security: []
+      responses:
+        '200':
+          description: JWKS document (single-key array).
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: 'public, max-age=300'
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JwksResponse'
+        '500':
+          description: Missing AUTH_PRIVATE_KEY env, or key import/derivation failure.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    # PR-8.0a-Reground §3: cookie-based authentication. Two schemes — one
+    # for the access cookie (introspection), one for the refresh cookie
+    # (refresh + logout). No Bearer scheme; libs/auth's JwtAuthGuard
+    # (Bearer-header) is unchanged and unused by auth-service.
+    CookieAccessAuth:
+      type: apiKey
+      in: cookie
+      name: aramo_access_token
+    CookieRefreshAuth:
+      type: apiKey
+      in: cookie
+      name: aramo_refresh_token
+
+  schemas:
+    SessionResponse:
+      type: object
+      additionalProperties: false
+      description: |
+        /session response shape — locked at 6 fields per SE.3.g.
+        Mirror of the JWT payload subset the verifier surfaces; the
+        `actor_kind` claim is intentionally NOT surfaced here per
+        directive §3 Topic 2 (libs/auth's AuthContext stays at 6
+        fields; future PRs may extend).
+      required:
+        - sub
+        - consumer_type
+        - tenant_id
+        - scopes
+        - iat
+        - exp
+      properties:
+        sub:
+          type: string
+          format: uuid
+        consumer_type:
+          type: string
+          enum: [recruiter, portal, ingestion]
+        tenant_id:
+          type: string
+          format: uuid
+        scopes:
+          type: array
+          items:
+            type: string
+        iat:
+          type: integer
+          description: Issued-at, epoch seconds.
+        exp:
+          type: integer
+          description: Expiry, epoch seconds.
+
+    TenantSelectionRequiredDetails:
+      type: object
+      additionalProperties: false
+      description: |
+        Embedded in `error.details` of a 409 TENANT_SELECTION_REQUIRED
+        response from /callback when the resolved user has more than
+        one active membership. Carries the list of selectable
+        tenants per CB.2 lock.
+      required:
+        - tenants
+      properties:
+        tenants:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, name]
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+
+    JwksKey:
+      type: object
+      additionalProperties: false
+      description: |
+        Single JWK in the published JWKS. Always RSA + sig + RS256
+        in PR-8.0a-Reground (single-key model; rotation deferred).
+      required:
+        - kty
+        - use
+        - alg
+        - kid
+        - n
+        - e
+      properties:
+        kty:
+          type: string
+          const: RSA
+        use:
+          type: string
+          const: sig
+        alg:
+          type: string
+          const: RS256
+        kid:
+          type: string
+          description: SHA-256 fingerprint of the public key (base64url).
+        n:
+          type: string
+          description: RSA modulus (base64url).
+        e:
+          type: string
+          description: RSA exponent (base64url).
+
+    JwksResponse:
+      type: object
+      additionalProperties: false
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/JwksKey'

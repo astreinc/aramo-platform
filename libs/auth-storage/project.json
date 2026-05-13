@@ -1,0 +1,38 @@
+{
+  "name": "auth-storage",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/auth-storage/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "dependsOn": ["prisma:generate"],
+      "options": {
+        "outputPath": "dist/libs/auth-storage",
+        "main": "libs/auth-storage/src/index.ts",
+        "tsConfig": "libs/auth-storage/tsconfig.lib.json"
+      }
+    },
+    "prisma:generate": {
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/prisma/generated"],
+      "options": {
+        "command": "prisma generate --schema libs/auth-storage/prisma/schema.prisma"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/auth-storage/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/auth-storage"
+      }
+    }
+  }
+}

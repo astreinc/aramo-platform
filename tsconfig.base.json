@@ -25,6 +25,7 @@
     "paths": {
       "@aramo/audit": ["libs/audit/src/index.ts"],
       "@aramo/auth": ["libs/auth/src/index.ts"],
+      "@aramo/auth-storage": ["libs/auth-storage/src/index.ts"],
       "@aramo/common": ["libs/common/src/index.ts"],
       "@aramo/consent": ["libs/consent/src/index.ts"],
       "@aramo/engagement": ["libs/engagement/src/index.ts"],

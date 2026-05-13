@@ -1,0 +1,42 @@
+// Per-module Prisma schema for the `auth-storage` module.
+//
+// Per Architecture v2.0 Section 7 (Schema-per-Module data architecture) and
+// ADR-0001 Decision 3 (per-module Prisma client generation, isolated output,
+// no shared client). Cross-schema references to identity-schema rows are
+// UUID-only without FK constraints.
+//
+// PR-8.0a-Reground introduces this module to persist refresh tokens for
+// the Aramo Auth Service. Single model: RefreshToken. Hash-storage at rest
+// (SHA-256) per directive §3 Topic 3 D8.b. Rotation chain via
+// `replaced_by_id` self-relation; revocation via `revoked_at`.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["auth_storage"]
+}
+
+model RefreshToken {
+  id              String    @id @db.Uuid
+  user_id         String    @db.Uuid
+  tenant_id       String    @db.Uuid
+  consumer_type   String
+  token_hash      String    @unique
+  created_at      DateTime  @default(now()) @db.Timestamptz
+  updated_at      DateTime  @updatedAt @db.Timestamptz
+  expires_at      DateTime  @db.Timestamptz
+  revoked_at      DateTime? @db.Timestamptz
+  replaced_by_id  String?   @db.Uuid
+
+  replaced_by     RefreshToken?  @relation("TokenRotation", fields: [replaced_by_id], references: [id])
+  replaces        RefreshToken[] @relation("TokenRotation")
+
+  @@index([user_id, tenant_id, consumer_type])
+  @@index([replaced_by_id])
+  @@index([expires_at])
+  @@schema("auth_storage")
+}
