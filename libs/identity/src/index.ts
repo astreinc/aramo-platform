@@ -16,6 +16,7 @@ export type {
   EventType,
   WriteAuditEventInput,
 } from './lib/audit/identity-audit.repository.js';
+export { IdentityAuditService } from './lib/audit/identity-audit.service.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export {
   SEED_ROLE_KEYS,

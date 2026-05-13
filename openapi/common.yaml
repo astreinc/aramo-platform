@@ -1289,6 +1289,12 @@ components:
         "System & Processing" category). PR-3.2 adds
         INVALID_SCOPE_COMBINATION (HTTP 422) for consent scope
         dependency violations on /consent/check (PR-4).
+
+        PR-8.0a-Reground adds TENANT_SELECTION_REQUIRED (HTTP 409)
+        and REFRESH_TOKEN_INVALID (HTTP 401) for the auth-service
+        /callback and /refresh endpoints respectively. Declaration
+        order in this enum matches ERROR_CODES tuple order in
+        libs/common/src/lib/errors/error-codes.ts.
       enum:
         - AUTH_REQUIRED
         - INVALID_TOKEN
@@ -1297,6 +1303,8 @@ components:
         - IDEMPOTENCY_KEY_CONFLICT
         - INTERNAL_ERROR
         - INVALID_SCOPE_COMBINATION
+        - TENANT_SELECTION_REQUIRED
+        - REFRESH_TOKEN_INVALID
 
     ErrorObject:
       type: object

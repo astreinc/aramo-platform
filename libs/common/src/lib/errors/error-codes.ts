@@ -12,7 +12,12 @@
 // 5xx HttpExceptions and for any unhandled Error.
 //
 // PR-3.2 adds INVALID_SCOPE_COMBINATION (HTTP 422) for consent scope
-// dependency violations on /consent/check (PR-4). Total: 7 codes.
+// dependency violations on /consent/check (PR-4).
+//
+// PR-8.0a-Reground adds TENANT_SELECTION_REQUIRED (HTTP 409) for /callback
+// when a user has >1 active membership, and REFRESH_TOKEN_INVALID (HTTP 401)
+// for /refresh failures (cookie missing, token expired/revoked, consumer
+// mismatch, reuse detected, rotation race). Total: 9 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -22,6 +27,8 @@ export const ERROR_CODES = [
   'IDEMPOTENCY_KEY_CONFLICT',
   'INTERNAL_ERROR',
   'INVALID_SCOPE_COMBINATION',
+  'TENANT_SELECTION_REQUIRED',
+  'REFRESH_TOKEN_INVALID',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

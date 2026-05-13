@@ -457,8 +457,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('TENANT_SCOPED_EVENT_TYPES set matches directive §6 mapping exactly', () => {
+      // Updated by PR-8.0a-Reground §6 amendment: 4 session.* event_types
+      // added to the tenant-scoped set (prereq's 2 entries + 4 new = 6).
       expect([...TENANT_SCOPED_EVENT_TYPES].sort()).toEqual([
         'identity.membership.created',
+        'identity.session.issued',
+        'identity.session.refreshed',
+        'identity.session.reuse_detected',
+        'identity.session.revoked',
         'identity.tenant.created',
       ]);
     });

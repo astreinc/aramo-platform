@@ -7,6 +7,14 @@ apis:
     root: openapi/portal.yaml
   ingestion:
     root: openapi/ingestion.yaml
+  auth:
+    root: openapi/auth.yaml
+    rules:
+      # PR-8.0a-Reground: GET /auth/{consumer}/login is intentionally a
+      # 302-only endpoint (per directive §8.1 success response). The
+      # redirect IS the success path; there is no 2xx variant. Override
+      # the workspace-level rule for auth.yaml only.
+      operation-2xx-response: off
 extends:
   - minimal
 rules:

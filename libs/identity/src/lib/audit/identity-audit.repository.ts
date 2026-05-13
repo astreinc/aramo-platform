@@ -17,6 +17,12 @@ export const EVENT_TYPES = [
   'identity.scope.created',
   'identity.service_account.created',
   'identity.external_identity.linked',
+  // PR-8.0a-Reground §6 amendment: 4 session-lifecycle event_types added.
+  // All tenant-scoped; emitted by auth-service /callback, /refresh, /logout.
+  'identity.session.issued',
+  'identity.session.refreshed',
+  'identity.session.revoked',
+  'identity.session.reuse_detected',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -26,6 +32,12 @@ export type EventType = (typeof EVENT_TYPES)[number];
 export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.tenant.created',
   'identity.membership.created',
+  // PR-8.0a-Reground §6 amendment: 4 session-lifecycle event_types are
+  // tenant-scoped (carry tenant_id; written to (tenant_id, subject_id, …) index).
+  'identity.session.issued',
+  'identity.session.refreshed',
+  'identity.session.revoked',
+  'identity.session.reuse_detected',
 ]);
 
 export interface WriteAuditEventInput {

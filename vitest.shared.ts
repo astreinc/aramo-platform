@@ -12,6 +12,7 @@ export default defineConfig({
     alias: {
       '@aramo/common': resolve(root, 'libs/common/src/index.ts'),
       '@aramo/auth': resolve(root, 'libs/auth/src/index.ts'),
+      '@aramo/auth-storage': resolve(root, 'libs/auth-storage/src/index.ts'),
       '@aramo/consent': resolve(root, 'libs/consent/src/index.ts'),
       '@aramo/audit': resolve(root, 'libs/audit/src/index.ts'),
       '@aramo/engagement': resolve(root, 'libs/engagement/src/index.ts'),
