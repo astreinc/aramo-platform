@@ -17,7 +17,9 @@ import {
 type VerifyKey = CryptoKey | KeyObject;
 
 import {
+  ACTOR_KINDS,
   CONSUMER_TYPES,
+  type ActorKind,
   type AuthContext,
   type ConsumerType,
 } from './auth-context.types.js';
@@ -25,8 +27,17 @@ import {
 const ISSUER = 'Aramo Core Auth';
 const ALG = 'RS256';
 
+// PR-8.0b directive §3 Topic 3 + §8.5: dual-auth widening. The single
+// JwtAuthGuard accepts a Bearer header (precedence) or, when absent, the
+// `aramo_access_token` cookie. The cookie name is inlined below at its
+// single use site (per locked invariant 6 — no shared constant, no
+// barrel export); drift versus the auth-service cookie setter
+// (apps/auth-service/src/app/auth/auth.controller.ts) is caught by the
+// Path-B filesystem-read test (§9 case 9, HC.16).
+
 interface AramoJwtPayload extends JWTPayload {
   consumer_type?: string;
+  actor_kind?: string;
   tenant_id?: string;
   scopes?: string[];
 }
@@ -48,33 +59,16 @@ export class JwtAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context
       .switchToHttp()
-      .getRequest<Request & { authContext?: AuthContext; requestId?: string }>();
+      .getRequest<
+        Request & {
+          authContext?: AuthContext;
+          requestId?: string;
+          cookies?: Record<string, string>;
+        }
+      >();
     const requestId = request.requestId ?? 'unknown';
 
-    const header = request.header('authorization');
-    if (header === undefined || header.length === 0) {
-      throw new AramoError(
-        'AUTH_REQUIRED',
-        'Authorization header is required',
-        401,
-        { requestId },
-      );
-    }
-    const match = /^Bearer\s+(.+)$/i.exec(header);
-    if (match === null) {
-      throw new AramoError(
-        'AUTH_REQUIRED',
-        'Authorization header must use Bearer scheme',
-        401,
-        { requestId },
-      );
-    }
-    const token = match[1];
-    if (token === undefined || token.length === 0) {
-      throw new AramoError('AUTH_REQUIRED', 'Authorization token empty', 401, {
-        requestId,
-      });
-    }
+    const token = this.extractToken(request, requestId);
     const audience = process.env['AUTH_AUDIENCE'];
     const publicKeyPem = process.env['AUTH_PUBLIC_KEY'];
     if (audience === undefined || publicKeyPem === undefined) {
@@ -115,6 +109,47 @@ export class JwtAuthGuard implements CanActivate {
     return true;
   }
 
+  private extractToken(
+    request: Request & { cookies?: Record<string, string> },
+    requestId: string,
+  ): string {
+    // Bearer-first / cookie-fallback per PR-8.0b directive §3 Topic 1 + §7.
+    // Malformed Authorization header → AUTH_REQUIRED, no cookie fallback.
+    // Empty cookie → treated as absent.
+    const header = request.header('authorization');
+    if (header !== undefined && header.length > 0) {
+      const match = /^Bearer\s+(.+)$/i.exec(header);
+      if (match === null) {
+        throw new AramoError(
+          'AUTH_REQUIRED',
+          'Authorization header must use Bearer scheme',
+          401,
+          { requestId },
+        );
+      }
+      const token = match[1];
+      if (token === undefined || token.length === 0) {
+        throw new AramoError(
+          'AUTH_REQUIRED',
+          'Authorization token empty',
+          401,
+          { requestId },
+        );
+      }
+      return token;
+    }
+    const cookieValue = request.cookies?.['aramo_access_token'];
+    if (cookieValue === undefined || cookieValue.length === 0) {
+      throw new AramoError(
+        'AUTH_REQUIRED',
+        'Authorization required',
+        401,
+        { requestId },
+      );
+    }
+    return cookieValue;
+  }
+
   private async resolveKey(pem: string): Promise<VerifyKey> {
     if (this.cachedKey !== undefined && this.cachedKeyPem === pem) {
       return this.cachedKey;
@@ -129,10 +164,12 @@ export class JwtAuthGuard implements CanActivate {
     payload: AramoJwtPayload,
     requestId: string,
   ): AuthContext {
-    const { sub, consumer_type, tenant_id, scopes, iat, exp } = payload;
+    const { sub, consumer_type, actor_kind, tenant_id, scopes, iat, exp } =
+      payload;
     if (
       sub === undefined ||
       consumer_type === undefined ||
+      actor_kind === undefined ||
       tenant_id === undefined ||
       scopes === undefined ||
       iat === undefined ||
@@ -153,6 +190,14 @@ export class JwtAuthGuard implements CanActivate {
         { requestId },
       );
     }
+    if (!isActorKind(actor_kind)) {
+      throw new AramoError(
+        'INVALID_TOKEN',
+        'Unknown actor_kind claim',
+        401,
+        { requestId },
+      );
+    }
     if (!Array.isArray(scopes) || !scopes.every((s) => typeof s === 'string')) {
       throw new AramoError('INVALID_TOKEN', 'Invalid scopes claim', 401, {
         requestId,
@@ -161,6 +206,7 @@ export class JwtAuthGuard implements CanActivate {
     return {
       sub,
       consumer_type,
+      actor_kind,
       tenant_id,
       scopes,
       iat,
@@ -171,4 +217,8 @@ export class JwtAuthGuard implements CanActivate {
 
 function isConsumerType(value: string): value is ConsumerType {
   return (CONSUMER_TYPES as readonly string[]).includes(value);
+}
+
+function isActorKind(value: string): value is ActorKind {
+  return (ACTOR_KINDS as readonly string[]).includes(value);
 }
