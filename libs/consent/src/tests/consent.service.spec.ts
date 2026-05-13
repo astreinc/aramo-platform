@@ -16,6 +16,7 @@ function recruiterContext(overrides: Partial<AuthContextType> = {}): AuthContext
   return {
     sub: RECRUITER_ID,
     consumer_type: 'recruiter',
+    actor_kind: 'user',
     tenant_id: TENANT_ID,
     scopes: ['consent:write'],
     iat: 0,
@@ -28,6 +29,7 @@ function portalContext(overrides: Partial<AuthContextType> = {}): AuthContextTyp
   return {
     sub: TALENT_ID,
     consumer_type: 'portal',
+    actor_kind: 'user',
     tenant_id: TENANT_ID,
     scopes: ['consent:write'],
     iat: 0,

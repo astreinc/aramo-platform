@@ -37,6 +37,7 @@ function makeAuth(): AuthContextType {
   return {
     sub: RECRUITER_ID,
     consumer_type: 'recruiter',
+    actor_kind: 'user',
     tenant_id: TENANT_ID,
     scopes: ['consent:write'],
     iat: 0,

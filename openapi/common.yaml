@@ -27,6 +27,7 @@ tags:
 
 security:
   - BearerAuth: []
+  - CookieAccessAuth: []
 
 paths:
   /consent/grant:
@@ -653,6 +654,15 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    # PR-8.0b directive §3 Topic 5 + §8.5: dual-auth widening on common
+    # endpoints. CookieAccessAuth is duplicated byte-for-byte from
+    # openapi/auth.yaml (locked invariant 4: duplicate-not-$ref — no
+    # cross-document $ref). If you change either definition, change both
+    # together and keep them byte-identical.
+    CookieAccessAuth:
+      type: apiKey
+      in: cookie
+      name: aramo_access_token
 
   schemas:
     ConsentScope:
