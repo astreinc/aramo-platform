@@ -1,0 +1,27 @@
+{
+  "name": "aramo-pact-provider",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "pact/provider/src",
+  "projectType": "library",
+  "tags": ["pact-provider"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["pact/provider/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo 'Pact provider verification is excluded from the aggregate test target. Run npm run pact:provider (or invoke vitest directly with ARAMO_RUN_PACT_PROVIDER=1) to execute it.'"
+      }
+    },
+    "pact-verify": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "ARAMO_RUN_PACT_PROVIDER=1 vitest run --passWithNoTests --root pact/provider"
+      }
+    }
+  }
+}
