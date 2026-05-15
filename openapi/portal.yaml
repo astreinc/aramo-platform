@@ -8,4 +8,15 @@ info:
     surface specified in Group 2 Section 2.8.
 paths: {}
 components:
-  schemas: {}
+  schemas:
+    DriftEvidenceMatchExplanation:
+      type: object
+      additionalProperties: false
+      required: [match_id]
+      properties:
+        match_id:
+          type: string
+          format: uuid
+        internal_reasoning:
+          type: string
+          description: Forbidden by Charter R10 — exposes internal reasoning to talent
