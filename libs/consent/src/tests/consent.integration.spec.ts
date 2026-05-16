@@ -1107,6 +1107,126 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(filtered.entries[0]?.event_type).toBe(target);
       }
     });
+
+    // ===================================================================
+    // Group 2 v2.7 multi-tenant honest-visibility tripwire (PR-11).
+    //
+    // Per doc/03-refusal-layer.md:132 — "The counterintuitive case from
+    // Group 2 v2.7 (Talent grants in Tenant B but Tenant A remains
+    // restricted) MUST be preserved." This case underpins R4 (no inferred
+    // consent), R5 (no widening via aggregation), and R6 (the per-tenant
+    // staleness window) — together the multi-tenant honest-visibility
+    // posture named in Plan v1.2 §3 M1 exit criterion 3.
+    //
+    // The existing cross-tenant isolation tests (resolveHistory at the
+    // §7 test 12 case above, resolveDecisionLog at the §9 test 11 case)
+    // cover the read-side enumeration paths. PR-11 adds the missing
+    // narrative case on the consent state and check paths: a grant in
+    // Tenant B must not appear in Tenant A's state view or check
+    // decision for the same talent_id. The resolver enforces this via
+    // the where: { tenant_id, talent_id } clause in resolveAllScopes /
+    // resolveConsentState, with tenant_id JWT-derived from authContext
+    // at the service layer. This test is a behavior tripwire: failure
+    // means the tenant scoping has regressed and Charter R5 is at risk.
+    // ===================================================================
+    describe('Group 2 v2.7 counterintuitive case — multi-tenant honest visibility', () => {
+      const tenantA = 'ffffff07-ffff-7fff-8fff-fffffffffffa';
+      const tenantB = 'ffffff07-ffff-7fff-8fff-fffffffffffb';
+      const sharedTalent = 'cccccccc-cccc-7ccc-8ccc-ccccccccffff';
+
+      async function seedFullGrantsInTenantB(): Promise<void> {
+        // Seed: full grant chain (profile_storage, matching, contacting)
+        // for sharedTalent in tenantB only. Tenant A has no events for
+        // this talent. The case is "grants in Tenant B; Tenant A remains
+        // restricted."
+        const grantBase = {
+          talent_id: sharedTalent,
+          action: 'granted' as const,
+          captured_method: 'self_signup' as const,
+          captured_by_actor_id: null,
+          consent_version: 'v1',
+          occurred_at: '2026-05-01T00:00:00Z',
+          requestId: 'v27-seed-req',
+        };
+        for (const [scope, idx] of [
+          ['profile_storage', 0],
+          ['matching', 1],
+          ['contacting', 2],
+        ] as const) {
+          await repo.recordConsentEvent({
+            ...grantBase,
+            tenant_id: tenantB,
+            scope: scope as never,
+            idempotencyKey: `aabbccdd-0000-7000-8000-ffff0700000${idx}`,
+            requestHash: `v27-seed-h-${scope}`,
+          });
+        }
+      }
+
+      it('Group 2 v2.7: Tenant B grant does NOT leak into Tenant A state (resolveAllScopes path)', async () => {
+        await seedFullGrantsInTenantB();
+
+        const tenantAState = await repo.resolveAllScopes({
+          tenant_id: tenantA,
+          talent_id: sharedTalent,
+          requestId: 'v27-state-a',
+        });
+        const tenantBState = await repo.resolveAllScopes({
+          tenant_id: tenantB,
+          talent_id: sharedTalent,
+          requestId: 'v27-state-b',
+        });
+
+        // Tenant A: no events for this talent → every scope status is
+        // no_grant. This is "Tenant A remains restricted" per
+        // doc/03-refusal-layer.md:132.
+        expect(tenantAState.tenant_id).toBe(tenantA);
+        for (const scope of tenantAState.scopes) {
+          expect(scope.status).toBe('no_grant');
+          expect(scope.granted_at).toBeNull();
+        }
+
+        // Tenant B: the three seeded scopes are granted.
+        expect(tenantBState.tenant_id).toBe(tenantB);
+        const grantedScopesInB = tenantBState.scopes
+          .filter((s) => s.status === 'granted')
+          .map((s) => s.scope)
+          .sort();
+        expect(grantedScopesInB).toEqual(
+          ['profile_storage', 'matching', 'contacting'].sort(),
+        );
+      });
+
+      it('Group 2 v2.7: Tenant B grant does NOT leak into Tenant A check (resolveConsentState path)', async () => {
+        await seedFullGrantsInTenantB();
+
+        const tenantADecision = await repo.resolveConsentState({
+          tenant_id: tenantA,
+          talent_id: sharedTalent,
+          operation: 'matching',
+          requestHash: 'v27-check-h-a',
+          requestId: 'v27-check-a',
+        });
+        const tenantBDecision = await repo.resolveConsentState({
+          tenant_id: tenantB,
+          talent_id: sharedTalent,
+          operation: 'matching',
+          requestHash: 'v27-check-h-b',
+          requestId: 'v27-check-b',
+        });
+
+        // Tenant A's check sees an empty ledger for this (tenant,
+        // talent) pair: result=error, reason=consent_state_unknown
+        // (Decision K in the resolver). The grant in Tenant B does not
+        // widen Tenant A's view.
+        expect(tenantADecision.result).toBe('error');
+        expect(tenantADecision.reason_code).toBe('consent_state_unknown');
+
+        // Tenant B's check sees its own grants: result=allowed.
+        expect(tenantBDecision.result).toBe('allowed');
+        expect(tenantBDecision.scope).toBe('matching');
+      });
+    });
   },
 );
 
