@@ -4,8 +4,17 @@
 // doc/05-conventions.md "Database Conventions". Cross-schema references
 // elsewhere in the program are UUID-only without FK constraints.
 //
-// PR-1 scaffolding only: this file declares the datasource and generator
-// configuration. Zero models exist yet.
+// PR-10 introduces the Talent core entity and the TalentTenantOverlay
+// (per Talent Record Specification §2.2). The Talent model is
+// tenant-agnostic identity (no tenant_id); all tenant-specific
+// relationship data lives in TalentTenantOverlay. The overlay's
+// tenant_id is a cross-schema reference to libs/identity's Tenant —
+// UUID-only, no FK (Architecture v2.0 §7).
+//
+// One optional Talent Record Spec §2.2 overlay field is DEFERRED from
+// PR-10 per directive §4.4 (PO ruling, 2026-05-16) and tracked as
+// follow-up F8. The deferral keeps the overlay vocabulary-clean for
+// Charter R10 enforcement.
 
 generator client {
   provider = "prisma-client-js"
@@ -14,4 +23,56 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  schemas  = ["talent"]
+}
+
+// Talent core — tenant-agnostic identity. Per Talent Record Spec §2.2:
+// "Talent core is tenant-agnostic identity." Carries identity anchor,
+// lifecycle state, and timestamps only. All tenant-specific data lives
+// in TalentTenantOverlay.
+model Talent {
+  id               String   @id @default(uuid()) @db.Uuid
+  // Closed vocabulary (Talent Record Spec §2.2, 4 values):
+  //   active | inactive | archived | deleted
+  // Implemented as String (not Prisma enum) per libs/identity / libs/consent
+  // precedent — neither uses Prisma enums for comparable closed-vocabulary
+  // status fields.
+  lifecycle_status String
+  created_at       DateTime @default(now()) @db.Timestamptz
+  updated_at       DateTime @updatedAt @db.Timestamptz
+
+  overlays         TalentTenantOverlay[]
+
+  @@schema("talent")
+}
+
+// TalentTenantOverlay — per-tenant relationship record. Per Talent Record
+// Spec §2.2: "All tenant-specific relationship data for a Talent lives in
+// the overlay. In v1, a Talent has one overlay (one tenant)."
+//
+// The @@unique([talent_id, tenant_id]) constraint enforces the v1
+// "one overlay per (talent, tenant) pair" rule and structurally
+// permits future multi-tenant features (additional overlays for
+// additional tenants) without core changes.
+model TalentTenantOverlay {
+  id                  String   @id @default(uuid()) @db.Uuid
+  // Intra-schema FK to Talent (allowed; the UUID-only-no-FK rule
+  // applies to CROSS-schema references per Architecture v2.0 §7).
+  talent_id           String   @db.Uuid
+  // Cross-schema reference to libs/identity's Tenant — UUID-only,
+  // no FK (Architecture v2.0 §7).
+  tenant_id           String   @db.Uuid
+  source_recruiter_id String?  @db.Uuid
+  // Closed vocabulary (Talent Record Spec §2.2, 4 values):
+  //   self_signup | recruiter_capture | referral | import
+  source_channel      String
+  tenant_status       String
+  created_at          DateTime @default(now()) @db.Timestamptz
+  updated_at          DateTime @updatedAt @db.Timestamptz
+
+  talent              Talent   @relation(fields: [talent_id], references: [id])
+
+  @@unique([talent_id, tenant_id])
+  @@index([tenant_id])
+  @@schema("talent")
 }
