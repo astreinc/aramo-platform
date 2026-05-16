@@ -1,0 +1,65 @@
+/* Aramo Tenant Console — base CSS.
+ *
+ * Minimal styling only. Visual design system is M3+ scope per PR-8
+ * Directive §5 non-goals. This file establishes structural classes
+ * referenced by Shell.tsx / LandingPage.tsx / LoginPage.tsx so the
+ * shell renders without layout collapse.
+ */
+
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  color: #1f2937;
+  background-color: #f9fafb;
+}
+
+body {
+  margin: 0;
+}
+
+.aramo-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.aramo-shell__header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: #ffffff;
+}
+
+.aramo-shell__brand {
+  font-weight: 600;
+}
+
+.aramo-shell__tenant {
+  margin-left: auto;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.aramo-shell__logout {
+  padding: 0.375rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.25rem;
+  background-color: #ffffff;
+  cursor: pointer;
+}
+
+.aramo-shell__main {
+  flex: 1;
+  padding: 1.5rem;
+}
+
+.aramo-landing h1 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+}
+
+.aramo-login {
+  padding: 1.5rem;
+}

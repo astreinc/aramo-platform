@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/apps/tenant-console",
+    "rootDir": "src",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "tsBuildInfoFile": "../../dist/apps/tenant-console/.tsbuildinfo",
+    "types": ["node", "vite/client"],
+    "paths": {}
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["src/**/*.spec.ts", "src/**/*.spec.tsx", "src/test-setup.ts"]
+}
