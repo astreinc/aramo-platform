@@ -131,40 +131,75 @@ jobs:
       - run: bash scripts/verify-vocabulary.sh
 
   # ---------------------------------------------------------------------------
-  # Placeholder gates — deferred until product artifacts exist.
-  # Each prints a GitHub Actions ::notice:: and exits 0. Future PRs that
-  # introduce the relevant artifacts will replace the echo with the real check.
+  # Refusal enforcement + drift detection (PR-M0R-2). Scripts live in
+  # ci/scripts/ and exit 0 against the current PR-1 paths: {} scaffolding;
+  # enforcement coverage grows as M2-M7 populate Portal/ATS schemas.
   # ---------------------------------------------------------------------------
 
   openapi-drift-check:
     name: openapi:drift-check
     runs-on: ubuntu-latest
+    needs: install
     steps:
-      - run: echo "::notice::openapi:drift-check deferred — no endpoints defined yet (PR-1 scaffolding only)"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run openapi:drift-check
 
   portal-refusal-check:
     name: portal:refusal-check
     runs-on: ubuntu-latest
+    needs: install
     steps:
-      - run: echo "::notice::portal:refusal-check deferred — no Portal schemas defined yet (PR-1 scaffolding only)"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run portal:refusal-check
 
   ats-refusal-check:
     name: ats:refusal-check
     runs-on: ubuntu-latest
+    needs: install
     steps:
-      - run: echo "::notice::ats:refusal-check deferred — no ATS schemas defined yet (PR-1 scaffolding only)"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run ats:refusal-check
 
   version-sync-check:
     name: version:sync-check
     runs-on: ubuntu-latest
+    needs: install
     steps:
-      - run: echo "::notice::version:sync-check deferred — no endpoints defined yet (PR-1 scaffolding only)"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run version:sync-check
 
   error-codes-check:
     name: error-codes:check
     runs-on: ubuntu-latest
+    needs: install
     steps:
-      - run: echo "::notice::error-codes:check deferred — no error codes defined yet (PR-1 scaffolding only)"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run error-codes:check
 
   pact-consumer:
     name: pact:consumer
