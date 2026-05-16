@@ -161,7 +161,7 @@ if (isStale && scope === 'contacting') {
 #### R7 — Aramo will not perform automated LinkedIn scraping
 
 **Enforcement (four-layer):**
-1. `SourceType` enum closed to four values (`indeed`, `github`, `astre_import`, `candidate_direct`)
+1. `SourceType` enum closed to four values (`indeed`, `github`, `astre_import`, `talent_direct`)
 2. `AdapterType` enum same; `x-prohibited-values: [linkedin, linkedin_scrape, linkedin_bulk, generic_web_scrape]` documented
 3. No adapter registration endpoint exists
 4. `SourcePolicyResponse.linkedin_automation_allowed: const: false`
@@ -173,7 +173,7 @@ enum SourceType {
   Indeed = 'indeed',
   GitHub = 'github',
   AstreImport = 'astre_import',
-  CandidateDirect = 'candidate_direct',
+  TalentDirect = 'talent_direct',
   LinkedIn = 'linkedin',  // ❌ VIOLATES R7
 }
 ```

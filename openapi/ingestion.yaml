@@ -1,10 +1,222 @@
 openapi: 3.1.0
 info:
   title: Aramo Ingestion API
-  version: 0.0.0
+  version: 0.1.0
   description: |
-    The ingestion adapter surface. Empty PR-1 scaffold; future PRs populate
-    operations per API Contracts v1.0 Phase 4.
-paths: {}
+    The ingestion adapter surface per API Contracts v1.0 Phase 4.
+    PR-12 introduces the generic payload-intake endpoint
+    (POST /v1/ingestion/payloads). Per-source adapter endpoints
+    (Indeed search-results, GitHub, Astre Import, Talent-Direct
+    intakes) populate in later M2 PRs. Raw payloads are stored by
+    reference, not as Talent truth (Phase 4 Invariant 7).
+paths:
+  /v1/ingestion/payloads:
+    post:
+      operationId: submitIngestionPayload
+      tags: [Ingestion]
+      summary: Submit a raw ingestion payload reference
+      description: |
+        Generic ingestion endpoint per Phase 4 Group 2 (the
+        generic-payload-intake group). Submits a RawPayloadReference
+        (storage_ref, sha256, content_type, captured_at) plus optional
+        dedup-supporting fields
+        (verified_email, profile_url). Passive intake: the endpoint
+        receives what is submitted; the platform does not crawl, search,
+        or autonomously discover (Charter R2 — no sourcing engine).
+
+        Deduplication is detection-and-flag (PR-12 §4.4): the response
+        reports the dedup outcome (status accepted or duplicate, with
+        the match signal that fired: sha256 / verified_email /
+        profile_url). PR-12 does not merge, resolve, or canonicalize
+        duplicates.
+
+        Closed source enum (Phase 4 Allowed Adapter Types):
+        talent_direct, indeed, github, astre_import. Values outside
+        this set are rejected at the wire.
+      parameters:
+        - name: X-Request-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: |
+            Optional. Generated server-side as UUID v7 if absent.
+            Echoed on outgoing responses and threaded into error
+            envelopes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestionPayloadRequest'
+      responses:
+        '201':
+          description: Ingestion result — payload stored or duplicate detected
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionPayloadResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Tenant access denied
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
 components:
-  schemas: {}
+  schemas:
+    IngestionSource:
+      type: string
+      description: |
+        Closed set of allowed source identifiers per API Contracts v1.0
+        Phase 4 Allowed Adapter Types. Values outside this set are
+        rejected at the wire. The prohibited-source-type wire test
+        ships in PR-14 per directive §5.
+      enum:
+        - talent_direct
+        - indeed
+        - github
+        - astre_import
+
+    IngestionPayloadRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Generic ingestion payload-intake request body. Mirrors API
+        Contracts v1.0 Phase 4 RawPayloadReference (storage_ref,
+        sha256, content_type, captured_at) plus the source identifier
+        and
+        optional dedup-supporting fields. tenant_id is NEVER a
+        request field — it is resolved server-side from the auth
+        context (libs/consent precedent).
+      required:
+        - source
+        - storage_ref
+        - sha256
+        - content_type
+        - captured_at
+      properties:
+        source:
+          $ref: '#/components/schemas/IngestionSource'
+        storage_ref:
+          type: string
+          maxLength: 2048
+          description: |
+            S3 storage reference (the object key/path). PR-12 stores
+            the reference; not the bytes (Phase 4 Invariant 7).
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: |
+            sha256 hash of the payload bytes, 64 lowercase hex chars.
+            Content-addressing key — (tenant_id, sha256) is unique at
+            the persistence layer.
+        content_type:
+          type: string
+          maxLength: 255
+        captured_at:
+          type: string
+          format: date-time
+          description: When the source captured the payload.
+        verified_email:
+          type: string
+          maxLength: 320
+          description: |
+            Optional dedup-supporting field. Normalized server-side
+            (trim + lowercase) before storage and matching.
+        profile_url:
+          type: string
+          maxLength: 2048
+          description: |
+            Optional dedup-supporting field. Normalized server-side
+            (trim only — URL paths can be case-significant).
+
+    DedupMatchSignal:
+      type: string
+      description: |
+        Which dedup signal fired. null on a fresh acceptance.
+      enum:
+        - sha256
+        - verified_email
+        - profile_url
+
+    DedupOutcome:
+      type: object
+      additionalProperties: false
+      description: |
+        Dedup detection result. PR-12 reports the outcome only — no
+        merge, no resolution, no canonicalization.
+      required:
+        - match_signal
+        - existing_payload_id
+      properties:
+        match_signal:
+          oneOf:
+            - $ref: '#/components/schemas/DedupMatchSignal'
+            - type: 'null'
+        existing_payload_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+
+    IngestionPayloadResponse:
+      type: object
+      additionalProperties: false
+      description: |
+        Generic ingestion result. Reports whether the submitted
+        payload was a fresh acceptance or matched a prior payload.
+        Charter-R10-clean — no R10-forbidden output fields.
+      required:
+        - id
+        - tenant_id
+        - source
+        - status
+        - dedup
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: |
+            For accepted payloads, the new row's id. For duplicates,
+            the existing row's id (the row that already represents
+            this payload in the tenant).
+        tenant_id:
+          type: string
+          format: uuid
+        source:
+          $ref: '#/components/schemas/IngestionSource'
+        status:
+          type: string
+          enum:
+            - accepted
+            - duplicate
+        dedup:
+          $ref: '#/components/schemas/DedupOutcome'
+        created_at:
+          type: string
+          format: date-time
