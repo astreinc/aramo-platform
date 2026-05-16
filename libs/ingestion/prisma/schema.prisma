@@ -4,8 +4,14 @@
 // doc/05-conventions.md "Database Conventions". Cross-schema references
 // elsewhere in the program are UUID-only without FK constraints.
 //
-// PR-1 scaffolding only: this file declares the datasource and generator
-// configuration. Zero models exist yet.
+// PR-12 introduces the raw payload reference model (Plan v1.2 §3 M2
+// Track A; API Contracts v1.0 Phase 4 — Invariant 7 "Raw payloads are
+// stored by reference, not treated as Talent truth"). PR-12 is GENERIC
+// ingestion only — passive intake; per-source adapters are later PRs;
+// ingestion Pact tests are PR-14; source-consent mapping is PR-13.
+//
+// The model is Charter-R10-clean (no R10-forbidden output fields).
+// Cross-schema tenant_id is UUID-only with no FK (Architecture v2.0 §7).
 
 generator client {
   provider = "prisma-client-js"
@@ -14,4 +20,54 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  schemas  = ["ingestion"]
+}
+
+// RawPayloadReference — the persistence model for the generic ingestion
+// path. Mirrors API Contracts v1.0 Phase 4 RawPayloadReference wire
+// schema (storage_ref, sha256, content_type, captured_at) and adds the
+// persistence-only fields required by Plan §3 M2 Track A: id PK,
+// tenant_id, source identifier, dedup-supporting fields
+// (verified_email, profile_url), and server-set audit timestamps.
+//
+// Idempotency-by-content-addressing: a (tenant_id, sha256) pair is
+// unique — the same payload bytes submitted twice in a tenant resolve
+// to the same row at the persistence layer. The dedup logic in §4.4
+// surfaces additional verified-email / profile-URL match signals
+// independent of sha256.
+//
+// PR-12 detects-and-flags duplicates; it does not merge or canonicalize
+// (per directive §4.4 and §5).
+model RawPayloadReference {
+  id              String   @id @default(uuid()) @db.Uuid
+  // Cross-schema reference to libs/identity's Tenant — UUID-only,
+  // no FK (Architecture v2.0 §7).
+  tenant_id       String   @db.Uuid
+  // Closed vocabulary (API Contracts v1.0 Phase 4 AdapterType allowed
+  // values): talent_direct | indeed | github | astre_import.
+  // Implemented as String (not Prisma enum) per the libs/talent /
+  // libs/consent precedent.
+  source          String
+  // RawPayloadReference wire fields (Phase 4 §"Raw Payload Reference Model"):
+  storage_ref     String
+  sha256          String
+  content_type    String
+  captured_at     DateTime @db.Timestamptz
+  // Dedup-supporting fields (Plan §3 M2 Track A — "verified email
+  // match, profile URL match"). Both optional: a given payload may
+  // carry one, both, or neither.
+  verified_email  String?
+  profile_url     String?
+  // Server-set audit timestamps.
+  created_at      DateTime @default(now()) @db.Timestamptz
+  updated_at      DateTime @updatedAt @db.Timestamptz
+
+  // Content-addressed idempotency at the persistence layer: the same
+  // payload bytes within a tenant resolve to a single row.
+  @@unique([tenant_id, sha256])
+  // Dedup query support — verified-email and profile-URL match within
+  // a tenant.
+  @@index([tenant_id, verified_email])
+  @@index([tenant_id, profile_url])
+  @@schema("ingestion")
 }
