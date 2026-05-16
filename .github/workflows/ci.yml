@@ -212,13 +212,28 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npx vitest run --root pact/consumers/ats-thin
+      - run: npm run pact:consumer
 
   pact-provider:
     name: pact:provider
     runs-on: ubuntu-latest
+    needs: install
     steps:
-      - run: echo "::notice::pact:provider deferred — no Pact provider verification defined yet (PR-1 scaffolding only)"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run prisma:generate
+      # pact-consumer must run first to generate the pact JSON files that
+      # pact-provider verifies against. The pact/pacts/ directory is
+      # gitignored (per repo convention) and CI runs jobs in isolated
+      # checkouts, so the verifier has nothing to verify against unless
+      # pact-consumer regenerates the pact files in this same job's
+      # working directory. (PR-M0R-1 Amendment v1.2 §3.1 Defect A fix.)
+      - run: npm run pact:consumer
+      - run: npm run pact:provider
 
   tests-integration:
     name: tests:integration
