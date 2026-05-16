@@ -67,9 +67,9 @@ function listWorkspacePackageJsons(): Array<{ source: string; version: string | 
   for (const dir of [APPS_DIR, LIBS_DIR]) {
     if (!existsSync(dir)) continue;
     for (const name of readdirSync(dir)) {
-      const candidate = join(dir, name, 'package.json');
-      if (existsSync(candidate) && statSync(candidate).isFile()) {
-        out.push({ source: candidate, version: readVersion(JSON.parse(readFileSync(candidate, 'utf8'))) });
+      const target = join(dir, name, 'package.json');
+      if (existsSync(target) && statSync(target).isFile()) {
+        out.push({ source: target, version: readVersion(JSON.parse(readFileSync(target, 'utf8'))) });
       }
     }
   }

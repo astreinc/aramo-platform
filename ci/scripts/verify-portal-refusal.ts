@@ -12,12 +12,12 @@
 //        - prefix: override_*  (Charter R8 — no recruiter-judgment overrides
 //                               of system classification, surfaced to talent)
 //                  recruiter_* (recruiter-only fields must not bleed into
-//                               candidate-facing endpoints — PR-M0R-2 §4)
+//                               talent-facing endpoints — PR-M0R-2 §4)
 //
 // Exits 0 against the current paths: {} components.schemas: {} stub.
 // Enforces as M2-M6 populate Portal schemas. Out of scope for this script:
-// LinkedIn ingestion refusals (enforced via API absence, not schema —
-// directive §7).
+// Charter R7 ingestion refusals against third-party professional-network
+// sources (enforced via API absence, not schema — directive §7).
 //
 // Run via: node --import jiti/register ci/scripts/verify-portal-refusal.ts
 // Self-test via: SELF_TEST=1 node --import jiti/register ci/scripts/verify-portal-refusal.ts

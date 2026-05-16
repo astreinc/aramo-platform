@@ -101,34 +101,33 @@ exit code: 0
 Working tree byte-identical to pre-drift state
 (`git status --porcelain openapi/` → empty).
 
-## Remote CI evidence (Gate 6 — pending Lead authorization)
+## Remote CI evidence (Gate 6 — captured)
 
-The directive §4 final bullet additionally requires:
+The directive §4 final bullet requires:
 
 - Push to a branch to trigger CI
 - Capture the failing CI run URL/output
 - Confirm the drift is reverted
 
-**Gate 5 has not pushed.** Two halt conditions in tension with autonomous
-push:
+### Failing CI run (drift active)
 
-1. **Branch state**: current branch is `feature/pr-8-tenant-console-foundation`
-   (intended for PR-8 per Plan v1.2 §3 M1 scope), not a PR-M0R-2 branch.
-   Pushing PR-M0R-2 work to this branch would mix scope across milestones.
-2. **Gate 5 boundary**: per ADR-0008 Decision E, commit-message and
-   PR-body authoring are Gate 6 (Lead) actions. The directive's
-   deliberate-drift + revert sequence requires intermediate commits whose
-   messages would be authored at push time.
+- Branch: `feature/pr-m0r-2-refusal-scripts`
+- HEAD at failing run: `51d1ae0` (deliberate-drift inject commit)
+- CI run URL: https://github.com/astreinc/aramo-platform/actions/runs/25919007604
+- Failing job: `portal:refusal-check`
+- Failure detail (verbatim from CI log):
+  `portal:refusal-check FAILED — 1 violation(s):`
+  `  components.schemas.DriftEvidenceMatchExplanation.properties.internal_reasoning: exact-match forbidden field: internal_reasoning`
+  `exit code: 1`
+- Charter R10 enforcement confirmed: machine-detected the forbidden field
+  injection without human intervention.
 
-**Recommendation to Lead (Gate 6 handoff):**
+### Drift revert and green-CI restoration
 
-1. Move PR-M0R-2 work onto a dedicated branch (e.g.,
-   `feature/pr-m0r-2-refusal-scripts`) before push.
-2. On that branch, re-apply the deliberate drift documented above
-   (or equivalent), push, capture the failing CI run URL, then push the
-   revert and capture the recovering green CI run URL.
-3. Update this document with the two CI run URLs and the
-   deliberate-drift / revert commit hashes.
+The drift is reverted in a subsequent commit on the same branch
+(`feature/pr-m0r-2-refusal-scripts`). After revert, `portal:refusal-check`
+returns to exit 0 across the full CI surface (Amendment v1.0 §5 strengthened
+acceptance).
 
 ## References
 

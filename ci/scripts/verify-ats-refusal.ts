@@ -17,8 +17,9 @@
 //      ats refusal check").
 //
 // Exits 0 against the current paths: {} components.schemas: {} stub.
-// Enforces as M2-M6 populate ATS schemas. LinkedIn ingestion refusals are
-// enforced via API absence, not schema (directive §7).
+// Enforces as M2-M6 populate ATS schemas. Charter R7 ingestion refusals
+// against third-party professional-network sources are enforced via API
+// absence, not schema (directive §7).
 //
 // Run via: node --import jiti/register ci/scripts/verify-ats-refusal.ts
 // Self-test via: SELF_TEST=1 node --import jiti/register ci/scripts/verify-ats-refusal.ts

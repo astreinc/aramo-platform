@@ -42,12 +42,17 @@ R7_ALLOWLIST=(
   "doc/06-lead-review-checklist.md"   # PR-1: R7 review check + Pact reference linkedin-rejection.consumer.test.ts
   "eslint.config.mjs"                 # PR-1: header comment documents two-tier design and names the term
   "scripts/verify-vocabulary.sh"      # PR-1: this script itself defines the search pattern and allowlist
+  "doc/00-ci-deliberate-failure-evidence.md"  # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1, PO-ratified 2026-05-15): CI evidence doc quotes Charter R10
 )
 
 # Glob-form exclusions for paths whose entire subtree is allowed to mention
 # the term in legitimate "do not use" prompt / spec documentation.
 R7_ALLOWLIST_GLOB=(
   "doc/prompts"                       # PR-2: local prompt drafts use "linkedin_*" in "do not add" guardrails
+  "doc/milestone-signoffs"            # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1): milestone refusal sign-off records routinely quote Charter
+  "doc/adr"                           # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1): ADRs may reference refusal commitments
+  "Aramo-*-LOCKED.docx"               # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1): locked artifact filenames preserved for fidelity
+  "Aramo-*-Closure-Record-*.docx"     # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1): closure records preserved for fidelity
 )
 
 # =============================================================================
@@ -74,9 +79,22 @@ TIER2_EXCLUDES=(
   "doc/06-lead-review-checklist.md"   # PR-1: review checks reference vocabulary anti-terms
   "doc/07-prompt-template.md"         # PR-1: prompt template uses anti-terms in worked examples
   "doc/adr/0010-verification-byte-fidelity-and-additive-index-maturation.md"  # PR-7.1: ADR codifies vocabulary check at verify-before-drafting tier; cites locked anti-terms in Decision A rationale
+  "doc/adr/**"                        # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1): ADRs may quote Charter when referencing refusal commitments
   "doc/prompts/**"                    # PR-2: local prompt drafts use anti-terms in "do not use" guardrails
+  "doc/milestone-signoffs/**"         # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1): milestone refusal sign-off records quote Charter
+  "doc/00-ci-deliberate-failure-evidence.md"  # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1, PO-ratified 2026-05-15): CI evidence doc quotes Charter R10
+  "Aramo-*-LOCKED.docx"               # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1): locked artifact filenames preserved for fidelity
+  "Aramo-*-Closure-Record-*.docx"     # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1): closure records preserved for fidelity
   "eslint.config.mjs"                 # PR-1: ESLint vocabulary rule patterns literally contain anti-terms
   "scripts/verify-vocabulary.sh"      # PR-1: this script contains the patterns being searched for
+  # PR-M0R-2 Amendment v1.1 §4.5 (Policy 1, PO-ratified 2026-05-15):
+  # refusal-enforcement script in ci/scripts/verify-*.ts legitimately
+  # contains the terms it enforces against by design. Same structural
+  # pattern as the pre-existing TIER2_EXCLUDES entries for
+  # scripts/verify-vocabulary.sh and eslint.config.mjs.
+  "ci/scripts/verify-ats-refusal.ts"
+  "ci/scripts/verify-portal-refusal.ts"
+  "ci/scripts/verify-error-codes.ts"
 )
 
 # =============================================================================
