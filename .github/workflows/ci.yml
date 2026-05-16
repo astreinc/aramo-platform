@@ -191,6 +191,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run prisma:generate
+      # pact-consumer must run first to generate the pact JSON files that
+      # pact-provider verifies against. The pact/pacts/ directory is
+      # gitignored (per repo convention) and CI runs jobs in isolated
+      # checkouts, so the verifier has nothing to verify against unless
+      # pact-consumer regenerates the pact files in this same job's
+      # working directory. (PR-M0R-1 Amendment v1.2 §3.1 Defect A fix.)
+      - run: npm run pact:consumer
       - run: npm run pact:provider
 
   tests-integration:

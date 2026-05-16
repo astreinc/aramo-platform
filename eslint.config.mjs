@@ -66,6 +66,29 @@ export default [
       ],
     },
   },
+  /**
+   * Amendment v1.3 §3.2 (engineering Lead/Architect, 2026-05-15):
+   * pact-provider verifier test-bootstraps apps/auth-service's
+   * AuthServiceModule for contract verification. Production code does
+   * not cross this app-boundary. Test-environment exception narrowly
+   * scoped to this single project pair (pact/provider/src → @aramo/auth-service).
+   * Future cross-app test bootstraps require separate amendment.
+   */
+  {
+    files: ['pact/provider/src/**/*.{ts,tsx,js,jsx}'],
+    rules: {
+      '@nx/enforce-module-boundaries': [
+        'error',
+        {
+          enforceBuildableLibDependency: true,
+          allow: ['@aramo/auth-service'],
+          depConstraints: [
+            { sourceTag: '*', onlyDependOnLibsWithTags: ['*'] },
+          ],
+        },
+      ],
+    },
+  },
   {
     // Vocabulary discipline (per doc/02-claude-code-discipline.md Rule 5).
     // Scoped to product source only — eslint config, scripts, and docs are

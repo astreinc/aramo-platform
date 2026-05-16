@@ -14,7 +14,6 @@ import type { NextFunction, Request, Response } from 'express';
 import { v7 as uuidv7 } from 'uuid';
 import { Verifier } from '@pact-foundation/pact';
 import { afterAll, beforeAll, describe, it } from 'vitest';
-
 import { RequestIdMiddleware } from '@aramo/common';
 import {
   IdentityService,
@@ -22,8 +21,7 @@ import {
   RoleService,
   TenantService,
 } from '@aramo/identity';
-
-import { AuthServiceModule } from '../../../apps/auth-service/src/app/auth/auth.module.js';
+import { AuthServiceModule } from '@aramo/auth-service';
 
 import { generateTestKeyPair } from './auth-helpers.js';
 import { stateHandlers } from './state-handlers.js';
