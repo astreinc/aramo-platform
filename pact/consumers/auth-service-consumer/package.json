@@ -1,0 +1,6 @@
+{
+  "name": "@aramo-pact-consumers/auth-service-consumer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs"
+}

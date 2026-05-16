@@ -1,0 +1,27 @@
+{
+  "name": "auth-service-consumer-pact",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "pact/consumers/auth-service-consumer/src",
+  "projectType": "library",
+  "tags": ["pact-consumer"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["pact/consumers/auth-service-consumer/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo 'Pact contract tests are excluded from the aggregate test target. Run nx pact-test auth-service-consumer-pact (or invoke vitest directly) to execute them.'"
+      }
+    },
+    "pact-test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root pact/consumers/auth-service-consumer"
+      }
+    }
+  }
+}

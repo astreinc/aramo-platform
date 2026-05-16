@@ -12,6 +12,11 @@ export default defineConfig({
     alias: {
       '@aramo/common': resolve(root, 'libs/common/src/index.ts'),
       '@aramo/auth': resolve(root, 'libs/auth/src/index.ts'),
+      // Amendment v1.3 §3.2 (engineering Lead/Architect, 2026-05-15):
+      // mirrors the tsconfig.base.json @aramo/auth-service alias so vitest
+      // runtime resolves the test-bootstrap import in pact/provider/src/
+      // verify.ts. eslint-side boundary override is scoped to that file pair.
+      '@aramo/auth-service': resolve(root, 'apps/auth-service/src/app/auth/auth.module.ts'),
       '@aramo/auth-storage': resolve(root, 'libs/auth-storage/src/index.ts'),
       '@aramo/consent': resolve(root, 'libs/consent/src/index.ts'),
       '@aramo/audit': resolve(root, 'libs/audit/src/index.ts'),
