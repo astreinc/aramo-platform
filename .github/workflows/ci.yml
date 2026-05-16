@@ -250,3 +250,96 @@ jobs:
       - run: npm ci
       - run: npm run prisma:generate
       - run: npx vitest run --root libs/consent
+
+  # ---------------------------------------------------------------------------
+  # Deployment-gate aggregator (PR-M0R-3 §4.1, VARIANT B — in-ci.yml).
+  #
+  # Single aggregator job wiring the 12 named CI gates from Plan v1.2 §4
+  # Stage 4 as `needs:` dependencies. Provides one PASS/FAIL status check
+  # that GitHub branch-protection rules can require to block invalid
+  # deployments (Plan v1.2 §6 DoD #6 — "CI blocks invalid deployments
+  # (deployment-gate.yml enforcing all checks)").
+  #
+  # VARIANT choice: aggregator-in-ci.yml. The directive's §4.1 first
+  # preference was a separate deployment-gate.yml file with cross-workflow
+  # `needs:` references; GitHub Actions does not support cross-workflow
+  # `needs:` natively (only `workflow_run` async). Directive §4.1
+  # explicitly authorizes the in-ci.yml aggregator as functionally
+  # identical and cleaner; chosen here.
+  #
+  # `if: always()` is required so this job runs even when needed jobs
+  # fail — the override-label step (per §4.2) can then decide whether
+  # to pass anyway. Without `if: always()`, a failing needed job would
+  # skip this aggregator and the override could never apply.
+  #
+  # Override-label discipline per Plan v1.2 §4 Stage 4.
+  # Use of `override:ok-to-merge` label requires a written
+  # `Override-Justification: <≥40 chars>` line in the PR body.
+  # Override usage should be rare and explicit; pattern is recorded
+  # in milestone closure records for audit trail.
+  # ---------------------------------------------------------------------------
+
+  deployment-gate:
+    name: deployment-gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - openapi-validate
+      - openapi-lint
+      - openapi-drift-check
+      - portal-refusal-check
+      - ats-refusal-check
+      - version-sync-check
+      - error-codes-check
+      - pact-consumer
+      - pact-provider
+      - test-unit
+      - tests-integration
+      - lint-nx-boundaries
+    steps:
+      - name: Evaluate override label and justification
+        id: override
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Override applies only on pull_request events. For push to main,
+            // skip the override path entirely (the needs-status check below
+            // is the sole gate).
+            if (context.eventName !== 'pull_request') {
+              core.setOutput('override_active', 'false');
+              core.info('Not a pull_request event; override path skipped.');
+              return;
+            }
+            const labels = (context.payload.pull_request?.labels ?? [])
+              .map((l) => l.name);
+            const hasOverrideLabel = labels.includes('override:ok-to-merge');
+            const body = context.payload.pull_request?.body ?? '';
+            const justifMatch = body.match(
+              /^Override-Justification:\s*(.{40,})$/m,
+            );
+            if (hasOverrideLabel && justifMatch) {
+              core.notice(
+                `Override active per PR label override:ok-to-merge with valid justification: ${justifMatch[1].slice(0, 100)}…`,
+              );
+              core.setOutput('override_active', 'true');
+              return;
+            }
+            if (hasOverrideLabel && !justifMatch) {
+              core.setFailed(
+                'override:ok-to-merge label present but Override-Justification (≥40 chars) line is missing or too short in PR body. Add a single line beginning "Override-Justification: " followed by ≥40 characters of rationale.',
+              );
+              return;
+            }
+            core.setOutput('override_active', 'false');
+      - name: Verify all 12 required deployment gates succeeded
+        if: steps.override.outputs.override_active != 'true'
+        env:
+          NEEDS_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "Needs results: $NEEDS_RESULTS"
+          # Fail if any needed job did not succeed (failure, cancelled, or skipped).
+          if echo "$NEEDS_RESULTS" | grep -qE '"result":[[:space:]]*"(failure|cancelled|skipped)"'; then
+            echo "ERROR: One or more required deployment gates did not succeed."
+            exit 1
+          fi
+          echo "All 12 required deployment gates passed."
