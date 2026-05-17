@@ -264,6 +264,7 @@ jobs:
       - run: npm run prisma:generate
       - run: npx vitest run --root libs/consent
       - run: npx vitest run --root libs/examination
+      - run: npx vitest run --root libs/matching
 
   # ---------------------------------------------------------------------------
   # Deployment-gate aggregator (PR-M0R-3 §4.1, VARIANT B — in-ci.yml).
