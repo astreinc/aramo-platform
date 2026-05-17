@@ -69,10 +69,15 @@ export default [
   /**
    * Amendment v1.3 §3.2 (engineering Lead/Architect, 2026-05-15):
    * pact-provider verifier test-bootstraps apps/auth-service's
-   * AuthServiceModule for contract verification. Production code does
-   * not cross this app-boundary. Test-environment exception narrowly
-   * scoped to this single project pair (pact/provider/src → @aramo/auth-service).
-   * Future cross-app test bootstraps require separate amendment.
+   * AuthServiceModule for contract verification.
+   *
+   * PR-14 §4.9 (2026-05-17): extended to also allow @aramo/api so the
+   * provider verifier can bootstrap apps/api's AppModule for F7
+   * (tenant-console-consumer + ingestion-consumer + prohibited-source-type
+   * pact verification). Production code does not cross this app-boundary.
+   * Test-environment exception narrowly scoped to this single project
+   * (pact/provider/src → {@aramo/auth-service, @aramo/api}). Future
+   * cross-app test bootstraps require separate amendment.
    */
   {
     files: ['pact/provider/src/**/*.{ts,tsx,js,jsx}'],
@@ -81,7 +86,7 @@ export default [
         'error',
         {
           enforceBuildableLibDependency: true,
-          allow: ['@aramo/auth-service'],
+          allow: ['@aramo/auth-service', '@aramo/api'],
           depConstraints: [
             { sourceTag: '*', onlyDependOnLibsWithTags: ['*'] },
           ],

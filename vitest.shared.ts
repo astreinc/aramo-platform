@@ -10,6 +10,11 @@ const root = resolve(fileURLToPath(import.meta.url), '..');
 export default defineConfig({
   resolve: {
     alias: {
+      // PR-14 Amendment v1.0 §2.1 (engineering Lead/Architect, 2026-05-17):
+      // mirrors the tsconfig.base.json @aramo/api alias so vitest runtime
+      // resolves the test-bootstrap import in pact/provider/src/verify-api.ts.
+      // eslint-side boundary override extended in the same PR-14 §4.9 edit.
+      '@aramo/api': resolve(root, 'apps/api/src/app.module.ts'),
       '@aramo/common': resolve(root, 'libs/common/src/index.ts'),
       '@aramo/auth': resolve(root, 'libs/auth/src/index.ts'),
       // Amendment v1.3 §3.2 (engineering Lead/Architect, 2026-05-15):

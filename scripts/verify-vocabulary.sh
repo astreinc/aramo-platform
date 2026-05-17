@@ -43,6 +43,8 @@ R7_ALLOWLIST=(
   "eslint.config.mjs"                 # PR-1: header comment documents two-tier design and names the term
   "scripts/verify-vocabulary.sh"      # PR-1: this script itself defines the search pattern and allowlist
   "doc/00-ci-deliberate-failure-evidence.md"  # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1, PO-ratified 2026-05-15): CI evidence doc quotes Charter R10
+  "openapi/ingestion.yaml"            # PR-14 ADR-0011, Architect-approved 2026-05-17: R7 Layers 2/4 — x-prohibited-values annotation (§4.3) + SourcePolicyResponse.linkedin_automation_allowed const-false (§4.4)
+  "ci/scripts/verify-ingestion-refusal.ts"  # PR-14 ADR-0011 / Directive Amendment v1.0 §4 — verify-ingestion-refusal.ts names linkedin_automation_allowed in its CONST_FALSE_INVARIANTS to enforce R7 Layer 4; mechanical consequence of directive §4.1. Architect-approved 2026-05-17.
 )
 
 # Glob-form exclusions for paths whose entire subtree is allowed to mention
@@ -95,6 +97,10 @@ TIER2_EXCLUDES=(
   "ci/scripts/verify-ats-refusal.ts"
   "ci/scripts/verify-portal-refusal.ts"
   "ci/scripts/verify-error-codes.ts"
+  # PR-14 §4.9: ingestion refusal-enforcement script contains FORBIDDEN_PREFIXES
+  # 'evaluation_' / 'rank_' by design (it enforces against them). Same structural
+  # pattern as the three pre-existing refusal-script TIER2_EXCLUDES entries.
+  "ci/scripts/verify-ingestion-refusal.ts"
 )
 
 # =============================================================================
