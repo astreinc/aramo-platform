@@ -21,21 +21,6 @@ import {
 } from 'jose';
 import { AppModule } from '@aramo/api';
 
-// Direct file imports for the two per-module PrismaService classes: each
-// module ships its own PrismaService (consent + ingestion). In production
-// those constructors are reached through Nest DI without an arg, so they
-// fall through to process.env['DATABASE_URL']; the test harness needs to
-// override both with explicit-URL factory bindings (the optional `string`
-// parameter trips reflect-metadata when Nest tries to inject it). The
-// classes are not exported through @aramo/consent or @aramo/ingestion's
-// public surface (PR-2 precedent: PrismaService is an internal wiring
-// detail of each module). Test-only relative import — narrowly scoped to
-// this provider-verification harness.
-// eslint-disable-next-line @nx/enforce-module-boundaries
-import { PrismaService as ConsentPrismaService } from '../../../libs/consent/src/lib/prisma/prisma.service.js';
-// eslint-disable-next-line @nx/enforce-module-boundaries
-import { PrismaService as IngestionPrismaService } from '../../../libs/ingestion/src/lib/prisma/prisma.service.js';
-
 // PR-14 §4.7 + Amendment v1.0 §2 + PR-15 §4.2/§4.3 — Pact provider
 // verifier for apps/api.
 //
@@ -292,12 +277,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
 
       module = await Test.createTestingModule({
         imports: [AppModule],
-      })
-        .overrideProvider(ConsentPrismaService)
-        .useFactory({ factory: () => new ConsentPrismaService(url) })
-        .overrideProvider(IngestionPrismaService)
-        .useFactory({ factory: () => new IngestionPrismaService(url) })
-        .compile();
+      }).compile();
 
       app = module.createNestApplication();
       // Mirror apps/api/src/main.ts: cookieParser() before ValidationPipe
