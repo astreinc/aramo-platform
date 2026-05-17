@@ -23,6 +23,7 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
+      "@aramo/api": ["apps/api/src/app.module.ts"],
       "@aramo/audit": ["libs/audit/src/index.ts"],
       "@aramo/auth": ["libs/auth/src/index.ts"],
       "@aramo/auth-service": ["apps/auth-service/src/app/auth/auth.module.ts"],

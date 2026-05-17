@@ -175,6 +175,19 @@ jobs:
       - run: npm ci
       - run: npm run ats:refusal-check
 
+  ingestion-refusal-check:
+    name: ingestion:refusal-check
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run ingestion:refusal-check
+
   version-sync-check:
     name: version:sync-check
     runs-on: ubuntu-latest
@@ -254,7 +267,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Deployment-gate aggregator (PR-M0R-3 §4.1, VARIANT B — in-ci.yml).
   #
-  # Single aggregator job wiring the 12 named CI gates from Plan v1.2 §4
+  # Single aggregator job wiring the 13 named CI gates from Plan v1.2 §4
   # Stage 4 as `needs:` dependencies. Provides one PASS/FAIL status check
   # that GitHub branch-protection rules can require to block invalid
   # deployments (Plan v1.2 §6 DoD #6 — "CI blocks invalid deployments
@@ -289,6 +302,7 @@ jobs:
       - openapi-drift-check
       - portal-refusal-check
       - ats-refusal-check
+      - ingestion-refusal-check
       - version-sync-check
       - error-codes-check
       - pact-consumer
@@ -331,7 +345,7 @@ jobs:
               return;
             }
             core.setOutput('override_active', 'false');
-      - name: Verify all 12 required deployment gates succeeded
+      - name: Verify all 13 required deployment gates succeeded
         if: steps.override.outputs.override_active != 'true'
         env:
           NEEDS_RESULTS: ${{ toJSON(needs) }}
@@ -342,4 +356,4 @@ jobs:
             echo "ERROR: One or more required deployment gates did not succeed."
             exit 1
           fi
-          echo "All 12 required deployment gates passed."
+          echo "All 13 required deployment gates passed."

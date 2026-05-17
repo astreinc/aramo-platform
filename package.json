@@ -19,7 +19,7 @@
     "lint:nx-boundaries": "nx run-many --target=lint --all --skip-nx-cache",
     "test": "nx run-many --target=test --all",
     "tests:integration": "ARAMO_RUN_INTEGRATION=1 vitest run --root libs/consent",
-    "pact:consumer": "vitest run --root pact/consumers/ats-thin && vitest run --root pact/consumers/auth-service-consumer && vitest run --root pact/consumers/tenant-console-consumer",
+    "pact:consumer": "vitest run --root pact/consumers/ats-thin && vitest run --root pact/consumers/auth-service-consumer && vitest run --root pact/consumers/tenant-console-consumer && vitest run --root pact/consumers/prohibited-source-type && vitest run --root pact/consumers/ingestion-consumer",
     "pact:provider": "ARAMO_RUN_PACT_PROVIDER=1 vitest run --root pact/provider",
     "prisma:generate": "prisma generate --schema libs/consent/prisma/schema.prisma && prisma generate --schema libs/identity/prisma/schema.prisma && prisma generate --schema libs/auth-storage/prisma/schema.prisma && prisma generate --schema libs/talent/prisma/schema.prisma && prisma generate --schema libs/ingestion/prisma/schema.prisma",
     "prisma:generate-identity": "prisma generate --schema libs/identity/prisma/schema.prisma",
@@ -35,6 +35,7 @@
     "openapi:drift-check": "node --import jiti/register ci/scripts/compare-spec-to-openapi.ts",
     "portal:refusal-check": "node --import jiti/register ci/scripts/verify-portal-refusal.ts",
     "ats:refusal-check": "node --import jiti/register ci/scripts/verify-ats-refusal.ts",
+    "ingestion:refusal-check": "node --import jiti/register ci/scripts/verify-ingestion-refusal.ts",
     "version:sync-check": "node --import jiti/register ci/scripts/check-version-sync.ts",
     "error-codes:check": "node --import jiti/register ci/scripts/verify-error-codes.ts",
     "verify:vocabulary": "bash scripts/verify-vocabulary.sh"

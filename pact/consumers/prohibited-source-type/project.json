@@ -1,0 +1,27 @@
+{
+  "name": "prohibited-source-type-pact",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "pact/consumers/prohibited-source-type/src",
+  "projectType": "library",
+  "tags": ["pact-consumer"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["pact/consumers/prohibited-source-type/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo 'Pact contract tests are excluded from the aggregate test target. Run nx pact-test prohibited-source-type-pact (or invoke vitest directly) to execute them.'"
+      }
+    },
+    "pact-test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root pact/consumers/prohibited-source-type"
+      }
+    }
+  }
+}

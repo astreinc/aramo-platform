@@ -181,6 +181,16 @@ components:
         - indeed
         - github
         - astre_import
+      # PR-14 §4.3 R7 Layer 2: machine-readable record of prohibited source
+      # values per API Contracts v1.0 Phase 4 "Four-Layer LinkedIn Refusal
+      # Enforcement". The closed enum above is Layer 1 (structural rejection).
+      # This annotation is Layer 2 (explicit prohibited list). Permitted in
+      # openapi/ingestion.yaml per ADR-0011 (R7 sealed-allowlist amendment).
+      x-prohibited-values:
+        - linkedin
+        - linkedin_scrape
+        - linkedin_bulk
+        - generic_web_scrape
 
     IngestionPayloadRequest:
       type: object
@@ -301,6 +311,30 @@ components:
         created_at:
           type: string
           format: date-time
+
+    SourcePolicyResponse:
+      type: object
+      additionalProperties: false
+      description: |
+        PR-14 §4.4 R7 Layer 4 — schema-level const constraint per API
+        Contracts v1.0 Phase 4. Documents the locked refusal:
+        linkedin_automation_allowed is pinned const false; any response
+        body claiming otherwise fails OpenAPI validation and trips
+        verify-ingestion-refusal.ts CONST_FALSE_INVARIANTS at CI time
+        (the Layer-4 tripwire). No endpoint serves this schema in PR-14
+        (directive §5 — schema is R7 Layer-4 documentation; endpoint
+        materialization is later scope). Permitted in openapi/ingestion.yaml
+        per ADR-0011 (R7 sealed-allowlist amendment).
+      required:
+        - linkedin_automation_allowed
+      properties:
+        linkedin_automation_allowed:
+          type: boolean
+          const: false
+          description: |
+            The four-layer LinkedIn refusal Layer-4 const: this surface
+            cannot enable LinkedIn automation. Non-negotiable per
+            Charter R7.
 
     IndeedSearchResultsRequest:
       type: object
