@@ -9,22 +9,30 @@ import {
 import { RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 
+import { IndeedSearchResultsRequestDto } from './dto/indeed-search-results-request.dto.js';
+import type { IndeedSearchResultsResponseDto } from './dto/indeed-search-results-response.dto.js';
 import { IngestionPayloadRequestDto } from './dto/ingestion-payload-request.dto.js';
 import type { IngestionPayloadResponseDto } from './dto/ingestion-payload-response.dto.js';
 import { IngestionService } from './ingestion.service.js';
 
-// POST /v1/ingestion/payloads — generic ingestion endpoint per API
-// Contracts v1.0 Phase 4 Group 2 (the generic-payload-intake group;
-// PR-12 directive §4.3). The controller follows the libs/consent
-// precedent:
-// JwtAuthGuard at the @Controller level; tenant_id from authContext
-// (NEVER request body); request body validated via class-validator
-// against IngestionPayloadRequestDto (closed source enum, sha256 hex
-// shape, ISO-8601 timestamps).
+// libs/ingestion controller — two endpoints under /v1/ingestion:
 //
-// The endpoint is consumed by the "ingestion" consumer type (already
-// in the auth consumer_type enum). PR-12 ships the generic endpoint
-// only; the Indeed search-results endpoint is PR-13.
+// POST /v1/ingestion/payloads — generic ingestion endpoint
+// (PR-12; Phase 4 Group 2). Passive intake; closed source enum;
+// dedup keyed on sha256 + verified_email + profile_url.
+//
+// POST /v1/ingestion/indeed/search-results — Indeed Two-Phase
+// Step 1 (PR-13; Phase 4 Group 3 Step 1). Passive intake — the
+// recruiter ran the search externally. No contact data extracted.
+// Records stored as shortlisted_not_unlocked. Source-derived
+// consent registered via SourceConsentService per Group 2 v2.3a
+// (Indeed = PARTIAL consent; contacting limited to Indeed channel).
+//
+// Both routes follow the libs/consent precedent: JwtAuthGuard at
+// the @Controller level; tenant_id from authContext (NEVER request
+// body); request body validated via class-validator. The endpoints
+// are consumed by the "ingestion" consumer type (already in the
+// auth consumer_type enum).
 
 @Controller('v1/ingestion')
 @UseGuards(JwtAuthGuard)
@@ -40,6 +48,20 @@ export class IngestionController {
   ): Promise<IngestionPayloadResponseDto> {
     return this.ingestionService.acceptPayload({
       tenant_id: authContext.tenant_id,
+      request,
+    });
+  }
+
+  @Post('indeed/search-results')
+  @HttpCode(HttpStatus.CREATED)
+  async submitIndeedSearchResults(
+    @Body() request: IndeedSearchResultsRequestDto,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<IndeedSearchResultsResponseDto> {
+    return this.ingestionService.acceptIndeedSearchResults({
+      tenant_id: authContext.tenant_id,
+      requestId,
       request,
     });
   }

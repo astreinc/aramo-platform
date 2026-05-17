@@ -39,6 +39,7 @@ function makeRow(overrides: Partial<RawPayloadRow> = {}): RawPayloadRow {
     captured_at: new Date('2026-05-16T12:00:00Z'),
     verified_email: null,
     profile_url: null,
+    skill_surface_forms: null,
     created_at: new Date('2026-05-16T12:00:01Z'),
     updated_at: new Date('2026-05-16T12:00:01Z'),
     ...overrides,
@@ -55,13 +56,24 @@ function makeRepoMock(): IngestionRepository {
   } as unknown as IngestionRepository;
 }
 
+// No-op SourceConsentService stub — the generic /payloads endpoint
+// tests (this file) do not exercise the Indeed path. PR-13 added
+// SourceConsentService as a constructor dependency; the generic
+// endpoint never calls it. The Indeed-side R5 honest-visibility
+// assertions live in indeed.service.spec.ts.
+function makeSourceConsentStub(): never {
+  return {
+    registerSourceDerivedConsent: vi.fn().mockResolvedValue(undefined),
+  } as never;
+}
+
 describe('IngestionService.acceptPayload — accept (fresh)', () => {
   it('stores a new payload when no prior match exists; reports status=accepted, dedup match_signal=null', async () => {
     const repo = makeRepoMock();
     (repo.createPayload as ReturnType<typeof vi.fn>).mockResolvedValue(
       makeRow(),
     );
-    const service = new IngestionService(repo);
+    const service = new IngestionService(repo, makeSourceConsentStub());
 
     const result = await service.acceptPayload({
       tenant_id: TENANT_ID,
@@ -86,7 +98,7 @@ describe('IngestionService.acceptPayload — accept (fresh)', () => {
     (repo.createPayload as ReturnType<typeof vi.fn>).mockResolvedValue(
       makeRow({ verified_email: 'jane@example.com' }),
     );
-    const service = new IngestionService(repo);
+    const service = new IngestionService(repo, makeSourceConsentStub());
 
     await service.acceptPayload({
       tenant_id: TENANT_ID,
@@ -107,7 +119,7 @@ describe('IngestionService.acceptPayload — accept (fresh)', () => {
     (repo.createPayload as ReturnType<typeof vi.fn>).mockResolvedValue(
       makeRow({ profile_url: 'https://example.com/Profile/123' }),
     );
-    const service = new IngestionService(repo);
+    const service = new IngestionService(repo, makeSourceConsentStub());
 
     await service.acceptPayload({
       tenant_id: TENANT_ID,
@@ -131,7 +143,7 @@ describe('IngestionService.acceptPayload — dedup by sha256 (content addressing
       sha256: FRESH_SHA,
     });
     (repo.findBySha256 as ReturnType<typeof vi.fn>).mockResolvedValue(existing);
-    const service = new IngestionService(repo);
+    const service = new IngestionService(repo, makeSourceConsentStub());
 
     const result = await service.acceptPayload({
       tenant_id: TENANT_ID,
@@ -157,7 +169,7 @@ describe('IngestionService.acceptPayload — dedup by verified_email', () => {
     (repo.findByVerifiedEmail as ReturnType<typeof vi.fn>).mockResolvedValue(
       existing,
     );
-    const service = new IngestionService(repo);
+    const service = new IngestionService(repo, makeSourceConsentStub());
 
     const result = await service.acceptPayload({
       tenant_id: TENANT_ID,
@@ -182,7 +194,7 @@ describe('IngestionService.acceptPayload — dedup by profile_url', () => {
     (repo.findByProfileUrl as ReturnType<typeof vi.fn>).mockResolvedValue(
       existing,
     );
-    const service = new IngestionService(repo);
+    const service = new IngestionService(repo, makeSourceConsentStub());
 
     const result = await service.acceptPayload({
       tenant_id: TENANT_ID,
@@ -202,7 +214,7 @@ describe('IngestionService.acceptPayload — tenant scoping (R5 honest-visibilit
     (repo.createPayload as ReturnType<typeof vi.fn>).mockResolvedValue(
       makeRow({ tenant_id: TENANT_B }),
     );
-    const service = new IngestionService(repo);
+    const service = new IngestionService(repo, makeSourceConsentStub());
 
     await service.acceptPayload({
       tenant_id: TENANT_B,
@@ -230,7 +242,7 @@ describe('IngestionService dedup order (sha256 wins; signals do not aggregate)',
       shaExisting,
     );
     // findByVerifiedEmail should not be reached
-    const service = new IngestionService(repo);
+    const service = new IngestionService(repo, makeSourceConsentStub());
 
     const result = await service.acceptPayload({
       tenant_id: TENANT_ID,

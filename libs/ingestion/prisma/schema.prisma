@@ -58,6 +58,14 @@ model RawPayloadReference {
   // carry one, both, or neither.
   verified_email  String?
   profile_url     String?
+  // Skill surface forms (Plan v1.2 §3 M2 Track A — "Skill surface
+  // form ingestion; raw forms stored, canonicalization deferred";
+  // PR-13 directive §4.4 + Lead ruling). The literal skill strings
+  // as they arrive in a payload, stored opaquely. NO skill_id, NO
+  // canonical reference — Skills Taxonomy is a separate workstream.
+  // Group 2 v2.3a "Skills Taxonomy dependency": "store surface_form
+  // only and run canonicalization backfill later."
+  skill_surface_forms Json?
   // Server-set audit timestamps.
   created_at      DateTime @default(now()) @db.Timestamptz
   updated_at      DateTime @updatedAt @db.Timestamptz

@@ -17,6 +17,7 @@ const ROW = {
   captured_at: new Date('2026-05-16T12:00:00Z'),
   verified_email: null,
   profile_url: null,
+  skill_surface_forms: null,
   created_at: new Date('2026-05-16T12:00:01Z'),
   updated_at: new Date('2026-05-16T12:00:01Z'),
 };

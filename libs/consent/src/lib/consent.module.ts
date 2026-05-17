@@ -7,6 +7,7 @@ import { ConsentController } from './consent.controller.js';
 import { ConsentRepository } from './consent.repository.js';
 import { ConsentService } from './consent.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { SourceConsentService } from './source-consent.service.js';
 
 @Module({
   imports: [AuthModule, CommonModule],
@@ -15,8 +16,9 @@ import { PrismaService } from './prisma/prisma.service.js';
     ConsentService,
     ConsentRepository,
     PrismaService,
+    SourceConsentService,
     { provide: APP_FILTER, useClass: AramoExceptionFilter },
   ],
-  exports: [ConsentService],
+  exports: [ConsentService, SourceConsentService],
 })
 export class ConsentModule {}

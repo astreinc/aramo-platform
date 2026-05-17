@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
@@ -12,18 +12,31 @@ import { IngestionRepository } from '../lib/ingestion.repository.js';
 import { IngestionService } from '../lib/ingestion.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
+// No-op SourceConsentService stub — PR-12 integration tests exercise
+// the generic /payloads path which does not call source-consent. The
+// Indeed-side R5 honest-visibility test lives in indeed.service.spec.ts.
+function makeSourceConsentStub(): never {
+  return {
+    registerSourceDerivedConsent: vi.fn().mockResolvedValue(undefined),
+  } as never;
+}
+
 const MIGRATIONS_DIR = resolve(__dirname, '../../prisma/migrations');
 
-function findInitMigrationSqlPath(): string {
+// All migration SQL files in chronological order (Prisma-migration
+// directories carry timestamped prefixes, so a lexical sort matches
+// chronological order). Applying every migration in sequence brings
+// the test Postgres up to the current schema state, mirroring how
+// `prisma migrate deploy` runs in production.
+function findAllMigrationSqlPaths(): string[] {
   const subdirs = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && /_init_ingestion_model$/.test(d.name))
+    .filter((d) => d.isDirectory() && /^\d+_/.test(d.name))
     .map((d) => d.name)
     .sort();
-  const initDir = subdirs[subdirs.length - 1];
-  if (initDir === undefined) {
-    throw new Error('init_ingestion_model migration directory not found');
+  if (subdirs.length === 0) {
+    throw new Error('no ingestion migrations found');
   }
-  return resolve(MIGRATIONS_DIR, initDir, 'migration.sql');
+  return subdirs.map((d) => resolve(MIGRATIONS_DIR, d, 'migration.sql'));
 }
 
 // Mirrors the libs/talent / libs/identity splitDdl: strip line comments
@@ -53,17 +66,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
-      const migrationSql = readFileSync(findInitMigrationSqlPath(), 'utf8');
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const stmt of splitDdl(migrationSql)) {
-        await setupClient.$executeRawUnsafe(stmt);
+      // Apply every migration in chronological order — init schema
+      // (PR-12) + the skill_surface_forms column (PR-13).
+      for (const migrationPath of findAllMigrationSqlPaths()) {
+        const migrationSql = readFileSync(migrationPath, 'utf8');
+        for (const stmt of splitDdl(migrationSql)) {
+          await setupClient.$executeRawUnsafe(stmt);
+        }
       }
       await setupClient.$disconnect();
 
       prisma = new PrismaService(url);
       await prisma.$connect();
-      service = new IngestionService(new IngestionRepository(prisma));
+      service = new IngestionService(new IngestionRepository(prisma), makeSourceConsentStub());
     }, 120_000);
 
     afterAll(async () => {
