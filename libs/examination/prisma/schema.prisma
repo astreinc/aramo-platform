@@ -1,11 +1,31 @@
 // Per-module Prisma schema for the `examination` module.
 //
-// Per Architecture v2.0 Section 7 (Schema-per-Module data architecture) and
+// Per Architecture v2.1 §7 (Schema-per-Module data architecture) and
 // doc/05-conventions.md "Database Conventions". Cross-schema references
 // elsewhere in the program are UUID-only without FK constraints.
 //
-// PR-1 scaffolding only: this file declares the datasource and generator
-// configuration. Zero models exist yet.
+// M3 PR-1: TalentJobExamination is the immutable analytical-snapshot
+// entity defined by Group 2 Baseline v2.0 §2.4 ("Examination Output
+// Specification"). Storage rulings per the M3 PR-1 directive §3.1:
+//
+//   - lifecycle_state / tier / trigger → Prisma enums (structured;
+//     §7.4 prohibits JSONB for lifecycle and frequently-filtered fields).
+//   - Nested analytical structures (ExaminationReasoning[],
+//     SkillMatchSummary, ExperienceMatchSummary, ConstraintCheckSummary,
+//     RiskFlag[], ConfidenceIndicators, FreshnessIndicator,
+//     DeltaToEntrustable, strengths[], gaps[]) → Json (§7.4 allows
+//     JSONB for derived snapshots / evidence summaries).
+//   - tenant_id / talent_id / job_id / golden_profile_id → plain UUID
+//     columns, NOT Prisma relations (§7.3 cross-schema UUID-only).
+//   - examination_version / model_version / taxonomy_version → required
+//     non-null (version pinning is a §2.4 Guarantee).
+//
+// Immutability of the analytical content is enforced at the database
+// layer by a column-scoped BEFORE UPDATE trigger added in the same
+// migration; lifecycle_state / archived_at / superseded_by_examination_id
+// remain mutable so the active → archived → cold_storage lifecycle from
+// §2.4 can proceed (the column-scoped enforcement is a NEW pattern,
+// per directive §3.2 — only the trigger mechanism is precedented).
 
 generator client {
   provider = "prisma-client-js"
@@ -14,4 +34,118 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  schemas  = ["examination"]
+}
+
+// ExaminationTrigger — closed enum from §2.4 (7 values).
+enum ExaminationTrigger {
+  initial_match
+  talent_data_change
+  job_data_change
+  model_recompute
+  taxonomy_recompute
+  recruiter_requested
+  scheduled_refresh
+
+  @@schema("examination")
+}
+
+// ExaminationTier — closed enum from §2.4 (3 values). Tier assignment
+// logic (§2.5 Entrustability Rule Set) is a later PR; PR-1 stores the
+// field only.
+enum ExaminationTier {
+  ENTRUSTABLE
+  WORTH_CONSIDERING
+  STRETCH
+
+  @@schema("examination")
+}
+
+// ExaminationLifecycleState — closed enum from §2.4 (3 values).
+// active → archived → cold_storage transitions are permitted by the
+// column-scoped immutability trigger (see migration).
+enum ExaminationLifecycleState {
+  active
+  archived
+  cold_storage
+
+  @@schema("examination")
+}
+
+// TalentJobExamination — Group 2 §2.4 canonical entity.
+//
+// Immutable analytical snapshot. Field list and storage decisions follow
+// §2.4 and the M3 PR-1 directive §3.1 storage rulings (above). Belt-and-
+// suspenders enforcement: the repository surface (libs/examination/src/
+// lib/examination.repository.ts) exposes no analytical-update method AND
+// the database trigger rejects analytical-field UPDATEs.
+model TalentJobExamination {
+  // Identity. UUID v7 generated app-side via uuid.v7() (PR-2 precedent —
+  // Postgres 17 has no native uuidv7() function).
+  id                              String                    @id @db.Uuid
+
+  // Cross-schema references (Architecture v2.1 §7.3 — UUID-only, no FK).
+  // job_id and golden_profile_id reference Job-domain entities deferred
+  // to Group 3; no Job/GoldenProfile table exists in the workspace.
+  tenant_id                       String                    @db.Uuid
+  talent_id                       String                    @db.Uuid
+  job_id                          String                    @db.Uuid
+  golden_profile_id               String                    @db.Uuid
+
+  // Trigger that produced this snapshot.
+  trigger                         ExaminationTrigger
+
+  // Tier classification — system-determined (§2.4 / §2.5). Recruiters
+  // cannot override classification; submittal-action overrides are a
+  // separate later entity.
+  tier                            ExaminationTier
+  rank_ordinal                    Int
+
+  // Recruiter-facing summary surfaces. The ≤ 140-char rule on
+  // why_matched_sentence is an application-layer validation per §3.1
+  // (the schema does not enforce it; the repository write path does).
+  why_matched_sentence            String
+  match_summary                   String
+
+  // Nested analytical structures — Json per §3.1 ruling. Their internal
+  // shapes (ExaminationReasoning[], SkillMatchSummary, etc.) are defined
+  // in §2.4 and constructed by the matching engine in a later PR.
+  expanded_reasoning              Json
+  skill_match                     Json
+  experience_match                Json
+  constraint_checks               Json
+  strengths                       Json
+  gaps                            Json
+  risk_flags                      Json
+  confidence_indicators           Json
+  freshness_indicator             Json
+  delta_to_entrustable            Json?
+
+  // Version pinning — §2.4 Guarantee ("Linked to model_version +
+  // taxonomy_version"). All three are required and immutable; the
+  // ExaminationRepository create path requires all three to be supplied.
+  examination_version             String
+  model_version                   String
+  taxonomy_version                String
+
+  // When the snapshot was computed (engine-set). §2.4 defines only this
+  // single timestamp on the entity.
+  computed_at                     DateTime                  @db.Timestamptz
+
+  // Lifecycle (mutable per §3.2 ruling). superseded_by_examination_id
+  // models §2.4 supersession; archived_at records the active→archived
+  // transition; lifecycle_state moves active → archived → cold_storage.
+  lifecycle_state                 ExaminationLifecycleState @default(active)
+  archived_at                     DateTime?                 @db.Timestamptz
+  superseded_by_examination_id    String?                   @db.Uuid
+
+  // Tenant-scoped lookup (§8.1-B-confirmed convention; §3.1 minimum).
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  // Keyset-pagination support (when a read endpoint paginates over
+  // examinations). Ordering is (computed_at DESC, id DESC); §2.4 has
+  // no separate created_at, so computed_at is the snapshot's
+  // chronological key.
+  @@index([tenant_id, talent_id, computed_at(sort: Desc), id(sort: Desc)])
+  @@schema("examination")
 }
