@@ -1,14 +1,17 @@
 openapi: 3.1.0
 info:
   title: Aramo Ingestion API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     The ingestion adapter surface per API Contracts v1.0 Phase 4.
-    PR-12 introduces the generic payload-intake endpoint
-    (POST /v1/ingestion/payloads). Per-source adapter endpoints
-    (Indeed search-results, GitHub, Astre Import, Talent-Direct
-    intakes) populate in later M2 PRs. Raw payloads are stored by
-    reference, not as Talent truth (Phase 4 Invariant 7).
+    PR-12 introduced the generic payload-intake endpoint
+    (POST /v1/ingestion/payloads). PR-13 adds the Indeed
+    search-results endpoint (Phase 4 Group 3 Step 1 ONLY — unlock,
+    unlocked-payloads, and budget endpoints are deferred to M7 per
+    Plan v1.2 §3 M7). Per-source adapter endpoints for GitHub /
+    Astre Import / Talent-Direct intakes populate in later PRs.
+    Raw payloads are stored by reference, not as Talent truth
+    (Phase 4 Invariant 7).
 paths:
   /v1/ingestion/payloads:
     post:
@@ -62,6 +65,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IngestionPayloadResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Tenant access denied
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /v1/ingestion/indeed/search-results:
+    post:
+      operationId: submitIndeedSearchResults
+      tags: [Ingestion]
+      summary: Submit an Indeed search-results shortlist record
+      description: |
+        Indeed Two-Phase Ingestion Step 1 per API Contracts v1.0
+        Phase 4 Group 3: submits shortlist data without triggering
+        paid unlocks. Records are stored as shortlisted_not_unlocked.
+        NO contact data is extracted or stored — the search-results
+        stage operates on shortlist references only (the unlock /
+        unlocked-payload / budget endpoints are deferred to M7).
+
+        Passive intake (Charter R2 mitigation): the recruiter (or
+        tenant-approved governed automation) runs the Indeed search
+        externally using their own Indeed-licensed access; Aramo
+        ingests the shortlist they push to it. Aramo does NOT call
+        the Indeed API, does NOT autonomously query Indeed.
+
+        Source-consent state: on ingest, the consent module records
+        the Indeed source-derived consent per Group 2 v2.3a — partial
+        consent: profile_storage / resume_processing / matching
+        granted, contacting LIMITED to the Indeed channel only. NOT
+        all-yes consent (Charter R5 — no widening via aggregation).
+      parameters:
+        - name: X-Request-ID
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: |
+            Optional. Generated server-side as UUID v7 if absent.
+            Echoed on outgoing responses and threaded into error
+            envelopes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndeedSearchResultsRequest'
+      responses:
+        '201':
+          description: Indeed shortlist record stored as shortlisted_not_unlocked
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndeedSearchResultsResponse'
         '400':
           description: Validation error
           content:
@@ -215,6 +296,125 @@ components:
           enum:
             - accepted
             - duplicate
+        dedup:
+          $ref: '#/components/schemas/DedupOutcome'
+        created_at:
+          type: string
+          format: date-time
+
+    IndeedSearchResultsRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Indeed search-results shortlist record per Phase 4 Group 3
+        Step 1. The recruiter (or tenant-approved governed automation)
+        pushes a single shortlist record after running an Indeed
+        search externally using their own Indeed-licensed access.
+        Aramo stores the record reference and registers source-
+        derived consent per Group 2 v2.3a.
+
+        The wire body carries NO contact data (no email, no phone).
+        Per the contract: "No contact data extracted. Consent limited
+        to source scope."
+
+        talent_id is supplied by the caller — the recruiter has
+        already mapped the Indeed source_record_id to an Aramo Talent
+        record. Materializing new Talent records from raw Indeed
+        shortlists (vs. enriching existing ones) is later-scope work.
+      required:
+        - talent_id
+        - storage_ref
+        - sha256
+        - content_type
+        - captured_at
+      properties:
+        talent_id:
+          type: string
+          format: uuid
+          description: |
+            Aramo Talent record this Indeed shortlist record applies
+            to. The recruiter supplies the mapping.
+        storage_ref:
+          type: string
+          maxLength: 2048
+          description: |
+            S3 storage reference to the raw Indeed shortlist payload.
+            PR-13 stores the reference, not the bytes (Phase 4
+            Invariant 7).
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: |
+            sha256 hash of the raw Indeed payload bytes, 64 lowercase
+            hex chars. Content-addressed at the persistence layer:
+            (tenant_id, sha256) is unique.
+        content_type:
+          type: string
+          maxLength: 255
+        captured_at:
+          type: string
+          format: date-time
+          description: When the Indeed search-results were captured.
+        source_record_id:
+          type: string
+          maxLength: 2048
+          description: |
+            Optional Indeed source-record identifier — Indeed's own
+            ID for the shortlist record. Stored as traceability
+            metadata.
+        skill_surface_forms:
+          type: array
+          items:
+            type: string
+            maxLength: 255
+          description: |
+            Optional raw skill surface forms (the literal skill
+            strings as they appear in the Indeed shortlist).
+            Canonicalization to Skills Taxonomy skill_ids is deferred
+            (Group 2 v2.3a "Skills Taxonomy dependency": "store
+            surface_form only and run canonicalization backfill
+            later"). PR-13 stores opaque strings only — no skill_id,
+            no canonical reference.
+
+    IndeedSearchResultsResponse:
+      type: object
+      additionalProperties: false
+      description: |
+        Indeed search-results ingestion result. The record is stored
+        as shortlisted_not_unlocked (Phase 4 Group 3 Step 1
+        semantics). Source-derived consent is registered per Group 2
+        v2.3a (profile_storage / resume_processing / matching granted;
+        contacting LIMITED to the Indeed channel only — never all-yes).
+        Charter-R10-clean: no R10-forbidden output fields.
+      required:
+        - id
+        - tenant_id
+        - source
+        - status
+        - dedup
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum:
+            - indeed
+          description: |
+            Server-set to "indeed" — the endpoint path implies the
+            source, the request body does not carry it.
+        status:
+          type: string
+          enum:
+            - shortlisted_not_unlocked
+          description: |
+            Phase 4 Group 3 Step 1 status — the record represents a
+            shortlist entry pre-unlock. The unlock flow (Step 2-4) is
+            M7 scope.
         dedup:
           $ref: '#/components/schemas/DedupOutcome'
         created_at:

@@ -28,11 +28,12 @@ describe('RawPayloadReference schema — structural guarantees', () => {
     expect(readSchema()).toMatch(/model\s+RawPayloadReference\s*\{/);
   });
 
-  it('declares exactly the PR-12 directive §4.2 field set (no extras)', () => {
+  it('declares exactly the PR-12 §4.2 + PR-13 §4.4 field set (no extras)', () => {
     // Positive assertion — the only field-declaration lines in the
     // RawPayloadReference block are the ones the PR-12 directive
-    // §4.2 names. Catches both missing fields AND drift toward an
-    // R10-forbidden output field on the data model.
+    // §4.2 names plus the PR-13 §4.4 skill_surface_forms column.
+    // Catches both missing fields AND drift toward an R10-forbidden
+    // output field on the data model.
     const block = extractModelBlock(readSchema(), 'RawPayloadReference');
     const fieldNames = block
       .split('\n')
@@ -51,6 +52,7 @@ describe('RawPayloadReference schema — structural guarantees', () => {
         'id',
         'profile_url',
         'sha256',
+        'skill_surface_forms',
         'source',
         'storage_ref',
         'tenant_id',
@@ -58,6 +60,32 @@ describe('RawPayloadReference schema — structural guarantees', () => {
         'verified_email',
       ].sort(),
     );
+  });
+
+  it('PR-13 §4.4: skill_surface_forms is a Json? column (opaque storage; canonicalization deferred)', () => {
+    const block = extractModelBlock(readSchema(), 'RawPayloadReference');
+    // Optional Json column — the wire shape is string[] but the
+    // schema stores it as opaque Json (canonicalization deferred per
+    // Plan §3 M2 Track A; Skills Taxonomy is a separate workstream).
+    expect(block).toMatch(/skill_surface_forms\s+Json\?/);
+    // Per Group 2 v2.3a "store surface_form only and run
+    // canonicalization backfill later" — the field is opaque storage,
+    // with no canonicalization-coupled column declarations. Verified
+    // by inspecting only field-declaration lines (skip comments).
+    const fieldDecls = block
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(
+        (line) =>
+          line.length > 0 && !line.startsWith('//') && !line.startsWith('@@'),
+      );
+    for (const decl of fieldDecls) {
+      const fieldName = decl.split(/\s+/)[0];
+      // Permit `skill_surface_forms`; flag any other skill-coupled
+      // field that would indicate canonicalization leakage.
+      if (fieldName === 'skill_surface_forms') continue;
+      expect(fieldName).not.toMatch(/^skill_/);
+    }
   });
 
   it('carries the (tenant_id, sha256) unique constraint (content-addressed idempotency)', () => {

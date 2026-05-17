@@ -16,6 +16,9 @@ export interface CreateRawPayloadInput {
   captured_at: Date;
   verified_email: string | null;
   profile_url: string | null;
+  // PR-13: optional raw skill surface forms (Plan §3 M2 Track A:
+  // "raw forms stored, canonicalization deferred"). Opaque strings.
+  skill_surface_forms?: string[] | null;
 }
 
 export interface RawPayloadRow {
@@ -28,6 +31,11 @@ export interface RawPayloadRow {
   captured_at: Date;
   verified_email: string | null;
   profile_url: string | null;
+  // PR-13: nullable Json column (per Prisma `Json?`) — at runtime
+  // Prisma surfaces this as `unknown | null` since Json columns
+  // accept arbitrary shapes. The wire-level shape is string[]; the
+  // service layer narrows.
+  skill_surface_forms: unknown;
   created_at: Date;
   updated_at: Date;
 }
@@ -37,6 +45,17 @@ export class IngestionRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async createPayload(input: CreateRawPayloadInput): Promise<RawPayloadRow> {
+    // skill_surface_forms is a Prisma Json? column. Pass the array
+    // value through directly when supplied; omit the field when not
+    // (Prisma defaults to NULL for the column). null is intentionally
+    // not passed — Prisma's NullableJsonNullValueInput requires the
+    // `Prisma.DbNull` sentinel for explicit JSON-null writes, and PR-13
+    // never needs explicit-null semantics (absence === NULL is fine).
+    const skillSurfaceField =
+      input.skill_surface_forms !== undefined &&
+      input.skill_surface_forms !== null
+        ? { skill_surface_forms: input.skill_surface_forms }
+        : {};
     const row = await this.prisma.rawPayloadReference.create({
       data: {
         ...(input.id !== undefined ? { id: input.id } : {}),
@@ -48,6 +67,7 @@ export class IngestionRepository {
         captured_at: input.captured_at,
         verified_email: input.verified_email,
         profile_url: input.profile_url,
+        ...skillSurfaceField,
       },
     });
     return row as RawPayloadRow;
