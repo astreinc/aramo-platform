@@ -50,10 +50,19 @@ const TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const EVENT_ID_A = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1a00';
 const EVENT_ID_B = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1a01';
 const REQUEST_ID = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1aa0';
-const SAMPLE_CURSOR = 'eyJ2IjoxLCJjcyI6IjIwMjYtMDQtMjlUMDA6MDA6MDBaIn0';
+// PR-15 §4.1 — base64url of {"c":"2026-04-15T12:00:00.000Z","e":"00000000-0000-7000-8000-000000000a01"};
+// matches libs/consent/src/lib/util/history-cursor.ts encodeCursor's {c, e}
+// shape (created_at + event_id). Replaces a stale {v, cs}-shaped placeholder
+// (the original cursor never decoded against the production contract).
+const SAMPLE_CURSOR =
+  'eyJjIjoiMjAyNi0wNC0xNVQxMjowMDowMC4wMDBaIiwiZSI6IjAwMDAwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMGEwMSJ9';
 const ACCESS_COOKIE = 'aramo_access_token=eyJfake.access.token';
 
-const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
+// PR-15 Amendment v1.1 §2.1 (Class A) — millisecond-aware, end-anchored
+// pattern matching PR-14's ingestion pact. Pact-rust regex matchers reject
+// the API's `.NNNZ` Date.toISOString() output against the previous
+// start-anchored, ms-less pattern.
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/;
 
 // ----------------------------------------------------------------------
 // Interaction 1 — GET /v1/consent/state/{talent_id} — 200 nominal
@@ -131,11 +140,16 @@ describe('tenant-console-consumer → GET /v1/consent/state/:talent_id', () => {
   });
 
   // --------------------------------------------------------------------
-  // Interaction 2 — GET /v1/consent/state/{talent_id} — 401 INVALID_TOKEN
-  // (no access cookie sent; mirrors auth-service-consumer error pattern)
+  // Interaction 2 — GET /v1/consent/state/{talent_id} — 401 AUTH_REQUIRED
+  // (no access cookie + no Bearer header). PR-15 Amendment v1.1 §2.3
+  // (Class C): the API's JwtAuthGuard throws AUTH_REQUIRED when both
+  // Authorization and the aramo_access_token cookie are absent
+  // (libs/auth/src/lib/jwt-auth.guard.ts:142-148; guard tests at
+  // libs/auth/src/tests/jwt-auth.guard.spec.ts:108). The prior PR-9
+  // INVALID_TOKEN assertion was wrong; corrected here.
   // --------------------------------------------------------------------
 
-  it('returns 401 INVALID_TOKEN when aramo_access_token cookie is missing', async () => {
+  it('returns 401 AUTH_REQUIRED when aramo_access_token cookie is missing', async () => {
     await provider
       .addInteraction()
       .given('no setup required')
@@ -144,8 +158,8 @@ describe('tenant-console-consumer → GET /v1/consent/state/:talent_id', () => {
       .willRespondWith(401, (b) => {
         b.jsonBody({
           error: {
-            code: 'INVALID_TOKEN',
-            message: like('Access cookie missing'),
+            code: 'AUTH_REQUIRED',
+            message: like('Authorization required'),
             request_id: uuid(),
             details: like({}),
           },
@@ -155,7 +169,7 @@ describe('tenant-console-consumer → GET /v1/consent/state/:talent_id', () => {
         const res = await fetch(`${mock.url}/v1/consent/state/${TALENT_ID}`);
         expect(res.status).toBe(401);
         const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('INVALID_TOKEN');
+        expect(body.error.code).toBe('AUTH_REQUIRED');
       });
   });
 });
@@ -184,7 +198,11 @@ describe('tenant-console-consumer → GET /v1/consent/history/:talent_id', () =>
               expires_at: null,
             },
           ],
-          next_cursor: like(SAMPLE_CURSOR),
+          // PR-15 Amendment v1.1 §2.2 (Class B) — with a 1-event seed
+          // under the default page limit, the API correctly returns
+          // next_cursor: null (no second page). The previous like(...)
+          // type-matcher asserted a contract the API never honored.
+          next_cursor: null,
           is_anonymized: false,
         });
       })

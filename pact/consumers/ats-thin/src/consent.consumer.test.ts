@@ -65,11 +65,11 @@ describe('ATS thin consumer → POST /v1/consent/grant', () => {
           captured_by_actor_id: uuid(),
           consent_version: 'v1',
           occurred_at: regex(
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
             '2026-04-29T00:00:00Z',
           ),
           recorded_at: regex(
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
             '2026-04-29T00:00:01Z',
           ),
         });
@@ -221,11 +221,11 @@ describe('ATS thin consumer → POST /v1/consent/revoke', () => {
           captured_by_actor_id: uuid(),
           consent_version: 'v1',
           occurred_at: regex(
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
             '2026-04-29T01:00:00Z',
           ),
           recorded_at: regex(
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
             '2026-04-29T01:00:01Z',
           ),
           revoked_event_id: uuid(PRIOR_GRANT_ID),
@@ -271,11 +271,11 @@ describe('ATS thin consumer → POST /v1/consent/revoke', () => {
           captured_by_actor_id: uuid(),
           consent_version: 'v1',
           occurred_at: regex(
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
             '2026-04-29T01:00:00Z',
           ),
           recorded_at: regex(
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
             '2026-04-29T01:00:01Z',
           ),
           revoked_event_id: null,
@@ -401,7 +401,7 @@ describe('ATS thin consumer → POST /v1/consent/check', () => {
           scope: 'matching',
           decision_id: uuid(CHECK_DECISION_ID),
           computed_at: regex(
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
             '2026-04-30T12:00:00Z',
           ),
           log_message: like('matching_allowed'),
@@ -451,7 +451,7 @@ describe('ATS thin consumer → POST /v1/consent/check', () => {
           log_message: like('contacting_denied: stale_consent'),
           decision_id: uuid(),
           computed_at: regex(
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
             '2026-04-30T12:00:01Z',
           ),
         });
@@ -554,7 +554,7 @@ describe('ATS thin consumer → POST /v1/consent/check', () => {
                 log_message: like('scope_dependency_unmet: matching'),
                 decision_id: uuid(),
                 computed_at: regex(
-                  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                   '2026-04-30T12:00:02Z',
                 ),
               },
@@ -607,7 +607,7 @@ describe('ATS thin consumer → POST /v1/consent/check', () => {
           log_message: like('consent_state_missing for talent'),
           decision_id: uuid(),
           computed_at: regex(
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
             '2026-04-30T12:00:03Z',
           ),
         });
@@ -639,10 +639,16 @@ describe('ATS thin consumer → POST /v1/consent/check', () => {
 // ----------------------------------------------------------------------
 
 describe('ATS thin consumer → GET /v1/consent/state/{talent_id}', () => {
-  it('returns 200 with all 5 scopes when the talent has full consent', async () => {
+  it('returns 200 with 4 scopes granted and cross_tenant_visibility no_grant', async () => {
+    // PR-15 Amendment v1.1 §2.4 (Class D) — the prior state-name
+    // "all 5 consent scopes granted" contradicted the expected response
+    // body, which has scopes[4]=cross_tenant_visibility status:no_grant.
+    // The API is the arbiter: with 4 grants seeded, getState returns
+    // 4 granted + cross_tenant_visibility no_grant. The state-name
+    // string is corrected to describe what is actually seeded.
     await provider
       .addInteraction()
-      .given('a talent with all 5 consent scopes granted')
+      .given('a talent with 4 consent scopes granted; cross_tenant_visibility not granted')
       .uponReceiving('a state read for the talent')
       .withRequest('GET', `/v1/consent/state/${TALENT_ID}`, (b) => {
         b.headers({
@@ -655,7 +661,7 @@ describe('ATS thin consumer → GET /v1/consent/state/{talent_id}', () => {
           tenant_id: uuid(TENANT_ID),
           is_anonymized: false,
           computed_at: regex(
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
             '2026-05-01T12:00:00Z',
           ),
           scopes: [
@@ -663,7 +669,7 @@ describe('ATS thin consumer → GET /v1/consent/state/{talent_id}', () => {
               scope: 'profile_storage',
               status: 'granted',
               granted_at: regex(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                 '2026-04-01T10:00:00Z',
               ),
               revoked_at: null,
@@ -673,7 +679,7 @@ describe('ATS thin consumer → GET /v1/consent/state/{talent_id}', () => {
               scope: 'resume_processing',
               status: 'granted',
               granted_at: regex(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                 '2026-04-01T10:00:00Z',
               ),
               revoked_at: null,
@@ -683,7 +689,7 @@ describe('ATS thin consumer → GET /v1/consent/state/{talent_id}', () => {
               scope: 'matching',
               status: 'granted',
               granted_at: regex(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                 '2026-04-01T10:00:00Z',
               ),
               revoked_at: null,
@@ -693,7 +699,7 @@ describe('ATS thin consumer → GET /v1/consent/state/{talent_id}', () => {
               scope: 'contacting',
               status: 'granted',
               granted_at: regex(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                 '2026-04-01T10:00:00Z',
               ),
               revoked_at: null,
@@ -740,7 +746,7 @@ describe('ATS thin consumer → GET /v1/consent/state/{talent_id}', () => {
           tenant_id: uuid(TENANT_ID),
           is_anonymized: false,
           computed_at: regex(
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
             '2026-05-01T12:00:00Z',
           ),
           scopes: [
@@ -748,7 +754,7 @@ describe('ATS thin consumer → GET /v1/consent/state/{talent_id}', () => {
               scope: 'profile_storage',
               status: 'granted',
               granted_at: regex(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                 '2026-04-01T10:00:00Z',
               ),
               revoked_at: null,
@@ -772,11 +778,11 @@ describe('ATS thin consumer → GET /v1/consent/state/{talent_id}', () => {
               scope: 'contacting',
               status: 'revoked',
               granted_at: regex(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                 '2026-04-01T11:00:00Z',
               ),
               revoked_at: regex(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                 '2026-04-15T14:22:00Z',
               ),
               expires_at: null,
@@ -819,7 +825,7 @@ describe('ATS thin consumer → GET /v1/consent/state/{talent_id}', () => {
           tenant_id: uuid(TENANT_ID),
           is_anonymized: false,
           computed_at: regex(
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
             '2026-05-01T12:00:01Z',
           ),
           scopes: [
@@ -900,7 +906,7 @@ describe('ATS thin consumer → GET /v1/consent/history/{talent_id}', () => {
               scope: 'matching',
               action: 'granted',
               created_at: regex(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                 '2026-04-15T12:00:00Z',
               ),
               expires_at: null,
@@ -956,7 +962,7 @@ describe('ATS thin consumer → GET /v1/consent/history/{talent_id}', () => {
               scope: 'profile_storage',
               action: 'granted',
               created_at: regex(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                 '2026-04-14T08:00:00Z',
               ),
               expires_at: null,
@@ -966,7 +972,7 @@ describe('ATS thin consumer → GET /v1/consent/history/{talent_id}', () => {
               scope: 'contacting',
               action: 'revoked',
               created_at: regex(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                 '2026-04-13T15:30:00Z',
               ),
               expires_at: null,
@@ -1055,7 +1061,7 @@ describe('ATS thin consumer → GET /v1/consent/decision-log/{talent_id}', () =>
               talent_id: uuid(TALENT_ID),
               event_type: 'consent.grant.recorded',
               created_at: regex(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                 '2026-04-15T12:00:00Z',
               ),
               actor_id: uuid('00000000-0000-7000-8000-000000000bb1'),
@@ -1126,7 +1132,7 @@ describe('ATS thin consumer → GET /v1/consent/decision-log/{talent_id}', () =>
               talent_id: uuid(TALENT_ID),
               event_type: 'consent.revoke.recorded',
               created_at: regex(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                 '2026-04-14T08:00:00Z',
               ),
               actor_id: uuid('00000000-0000-7000-8000-000000000bb1'),
@@ -1142,7 +1148,7 @@ describe('ATS thin consumer → GET /v1/consent/decision-log/{talent_id}', () =>
               talent_id: uuid(TALENT_ID),
               event_type: 'consent.check.decision',
               created_at: regex(
-                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+                /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
                 '2026-04-13T15:30:00Z',
               ),
               actor_id: null,
