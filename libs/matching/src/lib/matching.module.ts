@@ -20,6 +20,19 @@ import { RedisConnectionConfig } from './redis/redis-connection.config.js';
 // root so the useFactory can inject it without requiring callers to
 // import a separate RedisModule.
 //
+// Lead Gate-5 fix ruling (Option B): the factory invokes the lazy
+// RedisConnectionConfig.connection accessor at factory-invocation time.
+// When REDIS_URL is unset, the accessor throws "REDIS_URL is not
+// configured"; the factory catches that specific throw and returns a
+// placeholder ioredis connection with lazyConnect: true so module init
+// completes without a TCP attempt. The directive §4.2 intent — "Only an
+// actual queue push/pop may surface a missing/unreachable Redis" — is
+// then met: ioredis only attempts a connection on first command, and
+// that command fails (ECONNREFUSED or similar) for callers that try to
+// use the queue without a configured Redis. lazyConnect: true is also
+// applied on the success path so a configured-but-unreachable Redis
+// fails at first push/pop rather than at boot.
+//
 // Out of scope per directive §5: the matching-analysis input layer, the
 // production "Talent updated → matching scheduled" enqueue trigger
 // (the integration spec's enqueue path is test-only), Live List, the
@@ -29,9 +42,48 @@ import { RedisConnectionConfig } from './redis/redis-connection.config.js';
   imports: [
     ExaminationModule,
     BullModule.forRootAsync({
-      useFactory: (cfg: RedisConnectionConfig) => ({
-        connection: cfg.connection,
-      }),
+      // Lead Gate-5 fix — five-layer no-network-at-boot configuration:
+      //   1. manualRegistration: defers BullMQ Worker construction (and its
+      //      blockingConnection, which does NOT honor skipWaitingForReady)
+      //      until BullRegistrar.register() is called. MatchingProcessor
+      //      calls register() from onApplicationBootstrap only when REDIS_URL
+      //      is configured, so missing-REDIS_URL boots create no Worker.
+      //   2. skipWaitingForReady: BullMQ's RedisConnection.init() skips
+      //      its waitUntilReady() call (which otherwise force-connects an
+      //      ioredis client in 'wait' state).
+      //   3. skipVersionCheck: init() returns a synthetic version instead
+      //      of issuing client.info() (which would force-connect).
+      //   4. skipMetasUpdate: Queue's constructor skips its post-init
+      //      client.hmset(meta, ...) call — that hmset would otherwise
+      //      auto-connect ioredis via sendCommand on 'wait' status.
+      //   5. lazyConnect: ioredis stays in 'wait' state at construction;
+      //      a TCP connection is only initiated when a real command runs.
+      // Together these guarantee no network work at module init regardless
+      // of whether REDIS_URL is set or whether a Redis is live — the
+      // directive's "Only an actual queue push/pop may surface a missing/
+      // unreachable Redis" gate.
+      extraOptions: { manualRegistration: true },
+      useFactory: (cfg: RedisConnectionConfig) => {
+        const baseOpts = {
+          skipWaitingForReady: true,
+          skipVersionCheck: true,
+          skipMetasUpdate: true,
+        };
+        try {
+          return {
+            ...baseOpts,
+            connection: { ...cfg.connection, lazyConnect: true },
+          };
+        } catch (err) {
+          if (err instanceof Error && err.message === 'REDIS_URL is not configured') {
+            return {
+              ...baseOpts,
+              connection: { host: '127.0.0.1', port: 6379, lazyConnect: true },
+            };
+          }
+          throw err;
+        }
+      },
       inject: [RedisConnectionConfig],
       extraProviders: [RedisConnectionConfig],
     }),

@@ -2,27 +2,47 @@ import { Injectable, Optional } from '@nestjs/common';
 
 // M3 PR-3 §4.2 — Redis connection config service.
 //
-// Mirrors PR-16's libs/consent PrismaService @Optional() pattern verbatim:
-// the constructor parameter is @Optional() so Nest DI can resolve the
-// undecorated primitive without throwing on String-token resolution
-// (PR-16 F11 root cause). The env fallback runs inside the constructor
-// body; the throw fires only when REDIS_URL is unset/empty, so apps/api
-// boots without a live Redis as long as a non-empty REDIS_URL is set.
+// Lead Gate-5 fix ruling (Option B, lazy validation): the constructor
+// performs NO env read, NO validation, NO throw. It only stores the
+// @Optional() redisUrl argument for later resolution. Validation +
+// parsing happens on first access of the `connection` getter and is
+// memoized thereafter.
 //
-// Surface: derives an ioredis ConnectionOptions object from a REDIS_URL.
-// BullModule.forRootAsync (libs/matching/src/lib/matching.module.ts) injects
-// this service to build its connection. No connection is opened here —
-// ioredis connects lazily when the first queue/worker operation runs.
+// Why: PR-16's @Optional() pattern makes the constructor PARAMETER
+// resolvable by Nest DI (the F11 root-cause fix), but it does NOT defer
+// the constructor body — eager validation still throws at instantiation
+// time. The §8.1-B pass D4 finding anticipated exactly this: pact:provider
+// boots apps/api under DI with no REDIS_URL stub, so an eager throw in
+// the constructor breaks boot. The directive §4.2 intent — "apps/api
+// boots without a live Redis" — is only truly met when REDIS_URL is
+// validated lazily, at first use, not at construction.
+//
+// The MatchingModule BullModule.forRootAsync factory is responsible for
+// invoking this getter at factory-invocation time. The factory tolerates
+// the "not configured" throw so module init can complete; the actual
+// failure surfaces only when a queue push/pop attempts a Redis command.
 @Injectable()
 export class RedisConnectionConfig {
-  readonly connection: RedisConnectionOptions;
+  private readonly explicitUrl?: string;
+  private cached: RedisConnectionOptions | undefined;
 
   constructor(@Optional() redisUrl?: string) {
-    const url = redisUrl ?? process.env['REDIS_URL'];
+    this.explicitUrl = redisUrl;
+  }
+
+  // Lazy accessor. Resolves (constructor-supplied URL ?? process.env),
+  // throws "REDIS_URL is not configured" if unset/empty, parses to
+  // ConnectionOptions, and memoizes the result for subsequent calls.
+  get connection(): RedisConnectionOptions {
+    if (this.cached !== undefined) {
+      return this.cached;
+    }
+    const url = this.explicitUrl ?? process.env['REDIS_URL'];
     if (url === undefined || url.length === 0) {
       throw new Error('REDIS_URL is not configured');
     }
-    this.connection = parseRedisUrl(url);
+    this.cached = parseRedisUrl(url);
+    return this.cached;
   }
 }
 
