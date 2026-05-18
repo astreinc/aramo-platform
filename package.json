@@ -41,6 +41,7 @@
     "verify:vocabulary": "bash scripts/verify-vocabulary.sh"
   },
   "dependencies": {
+    "@nestjs/bullmq": "~11.0.4",
     "@nestjs/common": "~11.1.19",
     "@nestjs/core": "~11.1.19",
     "@nestjs/platform-express": "~11.1.19",
@@ -72,6 +73,7 @@
     "@playwright/test": "~1.59.1",
     "@redocly/cli": "~2.30.1",
     "@testcontainers/postgresql": "~11.14.0",
+    "@testcontainers/redis": "~11.14.0",
     "@testing-library/jest-dom": "~6.9.1",
     "@testing-library/react": "~16.3.2",
     "@types/cookie-parser": "~1.4.10",

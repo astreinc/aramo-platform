@@ -24,11 +24,17 @@ describe('apps/api AppModule — DI resolution', () => {
     savedEnv['DATABASE_URL'] = process.env['DATABASE_URL'];
     savedEnv['AUTH_AUDIENCE'] = process.env['AUTH_AUDIENCE'];
     savedEnv['AUTH_PUBLIC_KEY'] = process.env['AUTH_PUBLIC_KEY'];
+    savedEnv['REDIS_URL'] = process.env['REDIS_URL'];
 
     process.env['DATABASE_URL'] = 'postgres://stub:stub@127.0.0.1:1/stub';
     process.env['AUTH_AUDIENCE'] = 'aramo-app-module-di-spec';
     process.env['AUTH_PUBLIC_KEY'] =
       '-----BEGIN PUBLIC KEY-----\nMII\n-----END PUBLIC KEY-----';
+    // PR-3 §4.8 — REDIS_URL sentinel stub so MatchingModule's
+    // RedisConnectionConfig constructor resolves at DI-compile time
+    // without a live Redis (the test never reaches onModuleInit, and
+    // ioredis only connects lazily on the first queue/worker call).
+    process.env['REDIS_URL'] = 'redis://stub:6379/0';
   });
 
   afterAll(() => {
