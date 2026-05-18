@@ -29,6 +29,13 @@ describe('apps/api AppModule — DI resolution', () => {
     process.env['AUTH_AUDIENCE'] = 'aramo-app-module-di-spec';
     process.env['AUTH_PUBLIC_KEY'] =
       '-----BEGIN PUBLIC KEY-----\nMII\n-----END PUBLIC KEY-----';
+    // PR-3 Lead Gate-5 fix: REDIS_URL is intentionally NOT stubbed.
+    // RedisConnectionConfig validates REDIS_URL lazily (on first call to
+    // the `connection` getter), and MatchingModule's BullModule factory
+    // tolerates the "not configured" throw with a placeholder
+    // lazyConnect connection. AppModule must therefore boot through DI
+    // with REDIS_URL absent; the absence of a stub here is the
+    // regression test for that property.
   });
 
   afterAll(() => {

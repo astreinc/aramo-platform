@@ -1,5 +1,9 @@
 export { MatchingModule } from './lib/matching.module.js';
 export { MatchingService } from './lib/matching.service.js';
+export { MatchingProcessor } from './lib/matching.processor.js';
+export { MATCH_QUEUE_NAME } from './lib/match-queue.constants.js';
+export { RedisConnectionConfig } from './lib/redis/redis-connection.config.js';
+export type { RedisConnectionOptions } from './lib/redis/redis-connection.config.js';
 export {
   evaluateEntrustability,
   EVIDENCE_THRESHOLDS,
