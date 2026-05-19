@@ -45,6 +45,9 @@ R7_ALLOWLIST=(
   "doc/00-ci-deliberate-failure-evidence.md"  # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1, PO-ratified 2026-05-15): CI evidence doc quotes Charter R10
   "openapi/ingestion.yaml"            # PR-14 ADR-0011, Architect-approved 2026-05-17: R7 Layers 2/4 — x-prohibited-values annotation (§4.3) + SourcePolicyResponse.linkedin_automation_allowed const-false (§4.4)
   "ci/scripts/verify-ingestion-refusal.ts"  # PR-14 ADR-0011 / Directive Amendment v1.0 §4 — verify-ingestion-refusal.ts names linkedin_automation_allowed in its CONST_FALSE_INVARIANTS to enforce R7 Layer 4; mechanical consequence of directive §4.1. Architect-approved 2026-05-17.
+  "libs/talent-evidence/prisma/schema.prisma"  # Group 2 §2.2 closed-list enum value (TalentWorkHistoryEntry.source / TalentContactMethod.type) — data-source provenance label, not LinkedIn integration. Charter-Level Review: Aramo-Charter-Review-R7-PR5-LOCKED.
+  "libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql"  # Group 2 §2.2 closed-list enum value (TalentWorkHistoryEntry.source / TalentContactMethod.type) — data-source provenance label, not LinkedIn integration. Charter-Level Review: Aramo-Charter-Review-R7-PR5-LOCKED.
+  "libs/talent-evidence/src/lib/talent-evidence.repository.ts"  # Group 2 §2.2 closed-list enum value (TalentWorkHistoryEntry.source / TalentContactMethod.type) — data-source provenance label, not LinkedIn integration. Charter-Level Review: Aramo-Charter-Review-R7-PR5-LOCKED.
 )
 
 # Glob-form exclusions for paths whose entire subtree is allowed to mention
