@@ -14,7 +14,14 @@ import { ExaminationRepository } from '../lib/examination.repository.js';
 // the DB trigger) is exercised by the *.integration.spec.ts files against
 // a real Postgres testcontainer under ARAMO_RUN_INTEGRATION=1.
 describe('ExaminationRepository — surface', () => {
-  it('exposes exactly { createSnapshot, findById, findByTenantAndTalent, markSuperseded }', () => {
+  // PR-1 surface: { createSnapshot, findById, findByTenantAndTalent,
+  // markSuperseded }. PR-6 adds two READ-ONLY, PROJECT-ONLY methods
+  // (findByIdSummary, findByIdFull) per directive §4.2 — the typed
+  // read-side projection over the existing TalentJobExamination row.
+  // No write method added; the closed-surface immutability discipline is
+  // preserved (the no-analytical-mutation test below still passes — read
+  // projections issue no UPDATE).
+  it('exposes exactly the PR-1 + PR-6 surface (4 + 2 methods)', () => {
     const methods = Object.getOwnPropertyNames(ExaminationRepository.prototype)
       .filter((m) => m !== 'constructor')
       .sort();
@@ -22,6 +29,8 @@ describe('ExaminationRepository — surface', () => {
       [
         'createSnapshot',
         'findById',
+        'findByIdFull',
+        'findByIdSummary',
         'findByTenantAndTalent',
         'markSuperseded',
       ].sort(),

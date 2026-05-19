@@ -1,12 +1,28 @@
 import { Injectable } from '@nestjs/common';
 
+import {
+  projectFullView,
+  projectSummaryView,
+} from './examination-full.projection.js';
+import type {
+  TalentJobExaminationFullView,
+  TalentJobExaminationSummaryView,
+} from './examination-full.types.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
-// Repository for the TalentJobExamination model (M3 PR-1 §3.3).
+// Repository for the TalentJobExamination model (M3 PR-1 §3.3 + M3 PR-6 §4.2).
 //
 // Surface scope (closed):
 //   - createSnapshot: insert a new immutable analytical snapshot.
 //   - findById: read one snapshot.
+//   - findByIdFull (PR-6): read-side projection — reads one snapshot and
+//     types its opaque Json analytical columns into the structured
+//     TalentJobExaminationFullView shape at the boundary. PROJECT-ONLY:
+//     no query against libs/talent-evidence, no dereferencing of
+//     EvidenceReference targets. READ-ONLY: issues no write, adds no
+//     @relation, does not touch the immutability trigger.
+//   - findByIdSummary (PR-6): companion projection for the
+//     TalentJobExaminationSummaryView shape (Full's allOf base).
 //   - findByTenantAndTalent: read all snapshots for a (tenant, talent) pair,
 //     newest first via the (tenant_id, talent_id, computed_at DESC, id DESC)
 //     keyset index.
@@ -180,6 +196,30 @@ export class ExaminationRepository {
       where: { id },
     });
     return (row as TalentJobExaminationRow | null) ?? null;
+  }
+
+  // M3 PR-6 §4.2 — typed Summary read-projection. Reads the existing
+  // TalentJobExamination row and types it into TalentJobExaminationSummaryView
+  // (the API Contracts v1.0 Summary shape; the allOf base for Full).
+  // READ-ONLY, PROJECT-ONLY (PR-6 §2 Ruling 2) — issues no write, queries no
+  // other lib, does not dereference EvidenceReference targets.
+  async findByIdSummary(id: string): Promise<TalentJobExaminationSummaryView | null> {
+    const row = await this.findById(id);
+    if (row === null) return null;
+    return projectSummaryView(row);
+  }
+
+  // M3 PR-6 §4.2 — typed Full read-projection. Reads the existing
+  // TalentJobExamination row and types its opaque Json analytical columns
+  // into the structured TalentJobExaminationFullView shape at the boundary
+  // (the API Contracts v1.0 Full shape; allOf Summary + the 5 additions per
+  // L463-468). READ-ONLY, PROJECT-ONLY — no libs/talent-evidence query, no
+  // dereferencing of EvidenceReference targets (PR-6 §2 Ruling 2). The
+  // immutability trigger is untouched (no write).
+  async findByIdFull(id: string): Promise<TalentJobExaminationFullView | null> {
+    const row = await this.findById(id);
+    if (row === null) return null;
+    return projectFullView(row);
   }
 
   async findByTenantAndTalent(
