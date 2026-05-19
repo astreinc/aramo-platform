@@ -32,6 +32,7 @@ export default defineConfig({
       '@aramo/examination': resolve(root, 'libs/examination/src/index.ts'),
       '@aramo/identity': resolve(root, 'libs/identity/src/index.ts'),
       '@aramo/ingestion': resolve(root, 'libs/ingestion/src/index.ts'),
+      '@aramo/job-domain': resolve(root, 'libs/job-domain/src/index.ts'),
       '@aramo/matching': resolve(root, 'libs/matching/src/index.ts'),
       '@aramo/skills-taxonomy': resolve(root, 'libs/skills-taxonomy/src/index.ts'),
       '@aramo/talent': resolve(root, 'libs/talent/src/index.ts'),

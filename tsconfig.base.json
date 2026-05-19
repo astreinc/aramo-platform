@@ -37,6 +37,7 @@
       "@aramo/examination": ["libs/examination/src/index.ts"],
       "@aramo/identity": ["libs/identity/src/index.ts"],
       "@aramo/ingestion": ["libs/ingestion/src/index.ts"],
+      "@aramo/job-domain": ["libs/job-domain/src/index.ts"],
       "@aramo/matching": ["libs/matching/src/index.ts"],
       "@aramo/skills-taxonomy": ["libs/skills-taxonomy/src/index.ts"],
       "@aramo/talent": ["libs/talent/src/index.ts"]
