@@ -36,6 +36,7 @@ export default defineConfig({
       '@aramo/matching': resolve(root, 'libs/matching/src/index.ts'),
       '@aramo/skills-taxonomy': resolve(root, 'libs/skills-taxonomy/src/index.ts'),
       '@aramo/talent': resolve(root, 'libs/talent/src/index.ts'),
+      '@aramo/talent-evidence': resolve(root, 'libs/talent-evidence/src/index.ts'),
     },
   },
   test: {

@@ -1,0 +1,331 @@
+// Per-module Prisma schema for the `talent-evidence` module.
+//
+// Per Architecture v2.1 §7 (Schema-per-Module data architecture) and
+// doc/05-conventions.md "Database Conventions". Cross-schema references
+// elsewhere in the program are UUID-only without FK constraints (§7.3).
+//
+// M3 PR-5 — Talent-evidence entity foundation. The 7 Talent-evidence
+// sub-entities required by EvidenceReference (Group 2 §2.4) are built here,
+// each to its Group 2 §2.2 Talent Record Spec field-level type literal
+// EXACTLY (names, types, enums, optionality). The 8th entity in the
+// EvidenceReference closed list — TalentEngagementEvent — is NAMED ONLY in
+// §2.2 (no inline shape; absent from the 24-entity Talent Record Spec table)
+// and lives in the engagement domain (§2.3b, Plan v1.5 §M5). Per directive
+// §2 Ruling 1, TalentEngagementEvent is deferred to M5.
+//
+// Per directive §2 Ruling 4, TalentWorkAuthorization (Group 2 #6 — Declared
+// (Sensitive)) ships with its full §2.2 column shape; the Architecture §14.4
+// sensitive-field treatment (encryption, access logging, elevated-permission
+// access) is deferred to follow-up F16, pending the Architecture §14.3
+// sensitive-field implementation artifact.
+//
+// Per directive §2 Ruling 3, TalentSkillEvidence.skill_id and .source_record_id
+// are forward-reference UUID columns (Architecture §7.3 — UUID-only, no FK).
+// SkillTaxonomy and ingestion-source foundations are not scoped into PR-5.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["talent_evidence"]
+}
+
+// -------------------------------------------------------------------------
+// Enums — declared first. Each is a Group 2 §2.2 closed string-union literal.
+// -------------------------------------------------------------------------
+
+// §2.2 TalentSkillEvidence.source — "declared" | "ingested" | "derived"
+enum TalentSkillEvidenceSource {
+  declared
+  ingested
+  derived
+
+  @@schema("talent_evidence")
+}
+
+// §2.2 TalentWorkHistoryEntry.source — "resume" | "linkedin" | "manual" | "import"
+enum TalentWorkHistorySource {
+  resume
+  linkedin
+  manual
+  import
+
+  @@schema("talent_evidence")
+}
+
+// §2.2 TalentContactMethod.type — "email" | "phone" | "linkedin" | "github" | "portfolio" | "other"
+enum TalentContactType {
+  email
+  phone
+  linkedin
+  github
+  portfolio
+  other
+
+  @@schema("talent_evidence")
+}
+
+// §2.2 TalentContactMethod.verification_status — "unverified" | "verified" | "failed" | "stale"
+enum TalentContactVerificationStatus {
+  unverified
+  verified
+  failed
+  stale
+
+  @@schema("talent_evidence")
+}
+
+// §2.2 TalentRateExpectation.employment_type — "W2" | "1099" | "C2C" | "FTE".
+// Prisma enum-value names must start with a letter (identifier rule); "1099"
+// is mapped via @map so the database value matches the §2.2 literal verbatim
+// while the Prisma client identifier remains valid.
+enum TalentEmploymentType {
+  W2
+  CONTRACT_1099 @map("1099")
+  C2C
+  FTE
+
+  @@schema("talent_evidence")
+}
+
+// §2.2 TalentRateExpectation.period — "HOURLY" | "ANNUAL"
+enum TalentRatePeriod {
+  HOURLY
+  ANNUAL
+
+  @@schema("talent_evidence")
+}
+
+// §2.2 TalentRateExpectation.source — "talent_declared" | "recruiter_entered"
+enum TalentRateSource {
+  talent_declared
+  recruiter_entered
+
+  @@schema("talent_evidence")
+}
+
+// §2.2 TalentWorkAuthorization.work_authorization_status — 6-value closed enum.
+enum TalentWorkAuthorizationStatus {
+  US_CITIZEN
+  PERMANENT_RESIDENT
+  VISA_HOLDER
+  REQUIRES_SPONSORSHIP
+  OTHER
+  NOT_DISCLOSED
+
+  @@schema("talent_evidence")
+}
+
+// §2.2 TalentDocument.document_type — 6-value closed enum.
+enum TalentDocumentType {
+  resume
+  cover_letter
+  certification
+  work_sample
+  reference_letter
+  other
+
+  @@schema("talent_evidence")
+}
+
+// §2.2 TalentDocument.parse_status — 4-value closed enum.
+enum TalentDocumentParseStatus {
+  pending
+  parsed
+  failed
+  no_parse_attempted
+
+  @@schema("talent_evidence")
+}
+
+// §2.2 TalentDocument.retention_policy — "default" | "extended" | "delete_after_X_days"
+enum TalentDocumentRetentionPolicy {
+  default
+  extended
+  delete_after_X_days
+
+  @@schema("talent_evidence")
+}
+
+// -------------------------------------------------------------------------
+// Models — Group 2 §2.2 Talent Record Spec, entities #4, #6, #7, #8, #10,
+// #16, #17 (the seven `EvidenceReference` targets that are fully specified
+// inline). Each field traces 1:1 to the §2.2 type literal.
+// -------------------------------------------------------------------------
+
+// §2.2 #16 — TalentSkillEvidence (Declared + Ingested + Derived).
+model TalentSkillEvidence {
+  // UUID v7 generated app-side (PR-2 precedent — Postgres 17 has no native uuidv7()).
+  id                String                    @id @db.Uuid
+
+  // Cross-schema references (§7.3 — UUID-only, no FK).
+  talent_id         String                    @db.Uuid
+  tenant_id         String                    @db.Uuid
+
+  // §2 Ruling 3 — forward references; targets (SkillTaxonomy, ingestion
+  // source) are not built by PR-5. UUID-only, no FK.
+  skill_id          String                    @db.Uuid
+  source_record_id  String?                   @db.Uuid
+
+  surface_form      String
+  source            TalentSkillEvidenceSource
+  evidence_text     String?
+  proficiency_claim String?
+  years_claimed     Float?
+  confidence_score  Float?
+  created_at        DateTime                  @db.Timestamptz
+
+  // Tenant-scoped + (tenant, talent) lookup; (tenant, talent, skill) supports
+  // per-skill evidence_count derivation for the §2.5 Entrustability Rule Set.
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@index([tenant_id, talent_id, skill_id])
+  @@schema("talent_evidence")
+}
+
+// §2.2 #10 — TalentWorkHistoryEntry (Ingested).
+model TalentWorkHistoryEntry {
+  id                  String                  @id @db.Uuid
+  talent_id           String                  @db.Uuid
+  tenant_id           String                  @db.Uuid
+
+  employer_name       String
+  role_title          String
+  start_date          DateTime?               @db.Date
+  end_date            DateTime?               @db.Date
+  location            String?
+
+  // §2.2 employment_type is `string?` here — free-form, NOT the
+  // TalentRateExpectation closed enum.
+  employment_type     String?
+
+  description_text    String?
+  source              TalentWorkHistorySource
+
+  // Intra-lib reference to TalentDocument (when work history is parsed from
+  // an uploaded document). UUID-only per §7.3, applied uniformly even for
+  // same-lib references.
+  source_document_id  String?                 @db.Uuid
+
+  is_authoritative    Boolean?
+  created_at          DateTime                @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+// §2.2 #4 — TalentContactMethod (Declared + Derived).
+model TalentContactMethod {
+  id                  String                          @id @db.Uuid
+  talent_id           String                          @db.Uuid
+  tenant_id           String                          @db.Uuid
+
+  type                TalentContactType
+  value               String
+  is_primary          Boolean
+  verification_status TalentContactVerificationStatus
+  verified_at         DateTime?                       @db.Timestamptz
+  created_at          DateTime                        @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+// §2.2 #7 — TalentRateExpectation (Declared).
+model TalentRateExpectation {
+  id              String               @id @db.Uuid
+  talent_id       String               @db.Uuid
+  tenant_id       String               @db.Uuid
+
+  employment_type TalentEmploymentType
+  min_rate        Float
+  target_rate     Float?
+  currency        String
+  period          TalentRatePeriod
+  source          TalentRateSource
+  updated_at      DateTime             @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+// §2.2 #6 — TalentWorkAuthorization (Declared (Sensitive)).
+// Per directive §2 Ruling 4 / §9 F16: ships with its §2.2 column shape;
+// §14.4 sensitive-field PII-handling treatment is deferred to F16, pending
+// the §14.3 sensitive-field implementation artifact.
+model TalentWorkAuthorization {
+  id                        String                        @id @db.Uuid
+  talent_id                 String                        @db.Uuid
+  tenant_id                 String                        @db.Uuid
+
+  work_authorization_status TalentWorkAuthorizationStatus
+  authorized_to_work_in     String[]
+  visa_type                 String?
+  requires_sponsorship      Boolean
+  updated_at                DateTime                      @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+// §2.2 #8 — TalentDocument (Ingested).
+model TalentDocument {
+  id                       String                        @id @db.Uuid
+  talent_id                String                        @db.Uuid
+  tenant_id                String                        @db.Uuid
+
+  // Forward reference → identity domain (Actor/Recruiter). UUID-only, no FK.
+  uploaded_by_actor_id     String                        @db.Uuid
+
+  uploaded_at              DateTime                      @db.Timestamptz
+  document_type            TalentDocumentType
+  filename                 String
+  file_storage_ref         String
+  mime_type                String
+
+  // §2.2 size_bytes is `number`; logical integer (byte count). Int suffices
+  // for documents up to ~2GB, which exceeds any v1 document type's expected size.
+  size_bytes               Int
+
+  parse_status             TalentDocumentParseStatus
+  consent_scope_at_upload  String[]
+  retention_policy         TalentDocumentRetentionPolicy
+  is_active                Boolean
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+// §2.2 #17 — TalentDerivedSnapshot (Derived).
+model TalentDerivedSnapshot {
+  id                                  String   @id @db.Uuid
+  talent_id                           String   @db.Uuid
+  tenant_id                           String   @db.Uuid
+
+  skill_confidence_scores             Json
+  estimated_years_experience_overall  Float?
+  estimated_years_experience_by_skill Json?
+  skill_domains                       Json?
+  career_trajectory_pattern           String?
+  intent_signal                       Json?
+  freshness_score                     Json?
+  reachability_score                  Json?
+  availability_confidence             Float?
+  trust_level                         String?
+  data_completeness_score             Float?
+  threshold_status                    Json?
+  current_consent_state               Json?
+  computed_at                         DateTime @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
