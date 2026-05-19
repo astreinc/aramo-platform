@@ -1,0 +1,140 @@
+// Per-module Prisma schema for the `job-domain` module.
+//
+// Per Architecture v2.1 §7 (Schema-per-Module data architecture) and
+// doc/05-conventions.md "Database Conventions". Cross-schema references
+// elsewhere in the program are UUID-only without FK constraints (§7.3).
+//
+// M3 PR-4 — Minimal Job-domain entity foundation. Group 2 Consolidated
+// Baseline defers the formal Job / GoldenProfile / Requisition definitions
+// to Group 3 ("Golden Profile … Defined formally in Group 3"; "Job-domain
+// entity; definition deferred to Group 3"); no Group 3 baseline exists on
+// substrate. Per the M3 PR-4 directive §2 §23.2 ratification note, PR-4
+// builds a minimal interim foundation constrained strictly to the seven
+// LOCKED anchors enumerated in directive §4.1. Every field in this schema
+// traces to one of those anchors; nothing else is added.
+//
+// Anchor → field mapping (directive §4.1):
+//   (1) UUID-addressable identity              → every model's `id`
+//   (2) GoldenProfile surfaces skills / experience / constraints
+//                                              → GoldenProfile.skills,
+//                                                .experience, .constraints
+//   (3) GoldenProfile exposes enumerable critical-skills set
+//                                              → GoldenProfile.critical_skills
+//   (4) Requisition carries active/inactive lifecycle state
+//                                              → Requisition.state
+//   (5) Cross-schema refs are UUID-only, no FK → every `*_id` column;
+//                                                NO @relation anywhere
+//   (6) Schema-per-module placement            → `schemas = ["job_domain"]`
+//   (7) Recruiter association on Requisition   → Requisition.recruiter_id
+//
+// Group 3 supersession (F15): when the full Group 3 baseline is LOCKED, it
+// supersedes this foundation; these entities are expected to be extended
+// additively at that point.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["job_domain"]
+}
+
+// RequisitionState — closed enum per anchor (4). Two values; recruiter
+// capacity language (Group 2) counts "active reqs", and the Live List
+// glossary line is "per active req".
+enum RequisitionState {
+  active
+  inactive
+
+  @@schema("job_domain")
+}
+
+// Job — anchor (1) addressable entity; the value referenced by
+// libs/examination.job_id and the `/v1/jobs/{job_id}` path key. Field-level
+// content (title, description, etc.) is Group-3-deferred and out of scope
+// per the M3 PR-4 directive §5.
+model Job {
+  // UUID v7 generated app-side via uuid.v7() (PR-2 precedent — Postgres 17
+  // has no native uuidv7() function). Anchor (1).
+  id        String @id @db.Uuid
+
+  // Cross-schema reference to identity.Tenant. Anchor (5) — UUID-only,
+  // no FK.
+  tenant_id String @db.Uuid
+
+  // Tenant-scoped lookup. Indices are operational, not field-additions;
+  // they make the anchored fields usable but introduce no unanchored data.
+  @@index([tenant_id])
+  @@schema("job_domain")
+}
+
+// GoldenProfile — anchor (2) carries skills / experience / constraints
+// surfaced for Loop 1 ("Req Golden Profile (skills, experience, constraints)");
+// anchor (3) exposes an enumerable critical_skills collection iterable by the
+// Entrustability Rule Set ("For EACH critical skill in the job's Golden
+// Profile"). Field-level shape of the Json columns is intentionally left
+// to the analysis-layer / Group 3 PRs.
+model GoldenProfile {
+  // UUID v7 generated app-side. Anchor (1). This is the value referenced
+  // by libs/examination.golden_profile_id.
+  id              String   @id @db.Uuid
+
+  // Cross-schema. Anchor (5) — UUID-only, no FK.
+  tenant_id       String   @db.Uuid
+
+  // Cross-schema reference to Job (same lib, different concern; even
+  // within the lib, cross-entity refs stay UUID-only per the §7.3 rule
+  // applied uniformly). Anchor (5).
+  job_id          String   @db.Uuid
+
+  // Anchor (2) — three structured surfaces. Json because the field-level
+  // shape is Group-3-deferred; the simplest representation that satisfies
+  // the anchor is an opaque structured blob. Group 3 supersession will
+  // typed-shape these (F15).
+  skills          Json
+  experience      Json
+  constraints     Json
+
+  // Anchor (3) — enumerable critical-skills set. The §2.5 Entrustability
+  // Rule Set iterates this collection per critical skill. String[] is the
+  // simplest enumerable representation; per-skill metadata (level, weight)
+  // is Group-3 territory.
+  critical_skills String[]
+
+  // Tenant-scoped lookup + lookup by job_id (anchor (1)+(5) cross-ref).
+  @@index([tenant_id])
+  @@index([tenant_id, job_id])
+  @@schema("job_domain")
+}
+
+// Requisition — anchor (4) carries an active/inactive lifecycle state;
+// anchor (7) carries a recruiter association. Live List (PR-6, out of
+// scope) reads `state = active` to enumerate; recruiter capacity (Group 2)
+// counts a recruiter's active reqs.
+model Requisition {
+  // UUID v7 generated app-side. Anchor (1).
+  id           String           @id @db.Uuid
+
+  // Cross-schema. Anchor (5) — UUID-only, no FK.
+  tenant_id    String           @db.Uuid
+
+  // Cross-schema reference to Job. Anchor (5).
+  job_id       String           @db.Uuid
+
+  // Cross-schema reference to identity.Actor/recruiter. Anchor (7) —
+  // UUID-only, no FK.
+  recruiter_id String           @db.Uuid
+
+  // Anchor (4) — active/inactive lifecycle state. PR-6's Live List
+  // filter (`per active req`) reads this column.
+  state        RequisitionState
+
+  // Lookups: by tenant; by tenant+recruiter (recruiter capacity, Group 2
+  // ~5.2 active reqs per recruiter); by tenant+job (a requisition's job).
+  @@index([tenant_id])
+  @@index([tenant_id, recruiter_id])
+  @@index([tenant_id, job_id])
+  @@schema("job_domain")
+}
