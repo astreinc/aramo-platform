@@ -1346,3 +1346,370 @@ components:
       properties:
         error:
           $ref: '#/components/schemas/ErrorObject'
+
+    # =========================================================================
+    # M3 PR-6 — TalentJobExamination read-side projection schemas.
+    #
+    # Source: Group 2 Consolidated Baseline v2.0 §2.4 (the
+    # TalentJobExamination type literal and its nested types); API Contracts
+    # v1.0 (TalentJobExaminationSummary / Full, the allOf framing, the
+    # EvidenceEntityType closed list).
+    #
+    # Two categories of definition (see PR-6 directive §4.1):
+    #   - FULLY-SPECIFIED — built to the Group 2 §2.4 type literal exactly.
+    #   - NAMED-ONLY — PR-6-defined name-keyed projection shapes per directive
+    #     §2 Ruling 1: built only on substrate data, no skill_id keying, no
+    #     invented per-skill metadata. Group-3-supersedable (F18).
+    #
+    # PR-6 is project-only (§2 Ruling 2): EvidenceReference values are
+    # returned as PR-3 persisted them, no dereferencing of targets.
+    # =========================================================================
+
+    # Group 2 §2.4 ExaminationReasoning.category — 6-value closed enum.
+    ExaminationReasoningCategory:
+      type: string
+      enum:
+        - skill
+        - experience
+        - constraint
+        - freshness
+        - engagement
+        - risk
+
+    # Group 2 §2.4 / API Contracts v1.0 EvidenceEntityType — 8-value closed
+    # list. The 8th value (TalentEngagementEvent) is structurally valid but
+    # unresolvable until M5 (PR-5 Ruling 1).
+    EvidenceEntityType:
+      type: string
+      enum:
+        - TalentSkillEvidence
+        - TalentWorkHistoryEntry
+        - TalentContactMethod
+        - TalentRateExpectation
+        - TalentWorkAuthorization
+        - TalentEngagementEvent
+        - TalentDocument
+        - TalentDerivedSnapshot
+
+    # Group 2 §2.4 EvidenceReference — { entity_type, entity_id, field_path?,
+    # excerpt? }. PR-6 emits values as PR-3 persisted them (project-only).
+    EvidenceReference:
+      type: object
+      additionalProperties: false
+      required: [entity_type, entity_id]
+      properties:
+        entity_type:
+          $ref: '#/components/schemas/EvidenceEntityType'
+        entity_id:
+          type: string
+          format: uuid
+        field_path:
+          type: string
+        excerpt:
+          type: string
+
+    # Group 2 §2.4 ExaminationReasoning — { category, statement, evidence_refs }.
+    ExaminationReasoning:
+      type: object
+      additionalProperties: false
+      required: [category, statement, evidence_refs]
+      properties:
+        category:
+          $ref: '#/components/schemas/ExaminationReasoningCategory'
+        statement:
+          type: string
+        evidence_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceReference'
+
+    # Group 2 §2.4 RiskFlag.type — 8-value closed enum.
+    RiskFlagType:
+      type: string
+      enum:
+        - unverified_contact
+        - stale_profile
+        - low_data_completeness
+        - conflicting_evidence
+        - rate_mismatch
+        - authorization_unknown
+        - low_reachability
+        - other
+
+    # Group 2 §2.4 RiskFlag.severity — 3-value closed enum.
+    RiskFlagSeverity:
+      type: string
+      enum: [low, medium, high]
+
+    # Group 2 §2.4 RiskFlag — { type, subtype?, severity, message }.
+    RiskFlag:
+      type: object
+      additionalProperties: false
+      required: [type, severity, message]
+      properties:
+        type:
+          $ref: '#/components/schemas/RiskFlagType'
+        subtype:
+          type: string
+        severity:
+          $ref: '#/components/schemas/RiskFlagSeverity'
+        message:
+          type: string
+
+    # Group 2 §2.4 ConfidenceIndicators.*.level — 3-value closed enum.
+    ConfidenceLevel:
+      type: string
+      enum: [high, medium, low]
+
+    # Group 2 §2.4 — single indicator { level, basis }.
+    ConfidenceIndicator:
+      type: object
+      additionalProperties: false
+      required: [level, basis]
+      properties:
+        level:
+          $ref: '#/components/schemas/ConfidenceLevel'
+        basis:
+          type: string
+
+    # Group 2 §2.4 ConfidenceIndicators — three indicators.
+    ConfidenceIndicators:
+      type: object
+      additionalProperties: false
+      required: [evidence_strength, data_completeness, constraint_confidence]
+      properties:
+        evidence_strength:
+          $ref: '#/components/schemas/ConfidenceIndicator'
+        data_completeness:
+          $ref: '#/components/schemas/ConfidenceIndicator'
+        constraint_confidence:
+          $ref: '#/components/schemas/ConfidenceIndicator'
+
+    # Group 2 §2.4 DeltaToEntrustable.current_tier — 2-value closed enum.
+    DeltaCurrentTier:
+      type: string
+      enum: [WORTH_CONSIDERING, STRETCH]
+
+    # Group 2 §2.4 DeltaToEntrustable.next_tier_target — 2-value closed enum.
+    DeltaNextTierTarget:
+      type: string
+      enum: [WORTH_CONSIDERING, ENTRUSTABLE]
+
+    # Group 2 §2.4 DeltaToEntrustable.
+    DeltaToEntrustable:
+      type: object
+      additionalProperties: false
+      required: [current_tier, next_tier_target, blockers, recommended_actions]
+      properties:
+        current_tier:
+          $ref: '#/components/schemas/DeltaCurrentTier'
+        next_tier_target:
+          $ref: '#/components/schemas/DeltaNextTierTarget'
+        blockers:
+          type: array
+          items:
+            type: string
+        recommended_actions:
+          type: array
+          items:
+            type: string
+
+    # Group 2 §2.4 TalentJobExamination.tier — 3-value closed enum.
+    ExaminationTier:
+      type: string
+      enum: [ENTRUSTABLE, WORTH_CONSIDERING, STRETCH]
+
+    # Group 2 §2.4 TalentJobExamination.lifecycle_state — 3-value closed enum.
+    ExaminationLifecycleState:
+      type: string
+      enum: [active, archived, cold_storage]
+
+    # PR-6 §4.1 named-only projection shape (Ruling 1) — name-keyed
+    # per-skill view. NO skill_id; metadata limited to what the PR-2/3
+    # CriticalSkillExamination type carries. Group-3-supersedable (F18).
+    SkillMatchSummaryPerSkill:
+      type: object
+      additionalProperties: false
+      required: [name, evidence_count, has_ingested_evidence]
+      properties:
+        name:
+          type: string
+        evidence_count:
+          type: integer
+          minimum: 0
+        has_ingested_evidence:
+          type: boolean
+
+    # PR-6 §4.1 named-only projection shape (Ruling 1) — Group 2 §2.4 names
+    # SkillMatchSummary but gives no inline body. PR-6 defines this as the
+    # simplest name-keyed shape over GoldenProfile.critical_skills names and
+    # CriticalSkillExamination per-skill data. Group-3-supersedable (F18).
+    SkillMatchSummary:
+      type: object
+      additionalProperties: false
+      required: [matched_count, missing_count, per_skill]
+      properties:
+        matched_count:
+          type: integer
+          minimum: 0
+        missing_count:
+          type: integer
+          minimum: 0
+        per_skill:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillMatchSummaryPerSkill'
+
+    # PR-6 §4.1 named-only projection shape (Ruling 1).
+    # Group-3-supersedable (F18).
+    ExperienceMatchSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        years:
+          type: number
+        summary:
+          type: string
+
+    # PR-6 §4.1 named-only projection shape (Ruling 1). Field names match
+    # the four §2.5 constraint dimensions. Group-3-supersedable (F18).
+    ConstraintCheckSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        location:
+          type: string
+        work_mode:
+          type: string
+        rate:
+          type: string
+        work_authorization:
+          type: string
+
+    # PR-6 §4.1 named-only projection shape (Ruling 1).
+    # Group-3-supersedable (F18).
+    FreshnessIndicator:
+      type: object
+      additionalProperties: false
+      properties:
+        profile_age_days:
+          type: integer
+          minimum: 0
+
+    # API Contracts v1.0 / Group 2 §2.4 TalentJobExaminationSummary — the
+    # 10-field shape returned by match-list endpoints. The allOf base for
+    # TalentJobExaminationFull below.
+    TalentJobExaminationSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - examination_id
+        - talent_id
+        - job_id
+        - tier
+        - rank_ordinal
+        - why_matched_sentence
+        - top_skills
+        - confidence_summary
+        - freshness_indicator
+        - computed_at
+      properties:
+        examination_id:
+          type: string
+          format: uuid
+        talent_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        tier:
+          $ref: '#/components/schemas/ExaminationTier'
+        rank_ordinal:
+          type: integer
+          minimum: 0
+        why_matched_sentence:
+          type: string
+          maxLength: 140
+        top_skills:
+          type: array
+          items:
+            type: string
+        confidence_summary:
+          $ref: '#/components/schemas/ConfidenceIndicators'
+        freshness_indicator:
+          $ref: '#/components/schemas/FreshnessIndicator'
+        computed_at:
+          type: string
+          format: date-time
+
+    # API Contracts v1.0 / Group 2 §2.4 TalentJobExaminationFull —
+    # allOf Summary + the 5 added field groups per L463-468: expanded
+    # reasoning, skill match breakdown, evidence references,
+    # delta_to_entrustable, lifecycle metadata. PR-6 also adds the
+    # fully-specified strengths/gaps/risk_flags fields from §2.4.
+    #
+    # Schema Rule (Locked, API Contracts L586): match-list endpoints must
+    # NEVER return Full. The detail endpoint serves Full; the match list
+    # serves Summary.
+    TalentJobExaminationFull:
+      allOf:
+        - $ref: '#/components/schemas/TalentJobExaminationSummary'
+        - type: object
+          additionalProperties: false
+          required:
+            - expanded_reasoning
+            - skill_match
+            - experience_match
+            - constraint_checks
+            - strengths
+            - gaps
+            - risk_flags
+            - delta_to_entrustable
+            - evidence_references
+            - lifecycle_state
+            - archived_at
+            - superseded_by_examination_id
+          properties:
+            expanded_reasoning:
+              type: array
+              items:
+                $ref: '#/components/schemas/ExaminationReasoning'
+            skill_match:
+              $ref: '#/components/schemas/SkillMatchSummary'
+            experience_match:
+              $ref: '#/components/schemas/ExperienceMatchSummary'
+            constraint_checks:
+              $ref: '#/components/schemas/ConstraintCheckSummary'
+            strengths:
+              type: array
+              items:
+                type: string
+            gaps:
+              type: array
+              items:
+                type: string
+            risk_flags:
+              type: array
+              items:
+                $ref: '#/components/schemas/RiskFlag'
+            delta_to_entrustable:
+              oneOf:
+                - $ref: '#/components/schemas/DeltaToEntrustable'
+                - type: 'null'
+            evidence_references:
+              type: array
+              items:
+                $ref: '#/components/schemas/EvidenceReference'
+            lifecycle_state:
+              $ref: '#/components/schemas/ExaminationLifecycleState'
+            archived_at:
+              oneOf:
+                - type: string
+                  format: date-time
+                - type: 'null'
+            superseded_by_examination_id:
+              oneOf:
+                - type: string
+                  format: uuid
+                - type: 'null'
