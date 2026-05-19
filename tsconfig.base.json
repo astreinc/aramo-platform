@@ -40,7 +40,8 @@
       "@aramo/job-domain": ["libs/job-domain/src/index.ts"],
       "@aramo/matching": ["libs/matching/src/index.ts"],
       "@aramo/skills-taxonomy": ["libs/skills-taxonomy/src/index.ts"],
-      "@aramo/talent": ["libs/talent/src/index.ts"]
+      "@aramo/talent": ["libs/talent/src/index.ts"],
+      "@aramo/talent-evidence": ["libs/talent-evidence/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp", "dist", "build", "**/prisma/generated"]
