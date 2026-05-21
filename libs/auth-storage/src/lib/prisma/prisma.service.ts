@@ -1,34 +1,57 @@
-import { Injectable, Logger, Optional, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, Optional, OnModuleDestroy } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
 
 import { PrismaClient } from '../../../prisma/generated/client/client.js';
 
 // Per-module PrismaService for the auth-storage module. Wraps the
-// auth-storage Prisma client (third per-module client in the workspace, after
-// libs/consent and libs/identity). Mirrors libs/identity/src/lib/prisma/
-// prisma.service.ts and libs/consent/src/lib/prisma/prisma.service.ts.
+// auth-storage Prisma client; each module owns its own generated client
+// (ADR-0001 D3 / Architecture v2.0 §7 schema-per-module).
 //
-// Per ADR-0001 D3: each module owns its own generated client; the three
-// clients do not share a generation directory and cannot collide.
+// Prisma 7 requires the driver-adapter pattern; @prisma/adapter-pg is the
+// program-wide Postgres adapter.
 //
-// @Optional() on databaseUrl so Nest DI does not try to resolve a String
-// token. Tests pass the URL explicitly; production reads from env.
+// M3 PR-17 / F21 — lazy first-use validation. The constructor performs NO
+// env read for validation, NO throw; it stores the @Optional() databaseUrl
+// argument and constructs the PrismaPg adapter (possibly with an empty
+// connection string — PrismaPg tolerates that at adapter construction).
+// DATABASE_URL validation fires lazily at first DB access via the
+// `$connect` override below, preserving the same
+// `'DATABASE_URL is not configured'` error message byte-identical. Mirrors
+// libs/job-domain's post-PR-7 reference pattern — the workspace
+// application of the F11/F14 lazy-validation lesson. `OnModuleInit` is
+// removed (retaining it would re-introduce the eager-validation hazard at
+// Nest's app.init layer); `OnModuleDestroy` is retained for connection
+// teardown.
+//
+// @Optional() on the constructor's databaseUrl parameter so Nest DI does
+// not try to resolve a String token (the F11 lesson, guarded by
+// apps/api/src/tests/app-module-di.spec.ts). Tests may pass an explicit
+// URL (`new PrismaService(url)`); production wiring relies on the
+// process.env['DATABASE_URL'] fallback.
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService extends PrismaClient implements OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
+  private readonly explicitUrl?: string;
+  private validated = false;
 
   constructor(@Optional() databaseUrl?: string) {
-    const connectionString = databaseUrl ?? process.env['DATABASE_URL'];
-    if (connectionString === undefined || connectionString.length === 0) {
-      throw new Error('DATABASE_URL is not configured');
-    }
     super({
-      adapter: new PrismaPg({ connectionString }),
+      adapter: new PrismaPg({
+        connectionString: databaseUrl ?? process.env['DATABASE_URL'] ?? '',
+      }),
     });
+    this.explicitUrl = databaseUrl;
   }
 
-  async onModuleInit(): Promise<void> {
-    await this.$connect();
+  override async $connect(): Promise<void> {
+    if (!this.validated) {
+      const url = this.explicitUrl ?? process.env['DATABASE_URL'];
+      if (url === undefined || url.length === 0) {
+        throw new Error('DATABASE_URL is not configured');
+      }
+      this.validated = true;
+    }
+    await super.$connect();
     this.logger.log('PrismaService (auth-storage) connected');
   }
 
