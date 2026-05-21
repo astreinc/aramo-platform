@@ -6,7 +6,10 @@
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "declaration": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@aramo/job-domain": ["../../dist/libs/job-domain/src/index.d.ts"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/tests/**/*"]

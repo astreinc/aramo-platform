@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { JobDomainRepository } from '@aramo/job-domain';
 
 import {
   projectFullView,
@@ -10,7 +11,8 @@ import type {
 } from './examination-full.types.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
-// Repository for the TalentJobExamination model (M3 PR-1 §3.3 + M3 PR-6 §4.2).
+// Repository for the TalentJobExamination model (M3 PR-1 §3.3 + M3 PR-6 §4.2
+// + M3 PR-7 §4.1).
 //
 // Surface scope (closed):
 //   - createSnapshot: insert a new immutable analytical snapshot.
@@ -23,6 +25,13 @@ import { PrismaService } from './prisma/prisma.service.js';
 //     @relation, does not touch the immutability trigger.
 //   - findByIdSummary (PR-6): companion projection for the
 //     TalentJobExaminationSummaryView shape (Full's allOf base).
+//   - findActiveReqLiveList (PR-7): the per-active-req Live List query —
+//     loads the Requisition, verifies (state='active' AND tenant_id match),
+//     selects ranked TalentJobExamination rows for the req's job_id with
+//     lifecycle_state='active', and projects each through PR-6's
+//     projectSummaryView. PULL-SIDE (Ruling 1), PROJECT-VIA-PR-6
+//     (Ruling 3), READ-ONLY, NO ENGAGEMENT-STATE FILTER (Ruling 4 — that
+//     filter is M5 territory).
 //   - findByTenantAndTalent: read all snapshots for a (tenant, talent) pair,
 //     newest first via the (tenant_id, talent_id, computed_at DESC, id DESC)
 //     keyset index.
@@ -148,9 +157,49 @@ export interface MarkSupersededInput {
   archived_at?: Date;
 }
 
+// M3 PR-7 §4.1 — Live List query input. Keyset pagination via an optional
+// cursor on (tier, rank_ordinal, id); limit is clamped by the repository
+// (default 50, hard cap 200) per Ruling 7.
+export interface FindActiveReqLiveListInput {
+  tenant_id: string;
+  req_id: string;
+  limit?: number;
+  cursor?: {
+    tier: ExaminationTierValue;
+    rank_ordinal: number;
+    id: string;
+  };
+}
+
+// M3 PR-7 §2 Ruling 7 — limit clamp constants. Default applied when
+// input.limit is omitted; hard cap applied to any explicitly-supplied
+// value above it; floor applied to any value below 1.
+const LIVE_LIST_DEFAULT_LIMIT = 50;
+const LIVE_LIST_MAX_LIMIT = 200;
+const LIVE_LIST_MIN_LIMIT = 1;
+
+// Postgres compares enum values by their declared enum-position;
+// ExaminationTier is declared as (ENTRUSTABLE, WORTH_CONSIDERING, STRETCH),
+// so ASC means ENTRUSTABLE first, STRETCH last — what Live List wants.
+// The (tenant_id, job_id, tier, rank_ordinal) index supports this
+// traversal natively at the storage layer.
+//
+// Prisma 7's enum filter surface supports only `equals` / `in` / `not` /
+// `notIn` — not `gt`. The keyset cursor's "tier > cursor.tier" branch is
+// therefore expressed as an explicit `in` over the tiers that come strictly
+// after `cursor.tier` in the declared order.
+const TIERS_AFTER: Record<ExaminationTierValue, ExaminationTierValue[]> = {
+  ENTRUSTABLE: ['WORTH_CONSIDERING', 'STRETCH'],
+  WORTH_CONSIDERING: ['STRETCH'],
+  STRETCH: [],
+};
+
 @Injectable()
 export class ExaminationRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jobDomain: JobDomainRepository,
+  ) {}
 
   async createSnapshot(
     input: CreateExaminationSnapshotInput,
@@ -220,6 +269,114 @@ export class ExaminationRepository {
     const row = await this.findById(id);
     if (row === null) return null;
     return projectFullView(row);
+  }
+
+  // M3 PR-7 §4.1 — Live List query per active req.
+  //
+  // PULL-SIDE (Ruling 1): an always-correct on-demand query; no materialized
+  // state, no event subscription. PROJECT-VIA-PR-6 (Ruling 3): each selected
+  // row is run through projectSummaryView so the canonical Summary
+  // projection lives in exactly one place. READ-ONLY: no UPDATE/INSERT/
+  // DELETE; the PR-1 immutability trigger is never reached.
+  //
+  // Behavior (directive §4.1):
+  //   1. Load the Requisition by req_id via JobDomainRepository.
+  //      findRequisitionById. Verify state='active' AND tenant_id matches.
+  //      If absent / inactive / tenant-mismatched, return [] (NOT an
+  //      exception — tenant mismatch is a security-posture recovery from a
+  //      multi-tenant routing bug, not an error path).
+  //   2. Apply Ruling 7 clamp: min(max(input.limit ?? 50, 1), 200).
+  //   3. Query TalentJobExamination filtered by (tenant_id, job_id) with
+  //      lifecycle_state='active'. Order (tier ASC, rank_ordinal ASC, id
+  //      ASC). Apply limit and (if provided) the keyset cursor — the
+  //      "next-page" predicate is (tier, rank_ordinal, id) > cursor in the
+  //      query's ordering.
+  //   4. Project each row through projectSummaryView (PR-6) and return.
+  //
+  // NO engagement-state filter (Ruling 4 — M5 territory, F20). NO
+  // §14.4 sensitive-field mechanics (Ruling 6 — Summary-only output, no new
+  // sensitive surfacing). NO HTTP endpoint (directive §5 — PR-8).
+  async findActiveReqLiveList(
+    input: FindActiveReqLiveListInput,
+  ): Promise<TalentJobExaminationSummaryView[]> {
+    // Step 1 — load and validate the Requisition.
+    const requisition = await this.jobDomain.findRequisitionById(input.req_id);
+    if (requisition === null) return [];
+    if (requisition.state !== 'active') return [];
+    if (requisition.tenant_id !== input.tenant_id) return [];
+
+    // Step 2 — Ruling 7 clamp. Default 50 when omitted; floor 1; cap 200.
+    const limit = Math.min(
+      Math.max(input.limit ?? LIVE_LIST_DEFAULT_LIMIT, LIVE_LIST_MIN_LIMIT),
+      LIVE_LIST_MAX_LIMIT,
+    );
+
+    // Step 3 — keyset cursor predicate (if provided). The query's ordering
+    // is (tier ASC, rank_ordinal ASC, id ASC); the "next-page" predicate is
+    // (tier, rank_ordinal, id) > (cursor.tier, cursor.rank_ordinal,
+    // cursor.id). Expressed as the SQL-equivalent OR-chain so Prisma's
+    // query planner can use the (tenant_id, job_id, tier, rank_ordinal)
+    // index efficiently.
+    //
+    // Built as a plain object literal and cast at the findMany boundary via
+    // `as never` (existing repository pattern, mirrors createSnapshot's
+    // Json casts at L175-184): the Prisma client's generated
+    // EnumExaminationTierFilter expects its own ExaminationTier enum type,
+    // not the repository's ExaminationTierValue string-union type — the
+    // values are byte-identical but TS treats the types as nominally
+    // distinct.
+    const baseWhere = {
+      tenant_id: input.tenant_id,
+      job_id: requisition.job_id,
+      lifecycle_state: 'active',
+    };
+    const whereClause =
+      input.cursor === undefined
+        ? baseWhere
+        : {
+            ...baseWhere,
+            OR: [
+              // Branch 1: tier strictly after cursor.tier. Prisma 7 enum
+              // filters don't support `gt`, so we materialise the explicit
+              // list of subsequent tiers (TIERS_AFTER). When the cursor is
+              // on the last tier (STRETCH), TIERS_AFTER is [] and this
+              // branch contributes no rows — branches 2 and 3 still apply.
+              { tier: { in: TIERS_AFTER[input.cursor.tier] } },
+              // Branch 2: same tier, higher rank_ordinal. `gt` on Int is
+              // supported.
+              {
+                AND: [
+                  { tier: input.cursor.tier },
+                  { rank_ordinal: { gt: input.cursor.rank_ordinal } },
+                ],
+              },
+              // Branch 3: same tier and rank_ordinal, lexically-later id
+              // (the tiebreaker for stable pagination). `gt` on String/Uuid
+              // is supported.
+              {
+                AND: [
+                  { tier: input.cursor.tier },
+                  { rank_ordinal: input.cursor.rank_ordinal },
+                  { id: { gt: input.cursor.id } },
+                ],
+              },
+            ],
+          };
+
+    // Step 4 — query the ranked rows (tenant + req filter; active only).
+    const rows = await this.prisma.talentJobExamination.findMany({
+      where: whereClause as never,
+      orderBy: [
+        { tier: 'asc' },
+        { rank_ordinal: 'asc' },
+        { id: 'asc' },
+      ],
+      take: limit,
+    });
+
+    // Step 5 — project each row through PR-6's projectSummaryView. Single
+    // canonical Summary-producing path (Ruling 3); no duplicated logic.
+    return (rows as TalentJobExaminationRow[]).map((r) => projectSummaryView(r));
   }
 
   async findByTenantAndTalent(

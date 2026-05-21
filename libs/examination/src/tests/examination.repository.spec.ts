@@ -16,18 +16,21 @@ import { ExaminationRepository } from '../lib/examination.repository.js';
 describe('ExaminationRepository — surface', () => {
   // PR-1 surface: { createSnapshot, findById, findByTenantAndTalent,
   // markSuperseded }. PR-6 adds two READ-ONLY, PROJECT-ONLY methods
-  // (findByIdSummary, findByIdFull) per directive §4.2 — the typed
-  // read-side projection over the existing TalentJobExamination row.
-  // No write method added; the closed-surface immutability discipline is
-  // preserved (the no-analytical-mutation test below still passes — read
-  // projections issue no UPDATE).
-  it('exposes exactly the PR-1 + PR-6 surface (4 + 2 methods)', () => {
+  // (findByIdSummary, findByIdFull) per its §4.2 — the typed read-side
+  // projection over the existing TalentJobExamination row. PR-7 adds one
+  // READ-ONLY, PROJECT-VIA-PR-6 method (findActiveReqLiveList) per its
+  // §4.1 — the per-active-req Live List query. No write method added; the
+  // closed-surface immutability discipline is preserved (the
+  // no-analytical-mutation test below still passes — read projections
+  // issue no UPDATE).
+  it('exposes exactly the PR-1 + PR-6 + PR-7 surface (4 + 2 + 1 methods)', () => {
     const methods = Object.getOwnPropertyNames(ExaminationRepository.prototype)
       .filter((m) => m !== 'constructor')
       .sort();
     expect(methods).toEqual(
       [
         'createSnapshot',
+        'findActiveReqLiveList',
         'findById',
         'findByIdFull',
         'findByIdSummary',
@@ -49,7 +52,7 @@ describe('ExaminationRepository — surface', () => {
   it('rejects why_matched_sentence longer than 140 chars at the create boundary (§2.4 / §3.1)', async () => {
     // No DB connection needed — the validation fires synchronously before
     // any Prisma call, throwing rather than reaching the client.
-    const repo = new ExaminationRepository(undefined as never);
+    const repo = new ExaminationRepository(undefined as never, undefined as never);
     const tooLong = 'x'.repeat(141);
     await expect(
       repo.createSnapshot({

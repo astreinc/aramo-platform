@@ -147,5 +147,14 @@ model TalentJobExamination {
   // no separate created_at, so computed_at is the snapshot's
   // chronological key.
   @@index([tenant_id, talent_id, computed_at(sort: Desc), id(sort: Desc)])
+  // M3 PR-7 §4.2 — Live List traversal index. Supports
+  // findActiveReqLiveList's (tenant_id, job_id) filter ordered by
+  // (tier ASC, rank_ordinal ASC, id ASC). The leading tenant_id keeps
+  // it consistent with the other indices and the tenant-scoping
+  // convention; the trailing (tier, rank_ordinal) match the query's
+  // primary sort. id is the stable tiebreaker for keyset pagination
+  // but is implicit (the primary key is always available); only the
+  // four leading columns are declared here.
+  @@index([tenant_id, job_id, tier, rank_ordinal])
   @@schema("examination")
 }

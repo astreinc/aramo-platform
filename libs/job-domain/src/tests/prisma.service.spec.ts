@@ -1,0 +1,38 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { PrismaService } from '../lib/prisma/prisma.service.js';
+
+// D-M3-PR7-DI-1 / PR-7 Scope Amendment v1 §3 test bound — the F21
+// verification surface for libs/job-domain specifically. Confirms the
+// lazy-validation contract:
+//   (a) construction succeeds when DATABASE_URL is absent (no constructor
+//       throw — the latent defect that surfaced under PR-7's required
+//       JobDomainModule import is gone);
+//   (b) the same 'DATABASE_URL is not configured' error is raised on
+//       first DB access (here, `$connect()`) if DATABASE_URL is still
+//       absent — i.e. the validation has moved, not vanished.
+describe('PrismaService (job-domain) — lazy DATABASE_URL validation', () => {
+  let savedDatabaseUrl: string | undefined;
+
+  beforeEach(() => {
+    savedDatabaseUrl = process.env['DATABASE_URL'];
+    delete process.env['DATABASE_URL'];
+  });
+
+  afterEach(() => {
+    if (savedDatabaseUrl === undefined) {
+      delete process.env['DATABASE_URL'];
+    } else {
+      process.env['DATABASE_URL'] = savedDatabaseUrl;
+    }
+  });
+
+  it('constructs successfully when DATABASE_URL is absent (no constructor throw)', () => {
+    expect(() => new PrismaService()).not.toThrow();
+  });
+
+  it("throws 'DATABASE_URL is not configured' on first DB access ($connect) if still absent", async () => {
+    const service = new PrismaService();
+    await expect(service.$connect()).rejects.toThrow('DATABASE_URL is not configured');
+  });
+});
