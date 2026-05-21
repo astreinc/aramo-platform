@@ -21,20 +21,28 @@ import {
 } from 'jose';
 import { AppModule } from '@aramo/api';
 
-// PR-14 §4.7 + Amendment v1.0 §2 + PR-15 §4.2/§4.3 — Pact provider
-// verifier for apps/api.
+// PR-14 §4.7 + Amendment v1.0 §2 + PR-15 §4.2/§4.3 + M3 PR-8 §4.7 —
+// Pact provider verifier for apps/api.
 //
 // Scope:
 //   - PR-14: ingestion-consumer (2 interactions) + prohibited-source-type
 //     (1 interaction)
 //   - PR-15 §4.2 (F10): tenant-console-consumer (5 consent interactions)
 //   - PR-15 §4.3 (F9): ats-thin (23 consent interactions)
+//   - M3 PR-8 §4.7: ats-thin match-list (4 interactions; happy path,
+//     empty list, 400 INVALID_REQUEST, 403 INSUFFICIENT_PERMISSIONS).
+//     PR-8's match-list interactions MUST pass; pre-existing 23 consent
+//     interactions remain covered by the PR-15 §4.3 handlers below.
 //
-// Migration set (per Gate 5 §4.7 inspection + PR-15 §3): consent +
-// ingestion ONLY. The API-side AuthModule is a pure JWT validator with
-// zero Prisma queries; identity / auth / auth-storage / common are NOT
-// required. ConsentAuditEvent (audit schema) is created by the consent
-// migration, which the decision-log interactions rely on.
+// Migration set (per Gate 5 §4.7 inspection + PR-15 §3 + M3 PR-8 §4.7):
+// consent + ingestion + examination init + examination live-list index +
+// job-domain init. Examination + job-domain migrations are added by M3
+// PR-8 so the match-list state handler can seed Requisition + ranked
+// TalentJobExamination rows the new endpoint serves. The API-side
+// AuthModule is a pure JWT validator with zero Prisma queries; identity /
+// auth / auth-storage / common are NOT required. ConsentAuditEvent (audit
+// schema) is created by the consent migration, which the decision-log
+// interactions rely on.
 //
 // Auth — PR-14 Amendment §2.2: inline JWT signing with the production
 // issuer 'Aramo Core Auth' so JwtAuthGuard accepts the token. Mirrors
@@ -67,6 +75,18 @@ const INGESTION_INIT_MIGRATION = resolve(
 const INGESTION_SURFACE_MIGRATION = resolve(
   ROOT,
   'libs/ingestion/prisma/migrations/20260516183528_add_skill_surface_forms/migration.sql',
+);
+const EXAMINATION_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
+);
+const EXAMINATION_LIVE_LIST_MIGRATION = resolve(
+  ROOT,
+  'libs/examination/prisma/migrations/20260521120000_add_live_list_index/migration.sql',
+);
+const JOB_DOMAIN_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
 );
 const INGESTION_PACT = resolve(
   ROOT,
@@ -118,6 +138,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     let port = 0;
     let savedEnv: Partial<Record<string, string | undefined>> = {};
     let accessJwt: string;
+    let portalJwt: string;
     // Assigned in beforeAll before any state handler runs; initialized empty
     // for strict null-checks compliance.
     let dbUrl = '';
@@ -142,6 +163,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await c.query('TRUNCATE TABLE consent."IdempotencyKey" CASCADE');
       await c.query('TRUNCATE TABLE consent."OutboxEvent" CASCADE');
       await c.query('TRUNCATE TABLE audit."ConsentAuditEvent" CASCADE');
+      // M3 PR-8 — match-list state handlers seed rows into these tables;
+      // truncate them at the start of every interaction so a prior
+      // interaction's data doesn't leak forward.
+      await c.query('TRUNCATE TABLE examination."TalentJobExamination" CASCADE');
+      await c.query('TRUNCATE TABLE job_domain."Requisition" CASCADE');
     }
 
     async function seedConsentEvent(
@@ -205,6 +231,80 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
+    // M3 PR-8 §4.7 — seed the active Requisition + N ranked Summary
+    // examinations that the match-list state handlers describe. Mirrors
+    // the live-list integration spec's seeding pattern (raw SQL because
+    // the verifier harness uses node-postgres directly, not the
+    // ExaminationRepository surface).
+    async function seedMatchListFixture(
+      c: Client,
+      opts: { jobId: string; reqId: string; examIds: readonly string[] },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO job_domain."Requisition"
+           (id, tenant_id, job_id, recruiter_id, state)
+         VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState")`,
+        [opts.reqId, TENANT_ID, opts.jobId, RECRUITER_ID],
+      );
+      const goldenId = '11111111-0000-7000-8000-0000000000aa';
+      const tiers = ['ENTRUSTABLE', 'WORTH_CONSIDERING', 'STRETCH'] as const;
+      for (let i = 0; i < opts.examIds.length; i++) {
+        const tier = tiers[i] ?? 'STRETCH';
+        const exam = opts.examIds[i];
+        if (exam === undefined) continue;
+        await c.query(
+          `INSERT INTO examination."TalentJobExamination"
+             (id, tenant_id, talent_id, job_id, golden_profile_id, trigger,
+              tier, rank_ordinal, why_matched_sentence, match_summary,
+              expanded_reasoning, skill_match, experience_match,
+              constraint_checks, strengths, gaps, risk_flags,
+              confidence_indicators, freshness_indicator, delta_to_entrustable,
+              examination_version, model_version, taxonomy_version,
+              computed_at, lifecycle_state)
+           VALUES ($1,$2,$3,$4,$5,'initial_match'::examination."ExaminationTrigger",
+                   $6::examination."ExaminationTier",$7,$8,$9,
+                   $10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,
+                   $15::jsonb,$16::jsonb,$17::jsonb,$18::jsonb,$19::jsonb,
+                   $20,$21,$22,$23,'active'::examination."ExaminationLifecycleState")`,
+          [
+            exam,
+            TENANT_ID,
+            'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+            opts.jobId,
+            goldenId,
+            tier,
+            i + 1,
+            'matched on skills X and Y',
+            'baseline match',
+            JSON.stringify([]),
+            JSON.stringify({
+              matched_count: 1,
+              missing_count: 0,
+              per_skill: [
+                { name: 'TypeScript', evidence_count: 1, has_ingested_evidence: true },
+              ],
+            }),
+            JSON.stringify({}),
+            JSON.stringify({}),
+            JSON.stringify(['baseline']),
+            JSON.stringify([]),
+            JSON.stringify([]),
+            JSON.stringify({
+              evidence_strength: { level: 'medium', basis: 'evidence_count' },
+              data_completeness: { level: 'high', basis: 'fields_present' },
+              constraint_confidence: { level: 'medium', basis: 'rate_overlap' },
+            }),
+            JSON.stringify({ profile_age_days: 14 }),
+            JSON.stringify(null),
+            'v1',
+            'v1',
+            'v1',
+            '2026-05-01T12:00:00.000Z',
+          ],
+        );
+      }
+    }
+
     async function seedIdempotencyKey(
       c: Client,
       opts: { id: string; key: string; requestHash: string },
@@ -240,6 +340,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         CONSENT_MIGRATION,
         INGESTION_INIT_MIGRATION,
         INGESTION_SURFACE_MIGRATION,
+        EXAMINATION_INIT_MIGRATION,
+        EXAMINATION_LIVE_LIST_MIGRATION,
+        JOB_DOMAIN_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -267,6 +370,25 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         actor_kind: 'user',
         tenant_id: TENANT_ID,
         scopes: ['ingestion:write'],
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt()
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
+      // M3 PR-8 §4.7 — portal-consumer JWT for the 403 INSUFFICIENT_PERMISSIONS
+      // match-list interaction (the recruiter-only route rejects non-
+      // recruiter consumer_types). Same signing key/issuer/audience as
+      // accessJwt — JwtAuthGuard accepts it; the controller's per-route
+      // consumer_type assertion rejects it with 403.
+      portalJwt = await new SignJWT({
+        sub: RECRUITER_ID,
+        consumer_type: 'portal',
+        actor_kind: 'user',
+        tenant_id: TENANT_ID,
+        scopes: [],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -748,6 +870,46 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             }
           });
         },
+      // ===== M3 PR-8 §4.7 match-list (4 interactions) =====
+      'a recruiter token, an active requisition with id REQ, and three ranked Summary examinations':
+        async () => {
+          // PR-8 §4.7 — seed active Requisition (matching JOB_ID in the
+          // consumer test) and 3 ranked Summary examinations across the
+          // three tiers. The match-list endpoint returns them via
+          // findActiveReqLiveList; the Pact strict jsonBody asserts the
+          // Summary contract.
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedMatchListFixture(c, {
+              jobId: '22222222-2222-7222-8222-222222222222',
+              reqId: '33333333-3333-7333-8333-333333333333',
+              examIds: [
+                'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
+                'dddddddd-dddd-7ddd-8ddd-dddddddddddd',
+                'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee',
+              ],
+            });
+          });
+        },
+      'a recruiter token and no active requisition for the job': async () => {
+        // PR-8 §4.7 — no seed; the controller returns 200 with empty
+        // data[] when findActiveRequisitionByJobId returns null.
+        await withClient((c) => resetAllRows(c));
+      },
+      'a recruiter token': async () => {
+        // PR-8 §4.7 — pre-DB validation path (malformed job_id → 400
+        // INVALID_REQUEST). The recruiter JWT injected by requestFilter
+        // satisfies JwtAuthGuard + the consumer_type check; the UUID
+        // assertion fires before any repository call.
+        await withClient((c) => resetAllRows(c));
+      },
+      'a portal-consumer token (not recruiter)': async () => {
+        // PR-8 §4.7 — the request-filter rewrites the literal
+        // 'Bearer eyJfake.portal.token' to portalJwt (consumer_type=portal);
+        // the controller's per-route check returns 403
+        // INSUFFICIENT_PERMISSIONS before any repository call.
+        await withClient((c) => resetAllRows(c));
+      },
       'a talent with profile granted and contacting revoked': async () => {
         // §4.3 — profile_storage granted (status: granted); contacting
         // granted then revoked (Decision D: revoked). Remaining 3 scopes
@@ -811,6 +973,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         authHeader === 'Bearer eyJfake.token'
       ) {
         req.headers['authorization'] = `Bearer ${accessJwt}`;
+      } else if (
+        typeof authHeader === 'string' &&
+        authHeader === 'Bearer eyJfake.portal.token'
+      ) {
+        // M3 PR-8 §4.7 — the match-list 403 interaction ships a literal
+        // portal-consumer fake token. Rewrite to a real JWT signed with
+        // consumer_type='portal' so JwtAuthGuard accepts the token and the
+        // controller's per-route check returns 403 INSUFFICIENT_PERMISSIONS.
+        req.headers['authorization'] = `Bearer ${portalJwt}`;
       }
       next();
     }

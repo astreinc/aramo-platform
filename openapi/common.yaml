@@ -664,6 +664,37 @@ components:
       in: cookie
       name: aramo_access_token
 
+  # M3 PR-8 §4.4 — named common responses for the standard error families.
+  # OpenAPI definition home for the cross-file $ref pattern
+  # (openapi/ats.yaml references these on the match-list endpoint). All
+  # three carry the ErrorResponse envelope as their response body.
+  responses:
+    BadRequest:
+      description: |
+        The request was malformed (invalid path/query parameter, malformed
+        cursor, etc.). Error code INVALID_REQUEST.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: |
+        Missing or invalid JWT bearer token. Error code AUTH_REQUIRED or
+        INVALID_TOKEN.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: |
+        Authenticated but unauthorized — consumer_type does not have access
+        to this route, or tenant scoping denies the request. Error code
+        INSUFFICIENT_PERMISSIONS or TENANT_ACCESS_DENIED.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
   schemas:
     ConsentScope:
       type: string
@@ -1302,9 +1333,12 @@ components:
 
         PR-8.0a-Reground adds TENANT_SELECTION_REQUIRED (HTTP 409)
         and REFRESH_TOKEN_INVALID (HTTP 401) for the auth-service
-        /callback and /refresh endpoints respectively. Declaration
-        order in this enum matches ERROR_CODES tuple order in
-        libs/common/src/lib/errors/error-codes.ts.
+        /callback and /refresh endpoints respectively. M3 PR-8 adds
+        INVALID_REQUEST (HTTP 400) for malformed match-list request
+        input and INSUFFICIENT_PERMISSIONS (HTTP 403) for per-route
+        consumer_type checks on the recruiter-facing match-list
+        endpoint. Declaration order in this enum matches ERROR_CODES
+        tuple order in libs/common/src/lib/errors/error-codes.ts.
       enum:
         - AUTH_REQUIRED
         - INVALID_TOKEN
@@ -1315,6 +1349,8 @@ components:
         - INVALID_SCOPE_COMBINATION
         - TENANT_SELECTION_REQUIRED
         - REFRESH_TOKEN_INVALID
+        - INVALID_REQUEST
+        - INSUFFICIENT_PERMISSIONS
 
     ErrorObject:
       type: object
@@ -1713,3 +1749,38 @@ components:
                 - type: string
                   format: uuid
                 - type: 'null'
+
+    # M3 PR-8 §4.4 — cursor-based pagination envelope per API Contracts
+    # L54-57. Used by the match-list endpoint in openapi/ats.yaml; shape
+    # designed for reuse by future paginated reads (Group 3 Examination
+    # Detail, etc.). Cursor and next_cursor are opaque base64 strings —
+    # consumers MUST NOT decode them; the server's encoding is an
+    # implementation detail (controller serializes the keyset triplet
+    # PR-7's findActiveReqLiveList accepts).
+    PaginationEnvelope:
+      type: object
+      additionalProperties: false
+      required: [cursor, next_cursor, page_size, has_more]
+      properties:
+        cursor:
+          oneOf:
+            - type: string
+            - type: 'null'
+          description: |
+            The cursor supplied on this request (or null if the request did
+            not include one). Echoed back so consumers can follow chains.
+        next_cursor:
+          oneOf:
+            - type: string
+            - type: 'null'
+          description: |
+            Opaque cursor to fetch the next page, or null when has_more is
+            false.
+        page_size:
+          type: integer
+          minimum: 0
+          description: |
+            Number of items returned in `data`. May be less than the
+            requested limit at the tail of the result set.
+        has_more:
+          type: boolean

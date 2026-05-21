@@ -145,4 +145,27 @@ export class JobDomainRepository {
     const row = await this.prisma.requisition.findUnique({ where: { id } });
     return (row as RequisitionRow | null) ?? null;
   }
+
+  // M3 PR-8 §4.2 — locate the active Requisition for a (tenant_id, job_id)
+  // pair. Returns the first row matching tenant_id + job_id + state='active'
+  // or null. The match-list endpoint's path uses {job_id} while PR-7's
+  // findActiveReqLiveList consumes {req_id}; this method bridges the gap
+  // without touching the PR-7 contract.
+  //
+  // The business invariant (at most one active requisition per
+  // (tenant_id, job_id)) is enforced upstream — this method does not
+  // re-assert it.
+  async findActiveRequisitionByJobId(input: {
+    tenant_id: string;
+    job_id: string;
+  }): Promise<RequisitionRow | null> {
+    const row = await this.prisma.requisition.findFirst({
+      where: {
+        tenant_id: input.tenant_id,
+        job_id: input.job_id,
+        state: 'active',
+      },
+    });
+    return (row as RequisitionRow | null) ?? null;
+  }
 }
