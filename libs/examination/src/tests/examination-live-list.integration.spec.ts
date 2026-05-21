@@ -84,11 +84,11 @@ const REQ_TENANT_B = 'eeeeeeee-eeee-7eee-8eee-000000000003';
 // 5 examinations for the active req's job_id with mixed tiers / ranks /
 // lifecycle. Two share rank_ordinal=1 in the STRETCH tier to exercise the
 // id tiebreaker (lexically lower id appears first).
-const EXAM_E1 = '11111111-0000-7000-8000-000000000001'; // ENTRUSTABLE, rank 1
-const EXAM_W2 = '22222222-0000-7000-8000-000000000002'; // WORTH_CONSIDERING, rank 2
-const EXAM_W3 = '33333333-0000-7000-8000-000000000003'; // WORTH_CONSIDERING, rank 3
-const EXAM_S1a = '44444444-0000-7000-8000-00000000000a'; // STRETCH, rank 1 (tiebreak-low)
-const EXAM_S1b = '55555555-0000-7000-8000-00000000000b'; // STRETCH, rank 1 (tiebreak-high)
+const EXAM_E1 = '11111111-0000-7000-8000-000000000001'; // ENTRUSTABLE, rank_ordinal 1
+const EXAM_W2 = '22222222-0000-7000-8000-000000000002'; // WORTH_CONSIDERING, rank_ordinal 2
+const EXAM_W3 = '33333333-0000-7000-8000-000000000003'; // WORTH_CONSIDERING, rank_ordinal 3
+const EXAM_S1a = '44444444-0000-7000-8000-00000000000a'; // STRETCH, rank_ordinal 1 (tiebreak-low)
+const EXAM_S1b = '55555555-0000-7000-8000-00000000000b'; // STRETCH, rank_ordinal 1 (tiebreak-high)
 // One archived row for the active job — must be filtered out.
 const EXAM_ARCH = '66666666-0000-7000-8000-000000000006';
 // One row for a different job — must be excluded by the job_id filter.
