@@ -3,8 +3,88 @@ info:
   title: Aramo ATS API
   version: 0.0.0
   description: |
-    The recruiter-facing ATS surface. Empty PR-1 scaffold; future PRs populate
-    operations per API Contracts v1.0 Phase 2.
-paths: {}
+    The recruiter-facing ATS surface. M3 PR-8 populates the first operation
+    — the match-list read endpoint — per Plan v1.5 §M3 and the locked
+    Match-List Summary-only rule (API Contracts L586-588). Future ATS PRs
+    populate additional operations per API Contracts v1.0 Phase 2.
+paths:
+  /v1/jobs/{job_id}/matches:
+    get:
+      operationId: listJobMatches
+      summary: Returns the ranked match list for a job (Summary-only).
+      description: |
+        Returns the ranked Live List for the named active requisition as
+        TalentJobExaminationSummary[] (NEVER Full — API Contracts L586-588).
+        Empty data[] is returned (200, not 404) when no active requisition
+        exists for the (tenant_id, job_id) pair; tenant mismatch is treated
+        the same way (recovery-from-routing-bug security posture, not an
+        error path).
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+          description: |
+            Page size. Repository default 50, hard cap 200. Values outside
+            [1, 200] are rejected with 400 INVALID_REQUEST by the
+            controller; in-range values pass through to the repository's
+            clamp.
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Opaque cursor returned in a prior response's pagination.next_cursor.
+            Consumers MUST NOT decode it.
+      responses:
+        '200':
+          description: Ranked match list of TalentJobExaminationSummary items.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchListResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
 components:
-  schemas: {}
+  securitySchemes:
+    # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
+    # 4 (duplicate-not-$ref — no cross-document $ref for securitySchemes).
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # M3 PR-8 §4.4 — match-list response envelope. The endpoint emits
+    # TalentJobExaminationSummary items only (Full is NOT referenced from
+    # this endpoint — see directive §4.4). additionalProperties: false plus
+    # Summary's additionalProperties: false in common.yaml jointly enforce
+    # the Summary-only contract that the Pact strict jsonBody test asserts.
+    MatchListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: 'common.yaml#/components/schemas/TalentJobExaminationSummary'
+        pagination:
+          $ref: 'common.yaml#/components/schemas/PaginationEnvelope'

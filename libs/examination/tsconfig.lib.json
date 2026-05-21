@@ -8,6 +8,8 @@
     "declaration": true,
     "types": ["node"],
     "paths": {
+      "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/job-domain": ["../../dist/libs/job-domain/src/index.d.ts"]
     }
   },

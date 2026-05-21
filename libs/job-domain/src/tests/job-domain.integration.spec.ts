@@ -150,6 +150,53 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(reread?.state).toBe('inactive');
     });
 
+    it('findActiveRequisitionByJobId returns the active requisition for (tenant_id, job_id) (PR-8 §4.2)', async () => {
+      // (TENANT_A, JOB_A) has REQ_A (active) and REQ_B (inactive) seeded
+      // earlier in this describe block. The bridge method must return the
+      // active one.
+      const found = await repo.findActiveRequisitionByJobId({
+        tenant_id: TENANT_A,
+        job_id: JOB_A,
+      });
+      expect(found).not.toBeNull();
+      expect(found?.id).toBe(REQ_A);
+      expect(found?.state).toBe('active');
+    });
+
+    it('findActiveRequisitionByJobId returns null on tenant mismatch (PR-8 §4.2 — security posture)', async () => {
+      const found = await repo.findActiveRequisitionByJobId({
+        tenant_id: TENANT_B,
+        job_id: JOB_A,
+      });
+      expect(found).toBeNull();
+    });
+
+    it('findActiveRequisitionByJobId returns null when only inactive requisitions exist (PR-8 §4.2)', async () => {
+      // Create a tenant + job pair with only an inactive requisition.
+      const TENANT_C = '33333333-3333-7333-8333-333333333333';
+      const JOB_C = '00000000-0000-7000-8000-0000000000ab';
+      await repo.createRequisition({
+        id: '00000000-0000-7000-8000-00000000abcd',
+        tenant_id: TENANT_C,
+        job_id: JOB_C,
+        recruiter_id: RECRUITER_A,
+        state: 'inactive',
+      });
+      const found = await repo.findActiveRequisitionByJobId({
+        tenant_id: TENANT_C,
+        job_id: JOB_C,
+      });
+      expect(found).toBeNull();
+    });
+
+    it('findActiveRequisitionByJobId returns null for an unknown (tenant_id, job_id) (PR-8 §4.2)', async () => {
+      const found = await repo.findActiveRequisitionByJobId({
+        tenant_id: TENANT_A,
+        job_id: '00000000-0000-7000-8000-deadbeef9999',
+      });
+      expect(found).toBeNull();
+    });
+
     it('allows a Requisition.job_id that does not exist in Job (no FK; anchor 5)', async () => {
       // The migration emits zero FOREIGN KEY constraints — a Requisition
       // may reference an unknown job_id without insert failure. The

@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 9 codes including PR-8.0a-Reground additions', () => {
+  it('ERROR_CODES contains the 11 codes including M3 PR-8 match-list additions', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -48,6 +48,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'INVALID_SCOPE_COMBINATION',
       'TENANT_SELECTION_REQUIRED',
       'REFRESH_TOKEN_INVALID',
+      'INVALID_REQUEST',
+      'INSUFFICIENT_PERMISSIONS',
     ]);
   });
 });

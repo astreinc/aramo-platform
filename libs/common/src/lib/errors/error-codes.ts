@@ -18,6 +18,13 @@
 // when a user has >1 active membership, and REFRESH_TOKEN_INVALID (HTTP 401)
 // for /refresh failures (cookie missing, token expired/revoked, consumer
 // mismatch, reuse detected, rotation race). Total: 9 codes.
+//
+// M3 PR-8 adds INVALID_REQUEST (HTTP 400) for malformed match-list request
+// input (job_id UUID, limit, cursor) and INSUFFICIENT_PERMISSIONS (HTTP
+// 403) for per-route consumer_type checks on the recruiter-facing
+// match-list endpoint. Both codes are named explicitly in the M3 PR-8
+// directive §4.1 (matching the API Contracts error catalogue); Lead
+// authority is the §2 Lead engineering basis. Total: 11 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -29,6 +36,8 @@ export const ERROR_CODES = [
   'INVALID_SCOPE_COMBINATION',
   'TENANT_SELECTION_REQUIRED',
   'REFRESH_TOKEN_INVALID',
+  'INVALID_REQUEST',
+  'INSUFFICIENT_PERMISSIONS',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
