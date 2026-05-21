@@ -4,6 +4,8 @@ export type {
   CreateExaminationSnapshotInput,
   TalentJobExaminationRow,
   MarkSupersededInput,
+  // M3 PR-7 §4.1 — Live List query input.
+  FindActiveReqLiveListInput,
   ExaminationTriggerValue,
   ExaminationTierValue,
   ExaminationLifecycleStateValue,

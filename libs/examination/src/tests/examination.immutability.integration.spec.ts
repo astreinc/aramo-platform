@@ -41,7 +41,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       prisma = new PrismaService(url);
       await prisma.$connect();
-      repo = new ExaminationRepository(prisma);
+      // PR-7 added JobDomainRepository as a constructor dep for the
+      // findActiveReqLiveList Live List query. This spec doesn't exercise
+      // that method, so the dep is `undefined as never`.
+      repo = new ExaminationRepository(prisma, undefined as never);
 
       // Seed one snapshot the immutability tests mutate against.
       await repo.createSnapshot({
