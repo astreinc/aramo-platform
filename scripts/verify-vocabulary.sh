@@ -104,6 +104,12 @@ TIER2_EXCLUDES=(
   # 'evaluation_' / 'rank_' by design (it enforces against them). Same structural
   # pattern as the three pre-existing refusal-script TIER2_EXCLUDES entries.
   "ci/scripts/verify-ingestion-refusal.ts"
+  # M3 PR-9: portal refusal-enforcement specs legitimately contain
+  # forbidden Match-Class/R10 vocabulary (they enforce against leakage).
+  # Same structural pattern as the pre-existing ci/scripts/verify-*.ts
+  # entries.
+  "apps/api/src/tests/portal-refusal.negative-shape.spec.ts"
+  "libs/portal/src/tests/portal.controller.spec.ts"
 )
 
 # =============================================================================
