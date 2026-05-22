@@ -101,13 +101,22 @@ export interface TalentConfirmed {
   work_authorization?: string;
 }
 
+// §2.6 conversation_summary — short prose summary of the recruiter-talent
+// conversation. PR-2 lifts this from a bare string to a structured object
+// so the builder can validate the recruiter_summary field at the input
+// boundary (directive §4.1 step 1: `conversation_summary.recruiter_summary
+// non-empty`). The JSONB column stores the object verbatim.
+export interface ConversationSummary {
+  recruiter_summary: string;
+}
+
 // §2.6 "Recruiter Contribution (ats_internal)" — the recruiter-authored
 // surfaces. screening_notes is optional free-form; conversation_summary
 // is a short prose summary; talent_confirmed is the structured
 // confirmation block.
 export interface RecruiterContribution {
   screening_notes?: string;
-  conversation_summary: string;
+  conversation_summary: ConversationSummary;
   talent_confirmed: TalentConfirmed;
 }
 
@@ -129,4 +138,90 @@ export interface TalentJobEvidencePackageView {
   recruiter_contribution: RecruiterContribution;
   engagement_event_refs: string[];
   created_at: Date;
+}
+
+// =========================================================================
+// M4 PR-2 — input-side types for EvidenceRepository.buildPackage
+// =========================================================================
+//
+// The output (read-side) types above are PR-1's substrate; the input
+// types below are PR-2's write-side surface. The builder accepts these
+// inputs, reads the examination Full projection from libs/examination,
+// optionally reads TalentRateExpectation from libs/talent-evidence, and
+// composes the five output JSONB payloads.
+//
+// Directive §4.2 ruling on the input/output split:
+//   - skill_match + experience_match: derived from the examination Full
+//     view, NEVER taken from input (single source of truth for
+//     examination-derived analytical data).
+//   - key_work_history + certifications: recruiter-curated; input only.
+//   - match_justification fields: optional input overrides on top of the
+//     examination Full view's strengths/gaps/risk_flags/why_matched.
+//   - recruiter_contribution: input only; no examination derivation.
+//   - rate sub-payload of talent_confirmed: optional substrate read,
+//     never inline.
+
+// Directive §4.1 step 5: key_work_history is recruiter-curated, certifications
+// optional. CapabilitySummaryOverrides supplies these; skill_match and
+// experience_match are NEVER input (always derived from the examination
+// Full view).
+export interface CapabilitySummaryOverrides {
+  key_work_history: readonly WorkHistoryExcerpt[];
+  certifications?: readonly string[];
+}
+
+// Directive §4.1 step 5: match_justification fields default from the
+// examination Full view (why_matched_sentence, strengths, gaps,
+// risk_flags). The recruiter may polish any of them; an absent override
+// means "use the Full view's value verbatim." MatchJustificationOverrides
+// is itself optional on BuildPackageInput.
+export interface MatchJustificationOverrides {
+  why_this_talent?: string;
+  strengths?: readonly string[];
+  gaps?: readonly string[];
+  risk_flags?: readonly MatchJustification['risk_flags'][number][];
+}
+
+// Directive §4.1 step 1: talent_confirmed.spoken_to_recruiter is required;
+// the other two booleans / strings are optional free fields. The rate
+// sub-payload (when provided) is NOT taken as input — it is substrate-
+// resolved via input.rate_expectation_id (directive §4.1 step 4). The
+// builder forbids inline rate (directive §5 "Inline rate parameter" —
+// out of scope).
+export interface TalentConfirmedInput {
+  spoken_to_recruiter: boolean;
+  availability_confirmed?: string;
+  // Recruiter-authored free string; explicitly NOT a join to the
+  // TalentWorkAuthorization Sensitive entity (F16 deferral to M6).
+  work_authorization?: string;
+}
+
+// Directive §4.2 RecruiterContributionInput.
+export interface RecruiterContributionInput {
+  screening_notes?: string;
+  conversation_summary: ConversationSummary;
+  talent_confirmed: TalentConfirmedInput;
+}
+
+// Directive §4.1 BuildPackageInput.
+export interface BuildPackageInput {
+  // Identity (caller-provided)
+  id: string;
+  tenant_id: string;
+  talent_id: string;
+  job_id: string;
+
+  // Cross-schema references
+  examination_id: string;
+  submittal_record_id?: string | null;
+  parent_package_id?: string | null;
+
+  // Recruiter-authored / talent-self-asserted payloads
+  talent_identity: TalentIdentity;
+  contact_summary: ContactSummary;
+  capability_summary_overrides: CapabilitySummaryOverrides;
+  match_justification_overrides?: MatchJustificationOverrides;
+  recruiter_contribution: RecruiterContributionInput;
+  rate_expectation_id?: string | null;
+  engagement_event_refs?: readonly string[];
 }

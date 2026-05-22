@@ -7,6 +7,30 @@ export interface AramoErrorContext {
   logMessage?: string;
 }
 
+// Canonical HTTP-status mapping for each registered ErrorCode.
+//
+// Per M4 PR-2 directive §4.3: SUBMITTAL_STRETCH_BLOCKED maps to HTTP 422.
+// The mapping is exhaustive over ERROR_CODES (TypeScript enforces this via
+// the `Record<ErrorCode, number>` constraint — a missing entry is a build
+// error). Existing call sites still pass `statusCode` at construction time
+// for backwards compatibility; this constant records the canonical pairing
+// each directive that introduced the code chose.
+export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
+  AUTH_REQUIRED: 401,
+  INVALID_TOKEN: 401,
+  TENANT_ACCESS_DENIED: 403,
+  VALIDATION_ERROR: 400,
+  IDEMPOTENCY_KEY_CONFLICT: 409,
+  INTERNAL_ERROR: 500,
+  INVALID_SCOPE_COMBINATION: 422,
+  TENANT_SELECTION_REQUIRED: 409,
+  REFRESH_TOKEN_INVALID: 401,
+  INVALID_REQUEST: 400,
+  INSUFFICIENT_PERMISSIONS: 403,
+  NOT_FOUND: 404,
+  SUBMITTAL_STRETCH_BLOCKED: 422,
+};
+
 // Base error class. Thrown anywhere in the app where a structured response
 // is required; converted to the locked Phase 5 envelope by AramoExceptionFilter.
 export class AramoError extends Error {
