@@ -1,11 +1,50 @@
 // Per-module Prisma schema for the `evidence` module.
 //
-// Per Architecture v2.0 Section 7 (Schema-per-Module data architecture) and
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture) and
 // doc/05-conventions.md "Database Conventions". Cross-schema references
-// elsewhere in the program are UUID-only without FK constraints.
+// elsewhere in the program are UUID-only without FK constraints (§7.3).
 //
-// PR-1 scaffolding only: this file declares the datasource and generator
-// configuration. Zero models exist yet.
+// M4 PR-1 — TalentJobEvidencePackage entity foundation. Per Group 2
+// Consolidated Baseline v2.0 §2.6 ("Evidence Package Specification"):
+// the first-class immutable snapshot entity, immutable after submittal
+// confirmation, containing both system-derived and recruiter-authored
+// data — the audit-complete artifact of "why this talent."
+//
+// Storage rulings per the M4 PR-1 directive:
+//   - Identity + cross-schema reference columns → structured UUID
+//     columns (§7.4 prohibits JSONB for "core identity, relationship
+//     ownership").
+//   - Nested structured payloads (talent_identity, contact_summary,
+//     capability_summary, match_justification, recruiter_contribution)
+//     → JSONB (§7.4 permits JSONB for "derived snapshots, metadata,
+//     evidence summaries").
+//   - engagement_event_refs (forward reference to TalentEngagementEvent,
+//     M5) → JSONB array of UUIDs with empty-array default.
+//   - submittal_record_id (forward reference to TalentSubmittalRecord,
+//     M5) → nullable; non-null enforcement deferred to M5 when the
+//     referenced entity exists.
+//   - examination_id (reference to TalentJobExamination, M3 PR-1) →
+//     required on every package; pinned at draft creation.
+//
+// Vocabulary discipline (F17 / doc/02-claude-code-discipline.md Rule 5):
+// columns naming a talent's identity / confirmation use the `talent_*`
+// prefix per the locked Vocabulary Amendment v1.0 rename. Group 2 §2.6
+// uses the talent-prefixed names; the M4 PR-1 directive §7 attests this.
+// Gate 5 verifies the locked vocabulary discipline.
+//
+// Immutability per Group 2 §2.6 ("Immutable after submittal confirmation")
+// is enforced at the database layer by a BEFORE UPDATE trigger added in
+// the same migration. The trigger rejects ANY UPDATE on the table — the
+// spec entity has no lifecycle column (no `updated_at`, no status), so
+// the trigger is whole-row unconditional (mirrors libs/consent
+// TalentConsentEvent's PR-2 precedent; libs/examination's PR-1
+// column-scoped variant does not apply here because evidence packages
+// have no mutable lifecycle columns).
+//
+// No write methods are exposed on the EvidenceRepository at PR-1 —
+// belt-and-suspenders alongside the database-layer immutability. The
+// builder PR introduces write paths with full immutability + version-
+// pinning guards.
 
 generator client {
   provider = "prisma-client-js"
@@ -14,4 +53,67 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  schemas  = ["evidence"]
+}
+
+// §2.6 — TalentJobEvidencePackage (first-class immutable snapshot
+// entity). Cross-schema references (`examination_id`,
+// `submittal_record_id`, `parent_package_id`) are UUID-only per §7.3;
+// `engagement_event_refs` is a JSONB array of UUIDs.
+//
+// The five nested structured payloads are JSONB per §7.4. Typed view
+// projections in libs/evidence/src/lib/dto/ deserialize them on read.
+// Shared types (SkillMatchSummary, ExperienceMatchSummary, RiskFlag)
+// are imported from @aramo/examination (PR-6 §4.2's named projection
+// shapes) rather than redeclared.
+model TalentJobEvidencePackage {
+  // Identity. UUID v7 generated app-side (PR-2 precedent — Postgres 17
+  // has no native uuidv7() function).
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+  talent_id String @db.Uuid
+  job_id    String @db.Uuid
+
+  // Cross-schema references (§7.3 — UUID-only, no FK).
+  //
+  // examination_id: required. References TalentJobExamination (M3 PR-1,
+  // libs/examination). The examination is pinned at draft creation; this
+  // is the load-bearing analytical-snapshot reference.
+  examination_id      String  @db.Uuid
+  // submittal_record_id: nullable. References TalentSubmittalRecord
+  // (engagement schema, M5 — entity does not exist on substrate). The
+  // package may exist before submittal confirmation.
+  submittal_record_id String? @db.Uuid
+  // parent_package_id: nullable. Links re-submittals for the same
+  // talent + same job (audit chain).
+  parent_package_id   String? @db.Uuid
+
+  // Nested structured payloads (JSONB per §7.4).
+  talent_identity        Json
+  contact_summary        Json
+  capability_summary     Json
+  match_justification    Json
+  recruiter_contribution Json
+
+  // engagement_event_refs: JSONB array of UUIDs. References
+  // TalentEngagementEvent (engagement schema, M5 — entity does not
+  // exist on substrate). Default empty array; populated at builder
+  // time when referenced entities exist.
+  engagement_event_refs  Json   @default("[]")
+
+  // Snapshot creation timestamp. No updated_at — entity is immutable
+  // per §2.6 (immutable after submittal confirmation; in v1 there is
+  // no lifecycle column, so the trigger is whole-row unconditional).
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  // Lookups: by (tenant, talent, job) for the canonical "this talent
+  // for this job" read; by (tenant, submittal_record_id) for submittal
+  // → package resolution; by (tenant, examination_id) for "which
+  // packages reference this examination snapshot"; by (tenant,
+  // parent_package_id) for re-submittal chain traversal.
+  @@index([tenant_id, talent_id, job_id])
+  @@index([tenant_id, submittal_record_id])
+  @@index([tenant_id, examination_id])
+  @@index([tenant_id, parent_package_id])
+  @@schema("evidence")
 }
