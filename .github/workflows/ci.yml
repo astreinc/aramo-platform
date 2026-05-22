@@ -262,9 +262,20 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run prisma:generate
+      # M4 PR-2 §4.6 — extend tests-integration to the full 7 roots that
+      # package.json's `tests:integration` AND-chain runs locally. Closes
+      # M4 PR-1's oversight (libs/evidence in package.json chain but not
+      # the CI workflow) AND the audit-discovered additional gaps
+      # (libs/job-domain, libs/talent-evidence, apps/api were also missing
+      # from the workflow despite being in the package.json chain). Order
+      # mirrors the directive verbatim.
       - run: npx vitest run --root libs/consent
       - run: npx vitest run --root libs/examination
+      - run: npx vitest run --root libs/job-domain
       - run: npx vitest run --root libs/matching
+      - run: npx vitest run --root libs/talent-evidence
+      - run: npx vitest run --root libs/evidence
+      - run: npx vitest run --root apps/api
 
   # ---------------------------------------------------------------------------
   # Deployment-gate aggregator (PR-M0R-3 §4.1, VARIANT B — in-ci.yml).

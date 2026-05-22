@@ -8,7 +8,9 @@
     "declaration": true,
     "types": ["node"],
     "paths": {
-      "@aramo/examination": ["../../dist/libs/examination/src/index.d.ts"]
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/examination": ["../../dist/libs/examination/src/index.d.ts"],
+      "@aramo/talent-evidence": ["../../dist/libs/talent-evidence/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

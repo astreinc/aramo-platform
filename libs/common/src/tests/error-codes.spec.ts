@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 12 codes including M3 PR-9 portal NOT_FOUND addition', () => {
+  it('ERROR_CODES contains the 13 codes including M4 PR-2 SUBMITTAL_STRETCH_BLOCKED addition', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -51,6 +51,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'INVALID_REQUEST',
       'INSUFFICIENT_PERMISSIONS',
       'NOT_FOUND',
+      'SUBMITTAL_STRETCH_BLOCKED',
     ]);
   });
 });

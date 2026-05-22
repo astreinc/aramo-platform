@@ -33,6 +33,18 @@
 // Lead authority is the directive's §2 Ruling 3 (refusal verification —
 // not-found vs. data leakage is the security-posture choice that
 // PortalController makes). Total: 12 codes.
+//
+// M4 PR-2 adds SUBMITTAL_STRETCH_BLOCKED (HTTP 422) for the evidence-
+// package builder's Stretch-tier refusal (R9 enforcement at the substrate
+// layer per Plan v1.5 §M4 Track A item 4). Per Aramo-M4-PR-2-Directive-
+// v1_0-LOCKED.md §4.3 the code registers at builder construction. The
+// ErrorCode enum in openapi/common.yaml gets the matching value addition
+// for tuple/yaml parity (the closed-list parity test in libs/common/src/
+// tests/error-codes.spec.ts enforces this); no UnprocessableEntity
+// response component is added at PR-2 — the consuming endpoint PR (F33
+// submittal-create) adds that component when the endpoint emits the
+// code. Lead authority is the directive's §2 Ruling 4 (Stretch-blocking
+// lives in the builder). Total: 13 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -47,6 +59,7 @@ export const ERROR_CODES = [
   'INVALID_REQUEST',
   'INSUFFICIENT_PERMISSIONS',
   'NOT_FOUND',
+  'SUBMITTAL_STRETCH_BLOCKED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

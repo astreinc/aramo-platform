@@ -1,18 +1,27 @@
 import { Module } from '@nestjs/common';
+import { ExaminationModule } from '@aramo/examination';
+import { TalentEvidenceModule } from '@aramo/talent-evidence';
 
 import { EvidenceRepository } from './evidence.repository.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
-// libs/evidence module — M4 PR-1 entity foundation.
+// libs/evidence module — M4 PR-1 entity foundation + M4 PR-2 builder.
 //
-// Substrate-only at PR-1: providers register PrismaService (the ninth
-// lazy PrismaService in the workspace) and EvidenceRepository (read-
-// only surface). No controllers, no HTTP surface; the module is not
-// imported by apps/api at PR-1 (no HTTP route consumer yet).
+// PR-1 (substrate-only) registered PrismaService + the read-only
+// EvidenceRepository. PR-2 extends the repository with the buildPackage
+// write path and now wires two upstream dependencies that the builder
+// consumes (directive §4.4):
+//   - ExaminationModule — for ExaminationRepository.findById /
+//     findByIdFull (step 2 of the build flow).
+//   - TalentEvidenceModule — for TalentEvidenceRepository
+//     .findTalentRateExpectationById (step 4 of the build flow, only
+//     when input.rate_expectation_id is provided).
 //
-// Subsequent M4 PRs (evidence-package builder, submittal endpoints)
-// will consume EvidenceRepository via this module's exports.
+// EvidenceModule is still NOT imported by apps/api at PR-2 (substrate
+// only; no HTTP route consumer). The submittal-create endpoint PR (F33)
+// will add the AppModule import alongside its controller.
 @Module({
+  imports: [ExaminationModule, TalentEvidenceModule],
   providers: [PrismaService, EvidenceRepository],
   exports: [EvidenceRepository],
 })

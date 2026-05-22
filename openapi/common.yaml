@@ -1356,6 +1356,12 @@ components:
         endpoint. M3 PR-9 adds NOT_FOUND (HTTP 404) for the portal
         self-profile endpoint when the talent has no per-tenant
         overlay (existed-as-Talent-but-not-in-this-tenant case).
+        M4 PR-2 adds SUBMITTAL_STRETCH_BLOCKED (HTTP 422) for the
+        evidence-package builder's Stretch-tier refusal (R9 substrate-
+        layer enforcement per Plan v1.5 §M4 Track A item 4). The
+        consuming endpoint PR (F33 submittal-create) will add the
+        matching UnprocessableEntity response component that
+        references this code.
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1371,6 +1377,7 @@ components:
         - INVALID_REQUEST
         - INSUFFICIENT_PERMISSIONS
         - NOT_FOUND
+        - SUBMITTAL_STRETCH_BLOCKED
 
     ErrorObject:
       type: object
