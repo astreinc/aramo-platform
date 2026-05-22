@@ -4,9 +4,17 @@ import { AuthModule } from '@aramo/auth';
 import { ConsentModule } from '@aramo/consent';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
+import { PortalModule } from '@aramo/portal';
 
 @Module({
-  imports: [CommonModule, AuthModule, ConsentModule, IngestionModule, MatchingModule],
+  imports: [
+    CommonModule,
+    AuthModule,
+    ConsentModule,
+    IngestionModule,
+    MatchingModule,
+    PortalModule,
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

@@ -25,6 +25,14 @@
 // match-list endpoint. Both codes are named explicitly in the M3 PR-8
 // directive §4.1 (matching the API Contracts error catalogue); Lead
 // authority is the §2 Lead engineering basis. Total: 11 codes.
+//
+// M3 PR-9 adds NOT_FOUND (HTTP 404) for the portal self-profile endpoint
+// when the talent has no per-tenant overlay (i.e., they exist as a Talent
+// but are not associated with the JWT's tenant). M3 PR-9 directive §4.5
+// authorizes the addition (matching the API Contracts error catalogue);
+// Lead authority is the directive's §2 Ruling 3 (refusal verification —
+// not-found vs. data leakage is the security-posture choice that
+// PortalController makes). Total: 12 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -38,6 +46,7 @@ export const ERROR_CODES = [
   'REFRESH_TOKEN_INVALID',
   'INVALID_REQUEST',
   'INSUFFICIENT_PERMISSIONS',
+  'NOT_FOUND',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

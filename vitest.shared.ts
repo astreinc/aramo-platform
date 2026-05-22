@@ -34,6 +34,10 @@ export default defineConfig({
       '@aramo/ingestion': resolve(root, 'libs/ingestion/src/index.ts'),
       '@aramo/job-domain': resolve(root, 'libs/job-domain/src/index.ts'),
       '@aramo/matching': resolve(root, 'libs/matching/src/index.ts'),
+      // M3 PR-9 §4.4 — portal lib alias for vitest runtime so the
+      // AppModule import in pact/provider/src/verify-api.ts (and the
+      // apps/api negative-shape integration spec) resolves PortalModule.
+      '@aramo/portal': resolve(root, 'libs/portal/src/index.ts'),
       '@aramo/skills-taxonomy': resolve(root, 'libs/skills-taxonomy/src/index.ts'),
       '@aramo/talent': resolve(root, 'libs/talent/src/index.ts'),
       '@aramo/talent-evidence': resolve(root, 'libs/talent-evidence/src/index.ts'),
