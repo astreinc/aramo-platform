@@ -33,6 +33,10 @@ import { AppModule } from '@aramo/api';
 //     empty list, 400 INVALID_REQUEST, 403 INSUFFICIENT_PERMISSIONS).
 //     PR-8's match-list interactions MUST pass; pre-existing 23 consent
 //     interactions remain covered by the PR-15 §4.3 handlers below.
+//   - M3 PR-9 §4.8: portal-thin (5 interactions; profile happy + 403 +
+//     401, consent happy + 403). Talent + TalentTenantOverlay seeded via
+//     a new seedPortalTalentFixture helper; talent migration added to
+//     the bootstrap. New ingestion JWT signed for the consent-403 case.
 //
 // Migration set (per Gate 5 §4.7 inspection + PR-15 §3 + M3 PR-8 §4.7):
 // consent + ingestion + examination init + examination live-list index +
@@ -88,6 +92,12 @@ const JOB_DOMAIN_INIT_MIGRATION = resolve(
   ROOT,
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
 );
+// M3 PR-9 §4.8 — talent migration applied so the portal-thin state
+// handlers can seed Talent + TalentTenantOverlay rows.
+const TALENT_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
+);
 const INGESTION_PACT = resolve(
   ROOT,
   'pact/pacts/ingestion-consumer-aramo-core.json',
@@ -101,6 +111,7 @@ const TENANT_CONSOLE_PACT = resolve(
   'pact/pacts/tenant-console-consumer-aramo-core.json',
 );
 const ATS_THIN_PACT = resolve(ROOT, 'pact/pacts/ats-thin-aramo-core.json');
+const PORTAL_THIN_PACT = resolve(ROOT, 'pact/pacts/portal-thin-aramo-core.json');
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-pact-provider-api-audience';
@@ -108,6 +119,11 @@ const ALG = 'RS256';
 
 const RECRUITER_ID = '00000000-0000-0000-0000-0000000000bb';
 const TENANT_ID = '11111111-1111-7111-8111-111111111111';
+// M3 PR-9 §4.8 — portal-thin pact uses TALENT_SUB as the talent id; the
+// portal JWT's `sub` claim carries this value, and the GET /v1/portal/*
+// endpoints derive talent_id from authContext.sub. Must match the
+// pact/consumers/portal-thin/src/portal-*.consumer.test.ts constant.
+const PORTAL_TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 
 // Constants shared across the tenant-console + ats-thin pacts. The talent
 // uuid matches the value the consumer tests use; the recruiter actor uuid
@@ -139,6 +155,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     let savedEnv: Partial<Record<string, string | undefined>> = {};
     let accessJwt: string;
     let portalJwt: string;
+    // M3 PR-9 §4.8 — ingestion-typed JWT for the portal-thin 403 test
+    // ("an ingestion-consumer token (non-portal)"); the controller's
+    // per-route consumer_type check rejects it with 403.
+    let ingestionJwt: string;
     // Assigned in beforeAll before any state handler runs; initialized empty
     // for strict null-checks compliance.
     let dbUrl = '';
@@ -168,6 +188,36 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // interaction's data doesn't leak forward.
       await c.query('TRUNCATE TABLE examination."TalentJobExamination" CASCADE');
       await c.query('TRUNCATE TABLE job_domain."Requisition" CASCADE');
+      // M3 PR-9 — portal-thin state handlers seed Talent + TalentTenantOverlay;
+      // truncate at the start of every interaction.
+      await c.query('TRUNCATE TABLE talent."TalentTenantOverlay" CASCADE');
+      await c.query('TRUNCATE TABLE talent."Talent" CASCADE');
+    }
+
+    // M3 PR-9 §4.8 — seed a Talent core row + a TalentTenantOverlay for
+    // the portal-thin pacts. The portal JWT's sub is PORTAL_TALENT_ID;
+    // the controller derives talent_id from authContext.sub and
+    // tenant_id from authContext.tenant_id (TENANT_ID below). Both
+    // states ("profile P" and "consent grants G") use the same fixture
+    // shape; consent grants are seeded separately via seedConsentEvent
+    // when the test requires them.
+    async function seedPortalTalentFixture(c: Client): Promise<void> {
+      await c.query(
+        `INSERT INTO talent."Talent" (id, lifecycle_status, updated_at)
+         VALUES ($1, 'active', NOW())`,
+        [PORTAL_TALENT_ID],
+      );
+      await c.query(
+        `INSERT INTO talent."TalentTenantOverlay"
+           (id, talent_id, tenant_id, source_recruiter_id, source_channel,
+            tenant_status, updated_at)
+         VALUES ($1, $2, $3, NULL, 'self_signup', 'active', NOW())`,
+        [
+          '00000000-0000-7000-8000-0000000000aa',
+          PORTAL_TALENT_ID,
+          TENANT_ID,
+        ],
+      );
     }
 
     async function seedConsentEvent(
@@ -343,6 +393,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         EXAMINATION_INIT_MIGRATION,
         EXAMINATION_LIVE_LIST_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
+        TALENT_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -378,17 +429,38 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .setExpirationTime('1h')
         .sign(privateKey);
 
-      // M3 PR-8 §4.7 — portal-consumer JWT for the 403 INSUFFICIENT_PERMISSIONS
-      // match-list interaction (the recruiter-only route rejects non-
-      // recruiter consumer_types). Same signing key/issuer/audience as
-      // accessJwt — JwtAuthGuard accepts it; the controller's per-route
-      // consumer_type assertion rejects it with 403.
+      // M3 PR-8 §4.7 — portal-consumer JWT (rejects on the recruiter-only
+      // match-list endpoint with 403). M3 PR-9 §4.8 updates sub from
+      // RECRUITER_ID to PORTAL_TALENT_ID: the portal session embodies the
+      // talent (per directive Ruling 5), and PR-9's portal endpoints
+      // derive talent_id from authContext.sub. The PR-8 match-list 403
+      // test is unaffected (the controller rejects at consumer_type
+      // before the sub value is consulted).
       portalJwt = await new SignJWT({
-        sub: RECRUITER_ID,
+        sub: PORTAL_TALENT_ID,
         consumer_type: 'portal',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
         scopes: [],
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt()
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
+      // M3 PR-9 §4.8 — ingestion-typed JWT for the portal-thin 403 test
+      // (an ingestion consumer hitting /v1/portal/consent — controller's
+      // consumer_type check rejects with 403). Sub doesn't matter (the
+      // rejection happens before sub is consulted), so RECRUITER_ID is
+      // reused as an arbitrary user UUID.
+      ingestionJwt = await new SignJWT({
+        sub: RECRUITER_ID,
+        consumer_type: 'ingestion',
+        actor_kind: 'service_account',
+        tenant_id: TENANT_ID,
+        scopes: ['ingestion:write'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -903,6 +975,56 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // assertion fires before any repository call.
         await withClient((c) => resetAllRows(c));
       },
+      // ===== M3 PR-9 §4.8 portal-thin (5 interactions) =====
+      'a portal talent with profile P exists': async () => {
+        // PR-9 §4.8 — happy /v1/portal/profile interaction. Seed Talent
+        // + TalentTenantOverlay so findSelfProfile returns a projection.
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPortalTalentFixture(c);
+        });
+      },
+      'a portal talent with consent grants G exists': async () => {
+        // PR-9 §4.8 — happy /v1/portal/consent interaction. Seed Talent
+        // + overlay AND a grant for each of the 5 ConsentScope values so
+        // every scope in the always-5-scopes response (PR-5 Decision D)
+        // carries a non-null granted_at. The consumer pact uses
+        // eachLike() with a date-string matcher on granted_at; if any
+        // scope's granted_at is null the matcher rejects the array.
+        // Mirrors the tenant-console-consumer "a recruiter session and
+        // a talent with consent state" handler's per-scope-grant pattern.
+        const SCOPES = [
+          'profile_storage',
+          'resume_processing',
+          'matching',
+          'contacting',
+          'cross_tenant_visibility',
+        ] as const;
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPortalTalentFixture(c);
+          for (let i = 0; i < SCOPES.length; i++) {
+            await seedConsentEvent(c, {
+              id: `00000000-0000-7000-8000-0000000000a${i + 1}`,
+              scope: SCOPES[i] as string,
+              action: 'granted',
+              occurredAt: '2026-04-01T10:00:00.000Z',
+              expiresAt: null,
+            });
+          }
+        });
+      },
+      'a recruiter token (non-portal consumer)': async () => {
+        // PR-9 §4.8 — 403 INSUFFICIENT_PERMISSIONS via recruiter token
+        // hitting portal endpoint. No data seeding required; the
+        // controller's per-route check rejects before any service call.
+        await withClient((c) => resetAllRows(c));
+      },
+      'an ingestion-consumer token (non-portal)': async () => {
+        // PR-9 §4.8 — same as above, ingestion variant. The request
+        // filter rewrites 'Bearer eyJfake.ingestion.token' to ingestionJwt.
+        await withClient((c) => resetAllRows(c));
+      },
       'a portal-consumer token (not recruiter)': async () => {
         // PR-8 §4.7 — the request-filter rewrites the literal
         // 'Bearer eyJfake.portal.token' to portalJwt (consumer_type=portal);
@@ -981,13 +1103,32 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // portal-consumer fake token. Rewrite to a real JWT signed with
         // consumer_type='portal' so JwtAuthGuard accepts the token and the
         // controller's per-route check returns 403 INSUFFICIENT_PERMISSIONS.
+        // M3 PR-9 §4.8 — also used for portal-thin happy-path interactions
+        // (the controller derives talent_id from portal JWT's sub).
         req.headers['authorization'] = `Bearer ${portalJwt}`;
+      } else if (
+        typeof authHeader === 'string' &&
+        authHeader === 'Bearer eyJfake.recruiter.token'
+      ) {
+        // M3 PR-9 §4.8 — portal-thin 403 interaction (recruiter token
+        // hitting /v1/portal/profile). Same rewrite target as
+        // 'Bearer eyJfake.token' (the canonical recruiter JWT); ats-thin
+        // interactions continue to use 'Bearer eyJfake.token' via the
+        // first branch.
+        req.headers['authorization'] = `Bearer ${accessJwt}`;
+      } else if (
+        typeof authHeader === 'string' &&
+        authHeader === 'Bearer eyJfake.ingestion.token'
+      ) {
+        // M3 PR-9 §4.8 — portal-thin 403 interaction (ingestion token
+        // hitting /v1/portal/consent).
+        req.headers['authorization'] = `Bearer ${ingestionJwt}`;
       }
       next();
     }
 
     it(
-      'verifies all interactions from the 4 aramo-core pacts',
+      'verifies all interactions from the 5 aramo-core pacts',
       async () => {
         const verifier = new Verifier({
           providerBaseUrl: `http://127.0.0.1:${port}`,
@@ -996,6 +1137,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             PROHIBITED_PACT,
             TENANT_CONSOLE_PACT,
             ATS_THIN_PACT,
+            PORTAL_THIN_PACT,
           ],
           stateHandlers,
           requestFilter: requestFilter as never,

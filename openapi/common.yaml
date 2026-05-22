@@ -694,6 +694,22 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    # M3 PR-9 §4.5 — NotFound response for the portal self-profile endpoint
+    # when the talent has no per-tenant overlay. Returned (rather than
+    # 200 with empty body) because the portal contract is "your profile in
+    # this tenant" — if you don't exist in this tenant, no profile to
+    # render. Distinct from the PR-8 match-list empty-list-on-no-active-req
+    # security posture (which returns 200 with []), because /portal/profile
+    # is a singleton resource (a talent has at most one overlay per tenant),
+    # not a list.
+    NotFound:
+      description: |
+        The requested resource does not exist for this tenant context.
+        Error code NOT_FOUND.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
 
   schemas:
     ConsentScope:
@@ -1337,8 +1353,11 @@ components:
         INVALID_REQUEST (HTTP 400) for malformed match-list request
         input and INSUFFICIENT_PERMISSIONS (HTTP 403) for per-route
         consumer_type checks on the recruiter-facing match-list
-        endpoint. Declaration order in this enum matches ERROR_CODES
-        tuple order in libs/common/src/lib/errors/error-codes.ts.
+        endpoint. M3 PR-9 adds NOT_FOUND (HTTP 404) for the portal
+        self-profile endpoint when the talent has no per-tenant
+        overlay (existed-as-Talent-but-not-in-this-tenant case).
+        Declaration order in this enum matches ERROR_CODES tuple
+        order in libs/common/src/lib/errors/error-codes.ts.
       enum:
         - AUTH_REQUIRED
         - INVALID_TOKEN
@@ -1351,6 +1370,7 @@ components:
         - REFRESH_TOKEN_INVALID
         - INVALID_REQUEST
         - INSUFFICIENT_PERMISSIONS
+        - NOT_FOUND
 
     ErrorObject:
       type: object

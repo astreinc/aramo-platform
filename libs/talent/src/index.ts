@@ -6,4 +6,8 @@ export type {
   CreateTalentTenantOverlayInput,
 } from './lib/talent.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
-export type { TalentDto, TalentTenantOverlayDto } from './lib/dto/index.js';
+export type {
+  TalentDto,
+  TalentTenantOverlayDto,
+  PortalProfileProjection,
+} from './lib/dto/index.js';

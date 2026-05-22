@@ -3,9 +3,132 @@ info:
   title: Aramo Portal API
   version: 0.0.0
   description: |
-    The talent-facing Portal surface. Empty PR-1 scaffold; future PRs populate
-    operations per API Contracts v1.0 Phase 3 with the refusal-filtered minimum
-    surface specified in Group 2 Section 2.8.
-paths: {}
+    The talent-facing Portal surface. M3 PR-9 populates the foundation
+    slice: two read endpoints (profile, consent state) per Plan v1.5 §M3
+    PR-9 and API Contracts v1.0 Phase 3. Refusal-filtered by design —
+    additionalProperties: false on every schema, no R10-class fields
+    (internal_reasoning, entrustability_tier_raw, override_*, recruiter_*).
+    Future PRs populate the remaining 10 Phase 3 endpoints under F26/F27/
+    F28/F29.
+paths:
+  /v1/portal/profile:
+    get:
+      operationId: getPortalProfile
+      summary: Returns the authenticated portal talent's own profile (R10-filtered).
+      description: |
+        Talent-self-view. Returns only the per-tenant context fields the
+        talent should see about themselves: their id, the tenant scope,
+        lifecycle/tenant statuses, source channel (how they entered),
+        and overlay creation timestamp. Excludes any recruiter-internal
+        data (source_recruiter_id), any examination/match data, any
+        operational metadata not in API Contracts Phase 3 Profile group.
+
+        Talent identity comes from the JWT `sub` claim — there is no
+        path/query parameter to address another talent. The portal session
+        embodies the talent it represents.
+
+        Returns 404 (not 200 with empty body) when no overlay exists for
+        (sub, tenant_id) — distinct from the PR-8 match-list
+        empty-list-on-no-active-req posture, because /portal/profile is a
+        singleton resource.
+      responses:
+        '200':
+          description: The talent's own portal profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalProfile'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/portal/consent:
+    get:
+      operationId: getPortalOwnConsent
+      summary: Returns the authenticated portal talent's own consent state.
+      description: |
+        Talent-self-view of consent. Wraps the existing
+        ConsentService.getState surface — returns the same
+        TalentConsentStateResponse shape the recruiter-facing
+        /v1/consent/state/{talent_id} returns, but the talent_id is
+        derived from the JWT `sub` claim (no path parameter — the
+        portal session embodies the talent).
+
+        Includes all 5 consent scopes (always-5-scopes deterministic
+        shape per PR-5 Decision D). No is_stale field (excluded per
+        PR-5 Decision E, ADR-0006).
+      responses:
+        '200':
+          description: The talent's own consent state, all 5 scopes.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/TalentConsentStateResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
 components:
-  schemas: {}
+  securitySchemes:
+    # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
+    # 4 (duplicate-not-$ref — no cross-document $ref for securitySchemes).
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # M3 PR-9 §4.5 — PortalProfile schema. R10-filtered by construction:
+    # additionalProperties: false enforces the closed envelope; no field
+    # name matches the verify-portal-refusal.ts forbidden list
+    # (internal_reasoning, entrustability_tier_raw, override_*, recruiter_*).
+    # The CI gate scans this schema on every build.
+    PortalProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - talent_id
+        - tenant_id
+        - lifecycle_status
+        - tenant_status
+        - source_channel
+        - created_at
+      properties:
+        talent_id:
+          type: string
+          format: uuid
+          description: The talent's own id (mirrors JWT sub).
+        tenant_id:
+          type: string
+          format: uuid
+          description: The tenant context (from JWT tenant_id claim).
+        lifecycle_status:
+          type: string
+          description: |
+            Talent core lifecycle status (closed vocabulary per Talent
+            Record Spec §2.2: active | inactive | archived | deleted).
+        tenant_status:
+          type: string
+          description: |
+            Per-tenant relationship status (closed vocabulary per Talent
+            Record Spec §2.2).
+        source_channel:
+          type: string
+          description: |
+            How the talent entered this tenant. Closed vocabulary per
+            Talent Record Spec §2.2:
+            self_signup | recruiter_capture | referral | import.
+        created_at:
+          type: string
+          format: date-time
+          description: |
+            When the talent joined this tenant (overlay's created_at;
+            distinct from the Talent core's first-seen timestamp).
