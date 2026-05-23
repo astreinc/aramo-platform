@@ -1,0 +1,5 @@
+# Aramo M4 PR-8 — example variables for staging environment
+# Copy to terraform.tfvars (gitignored) and populate before terraform init.
+
+aws_region  = "us-east-1"
+environment = "staging"
