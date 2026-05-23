@@ -488,13 +488,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // referential parity) and a TalentSubmittalRecord in 'draft' state
       // pinned to the seeded examination.
       if (opts.precreateDraftSubmittal !== undefined) {
+        // Package insert includes submittal_record_id back-link so the
+        // PR-6 get-evidence-package interaction observes the linked
+        // submittal at the response surface. The package row is
+        // immutable post-INSERT (whole-row UPDATE-rejection trigger),
+        // so the back-link must be set here. Pre-PR-6 callers
+        // (submittal-confirm, override-create pacts) don't observe
+        // this column at their response surfaces — back-fill is
+        // harmless.
         await c.query(
           `INSERT INTO evidence."TalentJobEvidencePackage"
              (id, tenant_id, talent_id, job_id, examination_id,
+              submittal_record_id,
               talent_identity, contact_summary, capability_summary,
               match_justification, recruiter_contribution,
               engagement_event_refs)
-           VALUES ($1,$2,$3,$4,$5,
+           VALUES ($1,$2,$3,$4,$5,$12,
                    $6::jsonb,$7::jsonb,$8::jsonb,
                    $9::jsonb,$10::jsonb,$11::jsonb)`,
           [
@@ -529,6 +538,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               talent_confirmed: { spoken_to_recruiter: true },
             }),
             JSON.stringify([]),
+            opts.precreateDraftSubmittal.submittalId,
           ],
         );
         const fca = opts.precreateDraftSubmittal.failed_criterion_acknowledgments;
@@ -552,6 +562,92 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           ],
         );
       }
+    }
+
+    // M4 PR-6 §4.6 — seed helper for GET /v1/submittals/{id}. Seeds a
+    // full chain (Requisition + Examination + Evidence Package +
+    // Submittal Record) when params.submittalExists=true, so the
+    // controller's findById succeeds. When false, only the upstream
+    // (Requisition + Examination) are seeded so that the route
+    // legitimately returns NOT_FOUND.
+    async function seedSubmittalForGetFixture(
+      c: Client,
+      params: { submittalExists: boolean },
+    ): Promise<{ submittal_id: string; tenant_id: string }> {
+      const submittalId = '99990000-0000-7000-8000-000000000906';
+      const evidencePackageId = '99990000-0000-7000-8000-0000000010a6';
+      const examinationId = '11110000-0000-7000-8000-0000000e0006';
+      const talentId = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
+      const jobId = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
+      if (params.submittalExists) {
+        await seedSubmittalFixture(c, {
+          examinationId,
+          talentId,
+          jobId,
+          tier: 'ENTRUSTABLE',
+          precreateDraftSubmittal: {
+            submittalId,
+            evidencePackageId,
+          },
+        });
+      } else {
+        // No-op: route legitimately returns NOT_FOUND.
+      }
+      return { submittal_id: submittalId, tenant_id: TENANT_ID };
+    }
+
+    // M4 PR-6 §4.6 — seed helper for GET /v1/submittals/{id}/evidence-
+    // package. Supports both branches (success + chain-break) plus the
+    // missing-submittal NOT_FOUND branch. The evidencePackageExists flag
+    // is reserved for a future chain-break interaction; PR-6 only ships
+    // the success + missing-submittal pair (§4.5 directive scope).
+    async function seedSubmittalForEvidencePackageFixture(
+      c: Client,
+      params: {
+        submittalExists: boolean;
+        evidencePackageExists: boolean;
+      },
+    ): Promise<{
+      submittal_id: string;
+      tenant_id: string;
+      evidence_package_id?: string;
+    }> {
+      const submittalId = '99990000-0000-7000-8000-000000000907';
+      const evidencePackageId = '99990000-0000-7000-8000-0000000010a7';
+      const examinationId = '11110000-0000-7000-8000-0000000e0007';
+      const talentId = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
+      const jobId = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
+      if (params.submittalExists) {
+        // seedSubmittalFixture sets package.submittal_record_id → submittal.id
+        // at INSERT time (the package row is immutable post-INSERT per the
+        // §4.2 trigger), so the bidirectional link is observable at the
+        // get-evidence-package response surface without further work.
+        await seedSubmittalFixture(c, {
+          examinationId,
+          talentId,
+          jobId,
+          tier: 'ENTRUSTABLE',
+          precreateDraftSubmittal: {
+            submittalId,
+            evidencePackageId,
+          },
+        });
+        if (!params.evidencePackageExists) {
+          // Chain-break: delete the just-seeded evidence-package row so
+          // the controller's second findById returns null → 404.
+          await c.query(
+            `DELETE FROM evidence."TalentJobEvidencePackage" WHERE id = $1`,
+            [evidencePackageId],
+          );
+        }
+        return {
+          submittal_id: submittalId,
+          tenant_id: TENANT_ID,
+          evidence_package_id: evidencePackageId,
+        };
+      }
+      // No-op: route legitimately returns NOT_FOUND on the first lookup.
+      return { submittal_id: submittalId, tenant_id: TENANT_ID };
     }
 
     async function insertExaminationRow(
@@ -1562,6 +1658,30 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // satisfied).
         await withClient((c) => resetAllRows(c));
       },
+      // ===== M4 PR-6 §4.6 submittal-get + evidence-package (2 new givens) =====
+      'a recruiter has authenticated and a TalentSubmittalRecord exists for the tenant':
+        async () => {
+          // PR-6 §4.6 — happy path for GET /v1/submittals/{id}. Seed an
+          // Entrustable examination + the linked submittal + evidence
+          // package at the consumer-known UUIDs (SUBMITTAL_ID_HAPPY +
+          // EVIDENCE_PKG_ID in submittal-get.consumer.test.ts).
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalForGetFixture(c, { submittalExists: true });
+          });
+        },
+      'a recruiter has authenticated and a TalentSubmittalRecord + linked TalentJobEvidencePackage exist for the tenant':
+        async () => {
+          // PR-6 §4.6 — happy path for GET /v1/submittals/{id}/evidence-
+          // package. Seed the full chain at the consumer-known UUIDs.
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalForEvidencePackageFixture(c, {
+              submittalExists: true,
+              evidencePackageExists: true,
+            });
+          });
+        },
       'a talent with profile granted and contacting revoked': async () => {
         // §4.3 — profile_storage granted (status: granted); contacting
         // granted then revoked (Decision D: revoked). Remaining 3 scopes

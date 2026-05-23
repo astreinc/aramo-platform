@@ -1896,6 +1896,80 @@ components:
     # Loop 5 machine at M5.
     # =====================================================================
 
+    # M4 PR-6 amendment — TalentJobEvidencePackageView. Structural
+    # addition surfacing the PR-1 entity for the GET /v1/submittals/
+    # {submittal_id}/evidence-package response (M4 PR-6 §4.4). Mirrors
+    # the Prisma TalentJobEvidencePackage entity (libs/evidence PR-1).
+    # JSONB payloads typed as object with additionalProperties: true; the
+    # per-payload structural refinement is M5/M6 work (PR-6 scope is the
+    # structural addition only).
+    TalentJobEvidencePackageView:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - tenant_id
+        - talent_id
+        - job_id
+        - examination_id
+        - submittal_record_id
+        - talent_identity
+        - contact_summary
+        - capability_summary
+        - match_justification
+        - recruiter_contribution
+        - engagement_event_refs
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        talent_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        examination_id:
+          type: string
+          format: uuid
+        submittal_record_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        parent_package_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        talent_identity:
+          type: object
+          additionalProperties: true
+        contact_summary:
+          type: object
+          additionalProperties: true
+        capability_summary:
+          type: object
+          additionalProperties: true
+        match_justification:
+          type: object
+          additionalProperties: true
+        recruiter_contribution:
+          type: object
+          additionalProperties: true
+        engagement_event_refs:
+          type: array
+          items:
+            type: string
+            format: uuid
+        created_at:
+          type: string
+          format: date-time
+
     SubmittalState:
       type: string
       description: |

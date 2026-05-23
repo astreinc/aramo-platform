@@ -640,6 +640,102 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect((err as AramoError).code).toBe('NOT_FOUND');
       }
     });
+
+    // =========================================================================
+    // M4 PR-6 §4.8 — integration tests for the read-side endpoints (2 new)
+    // =========================================================================
+    //
+    // The Stage 4 read endpoints (getSubmittal + getEvidencePackage) ride on
+    // SubmittalRepository.findById + EvidenceRepository.findById — both
+    // ready-to-consume PR-3 / PR-1 substrate (no new repository methods).
+    // These tests assert the substrate behaviour PR-6's controllers depend
+    // on:
+    //   1. Cross-tenant access via findById returns null (NOT_FOUND in HTTP
+    //      layer).
+    //   2. Get-then-evidence chain: both findById calls succeed end-to-end
+    //      when tenant matches; the linked package can be loaded by id.
+
+    it('M4 PR-6: cross-tenant findById returns null (HTTP layer raises NOT_FOUND)', async () => {
+      // Seed a fresh (talent, job, examination) so we don't conflict with
+      // earlier tests in the suite.
+      const talentP = 'aaaaaaaa-0000-7000-8000-0000000a6001';
+      const jobP = 'cccccccc-0000-7000-8000-0000000c6001';
+      const examP = '11110000-0000-7000-8000-0000000e6001';
+      await seedExamination(setupClient, {
+        id: examP,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentP,
+        job_id: jobP,
+      });
+      const tenantADraft = await repo.createSubmittal(
+        makeInput({ examination_id: examP, talent_id: talentP, job_id: jobP }),
+      );
+      // Tenant A can see it.
+      const seenByA = await repo.findById({
+        tenant_id: TENANT_A,
+        id: tenantADraft.id,
+      });
+      expect(seenByA).not.toBeNull();
+      // Tenant B cannot.
+      const seenByB = await repo.findById({
+        tenant_id: TENANT_B,
+        id: tenantADraft.id,
+      });
+      expect(seenByB).toBeNull();
+    });
+
+    it('M4 PR-6: get-then-evidence chain — both findById calls succeed when tenant matches', async () => {
+      // Use an isolated (talent, job) so the chain is unambiguously this
+      // draft's package row.
+      const talentQ = 'aaaaaaaa-0000-7000-8000-0000000a6002';
+      const jobQ = 'cccccccc-0000-7000-8000-0000000c6002';
+      const examQ = '11110000-0000-7000-8000-0000000e6002';
+      await seedExamination(setupClient, {
+        id: examQ,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentQ,
+        job_id: jobQ,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({ examination_id: examQ, talent_id: talentQ, job_id: jobQ }),
+      );
+
+      // Step 1 — load the submittal via findById (the controller's first
+      // call). Tenant-scoped read returns the row.
+      const submittal = await repo.findById({
+        tenant_id: TENANT_A,
+        id: draft.id,
+      });
+      expect(submittal).not.toBeNull();
+      expect(submittal?.evidence_package_id).toBe(draft.evidence_package_id);
+
+      // Step 2 — load the linked evidence package via EvidenceRepository.
+      // findById (the controller's second call) using the submittal's
+      // evidence_package_id and the same tenant_id.
+      const evidenceRepo = new EvidenceRepository(
+        evidencePrisma,
+        new ExaminationRepository(examPrisma, undefined as never),
+        new TalentEvidenceRepository(talentEvidencePrisma),
+      );
+      const evidencePackage = await evidenceRepo.findById({
+        tenant_id: TENANT_A,
+        id: draft.evidence_package_id,
+      });
+      expect(evidencePackage).not.toBeNull();
+      expect(evidencePackage?.id).toBe(draft.evidence_package_id);
+      expect(evidencePackage?.examination_id).toBe(examQ);
+      // All five JSONB payloads must be populated (PR-2 buildPackage
+      // contract; PR-6 read endpoint surfaces them verbatim).
+      expect(evidencePackage?.talent_identity).toBeDefined();
+      expect(evidencePackage?.contact_summary).toBeDefined();
+      expect(evidencePackage?.capability_summary).toBeDefined();
+      expect(evidencePackage?.match_justification).toBeDefined();
+      expect(evidencePackage?.recruiter_contribution).toBeDefined();
+    });
   },
 );
 
