@@ -147,7 +147,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const examRepo = new ExaminationRepository(examPrisma, undefined as never);
       const talentEvidenceRepo = new TalentEvidenceRepository(talentEvidencePrisma);
       const evidenceRepo = new EvidenceRepository(evidencePrisma, examRepo, talentEvidenceRepo);
-      repo = new SubmittalRepository(submittalPrisma, evidenceRepo);
+      repo = new SubmittalRepository(submittalPrisma, evidenceRepo, examRepo);
 
       // Seed all the examinations the tests need.
       await seedExamination(setupClient, { id: ENT_EXAM_ID, tenant_id: TENANT_A, tier: 'ENTRUSTABLE', lifecycle_state: 'active' });
@@ -306,6 +306,340 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const fromTenantB = await repo.findById({ tenant_id: TENANT_B, id: tenantBView.id });
       expect(fromTenantB).not.toBeNull();
     });
+
+    // =========================================================================
+    // M4 PR-4 §4.10 — confirmSubmittal integration tests (8 new)
+    // =========================================================================
+
+    it('M4 PR-4: confirm happy path — Entrustable + all attestations true → state="submitted" + confirmed_at set', async () => {
+      // Seed an isolated (talent, job) so the latest-snapshot check is
+      // unambiguously this row (the shared TALENT_A + JOB_ID triple has
+      // multiple PR-3 baseline rows that would defeat the pin check).
+      const talentH = 'aaaaaaaa-0000-7000-8000-0000000a1001';
+      const jobH = 'cccccccc-0000-7000-8000-0000000c1001';
+      const examH = '11110000-0000-7000-8000-0000000e1001';
+      await seedExamination(setupClient, {
+        id: examH,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentH,
+        job_id: jobH,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({ examination_id: examH, talent_id: talentH, job_id: jobH }),
+      );
+      const view = await repo.confirmSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: draft.id,
+        attestations: {
+          talent_evidence_reviewed: true,
+          constraints_reviewed: true,
+          submittal_risk_acknowledged: true,
+        },
+        requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b0001',
+      });
+      expect(view.state).toBe('submitted');
+      expect(view.confirmed_at).toBeInstanceOf(Date);
+      const reread = await repo.findById({ tenant_id: TENANT_A, id: draft.id });
+      expect(reread?.state).toBe('submitted');
+      expect(reread?.confirmed_at).toBeInstanceOf(Date);
+    });
+
+    it('M4 PR-4: confirm on already-submitted row → SUBMITTAL_ALREADY_CONFIRMED 409; row unchanged', async () => {
+      const talentJ = 'aaaaaaaa-0000-7000-8000-0000000a1002';
+      const jobJ = 'cccccccc-0000-7000-8000-0000000c1002';
+      const examJ = '11110000-0000-7000-8000-0000000e1002';
+      await seedExamination(setupClient, {
+        id: examJ,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentJ,
+        job_id: jobJ,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({ examination_id: examJ, talent_id: talentJ, job_id: jobJ }),
+      );
+      // First confirm succeeds.
+      await repo.confirmSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: draft.id,
+        attestations: {
+          talent_evidence_reviewed: true,
+          constraints_reviewed: true,
+          submittal_risk_acknowledged: true,
+        },
+        requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b0002',
+      });
+      const before = await repo.findById({ tenant_id: TENANT_A, id: draft.id });
+      // Second confirm refuses.
+      try {
+        await repo.confirmSubmittal({
+          tenant_id: TENANT_A,
+          submittal_id: draft.id,
+          attestations: {
+            talent_evidence_reviewed: true,
+            constraints_reviewed: true,
+            submittal_risk_acknowledged: true,
+          },
+          requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b0003',
+        });
+        throw new Error('expected throw');
+      } catch (err) {
+        expect((err as AramoError).code).toBe('SUBMITTAL_ALREADY_CONFIRMED');
+      }
+      const after = await repo.findById({ tenant_id: TENANT_A, id: draft.id });
+      expect(after?.confirmed_at?.toISOString()).toBe(before?.confirmed_at?.toISOString());
+    });
+
+    it('M4 PR-4: pin outdated by newer snapshot → EXAMINATION_PINNED_OUTDATED 409; row unchanged', async () => {
+      // Use a fresh (talent, job) pair so other tests don't contaminate
+      // the "latest" computation.
+      const olderId = '11111111-aaaa-7000-8000-000000000201';
+      const newerId = '11111111-aaaa-7000-8000-000000000202';
+      const talentX = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
+      const jobX = 'ffffffff-ffff-7fff-8fff-ffffffffffff';
+      await seedExamination(setupClient, {
+        id: olderId,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentX,
+        job_id: jobX,
+        computed_at: '2026-05-20T09:00:00Z',
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: olderId,
+          talent_id: talentX,
+          job_id: jobX,
+        }),
+      );
+      // Seed a newer snapshot AFTER the draft.
+      await seedExamination(setupClient, {
+        id: newerId,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentX,
+        job_id: jobX,
+        computed_at: '2026-05-22T09:00:00Z',
+      });
+      try {
+        await repo.confirmSubmittal({
+          tenant_id: TENANT_A,
+          submittal_id: draft.id,
+          attestations: {
+            talent_evidence_reviewed: true,
+            constraints_reviewed: true,
+            submittal_risk_acknowledged: true,
+          },
+          requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b0004',
+        });
+        throw new Error('expected throw');
+      } catch (err) {
+        expect((err as AramoError).code).toBe('EXAMINATION_PINNED_OUTDATED');
+      }
+      const reread = await repo.findById({ tenant_id: TENANT_A, id: draft.id });
+      expect(reread?.state).toBe('draft');
+      expect(reread?.confirmed_at).toBeNull();
+    });
+
+    it('M4 PR-4: pin lifecycle archived → EXAMINATION_PINNED_OUTDATED 409; row unchanged', async () => {
+      const talentY = '88888888-7777-7777-7777-888888888888';
+      const jobY = '99999999-7777-7777-7777-999999999999';
+      const archivedId = '11111111-aaaa-7000-8000-000000000301';
+      await seedExamination(setupClient, {
+        id: archivedId,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentY,
+        job_id: jobY,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: archivedId,
+          talent_id: talentY,
+          job_id: jobY,
+        }),
+      );
+      // Archive the snapshot via raw SQL (bypassing the closed
+      // markSuperseded surface — the column-scoped trigger permits
+      // lifecycle-only writes).
+      await setupClient.$executeRawUnsafe(
+        `UPDATE examination."TalentJobExamination"
+           SET lifecycle_state = 'archived'::examination."ExaminationLifecycleState",
+               archived_at = '2026-05-23T00:00:00Z'::timestamptz
+           WHERE id = '${archivedId}'::uuid`,
+      );
+      try {
+        await repo.confirmSubmittal({
+          tenant_id: TENANT_A,
+          submittal_id: draft.id,
+          attestations: {
+            talent_evidence_reviewed: true,
+            constraints_reviewed: true,
+            submittal_risk_acknowledged: true,
+          },
+          requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b0005',
+        });
+        throw new Error('expected throw');
+      } catch (err) {
+        expect((err as AramoError).code).toBe('EXAMINATION_PINNED_OUTDATED');
+      }
+      const reread = await repo.findById({ tenant_id: TENANT_A, id: draft.id });
+      expect(reread?.state).toBe('draft');
+    });
+
+    it('M4 PR-4: Stretch re-check via raw-SQL draft → SUBMITTAL_STRETCH_BLOCKED 422; row unchanged', async () => {
+      // The create-time gate blocks STRETCH at the create endpoint, so
+      // we bypass that gate by writing a draft directly via raw SQL to
+      // exercise the confirm-time defense.
+      const stretchSubmittalId = '99990000-0000-7000-8000-000000000999';
+      const stretchPkgId = '99990000-0000-7000-8000-0000000010aa';
+      await submittalPrisma.$executeRawUnsafe(
+        `INSERT INTO evidence."TalentJobEvidencePackage"
+           (id, tenant_id, talent_id, job_id, examination_id,
+            talent_identity, contact_summary, capability_summary,
+            match_justification, recruiter_contribution, engagement_event_refs)
+         VALUES ('${stretchPkgId}'::uuid, '${TENANT_A}'::uuid,
+                 '${TALENT_A}'::uuid, '${JOB_ID}'::uuid,
+                 '${STRETCH_EXAM_ID}'::uuid,
+                 '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+                 '{}'::jsonb, '{}'::jsonb, '[]'::jsonb)`,
+      );
+      await submittalPrisma.$executeRawUnsafe(
+        `INSERT INTO engagement."TalentSubmittalRecord"
+           (id, tenant_id, talent_id, job_id, evidence_package_id,
+            pinned_examination_id, state, created_by)
+         VALUES ('${stretchSubmittalId}'::uuid, '${TENANT_A}'::uuid,
+                 '${TALENT_A}'::uuid, '${JOB_ID}'::uuid,
+                 '${stretchPkgId}'::uuid,
+                 '${STRETCH_EXAM_ID}'::uuid,
+                 'draft'::engagement."SubmittalState",
+                 '${RECRUITER_ID}'::uuid)`,
+      );
+      try {
+        await repo.confirmSubmittal({
+          tenant_id: TENANT_A,
+          submittal_id: stretchSubmittalId,
+          attestations: {
+            talent_evidence_reviewed: true,
+            constraints_reviewed: true,
+            submittal_risk_acknowledged: true,
+          },
+          requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b0006',
+        });
+        throw new Error('expected throw');
+      } catch (err) {
+        expect((err as AramoError).code).toBe('SUBMITTAL_STRETCH_BLOCKED');
+      }
+      const reread = await repo.findById({
+        tenant_id: TENANT_A,
+        id: stretchSubmittalId,
+      });
+      expect(reread?.state).toBe('draft');
+    });
+
+    it('M4 PR-4: Worth Considering missing justification → JUSTIFICATION_REQUIRED 422; row unchanged', async () => {
+      const talentZ = 'eeeeeeee-eeee-7eee-8eee-eeeeeeee1111';
+      const jobZ = 'ffffffff-ffff-7fff-8fff-ffffffff1111';
+      const wcExamId = '22220000-0000-7000-8000-000000000401';
+      await seedExamination(setupClient, {
+        id: wcExamId,
+        tenant_id: TENANT_A,
+        tier: 'WORTH_CONSIDERING',
+        lifecycle_state: 'active',
+        talent_id: talentZ,
+        job_id: jobZ,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: wcExamId,
+          talent_id: talentZ,
+          job_id: jobZ,
+          // No justification, no acknowledgments.
+        }),
+      );
+      try {
+        await repo.confirmSubmittal({
+          tenant_id: TENANT_A,
+          submittal_id: draft.id,
+          attestations: {
+            talent_evidence_reviewed: true,
+            constraints_reviewed: true,
+            submittal_risk_acknowledged: true,
+          },
+          requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b0007',
+        });
+        throw new Error('expected throw');
+      } catch (err) {
+        expect((err as AramoError).code).toBe('JUSTIFICATION_REQUIRED');
+      }
+      const reread = await repo.findById({ tenant_id: TENANT_A, id: draft.id });
+      expect(reread?.state).toBe('draft');
+    });
+
+    it('M4 PR-4: Worth Considering missing acknowledgments → JUSTIFICATION_REQUIRED 422', async () => {
+      const talentZ2 = 'eeeeeeee-eeee-7eee-8eee-eeeeeeee2222';
+      const jobZ2 = 'ffffffff-ffff-7fff-8fff-ffffffff2222';
+      const wcExam2 = '22220000-0000-7000-8000-000000000402';
+      await seedExamination(setupClient, {
+        id: wcExam2,
+        tenant_id: TENANT_A,
+        tier: 'WORTH_CONSIDERING',
+        lifecycle_state: 'active',
+        talent_id: talentZ2,
+        job_id: jobZ2,
+      });
+      // Justification present, but acknowledgments absent.
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: wcExam2,
+          talent_id: talentZ2,
+          job_id: jobZ2,
+          justification: 'Strong soft skills despite missing certification',
+        }),
+      );
+      try {
+        await repo.confirmSubmittal({
+          tenant_id: TENANT_A,
+          submittal_id: draft.id,
+          attestations: {
+            talent_evidence_reviewed: true,
+            constraints_reviewed: true,
+            submittal_risk_acknowledged: true,
+          },
+          requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b0008',
+        });
+        throw new Error('expected throw');
+      } catch (err) {
+        expect((err as AramoError).code).toBe('JUSTIFICATION_REQUIRED');
+      }
+    });
+
+    it('M4 PR-4: cross-tenant confirm → NOT_FOUND 404 (no row visible)', async () => {
+      const tenantBDraft = await repo.createSubmittal(
+        makeInput({ tenant_id: TENANT_B, examination_id: TENANT_B_EXAM_ID }),
+      );
+      try {
+        await repo.confirmSubmittal({
+          tenant_id: TENANT_A,
+          submittal_id: tenantBDraft.id,
+          attestations: {
+            talent_evidence_reviewed: true,
+            constraints_reviewed: true,
+            submittal_risk_acknowledged: true,
+          },
+          requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b0009',
+        });
+        throw new Error('expected throw');
+      } catch (err) {
+        expect((err as AramoError).code).toBe('NOT_FOUND');
+      }
+    });
   },
 );
 
@@ -320,6 +654,12 @@ async function seedExamination(
     tenant_id: string;
     tier: 'ENTRUSTABLE' | 'WORTH_CONSIDERING' | 'STRETCH';
     lifecycle_state: 'active' | 'archived' | 'cold_storage';
+    // M4 PR-4: optional triple overrides so confirm tests can seed on a
+    // fresh (talent, job) pair without contaminating the create-flow
+    // tests' shared TALENT_A / JOB_ID baseline.
+    talent_id?: string;
+    job_id?: string;
+    computed_at?: string;
   },
 ): Promise<void> {
   const skillMatch = { matched_count: 5, missing_count: 0, per_skill: [] };
@@ -334,6 +674,9 @@ async function seedExamination(
     constraint_confidence: { level: 'high', basis: 'verified' },
   };
   const freshness = { profile_age_days: 14 };
+  const talentId = opts.talent_id ?? TALENT_A;
+  const jobId = opts.job_id ?? JOB_ID;
+  const computedAt = opts.computed_at ?? '2026-05-22T09:00:00Z';
   await client.$executeRawUnsafe(
     `INSERT INTO examination."TalentJobExamination" (
        id, tenant_id, talent_id, job_id, golden_profile_id,
@@ -347,8 +690,8 @@ async function seedExamination(
      ) VALUES (
        '${opts.id}'::uuid,
        '${opts.tenant_id}'::uuid,
-       '${TALENT_A}'::uuid,
-       '${JOB_ID}'::uuid,
+       '${talentId}'::uuid,
+       '${jobId}'::uuid,
        '${GOLDEN_ID}'::uuid,
        'initial_match'::examination."ExaminationTrigger",
        '${opts.tier}'::examination."ExaminationTier",
@@ -365,9 +708,9 @@ async function seedExamination(
        '${JSON.stringify(freshness)}'::jsonb,
        NULL,
        'v1.0', 'v1.0', 'v1.0',
-       '2026-05-22T09:00:00Z'::timestamptz,
+       '${computedAt}'::timestamptz,
        '${opts.lifecycle_state}'::examination."ExaminationLifecycleState",
-       ${opts.lifecycle_state === 'active' ? 'NULL' : `'2026-05-22T09:00:00Z'::timestamptz`},
+       ${opts.lifecycle_state === 'active' ? 'NULL' : `'${computedAt}'::timestamptz`},
        NULL
      )`,
   );

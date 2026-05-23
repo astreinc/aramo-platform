@@ -712,21 +712,43 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
     # M4 PR-3 — UnprocessableEntity response component. Used by POST
-    # /v1/submittals (and the future submittal-confirm endpoint) to carry
+    # /v1/submittals (and the M4 PR-4 submittal-confirm endpoint) to carry
     # 422 refusals. Referenced error codes (from the closed ErrorCode
     # enum):
     #   - SUBMITTAL_STRETCH_BLOCKED (M4 PR-2) — Stretch-tier blocked at
     #     submittal create and confirm.
-    #   - JUSTIFICATION_REQUIRED (M4 PR-3 registers, F34 raises) —
+    #   - JUSTIFICATION_REQUIRED (M4 PR-3 registers, M4 PR-4 raises) —
     #     Worth Considering submittal missing justification or failed-
     #     criterion acknowledgments at confirm.
+    #   - ATTESTATION_MISSING (M4 PR-4) — submittal-confirm rejects when
+    #     any of the three recruiter attestations is not literally true.
     #   - VALIDATION_ERROR — request body fails schema validation.
     UnprocessableEntity:
       description: |
         The request is well-formed but violates a semantic invariant
         enforced by the application layer. Possible codes:
         SUBMITTAL_STRETCH_BLOCKED, JUSTIFICATION_REQUIRED,
-        VALIDATION_ERROR.
+        ATTESTATION_MISSING, VALIDATION_ERROR.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    # M4 PR-4 — Conflict response component. Used by POST
+    # /v1/submittals/{id}/confirm to carry the 409 refusal family.
+    # Referenced error codes (from the closed ErrorCode enum):
+    #   - EXAMINATION_PINNED_OUTDATED (M4 PR-4) — pinned examination is
+    #     missing, no longer active, or no longer the latest snapshot for
+    #     the (tenant, talent, job) triple.
+    #   - SUBMITTAL_ALREADY_CONFIRMED (M4 PR-4) — confirm called on a
+    #     submittal already in state='submitted'.
+    #   - IDEMPOTENCY_KEY_CONFLICT (program-wide) — same Idempotency-Key
+    #     with a different request body.
+    Conflict:
+      description: |
+        The request conflicts with the current resource state. Possible
+        codes: EXAMINATION_PINNED_OUTDATED, SUBMITTAL_ALREADY_CONFIRMED,
+        IDEMPOTENCY_KEY_CONFLICT.
       content:
         application/json:
           schema:
@@ -1389,6 +1411,15 @@ components:
         match the parity-triple lesson learned at PR-2. F34 raises;
         PR-3 only persists `justification` + `failed_criterion_
         acknowledgments` verbatim.
+        M4 PR-4 adds the three submittal-confirm refusal codes per
+        Aramo-M4-PR-4-Directive-v1_0-LOCKED.md §4.6:
+          - ATTESTATION_MISSING (HTTP 422) — any of the three recruiter
+            attestations is not literally true at confirm.
+          - EXAMINATION_PINNED_OUTDATED (HTTP 409) — pinned examination
+            row is missing, no longer active, or no longer the latest
+            snapshot for (tenant, talent, job).
+          - SUBMITTAL_ALREADY_CONFIRMED (HTTP 409) — confirm called on a
+            submittal already in state='submitted'.
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1406,6 +1437,9 @@ components:
         - NOT_FOUND
         - SUBMITTAL_STRETCH_BLOCKED
         - JUSTIFICATION_REQUIRED
+        - ATTESTATION_MISSING
+        - EXAMINATION_PINNED_OUTDATED
+        - SUBMITTAL_ALREADY_CONFIRMED
 
     ErrorObject:
       type: object
@@ -2125,6 +2159,72 @@ components:
             $ref: '#/components/schemas/FailedCriterionAcknowledgment'
 
     CreateSubmittalResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - submittal
+      properties:
+        submittal:
+          $ref: '#/components/schemas/TalentSubmittalRecord'
+
+    # =====================================================================
+    # M4 PR-4 — Submittal confirm endpoint surfaces.
+    #
+    # Recruiter attestations + confirm request/response shapes for POST
+    # /v1/submittals/{submittal_id}/confirm. Per directive §11 self-audit
+    # resolution: each attestation is documented as `const: true` so the
+    # OpenAPI contract matches the locked-value invariant; runtime
+    # enforcement happens in SubmittalController.confirmSubmittal (the
+    # manual 3-line check throwing ATTESTATION_MISSING 422 directly,
+    # bypassing class-validator's VALIDATION_ERROR path).
+    # =====================================================================
+
+    RecruiterAttestations:
+      type: object
+      additionalProperties: false
+      description: |
+        Three recruiter attestations required for submittal confirm
+        (Group 2 §2.6 — recruiter must affirm evidence reviewed,
+        constraints reviewed, and submittal-risk acknowledged). Each
+        field is locked to literal `true`; any other value (false, null,
+        omitted) yields HTTP 422 ATTESTATION_MISSING at the controller
+        boundary.
+      required:
+        - talent_evidence_reviewed
+        - constraints_reviewed
+        - submittal_risk_acknowledged
+      properties:
+        talent_evidence_reviewed:
+          type: boolean
+          const: true
+          description: |
+            Recruiter affirms the talent's underlying evidence package
+            has been reviewed for accuracy.
+        constraints_reviewed:
+          type: boolean
+          const: true
+          description: |
+            Recruiter affirms the §2.5 entrustability constraints
+            (location, work mode, rate, work authorization) were
+            reviewed against the requisition.
+        submittal_risk_acknowledged:
+          type: boolean
+          const: true
+          description: |
+            Recruiter acknowledges any risk flags surfaced on the
+            pinned examination and accepts responsibility for the
+            submittal.
+
+    ConfirmSubmittalRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - attestations
+      properties:
+        attestations:
+          $ref: '#/components/schemas/RecruiterAttestations'
+
+    ConfirmSubmittalResponse:
       type: object
       additionalProperties: false
       required:

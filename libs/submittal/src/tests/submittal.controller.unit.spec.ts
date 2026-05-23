@@ -232,3 +232,151 @@ describe('SubmittalController.createSubmittal (unit)', () => {
     }
   });
 });
+
+// =============================================================================
+// M4 PR-4 §4.10 — controller unit tests for confirmSubmittal (4 new)
+// =============================================================================
+
+const SUBMITTAL_ID = '99990000-0000-7000-8000-000000000001';
+
+function makeAttestations(
+  overrides: Partial<{
+    talent_evidence_reviewed: boolean;
+    constraints_reviewed: boolean;
+    submittal_risk_acknowledged: boolean;
+  }> = {},
+): {
+  talent_evidence_reviewed: true;
+  constraints_reviewed: true;
+  submittal_risk_acknowledged: true;
+} {
+  return {
+    talent_evidence_reviewed: true,
+    constraints_reviewed: true,
+    submittal_risk_acknowledged: true,
+    ...overrides,
+  } as {
+    talent_evidence_reviewed: true;
+    constraints_reviewed: true;
+    submittal_risk_acknowledged: true;
+  };
+}
+
+interface ConfirmMockSetup {
+  controller: SubmittalController;
+  confirmSubmittal: ReturnType<typeof vi.fn>;
+  lookup: ReturnType<typeof vi.fn>;
+  persist: ReturnType<typeof vi.fn>;
+}
+
+function buildConfirm(): ConfirmMockSetup {
+  const confirmSubmittal = vi.fn().mockResolvedValue({
+    id: SUBMITTAL_ID,
+    tenant_id: TENANT_A,
+    talent_id: TALENT_A,
+    job_id: JOB_ID,
+    evidence_package_id: '99990000-0000-7000-8000-000000000002',
+    pinned_examination_id: EXAM_ID,
+    state: 'submitted',
+    created_by: RECRUITER_ID,
+    justification: null,
+    failed_criterion_acknowledgments: null,
+    created_at: new Date('2026-05-23T12:00:00Z'),
+    confirmed_at: new Date('2026-05-23T13:00:00Z'),
+  });
+  const lookup = vi.fn().mockResolvedValue({ kind: 'proceed' });
+  const persist = vi.fn().mockResolvedValue(undefined);
+  const mockRepo = {
+    createSubmittal: vi.fn(),
+    confirmSubmittal,
+  } as unknown as SubmittalRepository;
+  const mockIdempotency = { lookup, persist } as unknown as IdempotencyService;
+  const controller = new SubmittalController(mockRepo, mockIdempotency);
+  return { controller, confirmSubmittal, lookup, persist };
+}
+
+describe('SubmittalController.confirmSubmittal (unit)', () => {
+  let ctx: ConfirmMockSetup;
+  beforeEach(() => {
+    ctx = buildConfirm();
+  });
+
+  it('1. consumer_type !== "recruiter" → INSUFFICIENT_PERMISSIONS 403', async () => {
+    try {
+      await ctx.controller.confirmSubmittal(
+        SUBMITTAL_ID,
+        { attestations: makeAttestations() },
+        IDEMPOTENCY_KEY,
+        makeAuth({ consumer_type: 'portal' }),
+        REQUEST_ID,
+      );
+      throw new Error('expected throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AramoError);
+      expect((err as AramoError).code).toBe('INSUFFICIENT_PERMISSIONS');
+      expect((err as AramoError).statusCode).toBe(403);
+    }
+    expect(ctx.confirmSubmittal).not.toHaveBeenCalled();
+  });
+
+  it('2. Idempotency-Key missing → VALIDATION_ERROR 400', async () => {
+    try {
+      await ctx.controller.confirmSubmittal(
+        SUBMITTAL_ID,
+        { attestations: makeAttestations() },
+        undefined,
+        makeAuth(),
+        REQUEST_ID,
+      );
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('VALIDATION_ERROR');
+    }
+    expect(ctx.confirmSubmittal).not.toHaveBeenCalled();
+  });
+
+  it('3. submittal_id non-UUID → VALIDATION_ERROR 400', async () => {
+    try {
+      await ctx.controller.confirmSubmittal(
+        'not-a-uuid',
+        { attestations: makeAttestations() },
+        IDEMPOTENCY_KEY,
+        makeAuth(),
+        REQUEST_ID,
+      );
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('VALIDATION_ERROR');
+    }
+    expect(ctx.confirmSubmittal).not.toHaveBeenCalled();
+  });
+
+  it('4. attestations: any false → ATTESTATION_MISSING 422 (3 permutations)', async () => {
+    const permutations: Array<Partial<{
+      talent_evidence_reviewed: boolean;
+      constraints_reviewed: boolean;
+      submittal_risk_acknowledged: boolean;
+    }>> = [
+      { talent_evidence_reviewed: false },
+      { constraints_reviewed: false },
+      { submittal_risk_acknowledged: false },
+    ];
+    for (const overrides of permutations) {
+      const local = buildConfirm();
+      try {
+        await local.controller.confirmSubmittal(
+          SUBMITTAL_ID,
+          { attestations: makeAttestations(overrides) },
+          IDEMPOTENCY_KEY,
+          makeAuth(),
+          REQUEST_ID,
+        );
+        throw new Error('expected throw');
+      } catch (err) {
+        expect((err as AramoError).code).toBe('ATTESTATION_MISSING');
+        expect((err as AramoError).statusCode).toBe(422);
+      }
+      expect(local.confirmSubmittal).not.toHaveBeenCalled();
+    }
+  });
+});

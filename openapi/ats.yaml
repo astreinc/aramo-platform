@@ -78,6 +78,84 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/submittals/{submittal_id}/confirm:
+    post:
+      operationId: confirmSubmittal
+      summary: Confirm a draft submittal (M4 PR-4 / F34).
+      description: |
+        Transitions a TalentSubmittalRecord from `draft` to `submitted`
+        and stamps `confirmed_at`. Recruiter must affirm all three
+        attestations (talent_evidence_reviewed, constraints_reviewed,
+        submittal_risk_acknowledged) and the pinned examination must
+        still be the latest active snapshot for the (tenant, talent,
+        job) triple.
+
+        Refusal codes (closed list at PR-4):
+          - 422 ATTESTATION_MISSING — any of the three recruiter
+            attestations is not literally true.
+          - 422 SUBMITTAL_STRETCH_BLOCKED — pinned examination tier is
+            STRETCH (re-check of PR-2's create-time gate).
+          - 422 JUSTIFICATION_REQUIRED — Worth Considering submittal with
+            missing/empty `justification` or zero
+            `failed_criterion_acknowledgments` entries.
+          - 409 EXAMINATION_PINNED_OUTDATED — pinned examination row is
+            missing, no longer active, or no longer the latest snapshot
+            for the (tenant, talent, job) triple.
+          - 409 SUBMITTAL_ALREADY_CONFIRMED — submittal is already in
+            state='submitted'.
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key, different
+            request body.
+          - 404 NOT_FOUND — submittal_id not found for the JWT's tenant.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 VALIDATION_ERROR — request body fails schema validation,
+            submittal_id is not a UUID, or Idempotency-Key is missing /
+            malformed.
+      parameters:
+        - name: submittal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            UUID idempotency key. Same key + same body returns the prior
+            response; same key + different body returns 409
+            IDEMPOTENCY_KEY_CONFLICT. Missing or non-UUID returns 400
+            VALIDATION_ERROR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/ConfirmSubmittalRequest'
+      responses:
+        '200':
+          description: Submittal confirmed; state transitioned to `submitted`.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ConfirmSubmittalResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
   /v1/jobs/{job_id}/matches:
     get:
       operationId: listJobMatches

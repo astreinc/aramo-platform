@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 14 codes including M4 PR-3 JUSTIFICATION_REQUIRED addition', () => {
+  it('ERROR_CODES contains the 17 codes including M4 PR-4 parity-triple additions', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -53,6 +53,9 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'NOT_FOUND',
       'SUBMITTAL_STRETCH_BLOCKED',
       'JUSTIFICATION_REQUIRED',
+      'ATTESTATION_MISSING',
+      'EXAMINATION_PINNED_OUTDATED',
+      'SUBMITTAL_ALREADY_CONFIRMED',
     ]);
   });
 });
