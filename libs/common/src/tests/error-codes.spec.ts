@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 17 codes including M4 PR-4 parity-triple additions', () => {
+  it('ERROR_CODES contains the 18 codes including M4 PR-5 OVERRIDE_INVALID', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -56,6 +56,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'ATTESTATION_MISSING',
       'EXAMINATION_PINNED_OUTDATED',
       'SUBMITTAL_ALREADY_CONFIRMED',
+      'OVERRIDE_INVALID',
     ]);
   });
 });

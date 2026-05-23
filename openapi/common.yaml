@@ -712,9 +712,9 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
     # M4 PR-3 — UnprocessableEntity response component. Used by POST
-    # /v1/submittals (and the M4 PR-4 submittal-confirm endpoint) to carry
-    # 422 refusals. Referenced error codes (from the closed ErrorCode
-    # enum):
+    # /v1/submittals (and the M4 PR-4 submittal-confirm + M4 PR-5
+    # examination-override endpoints) to carry 422 refusals. Referenced
+    # error codes (from the closed ErrorCode enum):
     #   - SUBMITTAL_STRETCH_BLOCKED (M4 PR-2) — Stretch-tier blocked at
     #     submittal create and confirm.
     #   - JUSTIFICATION_REQUIRED (M4 PR-3 registers, M4 PR-4 raises) —
@@ -722,13 +722,16 @@ components:
     #     criterion acknowledgments at confirm.
     #   - ATTESTATION_MISSING (M4 PR-4) — submittal-confirm rejects when
     #     any of the three recruiter attestations is not literally true.
+    #   - OVERRIDE_INVALID (M4 PR-5) — examination-override endpoint
+    #     semantic refusal (invalid override_type for the target_field,
+    #     etc.). Registered at PR-5; reserved for future enforcement.
     #   - VALIDATION_ERROR — request body fails schema validation.
     UnprocessableEntity:
       description: |
         The request is well-formed but violates a semantic invariant
         enforced by the application layer. Possible codes:
         SUBMITTAL_STRETCH_BLOCKED, JUSTIFICATION_REQUIRED,
-        ATTESTATION_MISSING, VALIDATION_ERROR.
+        ATTESTATION_MISSING, OVERRIDE_INVALID, VALIDATION_ERROR.
       content:
         application/json:
           schema:
@@ -1420,6 +1423,11 @@ components:
             snapshot for (tenant, talent, job).
           - SUBMITTAL_ALREADY_CONFIRMED (HTTP 409) — confirm called on a
             submittal already in state='submitted'.
+        M4 PR-5 adds OVERRIDE_INVALID (HTTP 422) for the examination-
+        override endpoint per Aramo-M4-PR-5-Directive-v1_0-LOCKED.md §4.7
+        (semantic refusal of invalid override payload or non-overridable
+        field; class-validator shape failures still surface as
+        VALIDATION_ERROR 400).
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1440,6 +1448,7 @@ components:
         - ATTESTATION_MISSING
         - EXAMINATION_PINNED_OUTDATED
         - SUBMITTAL_ALREADY_CONFIRMED
+        - OVERRIDE_INVALID
 
     ErrorObject:
       type: object
@@ -2232,3 +2241,112 @@ components:
       properties:
         submittal:
           $ref: '#/components/schemas/TalentSubmittalRecord'
+
+    # =====================================================================
+    # M4 PR-5 — Examination override endpoint surfaces.
+    #
+    # POST /v1/examinations/{examination_id}/overrides records a recruiter-
+    # authored override on an active examination WITHOUT mutating the
+    # immutable TalentJobExamination row (Group 2 §2.4-§2.5 write-isolation
+    # contract). The CreateOverrideResponse carries the locked invariant
+    # examination_mutated: const: false — every successful create response
+    # affirms that the referenced examination row is byte-identical to its
+    # pre-create snapshot.
+    # =====================================================================
+
+    OverrideType:
+      type: string
+      description: |
+        Closed enum (M4 PR-5 directive §4.1): the four categories a
+        recruiter may override on an examination. Future PRs do not add
+        values to this enum without Architect-reviewed PR.
+      enum:
+        - tier
+        - risk_flag
+        - gap
+        - constraint_check
+
+    ExaminationOverride:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - tenant_id
+        - examination_id
+        - override_type
+        - target_field
+        - justification
+        - created_by
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        examination_id:
+          type: string
+          format: uuid
+        override_type:
+          $ref: '#/components/schemas/OverrideType'
+        target_field:
+          type: string
+          minLength: 1
+          maxLength: 200
+        justification:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+
+    CreateOverrideRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - override_type
+        - target_field
+        - justification
+      properties:
+        override_type:
+          $ref: '#/components/schemas/OverrideType'
+        target_field:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: |
+            The analytical surface the recruiter is annotating (e.g.
+            'tier', 'risk_flags[0]', a constraint check field name).
+            Free-form string at PR-5; future PRs may enforce semantic
+            validity per override_type and emit OVERRIDE_INVALID (422).
+        justification:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: |
+            Recruiter-authored rationale for the override. Persisted
+            verbatim; not interpreted by the substrate.
+
+    CreateOverrideResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - override
+        - examination_mutated
+      properties:
+        override:
+          $ref: '#/components/schemas/ExaminationOverride'
+        examination_mutated:
+          type: boolean
+          const: false
+          description: |
+            LOCKED invariant per Plan v1.5 §M4 Track B item 2: an
+            override write never mutates the referenced
+            TalentJobExamination row. The controller emits the literal
+            `false` on every successful create; the const lock prevents
+            accidental drift.

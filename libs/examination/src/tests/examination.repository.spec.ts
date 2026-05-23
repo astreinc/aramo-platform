@@ -23,7 +23,7 @@ describe('ExaminationRepository — surface', () => {
   // closed-surface immutability discipline is preserved (the
   // no-analytical-mutation test below still passes — read projections
   // issue no UPDATE).
-  it('exposes exactly the PR-1 + PR-6 + PR-7 + M4 PR-4 surface (4 + 2 + 1 + 1 methods)', () => {
+  it('exposes exactly the PR-1 + PR-6 + PR-7 + M4 PR-4 + M4 PR-5 surface (4 + 2 + 1 + 1 + 3 methods)', () => {
     const methods = Object.getOwnPropertyNames(ExaminationRepository.prototype)
       .filter((m) => m !== 'constructor')
       .sort();
@@ -41,6 +41,12 @@ describe('ExaminationRepository — surface', () => {
         // latest before transitioning state to 'submitted'.
         'findLatestByTenantTalentJob',
         'markSuperseded',
+        // M4 PR-5 §4.3 — ExaminationOverride entity surface. Write-
+        // isolation contract: createOverride writes ONLY
+        // examinationOverride.create (no talentJobExamination.update).
+        'createOverride',
+        'findOverrideById',
+        'findOverridesByExaminationId',
       ].sort(),
     );
   });
