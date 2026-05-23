@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
   HttpStatus,
@@ -11,6 +12,10 @@ import {
 import { AramoError, RequestId, hashCanonicalizedBody } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { IdempotencyService } from '@aramo/consent';
+import {
+  EvidenceRepository,
+  type TalentJobEvidencePackageView,
+} from '@aramo/evidence';
 
 import type {
   ConfirmSubmittalRequestDto,
@@ -55,6 +60,10 @@ export class SubmittalController {
   constructor(
     private readonly submittalRepository: SubmittalRepository,
     private readonly idempotencyService: IdempotencyService,
+    // M4 PR-6 §4.2 — EvidenceRepository injected for the
+    // GET /v1/submittals/{id}/evidence-package endpoint (chain:
+    // submittal findById → evidence-package findById).
+    private readonly evidenceRepository: EvidenceRepository,
   ) {}
 
   @Post()
@@ -323,5 +332,114 @@ export class SubmittalController {
     });
 
     return response;
+  }
+
+  // M4 PR-6 §4.1 — GET /v1/submittals/{submittal_id}.
+  //
+  // Tenant-scoped read of a TalentSubmittalRecord. Five ordered steps:
+  //   1. consumer_type must be 'recruiter' (INSUFFICIENT_PERMISSIONS 403)
+  //   2. submittal_id path param must be a UUID (VALIDATION_ERROR 400)
+  //   3. submittalRepository.findById tenant-scoped
+  //   4. null → NOT_FOUND 404
+  //   5. return the view directly
+  //
+  // No Idempotency-Key handling (Ruling 8 — GET routes don't require it).
+  // No state mutation; no examination_mutated invariant.
+  @Get(':submittal_id')
+  @HttpCode(HttpStatus.OK)
+  async getSubmittal(
+    @Param('submittal_id') submittal_id: string,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<TalentSubmittalRecordView> {
+    this.assertConsumerIsRecruiter(authContext, requestId);
+    this.assertSubmittalIdIsUuid(submittal_id, requestId);
+
+    const submittal = await this.submittalRepository.findById({
+      tenant_id: authContext.tenant_id,
+      id: submittal_id,
+    });
+    if (submittal === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentSubmittalRecord not found',
+        404,
+        { requestId, details: { submittal_id } },
+      );
+    }
+    return submittal;
+  }
+
+  // M4 PR-6 §4.1 — GET /v1/submittals/{submittal_id}/evidence-package.
+  //
+  // Tenant-scoped chain lookup: load the submittal (verifying tenancy),
+  // then load the linked TalentJobEvidencePackage by the submittal's
+  // evidence_package_id (re-asserting tenancy in the second findById).
+  // Seven ordered steps:
+  //   1. consumer_type must be 'recruiter' (INSUFFICIENT_PERMISSIONS 403)
+  //   2. submittal_id path param must be a UUID (VALIDATION_ERROR 400)
+  //   3. submittalRepository.findById tenant-scoped
+  //   4. null → NOT_FOUND 404 ('TalentSubmittalRecord not found')
+  //   5. evidenceRepository.findById on submittal.evidence_package_id
+  //   6. null → NOT_FOUND 404 ('TalentJobEvidencePackage not found
+  //      (chain-break)') — defensive; should not happen given the
+  //      cross-schema invariant (Architecture §7.3) that
+  //      TalentSubmittalRecord.evidence_package_id always points to a
+  //      live package row in the evidence schema. PR-6 surfaces this
+  //      defensively rather than throwing 500.
+  //   7. return the evidence-package view directly
+  @Get(':submittal_id/evidence-package')
+  @HttpCode(HttpStatus.OK)
+  async getEvidencePackage(
+    @Param('submittal_id') submittal_id: string,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<TalentJobEvidencePackageView> {
+    this.assertConsumerIsRecruiter(authContext, requestId);
+    this.assertSubmittalIdIsUuid(submittal_id, requestId);
+
+    const submittal = await this.submittalRepository.findById({
+      tenant_id: authContext.tenant_id,
+      id: submittal_id,
+    });
+    if (submittal === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentSubmittalRecord not found',
+        404,
+        { requestId, details: { submittal_id } },
+      );
+    }
+
+    const evidencePackage = await this.evidenceRepository.findById({
+      tenant_id: authContext.tenant_id,
+      id: submittal.evidence_package_id,
+    });
+    if (evidencePackage === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentJobEvidencePackage not found (chain-break)',
+        404,
+        {
+          requestId,
+          details: {
+            submittal_id,
+            evidence_package_id: submittal.evidence_package_id,
+          },
+        },
+      );
+    }
+    return evidencePackage;
+  }
+
+  private assertSubmittalIdIsUuid(submittal_id: string, requestId: string): void {
+    if (!UUID_REGEX.test(submittal_id)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'submittal_id path parameter must be a UUID',
+        400,
+        { requestId, details: { invalid_field: 'submittal_id' } },
+      );
+    }
   }
 }

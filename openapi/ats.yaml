@@ -156,6 +156,89 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/submittals/{submittal_id}:
+    get:
+      operationId: getSubmittal
+      summary: Get a TalentSubmittalRecord by id (M4 PR-6).
+      description: |
+        Tenant-scoped lookup via SubmittalRepository.findById. Returns the
+        TalentSubmittalRecord for the JWT's tenant. Read-only; no
+        Idempotency-Key required (Ruling 8 — M3 PR-8 / M3 PR-9 GET
+        precedent).
+
+        Refusal codes (closed list at PR-6):
+          - 404 NOT_FOUND — submittal_id not found for the JWT's tenant.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 VALIDATION_ERROR — submittal_id is not a UUID.
+      parameters:
+        - name: submittal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: TalentSubmittalRecord for the JWT's tenant.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/TalentSubmittalRecord'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/submittals/{submittal_id}/evidence-package:
+    get:
+      operationId: getEvidencePackage
+      summary: Get the linked TalentJobEvidencePackage for a submittal (M4 PR-6).
+      description: |
+        Tenant-scoped chain lookup: load the submittal (verifying tenancy
+        on SubmittalRepository.findById), then load the linked
+        TalentJobEvidencePackage via EvidenceRepository.findById on
+        submittal.evidence_package_id (tenancy re-asserted). Read-only;
+        no Idempotency-Key required (Ruling 8). No state-isolation
+        invariant (no mutation possible).
+
+        Refusal codes (closed list at PR-6):
+          - 404 NOT_FOUND — submittal not found for the JWT's tenant, OR
+            evidence-package not found at submittal.evidence_package_id
+            (chain-break; defensive — the cross-schema invariant
+            (Architecture §7.3) ensures live package rows).
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 VALIDATION_ERROR — submittal_id is not a UUID.
+      parameters:
+        - name: submittal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: TalentJobEvidencePackageView linked to the submittal.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/TalentJobEvidencePackageView'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
   /v1/examinations/{examination_id}/overrides:
     post:
       operationId: createExaminationOverride
