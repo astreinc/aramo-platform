@@ -45,6 +45,19 @@
 // submittal-create) adds that component when the endpoint emits the
 // code. Lead authority is the directive's §2 Ruling 4 (Stretch-blocking
 // lives in the builder). Total: 13 codes.
+//
+// M4 PR-3 adds JUSTIFICATION_REQUIRED (HTTP 422) for the future
+// submittal-confirm endpoint (F34) enforcement of Worth Considering
+// submittals (per Plan v1.5 §M4 Track B item 4 + Exit Criteria: "Worth
+// Considering submittal requires justification text + failed criteria
+// acknowledgment"). Per Aramo-M4-PR-3-Directive-v1_0-LOCKED.md §4.5 the
+// code is pre-registered at PR-3 (the same pattern as
+// SUBMITTAL_STRETCH_BLOCKED was pre-registered at PR-2) to avoid
+// contention at the consuming PR. PR-3's create endpoint accepts
+// `justification` + `failed_criterion_acknowledgments` as optional
+// fields and persists them verbatim; it does NOT enforce. F34 enforces:
+// missing on Worth Considering returns 422 JUSTIFICATION_REQUIRED. Lead
+// authority is the directive's §2 Ruling 5. Total: 14 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -60,6 +73,7 @@ export const ERROR_CODES = [
   'INSUFFICIENT_PERMISSIONS',
   'NOT_FOUND',
   'SUBMITTAL_STRETCH_BLOCKED',
+  'JUSTIFICATION_REQUIRED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

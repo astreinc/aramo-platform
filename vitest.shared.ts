@@ -39,6 +39,7 @@ export default defineConfig({
       // apps/api negative-shape integration spec) resolves PortalModule.
       '@aramo/portal': resolve(root, 'libs/portal/src/index.ts'),
       '@aramo/skills-taxonomy': resolve(root, 'libs/skills-taxonomy/src/index.ts'),
+      '@aramo/submittal': resolve(root, 'libs/submittal/src/index.ts'),
       '@aramo/talent': resolve(root, 'libs/talent/src/index.ts'),
       '@aramo/talent-evidence': resolve(root, 'libs/talent-evidence/src/index.ts'),
     },

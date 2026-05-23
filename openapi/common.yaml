@@ -711,6 +711,27 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
 
+    # M4 PR-3 — UnprocessableEntity response component. Used by POST
+    # /v1/submittals (and the future submittal-confirm endpoint) to carry
+    # 422 refusals. Referenced error codes (from the closed ErrorCode
+    # enum):
+    #   - SUBMITTAL_STRETCH_BLOCKED (M4 PR-2) — Stretch-tier blocked at
+    #     submittal create and confirm.
+    #   - JUSTIFICATION_REQUIRED (M4 PR-3 registers, F34 raises) —
+    #     Worth Considering submittal missing justification or failed-
+    #     criterion acknowledgments at confirm.
+    #   - VALIDATION_ERROR — request body fails schema validation.
+    UnprocessableEntity:
+      description: |
+        The request is well-formed but violates a semantic invariant
+        enforced by the application layer. Possible codes:
+        SUBMITTAL_STRETCH_BLOCKED, JUSTIFICATION_REQUIRED,
+        VALIDATION_ERROR.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
   schemas:
     ConsentScope:
       type: string
@@ -1362,6 +1383,12 @@ components:
         consuming endpoint PR (F33 submittal-create) will add the
         matching UnprocessableEntity response component that
         references this code.
+        M4 PR-3 adds JUSTIFICATION_REQUIRED (HTTP 422) for the
+        submittal-confirm endpoint's Worth Considering enforcement
+        (per Plan v1.5 §M4 Track B item 4). Pre-registered at PR-3 to
+        match the parity-triple lesson learned at PR-2. F34 raises;
+        PR-3 only persists `justification` + `failed_criterion_
+        acknowledgments` verbatim.
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1378,6 +1405,7 @@ components:
         - INSUFFICIENT_PERMISSIONS
         - NOT_FOUND
         - SUBMITTAL_STRETCH_BLOCKED
+        - JUSTIFICATION_REQUIRED
 
     ErrorObject:
       type: object
@@ -1811,3 +1839,296 @@ components:
             requested limit at the tail of the result set.
         has_more:
           type: boolean
+
+    # =====================================================================
+    # M4 PR-3 — Submittal create endpoint surfaces.
+    #
+    # Group 2 §2.6 architecture split:
+    #   TalentJobEvidencePackage (immutable deliverable; libs/evidence)
+    #       ↓ referenced by
+    #   TalentSubmittalRecord (workflow; libs/submittal)
+    #
+    # SubmittalState ships the 2-value subset (draft, submitted) per the
+    # PR-3 directive Ruling 9. F37 extends to the 5-value Group 2 §2.3b
+    # Loop 5 machine at M5.
+    # =====================================================================
+
+    SubmittalState:
+      type: string
+      description: |
+        Workflow state of a TalentSubmittalRecord. PR-3 ships the
+        2-value subset (`draft`, `submitted`). F37 extends to the
+        5-value Group 2 §2.3b Loop 5 machine at M5.
+      enum:
+        - draft
+        - submitted
+
+    FailedCriterionAcknowledgment:
+      type: object
+      additionalProperties: false
+      required:
+        - criterion
+        - field_path
+        - observed_value
+        - expected_threshold
+        - acknowledged
+      properties:
+        criterion:
+          type: string
+          description: |
+            The §2.5 entrustability criterion that failed (e.g.,
+            "rate_within_band", "work_authorization_match").
+        field_path:
+          type: string
+          description: |
+            Dotted path to the field carrying the observed value
+            (e.g., "talent_rate.min_rate").
+        observed_value:
+          type: string
+          description: |
+            The observed value rendered as a string.
+        expected_threshold:
+          type: string
+          description: |
+            The expected threshold rendered as a string.
+        acknowledged:
+          type: boolean
+          description: |
+            Recruiter's acknowledgment that the criterion was reviewed
+            and the submittal is intentional despite the failure.
+
+    JustificationText:
+      type: string
+      description: |
+        Worth Considering submittal justification text. Persisted at
+        PR-3's create endpoint; enforced as non-empty at F34's confirm
+        endpoint for Worth Considering tier.
+      minLength: 1
+      maxLength: 2000
+
+    TalentSubmittalRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - tenant_id
+        - talent_id
+        - job_id
+        - evidence_package_id
+        - pinned_examination_id
+        - state
+        - created_by
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        talent_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        evidence_package_id:
+          type: string
+          format: uuid
+          description: |
+            Cross-schema reference to TalentJobEvidencePackage (evidence
+            schema). UUID-only per Architecture §7.3; no FK constraint.
+        pinned_examination_id:
+          type: string
+          format: uuid
+          description: |
+            Cross-schema reference to TalentJobExamination (examination
+            schema). Pinned at draft creation; F34's confirm endpoint
+            re-validates against the latest examination and returns 409
+            EXAMINATION_PINNED_OUTDATED if newer exists.
+        state:
+          $ref: '#/components/schemas/SubmittalState'
+        created_by:
+          type: string
+          format: uuid
+          description: |
+            UUID of the recruiter actor that created the submittal,
+            derived from the JWT auth context.
+        justification:
+          oneOf:
+            - $ref: '#/components/schemas/JustificationText'
+            - type: 'null'
+          description: |
+            Worth Considering tier justification. Optional at PR-3's
+            create endpoint; enforced at F34's confirm for Worth
+            Considering tier.
+        failed_criterion_acknowledgments:
+          oneOf:
+            - type: array
+              items:
+                $ref: '#/components/schemas/FailedCriterionAcknowledgment'
+            - type: 'null'
+          description: |
+            Per-criterion acknowledgments for Worth Considering submittals.
+            Optional at PR-3's create endpoint; enforced at F34's confirm
+            for Worth Considering tier.
+        created_at:
+          type: string
+          format: date-time
+        confirmed_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+          description: |
+            Timestamp at which the recruiter confirmed the submittal via
+            F34's confirm endpoint. Null until confirm.
+
+    # CreateSubmittalRequest body. The talent + job IDs flow from the
+    # request body; tenant + recruiter identity flow from the JWT.
+    CreateSubmittalRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - talent_id
+        - job_id
+        - examination_id
+        - talent_identity
+        - contact_summary
+        - capability_summary_overrides
+        - recruiter_contribution
+      properties:
+        talent_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        examination_id:
+          type: string
+          format: uuid
+          description: |
+            The TalentJobExamination snapshot the submittal pins. The
+            builder verifies presence + active lifecycle + tenant match
+            and rejects Stretch tier with 422 SUBMITTAL_STRETCH_BLOCKED.
+        talent_identity:
+          type: object
+          additionalProperties: false
+          required: [full_name, location]
+          properties:
+            full_name:
+              type: string
+              minLength: 1
+            preferred_name:
+              type: string
+            location:
+              type: string
+              minLength: 1
+        contact_summary:
+          type: object
+          additionalProperties: false
+          required: [contact_available, channels_verified]
+          properties:
+            contact_available:
+              type: boolean
+            channels_verified:
+              type: array
+              items:
+                type: string
+        capability_summary_overrides:
+          type: object
+          additionalProperties: false
+          required: [key_work_history]
+          properties:
+            key_work_history:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [employer_name, role_title]
+                properties:
+                  employer_name:
+                    type: string
+                  role_title:
+                    type: string
+                  start_date:
+                    type: string
+                  end_date:
+                    type: string
+            certifications:
+              type: array
+              items:
+                type: string
+        match_justification_overrides:
+          type: object
+          additionalProperties: false
+          properties:
+            why_this_talent:
+              type: string
+            strengths:
+              type: array
+              items:
+                type: string
+            gaps:
+              type: array
+              items:
+                type: string
+            risk_flags:
+              type: array
+              items:
+                $ref: '#/components/schemas/RiskFlag'
+        recruiter_contribution:
+          type: object
+          additionalProperties: false
+          required: [conversation_summary, talent_confirmed]
+          properties:
+            screening_notes:
+              type: string
+            conversation_summary:
+              type: object
+              additionalProperties: false
+              required: [recruiter_summary]
+              properties:
+                recruiter_summary:
+                  type: string
+                  minLength: 1
+            talent_confirmed:
+              type: object
+              additionalProperties: false
+              required: [spoken_to_recruiter]
+              properties:
+                spoken_to_recruiter:
+                  type: boolean
+                availability_confirmed:
+                  type: string
+                work_authorization:
+                  type: string
+                  description: |
+                    Recruiter-authored free string. NOT a join to the
+                    TalentWorkAuthorization Sensitive entity (F16
+                    deferral to M6 intact).
+        rate_expectation_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        engagement_event_refs:
+          type: array
+          items:
+            type: string
+            format: uuid
+        justification:
+          $ref: '#/components/schemas/JustificationText'
+        failed_criterion_acknowledgments:
+          type: array
+          items:
+            $ref: '#/components/schemas/FailedCriterionAcknowledgment'
+
+    CreateSubmittalResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - submittal
+      properties:
+        submittal:
+          $ref: '#/components/schemas/TalentSubmittalRecord'

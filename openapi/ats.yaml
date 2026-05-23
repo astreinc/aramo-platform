@@ -8,6 +8,76 @@ info:
     Match-List Summary-only rule (API Contracts L586-588). Future ATS PRs
     populate additional operations per API Contracts v1.0 Phase 2.
 paths:
+  /v1/submittals:
+    post:
+      operationId: createSubmittal
+      summary: Create a submittal in `draft` state (M4 PR-3 / F33).
+      description: |
+        Builds the immutable TalentJobEvidencePackage (PR-2's
+        EvidenceRepository.buildPackage) and persists a workflow
+        TalentSubmittalRecord in state='draft' referencing it. The
+        examination_id is pinned at draft creation; the future
+        submittal-confirm endpoint (F34) verifies the pin and enforces
+        the three recruiter attestations.
+
+        Refusal codes (closed list at PR-3):
+          - 422 SUBMITTAL_STRETCH_BLOCKED — examination tier is STRETCH.
+          - 404 NOT_FOUND — examination missing / archived / cross-tenant.
+          - 400 VALIDATION_ERROR — request body or path violates
+            invariants (UUIDs, non-empty required fields).
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key, different
+            request body.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+
+        Worth Considering submittals MAY include `justification` and
+        `failed_criterion_acknowledgments`. PR-3 persists them verbatim
+        without enforcement; F34's confirm endpoint enforces non-empty
+        for Worth Considering tier and returns 422 JUSTIFICATION_REQUIRED
+        on miss.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            UUID idempotency key. Same key + same body returns the prior
+            response; same key + different body returns 409
+            IDEMPOTENCY_KEY_CONFLICT. Missing or non-UUID returns 400
+            VALIDATION_ERROR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/CreateSubmittalRequest'
+      responses:
+        '201':
+          description: Submittal created in `draft` state.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/CreateSubmittalResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Idempotency-Key collision (same key, different body).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
   /v1/jobs/{job_id}/matches:
     get:
       operationId: listJobMatches

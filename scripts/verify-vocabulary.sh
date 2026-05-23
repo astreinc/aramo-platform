@@ -110,6 +110,11 @@ TIER2_EXCLUDES=(
   # entries.
   "apps/api/src/tests/portal-refusal.negative-shape.spec.ts"
   "libs/portal/src/tests/portal.controller.spec.ts"
+  # M4 PR-3: submittal-create negative-shape spec (F23 standing pattern)
+  # legitimately enumerates the forbidden Match-Class vocabulary as part
+  # of its leakage-detection logic. Same structural pattern as the M3
+  # PR-9 portal-refusal entry above.
+  "apps/api/src/tests/submittal-create.negative-shape.spec.ts"
 )
 
 # =============================================================================
