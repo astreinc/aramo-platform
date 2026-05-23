@@ -627,3 +627,146 @@ describe('SubmittalController.getEvidencePackage (unit)', () => {
     });
   });
 });
+
+// =============================================================================
+// M4 PR-7 §4.10 — controller unit tests for revokeSubmittal (5 new)
+// =============================================================================
+
+interface RevokeMockSetup {
+  controller: SubmittalController;
+  revokeSubmittal: ReturnType<typeof vi.fn>;
+  lookup: ReturnType<typeof vi.fn>;
+  persist: ReturnType<typeof vi.fn>;
+}
+
+function buildRevoke(): RevokeMockSetup {
+  const revokeSubmittal = vi.fn().mockResolvedValue({
+    id: SUBMITTAL_ID,
+    tenant_id: TENANT_A,
+    talent_id: TALENT_A,
+    job_id: JOB_ID,
+    evidence_package_id: EVIDENCE_PKG_ID,
+    pinned_examination_id: EXAM_ID,
+    state: 'revoked',
+    created_by: RECRUITER_ID,
+    justification: null,
+    failed_criterion_acknowledgments: null,
+    created_at: new Date('2026-05-23T12:00:00Z'),
+    confirmed_at: new Date('2026-05-23T13:00:00Z'),
+    revoked_at: new Date('2026-05-23T15:00:00Z'),
+    revoked_by: RECRUITER_ID,
+    revocation_justification: 'Position frozen by hiring manager.',
+  });
+  const lookup = vi.fn().mockResolvedValue({ kind: 'proceed' });
+  const persist = vi.fn().mockResolvedValue(undefined);
+  const mockRepo = {
+    createSubmittal: vi.fn(),
+    confirmSubmittal: vi.fn(),
+    revokeSubmittal,
+  } as unknown as SubmittalRepository;
+  const mockIdempotency = { lookup, persist } as unknown as IdempotencyService;
+  const mockEvidence = { findById: vi.fn() } as unknown as EvidenceRepository;
+  const controller = new SubmittalController(mockRepo, mockIdempotency, mockEvidence);
+  return { controller, revokeSubmittal, lookup, persist };
+}
+
+const REVOKE_BODY = {
+  revocation_justification: 'Position frozen by hiring manager.',
+};
+
+describe('SubmittalController.revokeSubmittal (unit)', () => {
+  let ctx: RevokeMockSetup;
+  beforeEach(() => {
+    ctx = buildRevoke();
+  });
+
+  it('1. consumer_type !== "recruiter" → INSUFFICIENT_PERMISSIONS 403', async () => {
+    try {
+      await ctx.controller.revokeSubmittal(
+        SUBMITTAL_ID,
+        REVOKE_BODY,
+        IDEMPOTENCY_KEY,
+        makeAuth({ consumer_type: 'portal' }),
+        REQUEST_ID,
+      );
+      throw new Error('expected throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AramoError);
+      expect((err as AramoError).code).toBe('INSUFFICIENT_PERMISSIONS');
+      expect((err as AramoError).statusCode).toBe(403);
+    }
+    expect(ctx.revokeSubmittal).not.toHaveBeenCalled();
+  });
+
+  it('2. Idempotency-Key missing → VALIDATION_ERROR 400', async () => {
+    try {
+      await ctx.controller.revokeSubmittal(
+        SUBMITTAL_ID,
+        REVOKE_BODY,
+        undefined,
+        makeAuth(),
+        REQUEST_ID,
+      );
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('VALIDATION_ERROR');
+    }
+    expect(ctx.revokeSubmittal).not.toHaveBeenCalled();
+  });
+
+  it('3. submittal_id non-UUID → VALIDATION_ERROR 400', async () => {
+    try {
+      await ctx.controller.revokeSubmittal(
+        'not-a-uuid',
+        REVOKE_BODY,
+        IDEMPOTENCY_KEY,
+        makeAuth(),
+        REQUEST_ID,
+      );
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('VALIDATION_ERROR');
+    }
+    expect(ctx.revokeSubmittal).not.toHaveBeenCalled();
+  });
+
+  it('4. successful → returns submittal + evidence_package_mutated literal false', async () => {
+    const result = await ctx.controller.revokeSubmittal(
+      SUBMITTAL_ID,
+      REVOKE_BODY,
+      IDEMPOTENCY_KEY,
+      makeAuth(),
+      REQUEST_ID,
+    );
+    expect(result.submittal.state).toBe('revoked');
+    expect(result.evidence_package_mutated).toBe(false);
+    expect(ctx.revokeSubmittal).toHaveBeenCalledTimes(1);
+    expect(ctx.persist).toHaveBeenCalledTimes(1);
+    const persistArg = ctx.persist.mock.calls[0]?.[0] as {
+      response_status: number;
+    };
+    expect(persistArg.response_status).toBe(200);
+  });
+
+  it('5. idempotency replay: lookup returns replay → repository NOT called', async () => {
+    const priorResponse = {
+      submittal: { id: 'prior-submittal' },
+      evidence_package_mutated: false as const,
+    };
+    ctx.lookup.mockResolvedValue({
+      kind: 'replay',
+      response_status: 200,
+      response_body: priorResponse,
+    });
+    const result = await ctx.controller.revokeSubmittal(
+      SUBMITTAL_ID,
+      REVOKE_BODY,
+      IDEMPOTENCY_KEY,
+      makeAuth(),
+      REQUEST_ID,
+    );
+    expect(result).toBe(priorResponse);
+    expect(ctx.revokeSubmittal).not.toHaveBeenCalled();
+    expect(ctx.persist).not.toHaveBeenCalled();
+  });
+});

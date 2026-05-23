@@ -713,8 +713,9 @@ components:
 
     # M4 PR-3 — UnprocessableEntity response component. Used by POST
     # /v1/submittals (and the M4 PR-4 submittal-confirm + M4 PR-5
-    # examination-override endpoints) to carry 422 refusals. Referenced
-    # error codes (from the closed ErrorCode enum):
+    # examination-override + M4 PR-7 submittal-revoke endpoints) to
+    # carry 422 refusals. Referenced error codes (from the closed
+    # ErrorCode enum):
     #   - SUBMITTAL_STRETCH_BLOCKED (M4 PR-2) — Stretch-tier blocked at
     #     submittal create and confirm.
     #   - JUSTIFICATION_REQUIRED (M4 PR-3 registers, M4 PR-4 raises) —
@@ -725,13 +726,17 @@ components:
     #   - OVERRIDE_INVALID (M4 PR-5) — examination-override endpoint
     #     semantic refusal (invalid override_type for the target_field,
     #     etc.). Registered at PR-5; reserved for future enforcement.
+    #   - REVOKE_NOT_ALLOWED (M4 PR-7) — submittal-revoke endpoint
+    #     refuses when the target submittal is not in state='submitted'
+    #     (i.e. draft or already-revoked).
     #   - VALIDATION_ERROR — request body fails schema validation.
     UnprocessableEntity:
       description: |
         The request is well-formed but violates a semantic invariant
         enforced by the application layer. Possible codes:
         SUBMITTAL_STRETCH_BLOCKED, JUSTIFICATION_REQUIRED,
-        ATTESTATION_MISSING, OVERRIDE_INVALID, VALIDATION_ERROR.
+        ATTESTATION_MISSING, OVERRIDE_INVALID, REVOKE_NOT_ALLOWED,
+        VALIDATION_ERROR.
       content:
         application/json:
           schema:
@@ -1428,6 +1433,10 @@ components:
         (semantic refusal of invalid override payload or non-overridable
         field; class-validator shape failures still surface as
         VALIDATION_ERROR 400).
+        M4 PR-7 adds REVOKE_NOT_ALLOWED (HTTP 422) for the
+        submittal-revoke endpoint per Aramo-M4-PR-7-Directive-v1_0-
+        LOCKED.md §4.6 (refusal when the target submittal is not in
+        state='submitted' — draft or already-revoked).
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1449,6 +1458,7 @@ components:
         - EXAMINATION_PINNED_OUTDATED
         - SUBMITTAL_ALREADY_CONFIRMED
         - OVERRIDE_INVALID
+        - REVOKE_NOT_ALLOWED
 
     ErrorObject:
       type: object
@@ -1974,11 +1984,13 @@ components:
       type: string
       description: |
         Workflow state of a TalentSubmittalRecord. PR-3 ships the
-        2-value subset (`draft`, `submitted`). F37 extends to the
-        5-value Group 2 §2.3b Loop 5 machine at M5.
+        2-value subset (`draft`, `submitted`); M4 PR-7 adds `revoked`
+        (reached via the submittal-revoke endpoint). F37 extends to
+        the 5-value Group 2 §2.3b Loop 5 machine at M5.
       enum:
         - draft
         - submitted
+        - revoked
 
     FailedCriterionAcknowledgment:
       type: object
@@ -2100,6 +2112,33 @@ components:
           description: |
             Timestamp at which the recruiter confirmed the submittal via
             F34's confirm endpoint. Null until confirm.
+        revoked_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+          description: |
+            M4 PR-7 — Timestamp at which the recruiter revoked the
+            submittal via the submittal-revoke endpoint. Null until
+            revoke; populated atomically with state='revoked' and
+            revoked_by + revocation_justification.
+        revoked_by:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+          description: |
+            M4 PR-7 — UUID of the recruiter actor that revoked the
+            submittal, derived from the JWT auth context. Null until
+            revoke.
+        revocation_justification:
+          oneOf:
+            - type: string
+            - type: 'null'
+          description: |
+            M4 PR-7 — Recruiter-authored rationale for the revoke.
+            Persisted verbatim from the RevokeSubmittalRequest body.
+            Null until revoke.
 
     # CreateSubmittalRequest body. The talent + job IDs flow from the
     # request body; tenant + recruiter identity flow from the JWT.
@@ -2315,6 +2354,62 @@ components:
       properties:
         submittal:
           $ref: '#/components/schemas/TalentSubmittalRecord'
+
+    # =====================================================================
+    # M4 PR-7 — Submittal revoke endpoint surfaces.
+    #
+    # POST /v1/submittals/{submittal_id}/revoke transitions a
+    # TalentSubmittalRecord from state='submitted' to state='revoked'
+    # and stamps revoked_at + revoked_by + revocation_justification
+    # atomically. The response carries the locked invariant
+    # `evidence_package_mutated: const: false` — every successful revoke
+    # affirms that the referenced TalentJobEvidencePackage row is
+    # byte-identical to its pre-revoke snapshot (state-isolation
+    # contract, mirroring the override-create endpoint's
+    # `examination_mutated: false` invariant from M4 PR-5).
+    #
+    # Inline constraints on RevokeSubmittalRequest.revocation_justification
+    # (minLength: 1, maxLength: 2000) are inlined rather than referencing
+    # the JustificationText schema, per directive §4.5 — Worth
+    # Considering submittal justification (JustificationText) and revoke
+    # justification are distinct conceptual surfaces that happen to
+    # share the same envelope today.
+    # =====================================================================
+
+    RevokeSubmittalRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - revocation_justification
+      properties:
+        revocation_justification:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: |
+            Recruiter-authored rationale for the revoke. Persisted
+            verbatim into TalentSubmittalRecord.revocation_justification.
+
+    RevokeSubmittalResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - submittal
+        - evidence_package_mutated
+      properties:
+        submittal:
+          $ref: '#/components/schemas/TalentSubmittalRecord'
+        evidence_package_mutated:
+          type: boolean
+          const: false
+          description: |
+            LOCKED invariant per Aramo-M4-PR-7-Directive-v1_0-LOCKED.md
+            §4.4: a submittal revoke never mutates the referenced
+            TalentJobEvidencePackage row. The controller emits the
+            literal `false` on every successful revoke; the const lock
+            prevents accidental drift. Mirrors the
+            `examination_mutated: false` invariant on the M4 PR-5
+            override-create response.
 
     # =====================================================================
     # M4 PR-5 — Examination override endpoint surfaces.

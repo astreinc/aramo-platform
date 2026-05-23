@@ -25,6 +25,8 @@ import type {
   CreateSubmittalRequestDto,
   CreateSubmittalResponseDto,
 } from './dto/create-submittal-request.dto.js';
+import { RevokeSubmittalRequestDto } from './dto/revoke-submittal-request.dto.js';
+import type { RevokeSubmittalResponseDto } from './dto/revoke-submittal-response.dto.js';
 import type { TalentSubmittalRecordView } from './dto/talent-submittal-record.view.js';
 import { SubmittalRepository } from './submittal.repository.js';
 
@@ -441,5 +443,125 @@ export class SubmittalController {
         { requestId, details: { invalid_field: 'submittal_id' } },
       );
     }
+  }
+
+  // M4 PR-7 §4.4 — POST /v1/submittals/{submittal_id}/revoke.
+  //
+  // Recruiter-facing revoke flow that transitions a submitted
+  // submittal to 'revoked' state and stamps revoked_at / revoked_by /
+  // revocation_justification atomically. The response carries the
+  // LOCKED invariant `evidence_package_mutated: false` — every
+  // successful revoke affirms that the referenced
+  // TalentJobEvidencePackage row is byte-identical to its pre-revoke
+  // snapshot (state-isolation contract verified end-to-end by the Pact
+  // provider's seedSubmittalRevokeFixture + checkEvidencePackageState
+  // Isolation hook per directive §4.9).
+  //
+  // Eight ordered steps (directive §4.4):
+  //   1. assertConsumerIsRecruiter → INSUFFICIENT_PERMISSIONS 403.
+  //   2. assertIdempotencyKeyRequired → VALIDATION_ERROR 400.
+  //   3. assertSubmittalIdIsUuid → VALIDATION_ERROR 400.
+  //   4. class-validator on RevokeSubmittalRequestDto body (run by the
+  //      global ValidationPipe before this handler is invoked) →
+  //      VALIDATION_ERROR 400 on shape failure (non-string, empty,
+  //      >2000 chars). The DTO class import is necessary so reflect-
+  //      metadata wires the validation decorators at boot.
+  //   5. idempotencyService lookup (replay-or-conflict-or-proceed).
+  //   6. submittalRepository.revokeSubmittal with bound requestId.
+  //      AramoErrors raised by the 5-step flow already carry the
+  //      input.requestId, so they propagate unchanged — but the catch
+  //      below re-binds the controller's requestId defensively, mirroring
+  //      the PR-3 substrate-layer error-catch pattern in
+  //      createSubmittal step 6 (the repository may carry a placeholder
+  //      requestId on errors thrown from helper layers).
+  //   7. idempotencyService.persist (post-mutation success only).
+  //   8. Return { submittal, evidence_package_mutated: false as const }
+  //      LITERAL.
+  //
+  // @HttpCode(HttpStatus.OK) — 200, not 201 (state transition on an
+  // existing resource, no new row created).
+  @Post(':submittal_id/revoke')
+  @HttpCode(HttpStatus.OK)
+  async revokeSubmittal(
+    @Param('submittal_id') submittal_id: string,
+    @Body() body: RevokeSubmittalRequestDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<RevokeSubmittalResponseDto> {
+    // Step 1 — auth posture (recruiter-only).
+    this.assertConsumerIsRecruiter(authContext, requestId);
+
+    // Step 2 — Idempotency-Key required.
+    const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
+
+    // Step 3 — submittal_id UUID validation.
+    this.assertSubmittalIdIsUuid(submittal_id, requestId);
+
+    // Step 4 — class-validator runs at the global ValidationPipe; the
+    // DTO import threads its decorators through reflect-metadata.
+
+    // Step 5 — idempotency lookup. Replay returns the prior 200 body
+    // without touching state; conflict throws 409 IDEMPOTENCY_KEY_CONFLICT;
+    // proceed continues to repository call.
+    const requestHash = hashCanonicalizedBody(body as unknown);
+    const lookup = await this.idempotencyService.lookup({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      requestId,
+    });
+    if (lookup.kind === 'replay') {
+      return lookup.response_body as RevokeSubmittalResponseDto;
+    }
+
+    // Step 5b — actor identity (revoked_by). The JWT sub is the
+    // recruiter actor UUID; the same UUID_REGEX check used by
+    // createSubmittal step 5 (assertSubIsUuid) is reused here.
+    const revoked_by = this.assertSubIsUuid(authContext, requestId);
+
+    // Step 6 — repository revoke. Any AramoError raised by the 5-step
+    // flow carries the bound requestId already; the catch re-binds
+    // defensively per the PR-3 substrate-layer error-catch pattern.
+    let submittal: TalentSubmittalRecordView;
+    try {
+      submittal = await this.submittalRepository.revokeSubmittal({
+        tenant_id: authContext.tenant_id,
+        submittal_id,
+        revoked_by,
+        revocation_justification: body.revocation_justification,
+        requestId,
+      });
+    } catch (err) {
+      if (err instanceof AramoError) {
+        throw new AramoError(err.code, err.message, err.statusCode, {
+          ...err.context,
+          requestId,
+        });
+      }
+      throw err;
+    }
+
+    const response: RevokeSubmittalResponseDto = {
+      submittal,
+      // LOCKED literal per directive §4.4 — the response affirms the
+      // write-isolation invariant (no evidence-package mutation
+      // anywhere in the revoke flow). The TypeScript literal-type
+      // `false` prevents accidental drift to `true`.
+      evidence_package_mutated: false,
+    };
+
+    // Step 7 — persist idempotency record (post-mutation success only;
+    // a failed revoke leaves no cached response).
+    await this.idempotencyService.persist({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      response_status: HttpStatus.OK,
+      response_body: response,
+    });
+
+    // Step 8 — return.
+    return response;
   }
 }

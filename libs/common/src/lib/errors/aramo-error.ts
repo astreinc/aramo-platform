@@ -34,6 +34,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   EXAMINATION_PINNED_OUTDATED: 409,
   SUBMITTAL_ALREADY_CONFIRMED: 409,
   OVERRIDE_INVALID: 422,
+  REVOKE_NOT_ALLOWED: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

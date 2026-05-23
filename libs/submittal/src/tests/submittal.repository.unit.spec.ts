@@ -439,3 +439,154 @@ describe('SubmittalRepository.confirmSubmittal (unit)', () => {
     expect(update).not.toHaveBeenCalled();
   });
 });
+
+// =============================================================================
+// M4 PR-7 §4.10 — revokeSubmittal unit tests (4 new)
+// =============================================================================
+
+function buildRevokeMocks(opts: {
+  findFirstResult: unknown;
+}): {
+  repo: SubmittalRepository;
+  update: ReturnType<typeof vi.fn>;
+} {
+  const findFirst = vi.fn().mockResolvedValue(opts.findFirstResult);
+  const update = vi.fn().mockImplementation(({ data, where }: {
+    data: Record<string, unknown>;
+    where: Record<string, unknown>;
+  }) => ({
+    ...(opts.findFirstResult as Record<string, unknown>),
+    ...data,
+    id: (where['id'] as string) ?? SUBMITTAL_ID,
+  }));
+  const mockPrisma: MockPrisma = {
+    talentSubmittalRecord: {
+      create: vi.fn(),
+      findFirst,
+      update,
+    },
+  };
+  const mockEvidence = {} as unknown as EvidenceRepository;
+  const mockExamination = {} as unknown as ExaminationRepository;
+  const repo = new SubmittalRepository(
+    mockPrisma as unknown as PrismaService,
+    mockEvidence,
+    mockExamination,
+  );
+  return { repo, update };
+}
+
+const REVOKER_ID = '00000000-0000-7000-8000-000000000bb2';
+const REVOKE_JUSTIFICATION = 'Position frozen by hiring manager; revoking.';
+
+describe('SubmittalRepository.revokeSubmittal (unit)', () => {
+  it('1. successful revoke: state transitions to revoked, revoke metadata stamped', async () => {
+    const { repo, update } = buildRevokeMocks({
+      findFirstResult: makeStoredDraft({
+        state: 'submitted',
+        confirmed_at: new Date('2026-05-23T13:00:00Z'),
+      }),
+    });
+    const view = await repo.revokeSubmittal({
+      tenant_id: TENANT_A,
+      submittal_id: SUBMITTAL_ID,
+      revoked_by: REVOKER_ID,
+      revocation_justification: REVOKE_JUSTIFICATION,
+      requestId: REQUEST_ID,
+    });
+    expect(view.state).toBe('revoked');
+    expect(update).toHaveBeenCalledTimes(1);
+    const updateArg = update.mock.calls[0]?.[0] as {
+      data: {
+        state: string;
+        revoked_at: Date;
+        revoked_by: string;
+        revocation_justification: string;
+      };
+      where: { id: string; tenant_id: string };
+    };
+    expect(updateArg.data.state).toBe('revoked');
+    expect(updateArg.data.revoked_at).toBeInstanceOf(Date);
+    expect(updateArg.data.revoked_by).toBe(REVOKER_ID);
+    expect(updateArg.data.revocation_justification).toBe(REVOKE_JUSTIFICATION);
+    expect(updateArg.where.id).toBe(SUBMITTAL_ID);
+    expect(updateArg.where.tenant_id).toBe(TENANT_A);
+  });
+
+  it('2. findById null → NOT_FOUND 404; no update called', async () => {
+    const { repo, update } = buildRevokeMocks({
+      findFirstResult: null,
+    });
+    try {
+      await repo.revokeSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: SUBMITTAL_ID,
+        revoked_by: REVOKER_ID,
+        revocation_justification: REVOKE_JUSTIFICATION,
+        requestId: REQUEST_ID,
+      });
+      throw new Error('expected throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AramoError);
+      expect((err as AramoError).code).toBe('NOT_FOUND');
+      expect((err as AramoError).statusCode).toBe(404);
+    }
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('3. state=draft → REVOKE_NOT_ALLOWED 422 with current_state detail; no update called', async () => {
+    const { repo, update } = buildRevokeMocks({
+      findFirstResult: makeStoredDraft({ state: 'draft' }),
+    });
+    try {
+      await repo.revokeSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: SUBMITTAL_ID,
+        revoked_by: REVOKER_ID,
+        revocation_justification: REVOKE_JUSTIFICATION,
+        requestId: REQUEST_ID,
+      });
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('REVOKE_NOT_ALLOWED');
+      expect((err as AramoError).statusCode).toBe(422);
+      const ctx = (err as AramoError).context;
+      expect(ctx.details).toMatchObject({
+        submittal_id: SUBMITTAL_ID,
+        current_state: 'draft',
+      });
+    }
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('4. state=revoked → REVOKE_NOT_ALLOWED 422 with current_state=revoked; no update called', async () => {
+    const { repo, update } = buildRevokeMocks({
+      findFirstResult: makeStoredDraft({
+        state: 'revoked',
+        confirmed_at: new Date('2026-05-23T13:00:00Z'),
+        revoked_at: new Date('2026-05-23T15:00:00Z'),
+        revoked_by: REVOKER_ID,
+        revocation_justification: 'already revoked',
+      }),
+    });
+    try {
+      await repo.revokeSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: SUBMITTAL_ID,
+        revoked_by: REVOKER_ID,
+        revocation_justification: REVOKE_JUSTIFICATION,
+        requestId: REQUEST_ID,
+      });
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('REVOKE_NOT_ALLOWED');
+      expect((err as AramoError).statusCode).toBe(422);
+      const ctx = (err as AramoError).context;
+      expect(ctx.details).toMatchObject({
+        submittal_id: SUBMITTAL_ID,
+        current_state: 'revoked',
+      });
+    }
+    expect(update).not.toHaveBeenCalled();
+  });
+});

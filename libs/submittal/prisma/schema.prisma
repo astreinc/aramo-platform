@@ -38,9 +38,19 @@ datasource db {
 
 // SubmittalState — 2-value subset of Group 2 §2.3b Loop 5's 5-state
 // machine. F37 extends to the full machine at M5.
+//
+// M4 PR-7 adds 'revoked' as the third value. Reached via the
+// submittal-revoke endpoint (POST /v1/submittals/{id}/revoke), which is
+// the legal Transition B from 'submitted' state. The
+// column-scoped immutability trigger (engagement.reject_submittal_record
+// _update) permits Transition A (draft→submitted with confirmed_at
+// stamp, PR-3/PR-4) and Transition B (submitted→revoked with
+// revoked_at/revoked_by/revocation_justification atomically populated,
+// PR-7). All other transitions raise check_violation.
 enum SubmittalState {
   draft
   submitted
+  revoked
 
   @@schema("engagement")
 }
@@ -85,6 +95,18 @@ model TalentSubmittalRecord {
   // Lifecycle timestamps. confirmed_at is set by F34 confirm.
   created_at   DateTime  @default(now()) @db.Timestamptz
   confirmed_at DateTime? @db.Timestamptz
+
+  // M4 PR-7 §4.1 — revoke metadata. Populated atomically with the
+  // state transition 'submitted' → 'revoked' by the submittal-revoke
+  // endpoint. Nullable for backwards compatibility with rows created
+  // before PR-7 (which remain in 'draft' or 'submitted' state and so
+  // never have these fields). The column-scoped trigger (Transition B)
+  // requires all three to move from NULL to non-NULL atomically when
+  // state moves submitted→revoked; once revoked, no further mutation
+  // is permitted on the row.
+  revoked_at               DateTime? @db.Timestamptz
+  revoked_by               String?   @db.Uuid
+  revocation_justification String?
 
   // Indexes:
   //   - (tenant, talent, job): canonical "submittal for this talent + job" lookup.

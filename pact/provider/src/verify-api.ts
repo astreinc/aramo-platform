@@ -119,6 +119,17 @@ const SUBMITTAL_INIT_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
 );
+// M4 PR-7 §4.9 — submittal revoke migration: extends SubmittalState
+// with 'revoked', adds revoked_at / revoked_by / revocation_justification
+// columns, and rewrites the column-scoped trigger function to encode
+// both Transition A (draft→submitted) and Transition B (submitted→
+// revoked). Required by the submittal-revoke pact verification so the
+// state handlers can transition rows to 'submitted' / 'revoked' via
+// raw SQL (the column-scoped trigger validates each transition).
+const SUBMITTAL_REVOKE_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
+);
 // M4 PR-3 — talent-evidence migration applied so the buildPackage
 // rate_expectation lookup can find a TalentRateExpectation row when the
 // optional rate_expectation_id is supplied (the pact happy-path body
@@ -205,6 +216,25 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       preHash: Map<string, string>;
       violations: string[];
     } = { preHash: new Map(), violations: [] };
+
+    // M4 PR-7 §4.9 — state-isolation tracking for submittal-revoke
+    // interactions. Each revoke state handler captures the pre-execution
+    // TalentJobEvidencePackage row hash here (keyed by
+    // evidence_package_id) when the submittal exists; the afterEach hook
+    // re-reads the row, computes the post-execution hash, and asserts
+    // byte-identity. Mismatches are collected as violations and
+    // asserted-empty after verifier.verifyProvider() returns so the
+    // Pact verification fails when a revoke write mutates the evidence
+    // package row. Ruling 6 (refined) per directive §4.9: applies to
+    // ALL 4 PR-7 interactions (1 success + 3 refusals); each
+    // seedSubmittalRevokeFixture call captures preHash when
+    // submittalExists is true; afterEach verifies byte-identity
+    // regardless of whether the route succeeded or refused. Mirrors the
+    // overrideStateIsolation pattern from M4 PR-5.
+    const evidencePackageStateIsolation: {
+      preHashes: Map<string, string>;
+      violations: string[];
+    } = { preHashes: new Map(), violations: [] };
 
     async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
       const c = new Client({ connectionString: dbUrl });
@@ -845,6 +875,156 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       overrideStateIsolation.preHash.clear();
     }
 
+    // M4 PR-7 §4.9 — seed helper for submittal-revoke pact verification.
+    //
+    // Seeds Talent + TalentTenantOverlay + Requisition +
+    // TalentJobEvidencePackage + TalentSubmittalRecord (when
+    // submittalExists=true) at the requested submittalState. For
+    // submittalState='submitted', the Transition A trigger fires via a
+    // raw SQL UPDATE (draft → submitted with confirmed_at). For
+    // submittalState='revoked', TWO sequential raw SQL UPDATEs run:
+    // draft→submitted (Transition A) followed by submitted→revoked
+    // (Transition B) with all required columns populated atomically.
+    // Both transitions execute through the column-scoped trigger,
+    // exercising the substrate-layer enforcement end-to-end.
+    //
+    // When submittalExists=true, the pre-execution
+    // TalentJobEvidencePackage row hash is captured and pushed into
+    // evidencePackageStateIsolation.preHashes (keyed by
+    // evidence_package_id). The afterEach hook re-reads + asserts
+    // byte-identity post-interaction, mirroring the
+    // overrideStateIsolation pattern from M4 PR-5.
+    async function seedSubmittalRevokeFixture(
+      c: Client,
+      params: {
+        submittalExists: boolean;
+        submittalState: 'draft' | 'submitted' | 'revoked';
+        submittalId: string;
+        evidencePackageId: string;
+        examinationId: string;
+        talentId: string;
+        jobId: string;
+      },
+    ): Promise<{
+      submittal_id: string;
+      tenant_id: string;
+      evidence_package_id: string;
+      preExecutionEvidencePackageHash?: string;
+    }> {
+      const result: {
+        submittal_id: string;
+        tenant_id: string;
+        evidence_package_id: string;
+        preExecutionEvidencePackageHash?: string;
+      } = {
+        submittal_id: params.submittalId,
+        tenant_id: TENANT_ID,
+        evidence_package_id: params.evidencePackageId,
+      };
+
+      if (!params.submittalExists) {
+        return result;
+      }
+
+      // Seed the chain (Requisition + Examination + Evidence Package +
+      // Submittal Record at draft state) via seedSubmittalFixture so
+      // the row identifiers + JSONB payloads match the PR-3 substrate.
+      await seedSubmittalFixture(c, {
+        examinationId: params.examinationId,
+        talentId: params.talentId,
+        jobId: params.jobId,
+        tier: 'ENTRUSTABLE',
+        precreateDraftSubmittal: {
+          submittalId: params.submittalId,
+          evidencePackageId: params.evidencePackageId,
+        },
+      });
+
+      // Advance state per params.submittalState. The column-scoped
+      // trigger (engagement.reject_submittal_record_update) validates
+      // each transition; the raw SQL writes go THROUGH the trigger
+      // (only state + the named transition-companion columns move).
+      if (params.submittalState === 'submitted'
+          || params.submittalState === 'revoked') {
+        // Transition A — draft → submitted.
+        await c.query(
+          `UPDATE engagement."TalentSubmittalRecord"
+             SET state = 'submitted'::engagement."SubmittalState",
+                 confirmed_at = '2026-05-22T13:00:00Z'::timestamptz
+           WHERE id = $1`,
+          [params.submittalId],
+        );
+      }
+      if (params.submittalState === 'revoked') {
+        // Transition B — submitted → revoked. All three revoke
+        // columns populate atomically; the trigger's Transition B
+        // branch validates the move.
+        const revokerId = '00000000-0000-7000-8000-000000000bb2';
+        await c.query(
+          `UPDATE engagement."TalentSubmittalRecord"
+             SET state = 'revoked'::engagement."SubmittalState",
+                 revoked_at = '2026-05-23T15:00:00Z'::timestamptz,
+                 revoked_by = $2::uuid,
+                 revocation_justification = $3
+           WHERE id = $1`,
+          [
+            params.submittalId,
+            revokerId,
+            'Seeded already-revoked fixture for submittal-revoke pact.',
+          ],
+        );
+      }
+
+      // Capture pre-execution evidence-package hash for state-isolation
+      // verification. Ruling 6 (refined): applies to all 4 interactions
+      // (success + refusal) so the byte-identity invariant is enforced
+      // regardless of whether the route mutates state.
+      const { rows } = await c.query(
+        `SELECT * FROM evidence."TalentJobEvidencePackage" WHERE id = $1`,
+        [params.evidencePackageId],
+      );
+      if (rows.length === 1) {
+        const hash = hashRowAsJson(rows[0] as Record<string, unknown>);
+        evidencePackageStateIsolation.preHashes.set(
+          params.evidencePackageId,
+          hash,
+        );
+        result.preExecutionEvidencePackageHash = hash;
+      }
+      return result;
+    }
+
+    // M4 PR-7 §4.9 — afterEach state-isolation check for evidence
+    // packages. For each evidence_package_id where the state handler
+    // captured a pre-execution hash, re-read the row + compute the
+    // post-hash + assert byte-identity. On mismatch, record an
+    // explicit violation message that the it() block asserts-empty
+    // post-verification. Mirrors checkOverrideStateIsolation exactly.
+    async function checkEvidencePackageStateIsolation(): Promise<void> {
+      if (evidencePackageStateIsolation.preHashes.size === 0) return;
+      await withClient(async (c) => {
+        for (const [pkgId, preHash] of evidencePackageStateIsolation.preHashes) {
+          const { rows } = await c.query(
+            `SELECT * FROM evidence."TalentJobEvidencePackage" WHERE id = $1`,
+            [pkgId],
+          );
+          if (rows.length !== 1) {
+            evidencePackageStateIsolation.violations.push(
+              `State-isolation invariant violated: TalentJobEvidencePackage row mutated by submittal revoke. Expected hash: ${preHash}; got: <row not found>.`,
+            );
+            continue;
+          }
+          const postHash = hashRowAsJson(rows[0] as Record<string, unknown>);
+          if (postHash !== preHash) {
+            evidencePackageStateIsolation.violations.push(
+              `State-isolation invariant violated: TalentJobEvidencePackage row mutated by submittal revoke. Expected hash: ${preHash}; got: ${postHash}.`,
+            );
+          }
+        }
+      });
+      evidencePackageStateIsolation.preHashes.clear();
+    }
+
     async function seedIdempotencyKey(
       c: Client,
       opts: { id: string; key: string; requestHash: string },
@@ -894,6 +1074,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_EVIDENCE_INIT_MIGRATION,
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,
+        // M4 PR-7 §4.9 — submittal-revoke schema extension (enum +
+        // columns + Transition B trigger). Applied AFTER the submittal
+        // init migration so the ALTER TYPE / ALTER TABLE statements
+        // hit the existing enum/table.
+        SUBMITTAL_REVOKE_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -1682,6 +1867,84 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             });
           });
         },
+      // ===== M4 PR-7 §4.9 submittal-revoke (4 interactions) =====
+      'a recruiter has authenticated and a submitted TalentSubmittalRecord exists for the tenant':
+        async () => {
+          // PR-7 §4.9 #1 — happy path. Seed a submittal in 'submitted'
+          // state (via Transition A through the column-scoped trigger)
+          // and capture pre-execution evidence-package hash; the
+          // afterEach hook verifies byte-identity post-revoke.
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalRevokeFixture(c, {
+              submittalExists: true,
+              submittalState: 'submitted',
+              submittalId: '99990000-0000-7000-8000-000000000931',
+              evidencePackageId: '99990000-0000-7000-8000-000000001031',
+              examinationId: '11110000-0000-7000-8000-0000000e0007',
+              talentId: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+              jobId: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
+            });
+          });
+        },
+      'a recruiter has authenticated and a draft TalentSubmittalRecord exists for the tenant':
+        async () => {
+          // PR-7 §4.9 #2 — REVOKE_NOT_ALLOWED on draft. Seed a draft
+          // submittal (no state transition); capture evidence-package
+          // hash for state-isolation byte-identity assertion (no
+          // mutation expected because the controller refuses before
+          // the SQL UPDATE).
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalRevokeFixture(c, {
+              submittalExists: true,
+              submittalState: 'draft',
+              submittalId: '99990000-0000-7000-8000-000000000932',
+              evidencePackageId: '99990000-0000-7000-8000-000000001032',
+              examinationId: '11110000-0000-7000-8000-0000000e0008',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7002',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7002',
+            });
+          });
+        },
+      'a recruiter has authenticated and an already-revoked TalentSubmittalRecord exists for the tenant':
+        async () => {
+          // PR-7 §4.9 #3 — REVOKE_NOT_ALLOWED on already-revoked. Seed
+          // a submittal already in 'revoked' state (Transition A then
+          // Transition B via raw SQL through the column-scoped
+          // trigger). Capture evidence-package hash; the route refuses
+          // with REVOKE_NOT_ALLOWED and byte-identity must still hold.
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalRevokeFixture(c, {
+              submittalExists: true,
+              submittalState: 'revoked',
+              submittalId: '99990000-0000-7000-8000-000000000933',
+              evidencePackageId: '99990000-0000-7000-8000-000000001033',
+              examinationId: '11110000-0000-7000-8000-0000000e0009',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7003',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7003',
+            });
+          });
+        },
+      'a recruiter has authenticated and the submittal-revoke target does not exist for the tenant':
+        async () => {
+          // PR-7 §4.9 #4 — NOT_FOUND. No submittal seeded; no
+          // pre-execution hash captured (the row doesn't exist so
+          // state-isolation is trivially satisfied).
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalRevokeFixture(c, {
+              submittalExists: false,
+              submittalState: 'submitted',
+              submittalId: '99990000-0000-7000-8000-0000000009ff',
+              evidencePackageId: '99990000-0000-7000-8000-00000000103f',
+              examinationId: '11110000-0000-7000-8000-0000000e00ff',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a70ff',
+              jobId: 'cccccccc-0000-7000-8000-0000000c70ff',
+            });
+          });
+        },
       'a talent with profile granted and contacting revoked': async () => {
         // §4.3 — profile_storage granted (status: granted); contacting
         // granted then revoked (Decision D: revoked). Remaining 3 scopes
@@ -1791,23 +2054,35 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           ],
           stateHandlers,
           requestFilter: requestFilter as never,
-          // M4 PR-5 §4.10 — state-isolation invariant check. Runs after
-          // every interaction; for any examination_id whose pre-execution
-          // hash was captured at state-handler setup time, re-read the
-          // row and assert post-hash byte-identity. Mismatches are
-          // collected as violations; we assert violations is [] after
-          // verifyProvider() returns so the Pact verification fails
-          // explicitly on any override-induced TalentJobExamination
-          // mutation.
-          afterEach: checkOverrideStateIsolation,
+          // M4 PR-5 §4.10 + M4 PR-7 §4.9 — composed state-isolation
+          // invariant check. Runs after every interaction:
+          //   1. checkOverrideStateIsolation — for any examination_id
+          //      whose pre-execution hash was captured at state-handler
+          //      setup time, re-read + assert byte-identity. Mismatches
+          //      collected as overrideStateIsolation.violations.
+          //   2. checkEvidencePackageStateIsolation — same pattern for
+          //      TalentJobEvidencePackage rows seeded by the submittal-
+          //      revoke state handlers (Ruling 6 refined: applies to
+          //      all 4 PR-7 interactions, success + 3 refusals).
+          // The composed wrapper runs both checks sequentially so a
+          // single afterEach hook covers both collections.
+          afterEach: async () => {
+            await checkOverrideStateIsolation();
+            await checkEvidencePackageStateIsolation();
+          },
           logLevel: 'warn',
         });
         await verifier.verifyProvider();
-        // After all interactions verify, no state-isolation violation
-        // may remain. This assertion fails the Pact verification if any
-        // override interaction mutated the referenced examination row.
+        // After all interactions verify, neither state-isolation
+        // collection may carry a violation. These assertions fail the
+        // Pact verification explicitly on any override-induced
+        // TalentJobExamination mutation OR any revoke-induced
+        // TalentJobEvidencePackage mutation.
         if (overrideStateIsolation.violations.length > 0) {
           throw new Error(overrideStateIsolation.violations.join('\n'));
+        }
+        if (evidencePackageStateIsolation.violations.length > 0) {
+          throw new Error(evidencePackageStateIsolation.violations.join('\n'));
         }
       },
       600_000,

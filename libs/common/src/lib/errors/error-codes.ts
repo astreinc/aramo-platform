@@ -91,6 +91,14 @@
 // controller path emits it yet — same registration-ahead pattern as
 // SUBMITTAL_STRETCH_BLOCKED at PR-2 and JUSTIFICATION_REQUIRED at PR-3.
 // Total: 18 codes.
+//
+// M4 PR-7 adds REVOKE_NOT_ALLOWED (HTTP 422) for the submittal-revoke
+// endpoint per Aramo-M4-PR-7-Directive-v1_0-LOCKED.md §4.6. The endpoint
+// refuses with REVOKE_NOT_ALLOWED when the target submittal is not in
+// state='submitted' — i.e. a draft (never confirmed) or already-revoked
+// submittal. The 422 status pair mirrors OVERRIDE_INVALID's
+// semantic-refusal posture; class-validator shape failures still surface
+// as VALIDATION_ERROR (400). Total: 19 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -111,6 +119,7 @@ export const ERROR_CODES = [
   'EXAMINATION_PINNED_OUTDATED',
   'SUBMITTAL_ALREADY_CONFIRMED',
   'OVERRIDE_INVALID',  // M4 PR-5 — invalid override payload or non-overridable field
+  'REVOKE_NOT_ALLOWED',  // M4 PR-7 — submittal not in 'submitted' state cannot be revoked
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
