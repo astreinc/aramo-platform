@@ -158,3 +158,50 @@ model TalentJobExamination {
   @@index([tenant_id, job_id, tier, rank_ordinal])
   @@schema("examination")
 }
+
+// OverrideType — closed enum from M4 PR-5 directive §4.1. The four
+// categories a recruiter may override on an examination: tier, risk_flag,
+// gap, constraint_check. Each value matches an analytical surface that
+// recruiters legitimately annotate without mutating the underlying
+// immutable TalentJobExamination row (Group 2 §2.4-§2.5).
+enum OverrideType {
+  tier
+  risk_flag
+  gap
+  constraint_check
+
+  @@schema("examination")
+}
+
+// ExaminationOverride — M4 PR-5 directive §4.1.
+//
+// Append-only annotation written by a recruiter against a
+// TalentJobExamination. WRITE-ISOLATION CONTRACT: an override write MUST
+// NEVER mutate the referenced TalentJobExamination row (directive §4.3 +
+// Group 2 §2.4-§2.5). Repository surface exposes createOverride that calls
+// only prisma.examinationOverride.create; the absolute immutability
+// trigger (migration) rejects every UPDATE on this table.
+//
+// No FK to TalentJobExamination (Architecture v2.1 §7.3 cross-schema /
+// same-schema convention — UUID-only references in this program). The
+// repository's createOverride looks up the examination via findByIdFull
+// and refuses with NOT_FOUND when the examination is missing or its
+// lifecycle_state is not 'active'.
+model ExaminationOverride {
+  id              String          @id @default(uuid()) @db.Uuid
+  tenant_id       String          @db.Uuid
+  examination_id  String          @db.Uuid
+  override_type   OverrideType
+  target_field    String
+  justification   String
+  created_by      String          @db.Uuid
+  created_at      DateTime        @default(now())
+
+  // Tenant-scoped per-examination lookup (findOverridesByExaminationId).
+  @@index([tenant_id, examination_id])
+  // Tenant-scoped recency lookup (audit-style scans).
+  @@index([tenant_id, created_at])
+  // Tenant-scoped by-creator lookup.
+  @@index([tenant_id, created_by])
+  @@schema("examination")
+}

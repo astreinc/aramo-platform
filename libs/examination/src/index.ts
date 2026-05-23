@@ -9,7 +9,15 @@ export type {
   ExaminationTriggerValue,
   ExaminationTierValue,
   ExaminationLifecycleStateValue,
+  // M4 PR-5 §4.3 / §4.5 — ExaminationOverride entity surface.
+  OverrideTypeValue,
+  CreateOverrideInput,
 } from './lib/examination.repository.js';
+export { CreateOverrideRequestDto } from './lib/dto/create-override-request.dto.js';
+export type {
+  ExaminationOverrideView,
+  CreateOverrideResponseDto,
+} from './lib/dto/create-override-request.dto.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 
 // M3 PR-6 — Reasoning + evidence linkage (TalentJobExaminationFull)

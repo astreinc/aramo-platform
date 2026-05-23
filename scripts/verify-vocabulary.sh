@@ -120,6 +120,11 @@ TIER2_EXCLUDES=(
   # of its leakage-detection logic. Same structural pattern as the M4
   # PR-3 submittal-create entry above.
   "apps/api/src/tests/submittal-confirm.negative-shape.spec.ts"
+  # M4 PR-5: override-create negative-shape spec (F23 standing pattern)
+  # legitimately enumerates the forbidden Match-Class vocabulary as part
+  # of its leakage-detection logic. Same structural pattern as the M3
+  # PR-9 / M4 PR-3 / M4 PR-4 entries above.
+  "apps/api/src/tests/override-create.negative-shape.spec.ts"
 )
 
 # =============================================================================

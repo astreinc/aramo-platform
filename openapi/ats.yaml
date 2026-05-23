@@ -156,6 +156,80 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/examinations/{examination_id}/overrides:
+    post:
+      operationId: createExaminationOverride
+      summary: Record a recruiter override on an examination (M4 PR-5).
+      description: |
+        Records a recruiter-authored override (tier, risk_flag, gap, or
+        constraint_check) against an active TalentJobExamination WITHOUT
+        mutating the immutable examination row. The response carries the
+        locked invariant `examination_mutated: false` — every successful
+        create affirms that the referenced examination row is byte-
+        identical to its pre-create snapshot (Group 2 §2.4-§2.5 write-
+        isolation contract).
+
+        Refusal codes:
+          - 404 NOT_FOUND — examination missing, archived/cold_storage,
+            or cross-tenant.
+          - 422 OVERRIDE_INVALID — semantic refusal of invalid override
+            payload (registered at PR-5; reserved for future enforcement).
+          - 400 VALIDATION_ERROR — request body fails schema validation,
+            examination_id is not a UUID, or Idempotency-Key is missing /
+            malformed.
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key with a
+            different request body.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+      parameters:
+        - name: examination_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            UUID idempotency key. Same key + same body returns the prior
+            response; same key + different body returns 409
+            IDEMPOTENCY_KEY_CONFLICT. Missing or non-UUID returns 400
+            VALIDATION_ERROR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/CreateOverrideRequest'
+      responses:
+        '201':
+          description: Override recorded; examination row unchanged.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/CreateOverrideResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Idempotency-Key collision (same key, different body).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
   /v1/jobs/{job_id}/matches:
     get:
       operationId: listJobMatches

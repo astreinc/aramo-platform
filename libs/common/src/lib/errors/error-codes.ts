@@ -80,6 +80,17 @@
 //     submitted is detected before the SQL UPDATE so the trigger is
 //     never reached on the second call.
 // Total: 17 codes.
+//
+// M4 PR-5 adds OVERRIDE_INVALID (HTTP 422) for the examination-override
+// endpoint per Aramo-M4-PR-5-Directive-v1_0-LOCKED.md §4.7. The endpoint
+// accepts override_type / target_field / justification; class-validator
+// surfaces shape failures as VALIDATION_ERROR (400). OVERRIDE_INVALID is
+// reserved for semantic refusals (e.g. invalid target_field for a given
+// override_type) that future PRs may enforce. PR-5 registers the code at
+// the consuming PR (the parity-triple precedent from M4 PR-4); no PR-5
+// controller path emits it yet — same registration-ahead pattern as
+// SUBMITTAL_STRETCH_BLOCKED at PR-2 and JUSTIFICATION_REQUIRED at PR-3.
+// Total: 18 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -99,6 +110,7 @@ export const ERROR_CODES = [
   'ATTESTATION_MISSING',
   'EXAMINATION_PINNED_OUTDATED',
   'SUBMITTAL_ALREADY_CONFIRMED',
+  'OVERRIDE_INVALID',  // M4 PR-5 — invalid override payload or non-overridable field
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

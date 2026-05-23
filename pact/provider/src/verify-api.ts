@@ -88,6 +88,14 @@ const EXAMINATION_LIVE_LIST_MIGRATION = resolve(
   ROOT,
   'libs/examination/prisma/migrations/20260521120000_add_live_list_index/migration.sql',
 );
+// M4 PR-5 §4.10 — ExaminationOverride table + absolute-immutability trigger
+// migration; required so the override-create state handlers can seed the
+// referenced TalentJobExamination row and persist override rows at request
+// time.
+const EXAMINATION_OVERRIDE_MIGRATION = resolve(
+  ROOT,
+  'libs/examination/prisma/migrations/20260523180000_add_examination_override/migration.sql',
+);
 const JOB_DOMAIN_INIT_MIGRATION = resolve(
   ROOT,
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
@@ -184,6 +192,20 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // for strict null-checks compliance.
     let dbUrl = '';
 
+    // M4 PR-5 §4.10 — state-isolation tracking for override-create
+    // interactions. Each override state handler captures the pre-execution
+    // TalentJobExamination row hash here keyed by examination_id; the
+    // afterEach hook re-reads the row, computes the post-execution hash,
+    // and asserts byte-identity. Mismatches are collected as violations
+    // and asserted-empty after verifier.verifyProvider() returns so the
+    // Pact verification fails when an override write mutates the
+    // examination row. This is the FIRST Aramo Pact contract enforcing
+    // a state-isolation invariant (directive §4.10).
+    const overrideStateIsolation: {
+      preHash: Map<string, string>;
+      violations: string[];
+    } = { preHash: new Map(), violations: [] };
+
     async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
       const c = new Client({ connectionString: dbUrl });
       await c.connect();
@@ -218,6 +240,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // submittal record. Truncate both tables so prior runs don't leak.
       await c.query('TRUNCATE TABLE engagement."TalentSubmittalRecord" CASCADE');
       await c.query('TRUNCATE TABLE evidence."TalentJobEvidencePackage" CASCADE');
+      // M4 PR-5 — override-create state handlers seed an examination and
+      // the controller persists override rows at request time. Truncate
+      // ExaminationOverride so prior runs don't leak.
+      await c.query('TRUNCATE TABLE examination."ExaminationOverride" CASCADE');
     }
 
     // M3 PR-9 §4.8 — seed a Talent core row + a TalentTenantOverlay for
@@ -589,6 +615,140 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
+    // M4 PR-5 §4.10 — hashRowAsJson computes a deterministic content
+    // hash of the TalentJobExamination row for state-isolation byte-
+    // identity verification. Canonicalize JSON keys (sort) so any
+    // ordering wobble from the Prisma adapter is normalized out, then
+    // sha256 the result.
+    function hashRowAsJson(row: Record<string, unknown>): string {
+      const sortedKeys = Object.keys(row).sort();
+      const canonical: Record<string, unknown> = {};
+      for (const k of sortedKeys) {
+        const v = row[k];
+        // Date instances → ISO; everything else passes through. The
+        // analytical jsonb columns come back as objects/arrays already.
+        canonical[k] = v instanceof Date ? v.toISOString() : v;
+      }
+      const json = JSON.stringify(canonical);
+      // Lazy require so the import surface above stays narrow.
+      const { createHash } = require('node:crypto') as typeof import('node:crypto');
+      return createHash('sha256').update(json).digest('hex');
+    }
+
+    // M4 PR-5 §4.10 — seed an examination + optional pre-execution row
+    // hash for override state-isolation verification.
+    //
+    // params:
+    //   - examinationExists: true → INSERT a TalentJobExamination row
+    //     (used by the "happy" + "invalid type" interactions). false →
+    //     no insert (used by the NOT_FOUND interaction).
+    //   - examinationActive: true → lifecycle_state='active'. Only
+    //     consulted when examinationExists=true.
+    //
+    // Returns the seeded examination_id (matching the consumer test's
+    // path-param UUID) + tenant_id + the captured pre-execution hash
+    // (when applicable). The hash is also recorded in the module-level
+    // overrideStateIsolation.preHash map keyed by examination_id; the
+    // afterEach hook re-reads + asserts byte-identity post-interaction.
+    async function seedOverrideFixture(
+      c: Client,
+      params: {
+        examinationExists: boolean;
+        examinationActive: boolean;
+        examinationId: string;
+        talentId: string;
+        jobId: string;
+      },
+    ): Promise<{
+      examination_id: string;
+      tenant_id: string;
+      preExecutionExaminationHash?: string;
+    }> {
+      const result: {
+        examination_id: string;
+        tenant_id: string;
+        preExecutionExaminationHash?: string;
+      } = {
+        examination_id: params.examinationId,
+        tenant_id: TENANT_ID,
+      };
+
+      if (!params.examinationExists) {
+        return result;
+      }
+
+      const goldenId = '55551111-0000-7000-8000-0000000000aa';
+      const reqId = '55552222-0000-7000-8000-0000000000aa';
+      await c.query(
+        `INSERT INTO job_domain."Requisition"
+           (id, tenant_id, job_id, recruiter_id, state)
+         VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState")
+         ON CONFLICT DO NOTHING`,
+        [reqId, TENANT_ID, params.jobId, RECRUITER_ID],
+      );
+      await insertExaminationRow(c, {
+        id: params.examinationId,
+        talentId: params.talentId,
+        jobId: params.jobId,
+        goldenId,
+        tier: params.examinationActive ? 'ENTRUSTABLE' : 'ENTRUSTABLE',
+        computedAt: '2026-05-23T09:00:00.000Z',
+      });
+      if (!params.examinationActive) {
+        await c.query(
+          `UPDATE examination."TalentJobExamination"
+             SET lifecycle_state = 'archived'::examination."ExaminationLifecycleState",
+                 archived_at = '2026-05-23T10:00:00.000Z'
+           WHERE id = $1`,
+          [params.examinationId],
+        );
+      }
+
+      // Capture pre-execution hash for state-isolation verification.
+      const { rows } = await c.query(
+        `SELECT * FROM examination."TalentJobExamination" WHERE id = $1`,
+        [params.examinationId],
+      );
+      if (rows.length === 1) {
+        const hash = hashRowAsJson(rows[0] as Record<string, unknown>);
+        overrideStateIsolation.preHash.set(params.examinationId, hash);
+        result.preExecutionExaminationHash = hash;
+      }
+      return result;
+    }
+
+    // M4 PR-5 §4.10 — afterEach state-isolation check. Runs after every
+    // verified interaction (Pact-JS proxy registerAfterHook). For each
+    // examination_id where the state handler captured a pre-execution
+    // hash, re-read the TalentJobExamination row + compute post-hash +
+    // assert byte-identity. On mismatch, record an explicit violation
+    // message that the it() block asserts-empty post-verification.
+    async function checkOverrideStateIsolation(): Promise<void> {
+      if (overrideStateIsolation.preHash.size === 0) return;
+      await withClient(async (c) => {
+        for (const [examId, preHash] of overrideStateIsolation.preHash) {
+          const { rows } = await c.query(
+            `SELECT * FROM examination."TalentJobExamination" WHERE id = $1`,
+            [examId],
+          );
+          if (rows.length !== 1) {
+            // Row vanished — that's also an isolation violation.
+            overrideStateIsolation.violations.push(
+              `State-isolation invariant violated: TalentJobExamination row mutated by override creation. Expected hash: ${preHash}; got: <row not found>.`,
+            );
+            continue;
+          }
+          const postHash = hashRowAsJson(rows[0] as Record<string, unknown>);
+          if (postHash !== preHash) {
+            overrideStateIsolation.violations.push(
+              `State-isolation invariant violated: TalentJobExamination row mutated by override creation. Expected hash: ${preHash}; got: ${postHash}.`,
+            );
+          }
+        }
+      });
+      overrideStateIsolation.preHash.clear();
+    }
+
     async function seedIdempotencyKey(
       c: Client,
       opts: { id: string; key: string; requestHash: string },
@@ -626,6 +786,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         INGESTION_SURFACE_MIGRATION,
         EXAMINATION_INIT_MIGRATION,
         EXAMINATION_LIVE_LIST_MIGRATION,
+        // M4 PR-5 §4.10 — ExaminationOverride table + immutability trigger
+        // (applied after the prior examination migrations so the schema
+        // search path is set up).
+        EXAMINATION_OVERRIDE_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
         TALENT_INIT_MIGRATION,
         // M4 PR-3 §4.8 — evidence + talent-evidence + submittal
@@ -1372,6 +1536,32 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             });
           });
         },
+      // ===== M4 PR-5 §4.10 override-create (3 interactions) =====
+      'a recruiter has authenticated and an active examination exists': async () => {
+        // PR-5 §4.10 — happy + invalid-type interactions share this
+        // state. Seed an active TalentJobExamination matching the
+        // consumer test's EXAM_ID_ACTIVE constant and capture the
+        // pre-execution row hash for state-isolation verification in
+        // afterEach.
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedOverrideFixture(c, {
+            examinationExists: true,
+            examinationActive: true,
+            examinationId: '55550000-0000-7000-8000-0000000f0001',
+            talentId: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+            jobId: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
+          });
+        });
+      },
+      'a recruiter has authenticated': async () => {
+        // PR-5 §4.10 — NOT_FOUND interaction. No examination seeded;
+        // the controller's repository call into createOverride finds
+        // null and refuses with 404 NOT_FOUND. No pre-hash captured
+        // (the row doesn't exist, so state-isolation is trivially
+        // satisfied).
+        await withClient((c) => resetAllRows(c));
+      },
       'a talent with profile granted and contacting revoked': async () => {
         // §4.3 — profile_storage granted (status: granted); contacting
         // granted then revoked (Decision D: revoked). Remaining 3 scopes
@@ -1481,9 +1671,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           ],
           stateHandlers,
           requestFilter: requestFilter as never,
+          // M4 PR-5 §4.10 — state-isolation invariant check. Runs after
+          // every interaction; for any examination_id whose pre-execution
+          // hash was captured at state-handler setup time, re-read the
+          // row and assert post-hash byte-identity. Mismatches are
+          // collected as violations; we assert violations is [] after
+          // verifyProvider() returns so the Pact verification fails
+          // explicitly on any override-induced TalentJobExamination
+          // mutation.
+          afterEach: checkOverrideStateIsolation,
           logLevel: 'warn',
         });
         await verifier.verifyProvider();
+        // After all interactions verify, no state-isolation violation
+        // may remain. This assertion fails the Pact verification if any
+        // override interaction mutated the referenced examination row.
+        if (overrideStateIsolation.violations.length > 0) {
+          throw new Error(overrideStateIsolation.violations.join('\n'));
+        }
       },
       600_000,
     );

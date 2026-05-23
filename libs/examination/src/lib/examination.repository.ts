@@ -1,6 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { v7 as uuidv7 } from 'uuid';
+import { AramoError } from '@aramo/common';
 import { JobDomainRepository } from '@aramo/job-domain';
 
+import type { ExaminationOverrideView } from './dto/create-override-request.dto.js';
 import {
   projectFullView,
   projectSummaryView,
@@ -55,6 +58,16 @@ import { PrismaService } from './prisma/prisma.service.js';
 //
 // Application-layer validation: §2.4's "why_matched_sentence <= 140 chars"
 // rule is enforced at the create-input boundary per directive §3.1.
+//
+// M4 PR-5 §4.3 — adds the ExaminationOverride entity surface
+// (createOverride, findOverrideById, findOverridesByExaminationId).
+// WRITE ISOLATION CONTRACT (directive §4.3): createOverride writes ONLY
+// prisma.examinationOverride.create — it MUST NEVER mutate the
+// referenced TalentJobExamination row. The Group 2 §2.4 immutability
+// contract is enforced by (a) this repository-layer write isolation,
+// (b) the M3 PR-1 column-scoped trigger that already rejects analytical
+// updates on TalentJobExamination, and (c) the M4 PR-5 absolute-
+// immutability trigger that rejects every UPDATE on ExaminationOverride.
 
 const WHY_MATCHED_SENTENCE_MAX_CHARS = 140;
 
@@ -435,4 +448,188 @@ export class ExaminationRepository {
     });
     return updated as TalentJobExaminationRow;
   }
+
+  // M4 PR-5 §4.3 — createOverride.
+  //
+  // 5-step flow per directive §4.3:
+  //   (1) Load the examination via findById(input.examination_id); if
+  //       null → NOT_FOUND 404. Substantive equivalence with directive's
+  //       findByIdFull(): the raw row carries both lifecycle_state AND
+  //       tenant_id; the FullView projection elides tenant_id and is
+  //       Json-projected, so for a refusal-gate read where only
+  //       lifecycle_state and tenant_id are needed, findById is the
+  //       minimal-sufficient call (single round-trip, no JSON projection
+  //       cost). NOT_FOUND is also the chosen code for the cross-tenant
+  //       case (mirrors M4 PR-3/PR-4 substrate-layer posture: leak no
+  //       information beyond existence-for-this-tenant).
+  //   (2) examination.lifecycle_state !== 'active' → NOT_FOUND 404
+  //       (archived/cold_storage rows are not overridable; same security
+  //       posture as PR-2 buildPackage's lifecycle gate).
+  //   (3) Write-isolation contract: prisma.examinationOverride.create
+  //       ONLY. NO prisma.talentJobExamination.update call exists in
+  //       this method anywhere — the TalentJobExamination row is never
+  //       mutated by an override create.
+  //   (4) Structured logging at entry, success, and refusal paths.
+  //   (5) Return projected ExaminationOverrideView.
+  //
+  // requestId placeholder ('override') flows through AramoError; the
+  // controller boundary re-throws with its own bound requestId (PR-3
+  // substrate-layer error-context enrichment precedent).
+  async createOverride(
+    input: CreateOverrideInput,
+  ): Promise<ExaminationOverrideView> {
+    this.overrideLogger.log(
+      `createOverride entry tenant=${input.tenant_id} examination=${input.examination_id} type=${input.override_type}`,
+    );
+
+    // Step 1 — load referenced examination (raw row carries tenant_id +
+    // lifecycle_state directly).
+    const examination = await this.findById(input.examination_id);
+    if (examination === null) {
+      this.overrideLogger.log(
+        `createOverride refusal NOT_FOUND tenant=${input.tenant_id} examination=${input.examination_id} reason=missing`,
+      );
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentJobExamination not found',
+        404,
+        { requestId: 'override' },
+      );
+    }
+
+    // Cross-tenant lookups are treated the same way (NOT_FOUND, not
+    // TENANT_ACCESS_DENIED) to avoid leaking existence across tenants.
+    if (examination.tenant_id !== input.tenant_id) {
+      this.overrideLogger.log(
+        `createOverride refusal NOT_FOUND tenant=${input.tenant_id} examination=${input.examination_id} reason=cross-tenant`,
+      );
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentJobExamination not found',
+        404,
+        { requestId: 'override' },
+      );
+    }
+
+    // Step 2 — lifecycle_state must be 'active'.
+    if (examination.lifecycle_state !== 'active') {
+      this.overrideLogger.log(
+        `createOverride refusal NOT_FOUND tenant=${input.tenant_id} examination=${input.examination_id} reason=lifecycle=${examination.lifecycle_state}`,
+      );
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentJobExamination is not active',
+        404,
+        { requestId: 'override' },
+      );
+    }
+
+    // Step 3 — WRITE-ISOLATION CONTRACT. ExaminationOverride is the only
+    // table written here. NO prisma.talentJobExamination.update call.
+    const created = await this.prisma.examinationOverride.create({
+      data: {
+        id: uuidv7(),
+        tenant_id: input.tenant_id,
+        examination_id: input.examination_id,
+        override_type: input.override_type,
+        target_field: input.target_field,
+        justification: input.justification,
+        created_by: input.created_by,
+      },
+    });
+
+    // Step 4/5 — log success and return projected view.
+    this.overrideLogger.log(
+      `createOverride success tenant=${input.tenant_id} examination=${input.examination_id} override=${created.id}`,
+    );
+    return projectOverrideView(created as ExaminationOverrideRow);
+  }
+
+  // M4 PR-5 §4.3 — findOverrideById. Tenant-scoped single read (composite
+  // filter ensures cross-tenant reads return null, not a foreign row).
+  async findOverrideById(input: {
+    tenant_id: string;
+    id: string;
+  }): Promise<ExaminationOverrideView | null> {
+    const row = await this.prisma.examinationOverride.findFirst({
+      where: { tenant_id: input.tenant_id, id: input.id },
+    });
+    if (row === null) return null;
+    return projectOverrideView(row as ExaminationOverrideRow);
+  }
+
+  // M4 PR-5 §4.3 — findOverridesByExaminationId. Tenant-scoped list read,
+  // ordered by created_at ASC then id ASC for stable chronological reads.
+  async findOverridesByExaminationId(input: {
+    tenant_id: string;
+    examination_id: string;
+  }): Promise<ExaminationOverrideView[]> {
+    const rows = await this.prisma.examinationOverride.findMany({
+      where: {
+        tenant_id: input.tenant_id,
+        examination_id: input.examination_id,
+      },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+    });
+    return (rows as ExaminationOverrideRow[]).map((r) =>
+      projectOverrideView(r),
+    );
+  }
+
+  // Override-method logger. Kept distinct from the class-default Nest
+  // logger so the structured log lines are searchable by createOverride.
+  private readonly overrideLogger = new Logger('ExaminationOverride');
+}
+
+// ============================================================================
+// M4 PR-5 §4.3 / §4.5 — ExaminationOverride types and view projection.
+// ============================================================================
+
+// Closed enum value list — matches OverrideType from the Prisma schema.
+// The four override categories per directive §4.1. Re-declared as a
+// string-union here so the repository can be typed without importing
+// directly from the generated Prisma client (mirrors ExaminationTierValue /
+// ExaminationLifecycleStateValue pattern above).
+export type OverrideTypeValue =
+  | 'tier'
+  | 'risk_flag'
+  | 'gap'
+  | 'constraint_check';
+
+export interface CreateOverrideInput {
+  tenant_id: string;
+  examination_id: string;
+  override_type: OverrideTypeValue;
+  target_field: string;
+  justification: string;
+  created_by: string;
+}
+
+// The persisted-row shape. The Prisma client returns Date for the
+// created_at column; the projection helper renders it to an ISO string
+// at the read boundary.
+interface ExaminationOverrideRow {
+  id: string;
+  tenant_id: string;
+  examination_id: string;
+  override_type: OverrideTypeValue;
+  target_field: string;
+  justification: string;
+  created_by: string;
+  created_at: Date;
+}
+
+function projectOverrideView(
+  row: ExaminationOverrideRow,
+): ExaminationOverrideView {
+  return {
+    id: row.id,
+    tenant_id: row.tenant_id,
+    examination_id: row.examination_id,
+    override_type: row.override_type,
+    target_field: row.target_field,
+    justification: row.justification,
+    created_by: row.created_by,
+    created_at: row.created_at.toISOString(),
+  };
 }
