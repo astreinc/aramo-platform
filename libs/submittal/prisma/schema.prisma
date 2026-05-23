@@ -1,0 +1,99 @@
+// Per-module Prisma schema for the `submittal` module — M4 PR-3
+// (TalentSubmittalRecord entity foundation + submittal-create endpoint).
+//
+// Schema: `engagement` per Architecture v2.0/v2.1 §7.1 ten-schema list.
+// First model in the engagement schema; subsequent M5 work (engagement
+// state machine, TalentEngagementEvent) lands additional models here.
+//
+// Cross-schema references (Architecture §7.3 — UUID-only, no FK):
+//   - evidence_package_id → evidence schema (PR-1's TalentJobEvidencePackage)
+//   - pinned_examination_id → examination schema (M3 PR-1's TalentJobExamination)
+//
+// Per Group 2 §2.6 architecture split: TalentJobEvidencePackage is the
+// immutable deliverable; TalentSubmittalRecord is the workflow entity
+// that references it. Two distinct entities; distinct lifecycles. PR-3
+// is the first PR to introduce the workflow entity.
+//
+// Per Group 2 §2.3b Loop 5 the full state machine is 5-value
+// (created/handoff_draft/ready_for_review/submitted_to_ats/confirmed).
+// PR-3 ships the 2-value subset (draft/submitted); F37 extends to the
+// full 5-state machine at M5 (Plan v1.5 §M5 Track A).
+//
+// Immutability: column-scoped — `state` and `confirmed_at` may transition
+// from (draft, NULL) → (submitted, non-NULL) via the F34 confirm endpoint;
+// every other column is immutable post-create. Enforced by the
+// BEFORE UPDATE trigger added in the same migration. The trigger
+// mechanism mirrors PR-1's whole-row trigger and M3 PR-1's
+// column-scoped trigger.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["engagement"]
+}
+
+// SubmittalState — 2-value subset of Group 2 §2.3b Loop 5's 5-state
+// machine. F37 extends to the full machine at M5.
+enum SubmittalState {
+  draft
+  submitted
+
+  @@schema("engagement")
+}
+
+// §2.6 — TalentSubmittalRecord (workflow entity referencing the immutable
+// TalentJobEvidencePackage). Cross-schema references are UUID-only per
+// §7.3.
+model TalentSubmittalRecord {
+  // Identity.
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+  talent_id String @db.Uuid
+  job_id    String @db.Uuid
+
+  // Cross-schema references (Architecture §7.3 — UUID-only, no FK).
+  //
+  // evidence_package_id: REQUIRED. References the immutable
+  // TalentJobEvidencePackage built at create time (PR-2's
+  // EvidenceRepository.buildPackage call). Co-located on submittal so
+  // the consuming F34 confirm endpoint can resolve the package without
+  // a cross-schema query.
+  evidence_package_id String @db.Uuid
+  // pinned_examination_id: REQUIRED. References the
+  // TalentJobExamination snapshot pinned at draft creation. Co-located
+  // on submittal so F34's pin-verification check can fire without
+  // re-reading the evidence package.
+  pinned_examination_id String @db.Uuid
+
+  // Workflow.
+  state      SubmittalState @default(draft)
+  // UUID of the recruiter actor that initiated the create. Derived
+  // from JWT at the controller layer.
+  created_by String         @db.Uuid
+
+  // Worth Considering optional payloads — accepted at PR-3, persisted
+  // verbatim, NOT enforced. F34 confirm endpoint enforces that Worth
+  // Considering tier requires both fields non-empty; missing returns
+  // 422 JUSTIFICATION_REQUIRED.
+  justification                    String?
+  failed_criterion_acknowledgments Json?
+
+  // Lifecycle timestamps. confirmed_at is set by F34 confirm.
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  confirmed_at DateTime? @db.Timestamptz
+
+  // Indexes:
+  //   - (tenant, talent, job): canonical "submittal for this talent + job" lookup.
+  //   - (tenant, evidence_package_id): submittal ↔ evidence package resolution.
+  //   - (tenant, state): list submittals by state (e.g., "all drafts").
+  //   - (tenant, pinned_examination_id): F34's pin-verification join.
+  @@index([tenant_id, talent_id, job_id])
+  @@index([tenant_id, evidence_package_id])
+  @@index([tenant_id, state])
+  @@index([tenant_id, pinned_examination_id])
+  @@schema("engagement")
+}

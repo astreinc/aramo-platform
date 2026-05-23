@@ -2,6 +2,14 @@ export { ConsentModule } from './lib/consent.module.js';
 export { ConsentController } from './lib/consent.controller.js';
 export { ConsentService } from './lib/consent.service.js';
 export { ConsentRepository } from './lib/consent.repository.js';
+export { IdempotencyService } from './lib/idempotency.service.js';
+export type {
+  IdempotencyLookupInput,
+  IdempotencyLookupResult,
+  IdempotencyReplay,
+  IdempotencyProceed,
+  IdempotencyPersistInput,
+} from './lib/idempotency.service.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export { SourceConsentService } from './lib/source-consent.service.js';
 export type { RegisterSourceDerivedConsentInput } from './lib/source-consent.service.js';

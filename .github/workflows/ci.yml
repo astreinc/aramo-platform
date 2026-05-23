@@ -275,6 +275,7 @@ jobs:
       - run: npx vitest run --root libs/matching
       - run: npx vitest run --root libs/talent-evidence
       - run: npx vitest run --root libs/evidence
+      - run: npx vitest run --root libs/submittal
       - run: npx vitest run --root apps/api
 
   # ---------------------------------------------------------------------------

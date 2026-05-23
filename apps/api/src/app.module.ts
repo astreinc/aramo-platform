@@ -5,6 +5,7 @@ import { ConsentModule } from '@aramo/consent';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
 import { PortalModule } from '@aramo/portal';
+import { SubmittalModule } from '@aramo/submittal';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { PortalModule } from '@aramo/portal';
     IngestionModule,
     MatchingModule,
     PortalModule,
+    SubmittalModule,
   ],
 })
 export class AppModule implements NestModule {

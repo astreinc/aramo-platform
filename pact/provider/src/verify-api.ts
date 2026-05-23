@@ -98,6 +98,27 @@ const TALENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
 );
+// M4 PR-1 + PR-3 — evidence + submittal migrations applied so the
+// submittal-create pact verification can seed an examination (via
+// seedSubmittalFixture below), trigger the SubmittalController which
+// calls buildPackage (writes evidence schema) and then writes the
+// submittal record (engagement schema).
+const EVIDENCE_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql',
+);
+const SUBMITTAL_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
+);
+// M4 PR-3 — talent-evidence migration applied so the buildPackage
+// rate_expectation lookup can find a TalentRateExpectation row when the
+// optional rate_expectation_id is supplied (the pact happy-path body
+// does NOT supply one, but the migration is harmless to apply).
+const TALENT_EVIDENCE_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
+);
 const INGESTION_PACT = resolve(
   ROOT,
   'pact/pacts/ingestion-consumer-aramo-core.json',
@@ -192,6 +213,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // truncate at the start of every interaction.
       await c.query('TRUNCATE TABLE talent."TalentTenantOverlay" CASCADE');
       await c.query('TRUNCATE TABLE talent."Talent" CASCADE');
+      // M4 PR-3 — submittal-create state handlers seed an examination
+      // and trigger buildPackage which writes the evidence package +
+      // submittal record. Truncate both tables so prior runs don't leak.
+      await c.query('TRUNCATE TABLE engagement."TalentSubmittalRecord" CASCADE');
+      await c.query('TRUNCATE TABLE evidence."TalentJobEvidencePackage" CASCADE');
     }
 
     // M3 PR-9 §4.8 — seed a Talent core row + a TalentTenantOverlay for
@@ -355,6 +381,85 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       }
     }
 
+    // M4 PR-3 §4.8 — seed the substrate the submittal-create pact
+    // interactions rely on. The submittal create endpoint reads the
+    // referenced examination (via PR-2's EvidenceRepository.buildPackage
+    // path) and refuses Stretch tier with 422 SUBMITTAL_STRETCH_BLOCKED.
+    // The helper seeds one TalentJobExamination with the tier the test
+    // requires; the controller then writes its own evidence package +
+    // submittal record at request time.
+    async function seedSubmittalFixture(
+      c: Client,
+      opts: {
+        examinationId: string;
+        talentId: string;
+        jobId: string;
+        tier: 'ENTRUSTABLE' | 'WORTH_CONSIDERING' | 'STRETCH';
+      },
+    ): Promise<void> {
+      const goldenId = '22221111-0000-7000-8000-0000000000aa';
+      // Seed the active Requisition so any code path that resolves
+      // (tenant, job) → requisition (post-PR-7 / PR-8 pattern) succeeds.
+      const reqId = '22222222-0000-7000-8000-0000000000aa';
+      await c.query(
+        `INSERT INTO job_domain."Requisition"
+           (id, tenant_id, job_id, recruiter_id, state)
+         VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState")
+         ON CONFLICT DO NOTHING`,
+        [reqId, TENANT_ID, opts.jobId, RECRUITER_ID],
+      );
+      // Seed the examination at the requested tier; lifecycle='active'
+      // so the builder's lifecycle cross-check passes.
+      await c.query(
+        `INSERT INTO examination."TalentJobExamination"
+           (id, tenant_id, talent_id, job_id, golden_profile_id, trigger,
+            tier, rank_ordinal, why_matched_sentence, match_summary,
+            expanded_reasoning, skill_match, experience_match,
+            constraint_checks, strengths, gaps, risk_flags,
+            confidence_indicators, freshness_indicator, delta_to_entrustable,
+            examination_version, model_version, taxonomy_version,
+            computed_at, lifecycle_state)
+         VALUES ($1,$2,$3,$4,$5,'initial_match'::examination."ExaminationTrigger",
+                 $6::examination."ExaminationTier",$7,$8,$9,
+                 $10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,
+                 $15::jsonb,$16::jsonb,$17::jsonb,$18::jsonb,$19::jsonb,
+                 $20,$21,$22,$23,'active'::examination."ExaminationLifecycleState")`,
+        [
+          opts.examinationId,
+          TENANT_ID,
+          opts.talentId,
+          opts.jobId,
+          goldenId,
+          opts.tier,
+          1,
+          'Strong critical-skill coverage',
+          'baseline match summary',
+          JSON.stringify([]),
+          JSON.stringify({
+            matched_count: 5,
+            missing_count: 0,
+            per_skill: [],
+          }),
+          JSON.stringify({ years: 7, summary: 'Strong overlap' }),
+          JSON.stringify({}),
+          JSON.stringify(['typescript-expertise']),
+          JSON.stringify([]),
+          JSON.stringify([]),
+          JSON.stringify({
+            evidence_strength: { level: 'high', basis: 'ingested-evidence' },
+            data_completeness: { level: 'high', basis: 'profile-complete' },
+            constraint_confidence: { level: 'high', basis: 'verified' },
+          }),
+          JSON.stringify({ profile_age_days: 14 }),
+          JSON.stringify(null),
+          'v1',
+          'v1',
+          'v1',
+          '2026-05-22T09:00:00.000Z',
+        ],
+      );
+    }
+
     async function seedIdempotencyKey(
       c: Client,
       opts: { id: string; key: string; requestHash: string },
@@ -394,6 +499,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         EXAMINATION_LIVE_LIST_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
         TALENT_INIT_MIGRATION,
+        // M4 PR-3 §4.8 — evidence + talent-evidence + submittal
+        // migrations applied so the submittal-create pact verification
+        // can build the evidence package + persist the workflow record.
+        TALENT_EVIDENCE_INIT_MIGRATION,
+        EVIDENCE_INIT_MIGRATION,
+        SUBMITTAL_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -1032,6 +1143,38 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // INSUFFICIENT_PERMISSIONS before any repository call.
         await withClient((c) => resetAllRows(c));
       },
+      // ===== M4 PR-3 §4.8 submittal-create (2 interactions) =====
+      'a recruiter has authenticated and there is an Entrustable examination for the talent and job':
+        async () => {
+          // PR-3 §4.8 — seed a single ENTRUSTABLE examination matching
+          // the consumer body's talent_id + job_id + examination_id.
+          // The SubmittalController + SubmittalRepository.createSubmittal
+          // path then builds the evidence package and persists the
+          // workflow row at request time.
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalFixture(c, {
+              examinationId: '11110000-0000-7000-8000-0000000e0001',
+              talentId: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+              jobId: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
+              tier: 'ENTRUSTABLE',
+            });
+          });
+        },
+      'a recruiter has authenticated and there is a STRETCH examination for the talent and job':
+        async () => {
+          // PR-3 §4.8 — STRETCH tier; the builder refuses with
+          // SUBMITTAL_STRETCH_BLOCKED before any submittal row is written.
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalFixture(c, {
+              examinationId: '33330000-0000-7000-8000-0000000a0001',
+              talentId: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+              jobId: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
+              tier: 'STRETCH',
+            });
+          });
+        },
       'a talent with profile granted and contacting revoked': async () => {
         // §4.3 — profile_storage granted (status: granted); contacting
         // granted then revoked (Decision D: revoked). Remaining 3 scopes
