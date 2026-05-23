@@ -12,7 +12,7 @@ export default mergeConfig(
       testTimeout: 30_000,
       // Pact tests run sequentially — they share a per-suite mock server
       pool: 'forks',
-      isolate: false,
+      isolate: true,
       // M3 PR-9: disable inter-file parallelism — both test files write
       // to the same pact/pacts/portal-thin-aramo-core.json. Parallel file
       // execution can race the merge, losing interactions.
