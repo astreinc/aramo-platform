@@ -6,7 +6,7 @@ This file is the **authoritative pointer** to Aramo's four locked program docume
 
 ---
 
-## The Four Locked Baselines
+## The Five Locked Baselines
 
 ### 1. Aramo Charter v1.0 — LOCKED
 
@@ -102,6 +102,29 @@ This file is the **authoritative pointer** to Aramo's four locked program docume
 
 ---
 
+### 5. Aramo Phase 1 Delivery Plan v1.5 — LOCKED
+
+**What it is:** The milestone-scoping and delivery-discipline baseline. Defines milestone scope (M0–M7), per-milestone Track A / Track B deliverables, exit criteria, the Definition of Done criteria the CI deployment-gate enforces, and the 4-stage gate sequence each PR must pass.
+
+**Read it for:**
+- Milestone scope and sequencing (M0 platform, M1 consent runtime, M2 ingestion, M3 matching, M4 entrustability + IaC + observability + CVE, M5 engagement, M6 sensitive-field, M7 production hardening) — §3
+- Per-milestone Track A (Platform Build) + Track B (Contract Enforcement) deliverables — §3
+- Definition of Done (7 criteria; criterion #6 names the deployment-gate; criterion #7 names the refusal-layer integrity record) — §6
+- 4-stage gate sequence (substrate-check, directive draft, implementation, deployment-gate) — §4
+- M4 Track A item 5 — "All cloud resources expressed as declarative IaC artifacts under version control" — the authoritative anchor for M4 PR-8 IaC foundation work
+
+**Supersedes:** Plan v1.2 (locked at M0). Plan v1.2 references are carried as historical context in `doc/m0-closure-record-draft.md`, `doc/m1-closure-record-draft.md`, and the M0/M1 refusal sign-offs under `doc/milestone-signoffs/`; those references remain accurate for the milestones they describe. All new milestone work cites Plan v1.5.
+
+**Do not look here for:**
+- Why a refusal exists (use Charter)
+- How an entity is structured (use Group 2)
+- Engineering decisions like cloud provider (use Architecture)
+- API endpoint signatures (use API Contracts)
+
+**File location:** `Aramo-Phase-1-Delivery-Plan-v1.5-LOCKED.docx` (sha256 `d2e62ffb...cc472e`)
+
+---
+
 ## Hierarchy of Authority
 
 When sources appear to conflict:
@@ -134,3 +157,4 @@ The first reference is verifiable; the second is a paraphrase that may drift.
 | Date | Change | By |
 |---|---|---|
 | 2026-04-27 | Initial seeding | Architect |
+| 2026-05-23 | Add Plan v1.5 as fifth locked baseline; supersedes Plan v1.2 (carried for M0/M1 historical references). Resolves M4 PR-8 substrate-audit §C.11 finding — Plan v1.5 §M4 Track A item 5 ("declarative IaC artifacts under version control") is the authoritative anchor for the M4 PR-8 IaC foundation directive. | Lead Engineer |
