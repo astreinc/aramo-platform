@@ -6,7 +6,7 @@ This file is the **authoritative pointer** to Aramo's four locked program docume
 
 ---
 
-## The Five Locked Baselines
+## The Seven Locked Baselines
 
 ### 1. Aramo Charter v1.0 — LOCKED
 
@@ -125,6 +125,36 @@ This file is the **authoritative pointer** to Aramo's four locked program docume
 
 ---
 
+### 6. Architecture v2.0/v2.1 §15 — Observability and Operations — LOCKED
+
+**What it is:** The locked architectural specification for observability and operational telemetry across the Aramo platform. §15 of Architecture v2.0 (carried through v2.1) defines the canonical observability stack and core metrics.
+
+**Read it for:**
+- §15.1 "Observability Stack" — canonical AWS observability services: CloudWatch Metrics, CloudWatch Dashboards, CloudWatch Logs, CloudWatch Insights, AWS X-Ray + OpenTelemetry, CloudWatch Alarms → PagerDuty.
+- §15.3 "Metrics" — core metrics named including `outbox_lag_seconds`.
+
+**File location:** `Aramo-Architecture-v2_0-v1_2-LOCKED.docx` (carried in v2.1; sha256 `7b73ce18...b1861f`)
+
+M4 PR-9 (observability) is the first PR consuming §15 substrate. Module population: CloudWatch Logs at PR-9; CloudWatch Metrics + X-Ray + OpenTelemetry + PagerDuty deferred to M4-close hardening / M5.
+
+---
+
+### 7. Aramo Phase 1 Delivery Plan v1.5 §M4 Track A item 6 — Observability standard — LOCKED
+
+**What it is:** The Plan v1.5 mandate establishing observability as a per-PR standard from M4 onward.
+
+**Verbatim text (Anchor 1, Plan v1.5 §M4 Track A):**
+> "Observability as a per-PR standard (added v1.4 — D-ENT-READY-1): from M4 onward, every new service/PR ships structured logging, metrics, and trace context per Architecture §15.3; enforced via the PR Execution Model Stage 3 and the Lead review checklist. Dashboards and runbooks built incrementally as their subject systems land."
+
+**Cross-reference (Plan v1.5 amendments preamble):**
+> "Version 1.4 amendment … Adds deliverables scheduling implementation of Architecture v2.0/v2.1 §15 (observability), §16 (performance), §17 (disaster recovery), §19.2 (security-scan deployment gate) … into milestones M4–M7 … Front-loads infrastructure-as-code and observability as prerequisite work."
+
+**File location:** `Aramo-Phase-1-Delivery-Plan-v1.5-LOCKED.docx` (sha256 `d2e62ffb...cc472e`; already locked at §5).
+
+**Retroactive compliance:** The mandate applies "from M4 onward." M4 PR-1 through PR-7 shipped without metrics or W3C trace context (only informal structured logging emerged via NestJS Logger). PR-9 establishes the forward-going standard; retroactive sweep across M4 PR-1–PR-7 deferred to M4-close hardening (per PR-9 directive Ruling 8 forthcoming).
+
+---
+
 ## Hierarchy of Authority
 
 When sources appear to conflict:
@@ -158,3 +188,4 @@ The first reference is verifiable; the second is a paraphrase that may drift.
 |---|---|---|
 | 2026-04-27 | Initial seeding | Architect |
 | 2026-05-23 | Add Plan v1.5 as fifth locked baseline; supersedes Plan v1.2 (carried for M0/M1 historical references). Resolves M4 PR-8 substrate-audit §C.11 finding — Plan v1.5 §M4 Track A item 5 ("declarative IaC artifacts under version control") is the authoritative anchor for the M4 PR-8 IaC foundation directive. | Lead Engineer |
+| 2026-05-23 | Add §6 Architecture v2.0/v2.1 §15 (Observability and Operations) + §7 Plan v1.5 §M4 Track A item 6 (Observability as a per-PR standard) as sixth and seventh locked baselines. Resolves M4 PR-9 substrate-audit §A.1 / Q0 finding — §15.1 canonical observability stack (CloudWatch + X-Ray + OpenTelemetry + PagerDuty) and §15.3 core metrics naming are the authoritative substrate for PR-9 IaC module-population work; Plan v1.5 §M4 item 6 establishes observability as a per-PR standard from M4 onward. SECOND INSTANCE of the substrate-coherence pre-PR pattern (PR-8 lesson 1; first instance PR #57). | Lead Engineer |
