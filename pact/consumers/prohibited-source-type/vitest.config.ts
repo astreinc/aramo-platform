@@ -12,7 +12,7 @@ export default mergeConfig(
       testTimeout: 30_000,
       // Pact tests run sequentially — they share a per-suite mock server
       pool: 'forks',
-      isolate: false,
+      isolate: true,
     },
   }),
 );
