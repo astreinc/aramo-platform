@@ -43,3 +43,11 @@ playwright/.cache/
 # Pact
 pact/logs/
 pact/pacts/
+
+# Aramo M4 PR-8 — Terraform IaC ignore patterns
+*.tfstate
+*.tfstate.backup
+.terraform/
+*.tfvars
+# Note: .terraform.lock.hcl files ARE committed (per Ruling 6).
+# Note: *.tfvars.example files ARE committed (per §4.6).
