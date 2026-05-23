@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable, Logger } from '@nestjs/common';
+import { AramoError } from '@aramo/common';
 import { EvidenceRepository } from '@aramo/evidence';
+import { ExaminationRepository } from '@aramo/examination';
 
+import type { RecruiterAttestationsDto } from './dto/confirm-submittal-request.dto.js';
 import type {
   CreateSubmittalInput,
   FailedCriterionAcknowledgment,
@@ -69,6 +72,18 @@ function projectView(row: TalentSubmittalRecordRow): TalentSubmittalRecordView {
   };
 }
 
+// ConfirmSubmittalInput — repository-layer input for the M4 PR-4 confirm
+// flow. tenant_id flows from JWT auth context; submittal_id from the
+// request path; attestations from the body; requestId from the HTTP
+// boundary's RequestId decorator (threaded into each AramoError envelope
+// so the response carries the correct request_id field).
+export interface ConfirmSubmittalInput {
+  tenant_id: string;
+  submittal_id: string;
+  attestations: RecruiterAttestationsDto;
+  requestId: string;
+}
+
 @Injectable()
 export class SubmittalRepository {
   private readonly logger = new Logger(SubmittalRepository.name);
@@ -76,6 +91,7 @@ export class SubmittalRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly evidenceRepository: EvidenceRepository,
+    private readonly examinationRepository: ExaminationRepository,
   ) {}
 
   // M4 PR-3 §4.3 — create flow.
@@ -209,5 +225,270 @@ export class SubmittalRepository {
       },
     });
     return row === null ? null : projectView(row as TalentSubmittalRecordRow);
+  }
+
+  // M4 PR-4 §4.2 — confirm flow.
+  //
+  // Re-validates the pinned examination + 3 recruiter attestations + tier/
+  // justification preconditions, then flips state 'draft' → 'submitted'
+  // and stamps confirmed_at. The PR-3 column-scoped trigger
+  // (talent_submittal_record_engagement_audit) only permits this exact
+  // transition; the trigger is the second belt, the steps below are the
+  // first.
+  //
+  // Eight ordered steps (each raises AramoError with input.requestId
+  // bound into the envelope so the response's request_id is correct):
+  //   (1) findById tenant-scoped — null → NOT_FOUND 404
+  //   (2) state already 'submitted' → SUBMITTAL_ALREADY_CONFIRMED 409
+  //   (3) examinationRepository.findByIdFull(pinned_examination_id) →
+  //       null → EXAMINATION_PINNED_OUTDATED 409
+  //   (4) examinationFull.lifecycle_state !== 'active' →
+  //       EXAMINATION_PINNED_OUTDATED 409
+  //   (5) examinationFull.tier === 'STRETCH' → SUBMITTAL_STRETCH_BLOCKED 422
+  //       (re-check of PR-2's create-time gate — a Stretch row could only
+  //       reach this path if the create-time gate is bypassed by direct
+  //       SQL, but the confirm endpoint is the last line of defense)
+  //   (6) findLatestByTenantTalentJob → null or id mismatch →
+  //       EXAMINATION_PINNED_OUTDATED 409 (a newer snapshot exists; the
+  //       recruiter must refresh the draft and re-pin)
+  //   (7) tier === 'WORTH_CONSIDERING' → require justification (non-empty
+  //       after trim) AND failed_criterion_acknowledgments (>=1 entry).
+  //       Missing either → JUSTIFICATION_REQUIRED 422.
+  //   (8) prisma UPDATE with tenant_id + id filter, setting state and
+  //       confirmed_at. The trigger validates the transition.
+  //
+  // Attestations are checked at the controller boundary (not here) per
+  // directive §4.3 step 4 — the controller's manual 3-line check throws
+  // ATTESTATION_MISSING 422 before reaching the repository.
+  async confirmSubmittal(
+    input: ConfirmSubmittalInput,
+  ): Promise<TalentSubmittalRecordView> {
+    const startedAt = Date.now();
+    this.logger.log({
+      event: 'submittal_confirm_started',
+      tenant_id: input.tenant_id,
+      submittal_id: input.submittal_id,
+    });
+
+    // Step 1 — load tenant-scoped.
+    const submittal = await this.findById({
+      tenant_id: input.tenant_id,
+      id: input.submittal_id,
+    });
+    if (submittal === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentSubmittalRecord not found',
+        404,
+        {
+          requestId: input.requestId,
+          details: { submittal_id: input.submittal_id },
+        },
+      );
+    }
+
+    // Step 2 — already submitted (the column-scoped trigger would block
+    // a second draft→submitted attempt, but we surface the dedicated
+    // SUBMITTAL_ALREADY_CONFIRMED 409 code/status pair instead of letting
+    // the trigger's generic message flow back).
+    if (submittal.state === 'submitted') {
+      this.logger.log({
+        event: 'submittal_confirm_refused',
+        tenant_id: input.tenant_id,
+        submittal_id: input.submittal_id,
+        code: 'SUBMITTAL_ALREADY_CONFIRMED',
+      });
+      throw new AramoError(
+        'SUBMITTAL_ALREADY_CONFIRMED',
+        'Submittal is already in submitted state',
+        409,
+        {
+          requestId: input.requestId,
+          details: { submittal_id: input.submittal_id, state: submittal.state },
+        },
+      );
+    }
+
+    // Step 3 — pinned examination Full view (gives tier + lifecycle_state
+    // typed at the projection boundary).
+    const examinationFull = await this.examinationRepository.findByIdFull(
+      submittal.pinned_examination_id,
+    );
+    if (examinationFull === null) {
+      this.logger.log({
+        event: 'submittal_confirm_refused',
+        tenant_id: input.tenant_id,
+        submittal_id: input.submittal_id,
+        code: 'EXAMINATION_PINNED_OUTDATED',
+        reason: 'pinned_examination_missing',
+      });
+      throw new AramoError(
+        'EXAMINATION_PINNED_OUTDATED',
+        'Pinned examination no longer exists',
+        409,
+        {
+          requestId: input.requestId,
+          details: {
+            submittal_id: input.submittal_id,
+            pinned_examination_id: submittal.pinned_examination_id,
+          },
+        },
+      );
+    }
+
+    // Step 4 — pinned lifecycle no longer active.
+    if (examinationFull.lifecycle_state !== 'active') {
+      this.logger.log({
+        event: 'submittal_confirm_refused',
+        tenant_id: input.tenant_id,
+        submittal_id: input.submittal_id,
+        code: 'EXAMINATION_PINNED_OUTDATED',
+        reason: 'pinned_examination_inactive',
+        lifecycle_state: examinationFull.lifecycle_state,
+      });
+      throw new AramoError(
+        'EXAMINATION_PINNED_OUTDATED',
+        `Pinned examination lifecycle_state is ${examinationFull.lifecycle_state}`,
+        409,
+        {
+          requestId: input.requestId,
+          details: {
+            submittal_id: input.submittal_id,
+            pinned_examination_id: submittal.pinned_examination_id,
+            lifecycle_state: examinationFull.lifecycle_state,
+          },
+        },
+      );
+    }
+
+    // Step 5 — Stretch tier re-check (R9 substrate-layer defense).
+    if (examinationFull.tier === 'STRETCH') {
+      this.logger.log({
+        event: 'submittal_confirm_refused',
+        tenant_id: input.tenant_id,
+        submittal_id: input.submittal_id,
+        code: 'SUBMITTAL_STRETCH_BLOCKED',
+      });
+      throw new AramoError(
+        'SUBMITTAL_STRETCH_BLOCKED',
+        'Stretch-tier examinations cannot be confirmed',
+        422,
+        {
+          requestId: input.requestId,
+          details: {
+            submittal_id: input.submittal_id,
+            pinned_examination_id: submittal.pinned_examination_id,
+            tier: examinationFull.tier,
+          },
+        },
+      );
+    }
+
+    // Step 6 — newest-examination check. If the latest active row for
+    // (tenant, talent, job) is not the pinned row, the recruiter is
+    // confirming against a stale draft and must refresh.
+    const latest = await this.examinationRepository.findLatestByTenantTalentJob({
+      tenant_id: input.tenant_id,
+      talent_id: submittal.talent_id,
+      job_id: submittal.job_id,
+    });
+    if (latest === null || latest.id !== submittal.pinned_examination_id) {
+      this.logger.log({
+        event: 'submittal_confirm_refused',
+        tenant_id: input.tenant_id,
+        submittal_id: input.submittal_id,
+        code: 'EXAMINATION_PINNED_OUTDATED',
+        reason: 'newer_examination_exists',
+        pinned_examination_id: submittal.pinned_examination_id,
+        latest_examination_id: latest?.id ?? null,
+      });
+      throw new AramoError(
+        'EXAMINATION_PINNED_OUTDATED',
+        'Newer examination exists; recruiter must refresh draft',
+        409,
+        {
+          requestId: input.requestId,
+          details: {
+            submittal_id: input.submittal_id,
+            pinned_examination_id: submittal.pinned_examination_id,
+            latest_examination_id: latest?.id ?? null,
+          },
+        },
+      );
+    }
+
+    // Step 7 — Worth Considering enforcement.
+    if (examinationFull.tier === 'WORTH_CONSIDERING') {
+      const justification = submittal.justification;
+      if (justification === null || justification.trim() === '') {
+        this.logger.log({
+          event: 'submittal_confirm_refused',
+          tenant_id: input.tenant_id,
+          submittal_id: input.submittal_id,
+          code: 'JUSTIFICATION_REQUIRED',
+          reason: 'justification_missing',
+        });
+        throw new AramoError(
+          'JUSTIFICATION_REQUIRED',
+          'Worth Considering submittals require non-empty justification',
+          422,
+          {
+            requestId: input.requestId,
+            details: {
+              submittal_id: input.submittal_id,
+              missing_field: 'justification',
+            },
+          },
+        );
+      }
+      const ack = submittal.failed_criterion_acknowledgments;
+      if (ack === null || ack.length === 0) {
+        this.logger.log({
+          event: 'submittal_confirm_refused',
+          tenant_id: input.tenant_id,
+          submittal_id: input.submittal_id,
+          code: 'JUSTIFICATION_REQUIRED',
+          reason: 'failed_criterion_acknowledgments_missing',
+        });
+        throw new AramoError(
+          'JUSTIFICATION_REQUIRED',
+          'Worth Considering submittals require failed_criterion_acknowledgments',
+          422,
+          {
+            requestId: input.requestId,
+            details: {
+              submittal_id: input.submittal_id,
+              missing_field: 'failed_criterion_acknowledgments',
+            },
+          },
+        );
+      }
+    }
+
+    // Suppress unused-attestations warning — the attestations are
+    // enforced at the controller boundary before this method is invoked;
+    // they are accepted into the input shape for forward compatibility
+    // (logging, audit-event emission in M5) but consumed nowhere in this
+    // method. Reference the value once so TypeScript's noUnusedParameters
+    // is satisfied without changing the input shape.
+    void input.attestations;
+
+    // Step 8 — flip state to 'submitted' with confirmed_at stamp. The
+    // column-scoped trigger validates the transition; only state +
+    // confirmed_at are touched here so the trigger's allowlist passes.
+    const updated = await this.prisma.talentSubmittalRecord.update({
+      where: { id: input.submittal_id, tenant_id: input.tenant_id },
+      data: { state: 'submitted', confirmed_at: new Date() },
+    });
+
+    const view = projectView(updated as TalentSubmittalRecordRow);
+    this.logger.log({
+      event: 'submittal_confirmed',
+      tenant_id: view.tenant_id,
+      submittal_id: view.id,
+      pinned_examination_id: view.pinned_examination_id,
+      latency_ms: Date.now() - startedAt,
+    });
+    return view;
   }
 }

@@ -30,6 +30,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   NOT_FOUND: 404,
   SUBMITTAL_STRETCH_BLOCKED: 422,
   JUSTIFICATION_REQUIRED: 422,
+  ATTESTATION_MISSING: 422,
+  EXAMINATION_PINNED_OUTDATED: 409,
+  SUBMITTAL_ALREADY_CONFIRMED: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

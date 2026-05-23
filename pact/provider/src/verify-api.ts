@@ -388,6 +388,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // The helper seeds one TalentJobExamination with the tier the test
     // requires; the controller then writes its own evidence package +
     // submittal record at request time.
+    //
+    // M4 PR-4 §4.9 — extended with two optional knobs the submittal-
+    // confirm interactions need:
+    //   - precreateDraftSubmittal: when true, after seeding the
+    //     examination, INSERT a TalentSubmittalRecord row in 'draft'
+    //     pinned to the seeded examination (plus a minimal evidence
+    //     package row for FK-style referential parity).
+    //   - seedNewerExamination: when true, also INSERT a second
+    //     TalentJobExamination for the same (tenant, talent, job) with a
+    //     later computed_at — the "newer" snapshot the confirm flow
+    //     compares the pin against.
     async function seedSubmittalFixture(
       c: Client,
       opts: {
@@ -395,6 +406,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         talentId: string;
         jobId: string;
         tier: 'ENTRUSTABLE' | 'WORTH_CONSIDERING' | 'STRETCH';
+        precreateDraftSubmittal?: {
+          submittalId: string;
+          evidencePackageId: string;
+          justification?: string | null;
+          failed_criterion_acknowledgments?: ReadonlyArray<Record<string, unknown>>;
+        };
+        seedNewerExamination?: {
+          examinationId: string;
+          tier: 'ENTRUSTABLE' | 'WORTH_CONSIDERING' | 'STRETCH';
+        };
       },
     ): Promise<void> {
       const goldenId = '22221111-0000-7000-8000-0000000000aa';
@@ -410,6 +431,114 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
       // Seed the examination at the requested tier; lifecycle='active'
       // so the builder's lifecycle cross-check passes.
+      await insertExaminationRow(c, {
+        id: opts.examinationId,
+        talentId: opts.talentId,
+        jobId: opts.jobId,
+        goldenId,
+        tier: opts.tier,
+        computedAt: '2026-05-22T09:00:00.000Z',
+      });
+
+      // M4 PR-4 §4.9 — optional newer examination (same triple, later
+      // computed_at). The confirm flow's findLatestByTenantTalentJob
+      // returns this row; comparing against the pinned id mismatches and
+      // raises EXAMINATION_PINNED_OUTDATED 409.
+      if (opts.seedNewerExamination !== undefined) {
+        await insertExaminationRow(c, {
+          id: opts.seedNewerExamination.examinationId,
+          talentId: opts.talentId,
+          jobId: opts.jobId,
+          goldenId,
+          tier: opts.seedNewerExamination.tier,
+          computedAt: '2026-05-23T09:00:00.000Z',
+        });
+      }
+
+      // M4 PR-4 §4.9 — optional pre-created draft submittal so the
+      // confirm endpoint has a row to load by id. Mirrors what
+      // SubmittalRepository.createSubmittal would write, minus the
+      // orchestration: a minimal TalentJobEvidencePackage row (FK-style
+      // referential parity) and a TalentSubmittalRecord in 'draft' state
+      // pinned to the seeded examination.
+      if (opts.precreateDraftSubmittal !== undefined) {
+        await c.query(
+          `INSERT INTO evidence."TalentJobEvidencePackage"
+             (id, tenant_id, talent_id, job_id, examination_id,
+              talent_identity, contact_summary, capability_summary,
+              match_justification, recruiter_contribution,
+              engagement_event_refs)
+           VALUES ($1,$2,$3,$4,$5,
+                   $6::jsonb,$7::jsonb,$8::jsonb,
+                   $9::jsonb,$10::jsonb,$11::jsonb)`,
+          [
+            opts.precreateDraftSubmittal.evidencePackageId,
+            TENANT_ID,
+            opts.talentId,
+            opts.jobId,
+            opts.examinationId,
+            JSON.stringify({
+              full_name: 'Pact Talent',
+              location: 'Remote (US)',
+            }),
+            JSON.stringify({
+              contact_available: true,
+              channels_verified: ['email'],
+            }),
+            JSON.stringify({
+              key_work_history: [
+                {
+                  employer_name: 'Acme',
+                  role_title: 'Senior Engineer',
+                },
+              ],
+            }),
+            JSON.stringify({
+              why_this_talent: 'Pact-seeded sample.',
+            }),
+            JSON.stringify({
+              conversation_summary: {
+                recruiter_summary: 'Discussed.',
+              },
+              talent_confirmed: { spoken_to_recruiter: true },
+            }),
+            JSON.stringify([]),
+          ],
+        );
+        const fca = opts.precreateDraftSubmittal.failed_criterion_acknowledgments;
+        await c.query(
+          `INSERT INTO engagement."TalentSubmittalRecord"
+             (id, tenant_id, talent_id, job_id, evidence_package_id,
+              pinned_examination_id, state, created_by,
+              justification, failed_criterion_acknowledgments)
+           VALUES ($1,$2,$3,$4,$5,$6,'draft'::engagement."SubmittalState",$7,
+                   $8, $9::jsonb)`,
+          [
+            opts.precreateDraftSubmittal.submittalId,
+            TENANT_ID,
+            opts.talentId,
+            opts.jobId,
+            opts.precreateDraftSubmittal.evidencePackageId,
+            opts.examinationId,
+            RECRUITER_ID,
+            opts.precreateDraftSubmittal.justification ?? null,
+            fca === undefined ? null : JSON.stringify(fca),
+          ],
+        );
+      }
+    }
+
+    async function insertExaminationRow(
+      c: Client,
+      opts: {
+        id: string;
+        talentId: string;
+        jobId: string;
+        goldenId: string;
+        tier: 'ENTRUSTABLE' | 'WORTH_CONSIDERING' | 'STRETCH';
+        computedAt: string;
+      },
+    ): Promise<void> {
       await c.query(
         `INSERT INTO examination."TalentJobExamination"
            (id, tenant_id, talent_id, job_id, golden_profile_id, trigger,
@@ -425,11 +554,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                  $15::jsonb,$16::jsonb,$17::jsonb,$18::jsonb,$19::jsonb,
                  $20,$21,$22,$23,'active'::examination."ExaminationLifecycleState")`,
         [
-          opts.examinationId,
+          opts.id,
           TENANT_ID,
           opts.talentId,
           opts.jobId,
-          goldenId,
+          opts.goldenId,
           opts.tier,
           1,
           'Strong critical-skill coverage',
@@ -455,7 +584,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'v1',
           'v1',
           'v1',
-          '2026-05-22T09:00:00.000Z',
+          opts.computedAt,
         ],
       );
     }
@@ -1172,6 +1301,74 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               talentId: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
               jobId: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
               tier: 'STRETCH',
+            });
+          });
+        },
+      // ===== M4 PR-4 §4.9 submittal-confirm (4 interactions) =====
+      'a recruiter has authenticated, an Entrustable examination exists, and a draft submittal exists pinned to that examination':
+        async () => {
+          // PR-4 §4.9 — happy + ATTESTATION_MISSING share this state.
+          // Seed Entrustable examination at examinationId matching
+          // the consumer body's pinned_examination_id; pre-create a
+          // draft submittal at the consumer-known submittal_id
+          // (SUBMITTAL_ID_HAPPY in submittal-confirm.consumer.test.ts).
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalFixture(c, {
+              examinationId: '11110000-0000-7000-8000-0000000e0002',
+              talentId: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+              jobId: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
+              tier: 'ENTRUSTABLE',
+              precreateDraftSubmittal: {
+                submittalId: '99990000-0000-7000-8000-000000000901',
+                evidencePackageId: '99990000-0000-7000-8000-0000000010a1',
+              },
+            });
+          });
+        },
+      'a recruiter has authenticated, a draft submittal exists, and a newer examination has been generated for the same talent/job after the pinning':
+        async () => {
+          // PR-4 §4.9 — EXAMINATION_PINNED_OUTDATED. Seed the pinned
+          // (older) examination, pre-create the draft submittal pinned
+          // to it, and ALSO seed a newer examination for the same
+          // (tenant, talent, job) triple with a later computed_at so
+          // findLatestByTenantTalentJob returns the newer row.
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalFixture(c, {
+              examinationId: '44440000-0000-7000-8000-0000000d0002',
+              talentId: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+              jobId: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
+              tier: 'ENTRUSTABLE',
+              precreateDraftSubmittal: {
+                submittalId: '99990000-0000-7000-8000-000000000902',
+                evidencePackageId: '99990000-0000-7000-8000-0000000010a2',
+              },
+              seedNewerExamination: {
+                examinationId: '44440000-0000-7000-8000-0000000d0099',
+                tier: 'ENTRUSTABLE',
+              },
+            });
+          });
+        },
+      'a recruiter has authenticated, a Worth Considering examination exists, and a draft submittal exists without justification':
+        async () => {
+          // PR-4 §4.9 — JUSTIFICATION_REQUIRED. Seed a WORTH_CONSIDERING
+          // examination + a draft submittal pinned to it with no
+          // justification and no failed_criterion_acknowledgments. The
+          // confirm flow's tier branch refuses with 422.
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalFixture(c, {
+              examinationId: '22220000-0000-7000-8000-0000000c0002',
+              talentId: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+              jobId: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
+              tier: 'WORTH_CONSIDERING',
+              precreateDraftSubmittal: {
+                submittalId: '99990000-0000-7000-8000-000000000903',
+                evidencePackageId: '99990000-0000-7000-8000-0000000010a3',
+                justification: null,
+              },
             });
           });
         },

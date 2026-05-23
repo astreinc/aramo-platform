@@ -390,6 +390,34 @@ export class ExaminationRepository {
     return rows as TalentJobExaminationRow[];
   }
 
+  // M4 PR-4 §4.1 — newest-active-snapshot lookup per (tenant, talent, job).
+  // Returns the single most recent ACTIVE examination row for the triple
+  // (ordered by computed_at DESC, id DESC tiebreaker), or null if none.
+  // Lifecycle-filtered (active only): archived / cold_storage rows are
+  // skipped so the submittal-confirm caller's "is the pin still the
+  // latest?" check honors the same lifecycle posture used everywhere else
+  // (PR-2 buildPackage refuses non-active examinations; PR-7
+  // findActiveReqLiveList filters active; etc.).
+  //
+  // READ-ONLY, single-snapshot: issues no write, no projection — callers
+  // compare the returned row's id against the pinned id directly.
+  async findLatestByTenantTalentJob(input: {
+    tenant_id: string;
+    talent_id: string;
+    job_id: string;
+  }): Promise<TalentJobExaminationRow | null> {
+    const row = await this.prisma.talentJobExamination.findFirst({
+      where: {
+        tenant_id: input.tenant_id,
+        talent_id: input.talent_id,
+        job_id: input.job_id,
+        lifecycle_state: 'active',
+      },
+      orderBy: [{ computed_at: 'desc' }, { id: 'desc' }],
+    });
+    return row === null ? null : (row as TalentJobExaminationRow);
+  }
+
   async markSuperseded(
     input: MarkSupersededInput,
   ): Promise<TalentJobExaminationRow> {

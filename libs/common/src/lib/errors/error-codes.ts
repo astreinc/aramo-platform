@@ -58,6 +58,28 @@
 // fields and persists them verbatim; it does NOT enforce. F34 enforces:
 // missing on Worth Considering returns 422 JUSTIFICATION_REQUIRED. Lead
 // authority is the directive's §2 Ruling 5. Total: 14 codes.
+//
+// M4 PR-4 adds three codes (parity-triple at the consuming PR per
+// Aramo-M4-PR-4-Directive-v1_0-LOCKED.md §4.6):
+//   - ATTESTATION_MISSING (HTTP 422) — submittal-confirm rejects when any
+//     of the three recruiter attestations (talent_evidence_reviewed,
+//     constraints_reviewed, submittal_risk_acknowledged) is not literally
+//     true. Enforced manually in SubmittalController.confirmSubmittal
+//     (step 4 per directive §4.3) rather than via @Equals(true) decorators
+//     so the closed-list error vocabulary survives class-validator's
+//     own VALIDATION_ERROR path.
+//   - EXAMINATION_PINNED_OUTDATED (HTTP 409) — submittal-confirm refuses
+//     when (a) the pinned examination row is gone, (b) its lifecycle_state
+//     is no longer 'active', or (c) the latest examination for the
+//     (tenant, talent, job) triple is a different row id. The recruiter
+//     must refresh and re-pin to a current snapshot before confirm.
+//   - SUBMITTAL_ALREADY_CONFLICTING wording in earlier drafts is replaced
+//     by SUBMITTAL_ALREADY_CONFIRMED (HTTP 409) — submittal-confirm
+//     refuses when the row is already in state='submitted'. The
+//     column-scoped trigger permits only draft→submitted; confirm-on-
+//     submitted is detected before the SQL UPDATE so the trigger is
+//     never reached on the second call.
+// Total: 17 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -74,6 +96,9 @@ export const ERROR_CODES = [
   'NOT_FOUND',
   'SUBMITTAL_STRETCH_BLOCKED',
   'JUSTIFICATION_REQUIRED',
+  'ATTESTATION_MISSING',
+  'EXAMINATION_PINNED_OUTDATED',
+  'SUBMITTAL_ALREADY_CONFIRMED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AramoError } from '@aramo/common';
 import { EvidenceRepository } from '@aramo/evidence';
+import { ExaminationRepository } from '@aramo/examination';
 
 import type { CreateSubmittalInput } from '../lib/dto/talent-submittal-record.view.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
@@ -52,8 +54,14 @@ function makeInput(overrides: Partial<CreateSubmittalInput> = {}): CreateSubmitt
 }
 
 interface MockPrisma {
-  talentSubmittalRecord: { create: ReturnType<typeof vi.fn> };
+  talentSubmittalRecord: {
+    create: ReturnType<typeof vi.fn>;
+    findFirst?: ReturnType<typeof vi.fn>;
+    update?: ReturnType<typeof vi.fn>;
+  };
 }
+
+const REQUEST_ID = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f00';
 
 describe('SubmittalRepository.createSubmittal (unit)', () => {
   let create: ReturnType<typeof vi.fn>;
@@ -71,7 +79,15 @@ describe('SubmittalRepository.createSubmittal (unit)', () => {
     buildPackage = vi.fn().mockResolvedValue({ id: 'package-id-1' });
     const mockPrisma: MockPrisma = { talentSubmittalRecord: { create } };
     const mockEvidence = { buildPackage } as unknown as EvidenceRepository;
-    repo = new SubmittalRepository(mockPrisma as unknown as PrismaService, mockEvidence);
+    // M4 PR-4 §4.5 — repository now takes ExaminationRepository as third
+    // ctor param; createSubmittal does not use it, so an empty mock is
+    // safe for these create-flow tests.
+    const mockExamination = {} as unknown as ExaminationRepository;
+    repo = new SubmittalRepository(
+      mockPrisma as unknown as PrismaService,
+      mockEvidence,
+      mockExamination,
+    );
   });
 
   it('1. successful create forwards input to buildPackage and writes draft submittal', async () => {
@@ -121,5 +137,305 @@ describe('SubmittalRepository.createSubmittal (unit)', () => {
     const view = await repo.createSubmittal(makeInput());
     expect(view.justification).toBeNull();
     expect(view.failed_criterion_acknowledgments).toBeNull();
+  });
+});
+
+// =============================================================================
+// M4 PR-4 §4.10 — confirmSubmittal unit tests (8 new)
+// =============================================================================
+
+const SUBMITTAL_ID = '99990000-0000-7000-8000-000000000001';
+
+function buildConfirmMocks(opts: {
+  findFirstResult: unknown;
+  findByIdFullResult: unknown;
+  findLatestResult: unknown;
+}): {
+  repo: SubmittalRepository;
+  update: ReturnType<typeof vi.fn>;
+} {
+  const findFirst = vi.fn().mockResolvedValue(opts.findFirstResult);
+  const update = vi.fn().mockImplementation(({ data, where }: {
+    data: Record<string, unknown>;
+    where: Record<string, unknown>;
+  }) => ({
+    ...(opts.findFirstResult as Record<string, unknown>),
+    ...data,
+    id: (where['id'] as string) ?? SUBMITTAL_ID,
+  }));
+  const mockPrisma: MockPrisma = {
+    talentSubmittalRecord: {
+      create: vi.fn(),
+      findFirst,
+      update,
+    },
+  };
+  const mockEvidence = {} as unknown as EvidenceRepository;
+  const mockExamination = {
+    findByIdFull: vi.fn().mockResolvedValue(opts.findByIdFullResult),
+    findLatestByTenantTalentJob: vi.fn().mockResolvedValue(opts.findLatestResult),
+  } as unknown as ExaminationRepository;
+  const repo = new SubmittalRepository(
+    mockPrisma as unknown as PrismaService,
+    mockEvidence,
+    mockExamination,
+  );
+  return { repo, update };
+}
+
+const ENT_EXAM_ID = '11110000-0000-7000-8000-0000000e0001';
+
+function makeStoredDraft(overrides: Record<string, unknown> = {}): unknown {
+  return {
+    id: SUBMITTAL_ID,
+    tenant_id: TENANT_A,
+    talent_id: TALENT_A,
+    job_id: JOB_ID,
+    evidence_package_id: '99990000-0000-7000-8000-000000000002',
+    pinned_examination_id: ENT_EXAM_ID,
+    state: 'draft',
+    created_by: RECRUITER_ID,
+    justification: null,
+    failed_criterion_acknowledgments: null,
+    created_at: new Date('2026-05-23T12:00:00Z'),
+    confirmed_at: null,
+    ...overrides,
+  };
+}
+
+function makeFullView(overrides: Record<string, unknown> = {}): unknown {
+  return {
+    examination_id: ENT_EXAM_ID,
+    talent_id: TALENT_A,
+    job_id: JOB_ID,
+    tier: 'ENTRUSTABLE',
+    rank_ordinal: 1,
+    why_matched_sentence: 'matches',
+    top_skills: [],
+    confidence_summary: {
+      evidence_strength: { level: 'high', basis: 'x' },
+      data_completeness: { level: 'high', basis: 'x' },
+      constraint_confidence: { level: 'high', basis: 'x' },
+    },
+    freshness_indicator: { profile_age_days: 1 },
+    computed_at: new Date('2026-05-23T09:00:00Z'),
+    expanded_reasoning: [],
+    skill_match: { matched_count: 1, missing_count: 0, per_skill: [] },
+    experience_match: { years: 5 },
+    constraint_checks: {},
+    strengths: [],
+    gaps: [],
+    risk_flags: [],
+    delta_to_entrustable: null,
+    evidence_references: [],
+    lifecycle_state: 'active',
+    archived_at: null,
+    superseded_by_examination_id: null,
+    ...overrides,
+  };
+}
+
+describe('SubmittalRepository.confirmSubmittal (unit)', () => {
+  it('1. successful confirm: state transitions to submitted, confirmed_at set', async () => {
+    const { repo, update } = buildConfirmMocks({
+      findFirstResult: makeStoredDraft(),
+      findByIdFullResult: makeFullView(),
+      findLatestResult: { id: ENT_EXAM_ID },
+    });
+    const view = await repo.confirmSubmittal({
+      tenant_id: TENANT_A,
+      submittal_id: SUBMITTAL_ID,
+      attestations: {
+        talent_evidence_reviewed: true,
+        constraints_reviewed: true,
+        submittal_risk_acknowledged: true,
+      },
+      requestId: REQUEST_ID,
+    });
+    expect(view.state).toBe('submitted');
+    expect(update).toHaveBeenCalledTimes(1);
+    const updateArg = update.mock.calls[0]?.[0] as {
+      data: { state: string; confirmed_at: Date };
+      where: { id: string; tenant_id: string };
+    };
+    expect(updateArg.data.state).toBe('submitted');
+    expect(updateArg.data.confirmed_at).toBeInstanceOf(Date);
+    expect(updateArg.where.id).toBe(SUBMITTAL_ID);
+    expect(updateArg.where.tenant_id).toBe(TENANT_A);
+  });
+
+  it('2. findById null → NOT_FOUND 404', async () => {
+    const { repo, update } = buildConfirmMocks({
+      findFirstResult: null,
+      findByIdFullResult: null,
+      findLatestResult: null,
+    });
+    try {
+      await repo.confirmSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: SUBMITTAL_ID,
+        attestations: {
+          talent_evidence_reviewed: true,
+          constraints_reviewed: true,
+          submittal_risk_acknowledged: true,
+        },
+        requestId: REQUEST_ID,
+      });
+      throw new Error('expected throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AramoError);
+      expect((err as AramoError).code).toBe('NOT_FOUND');
+      expect((err as AramoError).statusCode).toBe(404);
+    }
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('3. state already "submitted" → SUBMITTAL_ALREADY_CONFIRMED 409', async () => {
+    const { repo, update } = buildConfirmMocks({
+      findFirstResult: makeStoredDraft({ state: 'submitted' }),
+      findByIdFullResult: makeFullView(),
+      findLatestResult: { id: ENT_EXAM_ID },
+    });
+    try {
+      await repo.confirmSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: SUBMITTAL_ID,
+        attestations: {
+          talent_evidence_reviewed: true,
+          constraints_reviewed: true,
+          submittal_risk_acknowledged: true,
+        },
+        requestId: REQUEST_ID,
+      });
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('SUBMITTAL_ALREADY_CONFIRMED');
+      expect((err as AramoError).statusCode).toBe(409);
+    }
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('4. findByIdFull null → EXAMINATION_PINNED_OUTDATED 409', async () => {
+    const { repo, update } = buildConfirmMocks({
+      findFirstResult: makeStoredDraft(),
+      findByIdFullResult: null,
+      findLatestResult: null,
+    });
+    try {
+      await repo.confirmSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: SUBMITTAL_ID,
+        attestations: {
+          talent_evidence_reviewed: true,
+          constraints_reviewed: true,
+          submittal_risk_acknowledged: true,
+        },
+        requestId: REQUEST_ID,
+      });
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('EXAMINATION_PINNED_OUTDATED');
+      expect((err as AramoError).statusCode).toBe(409);
+    }
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('5. lifecycle="archived" → EXAMINATION_PINNED_OUTDATED 409', async () => {
+    const { repo, update } = buildConfirmMocks({
+      findFirstResult: makeStoredDraft(),
+      findByIdFullResult: makeFullView({ lifecycle_state: 'archived' }),
+      findLatestResult: null,
+    });
+    try {
+      await repo.confirmSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: SUBMITTAL_ID,
+        attestations: {
+          talent_evidence_reviewed: true,
+          constraints_reviewed: true,
+          submittal_risk_acknowledged: true,
+        },
+        requestId: REQUEST_ID,
+      });
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('EXAMINATION_PINNED_OUTDATED');
+    }
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('6. tier="STRETCH" → SUBMITTAL_STRETCH_BLOCKED 422', async () => {
+    const { repo, update } = buildConfirmMocks({
+      findFirstResult: makeStoredDraft(),
+      findByIdFullResult: makeFullView({ tier: 'STRETCH' }),
+      findLatestResult: { id: ENT_EXAM_ID },
+    });
+    try {
+      await repo.confirmSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: SUBMITTAL_ID,
+        attestations: {
+          talent_evidence_reviewed: true,
+          constraints_reviewed: true,
+          submittal_risk_acknowledged: true,
+        },
+        requestId: REQUEST_ID,
+      });
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('SUBMITTAL_STRETCH_BLOCKED');
+      expect((err as AramoError).statusCode).toBe(422);
+    }
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('7. findLatest id mismatch → EXAMINATION_PINNED_OUTDATED 409', async () => {
+    const { repo, update } = buildConfirmMocks({
+      findFirstResult: makeStoredDraft(),
+      findByIdFullResult: makeFullView(),
+      findLatestResult: { id: 'ffff0000-0000-7000-8000-ffffffffffff' },
+    });
+    try {
+      await repo.confirmSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: SUBMITTAL_ID,
+        attestations: {
+          talent_evidence_reviewed: true,
+          constraints_reviewed: true,
+          submittal_risk_acknowledged: true,
+        },
+        requestId: REQUEST_ID,
+      });
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('EXAMINATION_PINNED_OUTDATED');
+    }
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('8. WORTH_CONSIDERING missing justification → JUSTIFICATION_REQUIRED 422', async () => {
+    const wcExamId = '22220000-0000-7000-8000-0000000c0001';
+    const { repo, update } = buildConfirmMocks({
+      findFirstResult: makeStoredDraft({ pinned_examination_id: wcExamId, justification: null }),
+      findByIdFullResult: makeFullView({ tier: 'WORTH_CONSIDERING' }),
+      findLatestResult: { id: wcExamId },
+    });
+    try {
+      await repo.confirmSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: SUBMITTAL_ID,
+        attestations: {
+          talent_evidence_reviewed: true,
+          constraints_reviewed: true,
+          submittal_risk_acknowledged: true,
+        },
+        requestId: REQUEST_ID,
+      });
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('JUSTIFICATION_REQUIRED');
+      expect((err as AramoError).statusCode).toBe(422);
+    }
+    expect(update).not.toHaveBeenCalled();
   });
 });

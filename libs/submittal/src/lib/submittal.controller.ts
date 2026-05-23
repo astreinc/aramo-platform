@@ -4,6 +4,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -11,6 +12,10 @@ import { AramoError, RequestId, hashCanonicalizedBody } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { IdempotencyService } from '@aramo/consent';
 
+import type {
+  ConfirmSubmittalRequestDto,
+  ConfirmSubmittalResponseDto,
+} from './dto/confirm-submittal-request.dto.js';
 import type {
   CreateSubmittalRequestDto,
   CreateSubmittalResponseDto,
@@ -203,5 +208,120 @@ export class SubmittalController {
       );
     }
     return sub;
+  }
+
+  // M4 PR-4 §4.3 — POST /v1/submittals/{submittal_id}/confirm.
+  //
+  // Recruiter-facing confirm flow that transitions a draft submittal to
+  // 'submitted' state and stamps confirmed_at. Pre-write guards (in
+  // order):
+  //   1. consumer_type must be 'recruiter' (INSUFFICIENT_PERMISSIONS 403)
+  //   2. Idempotency-Key header required (VALIDATION_ERROR 400)
+  //   3. submittal_id path param must be a UUID (VALIDATION_ERROR 400)
+  //   4. attestations manual check — all three must be literally true
+  //      (ATTESTATION_MISSING 422); §11 self-audit resolution: NO
+  //      @Equals(true) decorators on the DTO, because class-validator
+  //      surfaces failures as VALIDATION_ERROR which collides with the
+  //      directive-mandated ATTESTATION_MISSING code/status pair.
+  //   5. Idempotency-Key lookup (replay-or-conflict-or-proceed).
+  //   6. Repository confirm (the 8-step §4.2 flow).
+  //   7. Persist idempotency record on success.
+  //
+  // Refusal codes that may flow up from the repository:
+  //   - NOT_FOUND (404), SUBMITTAL_ALREADY_CONFIRMED (409),
+  //     EXAMINATION_PINNED_OUTDATED (409), SUBMITTAL_STRETCH_BLOCKED (422),
+  //     JUSTIFICATION_REQUIRED (422).
+  // Each AramoError thrown by the repository already carries the bound
+  // requestId via the ConfirmSubmittalInput.requestId — no re-wrapping
+  // needed at this layer.
+  @Post(':submittal_id/confirm')
+  @HttpCode(HttpStatus.OK)
+  async confirmSubmittal(
+    @Param('submittal_id') submittal_id: string,
+    @Body() body: ConfirmSubmittalRequestDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ConfirmSubmittalResponseDto> {
+    // Step 1 — auth posture (recruiter-only).
+    this.assertConsumerIsRecruiter(authContext, requestId);
+
+    // Step 2 — Idempotency-Key required.
+    const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
+
+    // Step 3 — submittal_id UUID validation.
+    if (!UUID_REGEX.test(submittal_id)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'submittal_id path parameter must be a UUID',
+        400,
+        { requestId, details: { invalid_field: 'submittal_id' } },
+      );
+    }
+
+    // Step 4 — attestations manual check. The DTO documents the locked
+    // `true` values via TS type literals + OpenAPI const; runtime
+    // enforcement happens here so we can throw the directive-mandated
+    // ATTESTATION_MISSING 422 rather than class-validator's
+    // VALIDATION_ERROR 400 (§4.4 / §11 self-audit resolution).
+    if (
+      body.attestations.talent_evidence_reviewed !== true
+      || body.attestations.constraints_reviewed !== true
+      || body.attestations.submittal_risk_acknowledged !== true
+    ) {
+      throw new AramoError(
+        'ATTESTATION_MISSING',
+        'All three attestations must be true: talent_evidence_reviewed, constraints_reviewed, submittal_risk_acknowledged',
+        422,
+        {
+          requestId,
+          details: {
+            submittal_id,
+            talent_evidence_reviewed: body.attestations.talent_evidence_reviewed,
+            constraints_reviewed: body.attestations.constraints_reviewed,
+            submittal_risk_acknowledged: body.attestations.submittal_risk_acknowledged,
+          },
+        },
+      );
+    }
+
+    // Step 5 — idempotency lookup. Replay returns the prior 200 body
+    // without touching state; conflict throws 409 IDEMPOTENCY_KEY_CONFLICT;
+    // proceed continues to repository call.
+    const requestHash = hashCanonicalizedBody(body as unknown);
+    const lookup = await this.idempotencyService.lookup({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      requestId,
+    });
+    if (lookup.kind === 'replay') {
+      return lookup.response_body as ConfirmSubmittalResponseDto;
+    }
+
+    // Step 6 — repository confirm. AramoErrors raised by the 8-step
+    // flow already carry the correct requestId (threaded via the input
+    // shape), so they propagate unchanged.
+    const submittal: TalentSubmittalRecordView =
+      await this.submittalRepository.confirmSubmittal({
+        tenant_id: authContext.tenant_id,
+        submittal_id,
+        attestations: body.attestations,
+        requestId,
+      });
+
+    const response: ConfirmSubmittalResponseDto = { submittal };
+
+    // Step 7 — persist idempotency record (post-mutation success only;
+    // a failed confirm leaves no cached response).
+    await this.idempotencyService.persist({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      response_status: HttpStatus.OK,
+      response_body: response,
+    });
+
+    return response;
   }
 }

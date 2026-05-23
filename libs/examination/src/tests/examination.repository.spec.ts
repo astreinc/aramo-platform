@@ -23,7 +23,7 @@ describe('ExaminationRepository — surface', () => {
   // closed-surface immutability discipline is preserved (the
   // no-analytical-mutation test below still passes — read projections
   // issue no UPDATE).
-  it('exposes exactly the PR-1 + PR-6 + PR-7 surface (4 + 2 + 1 methods)', () => {
+  it('exposes exactly the PR-1 + PR-6 + PR-7 + M4 PR-4 surface (4 + 2 + 1 + 1 methods)', () => {
     const methods = Object.getOwnPropertyNames(ExaminationRepository.prototype)
       .filter((m) => m !== 'constructor')
       .sort();
@@ -35,6 +35,11 @@ describe('ExaminationRepository — surface', () => {
         'findByIdFull',
         'findByIdSummary',
         'findByTenantAndTalent',
+        // M4 PR-4 §4.1 — newest-active-snapshot lookup per
+        // (tenant, talent, job). Consumed by SubmittalRepository
+        // .confirmSubmittal to verify the pinned examination is still the
+        // latest before transitioning state to 'submitted'.
+        'findLatestByTenantTalentJob',
         'markSuperseded',
       ].sort(),
     );

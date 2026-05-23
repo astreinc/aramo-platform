@@ -11,3 +11,13 @@ export type {
   SubmittalStateValue,
   TalentSubmittalRecordView,
 } from './lib/dto/index.js';
+
+// M4 PR-4 — confirm endpoint surfaces.
+export {
+  ConfirmSubmittalRequestDto,
+  RecruiterAttestationsDto,
+} from './lib/dto/index.js';
+export type {
+  ConfirmSubmittalResponseDto,
+} from './lib/dto/index.js';
+export type { ConfirmSubmittalInput } from './lib/submittal.repository.js';
