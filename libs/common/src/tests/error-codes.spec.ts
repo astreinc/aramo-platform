@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 18 codes including M4 PR-5 OVERRIDE_INVALID', () => {
+  it('ERROR_CODES contains the 19 codes including M4 PR-7 REVOKE_NOT_ALLOWED', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -57,6 +57,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'EXAMINATION_PINNED_OUTDATED',
       'SUBMITTAL_ALREADY_CONFIRMED',
       'OVERRIDE_INVALID',
+      'REVOKE_NOT_ALLOWED',
     ]);
   });
 });

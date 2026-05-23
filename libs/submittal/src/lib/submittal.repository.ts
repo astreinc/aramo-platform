@@ -50,6 +50,11 @@ interface TalentSubmittalRecordRow {
   failed_criterion_acknowledgments: unknown;
   created_at: Date;
   confirmed_at: Date | null;
+  // M4 PR-7 — revoke metadata. Nullable until the submittal-revoke
+  // endpoint atomically transitions submitted→revoked.
+  revoked_at: Date | null;
+  revoked_by: string | null;
+  revocation_justification: string | null;
 }
 
 function projectView(row: TalentSubmittalRecordRow): TalentSubmittalRecordView {
@@ -69,6 +74,9 @@ function projectView(row: TalentSubmittalRecordRow): TalentSubmittalRecordView {
         : (row.failed_criterion_acknowledgments as readonly FailedCriterionAcknowledgment[]),
     created_at: row.created_at,
     confirmed_at: row.confirmed_at,
+    revoked_at: row.revoked_at,
+    revoked_by: row.revoked_by,
+    revocation_justification: row.revocation_justification,
   };
 }
 
@@ -81,6 +89,22 @@ export interface ConfirmSubmittalInput {
   tenant_id: string;
   submittal_id: string;
   attestations: RecruiterAttestationsDto;
+  requestId: string;
+}
+
+// M4 PR-7 §4.3 — repository-layer input for the submittal-revoke flow.
+//   - tenant_id: JWT-derived; required for tenant-scoped findById.
+//   - submittal_id: HTTP path param.
+//   - revoked_by: UUID of the recruiter actor performing the revoke
+//     (derived from JWT sub at the controller boundary).
+//   - revocation_justification: recruiter-authored rationale.
+//   - requestId: bound into each AramoError envelope so the response
+//     surfaces the correct request_id.
+export interface RevokeSubmittalInput {
+  tenant_id: string;
+  submittal_id: string;
+  revoked_by: string;
+  revocation_justification: string;
   requestId: string;
 }
 
@@ -489,6 +513,115 @@ export class SubmittalRepository {
       pinned_examination_id: view.pinned_examination_id,
       latency_ms: Date.now() - startedAt,
     });
+    return view;
+  }
+
+  // M4 PR-7 §4.3 — revoke flow.
+  //
+  // Transitions a TalentSubmittalRecord from 'submitted' to 'revoked'
+  // and stamps revoked_at / revoked_by / revocation_justification
+  // atomically. The Transition B branch in the column-scoped trigger
+  // (engagement.reject_submittal_record_update, PR-7 migration) is the
+  // substrate-layer enforcement; this method is the first line of
+  // defense.
+  //
+  // WRITE-ISOLATION CONTRACT (directive §4.3): this method touches
+  // ONLY engagement.TalentSubmittalRecord via
+  // prisma.talentSubmittalRecord.update. The referenced
+  // evidence.TalentJobEvidencePackage row is NEVER read or written by
+  // this method — the controller emits the literal
+  // `evidence_package_mutated: false` in the response, and the Pact
+  // provider state-isolation invariant (§4.9) verifies byte-identity
+  // of the evidence-package row across every revoke interaction.
+  //
+  // Five ordered steps (each AramoError carries input.requestId so the
+  // response envelope's request_id is correct):
+  //   (1) findById tenant-scoped — null → NOT_FOUND 404.
+  //   (2) state validation. Must be 'submitted'. Any other state
+  //       ('draft', 'revoked') → REVOKE_NOT_ALLOWED 422 with
+  //       current_state detail.
+  //   (3) prisma.talentSubmittalRecord.update with tenant_id + id
+  //       filter, setting state='revoked' and revoked_at/by/
+  //       justification populated atomically. The trigger validates
+  //       the transition.
+  //   (4) structured logging at entry, refused, success.
+  //   (5) project the updated row through projectView and return.
+  async revokeSubmittal(
+    input: RevokeSubmittalInput,
+  ): Promise<TalentSubmittalRecordView> {
+    const startedAt = Date.now();
+    this.logger.log({
+      event: 'submittal_revoke_started',
+      tenant_id: input.tenant_id,
+      submittal_id: input.submittal_id,
+    });
+
+    // Step 1 — tenant-scoped load.
+    const submittal = await this.findById({
+      tenant_id: input.tenant_id,
+      id: input.submittal_id,
+    });
+    if (submittal === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentSubmittalRecord not found',
+        404,
+        {
+          requestId: input.requestId,
+          details: { submittal_id: input.submittal_id },
+        },
+      );
+    }
+
+    // Step 2 — state validation. Only 'submitted' may be revoked.
+    if (submittal.state !== 'submitted') {
+      this.logger.log({
+        event: 'submittal_revoke_refused',
+        tenant_id: input.tenant_id,
+        submittal_id: input.submittal_id,
+        code: 'REVOKE_NOT_ALLOWED',
+        current_state: submittal.state,
+      });
+      throw new AramoError(
+        'REVOKE_NOT_ALLOWED',
+        `Submittal in state ${submittal.state} cannot be revoked; only submitted submittals may be revoked`,
+        422,
+        {
+          requestId: input.requestId,
+          details: {
+            submittal_id: input.submittal_id,
+            current_state: submittal.state,
+          },
+        },
+      );
+    }
+
+    // Step 3 — atomic UPDATE. state + revoked_at + revoked_by +
+    // revocation_justification all move together; the column-scoped
+    // trigger's Transition B branch validates the move. NO call to
+    // prisma.talentJobEvidencePackage.* anywhere in this method.
+    const updated = await this.prisma.talentSubmittalRecord.update({
+      where: { id: input.submittal_id, tenant_id: input.tenant_id },
+      data: {
+        state: 'revoked',
+        revoked_at: new Date(),
+        revoked_by: input.revoked_by,
+        revocation_justification: input.revocation_justification,
+      },
+    });
+
+    const view = projectView(updated as TalentSubmittalRecordRow);
+
+    // Step 4 — success log.
+    this.logger.log({
+      event: 'submittal_revoked',
+      tenant_id: view.tenant_id,
+      submittal_id: view.id,
+      revoked_by: view.revoked_by,
+      latency_ms: Date.now() - startedAt,
+    });
+
+    // Step 5 — return projected view.
     return view;
   }
 }

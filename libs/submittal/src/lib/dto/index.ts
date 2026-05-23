@@ -18,3 +18,7 @@ export {
 export type {
   ConfirmSubmittalResponseDto,
 } from './confirm-submittal-request.dto.js';
+
+// M4 PR-7 §4.5 — revoke endpoint DTOs.
+export { RevokeSubmittalRequestDto } from './revoke-submittal-request.dto.js';
+export type { RevokeSubmittalResponseDto } from './revoke-submittal-response.dto.js';

@@ -16,6 +16,13 @@ import {
   TalentEvidenceRepository,
   PrismaService as TalentEvidencePrismaService,
 } from '@aramo/talent-evidence';
+// M4 PR-7 §4.10 — IdempotencyService imported for the integration-
+// level replay/conflict test (no new Nx edge — SubmittalController
+// already depends on @aramo/consent for the same service).
+import {
+  IdempotencyService,
+  PrismaService as ConsentPrismaService,
+} from '@aramo/consent';
 
 import type { CreateSubmittalInput } from '../lib/dto/talent-submittal-record.view.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
@@ -43,6 +50,14 @@ import { SubmittalRepository } from '../lib/submittal.repository.js';
 const SUBMITTAL_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260523120000_init_submittal_model/migration.sql',
+);
+// M4 PR-7 — submittal-revoke schema extension migration. Applied
+// after the init migration so the ALTER TYPE / ALTER TABLE statements
+// extend the existing enum + table; the CREATE OR REPLACE FUNCTION
+// rewrites the column-scoped trigger to encode Transition A + B.
+const SUBMITTAL_REVOKE_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
 );
 const EXAMINATION_INIT_PATH = resolve(
   __dirname,
@@ -123,6 +138,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(TALENT_EVIDENCE_INIT_PATH, 'utf8'),
         readFileSync(EVIDENCE_INIT_PATH, 'utf8'),
         readFileSync(SUBMITTAL_MIGRATION_PATH, 'utf8'),
+        // M4 PR-7 — submittal-revoke schema extension. Applied after
+        // the init migration so the ALTER TYPE / ALTER TABLE land on
+        // the existing enum + table; the CREATE OR REPLACE FUNCTION
+        // rewrites the column-scoped trigger to encode both legal
+        // transitions (A: draft→submitted, B: submitted→revoked).
+        readFileSync(SUBMITTAL_REVOKE_MIGRATION_PATH, 'utf8'),
       ];
 
       setupClient = new PrismaService(url);
@@ -686,6 +707,600 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(seenByB).toBeNull();
     });
 
+    // =========================================================================
+    // M4 PR-7 §4.10 — revokeSubmittal integration tests + extended
+    // PR-3 immutability block.
+    // =========================================================================
+
+    it('M4 PR-7: successful revoke + state-isolation byte-identity (TalentJobEvidencePackage unchanged)', async () => {
+      // Audit §M Q3 refinement — single revoke, not a 3-sequential
+      // chain. Seed isolated (talent, job, examination), drive draft →
+      // submitted via raw SQL through the column-scoped trigger, then
+      // call repo.revokeSubmittal and assert state='revoked' +
+      // evidence-package row hash byte-identical pre/post.
+      const talentR = 'aaaaaaaa-0000-7000-8000-0000000a7001';
+      const jobR = 'cccccccc-0000-7000-8000-0000000c7001';
+      const examR = '11110000-0000-7000-8000-0000000e7001';
+      await seedExamination(setupClient, {
+        id: examR,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentR,
+        job_id: jobR,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: examR,
+          talent_id: talentR,
+          job_id: jobR,
+        }),
+      );
+      // Drive draft → submitted via raw SQL (Transition A through the
+      // column-scoped trigger) so the row is eligible for revoke.
+      await submittalPrisma.$executeRawUnsafe(
+        `UPDATE engagement."TalentSubmittalRecord"
+           SET state = 'submitted'::engagement."SubmittalState",
+               confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
+           WHERE id = '${draft.id}'::uuid`,
+      );
+
+      // Capture pre-revoke evidence-package row hash.
+      const preRows = (await submittalPrisma.$queryRawUnsafe(
+        `SELECT * FROM evidence."TalentJobEvidencePackage" WHERE id = '${draft.evidence_package_id}'::uuid`,
+      )) as Array<Record<string, unknown>>;
+      const preHash = hashRow(preRows[0]!);
+
+      const revoker = '00000000-0000-7000-8000-000000000bb2';
+      const view = await repo.revokeSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: draft.id,
+        revoked_by: revoker,
+        revocation_justification: 'Hiring manager paused requisition.',
+        requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b7001',
+      });
+      expect(view.state).toBe('revoked');
+      expect(view.revoked_at).toBeInstanceOf(Date);
+      expect(view.revoked_by).toBe(revoker);
+      expect(view.revocation_justification).toBe('Hiring manager paused requisition.');
+
+      // Re-read the submittal directly and confirm state='revoked' +
+      // metadata persisted.
+      const reread = await repo.findById({ tenant_id: TENANT_A, id: draft.id });
+      expect(reread?.state).toBe('revoked');
+      expect(reread?.revoked_at).toBeInstanceOf(Date);
+      expect(reread?.revoked_by).toBe(revoker);
+
+      // State-isolation byte-identity: evidence-package row hash must
+      // be unchanged post-revoke.
+      const postRows = (await submittalPrisma.$queryRawUnsafe(
+        `SELECT * FROM evidence."TalentJobEvidencePackage" WHERE id = '${draft.evidence_package_id}'::uuid`,
+      )) as Array<Record<string, unknown>>;
+      const postHash = hashRow(postRows[0]!);
+      expect(postHash).toBe(preHash);
+    });
+
+    it('M4 PR-7: revoke on draft → REVOKE_NOT_ALLOWED 422; row unchanged', async () => {
+      const talentRd = 'aaaaaaaa-0000-7000-8000-0000000a7011';
+      const jobRd = 'cccccccc-0000-7000-8000-0000000c7011';
+      const examRd = '11110000-0000-7000-8000-0000000e7011';
+      await seedExamination(setupClient, {
+        id: examRd,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentRd,
+        job_id: jobRd,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: examRd,
+          talent_id: talentRd,
+          job_id: jobRd,
+        }),
+      );
+      try {
+        await repo.revokeSubmittal({
+          tenant_id: TENANT_A,
+          submittal_id: draft.id,
+          revoked_by: '00000000-0000-7000-8000-000000000bb2',
+          revocation_justification: 'should refuse on draft',
+          requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b7002',
+        });
+        throw new Error('expected throw');
+      } catch (err) {
+        expect((err as AramoError).code).toBe('REVOKE_NOT_ALLOWED');
+        expect((err as AramoError).statusCode).toBe(422);
+        expect((err as AramoError).context.details).toMatchObject({
+          current_state: 'draft',
+        });
+      }
+      const reread = await repo.findById({ tenant_id: TENANT_A, id: draft.id });
+      expect(reread?.state).toBe('draft');
+      expect(reread?.revoked_at).toBeNull();
+    });
+
+    it('M4 PR-7: revoke on already-revoked → REVOKE_NOT_ALLOWED 422; row unchanged', async () => {
+      const talentRr = 'aaaaaaaa-0000-7000-8000-0000000a7021';
+      const jobRr = 'cccccccc-0000-7000-8000-0000000c7021';
+      const examRr = '11110000-0000-7000-8000-0000000e7021';
+      await seedExamination(setupClient, {
+        id: examRr,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentRr,
+        job_id: jobRr,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: examRr,
+          talent_id: talentRr,
+          job_id: jobRr,
+        }),
+      );
+      // Drive draft → submitted then submitted → revoked via raw SQL.
+      await submittalPrisma.$executeRawUnsafe(
+        `UPDATE engagement."TalentSubmittalRecord"
+           SET state = 'submitted'::engagement."SubmittalState",
+               confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
+           WHERE id = '${draft.id}'::uuid`,
+      );
+      const revoker = '00000000-0000-7000-8000-000000000bb2';
+      await repo.revokeSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: draft.id,
+        revoked_by: revoker,
+        revocation_justification: 'first revoke',
+        requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b7003',
+      });
+      const beforeSecond = await repo.findById({
+        tenant_id: TENANT_A,
+        id: draft.id,
+      });
+      try {
+        await repo.revokeSubmittal({
+          tenant_id: TENANT_A,
+          submittal_id: draft.id,
+          revoked_by: revoker,
+          revocation_justification: 'second revoke attempt',
+          requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b7004',
+        });
+        throw new Error('expected throw');
+      } catch (err) {
+        expect((err as AramoError).code).toBe('REVOKE_NOT_ALLOWED');
+        expect((err as AramoError).context.details).toMatchObject({
+          current_state: 'revoked',
+        });
+      }
+      const afterSecond = await repo.findById({
+        tenant_id: TENANT_A,
+        id: draft.id,
+      });
+      expect(afterSecond?.revoked_at?.toISOString()).toBe(
+        beforeSecond?.revoked_at?.toISOString(),
+      );
+      expect(afterSecond?.revocation_justification).toBe('first revoke');
+    });
+
+    it('M4 PR-7: post-revoke immutability — any UPDATE attempt raises check_violation', async () => {
+      const talentPi = 'aaaaaaaa-0000-7000-8000-0000000a7031';
+      const jobPi = 'cccccccc-0000-7000-8000-0000000c7031';
+      const examPi = '11110000-0000-7000-8000-0000000e7031';
+      await seedExamination(setupClient, {
+        id: examPi,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentPi,
+        job_id: jobPi,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: examPi,
+          talent_id: talentPi,
+          job_id: jobPi,
+        }),
+      );
+      await submittalPrisma.$executeRawUnsafe(
+        `UPDATE engagement."TalentSubmittalRecord"
+           SET state = 'submitted'::engagement."SubmittalState",
+               confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
+           WHERE id = '${draft.id}'::uuid`,
+      );
+      await repo.revokeSubmittal({
+        tenant_id: TENANT_A,
+        submittal_id: draft.id,
+        revoked_by: '00000000-0000-7000-8000-000000000bb2',
+        revocation_justification: 'revoke for post-immutability test',
+        requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b7005',
+      });
+      // Attempt to overwrite revocation_justification on the
+      // already-revoked row — trigger refuses both transitions, so
+      // raises.
+      await expect(
+        submittalPrisma.$executeRawUnsafe(
+          `UPDATE engagement."TalentSubmittalRecord"
+             SET revocation_justification = 'overwritten'
+             WHERE id = '${draft.id}'::uuid`,
+        ),
+      ).rejects.toThrow(/column-scoped immutable per Group 2 §2.6/);
+    });
+
+    // -------------------------------------------------------------------------
+    // EXTENDED PR-3 immutability test block (directive §A2 audit) —
+    // covers Transition B allow + 5 new refusal cases on the column-
+    // scoped trigger.
+    // -------------------------------------------------------------------------
+
+    it('M4 PR-7 trigger: Transition B allow — raw SQL submitted → revoked with all columns populated atomically', async () => {
+      const talentTb = 'aaaaaaaa-0000-7000-8000-0000000a7041';
+      const jobTb = 'cccccccc-0000-7000-8000-0000000c7041';
+      const examTb = '11110000-0000-7000-8000-0000000e7041';
+      await seedExamination(setupClient, {
+        id: examTb,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentTb,
+        job_id: jobTb,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: examTb,
+          talent_id: talentTb,
+          job_id: jobTb,
+        }),
+      );
+      await submittalPrisma.$executeRawUnsafe(
+        `UPDATE engagement."TalentSubmittalRecord"
+           SET state = 'submitted'::engagement."SubmittalState",
+               confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
+           WHERE id = '${draft.id}'::uuid`,
+      );
+      // Raw SQL submitted → revoked with all three columns atomic.
+      await submittalPrisma.$executeRawUnsafe(
+        `UPDATE engagement."TalentSubmittalRecord"
+           SET state = 'revoked'::engagement."SubmittalState",
+               revoked_at = '2026-05-23T15:00:00Z'::timestamptz,
+               revoked_by = '00000000-0000-7000-8000-000000000bb2'::uuid,
+               revocation_justification = 'Transition B raw allow'
+           WHERE id = '${draft.id}'::uuid`,
+      );
+      const reread = await repo.findById({ tenant_id: TENANT_A, id: draft.id });
+      expect(reread?.state).toBe('revoked');
+      expect(reread?.revocation_justification).toBe('Transition B raw allow');
+    });
+
+    it('M4 PR-7 trigger: draft → revoked refuse (illegal direct jump)', async () => {
+      const talentI1 = 'aaaaaaaa-0000-7000-8000-0000000a7051';
+      const jobI1 = 'cccccccc-0000-7000-8000-0000000c7051';
+      const examI1 = '11110000-0000-7000-8000-0000000e7051';
+      await seedExamination(setupClient, {
+        id: examI1,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentI1,
+        job_id: jobI1,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: examI1,
+          talent_id: talentI1,
+          job_id: jobI1,
+        }),
+      );
+      await expect(
+        submittalPrisma.$executeRawUnsafe(
+          `UPDATE engagement."TalentSubmittalRecord"
+             SET state = 'revoked'::engagement."SubmittalState",
+                 revoked_at = '2026-05-23T15:00:00Z'::timestamptz,
+                 revoked_by = '00000000-0000-7000-8000-000000000bb2'::uuid,
+                 revocation_justification = 'illegal direct jump'
+             WHERE id = '${draft.id}'::uuid`,
+        ),
+      ).rejects.toThrow(/column-scoped immutable per Group 2 §2.6/);
+    });
+
+    it('M4 PR-7 trigger: revoked → submitted refuse (illegal reverse)', async () => {
+      const talentI2 = 'aaaaaaaa-0000-7000-8000-0000000a7061';
+      const jobI2 = 'cccccccc-0000-7000-8000-0000000c7061';
+      const examI2 = '11110000-0000-7000-8000-0000000e7061';
+      await seedExamination(setupClient, {
+        id: examI2,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentI2,
+        job_id: jobI2,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: examI2,
+          talent_id: talentI2,
+          job_id: jobI2,
+        }),
+      );
+      await submittalPrisma.$executeRawUnsafe(
+        `UPDATE engagement."TalentSubmittalRecord"
+           SET state = 'submitted'::engagement."SubmittalState",
+               confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
+           WHERE id = '${draft.id}'::uuid`,
+      );
+      await submittalPrisma.$executeRawUnsafe(
+        `UPDATE engagement."TalentSubmittalRecord"
+           SET state = 'revoked'::engagement."SubmittalState",
+               revoked_at = '2026-05-23T15:00:00Z'::timestamptz,
+               revoked_by = '00000000-0000-7000-8000-000000000bb2'::uuid,
+               revocation_justification = 'first revoke'
+           WHERE id = '${draft.id}'::uuid`,
+      );
+      await expect(
+        submittalPrisma.$executeRawUnsafe(
+          `UPDATE engagement."TalentSubmittalRecord"
+             SET state = 'submitted'::engagement."SubmittalState"
+             WHERE id = '${draft.id}'::uuid`,
+        ),
+      ).rejects.toThrow(/column-scoped immutable per Group 2 §2.6/);
+    });
+
+    it('M4 PR-7 trigger: revoked → revoked refuse (re-revoke attempt)', async () => {
+      const talentI3 = 'aaaaaaaa-0000-7000-8000-0000000a7071';
+      const jobI3 = 'cccccccc-0000-7000-8000-0000000c7071';
+      const examI3 = '11110000-0000-7000-8000-0000000e7071';
+      await seedExamination(setupClient, {
+        id: examI3,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentI3,
+        job_id: jobI3,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: examI3,
+          talent_id: talentI3,
+          job_id: jobI3,
+        }),
+      );
+      await submittalPrisma.$executeRawUnsafe(
+        `UPDATE engagement."TalentSubmittalRecord"
+           SET state = 'submitted'::engagement."SubmittalState",
+               confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
+           WHERE id = '${draft.id}'::uuid`,
+      );
+      await submittalPrisma.$executeRawUnsafe(
+        `UPDATE engagement."TalentSubmittalRecord"
+           SET state = 'revoked'::engagement."SubmittalState",
+               revoked_at = '2026-05-23T15:00:00Z'::timestamptz,
+               revoked_by = '00000000-0000-7000-8000-000000000bb2'::uuid,
+               revocation_justification = 'first revoke'
+           WHERE id = '${draft.id}'::uuid`,
+      );
+      await expect(
+        submittalPrisma.$executeRawUnsafe(
+          `UPDATE engagement."TalentSubmittalRecord"
+             SET revocation_justification = 'second revoke'
+             WHERE id = '${draft.id}'::uuid`,
+        ),
+      ).rejects.toThrow(/column-scoped immutable per Group 2 §2.6/);
+    });
+
+    it('M4 PR-7 trigger: submitted → submitted refuse (re-confirm attempt)', async () => {
+      const talentI4 = 'aaaaaaaa-0000-7000-8000-0000000a7081';
+      const jobI4 = 'cccccccc-0000-7000-8000-0000000c7081';
+      const examI4 = '11110000-0000-7000-8000-0000000e7081';
+      await seedExamination(setupClient, {
+        id: examI4,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentI4,
+        job_id: jobI4,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: examI4,
+          talent_id: talentI4,
+          job_id: jobI4,
+        }),
+      );
+      await submittalPrisma.$executeRawUnsafe(
+        `UPDATE engagement."TalentSubmittalRecord"
+           SET state = 'submitted'::engagement."SubmittalState",
+               confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
+           WHERE id = '${draft.id}'::uuid`,
+      );
+      // Re-set confirmed_at to a later timestamp on the already-
+      // submitted row — Transition A requires OLD.confirmed_at IS NULL,
+      // so the trigger refuses.
+      await expect(
+        submittalPrisma.$executeRawUnsafe(
+          `UPDATE engagement."TalentSubmittalRecord"
+             SET confirmed_at = '2026-05-23T14:00:00Z'::timestamptz
+             WHERE id = '${draft.id}'::uuid`,
+        ),
+      ).rejects.toThrow(/column-scoped immutable per Group 2 §2.6/);
+    });
+
+    it('M4 PR-7 trigger: state-only submitted → revoked refuse (revoke columns missing)', async () => {
+      const talentI5 = 'aaaaaaaa-0000-7000-8000-0000000a7091';
+      const jobI5 = 'cccccccc-0000-7000-8000-0000000c7091';
+      const examI5 = '11110000-0000-7000-8000-0000000e7091';
+      await seedExamination(setupClient, {
+        id: examI5,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentI5,
+        job_id: jobI5,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: examI5,
+          talent_id: talentI5,
+          job_id: jobI5,
+        }),
+      );
+      await submittalPrisma.$executeRawUnsafe(
+        `UPDATE engagement."TalentSubmittalRecord"
+           SET state = 'submitted'::engagement."SubmittalState",
+               confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
+           WHERE id = '${draft.id}'::uuid`,
+      );
+      // State moves but revoke metadata stays NULL — Transition B
+      // requires all three to become non-NULL atomically.
+      await expect(
+        submittalPrisma.$executeRawUnsafe(
+          `UPDATE engagement."TalentSubmittalRecord"
+             SET state = 'revoked'::engagement."SubmittalState"
+             WHERE id = '${draft.id}'::uuid`,
+        ),
+      ).rejects.toThrow(/column-scoped immutable per Group 2 §2.6/);
+    });
+
+    it('M4 PR-7 trigger: other-column mutation refused on submitted → revoked', async () => {
+      const talentI6 = 'aaaaaaaa-0000-7000-8000-0000000a70a1';
+      const jobI6 = 'cccccccc-0000-7000-8000-0000000c70a1';
+      const examI6 = '11110000-0000-7000-8000-0000000e70a1';
+      await seedExamination(setupClient, {
+        id: examI6,
+        tenant_id: TENANT_A,
+        tier: 'ENTRUSTABLE',
+        lifecycle_state: 'active',
+        talent_id: talentI6,
+        job_id: jobI6,
+      });
+      const draft = await repo.createSubmittal(
+        makeInput({
+          examination_id: examI6,
+          talent_id: talentI6,
+          job_id: jobI6,
+        }),
+      );
+      await submittalPrisma.$executeRawUnsafe(
+        `UPDATE engagement."TalentSubmittalRecord"
+           SET state = 'submitted'::engagement."SubmittalState",
+               confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
+           WHERE id = '${draft.id}'::uuid`,
+      );
+      // Transition B move + simultaneous justification mutation —
+      // Transition B requires OLD.justification IS NOT DISTINCT FROM
+      // NEW.justification, so the trigger refuses.
+      await expect(
+        submittalPrisma.$executeRawUnsafe(
+          `UPDATE engagement."TalentSubmittalRecord"
+             SET state = 'revoked'::engagement."SubmittalState",
+                 revoked_at = '2026-05-23T15:00:00Z'::timestamptz,
+                 revoked_by = '00000000-0000-7000-8000-000000000bb2'::uuid,
+                 revocation_justification = 'with justification mutation',
+                 justification = 'illegally mutated justification'
+             WHERE id = '${draft.id}'::uuid`,
+        ),
+      ).rejects.toThrow(/column-scoped immutable per Group 2 §2.6/);
+    });
+
+    it('M4 PR-7: tenant isolation — cross-tenant revoke returns NOT_FOUND', async () => {
+      const tenantBDraft = await repo.createSubmittal(
+        makeInput({ tenant_id: TENANT_B, examination_id: TENANT_B_EXAM_ID }),
+      );
+      await submittalPrisma.$executeRawUnsafe(
+        `UPDATE engagement."TalentSubmittalRecord"
+           SET state = 'submitted'::engagement."SubmittalState",
+               confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
+           WHERE id = '${tenantBDraft.id}'::uuid`,
+      );
+      try {
+        await repo.revokeSubmittal({
+          tenant_id: TENANT_A,
+          submittal_id: tenantBDraft.id,
+          revoked_by: '00000000-0000-7000-8000-000000000bb2',
+          revocation_justification: 'cross-tenant attempt',
+          requestId: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b7006',
+        });
+        throw new Error('expected throw');
+      } catch (err) {
+        expect((err as AramoError).code).toBe('NOT_FOUND');
+      }
+    });
+
+    it('M4 PR-7: idempotency replay — IdempotencyService same-key-same-body returns prior 200; same-key-different-body returns 409', async () => {
+      // Integration-level test of the IdempotencyService contract that
+      // the revoke controller relies on (PR-7 directive §4.10). Applies
+      // the consent migration lazily on-demand so the IdempotencyKey
+      // table exists, constructs an IdempotencyService over the same
+      // Postgres testcontainer, and verifies replay + conflict.
+      const consentMigration = readFileSync(
+        resolve(
+          __dirname,
+          '../../../consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
+        ),
+        'utf8',
+      );
+      for (const stmt of splitDdl(consentMigration)) {
+        const trimmed = stmt.trim();
+        if (trimmed.length === 0) continue;
+        await setupClient.$executeRawUnsafe(trimmed);
+      }
+      const consentPrisma = new ConsentPrismaService(
+        container.getConnectionUri(),
+      );
+      await consentPrisma.$connect();
+      const idempotency = new IdempotencyService(consentPrisma);
+
+      const tenant = TENANT_A;
+      const key = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b7100';
+      const requestHash = 'hash-aaa';
+      const requestId = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b7101';
+
+      // First lookup — no prior row → proceed.
+      const first = await idempotency.lookup({
+        tenant_id: tenant,
+        key,
+        request_hash: requestHash,
+        requestId,
+      });
+      expect(first.kind).toBe('proceed');
+
+      // Persist a 200 response with the request_hash.
+      await idempotency.persist({
+        tenant_id: tenant,
+        key,
+        request_hash: requestHash,
+        response_status: 200,
+        response_body: { ok: true },
+      });
+
+      // Same key + same body → replay.
+      const replay = await idempotency.lookup({
+        tenant_id: tenant,
+        key,
+        request_hash: requestHash,
+        requestId,
+      });
+      expect(replay.kind).toBe('replay');
+      if (replay.kind === 'replay') {
+        expect(replay.response_status).toBe(200);
+      }
+
+      // Same key + different body → IDEMPOTENCY_KEY_CONFLICT 409.
+      try {
+        await idempotency.lookup({
+          tenant_id: tenant,
+          key,
+          request_hash: 'hash-bbb',
+          requestId,
+        });
+        throw new Error('expected throw');
+      } catch (err) {
+        expect((err as AramoError).code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+        expect((err as AramoError).statusCode).toBe(409);
+      }
+
+      await consentPrisma.$disconnect();
+    });
+
     it('M4 PR-6: get-then-evidence chain — both findById calls succeed when tenant matches', async () => {
       // Use an isolated (talent, job) so the chain is unambiguously this
       // draft's package row.
@@ -830,6 +1445,24 @@ async function countPackageRowsByExam(
     `SELECT COUNT(*)::int AS n FROM evidence."TalentJobEvidencePackage" WHERE examination_id = '${examination_id}'::uuid`,
   )) as Array<{ n: number }>;
   return rows[0]?.n ?? 0;
+}
+
+// M4 PR-7 §4.10 — deterministic byte-identity hash for the
+// TalentJobEvidencePackage row used in the state-isolation
+// byte-identity test. Mirrors the hashRowAsJson helper in
+// pact/provider/src/verify-api.ts (M4 PR-5 origin): canonicalize keys
+// (sort) so adapter-side ordering wobble is normalized out, then
+// sha256 the JSON.
+function hashRow(row: Record<string, unknown>): string {
+  const sortedKeys = Object.keys(row).sort();
+  const canonical: Record<string, unknown> = {};
+  for (const k of sortedKeys) {
+    const v = row[k];
+    canonical[k] = v instanceof Date ? v.toISOString() : v;
+  }
+  const json = JSON.stringify(canonical);
+  const { createHash } = require('node:crypto') as typeof import('node:crypto');
+  return createHash('sha256').update(json).digest('hex');
 }
 
 function splitDdl(sql: string): string[] {

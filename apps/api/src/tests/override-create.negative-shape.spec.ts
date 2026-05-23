@@ -84,6 +84,10 @@ const SUBMITTAL_INIT_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
 );
+const SUBMITTAL_REVOKE_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-override-create-neg-shape';
@@ -166,6 +170,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_EVIDENCE_INIT_MIGRATION,
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,
+        SUBMITTAL_REVOKE_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }

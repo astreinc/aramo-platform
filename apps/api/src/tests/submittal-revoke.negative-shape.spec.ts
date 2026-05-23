@@ -22,17 +22,23 @@ import {
 
 import { AppModule } from '../app.module.js';
 
-// M4 PR-6 §4.7 — F23 negative-shape integration test for GET
-// /v1/submittals/{submittal_id}. Standing F23 pattern: boot the
-// AppModule, seed an Entrustable examination + draft submittal pinned
-// to it, GET the submittal, and walk the 200 response body recursively
-// asserting that no forbidden Match-Class vocabulary leaks into the
-// response surface.
+// M4 PR-7 §4.10 — Companion negative-shape integration test for POST
+// /v1/submittals/{submittal_id}/revoke. F23 standing pattern: boot the
+// AppModule, seed an Entrustable examination + draft submittal, drive
+// the draft to 'submitted' via the confirm endpoint, then call revoke
+// and walk the 200 response body recursively asserting that no
+// forbidden Match-Class vocabulary leaks into the response surface.
 //
 // Match-Class forbidden keys (API Contracts v1.0 Phase 6 / R10):
 //   tier, rank, rank_ordinal, score, internal_reasoning,
 //   why_matched_sentence, strengths, gaps, risk_flags, recruiter_notes,
 //   override_id, action_queue_item_id, internal_engagement_state
+//
+// PATH_PREFIX_ALLOWLIST is intentionally empty here per directive §4.10:
+// the revoke response surfaces the TalentSubmittalRecord + the literal
+// `evidence_package_mutated: false` — workflow metadata only, no
+// $.match_justification or similar payload to allow. If the recursive
+// walk hits any Match-Class key, that's a real leak.
 //
 // Gated on ARAMO_RUN_INTEGRATION=1.
 
@@ -81,7 +87,7 @@ const SUBMITTAL_REVOKE_MIGRATION = resolve(
 );
 
 const ISSUER = 'Aramo Core Auth';
-const AUDIENCE = 'aramo-submittal-get-neg-shape';
+const AUDIENCE = 'aramo-submittal-revoke-neg-shape';
 const ALG = 'RS256';
 
 const TENANT_ID = '11111111-1111-7111-8111-111111111111';
@@ -89,7 +95,7 @@ const TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const JOB_ID = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
 const RECRUITER_ID = '00000000-0000-7000-8000-000000000bb1';
 const GOLDEN_ID = '44441111-4444-7444-8444-444444444444';
-const EXAM_ID = '11110000-0000-7000-8000-0000000e0006';
+const EXAM_ID = '11110000-0000-7000-8000-0000000e0070';
 
 const FORBIDDEN_MATCH_CLASS_KEYS: ReadonlyArray<string> = [
   'tier',
@@ -161,8 +167,20 @@ const CREATE_BODY = {
   },
 };
 
+const CONFIRM_BODY = {
+  attestations: {
+    talent_evidence_reviewed: true,
+    constraints_reviewed: true,
+    submittal_risk_acknowledged: true,
+  },
+};
+
+const REVOKE_BODY = {
+  revocation_justification: 'Hiring manager paused requisition; revoking submittal.',
+};
+
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'GET /v1/submittals/{id} — negative-shape (no Match-Class vocabulary leak)',
+  'POST /v1/submittals/{id}/revoke — negative-shape (no Match-Class vocabulary leak)',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -192,13 +210,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
 
-      // Seed the active requisition + the Entrustable examination pinned
-      // by the draft submittal we'll create at request time.
+      // Seed the active requisition + Entrustable examination.
       await setup.query(
         `INSERT INTO job_domain."Requisition" (id, tenant_id, job_id, recruiter_id, state)
          VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState")`,
         [
-          '22221111-0000-7000-8000-0000000000a6',
+          '22221111-0000-7000-8000-0000000000ac',
           TENANT_ID,
           JOB_ID,
           RECRUITER_ID,
@@ -301,8 +318,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     }, 60_000);
 
-    it('200 get-submittal response contains no Match-Class vocabulary keys anywhere', async () => {
-      // First create a draft submittal so we have an id to fetch.
+    it('200 revoke response contains no Match-Class vocabulary keys anywhere', async () => {
+      // Create the draft, confirm it, then revoke it — the response
+      // body of the revoke is what we walk.
       const createRes = await fetch(`http://127.0.0.1:${port}/v1/submittals`, {
         method: 'POST',
         headers: {
@@ -317,22 +335,46 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         submittal: { id: string };
       };
 
-      // Now GET it.
-      const getRes = await fetch(
-        `http://127.0.0.1:${port}/v1/submittals/${created.submittal.id}`,
+      const confirmRes = await fetch(
+        `http://127.0.0.1:${port}/v1/submittals/${created.submittal.id}/confirm`,
         {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${recruiterJwt}` },
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${recruiterJwt}`,
+            'Idempotency-Key': randomUUID(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(CONFIRM_BODY),
         },
       );
-      expect(getRes.status).toBe(200);
-      const body = (await getRes.json()) as unknown;
+      expect(confirmRes.status).toBe(200);
+
+      const revokeRes = await fetch(
+        `http://127.0.0.1:${port}/v1/submittals/${created.submittal.id}/revoke`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${recruiterJwt}`,
+            'Idempotency-Key': randomUUID(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(REVOKE_BODY),
+        },
+      );
+      expect(revokeRes.status).toBe(200);
+      const body = (await revokeRes.json()) as {
+        submittal: { state: string; revoked_at: string | null };
+        evidence_package_mutated: boolean;
+      };
+      expect(body.submittal.state).toBe('revoked');
+      expect(body.submittal.revoked_at).not.toBeNull();
+      expect(body.evidence_package_mutated).toBe(false);
 
       const hits: Array<{ path: string; key: string }> = [];
       walkForForbiddenKeys(body, '$', hits);
       expect(
         hits,
-        `Match-Class vocabulary leaked into GET /v1/submittals/:id response: ${hits
+        `Match-Class vocabulary leaked into POST /v1/submittals/:id/revoke response: ${hits
           .map((h) => `${h.path}`)
           .join(', ')}`,
       ).toEqual([]);

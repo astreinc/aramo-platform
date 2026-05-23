@@ -74,6 +74,13 @@ const SUBMITTAL_INIT_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
 );
+// M4 PR-7 — submittal-revoke schema extension. Required so the
+// Prisma client (regenerated with revoked_at / revoked_by /
+// revocation_justification fields) can read/write the table.
+const SUBMITTAL_REVOKE_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-submittal-neg-shape';
@@ -182,6 +189,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_EVIDENCE_INIT_MIGRATION,
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,
+        SUBMITTAL_REVOKE_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }

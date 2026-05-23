@@ -156,6 +156,83 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/submittals/{submittal_id}/revoke:
+    post:
+      operationId: revokeSubmittal
+      summary: Revoke a submitted submittal (M4 PR-7).
+      description: |
+        Transitions a TalentSubmittalRecord from `submitted` to
+        `revoked` and stamps `revoked_at` / `revoked_by` /
+        `revocation_justification` atomically. The response carries
+        the LOCKED invariant `evidence_package_mutated: false` —
+        every successful revoke affirms that the referenced
+        TalentJobEvidencePackage row is byte-identical to its
+        pre-revoke snapshot (state-isolation contract, mirroring the
+        override-create endpoint's `examination_mutated: false`
+        invariant from M4 PR-5).
+
+        Refusal codes (closed list at PR-7):
+          - 422 REVOKE_NOT_ALLOWED — submittal is not in
+            state='submitted' (i.e. draft or already-revoked); the
+            response details carry `current_state`.
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key,
+            different request body.
+          - 404 NOT_FOUND — submittal_id not found for the JWT's
+            tenant.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 VALIDATION_ERROR — request body fails schema
+            validation, submittal_id is not a UUID, or
+            Idempotency-Key is missing / malformed.
+      parameters:
+        - name: submittal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            UUID idempotency key. Same key + same body returns the prior
+            response; same key + different body returns 409
+            IDEMPOTENCY_KEY_CONFLICT. Missing or non-UUID returns 400
+            VALIDATION_ERROR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/RevokeSubmittalRequest'
+      responses:
+        '200':
+          description: Submittal revoked; state transitioned to `revoked`.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/RevokeSubmittalResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Idempotency-Key collision (same key, different body).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
   /v1/submittals/{submittal_id}:
     get:
       operationId: getSubmittal

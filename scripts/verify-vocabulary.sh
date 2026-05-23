@@ -132,6 +132,11 @@ TIER2_EXCLUDES=(
   # PR-5 entries above.
   "apps/api/src/tests/submittal-get.negative-shape.spec.ts"
   "apps/api/src/tests/submittal-evidence-package.negative-shape.spec.ts"
+  # M4 PR-7: submittal-revoke negative-shape spec (F23 standing pattern)
+  # legitimately enumerates the forbidden Match-Class vocabulary as part
+  # of its leakage-detection logic. Same structural pattern as the M4
+  # PR-3 / PR-4 / PR-5 / PR-6 entries above.
+  "apps/api/src/tests/submittal-revoke.negative-shape.spec.ts"
 )
 
 # =============================================================================

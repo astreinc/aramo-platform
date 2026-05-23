@@ -21,3 +21,8 @@ export type {
   ConfirmSubmittalResponseDto,
 } from './lib/dto/index.js';
 export type { ConfirmSubmittalInput } from './lib/submittal.repository.js';
+
+// M4 PR-7 — revoke endpoint surfaces.
+export { RevokeSubmittalRequestDto } from './lib/dto/index.js';
+export type { RevokeSubmittalResponseDto } from './lib/dto/index.js';
+export type { RevokeSubmittalInput } from './lib/submittal.repository.js';

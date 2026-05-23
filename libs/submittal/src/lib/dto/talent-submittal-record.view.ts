@@ -9,9 +9,11 @@
 import type { TalentIdentity, ContactSummary, CapabilitySummaryOverrides, MatchJustificationOverrides, RecruiterContributionInput } from '@aramo/evidence';
 
 // SubmittalState — value type mirroring the Prisma enum
-// (libs/submittal/prisma/schema.prisma). 2-value subset of Group 2 §2.3b
-// Loop 5's 5-state machine; F37 extends at M5.
-export type SubmittalStateValue = 'draft' | 'submitted';
+// (libs/submittal/prisma/schema.prisma). 3-value subset of Group 2 §2.3b
+// Loop 5's 5-state machine; F37 extends at M5. PR-7 adds 'revoked'
+// reached via the submittal-revoke endpoint (POST /v1/submittals/
+// {id}/revoke).
+export type SubmittalStateValue = 'draft' | 'submitted' | 'revoked';
 
 // §2.6 FailedCriterionAcknowledgment — Worth Considering submittal
 // support. Schema mirrors API Contracts Phase 2 verbatim block; the
@@ -26,6 +28,10 @@ export interface FailedCriterionAcknowledgment {
 }
 
 // TalentSubmittalRecordView — read projection over the Prisma row.
+//
+// PR-7 adds revoked_at / revoked_by / revocation_justification — all
+// nullable, populated atomically by the submittal-revoke endpoint
+// (and remaining NULL for rows in 'draft' or 'submitted' state).
 export interface TalentSubmittalRecordView {
   id: string;
   tenant_id: string;
@@ -39,6 +45,9 @@ export interface TalentSubmittalRecordView {
   failed_criterion_acknowledgments: readonly FailedCriterionAcknowledgment[] | null;
   created_at: Date;
   confirmed_at: Date | null;
+  revoked_at: Date | null;
+  revoked_by: string | null;
+  revocation_justification: string | null;
 }
 
 // CreateSubmittalInput — the controller-layer input that flows into
