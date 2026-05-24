@@ -1,5 +1,6 @@
-import { Injectable, Logger, Optional, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Optional, OnModuleDestroy } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { createAramoLogger, type AramoLogger } from '@aramo/common';
 
 import { PrismaClient } from '../../../prisma/generated/client/client.js';
 
@@ -33,7 +34,13 @@ import { PrismaClient } from '../../../prisma/generated/client/client.js';
 // process.env['DATABASE_URL'] fallback.
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleDestroy {
-  private readonly logger = new Logger('PrismaService (evidence)');
+  // M4-close HK-PR-4 — Style B (field-factory) AramoLogger adoption.
+  // PrismaService is directly instantiated outside DI in testcontainer
+  // setup (`new PrismaService(url)`); field-factory preserves the 28
+  // existing test instantiation sites unchanged across the 5 affected
+  // libs while routing emissions through the structured AramoLogger
+  // pipeline. Lifecycle hooks (onModuleDestroy) unaffected.
+  private readonly logger: AramoLogger = createAramoLogger('PrismaService (evidence)');
   private readonly explicitUrl?: string;
   private validated = false;
 
@@ -55,7 +62,7 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
       this.validated = true;
     }
     await super.$connect();
-    this.logger.log('PrismaService (evidence) connected');
+    this.logger.log({ event: 'prisma_service_connected', surface: 'evidence' });
   }
 
   async onModuleDestroy(): Promise<void> {

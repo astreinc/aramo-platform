@@ -1,5 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { AramoError } from '@aramo/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { AramoError, type AramoLogger } from '@aramo/common';
 import {
   ExaminationRepository,
   type TalentJobExaminationFullView,
@@ -118,12 +118,15 @@ function isNonEmpty(value: string): boolean {
 
 @Injectable()
 export class EvidenceRepository {
-  private readonly logger = new Logger(EvidenceRepository.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly examinationRepository: ExaminationRepository,
     private readonly talentEvidenceRepository: TalentEvidenceRepository,
+    // M4-close HK-PR-4 — structured logger injected via DI. Provider
+    // lives in EvidenceModule keyed by the 'EvidenceRepositoryLogger'
+    // token; factory context is EvidenceRepository.name.
+    @Inject('EvidenceRepositoryLogger')
+    private readonly logger: AramoLogger,
   ) {}
 
   async findById(input: {
