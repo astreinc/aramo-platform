@@ -6,7 +6,7 @@ This file is the **authoritative pointer** to Aramo's four locked program docume
 
 ---
 
-## The Seven Locked Baselines
+## The Nine Locked Baselines
 
 ### 1. Aramo Charter v1.0 — LOCKED
 
@@ -155,6 +155,47 @@ M4 PR-9 (observability) is the first PR consuming §15 substrate. Module populat
 
 ---
 
+### 8. Architecture v2.0/v2.1 §19.2 — Deployment Gates (Security-Scan) — LOCKED
+
+**What it is:** The locked architectural specification for the deployment-gate aggregator across the Aramo platform. §19.2 of Architecture v2.0 (carried through v2.1) defines the required gates that must pass before production deployment, including the security-scan gate that authorizes M4 PR-10 (CVE-scanning) and onward security-scan deliverables.
+
+**Verbatim text (Architecture v2.0/v2.1 §19.2 "Deployment Gates"):**
+> "Required before production deployment:
+> - unit tests pass
+> - integration tests pass
+> - contract tests pass
+> - migration dry run passes
+> - security scan passes
+> - OpenAPI diff reviewed
+> - module-boundary checks pass"
+
+**Read it for:**
+- The seven-item deployment-gate list — `security scan passes` is the authoritative anchor for CVE / dependency / IaC-security scan deliverables.
+- Sequencing relative to the other gate items (security scan is one of seven peer gates; not gated by, and does not gate, the other six).
+- Gate placement: pre-production-deployment, in-CI, aggregated.
+
+**File location:** `Aramo-Architecture-v2_0-v1_2-LOCKED.docx` (carried in v2.1; sha256 `7b73ce18...b1861f`; same file referenced at §6).
+
+M4 PR-10 (CVE-scanning) is the first PR consuming §19.2 substrate. Module population at PR-10: tfsec (IaC security scanning) + npm audit (Node dependency scanning). Other scan types (SAST, secrets, container) deferred to M4-close housekeeping and M5+. The §19.2 gate is also wired explicitly into the deployment-gate CI aggregator as a Plan v1.5 §M6 Track A deliverable ("Architecture §19.2 security-scan deployment gate wired"); PR-10 is the M4 prerequisite that delivers the scan jobs the M6 aggregator wiring consumes.
+
+---
+
+### 9. Aramo Phase 1 Delivery Plan v1.5 §M4 Track A item 7 — Dependency-vulnerability scanning CI gate — LOCKED
+
+**What it is:** The Plan v1.5 mandate establishing dependency/CVE scanning as a required CI gate from M4 onward.
+
+**Verbatim text (Anchor 2, Plan v1.5 §M4 Track A):**
+> "Dependency-vulnerability scanning CI gate (added v1.4 — D-ENT-READY-1): a dependency/CVE scanning job added to CI so new code is scanned from M4 onward."
+
+**Cross-reference (Plan v1.5 amendments preamble):**
+> "Version 1.4 amendment … Adds deliverables scheduling implementation of Architecture v2.0/v2.1 §15 (observability), §16 (performance), §17 (disaster recovery), §19.2 (security-scan deployment gate), §9 (background jobs), and §14 (security review) into milestones M4–M7 … Front-loads infrastructure-as-code and observability as prerequisite work."
+
+**File location:** `Aramo-Phase-1-Delivery-Plan-v1.5-LOCKED.docx` (sha256 `d2e62ffb...cc472e`; already locked at §5).
+
+**Forward-going compliance:** The mandate applies "from M4 onward." PR-10 establishes the forward-going standard via tfsec (IaC) + npm audit (Node deps) CI jobs. Baseline vulnerabilities present at HEAD `466298f` (4 high / 5 moderate per audit §B.4) are handled at PR-10 via an allow-list mechanism so the gate fails only on new findings; retroactive triage of the baseline vulnerability set is deferred to M4-close hardening (per PR-10 directive Ruling 6 forthcoming).
+
+---
+
 ## Hierarchy of Authority
 
 When sources appear to conflict:
@@ -189,3 +230,4 @@ The first reference is verifiable; the second is a paraphrase that may drift.
 | 2026-04-27 | Initial seeding | Architect |
 | 2026-05-23 | Add Plan v1.5 as fifth locked baseline; supersedes Plan v1.2 (carried for M0/M1 historical references). Resolves M4 PR-8 substrate-audit §C.11 finding — Plan v1.5 §M4 Track A item 5 ("declarative IaC artifacts under version control") is the authoritative anchor for the M4 PR-8 IaC foundation directive. | Lead Engineer |
 | 2026-05-23 | Add §6 Architecture v2.0/v2.1 §15 (Observability and Operations) + §7 Plan v1.5 §M4 Track A item 6 (Observability as a per-PR standard) as sixth and seventh locked baselines. Resolves M4 PR-9 substrate-audit §A.1 / Q0 finding — §15.1 canonical observability stack (CloudWatch + X-Ray + OpenTelemetry + PagerDuty) and §15.3 core metrics naming are the authoritative substrate for PR-9 IaC module-population work; Plan v1.5 §M4 item 6 establishes observability as a per-PR standard from M4 onward. SECOND INSTANCE of the substrate-coherence pre-PR pattern (PR-8 lesson 1; first instance PR #57). | Lead Engineer |
+| 2026-05-24 | Add §8 Architecture v2.0/v2.1 §19.2 (Deployment Gates — security-scan) + §9 Plan v1.5 §M4 Track A item 7 (Dependency-vulnerability scanning CI gate) as eighth and ninth locked baselines. Resolves M4 PR-10 substrate-audit §A / Q0 finding — §19.2 deployment-gate list (with `security scan passes` as the authoritative anchor) and Plan v1.5 §M4 item 7 (CVE-scanning gate from M4 onward) are the authoritative substrate for PR-10 CVE-scanning CI integration work. THIRD INSTANCE of the substrate-coherence pre-PR pattern (PR-8 lesson 1; first instance PR #57; second instance PR #59). Pattern PROMOTED from "recurring lesson" to documented program convention for foundation-laying work in new spec territory. | Lead Engineer |
