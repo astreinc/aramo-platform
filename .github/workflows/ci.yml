@@ -375,7 +375,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Deployment-gate aggregator (PR-M0R-3 §4.1, VARIANT B — in-ci.yml).
   #
-  # Single aggregator job wiring the 13 named CI gates from Plan v1.2 §4
+  # Single aggregator job wiring the named CI gates from Plan v1.5 §4
   # Stage 4 as `needs:` dependencies. Provides one PASS/FAIL status check
   # that GitHub branch-protection rules can require to block invalid
   # deployments (Plan v1.2 §6 DoD #6 — "CI blocks invalid deployments
