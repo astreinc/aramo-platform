@@ -195,7 +195,7 @@ model ExaminationOverride {
   target_field    String
   justification   String
   created_by      String          @db.Uuid
-  created_at      DateTime        @default(now())
+  created_at      DateTime        @default(now()) @db.Timestamptz
 
   // Tenant-scoped per-examination lookup (findOverridesByExaminationId).
   @@index([tenant_id, examination_id])
