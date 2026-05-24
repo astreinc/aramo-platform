@@ -1,0 +1,64 @@
+# M4-close HK-PR-2 — Dependabot v2 codification.
+#
+# Three ecosystems matching the workspace substrate at HK-PR-2 HEAD:
+# npm (Node monorepo at workspace root), github-actions (CI workflow
+# files under .github/workflows/), terraform (PR-8 IaC foundation at
+# infrastructure/). Cadence calibrated by ecosystem volatility: weekly
+# for npm + github-actions; monthly for terraform (slower-moving
+# infrastructure). Conservative open-PR limit to avoid PR-spam.
+#
+# Org-level Dependabot enablement confirmed per BA-2 (astreinc org).
+
+version: 2
+updates:
+  # ---------------------------------------------------------------------------
+  # JavaScript / Node monorepo (workspace root + nx-managed projects).
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "dependabot"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # Group security updates separately for visibility — surfaces them
+    # as a single PR rather than fanning out per-advisory.
+    groups:
+      security:
+        applies-to: security-updates
+        update-types: ["patch", "minor", "major"]
+
+  # ---------------------------------------------------------------------------
+  # GitHub Actions workflow updates (.github/workflows/*.yml).
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "dependabot"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+
+  # ---------------------------------------------------------------------------
+  # Terraform provider updates (consumes PR-8 IaC foundation at
+  # infrastructure/; tracks AWS provider + module ecosystem).
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "terraform"
+    directory: "/infrastructure"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "dependabot"
+      - "terraform"
+    commit-message:
+      prefix: "infra"

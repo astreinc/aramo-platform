@@ -1,27 +1,5 @@
 {
   "version": "1.0",
-  "description": "Allow-list of HIGH/CRITICAL npm-audit advisory IDs known and accepted at HEAD cc32341 (M4 PR-10 baseline). Each entry must specify id (GHSA-*), package, severity, reason, expected_resolution. The CI gate (scripts/audit-check.sh, .github/workflows/ci.yml `npm:audit`) fails when `npm audit --audit-level=high --omit=dev --json` surfaces any HIGH/CRITICAL advisory whose id is not present here. Allow-list entries are time-bounded to M4-close hardening per ADR-0014 Decision 7.",
-  "advisories": [
-    {
-      "id": "GHSA-2w69-qvjg-hvjx",
-      "package": "@remix-run/router",
-      "severity": "high",
-      "reason": "Transitive via react-router-dom@~6.22.0 (workspace direct dep). Rolls up to HIGH on react-router and react-router-dom. Fix available in react-router-dom 6.30.3 (non-major); evaluating upgrade path against M4-close hardening triage.",
-      "expected_resolution": "M4-close hardening"
-    },
-    {
-      "id": "GHSA-q3j6-qgpj-74h6",
-      "package": "fast-uri",
-      "severity": "high",
-      "reason": "Transitive dep; path traversal via percent-encoded dot segments. Fix available (>3.1.0); evaluating upgrade path against M4-close hardening triage.",
-      "expected_resolution": "M4-close hardening"
-    },
-    {
-      "id": "GHSA-v39h-62p7-jpjc",
-      "package": "fast-uri",
-      "severity": "high",
-      "reason": "Transitive dep; host confusion via percent-encoded authority delimiters. Fix available (>3.1.1); evaluating upgrade path against M4-close hardening triage.",
-      "expected_resolution": "M4-close hardening"
-    }
-  ]
+  "description": "Allow-list of HIGH/CRITICAL npm-audit advisory IDs known and accepted at the workspace HEAD. Each entry must specify id (GHSA-*), package, severity, reason, expected_resolution. The CI gate (scripts/audit-check.sh, .github/workflows/ci.yml `npm:audit`) fails when `npm audit --audit-level=high --omit=dev --json` surfaces any HIGH/CRITICAL advisory whose id is not present here. Allow-list entries are time-bounded per ADR-0014 Decision 7. As of M4-close HK-PR-2, the 3 baseline GHSA IDs from PR-10 (GHSA-2w69-qvjg-hvjx / GHSA-q3j6-qgpj-74h6 / GHSA-v39h-62p7-jpjc) have been resolved via react-router-dom 6.22.0 → 6.30.3 (exact-pin) + fast-uri override 3.1.2; allow-list is empty going forward. CI gate fires only on NEW HIGH/CRITICAL findings.",
+  "advisories": []
 }
