@@ -6,7 +6,7 @@ This file is the **authoritative pointer** to Aramo's four locked program docume
 
 ---
 
-## The Nine Locked Baselines
+## The Locked Baselines
 
 ### 1. Aramo Charter v1.0 — LOCKED
 
@@ -204,6 +204,95 @@ M4 PR-10 (CVE-scanning) is the first PR consuming §19.2 substrate. Module popul
 
 ---
 
+## §10. Plan v1.5 §M5 Track A item 1 — Engagement state machine
+
+**Source 1:** `Aramo-Phase-1-Delivery-Plan-v1_5-LOCKED.docx` §M5 Track A item 1 (canonical; sha256 `d2e62ffb…cc472e`).
+
+**Source 2:** `Aramo-Plan-v1_5-Correction-Note-v1_0-LOCKED.md` (Plan parenthetical count corrected from "10 states" to "11 states on `TalentJobEngagement` per Group 2 §2.3b Part 2 Loops 1-5"; NOT §23.2 scope-affecting; informational count fix aligning with binding canonical source per Hierarchy of Authority §207-213).
+
+**Source 3:** `Aramo-v1-Group2-Consolidated-Baseline-v2.0-LOCKED.docx` §2.3b Part 2 Loops 1-5 (binding product specification per Hierarchy of Authority).
+
+**Verbatim anchor 1** — Plan v1.5 §M5 Track A item 1 (post-Correction-Note v1.0):
+
+> Engagement state machine (11 states on `TalentJobEngagement` per Group 2 §2.3b Part 2 Loops 1-5).
+
+**Verbatim anchor 2** — Group 2 §2.3b Part 2 Loops 1-5 (binding canonical state-machine narrative):
+
+```
+Loop 1 — Matching Loop (system-driven)
+  Re-matching behavior table:
+    Engaged       → Excluded from match list
+    Maybe         → Included, may move in rank
+    Passed        → Excluded (v1 default)
+    Not evaluated → Included
+  State transitions: null → surfaced → evaluated
+
+Loop 2 — Recruiter Evaluation Loop
+  State transitions:
+    surfaced → evaluated →
+      ├── engaged
+      ├── maybe
+      └── passed
+
+Loop 3 — Engagement Loop (Human + AI Assisted)
+  State transitions:
+    evaluated → engaged → awaiting_response
+
+Loop 4 — Response Conversation Loop
+  State transitions:
+    awaiting_response → responded   (trigger: candidate reply)
+    responded → in_conversation     (trigger: recruiter sends first reply)
+    in_conversation →
+      ├── not_interested
+      └── ready_for_submittal
+
+Loop 5 — Submittal Handoff Loop
+  State transitions:
+    Entity: TalentSubmittalRecord
+      created → handoff_draft → ready_for_review → submitted_to_ats → confirmed
+    Entity: TalentJobEngagement
+      ready_for_submittal → submitted
+```
+
+**TalentJobEngagement state enumeration (11 binding values, post-Correction-Note v1.0):**
+
+1. `surfaced` — initial state on matching-engine row creation (Loop 1 `null → surfaced`).
+2. `evaluated` — recruiter has begun evaluation (Loop 1 `surfaced → evaluated`; Loop 2 source).
+3. `engaged` — recruiter chose to engage (Loop 2 branch).
+4. `maybe` — recruiter deferred decision (Loop 2 branch; terminal from engagement-entity perspective; re-matching may re-rank per Loop 1).
+5. `passed` — recruiter declined (Loop 2 branch; terminal).
+6. `awaiting_response` — outreach message sent; awaiting candidate reply (Loop 3).
+7. `responded` — candidate replied (Loop 4; trigger: candidate reply).
+8. `in_conversation` — recruiter sent first reply; conversation active (Loop 4; trigger: recruiter sends first reply).
+9. `not_interested` — candidate not interested in opportunity (Loop 4 branch; terminal).
+10. `ready_for_submittal` — recruiter judges candidate ready for ATS submittal (Loop 4 branch).
+11. `submitted` — submittal handoff completed; engagement-side terminal (Loop 5 `Entity: TalentJobEngagement`).
+
+**10 legal transitions** per Loops 2-5 narrative (Loop 1 `null → surfaced` is row creation, not a state transition):
+
+1. `surfaced → evaluated`
+2. `evaluated → engaged`
+3. `evaluated → maybe`
+4. `evaluated → passed`
+5. `engaged → awaiting_response`
+6. `awaiting_response → responded`
+7. `responded → in_conversation`
+8. `in_conversation → not_interested`
+9. `in_conversation → ready_for_submittal`
+10. `ready_for_submittal → submitted`
+
+**Terminal states** (no outgoing transitions): `maybe`, `passed`, `not_interested`, `submitted`.
+
+**Note on `not_evaluated`**: the Loop 1 re-matching behavior table label "Not evaluated" describes the row-absence case ("engagement record not yet created for this talent+requisition pair") — operationally equivalent to `null` in Loop 1's `null → surfaced → evaluated` transition. It is NOT a stored `TalentJobEngagement.state` value. Per Plan Correction Note v1.0 §2.4.
+
+**Note on TalentSubmittalRecord scope**: Loop 5's `TalentSubmittalRecord` state machine (`created → handoff_draft → ready_for_review → submitted_to_ats → confirmed`) is a distinct entity's state machine — M5 PR-8 territory per `Aramo-M5-Charter-v1_2-LOCKED.md` §4.3. NOT in scope for the M5 PR-1 `TalentJobEngagement` entity foundation; F37 (SubmittalState 3→5 expansion) closes at M5 PR-8.
+
+**M5 PR-1 directive anchors** (read jointly):
+- `Aramo-M5-PR-1-Directive-v1_0-LOCKED.md` Rulings 1, 2, 3, 5, 8, 9, 10, 11 (unchanged).
+- `Aramo-M5-PR-1-Directive-Amendment-v1_1-LOCKED.md` §2 (Ruling 4 — 11-state enum), §3 (Ruling 6 — 10-transition trigger), §4 (Ruling 7 — `canTransition` 11×11 matrix).
+
+---
+
 ## Hierarchy of Authority
 
 When sources appear to conflict:
@@ -241,3 +330,4 @@ The first reference is verifiable; the second is a paraphrase that may drift.
 | 2026-05-24 | Add §8 Architecture v2.0/v2.1 §19.2 (Deployment Gates — security-scan) + §9 Plan v1.5 §M4 Track A item 7 (Dependency-vulnerability scanning CI gate) as eighth and ninth locked baselines. Resolves M4 PR-10 substrate-audit §A / Q0 finding — §19.2 deployment-gate list (with `security scan passes` as the authoritative anchor) and Plan v1.5 §M4 item 7 (CVE-scanning gate from M4 onward) are the authoritative substrate for PR-10 CVE-scanning CI integration work. THIRD INSTANCE of the substrate-coherence pre-PR pattern (PR-8 lesson 1; first instance PR #57; second instance PR #59). Pattern PROMOTED from "recurring lesson" to documented program convention for foundation-laying work in new spec territory. | Lead Engineer |
 | 2026-05-24 | M4-close housekeeping HK-PR-1 (items 1 + 2 doc-layer bundle): (a) ADR index alignment at `doc/adr/README.md` — appended 4 missing rows (ADR-0011 / ADR-0012 / ADR-0013 / ADR-0014); (b) Architecture dual-citation refresh at §3 / §6 / §8 per BA-1 audit ruling — `Aramo-Architecture-v2_0-v2_1-LOCKED.docx` (sha256 `7b73ce18...b1861f`; full text + citation locus for §15 / §19.2) carried forward unchanged by `Aramo-Architecture-v2_0-v2_2-LOCKED.docx` (sha256 `37096fc3...fb801`; current canonical revision; delta-amendment adding only §1.1 9th deployable + §2.4 description); single-revision swap rejected (would break citation contract for §15/§19.2 body text). Plan v1.5 confirmed full-rewrite (NOT delta-amendment) by reading canonical Status block — no dual-citation needed for §5 / §7 / §9. (c) ci.yml stale "13 required deployment gates" comments at the `deployment-gate` step resolved via approach (b) — count removed from `name:` + final `echo` so the dynamic `grep -qE` check is the sole source of truth (resilient to future CI growth). M4-close housekeeping lesson 1 RECORDED: delta-amendment documents require dual citation when the superseding revision is a delta (not full rewrite); pattern likely applies at future foundation-laying doc-lock pre-PRs. | Lead Engineer |
 | 2026-05-24 | M4-close housekeeping HK-PR-2 (items 5 + 6 + Plan filename hygiene): (a) Item 5 — npm audit baseline triage: 3 baseline HIGH GHSAs (GHSA-2w69-qvjg-hvjx + GHSA-q3j6-qgpj-74h6 + GHSA-v39h-62p7-jpjc) resolved via react-router-dom 6.22.0 → 6.30.3 (exact-pin per Lead supply-chain-hardening preference, deliberate divergence from workspace tilde-pin convention) + `overrides.fast-uri: "3.1.2"` (forces all transitive instances; resolves both fast-uri GHSAs via single override). `.github/npm-audit-allowlist.json` advisories array now empty; CI gate fires only on NEW HIGH/CRITICAL findings going forward. (b) Item 6 — Dependabot YAML: `.github/dependabot.yml` codified (BA-2 confirmed org-enabled). Three ecosystems: npm (weekly Monday + security-updates grouped), github-actions (weekly Monday), terraform (monthly). Conservative open-PR limit (10 npm); standard commit-message prefixes (deps/ci/infra). (c) Item 6B — Plan filename hygiene: replaced `Aramo-Phase-1-Delivery-Plan-v1.5-LOCKED.docx` (dotted, stale) → `Aramo-Phase-1-Delivery-Plan-v1_5-LOCKED.docx` (underscored, matches canonical store) at §5 / §7 / §9. Lesson 2 grep-based scope applied (single-pass; post-edit grep returns zero dotted hits). | Lead Engineer |
+| 2026-05-24 | M5 PR-1 doc-lock: Added §10 (Plan v1.5 §M5 Track A item 1 — Engagement state machine; Group 2 §2.3b Part 2 Loops 1-5 binding canonical; 11-state TalentJobEngagement enumeration; 10-transition matrix). Renamed "The Nine Locked Baselines" → "The Locked Baselines". Per Plan Correction Note v1.0 + Directive Amendment v1.1. | Lead Engineer |
