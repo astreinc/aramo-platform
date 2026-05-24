@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { AramoError } from '@aramo/common';
+import { AramoError, makeMockLogger } from '@aramo/common';
 import {
   ExaminationRepository,
   PrismaService as ExaminationPrismaService,
@@ -236,7 +236,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const examRepo = new ExaminationRepository(examPrisma, undefined as never);
       const talentEvidenceRepo = new TalentEvidenceRepository(talentEvidencePrisma);
-      repo = new EvidenceRepository(prisma, examRepo, talentEvidenceRepo);
+      repo = new EvidenceRepository(prisma, examRepo, talentEvidenceRepo, makeMockLogger());
 
       // ---- Read-path seed (PR-1, unchanged shape) ---------------------
       await seedPackage(setupClient, {

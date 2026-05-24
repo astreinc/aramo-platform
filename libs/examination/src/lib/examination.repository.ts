@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
-import { AramoError } from '@aramo/common';
+import { AramoError, createAramoLogger, type AramoLogger } from '@aramo/common';
 import { JobDomainRepository } from '@aramo/job-domain';
 
 import type { ExaminationOverrideView } from './dto/create-override-request.dto.js';
@@ -478,17 +478,24 @@ export class ExaminationRepository {
   async createOverride(
     input: CreateOverrideInput,
   ): Promise<ExaminationOverrideView> {
-    this.overrideLogger.log(
-      `createOverride entry tenant=${input.tenant_id} examination=${input.examination_id} type=${input.override_type}`,
-    );
+    this.overrideLogger.log({
+      event: 'override_create_entry',
+      tenant_id: input.tenant_id,
+      examination_id: input.examination_id,
+      override_type: input.override_type,
+    });
 
     // Step 1 — load referenced examination (raw row carries tenant_id +
     // lifecycle_state directly).
     const examination = await this.findById(input.examination_id);
     if (examination === null) {
-      this.overrideLogger.log(
-        `createOverride refusal NOT_FOUND tenant=${input.tenant_id} examination=${input.examination_id} reason=missing`,
-      );
+      this.overrideLogger.log({
+        event: 'override_create_refusal',
+        outcome: 'NOT_FOUND',
+        tenant_id: input.tenant_id,
+        examination_id: input.examination_id,
+        reason: 'missing',
+      });
       throw new AramoError(
         'NOT_FOUND',
         'TalentJobExamination not found',
@@ -500,9 +507,13 @@ export class ExaminationRepository {
     // Cross-tenant lookups are treated the same way (NOT_FOUND, not
     // TENANT_ACCESS_DENIED) to avoid leaking existence across tenants.
     if (examination.tenant_id !== input.tenant_id) {
-      this.overrideLogger.log(
-        `createOverride refusal NOT_FOUND tenant=${input.tenant_id} examination=${input.examination_id} reason=cross-tenant`,
-      );
+      this.overrideLogger.log({
+        event: 'override_create_refusal',
+        outcome: 'NOT_FOUND',
+        tenant_id: input.tenant_id,
+        examination_id: input.examination_id,
+        reason: 'cross-tenant',
+      });
       throw new AramoError(
         'NOT_FOUND',
         'TalentJobExamination not found',
@@ -513,9 +524,14 @@ export class ExaminationRepository {
 
     // Step 2 — lifecycle_state must be 'active'.
     if (examination.lifecycle_state !== 'active') {
-      this.overrideLogger.log(
-        `createOverride refusal NOT_FOUND tenant=${input.tenant_id} examination=${input.examination_id} reason=lifecycle=${examination.lifecycle_state}`,
-      );
+      this.overrideLogger.log({
+        event: 'override_create_refusal',
+        outcome: 'NOT_FOUND',
+        tenant_id: input.tenant_id,
+        examination_id: input.examination_id,
+        reason: 'lifecycle',
+        lifecycle_state: examination.lifecycle_state,
+      });
       throw new AramoError(
         'NOT_FOUND',
         'TalentJobExamination is not active',
@@ -539,9 +555,12 @@ export class ExaminationRepository {
     });
 
     // Step 4/5 — log success and return projected view.
-    this.overrideLogger.log(
-      `createOverride success tenant=${input.tenant_id} examination=${input.examination_id} override=${created.id}`,
-    );
+    this.overrideLogger.log({
+      event: 'override_create_success',
+      tenant_id: input.tenant_id,
+      examination_id: input.examination_id,
+      override_id: created.id,
+    });
     return projectOverrideView(created as ExaminationOverrideRow);
   }
 
@@ -578,7 +597,11 @@ export class ExaminationRepository {
 
   // Override-method logger. Kept distinct from the class-default Nest
   // logger so the structured log lines are searchable by createOverride.
-  private readonly overrideLogger = new Logger('ExaminationOverride');
+  // M4-close HK-PR-4 — Style B (field-factory) AramoLogger adoption.
+  // Secondary internal logger; not constructor-injected (keeps
+  // ExaminationRepository's 2-arg constructor unchanged across 10
+  // existing test instantiation sites).
+  private readonly overrideLogger: AramoLogger = createAramoLogger('ExaminationOverride');
 }
 
 // ============================================================================

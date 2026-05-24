@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { CommonModule } from '@aramo/common';
+import { CommonModule, createAramoLogger } from '@aramo/common';
 
 import { IdentityAuditRepository } from './audit/identity-audit.repository.js';
 import { IdentityAuditService } from './audit/identity-audit.service.js';
@@ -18,6 +18,8 @@ import { TenantService } from './tenant.service.js';
 // PR-8.0a-Reground §7 amendment: IdentityAuditService is added to providers
 // and exports (services are the public surface; IdentityAuditRepository
 // remains internal).
+// M4-close HK-PR-4 — AramoLogger provider for IdentityAuditService
+// (Style A constructor DI; mirrors libs/submittal PR-9 PoC pattern).
 @Module({
   imports: [CommonModule],
   providers: [
@@ -30,6 +32,10 @@ import { TenantService } from './tenant.service.js';
     IdentityService,
     TenantService,
     RoleService,
+    {
+      provide: 'IdentityAuditServiceLogger',
+      useFactory: () => createAramoLogger(IdentityAuditService.name),
+    },
   ],
   exports: [IdentityService, TenantService, RoleService, IdentityAuditService],
 })

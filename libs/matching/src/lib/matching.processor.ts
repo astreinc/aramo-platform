@@ -1,6 +1,7 @@
-import { Logger, type OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, type OnApplicationBootstrap } from '@nestjs/common';
 import { BullRegistrar, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
+import { type AramoLogger } from '@aramo/common';
 
 import type { MatchingAnalysisInput } from './dto/matching-analysis-input.dto.js';
 import { MATCH_QUEUE_NAME } from './match-queue.constants.js';
@@ -44,27 +45,36 @@ export class MatchingProcessor
   extends WorkerHost
   implements OnApplicationBootstrap
 {
-  private readonly logger = new Logger(MatchingProcessor.name);
-
   constructor(
     private readonly matching: MatchingService,
     private readonly registrar: BullRegistrar,
+    // M4-close HK-PR-4 — structured logger injected via DI. Provider
+    // lives in MatchingModule keyed by the 'MatchingProcessorLogger'
+    // token; factory context is MatchingProcessor.name. No prior test
+    // instantiation sites (MatchingProcessor is instantiated only via
+    // BullMQ/Nest DI in tests).
+    @Inject('MatchingProcessorLogger')
+    private readonly logger: AramoLogger,
   ) {
     super();
   }
 
   async process(job: Job<MatchingAnalysisInput>): Promise<void> {
-    this.logger.debug(`processing match job ${job.id ?? '(no id)'} for talent ${job.data.talent_id}`);
+    this.logger.debug({
+      event: 'match_job_processing',
+      job_id: job.id ?? null,
+      talent_id: job.data.talent_id,
+    });
     await this.matching.evaluateAndPersist(job.data);
   }
 
   onApplicationBootstrap(): void {
     const redisUrl = process.env['REDIS_URL'] ?? '';
     if (redisUrl.length === 0) {
-      this.logger.warn(
-        'REDIS_URL is not configured; match-queue worker remains unregistered. ' +
-          'Set REDIS_URL to enable async matching execution.',
-      );
+      this.logger.warn({
+        event: 'matching_worker_unregistered',
+        reason: 'redis_url_missing',
+      });
       return;
     }
     this.registrar.register();

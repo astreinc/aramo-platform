@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { createAramoLogger } from '@aramo/common';
 import { ExaminationModule } from '@aramo/examination';
 
 import { MATCH_QUEUE_NAME } from './match-queue.constants.js';
@@ -89,7 +90,18 @@ import { RedisConnectionConfig } from './redis/redis-connection.config.js';
     }),
     BullModule.registerQueue({ name: MATCH_QUEUE_NAME }),
   ],
-  providers: [MatchingService, MatchingProcessor],
+  // M4-close HK-PR-4 — AramoLogger provider for MatchingProcessor
+  // (Style A constructor DI; mirrors libs/submittal PR-9 PoC pattern).
+  // libs/matching's first @aramo/common edge; tsconfig.lib.json paths
+  // extended to include @aramo/common dist d.ts.
+  providers: [
+    MatchingService,
+    MatchingProcessor,
+    {
+      provide: 'MatchingProcessorLogger',
+      useFactory: () => createAramoLogger(MatchingProcessor.name),
+    },
+  ],
   exports: [MatchingService],
 })
 export class MatchingModule {}

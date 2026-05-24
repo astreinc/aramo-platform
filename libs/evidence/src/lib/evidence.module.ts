@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { createAramoLogger } from '@aramo/common';
 import { ExaminationModule } from '@aramo/examination';
 import { TalentEvidenceModule } from '@aramo/talent-evidence';
 
@@ -20,9 +21,18 @@ import { PrismaService } from './prisma/prisma.service.js';
 // EvidenceModule is still NOT imported by apps/api at PR-2 (substrate
 // only; no HTTP route consumer). The submittal-create endpoint PR (F33)
 // will add the AppModule import alongside its controller.
+// M4-close HK-PR-4 — AramoLogger provider for EvidenceRepository
+// (Style A constructor DI; mirrors libs/submittal PR-9 PoC pattern).
 @Module({
   imports: [ExaminationModule, TalentEvidenceModule],
-  providers: [PrismaService, EvidenceRepository],
+  providers: [
+    PrismaService,
+    EvidenceRepository,
+    {
+      provide: 'EvidenceRepositoryLogger',
+      useFactory: () => createAramoLogger(EvidenceRepository.name),
+    },
+  ],
   exports: [EvidenceRepository],
 })
 export class EvidenceModule {}

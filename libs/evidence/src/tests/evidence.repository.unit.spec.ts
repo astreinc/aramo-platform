@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AramoError } from '@aramo/common';
+import { AramoError, makeMockLogger } from '@aramo/common';
 import {
   ExaminationRepository,
   type TalentJobExaminationFullView,
@@ -173,6 +173,7 @@ function buildRepo(
     prismaCreate as unknown as PrismaService,
     examRepoMock,
     talentEvidenceMock,
+    makeMockLogger(),
   );
 }
 

@@ -1,5 +1,5 @@
-import { Logger } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
+import { makeMockLogger } from '@aramo/common';
 
 import {
   IdentityAuditRepository,
@@ -18,7 +18,7 @@ describe('IdentityAuditService.writeEvent', () => {
   // Test 1: delegates to IdentityAuditRepository.writeEvent with parameter passthrough.
   it('delegates to repository.writeEvent with mapped parameters', async () => {
     const writeEvent = vi.fn().mockResolvedValue({ id: 'audit-row-1' });
-    const service = new IdentityAuditService(makeRepo(writeEvent));
+    const service = new IdentityAuditService(makeRepo(writeEvent), makeMockLogger());
 
     await service.writeEvent({
       event_type: 'identity.session.issued',
@@ -42,7 +42,7 @@ describe('IdentityAuditService.writeEvent', () => {
   // Test 2: swallows repository errors and returns void (best-effort emission).
   it('swallows repository errors and returns void', async () => {
     const writeEvent = vi.fn().mockRejectedValue(new Error('db down'));
-    const service = new IdentityAuditService(makeRepo(writeEvent));
+    const service = new IdentityAuditService(makeRepo(writeEvent), makeMockLogger());
 
     await expect(
       service.writeEvent({
@@ -57,10 +57,17 @@ describe('IdentityAuditService.writeEvent', () => {
   });
 
   // Test 3: logs at warn level with structured fields on failure.
+  // M4-close HK-PR-4: warn call is now a structured AramoLogPayload (single
+  // arg) — { event: 'identity_audit_write_failed', error_message, ... } —
+  // not the prior 2-arg NestJS Logger ('message', fields) shape. Spy on
+  // the injected AramoLogger mock's warn method directly rather than the
+  // global Logger.prototype.
   it('logs at warn level with structured fields on failure', async () => {
     const writeEvent = vi.fn().mockRejectedValue(new Error('boom'));
-    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    const service = new IdentityAuditService(makeRepo(writeEvent));
+    const logger = makeMockLogger();
+    const warnSpy = vi.fn();
+    logger.warn = warnSpy;
+    const service = new IdentityAuditService(makeRepo(writeEvent), logger);
 
     await service.writeEvent({
       event_type: 'identity.session.revoked',
@@ -72,21 +79,21 @@ describe('IdentityAuditService.writeEvent', () => {
     });
 
     expect(warnSpy).toHaveBeenCalledTimes(1);
-    const [message, fields] = warnSpy.mock.calls[0]!;
-    expect(String(message)).toContain('boom');
-    expect(fields).toMatchObject({
+    const [payload] = warnSpy.mock.calls[0]!;
+    expect(payload).toMatchObject({
+      event: 'identity_audit_write_failed',
+      error_message: 'boom',
       event_type: 'identity.session.revoked',
       actor_id: USER_ID,
       tenant_id: TENANT_ID,
       subject_id: USER_ID,
     });
-    warnSpy.mockRestore();
   });
 
   // Test 4: repository accepts the 4 new event_types without closed-set violation.
   it('accepts all 4 new session.* event_types without closed-set violation', async () => {
     const writeEvent = vi.fn().mockResolvedValue({ id: 'audit-row' });
-    const service = new IdentityAuditService(makeRepo(writeEvent));
+    const service = new IdentityAuditService(makeRepo(writeEvent), makeMockLogger());
 
     const event_types = [
       'identity.session.issued',
@@ -112,7 +119,7 @@ describe('IdentityAuditService.writeEvent', () => {
   // Test 5: tenant-scoped events carry tenant_id (4 new + 2 existing = 6 in mapping).
   it('passes tenant_id through for tenant-scoped session events', async () => {
     const writeEvent = vi.fn().mockResolvedValue({ id: 'r' });
-    const service = new IdentityAuditService(makeRepo(writeEvent));
+    const service = new IdentityAuditService(makeRepo(writeEvent), makeMockLogger());
 
     await service.writeEvent({
       event_type: 'identity.session.reuse_detected',

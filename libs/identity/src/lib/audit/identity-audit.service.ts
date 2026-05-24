@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { type AramoLogger } from '@aramo/common';
 
 import {
   IdentityAuditRepository,
@@ -11,9 +12,14 @@ import {
 // callers cannot pass arbitrary strings; compile-time check prevents drift.
 @Injectable()
 export class IdentityAuditService {
-  private readonly logger = new Logger(IdentityAuditService.name);
-
-  constructor(private readonly auditRepo: IdentityAuditRepository) {}
+  constructor(
+    private readonly auditRepo: IdentityAuditRepository,
+    // M4-close HK-PR-4 — Style A constructor DI for structured logger.
+    // Provider lives in IdentityModule keyed by the 'IdentityAuditServiceLogger'
+    // token; factory context is IdentityAuditService.name.
+    @Inject('IdentityAuditServiceLogger')
+    private readonly logger: AramoLogger,
+  ) {}
 
   async writeEvent(params: {
     event_type: EventType;
@@ -33,15 +39,14 @@ export class IdentityAuditService {
         event_payload: params.payload,
       });
     } catch (err) {
-      this.logger.warn(
-        `IdentityAuditService.writeEvent failed: ${(err as Error).message}`,
-        {
-          event_type: params.event_type,
-          actor_id: params.actor_id,
-          tenant_id: params.tenant_id,
-          subject_id: params.subject_id,
-        },
-      );
+      this.logger.warn({
+        event: 'identity_audit_write_failed',
+        error_message: (err as Error).message,
+        event_type: params.event_type,
+        actor_id: params.actor_id,
+        tenant_id: params.tenant_id,
+        subject_id: params.subject_id,
+      });
     }
   }
 }
