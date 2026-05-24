@@ -9,6 +9,7 @@
     "tsBuildInfoFile": "../../dist/libs/matching/.tsbuildinfo",
     "types": ["node"],
     "paths": {
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/examination": ["../../dist/libs/examination/src/index.d.ts"]
     }
   },
