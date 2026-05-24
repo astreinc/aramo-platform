@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { AramoError, type AramoLogger } from '@aramo/common';
+import { AramoError, makeMockLogger } from '@aramo/common';
 import {
   EvidenceRepository,
   PrismaService as EvidencePrismaService,
@@ -27,19 +27,6 @@ import {
 import type { CreateSubmittalInput } from '../lib/dto/talent-submittal-record.view.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { SubmittalRepository } from '../lib/submittal.repository.js';
-
-// M4 PR-9 §4.5 — SubmittalRepository constructor now takes an
-// AramoLogger as 4th arg. Integration test injects a no-op mock; the
-// integration assertions focus on DB-level state isolation + write
-// path, not log output.
-function makeMockLogger(): AramoLogger {
-  return {
-    log: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  } as unknown as AramoLogger;
-}
 
 // M4 PR-3 §4.11 — integration spec for libs/submittal.
 //
@@ -180,7 +167,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const examRepo = new ExaminationRepository(examPrisma, undefined as never);
       const talentEvidenceRepo = new TalentEvidenceRepository(talentEvidencePrisma);
-      const evidenceRepo = new EvidenceRepository(evidencePrisma, examRepo, talentEvidenceRepo);
+      const evidenceRepo = new EvidenceRepository(evidencePrisma, examRepo, talentEvidenceRepo, makeMockLogger());
       repo = new SubmittalRepository(submittalPrisma, evidenceRepo, examRepo, makeMockLogger());
 
       // Seed all the examinations the tests need.
@@ -1348,6 +1335,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         evidencePrisma,
         new ExaminationRepository(examPrisma, undefined as never),
         new TalentEvidenceRepository(talentEvidencePrisma),
+        makeMockLogger(),
       );
       const evidencePackage = await evidenceRepo.findById({
         tenant_id: TENANT_A,
