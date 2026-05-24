@@ -458,7 +458,7 @@ jobs:
               return;
             }
             core.setOutput('override_active', 'false');
-      - name: Verify all 13 required deployment gates succeeded
+      - name: Verify all required deployment gates succeeded
         if: steps.override.outputs.override_active != 'true'
         env:
           NEEDS_RESULTS: ${{ toJSON(needs) }}
@@ -469,4 +469,4 @@ jobs:
             echo "ERROR: One or more required deployment gates did not succeed."
             exit 1
           fi
-          echo "All 13 required deployment gates passed."
+          echo "All required deployment gates passed."
