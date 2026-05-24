@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-import { Injectable, Logger } from '@nestjs/common';
-import { AramoError } from '@aramo/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { AramoError, type AramoLogger } from '@aramo/common';
 import { EvidenceRepository } from '@aramo/evidence';
 import { ExaminationRepository } from '@aramo/examination';
 
@@ -110,12 +110,15 @@ export interface RevokeSubmittalInput {
 
 @Injectable()
 export class SubmittalRepository {
-  private readonly logger = new Logger(SubmittalRepository.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly evidenceRepository: EvidenceRepository,
     private readonly examinationRepository: ExaminationRepository,
+    // M4 PR-9 §4.5 — structured logger injected via DI. Provider lives
+    // in SubmittalModule keyed by the 'SubmittalRepositoryLogger' token;
+    // factory context is SubmittalRepository.name.
+    @Inject('SubmittalRepositoryLogger')
+    private readonly logger: AramoLogger,
   ) {}
 
   // M4 PR-3 §4.3 — create flow.

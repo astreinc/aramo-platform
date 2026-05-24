@@ -12,3 +12,8 @@ export { CONTACT_CHANNELS } from './lib/types/contact-channel.js';
 export type { ContactChannel } from './lib/types/contact-channel.js';
 export { CONSENT_SCOPE_STATUSES } from './lib/types/consent-scope-status.js';
 export type { ConsentScopeStatus } from './lib/types/consent-scope-status.js';
+export {
+  createAramoLogger,
+  type AramoLogPayload,
+  type AramoLogger,
+} from './lib/logging/index.js';

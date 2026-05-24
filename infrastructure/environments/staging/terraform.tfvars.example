@@ -3,3 +3,7 @@
 
 aws_region  = "us-east-1"
 environment = "staging"
+
+# M4 PR-9 — CloudWatch log retention per ADR-0013 Decision 4.
+api_log_retention_days  = 30
+auth_log_retention_days = 30
