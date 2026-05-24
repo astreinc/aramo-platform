@@ -5,11 +5,17 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { AramoError, RequestId, hashCanonicalizedBody } from '@aramo/common';
+import {
+  AramoError,
+  type AramoLogger,
+  RequestId,
+  hashCanonicalizedBody,
+} from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { IdempotencyService } from '@aramo/consent';
 import {
@@ -66,6 +72,13 @@ export class SubmittalController {
     // GET /v1/submittals/{id}/evidence-package endpoint (chain:
     // submittal findById → evidence-package findById).
     private readonly evidenceRepository: EvidenceRepository,
+    // M4 PR-9 §4.5 — structured logger injected via DI. Provider lives
+    // in SubmittalModule keyed by the 'SubmittalControllerLogger' token;
+    // factory context is SubmittalController.name. Available for future
+    // HTTP-layer emit sites (PR-9 PoC adoption establishes the scaffold;
+    // no controller emit sites in this PR per single-change discipline).
+    @Inject('SubmittalControllerLogger')
+    private readonly logger: AramoLogger,
   ) {}
 
   @Post()

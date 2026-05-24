@@ -319,6 +319,27 @@ jobs:
         run: cd infrastructure/environments/${{ matrix.environment }} && terraform validate
 
   # ---------------------------------------------------------------------------
+  # M4 PR-9 — tflint extension (deferred from PR-8 per ADR-0012:92).
+  # Catches the next class of Terraform errors above fmt + validate:
+  # unused variables, deprecated syntax, AWS-provider-specific naming /
+  # lifecycle anti-patterns. No AWS credentials required.
+  # ---------------------------------------------------------------------------
+
+  terraform-lint:
+    name: terraform:lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure
+    steps:
+      - uses: actions/checkout@v4
+      - uses: terraform-linters/setup-tflint@v4
+      - name: tflint init
+        run: tflint --init
+      - name: tflint recursive
+        run: tflint --recursive --minimum-failure-severity=warning
+
+  # ---------------------------------------------------------------------------
   # Deployment-gate aggregator (PR-M0R-3 §4.1, VARIANT B — in-ci.yml).
   #
   # Single aggregator job wiring the 13 named CI gates from Plan v1.2 §4
@@ -366,6 +387,7 @@ jobs:
       - lint-nx-boundaries
       - terraform-fmt
       - terraform-validate
+      - terraform-lint
     steps:
       - name: Evaluate override label and justification
         id: override
