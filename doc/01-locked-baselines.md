@@ -204,6 +204,95 @@ M4 PR-10 (CVE-scanning) is the first PR consuming §19.2 substrate. Module popul
 
 ---
 
+## §10. Plan v1.5 §M5 Track A item 1 — Engagement state machine
+
+**Source 1:** `Aramo-Phase-1-Delivery-Plan-v1_5-LOCKED.docx` §M5 Track A item 1 (canonical; sha256 `d2e62ffb…cc472e`).
+
+**Source 2:** `Aramo-Plan-v1_5-Correction-Note-v1_0-LOCKED.md` (Plan parenthetical count corrected from "10 states" to "11 states on `TalentJobEngagement` per Group 2 §2.3b Part 2 Loops 1-5"; NOT §23.2 scope-affecting; informational count fix aligning with binding canonical source per Hierarchy of Authority §207-213).
+
+**Source 3:** `Aramo-v1-Group2-Consolidated-Baseline-v2.0-LOCKED.docx` §2.3b Part 2 Loops 1-5 (binding product specification per Hierarchy of Authority).
+
+**Verbatim anchor 1** — Plan v1.5 §M5 Track A item 1 (post-Correction-Note v1.0):
+
+> Engagement state machine (11 states on `TalentJobEngagement` per Group 2 §2.3b Part 2 Loops 1-5).
+
+**Verbatim anchor 2** — Group 2 §2.3b Part 2 Loops 1-5 (binding canonical state-machine narrative):
+
+```
+Loop 1 — Matching Loop (system-driven)
+  Re-matching behavior table:
+    Engaged       → Excluded from match list
+    Maybe         → Included, may move in rank
+    Passed        → Excluded (v1 default)
+    Not evaluated → Included
+  State transitions: null → surfaced → evaluated
+
+Loop 2 — Recruiter Evaluation Loop
+  State transitions:
+    surfaced → evaluated →
+      ├── engaged
+      ├── maybe
+      └── passed
+
+Loop 3 — Engagement Loop (Human + AI Assisted)
+  State transitions:
+    evaluated → engaged → awaiting_response
+
+Loop 4 — Response Conversation Loop
+  State transitions:
+    awaiting_response → responded   (trigger: candidate reply)
+    responded → in_conversation     (trigger: recruiter sends first reply)
+    in_conversation →
+      ├── not_interested
+      └── ready_for_submittal
+
+Loop 5 — Submittal Handoff Loop
+  State transitions:
+    Entity: TalentSubmittalRecord
+      created → handoff_draft → ready_for_review → submitted_to_ats → confirmed
+    Entity: TalentJobEngagement
+      ready_for_submittal → submitted
+```
+
+**TalentJobEngagement state enumeration (11 binding values, post-Correction-Note v1.0):**
+
+1. `surfaced` — initial state on matching-engine row creation (Loop 1 `null → surfaced`).
+2. `evaluated` — recruiter has begun evaluation (Loop 1 `surfaced → evaluated`; Loop 2 source).
+3. `engaged` — recruiter chose to engage (Loop 2 branch).
+4. `maybe` — recruiter deferred decision (Loop 2 branch; terminal from engagement-entity perspective; re-matching may re-rank per Loop 1).
+5. `passed` — recruiter declined (Loop 2 branch; terminal).
+6. `awaiting_response` — outreach message sent; awaiting candidate reply (Loop 3).
+7. `responded` — candidate replied (Loop 4; trigger: candidate reply).
+8. `in_conversation` — recruiter sent first reply; conversation active (Loop 4; trigger: recruiter sends first reply).
+9. `not_interested` — candidate not interested in opportunity (Loop 4 branch; terminal).
+10. `ready_for_submittal` — recruiter judges candidate ready for ATS submittal (Loop 4 branch).
+11. `submitted` — submittal handoff completed; engagement-side terminal (Loop 5 `Entity: TalentJobEngagement`).
+
+**10 legal transitions** per Loops 2-5 narrative (Loop 1 `null → surfaced` is row creation, not a state transition):
+
+1. `surfaced → evaluated`
+2. `evaluated → engaged`
+3. `evaluated → maybe`
+4. `evaluated → passed`
+5. `engaged → awaiting_response`
+6. `awaiting_response → responded`
+7. `responded → in_conversation`
+8. `in_conversation → not_interested`
+9. `in_conversation → ready_for_submittal`
+10. `ready_for_submittal → submitted`
+
+**Terminal states** (no outgoing transitions): `maybe`, `passed`, `not_interested`, `submitted`.
+
+**Note on `not_evaluated`**: the Loop 1 re-matching behavior table label "Not evaluated" describes the row-absence case ("engagement record not yet created for this talent+requisition pair") — operationally equivalent to `null` in Loop 1's `null → surfaced → evaluated` transition. It is NOT a stored `TalentJobEngagement.state` value. Per Plan Correction Note v1.0 §2.4.
+
+**Note on TalentSubmittalRecord scope**: Loop 5's `TalentSubmittalRecord` state machine (`created → handoff_draft → ready_for_review → submitted_to_ats → confirmed`) is a distinct entity's state machine — M5 PR-8 territory per `Aramo-M5-Charter-v1_2-LOCKED.md` §4.3. NOT in scope for the M5 PR-1 `TalentJobEngagement` entity foundation; F37 (SubmittalState 3→5 expansion) closes at M5 PR-8.
+
+**M5 PR-1 directive anchors** (read jointly):
+- `Aramo-M5-PR-1-Directive-v1_0-LOCKED.md` Rulings 1, 2, 3, 5, 8, 9, 10, 11 (unchanged).
+- `Aramo-M5-PR-1-Directive-Amendment-v1_1-LOCKED.md` §2 (Ruling 4 — 11-state enum), §3 (Ruling 6 — 10-transition trigger), §4 (Ruling 7 — `canTransition` 11×11 matrix).
+
+---
+
 ## Hierarchy of Authority
 
 When sources appear to conflict:
