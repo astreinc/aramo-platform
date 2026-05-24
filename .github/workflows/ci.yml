@@ -378,7 +378,7 @@ jobs:
   # Single aggregator job wiring the named CI gates from Plan v1.5 §4
   # Stage 4 as `needs:` dependencies. Provides one PASS/FAIL status check
   # that GitHub branch-protection rules can require to block invalid
-  # deployments (Plan v1.2 §6 DoD #6 — "CI blocks invalid deployments
+  # deployments (Plan v1.5 §6 DoD #6 — "CI blocks invalid deployments
   # (deployment-gate.yml enforcing all checks)").
   #
   # VARIANT choice: aggregator-in-ci.yml. The directive's §4.1 first
@@ -393,7 +393,7 @@ jobs:
   # to pass anyway. Without `if: always()`, a failing needed job would
   # skip this aggregator and the override could never apply.
   #
-  # Override-label discipline per Plan v1.2 §4 Stage 4.
+  # Override-label discipline per Plan v1.5 §4 Stage 4.
   # Use of `override:ok-to-merge` label requires a written
   # `Override-Justification: <≥40 chars>` line in the PR body.
   # Override usage should be rare and explicit; pattern is recorded
