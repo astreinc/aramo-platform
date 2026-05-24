@@ -426,7 +426,7 @@ jobs:
     steps:
       - name: Evaluate override label and justification
         id: override
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             // Override applies only on pull_request events. For push to main,
