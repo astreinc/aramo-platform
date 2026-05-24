@@ -14,6 +14,7 @@ export { CONSENT_SCOPE_STATUSES } from './lib/types/consent-scope-status.js';
 export type { ConsentScopeStatus } from './lib/types/consent-scope-status.js';
 export {
   createAramoLogger,
+  makeMockLogger,
   type AramoLogPayload,
   type AramoLogger,
 } from './lib/logging/index.js';
