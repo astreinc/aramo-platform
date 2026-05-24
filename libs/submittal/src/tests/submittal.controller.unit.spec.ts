@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AramoError, type AramoLogger } from '@aramo/common';
+import { AramoError, makeMockLogger } from '@aramo/common';
 import { IdempotencyService } from '@aramo/consent';
 import { EvidenceRepository } from '@aramo/evidence';
 import type { AuthContextType } from '@aramo/auth';
@@ -7,18 +7,6 @@ import type { AuthContextType } from '@aramo/auth';
 import type { CreateSubmittalRequestDto } from '../lib/dto/create-submittal-request.dto.js';
 import { SubmittalController } from '../lib/submittal.controller.js';
 import { SubmittalRepository } from '../lib/submittal.repository.js';
-
-// M4 PR-9 §4.5 — SubmittalController constructor now takes an
-// AramoLogger as 4th arg. Tests inject a no-op mock to satisfy the
-// shape without coupling assertions to log output.
-function makeMockLogger(): AramoLogger {
-  return {
-    log: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  } as unknown as AramoLogger;
-}
 
 // M4 PR-3 §4.11 — controller unit spec.
 //
