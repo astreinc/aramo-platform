@@ -29,6 +29,10 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 | [0008](0008-read-endpoint-maturation-and-handoff-conventions.md) | Read-Endpoint Maturation, Directive-Tier Discipline, and Artifact Handoff Conventions | Accepted | 2026-05-01 |
 | [0009](0009-resolver-region-allow-list-expansion-for-audit-event-reads.md) | Resolver-Region Allow-List Expansion for Audit-Event Read Paths | Accepted | 2026-05-01 |
 | [0010](0010-verification-byte-fidelity-and-additive-index-maturation.md) | Verification, Byte-Fidelity, and Additive Index Maturation | Accepted | 2026-05-01 |
+| [0011](0011-r7-allowlist-extension-for-openapi-prohibited-values.md) | R7 Sealed-Allowlist Extension for `openapi/ingestion.yaml` and `verify-ingestion-refusal.ts` | Accepted | 2026-05-17 |
+| [0012](0012-iac-conventions.md) | IaC Conventions (Terraform Workspace, AWS Provider, S3+DynamoDB Backend, CI Integration) | Accepted | 2026-05-23 |
+| [0013](0013-observability-conventions.md) | Observability Conventions (Structured Logging, Log-Group Provisioning, Per-Env Retention) | Accepted | 2026-05-23 |
+| [0014](0014-cve-scanning-conventions.md) | CVE Scanning Conventions (tfsec + npm-audit, Allow-list Mechanism, M4 PR-10 Substrate) | Accepted | 2026-05-24 |
 
 ## When to write an ADR
 

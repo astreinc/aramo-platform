@@ -51,7 +51,7 @@ This file is the **authoritative pointer** to Aramo's four locked program docume
 
 ---
 
-### 3. Aramo Architecture v2.0 — v1.2 LOCKED
+### 3. Aramo Architecture v2.0 — v2.2 LOCKED (current canonical; v2.1 full text + v2.2 amendment)
 
 **What it is:** The engineering blueprint. Hybrid architecture (Aramo Core modular monolith + extracted Talent Portal + per-source Ingestion Adapters). Technology stack, deployment topology, persistence strategy, refusal enforcement mechanisms, and operational requirements.
 
@@ -70,7 +70,11 @@ This file is the **authoritative pointer** to Aramo's four locked program docume
 - Specific endpoint signatures (use API Contracts)
 - Product behavior (use Group 2)
 
-**File location:** `Aramo-Architecture-v2.0-v1.2-LOCKED.docx`
+**File location (dual citation per BA-1 audit ruling):**
+- `Aramo-Architecture-v2_0-v2_1-LOCKED.docx` (full architecture text; sha256 `7b73ce18...b1861f`) — citation locus for §15 + §19.2 body text quoted at §6 + §8.
+- `Aramo-Architecture-v2_0-v2_2-LOCKED.docx` (current canonical revision; sha256 `37096fc3...fb801`; supersedes v2.1 entirely; delta-amendment adding only §1.1 9th deployable `aramo-tenant-console` + §2.4 deployable description; carries forward v2.1's body — including §15 Observability + §19.2 Deployment Gates — unchanged by reference).
+
+A single-revision swap was rejected: v2.2 is a delta-amendment that does not physically contain the §15 + §19.2 text §6/§8 cite verbatim, so pointing the sha256 anchor at v2.2 alone would break the citation contract for readers who pull the file looking for that text. Dual citation reconciles freshness (current canonical = v2.2) with citation-locus integrity (§15/§19.2 body text = v2.1's hash).
 
 ---
 
@@ -133,7 +137,9 @@ This file is the **authoritative pointer** to Aramo's four locked program docume
 - §15.1 "Observability Stack" — canonical AWS observability services: CloudWatch Metrics, CloudWatch Dashboards, CloudWatch Logs, CloudWatch Insights, AWS X-Ray + OpenTelemetry, CloudWatch Alarms → PagerDuty.
 - §15.3 "Metrics" — core metrics named including `outbox_lag_seconds`.
 
-**File location:** `Aramo-Architecture-v2_0-v1_2-LOCKED.docx` (carried in v2.1; sha256 `7b73ce18...b1861f`)
+**File location (dual citation per BA-1 audit ruling; §3 has full rationale):**
+- `Aramo-Architecture-v2_0-v2_1-LOCKED.docx` (full §15 text; sha256 `7b73ce18...b1861f`).
+- `Aramo-Architecture-v2_0-v2_2-LOCKED.docx` (current canonical revision; sha256 `37096fc3...fb801`; supersedes v2.1 entirely; carries §15 forward unchanged by reference).
 
 M4 PR-9 (observability) is the first PR consuming §15 substrate. Module population: CloudWatch Logs at PR-9; CloudWatch Metrics + X-Ray + OpenTelemetry + PagerDuty deferred to M4-close hardening / M5.
 
@@ -174,7 +180,9 @@ M4 PR-9 (observability) is the first PR consuming §15 substrate. Module populat
 - Sequencing relative to the other gate items (security scan is one of seven peer gates; not gated by, and does not gate, the other six).
 - Gate placement: pre-production-deployment, in-CI, aggregated.
 
-**File location:** `Aramo-Architecture-v2_0-v1_2-LOCKED.docx` (carried in v2.1; sha256 `7b73ce18...b1861f`; same file referenced at §6).
+**File location (dual citation per BA-1 audit ruling; §3 has full rationale; same files referenced at §6):**
+- `Aramo-Architecture-v2_0-v2_1-LOCKED.docx` (full §19.2 text; sha256 `7b73ce18...b1861f`).
+- `Aramo-Architecture-v2_0-v2_2-LOCKED.docx` (current canonical revision; sha256 `37096fc3...fb801`; supersedes v2.1 entirely; carries §19.2 forward unchanged by reference).
 
 M4 PR-10 (CVE-scanning) is the first PR consuming §19.2 substrate. Module population at PR-10: tfsec (IaC security scanning) + npm audit (Node dependency scanning). Other scan types (SAST, secrets, container) deferred to M4-close housekeeping and M5+. The §19.2 gate is also wired explicitly into the deployment-gate CI aggregator as a Plan v1.5 §M6 Track A deliverable ("Architecture §19.2 security-scan deployment gate wired"); PR-10 is the M4 prerequisite that delivers the scan jobs the M6 aggregator wiring consumes.
 
@@ -231,3 +239,4 @@ The first reference is verifiable; the second is a paraphrase that may drift.
 | 2026-05-23 | Add Plan v1.5 as fifth locked baseline; supersedes Plan v1.2 (carried for M0/M1 historical references). Resolves M4 PR-8 substrate-audit §C.11 finding — Plan v1.5 §M4 Track A item 5 ("declarative IaC artifacts under version control") is the authoritative anchor for the M4 PR-8 IaC foundation directive. | Lead Engineer |
 | 2026-05-23 | Add §6 Architecture v2.0/v2.1 §15 (Observability and Operations) + §7 Plan v1.5 §M4 Track A item 6 (Observability as a per-PR standard) as sixth and seventh locked baselines. Resolves M4 PR-9 substrate-audit §A.1 / Q0 finding — §15.1 canonical observability stack (CloudWatch + X-Ray + OpenTelemetry + PagerDuty) and §15.3 core metrics naming are the authoritative substrate for PR-9 IaC module-population work; Plan v1.5 §M4 item 6 establishes observability as a per-PR standard from M4 onward. SECOND INSTANCE of the substrate-coherence pre-PR pattern (PR-8 lesson 1; first instance PR #57). | Lead Engineer |
 | 2026-05-24 | Add §8 Architecture v2.0/v2.1 §19.2 (Deployment Gates — security-scan) + §9 Plan v1.5 §M4 Track A item 7 (Dependency-vulnerability scanning CI gate) as eighth and ninth locked baselines. Resolves M4 PR-10 substrate-audit §A / Q0 finding — §19.2 deployment-gate list (with `security scan passes` as the authoritative anchor) and Plan v1.5 §M4 item 7 (CVE-scanning gate from M4 onward) are the authoritative substrate for PR-10 CVE-scanning CI integration work. THIRD INSTANCE of the substrate-coherence pre-PR pattern (PR-8 lesson 1; first instance PR #57; second instance PR #59). Pattern PROMOTED from "recurring lesson" to documented program convention for foundation-laying work in new spec territory. | Lead Engineer |
+| 2026-05-24 | M4-close housekeeping HK-PR-1 (items 1 + 2 doc-layer bundle): (a) ADR index alignment at `doc/adr/README.md` — appended 4 missing rows (ADR-0011 / ADR-0012 / ADR-0013 / ADR-0014); (b) Architecture dual-citation refresh at §3 / §6 / §8 per BA-1 audit ruling — `Aramo-Architecture-v2_0-v2_1-LOCKED.docx` (sha256 `7b73ce18...b1861f`; full text + citation locus for §15 / §19.2) carried forward unchanged by `Aramo-Architecture-v2_0-v2_2-LOCKED.docx` (sha256 `37096fc3...fb801`; current canonical revision; delta-amendment adding only §1.1 9th deployable + §2.4 description); single-revision swap rejected (would break citation contract for §15/§19.2 body text). Plan v1.5 confirmed full-rewrite (NOT delta-amendment) by reading canonical Status block — no dual-citation needed for §5 / §7 / §9. (c) ci.yml stale "13 required deployment gates" comments at the `deployment-gate` step resolved via approach (b) — count removed from `name:` + final `echo` so the dynamic `grep -qE` check is the sole source of truth (resilient to future CI growth). M4-close housekeeping lesson 1 RECORDED: delta-amendment documents require dual citation when the superseding revision is a delta (not full rewrite); pattern likely applies at future foundation-laying doc-lock pre-PRs. | Lead Engineer |
