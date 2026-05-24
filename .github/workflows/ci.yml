@@ -333,7 +333,7 @@ jobs:
         working-directory: infrastructure
     steps:
       - uses: actions/checkout@v4
-      - uses: terraform-linters/setup-tflint@v4
+      - uses: terraform-linters/setup-tflint@v6
       - name: tflint init
         run: tflint --init
       - name: tflint recursive
