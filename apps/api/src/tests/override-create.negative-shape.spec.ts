@@ -68,6 +68,10 @@ const EXAMINATION_OVERRIDE_MIGRATION = resolve(
   ROOT,
   'libs/examination/prisma/migrations/20260523180000_add_examination_override/migration.sql',
 );
+const EXAMINATION_OVERRIDE_TIMESTAMPTZ_MIGRATION = resolve(
+  ROOT,
+  'libs/examination/prisma/migrations/20260524080000_add_timestamptz_to_examination_override/migration.sql',
+);
 const JOB_DOMAIN_INIT_MIGRATION = resolve(
   ROOT,
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
@@ -166,6 +170,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         EXAMINATION_INIT_MIGRATION,
         EXAMINATION_LIVE_LIST_MIGRATION,
         EXAMINATION_OVERRIDE_MIGRATION,
+        EXAMINATION_OVERRIDE_TIMESTAMPTZ_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
         EVIDENCE_INIT_MIGRATION,

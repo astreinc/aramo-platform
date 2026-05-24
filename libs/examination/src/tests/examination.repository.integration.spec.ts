@@ -27,6 +27,10 @@ const OVERRIDE_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260523180000_add_examination_override/migration.sql',
 );
+const OVERRIDE_TIMESTAMPTZ_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260524080000_add_timestamptz_to_examination_override/migration.sql',
+);
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
 const TENANT_B = '22222222-2222-7222-8222-222222222222';
@@ -87,6 +91,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // M4 PR-5 §4.11 — apply override migration so the new
         // describe block below can round-trip ExaminationOverride writes.
         OVERRIDE_MIGRATION_PATH,
+        // M4-close HK-PR-3 / F41 — apply TIMESTAMPTZ migration that
+        // promotes ExaminationOverride.created_at to TIMESTAMP WITH
+        // TIME ZONE (aligns with workspace-wide @db.Timestamptz
+        // convention).
+        OVERRIDE_TIMESTAMPTZ_MIGRATION_PATH,
       ]) {
         const migrationSql = readFileSync(migrationPath, 'utf8');
         for (const stmt of splitDdl(migrationSql)) {
@@ -213,6 +222,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         MIGRATION_PATH,
         LIVE_LIST_MIGRATION_PATH,
         OVERRIDE_MIGRATION_PATH,
+        OVERRIDE_TIMESTAMPTZ_MIGRATION_PATH,
       ]) {
         const migrationSql = readFileSync(migrationPath, 'utf8');
         for (const stmt of splitDdl(migrationSql)) {
