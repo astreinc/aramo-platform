@@ -1,11 +1,54 @@
 // Per-module Prisma schema for the `engagement` module.
 //
-// Per Architecture v2.0 Section 7 (Schema-per-Module data architecture) and
-// doc/05-conventions.md "Database Conventions". Cross-schema references
-// elsewhere in the program are UUID-only without FK constraints.
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
+// and doc/05-conventions.md "Database Conventions". Cross-schema
+// references elsewhere in the program are UUID-only without FK
+// constraints (§7.3).
 //
-// PR-1 scaffolding only: this file declares the datasource and generator
-// configuration. Zero models exist yet.
+// M5 PR-1 — TalentJobEngagement entity foundation. Per Group 2
+// Consolidated Baseline v2.0 §2.3b Part 2 Loops 1-5 (binding canonical
+// state-machine narrative): the workflow-state entity carrying the
+// engagement state machine for the talent+requisition pairing through
+// Group 2 §2.3b Part 2 Loops 1-5 (matching, recruiter triage,
+// engagement, response, and submittal-handoff).
+//
+// Eleven-state enumeration per Group 2 §2.3b Part 2 Loops 1-5 verbatim
+// (per M5 PR-1 Directive Amendment v1.1 §2; supersedes the audit /
+// directive-v1.0 ten-state interim list resolved at doc-lock
+// canonical-divergence gate per Plan v1.5 Correction Note v1.0):
+//   surfaced, evaluated, engaged, maybe, passed, awaiting_response,
+//   responded, in_conversation, not_interested, ready_for_submittal,
+//   submitted.
+//
+// Default state `surfaced` per Loop 1 (`null -> surfaced -> evaluated` —
+// matching engine creating an engagement row writes `surfaced`).
+//
+// Column-scoped immutability per Group 2 §2.3b Loops 1-5 + M5 PR-1
+// Directive Amendment v1.1 §3 is enforced at the database layer by a
+// BEFORE UPDATE trigger added in the same migration. The trigger:
+//   1) rejects any UPDATE that touches a non-state column, and
+//   2) rejects any state transition not in the ten-entry legal matrix.
+// Mechanism precedent: examination TalentJobExamination column-scoped
+// trigger (M3 PR-1, lifecycle_state). Evidence whole-row precedent does
+// not apply because the engagement entity has a mutable `state` column.
+//
+// Cross-schema UUID references (Architecture §7.3 — UUID-only, no FK):
+//   - tenant_id: tenant replication per §7.2.
+//   - talent_id: references talent.Talent (M3 PR-1).
+//   - requisition_id: references job-domain.Requisition (M3 PR-4).
+//   - examination_id: nullable references
+//     examination.TalentJobExamination (M3 PR-1; engagement may exist
+//     before examination is computed; pin-verify lands at M5 PR-8).
+// Write-path application-layer validators land at M5 PR-3 (engagement-
+// creation write path); PR-1 ships read-only.
+//
+// No write methods are exposed on the EngagementRepository at PR-1 —
+// belt-and-suspenders alongside the column-scoped database trigger
+// (per Directive v1.0 Ruling 3). Write methods (createEngagement,
+// transitionState) land with M5 PR-3.
+//
+// No `updated_at` column — only the `state` column is mutable per the
+// column-scoped trigger. Snapshot timestamp `created_at` only.
 
 generator client {
   provider = "prisma-client-js"
@@ -14,4 +57,55 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  schemas  = ["engagement"]
+}
+
+enum EngagementState {
+  surfaced
+  evaluated
+  engaged
+  maybe
+  passed
+  awaiting_response
+  responded
+  in_conversation
+  not_interested
+  ready_for_submittal
+  submitted
+
+  @@schema("engagement")
+}
+
+// §2.3b Part 2 Loops 1-5 — TalentJobEngagement (workflow-state entity).
+// Cross-schema references (`talent_id`, `requisition_id`,
+// `examination_id`) are UUID-only per Architecture §7.3.
+model TalentJobEngagement {
+  // Identity. UUID v7 generated app-side (PR-2 precedent — Postgres 17
+  // has no native uuidv7() function).
+  id              String  @id @db.Uuid
+  tenant_id       String  @db.Uuid
+
+  // Cross-schema references (§7.3 — UUID-only, no FK).
+  talent_id       String  @db.Uuid
+  requisition_id  String  @db.Uuid
+  // examination_id: nullable — engagement may exist before examination
+  // is computed. Pin-verify logic lands at M5 PR-8.
+  examination_id  String? @db.Uuid
+
+  // Workflow state. Default `surfaced` per Loop 1 (`null -> surfaced ->
+  // evaluated` — matching engine creates row in `surfaced`).
+  state           EngagementState @default(surfaced)
+
+  // Snapshot creation timestamp. No updated_at — only the `state`
+  // column is mutable per the column-scoped immutability trigger.
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  // Lookups: (tenant, talent, requisition) primary lookup (find
+  // engagement for given talent+requisition); (tenant, state) state-
+  // based filtering; (tenant, examination_id) examination cross-
+  // reference filtering.
+  @@index([tenant_id, talent_id, requisition_id])
+  @@index([tenant_id, state])
+  @@index([tenant_id, examination_id])
+  @@schema("engagement")
 }
