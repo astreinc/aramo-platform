@@ -36,6 +36,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   OVERRIDE_INVALID: 422,
   REVOKE_NOT_ALLOWED: 422,
   ENGAGEMENT_EVENT_REF_NOT_FOUND: 422,
+  ENGAGEMENT_REFERENCE_NOT_FOUND: 422,
+  ENGAGEMENT_STATE_INVALID: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response
