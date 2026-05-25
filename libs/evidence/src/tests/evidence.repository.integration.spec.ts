@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { AramoError, makeMockLogger } from '@aramo/common';
+import { EngagementEventRepository } from '@aramo/engagement';
 import {
   ExaminationRepository,
   PrismaService as ExaminationPrismaService,
@@ -236,7 +237,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const examRepo = new ExaminationRepository(examPrisma, undefined as never);
       const talentEvidenceRepo = new TalentEvidenceRepository(talentEvidencePrisma);
-      repo = new EvidenceRepository(prisma, examRepo, talentEvidenceRepo, makeMockLogger());
+      // M5 PR-2 — EngagementEventRepository required by EvidenceRepository
+      // constructor. Existing tests in this spec do not exercise the
+      // cross-schema engagement_event_refs validator (all test seeds use
+      // `[]::jsonb`; all BuildPackageInput shapes omit engagement_event_refs
+      // → validator short-circuits before the findByTenantAndId call).
+      // Validator-path coverage lives in
+      // evidence.repository.cross-schema-validator.integration.spec.ts.
+      // A stub satisfies the constructor signature without requiring the
+      // engagement migration to be applied here.
+      const engagementEventRepoStub = {
+        findByTenantAndId: async () => null,
+      } as unknown as EngagementEventRepository;
+      repo = new EvidenceRepository(
+        prisma,
+        examRepo,
+        talentEvidenceRepo,
+        engagementEventRepoStub,
+        makeMockLogger(),
+      );
 
       // ---- Read-path seed (PR-1, unchanged shape) ---------------------
       await seedPackage(setupClient, {

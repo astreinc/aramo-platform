@@ -76,6 +76,19 @@ enum EngagementState {
   @@schema("engagement")
 }
 
+// M5 PR-2 — TalentEngagementEvent event-log enum. Four event-type values
+// per the M5 PR-2 directive §4.1 + Charter v1.2 §4.4 Ruling D event-log
+// scope. Closed-list; future event types added via explicit directive
+// amendments.
+enum EngagementEventType {
+  state_transition
+  outreach_sent
+  response_received
+  conversation_started
+
+  @@schema("engagement")
+}
+
 // §2.3b Part 2 Loops 1-5 — TalentJobEngagement (workflow-state entity).
 // Cross-schema references (`talent_id`, `requisition_id`,
 // `examination_id`) are UUID-only per Architecture §7.3.
@@ -107,5 +120,64 @@ model TalentJobEngagement {
   @@index([tenant_id, talent_id, requisition_id])
   @@index([tenant_id, state])
   @@index([tenant_id, examination_id])
+
+  // M5 PR-2 — back-reference for the TalentEngagementEvent intra-schema
+  // FK. Relation-only field; no column added at the DB layer.
+  events          TalentEngagementEvent[]
+
+  @@schema("engagement")
+}
+
+// M5 PR-2 — TalentEngagementEvent event-log entity. Per Charter v1.2 §4.4
+// Ruling D (engagement event-log scope) + M5 PR-2 directive §4.1: an
+// append-only audit log of engagement-side workflow events (state
+// transitions, outreach sends, responses, conversation starts).
+//
+// Cardinality: many events per TalentJobEngagement. Intra-schema FK on
+// engagement_id (both entities live in the `engagement` schema, so
+// constraint enforcement is permitted per Architecture §7.3 — UUID-only
+// applies to cross-schema refs).
+//
+// Append-only / absolute-immutability: enforced at the DB layer by a
+// BEFORE UPDATE trigger added in the same migration (M3 PR-2
+// TalentConsentEvent + M4 PR-1 TalentJobEvidencePackage absolute-
+// immutability precedent — entire row rejected, not column-scoped).
+// The repository surface exposes appendEvent (create-only) and read
+// methods; no update/upsert/delete paths.
+//
+// Cross-schema references (Architecture §7.3 — UUID-only, no FK):
+//   - tenant_id: tenant replication per §7.2.
+// Intra-schema references (FK permitted per §7.3):
+//   - engagement_id → TalentJobEngagement.id (this schema).
+//
+// event_payload is JSONB per §7.4 ("derived snapshots, metadata,
+// evidence summaries" — event-log payloads fall under this scope; the
+// payload shape varies per event_type and is typed at the application
+// layer when consumed).
+model TalentEngagementEvent {
+  // Identity. UUID v7 generated app-side.
+  id              String              @id @db.Uuid
+  tenant_id       String              @db.Uuid
+
+  // Intra-schema FK to TalentJobEngagement.
+  engagement_id   String              @db.Uuid
+  engagement      TalentJobEngagement @relation(fields: [engagement_id], references: [id])
+
+  // Closed-list event type per the EngagementEventType enum.
+  event_type      EngagementEventType
+
+  // Per-event-type JSONB payload. Shape varies; typed at consumption
+  // sites in M5 PR-3+ when concrete event-emit paths land.
+  event_payload   Json
+
+  // Snapshot creation timestamp. No updated_at — entire row is
+  // immutable per the absolute-immutability trigger.
+  created_at      DateTime            @default(now()) @db.Timestamptz(6)
+
+  // Lookups: (tenant, engagement) primary lookup (events for a given
+  // engagement, tenant-scoped); (engagement, created_at) chronological
+  // event-log read for a given engagement.
+  @@index([tenant_id, engagement_id])
+  @@index([engagement_id, created_at])
   @@schema("engagement")
 }
