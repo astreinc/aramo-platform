@@ -25,6 +25,7 @@
     "paths": {
       "@aramo/api": ["apps/api/src/app.module.ts"],
       "@aramo/audit": ["libs/audit/src/index.ts"],
+      "@aramo/ai-draft": ["libs/ai-draft/src/index.ts"],
       "@aramo/auth": ["libs/auth/src/index.ts"],
       "@aramo/auth-service": ["apps/auth-service/src/app/auth/auth.module.ts"],
       "@aramo/auth-storage": ["libs/auth-storage/src/index.ts"],

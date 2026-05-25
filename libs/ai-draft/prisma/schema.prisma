@@ -1,0 +1,53 @@
+// Per-module Prisma schema for the `ai-draft` module.
+//
+// M5 PR-5 — AI Draft Substrate (ADR-0015-locked posture). Per
+// Aramo-ADR-0015-AI-Substrate-Posture-v1_0-LOCKED.md + M5 PR-5
+// Directive Ruling 5: an append-only event log of AI draft-generation
+// activity (request_built, request_sent, response_received,
+// redaction_applied, error_raised). Raw prompt/completion text is NOT
+// persisted — only sha256 hashes and structured-metadata payloads
+// (Decision 5).
+//
+// Architecture (v2.0/v2.1 §7.1 Schema-per-Module) + ADR-0015:
+//   - Schema `ai_draft`. Single model: AiDraftEvent.
+//   - All cross-schema references are UUID-only without FK constraints
+//     (§7.3). tenant_id replicated per §7.2.
+//   - JSONB event_payload typed at the application layer
+//     (libs/ai-draft/src/lib/dto/event-payloads.ts).
+//
+// Absolute-immutability (Ruling 5): events are append-only audit
+// records. The BEFORE UPDATE trigger
+// (ai_draft.ai_draft_event_immutable_trigger) rejects ANY update on
+// AiDraftEvent at the DB layer. Belt-and-suspenders alongside the
+// AiDraftRepository write-surface (appendEvent only — no update /
+// upsert / delete paths).
+//
+// Indexes:
+//   - (tenant_id, created_at) — tenant-scoped chronological reads.
+//   - (tenant_id, event_type, created_at) — per-event-type filtering.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/ai-draft-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["ai_draft"]
+}
+
+// M5 PR-5 — AiDraftEvent append-only audit log. Five event types per
+// Ruling 5: request_built, request_sent, response_received,
+// redaction_applied, error_raised. event_type stored as VARCHAR(32)
+// (closed list enforced at the application layer via AI_DRAFT_EVENT_TYPES).
+model AiDraftEvent {
+  id            String   @id @db.Uuid
+  tenant_id     String   @db.Uuid
+  event_type    String   @db.VarChar(32)
+  event_payload Json
+  created_at    DateTime @db.Timestamptz(6)
+
+  @@index([tenant_id, created_at])
+  @@index([tenant_id, event_type, created_at])
+  @@schema("ai_draft")
+}
