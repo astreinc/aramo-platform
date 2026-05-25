@@ -1460,6 +1460,8 @@ components:
         - OVERRIDE_INVALID
         - REVOKE_NOT_ALLOWED
         - ENGAGEMENT_EVENT_REF_NOT_FOUND
+        - ENGAGEMENT_REFERENCE_NOT_FOUND
+        - ENGAGEMENT_STATE_INVALID
 
     ErrorObject:
       type: object

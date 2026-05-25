@@ -111,6 +111,27 @@
 // openapi/common.yaml ErrorCode enum entry is added in the same PR per
 // Directive Amendment v1.1's parity-quad expansion (TS tuple + HTTP
 // mapping + parity test + openapi/common.yaml). Total: 20 codes.
+//
+// M5 PR-3 adds two codes (parity-quad × 2 per Aramo-M5-PR-3-Directive-
+// v1_0-LOCKED.md §4.5 + Ruling 8):
+//   - ENGAGEMENT_REFERENCE_NOT_FOUND (HTTP 422) — EngagementRepository
+//     .createEngagement refuses when any of the 3 cross-schema validator
+//     patterns fails: Pattern C (TalentRepository.findOverlayByTenant
+//     returns null), Pattern A (JobDomainRepository.findRequisitionById
+//     returns null or row.tenant_id mismatch), Pattern B (Examination
+//     .findById returns null or row.tenant_id mismatch when
+//     examination_id is provided). Three-pattern design per Amendment
+//     v1.1 §2 (substrate-derived: TalentDto is tenant-agnostic so
+//     overlay-existence is the tenant-visibility proxy; the other two
+//     follow the M5 PR-2 evidence-builder app-layer tenant-check
+//     precedent).
+//   - ENGAGEMENT_STATE_INVALID (HTTP 422) — EngagementRepository
+//     .transitionState refuses when canTransition(from, to) returns
+//     false. Application-layer guard atop the M5 PR-1 column-scoped DB
+//     trigger (defense-in-depth: the trigger would also reject, but the
+//     application-layer guard returns a structured error before the SQL
+//     UPDATE attempt).
+// Total: 22 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -133,6 +154,8 @@ export const ERROR_CODES = [
   'OVERRIDE_INVALID',  // M4 PR-5 — invalid override payload or non-overridable field
   'REVOKE_NOT_ALLOWED',  // M4 PR-7 — submittal not in 'submitted' state cannot be revoked
   'ENGAGEMENT_EVENT_REF_NOT_FOUND',  // M5 PR-2 — engagement_event_refs entry not found in tenant
+  'ENGAGEMENT_REFERENCE_NOT_FOUND',  // M5 PR-3 — createEngagement cross-schema validator (Pattern A/B/C)
+  'ENGAGEMENT_STATE_INVALID',  // M5 PR-3 — transitionState canTransition guard failed
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
