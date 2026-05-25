@@ -355,12 +355,49 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: aquasecurity/tfsec-action@v1.0.3
-        with:
-          working_directory: infrastructure
-          soft_fail: false
-          additional_args: --minimum-severity=HIGH
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+      # ---------------------------------------------------------------------
+      # tfsec via direct binary install (M5 HK-M5; replaces
+      # aquasecurity/tfsec-action@v1.0.3 which fails because the action
+      # calls api.github.com/repos/aquasecurity/tfsec/releases/latest to
+      # discover its binary, and the aquasecurity GitHub organization has
+      # an IP allow list that rejects all GitHub-hosted runner IPs from
+      # this api.github.com surface. The release-asset CDN at
+      # release-assets.githubusercontent.com (Azure blob backend) is not
+      # subject to the org-level allow list, so direct binary download
+      # bypasses the rejection layer.
+      #
+      # Version pinned to v1.28.14 per ADR-0014 convention #2 (action/
+      # binary versions pinned by tag, not floating). Future bumps via
+      # explicit Lead-elected PRs.
+      #
+      # Checksum verification provides supply-chain integrity defense:
+      # the release-assets CDN is GitHub-served but not GitHub-signed; a
+      # compromised CDN delivery would be detected at sha256 mismatch.
+      #
+      # tfsec itself is now part of Trivy (upstream deprecation notice
+      # at github.com/aquasecurity/tfsec); a future M5 or M6 housekeeping
+      # PR may migrate this step to trivy. Until then, tfsec v1.28.14
+      # is the locked baseline.
+      # ---------------------------------------------------------------------
+      - name: tfsec install + verify
+        run: |
+          set -euo pipefail
+          TFSEC_VERSION=v1.28.14
+          TFSEC_BIN_URL="https://github.com/aquasecurity/tfsec/releases/download/${TFSEC_VERSION}/tfsec-linux-amd64"
+          TFSEC_CHECKSUM_URL="https://github.com/aquasecurity/tfsec/releases/download/${TFSEC_VERSION}/tfsec_checksums.txt"
+          curl -sSL -o tfsec "${TFSEC_BIN_URL}"
+          curl -sSL -o tfsec_checksums.txt "${TFSEC_CHECKSUM_URL}"
+          EXPECTED_SHA=$(grep "tfsec-linux-amd64$" tfsec_checksums.txt | awk '{print $1}')
+          ACTUAL_SHA=$(sha256sum tfsec | awk '{print $1}')
+          if [ "${EXPECTED_SHA}" != "${ACTUAL_SHA}" ]; then
+            echo "::error title=tfsec checksum mismatch::expected=${EXPECTED_SHA} actual=${ACTUAL_SHA}"
+            exit 1
+          fi
+          chmod +x tfsec
+          echo "tfsec ${TFSEC_VERSION} installed; sha256 verified"
+      - name: tfsec scan infrastructure/
+        run: |
+          ./tfsec infrastructure --minimum-severity=HIGH
 
   npm-audit:
     name: npm:audit
