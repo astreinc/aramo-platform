@@ -152,6 +152,27 @@ TIER2_EXCLUDES=(
   # Same rationale as the source-file entries above.
   "libs/engagement/src/tests/engagement-event.repository.integration.spec.ts"
   "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts"
+  # M5 PR-4: HTTP-surface specs and Pact consumer/provider tests for the
+  # engagement endpoints exercise the canonical `outreach_sent` enum
+  # value in state-transition fixture data + the engagement-controller
+  # unit + integration specs reference the same. Same canonical-vocab
+  # rationale as the M5 PR-2 entries above.
+  # engagement-create.negative-shape.spec.ts enumerates the F23
+  # FORBIDDEN_MATCH_CLASS_KEYS array (rank/score/etc.) for recursive-
+  # descent leak detection — same structural pattern as the M3 PR-9
+  # / M4 PR-3-7 negative-shape entries above.
+  "apps/api/src/tests/engagement-create.negative-shape.spec.ts"
+  "apps/api/src/tests/engagement-transition.negative-shape.spec.ts"
+  "pact/consumers/ats-thin/src/engagement-create.consumer.test.ts"
+  "pact/consumers/ats-thin/src/engagement-transition.consumer.test.ts"
+  "pact/consumers/ats-thin/src/engagement-reads.consumer.test.ts"
+  "libs/engagement/src/tests/engagement.controller.spec.ts"
+  "apps/api/src/tests/engagement.controller.integration.spec.ts"
+  # M5 PR-4: OpenAPI common.yaml carries the canonical EngagementEventTypeValue
+  # enum with `outreach_sent` per Group 2 §2.3b Loops 3-5 event-emission
+  # semantics — the same rationale as libs/engagement/src/lib/engagement-event.ts.
+  # Same structural pattern as openapi/ingestion.yaml's R7 enum-value exemption.
+  "openapi/common.yaml"
 )
 
 # =============================================================================

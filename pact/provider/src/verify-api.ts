@@ -138,6 +138,17 @@ const TALENT_EVIDENCE_INIT_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
 );
+// M5 PR-1 + PR-2 — engagement schema migrations: TalentJobEngagement
+// init + TalentEngagementEvent event-log + absolute-immutability trigger.
+// Required for M5 PR-4 engagement-* pact interactions.
+const ENGAGEMENT_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql',
+);
+const ENGAGEMENT_EVENT_LOG_MIGRATION = resolve(
+  ROOT,
+  'libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
+);
 const INGESTION_PACT = resolve(
   ROOT,
   'pact/pacts/ingestion-consumer-aramo-core.json',
@@ -274,6 +285,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // the controller persists override rows at request time. Truncate
       // ExaminationOverride so prior runs don't leak.
       await c.query('TRUNCATE TABLE examination."ExaminationOverride" CASCADE');
+      // M5 PR-4 — engagement-* state handlers seed TalentJobEngagement +
+      // TalentEngagementEvent rows + the controller persists more on
+      // create/transition. Truncate so prior runs don't leak.
+      await c.query('TRUNCATE TABLE engagement."TalentEngagementEvent" CASCADE');
+      await c.query('TRUNCATE TABLE engagement."TalentJobEngagement" CASCADE');
     }
 
     // M3 PR-9 §4.8 — seed a Talent core row + a TalentTenantOverlay for
@@ -1079,6 +1095,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // init migration so the ALTER TYPE / ALTER TABLE statements
         // hit the existing enum/table.
         SUBMITTAL_REVOKE_MIGRATION,
+        // M5 PR-4 — engagement schema + event log for engagement-*
+        // pact verification.
+        ENGAGEMENT_INIT_MIGRATION,
+        ENGAGEMENT_EVENT_LOG_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -1974,7 +1994,185 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         });
       },
+
+      // ===== M5 PR-4 engagement-* pacts (14 interactions) =====
+      //
+      // engagement-create: 4 interactions.
+      // engagement-transition: 4 interactions.
+      // engagement-reads (GET /v1/engagements/{id} + .../events): 6 interactions.
+      //
+      // All state-seeding helpers below truncate first (resetAllRows) and
+      // then seed the minimum substrate needed for each interaction to
+      // produce the contracted response when the AppModule replays the
+      // request.
+
+      'a recruiter has authenticated and a Talent + overlay + Requisition exist in tenant for engagement creation':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+          });
+        },
+
+      'a recruiter has authenticated but the talent has no overlay in tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            // Seed Talent + Requisition but NOT the overlay for the GHOST
+            // talent referenced by the test. The controller's Pattern C
+            // validator returns null → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+            await seedEngagementBasics(c);
+          });
+        },
+
+      'a portal user has authenticated against the engagement-create endpoint':
+        async () => {
+          await withClient((c) => resetAllRows(c));
+        },
+
+      'an idempotency key has been used for a prior engagement-create with a different body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            // Pre-seed an IdempotencyKey with the same key the consumer
+            // sends + a different request_hash → controller's
+            // idempotency.lookup throws IDEMPOTENCY_KEY_CONFLICT 409.
+            await c.query(
+              `INSERT INTO consent."IdempotencyKey"
+                 (id, tenant_id, key, request_hash, response_status, response_body, created_at)
+               VALUES ($1, $2, $3, $4, 201, $5::jsonb, NOW())`,
+              [
+                '00000000-0000-7000-8000-cccc00000c20',
+                TENANT_ID,
+                '0190d5a4-7e01-7e2a-a4d3-cccc00000c14',
+                'sha256-of-some-other-body',
+                '{}',
+              ],
+            );
+          });
+        },
+
+      'a recruiter has authenticated and an engagement exists in surfaced state for tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            await seedEngagementRow(c, {
+              id: '00000000-0000-7000-8000-dddd00000d01',
+              state: 'surfaced',
+            });
+          });
+        },
+
+      'a recruiter has authenticated but the engagement does not exist for tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            // Engagement intentionally not seeded.
+          });
+        },
+
+      'a portal user has authenticated against the engagement-transition endpoint':
+        async () => {
+          await withClient((c) => resetAllRows(c));
+        },
+
+      'a recruiter has authenticated and an engagement exists for tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            await seedEngagementRow(c, {
+              id: '00000000-0000-7000-8000-eeee00000e01',
+              state: 'surfaced',
+            });
+          });
+        },
+
+      'a portal user has authenticated against the engagement-read endpoint':
+        async () => {
+          await withClient((c) => resetAllRows(c));
+        },
+
+      'a recruiter has authenticated and an engagement with at least one event exists for tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            await seedEngagementRow(c, {
+              id: '00000000-0000-7000-8000-eeee00000e01',
+              state: 'surfaced',
+            });
+            await c.query(
+              `INSERT INTO engagement."TalentEngagementEvent"
+                 (id, tenant_id, engagement_id, event_type, event_payload, created_at)
+               VALUES ($1, $2, $3, 'state_transition'::engagement."EngagementEventType", $4::jsonb, NOW())`,
+              [
+                '00000000-0000-7000-8000-eeee0e0000e1',
+                TENANT_ID,
+                '00000000-0000-7000-8000-eeee00000e01',
+                JSON.stringify({ from_state: null, to_state: 'surfaced' }),
+              ],
+            );
+          });
+        },
+
+      'a portal user has authenticated against the engagement-events endpoint':
+        async () => {
+          await withClient((c) => resetAllRows(c));
+        },
     };
+
+    // M5 PR-4 helpers: seed Talent + overlay + Job + Requisition for the
+    // PACT_RECRUITER_ACTOR_ID tenant context — engagement-create's three
+    // cross-schema validators need all three to be visible.
+    async function seedEngagementBasics(c: Client): Promise<void> {
+      const talentId = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
+      const jobId = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
+      const reqId = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
+      await c.query(
+        `INSERT INTO talent."Talent" (id, lifecycle_status, updated_at)
+         VALUES ($1, 'active', NOW())
+         ON CONFLICT (id) DO NOTHING`,
+        [talentId],
+      );
+      await c.query(
+        `INSERT INTO talent."TalentTenantOverlay"
+           (id, talent_id, tenant_id, source_recruiter_id, source_channel,
+            tenant_status, updated_at)
+         VALUES ($1, $2, $3, NULL, 'self_signup', 'active', NOW())
+         ON CONFLICT (id) DO NOTHING`,
+        ['00000000-0000-7fff-8fff-000000000040', talentId, TENANT_ID],
+      );
+      await c.query(
+        `INSERT INTO job_domain."Job" (id, tenant_id)
+         VALUES ($1, $2)
+         ON CONFLICT (id) DO NOTHING`,
+        [jobId, TENANT_ID],
+      );
+      await c.query(
+        `INSERT INTO job_domain."Requisition"
+           (id, tenant_id, job_id, recruiter_id, state)
+         VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState")`,
+        [reqId, TENANT_ID, jobId, PACT_RECRUITER_ACTOR_ID],
+      );
+    }
+
+    async function seedEngagementRow(
+      c: Client,
+      params: { id: string; state: string },
+    ): Promise<void> {
+      const talentId = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
+      const reqId = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
+      await c.query(
+        `INSERT INTO engagement."TalentJobEngagement"
+           (id, tenant_id, talent_id, requisition_id, examination_id, state, created_at)
+         VALUES ($1, $2, $3, $4, NULL, $5::engagement."EngagementState", NOW())`,
+        [params.id, TENANT_ID, talentId, reqId, params.state],
+      );
+    }
 
     // Request filter — rewrites the literal fake credentials the
     // consumer pacts ship into the real signed JWT, then forwards.

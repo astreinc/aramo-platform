@@ -12,6 +12,7 @@
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
       "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
+      "@aramo/engagement": ["../../dist/libs/engagement/src/index.d.ts"],
       "@aramo/ingestion": ["../../dist/libs/ingestion/src/index.d.ts"],
       "@aramo/matching": ["../../dist/libs/matching/src/index.d.ts"],
       "@aramo/examination": ["../../dist/libs/examination/src/index.d.ts"],

@@ -390,6 +390,245 @@ paths:
       security:
         - BearerAuth: []
 
+  # =========================================================================
+  # M5 PR-4 — Engagement HTTP surface (Charter v1.2 §4.3 row 4).
+  #
+  # Four endpoints exposing the M5 PR-1/2/3 engagement substrate at the
+  # ATS-thin recruiter-facing surface:
+  #   POST /v1/engagements                   — create (Ruling 4 + Ruling 9)
+  #   POST /v1/engagements/{id}/transitions  — state transition (Ruling 10)
+  #   GET  /v1/engagements/{id}              — read engagement (Ruling 5)
+  #   GET  /v1/engagements/{id}/events       — read event log (Ruling 5)
+  #
+  # All endpoints recruiter-only (Ruling 8); non-recruiter consumers 403'd
+  # with INSUFFICIENT_PERMISSIONS. POST endpoints require Idempotency-Key
+  # header (M4 PR-3 precedent).
+  # =========================================================================
+
+  /v1/engagements:
+    post:
+      operationId: createEngagement
+      summary: Create a new TalentJobEngagement (M5 PR-4).
+      description: |
+        Creates a new TalentJobEngagement row in initial state
+        `surfaced` (Group 2 §2.3b Loop 1) and appends the initial
+        state_transition event row atomically via prisma.$transaction.
+
+        Three cross-schema validators run fail-fast BEFORE the write
+        transaction opens (M5 PR-3 Amendment v1.1 §2, three substrate-
+        derived patterns):
+          - Pattern C (Talent): TalentRepository.findOverlayByTenant;
+            overlay absence → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+          - Pattern A (Requisition): findRequisitionById + tenant
+            check; null/mismatch → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+          - Pattern B (Examination, nullable): findById + tenant check;
+            null/mismatch → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+
+        Response shape: { engagement } only per Ruling 9. The initial
+        event row is accessible via GET /v1/engagements/{id}/events.
+
+        Refusal codes:
+          - 422 ENGAGEMENT_REFERENCE_NOT_FOUND — cross-schema validator.
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            UUID idempotency key. Same key + same body returns the prior
+            response; same key + different body returns 409
+            IDEMPOTENCY_KEY_CONFLICT. Missing or non-UUID returns 400
+            VALIDATION_ERROR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/CreateEngagementRequest'
+      responses:
+        '201':
+          description: Engagement created in initial state `surfaced`.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/CreateEngagementResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '409':
+          description: Idempotency-Key collision (same key, different body).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
+  /v1/engagements/{engagement_id}/transitions:
+    post:
+      operationId: transitionEngagement
+      summary: Transition an engagement to a new state (M5 PR-4).
+      description: |
+        Transitions an existing engagement's state column via the
+        repository's transitionState method. Atomic prisma.$transaction
+        pairs the engagement.update with a state_transition event row
+        append per M5 PR-3 substrate.
+
+        Pre-write guards (in order):
+          1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
+          2. Idempotency-Key required + UUID-shaped.
+          3. engagement_id path param UUID validation.
+          4. Read current via findByTenantAndId (404 NOT_FOUND if null).
+          5. canTransition guard (422 ENGAGEMENT_STATE_INVALID if illegal).
+
+        Column-scoped DB trigger (PR-1 substrate) is defense-in-depth.
+
+        Response shape: { engagement } only per Ruling 9 + Ruling 11
+        (NO state-isolation literal field).
+
+        Refusal codes:
+          - 422 ENGAGEMENT_STATE_INVALID — illegal transition (satisfies
+            Plan v1.5 §M5 Track B item 1).
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
+          - 404 NOT_FOUND — engagement_id not visible in tenant.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
+      parameters:
+        - name: engagement_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            UUID idempotency key. Same key + same body returns the prior
+            response; same key + different body returns 409
+            IDEMPOTENCY_KEY_CONFLICT. Missing or non-UUID returns 400
+            VALIDATION_ERROR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/TransitionEngagementRequest'
+      responses:
+        '200':
+          description: Engagement state transitioned; event row appended.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/TransitionEngagementResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Idempotency-Key collision (same key, different body).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
+  /v1/engagements/{engagement_id}:
+    get:
+      operationId: getEngagement
+      summary: Read a TalentJobEngagement by id (M5 PR-4).
+      description: |
+        Tenant-scoped read of a single engagement via
+        EngagementRepository.findByTenantAndId. Cross-tenant or
+        non-existent → 404 NOT_FOUND (Architecture §7.2 — cross-tenant
+        reads surface as invisibility, not 403).
+
+        No Idempotency-Key handling per Ruling 5 (GET routes are
+        side-effect-free).
+      parameters:
+        - name: engagement_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Engagement view.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/TalentJobEngagementView'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/engagements/{engagement_id}/events:
+    get:
+      operationId: getEngagementEvents
+      summary: List event-log entries for an engagement (M5 PR-4).
+      description: |
+        Tenant-scoped read of the chronological event log for an
+        engagement via EngagementEventRepository
+        .findByTenantAndEngagementId. Order: ASC by created_at.
+
+        Includes a parent-engagement existence pre-check (404 NOT_FOUND
+        if the engagement itself is not visible in tenant) to avoid the
+        information-leak path where a non-existent engagement_id would
+        return an empty events array (same response shape as a
+        newly-created engagement with no events yet).
+      parameters:
+        - name: engagement_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Chronological event log (may be empty).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/EngagementListEventsResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
   /v1/jobs/{job_id}/matches:
     get:
       operationId: listJobMatches
