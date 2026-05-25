@@ -173,6 +173,32 @@ TIER2_EXCLUDES=(
   # semantics — the same rationale as libs/engagement/src/lib/engagement-event.ts.
   # Same structural pattern as openapi/ingestion.yaml's R7 enum-value exemption.
   "openapi/common.yaml"
+  # M5 PR-6: outreach-send HTTP surface — the new DTOs, delivery-port
+  # adapter, F23 negative-shape spec, Pact consumer test, and ats.yaml
+  # path documentation carry the canonical `outreach`/`outreach_sent`
+  # vocabulary by design (the new POST /v1/engagements/{id}/outreach
+  # endpoint + OutreachSentPayload event payload). Same canonical-vocab
+  # rationale as the M5 PR-2 / PR-4 entries above.
+  "libs/common/src/lib/errors/error-codes.ts"
+  "libs/engagement/src/lib/engagement.module.ts"
+  "libs/engagement/src/index.ts"
+  "libs/engagement/src/lib/dto/outreach-send-request.dto.ts"
+  "libs/engagement/src/lib/dto/outreach-send-response.dto.ts"
+  "libs/engagement/src/lib/dto/outreach-sent-payload.ts"
+  "libs/engagement/src/lib/delivery/delivery-provider.interface.ts"
+  "libs/engagement/src/lib/delivery/send-stub.provider.ts"
+  "libs/engagement/src/lib/engagement.controller.ts"
+  "libs/engagement/src/lib/engagement.repository.ts"
+  "apps/api/src/tests/outreach-send.negative-shape.spec.ts"
+  "apps/api/src/tests/outreach-send.integration.spec.ts"
+  "pact/consumers/ats-thin/src/outreach-send.consumer.test.ts"
+  "openapi/ats.yaml"
+  # M5 PR-6 — repository unit + integration tests reference outreach in
+  # test names + mocks (the controller spec + apps/api integration
+  # spec already appear above under the M5 PR-4 block).
+  "libs/engagement/src/tests/engagement.repository.spec.ts"
+  "libs/engagement/src/tests/engagement.repository.integration.spec.ts"
+  "pact/provider/src/verify-api.ts"
 )
 
 # =============================================================================

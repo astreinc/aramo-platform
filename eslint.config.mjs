@@ -170,6 +170,25 @@ export default [
       'pact/consumers/ats-thin/src/engagement-reads.consumer.test.ts',
       'libs/engagement/src/tests/engagement.controller.spec.ts',
       'apps/api/src/tests/engagement.controller.integration.spec.ts',
+      // M5 PR-6 — outreach-send HTTP surface + delivery port. Same
+      // canonical-vocabulary rationale as the M5 PR-2 / PR-4 entries
+      // above: `outreach` appears as the canonical engagement event-type
+      // discriminant + new endpoint name, not as misuse of `outreach`
+      // as a standalone entity name.
+      'libs/engagement/src/index.ts',
+      'libs/engagement/src/lib/dto/outreach-send-request.dto.ts',
+      'libs/engagement/src/lib/dto/outreach-send-response.dto.ts',
+      'libs/engagement/src/lib/dto/outreach-sent-payload.ts',
+      'libs/engagement/src/lib/delivery/delivery-provider.interface.ts',
+      'libs/engagement/src/lib/delivery/send-stub.provider.ts',
+      'libs/engagement/src/lib/engagement.controller.ts',
+      'libs/engagement/src/lib/engagement.repository.ts',
+      'libs/engagement/src/tests/engagement.repository.spec.ts',
+      'libs/engagement/src/tests/engagement.repository.integration.spec.ts',
+      'apps/api/src/tests/outreach-send.negative-shape.spec.ts',
+      'apps/api/src/tests/outreach-send.integration.spec.ts',
+      'pact/consumers/ats-thin/src/outreach-send.consumer.test.ts',
+      'pact/provider/src/verify-api.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',

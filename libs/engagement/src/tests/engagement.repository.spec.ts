@@ -7,6 +7,7 @@ import type { TalentRepository } from '@aramo/talent';
 import {
   EngagementRepository,
   type CreateEngagementInput,
+  type SendOutreachInput,
   type TransitionStateInput,
 } from '../lib/engagement.repository.js';
 import type { EngagementEventRepository } from '../lib/engagement-event.repository.js';
@@ -577,5 +578,133 @@ describe('EngagementRepository.transitionState (M5 PR-3 unit)', () => {
     await expect(repo.transitionState(badInput)).rejects.toBeInstanceOf(AramoError);
     const events = logger.log.mock.calls.map((c) => (c[0] as { event: string }).event);
     expect(events).toContain('engagement.transition_refused');
+  });
+});
+
+// M5 PR-6 §4.16 — EngagementRepository.sendOutreach unit tests.
+describe('EngagementRepository.sendOutreach (M5 PR-6 unit)', () => {
+  let prisma: MockPrismaService;
+  let logger: ReturnType<typeof makeSpyLogger>;
+  let repo: EngagementRepository;
+
+  const OUTREACH_EVENT_ID = '00000000-0000-7000-8000-0000eeee0010';
+  const TRANSITION_EVENT_ID = '00000000-0000-7000-8000-0000eeee0011';
+
+  const validInput: SendOutreachInput = {
+    engagement_id: ENGAGEMENT_1,
+    tenant_id: TENANT_A,
+    outreach_event_id: OUTREACH_EVENT_ID,
+    transition_event_id: TRANSITION_EVENT_ID,
+    outreach_payload: {
+      ai_draft_audit_record_id: '00000000-0000-7000-8000-aaaa00000a01',
+      model_used: 'claude-sonnet-mock',
+      input_tokens: 10,
+      output_tokens: 20,
+      duration_ms: 100,
+      delivered_at: '2026-05-25T10:01:00.000Z',
+      delivery_channel: 'email',
+      delivery_id: '00000000-0000-7000-8000-dddd0d000001',
+    },
+  };
+
+  beforeEach(() => {
+    prisma = makeMockPrisma();
+    logger = makeSpyLogger();
+    repo = new EngagementRepository(
+      prisma as unknown as PrismaService,
+      makeMockEngagementEventRepo(),
+      makeMockTalentRepo(),
+      makeMockJobDomainRepo(),
+      makeMockExaminationRepo(),
+      logger,
+    );
+  });
+
+  it('happy path — engaged → awaiting_response; $transaction invoked with 3 ops; payload preserved', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
+    prisma.$transaction.mockResolvedValue([
+      makeRow({ state: 'awaiting_response' }),
+      makeEventRow({
+        id: OUTREACH_EVENT_ID,
+        event_type: 'outreach_sent',
+        event_payload: validInput.outreach_payload,
+      }),
+      makeEventRow({
+        id: TRANSITION_EVENT_ID,
+        event_type: 'state_transition',
+        event_payload: { from_state: 'engaged', to_state: 'awaiting_response' },
+      }),
+    ]);
+    const result = await repo.sendOutreach(validInput);
+    expect(result.engagement.state).toBe('awaiting_response');
+    expect(result.outreach_event.event_type).toBe('outreach_sent');
+    expect(result.outreach_event.event_payload).toEqual(validInput.outreach_payload);
+    expect(result.transition_event.event_type).toBe('state_transition');
+    expect(result.transition_event.event_payload).toEqual({
+      from_state: 'engaged',
+      to_state: 'awaiting_response',
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('NOT_FOUND 404 if engagement absent; no $transaction', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(null);
+    await expect(repo.sendOutreach(validInput)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      statusCode: 404,
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('ENGAGEMENT_STATE_INVALID 422 if current state is not engaged (canTransition false)', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
+    await expect(repo.sendOutreach(validInput)).rejects.toMatchObject({
+      code: 'ENGAGEMENT_STATE_INVALID',
+      statusCode: 422,
+    });
+    try {
+      await repo.sendOutreach(validInput);
+    } catch (err) {
+      const e = err as AramoError;
+      expect(e.context.details?.['from_state']).toBe('surfaced');
+      expect(e.context.details?.['to_state']).toBe('awaiting_response');
+    }
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('atomic transaction shape — $transaction called with engagement.update + outreach_sent event.create + state_transition event.create', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
+    prisma.$transaction.mockResolvedValue([
+      makeRow({ state: 'awaiting_response' }),
+      makeEventRow({ event_type: 'outreach_sent', event_payload: validInput.outreach_payload }),
+      makeEventRow({ event_type: 'state_transition', event_payload: { from_state: 'engaged', to_state: 'awaiting_response' } }),
+    ]);
+    await repo.sendOutreach(validInput);
+    expect(prisma.talentJobEngagement.update).toHaveBeenCalledTimes(1);
+    expect(prisma.talentJobEngagement.update).toHaveBeenCalledWith({
+      where: { id: ENGAGEMENT_1 },
+      data: { state: 'awaiting_response' },
+    });
+    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('emits outreach_started + outreach_sent log events on happy path', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'engaged' }));
+    prisma.$transaction.mockResolvedValue([
+      makeRow({ state: 'awaiting_response' }),
+      makeEventRow({ event_type: 'outreach_sent', event_payload: validInput.outreach_payload }),
+      makeEventRow({ event_type: 'state_transition' }),
+    ]);
+    await repo.sendOutreach(validInput);
+    const events = logger.log.mock.calls.map((c) => (c[0] as { event: string }).event);
+    expect(events).toContain('engagement.outreach_started');
+    expect(events).toContain('engagement.outreach_sent');
+  });
+
+  it('canTransition pre-check invoked — refused state emits outreach_refused log', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
+    await expect(repo.sendOutreach(validInput)).rejects.toBeInstanceOf(AramoError);
+    const events = logger.log.mock.calls.map((c) => (c[0] as { event: string }).event);
+    expect(events).toContain('engagement.outreach_refused');
   });
 });

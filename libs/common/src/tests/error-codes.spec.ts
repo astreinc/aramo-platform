@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 22 codes including M5 PR-3 ENGAGEMENT_REFERENCE_NOT_FOUND + ENGAGEMENT_STATE_INVALID', () => {
+  it('ERROR_CODES contains the 24 codes including M5 PR-6 AI_PROVIDER_UNAVAILABLE + AI_RATE_LIMITED', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -61,6 +61,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'ENGAGEMENT_EVENT_REF_NOT_FOUND',
       'ENGAGEMENT_REFERENCE_NOT_FOUND',
       'ENGAGEMENT_STATE_INVALID',
+      'AI_PROVIDER_UNAVAILABLE',
+      'AI_RATE_LIMITED',
     ]);
   });
 });

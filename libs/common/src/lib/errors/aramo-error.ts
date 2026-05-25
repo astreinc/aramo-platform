@@ -38,6 +38,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ENGAGEMENT_EVENT_REF_NOT_FOUND: 422,
   ENGAGEMENT_REFERENCE_NOT_FOUND: 422,
   ENGAGEMENT_STATE_INVALID: 422,
+  AI_PROVIDER_UNAVAILABLE: 502,
+  AI_RATE_LIMITED: 429,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

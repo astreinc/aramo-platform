@@ -20,13 +20,22 @@ import {
 } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { IdempotencyService } from '@aramo/consent';
+import { AiDraftService } from '@aramo/ai-draft';
 
 import type { CreateEngagementRequestDto } from './dto/create-engagement-request.dto.js';
 import type { CreateEngagementResponseDto } from './dto/create-engagement-response.dto.js';
 import type { TransitionEngagementRequestDto } from './dto/transition-engagement-request.dto.js';
 import type { TransitionEngagementResponseDto } from './dto/transition-engagement-response.dto.js';
 import type { EngagementListEventsResponseDto } from './dto/engagement-list-events-response.dto.js';
+import { OutreachSendRequestDto } from './dto/outreach-send-request.dto.js';
+import type { OutreachSendResponseDto } from './dto/outreach-send-response.dto.js';
+import type { OutreachSentPayload } from './dto/outreach-sent-payload.js';
 import type { TalentJobEngagementView } from './dto/talent-job-engagement.view.js';
+import type {
+  DeliveryProvider,
+  DeliveryResult,
+} from './delivery/delivery-provider.interface.js';
+import { DELIVERY_PROVIDER_TOKEN } from './delivery/tokens.js';
 import { EngagementEventRepository } from './engagement-event.repository.js';
 import { EngagementRepository } from './engagement.repository.js';
 
@@ -85,6 +94,11 @@ export class EngagementController {
     private readonly idempotencyService: IdempotencyService,
     @Inject('EngagementControllerLogger')
     private readonly logger: AramoLogger,
+    // M5 PR-6 §4.1 — AiDraftService dep for outreach LLM drafts.
+    private readonly aiDraftService: AiDraftService,
+    // M5 PR-6 §4.3 — DeliveryProvider port (SendStub at PR-6).
+    @Inject(DELIVERY_PROVIDER_TOKEN)
+    private readonly deliveryProvider: DeliveryProvider,
   ) {}
 
   // ---- POST /v1/engagements --------------------------------------------
@@ -222,6 +236,234 @@ export class EngagementController {
       request_hash: requestHash,
       response_status: HttpStatus.OK,
       response_body: response,
+    });
+
+    return response;
+  }
+
+  // ---- POST /v1/engagements/{id}/outreach ------------------------------
+  //
+  // M5 PR-6 §4.1 — 9-step idempotency flow extended with AI draft +
+  // delivery side-effects BEFORE the repository write:
+  //   1. assertConsumerIsRecruiter (recruiter-only per Ruling 8).
+  //   2. assertIdempotencyKeyRequired.
+  //   3. assertEngagementIdIsUuid.
+  //   4. hashCanonicalizedBody.
+  //   5. idempotencyService.lookup (replay-or-conflict-or-proceed).
+  //   6. aiDraftService.generateDraft + error-code remap.
+  //   7. deliveryProvider.deliver (SendStub pass-through).
+  //   8. engagementRepository.sendOutreach (atomic 3-write).
+  //   9. response compose + idempotencyService.persist + return.
+  //
+  // Ordering rationale (per directive §4.1 + Rulings 1 + 11):
+  // AI + delivery happen BEFORE the DB write. If either fails, the
+  // engagement state column + event log are unchanged (no partial-
+  // state observability). The repository.sendOutreach atomic
+  // transaction guarantees that all 3 writes (engagement update +
+  // outreach_sent event + state_transition event) commit together OR
+  // none commit.
+  //
+  // Error-code remapping (Ruling 6):
+  //   AiDraftService.generateDraft INTERNAL_ERROR throws are remapped:
+  //     - kind ∈ {provider_unavailable, provider_internal_error}
+  //         → AI_PROVIDER_UNAVAILABLE 502
+  //     - kind === 'provider_rate_limited' → AI_RATE_LIMITED 429
+  //     - any other kind → pass-through (e.g. provider_auth_failed
+  //       remains INTERNAL_ERROR 500; secret-cache errors pass through).
+  //   DeliveryProvider AramoError throws pass through. The SendStub
+  //   adapter at PR-6 never fails; real adapters at future PRs may
+  //   surface delivery-layer codes.
+  //
+  // Structured logging discipline (Ruling 10): entry / success / refusal
+  // paths log audit_record_id + delivery_id + model_used + token counts
+  // + duration_ms + delivery_channel + engagement_id + tenant_id. NEVER
+  // raw prompt, raw completion, recipient_handle.
+
+  @Post(':id/outreach')
+  @HttpCode(HttpStatus.OK)
+  async sendOutreach(
+    @Param('id') id: string,
+    @Body() body: OutreachSendRequestDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<OutreachSendResponseDto> {
+    // Step 1 — auth.
+    this.assertConsumerIsRecruiter(authContext, requestId);
+
+    // Step 2 — Idempotency-Key required.
+    const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
+
+    // Step 3 — id UUID validation.
+    this.assertEngagementIdIsUuid(id, requestId);
+
+    // Step 4 — body hash.
+    const requestHash = hashCanonicalizedBody(body as unknown);
+
+    // Step 5 — idempotency lookup (replay short-circuit).
+    const lookup = await this.idempotencyService.lookup({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      requestId,
+    });
+    if (lookup.kind === 'replay') {
+      return lookup.response_body as OutreachSendResponseDto;
+    }
+
+    this.logger.log({
+      event: 'engagement.outreach_endpoint_started',
+      tenant_id: authContext.tenant_id,
+      engagement_id: id,
+      request_id: requestId,
+    });
+
+    // Step 6 — AI draft (with error-code remap).
+    let draftResult;
+    try {
+      draftResult = await this.aiDraftService.generateDraft({
+        tenant_id: authContext.tenant_id,
+        prompt: body.prompt,
+        max_tokens: body.max_tokens ?? 512,
+        ...(body.system_message !== undefined
+          ? { system_message: body.system_message }
+          : {}),
+        requestId,
+      });
+    } catch (err) {
+      if (err instanceof AramoError) {
+        const kind = (err.context.details?.['kind'] as string | undefined) ?? null;
+        if (
+          err.code === 'INTERNAL_ERROR' &&
+          (kind === 'provider_unavailable' || kind === 'provider_internal_error')
+        ) {
+          this.logger.log({
+            event: 'engagement.outreach_refused',
+            error_code: 'AI_PROVIDER_UNAVAILABLE',
+            tenant_id: authContext.tenant_id,
+            engagement_id: id,
+            kind,
+          });
+          throw new AramoError(
+            'AI_PROVIDER_UNAVAILABLE',
+            'AI provider unavailable',
+            502,
+            {
+              requestId,
+              details: { kind, original_message: err.message },
+            },
+          );
+        }
+        if (
+          err.code === 'INTERNAL_ERROR' &&
+          kind === 'provider_rate_limited'
+        ) {
+          this.logger.log({
+            event: 'engagement.outreach_refused',
+            error_code: 'AI_RATE_LIMITED',
+            tenant_id: authContext.tenant_id,
+            engagement_id: id,
+            kind,
+          });
+          throw new AramoError(
+            'AI_RATE_LIMITED',
+            'AI provider rate-limited',
+            429,
+            {
+              requestId,
+              details: { kind },
+            },
+          );
+        }
+        // Pass-through with requestId re-binding.
+        throw new AramoError(err.code, err.message, err.statusCode, {
+          ...err.context,
+          requestId,
+        });
+      }
+      throw err;
+    }
+
+    // Step 7 — delivery (SendStub at PR-6; never fails).
+    let deliveryResult: DeliveryResult;
+    try {
+      deliveryResult = await this.deliveryProvider.deliver({
+        completion: draftResult.completion,
+        delivery_channel: 'email',
+        tenant_id: authContext.tenant_id,
+        requestId,
+        ...(body.recipient_handle !== undefined
+          ? { recipient_handle: body.recipient_handle }
+          : {}),
+      });
+    } catch (err) {
+      if (err instanceof AramoError) {
+        throw new AramoError(err.code, err.message, err.statusCode, {
+          ...err.context,
+          requestId,
+        });
+      }
+      throw err;
+    }
+
+    // Step 8 — repository write (atomic 3-write transaction).
+    const outreachPayload: OutreachSentPayload = {
+      ai_draft_audit_record_id: draftResult.audit_record_id,
+      model_used: draftResult.model_used,
+      input_tokens: draftResult.input_tokens,
+      output_tokens: draftResult.output_tokens,
+      duration_ms: draftResult.duration_ms,
+      delivered_at: deliveryResult.delivered_at.toISOString(),
+      delivery_channel: 'email',
+      delivery_id: deliveryResult.delivery_id,
+    };
+
+    let repoResult;
+    try {
+      repoResult = await this.engagementRepository.sendOutreach({
+        engagement_id: id,
+        tenant_id: authContext.tenant_id,
+        outreach_event_id: randomUUID(),
+        transition_event_id: randomUUID(),
+        outreach_payload: outreachPayload,
+      });
+    } catch (err) {
+      if (err instanceof AramoError) {
+        throw new AramoError(err.code, err.message, err.statusCode, {
+          ...err.context,
+          requestId,
+        });
+      }
+      throw err;
+    }
+
+    // Step 9 — response compose.
+    const response: OutreachSendResponseDto = {
+      engagement: repoResult.engagement,
+      outreach_event: repoResult.outreach_event,
+      delivery_id: deliveryResult.delivery_id,
+    };
+
+    // Step 10 — persist idempotency record (post-mutation success only).
+    await this.idempotencyService.persist({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      response_status: HttpStatus.OK,
+      response_body: response,
+    });
+
+    this.logger.log({
+      event: 'engagement.outreach_endpoint_succeeded',
+      tenant_id: authContext.tenant_id,
+      engagement_id: id,
+      audit_record_id: draftResult.audit_record_id,
+      delivery_id: deliveryResult.delivery_id,
+      delivery_channel: 'email',
+      model_used: draftResult.model_used,
+      input_tokens: draftResult.input_tokens,
+      output_tokens: draftResult.output_tokens,
+      duration_ms: draftResult.duration_ms,
     });
 
     return response;
