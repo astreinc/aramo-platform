@@ -132,6 +132,23 @@
 //     application-layer guard returns a structured error before the SQL
 //     UPDATE attempt).
 // Total: 22 codes.
+//
+// M5 PR-6 adds two codes (parity-quad × 2 per Aramo-M5-PR-6-Directive-
+// v1_0-LOCKED.md §4.8 + Rulings 1 + 6):
+//   - AI_PROVIDER_UNAVAILABLE (HTTP 502) — EngagementController
+//     .sendOutreach remaps AiDraftService INTERNAL_ERROR throws whose
+//     context.details.kind is 'provider_unavailable' or
+//     'provider_internal_error' (per the M5 PR-5 AnthropicProvider
+//     error-translation table) to a stable HTTP-bearing code so the
+//     ATS-thin client can distinguish upstream LLM transport failures
+//     from generic 5xx INTERNAL_ERROR.
+//   - AI_RATE_LIMITED (HTTP 429) — EngagementController.sendOutreach
+//     remaps AiDraftService INTERNAL_ERROR throws whose
+//     context.details.kind is 'provider_rate_limited' (LLM rate-limit
+//     response from the Anthropic adapter). 429 lets the client back
+//     off; the underlying generic INTERNAL_ERROR catch-all would have
+//     mapped to 500 instead.
+// Total: 24 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -156,6 +173,8 @@ export const ERROR_CODES = [
   'ENGAGEMENT_EVENT_REF_NOT_FOUND',  // M5 PR-2 — engagement_event_refs entry not found in tenant
   'ENGAGEMENT_REFERENCE_NOT_FOUND',  // M5 PR-3 — createEngagement cross-schema validator (Pattern A/B/C)
   'ENGAGEMENT_STATE_INVALID',  // M5 PR-3 — transitionState canTransition guard failed
+  'AI_PROVIDER_UNAVAILABLE',  // M5 PR-6 — outreach sendOutreach LLM transport / vendor-internal failure
+  'AI_RATE_LIMITED',  // M5 PR-6 — outreach sendOutreach LLM rate-limit response
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

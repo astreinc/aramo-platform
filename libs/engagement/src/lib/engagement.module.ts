@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AiDraftModule } from '@aramo/ai-draft';
 import { AuthModule } from '@aramo/auth';
 import { createAramoLogger } from '@aramo/common';
 import { ConsentModule } from '@aramo/consent';
@@ -6,6 +7,8 @@ import { ExaminationModule } from '@aramo/examination';
 import { JobDomainModule } from '@aramo/job-domain';
 import { TalentModule } from '@aramo/talent';
 
+import { DELIVERY_PROVIDER_TOKEN } from './delivery/tokens.js';
+import { SendStubDeliveryProvider } from './delivery/send-stub.provider.js';
 import { EngagementController } from './engagement.controller.js';
 import { EngagementRepository } from './engagement.repository.js';
 import { EngagementEventRepository } from './engagement-event.repository.js';
@@ -36,8 +39,22 @@ import { PrismaService } from './prisma/prisma.service.js';
 // contexts are the class names. Style B field-factory pattern is in
 // PrismaService directly (instantiated outside DI in testcontainer
 // setup).
+// M5 PR-6 adds the second HTTP-bearing endpoint set (outreach send) +
+// the DeliveryProvider port. New module-graph wiring:
+//   - AiDraftModule import — AiDraftService is the LLM-draft entry per
+//     ADR-0015; required by EngagementController.sendOutreach.
+//   - DELIVERY_PROVIDER_TOKEN provider — SendStubDeliveryProvider at
+//     PR-6 (Ruling 3 Q7-Stub). Mirrors the libs/ai-draft DRAFT_PROVIDER
+//     wiring pattern.
 @Module({
-  imports: [AuthModule, ConsentModule, TalentModule, JobDomainModule, ExaminationModule],
+  imports: [
+    AuthModule,
+    ConsentModule,
+    TalentModule,
+    JobDomainModule,
+    ExaminationModule,
+    AiDraftModule,
+  ],
   controllers: [EngagementController],
   providers: [
     PrismaService,
@@ -55,6 +72,7 @@ import { PrismaService } from './prisma/prisma.service.js';
       provide: 'EngagementControllerLogger',
       useFactory: () => createAramoLogger(EngagementController.name),
     },
+    { provide: DELIVERY_PROVIDER_TOKEN, useClass: SendStubDeliveryProvider },
   ],
   exports: [EngagementRepository, EngagementEventRepository, PrismaService],
 })

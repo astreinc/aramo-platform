@@ -15,6 +15,18 @@ export { TransitionEngagementRequestDto } from './lib/dto/transition-engagement-
 export type { TransitionEngagementResponseDto } from './lib/dto/transition-engagement-response.dto.js';
 export type { EngagementListEventsResponseDto } from './lib/dto/engagement-list-events-response.dto.js';
 
+// M5 PR-6 — outreach HTTP DTOs + delivery port.
+export { OutreachSendRequestDto } from './lib/dto/outreach-send-request.dto.js';
+export type { OutreachSendResponseDto } from './lib/dto/outreach-send-response.dto.js';
+export type { OutreachSentPayload } from './lib/dto/outreach-sent-payload.js';
+export type {
+  DeliveryProvider,
+  DeliveryInput,
+  DeliveryResult,
+} from './lib/delivery/delivery-provider.interface.js';
+export { DELIVERY_PROVIDER_TOKEN } from './lib/delivery/tokens.js';
+export { SendStubDeliveryProvider } from './lib/delivery/send-stub.provider.js';
+
 export {
   ENGAGEMENT_STATE_VALUES,
   canTransition,

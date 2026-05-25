@@ -6,6 +6,7 @@ import { TalentRepository } from '@aramo/talent';
 
 import { canTransition, type EngagementStateValue } from './engagement-state.js';
 import type { EngagementEventTypeValue } from './engagement-event.js';
+import type { OutreachSentPayload } from './dto/outreach-sent-payload.js';
 import type { TalentJobEngagementView } from './dto/talent-job-engagement.view.js';
 import type { TalentEngagementEventView } from './dto/talent-engagement-event.view.js';
 import { EngagementEventRepository } from './engagement-event.repository.js';
@@ -108,6 +109,36 @@ export interface TransitionStateInput {
 export interface TransitionStateResult {
   engagement: TalentJobEngagementView;
   event: TalentEngagementEventView;
+}
+
+// M5 PR-6 §4.4 — sendOutreach input/output shapes (Ruling 1 Sub-Q1b).
+//
+// Single repository method paired with the EngagementController
+// sendOutreach endpoint. Three-write atomic transaction:
+//   1. engagement.update(state = 'awaiting_response')
+//   2. talentEngagementEvent.create(event_type = 'outreach_sent', payload = OutreachSentPayload)
+//   3. talentEngagementEvent.create(event_type = 'state_transition', payload = { from_state, to_state })
+//
+// Pre-transaction guards:
+//   - findByTenantAndId(engagement_id, tenant_id) → null ⇒ NOT_FOUND 404.
+//   - canTransition(current.state, 'awaiting_response') ⇒ false ⇒
+//     ENGAGEMENT_STATE_INVALID 422.
+//
+// The transition target is hardcoded to 'awaiting_response' — the only
+// legal next state for an 'engaged' engagement per the 11-state matrix
+// (PR-1 Amendment v1.1 §4). Callers cannot pass a different to_state.
+export interface SendOutreachInput {
+  engagement_id: string;
+  tenant_id: string;
+  outreach_event_id: string;
+  transition_event_id: string;
+  outreach_payload: OutreachSentPayload;
+}
+
+export interface SendOutreachResult {
+  engagement: TalentJobEngagementView;
+  outreach_event: TalentEngagementEventView;
+  transition_event: TalentEngagementEventView;
 }
 
 interface TalentEngagementEventRow {
@@ -430,6 +461,122 @@ export class EngagementRepository {
       tenant_id: result.engagement.tenant_id,
       engagement_id: result.engagement.id,
       engagement_event_id: result.event.id,
+      from_state: current.state,
+      to_state: result.engagement.state,
+      latency_ms: Date.now() - startedAt,
+    });
+    return result;
+  }
+
+  // sendOutreach — M5 PR-6 Directive v1.0 §4.4 + Ruling 1 Sub-Q1b.
+  // Read current → NOT_FOUND guard → canTransition(engaged →
+  // awaiting_response) guard → atomic 3-write transaction (engagement
+  // update + outreach_sent event + state_transition event). Mirrors the
+  // transitionState fail-fast pattern: AI/delivery side-effects occur in
+  // the controller BEFORE this method is called, so a pre-transaction
+  // failure (AI provider, delivery) leaves engagement state + event log
+  // unchanged (no partial-state observability).
+  async sendOutreach(input: SendOutreachInput): Promise<SendOutreachResult> {
+    const startedAt = Date.now();
+    this.logger.log({
+      event: 'engagement.outreach_started',
+      tenant_id: input.tenant_id,
+      engagement_id: input.engagement_id,
+      outreach_event_id: input.outreach_event_id,
+      transition_event_id: input.transition_event_id,
+    });
+
+    // ---- Step 1: read current engagement (tenant-scoped) --------------
+    const current = await this.findByTenantAndId({
+      tenant_id: input.tenant_id,
+      id: input.engagement_id,
+    });
+    if (current === null) {
+      this.logger.log({
+        event: 'engagement.outreach_refused',
+        error_code: 'NOT_FOUND',
+        tenant_id: input.tenant_id,
+        engagement_id: input.engagement_id,
+      });
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentJobEngagement not found',
+        404,
+        {
+          requestId: 'engagement-outreach',
+          details: { engagement_id: input.engagement_id, tenant_id: input.tenant_id },
+        },
+      );
+    }
+
+    // ---- Step 2: canTransition guard (engaged → awaiting_response) ----
+    const TO_STATE: EngagementStateValue = 'awaiting_response';
+    if (!canTransition(current.state, TO_STATE)) {
+      this.logger.log({
+        event: 'engagement.outreach_refused',
+        error_code: 'ENGAGEMENT_STATE_INVALID',
+        tenant_id: input.tenant_id,
+        engagement_id: input.engagement_id,
+        from_state: current.state,
+        to_state: TO_STATE,
+      });
+      throw new AramoError(
+        'ENGAGEMENT_STATE_INVALID',
+        `Illegal engagement state transition: ${current.state} -> ${TO_STATE}`,
+        422,
+        {
+          requestId: 'engagement-outreach',
+          details: {
+            engagement_id: input.engagement_id,
+            from_state: current.state,
+            to_state: TO_STATE,
+          },
+        },
+      );
+    }
+
+    // ---- Step 3: atomic 3-write transaction --------------------------
+    const [updatedRow, outreachEventRow, transitionEventRow] =
+      await this.prisma.$transaction([
+        this.prisma.talentJobEngagement.update({
+          where: { id: input.engagement_id },
+          data: { state: TO_STATE },
+        }),
+        this.prisma.talentEngagementEvent.create({
+          data: {
+            id: input.outreach_event_id,
+            tenant_id: input.tenant_id,
+            engagement_id: input.engagement_id,
+            event_type: 'outreach_sent',
+            event_payload: input.outreach_payload as never,
+          },
+        }),
+        this.prisma.talentEngagementEvent.create({
+          data: {
+            id: input.transition_event_id,
+            tenant_id: input.tenant_id,
+            engagement_id: input.engagement_id,
+            event_type: 'state_transition',
+            event_payload: {
+              from_state: current.state,
+              to_state: TO_STATE,
+            } as never,
+          },
+        }),
+      ]);
+
+    // ---- Step 4 + 5: project + return + success log ------------------
+    const result: SendOutreachResult = {
+      engagement: projectView(updatedRow as TalentJobEngagementRow),
+      outreach_event: projectEventView(outreachEventRow as TalentEngagementEventRow),
+      transition_event: projectEventView(transitionEventRow as TalentEngagementEventRow),
+    };
+    this.logger.log({
+      event: 'engagement.outreach_sent',
+      tenant_id: result.engagement.tenant_id,
+      engagement_id: result.engagement.id,
+      outreach_event_id: result.outreach_event.id,
+      transition_event_id: result.transition_event.id,
       from_state: current.state,
       to_state: result.engagement.state,
       latency_ms: Date.now() - startedAt,

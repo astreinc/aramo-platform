@@ -553,6 +553,115 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/engagements/{engagement_id}/outreach:
+    post:
+      operationId: sendOutreach
+      summary: Send an AI-drafted outreach for an engagement (M5 PR-6).
+      description: |
+        Generates an AI-drafted outreach via libs/ai-draft (Anthropic
+        adapter at M5 PR-5), invokes the injected DeliveryProvider
+        (SendStubDeliveryProvider at PR-6 — no real network I/O), and
+        atomically transitions the engagement from 'engaged' to
+        'awaiting_response' with a paired `outreach_sent` event row +
+        `state_transition` event row.
+
+        Side-effect ordering (M5 PR-6 §4.1 + Rulings 1 + 11): AI draft
+        + delivery happen BEFORE the DB write. If either fails, the
+        engagement state column + event log are unchanged (no partial-
+        state observability). The repository's $transaction guarantees
+        the 3 writes commit together OR none commit.
+
+        Pre-write guards (in order):
+          1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
+          2. Idempotency-Key required + UUID-shaped.
+          3. engagement_id path param UUID validation.
+          4. Body hash for replay-vs-conflict.
+          5. Idempotency lookup (replay short-circuit).
+          6. AiDraftService.generateDraft (with error-code remap).
+          7. DeliveryProvider.deliver (SendStub pass-through at PR-6).
+          8. EngagementRepository.sendOutreach atomic transaction.
+
+        AI error remapping (Ruling 6):
+          - kind ∈ {provider_unavailable, provider_internal_error}
+            → 502 AI_PROVIDER_UNAVAILABLE.
+          - kind === 'provider_rate_limited' → 429 AI_RATE_LIMITED.
+          - any other kind → pass-through (e.g. provider_auth_failed
+            remains 500 INTERNAL_ERROR).
+
+        Refusal codes:
+          - 422 ENGAGEMENT_STATE_INVALID — engagement not in 'engaged'
+            state.
+          - 502 AI_PROVIDER_UNAVAILABLE — LLM transport / vendor-internal
+            failure.
+          - 429 AI_RATE_LIMITED — LLM rate-limit response.
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
+          - 404 NOT_FOUND — engagement_id not visible in tenant.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
+      parameters:
+        - name: engagement_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            UUID idempotency key. Same key + same body returns the prior
+            response; same key + different body returns 409
+            IDEMPOTENCY_KEY_CONFLICT. Missing or non-UUID returns 400
+            VALIDATION_ERROR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/OutreachSendRequest'
+      responses:
+        '200':
+          description: |
+            Outreach drafted + delivered (stub) + engagement transitioned
+            to 'awaiting_response'.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/OutreachSendResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Idempotency-Key collision (same key, different body).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+        '429':
+          description: AI provider rate-limit (AI_RATE_LIMITED).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '502':
+          description: AI provider unavailable (AI_PROVIDER_UNAVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
   /v1/engagements/{engagement_id}:
     get:
       operationId: getEngagement

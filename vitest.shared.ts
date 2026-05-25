@@ -24,6 +24,7 @@ export default defineConfig({
       '@aramo/auth-service': resolve(root, 'apps/auth-service/src/app/auth/auth.module.ts'),
       '@aramo/auth-storage': resolve(root, 'libs/auth-storage/src/index.ts'),
       '@aramo/consent': resolve(root, 'libs/consent/src/index.ts'),
+      '@aramo/ai-draft': resolve(root, 'libs/ai-draft/src/index.ts'),
       '@aramo/audit': resolve(root, 'libs/audit/src/index.ts'),
       '@aramo/engagement': resolve(root, 'libs/engagement/src/index.ts'),
       '@aramo/entrustability': resolve(root, 'libs/entrustability/src/index.ts'),

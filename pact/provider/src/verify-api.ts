@@ -20,6 +20,15 @@ import {
   type KeyObject,
 } from 'jose';
 import { AppModule } from '@aramo/api';
+// M5 PR-6 §4.14 — string-DI-token literals overridden so the verify
+// harness doesn't need real Anthropic API + AWS Secrets Manager +
+// SES/SendGrid wiring. The strings here match the const values in
+// libs/ai-draft/src/lib/providers/tokens.ts and libs/engagement/src/lib/
+// delivery/tokens.ts respectively. Per Ruling 13: provider verification
+// with mocked adapters is the supported test posture for substrate
+// that crosses external-service boundaries.
+const PACT_DRAFT_PROVIDER_TOKEN = 'DRAFT_PROVIDER_TOKEN';
+const PACT_DELIVERY_PROVIDER_TOKEN = 'DELIVERY_PROVIDER_TOKEN';
 
 // PR-14 §4.7 + Amendment v1.0 §2 + PR-15 §4.2/§4.3 + M3 PR-8 §4.7 —
 // Pact provider verifier for apps/api.
@@ -148,6 +157,14 @@ const ENGAGEMENT_INIT_MIGRATION = resolve(
 const ENGAGEMENT_EVENT_LOG_MIGRATION = resolve(
   ROOT,
   'libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
+);
+// M5 PR-6 §4.14 — ai-draft schema migration required by the outreach-send
+// state handlers (AiDraftService writes audit-event rows even when the
+// DraftProvider is mocked; without this migration, prisma.aiDraftEvent
+// .create raises "table ai_draft.AiDraftEvent does not exist").
+const AI_DRAFT_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql',
 );
 const INGESTION_PACT = resolve(
   ROOT,
@@ -290,6 +307,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // create/transition. Truncate so prior runs don't leak.
       await c.query('TRUNCATE TABLE engagement."TalentEngagementEvent" CASCADE');
       await c.query('TRUNCATE TABLE engagement."TalentJobEngagement" CASCADE');
+      // M5 PR-6 — outreach-send state handlers cause AiDraftService to
+      // append audit-event rows for each generateDraft call. Truncate so
+      // prior runs don't leak forward across pact interactions.
+      await c.query('TRUNCATE TABLE ai_draft."AiDraftEvent" CASCADE');
     }
 
     // M3 PR-9 §4.8 — seed a Talent core row + a TalentTenantOverlay for
@@ -1099,6 +1120,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // pact verification.
         ENGAGEMENT_INIT_MIGRATION,
         ENGAGEMENT_EVENT_LOG_MIGRATION,
+        // M5 PR-6 §4.14 — ai-draft schema for outreach-send state
+        // handlers. AiDraftService writes audit-event rows even when
+        // the DraftProvider is mocked at AppModule bootstrap.
+        AI_DRAFT_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -1174,9 +1199,47 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .setExpirationTime('1h')
         .sign(privateKey);
 
+      // M5 PR-6 §4.14 — mock DraftProvider + DeliveryProvider canned
+      // results. The outreach-send happy-path interaction asserts
+      // model_used + token counts + delivery_channel + delivery_id —
+      // these fixtures must match the consumer pact body shape.
+      const mockDraftProvider = {
+        generate: async (): Promise<{
+          completion: string;
+          model_used: string;
+          input_tokens: number;
+          output_tokens: number;
+          provider_request_id: string;
+        }> => ({
+          completion: 'Mocked outreach draft for pact verification.',
+          model_used: 'claude-sonnet-mock',
+          input_tokens: 10,
+          output_tokens: 20,
+          provider_request_id: 'pact-mock-provider-request-id',
+        }),
+      };
+      const mockDeliveryProvider = {
+        deliver: async (): Promise<{
+          delivered: true;
+          delivered_at: Date;
+          delivery_id: string;
+          delivery_channel: 'email';
+        }> => ({
+          delivered: true,
+          delivered_at: new Date('2026-05-25T10:01:00.000Z'),
+          delivery_id: '00000000-0000-7000-8000-ffff0d000001',
+          delivery_channel: 'email',
+        }),
+      };
+
       module = await Test.createTestingModule({
         imports: [AppModule],
-      }).compile();
+      })
+        .overrideProvider(PACT_DRAFT_PROVIDER_TOKEN)
+        .useValue(mockDraftProvider)
+        .overrideProvider(PACT_DELIVERY_PROVIDER_TOKEN)
+        .useValue(mockDeliveryProvider)
+        .compile();
 
       app = module.createNestApplication();
       // Mirror apps/api/src/main.ts: cookieParser() before ValidationPipe
@@ -2120,6 +2183,52 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         },
 
       'a portal user has authenticated against the engagement-events endpoint':
+        async () => {
+          await withClient((c) => resetAllRows(c));
+        },
+
+      // ===== M5 PR-6 outreach-send pacts (4 interactions) =====
+      // The DraftProvider + DeliveryProvider are overridden at module
+      // bootstrap time (see overrideProvider above) with canned mocks,
+      // so the only Postgres seeding required is the engagement row
+      // (engaged state for the happy path; surfaced for the illegal-
+      // transition refusal). The portal-JWT refusal does not seed an
+      // engagement (the consumer_type check fires before any read).
+
+      'a recruiter has authenticated and an engagement exists in engaged state for tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            await seedEngagementRow(c, {
+              id: '00000000-0000-7000-8000-ffff00000f01',
+              state: 'engaged',
+            });
+          });
+        },
+
+      'a recruiter has authenticated and an engagement exists in non-engaged state for outreach':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            await seedEngagementRow(c, {
+              id: '00000000-0000-7000-8000-ffff00000f02',
+              state: 'surfaced',
+            });
+          });
+        },
+
+      'a recruiter has authenticated but no engagement exists for tenant for outreach':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            // Engagement intentionally not seeded → 404 NOT_FOUND.
+          });
+        },
+
+      'a portal user has authenticated against the outreach-send endpoint':
         async () => {
           await withClient((c) => resetAllRows(c));
         },
