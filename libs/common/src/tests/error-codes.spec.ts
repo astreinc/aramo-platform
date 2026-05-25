@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 19 codes including M4 PR-7 REVOKE_NOT_ALLOWED', () => {
+  it('ERROR_CODES contains the 20 codes including M5 PR-2 ENGAGEMENT_EVENT_REF_NOT_FOUND', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -58,6 +58,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'SUBMITTAL_ALREADY_CONFIRMED',
       'OVERRIDE_INVALID',
       'REVOKE_NOT_ALLOWED',
+      'ENGAGEMENT_EVENT_REF_NOT_FOUND',
     ]);
   });
 });

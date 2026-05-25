@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AramoError, type AramoLogger } from '@aramo/common';
+import { EngagementEventRepository } from '@aramo/engagement';
 import {
   ExaminationRepository,
   type TalentJobExaminationFullView,
@@ -122,6 +123,11 @@ export class EvidenceRepository {
     private readonly prisma: PrismaService,
     private readonly examinationRepository: ExaminationRepository,
     private readonly talentEvidenceRepository: TalentEvidenceRepository,
+    // M5 PR-2 — engagement event repository for the cross-schema
+    // engagement_event_refs validator at buildPackage Step 6b. Provider
+    // lives in EngagementModule (libs/engagement), imported by
+    // EvidenceModule per M5 PR-2 directive §4.9.
+    private readonly engagementEventRepository: EngagementEventRepository,
     // M4-close HK-PR-4 — structured logger injected via DI. Provider
     // lives in EvidenceModule keyed by the 'EvidenceRepositoryLogger'
     // token; factory context is EvidenceRepository.name.
@@ -436,6 +442,42 @@ export class EvidenceRepository {
       rateSubPayload,
     );
 
+    // ---- Step 6b: cross-schema engagement_event_refs validator --------
+    //
+    // M5 PR-2 directive §4.8 + Ruling 7. When the input carries non-empty
+    // engagement_event_refs, each UUID must resolve to a TalentEngagementEvent
+    // row visible in the input tenant. findByTenantAndId enforces tenant scope
+    // at the repository layer (Architecture §7.2 — cross-tenant reads surface
+    // as null, not 403). Refusal: ENGAGEMENT_EVENT_REF_NOT_FOUND (422; mapped
+    // in ERROR_CODE_TO_HTTP_STATUS at libs/common/src/lib/errors/aramo-error.ts).
+    //
+    // Empty array / undefined / null: pass without iteration. Persisted column
+    // remains JSONB @default("[]") per libs/evidence/prisma/schema.prisma; the
+    // input shape may be omitted, an empty array, or null.
+    if (input.engagement_event_refs && input.engagement_event_refs.length > 0) {
+      for (const eventRefId of input.engagement_event_refs) {
+        const event = await this.engagementEventRepository.findByTenantAndId({
+          tenant_id: input.tenant_id,
+          id: eventRefId,
+        });
+        if (event === null) {
+          this.logRefused('ENGAGEMENT_EVENT_REF_NOT_FOUND', input);
+          throw new AramoError(
+            'ENGAGEMENT_EVENT_REF_NOT_FOUND',
+            'engagement_event_refs entry not found in tenant',
+            422,
+            {
+              requestId: 'builder',
+              details: {
+                engagement_event_ref: eventRefId,
+                input_tenant_id: input.tenant_id,
+              },
+            },
+          );
+        }
+      }
+    }
+
     // ---- Step 7: write via prisma.create -------------------------------
     const engagementEventRefs = [...(input.engagement_event_refs ?? [])];
 
@@ -575,7 +617,7 @@ export class EvidenceRepository {
   }
 
   private logRefused(
-    code: 'NOT_FOUND' | 'VALIDATION_ERROR',
+    code: 'NOT_FOUND' | 'VALIDATION_ERROR' | 'ENGAGEMENT_EVENT_REF_NOT_FOUND',
     input: BuildPackageInput,
   ): void {
     this.logger.log({

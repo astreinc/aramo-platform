@@ -137,6 +137,21 @@ TIER2_EXCLUDES=(
   # of its leakage-detection logic. Same structural pattern as the M4
   # PR-3 / PR-4 / PR-5 / PR-6 entries above.
   "apps/api/src/tests/submittal-revoke.negative-shape.spec.ts"
+  # M5 PR-2: engagement event-log substrate carries the canonical product
+  # vocabulary `outreach_sent` (an EngagementEventType enum value per
+  # Group 2 §3 "engagement outreach" — distinct from the forbidden
+  # Match-Class refusal vocabulary; the substring overlap is incidental).
+  # Per M5 PR-2 directive Ruling 4 / §4.12. Same structural pattern as
+  # the M3 PR-9 / M4 PR-3-7 negative-shape entries above (legitimate
+  # forbidden-substring occurrence in domain-specific source).
+  "libs/engagement/prisma/schema.prisma"
+  "libs/engagement/src/lib/engagement-event.ts"
+  "libs/engagement/prisma/migrations/**/migration.sql"
+  # Test data for the engagement-event log + cross-schema validator
+  # exercises the canonical `outreach_sent` enum value as input fixture.
+  # Same rationale as the source-file entries above.
+  "libs/engagement/src/tests/engagement-event.repository.integration.spec.ts"
+  "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts"
 )
 
 # =============================================================================

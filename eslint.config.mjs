@@ -145,4 +145,23 @@ export default [
       ],
     },
   },
+  // M5 PR-2 — engagement event-log substrate exemption.
+  // The EngagementEventType enum carries `outreach_sent` per Group 2 §3
+  // canonical "engagement outreach" product vocabulary. The substring
+  // overlap with the Tier-2 forbidden `outreach` entity-name anti-term
+  // is incidental — the canonical enum value names a specific event
+  // type within the engagement domain, not a misuse of `outreach` as a
+  // standalone entity name. Same rationale as the corresponding
+  // scripts/verify-vocabulary.sh TIER2_EXCLUDES entries. Per M5 PR-2
+  // directive Ruling 4 + §4.12.
+  {
+    files: [
+      'libs/engagement/src/lib/engagement-event.ts',
+      'libs/engagement/src/tests/engagement-event.repository.integration.spec.ts',
+      'libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': 'off',
+    },
+  },
 ];

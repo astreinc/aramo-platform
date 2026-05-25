@@ -1459,6 +1459,7 @@ components:
         - SUBMITTAL_ALREADY_CONFIRMED
         - OVERRIDE_INVALID
         - REVOKE_NOT_ALLOWED
+        - ENGAGEMENT_EVENT_REF_NOT_FOUND
 
     ErrorObject:
       type: object

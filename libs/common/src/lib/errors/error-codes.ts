@@ -99,6 +99,18 @@
 // submittal. The 422 status pair mirrors OVERRIDE_INVALID's
 // semantic-refusal posture; class-validator shape failures still surface
 // as VALIDATION_ERROR (400). Total: 19 codes.
+//
+// M5 PR-2 adds ENGAGEMENT_EVENT_REF_NOT_FOUND (HTTP 422) for the
+// evidence-package builder's cross-schema validator (Aramo-M5-PR-2-
+// Directive-v1_0-LOCKED.md §4.8 + Ruling 7). When a BuildPackageInput
+// carries engagement_event_refs that include a UUID not present in the
+// engagement.TalentEngagementEvent table (or present but not visible
+// in the input tenant per findByTenantAndId tenant-scoped lookup),
+// buildPackage refuses with 422. The code is registered TS-first per
+// M4 PR-2/3/4/5/7 register-ahead convention; the matching
+// openapi/common.yaml ErrorCode enum entry is added in the same PR per
+// Directive Amendment v1.1's parity-quad expansion (TS tuple + HTTP
+// mapping + parity test + openapi/common.yaml). Total: 20 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -120,6 +132,7 @@ export const ERROR_CODES = [
   'SUBMITTAL_ALREADY_CONFIRMED',
   'OVERRIDE_INVALID',  // M4 PR-5 — invalid override payload or non-overridable field
   'REVOKE_NOT_ALLOWED',  // M4 PR-7 — submittal not in 'submitted' state cannot be revoked
+  'ENGAGEMENT_EVENT_REF_NOT_FOUND',  // M5 PR-2 — engagement_event_refs entry not found in tenant
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
