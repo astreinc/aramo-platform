@@ -158,6 +158,14 @@ const ENGAGEMENT_EVENT_LOG_MIGRATION = resolve(
   ROOT,
   'libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
 );
+// M5 PR-6 §4.14 — ai-draft schema migration required by the outreach-send
+// state handlers (AiDraftService writes audit-event rows even when the
+// DraftProvider is mocked; without this migration, prisma.aiDraftEvent
+// .create raises "table ai_draft.AiDraftEvent does not exist").
+const AI_DRAFT_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql',
+);
 const INGESTION_PACT = resolve(
   ROOT,
   'pact/pacts/ingestion-consumer-aramo-core.json',
@@ -299,6 +307,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // create/transition. Truncate so prior runs don't leak.
       await c.query('TRUNCATE TABLE engagement."TalentEngagementEvent" CASCADE');
       await c.query('TRUNCATE TABLE engagement."TalentJobEngagement" CASCADE');
+      // M5 PR-6 — outreach-send state handlers cause AiDraftService to
+      // append audit-event rows for each generateDraft call. Truncate so
+      // prior runs don't leak forward across pact interactions.
+      await c.query('TRUNCATE TABLE ai_draft."AiDraftEvent" CASCADE');
     }
 
     // M3 PR-9 §4.8 — seed a Talent core row + a TalentTenantOverlay for
@@ -1108,6 +1120,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // pact verification.
         ENGAGEMENT_INIT_MIGRATION,
         ENGAGEMENT_EVENT_LOG_MIGRATION,
+        // M5 PR-6 §4.14 — ai-draft schema for outreach-send state
+        // handlers. AiDraftService writes audit-event rows even when
+        // the DraftProvider is mocked at AppModule bootstrap.
+        AI_DRAFT_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
