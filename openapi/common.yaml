@@ -2596,9 +2596,10 @@ components:
           type: string
           format: uuid
         examination_id:
-          type: string
-          format: uuid
-          nullable: true
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
           description: |
             Nullable per M5 PR-1 Ruling 5 + Amendment v1.1 — engagement
             may exist before examination is computed; pin-verify lands
