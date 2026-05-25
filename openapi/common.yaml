@@ -2522,3 +2522,223 @@ components:
             TalentJobExamination row. The controller emits the literal
             `false` on every successful create; the const lock prevents
             accidental drift.
+
+    # =====================================================================
+    # M5 PR-4 — Engagement HTTP surface schemas.
+    #
+    # The TalentJobEngagement entity (M5 PR-1 substrate) is the workflow-
+    # state row carrying the 11-state engagement state machine per Group 2
+    # §2.3b Part 2 Loops 1-5. The TalentEngagementEvent entity (M5 PR-2
+    # substrate) is the append-only event log. M5 PR-3 added write paths
+    # (createEngagement + transitionState) at the repository layer. M5 PR-4
+    # exposes both via 4 HTTP endpoints: POST /v1/engagements (create),
+    # POST /v1/engagements/{id}/transitions (state transition), GET
+    # /v1/engagements/{id} (read), GET /v1/engagements/{id}/events
+    # (read event log).
+    #
+    # All endpoints are recruiter-only per Charter v1.2 §4.3 row 4 + Group
+    # 2 §2.3b Part 2 (recruiter-driven workflow). consumer_type !==
+    # 'recruiter' → INSUFFICIENT_PERMISSIONS 403.
+    # =====================================================================
+
+    EngagementStateValue:
+      type: string
+      description: |
+        11-state engagement state machine per Group 2 §2.3b Part 2 Loops
+        1-5 verbatim. Closed list; future state additions require
+        Architect-reviewed PR per M5 PR-1 Directive Amendment v1.1 §2.
+      enum:
+        - surfaced
+        - evaluated
+        - engaged
+        - maybe
+        - passed
+        - awaiting_response
+        - responded
+        - in_conversation
+        - not_interested
+        - ready_for_submittal
+        - submitted
+
+    EngagementEventTypeValue:
+      type: string
+      description: |
+        4-value event type closed list per M5 PR-2 §4.3 +
+        Charter v1.2 §4.4 Ruling D event-log scope.
+      enum:
+        - state_transition
+        - outreach_sent
+        - response_received
+        - conversation_started
+
+    TalentJobEngagementView:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - tenant_id
+        - talent_id
+        - requisition_id
+        - examination_id
+        - state
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        talent_id:
+          type: string
+          format: uuid
+        requisition_id:
+          type: string
+          format: uuid
+        examination_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+          description: |
+            Nullable per M5 PR-1 Ruling 5 + Amendment v1.1 — engagement
+            may exist before examination is computed; pin-verify lands
+            at M5 PR-8.
+        state:
+          $ref: '#/components/schemas/EngagementStateValue'
+        created_at:
+          type: string
+          format: date-time
+
+    TalentEngagementEventView:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - tenant_id
+        - engagement_id
+        - event_type
+        - event_payload
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        engagement_id:
+          type: string
+          format: uuid
+        event_type:
+          $ref: '#/components/schemas/EngagementEventTypeValue'
+        event_payload:
+          type: object
+          additionalProperties: true
+          description: |
+            Per-event-type JSONB payload. Shape varies by event_type;
+            consumers narrow at consumption sites. For
+            event_type='state_transition' the payload is
+            { from_state: EngagementStateValue | null, to_state:
+            EngagementStateValue } per M5 PR-3 substrate.
+        created_at:
+          type: string
+          format: date-time
+
+    CreateEngagementRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - talent_id
+        - requisition_id
+      properties:
+        talent_id:
+          type: string
+          format: uuid
+          description: |
+            Pattern C cross-schema validator: TalentRepository
+            .findOverlayByTenant({ talent_id, tenant_id }); overlay
+            absence → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+        requisition_id:
+          type: string
+          format: uuid
+          description: |
+            Pattern A cross-schema validator: JobDomainRepository
+            .findRequisitionById(id) + app-layer tenant_id cross-check;
+            null or mismatch → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+        examination_id:
+          type: string
+          format: uuid
+          description: |
+            Optional. Pattern B cross-schema validator:
+            ExaminationRepository.findById(id) + app-layer tenant_id
+            cross-check; null or mismatch → 422
+            ENGAGEMENT_REFERENCE_NOT_FOUND.
+
+    CreateEngagementResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - engagement
+      properties:
+        engagement:
+          $ref: '#/components/schemas/TalentJobEngagementView'
+          description: |
+            Per M5 PR-4 Ruling 9: response shape is { engagement } only.
+            Repository-layer CreateEngagementResult returns
+            { engagement, event }; the controller projects only the
+            engagement view at the HTTP boundary. The initial event row
+            is accessible via GET /v1/engagements/{id}/events.
+
+    TransitionEngagementRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - to_state
+        - event_id
+      properties:
+        to_state:
+          $ref: '#/components/schemas/EngagementStateValue'
+          description: |
+            Target state. Closed-list validated against the 11-state
+            enum; illegal-transition refusal (422
+            ENGAGEMENT_STATE_INVALID) is enforced at the repository
+            layer via canTransition (M5 PR-1 Amendment v1.1 §4).
+            Column-scoped DB-trigger is defense-in-depth.
+        event_id:
+          type: string
+          format: uuid
+          description: |
+            Idempotent event_id for the transition event row.
+            Consumer-supplied for traceability across replay scenarios.
+
+    TransitionEngagementResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - engagement
+      properties:
+        engagement:
+          $ref: '#/components/schemas/TalentJobEngagementView'
+          description: |
+            Per M5 PR-4 Ruling 9 + Ruling 11: response shape is
+            { engagement } only. NO state-isolation literal field
+            (engagement_unrelated_columns_mutated) — the column-scoped
+            immutability trigger at the DB layer (PR-1 substrate)
+            enforces the invariant; HTTP contract affirmation omitted
+            for noise reduction.
+
+    EngagementListEventsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - events
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/TalentEngagementEventView'
+          description: |
+            Chronological event log for an engagement. Order: ASC by
+            created_at (mirrors EngagementEventRepository
+            .findByEngagementId repository-layer ordering).

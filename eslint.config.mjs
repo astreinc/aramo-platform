@@ -159,6 +159,17 @@ export default [
       'libs/engagement/src/lib/engagement-event.ts',
       'libs/engagement/src/tests/engagement-event.repository.integration.spec.ts',
       'libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts',
+      // M5 PR-4 — HTTP surface specs + Pact consumer/provider tests for the
+      // engagement endpoints. Same canonical-vocabulary rationale as the
+      // M5 PR-2 entries above: `outreach_sent` appears in state-transition
+      // fixture data, not as misuse of `outreach` as a standalone entity name.
+      'apps/api/src/tests/engagement-create.negative-shape.spec.ts',
+      'apps/api/src/tests/engagement-transition.negative-shape.spec.ts',
+      'pact/consumers/ats-thin/src/engagement-create.consumer.test.ts',
+      'pact/consumers/ats-thin/src/engagement-transition.consumer.test.ts',
+      'pact/consumers/ats-thin/src/engagement-reads.consumer.test.ts',
+      'libs/engagement/src/tests/engagement.controller.spec.ts',
+      'apps/api/src/tests/engagement.controller.integration.spec.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',
