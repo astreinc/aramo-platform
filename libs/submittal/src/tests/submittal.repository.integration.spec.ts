@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { AramoError, makeMockLogger } from '@aramo/common';
+import { EngagementEventRepository } from '@aramo/engagement';
 import {
   EvidenceRepository,
   PrismaService as EvidencePrismaService,
@@ -167,7 +168,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const examRepo = new ExaminationRepository(examPrisma, undefined as never);
       const talentEvidenceRepo = new TalentEvidenceRepository(talentEvidencePrisma);
-      const evidenceRepo = new EvidenceRepository(evidencePrisma, examRepo, talentEvidenceRepo, makeMockLogger());
+      // M5 PR-2 — EngagementEventRepository required by EvidenceRepository
+      // constructor. Existing submittal tests do not exercise the
+      // engagement_event_refs validator path (all buildPackage inputs
+      // here either omit the field or pass [] — validator short-circuits).
+      // A stub satisfies the constructor without requiring the engagement
+      // migration to be applied in this spec.
+      const engagementEventRepoStub = {
+        findByTenantAndId: async () => null,
+      } as unknown as EngagementEventRepository;
+      const evidenceRepo = new EvidenceRepository(
+        evidencePrisma,
+        examRepo,
+        talentEvidenceRepo,
+        engagementEventRepoStub,
+        makeMockLogger(),
+      );
       repo = new SubmittalRepository(submittalPrisma, evidenceRepo, examRepo, makeMockLogger());
 
       // Seed all the examinations the tests need.
@@ -1331,10 +1347,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Step 2 — load the linked evidence package via EvidenceRepository.
       // findById (the controller's second call) using the submittal's
       // evidence_package_id and the same tenant_id.
+      // M5 PR-2 — EngagementEventRepository stub (same rationale as the
+      // beforeAll instantiation above: this test does not exercise the
+      // engagement_event_refs validator path).
+      const engagementEventRepoStub = {
+        findByTenantAndId: async () => null,
+      } as unknown as EngagementEventRepository;
       const evidenceRepo = new EvidenceRepository(
         evidencePrisma,
         new ExaminationRepository(examPrisma, undefined as never),
         new TalentEvidenceRepository(talentEvidencePrisma),
+        engagementEventRepoStub,
         makeMockLogger(),
       );
       const evidencePackage = await evidenceRepo.findById({
