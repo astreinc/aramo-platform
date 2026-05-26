@@ -28,6 +28,7 @@ import {
 import type { CreateSubmittalInput } from '../lib/dto/talent-submittal-record.view.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { SubmittalRepository } from '../lib/submittal.repository.js';
+import { TalentSubmittalEventRepository } from '../lib/talent-submittal-event.repository.js';
 
 // M4 PR-3 §4.11 — integration spec for libs/submittal.
 //
@@ -184,7 +185,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         engagementEventRepoStub,
         makeMockLogger(),
       );
-      repo = new SubmittalRepository(submittalPrisma, evidenceRepo, examRepo, makeMockLogger());
+      // M5 PR-8b2 §4.16 + Ruling 17 — 5th DI dep TalentSubmittalEventRepository.
+      // Integration spec wires the real repository (against the same
+      // submittal PrismaService) so the appendEvent path exercises the
+      // append-only event-log substrate end-to-end.
+      const eventRepo = new TalentSubmittalEventRepository(
+        submittalPrisma,
+        makeMockLogger(),
+      );
+      repo = new SubmittalRepository(
+        submittalPrisma,
+        evidenceRepo,
+        examRepo,
+        makeMockLogger(),
+        eventRepo,
+      );
 
       // Seed all the examinations the tests need.
       await seedExamination(setupClient, { id: ENT_EXAM_ID, tenant_id: TENANT_A, tier: 'ENTRUSTABLE', lifecycle_state: 'active' });

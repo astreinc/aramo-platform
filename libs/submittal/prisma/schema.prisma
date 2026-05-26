@@ -16,15 +16,16 @@
 //
 // Per Group 2 §2.3b Loop 5 the full state machine is 5-value
 // (created/handoff_draft/ready_for_review/submitted_to_ats/confirmed).
-// PR-3 ships the 2-value subset (draft/submitted); F37 extends to the
-// full 5-state machine at M5 (Plan v1.5 §M5 Track A).
+// M5 PR-8b2 closes F37 (rename + cutover phase replacing M4's 2-value
+// subset draft/submitted with the canonical 5-state chain).
 //
-// Immutability: column-scoped — `state` and `confirmed_at` may transition
-// from (draft, NULL) → (submitted, non-NULL) via the F34 confirm endpoint;
-// every other column is immutable post-create. Enforced by the
-// BEFORE UPDATE trigger added in the same migration. The trigger
-// mechanism mirrors PR-1's whole-row trigger and M3 PR-1's
-// column-scoped trigger.
+// Immutability: column-scoped — `state` may transition along the
+// canonical chain and `confirmed_at` populates at the
+// ready_for_review → submitted_to_ats transition (preserving M4's
+// confirmed_at column semantic; the M4 "confirmed" event renames to
+// canonical "submitted to ATS"). Every other column is immutable
+// post-create. Enforced by the BEFORE UPDATE trigger rewritten at
+// PR-8b2 to encode the canonical 5-state matrix.
 
 generator client {
   provider = "prisma-client-js"
@@ -36,20 +37,38 @@ datasource db {
   schemas  = ["engagement"]
 }
 
-// SubmittalState — 2-value subset of Group 2 §2.3b Loop 5's 5-state
-// machine. F37 extends to the full machine at M5.
+// SubmittalState — canonical 5-state machine per Group 2 §2.3b Loop 5
+// (+ sibling lifecycle-exit state `revoked`). F37 closes at M5 PR-8b2
+// via the rename + cutover phase that replaces M4's 2-value subset
+// (draft, submitted) with the canonical 5-state chain and ADDs the
+// 3 intermediate states (handoff_draft, ready_for_review, confirmed).
 //
-// M4 PR-7 adds 'revoked' as the third value. Reached via the
-// submittal-revoke endpoint (POST /v1/submittals/{id}/revoke), which is
-// the legal Transition B from 'submitted' state. The
-// column-scoped immutability trigger (engagement.reject_submittal_record
-// _update) permits Transition A (draft→submitted with confirmed_at
-// stamp, PR-3/PR-4) and Transition B (submitted→revoked with
-// revoked_at/revoked_by/revocation_justification atomically populated,
-// PR-7). All other transitions raise check_violation.
+// State chain (mainline; 4 transitions):
+//   created -> handoff_draft -> ready_for_review -> submitted_to_ats
+//   -> confirmed
+//
+// Sibling lifecycle-exit (revoked; Q3 Lead-Rulings Brief v1.0-LOCKED):
+// revocable from `created`, `handoff_draft`, `ready_for_review`,
+// `submitted_to_ats`. NOT revocable from `confirmed` (terminal state
+// per Ruling 5 — ATS confirmation closes the workflow lifecycle).
+//
+// Rename semantics (Q3 Lead-Rulings Brief):
+//   - M4 'draft' renames to 'created' (lifecycle start state).
+//   - M4 'submitted' renames to 'submitted_to_ats' (explicit canonical
+//     name; M4's `submitted` meant ATS-submitted).
+//   - 'revoked' UNCHANGED (sibling lifecycle-exit).
+//
+// The column-scoped immutability trigger
+// (engagement.reject_submittal_record_update) encodes the canonical
+// 5-state matrix (4 mainline + 4 sibling-revoke = 8 legal transitions).
+// Terminal states `confirmed` and `revoked` have no outgoing
+// transitions. All other transitions raise check_violation.
 enum SubmittalState {
-  draft
-  submitted
+  created
+  handoff_draft
+  ready_for_review
+  submitted_to_ats
+  confirmed
   revoked
 
   @@schema("engagement")
@@ -94,7 +113,7 @@ model TalentSubmittalRecord {
   pinned_examination_id String @db.Uuid
 
   // Workflow.
-  state      SubmittalState @default(draft)
+  state      SubmittalState @default(created)
   // UUID of the recruiter actor that initiated the create. Derived
   // from JWT at the controller layer.
   created_by String         @db.Uuid
@@ -106,18 +125,20 @@ model TalentSubmittalRecord {
   justification                    String?
   failed_criterion_acknowledgments Json?
 
-  // Lifecycle timestamps. confirmed_at is set by F34 confirm.
+  // Lifecycle timestamps. confirmed_at is set at the
+  // ready_for_review → submitted_to_ats transition (M5 PR-8b2 §4.3 +
+  // Ruling 6 — preserves M4's confirmed_at column semantic; column
+  // name unchanged for migration safety + historical-data continuity).
   created_at   DateTime  @default(now()) @db.Timestamptz
   confirmed_at DateTime? @db.Timestamptz
 
-  // M4 PR-7 §4.1 — revoke metadata. Populated atomically with the
-  // state transition 'submitted' → 'revoked' by the submittal-revoke
-  // endpoint. Nullable for backwards compatibility with rows created
-  // before PR-7 (which remain in 'draft' or 'submitted' state and so
-  // never have these fields). The column-scoped trigger (Transition B)
-  // requires all three to move from NULL to non-NULL atomically when
-  // state moves submitted→revoked; once revoked, no further mutation
-  // is permitted on the row.
+  // M4 PR-7 §4.1 — revoke metadata. Populated atomically with any-state
+  // to revoked transition via the submittal-revoke endpoint (per M5
+  // PR-8b2 Q3 sibling lifecycle-exit ruling: revocable from `created`,
+  // `handoff_draft`, `ready_for_review`, `submitted_to_ats`). The
+  // column-scoped trigger requires all three to move from NULL to
+  // non-NULL atomically when state moves to revoked; once revoked, no
+  // further mutation is permitted on the row.
   revoked_at               DateTime? @db.Timestamptz
   revoked_by               String?   @db.Uuid
   revocation_justification String?

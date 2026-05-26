@@ -6,6 +6,7 @@ import { ExaminationRepository } from '@aramo/examination';
 import type { CreateSubmittalInput } from '../lib/dto/talent-submittal-record.view.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { SubmittalRepository } from '../lib/submittal.repository.js';
+import { TalentSubmittalEventRepository } from '../lib/talent-submittal-event.repository.js';
 
 // M4 PR-3 §4.11 — unit spec for SubmittalRepository.
 //
@@ -59,6 +60,14 @@ interface MockPrisma {
     findFirst?: ReturnType<typeof vi.fn>;
     update?: ReturnType<typeof vi.fn>;
   };
+  // M5 PR-8b2 §4.7 — state-changing methods use prisma.$transaction(
+  // [update, talentSubmittalEvent.create]). Tests that exercise the
+  // confirm/markReady/submitToAts/confirmAts/revoke paths set these
+  // mocks; createSubmittal tests omit them.
+  talentSubmittalEvent?: {
+    create: ReturnType<typeof vi.fn>;
+  };
+  $transaction?: ReturnType<typeof vi.fn>;
 }
 
 const REQUEST_ID = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f00';
@@ -83,19 +92,24 @@ describe('SubmittalRepository.createSubmittal (unit)', () => {
     // ctor param; createSubmittal does not use it, so an empty mock is
     // safe for these create-flow tests.
     const mockExamination = {} as unknown as ExaminationRepository;
+    // M5 PR-8b2 §4.7 + Ruling 17 — 5th DI dep TalentSubmittalEventRepository.
+    // createSubmittal does NOT use it (Ruling 15: no event emission at
+    // create), so an empty mock is safe for these create-flow tests.
+    const mockEventRepo = {} as unknown as TalentSubmittalEventRepository;
     repo = new SubmittalRepository(
       mockPrisma as unknown as PrismaService,
       mockEvidence,
       mockExamination,
       makeMockLogger(),
+      mockEventRepo,
     );
   });
 
-  it('1. successful create forwards input to buildPackage and writes draft submittal', async () => {
+  it('1. successful create forwards input to buildPackage and writes created-state submittal', async () => {
     const view = await repo.createSubmittal(makeInput());
     expect(buildPackage).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledTimes(1);
-    expect(view.state).toBe('draft');
+    expect(view.state).toBe('created');
     expect(view.tenant_id).toBe(TENANT_A);
     expect(view.talent_id).toBe(TALENT_A);
     expect(view.pinned_examination_id).toBe(EXAM_ID);
@@ -164,29 +178,57 @@ function buildConfirmMocks(opts: {
     ...data,
     id: (where['id'] as string) ?? SUBMITTAL_ID,
   }));
+  const eventCreate = vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+    id: data['id'],
+    tenant_id: data['tenant_id'],
+    submittal_id: data['submittal_id'],
+    event_type: data['event_type'],
+    event_payload: data['event_payload'],
+    created_at: new Date('2026-05-22T13:00:00Z'),
+  }));
+  // M5 PR-8b2 §4.7 — confirmSubmittal + new mainline endpoints use
+  // prisma.$transaction([update, event.create]). Mock returns the
+  // results array in order: [updatedRow, eventRow].
+  const $transactionMock = vi.fn().mockImplementation(async (ops: Array<unknown>) => {
+    // Vitest mock calls capture per-mock invocation; we synthesise the
+    // result from the mock implementations the controller composed.
+    // The two ops are [update(...), eventCreate(...)]; both are
+    // already-resolved values from the mock factories.
+    return Promise.all(ops as Array<Promise<unknown>>);
+  });
   const mockPrisma: MockPrisma = {
     talentSubmittalRecord: {
       create: vi.fn(),
       findFirst,
       update,
     },
+    talentSubmittalEvent: {
+      create: eventCreate,
+    },
+    $transaction: $transactionMock,
   };
   const mockEvidence = {} as unknown as EvidenceRepository;
   const mockExamination = {
     findByIdFull: vi.fn().mockResolvedValue(opts.findByIdFullResult),
     findLatestByTenantTalentJob: vi.fn().mockResolvedValue(opts.findLatestResult),
   } as unknown as ExaminationRepository;
+  const mockEventRepo = {} as unknown as TalentSubmittalEventRepository;
   const repo = new SubmittalRepository(
     mockPrisma as unknown as PrismaService,
     mockEvidence,
     mockExamination,
     makeMockLogger(),
+    mockEventRepo,
   );
   return { repo, update };
 }
 
 const ENT_EXAM_ID = '11110000-0000-7000-8000-0000000e0001';
 
+// Helper named for legacy reasons; under M5 PR-8b2 the "draft" baseline
+// is the canonical 'created' lifecycle-start state. Tests pass override
+// to walk further down the chain (handoff_draft, ready_for_review,
+// submitted_to_ats, confirmed, revoked).
 function makeStoredDraft(overrides: Record<string, unknown> = {}): unknown {
   return {
     id: SUBMITTAL_ID,
@@ -195,12 +237,19 @@ function makeStoredDraft(overrides: Record<string, unknown> = {}): unknown {
     job_id: JOB_ID,
     evidence_package_id: '99990000-0000-7000-8000-000000000002',
     pinned_examination_id: ENT_EXAM_ID,
-    state: 'draft',
+    // M5 PR-8b2 rename: M4 'draft' renames to canonical 'created'
+    // (lifecycle start state). The helper default produces the
+    // pre-confirm baseline; tests override `state` to walk the
+    // canonical chain further.
+    state: 'created',
     created_by: RECRUITER_ID,
     justification: null,
     failed_criterion_acknowledgments: null,
     created_at: new Date('2026-05-23T12:00:00Z'),
     confirmed_at: null,
+    revoked_at: null,
+    revoked_by: null,
+    revocation_justification: null,
     ...overrides,
   };
 }
@@ -238,13 +287,13 @@ function makeFullView(overrides: Record<string, unknown> = {}): unknown {
 }
 
 describe('SubmittalRepository.confirmSubmittal (unit)', () => {
-  it('1. successful confirm: state transitions to submitted, confirmed_at set', async () => {
+  it('1. successful confirm: state transitions created -> handoff_draft (M5 PR-8b2 Ruling 12)', async () => {
     const { repo, update } = buildConfirmMocks({
       findFirstResult: makeStoredDraft(),
       findByIdFullResult: makeFullView(),
       findLatestResult: { id: ENT_EXAM_ID },
     });
-    const view = await repo.confirmSubmittal({
+    const { submittal: view } = await repo.confirmSubmittal({
       tenant_id: TENANT_A,
       submittal_id: SUBMITTAL_ID,
       attestations: {
@@ -252,16 +301,19 @@ describe('SubmittalRepository.confirmSubmittal (unit)', () => {
         constraints_reviewed: true,
         submittal_risk_acknowledged: true,
       },
+      event_id: '11111111-2222-7333-8444-555555555555',
       requestId: REQUEST_ID,
     });
-    expect(view.state).toBe('submitted');
+    expect(view.state).toBe('handoff_draft');
     expect(update).toHaveBeenCalledTimes(1);
     const updateArg = update.mock.calls[0]?.[0] as {
-      data: { state: string; confirmed_at: Date };
+      data: { state: string };
       where: { id: string; tenant_id: string };
     };
-    expect(updateArg.data.state).toBe('submitted');
-    expect(updateArg.data.confirmed_at).toBeInstanceOf(Date);
+    expect(updateArg.data.state).toBe('handoff_draft');
+    // M5 PR-8b2 Ruling 6: confirmed_at NOT populated at this transition;
+    // moves to /submit-to-ats (ready_for_review -> submitted_to_ats).
+    expect(updateArg.data).not.toHaveProperty('confirmed_at');
     expect(updateArg.where.id).toBe(SUBMITTAL_ID);
     expect(updateArg.where.tenant_id).toBe(TENANT_A);
   });
@@ -292,9 +344,9 @@ describe('SubmittalRepository.confirmSubmittal (unit)', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it('3. state already "submitted" → SUBMITTAL_ALREADY_CONFIRMED 409', async () => {
+  it('3. state already "handoff_draft" → SUBMITTAL_ALREADY_CONFIRMED 409 (M5 PR-8b2 rename)', async () => {
     const { repo, update } = buildConfirmMocks({
-      findFirstResult: makeStoredDraft({ state: 'submitted' }),
+      findFirstResult: makeStoredDraft({ state: 'handoff_draft' }),
       findByIdFullResult: makeFullView(),
       findLatestResult: { id: ENT_EXAM_ID },
     });
@@ -461,20 +513,37 @@ function buildRevokeMocks(opts: {
     ...data,
     id: (where['id'] as string) ?? SUBMITTAL_ID,
   }));
+  const eventCreate = vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+    id: data['id'],
+    tenant_id: data['tenant_id'],
+    submittal_id: data['submittal_id'],
+    event_type: data['event_type'],
+    event_payload: data['event_payload'],
+    created_at: new Date('2026-05-23T15:00:00Z'),
+  }));
+  const $transactionMock = vi.fn().mockImplementation(async (ops: Array<unknown>) => {
+    return Promise.all(ops as Array<Promise<unknown>>);
+  });
   const mockPrisma: MockPrisma = {
     talentSubmittalRecord: {
       create: vi.fn(),
       findFirst,
       update,
     },
+    talentSubmittalEvent: {
+      create: eventCreate,
+    },
+    $transaction: $transactionMock,
   };
   const mockEvidence = {} as unknown as EvidenceRepository;
   const mockExamination = {} as unknown as ExaminationRepository;
+  const mockEventRepo = {} as unknown as TalentSubmittalEventRepository;
   const repo = new SubmittalRepository(
     mockPrisma as unknown as PrismaService,
     mockEvidence,
     mockExamination,
     makeMockLogger(),
+    mockEventRepo,
   );
   return { repo, update };
 }
@@ -483,18 +552,19 @@ const REVOKER_ID = '00000000-0000-7000-8000-000000000bb2';
 const REVOKE_JUSTIFICATION = 'Position frozen by hiring manager; revoking.';
 
 describe('SubmittalRepository.revokeSubmittal (unit)', () => {
-  it('1. successful revoke: state transitions to revoked, revoke metadata stamped', async () => {
+  it('1. successful revoke from submitted_to_ats: state transitions to revoked, revoke metadata stamped (M5 PR-8b2 rename)', async () => {
     const { repo, update } = buildRevokeMocks({
       findFirstResult: makeStoredDraft({
-        state: 'submitted',
+        state: 'submitted_to_ats',
         confirmed_at: new Date('2026-05-23T13:00:00Z'),
       }),
     });
-    const view = await repo.revokeSubmittal({
+    const { submittal: view } = await repo.revokeSubmittal({
       tenant_id: TENANT_A,
       submittal_id: SUBMITTAL_ID,
       revoked_by: REVOKER_ID,
       revocation_justification: REVOKE_JUSTIFICATION,
+      event_id: '11111111-2222-7333-8444-666666666666',
       requestId: REQUEST_ID,
     });
     expect(view.state).toBe('revoked');
@@ -526,6 +596,7 @@ describe('SubmittalRepository.revokeSubmittal (unit)', () => {
         submittal_id: SUBMITTAL_ID,
         revoked_by: REVOKER_ID,
         revocation_justification: REVOKE_JUSTIFICATION,
+        event_id: '11111111-2222-7333-8444-666666666666',
         requestId: REQUEST_ID,
       });
       throw new Error('expected throw');
@@ -537,9 +608,19 @@ describe('SubmittalRepository.revokeSubmittal (unit)', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it('3. state=draft → REVOKE_NOT_ALLOWED 422 with current_state detail; no update called', async () => {
+  it('3. state=confirmed (terminal) → REVOKE_NOT_ALLOWED 422 (M5 PR-8b2 Ruling 5)', async () => {
+    // M5 PR-8b2 Q3 expansion + Ruling 5: revoke is legal from any
+    // non-terminal state (`created`, `handoff_draft`,
+    // `ready_for_review`, `submitted_to_ats`). It is REFUSED from the
+    // 2 terminal states `confirmed` and `revoked`. M4's revoke-from-
+    // draft refusal flips to a legal sibling-revoke success
+    // post-rename; the new refusal target is the `confirmed` terminal
+    // state (and the already-revoked case below).
     const { repo, update } = buildRevokeMocks({
-      findFirstResult: makeStoredDraft({ state: 'draft' }),
+      findFirstResult: makeStoredDraft({
+        state: 'confirmed',
+        confirmed_at: new Date('2026-05-23T13:00:00Z'),
+      }),
     });
     try {
       await repo.revokeSubmittal({
@@ -547,6 +628,7 @@ describe('SubmittalRepository.revokeSubmittal (unit)', () => {
         submittal_id: SUBMITTAL_ID,
         revoked_by: REVOKER_ID,
         revocation_justification: REVOKE_JUSTIFICATION,
+        event_id: '11111111-2222-7333-8444-666666666666',
         requestId: REQUEST_ID,
       });
       throw new Error('expected throw');
@@ -556,7 +638,7 @@ describe('SubmittalRepository.revokeSubmittal (unit)', () => {
       const ctx = (err as AramoError).context;
       expect(ctx.details).toMatchObject({
         submittal_id: SUBMITTAL_ID,
-        current_state: 'draft',
+        current_state: 'confirmed',
       });
     }
     expect(update).not.toHaveBeenCalled();
@@ -578,6 +660,7 @@ describe('SubmittalRepository.revokeSubmittal (unit)', () => {
         submittal_id: SUBMITTAL_ID,
         revoked_by: REVOKER_ID,
         revocation_justification: REVOKE_JUSTIFICATION,
+        event_id: '11111111-2222-7333-8444-666666666666',
         requestId: REQUEST_ID,
       });
       throw new Error('expected throw');

@@ -18,7 +18,7 @@ import { TalentSubmittalEventRepository } from './talent-submittal-event.reposit
 //   - SubmittalRepository — write path that orchestrates evidence-package
 //     build (via EvidenceRepository.buildPackage) + submittal record write,
 //     and the M4 PR-4 confirm path that re-validates the pinned
-//     examination + flips state to 'submitted'.
+//     examination + flips state to 'handoff_draft' (M5 PR-8b2 rename).
 //   - SubmittalController — POST /v1/submittals (PR-3) +
 //     POST /v1/submittals/{id}/confirm (PR-4).
 //

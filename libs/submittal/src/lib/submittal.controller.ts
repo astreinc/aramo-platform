@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import {
   Body,
   Controller,
@@ -23,6 +25,10 @@ import {
   type TalentJobEvidencePackageView,
 } from '@aramo/evidence';
 
+import {
+  ConfirmAtsRequestDto,
+  type ConfirmAtsResponseDto,
+} from './dto/confirm-ats-request.dto.js';
 import type {
   ConfirmSubmittalRequestDto,
   ConfirmSubmittalResponseDto,
@@ -31,8 +37,16 @@ import type {
   CreateSubmittalRequestDto,
   CreateSubmittalResponseDto,
 } from './dto/create-submittal-request.dto.js';
+import {
+  MarkReadyRequestDto,
+  type MarkReadyResponseDto,
+} from './dto/mark-ready-request.dto.js';
 import { RevokeSubmittalRequestDto } from './dto/revoke-submittal-request.dto.js';
 import type { RevokeSubmittalResponseDto } from './dto/revoke-submittal-response.dto.js';
+import {
+  SubmitToAtsRequestDto,
+  type SubmitToAtsResponseDto,
+} from './dto/submit-to-ats-request.dto.js';
 import type { TalentSubmittalRecordView } from './dto/talent-submittal-record.view.js';
 import { SubmittalRepository } from './submittal.repository.js';
 
@@ -42,7 +56,7 @@ import { SubmittalRepository } from './submittal.repository.js';
 // Idempotency-Key header, builds the immutable TalentJobEvidencePackage
 // via SubmittalRepository.createSubmittal (which orchestrates PR-2's
 // EvidenceRepository.buildPackage), persists the workflow
-// TalentSubmittalRecord in state='draft', and returns the submittal +
+// TalentSubmittalRecord in state='created' (M5 PR-8b2 rename), and returns the submittal +
 // evidence_package_id.
 //
 // Auth posture: class-level JwtAuthGuard + per-route
@@ -237,7 +251,7 @@ export class SubmittalController {
   // M4 PR-4 §4.3 — POST /v1/submittals/{submittal_id}/confirm.
   //
   // Recruiter-facing confirm flow that transitions a draft submittal to
-  // 'submitted' state and stamps confirmed_at. Pre-write guards (in
+  // 'handoff_draft' state (M5 PR-8b2 Ruling 12). Pre-write guards (in
   // order):
   //   1. consumer_type must be 'recruiter' (INSUFFICIENT_PERMISSIONS 403)
   //   2. Idempotency-Key header required (VALIDATION_ERROR 400)
@@ -326,13 +340,23 @@ export class SubmittalController {
     // Step 6 — repository confirm. AramoErrors raised by the 8-step
     // flow already carry the correct requestId (threaded via the input
     // shape), so they propagate unchanged.
-    const submittal: TalentSubmittalRecordView =
-      await this.submittalRepository.confirmSubmittal({
-        tenant_id: authContext.tenant_id,
-        submittal_id,
-        attestations: body.attestations,
-        requestId,
-      });
+    //
+    // M5 PR-8b2 §4.5 + Ruling 18: event_id minted controller-side via
+    // crypto.randomUUID() and threaded through to the repository's
+    // $transaction (mirrors engagement-side transitionState
+    // event-id-minting pattern). The repository returns
+    // { submittal, event }; the M4 client contract preserves the
+    // { submittal } response shape so the `event` field is dropped at
+    // the HTTP boundary (audit-event surfaces via the future
+    // GET /v1/submittals/{id}/events read endpoint).
+    const event_id = randomUUID();
+    const { submittal } = await this.submittalRepository.confirmSubmittal({
+      tenant_id: authContext.tenant_id,
+      submittal_id,
+      attestations: body.attestations,
+      event_id,
+      requestId,
+    });
 
     const response: ConfirmSubmittalResponseDto = { submittal };
 
@@ -536,15 +560,24 @@ export class SubmittalController {
     // Step 6 — repository revoke. Any AramoError raised by the 5-step
     // flow carries the bound requestId already; the catch re-binds
     // defensively per the PR-3 substrate-layer error-catch pattern.
+    //
+    // M5 PR-8b2 §4.5 + Ruling 18: event_id minted controller-side;
+    // repository returns { submittal, event } via $transaction; the M4
+    // client contract preserves the { submittal, evidence_package_
+    // mutated: false } response shape so the `event` field is dropped
+    // at the HTTP boundary.
+    const revoke_event_id = randomUUID();
     let submittal: TalentSubmittalRecordView;
     try {
-      submittal = await this.submittalRepository.revokeSubmittal({
+      const result = await this.submittalRepository.revokeSubmittal({
         tenant_id: authContext.tenant_id,
         submittal_id,
         revoked_by,
         revocation_justification: body.revocation_justification,
+        event_id: revoke_event_id,
         requestId,
       });
+      submittal = result.submittal;
     } catch (err) {
       if (err instanceof AramoError) {
         throw new AramoError(err.code, err.message, err.statusCode, {
@@ -575,6 +608,169 @@ export class SubmittalController {
     });
 
     // Step 8 — return.
+    return response;
+  }
+
+  // M5 PR-8b2 §4.5 — POST /v1/submittals/{submittal_id}/mark-ready.
+  //
+  // Fires the canonical mainline transition handoff_draft ->
+  // ready_for_review (mainline transition 2). 9-step idempotency flow:
+  //   1. assertConsumerIsRecruiter -> INSUFFICIENT_PERMISSIONS 403
+  //   2. assertIdempotencyKeyRequired -> VALIDATION_ERROR 400
+  //   3. assertSubmittalIdIsUuid -> VALIDATION_ERROR 400
+  //   4. Body validation (empty body per Ruling 13)
+  //   5. Idempotency lookup (replay/conflict/proceed)
+  //   6. Mint event_id (Ruling 18; crypto.randomUUID)
+  //   7. Repository markReady ($transaction: update + appendEvent)
+  //   8. Idempotency persist (post-success only)
+  //   9. Return { submittal, event }
+  @Post(':submittal_id/mark-ready')
+  @HttpCode(HttpStatus.OK)
+  async markReady(
+    @Param('submittal_id') submittal_id: string,
+    @Body() body: MarkReadyRequestDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<MarkReadyResponseDto> {
+    this.assertConsumerIsRecruiter(authContext, requestId);
+    const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
+    this.assertSubmittalIdIsUuid(submittal_id, requestId);
+
+    const requestHash = hashCanonicalizedBody(body as unknown);
+    const lookup = await this.idempotencyService.lookup({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      requestId,
+    });
+    if (lookup.kind === 'replay') {
+      return lookup.response_body as MarkReadyResponseDto;
+    }
+
+    const event_id = randomUUID();
+    const { submittal, event } = await this.submittalRepository.markReady({
+      tenant_id: authContext.tenant_id,
+      submittal_id,
+      event_id,
+      requestId,
+    });
+
+    const response: MarkReadyResponseDto = { submittal, event };
+
+    await this.idempotencyService.persist({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      response_status: HttpStatus.OK,
+      response_body: response,
+    });
+
+    return response;
+  }
+
+  // M5 PR-8b2 §4.5 — POST /v1/submittals/{submittal_id}/submit-to-ats.
+  //
+  // Fires the canonical mainline transition ready_for_review ->
+  // submitted_to_ats (mainline transition 3). Per Ruling 6 this is the
+  // transition that populates confirmed_at NULL -> non-NULL (preserving
+  // M4 confirmed_at column semantic post-rename).
+  //
+  // 9-step idempotency flow per markReady precedent.
+  @Post(':submittal_id/submit-to-ats')
+  @HttpCode(HttpStatus.OK)
+  async submitToAts(
+    @Param('submittal_id') submittal_id: string,
+    @Body() body: SubmitToAtsRequestDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<SubmitToAtsResponseDto> {
+    this.assertConsumerIsRecruiter(authContext, requestId);
+    const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
+    this.assertSubmittalIdIsUuid(submittal_id, requestId);
+
+    const requestHash = hashCanonicalizedBody(body as unknown);
+    const lookup = await this.idempotencyService.lookup({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      requestId,
+    });
+    if (lookup.kind === 'replay') {
+      return lookup.response_body as SubmitToAtsResponseDto;
+    }
+
+    const event_id = randomUUID();
+    const { submittal, event } = await this.submittalRepository.submitToAts({
+      tenant_id: authContext.tenant_id,
+      submittal_id,
+      event_id,
+      requestId,
+    });
+
+    const response: SubmitToAtsResponseDto = { submittal, event };
+
+    await this.idempotencyService.persist({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      response_status: HttpStatus.OK,
+      response_body: response,
+    });
+
+    return response;
+  }
+
+  // M5 PR-8b2 §4.5 — POST /v1/submittals/{submittal_id}/confirm-ats.
+  //
+  // Fires the canonical mainline transition submitted_to_ats ->
+  // confirmed (mainline transition 4; lifecycle terminal). `confirmed`
+  // is fully terminal -- not even sibling-revoke applies (Ruling 5).
+  //
+  // 9-step idempotency flow per markReady precedent.
+  @Post(':submittal_id/confirm-ats')
+  @HttpCode(HttpStatus.OK)
+  async confirmAts(
+    @Param('submittal_id') submittal_id: string,
+    @Body() body: ConfirmAtsRequestDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ConfirmAtsResponseDto> {
+    this.assertConsumerIsRecruiter(authContext, requestId);
+    const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
+    this.assertSubmittalIdIsUuid(submittal_id, requestId);
+
+    const requestHash = hashCanonicalizedBody(body as unknown);
+    const lookup = await this.idempotencyService.lookup({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      requestId,
+    });
+    if (lookup.kind === 'replay') {
+      return lookup.response_body as ConfirmAtsResponseDto;
+    }
+
+    const event_id = randomUUID();
+    const { submittal, event } = await this.submittalRepository.confirmAts({
+      tenant_id: authContext.tenant_id,
+      submittal_id,
+      event_id,
+      requestId,
+    });
+
+    const response: ConfirmAtsResponseDto = { submittal, event };
+
+    await this.idempotencyService.persist({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      response_status: HttpStatus.OK,
+      response_body: response,
+    });
+
     return response;
   }
 }

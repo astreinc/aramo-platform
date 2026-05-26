@@ -5,17 +5,19 @@ import { describe, expect, it } from 'vitest';
 
 const { like, uuid, regex } = MatchersV3;
 
-// M4 PR-7 §4.8 Pact consumer — POST /v1/submittals/{submittal_id}/revoke.
+// M4 PR-7 §4.8 + M5 PR-8b2 §4.14 Pact consumer — POST
+// /v1/submittals/{submittal_id}/revoke.
 //
-// Four interactions (directive §4.8):
-//   1) Submittal in state='submitted' + valid justification → 200 +
+// Four interactions (directive §4.8 + M5 PR-8b2 Q3 expansion):
+//   1) Submittal in state='submitted_to_ats' + valid justification → 200 +
 //      RevokeSubmittalResponse (strict shape with state='revoked',
 //      revoked_at + revoked_by + revocation_justification populated,
 //      and `evidence_package_mutated: false` LOCKED literal).
-//   2) Submittal in state='draft' → 422 REVOKE_NOT_ALLOWED with
-//      current_state='draft' in details.
+//   2) Submittal in state='created' → 200 sibling-revoke success
+//      (per M5 PR-8b2 Q3: revocable from any non-terminal state;
+//      M4 'draft' renames to canonical 'created').
 //   3) Submittal in state='revoked' → 422 REVOKE_NOT_ALLOWED with
-//      current_state='revoked' in details.
+//      current_state='revoked' in details (terminal-state refusal).
 //   4) submittal_id not seeded → 404 NOT_FOUND.
 //
 // Consumer: ats-thin (recruiter-facing).
@@ -94,7 +96,7 @@ describe('ATS thin consumer → POST /v1/submittals/{id}/revoke', () => {
             job_id: uuid(JOB_ID),
             evidence_package_id: uuid(),
             pinned_examination_id: uuid(EXAM_ID),
-            state: regex('draft|submitted|revoked', 'revoked'),
+            state: regex('created|handoff_draft|ready_for_review|submitted_to_ats|confirmed|revoked', 'revoked'),
             created_by: uuid(),
             justification: null,
             failed_criterion_acknowledgments: null,
@@ -141,13 +143,17 @@ describe('ATS thin consumer → POST /v1/submittals/{id}/revoke', () => {
       });
   });
 
-  it('rejects revoke returns 422 REVOKE_NOT_ALLOWED when submittal is in draft state', async () => {
+  it('revokes returns 200 (sibling-revoke from created) per M5 PR-8b2 Q3 expansion', async () => {
+    // M5 PR-8b2 Q3 + Ruling 5: revoke is now legal from any
+    // non-terminal state (created, handoff_draft, ready_for_review,
+    // submitted_to_ats). M4 'draft' renames to canonical 'created';
+    // M4's REVOKE_NOT_ALLOWED-from-draft semantic flips to 200 success.
     await provider
       .addInteraction()
       .given(
         'a recruiter has authenticated and a draft TalentSubmittalRecord exists for the tenant',
       )
-      .uponReceiving('a submittal-revoke request against a draft submittal')
+      .uponReceiving('a submittal-revoke request against a created submittal (sibling-revoke)')
       .withRequest(
         'POST',
         `/v1/submittals/${SUBMITTAL_ID_DRAFT}/revoke`,
@@ -160,19 +166,32 @@ describe('ATS thin consumer → POST /v1/submittals/{id}/revoke', () => {
           }).jsonBody(REVOKE_BODY);
         },
       )
-      .willRespondWith(422, (b) => {
+      .willRespondWith(200, (b) => {
         b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
-          error: {
-            code: regex('REVOKE_NOT_ALLOWED', 'REVOKE_NOT_ALLOWED'),
-            message: like(
-              'Submittal in state draft cannot be revoked; only submitted submittals may be revoked',
+          submittal: {
+            id: uuid(SUBMITTAL_ID_DRAFT),
+            tenant_id: uuid(TENANT_ID),
+            talent_id: uuid(),
+            job_id: uuid(),
+            evidence_package_id: uuid(),
+            pinned_examination_id: uuid(),
+            state: regex('created|handoff_draft|ready_for_review|submitted_to_ats|confirmed|revoked', 'revoked'),
+            created_by: uuid(),
+            justification: null,
+            failed_criterion_acknowledgments: null,
+            created_at: regex(
+              /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
+              '2026-05-22T12:00:00Z',
             ),
-            request_id: uuid(REQUEST_ID),
-            details: like({
-              submittal_id: SUBMITTAL_ID_DRAFT,
-              current_state: 'draft',
-            }),
+            confirmed_at: null,
+            revoked_at: regex(
+              /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
+              '2026-05-23T15:00:00Z',
+            ),
+            revoked_by: uuid(),
+            revocation_justification: like(REVOKE_BODY.revocation_justification),
           },
+          evidence_package_mutated: false,
         });
       })
       .executeTest(async (mock) => {
@@ -189,9 +208,13 @@ describe('ATS thin consumer → POST /v1/submittals/{id}/revoke', () => {
             body: JSON.stringify(REVOKE_BODY),
           },
         );
-        expect(res.status).toBe(422);
-        const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('REVOKE_NOT_ALLOWED');
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          submittal: { state: string };
+          evidence_package_mutated: boolean;
+        };
+        expect(body.submittal.state).toBe('revoked');
+        expect(body.evidence_package_mutated).toBe(false);
       });
   });
 
@@ -221,7 +244,7 @@ describe('ATS thin consumer → POST /v1/submittals/{id}/revoke', () => {
           error: {
             code: regex('REVOKE_NOT_ALLOWED', 'REVOKE_NOT_ALLOWED'),
             message: like(
-              'Submittal in state revoked cannot be revoked; only submitted submittals may be revoked',
+              'Submittal in state revoked cannot be revoked; terminal states (confirmed, revoked) are not revocable',
             ),
             request_id: uuid(REQUEST_ID),
             details: like({

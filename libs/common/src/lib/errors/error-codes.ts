@@ -149,6 +149,15 @@
 //     off; the underlying generic INTERNAL_ERROR catch-all would have
 //     mapped to 500 instead.
 // Total: 24 codes.
+//
+// M5 PR-8b2 adds SUBMITTAL_STATE_INVALID (HTTP 422) for
+// SubmittalRepository.{markReady,submitToAts,confirmAts} +
+// confirmSubmittal + revokeSubmittal canTransition guard. Application-
+// layer guard atop the canonical 5-state DB trigger (defense-in-depth:
+// the trigger would also reject, but the application-layer guard
+// returns a structured error before the SQL UPDATE attempt). Mirrors
+// the M5 PR-3 ENGAGEMENT_STATE_INVALID precedent verbatim at the
+// submittal-side. Total: 25 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -169,12 +178,13 @@ export const ERROR_CODES = [
   'EXAMINATION_PINNED_OUTDATED',
   'SUBMITTAL_ALREADY_CONFIRMED',
   'OVERRIDE_INVALID',  // M4 PR-5 — invalid override payload or non-overridable field
-  'REVOKE_NOT_ALLOWED',  // M4 PR-7 — submittal not in 'submitted' state cannot be revoked
+  'REVOKE_NOT_ALLOWED',  // M4 PR-7 / M5 PR-8b2 — submittal in terminal state (confirmed | revoked) cannot be revoked
   'ENGAGEMENT_EVENT_REF_NOT_FOUND',  // M5 PR-2 — engagement_event_refs entry not found in tenant
   'ENGAGEMENT_REFERENCE_NOT_FOUND',  // M5 PR-3 — createEngagement cross-schema validator (Pattern A/B/C)
   'ENGAGEMENT_STATE_INVALID',  // M5 PR-3 — transitionState canTransition guard failed
   'AI_PROVIDER_UNAVAILABLE',  // M5 PR-6 — outreach sendOutreach LLM transport / vendor-internal failure
   'AI_RATE_LIMITED',  // M5 PR-6 — outreach sendOutreach LLM rate-limit response
+  'SUBMITTAL_STATE_INVALID',  // M5 PR-8b2 — submittal canTransition guard failed (mainline + sibling-revoke)
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

@@ -17,7 +17,8 @@ const { like, uuid, regex, eachLike, boolean } = MatchersV3;
 //
 // Locked invariants asserted:
 //   - 201 response carries `submittal: TalentSubmittalRecord` with
-//     state='draft' and confirmed_at=null (the create endpoint does NOT
+//     state='created' (M5 PR-8b2 rename: M4 'draft' renames to canonical
+//     'created') and confirmed_at=null (the create endpoint does NOT
 //     transition state).
 //   - 422 refusal carries the AramoError envelope with code
 //     SUBMITTAL_STRETCH_BLOCKED.
@@ -100,7 +101,7 @@ describe('ATS thin consumer → POST /v1/submittals', () => {
             job_id: uuid(JOB_ID),
             evidence_package_id: uuid(),
             pinned_examination_id: uuid(EXAM_ID_ENTRUSTABLE),
-            state: regex('draft|submitted', 'draft'),
+            state: regex('created|handoff_draft', 'created'),
             created_by: uuid(),
             justification: null,
             failed_criterion_acknowledgments: null,
@@ -125,7 +126,7 @@ describe('ATS thin consumer → POST /v1/submittals', () => {
         });
         expect(res.status).toBe(201);
         const body = await res.json();
-        expect(body.submittal.state).toBe('draft');
+        expect(body.submittal.state).toBe('created');
         expect(body.submittal.confirmed_at).toBeNull();
       });
   });

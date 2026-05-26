@@ -726,9 +726,11 @@ components:
     #   - OVERRIDE_INVALID (M4 PR-5) — examination-override endpoint
     #     semantic refusal (invalid override_type for the target_field,
     #     etc.). Registered at PR-5; reserved for future enforcement.
-    #   - REVOKE_NOT_ALLOWED (M4 PR-7) — submittal-revoke endpoint
-    #     refuses when the target submittal is not in state='submitted'
-    #     (i.e. draft or already-revoked).
+    #   - REVOKE_NOT_ALLOWED (M4 PR-7 / M5 PR-8b2) — submittal-revoke
+    #     endpoint refuses when the target submittal is in a terminal
+    #     state (`confirmed` or `revoked`).
+    #   - SUBMITTAL_STATE_INVALID (M5 PR-8b2) — submittal state-changing
+    #     endpoint refuses when canTransition(from, to) returns false.
     #   - VALIDATION_ERROR — request body fails schema validation.
     UnprocessableEntity:
       description: |
@@ -736,7 +738,7 @@ components:
         enforced by the application layer. Possible codes:
         SUBMITTAL_STRETCH_BLOCKED, JUSTIFICATION_REQUIRED,
         ATTESTATION_MISSING, OVERRIDE_INVALID, REVOKE_NOT_ALLOWED,
-        VALIDATION_ERROR.
+        SUBMITTAL_STATE_INVALID, VALIDATION_ERROR.
       content:
         application/json:
           schema:
@@ -748,8 +750,9 @@ components:
     #   - EXAMINATION_PINNED_OUTDATED (M4 PR-4) — pinned examination is
     #     missing, no longer active, or no longer the latest snapshot for
     #     the (tenant, talent, job) triple.
-    #   - SUBMITTAL_ALREADY_CONFIRMED (M4 PR-4) — confirm called on a
-    #     submittal already in state='submitted'.
+    #   - SUBMITTAL_ALREADY_CONFIRMED (M4 PR-4 / M5 PR-8b2) — confirm
+    #     called on a submittal already in state='handoff_draft'
+    #     (post-rename equivalent of M4 'submitted' confirm-target).
     #   - IDEMPOTENCY_KEY_CONFLICT (program-wide) — same Idempotency-Key
     #     with a different request body.
     Conflict:
@@ -1427,16 +1430,22 @@ components:
             row is missing, no longer active, or no longer the latest
             snapshot for (tenant, talent, job).
           - SUBMITTAL_ALREADY_CONFIRMED (HTTP 409) — confirm called on a
-            submittal already in state='submitted'.
+            submittal already in state='handoff_draft' post-rename
+            (M4 'submitted' renames to canonical state per M5 PR-8b2).
         M4 PR-5 adds OVERRIDE_INVALID (HTTP 422) for the examination-
         override endpoint per Aramo-M4-PR-5-Directive-v1_0-LOCKED.md §4.7
         (semantic refusal of invalid override payload or non-overridable
         field; class-validator shape failures still surface as
         VALIDATION_ERROR 400).
-        M4 PR-7 adds REVOKE_NOT_ALLOWED (HTTP 422) for the
-        submittal-revoke endpoint per Aramo-M4-PR-7-Directive-v1_0-
-        LOCKED.md §4.6 (refusal when the target submittal is not in
-        state='submitted' — draft or already-revoked).
+        M4 PR-7 + M5 PR-8b2 — REVOKE_NOT_ALLOWED (HTTP 422) for the
+        submittal-revoke endpoint. PR-7 initial scope (refuse when not
+        in state='submitted'); PR-8b2 Q3 expansion (refuse when in
+        terminal state `confirmed` or `revoked`).
+        M5 PR-8b2 adds SUBMITTAL_STATE_INVALID (HTTP 422) for the
+        canTransition guard atop the canonical 5-state DB trigger
+        (defense-in-depth; application-layer guard returns structured
+        error before SQL UPDATE attempt). Mirrors M5 PR-3
+        ENGAGEMENT_STATE_INVALID precedent.
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1464,6 +1473,7 @@ components:
         - ENGAGEMENT_STATE_INVALID
         - AI_PROVIDER_UNAVAILABLE
         - AI_RATE_LIMITED
+        - SUBMITTAL_STATE_INVALID
 
     ErrorObject:
       type: object
@@ -1906,9 +1916,11 @@ components:
     #       ↓ referenced by
     #   TalentSubmittalRecord (workflow; libs/submittal)
     #
-    # SubmittalState ships the 2-value subset (draft, submitted) per the
-    # PR-3 directive Ruling 9. F37 extends to the 5-value Group 2 §2.3b
-    # Loop 5 machine at M5.
+    # SubmittalState shipped M4's 2-value subset (draft, submitted)
+    # per the PR-3 directive Ruling 9 then expanded to 3 values at PR-7
+    # (+ revoked). M5 PR-8b2 closes F37 via the canonical 5-state
+    # rename + cutover: created -> handoff_draft -> ready_for_review ->
+    # submitted_to_ats -> confirmed (+ revoked sibling).
     # =====================================================================
 
     # M4 PR-6 amendment — TalentJobEvidencePackageView. Structural
@@ -1988,13 +2000,30 @@ components:
     SubmittalState:
       type: string
       description: |
-        Workflow state of a TalentSubmittalRecord. PR-3 ships the
-        2-value subset (`draft`, `submitted`); M4 PR-7 adds `revoked`
-        (reached via the submittal-revoke endpoint). F37 extends to
-        the 5-value Group 2 §2.3b Loop 5 machine at M5.
+        Workflow state of a TalentSubmittalRecord. Canonical 5-state
+        machine per Group 2 §2.3b Loop 5 + sibling lifecycle-exit
+        `revoked`. M5 PR-8b2 closes F37 via the rename + cutover phase:
+        M4's `draft` renames to `created` (lifecycle start); M4's
+        `submitted` renames to `submitted_to_ats` (explicit canonical
+        name); 3 intermediate states added (`handoff_draft`,
+        `ready_for_review`, `confirmed`).
+
+        Mainline (4 transitions): `created` -> `handoff_draft` ->
+        `ready_for_review` -> `submitted_to_ats` -> `confirmed`.
+
+        Sibling lifecycle-exit (Q3 Lead-Rulings Brief): revocable from
+        `created`, `handoff_draft`, `ready_for_review`,
+        `submitted_to_ats`. NOT revocable from `confirmed` (terminal —
+        ATS confirmation closes the workflow lifecycle).
+
+        Terminal states (no outgoing transitions): `confirmed`,
+        `revoked`.
       enum:
-        - draft
-        - submitted
+        - created
+        - handoff_draft
+        - ready_for_review
+        - submitted_to_ats
+        - confirmed
         - revoked
 
     FailedCriterionAcknowledgment:
@@ -2361,12 +2390,13 @@ components:
           $ref: '#/components/schemas/TalentSubmittalRecord'
 
     # =====================================================================
-    # M4 PR-7 — Submittal revoke endpoint surfaces.
+    # M4 PR-7 + M5 PR-8b2 — Submittal revoke endpoint surfaces.
     #
     # POST /v1/submittals/{submittal_id}/revoke transitions a
-    # TalentSubmittalRecord from state='submitted' to state='revoked'
-    # and stamps revoked_at + revoked_by + revocation_justification
-    # atomically. The response carries the locked invariant
+    # TalentSubmittalRecord from any non-terminal state (`created`,
+    # `handoff_draft`, `ready_for_review`, `submitted_to_ats`) to
+    # state='revoked' and stamps revoked_at + revoked_by +
+    # revocation_justification atomically. The response carries the locked invariant
     # `evidence_package_mutated: const: false` — every successful revoke
     # affirms that the referenced TalentJobEvidencePackage row is
     # byte-identical to its pre-revoke snapshot (state-isolation
@@ -2415,6 +2445,127 @@ components:
             prevents accidental drift. Mirrors the
             `examination_mutated: false` invariant on the M4 PR-5
             override-create response.
+
+    # =====================================================================
+    # M5 PR-8b2 — Canonical 5-state submittal endpoint surfaces.
+    #
+    # Three new endpoint pairs per Q5 PATTERN-b (preserve M4 endpoints;
+    # add distinct new endpoints for the 3 new mainline transitions):
+    #   - POST /v1/submittals/{id}/mark-ready
+    #       (handoff_draft -> ready_for_review)
+    #   - POST /v1/submittals/{id}/submit-to-ats
+    #       (ready_for_review -> submitted_to_ats; populates confirmed_at)
+    #   - POST /v1/submittals/{id}/confirm-ats
+    #       (submitted_to_ats -> confirmed; lifecycle terminal)
+    #
+    # Per Ruling 13 request bodies are empty; the URL identifies the
+    # action and the path parameter identifies the resource. Per Ruling
+    # 14 response wraps { submittal, event } -- the updated submittal
+    # alongside the freshly appended TalentSubmittalEvent. SubmittalEvent
+    # shape mirrors TalentEngagementEventView (M5 PR-2 precedent).
+    # =====================================================================
+
+    SubmittalEventTypeValue:
+      type: string
+      description: |
+        Closed-list event type for TalentSubmittalEvent. PR-8b1 thin
+        substrate ships one value (`state_transition`) per Q6 HYBRID
+        Lead-ruling; richer event types deferred to future consumer
+        PRs per directive §5.
+      enum:
+        - state_transition
+
+    TalentSubmittalEventView:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - tenant_id
+        - submittal_id
+        - event_type
+        - event_payload
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        submittal_id:
+          type: string
+          format: uuid
+        event_type:
+          $ref: '#/components/schemas/SubmittalEventTypeValue'
+        event_payload:
+          type: object
+          additionalProperties: true
+          description: |
+            Per-event-type JSONB payload. PR-8b2 minimum-viable shape
+            per Ruling 16: { from_state, to_state } both
+            SubmittalState values. Richer payload fields deferred to
+            future consumer PRs.
+        created_at:
+          type: string
+          format: date-time
+
+    MarkReadyRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Empty request body per Ruling 13. The URL identifies the
+        action (mark-ready) and the path parameter identifies the
+        submittal.
+
+    MarkReadyResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - submittal
+        - event
+      properties:
+        submittal:
+          $ref: '#/components/schemas/TalentSubmittalRecord'
+        event:
+          $ref: '#/components/schemas/TalentSubmittalEventView'
+
+    SubmitToAtsRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Empty request body per Ruling 13.
+
+    SubmitToAtsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - submittal
+        - event
+      properties:
+        submittal:
+          $ref: '#/components/schemas/TalentSubmittalRecord'
+        event:
+          $ref: '#/components/schemas/TalentSubmittalEventView'
+
+    ConfirmAtsRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Empty request body per Ruling 13. ATS external reference id on
+        /confirm-ats body is explicitly OUT-OF-SCOPE for PR-8b2 per
+        directive §5 (deferred to future consumer PR).
+
+    ConfirmAtsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - submittal
+        - event
+      properties:
+        submittal:
+          $ref: '#/components/schemas/TalentSubmittalRecord'
+        event:
+          $ref: '#/components/schemas/TalentSubmittalEventView'
 
     # =====================================================================
     # M4 PR-5 — Examination override endpoint surfaces.

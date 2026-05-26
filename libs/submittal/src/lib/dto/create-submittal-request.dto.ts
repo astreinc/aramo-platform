@@ -39,7 +39,7 @@ export interface CreateSubmittalRequestDto {
 }
 
 // CreateSubmittalResponseDto — 201 response shape. Returns the freshly
-// created TalentSubmittalRecord (carrying state='draft' on first create)
+// created TalentSubmittalRecord (carrying state='created' on first create per M5 PR-8b2 rename)
 // alongside the evidence_package_id that the consuming endpoints
 // (GET /v1/submittals/{id}/evidence-package — future PR) will resolve.
 export interface CreateSubmittalResponseDto {

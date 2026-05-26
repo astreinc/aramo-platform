@@ -11,15 +11,14 @@ import type { TalentIdentity, ContactSummary, CapabilitySummaryOverrides, MatchJ
 import type { SubmittalStateValue } from '../submittal-state.js';
 
 // SubmittalState — value type mirroring the Prisma enum
-// (libs/submittal/prisma/schema.prisma). 3-value subset of Group 2 §2.3b
-// Loop 5's 5-state machine; F37 extends at M5. PR-7 adds 'revoked'
-// reached via the submittal-revoke endpoint (POST /v1/submittals/
-// {id}/revoke).
+// (libs/submittal/prisma/schema.prisma). Canonical 5-state machine per
+// Group 2 §2.3b Loop 5 (+ sibling lifecycle-exit `revoked`); F37 closes
+// at M5 PR-8b2 via the rename + cutover phase.
 //
-// M5 PR-8b1 §4.6 — type definition moved to '../submittal-state.js'
+// M5 PR-8b1 §4.6 — type definition lives in '../submittal-state.js'
 // alongside SUBMITTAL_STATE_VALUES const tuple + canTransition guard
-// per Lead-Q-PR-8b1-B3 (single-source-of-truth; mirrors engagement-side
-// libs/engagement/src/lib/engagement-state.ts:31 pattern). Re-exported
+// (single-source-of-truth; mirrors engagement-side
+// libs/engagement/src/lib/engagement-state.ts pattern). Re-exported
 // here to preserve backward-compat for existing consumers importing
 // SubmittalStateValue from this view file.
 export type { SubmittalStateValue } from '../submittal-state.js';
@@ -40,7 +39,7 @@ export interface FailedCriterionAcknowledgment {
 //
 // PR-7 adds revoked_at / revoked_by / revocation_justification — all
 // nullable, populated atomically by the submittal-revoke endpoint
-// (and remaining NULL for rows in 'draft' or 'submitted' state).
+// (and remaining NULL for rows still in any non-revoked state).
 export interface TalentSubmittalRecordView {
   id: string;
   tenant_id: string;
