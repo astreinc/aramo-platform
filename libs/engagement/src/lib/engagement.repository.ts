@@ -6,6 +6,7 @@ import { TalentRepository } from '@aramo/talent';
 
 import { canTransition, type EngagementStateValue } from './engagement-state.js';
 import type { EngagementEventTypeValue } from './engagement-event.js';
+import type { EngagementResponseReceivedPayload } from './dto/engagement-response-received-payload.js';
 import type { OutreachSentPayload } from './dto/outreach-sent-payload.js';
 import type { TalentJobEngagementView } from './dto/talent-job-engagement.view.js';
 import type { TalentEngagementEventView } from './dto/talent-engagement-event.view.js';
@@ -138,6 +139,48 @@ export interface SendOutreachInput {
 export interface SendOutreachResult {
   engagement: TalentJobEngagementView;
   outreach_event: TalentEngagementEventView;
+  transition_event: TalentEngagementEventView;
+}
+
+// M5 PR-7 §4.3 — recordResponse input/output shapes (Ruling 1).
+//
+// Single repository method paired with the EngagementController
+// recordResponse endpoint. Three-write atomic transaction:
+//   1. engagement.update(state = 'responded')
+//   2. talentEngagementEvent.create(event_type = 'response_received',
+//      payload = EngagementResponseReceivedPayload)
+//   3. talentEngagementEvent.create(event_type = 'state_transition',
+//      payload = { from_state, to_state })
+//
+// Pre-transaction guards (in order):
+//   - findByTenantAndId(engagement_id, tenant_id) → null ⇒ NOT_FOUND 404.
+//   - Cross-event reference validation (Ruling 4): the
+//     response_payload.outreach_event_ref_id must resolve to an event
+//     in the SAME tenant + SAME engagement + with event_type =
+//     'outreach_sent'. Any of (null lookup / cross-engagement /
+//     cross-tenant / wrong-event-type) ⇒
+//     ENGAGEMENT_REFERENCE_NOT_FOUND 422.
+//   - canTransition(current.state, 'responded') ⇒ false ⇒
+//     ENGAGEMENT_STATE_INVALID 422. State-machine itself enforces
+//     single-response semantics (engagement already in 'responded'
+//     state cannot transition to 'responded' again — natural-key
+//     dedup atop the standard Idempotency-Key replay path).
+//
+// The transition target is hardcoded to 'responded' — the only legal
+// next state for an 'awaiting_response' engagement per the 11-state
+// matrix (PR-1 Amendment v1.1 §4). Callers cannot pass a different
+// to_state.
+export interface RecordResponseInput {
+  engagement_id: string;
+  tenant_id: string;
+  response_event_id: string;
+  transition_event_id: string;
+  response_payload: EngagementResponseReceivedPayload;
+}
+
+export interface RecordResponseResult {
+  engagement: TalentJobEngagementView;
+  response_event: TalentEngagementEventView;
   transition_event: TalentEngagementEventView;
 }
 
@@ -577,6 +620,165 @@ export class EngagementRepository {
       engagement_id: result.engagement.id,
       outreach_event_id: result.outreach_event.id,
       transition_event_id: result.transition_event.id,
+      from_state: current.state,
+      to_state: result.engagement.state,
+      latency_ms: Date.now() - startedAt,
+    });
+    return result;
+  }
+
+  // recordResponse — M5 PR-7 Directive v1.0 §4.3 + Rulings 1, 2, 4, 5.
+  // Read current → NOT_FOUND guard → cross-event-ref validation (Ruling
+  // 4) → canTransition(awaiting_response → responded) guard → atomic
+  // 3-write transaction (engagement update + response_received event +
+  // state_transition event). All refusals leave engagement state +
+  // event log unchanged (pre-transaction failure semantics).
+  async recordResponse(input: RecordResponseInput): Promise<RecordResponseResult> {
+    const startedAt = Date.now();
+    this.logger.log({
+      event: 'engagement.response_recording_started',
+      tenant_id: input.tenant_id,
+      engagement_id: input.engagement_id,
+      response_event_id: input.response_event_id,
+      transition_event_id: input.transition_event_id,
+      outreach_event_ref_id: input.response_payload.outreach_event_ref_id,
+    });
+
+    // ---- Step 1: read current engagement (tenant-scoped) --------------
+    const current = await this.findByTenantAndId({
+      tenant_id: input.tenant_id,
+      id: input.engagement_id,
+    });
+    if (current === null) {
+      this.logger.log({
+        event: 'engagement.response_recording_refused',
+        error_code: 'NOT_FOUND',
+        tenant_id: input.tenant_id,
+        engagement_id: input.engagement_id,
+      });
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentJobEngagement not found',
+        404,
+        {
+          requestId: 'engagement-record-response',
+          details: { engagement_id: input.engagement_id, tenant_id: input.tenant_id },
+        },
+      );
+    }
+
+    // ---- Step 2: cross-event reference validation (Ruling 4) ----------
+    // The referenced event must:
+    //   (a) exist (findByTenantAndId returns non-null), which also
+    //       enforces tenant scope — cross-tenant attack returns null.
+    //   (b) live on the SAME engagement_id (defends against
+    //       cross-engagement pollution within the same tenant).
+    //   (c) have event_type='outreach_sent' (defends against pointing
+    //       at a sibling state_transition or future event type).
+    const refEvent = await this.engagementEventRepository.findByTenantAndId({
+      tenant_id: input.tenant_id,
+      id: input.response_payload.outreach_event_ref_id,
+    });
+    if (
+      refEvent === null ||
+      refEvent.engagement_id !== input.engagement_id ||
+      refEvent.event_type !== 'outreach_sent'
+    ) {
+      this.logger.log({
+        event: 'engagement.response_recording_refused',
+        error_code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        tenant_id: input.tenant_id,
+        engagement_id: input.engagement_id,
+        outreach_event_ref_id: input.response_payload.outreach_event_ref_id,
+        ref_resolved: refEvent !== null,
+        ref_engagement_match: refEvent !== null && refEvent.engagement_id === input.engagement_id,
+        ref_event_type: refEvent?.event_type ?? null,
+      });
+      throw new AramoError(
+        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'outreach_event_ref_id not found, not in tenant, or not an outreach_sent event',
+        422,
+        {
+          requestId: 'engagement-record-response',
+          details: {
+            field: 'outreach_event_ref_id',
+            outreach_event_ref_id: input.response_payload.outreach_event_ref_id,
+            engagement_id: input.engagement_id,
+            tenant_id: input.tenant_id,
+          },
+        },
+      );
+    }
+
+    // ---- Step 3: canTransition guard (awaiting_response → responded) -
+    const TO_STATE: EngagementStateValue = 'responded';
+    if (!canTransition(current.state, TO_STATE)) {
+      this.logger.log({
+        event: 'engagement.response_recording_refused',
+        error_code: 'ENGAGEMENT_STATE_INVALID',
+        tenant_id: input.tenant_id,
+        engagement_id: input.engagement_id,
+        from_state: current.state,
+        to_state: TO_STATE,
+      });
+      throw new AramoError(
+        'ENGAGEMENT_STATE_INVALID',
+        `Illegal engagement state transition: ${current.state} -> ${TO_STATE}`,
+        422,
+        {
+          requestId: 'engagement-record-response',
+          details: {
+            engagement_id: input.engagement_id,
+            from_state: current.state,
+            to_state: TO_STATE,
+          },
+        },
+      );
+    }
+
+    // ---- Step 4: atomic 3-write transaction --------------------------
+    const [updatedRow, responseEventRow, transitionEventRow] =
+      await this.prisma.$transaction([
+        this.prisma.talentJobEngagement.update({
+          where: { id: input.engagement_id },
+          data: { state: TO_STATE },
+        }),
+        this.prisma.talentEngagementEvent.create({
+          data: {
+            id: input.response_event_id,
+            tenant_id: input.tenant_id,
+            engagement_id: input.engagement_id,
+            event_type: 'response_received',
+            event_payload: input.response_payload as never,
+          },
+        }),
+        this.prisma.talentEngagementEvent.create({
+          data: {
+            id: input.transition_event_id,
+            tenant_id: input.tenant_id,
+            engagement_id: input.engagement_id,
+            event_type: 'state_transition',
+            event_payload: {
+              from_state: current.state,
+              to_state: TO_STATE,
+            } as never,
+          },
+        }),
+      ]);
+
+    // ---- Step 5 + 6: project + return + success log ------------------
+    const result: RecordResponseResult = {
+      engagement: projectView(updatedRow as TalentJobEngagementRow),
+      response_event: projectEventView(responseEventRow as TalentEngagementEventRow),
+      transition_event: projectEventView(transitionEventRow as TalentEngagementEventRow),
+    };
+    this.logger.log({
+      event: 'engagement.response_recorded',
+      tenant_id: result.engagement.tenant_id,
+      engagement_id: result.engagement.id,
+      response_event_id: result.response_event.id,
+      transition_event_id: result.transition_event.id,
+      outreach_event_ref_id: input.response_payload.outreach_event_ref_id,
       from_state: current.state,
       to_state: result.engagement.state,
       latency_ms: Date.now() - startedAt,
