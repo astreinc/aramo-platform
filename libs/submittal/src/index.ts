@@ -26,3 +26,19 @@ export type { ConfirmSubmittalInput } from './lib/submittal.repository.js';
 export { RevokeSubmittalRequestDto } from './lib/dto/index.js';
 export type { RevokeSubmittalResponseDto } from './lib/dto/index.js';
 export type { RevokeSubmittalInput } from './lib/submittal.repository.js';
+
+// M5 PR-8b1 — TalentSubmittalEvent event-log substrate.
+export { TalentSubmittalEventRepository } from './lib/talent-submittal-event.repository.js';
+export type {
+  TalentSubmittalEventView,
+  SubmittalEventTypeValue,
+  AppendSubmittalEventInput,
+} from './lib/dto/index.js';
+
+// M5 PR-8b1 — SubmittalState closed-list substrate. `canTransition`
+// re-exported as `canTransitionSubmittal` at the workspace barrel per
+// Lead-Q-PR-8b1-A7 + Process Lesson 53 (defensive disambiguation —
+// engagement-side also exports `canTransition`; the unqualified name
+// surfaces in two libs and the rename guards consumers that import
+// from `@aramo/submittal` against shadowing).
+export { SUBMITTAL_STATE_VALUES, canTransition as canTransitionSubmittal } from './lib/submittal-state.js';

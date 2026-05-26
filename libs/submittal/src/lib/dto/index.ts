@@ -22,3 +22,10 @@ export type {
 // M4 PR-7 §4.5 — revoke endpoint DTOs.
 export { RevokeSubmittalRequestDto } from './revoke-submittal-request.dto.js';
 export type { RevokeSubmittalResponseDto } from './revoke-submittal-response.dto.js';
+
+// M5 PR-8b1 §4.5 — TalentSubmittalEvent event-log DTOs.
+export type {
+  TalentSubmittalEventView,
+  SubmittalEventTypeValue,
+} from './talent-submittal-event.view.js';
+export type { AppendSubmittalEventInput } from './append-submittal-event.input.js';

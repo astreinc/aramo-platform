@@ -8,12 +8,21 @@
 
 import type { TalentIdentity, ContactSummary, CapabilitySummaryOverrides, MatchJustificationOverrides, RecruiterContributionInput } from '@aramo/evidence';
 
+import type { SubmittalStateValue } from '../submittal-state.js';
+
 // SubmittalState — value type mirroring the Prisma enum
 // (libs/submittal/prisma/schema.prisma). 3-value subset of Group 2 §2.3b
 // Loop 5's 5-state machine; F37 extends at M5. PR-7 adds 'revoked'
 // reached via the submittal-revoke endpoint (POST /v1/submittals/
 // {id}/revoke).
-export type SubmittalStateValue = 'draft' | 'submitted' | 'revoked';
+//
+// M5 PR-8b1 §4.6 — type definition moved to '../submittal-state.js'
+// alongside SUBMITTAL_STATE_VALUES const tuple + canTransition guard
+// per Lead-Q-PR-8b1-B3 (single-source-of-truth; mirrors engagement-side
+// libs/engagement/src/lib/engagement-state.ts:31 pattern). Re-exported
+// here to preserve backward-compat for existing consumers importing
+// SubmittalStateValue from this view file.
+export type { SubmittalStateValue } from '../submittal-state.js';
 
 // §2.6 FailedCriterionAcknowledgment — Worth Considering submittal
 // support. Schema mirrors API Contracts Phase 2 verbatim block; the

@@ -139,6 +139,16 @@ const SUBMITTAL_REVOKE_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
 );
+// M5 PR-8b1 §4.9 — TalentSubmittalEvent event-log substrate (enum +
+// table + intra-schema FK + absolute-immutability trigger). Applied
+// AFTER the submittal init + revoke migrations so the FK on
+// TalentSubmittalRecord resolves. Substrate-only PR — no state
+// handlers consume it yet (PR-8b2+ wires appendEvent into the
+// existing repository write methods).
+const SUBMITTAL_EVENT_LOG_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql',
+);
 // M4 PR-3 — talent-evidence migration applied so the buildPackage
 // rate_expectation lookup can find a TalentRateExpectation row when the
 // optional rate_expectation_id is supplied (the pact happy-path body
@@ -296,6 +306,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // M4 PR-3 — submittal-create state handlers seed an examination
       // and trigger buildPackage which writes the evidence package +
       // submittal record. Truncate both tables so prior runs don't leak.
+      // M5 PR-8b1 §4.9 — TalentSubmittalEvent has FK to TalentSubmittalRecord;
+      // CASCADE on the parent truncates child rows, but explicit child
+      // TRUNCATE here mirrors the engagement-side pattern (line ~308)
+      // for clarity. No PR-8b1 state handlers append rows to this table
+      // yet (substrate-only PR).
+      await c.query('TRUNCATE TABLE engagement."TalentSubmittalEvent" CASCADE');
       await c.query('TRUNCATE TABLE engagement."TalentSubmittalRecord" CASCADE');
       await c.query('TRUNCATE TABLE evidence."TalentJobEvidencePackage" CASCADE');
       // M4 PR-5 — override-create state handlers seed an examination and
@@ -1116,6 +1132,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // init migration so the ALTER TYPE / ALTER TABLE statements
         // hit the existing enum/table.
         SUBMITTAL_REVOKE_MIGRATION,
+        // M5 PR-8b1 §4.9 — TalentSubmittalEvent event-log substrate.
+        // Applied after the submittal init + revoke migrations so the
+        // intra-schema FK on TalentSubmittalRecord resolves.
+        SUBMITTAL_EVENT_LOG_MIGRATION,
         // M5 PR-4 — engagement schema + event log for engagement-*
         // pact verification.
         ENGAGEMENT_INIT_MIGRATION,
