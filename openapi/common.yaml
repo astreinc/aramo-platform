@@ -2846,3 +2846,73 @@ components:
             Synthetic delivery identifier. Mirrors the
             outreach_event.event_payload.delivery_id field for
             consumer-side convenience (avoids JSONB destructuring).
+
+    RecordResponseRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - response_received_at
+        - outreach_event_ref_id
+      properties:
+        response_received_at:
+          type: string
+          format: date-time
+          description: |
+            ISO-8601 timestamp the recruiter received the talent's
+            response. Distinct from the event row created_at (which
+            records when the recruiter recorded the event).
+        outreach_event_ref_id:
+          type: string
+          format: uuid
+          description: |
+            UUID reference to the prior outreach_sent
+            TalentEngagementEvent this response is responding to.
+            Repository validates the reference at write time (must
+            exist in same tenant + same engagement +
+            event_type='outreach_sent'). Refusal: 422
+            ENGAGEMENT_REFERENCE_NOT_FOUND.
+
+    EngagementResponseReceivedPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - response_received_at
+        - recorded_by_user_id
+        - outreach_event_ref_id
+      properties:
+        response_received_at:
+          type: string
+          format: date-time
+        recorded_by_user_id:
+          type: string
+          format: uuid
+          description: |
+            Which recruiter recorded the response. Derived from
+            authContext.sub at the controller boundary.
+        outreach_event_ref_id:
+          type: string
+          format: uuid
+          description: |
+            UUID reference to the prior outreach_sent event.
+
+    RecordResponseResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - engagement
+        - response_event
+      properties:
+        engagement:
+          $ref: '#/components/schemas/TalentJobEngagementView'
+          description: |
+            Updated engagement view (state advanced from
+            'awaiting_response' to 'responded').
+        response_event:
+          $ref: '#/components/schemas/TalentEngagementEventView'
+          description: |
+            The appended `response_received` event row. Its
+            event_payload conforms to
+            EngagementResponseReceivedPayload. The paired
+            state_transition event row is NOT projected — readers
+            fetch it via GET /v1/engagements/{id}/events (mirrors
+            the M5 PR-6 OutreachSendResponse convention).

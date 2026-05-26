@@ -27,6 +27,11 @@ export type {
 export { DELIVERY_PROVIDER_TOKEN } from './lib/delivery/tokens.js';
 export { SendStubDeliveryProvider } from './lib/delivery/send-stub.provider.js';
 
+// M5 PR-7 — response-received HTTP DTOs + typed event payload.
+export { RecordResponseRequestDto } from './lib/dto/record-response-request.dto.js';
+export type { RecordResponseResponseDto } from './lib/dto/record-response-response.dto.js';
+export type { EngagementResponseReceivedPayload } from './lib/dto/engagement-response-received-payload.js';
+
 export {
   ENGAGEMENT_STATE_VALUES,
   canTransition,
