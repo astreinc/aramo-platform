@@ -7,8 +7,8 @@
 //   - state_transition: state-machine transition event (M5 PR-4
 //     consumer wires the actual transition emit-path)
 //   - outreach_sent: outbound message dispatched (M5 PR-6 consumer)
-//   - response_received: inbound response captured (M5 PR-6 consumer)
-//   - conversation_started: in_conversation transition crossed (M5 PR-6
+//   - response_received: inbound response captured (M5 PR-7 consumer)
+//   - conversation_started: in_conversation transition crossed (M5 PR-8
 //     consumer; emitted alongside the responded -> in_conversation
 //     state_transition event for richer audit)
 //
