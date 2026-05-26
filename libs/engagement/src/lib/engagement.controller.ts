@@ -30,6 +30,8 @@ import type { EngagementListEventsResponseDto } from './dto/engagement-list-even
 import { OutreachSendRequestDto } from './dto/outreach-send-request.dto.js';
 import type { OutreachSendResponseDto } from './dto/outreach-send-response.dto.js';
 import type { OutreachSentPayload } from './dto/outreach-sent-payload.js';
+import { RecordResponseRequestDto } from './dto/record-response-request.dto.js';
+import type { RecordResponseResponseDto } from './dto/record-response-response.dto.js';
 import type { TalentJobEngagementView } from './dto/talent-job-engagement.view.js';
 import type {
   DeliveryProvider,
@@ -464,6 +466,122 @@ export class EngagementController {
       input_tokens: draftResult.input_tokens,
       output_tokens: draftResult.output_tokens,
       duration_ms: draftResult.duration_ms,
+    });
+
+    return response;
+  }
+
+  // ---- POST /v1/engagements/{id}/response ------------------------------
+  //
+  // M5 PR-7 §4.1 — recruiter records a talent response to a prior
+  // outreach. Compressed-scope mirror of PR-6 sendOutreach:
+  //   - NO AI consumption (passive recruiter logging).
+  //   - NO delivery side-effect (no outbound message).
+  //   - NO new error codes (parity-quad stays at 24).
+  //
+  // 9-step idempotency flow:
+  //   1. assertConsumerIsRecruiter (Ruling 8 + PR-6 precedent).
+  //   2. assertIdempotencyKeyRequired.
+  //   3. assertEngagementIdIsUuid.
+  //   4. hashCanonicalizedBody.
+  //   5. idempotencyService.lookup → replay short-circuit.
+  //   6. engagementRepository.recordResponse — atomic 3-write +
+  //      cross-event-ref validation (Ruling 4: outreach_event_ref_id
+  //      must resolve to outreach_sent event in same tenant + same
+  //      engagement).
+  //   7. response compose ({engagement, response_event}; transition_event
+  //      NOT projected — mirrors PR-6 OutreachSendResponseDto pattern).
+  //   8. idempotencyService.persist.
+  //   9. Return response.
+  //
+  // recorded_by_user_id is derived from authContext.sub at the
+  // controller boundary (NOT in request body) per Ruling 3.
+
+  @Post(':id/response')
+  @HttpCode(HttpStatus.OK)
+  async recordResponse(
+    @Param('id') id: string,
+    @Body() body: RecordResponseRequestDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<RecordResponseResponseDto> {
+    // Step 1 — auth.
+    this.assertConsumerIsRecruiter(authContext, requestId);
+
+    // Step 2 — Idempotency-Key required.
+    const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
+
+    // Step 3 — id UUID validation.
+    this.assertEngagementIdIsUuid(id, requestId);
+
+    // Step 4 — body hash.
+    const requestHash = hashCanonicalizedBody(body as unknown);
+
+    // Step 5 — idempotency lookup.
+    const lookup = await this.idempotencyService.lookup({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      requestId,
+    });
+    if (lookup.kind === 'replay') {
+      return lookup.response_body as RecordResponseResponseDto;
+    }
+
+    this.logger.log({
+      event: 'engagement.response_endpoint_started',
+      tenant_id: authContext.tenant_id,
+      engagement_id: id,
+      outreach_event_ref_id: body.outreach_event_ref_id,
+      request_id: requestId,
+    });
+
+    // Step 6 — repository call (atomic 3-write + cross-event-ref).
+    let repoResult;
+    try {
+      repoResult = await this.engagementRepository.recordResponse({
+        engagement_id: id,
+        tenant_id: authContext.tenant_id,
+        response_event_id: randomUUID(),
+        transition_event_id: randomUUID(),
+        response_payload: {
+          response_received_at: body.response_received_at,
+          recorded_by_user_id: authContext.sub,
+          outreach_event_ref_id: body.outreach_event_ref_id,
+        },
+      });
+    } catch (err) {
+      if (err instanceof AramoError) {
+        throw new AramoError(err.code, err.message, err.statusCode, {
+          ...err.context,
+          requestId,
+        });
+      }
+      throw err;
+    }
+
+    // Step 7 — response compose (transition_event NOT projected).
+    const response: RecordResponseResponseDto = {
+      engagement: repoResult.engagement,
+      response_event: repoResult.response_event,
+    };
+
+    // Step 8 — persist idempotency record.
+    await this.idempotencyService.persist({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      response_status: HttpStatus.OK,
+      response_body: response,
+    });
+
+    this.logger.log({
+      event: 'engagement.response_endpoint_succeeded',
+      tenant_id: authContext.tenant_id,
+      engagement_id: id,
+      response_event_id: repoResult.response_event.id,
+      outreach_event_ref_id: body.outreach_event_ref_id,
     });
 
     return response;
