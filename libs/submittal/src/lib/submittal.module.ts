@@ -8,6 +8,7 @@ import { ExaminationModule } from '@aramo/examination';
 import { PrismaService } from './prisma/prisma.service.js';
 import { SubmittalController } from './submittal.controller.js';
 import { SubmittalRepository } from './submittal.repository.js';
+import { TalentSubmittalEventRepository } from './talent-submittal-event.repository.js';
 
 // libs/submittal module — M4 PR-3 (create) + M4 PR-4 (confirm).
 //
@@ -36,12 +37,18 @@ import { SubmittalRepository } from './submittal.repository.js';
 // Per-class context preserves the existing SubmittalRepository emit-site
 // context discipline (formerly via `new Logger(SubmittalRepository.name)`)
 // without requiring callers to pass contextOverride on every emit.
+//
+// M5 PR-8b1 §4.7 — TalentSubmittalEventRepository provider + Style A
+// 'TalentSubmittalEventRepositoryLogger' factory token (mirror PR-2
+// engagement-event substrate). Exported so PR-8b2+ wire-in consumers
+// can inject it into the existing SubmittalRepository write methods.
 @Module({
   imports: [AuthModule, EvidenceModule, ConsentModule, ExaminationModule],
   controllers: [SubmittalController],
   providers: [
     PrismaService,
     SubmittalRepository,
+    TalentSubmittalEventRepository,
     {
       provide: 'SubmittalControllerLogger',
       useFactory: () => createAramoLogger(SubmittalController.name),
@@ -50,7 +57,11 @@ import { SubmittalRepository } from './submittal.repository.js';
       provide: 'SubmittalRepositoryLogger',
       useFactory: () => createAramoLogger(SubmittalRepository.name),
     },
+    {
+      provide: 'TalentSubmittalEventRepositoryLogger',
+      useFactory: () => createAramoLogger(TalentSubmittalEventRepository.name),
+    },
   ],
-  exports: [SubmittalRepository],
+  exports: [SubmittalRepository, TalentSubmittalEventRepository],
 })
 export class SubmittalModule {}

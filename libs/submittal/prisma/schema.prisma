@@ -55,6 +55,20 @@ enum SubmittalState {
   @@schema("engagement")
 }
 
+// M5 PR-8b1 — TalentSubmittalEvent event-log enum. Thin substrate per
+// Q6 HYBRID Lead-ruling: one event type (`state_transition`) at PR-8b1;
+// richer event types (handoff_drafted, ready_for_review_marked,
+// submitted_to_ats_confirmed, confirmed_by_ats) deferred to future
+// consumer PRs. Closed-list; future event types added via explicit
+// directive amendment. Lives in the engagement PG schema per
+// Lead-Q-PR-8b1-A1 (the submittal Prisma module shares the engagement
+// schema with TalentSubmittalRecord and TalentJobEngagement).
+enum SubmittalEventType {
+  state_transition
+
+  @@schema("engagement")
+}
+
 // §2.6 — TalentSubmittalRecord (workflow entity referencing the immutable
 // TalentJobEvidencePackage). Cross-schema references are UUID-only per
 // §7.3.
@@ -117,5 +131,68 @@ model TalentSubmittalRecord {
   @@index([tenant_id, evidence_package_id])
   @@index([tenant_id, state])
   @@index([tenant_id, pinned_examination_id])
+
+  // M5 PR-8b1 — back-reference for the TalentSubmittalEvent intra-schema
+  // FK. Relation-only field; no column added at the DB layer.
+  events TalentSubmittalEvent[]
+
+  @@schema("engagement")
+}
+
+// M5 PR-8b1 — TalentSubmittalEvent event-log entity. Per Q6 HYBRID
+// Lead-ruling: append-only audit log of submittal workflow events.
+// Mirrors libs/engagement TalentEngagementEvent (M5 PR-2) substrate
+// shape verbatim — intra-schema FK to TalentSubmittalRecord, JSONB
+// payload, absolute-immutability trigger, append-only repository
+// surface.
+//
+// Cardinality: many events per TalentSubmittalRecord. Intra-schema FK
+// on submittal_id (both entities live in the `engagement` schema, so
+// constraint enforcement is permitted per Architecture §7.3 — UUID-only
+// applies to cross-schema refs).
+//
+// Append-only / absolute-immutability: enforced at the DB layer by a
+// BEFORE UPDATE trigger added in the same migration. Precedent: M3 PR-2
+// TalentConsentEvent + M4 PR-1 TalentJobEvidencePackage + M5 PR-2
+// TalentEngagementEvent absolute-immutability triggers. The repository
+// surface exposes appendEvent (create-only) and 4 read methods; no
+// update/upsert/delete paths.
+//
+// Cross-schema references (Architecture §7.3 — UUID-only, no FK):
+//   - tenant_id: tenant replication per §7.2.
+// Intra-schema references (FK permitted per §7.3):
+//   - submittal_id → TalentSubmittalRecord.id (this schema).
+//
+// event_payload is JSONB per §7.4. The single PR-8b1 event type
+// `state_transition` carries `{ from: <SubmittalStateValue>, to:
+// <SubmittalStateValue>, ... }` shape (consumer-side typed at PR-8b2+
+// wire-in time per Lead-Q-PR-8b1-B1 deferral).
+model TalentSubmittalEvent {
+  // Identity. UUID v7 generated app-side (PR-2 engagement-event
+  // precedent — Postgres 17 has no native uuidv7() function).
+  id            String                @id @db.Uuid
+  tenant_id     String                @db.Uuid
+
+  // Intra-schema FK to TalentSubmittalRecord.
+  submittal_id  String                @db.Uuid
+  submittal     TalentSubmittalRecord @relation(fields: [submittal_id], references: [id])
+
+  // Closed-list event type per the SubmittalEventType enum.
+  event_type    SubmittalEventType
+
+  // Per-event-type JSONB payload. Shape varies; typed at consumption
+  // sites in PR-8b2+ when concrete event-emit paths land.
+  event_payload Json
+
+  // Snapshot creation timestamp. No updated_at — entire row is
+  // immutable per the absolute-immutability trigger.
+  created_at    DateTime              @default(now()) @db.Timestamptz(6)
+
+  // Lookups: (tenant, submittal) primary lookup (events for a given
+  // submittal, tenant-scoped); (submittal, created_at) chronological
+  // event-log read for a given submittal. Mirrors engagement-event
+  // index shape per Lead-Q-PR-8b1-A4.
+  @@index([tenant_id, submittal_id])
+  @@index([submittal_id, created_at])
   @@schema("engagement")
 }
