@@ -755,6 +755,101 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/engagements/{engagement_id}/conversation:
+    post:
+      operationId: recordConversationStarted
+      summary: Record that an in-bound conversation has begun (M5 PR-8a).
+      description: |
+        Recruiter records that an in-bound conversation with the talent
+        has begun following a prior response. Compressed-scope mirror
+        of POST .../response: no AI consumption, no delivery
+        side-effect, no new error codes, and — unlike PR-7 — NO
+        cross-event reference validation (Ruling 3: workflow invariant
+        is sufficiently enforced by canTransition, the prior
+        response_received event is implicit).
+
+        Atomic 3-write transaction
+        (EngagementRepository.recordConversationStarted):
+          1. engagement.update(state = 'in_conversation').
+          2. talentEngagementEvent.create(event_type='conversation_started',
+             event_payload=EngagementConversationStartedPayload).
+          3. talentEngagementEvent.create(event_type='state_transition',
+             event_payload={from_state, to_state}).
+
+        Pre-write guards (in order):
+          1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
+          2. Idempotency-Key required + UUID-shaped.
+          3. engagement_id path param UUID validation.
+          4. Body hash for replay-vs-conflict.
+          5. Idempotency lookup (replay short-circuit).
+          6. NOT_FOUND guard (findByTenantAndId).
+          7. canTransition(current.state, 'in_conversation') — natural-
+             key dedup atop the standard Idempotency-Key replay path
+             (engagement already in 'in_conversation' refuses with
+             ENGAGEMENT_STATE_INVALID even with a fresh key).
+
+        Refusal codes (closed list):
+          - 422 ENGAGEMENT_STATE_INVALID — engagement not in
+            'responded' state (covers engagement already in
+            'in_conversation' state — natural-key dedup — and
+            engagements in 'engaged' / 'awaiting_response' / earlier
+            states).
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
+          - 404 NOT_FOUND — engagement_id not visible in tenant.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
+      parameters:
+        - name: engagement_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            UUID idempotency key. Same key + same body returns the prior
+            response; same key + different body returns 409
+            IDEMPOTENCY_KEY_CONFLICT. Missing or non-UUID returns 400
+            VALIDATION_ERROR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/RecordConversationStartedRequest'
+      responses:
+        '200':
+          description: |
+            Conversation recorded; engagement transitioned to
+            'in_conversation'.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/RecordConversationStartedResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Idempotency-Key collision (same key, different body).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
   /v1/engagements/{engagement_id}:
     get:
       operationId: getEngagement

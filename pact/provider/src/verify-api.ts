@@ -2330,6 +2330,42 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         async () => {
           await withClient((c) => resetAllRows(c));
         },
+
+      // M5 PR-8a §4.10 — conversation-started state handlers.
+      //
+      // NOTE: the happy precondition ("engagement exists in responded
+      // state for tenant") is reused from the PR-7 response-received
+      // failure scenario at the handler above — both PR-7 (testing
+      // illegal responded → responded refusal) and PR-8a (testing legal
+      // responded → in_conversation success) require an engagement
+      // seeded at state='responded' for the same tenant + same engagement
+      // ID. No duplicated handler.
+      //
+      // NO new pact migration constants needed: writes are to engagement
+      // schema only; all 4 expected migrations
+      // (engagement init, event log, consent, ai_draft) are already
+      // present (Process Lesson 52 verification).
+
+      'a recruiter has authenticated and an engagement exists in in_conversation state for tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            await seedEngagementRow(c, {
+              id: '00000000-0000-7000-8000-cccc00000c02',
+              state: 'in_conversation',
+            });
+            // No outreach_sent / response_received event seeding needed
+            // — PR-8a has no cross-event reference validation (Ruling 3).
+            // canTransition refuses in_conversation → in_conversation at
+            // the state-machine layer (the matrix has no self-loop).
+          });
+        },
+
+      'a portal user has authenticated against the conversation-started endpoint':
+        async () => {
+          await withClient((c) => resetAllRows(c));
+        },
     };
 
     // M5 PR-4 helpers: seed Talent + overlay + Job + Requisition for the
