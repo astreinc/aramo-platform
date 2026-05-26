@@ -189,6 +189,18 @@ export default [
       'apps/api/src/tests/outreach-send.integration.spec.ts',
       'pact/consumers/ats-thin/src/outreach-send.consumer.test.ts',
       'pact/provider/src/verify-api.ts',
+      // M5 PR-7 — response-received HTTP surface. DTOs + Pact consumer +
+      // negative-shape spec + integration spec carry the canonical
+      // `outreach` vocabulary via the cross-event reference
+      // `outreach_event_ref_id` (Ruling 4) and references to the prior
+      // `outreach_sent` event. Same canonical-vocab rationale as the
+      // M5 PR-6 entries above.
+      'libs/engagement/src/lib/dto/record-response-request.dto.ts',
+      'libs/engagement/src/lib/dto/record-response-response.dto.ts',
+      'libs/engagement/src/lib/dto/engagement-response-received-payload.ts',
+      'apps/api/src/tests/response-received.negative-shape.spec.ts',
+      'apps/api/src/tests/response-received.integration.spec.ts',
+      'pact/consumers/ats-thin/src/response-received.consumer.test.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',
