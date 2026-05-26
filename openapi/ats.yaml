@@ -662,6 +662,99 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/engagements/{engagement_id}/response:
+    post:
+      operationId: recordResponse
+      summary: Record a talent response to a prior outreach (M5 PR-7).
+      description: |
+        Recruiter records that a talent responded to a prior
+        outreach. Compressed-scope mirror of POST .../outreach: no AI
+        consumption, no delivery side-effect, no new error codes.
+
+        Atomic 3-write transaction (EngagementRepository.recordResponse):
+          1. engagement.update(state = 'responded').
+          2. talentEngagementEvent.create(event_type='response_received',
+             event_payload=EngagementResponseReceivedPayload).
+          3. talentEngagementEvent.create(event_type='state_transition',
+             event_payload={from_state, to_state}).
+
+        Pre-write guards (in order):
+          1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
+          2. Idempotency-Key required + UUID-shaped.
+          3. engagement_id path param UUID validation.
+          4. Body hash for replay-vs-conflict.
+          5. Idempotency lookup (replay short-circuit).
+          6. NOT_FOUND guard (findByTenantAndId).
+          7. Cross-event reference validation (Ruling 4): the
+             outreach_event_ref_id MUST resolve to an event in the same
+             tenant + same engagement + event_type='outreach_sent'.
+             Any of (null lookup / cross-engagement / cross-tenant /
+             wrong-event-type) → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+          8. canTransition(current.state, 'responded') — natural-key
+             dedup atop the standard Idempotency-Key replay path.
+
+        Refusal codes (closed list):
+          - 422 ENGAGEMENT_STATE_INVALID — engagement not in
+            'awaiting_response' state (covers engagement already in
+            'responded' state — natural-key dedup).
+          - 422 ENGAGEMENT_REFERENCE_NOT_FOUND — outreach_event_ref_id
+            doesn't resolve to a valid outreach_sent event in tenant +
+            engagement.
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
+          - 404 NOT_FOUND — engagement_id not visible in tenant.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
+      parameters:
+        - name: engagement_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            UUID idempotency key. Same key + same body returns the prior
+            response; same key + different body returns 409
+            IDEMPOTENCY_KEY_CONFLICT. Missing or non-UUID returns 400
+            VALIDATION_ERROR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/RecordResponseRequest'
+      responses:
+        '200':
+          description: |
+            Response recorded; engagement transitioned to 'responded'.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/RecordResponseResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Idempotency-Key collision (same key, different body).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
   /v1/engagements/{engagement_id}:
     get:
       operationId: getEngagement

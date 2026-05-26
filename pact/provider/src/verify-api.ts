@@ -2232,6 +2232,104 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         async () => {
           await withClient((c) => resetAllRows(c));
         },
+
+      // ===== M5 PR-7 response-received pacts (4 interactions) =====
+      // PR-7 endpoint POST /v1/engagements/{id}/response. No new
+      // migration constants needed (writes only to engagement +
+      // consent schemas; both already in the pact-provider migration
+      // list). DRAFT_PROVIDER_TOKEN + DELIVERY_PROVIDER_TOKEN overrides
+      // remain wired at AppModule bootstrap (PR-6 substrate); PR-7
+      // doesn't invoke either provider but they stay in the DI graph.
+
+      'a recruiter has authenticated and an engagement exists in awaiting_response state with a prior outreach_sent event for tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            await seedEngagementRow(c, {
+              id: '00000000-0000-7000-8000-eeee00000e01',
+              state: 'awaiting_response',
+            });
+            // Seed the prior outreach_sent event that the response
+            // references (cross-event-ref validation must resolve).
+            await c.query(
+              `INSERT INTO engagement."TalentEngagementEvent"
+                 (id, tenant_id, engagement_id, event_type, event_payload, created_at)
+               VALUES ($1, $2, $3, 'outreach_sent'::engagement."EngagementEventType", $4::jsonb, NOW())`,
+              [
+                '00000000-0000-7000-8000-eeee0e000001',
+                TENANT_ID,
+                '00000000-0000-7000-8000-eeee00000e01',
+                JSON.stringify({
+                  ai_draft_audit_record_id: '00000000-0000-7000-8000-eeee0a000001',
+                  model_used: 'claude-sonnet-mock',
+                  input_tokens: 10,
+                  output_tokens: 20,
+                  duration_ms: 100,
+                  delivered_at: '2026-05-25T10:01:00.000Z',
+                  delivery_channel: 'email',
+                  delivery_id: '00000000-0000-7000-8000-eeee0d000001',
+                }),
+              ],
+            );
+          });
+        },
+
+      'a recruiter has authenticated and an engagement exists in responded state for tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            await seedEngagementRow(c, {
+              id: '00000000-0000-7000-8000-eeee00000e02',
+              state: 'responded',
+            });
+            // Seed the matching outreach_sent event so the repository's
+            // cross-event-ref validation (Step 2) succeeds and the
+            // canTransition guard (Step 3) reaches the
+            // ENGAGEMENT_STATE_INVALID refusal path the consumer pact
+            // expects.
+            await c.query(
+              `INSERT INTO engagement."TalentEngagementEvent"
+                 (id, tenant_id, engagement_id, event_type, event_payload, created_at)
+               VALUES ($1, $2, $3, 'outreach_sent'::engagement."EngagementEventType", $4::jsonb, NOW())`,
+              [
+                '00000000-0000-7000-8000-eeee0e000001',
+                TENANT_ID,
+                '00000000-0000-7000-8000-eeee00000e02',
+                JSON.stringify({
+                  ai_draft_audit_record_id: '00000000-0000-7000-8000-eeee0a000002',
+                  model_used: 'claude-sonnet-mock',
+                  input_tokens: 10,
+                  output_tokens: 20,
+                  duration_ms: 100,
+                  delivered_at: '2026-05-25T10:01:00.000Z',
+                  delivery_channel: 'email',
+                  delivery_id: '00000000-0000-7000-8000-eeee0d000002',
+                }),
+              ],
+            );
+          });
+        },
+
+      'a recruiter has authenticated and an engagement exists in awaiting_response state but no outreach_sent event matches the outreach_event_ref_id':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            await seedEngagementRow(c, {
+              id: '00000000-0000-7000-8000-eeee00000e03',
+              state: 'awaiting_response',
+            });
+            // Intentionally NOT seeding the outreach_sent event — the
+            // consumer pact references a UUID that won't resolve.
+          });
+        },
+
+      'a portal user has authenticated against the response-received endpoint':
+        async () => {
+          await withClient((c) => resetAllRows(c));
+        },
     };
 
     // M5 PR-4 helpers: seed Talent + overlay + Job + Requisition for the

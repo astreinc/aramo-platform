@@ -7,6 +7,7 @@ import type { AiDraftService } from '@aramo/ai-draft';
 import { EngagementController } from '../lib/engagement.controller.js';
 import type { CreateEngagementRequestDto } from '../lib/dto/create-engagement-request.dto.js';
 import type { OutreachSendRequestDto } from '../lib/dto/outreach-send-request.dto.js';
+import type { RecordResponseRequestDto } from '../lib/dto/record-response-request.dto.js';
 import type { TransitionEngagementRequestDto } from '../lib/dto/transition-engagement-request.dto.js';
 import type { DeliveryProvider } from '../lib/delivery/delivery-provider.interface.js';
 import type { EngagementRepository } from '../lib/engagement.repository.js';
@@ -65,6 +66,7 @@ interface MockEngagementRepository {
   createEngagement: ReturnType<typeof vi.fn>;
   transitionState: ReturnType<typeof vi.fn>;
   sendOutreach: ReturnType<typeof vi.fn>;
+  recordResponse: ReturnType<typeof vi.fn>;
   findByTenantAndId: ReturnType<typeof vi.fn>;
 }
 interface MockEngagementEventRepository {
@@ -94,6 +96,7 @@ function makeMocks(): {
     createEngagement: vi.fn(),
     transitionState: vi.fn(),
     sendOutreach: vi.fn(),
+    recordResponse: vi.fn(),
     findByTenantAndId: vi.fn(),
   };
   const eventRepo: MockEngagementEventRepository = {
@@ -560,6 +563,167 @@ describe('EngagementController.sendOutreach (M5 PR-6 unit)', () => {
     expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
     expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
     expect(m.engagementRepo.sendOutreach).not.toHaveBeenCalled();
+    expect(m.idempotency.persist).not.toHaveBeenCalled();
+  });
+});
+
+// M5 PR-7 §4.12 — EngagementController.recordResponse unit tests.
+describe('EngagementController.recordResponse (M5 PR-7 unit)', () => {
+  let m: ReturnType<typeof makeMocks>;
+  const OUTREACH_REF_ID = '00000000-0000-7000-8000-eeee0e000001';
+  const RESPONSE_EVENT_ID = '00000000-0000-7000-8000-eeee0e000002';
+  const TRANSITION_EVENT_ID = '00000000-0000-7000-8000-eeee0e000003';
+  const RESPONSE_RECEIVED_AT = '2026-05-25T11:00:00.000Z';
+
+  const body: RecordResponseRequestDto = {
+    response_received_at: RESPONSE_RECEIVED_AT,
+    outreach_event_ref_id: OUTREACH_REF_ID,
+  };
+
+  const repoResultFixture = {
+    engagement: makeEngagementView({ state: 'responded' }),
+    response_event: {
+      id: RESPONSE_EVENT_ID,
+      tenant_id: TENANT_A,
+      engagement_id: ENGAGEMENT_1,
+      event_type: 'response_received',
+      event_payload: {
+        response_received_at: RESPONSE_RECEIVED_AT,
+        recorded_by_user_id: RECRUITER_SUB,
+        outreach_event_ref_id: OUTREACH_REF_ID,
+      },
+      created_at: new Date('2026-05-25T11:00:01.000Z'),
+    },
+    transition_event: {
+      id: TRANSITION_EVENT_ID,
+      tenant_id: TENANT_A,
+      engagement_id: ENGAGEMENT_1,
+      event_type: 'state_transition',
+      event_payload: { from_state: 'awaiting_response', to_state: 'responded' },
+      created_at: new Date('2026-05-25T11:00:01.000Z'),
+    },
+  };
+
+  beforeEach(() => {
+    m = makeMocks();
+  });
+
+  it('happy: 200 + repository.recordResponse called + idempotency.persist called', async () => {
+    m.engagementRepo.recordResponse.mockResolvedValue(repoResultFixture);
+    const res = await m.controller.recordResponse(
+      ENGAGEMENT_1,
+      body,
+      VALID_IDEM_KEY,
+      recruiterAuthContext(),
+      REQUEST_ID,
+    );
+    expect(res.engagement.state).toBe('responded');
+    expect(res.response_event.event_type).toBe('response_received');
+    expect(m.engagementRepo.recordResponse).toHaveBeenCalledTimes(1);
+    expect(m.idempotency.persist).toHaveBeenCalledTimes(1);
+    // transition_event is NOT in the response per PR-7 §4.1 step 7.
+    expect((res as Record<string, unknown>)['transition_event']).toBeUndefined();
+    // No AI / delivery invocation on PR-7 path.
+    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
+    expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
+  });
+
+  it('INSUFFICIENT_PERMISSIONS 403 on portal consumer; repository NOT called', async () => {
+    await expect(
+      m.controller.recordResponse(ENGAGEMENT_1, body, VALID_IDEM_KEY, portalAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    expect(m.engagementRepo.recordResponse).not.toHaveBeenCalled();
+  });
+
+  it('VALIDATION_ERROR 400 on missing Idempotency-Key', async () => {
+    await expect(
+      m.controller.recordResponse(ENGAGEMENT_1, body, undefined, recruiterAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    expect(m.engagementRepo.recordResponse).not.toHaveBeenCalled();
+  });
+
+  it('NOT_FOUND 404 propagates with requestId re-binding', async () => {
+    m.engagementRepo.recordResponse.mockRejectedValue(
+      new AramoError('NOT_FOUND', 'TalentJobEngagement not found', 404, {
+        requestId: 'engagement-record-response',
+        details: { engagement_id: ENGAGEMENT_1 },
+      }),
+    );
+    try {
+      await m.controller.recordResponse(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID);
+      throw new Error('expected throw');
+    } catch (err) {
+      const e = err as AramoError;
+      expect(e.code).toBe('NOT_FOUND');
+      expect(e.statusCode).toBe(404);
+      expect(e.context.requestId).toBe(REQUEST_ID);
+    }
+  });
+
+  it('ENGAGEMENT_STATE_INVALID 422 propagates (e.g., engagement already in responded)', async () => {
+    m.engagementRepo.recordResponse.mockRejectedValue(
+      new AramoError('ENGAGEMENT_STATE_INVALID', 'illegal transition', 422, {
+        requestId: 'engagement-record-response',
+        details: { from_state: 'responded', to_state: 'responded' },
+      }),
+    );
+    await expect(
+      m.controller.recordResponse(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'ENGAGEMENT_STATE_INVALID', statusCode: 422 });
+  });
+
+  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 propagates (cross-event ref refusal)', async () => {
+    m.engagementRepo.recordResponse.mockRejectedValue(
+      new AramoError(
+        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'outreach_event_ref_id not found, not in tenant, or not an outreach_sent event',
+        422,
+        {
+          requestId: 'engagement-record-response',
+          details: { field: 'outreach_event_ref_id' },
+        },
+      ),
+    );
+    try {
+      await m.controller.recordResponse(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID);
+      throw new Error('expected throw');
+    } catch (err) {
+      const e = err as AramoError;
+      expect(e.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+      expect(e.statusCode).toBe(422);
+      expect(e.context.details?.['field']).toBe('outreach_event_ref_id');
+    }
+  });
+
+  it('IDEMPOTENCY_KEY_CONFLICT 409 propagates from idempotency.lookup; repository NOT called', async () => {
+    m.idempotency.lookup.mockRejectedValue(
+      new AramoError('IDEMPOTENCY_KEY_CONFLICT', 'collision', 409, { requestId: REQUEST_ID }),
+    );
+    await expect(
+      m.controller.recordResponse(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_KEY_CONFLICT', statusCode: 409 });
+    expect(m.engagementRepo.recordResponse).not.toHaveBeenCalled();
+  });
+
+  it('idempotency replay: lookup returns prior body; repository NOT called', async () => {
+    const priorResponse = {
+      engagement: makeEngagementView({ state: 'responded' }),
+      response_event: repoResultFixture.response_event,
+    };
+    m.idempotency.lookup.mockResolvedValue({
+      kind: 'replay',
+      response_status: 200,
+      response_body: priorResponse,
+    });
+    const res = await m.controller.recordResponse(
+      ENGAGEMENT_1,
+      body,
+      VALID_IDEM_KEY,
+      recruiterAuthContext(),
+      REQUEST_ID,
+    );
+    expect(res).toBe(priorResponse);
+    expect(m.engagementRepo.recordResponse).not.toHaveBeenCalled();
     expect(m.idempotency.persist).not.toHaveBeenCalled();
   });
 });
