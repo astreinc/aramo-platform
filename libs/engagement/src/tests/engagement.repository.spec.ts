@@ -7,6 +7,7 @@ import type { TalentRepository } from '@aramo/talent';
 import {
   EngagementRepository,
   type CreateEngagementInput,
+  type RecordResponseInput,
   type SendOutreachInput,
   type TransitionStateInput,
 } from '../lib/engagement.repository.js';
@@ -706,5 +707,173 @@ describe('EngagementRepository.sendOutreach (M5 PR-6 unit)', () => {
     await expect(repo.sendOutreach(validInput)).rejects.toBeInstanceOf(AramoError);
     const events = logger.log.mock.calls.map((c) => (c[0] as { event: string }).event);
     expect(events).toContain('engagement.outreach_refused');
+  });
+});
+
+// M5 PR-7 §4.12 — EngagementRepository.recordResponse unit tests.
+describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
+  let prisma: MockPrismaService;
+  let logger: ReturnType<typeof makeSpyLogger>;
+  let repo: EngagementRepository;
+  let eventRepoFindByTenantAndId: ReturnType<typeof vi.fn>;
+
+  const OUTREACH_REF_ID = '00000000-0000-7000-8000-0000eeee0020';
+  const RESPONSE_EVENT_ID = '00000000-0000-7000-8000-0000eeee0021';
+  const TRANSITION_EVENT_ID = '00000000-0000-7000-8000-0000eeee0022';
+  const RECRUITER_SUB = '00000000-0000-7000-8000-0000aabbccdd';
+
+  const validInput: RecordResponseInput = {
+    engagement_id: ENGAGEMENT_1,
+    tenant_id: TENANT_A,
+    response_event_id: RESPONSE_EVENT_ID,
+    transition_event_id: TRANSITION_EVENT_ID,
+    response_payload: {
+      response_received_at: '2026-05-25T11:00:00.000Z',
+      recorded_by_user_id: RECRUITER_SUB,
+      outreach_event_ref_id: OUTREACH_REF_ID,
+    },
+  };
+
+  function validOutreachRefRow(): Record<string, unknown> {
+    return {
+      id: OUTREACH_REF_ID,
+      tenant_id: TENANT_A,
+      engagement_id: ENGAGEMENT_1,
+      event_type: 'outreach_sent',
+      event_payload: { delivery_channel: 'email' },
+      created_at: new Date('2026-05-25T10:01:00.000Z'),
+    };
+  }
+
+  beforeEach(() => {
+    prisma = makeMockPrisma();
+    logger = makeSpyLogger();
+    eventRepoFindByTenantAndId = vi.fn();
+    const eventRepo = {
+      findByTenantAndId: eventRepoFindByTenantAndId,
+    } as unknown as EngagementEventRepository;
+    repo = new EngagementRepository(
+      prisma as unknown as PrismaService,
+      eventRepo,
+      makeMockTalentRepo(),
+      makeMockJobDomainRepo(),
+      makeMockExaminationRepo(),
+      logger,
+    );
+  });
+
+  it('happy path — awaiting_response → responded; $transaction invoked with 3 ops', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
+    eventRepoFindByTenantAndId.mockResolvedValue(validOutreachRefRow());
+    prisma.$transaction.mockResolvedValue([
+      makeRow({ state: 'responded' }),
+      makeEventRow({
+        id: RESPONSE_EVENT_ID,
+        event_type: 'response_received',
+        event_payload: validInput.response_payload,
+      }),
+      makeEventRow({
+        id: TRANSITION_EVENT_ID,
+        event_type: 'state_transition',
+        event_payload: { from_state: 'awaiting_response', to_state: 'responded' },
+      }),
+    ]);
+    const result = await repo.recordResponse(validInput);
+    expect(result.engagement.state).toBe('responded');
+    expect(result.response_event.event_type).toBe('response_received');
+    expect(result.response_event.event_payload).toEqual(validInput.response_payload);
+    expect(result.transition_event.event_payload).toEqual({
+      from_state: 'awaiting_response',
+      to_state: 'responded',
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.talentJobEngagement.update).toHaveBeenCalledWith({
+      where: { id: ENGAGEMENT_1 },
+      data: { state: 'responded' },
+    });
+    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('NOT_FOUND 404 if engagement absent; no cross-event lookup; no $transaction', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(null);
+    await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      statusCode: 404,
+    });
+    expect(eventRepoFindByTenantAndId).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 if cross-event ref null', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
+    eventRepoFindByTenantAndId.mockResolvedValue(null);
+    await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
+      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+      statusCode: 422,
+    });
+    try {
+      await repo.recordResponse(validInput);
+    } catch (err) {
+      const e = err as AramoError;
+      expect(e.context.details?.['field']).toBe('outreach_event_ref_id');
+    }
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 if cross-event ref has wrong engagement_id', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
+    eventRepoFindByTenantAndId.mockResolvedValue({
+      ...validOutreachRefRow(),
+      engagement_id: '00000000-0000-7000-8000-0000eeee9999', // different engagement
+    });
+    await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
+      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+      statusCode: 422,
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 if cross-event ref has wrong event_type', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
+    eventRepoFindByTenantAndId.mockResolvedValue({
+      ...validOutreachRefRow(),
+      event_type: 'state_transition', // wrong event type
+    });
+    await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
+      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+      statusCode: 422,
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('ENGAGEMENT_STATE_INVALID 422 if current state is not awaiting_response (e.g., surfaced)', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'surfaced' }));
+    eventRepoFindByTenantAndId.mockResolvedValue(validOutreachRefRow());
+    await expect(repo.recordResponse(validInput)).rejects.toMatchObject({
+      code: 'ENGAGEMENT_STATE_INVALID',
+      statusCode: 422,
+    });
+    try {
+      await repo.recordResponse(validInput);
+    } catch (err) {
+      const e = err as AramoError;
+      expect(e.context.details?.['from_state']).toBe('surfaced');
+      expect(e.context.details?.['to_state']).toBe('responded');
+    }
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('atomic transaction shape — $transaction called with engagement.update + response_received event.create + state_transition event.create', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
+    eventRepoFindByTenantAndId.mockResolvedValue(validOutreachRefRow());
+    prisma.$transaction.mockResolvedValue([
+      makeRow({ state: 'responded' }),
+      makeEventRow({ event_type: 'response_received' }),
+      makeEventRow({ event_type: 'state_transition' }),
+    ]);
+    await repo.recordResponse(validInput);
+    expect(prisma.talentJobEngagement.update).toHaveBeenCalledTimes(1);
+    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 });
