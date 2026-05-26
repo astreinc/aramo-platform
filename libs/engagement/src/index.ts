@@ -32,6 +32,11 @@ export { RecordResponseRequestDto } from './lib/dto/record-response-request.dto.
 export type { RecordResponseResponseDto } from './lib/dto/record-response-response.dto.js';
 export type { EngagementResponseReceivedPayload } from './lib/dto/engagement-response-received-payload.js';
 
+// M5 PR-8a — conversation-started HTTP DTOs + typed event payload.
+export { RecordConversationStartedRequestDto } from './lib/dto/record-conversation-started-request.dto.js';
+export type { RecordConversationStartedResponseDto } from './lib/dto/record-conversation-started-response.dto.js';
+export type { EngagementConversationStartedPayload } from './lib/dto/engagement-conversation-started-payload.js';
+
 export {
   ENGAGEMENT_STATE_VALUES,
   canTransition,

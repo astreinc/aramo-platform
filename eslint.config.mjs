@@ -201,6 +201,13 @@ export default [
       'apps/api/src/tests/response-received.negative-shape.spec.ts',
       'apps/api/src/tests/response-received.integration.spec.ts',
       'pact/consumers/ats-thin/src/response-received.consumer.test.ts',
+      // M5 PR-8a — conversation-started specs traverse /outreach + /response to reach
+      // responded precondition; same canonical-vocab rationale as M5 PR-6 + PR-7 entries above
+      'apps/api/src/tests/conversation-started.negative-shape.spec.ts',
+      'apps/api/src/tests/conversation-started.integration.spec.ts',
+      'libs/engagement/src/lib/dto/record-conversation-started-response.dto.ts',
+      'libs/engagement/src/lib/dto/engagement-conversation-started-payload.ts',
+      'pact/consumers/ats-thin/src/conversation-started.consumer.test.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',

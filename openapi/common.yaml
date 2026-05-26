@@ -2916,3 +2916,60 @@ components:
             state_transition event row is NOT projected — readers
             fetch it via GET /v1/engagements/{id}/events (mirrors
             the M5 PR-6 OutreachSendResponse convention).
+
+    RecordConversationStartedRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - conversation_started_at
+      properties:
+        conversation_started_at:
+          type: string
+          format: date-time
+          description: |
+            ISO-8601 timestamp the recruiter began the in-bound
+            conversation with the talent. Distinct from the event row
+            created_at (which records when the recruiter recorded the
+            event). M5 PR-8a §4.2 Ruling 3 minimum-viable closed list:
+            conversation_channel, first_message_excerpt_sha256, and
+            conversation_thread_id are deferred to future PRs.
+
+    EngagementConversationStartedPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - conversation_started_at
+        - recorded_by_user_id
+      properties:
+        conversation_started_at:
+          type: string
+          format: date-time
+        recorded_by_user_id:
+          type: string
+          format: uuid
+          description: |
+            Which recruiter recorded the conversation. Derived from
+            authContext.sub at the controller boundary.
+
+    RecordConversationStartedResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - engagement
+        - conversation_event
+      properties:
+        engagement:
+          $ref: '#/components/schemas/TalentJobEngagementView'
+          description: |
+            Updated engagement view (state advanced from 'responded'
+            to 'in_conversation').
+        conversation_event:
+          $ref: '#/components/schemas/TalentEngagementEventView'
+          description: |
+            The appended `conversation_started` event row. Its
+            event_payload conforms to
+            EngagementConversationStartedPayload. The paired
+            state_transition event row is NOT projected — readers
+            fetch it via GET /v1/engagements/{id}/events (mirrors
+            the M5 PR-6 OutreachSendResponse + PR-7
+            RecordResponseResponse conventions).

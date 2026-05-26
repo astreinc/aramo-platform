@@ -7,6 +7,7 @@ import type { TalentRepository } from '@aramo/talent';
 import {
   EngagementRepository,
   type CreateEngagementInput,
+  type RecordConversationStartedInput,
   type RecordResponseInput,
   type SendOutreachInput,
   type TransitionStateInput,
@@ -875,5 +876,142 @@ describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
     expect(prisma.talentJobEngagement.update).toHaveBeenCalledTimes(1);
     expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(2);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+});
+
+// M5 PR-8a §4.12 — EngagementRepository.recordConversationStarted unit tests.
+//
+// SMALLER than PR-7 (4 tests vs 6) because PR-8a has no cross-event
+// reference validation per Ruling 3 — the
+// ENGAGEMENT_REFERENCE_NOT_FOUND refusal path doesn't exist on this
+// surface. Tests cover the 4 internal repository outcomes:
+//   1. happy: responded → in_conversation, 3-write transaction succeeds.
+//   2. NOT_FOUND: engagement absent.
+//   3. ENGAGEMENT_STATE_INVALID: includes natural-key dedup
+//      (in_conversation → in_conversation refused by canTransition).
+//   4. atomic transaction shape.
+describe('EngagementRepository.recordConversationStarted (M5 PR-8a unit)', () => {
+  let prisma: MockPrismaService;
+  let logger: ReturnType<typeof makeSpyLogger>;
+  let repo: EngagementRepository;
+
+  const CONVERSATION_EVENT_ID = '00000000-0000-7000-8000-0000eeee0030';
+  const TRANSITION_EVENT_ID = '00000000-0000-7000-8000-0000eeee0031';
+  const RECRUITER_SUB = '00000000-0000-7000-8000-0000aabbccdd';
+  const CONVERSATION_STARTED_AT = '2026-05-25T12:00:00.000Z';
+
+  const validInput: RecordConversationStartedInput = {
+    engagement_id: ENGAGEMENT_1,
+    tenant_id: TENANT_A,
+    conversation_event_id: CONVERSATION_EVENT_ID,
+    transition_event_id: TRANSITION_EVENT_ID,
+    conversation_payload: {
+      conversation_started_at: CONVERSATION_STARTED_AT,
+      recorded_by_user_id: RECRUITER_SUB,
+    },
+  };
+
+  beforeEach(() => {
+    prisma = makeMockPrisma();
+    logger = makeSpyLogger();
+    repo = new EngagementRepository(
+      prisma as unknown as PrismaService,
+      makeMockEngagementEventRepo(),
+      makeMockTalentRepo(),
+      makeMockJobDomainRepo(),
+      makeMockExaminationRepo(),
+      logger,
+    );
+  });
+
+  it('happy path — responded → in_conversation; $transaction invoked with 3 ops', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'responded' }));
+    prisma.$transaction.mockResolvedValue([
+      makeRow({ state: 'in_conversation' }),
+      makeEventRow({
+        id: CONVERSATION_EVENT_ID,
+        event_type: 'conversation_started',
+        event_payload: validInput.conversation_payload,
+      }),
+      makeEventRow({
+        id: TRANSITION_EVENT_ID,
+        event_type: 'state_transition',
+        event_payload: { from_state: 'responded', to_state: 'in_conversation' },
+      }),
+    ]);
+    const result = await repo.recordConversationStarted(validInput);
+    expect(result.engagement.state).toBe('in_conversation');
+    expect(result.conversation_event.event_type).toBe('conversation_started');
+    expect(result.conversation_event.event_payload).toEqual(validInput.conversation_payload);
+    expect(result.transition_event.event_payload).toEqual({
+      from_state: 'responded',
+      to_state: 'in_conversation',
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.talentJobEngagement.update).toHaveBeenCalledWith({
+      where: { id: ENGAGEMENT_1 },
+      data: { state: 'in_conversation' },
+    });
+    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('NOT_FOUND 404 if engagement absent; no $transaction', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(null);
+    await expect(repo.recordConversationStarted(validInput)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      statusCode: 404,
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('ENGAGEMENT_STATE_INVALID 422 if current state is not responded (e.g., awaiting_response); also covers natural-key dedup', async () => {
+    // Illegal-state path: awaiting_response → in_conversation refused
+    // (canTransition matrix only allows awaiting_response → responded).
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'awaiting_response' }));
+    await expect(repo.recordConversationStarted(validInput)).rejects.toMatchObject({
+      code: 'ENGAGEMENT_STATE_INVALID',
+      statusCode: 422,
+    });
+    try {
+      await repo.recordConversationStarted(validInput);
+    } catch (err) {
+      const e = err as AramoError;
+      expect(e.context.details?.['from_state']).toBe('awaiting_response');
+      expect(e.context.details?.['to_state']).toBe('in_conversation');
+    }
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+
+    // Natural-key dedup path: in_conversation → in_conversation refused
+    // (canTransition matrix has no self-loop on in_conversation).
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'in_conversation' }));
+    try {
+      await repo.recordConversationStarted(validInput);
+    } catch (err) {
+      const e = err as AramoError;
+      expect(e.code).toBe('ENGAGEMENT_STATE_INVALID');
+      expect(e.context.details?.['from_state']).toBe('in_conversation');
+      expect(e.context.details?.['to_state']).toBe('in_conversation');
+    }
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('atomic transaction shape — $transaction called with engagement.update + conversation_started event.create + state_transition event.create (3 ops, correct order)', async () => {
+    prisma.talentJobEngagement.findFirst.mockResolvedValue(makeRow({ state: 'responded' }));
+    prisma.$transaction.mockResolvedValue([
+      makeRow({ state: 'in_conversation' }),
+      makeEventRow({ event_type: 'conversation_started' }),
+      makeEventRow({ event_type: 'state_transition' }),
+    ]);
+    await repo.recordConversationStarted(validInput);
+    expect(prisma.talentJobEngagement.update).toHaveBeenCalledTimes(1);
+    expect(prisma.talentEngagementEvent.create).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    // Verify ordering: update first, then two event.create — by reading
+    // the createOrder via mock.invocationCallOrder.
+    const updateOrder = prisma.talentJobEngagement.update.mock.invocationCallOrder[0] ?? 0;
+    const createOrders = prisma.talentEngagementEvent.create.mock.invocationCallOrder;
+    expect(createOrders.length).toBe(2);
+    expect(createOrders[0]).toBeGreaterThan(updateOrder);
+    expect(createOrders[1]).toBeGreaterThan(createOrders[0] ?? 0);
   });
 });

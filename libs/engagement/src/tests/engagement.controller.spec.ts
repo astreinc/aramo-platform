@@ -8,6 +8,7 @@ import { EngagementController } from '../lib/engagement.controller.js';
 import type { CreateEngagementRequestDto } from '../lib/dto/create-engagement-request.dto.js';
 import type { OutreachSendRequestDto } from '../lib/dto/outreach-send-request.dto.js';
 import type { RecordResponseRequestDto } from '../lib/dto/record-response-request.dto.js';
+import type { RecordConversationStartedRequestDto } from '../lib/dto/record-conversation-started-request.dto.js';
 import type { TransitionEngagementRequestDto } from '../lib/dto/transition-engagement-request.dto.js';
 import type { DeliveryProvider } from '../lib/delivery/delivery-provider.interface.js';
 import type { EngagementRepository } from '../lib/engagement.repository.js';
@@ -67,6 +68,7 @@ interface MockEngagementRepository {
   transitionState: ReturnType<typeof vi.fn>;
   sendOutreach: ReturnType<typeof vi.fn>;
   recordResponse: ReturnType<typeof vi.fn>;
+  recordConversationStarted: ReturnType<typeof vi.fn>;
   findByTenantAndId: ReturnType<typeof vi.fn>;
 }
 interface MockEngagementEventRepository {
@@ -97,6 +99,7 @@ function makeMocks(): {
     transitionState: vi.fn(),
     sendOutreach: vi.fn(),
     recordResponse: vi.fn(),
+    recordConversationStarted: vi.fn(),
     findByTenantAndId: vi.fn(),
   };
   const eventRepo: MockEngagementEventRepository = {
@@ -724,6 +727,171 @@ describe('EngagementController.recordResponse (M5 PR-7 unit)', () => {
     );
     expect(res).toBe(priorResponse);
     expect(m.engagementRepo.recordResponse).not.toHaveBeenCalled();
+    expect(m.idempotency.persist).not.toHaveBeenCalled();
+  });
+});
+
+// M5 PR-8a §4.12 — EngagementController.recordConversationStarted unit tests.
+describe('EngagementController.recordConversationStarted (M5 PR-8a unit)', () => {
+  let m: ReturnType<typeof makeMocks>;
+  const CONVERSATION_EVENT_ID = '00000000-0000-7000-8000-cccc0e000001';
+  const TRANSITION_EVENT_ID = '00000000-0000-7000-8000-cccc0e000002';
+  const CONVERSATION_STARTED_AT = '2026-05-25T12:00:00.000Z';
+
+  const body: RecordConversationStartedRequestDto = {
+    conversation_started_at: CONVERSATION_STARTED_AT,
+  };
+
+  const repoResultFixture = {
+    engagement: makeEngagementView({ state: 'in_conversation' }),
+    conversation_event: {
+      id: CONVERSATION_EVENT_ID,
+      tenant_id: TENANT_A,
+      engagement_id: ENGAGEMENT_1,
+      event_type: 'conversation_started',
+      event_payload: {
+        conversation_started_at: CONVERSATION_STARTED_AT,
+        recorded_by_user_id: RECRUITER_SUB,
+      },
+      created_at: new Date('2026-05-25T12:00:01.000Z'),
+    },
+    transition_event: {
+      id: TRANSITION_EVENT_ID,
+      tenant_id: TENANT_A,
+      engagement_id: ENGAGEMENT_1,
+      event_type: 'state_transition',
+      event_payload: { from_state: 'responded', to_state: 'in_conversation' },
+      created_at: new Date('2026-05-25T12:00:01.000Z'),
+    },
+  };
+
+  beforeEach(() => {
+    m = makeMocks();
+  });
+
+  it('happy: 200 + repository.recordConversationStarted called + idempotency.persist called', async () => {
+    m.engagementRepo.recordConversationStarted.mockResolvedValue(repoResultFixture);
+    const res = await m.controller.recordConversationStarted(
+      ENGAGEMENT_1,
+      body,
+      VALID_IDEM_KEY,
+      recruiterAuthContext(),
+      REQUEST_ID,
+    );
+    expect(res.engagement.state).toBe('in_conversation');
+    expect(res.conversation_event.event_type).toBe('conversation_started');
+    expect(m.engagementRepo.recordConversationStarted).toHaveBeenCalledTimes(1);
+    expect(m.idempotency.persist).toHaveBeenCalledTimes(1);
+    // transition_event is NOT in the response per PR-8a §4.1 step 7.
+    expect((res as Record<string, unknown>)['transition_event']).toBeUndefined();
+    // No AI / delivery invocation on PR-8a path.
+    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
+    expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
+  });
+
+  it('INSUFFICIENT_PERMISSIONS 403 on portal consumer; repository NOT called', async () => {
+    await expect(
+      m.controller.recordConversationStarted(
+        ENGAGEMENT_1,
+        body,
+        VALID_IDEM_KEY,
+        portalAuthContext(),
+        REQUEST_ID,
+      ),
+    ).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    expect(m.engagementRepo.recordConversationStarted).not.toHaveBeenCalled();
+  });
+
+  it('VALIDATION_ERROR 400 on missing Idempotency-Key', async () => {
+    await expect(
+      m.controller.recordConversationStarted(
+        ENGAGEMENT_1,
+        body,
+        undefined,
+        recruiterAuthContext(),
+        REQUEST_ID,
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    expect(m.engagementRepo.recordConversationStarted).not.toHaveBeenCalled();
+  });
+
+  it('NOT_FOUND 404 propagates with requestId re-binding', async () => {
+    m.engagementRepo.recordConversationStarted.mockRejectedValue(
+      new AramoError('NOT_FOUND', 'TalentJobEngagement not found', 404, {
+        requestId: 'engagement-record-conversation-started',
+        details: { engagement_id: ENGAGEMENT_1 },
+      }),
+    );
+    try {
+      await m.controller.recordConversationStarted(
+        ENGAGEMENT_1,
+        body,
+        VALID_IDEM_KEY,
+        recruiterAuthContext(),
+        REQUEST_ID,
+      );
+      throw new Error('expected throw');
+    } catch (err) {
+      const e = err as AramoError;
+      expect(e.code).toBe('NOT_FOUND');
+      expect(e.statusCode).toBe(404);
+      expect(e.context.requestId).toBe(REQUEST_ID);
+    }
+  });
+
+  it('ENGAGEMENT_STATE_INVALID 422 propagates (covers both illegal-state + natural-key dedup)', async () => {
+    m.engagementRepo.recordConversationStarted.mockRejectedValue(
+      new AramoError('ENGAGEMENT_STATE_INVALID', 'illegal transition', 422, {
+        requestId: 'engagement-record-conversation-started',
+        details: { from_state: 'in_conversation', to_state: 'in_conversation' },
+      }),
+    );
+    await expect(
+      m.controller.recordConversationStarted(
+        ENGAGEMENT_1,
+        body,
+        VALID_IDEM_KEY,
+        recruiterAuthContext(),
+        REQUEST_ID,
+      ),
+    ).rejects.toMatchObject({ code: 'ENGAGEMENT_STATE_INVALID', statusCode: 422 });
+  });
+
+  it('IDEMPOTENCY_KEY_CONFLICT 409 propagates from idempotency.lookup; repository NOT called', async () => {
+    m.idempotency.lookup.mockRejectedValue(
+      new AramoError('IDEMPOTENCY_KEY_CONFLICT', 'collision', 409, { requestId: REQUEST_ID }),
+    );
+    await expect(
+      m.controller.recordConversationStarted(
+        ENGAGEMENT_1,
+        body,
+        VALID_IDEM_KEY,
+        recruiterAuthContext(),
+        REQUEST_ID,
+      ),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_KEY_CONFLICT', statusCode: 409 });
+    expect(m.engagementRepo.recordConversationStarted).not.toHaveBeenCalled();
+  });
+
+  it('idempotency replay: lookup returns prior body; repository NOT called', async () => {
+    const priorResponse = {
+      engagement: makeEngagementView({ state: 'in_conversation' }),
+      conversation_event: repoResultFixture.conversation_event,
+    };
+    m.idempotency.lookup.mockResolvedValue({
+      kind: 'replay',
+      response_status: 200,
+      response_body: priorResponse,
+    });
+    const res = await m.controller.recordConversationStarted(
+      ENGAGEMENT_1,
+      body,
+      VALID_IDEM_KEY,
+      recruiterAuthContext(),
+      REQUEST_ID,
+    );
+    expect(res).toBe(priorResponse);
+    expect(m.engagementRepo.recordConversationStarted).not.toHaveBeenCalled();
     expect(m.idempotency.persist).not.toHaveBeenCalled();
   });
 });

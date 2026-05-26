@@ -6,6 +6,7 @@ import { TalentRepository } from '@aramo/talent';
 
 import { canTransition, type EngagementStateValue } from './engagement-state.js';
 import type { EngagementEventTypeValue } from './engagement-event.js';
+import type { EngagementConversationStartedPayload } from './dto/engagement-conversation-started-payload.js';
 import type { EngagementResponseReceivedPayload } from './dto/engagement-response-received-payload.js';
 import type { OutreachSentPayload } from './dto/outreach-sent-payload.js';
 import type { TalentJobEngagementView } from './dto/talent-job-engagement.view.js';
@@ -181,6 +182,44 @@ export interface RecordResponseInput {
 export interface RecordResponseResult {
   engagement: TalentJobEngagementView;
   response_event: TalentEngagementEventView;
+  transition_event: TalentEngagementEventView;
+}
+
+// M5 PR-8a §4.3 — recordConversationStarted input/output shapes (Ruling 1 + 5).
+//
+// Single repository method paired with the EngagementController
+// recordConversationStarted endpoint. Three-write atomic transaction:
+//   1. engagement.update(state = 'in_conversation')
+//   2. talentEngagementEvent.create(event_type = 'conversation_started',
+//      payload = EngagementConversationStartedPayload)
+//   3. talentEngagementEvent.create(event_type = 'state_transition',
+//      payload = { from_state, to_state })
+//
+// Pre-transaction guards (in order; SIMPLER than PR-7 — no cross-event
+// reference validation per Ruling 3):
+//   - findByTenantAndId(engagement_id, tenant_id) → null ⇒ NOT_FOUND 404.
+//   - canTransition(current.state, 'in_conversation') ⇒ false ⇒
+//     ENGAGEMENT_STATE_INVALID 422. State-machine itself enforces
+//     single-conversation semantics: an engagement already in
+//     'in_conversation' state cannot transition to 'in_conversation'
+//     again (natural-key dedup atop the standard Idempotency-Key replay
+//     path); an engagement in 'engaged' or 'awaiting_response' cannot
+//     skip the 'responded' step.
+//
+// The transition target is hardcoded to 'in_conversation' — the only
+// legal next state for a 'responded' engagement per the 11-state matrix
+// (PR-1 Amendment v1.1 §4). Callers cannot pass a different to_state.
+export interface RecordConversationStartedInput {
+  engagement_id: string;
+  tenant_id: string;
+  conversation_event_id: string;
+  transition_event_id: string;
+  conversation_payload: EngagementConversationStartedPayload;
+}
+
+export interface RecordConversationStartedResult {
+  engagement: TalentJobEngagementView;
+  conversation_event: TalentEngagementEventView;
   transition_event: TalentEngagementEventView;
 }
 
@@ -779,6 +818,133 @@ export class EngagementRepository {
       response_event_id: result.response_event.id,
       transition_event_id: result.transition_event.id,
       outreach_event_ref_id: input.response_payload.outreach_event_ref_id,
+      from_state: current.state,
+      to_state: result.engagement.state,
+      latency_ms: Date.now() - startedAt,
+    });
+    return result;
+  }
+
+  // recordConversationStarted — M5 PR-8a Directive v1.0 §4.3 + Rulings
+  // 1, 2, 3, 5. Read current → NOT_FOUND guard → canTransition(responded
+  // → in_conversation) guard → atomic 3-write transaction (engagement
+  // update + conversation_started event + state_transition event).
+  //
+  // SIMPLER than PR-7 recordResponse (5 internal steps vs PR-7's 6):
+  // NO cross-event reference validation (Ruling 3 — workflow invariant
+  // is sufficiently enforced by canTransition; the prior
+  // response_received event is implicit and not explicitly referenced
+  // in the conversation_started payload).
+  //
+  // All refusals leave engagement state + event log unchanged (pre-
+  // transaction failure semantics).
+  async recordConversationStarted(
+    input: RecordConversationStartedInput,
+  ): Promise<RecordConversationStartedResult> {
+    const startedAt = Date.now();
+    this.logger.log({
+      event: 'engagement.conversation_started_recording_started',
+      tenant_id: input.tenant_id,
+      engagement_id: input.engagement_id,
+      conversation_event_id: input.conversation_event_id,
+      transition_event_id: input.transition_event_id,
+      conversation_started_at: input.conversation_payload.conversation_started_at,
+    });
+
+    // ---- Step 1: read current engagement (tenant-scoped) --------------
+    const current = await this.findByTenantAndId({
+      tenant_id: input.tenant_id,
+      id: input.engagement_id,
+    });
+    if (current === null) {
+      this.logger.log({
+        event: 'engagement.conversation_started_recording_refused',
+        error_code: 'NOT_FOUND',
+        tenant_id: input.tenant_id,
+        engagement_id: input.engagement_id,
+      });
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentJobEngagement not found',
+        404,
+        {
+          requestId: 'engagement-record-conversation-started',
+          details: { engagement_id: input.engagement_id, tenant_id: input.tenant_id },
+        },
+      );
+    }
+
+    // ---- Step 2: canTransition guard (responded → in_conversation) ----
+    // Also handles natural-key dedup: an engagement already in
+    // 'in_conversation' cannot transition to 'in_conversation' again
+    // (canTransition returns false because the matrix has no self-loop).
+    const TO_STATE: EngagementStateValue = 'in_conversation';
+    if (!canTransition(current.state, TO_STATE)) {
+      this.logger.log({
+        event: 'engagement.conversation_started_recording_refused',
+        error_code: 'ENGAGEMENT_STATE_INVALID',
+        tenant_id: input.tenant_id,
+        engagement_id: input.engagement_id,
+        from_state: current.state,
+        to_state: TO_STATE,
+      });
+      throw new AramoError(
+        'ENGAGEMENT_STATE_INVALID',
+        `Illegal engagement state transition: ${current.state} -> ${TO_STATE}`,
+        422,
+        {
+          requestId: 'engagement-record-conversation-started',
+          details: {
+            engagement_id: input.engagement_id,
+            from_state: current.state,
+            to_state: TO_STATE,
+          },
+        },
+      );
+    }
+
+    // ---- Step 3: atomic 3-write transaction --------------------------
+    const [updatedRow, conversationEventRow, transitionEventRow] =
+      await this.prisma.$transaction([
+        this.prisma.talentJobEngagement.update({
+          where: { id: input.engagement_id },
+          data: { state: TO_STATE },
+        }),
+        this.prisma.talentEngagementEvent.create({
+          data: {
+            id: input.conversation_event_id,
+            tenant_id: input.tenant_id,
+            engagement_id: input.engagement_id,
+            event_type: 'conversation_started',
+            event_payload: input.conversation_payload as never,
+          },
+        }),
+        this.prisma.talentEngagementEvent.create({
+          data: {
+            id: input.transition_event_id,
+            tenant_id: input.tenant_id,
+            engagement_id: input.engagement_id,
+            event_type: 'state_transition',
+            event_payload: {
+              from_state: current.state,
+              to_state: TO_STATE,
+            } as never,
+          },
+        }),
+      ]);
+
+    // ---- Step 4 + 5: project + return + success log ------------------
+    const result: RecordConversationStartedResult = {
+      engagement: projectView(updatedRow as TalentJobEngagementRow),
+      conversation_event: projectEventView(conversationEventRow as TalentEngagementEventRow),
+      transition_event: projectEventView(transitionEventRow as TalentEngagementEventRow),
+    };
+    this.logger.log({
+      event: 'engagement.conversation_started_recorded',
+      tenant_id: result.engagement.tenant_id,
+      engagement_id: result.engagement.id,
+      conversation_event_id: result.conversation_event.id,
+      transition_event_id: result.transition_event.id,
       from_state: current.state,
       to_state: result.engagement.state,
       latency_ms: Date.now() - startedAt,
