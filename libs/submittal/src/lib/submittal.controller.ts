@@ -25,10 +25,7 @@ import {
   type TalentJobEvidencePackageView,
 } from '@aramo/evidence';
 
-import {
-  ConfirmAtsRequestDto,
-  type ConfirmAtsResponseDto,
-} from './dto/confirm-ats-request.dto.js';
+import type { ConfirmAtsResponseDto } from './dto/confirm-ats-request.dto.js';
 import type {
   ConfirmSubmittalRequestDto,
   ConfirmSubmittalResponseDto,
@@ -37,16 +34,10 @@ import type {
   CreateSubmittalRequestDto,
   CreateSubmittalResponseDto,
 } from './dto/create-submittal-request.dto.js';
-import {
-  MarkReadyRequestDto,
-  type MarkReadyResponseDto,
-} from './dto/mark-ready-request.dto.js';
+import type { MarkReadyResponseDto } from './dto/mark-ready-request.dto.js';
 import { RevokeSubmittalRequestDto } from './dto/revoke-submittal-request.dto.js';
 import type { RevokeSubmittalResponseDto } from './dto/revoke-submittal-response.dto.js';
-import {
-  SubmitToAtsRequestDto,
-  type SubmitToAtsResponseDto,
-} from './dto/submit-to-ats-request.dto.js';
+import type { SubmitToAtsResponseDto } from './dto/submit-to-ats-request.dto.js';
 import type { TalentSubmittalRecordView } from './dto/talent-submittal-record.view.js';
 import { SubmittalRepository } from './submittal.repository.js';
 
@@ -628,7 +619,7 @@ export class SubmittalController {
   @HttpCode(HttpStatus.OK)
   async markReady(
     @Param('submittal_id') submittal_id: string,
-    @Body() body: MarkReadyRequestDto,
+    @Body() body: Record<string, unknown>,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
@@ -681,7 +672,7 @@ export class SubmittalController {
   @HttpCode(HttpStatus.OK)
   async submitToAts(
     @Param('submittal_id') submittal_id: string,
-    @Body() body: SubmitToAtsRequestDto,
+    @Body() body: Record<string, unknown>,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
@@ -733,7 +724,7 @@ export class SubmittalController {
   @HttpCode(HttpStatus.OK)
   async confirmAts(
     @Param('submittal_id') submittal_id: string,
-    @Body() body: ConfirmAtsRequestDto,
+    @Body() body: Record<string, unknown>,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,

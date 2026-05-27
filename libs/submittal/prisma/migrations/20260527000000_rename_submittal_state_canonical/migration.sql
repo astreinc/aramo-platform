@@ -10,7 +10,7 @@
 --   ready_for_review to submitted_to_ats   (confirmed_at populated atomically per Ruling 6)
 --   submitted_to_ats to confirmed
 --
--- Sibling lifecycle-exit (revoked; Q3 ruling): revocable from `created`,
+-- Sibling lifecycle-exit (revoked, Q3 ruling). Revocable from `created`,
 -- `handoff_draft`, `ready_for_review`, `submitted_to_ats`. NOT revocable
 -- from `confirmed` (terminal per Ruling 5). Both `confirmed` and
 -- `revoked` are terminal-only states with no outgoing transitions.
@@ -41,8 +41,8 @@
 -- comments. The integration test setup applies migrations via a
 -- dollar-quote-aware splitter that splits on the statement terminator
 -- outside dollar-quoted regions but does not strip line comments.
--- Function body below uses `$body$` dollar-quote delimiters; no
--- comment lines contain `$body$` or unescaped statement terminators.
+-- Function body below uses `$$` dollar-quote delimiters and no
+-- comment lines contain `$$` or unescaped statement terminators.
 
 -- ============================================================================
 -- 1. ALTER TYPE RENAME VALUE -- M4 'draft' to canonical 'created'.
@@ -73,11 +73,11 @@ ALTER TABLE "engagement"."TalentSubmittalRecord"
 --    (no DROP/CREATE TRIGGER needed). Function body encodes the
 --    canonical 5-state matrix -- 4 mainline transitions plus 4
 --    sibling-revoke transitions equals 8 legal moves. Terminal states
---    `confirmed` and `revoked` have no outgoing transitions; the
+--    `confirmed` and `revoked` have no outgoing transitions. The
 --    fallthrough RAISE EXCEPTION rejects any other move.
 -- ============================================================================
 CREATE OR REPLACE FUNCTION engagement.reject_submittal_record_update()
-RETURNS TRIGGER AS $body$
+RETURNS TRIGGER AS $$
 BEGIN
   -- ----------------------------------------------------------------------
   -- Mainline Transition 1 -- created to handoff_draft.
@@ -221,4 +221,4 @@ BEGIN
     'TalentSubmittalRecord state machine permits only the canonical 5-state mainline (created -> handoff_draft -> ready_for_review -> submitted_to_ats -> confirmed) and sibling lifecycle-exit (any non-confirmed -> revoked); terminal states confirmed and revoked have no outgoing transitions'
     USING ERRCODE = 'check_violation';
 END;
-$body$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;

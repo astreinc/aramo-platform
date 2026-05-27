@@ -1,3 +1,5 @@
+import { Allow } from 'class-validator';
+
 import type { TalentSubmittalEventView } from './talent-submittal-event.view.js';
 import type { TalentSubmittalRecordView } from './talent-submittal-record.view.js';
 
@@ -9,12 +11,19 @@ import type { TalentSubmittalRecordView } from './talent-submittal-record.view.j
 // terminal state -- no outgoing transitions (Ruling 5: not even sibling-
 // revoke applies once ATS confirms).
 //
-// Per Ruling 13 the request body is empty; ATS external reference id
-// on /confirm-ats body is explicitly OUT-OF-SCOPE per directive §5
-// (deferred to future consumer PR). Per Ruling 14 response wraps
-// { submittal, event }.
+// Per Ruling 13 the request body is empty. The `@Allow()` field
+// registers the class with class-validator metadata so the global
+// ValidationPipe (whitelist + forbidNonWhitelisted) doesn't reject
+// the empty payload at transform time (class-validator >= 0.14
+// defaults to forbidUnknownValues: true for unregistered classes).
+// ATS external reference id on /confirm-ats body is explicitly
+// OUT-OF-SCOPE per directive §5 (deferred to future consumer PR).
+// Per Ruling 14 response wraps { submittal, event }.
 
-export class ConfirmAtsRequestDto {}
+export class ConfirmAtsRequestDto {
+  @Allow()
+  _?: never;
+}
 
 export interface ConfirmAtsResponseDto {
   submittal: TalentSubmittalRecordView;

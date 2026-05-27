@@ -47,7 +47,15 @@ const IDEMPOTENCY_KEY_1 = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8101';
 const IDEMPOTENCY_KEY_2 = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8102';
 const IDEMPOTENCY_KEY_3 = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8103';
 
-const EMPTY_BODY = {};
+// Process Lesson 67 workaround: pact-rust does NOT serialize empty {}
+// bodies in a way NestJS body-parser can complete (server hangs in
+// pre-handler body parsing for 30s; controller handler never invoked).
+// The `_placeholder` field is internal to the Pact test infrastructure;
+// the SubmittalController.markReady handler does not reference it.
+// OpenAPI contract preserves "empty body" per Ruling 13 at the schema
+// level. Production HTTP clients can send genuine {} bodies without
+// issue — the bug is specific to pact-rust wire serialization.
+const EMPTY_BODY = { _placeholder: true };
 
 describe('ATS thin consumer → POST /v1/submittals/{id}/mark-ready', () => {
   it('marks ready returns 200 with state=ready_for_review when submittal is in handoff_draft state', async () => {

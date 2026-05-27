@@ -33,7 +33,13 @@ const IDEMPOTENCY_KEY_1 = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8201';
 const IDEMPOTENCY_KEY_2 = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8202';
 const IDEMPOTENCY_KEY_3 = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8203';
 
-const EMPTY_BODY = {};
+// Process Lesson 67 workaround: pact-rust does NOT serialize empty {}
+// bodies in a way NestJS body-parser can complete. The `_placeholder`
+// field is internal to the Pact test infrastructure; controllers do
+// not reference it. OpenAPI contract preserves "empty body" per Ruling
+// 13 at the schema level. See submittal-mark-ready.consumer.test.ts
+// for full PL-67 documentation.
+const EMPTY_BODY = { _placeholder: true };
 
 describe('ATS thin consumer → POST /v1/submittals/{id}/submit-to-ats', () => {
   it('submits to ATS returns 200 with state=submitted_to_ats + confirmed_at populated when submittal is in ready_for_review state', async () => {

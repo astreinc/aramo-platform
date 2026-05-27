@@ -85,6 +85,15 @@ const SUBMITTAL_REVOKE_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
 );
+// M5 PR-8b1 event-log + M5 PR-8b2 rename migrations.
+const SUBMITTAL_EVENT_LOG_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql',
+);
+const SUBMITTAL_RENAME_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-submittal-revoke-neg-shape';
@@ -206,6 +215,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,
         SUBMITTAL_REVOKE_MIGRATION,
+        SUBMITTAL_EVENT_LOG_MIGRATION,
+        SUBMITTAL_RENAME_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }

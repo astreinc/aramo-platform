@@ -961,6 +961,59 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // evidence_package_id). The afterEach hook re-reads + asserts
     // byte-identity post-interaction, mirroring the
     // overrideStateIsolation pattern from M4 PR-5.
+    // M5 PR-8b2 recovery — fast direct INSERT for state-handler seeding
+    // of the 3 new endpoints (mark-ready / submit-to-ats / confirm-ats).
+    // Unlike seedSubmittalRevokeFixture (which walks the full chain
+    // including Requisition + Examination + EvidencePackage seeds), this
+    // helper only INSERTs the TalentSubmittalRecord row directly at the
+    // requested state. Justification: the new endpoints touch only
+    // TalentSubmittalRecord (findById + canTransition + $transaction
+    // update + appendEvent). No cross-schema FK traversal; no chain
+    // walk needed. INSERT bypasses the UPDATE-only trigger (Ruling 7),
+    // so the row can be inserted at any state directly.
+    //
+    // Confirmed_at is populated for submitted_to_ats/confirmed seed
+    // states (preserving M4 column semantic per Ruling 6); NULL
+    // otherwise. revoke columns stay NULL (no revoke pre-state seeded
+    // by this helper; revoke pre-states use seedSubmittalRevokeFixture
+    // for the state-isolation pre-hash capture).
+    async function seedSubmittalRowFast(
+      c: Client,
+      opts: {
+        submittalId: string;
+        evidencePackageId: string;
+        examinationId: string;
+        talentId: string;
+        jobId: string;
+        state: 'created' | 'handoff_draft' | 'ready_for_review' | 'submitted_to_ats' | 'confirmed';
+      },
+    ): Promise<void> {
+      const confirmedAt =
+        opts.state === 'submitted_to_ats' || opts.state === 'confirmed'
+          ? "'2026-05-22T13:00:00Z'::timestamptz"
+          : 'NULL';
+      await c.query(
+        `INSERT INTO engagement."TalentSubmittalRecord"
+           (id, tenant_id, talent_id, job_id, evidence_package_id,
+            pinned_examination_id, state, created_by,
+            justification, failed_criterion_acknowledgments,
+            confirmed_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+                 $6::uuid, $7::engagement."SubmittalState", $8::uuid,
+                 NULL, NULL, ${confirmedAt})`,
+        [
+          opts.submittalId,
+          TENANT_ID,
+          opts.talentId,
+          opts.jobId,
+          opts.evidencePackageId,
+          opts.examinationId,
+          opts.state,
+          RECRUITER_ID,
+        ],
+      );
+    }
+
     async function seedSubmittalRevokeFixture(
       c: Client,
       params: {
@@ -2130,6 +2183,105 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               talentId: 'aaaaaaaa-0000-7000-8000-0000000a70ff',
               jobId: 'cccccccc-0000-7000-8000-0000000c70ff',
             });
+          });
+        },
+      // ===== M5 PR-8b2 §4.12 + recovery (3 new endpoints × 3 interactions = 9) =====
+      // Pact consumer interactions for /mark-ready, /submit-to-ats, /confirm-ats
+      // use these `given(...)` strings. Each handler does a fast direct
+      // INSERT of TalentSubmittalRecord rows in the requested pre-state
+      // (no chain walks, no Requisition/Examination/EvidencePackage
+      // seeds — these endpoints don't traverse cross-schema FKs).
+      // The "in created state" key is shared across 3 invalid-state
+      // interactions (mark-ready/submit-to-ats/confirm-ats invalid-
+      // state tests); the handler seeds all 3 expected submittal_ids.
+      'a recruiter has authenticated and a TalentSubmittalRecord in created state exists for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalRowFast(c, {
+              submittalId: '99990000-0000-7000-8000-000000000952',
+              evidencePackageId: '99990000-0000-7000-8000-000000001052',
+              examinationId: '11110000-0000-7000-8000-0000000e00b2',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7052',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7052',
+              state: 'created',
+            });
+            await seedSubmittalRowFast(c, {
+              submittalId: '99990000-0000-7000-8000-000000000962',
+              evidencePackageId: '99990000-0000-7000-8000-000000001062',
+              examinationId: '11110000-0000-7000-8000-0000000e00b3',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7062',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7062',
+              state: 'created',
+            });
+            await seedSubmittalRowFast(c, {
+              submittalId: '99990000-0000-7000-8000-000000000972',
+              evidencePackageId: '99990000-0000-7000-8000-000000001072',
+              examinationId: '11110000-0000-7000-8000-0000000e00b4',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7072',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7072',
+              state: 'created',
+            });
+          });
+        },
+      'a recruiter has authenticated and a TalentSubmittalRecord in handoff_draft state exists for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalRowFast(c, {
+              submittalId: '99990000-0000-7000-8000-000000000951',
+              evidencePackageId: '99990000-0000-7000-8000-000000001051',
+              examinationId: '11110000-0000-7000-8000-0000000e00a1',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7051',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7051',
+              state: 'handoff_draft',
+            });
+          });
+        },
+      'a recruiter has authenticated and the submittal-mark-ready target does not exist for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+          });
+        },
+      'a recruiter has authenticated and a TalentSubmittalRecord in ready_for_review state exists for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalRowFast(c, {
+              submittalId: '99990000-0000-7000-8000-000000000961',
+              evidencePackageId: '99990000-0000-7000-8000-000000001061',
+              examinationId: '11110000-0000-7000-8000-0000000e00a2',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7061',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7061',
+              state: 'ready_for_review',
+            });
+          });
+        },
+      'a recruiter has authenticated and the submittal-submit-to-ats target does not exist for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+          });
+        },
+      'a recruiter has authenticated and a TalentSubmittalRecord in submitted_to_ats state exists for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalRowFast(c, {
+              submittalId: '99990000-0000-7000-8000-000000000971',
+              evidencePackageId: '99990000-0000-7000-8000-000000001071',
+              examinationId: '11110000-0000-7000-8000-0000000e00a3',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7071',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7071',
+              state: 'submitted_to_ats',
+            });
+          });
+        },
+      'a recruiter has authenticated and the submittal-confirm-ats target does not exist for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
           });
         },
       'a talent with profile granted and contacting revoked': async () => {
