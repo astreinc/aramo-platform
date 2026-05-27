@@ -331,3 +331,44 @@ The first reference is verifiable; the second is a paraphrase that may drift.
 | 2026-05-24 | M4-close housekeeping HK-PR-1 (items 1 + 2 doc-layer bundle): (a) ADR index alignment at `doc/adr/README.md` — appended 4 missing rows (ADR-0011 / ADR-0012 / ADR-0013 / ADR-0014); (b) Architecture dual-citation refresh at §3 / §6 / §8 per BA-1 audit ruling — `Aramo-Architecture-v2_0-v2_1-LOCKED.docx` (sha256 `7b73ce18...b1861f`; full text + citation locus for §15 / §19.2) carried forward unchanged by `Aramo-Architecture-v2_0-v2_2-LOCKED.docx` (sha256 `37096fc3...fb801`; current canonical revision; delta-amendment adding only §1.1 9th deployable + §2.4 description); single-revision swap rejected (would break citation contract for §15/§19.2 body text). Plan v1.5 confirmed full-rewrite (NOT delta-amendment) by reading canonical Status block — no dual-citation needed for §5 / §7 / §9. (c) ci.yml stale "13 required deployment gates" comments at the `deployment-gate` step resolved via approach (b) — count removed from `name:` + final `echo` so the dynamic `grep -qE` check is the sole source of truth (resilient to future CI growth). M4-close housekeeping lesson 1 RECORDED: delta-amendment documents require dual citation when the superseding revision is a delta (not full rewrite); pattern likely applies at future foundation-laying doc-lock pre-PRs. | Lead Engineer |
 | 2026-05-24 | M4-close housekeeping HK-PR-2 (items 5 + 6 + Plan filename hygiene): (a) Item 5 — npm audit baseline triage: 3 baseline HIGH GHSAs (GHSA-2w69-qvjg-hvjx + GHSA-q3j6-qgpj-74h6 + GHSA-v39h-62p7-jpjc) resolved via react-router-dom 6.22.0 → 6.30.3 (exact-pin per Lead supply-chain-hardening preference, deliberate divergence from workspace tilde-pin convention) + `overrides.fast-uri: "3.1.2"` (forces all transitive instances; resolves both fast-uri GHSAs via single override). `.github/npm-audit-allowlist.json` advisories array now empty; CI gate fires only on NEW HIGH/CRITICAL findings going forward. (b) Item 6 — Dependabot YAML: `.github/dependabot.yml` codified (BA-2 confirmed org-enabled). Three ecosystems: npm (weekly Monday + security-updates grouped), github-actions (weekly Monday), terraform (monthly). Conservative open-PR limit (10 npm); standard commit-message prefixes (deps/ci/infra). (c) Item 6B — Plan filename hygiene: replaced `Aramo-Phase-1-Delivery-Plan-v1.5-LOCKED.docx` (dotted, stale) → `Aramo-Phase-1-Delivery-Plan-v1_5-LOCKED.docx` (underscored, matches canonical store) at §5 / §7 / §9. Lesson 2 grep-based scope applied (single-pass; post-edit grep returns zero dotted hits). | Lead Engineer |
 | 2026-05-24 | M5 PR-1 doc-lock: Added §10 (Plan v1.5 §M5 Track A item 1 — Engagement state machine; Group 2 §2.3b Part 2 Loops 1-5 binding canonical; 11-state TalentJobEngagement enumeration; 10-transition matrix). Renamed "The Nine Locked Baselines" → "The Locked Baselines". Per Plan Correction Note v1.0 + Directive Amendment v1.1. | Lead Engineer |
+## §11. Plan v1.5 §M5 Track B verbatim anchor (PR-9 + PR-10 + PR-11 + M5-close binding)
+
+The M5 milestone (per `Aramo-Phase-1-Delivery-Plan-v1_5-LOCKED.docx`) ships in two tracks. Track A scope is decomposed into M5 PR-1 through PR-8b2 (closed at PR #84, #85, #86, #87, #88, #89, #90, #103, #104, #105, #106; trifecta-close on row 8). Track B scope ships across the remaining M5 PRs.
+
+**Plan v1.5 §M5 Track A verbatim** (CLOSED on PR-#106):
+
+> ### Track A
+> - Engagement state machine (10 states per Group 2 v2.3b Part 2)
+> - Outreach flow with AI-assisted draft generation
+> - Submittal handoff_draft → confirmed flow
+> - Examination version pinning at draft creation
+> - Disaster-recovery mechanism implementation begins (added v1.4 — D-ENT-READY-1): RDS automated backups and point-in-time recovery configuration per Architecture §17.2, on the M4 infrastructure-as-code track.
+> - Architecture §9 background jobs scheduled (added v1.4 — D-ENT-READY-1): the four Aramo Core BullMQ jobs (stale-consent, outbox publisher, cross-schema consistency check, skill canonicalization) implemented explicitly, each in the milestone owning its domain; not left implicit.
+
+Track A items 1-4 closed via M5 PR-1 through PR-8b2. Track A items 5-6 (DR + background jobs) remain OPEN and ship via M5 PR-10 + PR-11.
+
+**Plan v1.5 §M5 Track B verbatim** (PR-9 binding):
+
+> ### Track B
+> - Pact tests for illegal state transitions returning ENGAGEMENT_STATE_INVALID
+> - Idempotency replay tests (same key + same body returns original; same key + different body returns 409)
+> - Consent enforcement at message send time (not just engagement creation)
+> - Pinned examination version verified; newer version triggers EXAMINATION_PINNED_OUTDATED
+
+**Track B item-to-PR mapping** (per Lead disposition + audit-time verification):
+
+| Track B Item | Verbatim text | M5 PR | Status |
+|---|---|---|---|
+| 1 | Pact tests for illegal state transitions returning ENGAGEMENT_STATE_INVALID | TBD (audit-verify at PR-9 substrate audit) | OPEN (may be substantively shipped via PR-4 + PR-8b2; PR-9 audit Axis to confirm) |
+| **2** | **Idempotency replay tests (same key + same body returns original; same key + different body returns 409)** | **PR-9 (target)** | **OPEN; PR-9 target scope** |
+| 3 | Consent enforcement at message send time (not just engagement creation) | PR-6 (closed at #90) — re-verify at PR-9 audit | LIKELY CLOSED at PR-6 (audit-time verification at PR-9) |
+| 4 | Pinned examination version verified; newer version triggers EXAMINATION_PINNED_OUTDATED | PR-4 + PR-8b1 examination-pinning Ruling 24 verification | CLOSED at PR-8b1 Gate 5 §6.21 + PR-8b2 Ruling 24 reaffirmation |
+
+**Plan v1.5 §M5 Exit Criteria verbatim**:
+
+> ### Exit Criteria
+> - No outreach without runtime contacting consent
+> - State transitions deterministic; illegal transitions return 422
+> - Submittal confirm requires all three attestations true
+
+Exit Criteria items 1-3 ship across Track A + Track B; M5 close-out verification at M5-close handoff.
