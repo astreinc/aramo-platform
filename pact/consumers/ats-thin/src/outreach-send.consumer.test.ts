@@ -29,14 +29,17 @@ const REQ_ID = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
 const ENGAGEMENT_ENGAGED = '00000000-0000-7000-8000-ffff00000f01';
 const ENGAGEMENT_SURFACED = '00000000-0000-7000-8000-ffff00000f02';
 const ENGAGEMENT_MISSING = '00000000-0000-7000-8000-ffff00000f99';
+const ENGAGEMENT_CONSENT_REVOKED = '00000000-0000-7000-8000-ffff00000f31';
 const AUDIT_RECORD_ID = '00000000-0000-7000-8000-ffff0a000001';
 const DELIVERY_ID = '00000000-0000-7000-8000-ffff0d000001';
 const OUTREACH_EVENT_ID = '00000000-0000-7000-8000-ffff0e000001';
+const DECISION_ID = '00000000-0000-7000-8000-ffff0d000031';
 const REQUEST_ID = '0190d5a4-7e01-7e2a-a4d3-ffff00000f02';
 const IDEMPOTENCY_KEY_1 = '0190d5a4-7e01-7e2a-a4d3-ffff00000f11';
 const IDEMPOTENCY_KEY_2 = '0190d5a4-7e01-7e2a-a4d3-ffff00000f12';
 const IDEMPOTENCY_KEY_3 = '0190d5a4-7e01-7e2a-a4d3-ffff00000f13';
 const IDEMPOTENCY_KEY_4 = '0190d5a4-7e01-7e2a-a4d3-ffff00000f14';
+const IDEMPOTENCY_KEY_5 = '0190d5a4-7e01-7e2a-a4d3-ffff00000f15';
 
 describe('ATS thin consumer → POST /v1/engagements/{id}/outreach', () => {
   it('returns 200 with engagement transitioned to awaiting_response when engagement is in engaged state', async () => {
@@ -257,6 +260,57 @@ describe('ATS thin consumer → POST /v1/engagements/{id}/outreach', () => {
           body: JSON.stringify(OUTREACH_BODY),
         });
         expect(res.status).toBe(200);
+      });
+  });
+
+  // M5 PR-9b §4.4 / Ruling 9 — consent-at-send refusal. Canonical
+  // revoked-at-send scenario; never-granted + stale-consent covered in
+  // integration spec per Ruling 10.
+  it('returns 403 CONSENT_NOT_GRANTED_AT_SEND when contacting consent is revoked', async () => {
+    await provider
+      .addInteraction()
+      .given('an engagement in engaged state with contacting consent revoked exists for the tenant')
+      .uponReceiving('an outreach-send request when contacting consent is revoked')
+      .withRequest('POST', `/v1/engagements/${ENGAGEMENT_CONSENT_REVOKED}/outreach`, (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'X-Request-ID': uuid(REQUEST_ID),
+          'Idempotency-Key': uuid(IDEMPOTENCY_KEY_5),
+          'Content-Type': 'application/json',
+        }).jsonBody({ prompt: like('Reach out to talent about the role.') });
+      })
+      .willRespondWith(403, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          error: {
+            code: like('CONSENT_NOT_GRANTED_AT_SEND'),
+            message: like('consent denied at send time'),
+            request_id: uuid(REQUEST_ID),
+            details: like({
+              consent_decision: like({
+                result: regex('allowed|denied|error', 'denied'),
+                reason_code: like('stale_consent'),
+                decision_id: uuid(DECISION_ID),
+                computed_at: like('2026-05-27T10:00:00.000Z'),
+              }),
+              engagement_id: uuid(ENGAGEMENT_CONSENT_REVOKED),
+            }),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/engagements/${ENGAGEMENT_CONSENT_REVOKED}/outreach`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'X-Request-ID': REQUEST_ID,
+            'Idempotency-Key': IDEMPOTENCY_KEY_5,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ prompt: 'Reach out to talent about the role.' }),
+        });
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('CONSENT_NOT_GRANTED_AT_SEND');
       });
   });
 

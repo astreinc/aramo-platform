@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import type { IdempotencyService } from '@aramo/consent';
+import type { ConsentService, IdempotencyService } from '@aramo/consent';
 import type { AiDraftService } from '@aramo/ai-draft';
 
 import { EngagementController } from '../lib/engagement.controller.js';
@@ -78,6 +78,9 @@ interface MockIdempotencyService {
   lookup: ReturnType<typeof vi.fn>;
   persist: ReturnType<typeof vi.fn>;
 }
+interface MockConsentService {
+  check: ReturnType<typeof vi.fn>;
+}
 interface MockAiDraftService {
   generateDraft: ReturnType<typeof vi.fn>;
 }
@@ -89,6 +92,7 @@ function makeMocks(): {
   engagementRepo: MockEngagementRepository;
   eventRepo: MockEngagementEventRepository;
   idempotency: MockIdempotencyService;
+  consentService: MockConsentService;
   aiDraftService: MockAiDraftService;
   deliveryProvider: MockDeliveryProvider;
   logger: ReturnType<typeof makeSpyLogger>;
@@ -100,7 +104,19 @@ function makeMocks(): {
     sendOutreach: vi.fn(),
     recordResponse: vi.fn(),
     recordConversationStarted: vi.fn(),
-    findByTenantAndId: vi.fn(),
+    // M5 PR-9b §4.1 — Step 5.5 sendOutreach now pre-reads via
+    // findByTenantAndId to extract talent_id for the consent check.
+    // Default to a valid engagement view so existing happy-path tests
+    // flow through; NOT_FOUND-class tests override per-call.
+    findByTenantAndId: vi.fn().mockResolvedValue({
+      id: ENGAGEMENT_1,
+      tenant_id: TENANT_A,
+      talent_id: TALENT_A,
+      requisition_id: REQ_A,
+      examination_id: EXAM_A,
+      state: 'engaged',
+      created_at: new Date('2026-05-25T10:00:00Z'),
+    }),
   };
   const eventRepo: MockEngagementEventRepository = {
     findByTenantAndEngagementId: vi.fn(),
@@ -109,6 +125,16 @@ function makeMocks(): {
     lookup: vi.fn().mockResolvedValue({ kind: 'proceed' }),
     persist: vi.fn().mockResolvedValue(undefined),
   };
+  // M5 PR-9b §4.1 — default consent check returns 'allowed' so existing
+  // happy-path unit tests continue to flow through to Step 6 AI draft.
+  // Refusal tests can override per-call via mockResolvedValueOnce.
+  const consentService: MockConsentService = {
+    check: vi.fn().mockResolvedValue({
+      result: 'allowed',
+      decision_id: '00000000-0000-7000-8000-aaaa00000099',
+      computed_at: '2026-05-27T10:00:00.000Z',
+    }),
+  };
   const aiDraftService: MockAiDraftService = { generateDraft: vi.fn() };
   const deliveryProvider: MockDeliveryProvider = { deliver: vi.fn() };
   const logger = makeSpyLogger();
@@ -116,11 +142,12 @@ function makeMocks(): {
     engagementRepo as unknown as EngagementRepository,
     eventRepo as unknown as EngagementEventRepository,
     idempotency as unknown as IdempotencyService,
+    consentService as unknown as ConsentService,
     logger,
     aiDraftService as unknown as AiDraftService,
     deliveryProvider as unknown as DeliveryProvider,
   );
-  return { engagementRepo, eventRepo, idempotency, aiDraftService, deliveryProvider, logger, controller };
+  return { engagementRepo, eventRepo, idempotency, consentService, aiDraftService, deliveryProvider, logger, controller };
 }
 
 function makeEngagementView(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -445,15 +472,12 @@ describe('EngagementController.sendOutreach (M5 PR-6 unit)', () => {
     expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
   });
 
-  it('NOT_FOUND 404 propagates from repository.sendOutreach with requestId re-binding', async () => {
-    m.aiDraftService.generateDraft.mockResolvedValue(draftResultFixture);
-    m.deliveryProvider.deliver.mockResolvedValue(deliveryResultFixture);
-    m.engagementRepo.sendOutreach.mockRejectedValue(
-      new AramoError('NOT_FOUND', 'TalentJobEngagement not found', 404, {
-        requestId: 'engagement-outreach',
-        details: { engagement_id: ENGAGEMENT_1 },
-      }),
-    );
+  it('NOT_FOUND 404 fires at Step 5.5 controller pre-read when engagement does not exist in tenant', async () => {
+    // M5 PR-9b §4.1 — Step 5.5 pre-reads the engagement so Step 6 AI
+    // draft + Step 8 atomic write are NOT reached on missing engagement.
+    // Mirrors the existing GET /:id NOT_FOUND envelope (same message
+    // string, HTTP 404, requestId re-bound).
+    m.engagementRepo.findByTenantAndId.mockResolvedValue(null);
     try {
       await m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID);
       throw new Error('expected throw');
@@ -463,6 +487,54 @@ describe('EngagementController.sendOutreach (M5 PR-6 unit)', () => {
       expect(e.statusCode).toBe(404);
       expect(e.context.requestId).toBe(REQUEST_ID);
     }
+    expect(m.consentService.check).not.toHaveBeenCalled();
+    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
+    expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
+    expect(m.engagementRepo.sendOutreach).not.toHaveBeenCalled();
+  });
+
+  // M5 PR-9b §4.1 / Rulings 1 + 6 + 7 — runtime consent-at-send refusal.
+  it('CONSENT_NOT_GRANTED_AT_SEND 403 when consentService.check returns denied; AI + delivery + repo NOT called', async () => {
+    m.consentService.check.mockResolvedValueOnce({
+      result: 'denied',
+      reason_code: 'stale_consent',
+      decision_id: '00000000-0000-7000-8000-aaaa00000d01',
+      computed_at: '2026-05-27T10:00:00.000Z',
+    });
+    try {
+      await m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID);
+      throw new Error('expected throw');
+    } catch (err) {
+      const e = err as AramoError;
+      expect(e.code).toBe('CONSENT_NOT_GRANTED_AT_SEND');
+      expect(e.statusCode).toBe(403);
+      expect(e.context.requestId).toBe(REQUEST_ID);
+      const decision = e.context.details?.['consent_decision'] as { result: string; reason_code: string };
+      expect(decision.result).toBe('denied');
+      expect(decision.reason_code).toBe('stale_consent');
+      expect(e.context.details?.['engagement_id']).toBe(ENGAGEMENT_1);
+    }
+    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
+    expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
+    expect(m.engagementRepo.sendOutreach).not.toHaveBeenCalled();
+  });
+
+  // M5 PR-9b §4.1 / Ruling 8 — substrate-fault (resolver error) → 500.
+  it('INTERNAL_ERROR 500 when consentService.check returns error result', async () => {
+    m.consentService.check.mockResolvedValueOnce({
+      result: 'error',
+      decision_id: '00000000-0000-7000-8000-aaaa00000d02',
+      computed_at: '2026-05-27T10:00:00.000Z',
+    });
+    try {
+      await m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID);
+      throw new Error('expected throw');
+    } catch (err) {
+      const e = err as AramoError;
+      expect(e.code).toBe('INTERNAL_ERROR');
+      expect(e.statusCode).toBe(500);
+    }
+    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
   });
 
   it('ENGAGEMENT_STATE_INVALID 422 propagates from repository.sendOutreach', async () => {

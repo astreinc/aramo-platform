@@ -166,6 +166,32 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState")`,
         [REQ_A, TENANT_A, JOB_ID, RECRUITER_A],
       );
+      // M5 PR-9b — Step 5.5 runtime consent-at-send check requires the
+      // FULL SCOPE_DEPENDENCY_CHAIN granted for TALENT_A (profile_storage
+      // → matching → contacting). Granting only contacting would throw
+      // 422 INVALID_SCOPE_COMBINATION from the resolver. Seeded once in
+      // beforeAll because the per-test TRUNCATE below does not clear
+      // consent."TalentConsentEvent".
+      for (const [n, scope] of [
+        ['80', 'profile_storage'],
+        ['81', 'matching'],
+        ['82', 'contacting'],
+      ] as const) {
+        await setup.query(
+          `INSERT INTO consent."TalentConsentEvent"
+             (id, talent_id, tenant_id, scope, action, captured_by_actor_id,
+              captured_method, consent_version, occurred_at, created_at)
+           VALUES ($1, $2, $3, $4, 'granted', $5,
+                   'recruiter_capture', 'v1', NOW(), NOW())`,
+          [
+            `00000000-0000-7000-8000-ffff0c0000${n}`,
+            TALENT_A,
+            TENANT_A,
+            scope,
+            RECRUITER_A,
+          ],
+        );
+      }
 
       const kp = await generateKeyPair(ALG);
       const publicPem = await exportSPKI(kp.publicKey as never);

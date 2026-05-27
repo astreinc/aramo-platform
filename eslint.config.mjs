@@ -208,6 +208,11 @@ export default [
       'libs/engagement/src/lib/dto/record-conversation-started-response.dto.ts',
       'libs/engagement/src/lib/dto/engagement-conversation-started-payload.ts',
       'pact/consumers/ats-thin/src/conversation-started.consumer.test.ts',
+      // M5 PR-9b — consent-at-send refusal integration spec carries the
+      // canonical `outreach` engagement-endpoint vocabulary by design
+      // (the spec exercises POST /v1/engagements/{id}/outreach as the
+      // gated send code path per Plan v1.5 §M5 Track B item 3 closure).
+      'apps/api/src/tests/outreach-send-consent-revoked.integration.spec.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',
