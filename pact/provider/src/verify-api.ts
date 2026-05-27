@@ -2913,6 +2913,29 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               id: '00000000-0000-7000-8000-ffff00000f01',
               state: 'engaged',
             });
+            // M5 PR-9b — Step 5.5 runs runtime consent-at-send check.
+            // The resolver enforces the SCOPE_DEPENDENCY_CHAIN (contacting
+            // requires profile_storage + matching granted first; missing
+            // dep would throw 422 INVALID_SCOPE_COMBINATION). Seed the
+            // full chain so the resolver returns 'allowed'.
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000001',
+              scope: 'profile_storage',
+              action: 'granted',
+              occurredAt: '2026-05-25T00:00:00.000Z',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000003',
+              scope: 'matching',
+              action: 'granted',
+              occurredAt: '2026-05-25T00:00:00.000Z',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000005',
+              scope: 'contacting',
+              action: 'granted',
+              occurredAt: '2026-05-25T00:00:00.000Z',
+            });
           });
         },
 
@@ -2924,6 +2947,27 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             await seedEngagementRow(c, {
               id: '00000000-0000-7000-8000-ffff00000f02',
               state: 'surfaced',
+            });
+            // M5 PR-9b — full chain so Step 5.5 passes and the surfaced
+            // failure is ENGAGEMENT_STATE_INVALID at Step 8 repo.sendOutreach
+            // (not the upstream consent-at-send refusal).
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000002',
+              scope: 'profile_storage',
+              action: 'granted',
+              occurredAt: '2026-05-25T00:00:00.000Z',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000004',
+              scope: 'matching',
+              action: 'granted',
+              occurredAt: '2026-05-25T00:00:00.000Z',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000006',
+              scope: 'contacting',
+              action: 'granted',
+              occurredAt: '2026-05-25T00:00:00.000Z',
             });
           });
         },
@@ -2940,6 +2984,54 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       'a portal user has authenticated against the outreach-send endpoint':
         async () => {
           await withClient((c) => resetAllRows(c));
+        },
+
+      // M5 PR-9b §4.5 / Ruling 9 — consent-at-send refusal seed. The
+      // engagement is in 'engaged' state (Step 5 idempotency lookup
+      // passes; Step 5.5 consent-at-send runs). The consent ledger is
+      // seeded with a granted-then-revoked pair so the resolver
+      // returns result='denied' at runtime check time (revoke occurred
+      // BEFORE the outreach-send attempt). Reuses the existing
+      // seedConsentEvent helper rather than introducing a separate
+      // seedConsentLedger helper (the ledger is event-sourced — a single
+      // higher-level helper would not match the schema reality).
+      'an engagement in engaged state with contacting consent revoked exists for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            await seedEngagementRow(c, {
+              id: '00000000-0000-7000-8000-ffff00000f31',
+              state: 'engaged',
+            });
+            // Seed prerequisite chain (profile_storage + matching) so
+            // the resolver returns a clean denied (not 422 dep-unmet)
+            // when contacting is revoked.
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000030',
+              scope: 'profile_storage',
+              action: 'granted',
+              occurredAt: '2026-01-01T00:00:00.000Z',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000033',
+              scope: 'matching',
+              action: 'granted',
+              occurredAt: '2026-01-01T00:00:00.000Z',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000031',
+              scope: 'contacting',
+              action: 'granted',
+              occurredAt: '2026-01-01T00:00:00.000Z',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000032',
+              scope: 'contacting',
+              action: 'revoked',
+              occurredAt: '2026-04-01T00:00:00.000Z',
+            });
+          });
         },
 
       // ===== M5 PR-7 response-received pacts (4 interactions) =====

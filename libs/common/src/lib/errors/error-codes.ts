@@ -158,6 +158,20 @@
 // returns a structured error before the SQL UPDATE attempt). Mirrors
 // the M5 PR-3 ENGAGEMENT_STATE_INVALID precedent verbatim at the
 // submittal-side. Total: 25 codes.
+//
+// M5 PR-9b adds CONSENT_NOT_GRANTED_AT_SEND (HTTP 403) for
+// EngagementController.sendOutreach Step 5.5 runtime consent-at-send
+// enforcement (closes Plan v1.5 §M5 Track B item 3 + satisfies M5
+// Exit Criteria "No outreach without runtime contacting consent").
+// First consent-denial HTTP error code in the registry — the existing
+// /v1/consent/check endpoint returns ConsentDecisionDto in a 200 body
+// (no thrown denial), so PR-9b introduces the runtime-throw pattern.
+// Single code per Ruling 7; the ConsentDecisionDto.reason_code field
+// ('stale_consent' | 'scope_dependency_unmet' | 'channel_not_consented'
+// | 'consent_state_unknown') is embedded in error.details.consent_decision
+// for client-side fine-grained UX without growing the code registry.
+// 'error' result-shape goes to INTERNAL_ERROR per Ruling 8 (substrate
+// fault vs refusal). Total: 26 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -185,6 +199,7 @@ export const ERROR_CODES = [
   'AI_PROVIDER_UNAVAILABLE',  // M5 PR-6 — outreach sendOutreach LLM transport / vendor-internal failure
   'AI_RATE_LIMITED',  // M5 PR-6 — outreach sendOutreach LLM rate-limit response
   'SUBMITTAL_STATE_INVALID',  // M5 PR-8b2 — submittal canTransition guard failed (mainline + sibling-revoke)
+  'CONSENT_NOT_GRANTED_AT_SEND',  // M5 PR-9b — outreach-send runtime consent-at-send refusal (Plan v1.5 §M5 Track B item 3 closure)
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

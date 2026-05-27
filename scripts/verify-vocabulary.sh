@@ -199,6 +199,11 @@ TIER2_EXCLUDES=(
   "libs/engagement/src/lib/engagement.repository.ts"
   "apps/api/src/tests/outreach-send.negative-shape.spec.ts"
   "apps/api/src/tests/outreach-send.integration.spec.ts"
+  # M5 PR-9b §4.7 / Ruling 10 — consent-at-send refusal integration
+  # spec carries the canonical `outreach` vocabulary in fixture + test
+  # names (the new spec is a dedicated refusal-class file per Ruling 10
+  # rather than an extension of outreach-send.integration.spec.ts).
+  "apps/api/src/tests/outreach-send-consent-revoked.integration.spec.ts"
   "pact/consumers/ats-thin/src/outreach-send.consumer.test.ts"
   "openapi/ats.yaml"
   # M5 PR-6 — repository unit + integration tests reference outreach in

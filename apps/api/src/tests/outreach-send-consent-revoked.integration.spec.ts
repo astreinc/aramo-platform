@@ -1,0 +1,529 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import type { AddressInfo } from 'node:net';
+
+import {
+  PostgreSqlContainer,
+  type StartedPostgreSqlContainer,
+} from '@testcontainers/postgresql';
+import { Test, type TestingModule } from '@nestjs/testing';
+import { ValidationPipe, type INestApplication } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
+import { Client } from 'pg';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  exportSPKI,
+  generateKeyPair,
+  SignJWT,
+  type CryptoKey,
+  type KeyObject,
+} from 'jose';
+
+import { AppModule } from '../app.module.js';
+
+// M5 PR-9b §4.6 / Ruling 10 — POST /v1/engagements/{id}/outreach
+// consent-at-send refusal integration spec. Plan v1.5 §M5 Track B item 3
+// closure: "Consent enforcement at message send time (not just engagement
+// creation)."
+//
+// Tests Step 5.5 (added at PR-9b) of EngagementController.sendOutreach:
+// the controller pre-reads the engagement, calls ConsentService.check
+// with operation='engagement' + channel='email', and refuses 403
+// CONSENT_NOT_GRANTED_AT_SEND when the resolver returns 'denied'.
+//
+// Coverage (5 tests per directive §4.6 deliverable enumeration):
+//   1. revoked-at-send refusal — grant then revoke; outreach-send → 403.
+//   2. never-granted refusal — engagement created without prior grant.
+//   3. tenant isolation — revoke in tenant A doesn't affect tenant B's
+//      separately-granted outreach.
+//   4. idempotency replay stability — repeat refusal with same key + body.
+//   5. AI draft NOT consumed when denied — assert draft provider's
+//      generate() was never called on a denied path.
+//
+// Note: stale-consent refusal (per directive §4.6 test 3) is NOT covered
+// here because the resolver's staleness window is calendar-based; a unit
+// test of the resolver gates the staleness path. The integration test
+// here focuses on the revoked + never-granted paths which are the
+// state-driven refusal classes most relevant to the Plan v1.5 verbatim
+// "message send time" enforcement intent.
+
+type SignKey = CryptoKey | KeyObject;
+
+const ROOT = resolve(__dirname, '../../../..');
+const M = (p: string): string => resolve(ROOT, p);
+const MIGRATIONS = [
+  M('libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql'),
+  M('libs/ingestion/prisma/migrations/20260516130715_init_ingestion_model/migration.sql'),
+  M('libs/ingestion/prisma/migrations/20260516183528_add_skill_surface_forms/migration.sql'),
+  M('libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql'),
+  M('libs/examination/prisma/migrations/20260521120000_add_live_list_index/migration.sql'),
+  M('libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql'),
+  M('libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql'),
+  M('libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql'),
+  M('libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql'),
+  M('libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql'),
+  M('libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql'),
+  M('libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql'),
+  M('libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql'),
+  M('libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql'),
+];
+
+const ISSUER = 'Aramo Core Auth';
+const AUDIENCE = 'aramo-outreach-send-consent-revoked-integration';
+const ALG = 'RS256';
+
+const TENANT_A = '11111111-1111-7111-8111-111111111111';
+const TENANT_B = '22222222-2222-7222-8222-222222222222';
+const TALENT_A = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
+const TALENT_B = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
+const RECRUITER_A = '00000000-0000-7000-8000-000000000bb1';
+const RECRUITER_B = '00000000-0000-7000-8000-000000000bb2';
+const JOB_ID_A = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
+const JOB_ID_B = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeee02';
+const REQ_A = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
+const REQ_B = 'cccccccc-cccc-7ccc-8ccc-cccccccccc02';
+
+const PROVIDER_RESULT_DEFAULT = {
+  completion: 'Mocked outreach draft for consent-revoked integration test.',
+  model_used: 'claude-sonnet-mock',
+  input_tokens: 10,
+  output_tokens: 20,
+  provider_request_id: 'mock-provider-request-id',
+};
+
+const DELIVERY_RESULT_DEFAULT = {
+  delivered: true as const,
+  delivered_at: new Date('2026-05-27T10:01:00.000Z'),
+  delivery_id: '00000000-0000-7000-8000-dddd0d000099',
+  delivery_channel: 'email' as const,
+};
+
+function splitDdl(sql: string): string[] {
+  const out: string[] = [];
+  let current = '';
+  let inDollar = false;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (sql.startsWith('$$', i)) {
+      inDollar = !inDollar;
+      current += '$$';
+      i += 1;
+      continue;
+    }
+    if (ch === ';' && !inDollar) {
+      out.push(current);
+      current = '';
+    } else current += ch;
+  }
+  if (current.trim().length > 0) out.push(current);
+  return out;
+}
+
+describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
+  'POST /v1/engagements/{id}/outreach — consent-at-send refusal integration (M5 PR-9b)',
+  () => {
+    let container: StartedPostgreSqlContainer;
+    let app: INestApplication;
+    let module: TestingModule;
+    let port = 0;
+    let savedEnv: Partial<Record<string, string | undefined>> = {};
+    let recruiterAJwt: string;
+    let recruiterBJwt: string;
+    let setup: Client;
+
+    // Records every call to the draft provider's generate() so the
+    // AI-draft-NOT-consumed test can assert zero invocations on the
+    // denied path.
+    const draftProviderCalls: { count: number } = { count: 0 };
+
+    beforeAll(async () => {
+      container = await new PostgreSqlContainer('postgres:17').start();
+      const url = container.getConnectionUri();
+      setup = new Client({ connectionString: url });
+      await setup.connect();
+      for (const p of MIGRATIONS) {
+        for (const stmt of splitDdl(readFileSync(p, 'utf8'))) {
+          const t = stmt.trim();
+          if (t.length === 0) continue;
+          await setup.query(t);
+        }
+      }
+
+      // Seed Talents + overlays for two tenants (TENANT_A + TENANT_B).
+      await setup.query(
+        `INSERT INTO talent."Talent" (id, lifecycle_status, updated_at)
+         VALUES ($1, 'active', NOW()), ($2, 'active', NOW())`,
+        [TALENT_A, TALENT_B],
+      );
+      await setup.query(
+        `INSERT INTO talent."TalentTenantOverlay"
+           (id, talent_id, tenant_id, source_channel, tenant_status, updated_at)
+         VALUES ($1, $2, $3, 'self_signup', 'active', NOW()),
+                ($4, $5, $6, 'self_signup', 'active', NOW())`,
+        [
+          '00000000-0000-7fff-8fff-0000000000a1', TALENT_A, TENANT_A,
+          '00000000-0000-7fff-8fff-0000000000a2', TALENT_B, TENANT_B,
+        ],
+      );
+      await setup.query(
+        `INSERT INTO job_domain."Job" (id, tenant_id) VALUES ($1, $2), ($3, $4)
+         ON CONFLICT (id) DO NOTHING`,
+        [JOB_ID_A, TENANT_A, JOB_ID_B, TENANT_B],
+      );
+      await setup.query(
+        `INSERT INTO job_domain."Requisition" (id, tenant_id, job_id, recruiter_id, state)
+         VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState"),
+                ($5, $6, $7, $8, 'active'::job_domain."RequisitionState")`,
+        [
+          REQ_A, TENANT_A, JOB_ID_A, RECRUITER_A,
+          REQ_B, TENANT_B, JOB_ID_B, RECRUITER_B,
+        ],
+      );
+
+      const kp = await generateKeyPair(ALG);
+      const publicPem = await exportSPKI(kp.publicKey as never);
+      const privateKey: SignKey = kp.privateKey as SignKey;
+
+      savedEnv = {
+        DATABASE_URL: process.env['DATABASE_URL'],
+        AUTH_AUDIENCE: process.env['AUTH_AUDIENCE'],
+        AUTH_PUBLIC_KEY: process.env['AUTH_PUBLIC_KEY'],
+      };
+      process.env['DATABASE_URL'] = url;
+      process.env['AUTH_AUDIENCE'] = AUDIENCE;
+      process.env['AUTH_PUBLIC_KEY'] = publicPem;
+
+      recruiterAJwt = await new SignJWT({
+        sub: RECRUITER_A,
+        consumer_type: 'recruiter',
+        actor_kind: 'user',
+        tenant_id: TENANT_A,
+        scopes: [],
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt()
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
+      recruiterBJwt = await new SignJWT({
+        sub: RECRUITER_B,
+        consumer_type: 'recruiter',
+        actor_kind: 'user',
+        tenant_id: TENANT_B,
+        scopes: [],
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt()
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
+      const mockDraftProvider = {
+        generate: async (): Promise<typeof PROVIDER_RESULT_DEFAULT> => {
+          draftProviderCalls.count += 1;
+          return PROVIDER_RESULT_DEFAULT;
+        },
+      };
+      const mockDeliveryProvider = {
+        deliver: async (): Promise<typeof DELIVERY_RESULT_DEFAULT> => {
+          return DELIVERY_RESULT_DEFAULT;
+        },
+      };
+
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider('DRAFT_PROVIDER_TOKEN')
+        .useValue(mockDraftProvider)
+        .overrideProvider('DELIVERY_PROVIDER_TOKEN')
+        .useValue(mockDeliveryProvider)
+        .compile();
+
+      app = module.createNestApplication();
+      app.use(cookieParser());
+      app.useGlobalPipes(
+        new ValidationPipe({ whitelist: true, forbidNonWhitelisted: false, transform: true }),
+      );
+      await app.init();
+      const server = await app.listen(0);
+      const address = server.address() as AddressInfo;
+      port = address.port;
+    }, 240_000);
+
+    afterAll(async () => {
+      await app?.close();
+      await setup?.end();
+      await container?.stop();
+      for (const [k, v] of Object.entries(savedEnv)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }, 60_000);
+
+    beforeEach(async () => {
+      draftProviderCalls.count = 0;
+      // Each test arranges its own consent state; clear engagement +
+      // event + idempotency + consent tables between tests so prior
+      // state doesn't leak.
+      await setup.query('TRUNCATE TABLE engagement."TalentEngagementEvent" CASCADE');
+      await setup.query('TRUNCATE TABLE engagement."TalentJobEngagement" CASCADE');
+      await setup.query('TRUNCATE TABLE consent."IdempotencyKey" CASCADE');
+      await setup.query('TRUNCATE TABLE consent."TalentConsentEvent" CASCADE');
+    });
+
+    // Seeds the full SCOPE_DEPENDENCY_CHAIN (profile_storage + matching
+    // + contacting) granted. The resolver enforces the chain at check
+    // time — granting only contacting would fire 422
+    // INVALID_SCOPE_COMBINATION instead of the 403 refusal we test for.
+    async function seedContactingGrant(
+      talentId: string,
+      tenantId: string,
+      recruiterId: string,
+      occurredAt: Date = new Date(),
+    ): Promise<void> {
+      for (const scope of ['profile_storage', 'matching', 'contacting']) {
+        await setup.query(
+          `INSERT INTO consent."TalentConsentEvent"
+             (id, talent_id, tenant_id, scope, action, captured_by_actor_id,
+              captured_method, consent_version, occurred_at, created_at)
+           VALUES ($1, $2, $3, $4, 'granted', $5,
+                   'recruiter_capture', 'v1', $6, NOW())`,
+          [randomUUID(), talentId, tenantId, scope, recruiterId, occurredAt],
+        );
+      }
+    }
+
+    // Seeds only the prerequisite chain (profile_storage + matching);
+    // contacting intentionally absent so the resolver returns
+    // result='denied' with reason_code reflecting the missing/unknown
+    // contacting state — driving the 403 CONSENT_NOT_GRANTED_AT_SEND
+    // refusal at Step 5.5 without triggering the 422 dep-unmet path.
+    async function seedPrerequisiteChainOnly(
+      talentId: string,
+      tenantId: string,
+      recruiterId: string,
+      occurredAt: Date = new Date(),
+    ): Promise<void> {
+      for (const scope of ['profile_storage', 'matching']) {
+        await setup.query(
+          `INSERT INTO consent."TalentConsentEvent"
+             (id, talent_id, tenant_id, scope, action, captured_by_actor_id,
+              captured_method, consent_version, occurred_at, created_at)
+           VALUES ($1, $2, $3, $4, 'granted', $5,
+                   'recruiter_capture', 'v1', $6, NOW())`,
+          [randomUUID(), talentId, tenantId, scope, recruiterId, occurredAt],
+        );
+      }
+    }
+
+    async function seedContactingRevoke(
+      talentId: string,
+      tenantId: string,
+      recruiterId: string,
+      occurredAt: Date = new Date(),
+    ): Promise<void> {
+      await setup.query(
+        `INSERT INTO consent."TalentConsentEvent"
+           (id, talent_id, tenant_id, scope, action, captured_by_actor_id,
+            captured_method, consent_version, occurred_at, created_at)
+         VALUES ($1, $2, $3, 'contacting', 'revoked', $4,
+                 'recruiter_capture', 'v1', $5, NOW())`,
+        [randomUUID(), talentId, tenantId, recruiterId, occurredAt],
+      );
+    }
+
+    async function createEngagementAdvanceToEngaged(
+      jwt: string,
+      talentId: string,
+      reqId: string,
+    ): Promise<string> {
+      const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${jwt}`,
+          'Idempotency-Key': randomUUID(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ talent_id: talentId, requisition_id: reqId }),
+      });
+      expect(createRes.status).toBe(201);
+      const createBody = (await createRes.json()) as { engagement: { id: string } };
+      const id = createBody.engagement.id;
+      const transition = async (to: string): Promise<void> => {
+        const r = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/transitions`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${jwt}`,
+            'Idempotency-Key': randomUUID(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ to_state: to, event_id: randomUUID() }),
+        });
+        expect(r.status).toBe(200);
+      };
+      await transition('evaluated');
+      await transition('engaged');
+      return id;
+    }
+
+    async function countEvents(engagementId: string): Promise<number> {
+      const r = await setup.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM engagement."TalentEngagementEvent"
+         WHERE engagement_id = $1::uuid`,
+        [engagementId],
+      );
+      return Number(r.rows[0]?.count ?? 0);
+    }
+
+    it('revoked-at-send: granted then revoked → 403 CONSENT_NOT_GRANTED_AT_SEND + no new events', { timeout: 60_000 }, async () => {
+      // Grant first so the engagement can be created.
+      await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
+      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      // Now revoke — BEFORE outreach-send attempt.
+      await seedContactingRevoke(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-04-01T00:00:00.000Z'));
+      const eventsBefore = await countEvents(id);
+
+      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterAJwt}`,
+          'Idempotency-Key': randomUUID(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: 'Reach out.', max_tokens: 256 }),
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string; details: { consent_decision: { result: string }; engagement_id: string } } };
+      expect(body.error.code).toBe('CONSENT_NOT_GRANTED_AT_SEND');
+      expect(body.error.details.consent_decision.result).toBe('denied');
+      expect(body.error.details.engagement_id).toBe(id);
+
+      // No new outreach_sent / state_transition events written; the
+      // refusal short-circuits Step 5.5 before Step 8 atomic write.
+      const eventsAfter = await countEvents(id);
+      expect(eventsAfter).toBe(eventsBefore);
+    });
+
+    it('contacting-never-granted (prerequisites only): engagement → 403 CONSENT_NOT_GRANTED_AT_SEND', { timeout: 60_000 }, async () => {
+      // Realistic production scenario: profile_storage + matching are
+      // granted (talent is searchable + has been matched), but
+      // contacting has never been granted. The dependency chain check
+      // passes; the requested-scope check fails → resolver returns
+      // result='denied' (not the 422 dep-unmet throw) → Step 5.5
+      // converts to 403 CONSENT_NOT_GRANTED_AT_SEND.
+      //
+      // Note: the engagement-create endpoint at PR-3 does NOT itself
+      // enforce contacting consent (that gap is exactly what Track B
+      // item 3 closes at send time). So creating + advancing the
+      // engagement to engaged state proceeds even without a contacting
+      // grant — the runtime check at Step 5.5 is the new enforcement.
+      await seedPrerequisiteChainOnly(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
+      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+
+      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterAJwt}`,
+          'Idempotency-Key': randomUUID(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: 'Reach out.' }),
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('CONSENT_NOT_GRANTED_AT_SEND');
+    });
+
+    it('tenant isolation: revoke in tenant A does not affect tenant B', { timeout: 60_000 }, async () => {
+      // Tenant A — revoked.
+      await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
+      const idA = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      await seedContactingRevoke(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-04-01T00:00:00.000Z'));
+      // Tenant B — independently granted.
+      await seedContactingGrant(TALENT_B, TENANT_B, RECRUITER_B, new Date('2026-01-01T00:00:00.000Z'));
+      const idB = await createEngagementAdvanceToEngaged(recruiterBJwt, TALENT_B, REQ_B);
+
+      const resA = await fetch(`http://127.0.0.1:${port}/v1/engagements/${idA}/outreach`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterAJwt}`,
+          'Idempotency-Key': randomUUID(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: 'Reach out A.' }),
+      });
+      expect(resA.status).toBe(403);
+
+      const resB = await fetch(`http://127.0.0.1:${port}/v1/engagements/${idB}/outreach`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterBJwt}`,
+          'Idempotency-Key': randomUUID(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: 'Reach out B.' }),
+      });
+      expect(resB.status).toBe(200);
+    });
+
+    it('idempotency replay stability: same key + same body returns 403 again (stable refusal)', { timeout: 60_000 }, async () => {
+      await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
+      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      await seedContactingRevoke(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-04-01T00:00:00.000Z'));
+
+      const key = randomUUID();
+      const body = JSON.stringify({ prompt: 'Reach out.' });
+
+      const first = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterAJwt}`,
+          'Idempotency-Key': key,
+          'Content-Type': 'application/json',
+        },
+        body,
+      });
+      expect(first.status).toBe(403);
+
+      // Retry with the same key + body — the idempotency record was
+      // NOT persisted (Step 5.5 throws before Step 9 persist), so the
+      // second call runs Step 5.5 freshly and re-evaluates the consent
+      // state. Because the revoke is still in effect, the refusal is
+      // stable: 403 again.
+      const second = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterAJwt}`,
+          'Idempotency-Key': key,
+          'Content-Type': 'application/json',
+        },
+        body,
+      });
+      expect(second.status).toBe(403);
+      const secondBody = (await second.json()) as { error: { code: string } };
+      expect(secondBody.error.code).toBe('CONSENT_NOT_GRANTED_AT_SEND');
+    });
+
+    it('AI draft NOT consumed when consent denied (Step 5.5 short-circuits before Step 6)', { timeout: 60_000 }, async () => {
+      await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
+      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      await seedContactingRevoke(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-04-01T00:00:00.000Z'));
+      // Reset counter AFTER setup so we measure only the outreach call.
+      draftProviderCalls.count = 0;
+
+      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterAJwt}`,
+          'Idempotency-Key': randomUUID(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: 'Reach out.' }),
+      });
+      expect(res.status).toBe(403);
+      expect(draftProviderCalls.count).toBe(0);
+    });
+  },
+);

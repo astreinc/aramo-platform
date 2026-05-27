@@ -41,6 +41,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   AI_PROVIDER_UNAVAILABLE: 502,
   AI_RATE_LIMITED: 429,
   SUBMITTAL_STATE_INVALID: 422,
+  CONSENT_NOT_GRANTED_AT_SEND: 403,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

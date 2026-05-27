@@ -147,6 +147,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState")`,
         [REQ_ID, TENANT_ID, JOB_ID, RECRUITER_ID],
       );
+      // M5 PR-9b — full SCOPE_DEPENDENCY_CHAIN granted so Step 5.5
+      // consent-at-send resolves to 'allowed' and the F23 walk reaches
+      // the 200 body.
+      for (const [n, scope] of [
+        ['90', 'profile_storage'],
+        ['91', 'matching'],
+        ['92', 'contacting'],
+      ] as const) {
+        await setup.query(
+          `INSERT INTO consent."TalentConsentEvent"
+             (id, talent_id, tenant_id, scope, action, captured_by_actor_id,
+              captured_method, consent_version, occurred_at, created_at)
+           VALUES ($1, $2, $3, $4, 'granted', $5,
+                   'recruiter_capture', 'v1', NOW(), NOW())`,
+          [
+            `00000000-0000-7000-8000-ffff0c0000${n}`,
+            TALENT_ID,
+            TENANT_ID,
+            scope,
+            RECRUITER_ID,
+          ],
+        );
+      }
 
       const kp = await generateKeyPair(ALG);
       const publicPem = await exportSPKI(kp.publicKey as never);

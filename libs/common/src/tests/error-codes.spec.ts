@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 25 codes including M5 PR-8b2 SUBMITTAL_STATE_INVALID', () => {
+  it('ERROR_CODES contains the 26 codes including M5 PR-9b CONSENT_NOT_GRANTED_AT_SEND', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -64,6 +64,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'AI_PROVIDER_UNAVAILABLE',
       'AI_RATE_LIMITED',
       'SUBMITTAL_STATE_INVALID',
+      'CONSENT_NOT_GRANTED_AT_SEND',
     ]);
   });
 });

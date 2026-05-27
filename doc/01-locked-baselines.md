@@ -361,7 +361,7 @@ Track A items 1-4 closed via M5 PR-1 through PR-8b2. Track A items 5-6 (DR + bac
 |---|---|---|---|
 | 1 | Pact tests for illegal state transitions returning ENGAGEMENT_STATE_INVALID | TBD (audit-verify at PR-9 substrate audit) | OPEN (may be substantively shipped via PR-4 + PR-8b2; PR-9 audit Axis to confirm) |
 | **2** | **Idempotency replay tests (same key + same body returns original; same key + different body returns 409)** | **PR-9 (target)** | **OPEN; PR-9 target scope** |
-| 3 | Consent enforcement at message send time (not just engagement creation) | PR-9b (assigned post-audit) | NOT CLOSED at PR-6 per PR-9 audit Axis C; assigned to PR-9b future cycle |
+| 3 | Consent enforcement at message send time (not just engagement creation) | PR-9b (closed at #TBD) | CLOSED at PR-9b |
 | 4 | Pinned examination version verified; newer version triggers EXAMINATION_PINNED_OUTDATED | PR-4 + PR-8b1 examination-pinning Ruling 24 verification | CLOSED at PR-8b1 Gate 5 §6.21 + PR-8b2 Ruling 24 reaffirmation |
 
 **Plan v1.5 §M5 Exit Criteria verbatim**:

@@ -19,7 +19,7 @@ import {
   hashCanonicalizedBody,
 } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
-import { IdempotencyService } from '@aramo/consent';
+import { ConsentService, IdempotencyService } from '@aramo/consent';
 import { AiDraftService } from '@aramo/ai-draft';
 
 import type { CreateEngagementRequestDto } from './dto/create-engagement-request.dto.js';
@@ -96,6 +96,11 @@ export class EngagementController {
     private readonly engagementRepository: EngagementRepository,
     private readonly engagementEventRepository: EngagementEventRepository,
     private readonly idempotencyService: IdempotencyService,
+    // M5 PR-9b §4.1 / Ruling 1 — ConsentService injected for runtime
+    // consent-at-send enforcement in sendOutreach() Step 5.5. Cross-lib
+    // edge engagement → consent already established via IdempotencyService
+    // (audit Axis D); this extension is purely additive.
+    private readonly consentService: ConsentService,
     @Inject('EngagementControllerLogger')
     private readonly logger: AramoLogger,
     // M5 PR-6 §4.1 — AiDraftService dep for outreach LLM drafts.
@@ -321,6 +326,92 @@ export class EngagementController {
       engagement_id: id,
       request_id: requestId,
     });
+
+    // ===== Step 5.5: Consent-at-send enforcement (M5 PR-9b — Plan v1.5
+    // §M5 Track B item 3). Closes the audit Axis C gap: PR-6 wired
+    // ConsentService only at engagement-create time; PR-9b extends to
+    // message-send time. M5 Exit Criteria: "No outreach without runtime
+    // contacting consent." =====
+
+    // Per Ruling 4 — controller pre-read of engagement to obtain
+    // talent_id (the consent check is per-talent; the request body
+    // does not carry talent_id, only engagement_id via URL path).
+    // Mirrors the existing GET /:id null-handling pattern below at the
+    // same controller — NOT_FOUND 404 with the canonical
+    // "TalentJobEngagement not found" message.
+    const engagementForConsentCheck =
+      await this.engagementRepository.findByTenantAndId({
+        tenant_id: authContext.tenant_id,
+        id,
+      });
+    if (engagementForConsentCheck === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentJobEngagement not found',
+        404,
+        { requestId, details: { engagement_id: id } },
+      );
+    }
+
+    // Per Rulings 2 + 3 + 5: undefined idempotency-key (runtime gating
+    // semantics — every send call writes a fresh decision-log entry);
+    // operation 'engagement' (maps to contacting scope per
+    // OPERATION_SCOPE_MAP); channel 'email' (mirrors hardcoded delivery
+    // channel at Step 7).
+    const consentDecision = await this.consentService.check(
+      {
+        talent_id: engagementForConsentCheck.talent_id,
+        operation: 'engagement',
+        channel: 'email',
+      },
+      undefined,
+      authContext,
+      requestId,
+    );
+
+    // Per Rulings 1 + 6 + 7: denied → throw 403 CONSENT_NOT_GRANTED_AT_SEND;
+    // full ConsentDecisionDto embedded in error.details.consent_decision so
+    // clients can branch on reason_code without extra error codes.
+    if (consentDecision.result === 'denied') {
+      this.logger.log({
+        event: 'engagement.outreach_refused',
+        error_code: 'CONSENT_NOT_GRANTED_AT_SEND',
+        tenant_id: authContext.tenant_id,
+        engagement_id: id,
+        reason_code: consentDecision.reason_code,
+      });
+      throw new AramoError(
+        'CONSENT_NOT_GRANTED_AT_SEND',
+        'consent denied at send time',
+        403,
+        {
+          requestId,
+          details: {
+            consent_decision: consentDecision,
+            engagement_id: id,
+          },
+        },
+      );
+    }
+
+    // Per Ruling 8: 'error' is a resolver-substrate fault, not a refusal —
+    // 500 INTERNAL_ERROR (clients must retry, not back off as on 403).
+    if (consentDecision.result === 'error') {
+      throw new AramoError(
+        'INTERNAL_ERROR',
+        'consent check resolver failure',
+        500,
+        {
+          requestId,
+          details: {
+            consent_decision: consentDecision,
+            engagement_id: id,
+          },
+        },
+      );
+    }
+    // consentDecision.result === 'allowed' — continue to Step 6.
+    // ===== End Step 5.5 =====
 
     // Step 6 — AI draft (with error-code remap).
     let draftResult;

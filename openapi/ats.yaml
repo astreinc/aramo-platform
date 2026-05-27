@@ -830,6 +830,14 @@ paths:
           - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
           - 404 NOT_FOUND — engagement_id not visible in tenant.
           - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 403 CONSENT_NOT_GRANTED_AT_SEND — runtime contacting-consent
+            check at Step 5.5 (M5 PR-9b §4.1 / Plan v1.5 §M5 Track B item
+            3) returned denied. ConsentDecisionDto embedded in
+            error.details.consent_decision (reason_code discriminates
+            stale_consent | scope_dependency_unmet | channel_not_consented
+            | consent_state_unknown).
+          - 500 INTERNAL_ERROR — consent check resolver substrate fault
+            (decision.result === 'error' per Ruling 8).
           - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
       parameters:
         - name: engagement_id
@@ -869,7 +877,21 @@ paths:
         '401':
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
-          $ref: 'common.yaml#/components/responses/Forbidden'
+          description: |
+            Authenticated but request is forbidden. Two codes can surface
+            here:
+              - INSUFFICIENT_PERMISSIONS — non-recruiter consumer
+                (recruiter-only endpoint per PR-6 Ruling 8).
+              - CONSENT_NOT_GRANTED_AT_SEND — runtime contacting-consent
+                check at Step 5.5 (M5 PR-9b §4.1 — Plan v1.5 §M5 Track B
+                item 3 closure) returned `result: 'denied'`. Full
+                ConsentDecisionDto embedded in
+                error.details.consent_decision; reason_code discriminates
+                denial cause without growing the error registry.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '404':
           $ref: 'common.yaml#/components/responses/NotFound'
         '409':

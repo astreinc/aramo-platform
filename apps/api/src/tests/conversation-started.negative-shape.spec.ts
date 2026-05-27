@@ -142,6 +142,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState")`,
         [REQ_ID, TENANT_ID, JOB_ID, RECRUITER_ID],
       );
+      // M5 PR-9b — full SCOPE_DEPENDENCY_CHAIN so /outreach Step 5.5
+      // returns 'allowed' (resolver dep chain requires the prerequisites).
+      for (const [n, scope] of [
+        ['96', 'profile_storage'],
+        ['97', 'matching'],
+        ['98', 'contacting'],
+      ] as const) {
+        await setup.query(
+          `INSERT INTO consent."TalentConsentEvent"
+             (id, talent_id, tenant_id, scope, action, captured_by_actor_id,
+              captured_method, consent_version, occurred_at, created_at)
+           VALUES ($1, $2, $3, $4, 'granted', $5,
+                   'recruiter_capture', 'v1', NOW(), NOW())`,
+          [
+            `00000000-0000-7000-8000-ffff0c0000${n}`,
+            TALENT_ID,
+            TENANT_ID,
+            scope,
+            RECRUITER_ID,
+          ],
+        );
+      }
 
       const kp = await generateKeyPair(ALG);
       const publicPem = await exportSPKI(kp.publicKey as never);
