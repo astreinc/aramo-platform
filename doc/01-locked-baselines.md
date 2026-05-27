@@ -414,3 +414,84 @@ The M5 Track A item 5 "RDS automated backups and point-in-time recovery configur
 - **RTO: 1 hour** → operational target; not directly Terraform-configurable; ADR-0017 captures restore-playbook reference.
 
 **PR-10 substrate prerequisite**: M4 IaC substrate has zero RDS resources (audit Axis A finding); PR-10a creates RDS Terraform module from scratch BEFORE PR-10b adds backup/PITR configuration. Split per Lead-Q-PR-10-A1 disposition (c).
+
+## §13. Architecture §9 Event and Job Architecture verbatim anchor (PR-11 binding)
+
+The M5 Track A item 6 "Architecture §9 background jobs scheduled (added v1.4 — D-ENT-READY-1)" binding (anchored at §11 Plan v1.5 §M5 Track A item 6 verbatim) requires Architecture §9 substrate-truth to be in-tree for PR-11 substrate audit + directive + ADR-0018 (Background Jobs Substrate).
+
+**Architecture v2.1 §9 verbatim** (source: `Aramo-Architecture-v2_0-v2_1-LOCKED.docx` lines 617-680; v2.2 is a delta-amendment with no §9 modifications; v2.1 §9 remains operative):
+
+> # 9. Event and Job Architecture
+>
+> ## 9.1 Event Flow Categories
+>
+> ### Inside Aramo Core
+>
+> Internal in-process domain events. Used for: Talent updated → matching scheduled, Consent updated → consent cache invalidation, Examination created → entrustability computed, Engagement updated → action queue refreshed.
+>
+> ### Aramo Core → Extracted Services
+>
+> Outbox → SNS → SQS. Used for: consent invalidation, portal status updates, ingestion result notifications, ATS handoff notifications.
+>
+> ### Extracted Services → Aramo Core
+>
+> Synchronous REST API calls. Used for: ingestion payload submission, portal consent grant/revoke, portal profile update, ATS submittal status updates.
+>
+> ## 9.2 BullMQ Usage
+>
+> BullMQ is used for internal job queues.
+>
+> ### Aramo Core BullMQ jobs
+>
+> - matching worker
+> - examination computation
+> - derived snapshot recomputation
+> - evidence package generation
+> - stale consent daily job
+> - outbox publisher job
+> - cross-schema consistency check job
+> - skill canonicalization job
+>
+> ### Adapter BullMQ jobs
+>
+> - Indeed search batches
+> - Indeed contact unlock jobs
+> - GitHub rate-limited fetches
+> - Astre import batch processing
+> - Candidate-direct upload processing
+>
+> ## 9.3 SNS/SQS Topics
+>
+> Required SNS topics:
+>
+> - consent.events
+> - talent.events
+> - engagement.events
+> - submittal.events
+> - ingestion.events
+>
+> Each extracted service subscribes only to required topics. No broad subscription is allowed without architectural approval.
+
+**§9.2 Aramo Core BullMQ jobs-to-PR mapping** (per Lead disposition + audit-time substrate verification):
+
+| §9.2 Aramo Core Job | M5 PR | Status |
+|---|---|---|
+| matching worker | M3-era (libs/matching/src/lib/matching.processor.ts) | CLOSED (substrate-confirmed at PR-11 audit Axis A) |
+| examination computation | (substrate-state TBD; likely synchronous) | DEFERRED to M6/M7 enhancement if synchronous-only at PR-11 audit time |
+| derived snapshot recomputation | (substrate-state TBD; likely synchronous) | DEFERRED to M6/M7 enhancement if synchronous-only at PR-11 audit time |
+| evidence package generation | (substrate-state TBD; likely synchronous) | DEFERRED to M6/M7 enhancement if synchronous-only at PR-11 audit time |
+| **stale consent daily job** | **PR-11 (target)** | **OPEN; PR-11 target scope per D-ENT-READY-1 G7** |
+| **outbox publisher job** | **PR-11 (target)** | **OPEN; PR-11 target scope per D-ENT-READY-1 G7; LIGHT-SCOPE: publishes consent schema outbox only at M5 (per audit Axis B Lead-Q-B1 disposition); multi-schema outbox expansion deferred to M6** |
+| **cross-schema consistency check job** | **PR-11 (target)** | **OPEN; PR-11 target scope per D-ENT-READY-1 G7; critical-pair-only scope (per audit Axis E Lead-Q-E1 disposition)** |
+| **skill canonicalization job** | **PR-11 (target)** | **OPEN; PR-11 target scope per D-ENT-READY-1 G7; NO-OP FRAMEWORK at PR-11 (per audit Axis F Lead-Q-F1 disposition); meaningful canonicalization logic deferred to Skills Taxonomy workstream (M6/M7) because libs/skills-taxonomy currently has zero models** |
+
+**§9.2 Adapter BullMQ jobs** (5 jobs):
+- M6/M7 adapter milestone scope. NOT in PR-11. Adapter jobs ship with their respective adapter PRs.
+
+**§9.3 SNS/SQS Topics** (5 topics):
+- NOT in PR-11 scope. Plan v1.5 §M5 Track A item 6 verbatim covers BullMQ portion only ("the four Aramo Core BullMQ jobs"); SNS/SQS extracted-service infrastructure is M6/M7 scope.
+
+**§9.1 Event Flow Categories — operative invariants** (informational):
+- **Inside Aramo Core** category: in-process events; underlies "Talent updated → matching scheduled" trigger (PR-11 audit Axis A noted matching producer enqueue is currently TEST-ONLY; production trigger remains M6/M7 binding).
+- **Aramo Core → Extracted Services** category: Outbox → SNS → SQS pattern — PR-11 outbox publisher job is the FIRST half (outbox → publish); SNS/SQS dispatch is M6/M7 binding.
+- **Extracted Services → Aramo Core** category: synchronous REST API; NOT job-based; out of scope.
