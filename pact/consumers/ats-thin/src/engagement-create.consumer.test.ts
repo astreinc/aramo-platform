@@ -182,4 +182,80 @@ describe('ATS thin consumer → POST /v1/engagements', () => {
         expect(res.status).toBe(409);
       });
   });
+
+  // M5 PR-9 §4.1 — formal idempotency replay + conflict per Plan v1.5 §M5 Track B item 2.
+  const REPLAY_KEY = '0190d5a4-7e01-7e2a-a4d3-cccc00000c20';
+  const CONFLICT_KEY_PR9 = '0190d5a4-7e01-7e2a-a4d3-cccc00000c21';
+
+  it('idempotency replay: same key + same body returns cached 201 response', async () => {
+    await provider
+      .addInteraction()
+      .given('an idempotency key has been recorded with a prior engagement-create response')
+      .uponReceiving('an engagement-create request replaying a prior key + body')
+      .withRequest('POST', '/v1/engagements', (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'X-Request-ID': uuid(REQUEST_ID),
+          'Idempotency-Key': uuid(REPLAY_KEY),
+          'Content-Type': 'application/json',
+        }).jsonBody({ talent_id: TALENT_ID, requisition_id: REQ_ID });
+      })
+      .willRespondWith(201, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          engagement: like({ id: uuid(), state: 'surfaced' }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/engagements`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'X-Request-ID': REQUEST_ID,
+            'Idempotency-Key': REPLAY_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ talent_id: TALENT_ID, requisition_id: REQ_ID }),
+        });
+        expect(res.status).toBe(201);
+      });
+  });
+
+  it('idempotency conflict (PR-9 formal): same key + different body returns 409 IDEMPOTENCY_KEY_CONFLICT', async () => {
+    await provider
+      .addInteraction()
+      .given('an idempotency key has been recorded with a different engagement-create body (PR-9)')
+      .uponReceiving('an engagement-create request with a PR-9 conflicting prior key')
+      .withRequest('POST', '/v1/engagements', (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'X-Request-ID': uuid(REQUEST_ID),
+          'Idempotency-Key': uuid(CONFLICT_KEY_PR9),
+          'Content-Type': 'application/json',
+        }).jsonBody({ talent_id: TALENT_ID, requisition_id: REQ_ID });
+      })
+      .willRespondWith(409, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          error: {
+            code: regex('IDEMPOTENCY_KEY_CONFLICT', 'IDEMPOTENCY_KEY_CONFLICT'),
+            message: like('Same idempotency key used with a different request body'),
+            request_id: uuid(REQUEST_ID),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/engagements`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'X-Request-ID': REQUEST_ID,
+            'Idempotency-Key': CONFLICT_KEY_PR9,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ talent_id: TALENT_ID, requisition_id: REQ_ID }),
+        });
+        expect(res.status).toBe(409);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+      });
+  });
 });

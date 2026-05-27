@@ -182,4 +182,87 @@ describe('ATS thin consumer → POST /v1/engagements/{id}/conversation', () => {
         expect(res.status).toBe(403);
       });
   });
+
+  // M5 PR-9 §4.1 — idempotency replay + conflict per Plan v1.5 §M5 Track B item 2.
+  // PL-71: body shape MUST match RecordConversationStartedRequestDto (single field).
+  // forbidNonWhitelisted would otherwise reject extra fields before the
+  // idempotency check fires (PL-66 surfaced this — 422 ENGAGEMENT_STATE_INVALID
+  // arrived instead of 200/409 because validation failed first).
+  const REPLAY_KEY = '0190d5a4-7e01-7e2a-a4d3-cccc00000c20';
+  const CONFLICT_KEY = '0190d5a4-7e01-7e2a-a4d3-cccc00000c21';
+  const CONVERSATION_BODY = {
+    conversation_started_at: CONVERSATION_STARTED_AT,
+  };
+
+  it('idempotency replay: same key + same body returns cached 200 response', async () => {
+    await provider
+      .addInteraction()
+      .given('an idempotency key has been recorded with a prior conversation-started response')
+      .uponReceiving('a conversation-started request replaying a prior key + body')
+      .withRequest('POST', `/v1/engagements/${ENGAGEMENT_RESPONDED}/conversation`, (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'X-Request-ID': uuid(REQUEST_ID),
+          'Idempotency-Key': uuid(REPLAY_KEY),
+          'Content-Type': 'application/json',
+        }).jsonBody(CONVERSATION_BODY);
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          engagement: like({ id: ENGAGEMENT_RESPONDED, state: 'in_conversation' }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/engagements/${ENGAGEMENT_RESPONDED}/conversation`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'X-Request-ID': REQUEST_ID,
+            'Idempotency-Key': REPLAY_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(CONVERSATION_BODY),
+        });
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('idempotency conflict: same key + different body returns 409 IDEMPOTENCY_KEY_CONFLICT', async () => {
+    await provider
+      .addInteraction()
+      .given('an idempotency key has been recorded with a different conversation-started body')
+      .uponReceiving('a conversation-started request with a conflicting prior key')
+      .withRequest('POST', `/v1/engagements/${ENGAGEMENT_RESPONDED}/conversation`, (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'X-Request-ID': uuid(REQUEST_ID),
+          'Idempotency-Key': uuid(CONFLICT_KEY),
+          'Content-Type': 'application/json',
+        }).jsonBody(CONVERSATION_BODY);
+      })
+      .willRespondWith(409, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          error: {
+            code: regex('IDEMPOTENCY_KEY_CONFLICT', 'IDEMPOTENCY_KEY_CONFLICT'),
+            message: like('Same idempotency key used with a different request body'),
+            request_id: uuid(REQUEST_ID),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/engagements/${ENGAGEMENT_RESPONDED}/conversation`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'X-Request-ID': REQUEST_ID,
+            'Idempotency-Key': CONFLICT_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(CONVERSATION_BODY),
+        });
+        expect(res.status).toBe(409);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+      });
+  });
 });
