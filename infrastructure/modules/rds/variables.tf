@@ -88,9 +88,13 @@ variable "backup_retention_period" {
 }
 
 variable "backup_window" {
-  description = "Preferred daily backup window (UTC). Null = AWS auto-assigns. Per-env override values land at PR-10b."
+  description = "Preferred daily backup window (UTC, hh24:mi-hh24:mi). Null = AWS auto-assigns. Per-env override values land at PR-10b."
   type        = string
   default     = null
+  validation {
+    condition     = var.backup_window == null || can(regex("^([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]$", var.backup_window))
+    error_message = "backup_window must be null OR a UTC time range matching pattern hh24:mi-hh24:mi (e.g., \"03:00-04:00\")."
+  }
 }
 
 variable "multi_az" {
