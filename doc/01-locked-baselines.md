@@ -372,3 +372,45 @@ Track A items 1-4 closed via M5 PR-1 through PR-8b2. Track A items 5-6 (DR + bac
 > - Submittal confirm requires all three attestations true
 
 Exit Criteria items 1-3 ship across Track A + Track B; M5 close-out verification at M5-close handoff.
+
+## §12. Architecture §17.2 Disaster Recovery verbatim anchor (PR-10 binding)
+
+The M5 Track A item 5 "RDS automated backups and point-in-time recovery configuration per Architecture §17.2" binding requires the substrate-truth of Architecture §17.2 to be in-tree for PR-10a + PR-10b substrate audits + ADR-0017 (RDS DR Strategy).
+
+**Architecture v2.1 §17.2 verbatim** (source: `Aramo-Architecture-v2_0-v2_1-LOCKED.docx` lines 1432-1454):
+
+> ## 17.2 Disaster Recovery
+>
+> ### Targets
+>
+> - RPO: 15 minutes
+> - RTO: 1 hour
+>
+> ### Mechanisms
+>
+> - RDS automated backups
+> - point-in-time recovery
+> - cross-region snapshot replication
+> - S3 versioning
+> - Terraform-based infrastructure redeploy
+>
+> ### Recovery test cadence
+>
+> - twice per year
+
+**§17.2 mechanism-to-PR mapping** (per Lead disposition + audit-time substrate verification):
+
+| §17.2 Mechanism | M5 PR | Status |
+|---|---|---|
+| **RDS automated backups** | **PR-10b (target)** | **OPEN; PR-10b target scope** |
+| **point-in-time recovery (PITR)** | **PR-10b (target)** | **OPEN; PR-10b target scope** |
+| cross-region snapshot replication | DEFERRED (M7 candidate) | OPEN; out of PR-10 scope per Lead-Q-PR-10-B1 |
+| S3 versioning | DEFERRED (separate track) | OPEN |
+| Terraform-based infrastructure redeploy | TRANSVERSAL (existing IaC pattern) | OPEN; verified at every PR via terraform:* CI |
+| Recovery test cadence (twice per year) | DEFERRED (operational track; post-M5) | OPEN |
+
+**Targets-to-implementation mapping** (PR-10b):
+- **RPO: 15 minutes** → AWS native PITR provides 5-min granularity inside the retention window; satisfies RPO target.
+- **RTO: 1 hour** → operational target; not directly Terraform-configurable; ADR-0017 captures restore-playbook reference.
+
+**PR-10 substrate prerequisite**: M4 IaC substrate has zero RDS resources (audit Axis A finding); PR-10a creates RDS Terraform module from scratch BEFORE PR-10b adds backup/PITR configuration. Split per Lead-Q-PR-10-A1 disposition (c).
