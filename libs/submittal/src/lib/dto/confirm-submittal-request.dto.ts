@@ -36,7 +36,9 @@ export class ConfirmSubmittalRequestDto {
 }
 
 // ConfirmSubmittalResponseDto — 200 response shape. Returns the updated
-// TalentSubmittalRecord (state='submitted', confirmed_at populated).
+// TalentSubmittalRecord. M5 PR-8b2 Ruling 12: state='handoff_draft'
+// post-rename; confirmed_at NOT populated here (moved to submit-to-ats
+// transition per Ruling 6).
 export interface ConfirmSubmittalResponseDto {
   submittal: TalentSubmittalRecordView;
 }

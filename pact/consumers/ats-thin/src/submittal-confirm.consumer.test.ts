@@ -5,11 +5,13 @@ import { describe, expect, it } from 'vitest';
 
 const { like, uuid, regex } = MatchersV3;
 
-// M4 PR-4 §4.8 Pact consumer — POST /v1/submittals/{submittal_id}/confirm.
+// M4 PR-4 §4.8 + M5 PR-8b2 §4.14 Pact consumer — POST
+// /v1/submittals/{submittal_id}/confirm.
 //
 // Four interactions:
 //   1) Entrustable + all attestations true → 200 + ConfirmSubmittalResponse
-//      (strict shape with state='submitted', confirmed_at set).
+//      (strict shape with state='handoff_draft' per M5 PR-8b2 Ruling 12;
+//      confirmed_at NOT populated here per Ruling 6).
 //   2) attestation false → 422 ATTESTATION_MISSING.
 //   3) newer examination exists → 409 EXAMINATION_PINNED_OUTDATED.
 //   4) Worth Considering missing justification → 422 JUSTIFICATION_REQUIRED.
@@ -18,8 +20,11 @@ const { like, uuid, regex } = MatchersV3;
 // extend pact/provider/src/verify-api.ts seedSubmittalFixture per §4.9.
 //
 // Locked invariants:
-//   - 200 carries `submittal: TalentSubmittalRecord` with state='submitted'
-//     and confirmed_at populated.
+//   - 200 carries `submittal: TalentSubmittalRecord` with
+//     state='handoff_draft' (M4 'submitted' renames to canonical
+//     'handoff_draft' for the M4 /confirm transition target per
+//     Ruling 12). confirmed_at remains NULL at this transition;
+//     populates at the new /submit-to-ats endpoint.
 //   - 422 / 409 carry the AramoError envelope with the named code.
 //   - X-Request-ID round-trips through every interaction.
 
@@ -90,7 +95,7 @@ describe('ATS thin consumer → POST /v1/submittals/{id}/confirm', () => {
             job_id: uuid(JOB_ID),
             evidence_package_id: uuid(),
             pinned_examination_id: uuid(EXAM_ID_ENTRUSTABLE),
-            state: regex('draft|submitted', 'submitted'),
+            state: regex('created|handoff_draft', 'handoff_draft'),
             created_by: uuid(),
             justification: null,
             failed_criterion_acknowledgments: null,
@@ -98,10 +103,7 @@ describe('ATS thin consumer → POST /v1/submittals/{id}/confirm', () => {
               /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
               '2026-05-22T12:00:00Z',
             ),
-            confirmed_at: regex(
-              /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
-              '2026-05-22T13:00:00Z',
-            ),
+            confirmed_at: null,
           },
         });
       })
@@ -121,8 +123,10 @@ describe('ATS thin consumer → POST /v1/submittals/{id}/confirm', () => {
         );
         expect(res.status).toBe(200);
         const body = await res.json();
-        expect(body.submittal.state).toBe('submitted');
-        expect(body.submittal.confirmed_at).not.toBeNull();
+        expect(body.submittal.state).toBe('handoff_draft');
+        // M5 PR-8b2 Ruling 6: confirmed_at populates at the
+        // /submit-to-ats transition, not at M4 /confirm.
+        expect(body.submittal.confirmed_at).toBeNull();
       });
   });
 

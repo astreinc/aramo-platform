@@ -44,6 +44,13 @@ const SUBMITTAL_EVENT_LOG_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260526140602_add_submittal_event_log/migration.sql',
 );
+// M5 PR-8b2 — canonical 5-state rename + cutover migration. Required
+// so the seed helpers + event_payload fixtures can use canonical state
+// names (M4 'draft'/'submitted' → 'created'/'submitted_to_ats').
+const SUBMITTAL_RENAME_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql',
+);
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
 const TENANT_B = '22222222-2222-7222-8222-222222222222';
@@ -77,6 +84,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(SUBMITTAL_INIT_MIGRATION_PATH, 'utf8'),
         readFileSync(SUBMITTAL_REVOKE_MIGRATION_PATH, 'utf8'),
         readFileSync(SUBMITTAL_EVENT_LOG_MIGRATION_PATH, 'utf8'),
+        // M5 PR-8b2 — canonical 5-state rename + cutover. Required so
+        // seedSubmittalRecord + event_payload fixtures align with the
+        // post-rename enum values.
+        readFileSync(SUBMITTAL_RENAME_MIGRATION_PATH, 'utf8'),
       ];
 
       client = new PrismaService(url);
@@ -114,19 +125,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_A,
         submittal_id: SUBMITTAL_A,
         event_type: 'state_transition',
-        event_payload: { from: 'draft', to: 'submitted' },
+        event_payload: { from_state: 'created', to_state: 'handoff_draft' },
       });
       expect(view.id).toBe(id);
       expect(view.tenant_id).toBe(TENANT_A);
       expect(view.submittal_id).toBe(SUBMITTAL_A);
       expect(view.event_type).toBe('state_transition');
-      expect(view.event_payload).toEqual({ from: 'draft', to: 'submitted' });
+      expect(view.event_payload).toEqual({ from_state: 'created', to_state: 'handoff_draft' });
       expect(view.created_at).toBeInstanceOf(Date);
 
       // Read it back.
       const reread = await repo.findById(id);
       expect(reread?.id).toBe(id);
-      expect(reread?.event_payload).toEqual({ from: 'draft', to: 'submitted' });
+      expect(reread?.event_payload).toEqual({ from_state: 'created', to_state: 'handoff_draft' });
     });
 
     it('intra-schema FK rejects append with non-existent submittal_id', async () => {
@@ -249,7 +260,7 @@ async function seedSubmittalRecord(
        '${JOB}'::uuid,
        '${EVIDENCE_PKG}'::uuid,
        '${PINNED_EXAM}'::uuid,
-       'draft'::engagement."SubmittalState",
+       'created'::engagement."SubmittalState",
        '${RECRUITER}'::uuid
      )`,
   );

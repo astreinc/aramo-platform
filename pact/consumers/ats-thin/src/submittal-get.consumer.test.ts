@@ -55,7 +55,7 @@ describe('ATS thin consumer → GET /v1/submittals/{submittal_id}', () => {
           job_id: uuid(JOB_ID),
           evidence_package_id: uuid(),
           pinned_examination_id: uuid(EXAM_ID),
-          state: regex('draft|submitted', 'draft'),
+          state: regex('created|handoff_draft', 'created'),
           created_by: uuid(),
           justification: null,
           failed_criterion_acknowledgments: null,
@@ -81,7 +81,7 @@ describe('ATS thin consumer → GET /v1/submittals/{submittal_id}', () => {
         const body = await res.json();
         expect(body.id).toBe(SUBMITTAL_ID_HAPPY);
         expect(body.tenant_id).toBe(TENANT_ID);
-        expect(body.state).toBe('draft');
+        expect(body.state).toBe('created');
       });
   });
 

@@ -149,6 +149,19 @@ const SUBMITTAL_EVENT_LOG_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql',
 );
+// M5 PR-8b2 §4.13 — submittal canonical rename + cutover migration.
+// Replaces M4's 2-value subset (draft, submitted) plus PR-7's revoked
+// sibling with the canonical 5-state machine (created -> handoff_draft
+// -> ready_for_review -> submitted_to_ats -> confirmed + revoked
+// sibling). Closes F37. Applied AFTER the event-log substrate so the
+// pre-rename event-log integrity is preserved across the rename.
+// Required by the M5 PR-8b2 pact verification so the state handlers
+// can transition rows to the canonical states via raw SQL (the
+// rewritten 5-state-matrix trigger validates each transition).
+const SUBMITTAL_RENAME_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql',
+);
 // M4 PR-3 — talent-evidence migration applied so the buildPackage
 // rate_expectation lookup can find a TalentRateExpectation row when the
 // optional rate_expectation_id is supplied (the pact happy-path body
@@ -630,7 +643,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
              (id, tenant_id, talent_id, job_id, evidence_package_id,
               pinned_examination_id, state, created_by,
               justification, failed_criterion_acknowledgments)
-           VALUES ($1,$2,$3,$4,$5,$6,'draft'::engagement."SubmittalState",$7,
+           VALUES ($1,$2,$3,$4,$5,$6,'created'::engagement."SubmittalState",$7,
                    $8, $9::jsonb)`,
           [
             opts.precreateDraftSubmittal.submittalId,
@@ -932,14 +945,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     //
     // Seeds Talent + TalentTenantOverlay + Requisition +
     // TalentJobEvidencePackage + TalentSubmittalRecord (when
-    // submittalExists=true) at the requested submittalState. For
-    // submittalState='submitted', the Transition A trigger fires via a
-    // raw SQL UPDATE (draft → submitted with confirmed_at). For
-    // submittalState='revoked', TWO sequential raw SQL UPDATEs run:
-    // draft→submitted (Transition A) followed by submitted→revoked
-    // (Transition B) with all required columns populated atomically.
-    // Both transitions execute through the column-scoped trigger,
-    // exercising the substrate-layer enforcement end-to-end.
+    // submittalExists=true) at the requested submittalState. The
+    // chain walks the canonical 5-state mainline (created ->
+    // handoff_draft -> ready_for_review -> submitted_to_ats ->
+    // confirmed) in order via raw SQL UPDATEs, each going through
+    // the M5 PR-8b2-rewritten column-scoped trigger
+    // (engagement.reject_submittal_record_update). For
+    // submittalState='revoked', sibling-revoke fires directly from
+    // 'created' (legal Q3 transition) with all three revoke columns
+    // populated atomically.
     //
     // When submittalExists=true, the pre-execution
     // TalentJobEvidencePackage row hash is captured and pushed into
@@ -947,11 +961,64 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // evidence_package_id). The afterEach hook re-reads + asserts
     // byte-identity post-interaction, mirroring the
     // overrideStateIsolation pattern from M4 PR-5.
+    // M5 PR-8b2 recovery — fast direct INSERT for state-handler seeding
+    // of the 3 new endpoints (mark-ready / submit-to-ats / confirm-ats).
+    // Unlike seedSubmittalRevokeFixture (which walks the full chain
+    // including Requisition + Examination + EvidencePackage seeds), this
+    // helper only INSERTs the TalentSubmittalRecord row directly at the
+    // requested state. Justification: the new endpoints touch only
+    // TalentSubmittalRecord (findById + canTransition + $transaction
+    // update + appendEvent). No cross-schema FK traversal; no chain
+    // walk needed. INSERT bypasses the UPDATE-only trigger (Ruling 7),
+    // so the row can be inserted at any state directly.
+    //
+    // Confirmed_at is populated for submitted_to_ats/confirmed seed
+    // states (preserving M4 column semantic per Ruling 6); NULL
+    // otherwise. revoke columns stay NULL (no revoke pre-state seeded
+    // by this helper; revoke pre-states use seedSubmittalRevokeFixture
+    // for the state-isolation pre-hash capture).
+    async function seedSubmittalRowFast(
+      c: Client,
+      opts: {
+        submittalId: string;
+        evidencePackageId: string;
+        examinationId: string;
+        talentId: string;
+        jobId: string;
+        state: 'created' | 'handoff_draft' | 'ready_for_review' | 'submitted_to_ats' | 'confirmed';
+      },
+    ): Promise<void> {
+      const confirmedAt =
+        opts.state === 'submitted_to_ats' || opts.state === 'confirmed'
+          ? "'2026-05-22T13:00:00Z'::timestamptz"
+          : 'NULL';
+      await c.query(
+        `INSERT INTO engagement."TalentSubmittalRecord"
+           (id, tenant_id, talent_id, job_id, evidence_package_id,
+            pinned_examination_id, state, created_by,
+            justification, failed_criterion_acknowledgments,
+            confirmed_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+                 $6::uuid, $7::engagement."SubmittalState", $8::uuid,
+                 NULL, NULL, ${confirmedAt})`,
+        [
+          opts.submittalId,
+          TENANT_ID,
+          opts.talentId,
+          opts.jobId,
+          opts.evidencePackageId,
+          opts.examinationId,
+          opts.state,
+          RECRUITER_ID,
+        ],
+      );
+    }
+
     async function seedSubmittalRevokeFixture(
       c: Client,
       params: {
         submittalExists: boolean;
-        submittalState: 'draft' | 'submitted' | 'revoked';
+        submittalState: 'created' | 'handoff_draft' | 'ready_for_review' | 'submitted_to_ats' | 'confirmed' | 'revoked';
         submittalId: string;
         evidencePackageId: string;
         examinationId: string;
@@ -994,24 +1061,75 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       });
 
       // Advance state per params.submittalState. The column-scoped
-      // trigger (engagement.reject_submittal_record_update) validates
-      // each transition; the raw SQL writes go THROUGH the trigger
-      // (only state + the named transition-companion columns move).
-      if (params.submittalState === 'submitted'
-          || params.submittalState === 'revoked') {
-        // Transition A — draft → submitted.
+      // trigger (engagement.reject_submittal_record_update; rewritten
+      // at M5 PR-8b2 to encode the canonical 5-state matrix)
+      // validates each transition; the raw SQL writes go THROUGH the
+      // trigger (only state + the named transition-companion columns
+      // move). Seeds walk the canonical chain in order from the seed
+      // baseline 'created':
+      //   created -> handoff_draft -> ready_for_review ->
+      //   submitted_to_ats (populates confirmed_at) -> confirmed
+      // or sibling-revoke at any non-terminal step.
+      //
+      // M4 fixture migration (per directive §4.13): legacy params
+      // value 'submitted' renames to canonical 'submitted_to_ats'
+      // (M4's 'submitted' meant 'submitted to ATS'). 'revoked'
+      // unchanged.
+      const targetState = params.submittalState;
+      const chainStates: ReadonlyArray<string> = [
+        'handoff_draft',
+        'ready_for_review',
+        'submitted_to_ats',
+        'confirmed',
+      ];
+      const chainIndex = chainStates.indexOf(targetState);
+      // Walk mainline transitions in order. The confirmed_at stamp
+      // populates at the ready_for_review -> submitted_to_ats step
+      // per Ruling 6.
+      if (chainIndex >= 0) {
+        // Transition 1 — created -> handoff_draft.
         await c.query(
           `UPDATE engagement."TalentSubmittalRecord"
-             SET state = 'submitted'::engagement."SubmittalState",
-                 confirmed_at = '2026-05-22T13:00:00Z'::timestamptz
+             SET state = 'handoff_draft'::engagement."SubmittalState"
            WHERE id = $1`,
           [params.submittalId],
         );
+        if (chainIndex >= 1) {
+          // Transition 2 — handoff_draft -> ready_for_review.
+          await c.query(
+            `UPDATE engagement."TalentSubmittalRecord"
+               SET state = 'ready_for_review'::engagement."SubmittalState"
+             WHERE id = $1`,
+            [params.submittalId],
+          );
+        }
+        if (chainIndex >= 2) {
+          // Transition 3 — ready_for_review -> submitted_to_ats;
+          // confirmed_at populates atomically (Ruling 6).
+          await c.query(
+            `UPDATE engagement."TalentSubmittalRecord"
+               SET state = 'submitted_to_ats'::engagement."SubmittalState",
+                   confirmed_at = '2026-05-22T13:00:00Z'::timestamptz
+             WHERE id = $1`,
+            [params.submittalId],
+          );
+        }
+        if (chainIndex >= 3) {
+          // Transition 4 — submitted_to_ats -> confirmed (terminal).
+          await c.query(
+            `UPDATE engagement."TalentSubmittalRecord"
+               SET state = 'confirmed'::engagement."SubmittalState"
+             WHERE id = $1`,
+            [params.submittalId],
+          );
+        }
       }
-      if (params.submittalState === 'revoked') {
-        // Transition B — submitted → revoked. All three revoke
-        // columns populate atomically; the trigger's Transition B
-        // branch validates the move.
+      if (targetState === 'revoked') {
+        // Sibling-revoke (Q3 + Ruling 5). The seed walks no mainline
+        // first — the revoke fires directly from 'created' (a legal
+        // sibling-revoke from-state). All three revoke columns
+        // populate atomically; the trigger's sibling-revoke branch
+        // validates the move.
         const revokerId = '00000000-0000-7000-8000-000000000bb2';
         await c.query(
           `UPDATE engagement."TalentSubmittalRecord"
@@ -1136,6 +1254,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // Applied after the submittal init + revoke migrations so the
         // intra-schema FK on TalentSubmittalRecord resolves.
         SUBMITTAL_EVENT_LOG_MIGRATION,
+        // M5 PR-8b2 §4.13 — submittal canonical rename + cutover.
+        // Applied AFTER event-log substrate so the pre-rename event
+        // log row integrity is preserved through the enum rename
+        // (Postgres ALTER TYPE RENAME VALUE migrates by OID, so
+        // existing event_payload JSON strings referencing M4 names
+        // would not auto-rewrite — at this point in the pact-verify
+        // sequence no rows exist yet, so the rename is clean).
+        SUBMITTAL_RENAME_MIGRATION,
         // M5 PR-4 — engagement schema + event log for engagement-*
         // pact verification.
         ENGAGEMENT_INIT_MIGRATION,
@@ -1970,18 +2096,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             });
           });
         },
-      // ===== M4 PR-7 §4.9 submittal-revoke (4 interactions) =====
+      // ===== M4 PR-7 §4.9 + M5 PR-8b2 submittal-revoke (4 interactions) =====
+      // Per directive §4.13 fixture migration: M4 'submitted' renames
+      // to canonical 'submitted_to_ats'; M4 'draft' renames to
+      // canonical 'created'. Provider state-handler seeds use the
+      // canonical names post-rename.
       'a recruiter has authenticated and a submitted TalentSubmittalRecord exists for the tenant':
         async () => {
-          // PR-7 §4.9 #1 — happy path. Seed a submittal in 'submitted'
-          // state (via Transition A through the column-scoped trigger)
-          // and capture pre-execution evidence-package hash; the
-          // afterEach hook verifies byte-identity post-revoke.
+          // PR-7 §4.9 #1 — happy path. Seed a submittal advanced to
+          // the canonical 'submitted_to_ats' state (walks the
+          // mainline chain via raw SQL UPDATEs through the
+          // M5 PR-8b2 rewritten 5-state trigger) and capture pre-
+          // execution evidence-package hash; the afterEach hook
+          // verifies byte-identity post-revoke.
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedSubmittalRevokeFixture(c, {
               submittalExists: true,
-              submittalState: 'submitted',
+              submittalState: 'submitted_to_ats',
               submittalId: '99990000-0000-7000-8000-000000000931',
               evidencePackageId: '99990000-0000-7000-8000-000000001031',
               examinationId: '11110000-0000-7000-8000-0000000e0007',
@@ -1992,16 +2124,18 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         },
       'a recruiter has authenticated and a draft TalentSubmittalRecord exists for the tenant':
         async () => {
-          // PR-7 §4.9 #2 — REVOKE_NOT_ALLOWED on draft. Seed a draft
-          // submittal (no state transition); capture evidence-package
-          // hash for state-isolation byte-identity assertion (no
-          // mutation expected because the controller refuses before
-          // the SQL UPDATE).
+          // PR-7 §4.9 #2 — sibling-revoke from canonical 'created'.
+          // Post-PR-8b2 Q3 expansion this is a legal sibling-revoke
+          // transition (NOT a refusal): the controller's canTransition
+          // guard returns true for created -> revoked. The interaction
+          // is preserved here for state-isolation byte-identity
+          // assertion across the now-valid revoke. Provider state
+          // string is canonical 'created' (M4 'draft' renamed).
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedSubmittalRevokeFixture(c, {
               submittalExists: true,
-              submittalState: 'draft',
+              submittalState: 'created',
               submittalId: '99990000-0000-7000-8000-000000000932',
               evidencePackageId: '99990000-0000-7000-8000-000000001032',
               examinationId: '11110000-0000-7000-8000-0000000e0008',
@@ -2013,10 +2147,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       'a recruiter has authenticated and an already-revoked TalentSubmittalRecord exists for the tenant':
         async () => {
           // PR-7 §4.9 #3 — REVOKE_NOT_ALLOWED on already-revoked. Seed
-          // a submittal already in 'revoked' state (Transition A then
-          // Transition B via raw SQL through the column-scoped
-          // trigger). Capture evidence-package hash; the route refuses
-          // with REVOKE_NOT_ALLOWED and byte-identity must still hold.
+          // a submittal already in 'revoked' state (sibling-revoke
+          // from 'created' via raw SQL through the M5 PR-8b2
+          // rewritten trigger). Capture evidence-package hash; the
+          // route refuses with REVOKE_NOT_ALLOWED and byte-identity
+          // must still hold.
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedSubmittalRevokeFixture(c, {
@@ -2034,18 +2169,119 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         async () => {
           // PR-7 §4.9 #4 — NOT_FOUND. No submittal seeded; no
           // pre-execution hash captured (the row doesn't exist so
-          // state-isolation is trivially satisfied).
+          // state-isolation is trivially satisfied). Canonical
+          // 'submitted_to_ats' chosen as the target-state placeholder
+          // (per M4 fixture migration).
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedSubmittalRevokeFixture(c, {
               submittalExists: false,
-              submittalState: 'submitted',
+              submittalState: 'submitted_to_ats',
               submittalId: '99990000-0000-7000-8000-0000000009ff',
               evidencePackageId: '99990000-0000-7000-8000-00000000103f',
               examinationId: '11110000-0000-7000-8000-0000000e00ff',
               talentId: 'aaaaaaaa-0000-7000-8000-0000000a70ff',
               jobId: 'cccccccc-0000-7000-8000-0000000c70ff',
             });
+          });
+        },
+      // ===== M5 PR-8b2 §4.12 + recovery (3 new endpoints × 3 interactions = 9) =====
+      // Pact consumer interactions for /mark-ready, /submit-to-ats, /confirm-ats
+      // use these `given(...)` strings. Each handler does a fast direct
+      // INSERT of TalentSubmittalRecord rows in the requested pre-state
+      // (no chain walks, no Requisition/Examination/EvidencePackage
+      // seeds — these endpoints don't traverse cross-schema FKs).
+      // The "in created state" key is shared across 3 invalid-state
+      // interactions (mark-ready/submit-to-ats/confirm-ats invalid-
+      // state tests); the handler seeds all 3 expected submittal_ids.
+      'a recruiter has authenticated and a TalentSubmittalRecord in created state exists for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalRowFast(c, {
+              submittalId: '99990000-0000-7000-8000-000000000952',
+              evidencePackageId: '99990000-0000-7000-8000-000000001052',
+              examinationId: '11110000-0000-7000-8000-0000000e00b2',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7052',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7052',
+              state: 'created',
+            });
+            await seedSubmittalRowFast(c, {
+              submittalId: '99990000-0000-7000-8000-000000000962',
+              evidencePackageId: '99990000-0000-7000-8000-000000001062',
+              examinationId: '11110000-0000-7000-8000-0000000e00b3',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7062',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7062',
+              state: 'created',
+            });
+            await seedSubmittalRowFast(c, {
+              submittalId: '99990000-0000-7000-8000-000000000972',
+              evidencePackageId: '99990000-0000-7000-8000-000000001072',
+              examinationId: '11110000-0000-7000-8000-0000000e00b4',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7072',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7072',
+              state: 'created',
+            });
+          });
+        },
+      'a recruiter has authenticated and a TalentSubmittalRecord in handoff_draft state exists for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalRowFast(c, {
+              submittalId: '99990000-0000-7000-8000-000000000951',
+              evidencePackageId: '99990000-0000-7000-8000-000000001051',
+              examinationId: '11110000-0000-7000-8000-0000000e00a1',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7051',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7051',
+              state: 'handoff_draft',
+            });
+          });
+        },
+      'a recruiter has authenticated and the submittal-mark-ready target does not exist for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+          });
+        },
+      'a recruiter has authenticated and a TalentSubmittalRecord in ready_for_review state exists for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalRowFast(c, {
+              submittalId: '99990000-0000-7000-8000-000000000961',
+              evidencePackageId: '99990000-0000-7000-8000-000000001061',
+              examinationId: '11110000-0000-7000-8000-0000000e00a2',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7061',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7061',
+              state: 'ready_for_review',
+            });
+          });
+        },
+      'a recruiter has authenticated and the submittal-submit-to-ats target does not exist for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+          });
+        },
+      'a recruiter has authenticated and a TalentSubmittalRecord in submitted_to_ats state exists for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedSubmittalRowFast(c, {
+              submittalId: '99990000-0000-7000-8000-000000000971',
+              evidencePackageId: '99990000-0000-7000-8000-000000001071',
+              examinationId: '11110000-0000-7000-8000-0000000e00a3',
+              talentId: 'aaaaaaaa-0000-7000-8000-0000000a7071',
+              jobId: 'cccccccc-0000-7000-8000-0000000c7071',
+              state: 'submitted_to_ats',
+            });
+          });
+        },
+      'a recruiter has authenticated and the submittal-confirm-ats target does not exist for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
           });
         },
       'a talent with profile granted and contacting revoked': async () => {

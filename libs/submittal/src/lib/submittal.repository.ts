@@ -6,15 +6,17 @@ import { EvidenceRepository } from '@aramo/evidence';
 import { ExaminationRepository } from '@aramo/examination';
 
 import type { RecruiterAttestationsDto } from './dto/confirm-submittal-request.dto.js';
+import type { TalentSubmittalEventView } from './dto/talent-submittal-event.view.js';
 import type {
   CreateSubmittalInput,
   FailedCriterionAcknowledgment,
-  SubmittalStateValue,
   TalentSubmittalRecordView,
 } from './dto/talent-submittal-record.view.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { canTransition, type SubmittalStateValue } from './submittal-state.js';
+import { TalentSubmittalEventRepository } from './talent-submittal-event.repository.js';
 
-// SubmittalRepository — M4 PR-3 §4.3.
+// SubmittalRepository — M4 PR-3 §4.3 + M5 PR-8b2 §4.7.
 //
 // Owns the write path for TalentSubmittalRecord and orchestrates the
 // cross-schema build of the immutable TalentJobEvidencePackage via PR-2's
@@ -22,18 +24,33 @@ import { PrismaService } from './prisma/prisma.service.js';
 // (not a service layer) per PR-2's Ruling 2 precedent — minimal
 // orchestration belongs in the repository.
 //
-// Surface (closed):
-//   - createSubmittal: build the evidence package + persist the
-//     TalentSubmittalRecord in state='draft'.
-//   - findById: tenant-scoped read by submittal_record id.
-//   - findByTenantAndEvidencePackage: lookup by (tenant, evidence_package_id)
-//     for cross-schema resolution (F34 will use this).
+// M5 PR-8b2 surface extensions (canonical 5-state machine rename +
+// cutover; F37 closure):
+//   - 3 new write methods (markReady, submitToAts, confirmAts) covering
+//     the 3 net-new mainline transitions per Q5 PATTERN-b.
+//   - confirmSubmittal semantic update per Ruling 12: M4's 'draft to
+//     submitted' becomes canonical 'created to handoff_draft'.
+//     confirmed_at NO LONGER populated here (moved to submitToAts per
+//     Ruling 6 — preserves M4 confirmed_at column semantic at the
+//     ready_for_review to submitted_to_ats transition).
+//   - revokeSubmittal semantic expansion per Q3 ruling: revocable from
+//     any non-confirmed non-revoked state (Ruling 5 — `confirmed` is
+//     terminal). Now spans created / handoff_draft / ready_for_review /
+//     submitted_to_ats.
+//   - canTransition guard wired into all 5 state-changing methods as
+//     defense-in-depth atop the DB trigger.
+//   - SubmittalEventRepository.appendEvent wired into all 5 state-
+//     changing methods (createSubmittal stays event-free per Ruling 15).
 //
-// Cross-schema invariant (Architecture §7.3): evidence_package_id and
-// pinned_examination_id are UUID-only references with no DB FK. Write-time
-// validation is delegated to buildPackage (which calls
-// ExaminationRepository.findById + findByIdFull for the
-// examination_id → examination schema integrity check).
+// Surface (closed):
+//   - createSubmittal (M4 PR-3 — UNCHANGED per Ruling 15; no event)
+//   - confirmSubmittal (M4 PR-4 + rename; state created -> handoff_draft)
+//   - markReady (M5 PR-8b2; state handoff_draft -> ready_for_review)
+//   - submitToAts (M5 PR-8b2; state ready_for_review -> submitted_to_ats
+//     + confirmed_at populated)
+//   - confirmAts (M5 PR-8b2; state submitted_to_ats -> confirmed)
+//   - revokeSubmittal (M4 PR-7 + Q3 expansion; any non-terminal -> revoked)
+//   - findById / findByTenantAndEvidencePackage (READ; tenant-scoped)
 //
 // Tenant isolation (Architecture §7.2): every method scopes by tenant_id.
 
@@ -50,8 +67,6 @@ interface TalentSubmittalRecordRow {
   failed_criterion_acknowledgments: unknown;
   created_at: Date;
   confirmed_at: Date | null;
-  // M4 PR-7 — revoke metadata. Nullable until the submittal-revoke
-  // endpoint atomically transitions submitted→revoked.
   revoked_at: Date | null;
   revoked_by: string | null;
   revocation_justification: string | null;
@@ -80,32 +95,86 @@ function projectView(row: TalentSubmittalRecordRow): TalentSubmittalRecordView {
   };
 }
 
-// ConfirmSubmittalInput — repository-layer input for the M4 PR-4 confirm
-// flow. tenant_id flows from JWT auth context; submittal_id from the
-// request path; attestations from the body; requestId from the HTTP
-// boundary's RequestId decorator (threaded into each AramoError envelope
-// so the response carries the correct request_id field).
+interface TalentSubmittalEventRow {
+  id: string;
+  tenant_id: string;
+  submittal_id: string;
+  event_type: 'state_transition';
+  event_payload: unknown;
+  created_at: Date;
+}
+
+function projectEventView(row: TalentSubmittalEventRow): TalentSubmittalEventView {
+  return {
+    id: row.id,
+    tenant_id: row.tenant_id,
+    submittal_id: row.submittal_id,
+    event_type: row.event_type,
+    event_payload: row.event_payload,
+    created_at: row.created_at,
+  };
+}
+
+// ConfirmSubmittalInput — M4 PR-4 confirm input. event_id added at PR-8b2
+// per Ruling 18 (controller mints UUID; mirrors engagement-side
+// transitionState pattern at libs/engagement/src/lib/engagement
+// .repository.ts).
 export interface ConfirmSubmittalInput {
   tenant_id: string;
   submittal_id: string;
   attestations: RecruiterAttestationsDto;
+  event_id: string;
   requestId: string;
 }
 
-// M4 PR-7 §4.3 — repository-layer input for the submittal-revoke flow.
-//   - tenant_id: JWT-derived; required for tenant-scoped findById.
-//   - submittal_id: HTTP path param.
-//   - revoked_by: UUID of the recruiter actor performing the revoke
-//     (derived from JWT sub at the controller boundary).
-//   - revocation_justification: recruiter-authored rationale.
-//   - requestId: bound into each AramoError envelope so the response
-//     surfaces the correct request_id.
+// M4 PR-7 revoke input + PR-8b2 event_id.
 export interface RevokeSubmittalInput {
   tenant_id: string;
   submittal_id: string;
   revoked_by: string;
   revocation_justification: string;
+  event_id: string;
   requestId: string;
+}
+
+// M5 PR-8b2 §4.7 — 3 new repository-layer input shapes (workspace-unique
+// names per Process Lesson 53 + Lead-Q-PR-8b2-A7 defensive prefix).
+export interface SubmittalMarkReadyInput {
+  tenant_id: string;
+  submittal_id: string;
+  event_id: string;
+  requestId: string;
+}
+
+export interface SubmittalSubmitToAtsInput {
+  tenant_id: string;
+  submittal_id: string;
+  event_id: string;
+  requestId: string;
+}
+
+export interface SubmittalConfirmAtsInput {
+  tenant_id: string;
+  submittal_id: string;
+  event_id: string;
+  requestId: string;
+}
+
+// M5 PR-8b2 §4.7 — 3 new repository-layer result shapes (each carries
+// the updated submittal projection + the freshly appended event view).
+export interface SubmittalMarkReadyResult {
+  submittal: TalentSubmittalRecordView;
+  event: TalentSubmittalEventView;
+}
+
+export interface SubmittalSubmitToAtsResult {
+  submittal: TalentSubmittalRecordView;
+  event: TalentSubmittalEventView;
+}
+
+export interface SubmittalConfirmAtsResult {
+  submittal: TalentSubmittalRecordView;
+  event: TalentSubmittalEventView;
 }
 
 @Injectable()
@@ -114,37 +183,28 @@ export class SubmittalRepository {
     private readonly prisma: PrismaService,
     private readonly evidenceRepository: EvidenceRepository,
     private readonly examinationRepository: ExaminationRepository,
-    // M4 PR-9 §4.5 — structured logger injected via DI. Provider lives
-    // in SubmittalModule keyed by the 'SubmittalRepositoryLogger' token;
-    // factory context is SubmittalRepository.name.
+    // M4 PR-9 §4.5 — structured logger injected via DI.
     @Inject('SubmittalRepositoryLogger')
     private readonly logger: AramoLogger,
-  ) {}
+    // M5 PR-8b2 §4.7 + Ruling 17 — 5th DI dependency: append-only event
+    // log substrate (PR-8b1 shipped the repository; PR-8b2 wires it
+    // into all 5 state-changing write methods). Per engagement-side
+    // transitionState precedent, the write-path event emission goes
+    // through this.prisma.talentSubmittalEvent.create directly inside
+    // the $transaction block (atomicity requirement); the injection
+    // here exists for DI surface visibility + future read-path
+    // consumer additions (e.g., findByTenantAndSubmittalId reads from
+    // controller GET endpoints).
+    private readonly eventRepository: TalentSubmittalEventRepository,
+  ) {
+    void this.eventRepository;
+  }
 
-  // M4 PR-3 §4.3 — create flow.
-  //
-  // Five steps (directive §4.3):
-  //   1) Generate evidence_package_id + submittal_id UUIDs (caller never
-  //      supplies; the repository owns ID minting).
-  //   2) Call evidenceRepository.buildPackage({...input,
-  //      id: evidence_package_id}). buildPackage handles its own input
-  //      validation (UUIDs, non-empty payloads), examination read,
-  //      Stretch refusal, optional rate read, and the
-  //      TalentJobEvidencePackage write. Any thrown AramoError
-  //      (SUBMITTAL_STRETCH_BLOCKED, NOT_FOUND, VALIDATION_ERROR) flows
-  //      back to the controller without further wrapping.
-  //   3) prisma.talentSubmittalRecord.create with state='draft',
-  //      evidence_package_id from step 2, pinned_examination_id from
-  //      input.examination_id, justification + failed_criterion
-  //      _acknowledgments persisted verbatim.
-  //   4) Return the typed view projection.
-  //   5) Structured logging at entry, success, refusal-bubble-through.
   async createSubmittal(
     input: CreateSubmittalInput,
   ): Promise<TalentSubmittalRecordView> {
     const startedAt = Date.now();
 
-    // Step 1 — mint IDs.
     const evidencePackageId = randomUUID();
     const submittalId = randomUUID();
 
@@ -158,20 +218,12 @@ export class SubmittalRepository {
       evidence_package_id: evidencePackageId,
     });
 
-    // Step 2 — build evidence package. Any refusal (Stretch, NOT_FOUND,
-    // VALIDATION_ERROR) propagates as-thrown — the controller layer
-    // surfaces them to the HTTP client. No catch here.
     await this.evidenceRepository.buildPackage({
       id: evidencePackageId,
       tenant_id: input.tenant_id,
       talent_id: input.talent_id,
       job_id: input.job_id,
       examination_id: input.examination_id,
-      // PR-3 does NOT pre-populate submittal_record_id on the evidence
-      // package at create time. The cross-schema reference is one-way:
-      // TalentSubmittalRecord.evidence_package_id → evidence package.
-      // The evidence package's submittal_record_id stays nullable per
-      // PR-1's M5-forward-reference posture.
       talent_identity: input.talent_identity,
       contact_summary: input.contact_summary,
       capability_summary_overrides: input.capability_summary_overrides,
@@ -187,13 +239,11 @@ export class SubmittalRepository {
         : {}),
     });
 
-    // Step 3 — write the TalentSubmittalRecord row in state='draft'.
-    //
-    // Prisma 7 nullable Json columns: passing JS `null` is rejected at
-    // the typed surface; the special `Prisma.JsonNull` sentinel signals
-    // "store JSONB NULL." When the input omits failed_criterion_
-    // acknowledgments, we want the column to be NULL in the database.
-    // For string columns (justification), JS null is accepted directly.
+    // M5 PR-8b2 §4.7 + Ruling 12 — initial state is canonical 'created'
+    // (renamed from M4 'draft'). Per Ruling 15 createSubmittal does NOT
+    // emit a state_transition event (the table FK forbids events for
+    // non-existent submittals; the first event happens at the first
+    // transition out of 'created').
     const dataPayload: Record<string, unknown> = {
       id: submittalId,
       tenant_id: input.tenant_id,
@@ -201,7 +251,7 @@ export class SubmittalRepository {
       job_id: input.job_id,
       evidence_package_id: evidencePackageId,
       pinned_examination_id: input.examination_id,
-      state: 'draft',
+      state: 'created',
       created_by: input.created_by,
       justification: input.justification ?? null,
     };
@@ -216,7 +266,6 @@ export class SubmittalRepository {
 
     const view = projectView(created as TalentSubmittalRecordRow);
 
-    // Step 5 — success log.
     this.logger.log({
       event: 'submittal_created',
       tenant_id: view.tenant_id,
@@ -254,42 +303,34 @@ export class SubmittalRepository {
     return row === null ? null : projectView(row as TalentSubmittalRecordRow);
   }
 
-  // M4 PR-4 §4.2 — confirm flow.
+  // M4 PR-4 confirm flow + M5 PR-8b2 rename + cutover.
   //
-  // Re-validates the pinned examination + 3 recruiter attestations + tier/
-  // justification preconditions, then flips state 'draft' → 'submitted'
-  // and stamps confirmed_at. The PR-3 column-scoped trigger
-  // (talent_submittal_record_engagement_audit) only permits this exact
-  // transition; the trigger is the second belt, the steps below are the
-  // first.
+  // Per Ruling 12: M4 /confirm endpoint semantic becomes canonical
+  // 'created -> handoff_draft' (preserving M4 user intent: recruiter
+  // finalizes draft submittal entry; lifecycle progresses). The heavy
+  // M4 enforcement logic (3 attestations + pinned-examination revalidation
+  // + Worth Considering tier check + justification/ack requirement)
+  // remains appropriate at this transition per Ruling 24 (examination-
+  // pinning reaffirmation): the recruiter MUST still re-affirm pin
+  // validity at confirm-time.
   //
-  // Eight ordered steps (each raises AramoError with input.requestId
-  // bound into the envelope so the response's request_id is correct):
-  //   (1) findById tenant-scoped — null → NOT_FOUND 404
-  //   (2) state already 'submitted' → SUBMITTAL_ALREADY_CONFIRMED 409
-  //   (3) examinationRepository.findByIdFull(pinned_examination_id) →
-  //       null → EXAMINATION_PINNED_OUTDATED 409
-  //   (4) examinationFull.lifecycle_state !== 'active' →
-  //       EXAMINATION_PINNED_OUTDATED 409
-  //   (5) examinationFull.tier === 'STRETCH' → SUBMITTAL_STRETCH_BLOCKED 422
-  //       (re-check of PR-2's create-time gate — a Stretch row could only
-  //       reach this path if the create-time gate is bypassed by direct
-  //       SQL, but the confirm endpoint is the last line of defense)
-  //   (6) findLatestByTenantTalentJob → null or id mismatch →
-  //       EXAMINATION_PINNED_OUTDATED 409 (a newer snapshot exists; the
-  //       recruiter must refresh the draft and re-pin)
-  //   (7) tier === 'WORTH_CONSIDERING' → require justification (non-empty
-  //       after trim) AND failed_criterion_acknowledgments (>=1 entry).
-  //       Missing either → JUSTIFICATION_REQUIRED 422.
-  //   (8) prisma UPDATE with tenant_id + id filter, setting state and
-  //       confirmed_at. The trigger validates the transition.
+  // Per Ruling 6: confirmed_at NO LONGER populated here (moved to
+  // submitToAts at the ready_for_review -> submitted_to_ats transition).
+  // Preserves M4 confirmed_at column semantic + name.
   //
-  // Attestations are checked at the controller boundary (not here) per
-  // directive §4.3 step 4 — the controller's manual 3-line check throws
-  // ATTESTATION_MISSING 422 before reaching the repository.
+  // M5 PR-8b2 §4.7 additions:
+  //   - canTransition guard before the SQL UPDATE (defense-in-depth atop
+  //     the DB trigger) -> SUBMITTAL_STATE_INVALID 422.
+  //   - SUBMITTAL_ALREADY_CONFIRMED check preserved (M4 client error
+  //     vocabulary for double-call case): if state is 'handoff_draft'
+  //     return ALREADY_CONFIRMED 409 (preserves M4 caller's expectation
+  //     that re-calling /confirm on a confirmed submittal returns 409
+  //     not 422).
+  //   - $transaction([update, event.create]) for atomic 2-write per
+  //     engagement-side transitionState precedent.
   async confirmSubmittal(
     input: ConfirmSubmittalInput,
-  ): Promise<TalentSubmittalRecordView> {
+  ): Promise<{ submittal: TalentSubmittalRecordView; event: TalentSubmittalEventView }> {
     const startedAt = Date.now();
     this.logger.log({
       event: 'submittal_confirm_started',
@@ -314,11 +355,11 @@ export class SubmittalRepository {
       );
     }
 
-    // Step 2 — already submitted (the column-scoped trigger would block
-    // a second draft→submitted attempt, but we surface the dedicated
-    // SUBMITTAL_ALREADY_CONFIRMED 409 code/status pair instead of letting
-    // the trigger's generic message flow back).
-    if (submittal.state === 'submitted') {
+    // Step 2 — M4 client-vocabulary preservation: if state is 'handoff_draft'
+    // (the post-rename equivalent of M4 'submitted' confirm-target),
+    // surface SUBMITTAL_ALREADY_CONFIRMED 409 so M4 callers see the
+    // expected error code on double-call.
+    if (submittal.state === 'handoff_draft') {
       this.logger.log({
         event: 'submittal_confirm_refused',
         tenant_id: input.tenant_id,
@@ -327,7 +368,7 @@ export class SubmittalRepository {
       });
       throw new AramoError(
         'SUBMITTAL_ALREADY_CONFIRMED',
-        'Submittal is already in submitted state',
+        'Submittal is already in handoff_draft state',
         409,
         {
           requestId: input.requestId,
@@ -336,8 +377,33 @@ export class SubmittalRepository {
       );
     }
 
-    // Step 3 — pinned examination Full view (gives tier + lifecycle_state
-    // typed at the projection boundary).
+    // Step 2b — M5 PR-8b2 canTransition guard for OTHER invalid from-states
+    // (ready_for_review / submitted_to_ats / confirmed / revoked).
+    if (!canTransition(submittal.state, 'handoff_draft')) {
+      this.logger.log({
+        event: 'submittal_confirm_refused',
+        tenant_id: input.tenant_id,
+        submittal_id: input.submittal_id,
+        code: 'SUBMITTAL_STATE_INVALID',
+        from_state: submittal.state,
+        to_state: 'handoff_draft',
+      });
+      throw new AramoError(
+        'SUBMITTAL_STATE_INVALID',
+        `Illegal submittal state transition: ${submittal.state} -> handoff_draft`,
+        422,
+        {
+          requestId: input.requestId,
+          details: {
+            submittal_id: input.submittal_id,
+            from_state: submittal.state,
+            to_state: 'handoff_draft',
+          },
+        },
+      );
+    }
+
+    // Step 3 — pinned examination Full view (gives tier + lifecycle_state).
     const examinationFull = await this.examinationRepository.findByIdFull(
       submittal.pinned_examination_id,
     );
@@ -411,9 +477,7 @@ export class SubmittalRepository {
       );
     }
 
-    // Step 6 — newest-examination check. If the latest active row for
-    // (tenant, talent, job) is not the pinned row, the recruiter is
-    // confirming against a stale draft and must refresh.
+    // Step 6 — newest-examination check (Ruling 24 pin-reaffirmation).
     const latest = await this.examinationRepository.findLatestByTenantTalentJob({
       tenant_id: input.tenant_id,
       talent_id: submittal.talent_id,
@@ -492,74 +556,60 @@ export class SubmittalRepository {
       }
     }
 
-    // Suppress unused-attestations warning — the attestations are
-    // enforced at the controller boundary before this method is invoked;
-    // they are accepted into the input shape for forward compatibility
-    // (logging, audit-event emission in M5) but consumed nowhere in this
-    // method. Reference the value once so TypeScript's noUnusedParameters
-    // is satisfied without changing the input shape.
     void input.attestations;
 
-    // Step 8 — flip state to 'submitted' with confirmed_at stamp. The
-    // column-scoped trigger validates the transition; only state +
-    // confirmed_at are touched here so the trigger's allowlist passes.
-    const updated = await this.prisma.talentSubmittalRecord.update({
-      where: { id: input.submittal_id, tenant_id: input.tenant_id },
-      data: { state: 'submitted', confirmed_at: new Date() },
-    });
+    // Step 8 — atomic 2-write transaction (update + event.create) per
+    // engagement-side transitionState precedent at libs/engagement/src/
+    // lib/engagement.repository.ts. Per Ruling 12 the transition is
+    // 'created' -> 'handoff_draft'; per Ruling 6 confirmed_at is NOT
+    // touched here (moves to submitToAts).
+    const [updatedRow, eventRow] = await this.prisma.$transaction([
+      this.prisma.talentSubmittalRecord.update({
+        where: { id: input.submittal_id, tenant_id: input.tenant_id },
+        data: { state: 'handoff_draft' },
+      }),
+      this.prisma.talentSubmittalEvent.create({
+        data: {
+          id: input.event_id,
+          tenant_id: input.tenant_id,
+          submittal_id: input.submittal_id,
+          event_type: 'state_transition',
+          event_payload: {
+            from_state: submittal.state,
+            to_state: 'handoff_draft',
+          } as never,
+        },
+      }),
+    ]);
 
-    const view = projectView(updated as TalentSubmittalRecordRow);
+    const submittalView = projectView(updatedRow as TalentSubmittalRecordRow);
+    const eventView = projectEventView(eventRow as TalentSubmittalEventRow);
     this.logger.log({
       event: 'submittal_confirmed',
-      tenant_id: view.tenant_id,
-      submittal_id: view.id,
-      pinned_examination_id: view.pinned_examination_id,
+      tenant_id: submittalView.tenant_id,
+      submittal_id: submittalView.id,
+      submittal_event_id: eventView.id,
+      from_state: submittal.state,
+      to_state: submittalView.state,
+      pinned_examination_id: submittalView.pinned_examination_id,
       latency_ms: Date.now() - startedAt,
     });
-    return view;
+    return { submittal: submittalView, event: eventView };
   }
 
-  // M4 PR-7 §4.3 — revoke flow.
-  //
-  // Transitions a TalentSubmittalRecord from 'submitted' to 'revoked'
-  // and stamps revoked_at / revoked_by / revocation_justification
-  // atomically. The Transition B branch in the column-scoped trigger
-  // (engagement.reject_submittal_record_update, PR-7 migration) is the
-  // substrate-layer enforcement; this method is the first line of
-  // defense.
-  //
-  // WRITE-ISOLATION CONTRACT (directive §4.3): this method touches
-  // ONLY engagement.TalentSubmittalRecord via
-  // prisma.talentSubmittalRecord.update. The referenced
-  // evidence.TalentJobEvidencePackage row is NEVER read or written by
-  // this method — the controller emits the literal
-  // `evidence_package_mutated: false` in the response, and the Pact
-  // provider state-isolation invariant (§4.9) verifies byte-identity
-  // of the evidence-package row across every revoke interaction.
-  //
-  // Five ordered steps (each AramoError carries input.requestId so the
-  // response envelope's request_id is correct):
-  //   (1) findById tenant-scoped — null → NOT_FOUND 404.
-  //   (2) state validation. Must be 'submitted'. Any other state
-  //       ('draft', 'revoked') → REVOKE_NOT_ALLOWED 422 with
-  //       current_state detail.
-  //   (3) prisma.talentSubmittalRecord.update with tenant_id + id
-  //       filter, setting state='revoked' and revoked_at/by/
-  //       justification populated atomically. The trigger validates
-  //       the transition.
-  //   (4) structured logging at entry, refused, success.
-  //   (5) project the updated row through projectView and return.
-  async revokeSubmittal(
-    input: RevokeSubmittalInput,
-  ): Promise<TalentSubmittalRecordView> {
+  // M5 PR-8b2 §4.7 — markReady. Mainline transition 2:
+  // handoff_draft -> ready_for_review. 5-step internal flow per
+  // directive §4.7: findByTenantAndId -> canTransition -> $transaction
+  // -> project + return -> log. Mirrors engagement-side transitionState
+  // shape verbatim.
+  async markReady(input: SubmittalMarkReadyInput): Promise<SubmittalMarkReadyResult> {
     const startedAt = Date.now();
     this.logger.log({
-      event: 'submittal_revoke_started',
+      event: 'submittal_mark_ready_started',
       tenant_id: input.tenant_id,
       submittal_id: input.submittal_id,
     });
 
-    // Step 1 — tenant-scoped load.
     const submittal = await this.findById({
       tenant_id: input.tenant_id,
       id: input.submittal_id,
@@ -576,8 +626,275 @@ export class SubmittalRepository {
       );
     }
 
-    // Step 2 — state validation. Only 'submitted' may be revoked.
-    if (submittal.state !== 'submitted') {
+    if (!canTransition(submittal.state, 'ready_for_review')) {
+      this.logger.log({
+        event: 'submittal_mark_ready_refused',
+        tenant_id: input.tenant_id,
+        submittal_id: input.submittal_id,
+        code: 'SUBMITTAL_STATE_INVALID',
+        from_state: submittal.state,
+        to_state: 'ready_for_review',
+      });
+      throw new AramoError(
+        'SUBMITTAL_STATE_INVALID',
+        `Illegal submittal state transition: ${submittal.state} -> ready_for_review`,
+        422,
+        {
+          requestId: input.requestId,
+          details: {
+            submittal_id: input.submittal_id,
+            from_state: submittal.state,
+            to_state: 'ready_for_review',
+          },
+        },
+      );
+    }
+
+    const [updatedRow, eventRow] = await this.prisma.$transaction([
+      this.prisma.talentSubmittalRecord.update({
+        where: { id: input.submittal_id, tenant_id: input.tenant_id },
+        data: { state: 'ready_for_review' },
+      }),
+      this.prisma.talentSubmittalEvent.create({
+        data: {
+          id: input.event_id,
+          tenant_id: input.tenant_id,
+          submittal_id: input.submittal_id,
+          event_type: 'state_transition',
+          event_payload: {
+            from_state: submittal.state,
+            to_state: 'ready_for_review',
+          } as never,
+        },
+      }),
+    ]);
+
+    const submittalView = projectView(updatedRow as TalentSubmittalRecordRow);
+    const eventView = projectEventView(eventRow as TalentSubmittalEventRow);
+    this.logger.log({
+      event: 'submittal_marked_ready',
+      tenant_id: submittalView.tenant_id,
+      submittal_id: submittalView.id,
+      submittal_event_id: eventView.id,
+      from_state: submittal.state,
+      to_state: submittalView.state,
+      latency_ms: Date.now() - startedAt,
+    });
+    return { submittal: submittalView, event: eventView };
+  }
+
+  // M5 PR-8b2 §4.7 — submitToAts. Mainline transition 3:
+  // ready_for_review -> submitted_to_ats. Per Ruling 6 this transition
+  // populates confirmed_at (NULL -> non-NULL); preserves M4 confirmed_at
+  // column semantic post-rename.
+  async submitToAts(input: SubmittalSubmitToAtsInput): Promise<SubmittalSubmitToAtsResult> {
+    const startedAt = Date.now();
+    this.logger.log({
+      event: 'submittal_submit_to_ats_started',
+      tenant_id: input.tenant_id,
+      submittal_id: input.submittal_id,
+    });
+
+    const submittal = await this.findById({
+      tenant_id: input.tenant_id,
+      id: input.submittal_id,
+    });
+    if (submittal === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentSubmittalRecord not found',
+        404,
+        {
+          requestId: input.requestId,
+          details: { submittal_id: input.submittal_id },
+        },
+      );
+    }
+
+    if (!canTransition(submittal.state, 'submitted_to_ats')) {
+      this.logger.log({
+        event: 'submittal_submit_to_ats_refused',
+        tenant_id: input.tenant_id,
+        submittal_id: input.submittal_id,
+        code: 'SUBMITTAL_STATE_INVALID',
+        from_state: submittal.state,
+        to_state: 'submitted_to_ats',
+      });
+      throw new AramoError(
+        'SUBMITTAL_STATE_INVALID',
+        `Illegal submittal state transition: ${submittal.state} -> submitted_to_ats`,
+        422,
+        {
+          requestId: input.requestId,
+          details: {
+            submittal_id: input.submittal_id,
+            from_state: submittal.state,
+            to_state: 'submitted_to_ats',
+          },
+        },
+      );
+    }
+
+    const [updatedRow, eventRow] = await this.prisma.$transaction([
+      this.prisma.talentSubmittalRecord.update({
+        where: { id: input.submittal_id, tenant_id: input.tenant_id },
+        data: { state: 'submitted_to_ats', confirmed_at: new Date() },
+      }),
+      this.prisma.talentSubmittalEvent.create({
+        data: {
+          id: input.event_id,
+          tenant_id: input.tenant_id,
+          submittal_id: input.submittal_id,
+          event_type: 'state_transition',
+          event_payload: {
+            from_state: submittal.state,
+            to_state: 'submitted_to_ats',
+          } as never,
+        },
+      }),
+    ]);
+
+    const submittalView = projectView(updatedRow as TalentSubmittalRecordRow);
+    const eventView = projectEventView(eventRow as TalentSubmittalEventRow);
+    this.logger.log({
+      event: 'submittal_submitted_to_ats',
+      tenant_id: submittalView.tenant_id,
+      submittal_id: submittalView.id,
+      submittal_event_id: eventView.id,
+      from_state: submittal.state,
+      to_state: submittalView.state,
+      latency_ms: Date.now() - startedAt,
+    });
+    return { submittal: submittalView, event: eventView };
+  }
+
+  // M5 PR-8b2 §4.7 — confirmAts. Mainline transition 4:
+  // submitted_to_ats -> confirmed. `confirmed` is lifecycle-terminal
+  // (Ruling 5 — not even sibling-revoke applies; ATS confirmation
+  // closes the workflow).
+  async confirmAts(input: SubmittalConfirmAtsInput): Promise<SubmittalConfirmAtsResult> {
+    const startedAt = Date.now();
+    this.logger.log({
+      event: 'submittal_confirm_ats_started',
+      tenant_id: input.tenant_id,
+      submittal_id: input.submittal_id,
+    });
+
+    const submittal = await this.findById({
+      tenant_id: input.tenant_id,
+      id: input.submittal_id,
+    });
+    if (submittal === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentSubmittalRecord not found',
+        404,
+        {
+          requestId: input.requestId,
+          details: { submittal_id: input.submittal_id },
+        },
+      );
+    }
+
+    if (!canTransition(submittal.state, 'confirmed')) {
+      this.logger.log({
+        event: 'submittal_confirm_ats_refused',
+        tenant_id: input.tenant_id,
+        submittal_id: input.submittal_id,
+        code: 'SUBMITTAL_STATE_INVALID',
+        from_state: submittal.state,
+        to_state: 'confirmed',
+      });
+      throw new AramoError(
+        'SUBMITTAL_STATE_INVALID',
+        `Illegal submittal state transition: ${submittal.state} -> confirmed`,
+        422,
+        {
+          requestId: input.requestId,
+          details: {
+            submittal_id: input.submittal_id,
+            from_state: submittal.state,
+            to_state: 'confirmed',
+          },
+        },
+      );
+    }
+
+    const [updatedRow, eventRow] = await this.prisma.$transaction([
+      this.prisma.talentSubmittalRecord.update({
+        where: { id: input.submittal_id, tenant_id: input.tenant_id },
+        data: { state: 'confirmed' },
+      }),
+      this.prisma.talentSubmittalEvent.create({
+        data: {
+          id: input.event_id,
+          tenant_id: input.tenant_id,
+          submittal_id: input.submittal_id,
+          event_type: 'state_transition',
+          event_payload: {
+            from_state: submittal.state,
+            to_state: 'confirmed',
+          } as never,
+        },
+      }),
+    ]);
+
+    const submittalView = projectView(updatedRow as TalentSubmittalRecordRow);
+    const eventView = projectEventView(eventRow as TalentSubmittalEventRow);
+    this.logger.log({
+      event: 'submittal_confirmed_ats',
+      tenant_id: submittalView.tenant_id,
+      submittal_id: submittalView.id,
+      submittal_event_id: eventView.id,
+      from_state: submittal.state,
+      to_state: submittalView.state,
+      latency_ms: Date.now() - startedAt,
+    });
+    return { submittal: submittalView, event: eventView };
+  }
+
+  // M4 PR-7 revoke flow + M5 PR-8b2 Q3 expansion.
+  //
+  // Per Q3 + Ruling 5: revoke applicable from any non-terminal state
+  // (`created`, `handoff_draft`, `ready_for_review`, `submitted_to_ats`).
+  // NOT applicable from `confirmed` (terminal — ATS confirmation closes
+  // workflow) or `revoked` (already revoked). canTransition is the
+  // gatekeeping guard; REVOKE_NOT_ALLOWED 422 fires on terminal-state
+  // refusals (preserves M4 error vocabulary).
+  //
+  // Per M5 PR-8b2 §4.7: appendEvent wired via $transaction (atomic
+  // 2-write). Write-isolation contract preserved: the referenced
+  // evidence-package row is NEVER read or written by this method.
+  async revokeSubmittal(
+    input: RevokeSubmittalInput,
+  ): Promise<{ submittal: TalentSubmittalRecordView; event: TalentSubmittalEventView }> {
+    const startedAt = Date.now();
+    this.logger.log({
+      event: 'submittal_revoke_started',
+      tenant_id: input.tenant_id,
+      submittal_id: input.submittal_id,
+    });
+
+    const submittal = await this.findById({
+      tenant_id: input.tenant_id,
+      id: input.submittal_id,
+    });
+    if (submittal === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentSubmittalRecord not found',
+        404,
+        {
+          requestId: input.requestId,
+          details: { submittal_id: input.submittal_id },
+        },
+      );
+    }
+
+    // Q3 + Ruling 5: revoke refused from terminal states (confirmed +
+    // revoked). canTransition('confirmed', 'revoked') and
+    // canTransition('revoked', 'revoked') both return false.
+    if (!canTransition(submittal.state, 'revoked')) {
       this.logger.log({
         event: 'submittal_revoke_refused',
         tenant_id: input.tenant_id,
@@ -587,7 +904,7 @@ export class SubmittalRepository {
       });
       throw new AramoError(
         'REVOKE_NOT_ALLOWED',
-        `Submittal in state ${submittal.state} cannot be revoked; only submitted submittals may be revoked`,
+        `Submittal in state ${submittal.state} cannot be revoked; terminal states (confirmed, revoked) are not revocable`,
         422,
         {
           requestId: input.requestId,
@@ -599,32 +916,48 @@ export class SubmittalRepository {
       );
     }
 
-    // Step 3 — atomic UPDATE. state + revoked_at + revoked_by +
-    // revocation_justification all move together; the column-scoped
-    // trigger's Transition B branch validates the move. NO call to
-    // prisma.talentJobEvidencePackage.* anywhere in this method.
-    const updated = await this.prisma.talentSubmittalRecord.update({
-      where: { id: input.submittal_id, tenant_id: input.tenant_id },
-      data: {
-        state: 'revoked',
-        revoked_at: new Date(),
-        revoked_by: input.revoked_by,
-        revocation_justification: input.revocation_justification,
-      },
-    });
+    // Atomic 2-write transaction (update + event.create). state moves
+    // to 'revoked'; revoked_at / revoked_by / revocation_justification
+    // populate together (DB trigger sibling-revoke branch enforces).
+    // NO call to prisma.talentJobEvidencePackage.* anywhere.
+    const [updatedRow, eventRow] = await this.prisma.$transaction([
+      this.prisma.talentSubmittalRecord.update({
+        where: { id: input.submittal_id, tenant_id: input.tenant_id },
+        data: {
+          state: 'revoked',
+          revoked_at: new Date(),
+          revoked_by: input.revoked_by,
+          revocation_justification: input.revocation_justification,
+        },
+      }),
+      this.prisma.talentSubmittalEvent.create({
+        data: {
+          id: input.event_id,
+          tenant_id: input.tenant_id,
+          submittal_id: input.submittal_id,
+          event_type: 'state_transition',
+          event_payload: {
+            from_state: submittal.state,
+            to_state: 'revoked',
+          } as never,
+        },
+      }),
+    ]);
 
-    const view = projectView(updated as TalentSubmittalRecordRow);
+    const submittalView = projectView(updatedRow as TalentSubmittalRecordRow);
+    const eventView = projectEventView(eventRow as TalentSubmittalEventRow);
 
-    // Step 4 — success log.
     this.logger.log({
       event: 'submittal_revoked',
-      tenant_id: view.tenant_id,
-      submittal_id: view.id,
-      revoked_by: view.revoked_by,
+      tenant_id: submittalView.tenant_id,
+      submittal_id: submittalView.id,
+      submittal_event_id: eventView.id,
+      from_state: submittal.state,
+      to_state: submittalView.state,
+      revoked_by: submittalView.revoked_by,
       latency_ms: Date.now() - startedAt,
     });
 
-    // Step 5 — return projected view.
-    return view;
+    return { submittal: submittalView, event: eventView };
   }
 }

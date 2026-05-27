@@ -11,14 +11,17 @@ paths:
   /v1/submittals:
     post:
       operationId: createSubmittal
-      summary: Create a submittal in `draft` state (M4 PR-3 / F33).
+      summary: Create a submittal in `created` state (M4 PR-3 / F33; M5 PR-8b2 rename).
       description: |
         Builds the immutable TalentJobEvidencePackage (PR-2's
         EvidenceRepository.buildPackage) and persists a workflow
-        TalentSubmittalRecord in state='draft' referencing it. The
-        examination_id is pinned at draft creation; the future
-        submittal-confirm endpoint (F34) verifies the pin and enforces
-        the three recruiter attestations.
+        TalentSubmittalRecord in state='created' referencing it. The
+        examination_id is pinned at create-time; the submittal-confirm
+        endpoint (F34) verifies the pin and enforces the three
+        recruiter attestations.
+
+        M5 PR-8b2 rename: M4 'draft' state renamed to canonical
+        'created' (lifecycle start state per Group 2 §2.3b Loop 5).
 
         Refusal codes (closed list at PR-3):
           - 422 SUBMITTAL_STRETCH_BLOCKED — examination tier is STRETCH.
@@ -54,7 +57,7 @@ paths:
               $ref: 'common.yaml#/components/schemas/CreateSubmittalRequest'
       responses:
         '201':
-          description: Submittal created in `draft` state.
+          description: Submittal created in `created` state.
           content:
             application/json:
               schema:
@@ -81,16 +84,23 @@ paths:
   /v1/submittals/{submittal_id}/confirm:
     post:
       operationId: confirmSubmittal
-      summary: Confirm a draft submittal (M4 PR-4 / F34).
+      summary: Confirm submittal entry; transition created -> handoff_draft (M4 PR-4 / F34; M5 PR-8b2 rename).
       description: |
-        Transitions a TalentSubmittalRecord from `draft` to `submitted`
-        and stamps `confirmed_at`. Recruiter must affirm all three
-        attestations (talent_evidence_reviewed, constraints_reviewed,
+        Transitions a TalentSubmittalRecord from `created` to
+        `handoff_draft`. Recruiter must affirm all three attestations
+        (talent_evidence_reviewed, constraints_reviewed,
         submittal_risk_acknowledged) and the pinned examination must
         still be the latest active snapshot for the (tenant, talent,
-        job) triple.
+        job) triple. URL preserved per Q5 PATTERN-b; semantic update
+        per Ruling 12.
 
-        Refusal codes (closed list at PR-4):
+        M5 PR-8b2 rename: M4's 'draft -> submitted with confirmed_at
+        stamp' semantic becomes canonical 'created -> handoff_draft'
+        (no confirmed_at change here per Ruling 6 — confirmed_at moves
+        to the ready_for_review -> submitted_to_ats transition via
+        the new /submit-to-ats endpoint).
+
+        Refusal codes (closed list at PR-4 + M5 PR-8b2):
           - 422 ATTESTATION_MISSING — any of the three recruiter
             attestations is not literally true.
           - 422 SUBMITTAL_STRETCH_BLOCKED — pinned examination tier is
@@ -98,11 +108,16 @@ paths:
           - 422 JUSTIFICATION_REQUIRED — Worth Considering submittal with
             missing/empty `justification` or zero
             `failed_criterion_acknowledgments` entries.
+          - 422 SUBMITTAL_STATE_INVALID — submittal is in a from-state
+            other than `created` or `handoff_draft` (canTransition
+            guard refusal).
           - 409 EXAMINATION_PINNED_OUTDATED — pinned examination row is
             missing, no longer active, or no longer the latest snapshot
             for the (tenant, talent, job) triple.
           - 409 SUBMITTAL_ALREADY_CONFIRMED — submittal is already in
-            state='submitted'.
+            state='handoff_draft' (post-rename equivalent of M4 'submitted'
+            confirm-target; preserves M4 client error vocabulary on
+            double-call).
           - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key, different
             request body.
           - 404 NOT_FOUND — submittal_id not found for the JWT's tenant.
@@ -136,7 +151,7 @@ paths:
               $ref: 'common.yaml#/components/schemas/ConfirmSubmittalRequest'
       responses:
         '200':
-          description: Submittal confirmed; state transitioned to `submitted`.
+          description: Submittal confirmed; state transitioned to `handoff_draft`.
           content:
             application/json:
               schema:
@@ -159,22 +174,28 @@ paths:
   /v1/submittals/{submittal_id}/revoke:
     post:
       operationId: revokeSubmittal
-      summary: Revoke a submitted submittal (M4 PR-7).
+      summary: Revoke a submittal (M4 PR-7; M5 PR-8b2 Q3 sibling-revoke expansion).
       description: |
-        Transitions a TalentSubmittalRecord from `submitted` to
-        `revoked` and stamps `revoked_at` / `revoked_by` /
-        `revocation_justification` atomically. The response carries
-        the LOCKED invariant `evidence_package_mutated: false` —
-        every successful revoke affirms that the referenced
-        TalentJobEvidencePackage row is byte-identical to its
-        pre-revoke snapshot (state-isolation contract, mirroring the
-        override-create endpoint's `examination_mutated: false`
-        invariant from M4 PR-5).
+        Transitions a TalentSubmittalRecord from any non-terminal
+        state (`created`, `handoff_draft`, `ready_for_review`,
+        `submitted_to_ats`) to `revoked` and stamps `revoked_at` /
+        `revoked_by` / `revocation_justification` atomically. The
+        response carries the LOCKED invariant
+        `evidence_package_mutated: false` — every successful revoke
+        affirms that the referenced TalentJobEvidencePackage row is
+        byte-identical to its pre-revoke snapshot (state-isolation
+        contract, mirroring the override-create endpoint's
+        `examination_mutated: false` invariant from M4 PR-5).
 
-        Refusal codes (closed list at PR-7):
-          - 422 REVOKE_NOT_ALLOWED — submittal is not in
-            state='submitted' (i.e. draft or already-revoked); the
-            response details carry `current_state`.
+        M5 PR-8b2 expansion per Q3 + Ruling 5: revocable from any
+        non-terminal state (M4 was only `submitted -> revoked`). NOT
+        revocable from `confirmed` (terminal — ATS confirmation closes
+        the workflow) or `revoked` (already terminal).
+
+        Refusal codes (closed list at PR-7 + M5 PR-8b2):
+          - 422 REVOKE_NOT_ALLOWED — submittal is in a terminal state
+            (`confirmed` or `revoked`); the response details carry
+            `current_state`.
           - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key,
             different request body.
           - 404 NOT_FOUND — submittal_id not found for the JWT's
@@ -214,6 +235,218 @@ paths:
             application/json:
               schema:
                 $ref: 'common.yaml#/components/schemas/RevokeSubmittalResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Idempotency-Key collision (same key, different body).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
+  /v1/submittals/{submittal_id}/mark-ready:
+    post:
+      operationId: markReady
+      summary: Mark submittal ready for review (M5 PR-8b2; handoff_draft -> ready_for_review).
+      description: |
+        Fires the canonical mainline transition handoff_draft ->
+        ready_for_review (M5 PR-8b2 F37 closure; transition 2 of 4).
+        9-step idempotency flow mirrors M4 /confirm + /revoke pattern
+        (per Q5 PATTERN-b distinct new endpoints). Per Ruling 13
+        request body is empty.
+
+        Response wraps { submittal, event } per Ruling 14 — the
+        updated TalentSubmittalRecord alongside the freshly appended
+        TalentSubmittalEvent (state_transition; payload
+        { from_state, to_state }).
+
+        Refusal codes (closed list):
+          - 422 SUBMITTAL_STATE_INVALID — submittal is not in
+            state='handoff_draft' (canTransition guard refusal); the
+            response details carry `from_state` + `to_state`.
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key,
+            different request body.
+          - 404 NOT_FOUND — submittal_id not found for the JWT's
+            tenant.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 VALIDATION_ERROR — submittal_id is not a UUID, or
+            Idempotency-Key is missing / malformed.
+      parameters:
+        - name: submittal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/MarkReadyRequest'
+      responses:
+        '200':
+          description: Submittal marked ready; state transitioned to `ready_for_review`.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/MarkReadyResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Idempotency-Key collision (same key, different body).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
+  /v1/submittals/{submittal_id}/submit-to-ats:
+    post:
+      operationId: submitToAts
+      summary: Submit to ATS (M5 PR-8b2; ready_for_review -> submitted_to_ats; populates confirmed_at).
+      description: |
+        Fires the canonical mainline transition ready_for_review ->
+        submitted_to_ats (M5 PR-8b2 F37 closure; transition 3 of 4).
+        Per Ruling 6 this transition populates `confirmed_at`
+        NULL -> non-NULL (preserves M4 confirmed_at column semantic
+        post-rename; M4's 'draft -> submitted with confirmed_at'
+        becomes canonical 'ready_for_review -> submitted_to_ats with
+        confirmed_at'). Per Ruling 13 request body is empty.
+
+        Response wraps { submittal, event } per Ruling 14.
+
+        Refusal codes (closed list):
+          - 422 SUBMITTAL_STATE_INVALID — submittal is not in
+            state='ready_for_review' (canTransition guard refusal).
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key,
+            different request body.
+          - 404 NOT_FOUND — submittal_id not found for the JWT's
+            tenant.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 VALIDATION_ERROR — submittal_id is not a UUID, or
+            Idempotency-Key is missing / malformed.
+      parameters:
+        - name: submittal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/SubmitToAtsRequest'
+      responses:
+        '200':
+          description: Submittal submitted to ATS; state transitioned to `submitted_to_ats`; confirmed_at populated.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/SubmitToAtsResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Idempotency-Key collision (same key, different body).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
+  /v1/submittals/{submittal_id}/confirm-ats:
+    post:
+      operationId: confirmAts
+      summary: Confirm ATS submission (M5 PR-8b2; submitted_to_ats -> confirmed; lifecycle terminal).
+      description: |
+        Fires the canonical mainline transition submitted_to_ats ->
+        confirmed (M5 PR-8b2 F37 closure; transition 4 of 4;
+        lifecycle terminal). Per Ruling 5 `confirmed` is fully
+        terminal -- not even sibling-revoke applies post-confirm.
+        ATS external reference id on the request body is explicitly
+        OUT-OF-SCOPE per directive §5 (deferred to future consumer
+        PR). Per Ruling 13 request body is empty.
+
+        Response wraps { submittal, event } per Ruling 14.
+
+        Refusal codes (closed list):
+          - 422 SUBMITTAL_STATE_INVALID — submittal is not in
+            state='submitted_to_ats' (canTransition guard refusal).
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key,
+            different request body.
+          - 404 NOT_FOUND — submittal_id not found for the JWT's
+            tenant.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 VALIDATION_ERROR — submittal_id is not a UUID, or
+            Idempotency-Key is missing / malformed.
+      parameters:
+        - name: submittal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/ConfirmAtsRequest'
+      responses:
+        '200':
+          description: Submittal confirmed by ATS; state transitioned to `confirmed`; lifecycle terminal.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ConfirmAtsResponse'
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':

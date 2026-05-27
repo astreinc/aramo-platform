@@ -272,19 +272,36 @@ interface ConfirmMockSetup {
 }
 
 function buildConfirm(): ConfirmMockSetup {
+  // M5 PR-8b2 §4.7: repository confirmSubmittal returns
+  // { submittal, event } (was just submittal). Per Ruling 12 the
+  // post-rename state target is 'handoff_draft' (not 'submitted');
+  // per Ruling 6 confirmed_at remains null at this transition.
   const confirmSubmittal = vi.fn().mockResolvedValue({
-    id: SUBMITTAL_ID,
-    tenant_id: TENANT_A,
-    talent_id: TALENT_A,
-    job_id: JOB_ID,
-    evidence_package_id: '99990000-0000-7000-8000-000000000002',
-    pinned_examination_id: EXAM_ID,
-    state: 'submitted',
-    created_by: RECRUITER_ID,
-    justification: null,
-    failed_criterion_acknowledgments: null,
-    created_at: new Date('2026-05-23T12:00:00Z'),
-    confirmed_at: new Date('2026-05-23T13:00:00Z'),
+    submittal: {
+      id: SUBMITTAL_ID,
+      tenant_id: TENANT_A,
+      talent_id: TALENT_A,
+      job_id: JOB_ID,
+      evidence_package_id: '99990000-0000-7000-8000-000000000002',
+      pinned_examination_id: EXAM_ID,
+      state: 'handoff_draft',
+      created_by: RECRUITER_ID,
+      justification: null,
+      failed_criterion_acknowledgments: null,
+      created_at: new Date('2026-05-23T12:00:00Z'),
+      confirmed_at: null,
+      revoked_at: null,
+      revoked_by: null,
+      revocation_justification: null,
+    },
+    event: {
+      id: '11111111-2222-7333-8444-555555555555',
+      tenant_id: TENANT_A,
+      submittal_id: SUBMITTAL_ID,
+      event_type: 'state_transition' as const,
+      event_payload: { from_state: 'created', to_state: 'handoff_draft' },
+      created_at: new Date('2026-05-23T13:00:00Z'),
+    },
   });
   const lookup = vi.fn().mockResolvedValue({ kind: 'proceed' });
   const persist = vi.fn().mockResolvedValue(undefined);
@@ -640,22 +657,35 @@ interface RevokeMockSetup {
 }
 
 function buildRevoke(): RevokeMockSetup {
+  // M5 PR-8b2 §4.7: repository revokeSubmittal returns { submittal, event }
+  // (was just submittal). The controller destructures and surfaces only
+  // submittal in the M4 response (preserves M4 client contract per Q5).
   const revokeSubmittal = vi.fn().mockResolvedValue({
-    id: SUBMITTAL_ID,
-    tenant_id: TENANT_A,
-    talent_id: TALENT_A,
-    job_id: JOB_ID,
-    evidence_package_id: EVIDENCE_PKG_ID,
-    pinned_examination_id: EXAM_ID,
-    state: 'revoked',
-    created_by: RECRUITER_ID,
-    justification: null,
-    failed_criterion_acknowledgments: null,
-    created_at: new Date('2026-05-23T12:00:00Z'),
-    confirmed_at: new Date('2026-05-23T13:00:00Z'),
-    revoked_at: new Date('2026-05-23T15:00:00Z'),
-    revoked_by: RECRUITER_ID,
-    revocation_justification: 'Position frozen by hiring manager.',
+    submittal: {
+      id: SUBMITTAL_ID,
+      tenant_id: TENANT_A,
+      talent_id: TALENT_A,
+      job_id: JOB_ID,
+      evidence_package_id: EVIDENCE_PKG_ID,
+      pinned_examination_id: EXAM_ID,
+      state: 'revoked',
+      created_by: RECRUITER_ID,
+      justification: null,
+      failed_criterion_acknowledgments: null,
+      created_at: new Date('2026-05-23T12:00:00Z'),
+      confirmed_at: new Date('2026-05-23T13:00:00Z'),
+      revoked_at: new Date('2026-05-23T15:00:00Z'),
+      revoked_by: RECRUITER_ID,
+      revocation_justification: 'Position frozen by hiring manager.',
+    },
+    event: {
+      id: '11111111-2222-7333-8444-666666666666',
+      tenant_id: TENANT_A,
+      submittal_id: SUBMITTAL_ID,
+      event_type: 'state_transition' as const,
+      event_payload: { from_state: 'submitted_to_ats', to_state: 'revoked' },
+      created_at: new Date('2026-05-23T15:00:00Z'),
+    },
   });
   const lookup = vi.fn().mockResolvedValue({ kind: 'proceed' });
   const persist = vi.fn().mockResolvedValue(undefined);
