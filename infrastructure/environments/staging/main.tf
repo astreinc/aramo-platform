@@ -38,16 +38,18 @@ module "vpc" {
 }
 
 module "rds" {
-  source                 = "../../modules/rds"
-  environment            = var.environment
-  engine_version         = "15.7"
-  instance_class         = "db.t3.small"
-  allocated_storage      = 20
-  max_allocated_storage  = 100
-  db_name                = "aramo"
-  subnet_ids             = module.vpc.db_subnet_ids
-  vpc_security_group_ids = [module.vpc.rds_security_group_id]
-  multi_az               = false
-  deletion_protection    = true
-  tags                   = local.common_tags
+  source                  = "../../modules/rds"
+  environment             = var.environment
+  engine_version          = "15.7"
+  instance_class          = "db.t3.small"
+  allocated_storage       = 20
+  max_allocated_storage   = 100
+  db_name                 = "aramo"
+  subnet_ids              = module.vpc.db_subnet_ids
+  vpc_security_group_ids  = [module.vpc.rds_security_group_id]
+  multi_az                = false
+  deletion_protection     = true
+  backup_retention_period = 7             # PR-10b: staging 7d per ADR-0017 Decision 2 (cost-conservative)
+  backup_window           = "03:00-04:00" # PR-10b: UTC low-traffic per ADR-0017 Decision 3 (same as prod)
+  tags                    = local.common_tags
 }

@@ -37,16 +37,18 @@ module "vpc" {
 }
 
 module "rds" {
-  source                 = "../../modules/rds"
-  environment            = var.environment
-  engine_version         = "15.7"
-  instance_class         = "db.t3.medium"
-  allocated_storage      = 20
-  max_allocated_storage  = 100
-  db_name                = "aramo"
-  subnet_ids             = module.vpc.db_subnet_ids
-  vpc_security_group_ids = [module.vpc.rds_security_group_id]
-  multi_az               = true
-  deletion_protection    = true
-  tags                   = local.common_tags
+  source                  = "../../modules/rds"
+  environment             = var.environment
+  engine_version          = "15.7"
+  instance_class          = "db.t3.medium"
+  allocated_storage       = 20
+  max_allocated_storage   = 100
+  db_name                 = "aramo"
+  subnet_ids              = module.vpc.db_subnet_ids
+  vpc_security_group_ids  = [module.vpc.rds_security_group_id]
+  multi_az                = true
+  deletion_protection     = true
+  backup_retention_period = 35            # PR-10b: prod 35d per ADR-0017 Decision 2; Architecture §17.2 RPO 15min via PITR
+  backup_window           = "03:00-04:00" # PR-10b: UTC low-traffic per ADR-0017 Decision 3
+  tags                    = local.common_tags
 }
