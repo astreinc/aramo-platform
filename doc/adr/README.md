@@ -33,6 +33,7 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 | [0012](0012-iac-conventions.md) | IaC Conventions (Terraform Workspace, AWS Provider, S3+DynamoDB Backend, CI Integration) | Accepted | 2026-05-23 |
 | [0013](0013-observability-conventions.md) | Observability Conventions (Structured Logging, Log-Group Provisioning, Per-Env Retention) | Accepted | 2026-05-23 |
 | [0014](0014-cve-scanning-conventions.md) | CVE Scanning Conventions (tfsec + npm-audit, Allow-list Mechanism, M4 PR-10 Substrate) | Accepted | 2026-05-24 |
+| [0016](0016-rds-substrate-conventions.md) | RDS Substrate Conventions (VPC + RDS Modules, Per-Env Scope, Secrets Manager Master Password) | Accepted | 2026-05-27 |
 
 ## When to write an ADR
 
