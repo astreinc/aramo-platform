@@ -1216,6 +1216,96 @@ describe('ATS thin consumer → GET /v1/consent/decision-log/{talent_id}', () =>
         expect(body.is_anonymized).toBe(false);
       });
   });
+
+  // M5 PR-9 §4.1 — formal idempotency replay coverage for consent
+  // grant + revoke (existing partial conflict coverage continues
+  // alongside). Per Plan v1.5 §M5 Track B item 2.
+  const GRANT_REPLAY_KEY = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1d30';
+  const REVOKE_REPLAY_KEY = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1d31';
+  // Body shapes mirror the existing happy-path grantBody/revokeBody
+  // (above) so class-validator passes BEFORE idempotencyService.lookup
+  // runs. PL-71: replay/conflict Pact body shape must match
+  // production DTO for non-empty-body endpoints.
+  const GRANT_BODY = {
+    talent_id: TALENT_ID,
+    scope: 'contacting',
+    captured_method: 'recruiter_capture',
+    consent_version: 'v1',
+    occurred_at: '2026-05-25T10:00:00.000Z',
+  };
+  const REVOKE_BODY = {
+    talent_id: TALENT_ID,
+    scope: 'contacting',
+    captured_method: 'recruiter_capture',
+    consent_version: 'v1',
+    occurred_at: '2026-05-25T11:00:00.000Z',
+  };
+
+  it('idempotency replay: consent-grant same key + same body returns cached 201 response', async () => {
+    await provider
+      .addInteraction()
+      .given('an idempotency key has been recorded with a prior consent-grant response')
+      .uponReceiving('a consent-grant request replaying a prior key + body')
+      .withRequest('POST', '/v1/consent/grant', (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'X-Request-ID': uuid(REQUEST_ID),
+          'Idempotency-Key': uuid(GRANT_REPLAY_KEY),
+          'Content-Type': 'application/json',
+        }).jsonBody(GRANT_BODY);
+      })
+      .willRespondWith(201, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          event: like({ talent_id: TALENT_ID, scope: 'contacting' }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/consent/grant`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'X-Request-ID': REQUEST_ID,
+            'Idempotency-Key': GRANT_REPLAY_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(GRANT_BODY),
+        });
+        expect(res.status).toBe(201);
+      });
+  });
+
+  it('idempotency replay: consent-revoke same key + same body returns cached 201 response', async () => {
+    await provider
+      .addInteraction()
+      .given('an idempotency key has been recorded with a prior consent-revoke response')
+      .uponReceiving('a consent-revoke request replaying a prior key + body')
+      .withRequest('POST', '/v1/consent/revoke', (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'X-Request-ID': uuid(REQUEST_ID),
+          'Idempotency-Key': uuid(REVOKE_REPLAY_KEY),
+          'Content-Type': 'application/json',
+        }).jsonBody(REVOKE_BODY);
+      })
+      .willRespondWith(201, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          event: like({ talent_id: TALENT_ID, scope: 'contacting' }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/consent/revoke`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'X-Request-ID': REQUEST_ID,
+            'Idempotency-Key': REVOKE_REPLAY_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(REVOKE_BODY),
+        });
+        expect(res.status).toBe(201);
+      });
+  });
 });
 
 beforeAll(() => undefined);

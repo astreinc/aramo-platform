@@ -20,6 +20,13 @@ import {
   type KeyObject,
 } from 'jose';
 import { AppModule } from '@aramo/api';
+// M5 PR-9 §4.2 — hashCanonicalizedBody imported for idempotency
+// replay/conflict state-handlers. The same hash function the controllers
+// use computes the request_hash that the seeded IdempotencyKey row must
+// match for replay; the conflict state-handler seeds an intentionally
+// different hash. Single source of truth keeps the hash semantics
+// aligned between seed + lookup.
+import { hashCanonicalizedBody } from '@aramo/common';
 // M5 PR-6 §4.14 — string-DI-token literals overridden so the verify
 // harness doesn't need real Anthropic API + AWS Secrets Manager +
 // SES/SendGrid wiring. The strings here match the const values in
@@ -1198,7 +1205,20 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
 
     async function seedIdempotencyKey(
       c: Client,
-      opts: { id: string; key: string; requestHash: string },
+      opts: {
+        id: string;
+        key: string;
+        requestHash: string;
+        // M5 PR-9 §4.2 — optional response status + body so replay
+        // state-handlers can seed an actual prior response that the
+        // controller's idempotency.lookup returns verbatim. Defaults
+        // preserve M3 PR-2 / M4 PR-3 / M5 PR-3 conflict-test callsites
+        // (status=201, body={pact_seeded:true}) where only the
+        // existence + request_hash matter (controller throws 409 on
+        // hash mismatch before reading the cached body).
+        responseStatus?: number;
+        responseBody?: unknown;
+      },
     ): Promise<void> {
       await c.query(
         `INSERT INTO consent."IdempotencyKey"
@@ -1209,8 +1229,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           TENANT_ID,
           opts.key,
           opts.requestHash,
-          201,
-          JSON.stringify({ pact_seeded: true }),
+          opts.responseStatus ?? 201,
+          JSON.stringify(opts.responseBody ?? { pact_seeded: true }),
         ],
       );
     }
@@ -1825,6 +1845,439 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         });
       },
+
+      // ===== M5 PR-9 §4.2 — idempotency replay + conflict state-handlers =====
+      // Per Plan v1.5 §M5 Track B item 2 + doc/01 §11 anchor. Each replay
+      // handler computes the same hashCanonicalizedBody value the controller
+      // will compute from the Pact-shipped request body, seeds an
+      // IdempotencyKey row carrying that hash + the cached response_body,
+      // and the controller's idempotencyService.lookup returns the cached
+      // body without touching the repository. Each conflict handler seeds
+      // a known-different hash so the lookup throws IDEMPOTENCY_KEY_CONFLICT
+      // 409 before touching the repository. Resource seeds (submittal,
+      // engagement, examination rows) are NOT required because the
+      // controller short-circuits on idempotency hit/conflict before any
+      // findById call.
+      //
+      // --- POST /v1/submittals (create) ---
+      'an idempotency key has been recorded with a prior create-submittal response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f80',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f02',
+              requestHash: hashCanonicalizedBody({
+                talent_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+                job_id: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
+                examination_id: '11110000-0000-7000-8000-0000000e0001',
+                talent_identity: {
+                  full_name: 'Sample Talent',
+                  preferred_name: 'Sam',
+                  location: 'Remote (US)',
+                },
+                contact_summary: {
+                  contact_available: true,
+                  channels_verified: ['email'],
+                },
+                capability_summary_overrides: {
+                  key_work_history: [
+                    {
+                      employer_name: 'Acme Corp',
+                      role_title: 'Senior Engineer',
+                      start_date: '2021-01-01',
+                    },
+                  ],
+                  certifications: ['AWS Solutions Architect'],
+                },
+                recruiter_contribution: {
+                  screening_notes: 'Spoke 2026-05-22.',
+                  conversation_summary: {
+                    recruiter_summary: 'Discussed role, fit, and timing.',
+                  },
+                  talent_confirmed: { spoken_to_recruiter: true },
+                },
+              }),
+              responseStatus: 201,
+              responseBody: { submittal: { id: '99990000-0000-7000-8000-000000000d01', state: 'created' } },
+            });
+          });
+        },
+      'an idempotency key has been recorded with a different create-submittal body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f81',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f03',
+              requestHash: 'pact-pr9-conflict-hash-create-submittal',
+            });
+          });
+        },
+
+      // --- POST /v1/submittals/:id/confirm ---
+      'an idempotency key has been recorded with a prior submittal-confirm response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f82',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f15',
+              requestHash: hashCanonicalizedBody({
+                attestations: {
+                  talent_evidence_reviewed: true,
+                  constraints_reviewed: true,
+                  submittal_risk_acknowledged: true,
+                },
+              }),
+              responseStatus: 200,
+              responseBody: { submittal: { id: '99990000-0000-7000-8000-000000000901', state: 'handoff_draft' } },
+            });
+          });
+        },
+      'an idempotency key has been recorded with a different submittal-confirm body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f83',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f16',
+              requestHash: 'pact-pr9-conflict-hash-submittal-confirm',
+            });
+          });
+        },
+
+      // --- POST /v1/submittals/:id/revoke ---
+      'an idempotency key has been recorded with a prior submittal-revoke response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f84',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b7110',
+              requestHash: hashCanonicalizedBody({
+                revocation_justification: 'Position has been put on hold by the hiring manager; revoking the submittal until the requisition resumes.',
+              }),
+              responseStatus: 200,
+              responseBody: {
+                submittal: { id: '99990000-0000-7000-8000-000000000931', state: 'revoked' },
+                evidence_package_mutated: false,
+              },
+            });
+          });
+        },
+      'an idempotency key has been recorded with a different submittal-revoke body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f85',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b7111',
+              requestHash: 'pact-pr9-conflict-hash-submittal-revoke',
+            });
+          });
+        },
+
+      // --- POST /v1/submittals/:id/mark-ready ---
+      'an idempotency key has been recorded with a prior submittal-mark-ready response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f86',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8110',
+              requestHash: hashCanonicalizedBody({ _placeholder: true }),
+              responseStatus: 200,
+              responseBody: { submittal: { id: '99990000-0000-7000-8000-000000000951', state: 'ready_for_review' } },
+            });
+          });
+        },
+      'an idempotency key has been recorded with a different submittal-mark-ready body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f87',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8111',
+              requestHash: 'pact-pr9-conflict-hash-submittal-mark-ready',
+            });
+          });
+        },
+
+      // --- POST /v1/submittals/:id/submit-to-ats ---
+      'an idempotency key has been recorded with a prior submittal-submit-to-ats response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f88',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8210',
+              requestHash: hashCanonicalizedBody({ _placeholder: true }),
+              responseStatus: 200,
+              responseBody: { submittal: { id: '99990000-0000-7000-8000-000000000961', state: 'submitted_to_ats' } },
+            });
+          });
+        },
+      'an idempotency key has been recorded with a different submittal-submit-to-ats body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f89',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8211',
+              requestHash: 'pact-pr9-conflict-hash-submittal-submit-to-ats',
+            });
+          });
+        },
+
+      // --- POST /v1/submittals/:id/confirm-ats ---
+      'an idempotency key has been recorded with a prior submittal-confirm-ats response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f8a',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8310',
+              requestHash: hashCanonicalizedBody({ _placeholder: true }),
+              responseStatus: 200,
+              responseBody: { submittal: { id: '99990000-0000-7000-8000-000000000971', state: 'confirmed' } },
+            });
+          });
+        },
+      'an idempotency key has been recorded with a different submittal-confirm-ats body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f8b',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8311',
+              requestHash: 'pact-pr9-conflict-hash-submittal-confirm-ats',
+            });
+          });
+        },
+
+      // --- POST /v1/engagements (create) ---
+      'an idempotency key has been recorded with a prior engagement-create response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f8c',
+              key: '0190d5a4-7e01-7e2a-a4d3-cccc00000c20',
+              requestHash: hashCanonicalizedBody({
+                talent_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+                requisition_id: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
+              }),
+              responseStatus: 201,
+              responseBody: { engagement: { id: '00000000-0000-7000-8000-cccc00000c01', state: 'surfaced' } },
+            });
+          });
+        },
+      'an idempotency key has been recorded with a different engagement-create body (PR-9)':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f8d',
+              key: '0190d5a4-7e01-7e2a-a4d3-cccc00000c21',
+              requestHash: 'pact-pr9-conflict-hash-engagement-create',
+            });
+          });
+        },
+
+      // --- POST /v1/engagements/:id/transitions ---
+      'an idempotency key has been recorded with a prior engagement-transition response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f8e',
+              key: '0190d5a4-7e01-7e2a-a4d3-dddd00000d20',
+              requestHash: hashCanonicalizedBody({
+                to_state: 'evaluated',
+                event_id: '00000000-0000-7000-8000-dddd0e0000e1',
+              }),
+              responseStatus: 200,
+              responseBody: { engagement: { id: '00000000-0000-7000-8000-dddd00000d01', state: 'evaluated' } },
+            });
+          });
+        },
+      'an idempotency key has been recorded with a different engagement-transition body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f8f',
+              key: '0190d5a4-7e01-7e2a-a4d3-dddd00000d21',
+              requestHash: 'pact-pr9-conflict-hash-engagement-transition',
+            });
+          });
+        },
+
+      // --- POST /v1/engagements/:id/outreach ---
+      'an idempotency key has been recorded with a prior outreach-send response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f90',
+              key: '0190d5a4-7e01-7e2a-a4d3-ffff00000f20',
+              requestHash: hashCanonicalizedBody({ prompt: 'Reach out to talent about the role.' }),
+              responseStatus: 200,
+              responseBody: { engagement: { id: '00000000-0000-7000-8000-ffff00000f01', state: 'awaiting_response' } },
+            });
+          });
+        },
+      'an idempotency key has been recorded with a different outreach-send body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f91',
+              key: '0190d5a4-7e01-7e2a-a4d3-ffff00000f21',
+              requestHash: 'pact-pr9-conflict-hash-outreach-send',
+            });
+          });
+        },
+
+      // --- POST /v1/engagements/:id/response ---
+      'an idempotency key has been recorded with a prior response-received response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            // PL-71: body shape mirrors RecordResponseRequestDto (no response_event_id).
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f92',
+              key: '0190d5a4-7e01-7e2a-a4d3-eeee00000e20',
+              requestHash: hashCanonicalizedBody({
+                response_received_at: '2026-05-25T11:00:00.000Z',
+                outreach_event_ref_id: '00000000-0000-7000-8000-eeee0e000001',
+              }),
+              responseStatus: 200,
+              responseBody: { engagement: { id: '00000000-0000-7000-8000-eeee00000e01', state: 'responded' } },
+            });
+          });
+        },
+      'an idempotency key has been recorded with a different response-received body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f93',
+              key: '0190d5a4-7e01-7e2a-a4d3-eeee00000e21',
+              requestHash: 'pact-pr9-conflict-hash-response-received',
+            });
+          });
+        },
+
+      // --- POST /v1/engagements/:id/conversation ---
+      'an idempotency key has been recorded with a prior conversation-started response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            // PL-71: body shape mirrors RecordConversationStartedRequestDto (single field).
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f94',
+              key: '0190d5a4-7e01-7e2a-a4d3-cccc00000c20',
+              requestHash: hashCanonicalizedBody({
+                conversation_started_at: '2026-05-25T12:00:00.000Z',
+              }),
+              responseStatus: 200,
+              responseBody: { engagement: { id: '00000000-0000-7000-8000-eeee00000e02', state: 'in_conversation' } },
+            });
+          });
+        },
+      'an idempotency key has been recorded with a different conversation-started body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f95',
+              key: '0190d5a4-7e01-7e2a-a4d3-cccc00000c21',
+              requestHash: 'pact-pr9-conflict-hash-conversation-started',
+            });
+          });
+        },
+
+      // --- POST /v1/examinations/:id/overrides ---
+      'an idempotency key has been recorded with a prior override-create response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            // PL-71: body shape mirrors CreateOverrideRequestDto + VALID_TIER_BODY
+            // from override-create.consumer.test.ts.
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f96',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1510',
+              requestHash: hashCanonicalizedBody({
+                override_type: 'tier',
+                target_field: 'tier',
+                justification:
+                  'Recruiter judgment: talent work history supports a higher entrustment than the system-assigned tier.',
+              }),
+              responseStatus: 201,
+              responseBody: {
+                override: { examination_id: '55550000-0000-7000-8000-0000000f0001' },
+                examination_mutated: false,
+              },
+            });
+          });
+        },
+      'an idempotency key has been recorded with a different override-create body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f97',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1511',
+              requestHash: 'pact-pr9-conflict-hash-override-create',
+            });
+          });
+        },
+
+      // --- POST /v1/consent/grant (formal replay) ---
+      'an idempotency key has been recorded with a prior consent-grant response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f98',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1d30',
+              requestHash: hashCanonicalizedBody({
+                talent_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+                scope: 'contacting',
+                captured_method: 'recruiter_capture',
+                consent_version: 'v1',
+                occurred_at: '2026-05-25T10:00:00.000Z',
+              }),
+              responseStatus: 201,
+              responseBody: { event: { talent_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa', scope: 'contacting' } },
+            });
+          });
+        },
+
+      // --- POST /v1/consent/revoke (formal replay) ---
+      'an idempotency key has been recorded with a prior consent-revoke response':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedIdempotencyKey(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f99',
+              key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1d31',
+              requestHash: hashCanonicalizedBody({
+                talent_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+                scope: 'contacting',
+                captured_method: 'recruiter_capture',
+                consent_version: 'v1',
+                occurred_at: '2026-05-25T11:00:00.000Z',
+              }),
+              responseStatus: 201,
+              responseBody: { event: { talent_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa', scope: 'contacting' } },
+            });
+          });
+        },
+
+      // ===== END M5 PR-9 §4.2 state-handlers =====
 
       // -- /v1/consent/state ---------------------------------------------
       'a talent with 4 consent scopes granted; cross_tenant_visibility not granted':

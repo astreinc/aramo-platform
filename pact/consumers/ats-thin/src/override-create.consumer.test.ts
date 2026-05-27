@@ -210,6 +210,83 @@ describe('ATS thin consumer → POST /v1/examinations/{id}/overrides', () => {
         expect(body.error.code).toBe('NOT_FOUND');
       });
   });
+
+  // M5 PR-9 §4.1 — idempotency replay + conflict per Plan v1.5 §M5 Track B item 2.
+  const REPLAY_KEY = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1510';
+  const CONFLICT_KEY = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1511';
+
+  it('idempotency replay: same key + same body returns cached 201 response', async () => {
+    await provider
+      .addInteraction()
+      .given('an idempotency key has been recorded with a prior override-create response')
+      .uponReceiving('an override-create request replaying a prior key + body')
+      .withRequest('POST', `/v1/examinations/${EXAM_ID_ACTIVE}/overrides`, (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'X-Request-ID': uuid(REQUEST_ID),
+          'Idempotency-Key': uuid(REPLAY_KEY),
+          'Content-Type': 'application/json',
+        }).jsonBody(VALID_TIER_BODY);
+      })
+      .willRespondWith(201, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          override: like({ examination_id: EXAM_ID_ACTIVE }),
+          examination_mutated: false,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/examinations/${EXAM_ID_ACTIVE}/overrides`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'X-Request-ID': REQUEST_ID,
+            'Idempotency-Key': REPLAY_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(VALID_TIER_BODY),
+        });
+        expect(res.status).toBe(201);
+      });
+  });
+
+  it('idempotency conflict: same key + different body returns 409 IDEMPOTENCY_KEY_CONFLICT', async () => {
+    await provider
+      .addInteraction()
+      .given('an idempotency key has been recorded with a different override-create body')
+      .uponReceiving('an override-create request with a conflicting prior key')
+      .withRequest('POST', `/v1/examinations/${EXAM_ID_ACTIVE}/overrides`, (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'X-Request-ID': uuid(REQUEST_ID),
+          'Idempotency-Key': uuid(CONFLICT_KEY),
+          'Content-Type': 'application/json',
+        }).jsonBody(VALID_TIER_BODY);
+      })
+      .willRespondWith(409, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          error: {
+            code: regex('IDEMPOTENCY_KEY_CONFLICT', 'IDEMPOTENCY_KEY_CONFLICT'),
+            message: like('Same idempotency key used with a different request body'),
+            request_id: uuid(REQUEST_ID),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/examinations/${EXAM_ID_ACTIVE}/overrides`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'X-Request-ID': REQUEST_ID,
+            'Idempotency-Key': CONFLICT_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(VALID_TIER_BODY),
+        });
+        expect(res.status).toBe(409);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+      });
+  });
 });
 
 // Suppress unused-constant warnings — these are documentation-only.

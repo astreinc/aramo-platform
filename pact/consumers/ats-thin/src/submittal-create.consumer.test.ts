@@ -38,6 +38,7 @@ const EXAM_ID_ENTRUSTABLE = '11110000-0000-7000-8000-0000000e0001';
 const EXAM_ID_STRETCH = '33330000-0000-7000-8000-0000000a0001';
 const REQUEST_ID = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f00';
 const IDEMPOTENCY_KEY = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f01';
+const SUBMITTAL_ID_REPLAY = '99990000-0000-7000-8000-000000000d01';
 
 const VALID_BODY_ENTRUSTABLE = {
   talent_id: TALENT_ID,
@@ -168,6 +169,85 @@ describe('ATS thin consumer → POST /v1/submittals', () => {
         expect(res.status).toBe(422);
         const body = await res.json();
         expect(body.error.code).toBe('SUBMITTAL_STRETCH_BLOCKED');
+      });
+  });
+
+  // M5 PR-9 §4.1 — idempotency replay + conflict pact coverage per
+  // Plan v1.5 §M5 Track B item 2. Replay: same key + same body returns
+  // prior 201 + cached body. Conflict: same key + different body returns
+  // 409 IDEMPOTENCY_KEY_CONFLICT.
+  const REPLAY_KEY = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f02';
+  const CONFLICT_KEY = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f03';
+
+  it('idempotency replay: same key + same body returns cached 201 response', async () => {
+    await provider
+      .addInteraction()
+      .given('an idempotency key has been recorded with a prior create-submittal response')
+      .uponReceiving('a create-submittal request replaying a prior key + body')
+      .withRequest('POST', '/v1/submittals', (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'X-Request-ID': uuid(REQUEST_ID),
+          'Idempotency-Key': uuid(REPLAY_KEY),
+          'Content-Type': 'application/json',
+        }).jsonBody(VALID_BODY_ENTRUSTABLE);
+      })
+      .willRespondWith(201, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          submittal: like({ id: SUBMITTAL_ID_REPLAY, state: 'created' }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/submittals`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'X-Request-ID': REQUEST_ID,
+            'Idempotency-Key': REPLAY_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(VALID_BODY_ENTRUSTABLE),
+        });
+        expect(res.status).toBe(201);
+      });
+  });
+
+  it('idempotency conflict: same key + different body returns 409 IDEMPOTENCY_KEY_CONFLICT', async () => {
+    await provider
+      .addInteraction()
+      .given('an idempotency key has been recorded with a different create-submittal body')
+      .uponReceiving('a create-submittal request with a conflicting prior key')
+      .withRequest('POST', '/v1/submittals', (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'X-Request-ID': uuid(REQUEST_ID),
+          'Idempotency-Key': uuid(CONFLICT_KEY),
+          'Content-Type': 'application/json',
+        }).jsonBody(VALID_BODY_ENTRUSTABLE);
+      })
+      .willRespondWith(409, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          error: {
+            code: regex('IDEMPOTENCY_KEY_CONFLICT', 'IDEMPOTENCY_KEY_CONFLICT'),
+            message: like('Same idempotency key used with a different request body'),
+            request_id: uuid(REQUEST_ID),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/submittals`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'X-Request-ID': REQUEST_ID,
+            'Idempotency-Key': CONFLICT_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(VALID_BODY_ENTRUSTABLE),
+        });
+        expect(res.status).toBe(409);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
       });
   });
 });

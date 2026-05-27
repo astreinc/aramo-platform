@@ -221,4 +221,81 @@ describe('ATS thin consumer → POST /v1/engagements/{id}/outreach', () => {
         expect(res.status).toBe(403);
       });
   });
+
+  // M5 PR-9 §4.1 — idempotency replay + conflict per Plan v1.5 §M5 Track B item 2.
+  const REPLAY_KEY = '0190d5a4-7e01-7e2a-a4d3-ffff00000f20';
+  const CONFLICT_KEY = '0190d5a4-7e01-7e2a-a4d3-ffff00000f21';
+  const OUTREACH_BODY = { prompt: 'Reach out to talent about the role.' };
+
+  it('idempotency replay: same key + same body returns cached 200 response', async () => {
+    await provider
+      .addInteraction()
+      .given('an idempotency key has been recorded with a prior outreach-send response')
+      .uponReceiving('an outreach-send request replaying a prior key + body')
+      .withRequest('POST', `/v1/engagements/${ENGAGEMENT_ENGAGED}/outreach`, (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'X-Request-ID': uuid(REQUEST_ID),
+          'Idempotency-Key': uuid(REPLAY_KEY),
+          'Content-Type': 'application/json',
+        }).jsonBody(OUTREACH_BODY);
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          engagement: like({ id: ENGAGEMENT_ENGAGED, state: 'awaiting_response' }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/engagements/${ENGAGEMENT_ENGAGED}/outreach`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'X-Request-ID': REQUEST_ID,
+            'Idempotency-Key': REPLAY_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(OUTREACH_BODY),
+        });
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('idempotency conflict: same key + different body returns 409 IDEMPOTENCY_KEY_CONFLICT', async () => {
+    await provider
+      .addInteraction()
+      .given('an idempotency key has been recorded with a different outreach-send body')
+      .uponReceiving('an outreach-send request with a conflicting prior key')
+      .withRequest('POST', `/v1/engagements/${ENGAGEMENT_ENGAGED}/outreach`, (b) => {
+        b.headers({
+          Authorization: like('Bearer eyJfake.token'),
+          'X-Request-ID': uuid(REQUEST_ID),
+          'Idempotency-Key': uuid(CONFLICT_KEY),
+          'Content-Type': 'application/json',
+        }).jsonBody(OUTREACH_BODY);
+      })
+      .willRespondWith(409, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          error: {
+            code: regex('IDEMPOTENCY_KEY_CONFLICT', 'IDEMPOTENCY_KEY_CONFLICT'),
+            message: like('Same idempotency key used with a different request body'),
+            request_id: uuid(REQUEST_ID),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/engagements/${ENGAGEMENT_ENGAGED}/outreach`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer eyJfake.token',
+            'X-Request-ID': REQUEST_ID,
+            'Idempotency-Key': CONFLICT_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(OUTREACH_BODY),
+        });
+        expect(res.status).toBe(409);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+      });
+  });
 });
