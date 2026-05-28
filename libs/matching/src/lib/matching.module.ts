@@ -1,12 +1,11 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
-import { createAramoLogger } from '@aramo/common';
+import { createAramoLogger, RedisConnectionConfig } from '@aramo/common';
 import { ExaminationModule } from '@aramo/examination';
 
 import { MATCH_QUEUE_NAME } from './match-queue.constants.js';
 import { MatchingProcessor } from './matching.processor.js';
 import { MatchingService } from './matching.service.js';
-import { RedisConnectionConfig } from './redis/redis-connection.config.js';
 
 // libs/matching module — M3 PR-2 entrustability engine + persistence
 // orchestrator, M3 PR-3 BullMQ/Redis async execution wiring.

@@ -2,6 +2,22 @@ export { ConsentModule } from './lib/consent.module.js';
 export { ConsentController } from './lib/consent.controller.js';
 export { ConsentService } from './lib/consent.service.js';
 export { ConsentRepository } from './lib/consent.repository.js';
+export { StaleConsentRepository } from './lib/stale-consent.repository.js';
+export type {
+  StaleContactingGrant,
+  MarkExpiredInput,
+} from './lib/stale-consent.repository.js';
+export { OutboxPublisherRepository } from './lib/outbox-publisher.repository.js';
+export type { UnpublishedOutboxEvent } from './lib/outbox-publisher.repository.js';
+export { StaleConsentProcessor } from './lib/stale-consent.processor.js';
+export type { StaleConsentScanInput } from './lib/stale-consent.processor.js';
+export { STALE_CONSENT_QUEUE_NAME } from './lib/stale-consent.queue.constants.js';
+export { OutboxPublisherProcessor } from './lib/outbox-publisher.processor.js';
+export type { OutboxPublisherTickInput } from './lib/outbox-publisher.processor.js';
+export {
+  OUTBOX_PUBLISHER_QUEUE_NAME,
+  OUTBOX_PUBLISHER_BATCH_SIZE,
+} from './lib/outbox-publisher.queue.constants.js';
 export { IdempotencyService } from './lib/idempotency.service.js';
 export type {
   IdempotencyLookupInput,

@@ -231,6 +231,15 @@ TIER2_EXCLUDES=(
   "libs/engagement/src/lib/dto/record-conversation-started-response.dto.ts"
   "libs/engagement/src/lib/dto/engagement-conversation-started-payload.ts"
   "pact/consumers/ats-thin/src/conversation-started.consumer.test.ts"
+  # M5 PR-11 Ruling 7: 4 BullMQ background job integration specs
+  # (stale-consent + outbox-publisher + cross-schema-consistency +
+  # skill-canonicalization). Pattern matches F23 standing per-spec
+  # TIER2_EXCLUDES pattern (M5 PR-6/PR-7/PR-8a/PR-9b precedent). PR-11
+  # is the first PL-66 Category 5 ratification PR (ADR-0018 Decision 9).
+  "libs/consent/src/tests/stale-consent.integration.spec.ts"
+  "libs/consent/src/tests/outbox-publisher.integration.spec.ts"
+  "libs/common/src/tests/cross-schema-consistency.integration.spec.ts"
+  "libs/skills-taxonomy/src/tests/skill-canonicalization.integration.spec.ts"
 )
 
 # =============================================================================

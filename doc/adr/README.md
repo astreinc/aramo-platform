@@ -35,6 +35,7 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 | [0014](0014-cve-scanning-conventions.md) | CVE Scanning Conventions (tfsec + npm-audit, Allow-list Mechanism, M4 PR-10 Substrate) | Accepted | 2026-05-24 |
 | [0016](0016-rds-substrate-conventions.md) | RDS Substrate Conventions (VPC + RDS Modules, Per-Env Scope, Secrets Manager Master Password) | Accepted | 2026-05-27 |
 | [0017](0017-rds-disaster-recovery-strategy.md) | RDS Disaster Recovery Strategy (Backup Retention + PITR Configuration, Per-Env Backup Window, M7 Deferrals) | Accepted | 2026-05-27 |
+| [0018](0018-background-jobs-substrate.md) | Background Jobs Substrate (BullMQ Pattern Standardization, 4 Aramo Core Jobs, PL-66 Category 5 Ratification, Deferrals) | Accepted | 2026-05-27 |
 
 ## When to write an ADR
 
