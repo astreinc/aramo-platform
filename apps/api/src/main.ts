@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 
 import { AppModule } from './app.module.js';
+import { registerBackgroundJobSchedules } from './jobs/registration.js';
 
 async function bootstrap(): Promise<void> {
   const port = process.env['PORT'] ?? 3000;
@@ -21,6 +22,11 @@ async function bootstrap(): Promise<void> {
       transform: true,
     }),
   );
+  // M5 PR-11 §4.6 — register 4 Aramo Core BullMQ repeating job schedules
+  // (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6). Gated on
+  // RedisConnectionConfig.isConfigured so REDIS_URL-less environments boot
+  // silently.
+  await registerBackgroundJobSchedules(app);
   Logger.log('aramo-core api starting', 'Bootstrap');
   await app.listen(port);
 }

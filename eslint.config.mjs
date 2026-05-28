@@ -213,6 +213,17 @@ export default [
       // (the spec exercises POST /v1/engagements/{id}/outreach as the
       // gated send code path per Plan v1.5 §M5 Track B item 3 closure).
       'apps/api/src/tests/outreach-send-consent-revoked.integration.spec.ts',
+      // M5 PR-11 Ruling 7: 4 BullMQ background job integration specs
+      // (stale-consent + outbox-publisher + cross-schema-consistency +
+      // skill-canonicalization). Matches F23 standing per-spec ESLint
+      // exemption pattern paired with scripts/verify-vocabulary.sh
+      // TIER2_EXCLUDES entries (M5 PR-6/PR-7/PR-8a/PR-9b precedent).
+      // PR-11 is the first PL-66 Category 5 ratification PR
+      // (ADR-0018 Decision 9).
+      'libs/consent/src/tests/stale-consent.integration.spec.ts',
+      'libs/consent/src/tests/outbox-publisher.integration.spec.ts',
+      'libs/common/src/tests/cross-schema-consistency.integration.spec.ts',
+      'libs/skills-taxonomy/src/tests/skill-canonicalization.integration.spec.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',

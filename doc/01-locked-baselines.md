@@ -345,7 +345,7 @@ The M5 milestone (per `Aramo-Phase-1-Delivery-Plan-v1_5-LOCKED.docx`) ships in t
 > - Disaster-recovery mechanism implementation begins (added v1.4 — D-ENT-READY-1): RDS automated backups and point-in-time recovery configuration per Architecture §17.2, on the M4 infrastructure-as-code track.
 > - Architecture §9 background jobs scheduled (added v1.4 — D-ENT-READY-1): the four Aramo Core BullMQ jobs (stale-consent, outbox publisher, cross-schema consistency check, skill canonicalization) implemented explicitly, each in the milestone owning its domain; not left implicit.
 
-Track A items 1-4 closed via M5 PR-1 through PR-8b2. Track A item 5 (DR; PR-10a substrate-prerequisite half closed at #111 + PR-10b configuration half closed at #TBD) CLOSED at PR-10b (configuration-correctness closure; deployed-substrate apply post-M5 per ADR-0017 Decision 9). Track A item 6 (background jobs) remains OPEN and ships via M5 PR-11.
+Track A items 1-4 closed via M5 PR-1 through PR-8b2. Track A item 5 (DR; PR-10a substrate-prerequisite half closed at #111 + PR-10b configuration half closed at #112) CLOSED at PR-10b (configuration-correctness closure; deployed-substrate apply post-M5 per ADR-0017 Decision 9). Track A item 6 (background jobs) CLOSED at PR-11 (4 Aramo Core BullMQ jobs shipped per D-ENT-READY-1 G7: stale-consent + outbox-publisher + cross-schema-consistency + skill-canonicalization-NO-OP-framework; ADR-0018 codifies the substrate; PL-66 Category 5 first ratification PR). M5 Track A FULLY CLOSED on PR-11 merge.
 
 **Plan v1.5 §M5 Track B verbatim** (PR-9 binding):
 

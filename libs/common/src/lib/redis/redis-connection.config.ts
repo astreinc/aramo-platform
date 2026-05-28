@@ -1,5 +1,11 @@
 import { Injectable, Optional } from '@nestjs/common';
 
+// M5 PR-11 §4.1 — extracted from libs/matching/src/lib/redis/redis-connection.config.ts
+// to libs/common for cross-lib reuse. ADR-0018 Decision 2 codifies the
+// cross-lib reuse pattern (consent stale-consent + outbox-publisher;
+// common cross-schema-consistency; skills-taxonomy skill-canonicalization
+// all consume the same shared config).
+//
 // M3 PR-3 §4.2 — Redis connection config service.
 //
 // Lead Gate-5 fix ruling (Option B, lazy validation): the constructor
@@ -8,19 +14,16 @@ import { Injectable, Optional } from '@nestjs/common';
 // parsing happens on first access of the `connection` getter and is
 // memoized thereafter.
 //
-// Why: PR-16's @Optional() pattern makes the constructor PARAMETER
-// resolvable by Nest DI (the F11 root-cause fix), but it does NOT defer
-// the constructor body — eager validation still throws at instantiation
-// time. The §8.1-B pass D4 finding anticipated exactly this: pact:provider
-// boots apps/api under DI with no REDIS_URL stub, so an eager throw in
-// the constructor breaks boot. The directive §4.2 intent — "apps/api
-// boots without a live Redis" — is only truly met when REDIS_URL is
-// validated lazily, at first use, not at construction.
+// The MatchingModule / ConsentModule / CommonModule / SkillsTaxonomyModule
+// BullModule.forRootAsync factories invoke this getter at factory-invocation
+// time. Each factory tolerates the "not configured" throw so module init
+// can complete; the actual failure surfaces only when a queue push/pop
+// attempts a Redis command.
 //
-// The MatchingModule BullModule.forRootAsync factory is responsible for
-// invoking this getter at factory-invocation time. The factory tolerates
-// the "not configured" throw so module init can complete; the actual
-// failure surfaces only when a queue push/pop attempts a Redis command.
+// PR-11 added the `isConfigured` accessor so processor onApplicationBootstrap
+// hooks can short-circuit Worker construction without provoking the throw
+// when REDIS_URL is absent (mirrors libs/matching's pre-PR-11 inline env
+// check at matching.processor.ts onApplicationBootstrap).
 @Injectable()
 export class RedisConnectionConfig {
   private readonly explicitUrl?: string;
@@ -28,6 +31,15 @@ export class RedisConnectionConfig {
 
   constructor(@Optional() redisUrl?: string) {
     this.explicitUrl = redisUrl;
+  }
+
+  // PR-11 §4.1 — non-throwing check for whether REDIS_URL is configured.
+  // Used by job-processor onApplicationBootstrap hooks to gate
+  // BullRegistrar.register() without provoking the lazy `connection`
+  // getter's throw.
+  get isConfigured(): boolean {
+    const url = this.explicitUrl ?? process.env['REDIS_URL'];
+    return url !== undefined && url.length > 0;
   }
 
   // Lazy accessor. Resolves (constructor-supplied URL ?? process.env),
