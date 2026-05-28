@@ -347,6 +347,8 @@ The M5 milestone (per `Aramo-Phase-1-Delivery-Plan-v1_5-LOCKED.docx`) ships in t
 
 Track A items 1-4 closed via M5 PR-1 through PR-8b2. Track A item 5 (DR; PR-10a substrate-prerequisite half closed at #111 + PR-10b configuration half closed at #112) CLOSED at PR-10b (configuration-correctness closure; deployed-substrate apply post-M5 per ADR-0017 Decision 9). Track A item 6 (background jobs) CLOSED at PR-11 (4 Aramo Core BullMQ jobs shipped per D-ENT-READY-1 G7: stale-consent + outbox-publisher + cross-schema-consistency + skill-canonicalization-NO-OP-framework; ADR-0018 codifies the substrate; PL-66 Category 5 first ratification PR). M5 Track A FULLY CLOSED on PR-11 merge.
 
+**M5-COMPLETE (PR-12 close handoff)**: Plan v1.5 §M5 Track A (6 items) + Track B (4 items) ALL CLOSED against M5 Charter v1.2 Exit Criteria (no engagement-send-time consent absence; deterministic state transitions w/ 422 on illegal; submittal confirm requires all three attestations true). 18 M5 PRs; 89 process lessons; 3 new ADRs (0016/0017/0018); first AWS data-plane substrate shipped (configuration-correctness closure per ADR-0017 Decision 9). M5 milestone process FULLY COMPLETE with clean carry-forward into M6. Substrate baseline for M6 = post-PR-#114 HEAD. See `doc/aramo-handoff-m5-close.md` for full handoff.
+
 **Plan v1.5 §M5 Track B verbatim** (PR-9 binding):
 
 > ### Track B
