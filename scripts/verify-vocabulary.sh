@@ -240,6 +240,16 @@ TIER2_EXCLUDES=(
   "libs/consent/src/tests/outbox-publisher.integration.spec.ts"
   "libs/common/src/tests/cross-schema-consistency.integration.spec.ts"
   "libs/skills-taxonomy/src/tests/skill-canonicalization.integration.spec.ts"
+  # M5 PR-12 (M5-close handoff): the handoff doc quotes Charter v1.2
+  # Exit Criteria verbatim (incl. "outreach" — canonical engagement
+  # vocabulary in the Charter), the Plan v1.5 §M5 Track A item 2
+  # deliverable name (M5 outreach flow with AI-assisted draft generation),
+  # prior PR titles (PR-6 outreach surface), and Architecture §9.2
+  # Adapter BullMQ job names (incl. "candidate-direct upload" — the
+  # Architecture-locked adapter-job nomenclature). Pattern matches the
+  # M5 PR-6/PR-7/PR-8a/PR-9b precedent for documents carrying canonical
+  # locked-spec vocabulary by design. Per directive §6.8 anticipation.
+  "doc/aramo-handoff-m5-close.md"
 )
 
 # =============================================================================
