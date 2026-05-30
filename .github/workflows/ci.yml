@@ -225,7 +225,28 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run pact:consumer
+      # M6 PR-1 — bounded retry for the irreducible pact-rust mock-server
+      # port-reuse race (~7% warm / ~17% cold per attempt at HEAD 9ac157e
+      # after the afterEach setImmediate yield). k=3 projects job failure
+      # to < 0.5% (cold 17%³ ≈ 0.5%; warm 6.7%³ ≈ 0.03%). Wraps the
+      # umbrella `pact:consumer` (all 6 suites; ats-thin carries the race
+      # but the retry covers any consumer suite that exhibits the same
+      # pact-rust signature). HK-M6 carry-forward for upstream fix in
+      # pact-foundation/pact-core or pact-rust (cleanupMockServer should
+      # await listener unbind synchronously).
+      - name: Run pact:consumer (with bounded retry for pact-rust race)
+        run: |
+          set -e
+          ATTEMPTS=3
+          for attempt in $(seq 1 $ATTEMPTS); do
+            if npm run pact:consumer; then
+              echo "pact:consumer passed on attempt $attempt"
+              exit 0
+            fi
+            echo "::warning::pact:consumer failed attempt $attempt of $ATTEMPTS (suspected pact-rust race; HK-M6)"
+          done
+          echo "::error::pact:consumer failed after $ATTEMPTS attempts"
+          exit 1
       - name: Upload pact files
         uses: actions/upload-artifact@v4
         with:
