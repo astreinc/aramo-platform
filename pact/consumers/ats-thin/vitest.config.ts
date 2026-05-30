@@ -10,7 +10,9 @@ export default mergeConfig(
       include: ['src/**/*.test.ts'],
       // Pact mock server start can be slow on cold cache
       testTimeout: 30_000,
-      // Pact tests run sequentially — they share a per-suite mock server
+      // Pact tests run sequentially — they share a per-fork pact-rust
+      // tokio runtime; the mock server teardown is signaled synchronously
+      // through the FFI but completes asynchronously on the runtime.
       pool: 'forks',
       isolate: true,
       // F39 — disable inter-file parallelism — all test files write
@@ -18,6 +20,11 @@ export default mergeConfig(
       // execution can race the merge, losing interactions. Mirrors
       // M3 PR-9 portal-thin precedent.
       fileParallelism: false,
+      // M6 PR-1 — afterEach setImmediate yield (see src/test-setup.ts)
+      // closes the larger component of the pact-rust mock-server
+      // port-reuse race (rate ~30% → ~7%). Stronger yields and per-test
+      // PactV4 reinstantiation were tested and did not improve further.
+      setupFiles: ['./src/test-setup.ts'],
     },
   }),
 );
