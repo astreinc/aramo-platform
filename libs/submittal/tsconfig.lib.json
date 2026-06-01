@@ -9,6 +9,7 @@
     "types": ["node"],
     "paths": {
       "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
+      "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
       "@aramo/evidence": ["../../dist/libs/evidence/src/index.d.ts"],

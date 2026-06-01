@@ -42,8 +42,31 @@ model Tenant {
   updated_at   DateTime @updatedAt @db.Timestamptz
 
   memberships  UserTenantMembership[]
+  sites        Site[]
 
   @@index([is_active])
+  @@schema("identity")
+}
+
+// Site — sub-tenant partition within a Tenant (PR-A1a Ruling 4). A site
+// belongs to exactly one Tenant; memberships and JWT claims may optionally
+// reference a Site to scope authority to a sub-tenant. The Site axis lives
+// in identity ONLY — no Core (non-identity) schema carries site_id; Core
+// stays tenant_id-only per Ruling 4. Sites are additive: tenants without
+// any rows in this table behave exactly as before A1a.
+model Site {
+  id           String   @id @db.Uuid
+  tenant_id    String   @db.Uuid
+  name         String
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @updatedAt @db.Timestamptz
+
+  tenant       Tenant   @relation(fields: [tenant_id], references: [id])
+  memberships  UserTenantMembership[]
+
+  @@unique([tenant_id, name])
+  @@index([tenant_id, is_active])
   @@schema("identity")
 }
 
@@ -51,6 +74,9 @@ model UserTenantMembership {
   id           String   @id @db.Uuid
   user_id      String   @db.Uuid
   tenant_id    String   @db.Uuid
+  // Optional site partition (PR-A1a Ruling 4). NULL = tenant-wide membership
+  // (existing behavior pre-A1a, preserved); set = site-scoped membership.
+  site_id      String?  @db.Uuid
   is_active    Boolean  @default(true)
   joined_at    DateTime @default(now()) @db.Timestamptz
   deactivated_at DateTime? @db.Timestamptz
@@ -59,11 +85,13 @@ model UserTenantMembership {
 
   user         User     @relation(fields: [user_id], references: [id])
   tenant       Tenant   @relation(fields: [tenant_id], references: [id])
+  site         Site?    @relation(fields: [site_id], references: [id])
   role_assignments UserTenantMembershipRole[]
 
   @@unique([user_id, tenant_id])
   @@index([tenant_id, is_active])
   @@index([user_id, is_active])
+  @@index([tenant_id, site_id, is_active])
   @@schema("identity")
 }
 

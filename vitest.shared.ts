@@ -23,6 +23,11 @@ export default defineConfig({
       // verify.ts. eslint-side boundary override is scoped to that file pair.
       '@aramo/auth-service': resolve(root, 'apps/auth-service/src/app/auth/auth.module.ts'),
       '@aramo/auth-storage': resolve(root, 'libs/auth-storage/src/index.ts'),
+      // PR-A1a §3 — new leaf lib hosting RolesGuard + @RequireScopes /
+      // @RequireSiteMatch decorators. Mirrors tsconfig.base.json
+      // @aramo/authorization alias so vitest runtime resolves the
+      // AppModule import (apps/api wires AuthorizationModule).
+      '@aramo/authorization': resolve(root, 'libs/authorization/src/index.ts'),
       '@aramo/consent': resolve(root, 'libs/consent/src/index.ts'),
       '@aramo/ai-draft': resolve(root, 'libs/ai-draft/src/index.ts'),
       '@aramo/audit': resolve(root, 'libs/audit/src/index.ts'),

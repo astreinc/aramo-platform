@@ -30,7 +30,9 @@ describe('IdentityAuditService.writeEvent', () => {
     });
 
     expect(writeEvent).toHaveBeenCalledTimes(1);
-    const arg = writeEvent.mock.calls[0]![0] as WriteAuditEventInput;
+    const firstCall = writeEvent.mock.calls[0];
+    if (firstCall === undefined) throw new Error('writeEvent was not called');
+    const arg = firstCall[0] as WriteAuditEventInput;
     expect(arg.event_type).toBe('identity.session.issued');
     expect(arg.actor_type).toBe('user');
     expect(arg.actor_id).toBe(USER_ID);

@@ -48,6 +48,13 @@ const IDENTITY_MIGRATION = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+// PL-93 PR-A1a: apply the add_site_axis migration alongside the init so the
+// auth-service integration spec sees the post-A1a identity schema (Site +
+// UserTenantMembership.site_id). Migration is additive and idempotent.
+const IDENTITY_SITE_AXIS_MIGRATION = resolve(
+  __dirname,
+  '../../../../libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
+);
 const AUTH_STORAGE_MIGRATION = resolve(
   __dirname,
   '../../../../libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
@@ -78,6 +85,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setup.$connect();
       for (const stmt of [
         ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_SITE_AXIS_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
       ]) {
         const t = stmt.trim();

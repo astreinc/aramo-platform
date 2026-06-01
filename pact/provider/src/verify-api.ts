@@ -1343,12 +1343,20 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
 
+      // PR-A1a §6 — recruiter accessJwt now carries 'submittal:create' so
+      // the RolesGuard at SubmittalController.createSubmittal passes for
+      // the 4 ats-thin create-submittal pact interactions (STRETCH,
+      // Entrustable, replay, conflict). The 'ingestion:write' entry is
+      // preserved for the legacy ingestion-typed interactions that still
+      // assert this scope shape. Recruiter role in the PR-A1a seed
+      // catalog carries 'submittal:create' + 'submittal:approve' +
+      // 'requisition:read' (see libs/identity/prisma/seed.ts).
       accessJwt = await new SignJWT({
         sub: RECRUITER_ID,
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: ['ingestion:write'],
+        scopes: ['ingestion:write', 'submittal:create'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()

@@ -224,6 +224,20 @@ export default [
       'libs/consent/src/tests/outbox-publisher.integration.spec.ts',
       'libs/common/src/tests/cross-schema-consistency.integration.spec.ts',
       'libs/skills-taxonomy/src/tests/skill-canonicalization.integration.spec.ts',
+      // PR-A1a Ruling B extension (Commit Plan v1.0 §1 + Lead authorization
+      // on the F1 CI failure): `candidate` here is a JWT role-name (the
+      // portal-user principal role identifier), NOT entity vocabulary for
+      // the talent record. File-scoped to the same 4 identity paths the
+      // scripts/verify-vocabulary.sh TIER2_EXCLUDES carries; the ESLint
+      // no-restricted-syntax `candidate` rule still applies to every other
+      // file in the tree. Paired with the parallel verify-vocabulary.sh
+      // exclusion — the vocabulary enforcement has two surfaces (this
+      // ESLint rule + verify-vocabulary.sh) and exclusions must be applied
+      // to both in lockstep.
+      'libs/identity/src/lib/dto/role.dto.ts',
+      'libs/identity/prisma/seed.ts',
+      'libs/identity/src/tests/seed.spec.ts',
+      'libs/identity/src/tests/identity.integration.spec.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',

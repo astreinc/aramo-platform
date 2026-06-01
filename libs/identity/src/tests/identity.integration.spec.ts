@@ -30,10 +30,19 @@ import {
   SEED_SERVICE_ACCOUNT_NAME,
 } from '../../prisma/seed.js';
 
-const MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260512000000_init_identity_model/migration.sql',
-);
+// PL-93 PR-A1a: integration spec applies BOTH the init migration AND the
+// new add_site_axis migration so the test database matches the post-A1a
+// schema (Site model + UserTenantMembership.site_id).
+const MIGRATION_PATHS = [
+  resolve(
+    __dirname,
+    '../../prisma/migrations/20260512000000_init_identity_model/migration.sql',
+  ),
+  resolve(
+    __dirname,
+    '../../prisma/migrations/20260601000000_add_site_axis/migration.sql',
+  ),
+];
 
 const TENANT_KEYSET = '20000000-2222-7222-8222-200000000001';
 
@@ -50,14 +59,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
-      const migrationSql = readFileSync(MIGRATION_PATH, 'utf8');
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
-      const statements = splitDdl(migrationSql);
-      for (const stmt of statements) {
-        const trimmed = stmt.trim();
-        if (trimmed.length === 0) continue;
-        await setupClient.$executeRawUnsafe(trimmed);
+      for (const migrationPath of MIGRATION_PATHS) {
+        const migrationSql = readFileSync(migrationPath, 'utf8');
+        const statements = splitDdl(migrationSql);
+        for (const stmt of statements) {
+          const trimmed = stmt.trim();
+          if (trimmed.length === 0) continue;
+          await setupClient.$executeRawUnsafe(trimmed);
+        }
       }
       await setupClient.$disconnect();
 
@@ -102,9 +113,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(extId?.user_id).toBe(SEED_IDS.user_admin);
 
       const roles = await prisma.role.findMany({ orderBy: { key: 'asc' } });
-      expect(roles.map((r) => r.key)).toEqual(['recruiter', 'tenant_admin', 'viewer']);
+      // PR-A1a Ruling 3: candidate role added.
+      expect(roles.map((r) => r.key)).toEqual([
+        'candidate',
+        'recruiter',
+        'tenant_admin',
+        'viewer',
+      ]);
 
       const scopes = await prisma.scope.findMany({ orderBy: { key: 'asc' } });
+      // PR-A1a Ruling 2/3: 8 new scopes (4 ATS + 4 portal). Pre-A1a 6 -> 14.
       expect(scopes.map((s) => s.key)).toEqual([
         'auth:session:read',
         'consent:decision-log:read',
@@ -112,10 +130,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'consent:write',
         'identity:tenant:read',
         'identity:user:read',
+        'portal:consent:read',
+        'portal:consent:write',
+        'portal:profile:edit',
+        'portal:profile:read',
+        'requisition:read',
+        'requisition:read:all',
+        'submittal:approve',
+        'submittal:create',
       ]);
 
       const roleScopes = await prisma.roleScope.count();
-      expect(roleScopes).toBe(13); // 6 + 4 + 3 per §6 + test 17
+      // Pre-A1a: 6 + 4 + 3 = 13. PR-A1a adds 4 + 3 + 1 + 4 = 12. Total 25.
+      expect(roleScopes).toBe(25);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -175,12 +202,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(tenants[0]?.id).toBe(SEED_IDS.tenant);
     });
 
-    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (6 scopes)', async () => {
+    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (10 scopes post-A1a)', async () => {
       const scopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
       });
       const sorted = [...scopes].sort();
+      // PR-A1a Ruling 2: tenant_admin gains requisition:read, requisition:read:all,
+      // submittal:create, submittal:approve. 6 + 4 = 10.
       expect(sorted).toEqual([
         'auth:session:read',
         'consent:decision-log:read',
@@ -188,6 +217,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'consent:write',
         'identity:tenant:read',
         'identity:user:read',
+        'requisition:read',
+        'requisition:read:all',
+        'submittal:approve',
+        'submittal:create',
       ]);
     });
 
@@ -331,8 +364,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Test 17 — scope catalog correctness
     // -----------------------------------------------------------------
 
-    it('test 17 — scope catalog correctness: tenant_admin 6/recruiter 4/viewer 3 per §6+§9', async () => {
-      // tenant_admin scope set
+    it('test 17 — scope catalog correctness: tenant_admin 10/recruiter 7/viewer 4/candidate 4 per §6+§9 + PR-A1a', async () => {
+      // tenant_admin scope set (10 post-A1a)
       const adminScopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
@@ -344,9 +377,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'consent:write',
         'identity:tenant:read',
         'identity:user:read',
+        'requisition:read',
+        'requisition:read:all',
+        'submittal:approve',
+        'submittal:create',
       ]);
 
-      // recruiter scope set (verified via RoleScope joins, no membership wired)
+      // recruiter scope set (7 post-A1a; NO requisition:read:all — Aramo
+      // divergence from OpenCATS coarse EDIT-tier; see role.dto comment)
       const recruiterRoleScopes = await prisma.roleScope.findMany({
         where: { role: { key: 'recruiter' } },
         include: { scope: true },
@@ -357,8 +395,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'consent:decision-log:read',
         'consent:read',
         'consent:write',
+        'requisition:read',
+        'submittal:approve',
+        'submittal:create',
       ]);
 
+      // viewer scope set (4 post-A1a)
       const viewerRoleScopes = await prisma.roleScope.findMany({
         where: { role: { key: 'viewer' } },
         include: { scope: true },
@@ -368,6 +410,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'auth:session:read',
         'consent:decision-log:read',
         'consent:read',
+        'requisition:read',
+      ]);
+
+      // PR-A1a Ruling 3: candidate scope set (portal-only, 4 scopes)
+      const candidateRoleScopes = await prisma.roleScope.findMany({
+        where: { role: { key: 'candidate' } },
+        include: { scope: true },
+      });
+      const candidateKeys = [...new Set(candidateRoleScopes.map((r) => r.scope.key))].sort();
+      expect(candidateKeys).toEqual([
+        'portal:consent:read',
+        'portal:consent:write',
+        'portal:profile:edit',
+        'portal:profile:read',
       ]);
     });
 

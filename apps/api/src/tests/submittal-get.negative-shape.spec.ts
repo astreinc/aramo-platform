@@ -274,12 +274,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
 
+      // PR-A1a F2 sweep (Lead-authorized fix-up): recruiter mint now
+       // carries submittal:create so the setup POST /v1/submittals
+       // (RolesGuard @RequireScopes('submittal:create')) passes through.
+       // No confirm-flow on this spec (GET-only after setup).
       recruiterJwt = await new SignJWT({
         sub: RECRUITER_ID,
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: [],
+        scopes: ['submittal:create'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()

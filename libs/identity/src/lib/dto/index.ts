@@ -7,3 +7,4 @@ export { SEED_SCOPE_KEYS, SCOPE_KEY_FORMAT } from './scope.dto.js';
 export type { ScopeDto, SeedScopeKey } from './scope.dto.js';
 export type { ServiceAccountDto } from './service-account.dto.js';
 export type { ExternalIdentityDto } from './external-identity.dto.js';
+export type { SiteDto } from './site.dto.js';

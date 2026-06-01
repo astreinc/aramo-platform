@@ -18,4 +18,10 @@ export interface AuthContext {
   scopes: string[];
   iat: number;
   exp: number;
+  // Optional site axis (PR-A1a Ruling 5): when present, the token is
+  // scoped to a single site within the tenant; when absent, the token
+  // is tenant-wide. Read by libs/authorization RolesGuard for routes
+  // decorated with @RequireSiteMatch. AuthN behavior unchanged — the
+  // claim is propagated verbatim, not validated against any catalog.
+  site_id?: string;
 }

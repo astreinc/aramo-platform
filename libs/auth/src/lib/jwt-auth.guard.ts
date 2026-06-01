@@ -40,6 +40,7 @@ interface AramoJwtPayload extends JWTPayload {
   actor_kind?: string;
   tenant_id?: string;
   scopes?: string[];
+  site_id?: string;
 }
 
 // PR-2 precedent #16: real JWS verification. PR-2 verifies tokens only —
@@ -164,7 +165,7 @@ export class JwtAuthGuard implements CanActivate {
     payload: AramoJwtPayload,
     requestId: string,
   ): AuthContext {
-    const { sub, consumer_type, actor_kind, tenant_id, scopes, iat, exp } =
+    const { sub, consumer_type, actor_kind, tenant_id, scopes, iat, exp, site_id } =
       payload;
     if (
       sub === undefined ||
@@ -211,6 +212,7 @@ export class JwtAuthGuard implements CanActivate {
       scopes,
       iat,
       exp,
+      ...(site_id !== undefined ? { site_id } : {}),
     };
   }
 }

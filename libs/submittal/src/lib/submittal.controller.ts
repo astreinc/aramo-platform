@@ -19,6 +19,7 @@ import {
   hashCanonicalizedBody,
 } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
+import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { IdempotencyService } from '@aramo/consent';
 import {
   EvidenceRepository,
@@ -67,8 +68,14 @@ import { SubmittalRepository } from './submittal.repository.js';
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// PR-A1a §6 — route enforcement wired here. JwtAuthGuard runs first
+// (AuthN); RolesGuard runs second (AuthZ) and is a no-op on any handler
+// that does not carry @RequireScopes metadata (so existing routes on
+// this controller are unaffected). @RequireScopes('submittal:create')
+// is applied to the createSubmittal handler below; the recruiter role
+// catalog is seeded with that scope (libs/identity/prisma/seed.ts).
 @Controller('v1/submittals')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class SubmittalController {
   constructor(
     private readonly submittalRepository: SubmittalRepository,
@@ -88,6 +95,7 @@ export class SubmittalController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('submittal:create')
   async createSubmittal(
     @Body() body: CreateSubmittalRequestDto,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,

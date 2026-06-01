@@ -289,12 +289,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
 
+      // PR-A1a F2 sweep (Lead-authorized fix-up): recruiter mint now
+       // carries submittal:create + submittal:approve so the setup POST
+       // /v1/submittals (RolesGuard @RequireScopes('submittal:create'))
+       // passes through. submittal:approve is included pre-emptively for
+       // this confirm-flow spec (the recruiter seed catalog carries both;
+       // see libs/identity/prisma/seed.ts).
       recruiterJwt = await new SignJWT({
         sub: RECRUITER_ID,
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: [],
+        scopes: ['submittal:create', 'submittal:approve'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
