@@ -5,6 +5,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import { EvidenceRepository } from '@aramo/evidence';
 import { ExaminationRepository } from '@aramo/examination';
+import { recordUsage } from '@aramo/metering';
 
 import type { RecruiterAttestationsDto } from './dto/confirm-submittal-request.dto.js';
 import type { TalentSubmittalEventView } from './dto/talent-submittal-event.view.js';
@@ -595,6 +596,11 @@ export class SubmittalRepository {
           } as never,
         },
       }),
+      // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
+      recordUsage(this.prisma, {
+        tenant_id: input.tenant_id,
+        event_type: 'submittal.state_transition',
+      }),
     ]);
 
     const submittalView = projectView(updatedRow as TalentSubmittalRecordRow);
@@ -697,6 +703,11 @@ export class SubmittalRepository {
           } as never,
         },
       }),
+      // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
+      recordUsage(this.prisma, {
+        tenant_id: input.tenant_id,
+        event_type: 'submittal.state_transition',
+      }),
     ]);
 
     const submittalView = projectView(updatedRow as TalentSubmittalRecordRow);
@@ -797,6 +808,11 @@ export class SubmittalRepository {
           } as never,
         },
       }),
+      // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
+      recordUsage(this.prisma, {
+        tenant_id: input.tenant_id,
+        event_type: 'submittal.state_transition',
+      }),
     ]);
 
     const submittalView = projectView(updatedRow as TalentSubmittalRecordRow);
@@ -896,6 +912,11 @@ export class SubmittalRepository {
             transition_event_id: input.event_id,
           } as never,
         },
+      }),
+      // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
+      recordUsage(this.prisma, {
+        tenant_id: input.tenant_id,
+        event_type: 'submittal.state_transition',
       }),
     ]);
 
@@ -1016,6 +1037,11 @@ export class SubmittalRepository {
             transition_event_id: input.event_id,
           } as never,
         },
+      }),
+      // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
+      recordUsage(this.prisma, {
+        tenant_id: input.tenant_id,
+        event_type: 'submittal.state_transition',
       }),
     ]);
 

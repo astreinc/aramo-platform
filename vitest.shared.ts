@@ -45,6 +45,13 @@ export default defineConfig({
       '@aramo/ingestion': resolve(root, 'libs/ingestion/src/index.ts'),
       '@aramo/job-domain': resolve(root, 'libs/job-domain/src/index.ts'),
       '@aramo/matching': resolve(root, 'libs/matching/src/index.ts'),
+      // PR-A1c §2 — new leaf lib hosting the recordUsage helper. Mirrors
+      // tsconfig.base.json @aramo/metering alias so vitest runtime
+      // resolves the helper from engagement + submittal repos (the two
+      // domains that emit metered events inside their existing
+      // $transaction arrays). Leaf: deps = @aramo/common + 'uuid'; no
+      // back-edge into any domain.
+      '@aramo/metering': resolve(root, 'libs/metering/src/index.ts'),
       // M6 PR-2 §4 — new leaf lib hosting the relocated outbox-publisher.
       // Mirrors tsconfig.base.json @aramo/outbox-publisher alias so
       // vitest runtime resolves the apps/api AppModule import.

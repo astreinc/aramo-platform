@@ -130,6 +130,14 @@ const ENTITLEMENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
 );
+// PR-A1c §4 sweep — metering schema applied because every engagement +
+// submittal state-transition write method (the methods the pact provider
+// exercises through ats-thin + engagement-* pacts) now emits an in-tx
+// UsageEvent INSERT in the same $transaction array.
+const METERING_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
+);
 // M4 PR-1 + PR-3 — evidence + submittal migrations applied so the
 // submittal-create pact verification can seed an examination (via
 // seedSubmittalFixture below), trigger the SubmittalController which
@@ -1334,6 +1342,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // interactions; @RequireCapability('portal') on PortalController
         // requires the tenant to be entitled before RolesGuard runs.
         ENTITLEMENT_INIT_MIGRATION,
+        // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
+        // engagement + submittal state-transition write method).
+        METERING_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }

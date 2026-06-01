@@ -92,6 +92,14 @@ const SUBMITTAL_OUTBOX_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260531000000_add_outbox_event/migration.sql',
 );
+// PR-A1c §4 — metering schema required because every metered submittal
+// transition (confirm / markReady / submitToAts / confirmAts /
+// revokeSubmittal) now emits a UsageEvent INSERT inside the existing
+// $transaction array (Ruling 6 same-transaction guarantee).
+const METERING_INIT_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../../metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
+);
 const EXAMINATION_INIT_PATH = resolve(
   __dirname,
   '../../../examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
@@ -190,6 +198,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(SUBMITTAL_RENAME_MIGRATION_PATH, 'utf8'),
         // M6 PR-2 §3 — submittal OutboxEvent (new `submittal` PG schema).
         readFileSync(SUBMITTAL_OUTBOX_MIGRATION_PATH, 'utf8'),
+        // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT).
+        readFileSync(METERING_INIT_MIGRATION_PATH, 'utf8'),
       ];
 
       setupClient = new PrismaService(url);

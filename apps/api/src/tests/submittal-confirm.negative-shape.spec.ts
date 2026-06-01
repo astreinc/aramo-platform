@@ -94,6 +94,11 @@ const SUBMITTAL_OUTBOX_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql',
 );
+// PR-A1c §4 — metering schema required (in-tx UsageEvent INSERT).
+const METERING_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-submittal-confirm-neg-shape';
@@ -214,6 +219,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SUBMITTAL_EVENT_LOG_MIGRATION,
         SUBMITTAL_RENAME_MIGRATION,
         SUBMITTAL_OUTBOX_MIGRATION,
+        METERING_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }

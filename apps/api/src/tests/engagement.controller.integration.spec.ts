@@ -63,6 +63,8 @@ const ENGAGEMENT_EVENT_LOG = resolve(ROOT, 'libs/engagement/prisma/migrations/20
 // because state-transition write methods now emit an in-tx outbox row.
 const ENGAGEMENT_OUTBOX = resolve(ROOT, 'libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql');
 const SUBMITTAL_OUTBOX = resolve(ROOT, 'libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql');
+// PR-A1c §4 — metering schema required (in-tx UsageEvent INSERT).
+const METERING_INIT = resolve(ROOT, 'libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql');
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-engagement-controller-spec';
@@ -130,6 +132,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ENGAGEMENT_INIT,
         ENGAGEMENT_EVENT_LOG,
         ENGAGEMENT_OUTBOX,
+        METERING_INIT,
       ]) {
         const sql = readFileSync(p, 'utf8');
         for (const stmt of splitDdl(sql)) {

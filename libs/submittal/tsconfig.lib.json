@@ -13,7 +13,8 @@
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
       "@aramo/evidence": ["../../dist/libs/evidence/src/index.d.ts"],
-      "@aramo/examination": ["../../dist/libs/examination/src/index.d.ts"]
+      "@aramo/examination": ["../../dist/libs/examination/src/index.d.ts"],
+      "@aramo/metering": ["../../dist/libs/metering/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

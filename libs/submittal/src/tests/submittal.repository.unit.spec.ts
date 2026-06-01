@@ -74,6 +74,12 @@ interface MockPrisma {
   outboxEvent?: {
     create: ReturnType<typeof vi.fn>;
   };
+  // PR-A1c §4 — recordUsage(this.prisma, …) is invoked inline when
+  // building the $transaction array; the helper calls prisma.$executeRaw.
+  // The unit mock stubs it so construction does not throw. The real
+  // PG-transactional guarantee is exercised by the dedicated integration
+  // spec at libs/metering/src/tests/transactional-guarantee.
+  $executeRaw?: ReturnType<typeof vi.fn>;
   $transaction?: ReturnType<typeof vi.fn>;
 }
 
@@ -215,6 +221,9 @@ function buildConfirmMocks(opts: {
     outboxEvent: {
       create: vi.fn(),
     },
+    // PR-A1c §4 — recordUsage(this.prisma, …) inside the $transaction
+    // array calls $executeRaw; stub it to a resolved Promise<1>.
+    $executeRaw: vi.fn().mockResolvedValue(1),
     $transaction: $transactionMock,
   };
   const mockEvidence = {} as unknown as EvidenceRepository;
@@ -546,6 +555,9 @@ function buildRevokeMocks(opts: {
     outboxEvent: {
       create: vi.fn(),
     },
+    // PR-A1c §4 — recordUsage(this.prisma, …) inside the $transaction
+    // array calls $executeRaw; stub it to a resolved Promise<1>.
+    $executeRaw: vi.fn().mockResolvedValue(1),
     $transaction: $transactionMock,
   };
   const mockEvidence = {} as unknown as EvidenceRepository;
