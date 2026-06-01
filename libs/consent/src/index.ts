@@ -12,12 +12,12 @@ export type { UnpublishedOutboxEvent } from './lib/outbox-publisher.repository.j
 export { StaleConsentProcessor } from './lib/stale-consent.processor.js';
 export type { StaleConsentScanInput } from './lib/stale-consent.processor.js';
 export { STALE_CONSENT_QUEUE_NAME } from './lib/stale-consent.queue.constants.js';
-export { OutboxPublisherProcessor } from './lib/outbox-publisher.processor.js';
-export type { OutboxPublisherTickInput } from './lib/outbox-publisher.processor.js';
-export {
-  OUTBOX_PUBLISHER_QUEUE_NAME,
-  OUTBOX_PUBLISHER_BATCH_SIZE,
-} from './lib/outbox-publisher.queue.constants.js';
+// M6 PR-2 §4 — OutboxPublisherProcessor, OutboxPublisherTickInput,
+// OUTBOX_PUBLISHER_QUEUE_NAME, and OUTBOX_PUBLISHER_BATCH_SIZE have
+// RELOCATED to @aramo/outbox-publisher per Amendment §2.4. The
+// consent-side OutboxPublisherRepository (above) STAYS here — consent
+// emission/behavior unchanged (Ruling 3) — and is now consumed by the
+// new leaf lib libs/outbox-publisher via this barrel export.
 export { IdempotencyService } from './lib/idempotency.service.js';
 export type {
   IdempotencyLookupInput,

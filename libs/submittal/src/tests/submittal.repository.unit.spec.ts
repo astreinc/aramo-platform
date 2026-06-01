@@ -67,6 +67,13 @@ interface MockPrisma {
   talentSubmittalEvent?: {
     create: ReturnType<typeof vi.fn>;
   };
+  // M6 PR-2 §3 — in-transaction outbox emission. State-changing methods
+  // now include a prisma.outboxEvent.create({...}) call as the last op
+  // in the $transaction array; the mock stubs `create` so building the
+  // array argument does not throw on `undefined.create`.
+  outboxEvent?: {
+    create: ReturnType<typeof vi.fn>;
+  };
   $transaction?: ReturnType<typeof vi.fn>;
 }
 
@@ -204,6 +211,9 @@ function buildConfirmMocks(opts: {
     },
     talentSubmittalEvent: {
       create: eventCreate,
+    },
+    outboxEvent: {
+      create: vi.fn(),
     },
     $transaction: $transactionMock,
   };
@@ -532,6 +542,9 @@ function buildRevokeMocks(opts: {
     },
     talentSubmittalEvent: {
       create: eventCreate,
+    },
+    outboxEvent: {
+      create: vi.fn(),
     },
     $transaction: $transactionMock,
   };

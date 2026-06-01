@@ -16,6 +16,7 @@
       "@aramo/ingestion": ["../../dist/libs/ingestion/src/index.d.ts"],
       "@aramo/matching": ["../../dist/libs/matching/src/index.d.ts"],
       "@aramo/examination": ["../../dist/libs/examination/src/index.d.ts"],
+      "@aramo/outbox-publisher": ["../../dist/libs/outbox-publisher/src/index.d.ts"],
       "@aramo/portal": ["../../dist/libs/portal/src/index.d.ts"],
       "@aramo/skills-taxonomy": ["../../dist/libs/skills-taxonomy/src/index.d.ts"],
       "@aramo/submittal": ["../../dist/libs/submittal/src/index.d.ts"]

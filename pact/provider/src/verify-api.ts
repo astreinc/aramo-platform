@@ -188,6 +188,25 @@ const ENGAGEMENT_EVENT_LOG_MIGRATION = resolve(
   ROOT,
   'libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
 );
+// M6 PR-2 §3 — engagement schema OutboxEvent. Applied AFTER the event-log
+// substrate (same schema namespace). Required by the engagement-* pact
+// interactions because the M6 emit points now write an outbox row inside
+// the same $transaction as the engagement state transition; without this
+// migration, prisma.outboxEvent.create raises "relation does not exist".
+const ENGAGEMENT_OUTBOX_MIGRATION = resolve(
+  ROOT,
+  'libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql',
+);
+// M6 PR-2 §3 — submittal schema OutboxEvent (in its own `submittal` PG
+// namespace; the migration includes CREATE SCHEMA IF NOT EXISTS). Applied
+// after the submittal canonical-rename so the schema-creation step runs
+// last in the submittal sequence. Required by submittal-* pact interactions
+// because the M6 emit points write an outbox row inside the same
+// $transaction as the submittal state transition.
+const SUBMITTAL_OUTBOX_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql',
+);
 // M5 PR-6 §4.14 — ai-draft schema migration required by the outreach-send
 // state handlers (AiDraftService writes audit-event rows even when the
 // DraftProvider is mocked; without this migration, prisma.aiDraftEvent
@@ -343,6 +362,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // create/transition. Truncate so prior runs don't leak.
       await c.query('TRUNCATE TABLE engagement."TalentEngagementEvent" CASCADE');
       await c.query('TRUNCATE TABLE engagement."TalentJobEngagement" CASCADE');
+      // M6 PR-2 §3 — engagement + submittal OutboxEvent. Each state-
+      // transition emit point now writes an outbox row inside the same
+      // $transaction; truncate per interaction so prior runs don't leak.
+      await c.query('TRUNCATE TABLE engagement."OutboxEvent" CASCADE');
+      await c.query('TRUNCATE TABLE submittal."OutboxEvent" CASCADE');
       // M5 PR-6 — outreach-send state handlers cause AiDraftService to
       // append audit-event rows for each generateDraft call. Truncate so
       // prior runs don't leak forward across pact interactions.
@@ -1282,10 +1306,18 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // would not auto-rewrite — at this point in the pact-verify
         // sequence no rows exist yet, so the rename is clean).
         SUBMITTAL_RENAME_MIGRATION,
+        // M6 PR-2 §3 — submittal schema OutboxEvent. Applied LAST in
+        // the submittal sequence because it CREATEs the new `submittal`
+        // PG namespace alongside its OutboxEvent table.
+        SUBMITTAL_OUTBOX_MIGRATION,
         // M5 PR-4 — engagement schema + event log for engagement-*
         // pact verification.
         ENGAGEMENT_INIT_MIGRATION,
         ENGAGEMENT_EVENT_LOG_MIGRATION,
+        // M6 PR-2 §3 — engagement schema OutboxEvent. Applied after
+        // the event-log substrate so the OutboxEvent table is in the
+        // same `engagement` namespace as the prior tables.
+        ENGAGEMENT_OUTBOX_MIGRATION,
         // M5 PR-6 §4.14 — ai-draft schema for outreach-send state
         // handlers. AiDraftService writes audit-event rows even when
         // the DraftProvider is mocked at AppModule bootstrap.

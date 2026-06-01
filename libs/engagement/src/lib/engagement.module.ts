@@ -12,6 +12,7 @@ import { SendStubDeliveryProvider } from './delivery/send-stub.provider.js';
 import { EngagementController } from './engagement.controller.js';
 import { EngagementRepository } from './engagement.repository.js';
 import { EngagementEventRepository } from './engagement-event.repository.js';
+import { EngagementOutboxRepository } from './engagement-outbox.repository.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // libs/engagement module — M5 PR-1 entity foundation + M5 PR-2 event log
@@ -60,6 +61,7 @@ import { PrismaService } from './prisma/prisma.service.js';
     PrismaService,
     EngagementRepository,
     EngagementEventRepository,
+    EngagementOutboxRepository,
     {
       provide: 'EngagementRepositoryLogger',
       useFactory: () => createAramoLogger(EngagementRepository.name),
@@ -74,6 +76,11 @@ import { PrismaService } from './prisma/prisma.service.js';
     },
     { provide: DELIVERY_PROVIDER_TOKEN, useClass: SendStubDeliveryProvider },
   ],
-  exports: [EngagementRepository, EngagementEventRepository, PrismaService],
+  exports: [
+    EngagementRepository,
+    EngagementEventRepository,
+    EngagementOutboxRepository,
+    PrismaService,
+  ],
 })
 export class EngagementModule {}

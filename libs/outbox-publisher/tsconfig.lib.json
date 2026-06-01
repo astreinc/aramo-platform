@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/libs/outbox-publisher",
+    "rootDir": "src",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "declaration": true,
+    "tsBuildInfoFile": "../../dist/libs/outbox-publisher/.tsbuildinfo",
+    "types": ["node"],
+    "paths": {
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
+      "@aramo/engagement": ["../../dist/libs/engagement/src/index.d.ts"],
+      "@aramo/submittal": ["../../dist/libs/submittal/src/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/tests/**/*", "**/*.spec.ts"]
+}

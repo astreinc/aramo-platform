@@ -8,6 +8,7 @@ import { ExaminationModule } from '@aramo/examination';
 import { PrismaService } from './prisma/prisma.service.js';
 import { SubmittalController } from './submittal.controller.js';
 import { SubmittalRepository } from './submittal.repository.js';
+import { SubmittalOutboxRepository } from './submittal-outbox.repository.js';
 import { TalentSubmittalEventRepository } from './talent-submittal-event.repository.js';
 
 // libs/submittal module — M4 PR-3 (create) + M4 PR-4 (confirm).
@@ -48,6 +49,7 @@ import { TalentSubmittalEventRepository } from './talent-submittal-event.reposit
   providers: [
     PrismaService,
     SubmittalRepository,
+    SubmittalOutboxRepository,
     TalentSubmittalEventRepository,
     {
       provide: 'SubmittalControllerLogger',
@@ -62,6 +64,10 @@ import { TalentSubmittalEventRepository } from './talent-submittal-event.reposit
       useFactory: () => createAramoLogger(TalentSubmittalEventRepository.name),
     },
   ],
-  exports: [SubmittalRepository, TalentSubmittalEventRepository],
+  exports: [
+    SubmittalRepository,
+    SubmittalOutboxRepository,
+    TalentSubmittalEventRepository,
+  ],
 })
 export class SubmittalModule {}
