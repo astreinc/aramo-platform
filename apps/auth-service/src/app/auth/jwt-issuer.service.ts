@@ -21,6 +21,11 @@ export interface JwtIssuancePayload {
   consumer_type: 'recruiter' | 'portal' | 'ingestion';
   tenant_id: string;
   scopes: string[];
+  // PR-A1a-3 Ruling 1: optional site axis. Stamped by orchestrators when
+  // the user's active membership in tenant is site-scoped; absent for
+  // tenant-wide memberships. When absent the JWT claim is OMITTED, not
+  // emitted as null — preserves tenant-wide token byte-shape (Ruling 2).
+  site_id?: string;
 }
 
 @Injectable()
@@ -42,6 +47,7 @@ export class JwtIssuerService {
       consumer_type: payload.consumer_type,
       tenant_id: payload.tenant_id,
       scopes: payload.scopes,
+      ...(payload.site_id !== undefined ? { site_id: payload.site_id } : {}),
     })
       .setProtectedHeader({ alg: ALG, kid, typ: 'JWT' })
       .setIssuer(ISSUER)

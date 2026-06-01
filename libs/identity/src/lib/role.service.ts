@@ -15,6 +15,18 @@ export class RoleService {
     return this.roleRepo.findScopeKeysForUserInTenant(args);
   }
 
+  // PR-A1a-3 Ruling 1 (auto-stamp): returns the site_id of the user's
+  // active membership in the tenant when site-scoped, null otherwise.
+  // Called by auth-service issuance to decide whether to stamp the JWT
+  // site_id claim. See RoleRepository.findActiveMembershipSite for the
+  // schema-uniqueness argument and Ruling 5 fail-closed semantics.
+  async findActiveMembershipSite(args: {
+    user_id: string;
+    tenant_id: string;
+  }): Promise<string | null> {
+    return this.roleRepo.findActiveMembershipSite(args);
+  }
+
   // PR-A1a Ruling 4 site-aware variant. When site_id is provided, the
   // returned set is the union of tenant-wide and site-X membership
   // scopes. When site_id is undefined, only tenant-wide membership
