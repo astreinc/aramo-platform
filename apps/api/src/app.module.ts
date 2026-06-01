@@ -5,6 +5,7 @@ import {
   RequestIdMiddleware,
 } from '@aramo/common';
 import { AuthModule } from '@aramo/auth';
+import { AuthorizationModule } from '@aramo/authorization';
 import { ConsentModule } from '@aramo/consent';
 import { EngagementModule } from '@aramo/engagement';
 import { IngestionModule } from '@aramo/ingestion';
@@ -18,6 +19,11 @@ import { SubmittalModule } from '@aramo/submittal';
   imports: [
     CommonModule,
     AuthModule,
+    // PR-A1a §3 — AuthorizationModule provides RolesGuard for the
+    // @RequireScopes / @RequireSiteMatch decorators applied to
+    // controllers. Leaf lib: depends only on @aramo/auth and
+    // @aramo/common; no domain-lib back-edge.
+    AuthorizationModule,
     ConsentModule,
     // M5 PR-11 Gate 5-redux (Option β-1 / PL-88) — CrossSchemaConsistencyModule
     // is imported here directly (NOT via CommonModule) so its BullMQ Worker

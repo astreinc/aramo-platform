@@ -185,6 +185,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let port = 0;
     let savedEnv: Partial<Record<string, string | undefined>> = {};
     let recruiterJwt: string;
+    let recruiterJwtNoScope: string;
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
@@ -275,7 +276,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
 
+      // PR-A1a §6: recruiter token now carries 'submittal:create' so the
+      // RolesGuard at SubmittalController.createSubmittal passes through.
+      // The companion 403 case below mints a token WITHOUT this scope.
       recruiterJwt = await new SignJWT({
+        sub: RECRUITER_ID,
+        consumer_type: 'recruiter',
+        actor_kind: 'user',
+        tenant_id: TENANT_ID,
+        scopes: ['submittal:create'],
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt()
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
+      // PR-A1a §6 — companion token for the insufficient-scope reject case.
+      recruiterJwtNoScope = await new SignJWT({
         sub: RECRUITER_ID,
         consumer_type: 'recruiter',
         actor_kind: 'user',
@@ -334,6 +353,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           .map((h) => `${h.path}`)
           .join(', ')}`,
       ).toEqual([]);
+    });
+
+    // PR-A1a §6 enforcement proof (deliberate-failure discipline). A
+    // recruiter token lacking the 'submittal:create' scope is rejected
+    // by RolesGuard with 403 INSUFFICIENT_PERMISSIONS — proving the
+    // @RequireScopes decorator on the controller has teeth.
+    it('PR-A1a §6 — POST /v1/submittals refuses 403 when token lacks submittal:create', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/submittals`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterJwtNoScope}`,
+          'Idempotency-Key': randomUUID(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(VALID_BODY),
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { code?: string; context?: { details?: { missing_scopes?: string[] } } };
+      expect(body.code).toBe('INSUFFICIENT_PERMISSIONS');
+      expect(body.context?.details?.missing_scopes).toEqual(['submittal:create']);
     });
   },
 );

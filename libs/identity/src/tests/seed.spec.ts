@@ -64,8 +64,13 @@ describe('seed scope catalog — key format (test 18)', () => {
   });
 });
 
-describe('seed role catalog (§6 closed set)', () => {
-  it('seed role keys are exactly the three locked entries', () => {
-    expect([...SEED_ROLE_KEYS].sort()).toEqual(['recruiter', 'tenant_admin', 'viewer']);
+describe('seed role catalog (§6 closed set, PR-A1a expansion)', () => {
+  it('seed role keys are exactly the four locked entries (3 pre-A1a + 1 candidate)', () => {
+    expect([...SEED_ROLE_KEYS].sort()).toEqual([
+      'candidate',
+      'recruiter',
+      'tenant_admin',
+      'viewer',
+    ]);
   });
 });

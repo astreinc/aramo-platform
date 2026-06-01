@@ -250,6 +250,17 @@ TIER2_EXCLUDES=(
   # M5 PR-6/PR-7/PR-8a/PR-9b precedent for documents carrying canonical
   # locked-spec vocabulary by design. Per directive §6.8 anticipation.
   "doc/aramo-handoff-m5-close.md"
+  # PR-A1a Ruling 3 (Commit Plan v1.0 §1 Ruling B, file-scoped — NOT token-level):
+  # `candidate` here is a JWT role-name (the portal-user principal role
+  # identifier), NOT entity vocabulary for the talent record. The gate
+  # exclusion is path-scoped to the five identity files where this role
+  # key appears. The Tier-2 `candidate` ban still applies everywhere else
+  # in the tree; any new occurrence outside these paths trips the gate.
+  "libs/identity/src/lib/dto/role.dto.ts"
+  "libs/identity/src/lib/dto/scope.dto.ts"
+  "libs/identity/prisma/seed.ts"
+  "libs/identity/src/tests/seed.spec.ts"
+  "libs/identity/src/tests/identity.integration.spec.ts"
 )
 
 # =============================================================================
