@@ -45,6 +45,41 @@ export const SEED_IDS = {
     'portal:profile:edit': '01900000-0000-7000-8000-000000000065',
     'portal:consent:read': '01900000-0000-7000-8000-000000000066',
     'portal:consent:write': '01900000-0000-7000-8000-000000000067',
+    // PR-A1a-2 full ATS expansion (27 scopes; Ruling 1 uniform divergence).
+    // talent (5)
+    'talent:read': '01900000-0000-7000-8000-000000000068',
+    'talent:create': '01900000-0000-7000-8000-000000000069',
+    'talent:edit': '01900000-0000-7000-8000-00000000006a',
+    'talent:delete': '01900000-0000-7000-8000-00000000006b',
+    'talent:search': '01900000-0000-7000-8000-00000000006c',
+    // company (4)
+    'company:read': '01900000-0000-7000-8000-00000000006d',
+    'company:create': '01900000-0000-7000-8000-00000000006e',
+    'company:edit': '01900000-0000-7000-8000-00000000006f',
+    'company:delete': '01900000-0000-7000-8000-000000000070',
+    // contact (4)
+    'contact:read': '01900000-0000-7000-8000-000000000071',
+    'contact:create': '01900000-0000-7000-8000-000000000072',
+    'contact:edit': '01900000-0000-7000-8000-000000000073',
+    'contact:delete': '01900000-0000-7000-8000-000000000074',
+    // pipeline (4)
+    'pipeline:add': '01900000-0000-7000-8000-000000000075',
+    'pipeline:change-status': '01900000-0000-7000-8000-000000000076',
+    'pipeline:add-activity': '01900000-0000-7000-8000-000000000077',
+    'pipeline:remove': '01900000-0000-7000-8000-000000000078',
+    // calendar (3)
+    'calendar:event-create': '01900000-0000-7000-8000-000000000079',
+    'calendar:event-edit': '01900000-0000-7000-8000-00000000007a',
+    'calendar:event-delete': '01900000-0000-7000-8000-00000000007b',
+    // activity + examination + requisition (5)
+    'activity:read': '01900000-0000-7000-8000-00000000007c',
+    'examination:read': '01900000-0000-7000-8000-00000000007d',
+    'requisition:create': '01900000-0000-7000-8000-00000000007e',
+    'requisition:edit': '01900000-0000-7000-8000-00000000007f',
+    'requisition:delete': '01900000-0000-7000-8000-000000000080',
+    // tenant admin (2)
+    'tenant:admin:user-manage': '01900000-0000-7000-8000-000000000081',
+    'tenant:admin:settings': '01900000-0000-7000-8000-000000000082',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // ...030..03c (13 assignments total: 6 tenant_admin + 4 recruiter + 3 viewer).
@@ -75,6 +110,62 @@ export const SEED_IDS = {
     candidate_portal_profile_edit: '01900000-0000-7000-8000-000000000109',
     candidate_portal_consent_read: '01900000-0000-7000-8000-00000000010a',
     candidate_portal_consent_write: '01900000-0000-7000-8000-00000000010b',
+    // PR-A1a-2 — 52 new RoleScope rows (27 tenant_admin + 19 recruiter + 6 viewer).
+    // tenant_admin gets the full 27 new scopes (incl. all :delete + :read:all + tenant:admin:*).
+    tenant_admin_talent_read: '01900000-0000-7000-8000-00000000010c',
+    tenant_admin_talent_create: '01900000-0000-7000-8000-00000000010d',
+    tenant_admin_talent_edit: '01900000-0000-7000-8000-00000000010e',
+    tenant_admin_talent_delete: '01900000-0000-7000-8000-00000000010f',
+    tenant_admin_talent_search: '01900000-0000-7000-8000-000000000110',
+    tenant_admin_company_read: '01900000-0000-7000-8000-000000000111',
+    tenant_admin_company_create: '01900000-0000-7000-8000-000000000112',
+    tenant_admin_company_edit: '01900000-0000-7000-8000-000000000113',
+    tenant_admin_company_delete: '01900000-0000-7000-8000-000000000114',
+    tenant_admin_contact_read: '01900000-0000-7000-8000-000000000115',
+    tenant_admin_contact_create: '01900000-0000-7000-8000-000000000116',
+    tenant_admin_contact_edit: '01900000-0000-7000-8000-000000000117',
+    tenant_admin_contact_delete: '01900000-0000-7000-8000-000000000118',
+    tenant_admin_pipeline_add: '01900000-0000-7000-8000-000000000119',
+    tenant_admin_pipeline_change_status: '01900000-0000-7000-8000-00000000011a',
+    tenant_admin_pipeline_add_activity: '01900000-0000-7000-8000-00000000011b',
+    tenant_admin_pipeline_remove: '01900000-0000-7000-8000-00000000011c',
+    tenant_admin_calendar_event_create: '01900000-0000-7000-8000-00000000011d',
+    tenant_admin_calendar_event_edit: '01900000-0000-7000-8000-00000000011e',
+    tenant_admin_calendar_event_delete: '01900000-0000-7000-8000-00000000011f',
+    tenant_admin_activity_read: '01900000-0000-7000-8000-000000000120',
+    tenant_admin_examination_read: '01900000-0000-7000-8000-000000000121',
+    tenant_admin_requisition_create: '01900000-0000-7000-8000-000000000122',
+    tenant_admin_requisition_edit: '01900000-0000-7000-8000-000000000123',
+    tenant_admin_requisition_delete: '01900000-0000-7000-8000-000000000124',
+    tenant_admin_tenant_admin_user_manage: '01900000-0000-7000-8000-000000000125',
+    tenant_admin_tenant_admin_settings: '01900000-0000-7000-8000-000000000126',
+    // recruiter gets 19 (Ruling 1: NO :delete, NO :read:all, NO pipeline:remove).
+    recruiter_talent_read: '01900000-0000-7000-8000-000000000127',
+    recruiter_talent_create: '01900000-0000-7000-8000-000000000128',
+    recruiter_talent_edit: '01900000-0000-7000-8000-000000000129',
+    recruiter_talent_search: '01900000-0000-7000-8000-00000000012a',
+    recruiter_company_read: '01900000-0000-7000-8000-00000000012b',
+    recruiter_company_create: '01900000-0000-7000-8000-00000000012c',
+    recruiter_company_edit: '01900000-0000-7000-8000-00000000012d',
+    recruiter_contact_read: '01900000-0000-7000-8000-00000000012e',
+    recruiter_contact_create: '01900000-0000-7000-8000-00000000012f',
+    recruiter_contact_edit: '01900000-0000-7000-8000-000000000130',
+    recruiter_pipeline_add: '01900000-0000-7000-8000-000000000131',
+    recruiter_pipeline_change_status: '01900000-0000-7000-8000-000000000132',
+    recruiter_pipeline_add_activity: '01900000-0000-7000-8000-000000000133',
+    recruiter_calendar_event_create: '01900000-0000-7000-8000-000000000134',
+    recruiter_calendar_event_edit: '01900000-0000-7000-8000-000000000135',
+    recruiter_activity_read: '01900000-0000-7000-8000-000000000136',
+    recruiter_examination_read: '01900000-0000-7000-8000-000000000137',
+    recruiter_requisition_create: '01900000-0000-7000-8000-000000000138',
+    recruiter_requisition_edit: '01900000-0000-7000-8000-000000000139',
+    // viewer gets 6 (assigned reads + talent:search + examination + activity).
+    viewer_talent_read: '01900000-0000-7000-8000-00000000013a',
+    viewer_talent_search: '01900000-0000-7000-8000-00000000013b',
+    viewer_company_read: '01900000-0000-7000-8000-00000000013c',
+    viewer_contact_read: '01900000-0000-7000-8000-00000000013d',
+    viewer_activity_read: '01900000-0000-7000-8000-00000000013e',
+    viewer_examination_read: '01900000-0000-7000-8000-00000000013f',
   },
   membership_role_admin: '01900000-0000-7000-8000-000000000040',
   audit_events: {
@@ -102,6 +193,34 @@ export const SEED_IDS = {
     scope_portal_profile_edit_created: '01900000-0000-7000-8000-000000000204',
     scope_portal_consent_read_created: '01900000-0000-7000-8000-000000000205',
     scope_portal_consent_write_created: '01900000-0000-7000-8000-000000000206',
+    // PR-A1a-2 — 27 new scope.created audit events (one per new scope).
+    scope_talent_read_created: '01900000-0000-7000-8000-000000000207',
+    scope_talent_create_created: '01900000-0000-7000-8000-000000000208',
+    scope_talent_edit_created: '01900000-0000-7000-8000-000000000209',
+    scope_talent_delete_created: '01900000-0000-7000-8000-00000000020a',
+    scope_talent_search_created: '01900000-0000-7000-8000-00000000020b',
+    scope_company_read_created: '01900000-0000-7000-8000-00000000020c',
+    scope_company_create_created: '01900000-0000-7000-8000-00000000020d',
+    scope_company_edit_created: '01900000-0000-7000-8000-00000000020e',
+    scope_company_delete_created: '01900000-0000-7000-8000-00000000020f',
+    scope_contact_read_created: '01900000-0000-7000-8000-000000000210',
+    scope_contact_create_created: '01900000-0000-7000-8000-000000000211',
+    scope_contact_edit_created: '01900000-0000-7000-8000-000000000212',
+    scope_contact_delete_created: '01900000-0000-7000-8000-000000000213',
+    scope_pipeline_add_created: '01900000-0000-7000-8000-000000000214',
+    scope_pipeline_change_status_created: '01900000-0000-7000-8000-000000000215',
+    scope_pipeline_add_activity_created: '01900000-0000-7000-8000-000000000216',
+    scope_pipeline_remove_created: '01900000-0000-7000-8000-000000000217',
+    scope_calendar_event_create_created: '01900000-0000-7000-8000-000000000218',
+    scope_calendar_event_edit_created: '01900000-0000-7000-8000-000000000219',
+    scope_calendar_event_delete_created: '01900000-0000-7000-8000-00000000021a',
+    scope_activity_read_created: '01900000-0000-7000-8000-00000000021b',
+    scope_examination_read_created: '01900000-0000-7000-8000-00000000021c',
+    scope_requisition_create_created: '01900000-0000-7000-8000-00000000021d',
+    scope_requisition_edit_created: '01900000-0000-7000-8000-00000000021e',
+    scope_requisition_delete_created: '01900000-0000-7000-8000-00000000021f',
+    scope_tenant_admin_user_manage_created: '01900000-0000-7000-8000-000000000220',
+    scope_tenant_admin_settings_created: '01900000-0000-7000-8000-000000000221',
   },
 } as const;
 
@@ -129,6 +248,16 @@ const ROLE_SCOPE_ASSIGNMENTS = {
     'requisition:read:all',
     'submittal:create',
     'submittal:approve',
+    // PR-A1a-2 — full ATS catalog (27 scopes). tenant_admin gets the
+    // complete set incl. all :delete + pipeline:remove + tenant:admin:*.
+    'talent:read', 'talent:create', 'talent:edit', 'talent:delete', 'talent:search',
+    'company:read', 'company:create', 'company:edit', 'company:delete',
+    'contact:read', 'contact:create', 'contact:edit', 'contact:delete',
+    'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity', 'pipeline:remove',
+    'calendar:event-create', 'calendar:event-edit', 'calendar:event-delete',
+    'activity:read', 'examination:read',
+    'requisition:create', 'requisition:edit', 'requisition:delete',
+    'tenant:admin:user-manage', 'tenant:admin:settings',
   ],
   recruiter: [
     'consent:read',
@@ -141,12 +270,31 @@ const ROLE_SCOPE_ASSIGNMENTS = {
     'requisition:read',
     'submittal:create',
     'submittal:approve',
+    // PR-A1a-2 Ruling 1 uniform divergence — recruiter gets the full
+    // operational workflow but NO destructive (`*:delete`,
+    // `pipeline:remove`) and NO see-all (`*:read:all`). Recruiter keeps
+    // all :create/:edit + talent:search + pipeline:add/change-status/
+    // add-activity + calendar:event-create/edit + activity:read +
+    // examination:read + assigned reads.
+    'talent:read', 'talent:create', 'talent:edit', 'talent:search',
+    'company:read', 'company:create', 'company:edit',
+    'contact:read', 'contact:create', 'contact:edit',
+    'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity',
+    'calendar:event-create', 'calendar:event-edit',
+    'activity:read', 'examination:read',
+    'requisition:create', 'requisition:edit',
   ],
   viewer: [
     'consent:read',
     'consent:decision-log:read',
     'auth:session:read',
     'requisition:read', // viewer also gets the assigned-only req read
+    // PR-A1a-2 — viewer is read-only on the entities recruiter can see
+    // plus talent:search + examination:read + activity:read.
+    'talent:read', 'talent:search',
+    'company:read',
+    'contact:read',
+    'activity:read', 'examination:read',
   ],
   // PR-A1a Ruling 3 — new portal-user role; scopes are portal-only.
   candidate: [
@@ -187,6 +335,62 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   'candidate:portal:profile:edit': SEED_IDS.role_scopes.candidate_portal_profile_edit,
   'candidate:portal:consent:read': SEED_IDS.role_scopes.candidate_portal_consent_read,
   'candidate:portal:consent:write': SEED_IDS.role_scopes.candidate_portal_consent_write,
+  // PR-A1a-2 — 52 new role_scope rows.
+  // tenant_admin: 27 (full catalog)
+  'tenant_admin:talent:read': SEED_IDS.role_scopes.tenant_admin_talent_read,
+  'tenant_admin:talent:create': SEED_IDS.role_scopes.tenant_admin_talent_create,
+  'tenant_admin:talent:edit': SEED_IDS.role_scopes.tenant_admin_talent_edit,
+  'tenant_admin:talent:delete': SEED_IDS.role_scopes.tenant_admin_talent_delete,
+  'tenant_admin:talent:search': SEED_IDS.role_scopes.tenant_admin_talent_search,
+  'tenant_admin:company:read': SEED_IDS.role_scopes.tenant_admin_company_read,
+  'tenant_admin:company:create': SEED_IDS.role_scopes.tenant_admin_company_create,
+  'tenant_admin:company:edit': SEED_IDS.role_scopes.tenant_admin_company_edit,
+  'tenant_admin:company:delete': SEED_IDS.role_scopes.tenant_admin_company_delete,
+  'tenant_admin:contact:read': SEED_IDS.role_scopes.tenant_admin_contact_read,
+  'tenant_admin:contact:create': SEED_IDS.role_scopes.tenant_admin_contact_create,
+  'tenant_admin:contact:edit': SEED_IDS.role_scopes.tenant_admin_contact_edit,
+  'tenant_admin:contact:delete': SEED_IDS.role_scopes.tenant_admin_contact_delete,
+  'tenant_admin:pipeline:add': SEED_IDS.role_scopes.tenant_admin_pipeline_add,
+  'tenant_admin:pipeline:change-status': SEED_IDS.role_scopes.tenant_admin_pipeline_change_status,
+  'tenant_admin:pipeline:add-activity': SEED_IDS.role_scopes.tenant_admin_pipeline_add_activity,
+  'tenant_admin:pipeline:remove': SEED_IDS.role_scopes.tenant_admin_pipeline_remove,
+  'tenant_admin:calendar:event-create': SEED_IDS.role_scopes.tenant_admin_calendar_event_create,
+  'tenant_admin:calendar:event-edit': SEED_IDS.role_scopes.tenant_admin_calendar_event_edit,
+  'tenant_admin:calendar:event-delete': SEED_IDS.role_scopes.tenant_admin_calendar_event_delete,
+  'tenant_admin:activity:read': SEED_IDS.role_scopes.tenant_admin_activity_read,
+  'tenant_admin:examination:read': SEED_IDS.role_scopes.tenant_admin_examination_read,
+  'tenant_admin:requisition:create': SEED_IDS.role_scopes.tenant_admin_requisition_create,
+  'tenant_admin:requisition:edit': SEED_IDS.role_scopes.tenant_admin_requisition_edit,
+  'tenant_admin:requisition:delete': SEED_IDS.role_scopes.tenant_admin_requisition_delete,
+  'tenant_admin:tenant:admin:user-manage': SEED_IDS.role_scopes.tenant_admin_tenant_admin_user_manage,
+  'tenant_admin:tenant:admin:settings': SEED_IDS.role_scopes.tenant_admin_tenant_admin_settings,
+  // recruiter: 19 (NO :delete, NO :read:all, NO pipeline:remove)
+  'recruiter:talent:read': SEED_IDS.role_scopes.recruiter_talent_read,
+  'recruiter:talent:create': SEED_IDS.role_scopes.recruiter_talent_create,
+  'recruiter:talent:edit': SEED_IDS.role_scopes.recruiter_talent_edit,
+  'recruiter:talent:search': SEED_IDS.role_scopes.recruiter_talent_search,
+  'recruiter:company:read': SEED_IDS.role_scopes.recruiter_company_read,
+  'recruiter:company:create': SEED_IDS.role_scopes.recruiter_company_create,
+  'recruiter:company:edit': SEED_IDS.role_scopes.recruiter_company_edit,
+  'recruiter:contact:read': SEED_IDS.role_scopes.recruiter_contact_read,
+  'recruiter:contact:create': SEED_IDS.role_scopes.recruiter_contact_create,
+  'recruiter:contact:edit': SEED_IDS.role_scopes.recruiter_contact_edit,
+  'recruiter:pipeline:add': SEED_IDS.role_scopes.recruiter_pipeline_add,
+  'recruiter:pipeline:change-status': SEED_IDS.role_scopes.recruiter_pipeline_change_status,
+  'recruiter:pipeline:add-activity': SEED_IDS.role_scopes.recruiter_pipeline_add_activity,
+  'recruiter:calendar:event-create': SEED_IDS.role_scopes.recruiter_calendar_event_create,
+  'recruiter:calendar:event-edit': SEED_IDS.role_scopes.recruiter_calendar_event_edit,
+  'recruiter:activity:read': SEED_IDS.role_scopes.recruiter_activity_read,
+  'recruiter:examination:read': SEED_IDS.role_scopes.recruiter_examination_read,
+  'recruiter:requisition:create': SEED_IDS.role_scopes.recruiter_requisition_create,
+  'recruiter:requisition:edit': SEED_IDS.role_scopes.recruiter_requisition_edit,
+  // viewer: 6 (assigned reads + talent:search + examination + activity)
+  'viewer:talent:read': SEED_IDS.role_scopes.viewer_talent_read,
+  'viewer:talent:search': SEED_IDS.role_scopes.viewer_talent_search,
+  'viewer:company:read': SEED_IDS.role_scopes.viewer_company_read,
+  'viewer:contact:read': SEED_IDS.role_scopes.viewer_contact_read,
+  'viewer:activity:read': SEED_IDS.role_scopes.viewer_activity_read,
+  'viewer:examination:read': SEED_IDS.role_scopes.viewer_examination_read,
 };
 
 interface IdentityPrismaClient {
@@ -266,6 +470,34 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['portal:profile:edit'], 'portal:profile:edit', 'Edit own portal profile');
   await upsertScope(prisma, SEED_IDS.scopes['portal:consent:read'], 'portal:consent:read', 'Read own portal consent state');
   await upsertScope(prisma, SEED_IDS.scopes['portal:consent:write'], 'portal:consent:write', 'Grant or revoke own portal consent');
+  // PR-A1a-2 — full ATS catalog (27 new scopes; Ruling 1 uniform divergence applied at role-mapping level).
+  await upsertScope(prisma, SEED_IDS.scopes['talent:read'], 'talent:read', 'Read a talent record (assigned by default)');
+  await upsertScope(prisma, SEED_IDS.scopes['talent:create'], 'talent:create', 'Create a talent record');
+  await upsertScope(prisma, SEED_IDS.scopes['talent:edit'], 'talent:edit', 'Edit a talent record');
+  await upsertScope(prisma, SEED_IDS.scopes['talent:delete'], 'talent:delete', 'Delete a talent record (tenant_admin only — Ruling 1)');
+  await upsertScope(prisma, SEED_IDS.scopes['talent:search'], 'talent:search', 'Search the talent index (Constrained Talent Access)');
+  await upsertScope(prisma, SEED_IDS.scopes['company:read'], 'company:read', 'Read a company record');
+  await upsertScope(prisma, SEED_IDS.scopes['company:create'], 'company:create', 'Create a company record');
+  await upsertScope(prisma, SEED_IDS.scopes['company:edit'], 'company:edit', 'Edit a company record');
+  await upsertScope(prisma, SEED_IDS.scopes['company:delete'], 'company:delete', 'Delete a company record (tenant_admin only — Ruling 1)');
+  await upsertScope(prisma, SEED_IDS.scopes['contact:read'], 'contact:read', 'Read a contact record');
+  await upsertScope(prisma, SEED_IDS.scopes['contact:create'], 'contact:create', 'Create a contact record');
+  await upsertScope(prisma, SEED_IDS.scopes['contact:edit'], 'contact:edit', 'Edit a contact record');
+  await upsertScope(prisma, SEED_IDS.scopes['contact:delete'], 'contact:delete', 'Delete a contact record (tenant_admin only — Ruling 1)');
+  await upsertScope(prisma, SEED_IDS.scopes['pipeline:add'], 'pipeline:add', 'Add a talent to a pipeline');
+  await upsertScope(prisma, SEED_IDS.scopes['pipeline:change-status'], 'pipeline:change-status', 'Change a pipeline entry status');
+  await upsertScope(prisma, SEED_IDS.scopes['pipeline:add-activity'], 'pipeline:add-activity', 'Add an activity to a pipeline entry');
+  await upsertScope(prisma, SEED_IDS.scopes['pipeline:remove'], 'pipeline:remove', 'Remove a talent from a pipeline (tenant_admin only — Ruling 1 destructive)');
+  await upsertScope(prisma, SEED_IDS.scopes['calendar:event-create'], 'calendar:event-create', 'Create a calendar event');
+  await upsertScope(prisma, SEED_IDS.scopes['calendar:event-edit'], 'calendar:event-edit', 'Edit a calendar event (own events)');
+  await upsertScope(prisma, SEED_IDS.scopes['calendar:event-delete'], 'calendar:event-delete', 'Delete a calendar event (tenant_admin only — Ruling 1)');
+  await upsertScope(prisma, SEED_IDS.scopes['activity:read'], 'activity:read', 'Read the activity log');
+  await upsertScope(prisma, SEED_IDS.scopes['examination:read'], 'examination:read', 'Read examination output (read-only Core output)');
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:create'], 'requisition:create', 'Create a requisition');
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:edit'], 'requisition:edit', 'Edit a requisition');
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:delete'], 'requisition:delete', 'Delete a requisition (tenant_admin only — Ruling 1)');
+  await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:user-manage'], 'tenant:admin:user-manage', 'Tenant admin: manage users and memberships');
+  await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:settings'], 'tenant:admin:settings', 'Tenant admin: manage tenant settings');
 
   // 7. RoleScope assignments (13 pre-A1a + 12 PR-A1a = 25 rows total).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -522,6 +754,52 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
     subject_id: SEED_IDS.scopes['portal:consent:write'],
     payload: { scope_id: SEED_IDS.scopes['portal:consent:write'], key: 'portal:consent:write' },
   });
+
+  // PR-A1a-2 — 27 new identity.scope.created audit events (one per new scope).
+  // Pattern is uniform; the closed-list test validates the catalog shape,
+  // not the audit events individually.
+  const A1A2_NEW_SCOPES: Array<{ audit_id: string; key: string }> = [
+    { audit_id: SEED_IDS.audit_events.scope_talent_read_created, key: 'talent:read' },
+    { audit_id: SEED_IDS.audit_events.scope_talent_create_created, key: 'talent:create' },
+    { audit_id: SEED_IDS.audit_events.scope_talent_edit_created, key: 'talent:edit' },
+    { audit_id: SEED_IDS.audit_events.scope_talent_delete_created, key: 'talent:delete' },
+    { audit_id: SEED_IDS.audit_events.scope_talent_search_created, key: 'talent:search' },
+    { audit_id: SEED_IDS.audit_events.scope_company_read_created, key: 'company:read' },
+    { audit_id: SEED_IDS.audit_events.scope_company_create_created, key: 'company:create' },
+    { audit_id: SEED_IDS.audit_events.scope_company_edit_created, key: 'company:edit' },
+    { audit_id: SEED_IDS.audit_events.scope_company_delete_created, key: 'company:delete' },
+    { audit_id: SEED_IDS.audit_events.scope_contact_read_created, key: 'contact:read' },
+    { audit_id: SEED_IDS.audit_events.scope_contact_create_created, key: 'contact:create' },
+    { audit_id: SEED_IDS.audit_events.scope_contact_edit_created, key: 'contact:edit' },
+    { audit_id: SEED_IDS.audit_events.scope_contact_delete_created, key: 'contact:delete' },
+    { audit_id: SEED_IDS.audit_events.scope_pipeline_add_created, key: 'pipeline:add' },
+    { audit_id: SEED_IDS.audit_events.scope_pipeline_change_status_created, key: 'pipeline:change-status' },
+    { audit_id: SEED_IDS.audit_events.scope_pipeline_add_activity_created, key: 'pipeline:add-activity' },
+    { audit_id: SEED_IDS.audit_events.scope_pipeline_remove_created, key: 'pipeline:remove' },
+    { audit_id: SEED_IDS.audit_events.scope_calendar_event_create_created, key: 'calendar:event-create' },
+    { audit_id: SEED_IDS.audit_events.scope_calendar_event_edit_created, key: 'calendar:event-edit' },
+    { audit_id: SEED_IDS.audit_events.scope_calendar_event_delete_created, key: 'calendar:event-delete' },
+    { audit_id: SEED_IDS.audit_events.scope_activity_read_created, key: 'activity:read' },
+    { audit_id: SEED_IDS.audit_events.scope_examination_read_created, key: 'examination:read' },
+    { audit_id: SEED_IDS.audit_events.scope_requisition_create_created, key: 'requisition:create' },
+    { audit_id: SEED_IDS.audit_events.scope_requisition_edit_created, key: 'requisition:edit' },
+    { audit_id: SEED_IDS.audit_events.scope_requisition_delete_created, key: 'requisition:delete' },
+    { audit_id: SEED_IDS.audit_events.scope_tenant_admin_user_manage_created, key: 'tenant:admin:user-manage' },
+    { audit_id: SEED_IDS.audit_events.scope_tenant_admin_settings_created, key: 'tenant:admin:settings' },
+  ];
+  for (const entry of A1A2_NEW_SCOPES) {
+    const scope_id = (SEED_IDS.scopes as Record<string, string>)[entry.key];
+    if (scope_id === undefined) {
+      throw new Error(`PR-A1a-2 catalog mismatch: missing SEED_IDS.scopes[${entry.key}]`);
+    }
+    await upsertAudit(prisma, {
+      id: entry.audit_id,
+      tenant_id: null,
+      event_type: 'identity.scope.created',
+      subject_id: scope_id,
+      payload: { scope_id, key: entry.key },
+    });
+  }
 
   return { service_account_id: SEED_IDS.service_account_system };
 }

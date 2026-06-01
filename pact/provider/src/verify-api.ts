@@ -1343,20 +1343,20 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
 
-      // PR-A1a §6 — recruiter accessJwt now carries 'submittal:create' so
-      // the RolesGuard at SubmittalController.createSubmittal passes for
-      // the 4 ats-thin create-submittal pact interactions (STRETCH,
-      // Entrustable, replay, conflict). The 'ingestion:write' entry is
+      // PR-A1a §6 — recruiter accessJwt carries 'submittal:create'.
+      // PR-A1a-2 §3 — adds 'submittal:approve' for the 5 newly-guarded
+      // confirm/revoke/mark-ready/submit-to-ats/confirm-ats routes that
+      // ats-thin pacts exercise. The 'ingestion:write' entry is
       // preserved for the legacy ingestion-typed interactions that still
-      // assert this scope shape. Recruiter role in the PR-A1a seed
-      // catalog carries 'submittal:create' + 'submittal:approve' +
-      // 'requisition:read' (see libs/identity/prisma/seed.ts).
+      // assert this scope shape. Recruiter role in the PR-A1a-2 seed
+      // catalog carries the full operational scope set; the provider
+      // mint reflects the subset the ats-thin pacts require.
       accessJwt = await new SignJWT({
         sub: RECRUITER_ID,
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: ['ingestion:write', 'submittal:create'],
+        scopes: ['ingestion:write', 'submittal:create', 'submittal:approve'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -1372,12 +1372,20 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // derive talent_id from authContext.sub. The PR-8 match-list 403
       // test is unaffected (the controller rejects at consumer_type
       // before the sub value is consulted).
+      // PR-A1a-2 §3 — portalJwt now carries portal:profile:read +
+      // portal:consent:read so the RolesGuard at the newly-guarded
+      // GET /v1/portal/profile and GET /v1/portal/consent routes passes
+      // for the portal-thin 200 happy-path pact interactions. The
+      // recruiter→portal and ingestion→portal 403 interactions use
+      // accessJwt/ingestionJwt (which lack the portal scopes); RolesGuard
+      // rejects with 403 INSUFFICIENT_PERMISSIONS — same contract surface
+      // as the pre-A1a-2 consumer_type-check rejection.
       portalJwt = await new SignJWT({
         sub: PORTAL_TALENT_ID,
         consumer_type: 'portal',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: [],
+        scopes: ['portal:profile:read', 'portal:consent:read'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()

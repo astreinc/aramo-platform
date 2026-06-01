@@ -122,27 +122,54 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]);
 
       const scopes = await prisma.scope.findMany({ orderBy: { key: 'asc' } });
-      // PR-A1a Ruling 2/3: 8 new scopes (4 ATS + 4 portal). Pre-A1a 6 -> 14.
+      // PR-A1a-2: 27 new ATS scopes added. Pre-A1a-2 14 -> 41.
       expect(scopes.map((s) => s.key)).toEqual([
+        'activity:read',
         'auth:session:read',
+        'calendar:event-create',
+        'calendar:event-delete',
+        'calendar:event-edit',
+        'company:create',
+        'company:delete',
+        'company:edit',
+        'company:read',
         'consent:decision-log:read',
         'consent:read',
         'consent:write',
+        'contact:create',
+        'contact:delete',
+        'contact:edit',
+        'contact:read',
+        'examination:read',
         'identity:tenant:read',
         'identity:user:read',
+        'pipeline:add',
+        'pipeline:add-activity',
+        'pipeline:change-status',
+        'pipeline:remove',
         'portal:consent:read',
         'portal:consent:write',
         'portal:profile:edit',
         'portal:profile:read',
+        'requisition:create',
+        'requisition:delete',
+        'requisition:edit',
         'requisition:read',
         'requisition:read:all',
         'submittal:approve',
         'submittal:create',
+        'talent:create',
+        'talent:delete',
+        'talent:edit',
+        'talent:read',
+        'talent:search',
+        'tenant:admin:settings',
+        'tenant:admin:user-manage',
       ]);
 
       const roleScopes = await prisma.roleScope.count();
-      // Pre-A1a: 6 + 4 + 3 = 13. PR-A1a adds 4 + 3 + 1 + 4 = 12. Total 25.
-      expect(roleScopes).toBe(25);
+      // Pre-A1a-2: 25 (post-A1a). PR-A1a-2 adds 27 tenant_admin + 19 recruiter + 6 viewer = 52. Total 77.
+      expect(roleScopes).toBe(77);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -202,25 +229,52 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(tenants[0]?.id).toBe(SEED_IDS.tenant);
     });
 
-    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (10 scopes post-A1a)', async () => {
+    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (37 scopes post-A1a-2)', async () => {
       const scopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
       });
       const sorted = [...scopes].sort();
-      // PR-A1a Ruling 2: tenant_admin gains requisition:read, requisition:read:all,
-      // submittal:create, submittal:approve. 6 + 4 = 10.
+      // PR-A1a-2 Ruling 1: tenant_admin gains the full 27 ATS scopes
+      // (incl. all :delete + tenant:admin:*). Pre-A1a-2 10 + 27 = 37.
       expect(sorted).toEqual([
+        'activity:read',
         'auth:session:read',
+        'calendar:event-create',
+        'calendar:event-delete',
+        'calendar:event-edit',
+        'company:create',
+        'company:delete',
+        'company:edit',
+        'company:read',
         'consent:decision-log:read',
         'consent:read',
         'consent:write',
+        'contact:create',
+        'contact:delete',
+        'contact:edit',
+        'contact:read',
+        'examination:read',
         'identity:tenant:read',
         'identity:user:read',
+        'pipeline:add',
+        'pipeline:add-activity',
+        'pipeline:change-status',
+        'pipeline:remove',
+        'requisition:create',
+        'requisition:delete',
+        'requisition:edit',
         'requisition:read',
         'requisition:read:all',
         'submittal:approve',
         'submittal:create',
+        'talent:create',
+        'talent:delete',
+        'talent:edit',
+        'talent:read',
+        'talent:search',
+        'tenant:admin:settings',
+        'tenant:admin:user-manage',
       ]);
     });
 
@@ -364,27 +418,54 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Test 17 — scope catalog correctness
     // -----------------------------------------------------------------
 
-    it('test 17 — scope catalog correctness: tenant_admin 10/recruiter 7/viewer 4/candidate 4 per §6+§9 + PR-A1a', async () => {
-      // tenant_admin scope set (10 post-A1a)
+    it('test 17 — scope catalog correctness: tenant_admin 37/recruiter 26/viewer 10/candidate 4 per §6+§9 + PR-A1a-2', async () => {
+      // tenant_admin scope set (37 post-A1a-2)
       const adminScopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
       });
       expect([...adminScopes].sort()).toEqual([
+        'activity:read',
         'auth:session:read',
+        'calendar:event-create',
+        'calendar:event-delete',
+        'calendar:event-edit',
+        'company:create',
+        'company:delete',
+        'company:edit',
+        'company:read',
         'consent:decision-log:read',
         'consent:read',
         'consent:write',
+        'contact:create',
+        'contact:delete',
+        'contact:edit',
+        'contact:read',
+        'examination:read',
         'identity:tenant:read',
         'identity:user:read',
+        'pipeline:add',
+        'pipeline:add-activity',
+        'pipeline:change-status',
+        'pipeline:remove',
+        'requisition:create',
+        'requisition:delete',
+        'requisition:edit',
         'requisition:read',
         'requisition:read:all',
         'submittal:approve',
         'submittal:create',
+        'talent:create',
+        'talent:delete',
+        'talent:edit',
+        'talent:read',
+        'talent:search',
+        'tenant:admin:settings',
+        'tenant:admin:user-manage',
       ]);
 
-      // recruiter scope set (7 post-A1a; NO requisition:read:all — Aramo
-      // divergence from OpenCATS coarse EDIT-tier; see role.dto comment)
+      // recruiter scope set (26 post-A1a-2; Ruling 1 uniform divergence
+      // — NO :delete, NO :read:all, NO pipeline:remove, NO tenant:admin:*)
       const recruiterRoleScopes = await prisma.roleScope.findMany({
         where: { role: { key: 'recruiter' } },
         include: { scope: true },
@@ -392,25 +473,71 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const recruiterKeys = [...new Set(recruiterRoleScopes.map((r) => r.scope.key))].sort();
       expect(recruiterKeys).toEqual([
         'auth:session:read',
+        'activity:read',
+        'calendar:event-create',
+        'calendar:event-edit',
+        'company:create',
+        'company:edit',
+        'company:read',
         'consent:decision-log:read',
         'consent:read',
         'consent:write',
+        'contact:create',
+        'contact:edit',
+        'contact:read',
+        'examination:read',
+        'pipeline:add',
+        'pipeline:add-activity',
+        'pipeline:change-status',
+        'requisition:create',
+        'requisition:edit',
         'requisition:read',
         'submittal:approve',
         'submittal:create',
-      ]);
+        'talent:create',
+        'talent:edit',
+        'talent:read',
+        'talent:search',
+      ].sort());
 
-      // viewer scope set (4 post-A1a)
+      // PR-A1a-2 Ruling 1 EXPLICIT DIVERGENCE ASSERTIONS — the heart of
+      // the directive. Recruiter must NOT have any destructive (`:delete`)
+      // or see-all (`:read:all`) scope across any domain.
+      const FORBIDDEN_FOR_RECRUITER = [
+        'talent:delete',
+        'company:delete',
+        'contact:delete',
+        'requisition:delete',
+        'calendar:event-delete',
+        'pipeline:remove',
+        'requisition:read:all',
+        'tenant:admin:user-manage',
+        'tenant:admin:settings',
+      ];
+      for (const forbidden of FORBIDDEN_FOR_RECRUITER) {
+        expect(
+          recruiterKeys,
+          `recruiter must NOT carry '${forbidden}' per A1a-2 Ruling 1 uniform divergence`,
+        ).not.toContain(forbidden);
+      }
+
+      // viewer scope set (10 post-A1a-2)
       const viewerRoleScopes = await prisma.roleScope.findMany({
         where: { role: { key: 'viewer' } },
         include: { scope: true },
       });
       const viewerKeys = [...new Set(viewerRoleScopes.map((r) => r.scope.key))].sort();
       expect(viewerKeys).toEqual([
+        'activity:read',
         'auth:session:read',
+        'company:read',
         'consent:decision-log:read',
         'consent:read',
+        'contact:read',
+        'examination:read',
         'requisition:read',
+        'talent:read',
+        'talent:search',
       ]);
 
       // PR-A1a Ruling 3: candidate scope set (portal-only, 4 scopes)
