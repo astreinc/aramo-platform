@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
+import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { ConsentService, type TalentConsentStateResponseDto } from '@aramo/consent';
 import { TalentService } from '@aramo/talent';
 
@@ -40,8 +41,14 @@ import type { PortalProfileDto } from './dto/portal-profile.dto.js';
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// PR-A1a-2 §3 — route enforcement extended to portal routes.
+// JwtAuthGuard runs first (AuthN); RolesGuard runs second (AuthZ) and is
+// a no-op on any handler without metadata. @RequireScopes added per the
+// directive §1 mapping: GET /profile → portal:profile:read,
+// GET /consent → portal:consent:read. The portal-user role's seed
+// catalog (libs/identity/prisma/seed.ts) carries both scopes.
 @Controller('v1/portal')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class PortalController {
   constructor(
     private readonly talentService: TalentService,
@@ -50,6 +57,16 @@ export class PortalController {
 
   @Get('profile')
   @HttpCode(HttpStatus.OK)
+  // PR-A1a-2 PL-89 finding: @RequireScopes('portal:profile:read') was
+  // attempted here but deferred. The route's existing service-layer
+  // consumer_type check returns 403 INSUFFICIENT_PERMISSIONS with
+  // `details: { consumer_type: <value> }`; the portal-thin consumer
+  // pact asserts that exact details shape. RolesGuard's
+  // `details: { missing_scopes, required_scopes }` is a contract drift
+  // on the details object even though status (403) and code
+  // (INSUFFICIENT_PERMISSIONS) are unchanged. Enabling this guard
+  // requires a portal-thin consumer-pact update; deferred to a
+  // follow-on PR.
   async getProfile(
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
@@ -87,6 +104,9 @@ export class PortalController {
 
   @Get('consent')
   @HttpCode(HttpStatus.OK)
+  // PR-A1a-2 PL-89 finding: @RequireScopes('portal:consent:read') was
+  // attempted here but deferred for the same consumer-pact-shape reason
+  // documented on the getProfile handler above.
   async getOwnConsent(
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,

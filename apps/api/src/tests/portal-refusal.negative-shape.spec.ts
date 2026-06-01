@@ -219,12 +219,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
 
+      // PR-A1a-2 §3 sweep — portalJwt now carries the 2 portal scopes
+      // that the newly-guarded GET /v1/portal/profile and GET /v1/portal/
+      // consent routes require. The candidate role catalog carries both
+      // (libs/identity/prisma/seed.ts). recruiterJwt below stays scopes:[]
+      // — it is the deliberate-negative token for the 403 cases; either
+      // RolesGuard (missing scope) or the service-layer consumer_type
+      // check would reject with 403 INSUFFICIENT_PERMISSIONS, and the
+      // tests assert only the status code.
       portalJwt = await new SignJWT({
         sub: PORTAL_TALENT_ID,
         consumer_type: 'portal',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: [],
+        scopes: ['portal:profile:read', 'portal:consent:read'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()

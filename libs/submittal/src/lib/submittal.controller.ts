@@ -272,6 +272,7 @@ export class SubmittalController {
   // requestId via the ConfirmSubmittalInput.requestId — no re-wrapping
   // needed at this layer.
   @Post(':submittal_id/confirm')
+  @RequireScopes('submittal:approve')
   @HttpCode(HttpStatus.OK)
   async confirmSubmittal(
     @Param('submittal_id') submittal_id: string,
@@ -517,6 +518,7 @@ export class SubmittalController {
   // @HttpCode(HttpStatus.OK) — 200, not 201 (state transition on an
   // existing resource, no new row created).
   @Post(':submittal_id/revoke')
+  @RequireScopes('submittal:approve')
   @HttpCode(HttpStatus.OK)
   async revokeSubmittal(
     @Param('submittal_id') submittal_id: string,
@@ -624,6 +626,7 @@ export class SubmittalController {
   //   8. Idempotency persist (post-success only)
   //   9. Return { submittal, event }
   @Post(':submittal_id/mark-ready')
+  @RequireScopes('submittal:approve')
   @HttpCode(HttpStatus.OK)
   async markReady(
     @Param('submittal_id') submittal_id: string,
@@ -677,6 +680,7 @@ export class SubmittalController {
   //
   // 9-step idempotency flow per markReady precedent.
   @Post(':submittal_id/submit-to-ats')
+  @RequireScopes('submittal:approve')
   @HttpCode(HttpStatus.OK)
   async submitToAts(
     @Param('submittal_id') submittal_id: string,
@@ -729,6 +733,7 @@ export class SubmittalController {
   //
   // 9-step idempotency flow per markReady precedent.
   @Post(':submittal_id/confirm-ats')
+  @RequireScopes('submittal:approve')
   @HttpCode(HttpStatus.OK)
   async confirmAts(
     @Param('submittal_id') submittal_id: string,
