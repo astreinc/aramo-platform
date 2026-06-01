@@ -82,6 +82,16 @@ const SUBMITTAL_RENAME_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql',
 );
+// M6 PR-2 §3 — submittal OutboxEvent. Required because the confirm /
+// markReady / submitToAts / confirmAts / revokeSubmittal write methods
+// now emit an in-tx outbox row inside the same $transaction array as
+// the state transition. Applied LAST in the submittal sequence because
+// it CREATEs the new `submittal` PG namespace alongside its OutboxEvent
+// table (additive — no existing engagement-schema table altered).
+const SUBMITTAL_OUTBOX_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260531000000_add_outbox_event/migration.sql',
+);
 const EXAMINATION_INIT_PATH = resolve(
   __dirname,
   '../../../examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
@@ -178,6 +188,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // REPLACE FUNCTION rewrites trigger with canonical 5-state
         // matrix (4 mainline + 4 sibling-revoke).
         readFileSync(SUBMITTAL_RENAME_MIGRATION_PATH, 'utf8'),
+        // M6 PR-2 §3 — submittal OutboxEvent (new `submittal` PG schema).
+        readFileSync(SUBMITTAL_OUTBOX_MIGRATION_PATH, 'utf8'),
       ];
 
       setupClient = new PrismaService(url);

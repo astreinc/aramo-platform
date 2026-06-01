@@ -47,6 +47,15 @@ const ENGAGEMENT_EVENT_LOG_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
 );
+// M6 PR-2 §3 — engagement OutboxEvent. Required because createEngagement
+// + transitionState (and any other state-transition write method) now
+// emit an in-tx outbox row inside the same $transaction array as the
+// state change. Applied after the event-log substrate (same `engagement`
+// namespace) — additive, no existing table altered.
+const ENGAGEMENT_OUTBOX_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260531000000_add_outbox_event/migration.sql',
+);
 const TALENT_MIGRATION_PATH = resolve(
   __dirname,
   '../../../talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
@@ -116,6 +125,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const migrations = [
         readFileSync(ENGAGEMENT_MIGRATION_PATH, 'utf8'),
         readFileSync(ENGAGEMENT_EVENT_LOG_MIGRATION_PATH, 'utf8'),
+        // M6 PR-2 §3 — engagement OutboxEvent (same `engagement` namespace).
+        readFileSync(ENGAGEMENT_OUTBOX_MIGRATION_PATH, 'utf8'),
         readFileSync(TALENT_MIGRATION_PATH, 'utf8'),
         readFileSync(JOB_DOMAIN_MIGRATION_PATH, 'utf8'),
         readFileSync(EXAMINATION_INIT_MIGRATION_PATH, 'utf8'),
