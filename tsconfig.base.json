@@ -33,6 +33,7 @@
       "@aramo/common": ["libs/common/src/index.ts"],
       "@aramo/consent": ["libs/consent/src/index.ts"],
       "@aramo/engagement": ["libs/engagement/src/index.ts"],
+      "@aramo/entitlement": ["libs/entitlement/src/index.ts"],
       "@aramo/entrustability": ["libs/entrustability/src/index.ts"],
       "@aramo/events": ["libs/events/src/index.ts"],
       "@aramo/evidence": ["libs/evidence/src/index.ts"],

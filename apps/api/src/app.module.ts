@@ -8,6 +8,7 @@ import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { ConsentModule } from '@aramo/consent';
 import { EngagementModule } from '@aramo/engagement';
+import { EntitlementModule } from '@aramo/entitlement';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
 import { OutboxPublisherModule } from '@aramo/outbox-publisher';
@@ -24,6 +25,12 @@ import { SubmittalModule } from '@aramo/submittal';
     // controllers. Leaf lib: depends only on @aramo/auth and
     // @aramo/common; no domain-lib back-edge.
     AuthorizationModule,
+    // PR-A1b §2 — EntitlementModule provides EntitlementGuard for the
+    // @RequireCapability decorator applied to controllers. Tenant-axis
+    // gate (distinct from RolesGuard scope-axis per Ruling 1); runs
+    // BEFORE RolesGuard via @UseGuards(JwtAuthGuard, EntitlementGuard,
+    // RolesGuard). Leaf lib: depends only on @aramo/auth and @aramo/common.
+    EntitlementModule,
     ConsentModule,
     // M5 PR-11 Gate 5-redux (Option β-1 / PL-88) — CrossSchemaConsistencyModule
     // is imported here directly (NOT via CommonModule) so its BullMQ Worker

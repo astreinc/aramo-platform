@@ -77,6 +77,13 @@ const TALENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
 );
+// PR-A1b §4 sweep — portal routes are now class-level @RequireCapability('portal');
+// the integration boot must have the entitlement schema available so the
+// tenant-axis gate can be exercised (both pass and deliberate-failure paths).
+const ENTITLEMENT_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-portal-refusal-audience';
@@ -85,6 +92,12 @@ const ALG = 'RS256';
 const TENANT_ID = '11111111-1111-7111-8111-111111111111';
 const PORTAL_TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const RECRUITER_ID = '00000000-0000-0000-0000-0000000000bb';
+// PR-A1b §4 — a second tenant deliberately NOT seeded with the `portal`
+// capability. Used by the distinct-from-authz proof: a JWT carrying the
+// full portal scope set in this tenant is rejected by EntitlementGuard
+// with TENANT_CAPABILITY_NOT_ENTITLED — proving the tenant axis fires
+// independently of (and BEFORE) the scope axis.
+const UNENTITLED_TENANT_ID = '22222222-2222-7222-8222-222222222222';
 
 // R10-class fields that must NEVER appear in any portal response item
 // (per verify-portal-refusal.ts forbidden list + the R10 charter
@@ -152,6 +165,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let savedEnv: Partial<Record<string, string | undefined>> = {};
     let portalJwt: string;
     let recruiterJwt: string;
+    // PR-A1b §4 — JWT for the distinct-from-authz proof: carries all
+    // portal scopes (would pass RolesGuard) but is bound to
+    // UNENTITLED_TENANT_ID (no `portal` capability row). Expect 403
+    // TENANT_CAPABILITY_NOT_ENTITLED — NOT INSUFFICIENT_PERMISSIONS.
+    let portalScopedUnentitledTenantJwt: string;
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
@@ -167,9 +185,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         EXAMINATION_LIVE_LIST_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
         TALENT_INIT_MIGRATION,
+        ENTITLEMENT_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
+
+      // PR-A1b §4 — seed the integration-spec tenant with the `portal`
+      // capability so the pass-path tests can traverse the gated routes.
+      // The default-posture rows seeded by the migration apply only to
+      // SEED_IDS.tenant (01900000-...001); this spec uses a distinct
+      // TENANT_ID (11111111-...111), so the per-test seed is required.
+      await setup.query(
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
+         VALUES ($1::uuid, 'portal') ON CONFLICT DO NOTHING`,
+        [TENANT_ID],
+      );
 
       // Seed Talent + TalentTenantOverlay for the portal talent.
       await setup.query(
@@ -251,6 +281,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         actor_kind: 'user',
         tenant_id: TENANT_ID,
         scopes: [],
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt()
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
+      // PR-A1b §4 — the distinct-from-authz JWT: carries both portal
+      // scopes (would pass RolesGuard) but is bound to UNENTITLED_TENANT_ID
+      // (which has NO `portal` capability row). EntitlementGuard runs
+      // before RolesGuard and rejects on the tenant axis.
+      portalScopedUnentitledTenantJwt = await new SignJWT({
+        sub: PORTAL_TALENT_ID,
+        consumer_type: 'portal',
+        actor_kind: 'user',
+        tenant_id: UNENTITLED_TENANT_ID,
+        scopes: ['portal:profile:read', 'portal:consent:read'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -366,6 +414,41 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         headers: { Authorization: 'Bearer not-a-jwt' },
       });
       expect(res.status).toBe(401);
+    });
+
+    // PR-A1b §4 step 3 — the central Ruling 1 proof: entitlement is a
+    // DISTINCT AXIS from authorization. A token with the FULL portal
+    // scope set (which would pass RolesGuard) but bound to a tenant
+    // WITHOUT the `portal` capability is rejected with
+    // TENANT_CAPABILITY_NOT_ENTITLED — NOT INSUFFICIENT_PERMISSIONS.
+    // This proves EntitlementGuard fires before/independent of the
+    // scope check.
+    it('GET /v1/portal/profile — 403 TENANT_CAPABILITY_NOT_ENTITLED when scoped user is in unentitled tenant (Ruling 1)', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/portal/profile`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${portalScopedUnentitledTenantJwt}` },
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as {
+        error: { code: string; details?: { tenant_id?: string; missing_capabilities?: string[] } };
+      };
+      expect(body.error.code).toBe('TENANT_CAPABILITY_NOT_ENTITLED');
+      expect(body.error.details?.tenant_id).toBe(UNENTITLED_TENANT_ID);
+      expect(body.error.details?.missing_capabilities).toEqual(['portal']);
+    });
+
+    it('GET /v1/portal/consent — 403 TENANT_CAPABILITY_NOT_ENTITLED when scoped user is in unentitled tenant (Ruling 1)', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/portal/consent`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${portalScopedUnentitledTenantJwt}` },
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as {
+        error: { code: string; details?: { tenant_id?: string; missing_capabilities?: string[] } };
+      };
+      expect(body.error.code).toBe('TENANT_CAPABILITY_NOT_ENTITLED');
+      expect(body.error.details?.tenant_id).toBe(UNENTITLED_TENANT_ID);
+      expect(body.error.details?.missing_capabilities).toEqual(['portal']);
     });
   },
 );

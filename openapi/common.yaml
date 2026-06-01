@@ -1475,6 +1475,7 @@ components:
         - AI_RATE_LIMITED
         - SUBMITTAL_STATE_INVALID
         - CONSENT_NOT_GRANTED_AT_SEND
+        - TENANT_CAPABILITY_NOT_ENTITLED
 
     ErrorObject:
       type: object

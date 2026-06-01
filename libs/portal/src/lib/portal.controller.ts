@@ -9,6 +9,7 @@ import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { ConsentService, type TalentConsentStateResponseDto } from '@aramo/consent';
+import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { TalentService } from '@aramo/talent';
 
 import type { PortalProfileDto } from './dto/portal-profile.dto.js';
@@ -54,8 +55,18 @@ const UUID_REGEX =
 // missing_scopes} from RolesGuard. Both are valid 403 paths. The
 // portal-thin consumer pact subset-asserts only the stable contract
 // (status 403 + code INSUFFICIENT_PERMISSIONS).
+//
+// PR-A1b §4 proof-point — EntitlementGuard slots BETWEEN JwtAuthGuard
+// and RolesGuard per Ruling 1 (tenant-axis gate runs BEFORE scope-axis
+// gate). @RequireCapability('portal') at class level applies the
+// tenant-capability check to both GET /profile and GET /consent: a
+// tenant that is not entitled to `portal` is rejected with 403
+// TENANT_CAPABILITY_NOT_ENTITLED before either scope check runs. This
+// proves the two axes are independent — a properly-scoped portal user
+// in an unentitled tenant is still rejected.
 @Controller('v1/portal')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
+@RequireCapability('portal')
 export class PortalController {
   constructor(
     private readonly talentService: TalentService,

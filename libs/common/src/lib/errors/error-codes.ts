@@ -171,7 +171,8 @@
 // | 'consent_state_unknown') is embedded in error.details.consent_decision
 // for client-side fine-grained UX without growing the code registry.
 // 'error' result-shape goes to INTERNAL_ERROR per Ruling 8 (substrate
-// fault vs refusal). Total: 26 codes.
+// fault vs refusal). Total: 27 codes (PR-A1b added
+// TENANT_CAPABILITY_NOT_ENTITLED for the EntitlementGuard refusal).
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -200,6 +201,7 @@ export const ERROR_CODES = [
   'AI_RATE_LIMITED',  // M5 PR-6 — outreach sendOutreach LLM rate-limit response
   'SUBMITTAL_STATE_INVALID',  // M5 PR-8b2 — submittal canTransition guard failed (mainline + sibling-revoke)
   'CONSENT_NOT_GRANTED_AT_SEND',  // M5 PR-9b — outreach-send runtime consent-at-send refusal (Plan v1.5 §M5 Track B item 3 closure)
+  'TENANT_CAPABILITY_NOT_ENTITLED',  // PR-A1b — EntitlementGuard refusal when the tenant lacks the @RequireCapability the route demands (distinct from scope-axis INSUFFICIENT_PERMISSIONS per Ruling 1)
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

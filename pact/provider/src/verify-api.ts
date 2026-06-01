@@ -122,6 +122,14 @@ const TALENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
 );
+// PR-A1b §4 sweep — entitlement schema applied for the pact verifier so
+// the portal-thin pact interactions (5 interactions traversing the now
+// class-level @RequireCapability('portal') gate) can pass through
+// EntitlementGuard.
+const ENTITLEMENT_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
+);
 // M4 PR-1 + PR-3 — evidence + submittal migrations applied so the
 // submittal-create pact verification can seed an examination (via
 // seedSubmittalFixture below), trigger the SubmittalController which
@@ -1322,9 +1330,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // handlers. AiDraftService writes audit-event rows even when
         // the DraftProvider is mocked at AppModule bootstrap.
         AI_DRAFT_INIT_MIGRATION,
+        // PR-A1b §4 — entitlement schema for the portal-thin pact
+        // interactions; @RequireCapability('portal') on PortalController
+        // requires the tenant to be entitled before RolesGuard runs.
+        ENTITLEMENT_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
+
+      // PR-A1b §4 — seed the pact-verifier tenant with the `portal`
+      // capability. The migration's default-posture INSERT seeds only
+      // SEED_IDS.tenant (01900000-...001); this verifier uses TENANT_ID
+      // (11111111-...111), so an explicit row is required for the
+      // portal-thin pact interactions to traverse EntitlementGuard.
+      await setup.query(
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
+         VALUES ($1::uuid, 'portal') ON CONFLICT DO NOTHING`,
+        [TENANT_ID],
+      );
       await setup.end();
 
       // Inline JWT signing per Amendment §2.2 — production issuer
