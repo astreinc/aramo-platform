@@ -140,10 +140,31 @@ export class SessionOrchestratorService {
     }
     const selectedTenant = tenants[0]!;
 
-    const scopes = await this.role.getScopesByUserAndTenant({
+    // PR-A1a-3 Ruling 1 (auto-stamp): determine site_id from the user's
+    // active membership in selectedTenant. Schema's @@unique([user_id,
+    // tenant_id]) guarantees at most one membership row, so this is a
+    // deterministic single-row read — no ambiguity, no picker (Ruling 4).
+    // Ruling 5: a stamped site_id always corresponds to a real active
+    // membership (findActiveMembershipSite returns null otherwise).
+    const stampedSiteId = await this.role.findActiveMembershipSite({
       user_id: user.id,
       tenant_id: selectedTenant.id,
     });
+
+    // Scope resolution: site-aware when stamping (returns tenant-wide
+    // ∪ site-X scopes); existing tenant-wide path when not stamping
+    // (Ruling 2: byte-identical to today for tenant-wide memberships).
+    const scopes =
+      stampedSiteId === null
+        ? await this.role.getScopesByUserAndTenant({
+            user_id: user.id,
+            tenant_id: selectedTenant.id,
+          })
+        : await this.role.getScopesByUserTenantAndSite({
+            user_id: user.id,
+            tenant_id: selectedTenant.id,
+            site_id: stampedSiteId,
+          });
 
     const refreshTokenPlaintext = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
     const refreshTokenHash = sha256Base64Url(refreshTokenPlaintext);
@@ -170,6 +191,7 @@ export class SessionOrchestratorService {
         consumer_type: input.consumer,
         tenant_id: selectedTenant.id,
         scopes,
+        ...(stampedSiteId !== null ? { site_id: stampedSiteId } : {}),
       });
     } catch (err) {
       this.logger.warn(`jwt sign failed: ${(err as Error).message}`);

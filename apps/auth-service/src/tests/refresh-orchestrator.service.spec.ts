@@ -51,7 +51,14 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
       revoke: vi.fn(),
     } as unknown as RefreshTokenService,
     role: {
+      // PR-A1a-3 Ruling 2 (tenant-wide byte-identity): default mock
+      // returns null → orchestrator takes the existing tenant-wide
+      // path; existing assertions unchanged.
+      findActiveMembershipSite: vi.fn().mockResolvedValue(null),
       getScopesByUserAndTenant: vi
+        .fn()
+        .mockResolvedValue(['auth:session:read']),
+      getScopesByUserTenantAndSite: vi
         .fn()
         .mockResolvedValue(['auth:session:read']),
     } as unknown as RoleService,
@@ -194,5 +201,65 @@ describe('RefreshOrchestratorService.handleRefresh', () => {
     expect(result.kind).toBe('token_invalid');
     if (result.kind !== 'token_invalid') return;
     expect(result.reason).toBe('expired');
+  });
+
+  // PR-A1a-3 Ruling 1 (refresh threads site): membership is site-scoped
+  // → refresh re-derives the SAME site_id from the (user_id, tenant_id)
+  // membership row (deterministic per schema's @@unique constraint) and
+  // calls the site-aware resolver; new access JWT carries site_id.
+  it('PR-A1a-3 Ruling 1 — re-derives site_id at refresh for site-scoped membership', async () => {
+    const SITE_ID = '01900000-0000-7000-8000-0000000000c2';
+    const mocks = makeMocks();
+    (mocks.role.findActiveMembershipSite as ReturnType<typeof vi.fn>)
+      .mockResolvedValue(SITE_ID);
+    (mocks.role.getScopesByUserTenantAndSite as ReturnType<typeof vi.fn>)
+      .mockResolvedValue(['submittal:create']);
+    const svc = makeSvc(mocks);
+
+    const result = await svc.handleRefresh({
+      consumer: 'recruiter',
+      refreshCookie: 'cookie',
+    });
+    expect(result.kind).toBe('success');
+    expect(mocks.role.findActiveMembershipSite).toHaveBeenCalledWith({
+      user_id: USER_ID,
+      tenant_id: TENANT_ID,
+    });
+    expect(mocks.role.getScopesByUserTenantAndSite).toHaveBeenCalledWith({
+      user_id: USER_ID,
+      tenant_id: TENANT_ID,
+      site_id: SITE_ID,
+    });
+    expect(mocks.role.getScopesByUserAndTenant).not.toHaveBeenCalled();
+    expect(mocks.jwtIssuer.sign).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sub: USER_ID,
+        tenant_id: TENANT_ID,
+        site_id: SITE_ID,
+        scopes: ['submittal:create'],
+      }),
+    );
+  });
+
+  // PR-A1a-3 Ruling 2 (tenant-wide refresh byte-shape): tenant-wide
+  // membership → refresh takes the EXISTING getScopesByUserAndTenant
+  // path AND does NOT stamp site_id on the rotated access JWT. The
+  // pre-A1a-3 refresh behavior is preserved byte-for-byte.
+  it('PR-A1a-3 Ruling 2 — does NOT stamp site_id at refresh for tenant-wide membership', async () => {
+    const mocks = makeMocks(); // findActiveMembershipSite defaults to null.
+    const svc = makeSvc(mocks);
+
+    const result = await svc.handleRefresh({
+      consumer: 'recruiter',
+      refreshCookie: 'cookie',
+    });
+    expect(result.kind).toBe('success');
+    expect(mocks.role.getScopesByUserAndTenant).toHaveBeenCalledWith({
+      user_id: USER_ID,
+      tenant_id: TENANT_ID,
+    });
+    expect(mocks.role.getScopesByUserTenantAndSite).not.toHaveBeenCalled();
+    const signCall = (mocks.jwtIssuer.sign as ReturnType<typeof vi.fn>).mock.calls[0]![0]!;
+    expect('site_id' in signCall).toBe(false);
   });
 });

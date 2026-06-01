@@ -53,6 +53,37 @@ export class RoleRepository {
     return [...keys];
   }
 
+  // PR-A1a-3 Ruling 1 (auto-stamp): returns the site_id of the user's
+  // active membership in the tenant when that membership is site-scoped,
+  // null otherwise (membership missing, inactive, or tenant-wide).
+  //
+  // The identity schema constrains memberships by @@unique([user_id,
+  // tenant_id]), so a user has AT MOST one membership per tenant — the
+  // ">1 site-scoped membership" disambiguation case from the directive
+  // is structurally prevented. This makes the auto-stamp a single
+  // deterministic read of (membership.site_id, membership.is_active).
+  //
+  // Used by auth-service session + refresh orchestrators at issuance
+  // time to decide whether to stamp the JWT site_id claim. A stamped
+  // site_id therefore ALWAYS corresponds to a real active membership
+  // (Ruling 5 fail-closed).
+  async findActiveMembershipSite(args: {
+    user_id: string;
+    tenant_id: string;
+  }): Promise<string | null> {
+    const row = await this.prisma.userTenantMembership.findUnique({
+      where: {
+        user_id_tenant_id: {
+          user_id: args.user_id,
+          tenant_id: args.tenant_id,
+        },
+      },
+      select: { is_active: true, site_id: true },
+    });
+    if (row === null || row.is_active !== true) return null;
+    return row.site_id;
+  }
+
   // PR-A1a site-aware resolver (Ruling 4): returns the union of
   //   (a) tenant-wide membership scopes (site_id IS NULL), and
   //   (b) memberships whose site_id matches the provided site.

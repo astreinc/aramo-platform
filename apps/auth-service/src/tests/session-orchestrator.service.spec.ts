@@ -83,7 +83,14 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
       ]),
     } as unknown as TenantService,
     role: {
+      // PR-A1a-3 Ruling 2 (tenant-wide byte-identity): default mock
+      // returns null → orchestrator takes the existing tenant-wide
+      // path; existing assertions unchanged.
+      findActiveMembershipSite: vi.fn().mockResolvedValue(null),
       getScopesByUserAndTenant: vi
+        .fn()
+        .mockResolvedValue(['auth:session:read']),
+      getScopesByUserTenantAndSite: vi
         .fn()
         .mockResolvedValue(['auth:session:read']),
     } as unknown as RoleService,
@@ -304,5 +311,78 @@ describe('SessionOrchestratorService.handleCallback', () => {
     expect(result.kind).toBe('validation_error');
     if (result.kind !== 'validation_error') return;
     expect(result.reason).toBe('consumer_mismatch');
+  });
+
+  // PR-A1a-3 Ruling 1 (auto-stamp): site-scoped membership.
+  // findActiveMembershipSite returns a real site_id → orchestrator
+  // resolves scopes via site-aware resolver AND stamps site_id on JWT.
+  it('PR-A1a-3 Ruling 1 — auto-stamps site_id when membership is site-scoped', async () => {
+    const SITE_ID = '01900000-0000-7000-8000-0000000000c1';
+    const mocks = makeMocks();
+    (mocks.role.findActiveMembershipSite as ReturnType<typeof vi.fn>)
+      .mockResolvedValue(SITE_ID);
+    (mocks.role.getScopesByUserTenantAndSite as ReturnType<typeof vi.fn>)
+      .mockResolvedValue(['talent:read']);
+    const svc = makeService(mocks);
+
+    const result = await svc.handleCallback({
+      consumer: 'recruiter',
+      code: 'c',
+      state: 'state-1',
+      cognitoError: undefined,
+      cognitoErrorDescription: undefined,
+      pkceStateCipher: 'cipher',
+    });
+
+    expect(result.kind).toBe('success');
+    expect(mocks.role.findActiveMembershipSite).toHaveBeenCalledWith({
+      user_id: USER_ID,
+      tenant_id: TENANT_ID,
+    });
+    expect(mocks.role.getScopesByUserTenantAndSite).toHaveBeenCalledWith({
+      user_id: USER_ID,
+      tenant_id: TENANT_ID,
+      site_id: SITE_ID,
+    });
+    // Tenant-wide resolver NOT called when site is stamped.
+    expect(mocks.role.getScopesByUserAndTenant).not.toHaveBeenCalled();
+    // Issuer receives the site_id claim.
+    expect(mocks.jwtIssuer.sign).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sub: USER_ID,
+        tenant_id: TENANT_ID,
+        site_id: SITE_ID,
+        scopes: ['talent:read'],
+      }),
+    );
+  });
+
+  // PR-A1a-3 Ruling 2 (tenant-wide byte-shape): tenant-wide membership.
+  // findActiveMembershipSite returns null → orchestrator takes EXISTING
+  // path (getScopesByUserAndTenant) AND does NOT stamp site_id. The
+  // call to jwtIssuer.sign must NOT carry a site_id key.
+  it('PR-A1a-3 Ruling 2 — does NOT stamp site_id when membership is tenant-wide (byte-shape preserved)', async () => {
+    const mocks = makeMocks(); // findActiveMembershipSite defaults to null.
+    const svc = makeService(mocks);
+
+    const result = await svc.handleCallback({
+      consumer: 'recruiter',
+      code: 'c',
+      state: 'state-1',
+      cognitoError: undefined,
+      cognitoErrorDescription: undefined,
+      pkceStateCipher: 'cipher',
+    });
+
+    expect(result.kind).toBe('success');
+    // Existing tenant-wide path is taken; site-aware resolver NOT called.
+    expect(mocks.role.getScopesByUserAndTenant).toHaveBeenCalledWith({
+      user_id: USER_ID,
+      tenant_id: TENANT_ID,
+    });
+    expect(mocks.role.getScopesByUserTenantAndSite).not.toHaveBeenCalled();
+    // Issuer payload must NOT include site_id (byte-shape parity).
+    const signCall = (mocks.jwtIssuer.sign as ReturnType<typeof vi.fn>).mock.calls[0]![0]!;
+    expect('site_id' in signCall).toBe(false);
   });
 });

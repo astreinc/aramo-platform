@@ -161,7 +161,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         })
         .overrideProvider(RoleService)
         .useValue({
+          // PR-A1a-3 Ruling 2: default to null → tenant-wide path,
+          // tokens byte-identical to pre-A1a-3 (no site_id claim).
+          findActiveMembershipSite: vi.fn().mockResolvedValue(null),
           getScopesByUserAndTenant: vi.fn().mockResolvedValue(['auth:session:read']),
+          getScopesByUserTenantAndSite: vi.fn().mockResolvedValue(['auth:session:read']),
         })
         .compile();
 

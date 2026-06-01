@@ -82,10 +82,34 @@ export class RefreshOrchestratorService {
     }
 
     // Normal refresh: re-derive scopes, generate new plaintext, rotate.
-    const scopes = await this.role.getScopesByUserAndTenant({
+    //
+    // PR-A1a-3 Ruling 1: re-derive site_id from the user's active
+    // membership in tenant. The directive's "thread the existing claim
+    // rather than recomputing" intent is preserved by schema: with
+    // @@unique([user_id, tenant_id]) the membership is the SAME row at
+    // session-time and refresh-time, so the auto-stamp function is
+    // deterministic over (user_id, tenant_id) and the recomputed site_id
+    // matches what session issuance stamped. This mirrors the existing
+    // scope re-derivation pattern (already recomputed at refresh) and
+    // avoids a RefreshToken schema migration (out of scope per Gate-5
+    // prompt §5 Cat 1 / §7). Edge case: if an admin changes the
+    // membership's site_id mid-session, the next refresh reflects the
+    // new authority — same authority semantics as the scope path.
+    const stampedSiteId = await this.role.findActiveMembershipSite({
       user_id: found.user_id,
       tenant_id: found.tenant_id,
     });
+    const scopes =
+      stampedSiteId === null
+        ? await this.role.getScopesByUserAndTenant({
+            user_id: found.user_id,
+            tenant_id: found.tenant_id,
+          })
+        : await this.role.getScopesByUserTenantAndSite({
+            user_id: found.user_id,
+            tenant_id: found.tenant_id,
+            site_id: stampedSiteId,
+          });
 
     const newPlaintext = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
     const newHash = sha256Base64Url(newPlaintext);
@@ -113,6 +137,7 @@ export class RefreshOrchestratorService {
         consumer_type: input.consumer,
         tenant_id: found.tenant_id,
         scopes,
+        ...(stampedSiteId !== null ? { site_id: stampedSiteId } : {}),
       });
     } catch (err) {
       this.logger.warn(`jwt sign on refresh failed: ${(err as Error).message}`);
