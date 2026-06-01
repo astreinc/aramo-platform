@@ -109,6 +109,7 @@ through `libs/consent`), `libs/identity`, `libs/auth-storage`,
 - Enforcement mechanism: **API absence + future schema-layer attestation constraints**. No `/v1/submittals/{submittal_id}/confirm` endpoint exists. Future enforcement at the `RecruiterAttestations` schema with all three attestation fields (`candidate_evidence_reviewed`, `constraints_reviewed`, `submission_risk_acknowledged`) declared `const: true` per API Contracts v1.0 Phase 2 — preventing OpenAPI validation from accepting an auto-confirmed submittal.
 - Substrate evidence: `grep -rEn "submission_risk_acknowledged" openapi/ libs/ apps/` returns no matches — the schema doesn't exist yet because the endpoint doesn't exist.
 - Re-evaluated in M4 + M5 (Submittal pipeline).
+- *[Forward reference (PR-A0 §2 Ruling 4 annotation, added 2026-05-31): vocabulary `candidate_evidence_reviewed` / `submission_risk_acknowledged` superseded by `talent_evidence_reviewed` / `submittal_risk_acknowledged` per the candidate_direct→talent_direct rename amendment, 2026-05-16. Historical text preserved as-signed.]*
 
 ### Refusal R13 — *Will not compromise consent integrity for engagement velocity.*
 - At risk in M0? **No (in M0 code paths)** — M0 has no engagement; nothing to compromise consent integrity *for* yet. The architectural precedent that enables R13 — consent-first sequencing — is, however, established in M0.

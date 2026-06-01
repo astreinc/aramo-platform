@@ -6,13 +6,24 @@
 //   1. additionalProperties: false on every object schema (closed envelope —
 //      no silent leakage of fields not in the locked contract).
 //   2. No property name matches the Portal forbidden-field list, derived
-//      from Charter v1.0 refusals and the PR-M0R-2 directive §4:
-//        - exact:  internal_reasoning, entrustability_tier_raw
-//                  (Charter R10 — no internal-reasoning/eval-output exposure)
+//      from Charter v1.0 refusals and PR-A0 directive §2 Ruling 1
+//      (R10 portal hardening — the 13 names of record in doc/03-refusal-layer.md):
+//        - exact:  internal_reasoning, entrustability_tier_raw,
+//                  tier, rank, rank_ordinal, score, examination_id,
+//                  why_matched_sentence, strengths, gaps, risk_flags,
+//                  recruiter_notes, override_id, action_queue_item_id,
+//                  internal_engagement_state
+//                  (Charter R10 — no internal-reasoning/eval-output/ranking
+//                   exposure on talent-facing surfaces)
 //        - prefix: override_*  (Charter R8 — no recruiter-judgment overrides
 //                               of system classification, surfaced to talent)
 //                  recruiter_* (recruiter-only fields must not bleed into
 //                               talent-facing endpoints — PR-M0R-2 §4)
+//
+// The exact-match list is a backstop, not the definition of safe: Portal
+// response schemas are allowlist-shaped — every exposed field must be
+// affirmatively justified against R10 as candidate-facing-safe (PR-A0 §2
+// Ruling 2; see doc/06-lead-review-checklist.md).
 //
 // Exits 0 against the current paths: {} components.schemas: {} stub.
 // Enforces as M2-M6 populate Portal schemas. Out of scope for this script:
@@ -34,6 +45,19 @@ const PORTAL_YAML = join(REPO_ROOT, 'openapi', 'portal.yaml');
 export const FORBIDDEN_EXACT: ReadonlyArray<string> = [
   'internal_reasoning',
   'entrustability_tier_raw',
+  'tier',
+  'rank',
+  'rank_ordinal',
+  'score',
+  'examination_id',
+  'why_matched_sentence',
+  'strengths',
+  'gaps',
+  'risk_flags',
+  'recruiter_notes',
+  'override_id',
+  'action_queue_item_id',
+  'internal_engagement_state',
 ];
 
 export const FORBIDDEN_PREFIXES: ReadonlyArray<string> = [

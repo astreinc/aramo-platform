@@ -113,8 +113,11 @@ For each of the 13 Charter refusals (R1-R13 in `03-refusal-layer.md`), verify th
 - [ ] If schema change touches a `const` constraint, is the const preserved?
 - [ ] If enum is touched, is the closed list preserved? Are no new values added?
 - [ ] If Portal schema is touched, do all 13 forbidden fields remain absent?
+- [ ] If a NEW field is added to a Portal or ATS response schema, is it affirmatively justified against R10 as candidate-facing-safe before merge?
 - [ ] Does CI `verify-portal-refusal.ts` pass?
 - [ ] Does CI `verify-ats-refusal.ts` pass?
+
+**Design rule (PR-A0 §2 Ruling 2):** Portal and ATS response schemas are allowlist-shaped — every exposed field must be affirmatively justified against R10 as candidate-facing-safe; the CI exact-match list is a backstop, not the definition of safe.
 
 ### Pact verification for refusal-relevant changes
 
