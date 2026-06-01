@@ -370,9 +370,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         body: JSON.stringify(VALID_BODY),
       });
       expect(res.status).toBe(403);
-      const body = (await res.json()) as { code?: string; context?: { details?: { missing_scopes?: string[] } } };
-      expect(body.code).toBe('INSUFFICIENT_PERMISSIONS');
-      expect(body.context?.details?.missing_scopes).toEqual(['submittal:create']);
+      const body = (await res.json()) as {
+        error?: { code?: string; details?: { missing_scopes?: string[] } };
+      };
+      expect(body.error?.code).toBe('INSUFFICIENT_PERMISSIONS');
+      expect(body.error?.details?.missing_scopes).toEqual(['submittal:create']);
     });
   },
 );
