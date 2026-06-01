@@ -88,10 +88,18 @@ describe('portal-thin consumer → GET /v1/portal/consent', () => {
       .willRespondWith(403, (b) => {
         b.jsonBody({
           error: {
+            // PR-A1a-4 Ruling 1: INSUFFICIENT_PERMISSIONS is a superset
+            // envelope. A non-portal token may be rejected by RolesGuard
+            // (details:{required_scopes, missing_scopes}) before the
+            // controller-body consumer_type check (details:{consumer_type})
+            // ever runs. The portal-thin consumer only depends on the
+            // 403 + code + the presence of a details object — not on a
+            // specific key set — so details is subset-asserted as
+            // "an object" via like({}).
             code: 'INSUFFICIENT_PERMISSIONS',
-            message: like('portal endpoints are portal-consumer only'),
+            message: like('insufficient permissions for portal endpoint'),
             request_id: uuid(),
-            details: like({ consumer_type: 'ingestion' }),
+            details: like({}),
           },
         });
       })
