@@ -107,6 +107,12 @@ interface MockPrismaService {
   outboxEvent: {
     create: ReturnType<typeof vi.fn>;
   };
+  // PR-A1c §4 — recordUsage helper calls prisma.$executeRaw (cross-schema
+  // INSERT into metering."UsageEvent"). The unit-test mock stubs it so
+  // building the $transaction array does not throw at call time; the
+  // real PG-transactional guarantee is exercised by the dedicated
+  // integration spec at libs/metering/src/tests/transactional-guarantee.
+  $executeRaw: ReturnType<typeof vi.fn>;
   $transaction: ReturnType<typeof vi.fn>;
 }
 
@@ -131,6 +137,10 @@ function makeMockPrisma(): MockPrismaService {
     outboxEvent: {
       create: vi.fn(),
     },
+    // PR-A1c §4 — recordUsage(this.prisma, …) is invoked inline when
+    // building the $transaction array; $executeRaw returns a Promise<1>
+    // by default so the construction completes without throwing.
+    $executeRaw: vi.fn().mockResolvedValue(1),
     // $transaction default returns the array of (mocked) results by
     // evaluating each item — prisma's real signature accepts an array
     // of "Prisma operations" but the mock just resolves whatever the

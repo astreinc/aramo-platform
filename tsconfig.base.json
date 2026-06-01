@@ -42,6 +42,7 @@
       "@aramo/ingestion": ["libs/ingestion/src/index.ts"],
       "@aramo/job-domain": ["libs/job-domain/src/index.ts"],
       "@aramo/matching": ["libs/matching/src/index.ts"],
+      "@aramo/metering": ["libs/metering/src/index.ts"],
       "@aramo/outbox-publisher": ["libs/outbox-publisher/src/index.ts"],
       "@aramo/portal": ["libs/portal/src/index.ts"],
       "@aramo/skills-taxonomy": ["libs/skills-taxonomy/src/index.ts"],

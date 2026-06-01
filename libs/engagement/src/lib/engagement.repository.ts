@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import { ExaminationRepository } from '@aramo/examination';
 import { JobDomainRepository } from '@aramo/job-domain';
+import { recordUsage } from '@aramo/metering';
 import { TalentRepository } from '@aramo/talent';
 
 import { canTransition, type EngagementStateValue } from './engagement-state.js';
@@ -453,6 +454,12 @@ export class EngagementRepository {
           } as never,
         },
       }),
+      // PR-A1c — in-tx metered usage event. Same $transaction array =
+      // same PG transaction = atomicity with the domain write (Ruling 6).
+      recordUsage(this.prisma, {
+        tenant_id: input.tenant_id,
+        event_type: 'engagement.state_transition',
+      }),
     ]);
 
     // ---- Step 4 + 5: project + return + success log -------------------
@@ -562,6 +569,11 @@ export class EngagementRepository {
             transition_event_id: input.event_id,
           } as never,
         },
+      }),
+      // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
+      recordUsage(this.prisma, {
+        tenant_id: input.tenant_id,
+        event_type: 'engagement.state_transition',
       }),
     ]);
 
@@ -692,6 +704,11 @@ export class EngagementRepository {
               transition_event_id: input.transition_event_id,
             } as never,
           },
+        }),
+        // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
+        recordUsage(this.prisma, {
+          tenant_id: input.tenant_id,
+          event_type: 'engagement.state_transition',
         }),
       ]);
 
@@ -866,6 +883,11 @@ export class EngagementRepository {
             } as never,
           },
         }),
+        // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
+        recordUsage(this.prisma, {
+          tenant_id: input.tenant_id,
+          event_type: 'engagement.state_transition',
+        }),
       ]);
 
     // ---- Step 5 + 6: project + return + success log ------------------
@@ -1008,6 +1030,11 @@ export class EngagementRepository {
               transition_event_id: input.transition_event_id,
             } as never,
           },
+        }),
+        // PR-A1c — in-tx metered usage event (Ruling 6 same-transaction).
+        recordUsage(this.prisma, {
+          tenant_id: input.tenant_id,
+          event_type: 'engagement.state_transition',
         }),
       ]);
 

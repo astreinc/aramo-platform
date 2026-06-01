@@ -56,6 +56,15 @@ const ENGAGEMENT_OUTBOX_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260531000000_add_outbox_event/migration.sql',
 );
+// PR-A1c §4 — metering schema required because every metered transition
+// method (createEngagement / transitionState / recordOutreachSent /
+// recordResponse / recordConversationStarted) now emits a UsageEvent
+// INSERT inside the existing $transaction array. Same PG transaction =
+// atomicity (Ruling 6).
+const METERING_INIT_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../../metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
+);
 const TALENT_MIGRATION_PATH = resolve(
   __dirname,
   '../../../talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
@@ -127,6 +136,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(ENGAGEMENT_EVENT_LOG_MIGRATION_PATH, 'utf8'),
         // M6 PR-2 §3 — engagement OutboxEvent (same `engagement` namespace).
         readFileSync(ENGAGEMENT_OUTBOX_MIGRATION_PATH, 'utf8'),
+        // PR-A1c §4 — metering schema (cross-schema in-tx UsageEvent INSERT).
+        readFileSync(METERING_INIT_MIGRATION_PATH, 'utf8'),
         readFileSync(TALENT_MIGRATION_PATH, 'utf8'),
         readFileSync(JOB_DOMAIN_MIGRATION_PATH, 'utf8'),
         readFileSync(EXAMINATION_INIT_MIGRATION_PATH, 'utf8'),

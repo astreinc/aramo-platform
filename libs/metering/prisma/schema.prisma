@@ -1,0 +1,68 @@
+// Per-module Prisma schema for the `metering` module.
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
+// and doc/05-conventions.md "Database Conventions". Cross-schema
+// references elsewhere in the program are UUID-only without FK
+// constraints (§7.3) — `tenant_id` references identity.Tenant by UUID
+// only (no Prisma FK).
+//
+// PR-A1c — UsageEvent: the general tenant-usage event stream.
+//
+// Ruling 1 (general stream, NOT capability counters): a flat
+// append-only log of metered tenant activity. `event_type` is a free
+// string naming the metered transition; the value vocabulary aligns
+// with the M6 PR-2 outbox event_type vocabulary (e.g.
+// 'engagement.state_transition', 'submittal.state_transition') so a
+// later rollup read-layer can correlate. Aggregation / billing /
+// quota live in a future read-layer (Ruling 4 — write path only).
+//
+// Ruling 6 (transactional guarantee): emit runs inside the caller
+// domain's existing $transaction via $executeRaw on the caller's
+// Prisma client. Both schemas live in the same Postgres database,
+// so the cross-schema INSERT joins the caller's PG transaction;
+// a usage event is recorded iff the domain transaction commits.
+//
+// This schema is intentionally minimal — no aggregate/rollup columns,
+// no billing references, no quota fields. Soft-additive: extending the
+// table with future columns (idempotency_key, source_request_id, etc.)
+// is straightforward without breaking the read shape.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["metering"]
+}
+
+model UsageEvent {
+  // Identity. UUID v7 generated app-side at emit time (matches PR-2
+  // outbox precedent — no native uuidv7() in Postgres 17).
+  id          String   @id @db.Uuid
+
+  // Cross-schema UUID reference to identity.Tenant (§7.3 — UUID-only).
+  tenant_id   String   @db.Uuid
+
+  // Free-form event_type naming the metered transition. Vocab aligns
+  // with M6 PR-2 outbox event_type strings; no enum constraint at
+  // PR-A1c (Ruling 1 — keep the stream general).
+  event_type  String
+
+  // Optional quantity for events that meter a count (e.g. 5 emails
+  // sent). Default 1 for transition-style events. Non-negative
+  // (enforced by app layer; no DB check constraint at PR-A1c).
+  quantity    Int      @default(1)
+
+  // When the event occurred (caller-controlled; defaults to NOW()
+  // at INSERT time). Stored as timestamptz for cross-tenant ordering.
+  occurred_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Index supports the future read-layer's per-tenant time-range
+  // queries (Ruling 4 — read-layer is out of scope; the index is
+  // cheap to add now). No btree on event_type at PR-A1c (cardinality
+  // unknown until the stream has data).
+  @@index([tenant_id, occurred_at])
+  @@schema("metering")
+}
