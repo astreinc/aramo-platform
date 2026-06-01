@@ -32,6 +32,11 @@ export default defineConfig({
       '@aramo/ai-draft': resolve(root, 'libs/ai-draft/src/index.ts'),
       '@aramo/audit': resolve(root, 'libs/audit/src/index.ts'),
       '@aramo/engagement': resolve(root, 'libs/engagement/src/index.ts'),
+      // PR-A1b §2 — new leaf lib hosting EntitlementGuard + @RequireCapability
+      // decorator. Mirrors tsconfig.base.json @aramo/entitlement alias so
+      // vitest runtime resolves the AppModule import (apps/api wires
+      // EntitlementModule).
+      '@aramo/entitlement': resolve(root, 'libs/entitlement/src/index.ts'),
       '@aramo/entrustability': resolve(root, 'libs/entrustability/src/index.ts'),
       '@aramo/events': resolve(root, 'libs/events/src/index.ts'),
       '@aramo/evidence': resolve(root, 'libs/evidence/src/index.ts'),

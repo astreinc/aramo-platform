@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 26 codes including M5 PR-9b CONSENT_NOT_GRANTED_AT_SEND', () => {
+  it('ERROR_CODES contains the 27 codes including PR-A1b TENANT_CAPABILITY_NOT_ENTITLED', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -65,6 +65,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'AI_RATE_LIMITED',
       'SUBMITTAL_STATE_INVALID',
       'CONSENT_NOT_GRANTED_AT_SEND',
+      'TENANT_CAPABILITY_NOT_ENTITLED',
     ]);
   });
 });

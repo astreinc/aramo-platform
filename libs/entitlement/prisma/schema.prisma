@@ -1,0 +1,64 @@
+// Per-module Prisma schema for the `entitlement` module.
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
+// and doc/05-conventions.md "Database Conventions". Cross-schema
+// references elsewhere in the program are UUID-only without FK
+// constraints (§7.3) — `tenant_id` references identity.Tenant by UUID
+// only (no Prisma FK).
+//
+// PR-A1b — TenantEntitlement: tenant-axis capability gate.
+//
+// Capability is named to suite surfaces (Ruling 2): core / ats / portal /
+// sourcing. `sourcing` is reserved at PR-A1b; runtime enforcement
+// deferred to Phase B (Ruling 3). Names are vocab-clean.
+//
+// Presence-as-entitled (Ruling 4 — minimal schema): a row in the table
+// for (tenant_id, capability) means the tenant is entitled. Absence
+// means not-entitled. No `enabled` flag at PR-A1b; soft-disable can be
+// added later via an `enabled` column without breaking the read shape.
+//
+// Default posture (Ruling 4): the seeded tenant
+// (identity.SEED_IDS.tenant = 01900000-0000-7000-8000-000000000001)
+// gets `core`, `ats`, `portal` rows. `sourcing` is deliberately absent.
+// Additive — existing tenants gain rows; no behavior change for
+// already-provisioned data beyond gaining the rows.
+//
+// Distinct axis from libs/authorization scopes (PR-A1b Ruling 1):
+// EntitlementGuard runs BEFORE RolesGuard. A scoped user in an
+// unentitled tenant is rejected here.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["entitlement"]
+}
+
+enum Capability {
+  core
+  ats
+  portal
+  sourcing
+
+  @@schema("entitlement")
+}
+
+model TenantEntitlement {
+  // Cross-schema UUID reference to identity.Tenant (§7.3 — UUID-only, no FK).
+  tenant_id  String     @db.Uuid
+
+  // Closed-list capability (per Ruling 2). Extending the catalog requires
+  // a directive + an enum migration + a default-posture decision for
+  // existing tenants.
+  capability Capability
+
+  // Audit timestamp for the entitlement grant.
+  granted_at DateTime   @default(now()) @db.Timestamptz(6)
+
+  @@id([tenant_id, capability])
+  @@index([tenant_id])
+  @@schema("entitlement")
+}

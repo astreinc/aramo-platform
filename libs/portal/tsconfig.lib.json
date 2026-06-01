@@ -12,6 +12,7 @@
       "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
+      "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
       "@aramo/talent": ["../../dist/libs/talent/src/index.d.ts"]
     }
   },
