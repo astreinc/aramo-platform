@@ -400,9 +400,9 @@ When you see an enum with explicit values (no extensibility), do not add new val
 
 Several schemas use OpenAPI 3.1 `const` to make values non-negotiable:
 
-- `RecruiterAttestations.candidate_evidence_reviewed: const: true`
+- `RecruiterAttestations.talent_evidence_reviewed: const: true`
 - `RecruiterAttestations.constraints_reviewed: const: true`
-- `RecruiterAttestations.submission_risk_acknowledged: const: true`
+- `RecruiterAttestations.submittal_risk_acknowledged: const: true`
 - `ExaminationOverrideResponse.examination_mutated: const: false`
 - `SourcePolicyResponse.linkedin_automation_allowed: const: false`
 - `SourcePolicyResponse.raw_payload_storage_required: const: true`
