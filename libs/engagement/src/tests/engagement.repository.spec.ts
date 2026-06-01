@@ -98,6 +98,15 @@ interface MockPrismaService {
   talentEngagementEvent: {
     create: ReturnType<typeof vi.fn>;
   };
+  // M6 PR-2 §3 — in-transaction outbox emission. Each $transaction
+  // array now includes a prisma.outboxEvent.create({...}) call as its
+  // last element; the mock stubs `create` so building the array
+  // argument does not throw on `undefined.create`. Destructured row
+  // count at the call site is unchanged (the repo destructures only
+  // the existing 2/3 named results).
+  outboxEvent: {
+    create: ReturnType<typeof vi.fn>;
+  };
   $transaction: ReturnType<typeof vi.fn>;
 }
 
@@ -117,6 +126,9 @@ function makeMockPrisma(): MockPrismaService {
       deleteMany: vi.fn(),
     },
     talentEngagementEvent: {
+      create: vi.fn(),
+    },
+    outboxEvent: {
       create: vi.fn(),
     },
     // $transaction default returns the array of (mocked) results by

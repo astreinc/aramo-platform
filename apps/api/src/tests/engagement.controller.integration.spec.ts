@@ -59,6 +59,10 @@ const SUBMITTAL_INIT = resolve(ROOT, 'libs/submittal/prisma/migrations/202605231
 const SUBMITTAL_REVOKE = resolve(ROOT, 'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql');
 const ENGAGEMENT_INIT = resolve(ROOT, 'libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql');
 const ENGAGEMENT_EVENT_LOG = resolve(ROOT, 'libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql');
+// M6 PR-2 §3 — engagement + submittal OutboxEvent migrations required
+// because state-transition write methods now emit an in-tx outbox row.
+const ENGAGEMENT_OUTBOX = resolve(ROOT, 'libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql');
+const SUBMITTAL_OUTBOX = resolve(ROOT, 'libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql');
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-engagement-controller-spec';
@@ -122,8 +126,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         EVIDENCE_INIT,
         SUBMITTAL_INIT,
         SUBMITTAL_REVOKE,
+        SUBMITTAL_OUTBOX,
         ENGAGEMENT_INIT,
         ENGAGEMENT_EVENT_LOG,
+        ENGAGEMENT_OUTBOX,
       ]) {
         const sql = readFileSync(p, 'utf8');
         for (const stmt of splitDdl(sql)) {

@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { v7 as uuidv7 } from 'uuid';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import { ExaminationRepository } from '@aramo/examination';
 import { JobDomainRepository } from '@aramo/job-domain';
@@ -412,7 +413,9 @@ export class EngagementRepository {
       }
     }
 
-    // ---- Step 3: atomic transaction (engagement.create + event.create) -
+    // ---- Step 3: atomic transaction (engagement.create + event.create
+    // + outbox.create) — M6 PR-2 §3 adds the in-tx outbox emission;
+    // rollback leaves no orphan outbox row (Cat 5 proof).
     // Initial state hardcoded to 'surfaced' per Ruling 3 (matching engine
     // creates the row in surfaced; the from_state on the initial event
     // is null because there is no prior state).
@@ -434,6 +437,20 @@ export class EngagementRepository {
           engagement_id: input.id,
           event_type: 'state_transition',
           event_payload: { from_state: null, to_state: 'surfaced' } as never,
+        },
+      }),
+      this.prisma.outboxEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: input.tenant_id,
+          event_type: 'engagement.state_transition',
+          event_payload: {
+            engagement_id: input.id,
+            tenant_id: input.tenant_id,
+            from_state: null,
+            to_state: 'surfaced',
+            transition_event_id: input.event_id,
+          } as never,
         },
       }),
     ]);
@@ -513,7 +530,8 @@ export class EngagementRepository {
       );
     }
 
-    // ---- Step 3: atomic transaction (engagement.update + event.create) -
+    // ---- Step 3: atomic transaction (engagement.update + event.create
+    // + outbox.create) — M6 PR-2 §3 in-tx outbox emission.
     const [updatedRow, eventRow] = await this.prisma.$transaction([
       this.prisma.talentJobEngagement.update({
         where: { id: input.engagement_id },
@@ -528,6 +546,20 @@ export class EngagementRepository {
           event_payload: {
             from_state: current.state,
             to_state: input.to_state,
+          } as never,
+        },
+      }),
+      this.prisma.outboxEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: input.tenant_id,
+          event_type: 'engagement.state_transition',
+          event_payload: {
+            engagement_id: input.engagement_id,
+            tenant_id: input.tenant_id,
+            from_state: current.state,
+            to_state: input.to_state,
+            transition_event_id: input.event_id,
           } as never,
         },
       }),
@@ -617,7 +649,9 @@ export class EngagementRepository {
       );
     }
 
-    // ---- Step 3: atomic 3-write transaction --------------------------
+    // ---- Step 3: atomic 4-write transaction (update + outreach_sent +
+    // state_transition + outbox) — M6 PR-2 §3 in-tx outbox emission;
+    // one outbox row per state_transition (Amendment §2.3).
     const [updatedRow, outreachEventRow, transitionEventRow] =
       await this.prisma.$transaction([
         this.prisma.talentJobEngagement.update({
@@ -642,6 +676,20 @@ export class EngagementRepository {
             event_payload: {
               from_state: current.state,
               to_state: TO_STATE,
+            } as never,
+          },
+        }),
+        this.prisma.outboxEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: input.tenant_id,
+            event_type: 'engagement.state_transition',
+            event_payload: {
+              engagement_id: input.engagement_id,
+              tenant_id: input.tenant_id,
+              from_state: current.state,
+              to_state: TO_STATE,
+              transition_event_id: input.transition_event_id,
             } as never,
           },
         }),
@@ -775,7 +823,8 @@ export class EngagementRepository {
       );
     }
 
-    // ---- Step 4: atomic 3-write transaction --------------------------
+    // ---- Step 4: atomic 4-write transaction (update + response_received
+    // + state_transition + outbox) — M6 PR-2 §3 in-tx outbox emission.
     const [updatedRow, responseEventRow, transitionEventRow] =
       await this.prisma.$transaction([
         this.prisma.talentJobEngagement.update({
@@ -800,6 +849,20 @@ export class EngagementRepository {
             event_payload: {
               from_state: current.state,
               to_state: TO_STATE,
+            } as never,
+          },
+        }),
+        this.prisma.outboxEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: input.tenant_id,
+            event_type: 'engagement.state_transition',
+            event_payload: {
+              engagement_id: input.engagement_id,
+              tenant_id: input.tenant_id,
+              from_state: current.state,
+              to_state: TO_STATE,
+              transition_event_id: input.transition_event_id,
             } as never,
           },
         }),
@@ -903,7 +966,8 @@ export class EngagementRepository {
       );
     }
 
-    // ---- Step 3: atomic 3-write transaction --------------------------
+    // ---- Step 3: atomic 4-write transaction (update + conversation_started
+    // + state_transition + outbox) — M6 PR-2 §3 in-tx outbox emission.
     const [updatedRow, conversationEventRow, transitionEventRow] =
       await this.prisma.$transaction([
         this.prisma.talentJobEngagement.update({
@@ -928,6 +992,20 @@ export class EngagementRepository {
             event_payload: {
               from_state: current.state,
               to_state: TO_STATE,
+            } as never,
+          },
+        }),
+        this.prisma.outboxEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: input.tenant_id,
+            event_type: 'engagement.state_transition',
+            event_payload: {
+              engagement_id: input.engagement_id,
+              tenant_id: input.tenant_id,
+              from_state: current.state,
+              to_state: TO_STATE,
+              transition_event_id: input.transition_event_id,
             } as never,
           },
         }),

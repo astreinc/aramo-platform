@@ -2,7 +2,8 @@ import type { INestApplication } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { createAramoLogger, RedisConnectionConfig } from '@aramo/common';
-import { OUTBOX_PUBLISHER_QUEUE_NAME, STALE_CONSENT_QUEUE_NAME } from '@aramo/consent';
+import { STALE_CONSENT_QUEUE_NAME } from '@aramo/consent';
+import { OUTBOX_PUBLISHER_QUEUE_NAME } from '@aramo/outbox-publisher';
 import { CROSS_SCHEMA_CONSISTENCY_QUEUE_NAME } from '@aramo/common';
 import { SKILL_CANONICALIZATION_QUEUE_NAME } from '@aramo/skills-taxonomy';
 

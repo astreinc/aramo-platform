@@ -128,6 +128,26 @@ model TalentJobEngagement {
   @@schema("engagement")
 }
 
+// M6 PR-2 — OutboxEvent (engagement schema). Per Architecture v2.0 §7.6,
+// the per-module outbox precedent established by consent (M5 PR-11). Shape
+// mirrors libs/consent.OutboxEvent verbatim — six columns, no
+// aggregate_type/aggregate_id (aggregate identity lives inside
+// event_payload). Repository surface mirrors the consent precedent:
+// findUnpublishedEvents + markPublished (no insertInTx — emission is
+// inline tx.outboxEvent.create inside each consuming repo's $transaction).
+// Drained by the relocated outbox-publisher (libs/outbox-publisher).
+model OutboxEvent {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  event_type    String
+  event_payload Json
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  published_at  DateTime? @db.Timestamptz
+
+  @@index([published_at])
+  @@schema("engagement")
+}
+
 // M5 PR-2 — TalentEngagementEvent event-log entity. Per Charter v1.2 §4.4
 // Ruling D (engagement event-log scope) + M5 PR-2 directive §4.1: an
 // append-only audit log of engagement-side workflow events (state

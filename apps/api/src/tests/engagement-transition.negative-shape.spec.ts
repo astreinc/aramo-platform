@@ -48,6 +48,11 @@ const MIGRATIONS = [
   M('libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql'),
   M('libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql'),
   M('libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql'),
+  // M6 PR-2 §3 — engagement + submittal OutboxEvent migrations required
+  // because the happy-path assertion(s) reach the state-transition method
+  // which now emits an in-tx outbox row.
+  M('libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
+  M('libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
 ];
 
 const ISSUER = 'Aramo Core Auth';

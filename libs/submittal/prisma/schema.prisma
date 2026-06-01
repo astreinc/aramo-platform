@@ -34,7 +34,15 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["engagement"]
+  // M6 PR-2 — adds the `submittal` PG schema namespace ALONGSIDE the
+  // existing `engagement` namespace that hosts TalentSubmittalRecord +
+  // TalentSubmittalEvent (per Lead-Q-PR-8b1-A1: submittal-prisma shares
+  // the engagement PG schema for those models). The `submittal` namespace
+  // hosts ONLY the new OutboxEvent table, avoiding a `engagement.OutboxEvent`
+  // collision with the engagement-prisma module's OutboxEvent table.
+  // Additive at the DB level: CREATE SCHEMA submittal + CREATE TABLE
+  // submittal."OutboxEvent" — nothing existing altered (Directive Ruling 4).
+  schemas  = ["engagement", "submittal"]
 }
 
 // SubmittalState — canonical 5-state machine per Group 2 §2.3b Loop 5
@@ -158,6 +166,31 @@ model TalentSubmittalRecord {
   events TalentSubmittalEvent[]
 
   @@schema("engagement")
+}
+
+// M6 PR-2 — OutboxEvent (submittal schema). Per Architecture v2.0 §7.6,
+// the per-module outbox precedent established by consent (M5 PR-11). Shape
+// mirrors libs/consent.OutboxEvent verbatim — six columns, no
+// aggregate_type/aggregate_id (aggregate identity lives inside
+// event_payload). Lives in its own `submittal` PG schema (see datasource
+// comment) — the submittal-prisma module is the only Prisma module that
+// owns that namespace, avoiding the engagement.OutboxEvent collision the
+// engagement-prisma module would otherwise create.
+//
+// Repository surface mirrors the consent precedent: findUnpublishedEvents
+// + markPublished (no insertInTx — emission is inline tx.outboxEvent.create
+// inside the submittal repository's $transaction). Drained by the
+// outbox-publisher (libs/outbox-publisher).
+model OutboxEvent {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  event_type    String
+  event_payload Json
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  published_at  DateTime? @db.Timestamptz
+
+  @@index([published_at])
+  @@schema("submittal")
 }
 
 // M5 PR-8b1 — TalentSubmittalEvent event-log entity. Per Q6 HYBRID

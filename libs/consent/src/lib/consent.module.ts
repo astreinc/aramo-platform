@@ -13,8 +13,6 @@ import { ConsentController } from './consent.controller.js';
 import { ConsentRepository } from './consent.repository.js';
 import { ConsentService } from './consent.service.js';
 import { IdempotencyService } from './idempotency.service.js';
-import { OutboxPublisherProcessor } from './outbox-publisher.processor.js';
-import { OUTBOX_PUBLISHER_QUEUE_NAME } from './outbox-publisher.queue.constants.js';
 import { OutboxPublisherRepository } from './outbox-publisher.repository.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { SourceConsentService } from './source-consent.service.js';
@@ -26,14 +24,24 @@ import { STALE_CONSENT_QUEUE_NAME } from './stale-consent.queue.constants.js';
 // exported so libs/submittal (and any future module using the same
 // consent.IdempotencyKey table) can consume it via ConsentModule import.
 //
-// M5 PR-11 §4.2 + §4.3: BullModule wiring for the stale-consent +
-// outbox-publisher daily jobs (Architecture v2.1 §9.2 / Plan v1.5 §M5
-// Track A item 6 binding; doc/01 §13 anchor). Mirrors libs/matching
-// MatchingModule pattern exactly (ADR-0018 Decision 1):
+// M5 PR-11 §4.2: BullModule wiring for the stale-consent daily job
+// (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6 binding;
+// doc/01 §13 anchor). Mirrors libs/matching MatchingModule pattern
+// exactly (ADR-0018 Decision 1):
 //   - BullModule.forRootAsync with manualRegistration so workers do not
 //     construct at module init (the 5-layer no-network-at-boot guarantee).
 //   - BullModule.registerQueue for each owned queue.
 //   - Processor providers + per-processor AramoLogger factory tokens.
+//
+// M6 PR-2 §4: the outbox-publisher queue + processor + logger factory
+// have been RELOCATED to libs/outbox-publisher (the new leaf lib) per
+// Amendment §2.4 — moving the publisher out of consent avoids the
+// consent → engagement|submittal cycle that would result from injecting
+// the engagement + submittal outbox repositories into a publisher living
+// here. Consent emission/behavior is UNCHANGED (Ruling 3); only the
+// drain-side wiring relocates. The OutboxPublisherRepository (consent-
+// side reader/writer) stays in libs/consent and is consumed by the new
+// publisher lib via @aramo/consent.
 //
 // RedisConnectionConfig imported from @aramo/common (extracted from
 // libs/matching at PR-11 §4.1) so consent + common + skills-taxonomy
@@ -70,7 +78,6 @@ import { STALE_CONSENT_QUEUE_NAME } from './stale-consent.queue.constants.js';
       extraProviders: [RedisConnectionConfig],
     }),
     BullModule.registerQueue({ name: STALE_CONSENT_QUEUE_NAME }),
-    BullModule.registerQueue({ name: OUTBOX_PUBLISHER_QUEUE_NAME }),
   ],
   controllers: [ConsentController],
   providers: [
@@ -78,7 +85,6 @@ import { STALE_CONSENT_QUEUE_NAME } from './stale-consent.queue.constants.js';
     ConsentRepository,
     IdempotencyService,
     OutboxPublisherRepository,
-    OutboxPublisherProcessor,
     PrismaService,
     SourceConsentService,
     StaleConsentProcessor,
@@ -88,11 +94,15 @@ import { STALE_CONSENT_QUEUE_NAME } from './stale-consent.queue.constants.js';
       provide: 'StaleConsentProcessorLogger',
       useFactory: () => createAramoLogger(StaleConsentProcessor.name),
     },
-    {
-      provide: 'OutboxPublisherProcessorLogger',
-      useFactory: () => createAramoLogger(OutboxPublisherProcessor.name),
-    },
   ],
-  exports: [ConsentService, IdempotencyService, SourceConsentService],
+  // M6 PR-2 §4 — OutboxPublisherRepository is now exported so the new
+  // libs/outbox-publisher leaf lib can consume it via @aramo/consent
+  // without re-implementing the consent-side reader/writer.
+  exports: [
+    ConsentService,
+    IdempotencyService,
+    OutboxPublisherRepository,
+    SourceConsentService,
+  ],
 })
 export class ConsentModule {}

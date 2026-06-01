@@ -2,6 +2,8 @@ export { EngagementModule } from './lib/engagement.module.js';
 export { EngagementController } from './lib/engagement.controller.js';
 export { EngagementRepository } from './lib/engagement.repository.js';
 export { EngagementEventRepository } from './lib/engagement-event.repository.js';
+export { EngagementOutboxRepository } from './lib/engagement-outbox.repository.js';
+export type { UnpublishedOutboxEvent as EngagementUnpublishedOutboxEvent } from './lib/engagement-outbox.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 
 export type { TalentJobEngagementView } from './lib/dto/talent-job-engagement.view.js';

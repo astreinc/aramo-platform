@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
+import { v7 as uuidv7 } from 'uuid';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import { EvidenceRepository } from '@aramo/evidence';
 import { ExaminationRepository } from '@aramo/examination';
@@ -558,11 +559,11 @@ export class SubmittalRepository {
 
     void input.attestations;
 
-    // Step 8 — atomic 2-write transaction (update + event.create) per
-    // engagement-side transitionState precedent at libs/engagement/src/
-    // lib/engagement.repository.ts. Per Ruling 12 the transition is
+    // Step 8 — atomic 3-write transaction (update + event.create + outbox)
+    // per engagement-side precedent. Per Ruling 12 the transition is
     // 'created' -> 'handoff_draft'; per Ruling 6 confirmed_at is NOT
-    // touched here (moves to submitToAts).
+    // touched here (moves to submitToAts). M6 PR-2 §3 adds the in-tx
+    // outbox emission; rollback leaves no orphan outbox row (Cat 5 proof).
     const [updatedRow, eventRow] = await this.prisma.$transaction([
       this.prisma.talentSubmittalRecord.update({
         where: { id: input.submittal_id, tenant_id: input.tenant_id },
@@ -577,6 +578,20 @@ export class SubmittalRepository {
           event_payload: {
             from_state: submittal.state,
             to_state: 'handoff_draft',
+          } as never,
+        },
+      }),
+      this.prisma.outboxEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: input.tenant_id,
+          event_type: 'submittal.state_transition',
+          event_payload: {
+            submittal_id: input.submittal_id,
+            tenant_id: input.tenant_id,
+            from_state: submittal.state,
+            to_state: 'handoff_draft',
+            transition_event_id: input.event_id,
           } as never,
         },
       }),
@@ -650,6 +665,7 @@ export class SubmittalRepository {
       );
     }
 
+    // M6 PR-2 §3 — atomic 3-write (update + event.create + outbox).
     const [updatedRow, eventRow] = await this.prisma.$transaction([
       this.prisma.talentSubmittalRecord.update({
         where: { id: input.submittal_id, tenant_id: input.tenant_id },
@@ -664,6 +680,20 @@ export class SubmittalRepository {
           event_payload: {
             from_state: submittal.state,
             to_state: 'ready_for_review',
+          } as never,
+        },
+      }),
+      this.prisma.outboxEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: input.tenant_id,
+          event_type: 'submittal.state_transition',
+          event_payload: {
+            submittal_id: input.submittal_id,
+            tenant_id: input.tenant_id,
+            from_state: submittal.state,
+            to_state: 'ready_for_review',
+            transition_event_id: input.event_id,
           } as never,
         },
       }),
@@ -735,6 +765,7 @@ export class SubmittalRepository {
       );
     }
 
+    // M6 PR-2 §3 — atomic 3-write (update + event.create + outbox).
     const [updatedRow, eventRow] = await this.prisma.$transaction([
       this.prisma.talentSubmittalRecord.update({
         where: { id: input.submittal_id, tenant_id: input.tenant_id },
@@ -749,6 +780,20 @@ export class SubmittalRepository {
           event_payload: {
             from_state: submittal.state,
             to_state: 'submitted_to_ats',
+          } as never,
+        },
+      }),
+      this.prisma.outboxEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: input.tenant_id,
+          event_type: 'submittal.state_transition',
+          event_payload: {
+            submittal_id: input.submittal_id,
+            tenant_id: input.tenant_id,
+            from_state: submittal.state,
+            to_state: 'submitted_to_ats',
+            transition_event_id: input.event_id,
           } as never,
         },
       }),
@@ -820,6 +865,7 @@ export class SubmittalRepository {
       );
     }
 
+    // M6 PR-2 §3 — atomic 3-write (update + event.create + outbox).
     const [updatedRow, eventRow] = await this.prisma.$transaction([
       this.prisma.talentSubmittalRecord.update({
         where: { id: input.submittal_id, tenant_id: input.tenant_id },
@@ -834,6 +880,20 @@ export class SubmittalRepository {
           event_payload: {
             from_state: submittal.state,
             to_state: 'confirmed',
+          } as never,
+        },
+      }),
+      this.prisma.outboxEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: input.tenant_id,
+          event_type: 'submittal.state_transition',
+          event_payload: {
+            submittal_id: input.submittal_id,
+            tenant_id: input.tenant_id,
+            from_state: submittal.state,
+            to_state: 'confirmed',
+            transition_event_id: input.event_id,
           } as never,
         },
       }),
@@ -916,10 +976,11 @@ export class SubmittalRepository {
       );
     }
 
-    // Atomic 2-write transaction (update + event.create). state moves
-    // to 'revoked'; revoked_at / revoked_by / revocation_justification
+    // Atomic 3-write transaction (update + event.create + outbox). state
+    // moves to 'revoked'; revoked_at / revoked_by / revocation_justification
     // populate together (DB trigger sibling-revoke branch enforces).
-    // NO call to prisma.talentJobEvidencePackage.* anywhere.
+    // M6 PR-2 §3 adds the in-tx outbox emission. NO call to
+    // prisma.talentJobEvidencePackage.* anywhere.
     const [updatedRow, eventRow] = await this.prisma.$transaction([
       this.prisma.talentSubmittalRecord.update({
         where: { id: input.submittal_id, tenant_id: input.tenant_id },
@@ -939,6 +1000,20 @@ export class SubmittalRepository {
           event_payload: {
             from_state: submittal.state,
             to_state: 'revoked',
+          } as never,
+        },
+      }),
+      this.prisma.outboxEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: input.tenant_id,
+          event_type: 'submittal.state_transition',
+          event_payload: {
+            submittal_id: input.submittal_id,
+            tenant_id: input.tenant_id,
+            from_state: submittal.state,
+            to_state: 'revoked',
+            transition_event_id: input.event_id,
           } as never,
         },
       }),

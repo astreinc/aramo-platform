@@ -88,6 +88,12 @@ const SUBMITTAL_RENAME_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql',
 );
+// M6 PR-2 §3 — submittal OutboxEvent. Required because the happy-path
+// assertion(s) reach confirmSubmittal which now emits an in-tx outbox row.
+const SUBMITTAL_OUTBOX_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-submittal-confirm-neg-shape';
@@ -207,6 +213,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SUBMITTAL_REVOKE_MIGRATION,
         SUBMITTAL_EVENT_LOG_MIGRATION,
         SUBMITTAL_RENAME_MIGRATION,
+        SUBMITTAL_OUTBOX_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }

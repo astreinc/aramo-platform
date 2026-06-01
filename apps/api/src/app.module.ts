@@ -9,6 +9,7 @@ import { ConsentModule } from '@aramo/consent';
 import { EngagementModule } from '@aramo/engagement';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
+import { OutboxPublisherModule } from '@aramo/outbox-publisher';
 import { PortalModule } from '@aramo/portal';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { SubmittalModule } from '@aramo/submittal';
@@ -33,6 +34,11 @@ import { SubmittalModule } from '@aramo/submittal';
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).
     SkillsTaxonomyModule,
     SubmittalModule,
+    // M6 PR-2 §4 — OutboxPublisherModule (new leaf lib). Hosts the
+    // relocated outbox-publisher BullMQ queue + processor; drains
+    // consent + engagement + submittal OutboxEvent tables. Imported
+    // here (and only here) — leaf lib, leaf import.
+    OutboxPublisherModule,
   ],
 })
 export class AppModule implements NestModule {
