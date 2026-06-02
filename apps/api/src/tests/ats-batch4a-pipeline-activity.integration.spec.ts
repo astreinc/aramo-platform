@@ -114,13 +114,19 @@ const SITE_B = '44444444-4444-7444-8444-4444444444bb';
 const RECRUITER = '00000000-0000-7000-8000-000000000bb1';
 const TENANT_ADMIN = '00000000-0000-7000-8000-000000000aa1';
 
-// Recruiter scopes — the four seeded pipeline+activity scopes minus
+// Recruiter scopes — full recruiter+ pipeline+activity set minus
 // `pipeline:remove` (the tenant_admin-only destructive scope).
+// HK-IDENT-SCOPES seeds `pipeline:read` + `activity:create` as proper
+// scopes (recruiter+); read routes / activity POST key on them
+// instead of the prior `pipeline:add` / `pipeline:add-activity`
+// superset expedients.
 const RECRUITER_SCOPES = [
+  'pipeline:read',
   'pipeline:add',
   'pipeline:change-status',
   'pipeline:add-activity',
   'activity:read',
+  'activity:create',
 ];
 const TENANT_ADMIN_SCOPES = [
   ...RECRUITER_SCOPES,

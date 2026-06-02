@@ -75,6 +75,12 @@ const RECRUITER_SCOPES = [
   'talent:read',
   'talent:create',
   'talent:edit',
+  // HK-IDENT-SCOPES — attachment routes now key on proper scopes
+  // (recruiter+ for all three; attachment:delete carries a BOUNDED
+  // Ruling 1 carve-out — junction/link delete, not entity destruction).
+  'attachment:read',
+  'attachment:create',
+  'attachment:delete',
 ];
 const TENANT_ADMIN_SCOPES = [
   ...RECRUITER_SCOPES,
@@ -470,6 +476,64 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const listABody = (await listA.json()) as { items: Array<{ owner_id: string }> };
       expect(listABody.items.every((i) => i.owner_id === tAJson.id)).toBe(true);
       expect(listABody.items.length).toBeGreaterThan(0);
+    });
+
+    // -------------------------------------------------------------------------
+    // B') HK-IDENT-SCOPES no-weakening proof — recruiter CAN detach
+    //     (attachment:delete is recruiter+ via the BOUNDED Ruling 1 carve-out
+    //     for junction/link deletes). The load-bearing §3 gate 1 check:
+    //     if this proof fails, the carve-out wasn't applied and the
+    //     detach gate was weakened — HALT.
+    // -------------------------------------------------------------------------
+
+    it('HK-IDENT-SCOPES: recruiter CAN detach (no weakening — attachment:delete recruiter+ Ruling 1 carve-out)', async () => {
+      const tRes = await fetch(`http://127.0.0.1:${port}/v1/talent-records?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterJwt_Ats_SiteA}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          first_name: 'Detach',
+          last_name: 'Subject',
+          site_id: SITE_A,
+        }),
+      });
+      const talent = (await tRes.json()) as { id: string };
+
+      // Recruiter attaches (POST → attachment:create, recruiter+).
+      const attachRes = await fetch(
+        `http://127.0.0.1:${port}/v1/attachments?site_id=${SITE_A}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${recruiterJwt_Ats_SiteA}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            owner_type: 'talent',
+            owner_id: talent.id,
+            file_name: 'to-detach.pdf',
+            mime: 'application/pdf',
+            size_bytes: 256,
+            storage_key: 'tenants/.../detach.pdf',
+            site_id: SITE_A,
+          }),
+        },
+      );
+      expect(attachRes.status).toBe(201);
+      const attached = (await attachRes.json()) as { id: string };
+
+      // Recruiter detaches (DELETE → attachment:delete, recruiter+ via
+      // BOUNDED Ruling 1 carve-out). MUST succeed — proves no weakening.
+      const detachRes = await fetch(
+        `http://127.0.0.1:${port}/v1/attachments/${attached.id}?site_id=${SITE_A}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${recruiterJwt_Ats_SiteA}` },
+        },
+      );
+      expect(detachRes.status).toBe(204);
     });
 
     // -------------------------------------------------------------------------

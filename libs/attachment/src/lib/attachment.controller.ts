@@ -30,18 +30,16 @@ import { AttachmentRepository } from './attachment.repository.js';
 // Guard chain (A2 pattern, verbatim):
 //   @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 //   @RequireCapability('ats')
-//   @RequireScopes('talent:<action>')   // gated under the owner's scope
+//   @RequireScopes('attachment:<action>')
 //   @RequireSiteMatch()
 //
-// === Scope gating (catalog gap; A3 precedent) ===
+// === Scope gating (HK-IDENT-SCOPES — proper scopes seeded) ===
 //
-// `attachment:*` is NOT in the seeded scope catalog. At A4, attachment
-// routes are gated under the OWNER's scopes (talent:read for listing /
-// reading; talent:edit for attaching / detaching). The recruiter who
-// can read/edit a TalentRecord can also see + manage its attachments.
-//
-// A future identity-seed PR may add `attachment:*` (parallel to the
-// requisition:assign carry item recorded at A3). Documented as carry.
+// Gated on the seeded `attachment:read` / `attachment:create` /
+// `attachment:delete` scopes (all recruiter+). `attachment:delete`
+// carries a BOUNDED Ruling 1 carve-out: detach is a junction/link
+// delete (unlinks a file from its owner), NOT entity destruction;
+// the recruiter who attached a file can also detach it.
 //
 // At A4 we wire the `talent` owner path ONLY. The repository's
 // validateOwner rejects other owner_types with 422 VALIDATION_ERROR
@@ -54,7 +52,7 @@ export class AttachmentController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('talent:read')
+  @RequireScopes('attachment:read')
   @RequireSiteMatch()
   async listForOwner(
     @AuthContext() authContext: AuthContextType,
@@ -88,7 +86,7 @@ export class AttachmentController {
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('talent:read')
+  @RequireScopes('attachment:read')
   @RequireSiteMatch()
   async get(
     @AuthContext() authContext: AuthContextType,
@@ -112,7 +110,7 @@ export class AttachmentController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequireScopes('talent:edit')
+  @RequireScopes('attachment:create')
   @RequireSiteMatch()
   async create(
     @AuthContext() authContext: AuthContextType,
@@ -129,7 +127,7 @@ export class AttachmentController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequireScopes('talent:edit')
+  @RequireScopes('attachment:delete')
   @RequireSiteMatch()
   async delete(
     @AuthContext() authContext: AuthContextType,

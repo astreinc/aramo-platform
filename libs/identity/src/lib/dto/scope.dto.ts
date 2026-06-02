@@ -76,6 +76,15 @@ export const SEED_SCOPE_KEYS = [
   // tenant admin (2)
   'tenant:admin:user-manage',   // tenant_admin only
   'tenant:admin:settings',      // tenant_admin only
+  // HK-IDENT-SCOPES — 6 deferred ATS scopes (retires A3/A4/A5a gap bundle).
+  // attachment:delete is recruiter+ via a BOUNDED Ruling 1 carve-out
+  // (detach is a junction/link delete, NOT entity destruction).
+  'requisition:assign',         // tenant_admin only (assignment is an admin act)
+  'attachment:read',            // recruiter+
+  'attachment:create',          // recruiter+
+  'attachment:delete',          // recruiter+ (Ruling 1 carve-out — junction/link delete)
+  'pipeline:read',              // recruiter+
+  'activity:create',            // recruiter+
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

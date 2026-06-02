@@ -80,6 +80,13 @@ export const SEED_IDS = {
     // tenant admin (2)
     'tenant:admin:user-manage': '01900000-0000-7000-8000-000000000081',
     'tenant:admin:settings': '01900000-0000-7000-8000-000000000082',
+    // HK-IDENT-SCOPES — 6 deferred ATS scopes (retires A3/A4/A5a gap bundle).
+    'requisition:assign': '01900000-0000-7000-8000-000000000083',
+    'attachment:read': '01900000-0000-7000-8000-000000000084',
+    'attachment:create': '01900000-0000-7000-8000-000000000085',
+    'attachment:delete': '01900000-0000-7000-8000-000000000086',
+    'pipeline:read': '01900000-0000-7000-8000-000000000087',
+    'activity:create': '01900000-0000-7000-8000-000000000088',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // ...030..03c (13 assignments total: 6 tenant_admin + 4 recruiter + 3 viewer).
@@ -166,6 +173,20 @@ export const SEED_IDS = {
     viewer_contact_read: '01900000-0000-7000-8000-00000000013d',
     viewer_activity_read: '01900000-0000-7000-8000-00000000013e',
     viewer_examination_read: '01900000-0000-7000-8000-00000000013f',
+    // HK-IDENT-SCOPES — 11 new role_scope rows.
+    // tenant_admin gets all 6 (recruiter+ includes tenant_admin).
+    tenant_admin_requisition_assign: '01900000-0000-7000-8000-000000000140',
+    tenant_admin_attachment_read: '01900000-0000-7000-8000-000000000141',
+    tenant_admin_attachment_create: '01900000-0000-7000-8000-000000000142',
+    tenant_admin_attachment_delete: '01900000-0000-7000-8000-000000000143',
+    tenant_admin_pipeline_read: '01900000-0000-7000-8000-000000000144',
+    tenant_admin_activity_create: '01900000-0000-7000-8000-000000000145',
+    // recruiter gets 5 (all except requisition:assign which is tenant_admin only).
+    recruiter_attachment_read: '01900000-0000-7000-8000-000000000146',
+    recruiter_attachment_create: '01900000-0000-7000-8000-000000000147',
+    recruiter_attachment_delete: '01900000-0000-7000-8000-000000000148',
+    recruiter_pipeline_read: '01900000-0000-7000-8000-000000000149',
+    recruiter_activity_create: '01900000-0000-7000-8000-00000000014a',
   },
   membership_role_admin: '01900000-0000-7000-8000-000000000040',
   audit_events: {
@@ -221,6 +242,13 @@ export const SEED_IDS = {
     scope_requisition_delete_created: '01900000-0000-7000-8000-00000000021f',
     scope_tenant_admin_user_manage_created: '01900000-0000-7000-8000-000000000220',
     scope_tenant_admin_settings_created: '01900000-0000-7000-8000-000000000221',
+    // HK-IDENT-SCOPES — 6 new identity.scope.created audit events.
+    scope_requisition_assign_created: '01900000-0000-7000-8000-000000000222',
+    scope_attachment_read_created: '01900000-0000-7000-8000-000000000223',
+    scope_attachment_create_created: '01900000-0000-7000-8000-000000000224',
+    scope_attachment_delete_created: '01900000-0000-7000-8000-000000000225',
+    scope_pipeline_read_created: '01900000-0000-7000-8000-000000000226',
+    scope_activity_create_created: '01900000-0000-7000-8000-000000000227',
   },
 } as const;
 
@@ -258,6 +286,11 @@ const ROLE_SCOPE_ASSIGNMENTS = {
     'activity:read', 'examination:read',
     'requisition:create', 'requisition:edit', 'requisition:delete',
     'tenant:admin:user-manage', 'tenant:admin:settings',
+    // HK-IDENT-SCOPES — tenant_admin gets all 6 deferred ATS scopes
+    // (recruiter+ includes tenant_admin).
+    'requisition:assign',
+    'attachment:read', 'attachment:create', 'attachment:delete',
+    'pipeline:read', 'activity:create',
   ],
   recruiter: [
     'consent:read',
@@ -283,6 +316,10 @@ const ROLE_SCOPE_ASSIGNMENTS = {
     'calendar:event-create', 'calendar:event-edit',
     'activity:read', 'examination:read',
     'requisition:create', 'requisition:edit',
+    // HK-IDENT-SCOPES — recruiter gets 5 of the 6 deferred scopes;
+    // NOT requisition:assign (tenant_admin only — assignment is an admin act).
+    'attachment:read', 'attachment:create', 'attachment:delete',
+    'pipeline:read', 'activity:create',
   ],
   viewer: [
     'consent:read',
@@ -391,6 +428,18 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   'viewer:contact:read': SEED_IDS.role_scopes.viewer_contact_read,
   'viewer:activity:read': SEED_IDS.role_scopes.viewer_activity_read,
   'viewer:examination:read': SEED_IDS.role_scopes.viewer_examination_read,
+  // HK-IDENT-SCOPES — 11 new role_scope rows (6 tenant_admin + 5 recruiter).
+  'tenant_admin:requisition:assign': SEED_IDS.role_scopes.tenant_admin_requisition_assign,
+  'tenant_admin:attachment:read': SEED_IDS.role_scopes.tenant_admin_attachment_read,
+  'tenant_admin:attachment:create': SEED_IDS.role_scopes.tenant_admin_attachment_create,
+  'tenant_admin:attachment:delete': SEED_IDS.role_scopes.tenant_admin_attachment_delete,
+  'tenant_admin:pipeline:read': SEED_IDS.role_scopes.tenant_admin_pipeline_read,
+  'tenant_admin:activity:create': SEED_IDS.role_scopes.tenant_admin_activity_create,
+  'recruiter:attachment:read': SEED_IDS.role_scopes.recruiter_attachment_read,
+  'recruiter:attachment:create': SEED_IDS.role_scopes.recruiter_attachment_create,
+  'recruiter:attachment:delete': SEED_IDS.role_scopes.recruiter_attachment_delete,
+  'recruiter:pipeline:read': SEED_IDS.role_scopes.recruiter_pipeline_read,
+  'recruiter:activity:create': SEED_IDS.role_scopes.recruiter_activity_create,
 };
 
 interface IdentityPrismaClient {
@@ -498,6 +547,17 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['requisition:delete'], 'requisition:delete', 'Delete a requisition (tenant_admin only — Ruling 1)');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:user-manage'], 'tenant:admin:user-manage', 'Tenant admin: manage users and memberships');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:settings'], 'tenant:admin:settings', 'Tenant admin: manage tenant settings');
+  // HK-IDENT-SCOPES — 6 deferred ATS scopes (retires A3/A4/A5a gap bundle).
+  // attachment:delete carries a BOUNDED Ruling 1 carve-out: detach is a
+  // junction/link delete (unlinks a file from its owner), NOT entity
+  // destruction. Recruiter+ per amendment HK-IDENT-SCOPES §2. The bound
+  // is junction deletes only; entity deletes remain tenant_admin-only.
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:assign'], 'requisition:assign', 'Assign/unassign a user to a requisition (tenant_admin only — assignment is an admin act)');
+  await upsertScope(prisma, SEED_IDS.scopes['attachment:read'], 'attachment:read', 'Read attachments scoped to an owner');
+  await upsertScope(prisma, SEED_IDS.scopes['attachment:create'], 'attachment:create', 'Attach a file to an owner');
+  await upsertScope(prisma, SEED_IDS.scopes['attachment:delete'], 'attachment:delete', 'Detach a file from its owner (recruiter+ via bounded Ruling 1 carve-out — junction/link delete, not entity destruction)');
+  await upsertScope(prisma, SEED_IDS.scopes['pipeline:read'], 'pipeline:read', 'Read pipelines / pipeline history');
+  await upsertScope(prisma, SEED_IDS.scopes['activity:create'], 'activity:create', 'Create a manual activity entry');
 
   // 7. RoleScope assignments (13 pre-A1a + 12 PR-A1a = 25 rows total).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -786,6 +846,13 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
     { audit_id: SEED_IDS.audit_events.scope_requisition_delete_created, key: 'requisition:delete' },
     { audit_id: SEED_IDS.audit_events.scope_tenant_admin_user_manage_created, key: 'tenant:admin:user-manage' },
     { audit_id: SEED_IDS.audit_events.scope_tenant_admin_settings_created, key: 'tenant:admin:settings' },
+    // HK-IDENT-SCOPES — 6 new scope.created audit events.
+    { audit_id: SEED_IDS.audit_events.scope_requisition_assign_created, key: 'requisition:assign' },
+    { audit_id: SEED_IDS.audit_events.scope_attachment_read_created, key: 'attachment:read' },
+    { audit_id: SEED_IDS.audit_events.scope_attachment_create_created, key: 'attachment:create' },
+    { audit_id: SEED_IDS.audit_events.scope_attachment_delete_created, key: 'attachment:delete' },
+    { audit_id: SEED_IDS.audit_events.scope_pipeline_read_created, key: 'pipeline:read' },
+    { audit_id: SEED_IDS.audit_events.scope_activity_create_created, key: 'activity:create' },
   ];
   for (const entry of A1A2_NEW_SCOPES) {
     const scope_id = (SEED_IDS.scopes as Record<string, string>)[entry.key];

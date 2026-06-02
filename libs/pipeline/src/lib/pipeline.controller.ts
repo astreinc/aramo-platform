@@ -33,22 +33,16 @@ import { PipelineRepository } from './pipeline.repository.js';
 //   @RequireScopes(...)                 // route-level — scope axis
 //   @RequireSiteMatch()                 // route-level — site axis
 //
-// === Scope gap-and-note (directive §1) ===
-// The seeded scope catalog includes (recruiter+):
+// === Scope gating (HK-IDENT-SCOPES — proper scopes seeded) ===
+// Seeded catalog (recruiter+ unless noted):
+//   - pipeline:read (HK-IDENT-SCOPES)
 //   - pipeline:add
-//   - pipeline:change-status   ← THE transition scope (directive §1 the
-//                                naming used by the seeded catalog
-//                                instead of `pipeline:transition` /
-//                                `pipeline:edit`)
+//   - pipeline:change-status   ← THE transition scope
 //   - pipeline:add-activity
-// and (tenant_admin only):
-//   - pipeline:remove
+//   - pipeline:remove (tenant_admin only)
 //
-// There is NO `pipeline:read` in the seeded catalog. Per §1 gap-and-
-// note, list/get are gated under `pipeline:add` — the lowest-barrier
-// pipeline:* scope, on the principle that a recruiter who can add to a
-// pipeline can read it. Adding a dedicated `pipeline:read` scope is
-// deferred to a follow-on identity-seed amendment.
+// Read routes (list/get/history) now key on the proper `pipeline:read`
+// scope, replacing the A5a `pipeline:add` superset expedient.
 @Controller('v1/pipelines')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
@@ -57,7 +51,7 @@ export class PipelineController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('pipeline:add')
+  @RequireScopes('pipeline:read')
   @RequireSiteMatch()
   async list(
     @AuthContext() authContext: AuthContextType,
@@ -76,7 +70,7 @@ export class PipelineController {
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('pipeline:add')
+  @RequireScopes('pipeline:read')
   @RequireSiteMatch()
   async get(
     @AuthContext() authContext: AuthContextType,
@@ -100,7 +94,7 @@ export class PipelineController {
 
   @Get(':id/history')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('pipeline:add')
+  @RequireScopes('pipeline:read')
   @RequireSiteMatch()
   async listHistory(
     @AuthContext() authContext: AuthContextType,

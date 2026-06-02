@@ -30,13 +30,11 @@ import { ActivityRepository } from './activity.repository.js';
 //   @RequireScopes(...)                 // route-level — scope axis
 //   @RequireSiteMatch()                 // route-level — site axis
 //
-// === Scope gap-and-note (directive §1) ===
-// The seeded catalog includes `activity:read` (viewer+) but no
-// `activity:create`. Per §1 gap-and-note, manual activity creation is
-// gated under `pipeline:add-activity` — the semantically nearest seeded
-// recruiter+ scope (the catalog intent was clearly "recruiter can add
-// activity"). Adding a dedicated `activity:create` scope is deferred to
-// a follow-on identity-seed amendment.
+// === Scope gating (HK-IDENT-SCOPES — proper scopes seeded) ===
+// The seeded catalog includes `activity:read` (viewer+) and now
+// `activity:create` (recruiter+). The POST route keys on the proper
+// `activity:create` scope, replacing the A5a `pipeline:add-activity`
+// borrow.
 @Controller('v1/activities')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
@@ -86,7 +84,7 @@ export class ActivityController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequireScopes('pipeline:add-activity')
+  @RequireScopes('activity:create')
   @RequireSiteMatch()
   async create(
     @AuthContext() authContext: AuthContextType,
