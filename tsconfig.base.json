@@ -47,6 +47,7 @@
       "@aramo/metering": ["libs/metering/src/index.ts"],
       "@aramo/outbox-publisher": ["libs/outbox-publisher/src/index.ts"],
       "@aramo/portal": ["libs/portal/src/index.ts"],
+      "@aramo/requisition": ["libs/requisition/src/index.ts"],
       "@aramo/skills-taxonomy": ["libs/skills-taxonomy/src/index.ts"],
       "@aramo/submittal": ["libs/submittal/src/index.ts"],
       "@aramo/talent": ["libs/talent/src/index.ts"],

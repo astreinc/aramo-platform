@@ -15,6 +15,7 @@ import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
 import { OutboxPublisherModule } from '@aramo/outbox-publisher';
 import { PortalModule } from '@aramo/portal';
+import { RequisitionModule } from '@aramo/requisition';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { SubmittalModule } from '@aramo/submittal';
 
@@ -52,6 +53,13 @@ import { SubmittalModule } from '@aramo/submittal';
     IngestionModule,
     MatchingModule,
     PortalModule,
+    // PR-A3 Gate 5 — second ATS-domain leaf. RequisitionModule carries
+    // the requisition CRUD + the assignment-visibility filter (Ruling 2:
+    // a query predicate, not a guard rejection — recruiters see only
+    // their assigned reqs; tenant_admin with `requisition:read:all` sees
+    // all). Leaf import set: AuthModule + AuthorizationModule +
+    // EntitlementModule only (no @aramo/company / @aramo/contact).
+    RequisitionModule,
     // M5 PR-11 §4.5/§4.6 — SkillsTaxonomyModule registers the
     // skill-canonicalization queue + no-op processor (Architecture v2.1
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).

@@ -23,6 +23,7 @@
       "@aramo/examination": ["../../dist/libs/examination/src/index.d.ts"],
       "@aramo/outbox-publisher": ["../../dist/libs/outbox-publisher/src/index.d.ts"],
       "@aramo/portal": ["../../dist/libs/portal/src/index.d.ts"],
+      "@aramo/requisition": ["../../dist/libs/requisition/src/index.d.ts"],
       "@aramo/skills-taxonomy": ["../../dist/libs/skills-taxonomy/src/index.d.ts"],
       "@aramo/submittal": ["../../dist/libs/submittal/src/index.d.ts"]
     }
