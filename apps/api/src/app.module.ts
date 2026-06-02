@@ -6,7 +6,9 @@ import {
 } from '@aramo/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
+import { CompanyModule } from '@aramo/company';
 import { ConsentModule } from '@aramo/consent';
+import { ContactModule } from '@aramo/contact';
 import { EngagementModule } from '@aramo/engagement';
 import { EntitlementModule } from '@aramo/entitlement';
 import { IngestionModule } from '@aramo/ingestion';
@@ -31,6 +33,14 @@ import { SubmittalModule } from '@aramo/submittal';
     // BEFORE RolesGuard via @UseGuards(JwtAuthGuard, EntitlementGuard,
     // RolesGuard). Leaf lib: depends only on @aramo/auth and @aramo/common.
     EntitlementModule,
+    // PR-A2 Gate 5 — first ATS-domain reference-data leaves. CompanyModule
+    // is imported BEFORE ContactModule because ContactModule depends on it
+    // (the contact -> company leaf edge; CompanyRepository is injected
+    // into ContactRepository for cross-schema tenant-scoped company_id
+    // validation). The reverse direction is UUID-only at read time, so
+    // CompanyModule does NOT import ContactModule — no cycle.
+    CompanyModule,
+    ContactModule,
     ConsentModule,
     // M5 PR-11 Gate 5-redux (Option β-1 / PL-88) — CrossSchemaConsistencyModule
     // is imported here directly (NOT via CommonModule) so its BullMQ Worker
