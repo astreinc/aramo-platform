@@ -24,6 +24,7 @@
     "forceConsistentCasingInFileNames": true,
     "paths": {
       "@aramo/api": ["apps/api/src/app.module.ts"],
+      "@aramo/attachment": ["libs/attachment/src/index.ts"],
       "@aramo/audit": ["libs/audit/src/index.ts"],
       "@aramo/ai-draft": ["libs/ai-draft/src/index.ts"],
       "@aramo/auth": ["libs/auth/src/index.ts"],
@@ -51,7 +52,8 @@
       "@aramo/skills-taxonomy": ["libs/skills-taxonomy/src/index.ts"],
       "@aramo/submittal": ["libs/submittal/src/index.ts"],
       "@aramo/talent": ["libs/talent/src/index.ts"],
-      "@aramo/talent-evidence": ["libs/talent-evidence/src/index.ts"]
+      "@aramo/talent-evidence": ["libs/talent-evidence/src/index.ts"],
+      "@aramo/talent-record": ["libs/talent-record/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp", "dist", "build", "**/prisma/generated"]

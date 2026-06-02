@@ -261,6 +261,15 @@ TIER2_EXCLUDES=(
   "libs/identity/prisma/seed.ts"
   "libs/identity/src/tests/seed.spec.ts"
   "libs/identity/src/tests/identity.integration.spec.ts"
+  # PR-A4 Gate 5: ATS Batch 3 R10-enforcement integration spec. Per the
+  # M0R-2 Amendment v1.1 §4.5 / PR-A2 R10-spec precedent: refusal-
+  # enforcement specs legitimately enumerate the forbidden Match-Class
+  # vocabulary as part of their leakage-detection logic. The R10
+  # invariant for TalentRecord is asserted by the spec walking the
+  # response shape against the forbidden-keys array (rank/score/tier/
+  # reasoning/match_*). Same structural pattern as M3 PR-9 portal-
+  # refusal and M4 PR-3 submittal-create negative-shape specs.
+  "apps/api/src/tests/ats-batch3-talent-record-attachment.integration.spec.ts"
 )
 
 # =============================================================================

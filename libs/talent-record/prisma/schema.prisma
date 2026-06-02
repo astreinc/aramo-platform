@@ -1,0 +1,92 @@
+// Per-module Prisma schema for the `talent_record` module — PR-A4 (ATS Batch 3).
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
+// and doc/05-conventions.md "Database Conventions". Cross-schema
+// references are UUID-only without FK constraints (§7.3).
+//
+// PR-A4 Gate 5 (post-amendment) — the recruiter-facing ATS talent
+// record. Renamed from "libs/talent" to avoid collision with the
+// pre-existing Core libs/talent (tenant-AGNOSTIC identity Talent +
+// TalentTenantOverlay, PR-10 baseline). This lib is STANDALONE —
+// NO link to Core `talent.Talent` at this batch (the Core-Talent
+// adapter is A5's responsibility per amendment §3 / §5).
+//
+// Refusals enforced structurally:
+//   - R10 — NO portal-forbidden numeric/ordinal fields. The talent
+//     record carries identity + contact + recruiter notes ONLY. Any
+//     examination output lives in Core (libs/examination); never here.
+//   - R12 — locked vocabulary token (`talent`). The model name is
+//     `TalentRecord` to disambiguate locally against Core's `Talent`.
+//
+// Schema-row shape mirrors the A2/A3 pattern (libs/requisition
+// exemplar): id uuid PK + tenant_id required + site_id optional +
+// created_at/updated_at timestamptz; indexes lead with tenant_id.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["talent_record"]
+}
+
+// TalentRecord — the ATS-domain recruiter-facing talent record.
+// OpenCATS doc-04 field shapes (the pre-rename ATS person table,
+// re-vocabulary-ed per R12). Tenant + site scoped (Architecture §7.2 —
+// recruiters in a tenant see all entitled rows; NO assignment filter at
+// this entity, unlike requisition).
+model TalentRecord {
+  // Identity.
+  id        String  @id @default(uuid()) @db.Uuid
+  tenant_id String  @db.Uuid
+  site_id   String? @db.Uuid
+
+  // Required identification.
+  first_name String
+  last_name  String
+
+  // Contact details.
+  email1     String?
+  email2     String?
+  phone_home String?
+  phone_cell String?
+  phone_work String?
+
+  // Address (free-text).
+  address  String?
+  address2 String?
+  city     String?
+  state    String?
+  zip      String?
+
+  // Recruiter-facing CRM fields.
+  source             String?
+  key_skills         String?
+  current_employer   String?
+  current_pay        String?
+  desired_pay        String?
+  date_available     DateTime? @db.Timestamptz
+  can_relocate       Boolean   @default(false)
+  is_hot             Boolean   @default(false)
+  notes              String?
+  web_site           String?
+  best_time_to_call  String?
+
+  // Provenance (UUID-only logical refs to identity.User).
+  owner_id      String? @db.Uuid
+  entered_by_id String? @db.Uuid
+
+  // Timestamps.
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  // Indexes — every query path leads with tenant_id; (last, first)
+  // serves the dominant "search by name" recruiter query path.
+  @@index([tenant_id, last_name, first_name])
+  @@index([tenant_id, site_id])
+  @@index([tenant_id, is_hot])
+
+  @@schema("talent_record")
+}
