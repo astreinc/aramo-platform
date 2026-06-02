@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 27 codes including PR-A1b TENANT_CAPABILITY_NOT_ENTITLED', () => {
+  it('ERROR_CODES contains the 28 codes including PR-A5a INVALID_PIPELINE_TRANSITION', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -66,6 +66,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'SUBMITTAL_STATE_INVALID',
       'CONSENT_NOT_GRANTED_AT_SEND',
       'TENANT_CAPABILITY_NOT_ENTITLED',
+      'INVALID_PIPELINE_TRANSITION',
     ]);
   });
 });

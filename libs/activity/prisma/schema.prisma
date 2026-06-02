@@ -1,0 +1,79 @@
+// Per-module Prisma schema for the `activity` module — PR-A5a (ATS Batch 4a).
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
+// and doc/05-conventions.md "Database Conventions". Cross-schema
+// references are UUID-only without FK constraints (§7.3).
+//
+// PR-A5a Gate 5 — the recruiter-facing activity log. Sidecar to the
+// pipeline state machine: every legal pipeline transition writes a row
+// here (type=pipeline_status_change). Manual recruiter notes also land
+// here (type=note, call, email_logged).
+//
+// Refusals enforced structurally:
+//   - R10 — NO portal-forbidden numeric/ordinal fields.
+//   - R12 — locked vocabulary; the OpenCATS legacy anti-token never
+//     appears.
+//
+// Schema-row shape mirrors the A2/A3/A4 pattern (libs/requisition
+// exemplar): id uuid PK + tenant_id required + site_id optional +
+// created_at timestamptz; indexes lead with tenant_id.
+//
+// Directional edge (lint:nx-boundaries): activity is STANDALONE —
+// does NOT import @aramo/pipeline (no cycle). The pipeline.module
+// imports activity for the in-transaction Activity write at status
+// transition; the reverse direction never exists.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["activity"]
+}
+
+// ActivityType — closed list of activity kinds. `pipeline_status_change`
+// is the auto-generated kind written inside the pipeline transition
+// transaction; the rest are recruiter-authored manual entries.
+enum ActivityType {
+  pipeline_status_change
+  note
+  call
+  email_logged
+
+  @@schema("activity")
+}
+
+// Activity — the side-effect log. Polymorphic on (subject_type,
+// subject_id) — UUID-only cross-schema reference (e.g. subject_type=
+// 'pipeline' + subject_id = Pipeline.id). NO FK; reads validate
+// existence at the application layer if needed.
+model Activity {
+  // Identity.
+  id        String  @id @default(uuid()) @db.Uuid
+  tenant_id String  @db.Uuid
+  site_id   String? @db.Uuid
+
+  // Activity classification.
+  type ActivityType
+
+  // Polymorphic subject (cross-schema UUID-only).
+  subject_type String? // e.g. 'pipeline', 'talent_record', 'requisition'
+  subject_id   String? @db.Uuid
+
+  // Free-text recruiter notes.
+  notes String?
+
+  // Provenance (UUID-only logical ref to identity.User).
+  created_by_id String? @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  // Indexes — the dominant "activity for subject X" lookup + the
+  // tenant-recent stream for the activity log read endpoint.
+  @@index([tenant_id, subject_type, subject_id])
+  @@index([tenant_id, created_at])
+
+  @@schema("activity")
+}

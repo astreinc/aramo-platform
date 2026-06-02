@@ -9,6 +9,7 @@
     "tsBuildInfoFile": "../../dist/apps/api/.tsbuildinfo",
     "types": ["node"],
     "paths": {
+      "@aramo/activity": ["../../dist/libs/activity/src/index.d.ts"],
       "@aramo/attachment": ["../../dist/libs/attachment/src/index.d.ts"],
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
@@ -23,6 +24,7 @@
       "@aramo/metering": ["../../dist/libs/metering/src/index.d.ts"],
       "@aramo/examination": ["../../dist/libs/examination/src/index.d.ts"],
       "@aramo/outbox-publisher": ["../../dist/libs/outbox-publisher/src/index.d.ts"],
+      "@aramo/pipeline": ["../../dist/libs/pipeline/src/index.d.ts"],
       "@aramo/portal": ["../../dist/libs/portal/src/index.d.ts"],
       "@aramo/requisition": ["../../dist/libs/requisition/src/index.d.ts"],
       "@aramo/skills-taxonomy": ["../../dist/libs/skills-taxonomy/src/index.d.ts"],

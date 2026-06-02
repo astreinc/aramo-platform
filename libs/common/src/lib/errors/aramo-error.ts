@@ -43,6 +43,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   SUBMITTAL_STATE_INVALID: 422,
   CONSENT_NOT_GRANTED_AT_SEND: 403,
   TENANT_CAPABILITY_NOT_ENTITLED: 403,
+  INVALID_PIPELINE_TRANSITION: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

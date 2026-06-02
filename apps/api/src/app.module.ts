@@ -4,6 +4,7 @@ import {
   CrossSchemaConsistencyModule,
   RequestIdMiddleware,
 } from '@aramo/common';
+import { ActivityModule } from '@aramo/activity';
 import { AttachmentModule } from '@aramo/attachment';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
@@ -15,6 +16,7 @@ import { EntitlementModule } from '@aramo/entitlement';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
 import { OutboxPublisherModule } from '@aramo/outbox-publisher';
+import { PipelineModule } from '@aramo/pipeline';
 import { PortalModule } from '@aramo/portal';
 import { RequisitionModule } from '@aramo/requisition';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
@@ -73,6 +75,20 @@ import { TalentRecordModule } from '@aramo/talent-record';
     // Core libs/talent (tenant-AGNOSTIC identity, PR-10 baseline).
     TalentRecordModule,
     AttachmentModule,
+    // PR-A5a Gate 5 — fourth ATS-domain batch (part a): pipeline state
+    // machine + activity log. ActivityModule is imported BEFORE
+    // PipelineModule because PipelineModule depends on it (pipeline ->
+    // activity edge; the @aramo/activity insertActivityInTx helper is
+    // composed into PipelineRepository.transition's $transaction so the
+    // pipeline_status_change Activity row commits atomically with the
+    // status update + history + metering event — directive §3 / Ruling 6).
+    // The reverse direction never exists: ActivityModule does NOT import
+    // PipelineModule (lint:nx-boundaries enforces; one-way edge).
+    // A5a is ATS-internal: pipeline reaches `placed` as a status but
+    // does NOT decrement requisition.openings or sync submittal — that
+    // is A5b.
+    ActivityModule,
+    PipelineModule,
     // M5 PR-11 §4.5/§4.6 — SkillsTaxonomyModule registers the
     // skill-canonicalization queue + no-op processor (Architecture v2.1
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).

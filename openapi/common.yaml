@@ -1476,6 +1476,7 @@ components:
         - SUBMITTAL_STATE_INVALID
         - CONSENT_NOT_GRANTED_AT_SEND
         - TENANT_CAPABILITY_NOT_ENTITLED
+        - INVALID_PIPELINE_TRANSITION
 
     ErrorObject:
       type: object
