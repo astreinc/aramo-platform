@@ -1,0 +1,87 @@
+// Per-module Prisma schema for the `contact` module — PR-A2 (ATS Batch 1).
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
+// and doc/05-conventions.md "Database Conventions". Cross-schema
+// references are UUID-only without FK constraints (§7.3).
+//
+// PR-A2 Gate 5 — second ATS-domain reference-data leaf alongside `company`.
+// Plain CRUD entity per Ruling 7. Mirrors libs/company structure
+// (Ruling 6 — pattern-setter; new leaves mirror the same pattern).
+//
+// Leaf-edge note: contact has a logical (UUID-only) dependency on company
+// via company_id + company_department_id, plus a self-link via reports_to_id.
+// The reverse direction (company -> contact via billing_contact_id) is
+// also UUID-only — deliberately NOT a Prisma relation field, so no
+// inverse FK is created at the DB layer and lint:nx-boundaries records
+// a clean contact -> company edge with no back-edge.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["contact"]
+}
+
+// Contact — the ATS-domain person entity attached to a Company.
+// OpenCATS doc-04 field shapes; greenfield port with the canonical
+// Aramo tenant + site axes added.
+model Contact {
+  // Identity.
+  id        String  @id @default(uuid()) @db.Uuid
+  tenant_id String  @db.Uuid
+  site_id   String? @db.Uuid
+
+  // Cross-schema logical references (Architecture §7.3 — UUID-only, no FK).
+  company_id            String  @db.Uuid
+  company_department_id String? @db.Uuid
+
+  // Required identification.
+  first_name String
+  last_name  String
+
+  // Optional details.
+  title       String?
+  email1      String?
+  email2      String?
+  phone_work  String?
+  phone_cell  String?
+  phone_other String?
+
+  // Address (free-text).
+  address  String?
+  address2 String?
+  city     String?
+  state    String?
+  zip      String?
+
+  // ATS-domain freeform metadata.
+  is_hot       Boolean @default(false)
+  notes        String?
+  left_company Boolean @default(false)
+
+  // Intra-tenant self-reference (UUID-only — Prisma can model this with
+  // an explicit relation, but since the column is nullable and the
+  // intra-table self-loop adds no semantic value at this batch, we keep
+  // it as a logical UUID field consistent with the cross-schema norm).
+  reports_to_id String? @db.Uuid
+
+  // Logical identity.User references.
+  owner_id      String? @db.Uuid
+  entered_by_id String? @db.Uuid
+
+  // Timestamps.
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  // Indexes — canonical tenant-axis lookups plus the dominant
+  // by-company query (the recruiter "contacts at company X" list).
+  @@index([tenant_id, company_id])
+  @@index([tenant_id, last_name, first_name])
+  @@index([tenant_id, site_id])
+  @@index([tenant_id, is_hot])
+
+  @@schema("contact")
+}

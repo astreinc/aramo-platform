@@ -29,6 +29,11 @@ export default defineConfig({
       // AppModule import (apps/api wires AuthorizationModule).
       '@aramo/authorization': resolve(root, 'libs/authorization/src/index.ts'),
       '@aramo/consent': resolve(root, 'libs/consent/src/index.ts'),
+      // PR-A2 Gate 5 — first ATS-domain leaves (company + contact). Mirrors
+      // tsconfig.base.json aliases so vitest runtime resolves the AppModule
+      // imports + cross-lib edge contact -> company in the integration specs.
+      '@aramo/company': resolve(root, 'libs/company/src/index.ts'),
+      '@aramo/contact': resolve(root, 'libs/contact/src/index.ts'),
       '@aramo/ai-draft': resolve(root, 'libs/ai-draft/src/index.ts'),
       '@aramo/audit': resolve(root, 'libs/audit/src/index.ts'),
       '@aramo/engagement': resolve(root, 'libs/engagement/src/index.ts'),

@@ -1,0 +1,114 @@
+// Per-module Prisma schema for the `company` module — PR-A2 (ATS Batch 1).
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
+// and doc/05-conventions.md "Database Conventions". Cross-schema
+// references are UUID-only without FK constraints (§7.3).
+//
+// PR-A2 Gate 5 — first ATS-domain reference-data leaf alongside `contact`.
+// Mirrors the existing domain-lib pattern (Ruling 6 — pattern-setter).
+// Plain CRUD entity per Ruling 7: no state machine, no event log, no
+// metering emits, no outbox.
+//
+// Tenant + site axes per the PR-A1 tenancy foundation:
+//   - tenant_id is REQUIRED on every row (tenant axis, Architecture §7.2).
+//   - site_id is OPTIONAL (tenant-wide rows are allowed when site_id is
+//     NULL; site-scoped rows carry it). Routes that take a site_id and
+//     are marked @RequireSiteMatch enforce that the JWT site claim
+//     matches the requested site.
+//
+// Cross-schema references (Architecture §7.3 — UUID-only, no FK):
+//   - billing_contact_id: logical reference to contact.Contact, resolved
+//     at read time. Deliberately NOT a hard FK — the inverse FK would
+//     create a contact -> company -> contact back-edge at the DB level
+//     and a circular leaf-import edge in nx-boundaries. The logical
+//     reference preserves the directional contact -> company leaf edge
+//     (Ruling 1 — no cycle).
+//   - owner_id / entered_by_id: logical identity.User references.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["company"]
+}
+
+// Company — the ATS-domain client/employer entity. OpenCATS doc-04
+// field shapes; greenfield port with the canonical Aramo tenant + site
+// axes added.
+model Company {
+  // Identity.
+  id        String  @id @default(uuid()) @db.Uuid
+  tenant_id String  @db.Uuid
+  site_id   String? @db.Uuid
+
+  // Required identification.
+  name String
+
+  // Address (free-text — no separate Address entity at this batch).
+  address  String?
+  address2 String?
+  city     String?
+  state    String?
+  zip      String?
+
+  // Contact details on the company itself.
+  phone1     String?
+  phone2     String?
+  fax_number String?
+  url        String?
+
+  // ATS-domain freeform metadata.
+  key_technologies String?
+  notes            String?
+  is_hot           Boolean @default(false)
+
+  // Cross-schema logical references (UUID-only, no FK per §7.3).
+  billing_contact_id String? @db.Uuid
+  owner_id           String? @db.Uuid
+  entered_by_id      String? @db.Uuid
+
+  // Timestamps. updated_at populates on every row write (reference CRUD —
+  // not column-scoped immutable like the workflow entities; no trigger).
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  // Intra-schema relation to CompanyDepartment (FK below).
+  departments CompanyDepartment[]
+
+  // Indexes — canonical tenant-axis filter + site-axis filter + name lookup.
+  @@index([tenant_id, name])
+  @@index([tenant_id, site_id])
+  @@index([tenant_id, is_hot])
+
+  @@schema("company")
+}
+
+// CompanyDepartment — sub-organization within a Company. Intra-schema
+// FK to Company per Architecture §7.3 (cross-schema is the boundary;
+// intra-schema FKs are conventional Prisma relations).
+model CompanyDepartment {
+  // Identity.
+  id        String  @id @default(uuid()) @db.Uuid
+  tenant_id String  @db.Uuid
+  site_id   String? @db.Uuid
+
+  // Parent company (intra-schema FK).
+  company_id String  @db.Uuid
+  company    Company @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  // Required identification.
+  name String
+
+  // Timestamps.
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  // Indexes — canonical tenant + parent-company lookup.
+  @@index([tenant_id, company_id])
+  @@index([tenant_id, site_id])
+
+  @@schema("company")
+}
