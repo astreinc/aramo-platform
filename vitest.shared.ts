@@ -15,6 +15,10 @@ export default defineConfig({
       // resolves the test-bootstrap import in pact/provider/src/verify-api.ts.
       // eslint-side boundary override extended in the same PR-14 §4.9 edit.
       '@aramo/api': resolve(root, 'apps/api/src/app.module.ts'),
+      // PR-A5a Gate 5 — activity leaf (sidecar to the pipeline state
+      // machine). Mirrors tsconfig.base.json alias so vitest runtime
+      // resolves the apps/api AppModule import + the integration spec.
+      '@aramo/activity': resolve(root, 'libs/activity/src/index.ts'),
       '@aramo/common': resolve(root, 'libs/common/src/index.ts'),
       '@aramo/auth': resolve(root, 'libs/auth/src/index.ts'),
       // Amendment v1.3 §3.2 (engineering Lead/Architect, 2026-05-15):
@@ -69,6 +73,10 @@ export default defineConfig({
       // AppModule import in pact/provider/src/verify-api.ts (and the
       // apps/api negative-shape integration spec) resolves PortalModule.
       '@aramo/portal': resolve(root, 'libs/portal/src/index.ts'),
+      // PR-A5a Gate 5 — pipeline state-machine leaf (sibling to activity).
+      // Mirrors tsconfig.base.json alias so vitest runtime resolves the
+      // apps/api AppModule import + the state-machine proof spec.
+      '@aramo/pipeline': resolve(root, 'libs/pipeline/src/index.ts'),
       // PR-A3 Gate 5 — second ATS-domain leaf (requisition). Mirrors
       // tsconfig.base.json alias so vitest runtime resolves the
       // AppModule import + the assignment-visibility integration spec.

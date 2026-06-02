@@ -23,6 +23,7 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
+      "@aramo/activity": ["libs/activity/src/index.ts"],
       "@aramo/api": ["apps/api/src/app.module.ts"],
       "@aramo/attachment": ["libs/attachment/src/index.ts"],
       "@aramo/audit": ["libs/audit/src/index.ts"],
@@ -47,6 +48,7 @@
       "@aramo/matching": ["libs/matching/src/index.ts"],
       "@aramo/metering": ["libs/metering/src/index.ts"],
       "@aramo/outbox-publisher": ["libs/outbox-publisher/src/index.ts"],
+      "@aramo/pipeline": ["libs/pipeline/src/index.ts"],
       "@aramo/portal": ["libs/portal/src/index.ts"],
       "@aramo/requisition": ["libs/requisition/src/index.ts"],
       "@aramo/skills-taxonomy": ["libs/skills-taxonomy/src/index.ts"],

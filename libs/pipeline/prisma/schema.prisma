@@ -1,0 +1,138 @@
+// Per-module Prisma schema for the `pipeline` module — PR-A5a (ATS Batch 4a).
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
+// and doc/05-conventions.md "Database Conventions". Cross-schema
+// references are UUID-only without FK constraints (§7.3).
+//
+// PR-A5a Gate 5 — the ATS pipeline state machine (the heart of the
+// batch). Pipeline is the (talent_record × requisition) join row that
+// carries a status drawn from an 11-state enum. PipelineStatusHistory
+// is the append-only audit of every legal transition.
+//
+// The application-layer state machine (libs/pipeline/src/lib/pipeline-
+// state.ts) enforces the legal transition matrix; the DB enum is the
+// closed-list substrate, and the @@unique([talent_record_id,
+// requisition_id]) constraint guarantees one Pipeline row per
+// (talent, req) pair.
+//
+// Refusals enforced structurally:
+//   - R10 — NO portal-forbidden numeric/ordinal fields. Pipeline carries
+//     a status label only; no portal-forbidden ranking columns.
+//   - R12 — locked vocabulary. The OpenCATS-derived anti-token does NOT
+//     appear; the equivalent status is `talent_responded`.
+//
+// Cross-schema logical references (UUID-only, no FK per §7.3):
+//   - talent_record_id   → talent_record.TalentRecord
+//   - requisition_id     → requisition.Requisition
+//   - PipelineStatusHistory.changed_by_id → identity.User
+//
+// PR-A5a/A5b boundary (Ruling 3): `placed` is the terminal status in
+// this batch. NO `openings_available` decrement on requisition. NO
+// submittal sync. Those sibling-domain writes belong to PR-A5b. This
+// schema is ATS-internal at A5a.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["pipeline"]
+}
+
+// PipelineStatus — the 11-state OpenCATS-aligned recruiting funnel,
+// vocabulary-renamed per R12. `talent_responded` replaces the OpenCATS
+// legacy anti-token (the only R12-impacted label in the chain).
+//
+// Initial state for new Pipeline rows: `no_contact` (directive §2 /
+// state-machine proof § "Initial state"). `no_status` is included for
+// legacy-import parity; the application transition map never targets
+// it.
+enum PipelineStatus {
+  no_status
+  no_contact
+  contacted
+  talent_responded
+  qualifying
+  submitted
+  interviewing
+  offered
+  not_in_consideration
+  client_declined
+  placed
+
+  @@schema("pipeline")
+}
+
+// Pipeline — the (talent × requisition) join row carrying status.
+// One row per (talent_record_id, requisition_id) pair per the
+// @@unique constraint below.
+model Pipeline {
+  // Identity.
+  id        String  @id @default(uuid()) @db.Uuid
+  tenant_id String  @db.Uuid
+  site_id   String? @db.Uuid
+
+  // Cross-schema logical references (Architecture §7.3 — UUID-only, no FK).
+  talent_record_id String @db.Uuid
+  requisition_id   String @db.Uuid
+
+  // Status — application-layer state machine enforces the legal
+  // transition matrix on every write (see lib/pipeline-state.ts).
+  status PipelineStatus @default(no_contact)
+
+  // Timestamps.
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  // Intra-schema relation to the status-history audit.
+  history PipelineStatusHistory[]
+
+  // One Pipeline per (talent, req) pair — a recruiter cannot enter the
+  // same talent into the same requisition twice. Re-entry after
+  // not_in_consideration / client_declined is via a delete + re-create
+  // (since both terminal-ish states are intentionally non-transitionable;
+  // see lib/pipeline-state.ts).
+  @@unique([talent_record_id, requisition_id])
+
+  // Indexes — every query path leads with tenant_id.
+  @@index([tenant_id, requisition_id])
+  @@index([tenant_id, talent_record_id])
+  @@index([tenant_id, status])
+  @@index([tenant_id, site_id])
+
+  @@schema("pipeline")
+}
+
+// PipelineStatusHistory — append-only audit of every legal transition.
+// Written inside the same $transaction as the Pipeline.status update +
+// the Activity emit + the metering recordUsage (the atomic guarantee
+// per directive §3 / Ruling 6 the load-bearing state-machine proof).
+//
+// `status_from` is recorded explicitly even though it duplicates the
+// prior row's `status_to` — this keeps each history row self-describing
+// without a join.
+model PipelineStatusHistory {
+  // Identity.
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Parent pipeline (intra-schema FK).
+  pipeline_id String   @db.Uuid
+  pipeline    Pipeline @relation(fields: [pipeline_id], references: [id], onDelete: Cascade)
+
+  // The transition.
+  status_from PipelineStatus
+  status_to   PipelineStatus
+
+  // Provenance.
+  changed_by_id String?  @db.Uuid
+  changed_at    DateTime @default(now()) @db.Timestamptz
+  note          String?
+
+  // Indexes — the dominant "history for pipeline X" lookup.
+  @@index([tenant_id, pipeline_id, changed_at])
+
+  @@schema("pipeline")
+}
