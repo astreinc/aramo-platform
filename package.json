@@ -67,7 +67,7 @@
     "@nestjs/testing": "~11.1.24",
     "@nx/eslint": "~22.7.3",
     "@nx/eslint-plugin": "~22.7.4",
-    "@nx/js": "~22.7.0",
+    "@nx/js": "~22.7.5",
     "@nx/nest": "~22.7.3",
     "@nx/vite": "~22.7.3",
     "@nx/workspace": "~22.7.0",
