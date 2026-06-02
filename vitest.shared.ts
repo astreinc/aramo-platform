@@ -35,6 +35,10 @@ export default defineConfig({
       '@aramo/company': resolve(root, 'libs/company/src/index.ts'),
       '@aramo/contact': resolve(root, 'libs/contact/src/index.ts'),
       '@aramo/ai-draft': resolve(root, 'libs/ai-draft/src/index.ts'),
+      // PR-A4 Gate 5 — attachment leaf (polymorphic file metadata,
+      // typed owner_type discriminator). Imports @aramo/talent-record
+      // for service-layer owner validation on the `talent` owner path.
+      '@aramo/attachment': resolve(root, 'libs/attachment/src/index.ts'),
       '@aramo/audit': resolve(root, 'libs/audit/src/index.ts'),
       '@aramo/engagement': resolve(root, 'libs/engagement/src/index.ts'),
       // PR-A1b §2 — new leaf lib hosting EntitlementGuard + @RequireCapability
@@ -73,6 +77,10 @@ export default defineConfig({
       '@aramo/submittal': resolve(root, 'libs/submittal/src/index.ts'),
       '@aramo/talent': resolve(root, 'libs/talent/src/index.ts'),
       '@aramo/talent-evidence': resolve(root, 'libs/talent-evidence/src/index.ts'),
+      // PR-A4 Gate 5 — talent-record leaf (the ATS recruiter-facing
+      // talent record; renamed from `talent` to avoid collision with
+      // Core libs/talent identity. Amendment §3.)
+      '@aramo/talent-record': resolve(root, 'libs/talent-record/src/index.ts'),
     },
   },
   test: {

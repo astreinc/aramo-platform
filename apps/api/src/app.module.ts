@@ -4,6 +4,7 @@ import {
   CrossSchemaConsistencyModule,
   RequestIdMiddleware,
 } from '@aramo/common';
+import { AttachmentModule } from '@aramo/attachment';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { CompanyModule } from '@aramo/company';
@@ -18,6 +19,7 @@ import { PortalModule } from '@aramo/portal';
 import { RequisitionModule } from '@aramo/requisition';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { SubmittalModule } from '@aramo/submittal';
+import { TalentRecordModule } from '@aramo/talent-record';
 
 @Module({
   imports: [
@@ -60,6 +62,17 @@ import { SubmittalModule } from '@aramo/submittal';
     // all). Leaf import set: AuthModule + AuthorizationModule +
     // EntitlementModule only (no @aramo/company / @aramo/contact).
     RequisitionModule,
+    // PR-A4 Gate 5 — third ATS-domain batch: talent-record + attachment.
+    // TalentRecordModule is imported BEFORE AttachmentModule because
+    // AttachmentModule depends on it (attachment -> talent-record edge;
+    // TalentRecordRepository is injected into AttachmentRepository for
+    // service-layer owner validation on the `talent` owner_type path).
+    // The reverse direction is UUID-only at the schema level, so
+    // TalentRecordModule does NOT import AttachmentModule — no cycle.
+    // Renamed from `libs/talent` to avoid collision with the pre-existing
+    // Core libs/talent (tenant-AGNOSTIC identity, PR-10 baseline).
+    TalentRecordModule,
+    AttachmentModule,
     // M5 PR-11 §4.5/§4.6 — SkillsTaxonomyModule registers the
     // skill-canonicalization queue + no-op processor (Architecture v2.1
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).
