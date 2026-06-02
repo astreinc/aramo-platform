@@ -46,13 +46,10 @@ import { RequisitionRepository } from './requisition.repository.js';
 // A recruiter requesting an unassigned requisition by id → 404 (not in
 // the visible set), NEVER 403 (they hold the scope).
 //
-// === Assign/unassign gating (directive Ruling 3 + §1 catalog gap) ===
-// The seeded scope catalog has no `requisition:assign`. We require BOTH
-// `requisition:edit` AND `requisition:delete` on the assign + unassign
-// routes — RolesGuard enforces SUPERSET, so a recruiter (who has `:edit`
-// but not `:delete`) is rejected, and only tenant_admin (who has both)
-// can call them. This composes existing seeded scopes to express the
-// tenant_admin tier; no new scope is added at the identity layer.
+// === Assign/unassign gating (HK-IDENT-SCOPES — proper scope) ===
+// Gated on `requisition:assign` (tenant_admin only). Replaces the prior
+// A3 superset expedients (edit+delete for POST/DELETE; read+read:all for
+// GET) now that the proper scope is seeded.
 @Controller('v1/requisitions')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
@@ -167,15 +164,12 @@ export class RequisitionController {
 
   @Get(':id/assignments')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('requisition:read', 'requisition:read:all')
+  @RequireScopes('requisition:assign')
   @RequireSiteMatch()
   async listAssignments(
     @AuthContext() authContext: AuthContextType,
     @Param('id') requisitionId: string,
   ): Promise<{ items: RequisitionAssignmentView[] }> {
-    // tenant_admin-gated read (requires :read AND :read:all → SUPERSET
-    // refusal for recruiters who only hold :read). Mirrors the assign
-    // mutation's tier; admin-only visibility into the assignment join.
     const items = await this.assignmentRepository.listForRequisition({
       tenant_id: authContext.tenant_id,
       requisition_id: requisitionId,
@@ -185,7 +179,7 @@ export class RequisitionController {
 
   @Post(':id/assignments')
   @HttpCode(HttpStatus.CREATED)
-  @RequireScopes('requisition:edit', 'requisition:delete')
+  @RequireScopes('requisition:assign')
   @RequireSiteMatch()
   async assign(
     @AuthContext() authContext: AuthContextType,
@@ -204,7 +198,7 @@ export class RequisitionController {
 
   @Delete(':id/assignments/:user_id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequireScopes('requisition:edit', 'requisition:delete')
+  @RequireScopes('requisition:assign')
   @RequireSiteMatch()
   async unassign(
     @AuthContext() authContext: AuthContextType,

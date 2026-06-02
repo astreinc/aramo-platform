@@ -36,9 +36,9 @@ import { AppModule } from '../app.module.js';
 //        - tenant_admin (requisition:read:all) → list includes BOTH;
 //          GET 200 on each.
 //   C) Recruiter divergence on assign/unassign — the assign routes
-//      require BOTH requisition:edit AND requisition:delete (the
-//      tenant_admin tier marker, composed because the seeded catalog
-//      has no requisition:assign). Recruiter assign → 403; admin → 201.
+//      require requisition:assign (tenant_admin only — HK-IDENT-SCOPES
+//      retires the prior edit+delete superset expedient). Recruiter
+//      assign → 403; admin → 201.
 //
 // Skipped unless ARAMO_RUN_INTEGRATION=1.
 
@@ -76,13 +76,15 @@ const RECRUITER_SCOPES = [
   'requisition:edit',
 ];
 
-// tenant_admin — full set incl. :read:all + :delete (the assign-route gate).
+// tenant_admin — full set incl. :read:all + :delete + :assign
+// (HK-IDENT-SCOPES: requisition:assign is the proper assign-route gate).
 const TENANT_ADMIN_SCOPES = [
   'requisition:read',
   'requisition:read:all',
   'requisition:create',
   'requisition:edit',
   'requisition:delete',
+  'requisition:assign',
 ];
 
 const COMPANY_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
@@ -428,7 +430,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       const req = (await createRes.json()) as { id: string };
 
-      // Recruiter (has :edit but not :delete) → cannot assign.
+      // Recruiter (lacks requisition:assign) → cannot assign.
       const recruiterAssign = await fetch(
         `http://127.0.0.1:${port}/v1/requisitions/${req.id}/assignments?site_id=${SITE_A}`,
         {
