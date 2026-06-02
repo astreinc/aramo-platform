@@ -65,6 +65,10 @@ export default defineConfig({
       // AppModule import in pact/provider/src/verify-api.ts (and the
       // apps/api negative-shape integration spec) resolves PortalModule.
       '@aramo/portal': resolve(root, 'libs/portal/src/index.ts'),
+      // PR-A3 Gate 5 — second ATS-domain leaf (requisition). Mirrors
+      // tsconfig.base.json alias so vitest runtime resolves the
+      // AppModule import + the assignment-visibility integration spec.
+      '@aramo/requisition': resolve(root, 'libs/requisition/src/index.ts'),
       '@aramo/skills-taxonomy': resolve(root, 'libs/skills-taxonomy/src/index.ts'),
       '@aramo/submittal': resolve(root, 'libs/submittal/src/index.ts'),
       '@aramo/talent': resolve(root, 'libs/talent/src/index.ts'),

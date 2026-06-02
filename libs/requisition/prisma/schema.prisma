@@ -1,0 +1,163 @@
+// Per-module Prisma schema for the `requisition` module — PR-A3 (ATS Batch 2).
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
+// and doc/05-conventions.md "Database Conventions". Cross-schema
+// references UUID-only, no FK (§7.3).
+//
+// PR-A3 Gate 5 — second ATS-domain batch. Follows the PR-A2 pattern of
+// record (libs/company exemplar; the A2 close §3): leaf lib, schema-per-
+// module, row shape `id/tenant_id/site_id?/timestamps`, indexes lead
+// with tenant_id, lazy-validation PrismaService, no metering/event-log/
+// outbox (reference CRUD).
+//
+// A3-specific concept: the **assignment-visibility filter** (directive
+// Ruling 2). RequisitionAssignment is the join row that drives the
+// recruiter's per-row visibility predicate. Visibility is a QUERY
+// PREDICATE applied in the repository LIST + GET-by-id paths — NOT a
+// guard rejection. `requisition:read` (recruiter) sees only assigned
+// rows; `requisition:read:all` (tenant_admin) sees every row.
+//
+// Status is a simple stored enum (directive §4 — explicitly NOT the
+// pipeline state machine; no transition rules, no event log, no
+// `openings_available` decrement on placement — those belong to A5).
+//
+// Cross-schema logical references (UUID-only, no FK per §7.3):
+//   - company_id            → company.Company
+//   - contact_id            → contact.Contact
+//   - company_department_id → company.CompanyDepartment
+//   - recruiter_id          → identity.User (informational provenance —
+//                             the original recruiter who entered the
+//                             req; NOT used for visibility — that's
+//                             driven by RequisitionAssignment per
+//                             Ruling 1: multi-recruiter assignment via
+//                             the join, not single-recruiter column).
+//   - owner_id              → identity.User
+//   - entered_by_id         → identity.User
+//   - RequisitionAssignment.user_id → identity.User
+//   - RequisitionAssignment.assigned_by_id → identity.User
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["requisition"]
+}
+
+// RequisitionStatus — directive §4: a simple stored enum, recruiter-
+// editable via `requisition:edit`. NO transition rules; NO state-machine
+// trigger; NO event log. The pipeline state machine (Active→Placed→
+// openings decrement) lives at A5 — this enum is a status label, not a
+// workflow.
+enum RequisitionStatus {
+  active
+  on_hold
+  full
+  closed
+  canceled
+  lead
+
+  @@schema("requisition")
+}
+
+// Requisition — the ATS-domain job-order entity. OpenCATS doc-04 field
+// shapes; greenfield port with the canonical Aramo tenant + site axes
+// added.
+model Requisition {
+  // Identity.
+  id        String  @id @default(uuid()) @db.Uuid
+  tenant_id String  @db.Uuid
+  site_id   String? @db.Uuid
+
+  // Required identification.
+  title String
+
+  // Cross-schema logical references (Architecture §7.3 — UUID-only, no FK).
+  company_id            String  @db.Uuid
+  contact_id            String? @db.Uuid
+  company_department_id String? @db.Uuid
+
+  // Status (simple stored enum — directive §4).
+  status RequisitionStatus @default(active)
+
+  // Job-order metadata.
+  type        String?
+  duration    String?
+  rate_max    String?
+  salary      String?
+  description String?
+  notes       String?
+  is_hot      Boolean @default(false)
+
+  // Openings counts (stored fields; directive §4 — NO decrement logic
+  // at this batch; the pipeline at A5 will own placement -> decrement).
+  openings           Int @default(1)
+  openings_available Int @default(1)
+
+  start_date DateTime? @db.Timestamptz
+  city       String?
+  state      String?
+
+  // Provenance — the recruiter who originally entered the req. This is
+  // INFORMATIONAL ONLY; per Ruling 1 the visibility filter keys on the
+  // RequisitionAssignment join (multi-recruiter), NOT on this column.
+  recruiter_id  String? @db.Uuid
+  owner_id      String? @db.Uuid
+  entered_by_id String? @db.Uuid
+
+  // Timestamps.
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  // Intra-schema relation to the assignment join.
+  assignments RequisitionAssignment[]
+
+  // Indexes — every query leads with tenant_id; the (tenant, status)
+  // index serves the dominant "active reqs in tenant" filter.
+  @@index([tenant_id, status])
+  @@index([tenant_id, company_id])
+  @@index([tenant_id, site_id])
+  @@index([tenant_id, is_hot])
+
+  @@schema("requisition")
+}
+
+// RequisitionAssignment — the join that drives the visibility filter
+// (Ruling 1: multi-recruiter assignment). Recruiters see a requisition
+// iff there is a row here for (their requisition, their user_id).
+// tenant_admin (`requisition:read:all`) sees every row regardless.
+//
+// Intra-schema FK to Requisition (conventional Prisma relation;
+// cross-schema is the boundary per §7.3). user_id + assigned_by_id are
+// cross-schema logical references (identity.User), kept UUID-only.
+model RequisitionAssignment {
+  // Identity.
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Parent requisition (intra-schema FK).
+  requisition_id String      @db.Uuid
+  requisition    Requisition @relation(fields: [requisition_id], references: [id], onDelete: Cascade)
+
+  // The assigned recruiter (UUID-only logical ref to identity.User).
+  // The visibility predicate matches this against AuthContext.sub.
+  user_id String @db.Uuid
+
+  // Provenance.
+  assigned_at      DateTime @default(now()) @db.Timestamptz
+  assigned_by_id   String?  @db.Uuid
+
+  // Indexes — the dominant "all reqs assigned to user X in tenant T"
+  // query (the visibility filter's read path).
+  @@index([tenant_id, user_id])
+  @@index([tenant_id, requisition_id])
+
+  // One assignment per (req, user) — re-assigning the same user is a
+  // no-op idempotent insert under ON CONFLICT DO NOTHING (handled in
+  // the repository).
+  @@unique([requisition_id, user_id])
+
+  @@schema("requisition")
+}
