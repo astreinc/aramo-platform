@@ -51,6 +51,7 @@
       "@aramo/outbox-publisher": ["libs/outbox-publisher/src/index.ts"],
       "@aramo/pipeline": ["libs/pipeline/src/index.ts"],
       "@aramo/portal": ["libs/portal/src/index.ts"],
+      "@aramo/reporting": ["libs/reporting/src/index.ts"],
       "@aramo/requisition": ["libs/requisition/src/index.ts"],
       "@aramo/saved-list": ["libs/saved-list/src/index.ts"],
       "@aramo/skills-taxonomy": ["libs/skills-taxonomy/src/index.ts"],

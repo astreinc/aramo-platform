@@ -284,4 +284,55 @@ export class RequisitionRepository {
     });
     return row === null ? null : projectView(row as RequisitionRow);
   }
+
+  // PR-A7 — actor-scoped count for the reporting aggregator. Applies
+  // the same A3 visibility predicate as `listForActor`: tenant_admin
+  // (scopes include `requisition:read:all`) sees every requisition in
+  // tenant; recruiter sees only assigned reqs.
+  async countForActor(args: {
+    tenant_id: string;
+    actor_scopes: readonly string[];
+    actor_user_id: string;
+    site_id?: string;
+  }): Promise<number> {
+    const seesAll = actorSeesAll(args.actor_scopes);
+    return this.prisma.requisition.count({
+      where: {
+        tenant_id: args.tenant_id,
+        ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+        ...(seesAll
+          ? {}
+          : { assignments: { some: { user_id: args.actor_user_id } } }),
+      },
+    });
+  }
+
+  // PR-A7 — actor-scoped per-status rollup for the reporting aggregator.
+  // Mirrors `countForActor` but groups by the RequisitionStatus enum so
+  // the reports endpoint can show a per-status bucket map. Prisma
+  // groupBy with where preserves the same A3 predicate (`assignments:
+  // { some: ... }`).
+  async countByStatusForActor(args: {
+    tenant_id: string;
+    actor_scopes: readonly string[];
+    actor_user_id: string;
+    site_id?: string;
+  }): Promise<Array<{ status: RequisitionStatus; count: number }>> {
+    const seesAll = actorSeesAll(args.actor_scopes);
+    const rows = await this.prisma.requisition.groupBy({
+      by: ['status'],
+      where: {
+        tenant_id: args.tenant_id,
+        ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+        ...(seesAll
+          ? {}
+          : { assignments: { some: { user_id: args.actor_user_id } } }),
+      },
+      _count: { _all: true },
+    });
+    return rows.map((r) => ({
+      status: r.status as RequisitionStatus,
+      count: r._count._all,
+    }));
+  }
 }

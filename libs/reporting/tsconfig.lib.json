@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/libs/reporting",
+    "rootDir": "src",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "declaration": true,
+    "types": ["node"],
+    "paths": {
+      "@aramo/activity": ["../../dist/libs/activity/src/index.d.ts"],
+      "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
+      "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
+      "@aramo/calendar": ["../../dist/libs/calendar/src/index.d.ts"],
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/company": ["../../dist/libs/company/src/index.d.ts"],
+      "@aramo/contact": ["../../dist/libs/contact/src/index.d.ts"],
+      "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
+      "@aramo/pipeline": ["../../dist/libs/pipeline/src/index.d.ts"],
+      "@aramo/requisition": ["../../dist/libs/requisition/src/index.d.ts"],
+      "@aramo/saved-list": ["../../dist/libs/saved-list/src/index.d.ts"],
+      "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/tests/**/*"]
+}

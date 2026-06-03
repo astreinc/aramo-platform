@@ -167,6 +167,19 @@ export class ContactRepository {
     return (rows as ContactRow[]).map(projectView);
   }
 
+  // PR-A7 — tenant-scoped count for the reporting aggregator.
+  async count(args: {
+    tenant_id: string;
+    site_id?: string;
+  }): Promise<number> {
+    return this.prisma.contact.count({
+      where: {
+        tenant_id: args.tenant_id,
+        ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+      },
+    });
+  }
+
   async update(args: {
     tenant_id: string;
     id: string;

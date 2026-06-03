@@ -421,6 +421,51 @@ export class PipelineRepository {
     return (rows as PipelineRow[]).map(projectView);
   }
 
+  // PR-A7 — tenant-scoped count. The reporting aggregator may pass a
+  // pre-computed list of visible requisition_ids (the A3 predicate is
+  // resolved upstream in RequisitionRepository.countForActor + listed
+  // requisition_ids — pipeline.requisition_id is a cross-schema logical
+  // ref so Prisma can't traverse the assignment relation in-query, so
+  // the role-visibility predicate is composed at the service layer).
+  async count(args: {
+    tenant_id: string;
+    requisition_ids?: readonly string[];
+    status?: PipelineStatus;
+  }): Promise<number> {
+    return this.prisma.pipeline.count({
+      where: {
+        tenant_id: args.tenant_id,
+        ...(args.requisition_ids === undefined
+          ? {}
+          : { requisition_id: { in: [...args.requisition_ids] } }),
+        ...(args.status === undefined ? {} : { status: args.status }),
+      },
+    });
+  }
+
+  // PR-A7 — per-PipelineStatus rollup for the reporting aggregator.
+  // The optional requisition_ids list applies the upstream-resolved A3
+  // role-visibility predicate.
+  async countByStatus(args: {
+    tenant_id: string;
+    requisition_ids?: readonly string[];
+  }): Promise<Array<{ status: PipelineStatus; count: number }>> {
+    const rows = await this.prisma.pipeline.groupBy({
+      by: ['status'],
+      where: {
+        tenant_id: args.tenant_id,
+        ...(args.requisition_ids === undefined
+          ? {}
+          : { requisition_id: { in: [...args.requisition_ids] } }),
+      },
+      _count: { _all: true },
+    });
+    return rows.map((r) => ({
+      status: r.status as PipelineStatus,
+      count: r._count._all,
+    }));
+  }
+
   async listHistory(args: {
     tenant_id: string;
     pipeline_id: string;

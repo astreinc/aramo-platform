@@ -19,6 +19,7 @@ import { MatchingModule } from '@aramo/matching';
 import { OutboxPublisherModule } from '@aramo/outbox-publisher';
 import { PipelineModule } from '@aramo/pipeline';
 import { PortalModule } from '@aramo/portal';
+import { ReportingModule } from '@aramo/reporting';
 import { RequisitionModule } from '@aramo/requisition';
 import { SavedListModule } from '@aramo/saved-list';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
@@ -112,6 +113,19 @@ import { TalentRecordModule } from '@aramo/talent-record';
     // edges are forward; no cycle (lint:nx-boundaries enforces).
     CalendarModule,
     SavedListModule,
+    // PR-A7 Gate 5 — ATS-INTERNAL reporting + dashboard read aggregator.
+    // Reads ONLY the 8 ATS-side schemas (company / contact / requisition
+    // / pipeline / activity / calendar / saved_list / talent_record) +
+    // the existing per-module repositories. The dependency closure is
+    // the seam-exclusion proof: ReportingModule does NOT import any
+    // Core / engagement / submittal / examination / matching / talent /
+    // job_domain module. The dashboard's "placement" metric is the
+    // ATS-internal placed-pipeline view (A5b-1 terminal state), NOT a
+    // Core submittal-confirmed-placement (which would cross the seam;
+    // that's T5, judgment-out, M6-gated). Hard exclusions also for
+    // EEO reporting (A4-deferred fields don't exist) and PDF rendering
+    // (presentation, deferred).
+    ReportingModule,
     // M5 PR-11 §4.5/§4.6 — SkillsTaxonomyModule registers the
     // skill-canonicalization queue + no-op processor (Architecture v2.1
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).
