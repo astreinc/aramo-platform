@@ -175,6 +175,24 @@
 // TENANT_CAPABILITY_NOT_ENTITLED for the EntitlementGuard refusal;
 // PR-A5a adds INVALID_PIPELINE_TRANSITION for the pipeline
 // state-machine refusal).
+//
+// PR-A5b-1 adds REQUISITION_NO_OPENINGS (HTTP 409) for the
+// pipeline-transition-to-`placed` over-capacity refusal. When a
+// placement transition fires against a requisition whose
+// openings_available has already been exhausted (== 0), the cross-
+// schema decrement is gated on `openings_available > 0`; an attempted
+// over-decrement refuses the ENTIRE transition tx (Pipeline.status,
+// PipelineStatusHistory, Activity, UsageEvent all roll back) with this
+// code. 409 (Conflict) fits the semantic: the request is well-formed
+// but conflicts with current resource state (the slot is taken). The
+// Lead-reviewed alternatives — allow-and-go-negative-with-warning,
+// allow-to-zero-floor — were rejected as data-integrity hazards:
+// openings_available is a numeric invariant downstream dashboards /
+// allocation algorithms depend on; a silent floor would hide the
+// recruiter's data conflict and a negative would corrupt slot
+// accounting. The recruiter resolves either by raising the
+// requisition's `openings` count first or by placing the talent on a
+// different requisition. Total: 29 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -205,6 +223,7 @@ export const ERROR_CODES = [
   'CONSENT_NOT_GRANTED_AT_SEND',  // M5 PR-9b — outreach-send runtime consent-at-send refusal (Plan v1.5 §M5 Track B item 3 closure)
   'TENANT_CAPABILITY_NOT_ENTITLED',  // PR-A1b — EntitlementGuard refusal when the tenant lacks the @RequireCapability the route demands (distinct from scope-axis INSUFFICIENT_PERMISSIONS per Ruling 1)
   'INVALID_PIPELINE_TRANSITION',  // PR-A5a — pipeline state-machine canTransition guard rejected an illegal status change; the load-bearing refusal of A5a (mirrors SUBMITTAL_STATE_INVALID / ENGAGEMENT_STATE_INVALID at the ATS-domain layer)
+  'REQUISITION_NO_OPENINGS',  // PR-A5b-1 — pipeline transition to `placed` refused because the target requisition's openings_available is already 0; the entire transition tx rolls back (Pipeline.status / PipelineStatusHistory / Activity / UsageEvent all reverted) — over-capacity is a data-integrity refusal, not a silent floor (Gate 5 Lead-reviewed ruling)
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
