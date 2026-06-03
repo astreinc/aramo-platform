@@ -1487,6 +1487,15 @@ components:
         IMPORT_REVERT_WINDOW_EXPIRED (HTTP 409) — POST /v1/imports/
         :id/revert refused because batch.created_at is older than
         the configured window (default 7 days).
+        T2-2a adds CANONICALIZATION_PAYLOAD_NOT_FOUND (HTTP 404) for
+        the canonicalize service's RawPayloadReference lookup refusal.
+        Mirrors the A3 not-found info-leak-closing precedent: cross-
+        tenant access is ABSORBED into not-found (no enumeration of
+        other-tenant payload ids). The companion 'core_talent_not_found'
+        case (caller passed a core_talent_id that does not resolve in
+        `talent.Talent`) reuses the existing NOT_FOUND code with
+        details.reason='core_talent_not_found' per the Directive §5
+        "or reuse NOT_FOUND" option.
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1524,6 +1533,7 @@ components:
         - IMPORT_THRESHOLD_EXCEEDED
         - IMPORT_ALREADY_REVERTED
         - IMPORT_REVERT_WINDOW_EXPIRED
+        - CANONICALIZATION_PAYLOAD_NOT_FOUND
 
     ErrorObject:
       type: object

@@ -1,0 +1,411 @@
+// Per-module Prisma schema for the `canonicalization` module — T2-2a
+// (the orchestration half of T2-2; T2-2b adds the outbox-publisher drain).
+//
+// Per Architecture v2.0 §7 (Schema-per-Module data architecture) +
+// doc/05-conventions.md "Database Conventions". Cross-schema references
+// elsewhere in the program are UUID-only without FK constraints (§7.3).
+//
+// Per T2-2a Directive §1 Ruling 1 (Lead-approved Option A): canonicalization
+// is an orchestrator that spans 4 PG schemas in ONE Prisma client — it owns
+// the new `canonicalization` schema (OutboxEvent) and reads/writes the
+// participant schemas (`talent`, `talent_evidence`, `ingestion`) as
+// FOLLOWERS. The follower models are duplicated verbatim from the
+// source-of-truth schema.prisma in each owning lib; the duplication is
+// guarded by the MANDATORY drift-tripwire CI test
+// (libs/canonicalization/src/tests/follower-drift.spec.ts) which asserts
+// each follower's (column names, types, nullability) is bit-identical to
+// the source — the condition of Option A's approval (§1 Ruling 2).
+//
+// Migration ownership (§1 Ruling 3 — HARD REQUIREMENT): canonicalization's
+// migrations own ONLY the `canonicalization` PG schema. The followed
+// models (`talent`, `talent_evidence`, `ingestion`) already exist; this
+// lib's migrations MUST produce NO migration against them (no recreate,
+// no alter). The init migration is hand-written to create exactly
+// `canonicalization` schema + OutboxEvent table, mirroring the
+// libs/submittal add_outbox_event additive precedent.
+//
+// Isolation (§1 Ruling 4): the atomic `canonicalize` $transaction runs at
+// READ COMMITTED + a SELECT … FOR UPDATE on the RawPayloadReference row
+// at the top — prevents the concurrent-canonicalize race without
+// SERIALIZABLE's cost.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  // T2-2a §1 Ruling 1 — the 4-schema multi-schema client. Order:
+  //   - canonicalization: OWNED (new schema; OutboxEvent table).
+  //   - talent: FOLLOWED (Talent, TalentTenantOverlay).
+  //   - talent_evidence: FOLLOWED (7 evidence models + 10 enums).
+  //   - ingestion: FOLLOWED (RawPayloadReference + ResolutionMethod enum).
+  schemas  = ["canonicalization", "talent", "talent_evidence", "ingestion"]
+}
+
+// ===========================================================================
+// OWNED MODELS — canonicalization PG schema
+// ===========================================================================
+
+// T2-2a — canonicalization OutboxEvent (NEW table; T2-2a writes, T2-2b
+// drains). Per Architecture v2.0 §7.6 the per-module outbox precedent
+// established by libs/consent (M5 PR-11) and extended to libs/submittal
+// (M6 PR-2). Shape mirrors libs/consent.OutboxEvent +
+// libs/submittal.OutboxEvent verbatim — six columns, no
+// aggregate_type/aggregate_id (aggregate identity lives inside
+// event_payload). Drained by libs/outbox-publisher at T2-2b (the publisher
+// gains a 4th-schema drain; the split seam per the Directive's §0).
+//
+// T2-2a writes `talent.canonicalized` events into this table IN THE
+// canonicalize $transaction (the outbox invariant — the event must commit
+// atomically with the state change; partial canonicalization is a corrupt
+// identity per §1 Ruling 1's atomicity requirement).
+model OutboxEvent {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  event_type    String
+  event_payload Json
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  published_at  DateTime? @db.Timestamptz
+
+  @@index([published_at])
+  @@schema("canonicalization")
+}
+
+// ===========================================================================
+// FOLLOWED MODELS — talent PG schema
+// Source of truth: libs/talent/prisma/schema.prisma.
+// Bit-identical mirror (column names, types, nullability, attributes,
+// indexes). Drift detected by libs/canonicalization/src/tests/
+// follower-drift.spec.ts (the §1 Ruling 2 mandatory CI tripwire).
+// ===========================================================================
+
+model Talent {
+  id               String   @id @default(uuid()) @db.Uuid
+  lifecycle_status String
+  created_at       DateTime @default(now()) @db.Timestamptz
+  updated_at       DateTime @updatedAt @db.Timestamptz
+
+  overlays         TalentTenantOverlay[]
+
+  @@schema("talent")
+}
+
+model TalentTenantOverlay {
+  id                  String   @id @default(uuid()) @db.Uuid
+  talent_id           String   @db.Uuid
+  tenant_id           String   @db.Uuid
+  source_recruiter_id String?  @db.Uuid
+  source_channel      String
+  tenant_status       String
+  created_at          DateTime @default(now()) @db.Timestamptz
+  updated_at          DateTime @updatedAt @db.Timestamptz
+
+  talent              Talent   @relation(fields: [talent_id], references: [id])
+
+  @@unique([talent_id, tenant_id])
+  @@index([tenant_id])
+  @@schema("talent")
+}
+
+// ===========================================================================
+// FOLLOWED MODELS — talent_evidence PG schema
+// Source of truth: libs/talent-evidence/prisma/schema.prisma.
+// All 7 evidence models + 10 enums followed bit-identical.
+// ===========================================================================
+
+enum TalentSkillEvidenceSource {
+  declared
+  ingested
+  derived
+
+  @@schema("talent_evidence")
+}
+
+enum TalentWorkHistorySource {
+  resume
+  linkedin
+  manual
+  import
+
+  @@schema("talent_evidence")
+}
+
+enum TalentContactType {
+  email
+  phone
+  linkedin
+  github
+  portfolio
+  other
+
+  @@schema("talent_evidence")
+}
+
+enum TalentContactVerificationStatus {
+  unverified
+  verified
+  failed
+  stale
+
+  @@schema("talent_evidence")
+}
+
+enum TalentEmploymentType {
+  W2
+  CONTRACT_1099 @map("1099")
+  C2C
+  FTE
+
+  @@schema("talent_evidence")
+}
+
+enum TalentRatePeriod {
+  HOURLY
+  ANNUAL
+
+  @@schema("talent_evidence")
+}
+
+enum TalentRateSource {
+  talent_declared
+  recruiter_entered
+
+  @@schema("talent_evidence")
+}
+
+enum TalentWorkAuthorizationStatus {
+  US_CITIZEN
+  PERMANENT_RESIDENT
+  VISA_HOLDER
+  REQUIRES_SPONSORSHIP
+  OTHER
+  NOT_DISCLOSED
+
+  @@schema("talent_evidence")
+}
+
+enum TalentDocumentType {
+  resume
+  cover_letter
+  certification
+  work_sample
+  reference_letter
+  other
+
+  @@schema("talent_evidence")
+}
+
+enum TalentDocumentParseStatus {
+  pending
+  parsed
+  failed
+  no_parse_attempted
+
+  @@schema("talent_evidence")
+}
+
+enum TalentDocumentRetentionPolicy {
+  default
+  extended
+  delete_after_X_days
+
+  @@schema("talent_evidence")
+}
+
+model TalentSkillEvidence {
+  id                String                    @id @db.Uuid
+  talent_id         String                    @db.Uuid
+  tenant_id         String                    @db.Uuid
+
+  skill_id          String                    @db.Uuid
+  source_record_id  String?                   @db.Uuid
+
+  surface_form      String
+  source            TalentSkillEvidenceSource
+  evidence_text     String?
+  proficiency_claim String?
+  years_claimed     Float?
+  confidence_score  Float?
+  created_at        DateTime                  @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@index([tenant_id, talent_id, skill_id])
+  @@schema("talent_evidence")
+}
+
+model TalentWorkHistoryEntry {
+  id                  String                  @id @db.Uuid
+  talent_id           String                  @db.Uuid
+  tenant_id           String                  @db.Uuid
+
+  employer_name       String
+  role_title          String
+  start_date          DateTime?               @db.Date
+  end_date            DateTime?               @db.Date
+  location            String?
+
+  employment_type     String?
+
+  description_text    String?
+  source              TalentWorkHistorySource
+
+  source_document_id  String?                 @db.Uuid
+
+  is_authoritative    Boolean?
+  created_at          DateTime                @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+model TalentContactMethod {
+  id                  String                          @id @db.Uuid
+  talent_id           String                          @db.Uuid
+  tenant_id           String                          @db.Uuid
+
+  type                TalentContactType
+  value               String
+  is_primary          Boolean
+  verification_status TalentContactVerificationStatus
+  verified_at         DateTime?                       @db.Timestamptz
+  created_at          DateTime                        @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+model TalentRateExpectation {
+  id              String               @id @db.Uuid
+  talent_id       String               @db.Uuid
+  tenant_id       String               @db.Uuid
+
+  employment_type TalentEmploymentType
+  min_rate        Float
+  target_rate     Float?
+  currency        String
+  period          TalentRatePeriod
+  source          TalentRateSource
+  updated_at      DateTime             @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+model TalentWorkAuthorization {
+  id                        String                        @id @db.Uuid
+  talent_id                 String                        @db.Uuid
+  tenant_id                 String                        @db.Uuid
+
+  work_authorization_status TalentWorkAuthorizationStatus
+  authorized_to_work_in     String[]
+  visa_type                 String?
+  requires_sponsorship      Boolean
+  updated_at                DateTime                      @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+model TalentDocument {
+  id                       String                        @id @db.Uuid
+  talent_id                String                        @db.Uuid
+  tenant_id                String                        @db.Uuid
+
+  uploaded_by_actor_id     String                        @db.Uuid
+
+  uploaded_at              DateTime                      @db.Timestamptz
+  document_type            TalentDocumentType
+  filename                 String
+  file_storage_ref         String
+  mime_type                String
+
+  size_bytes               Int
+
+  parse_status             TalentDocumentParseStatus
+  consent_scope_at_upload  String[]
+  retention_policy         TalentDocumentRetentionPolicy
+  is_active                Boolean
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+model TalentDerivedSnapshot {
+  id                                  String   @id @db.Uuid
+  talent_id                           String   @db.Uuid
+  tenant_id                           String   @db.Uuid
+
+  skill_confidence_scores             Json
+  estimated_years_experience_overall  Float?
+  estimated_years_experience_by_skill Json?
+  skill_domains                       Json?
+  career_trajectory_pattern           String?
+  intent_signal                       Json?
+  freshness_score                     Json?
+  reachability_score                  Json?
+  availability_confidence             Float?
+  trust_level                         String?
+  data_completeness_score             Float?
+  threshold_status                    Json?
+  current_consent_state               Json?
+  computed_at                         DateTime @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+// ===========================================================================
+// FOLLOWED MODELS — ingestion PG schema
+// Source of truth: libs/ingestion/prisma/schema.prisma.
+// Includes the T2-2a additive: resolved_talent_id + resolution_method
+// (added by libs/ingestion in the same PR; the follower mirrors so the
+// follower-drift CI tripwire stays green).
+// ===========================================================================
+
+enum ResolutionMethod {
+  new_identity
+  verified_email_match
+  caller_supplied
+
+  @@schema("ingestion")
+}
+
+model RawPayloadReference {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenant_id       String   @db.Uuid
+  source          String
+  storage_ref     String
+  sha256          String
+  content_type    String
+  captured_at     DateTime @db.Timestamptz
+  verified_email  String?
+  profile_url     String?
+  skill_surface_forms Json?
+
+  // T2-2a additive — the canonicalize idempotency anchor +
+  // method-of-resolution record (T2-1 Decision 4). resolved_talent_id is
+  // set ONCE (the LAST write in the canonicalize $transaction); a non-null
+  // value short-circuits re-canonicalization to a no-op. resolution_method
+  // records WHAT the caller told us (T2-2a ASSOCIATE-NOT-RESOLVE: the
+  // caller supplies the id; T2-2a does not compute). T2-3 may add
+  // `sha256_payload_dup` to the enum.
+  resolved_talent_id  String?           @db.Uuid
+  resolution_method   ResolutionMethod?
+
+  created_at      DateTime @default(now()) @db.Timestamptz
+  updated_at      DateTime @updatedAt @db.Timestamptz
+
+  @@unique([tenant_id, sha256])
+  @@index([tenant_id, verified_email])
+  @@index([tenant_id, profile_url])
+  @@schema("ingestion")
+}

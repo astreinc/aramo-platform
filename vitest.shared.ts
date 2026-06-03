@@ -37,6 +37,11 @@ export default defineConfig({
       // Mirrors tsconfig.base.json alias so vitest runtime resolves
       // the apps/api AppModule import + the A6 integration spec.
       '@aramo/calendar': resolve(root, 'libs/calendar/src/index.ts'),
+      // T2-2a — canonicalization orchestrator leaf. Mirrors
+      // tsconfig.base.json @aramo/canonicalization alias so vitest runtime
+      // resolves the apps/api AppModule import + the canonicalization
+      // integration / tripwire / drift specs.
+      '@aramo/canonicalization': resolve(root, 'libs/canonicalization/src/index.ts'),
       '@aramo/consent': resolve(root, 'libs/consent/src/index.ts'),
       // PR-A2 Gate 5 — first ATS-domain leaves (company + contact). Mirrors
       // tsconfig.base.json aliases so vitest runtime resolves the AppModule

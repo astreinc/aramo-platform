@@ -48,6 +48,10 @@ R7_ALLOWLIST=(
   "libs/talent-evidence/prisma/schema.prisma"  # Group 2 §2.2 closed-list enum value (TalentWorkHistoryEntry.source / TalentContactMethod.type) — data-source provenance label, not LinkedIn integration. Charter-Level Review: Aramo-Charter-Review-R7-PR5-LOCKED.
   "libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql"  # Group 2 §2.2 closed-list enum value (TalentWorkHistoryEntry.source / TalentContactMethod.type) — data-source provenance label, not LinkedIn integration. Charter-Level Review: Aramo-Charter-Review-R7-PR5-LOCKED.
   "libs/talent-evidence/src/lib/talent-evidence.repository.ts"  # Group 2 §2.2 closed-list enum value (TalentWorkHistoryEntry.source / TalentContactMethod.type) — data-source provenance label, not LinkedIn integration. Charter-Level Review: Aramo-Charter-Review-R7-PR5-LOCKED.
+  "libs/canonicalization/prisma/schema.prisma"  # T2-2a — bit-identical FOLLOWER copy of libs/talent-evidence's TalentContactType enum (which lists `linkedin` as a closed-list provenance label). The follower is structurally required by Directive §1 Ruling 1 (Option A multi-schema client) and enforced bit-identical by the §1 Ruling 2 mandatory drift-tripwire. Same data-source-provenance-label rationale as the libs/talent-evidence entries above; NOT a new LinkedIn integration. Charter-Level Review: T2-2a Gate-5 Lead review (Aramo-T2-2a-Canonicalization-Orchestration-Directive-v1_0-LOCKED.md §2.4 explicitly names `linkedin|github|portfolio|other` as the contact-type categorisation for the URL-host heuristic).
+  "libs/canonicalization/src/lib/canonicalization.repository.ts"  # T2-2a — URL-host heuristic per Directive §2.4: `profile_url` whose hostname is linkedin.com is classified as TalentContactType 'linkedin' (closed-list value mirrored from libs/talent-evidence). Operates on a URL string in storage; NOT a LinkedIn API integration. Same Charter-Level Review as the schema entry above.
+  "libs/canonicalization/src/tests/canonicalization.integration.spec.ts"  # T2-2a — integration spec fixture exercises a linkedin.com profile URL to assert the §2.4 URL-host heuristic correctly classifies it as TalentContactType 'linkedin' (the closed-list enum value mirrored from libs/talent-evidence). Test data only; same Charter-Level Review as the production-code entries above.
+  "libs/canonicalization/src/tests/canonicalization.tripwires.spec.ts"  # T2-2a — tripwire spec asserts the §2.4 URL-host classifier returns the closed-list 'linkedin' enum value (same Charter-Level Review as the schema/repository entries above; the spec verifies the heuristic, it does NOT introduce a LinkedIn integration).
 )
 
 # Glob-form exclusions for paths whose entire subtree is allowed to mention
@@ -197,6 +201,16 @@ TIER2_EXCLUDES=(
   # / M4 PR-3-7 negative-shape entries above.
   "apps/api/src/tests/engagement-create.negative-shape.spec.ts"
   "apps/api/src/tests/engagement-transition.negative-shape.spec.ts"
+  # T2-2a — canonicalization R10/R12 structural tripwire spec enumerates
+  # the forbidden match-class output vocabulary (tier/score/rank/...)
+  # for a recursive-descent leak detection scan against the canonicalize
+  # source. Same pattern as the engagement-create.negative-shape.spec.ts
+  # entry above. The companion canonicalization.repository.ts entry below
+  # covers the R-boundary docstring's "no tier / score / rank / match"
+  # disclaimer comment (the same comment-mention precedent as
+  # libs/engagement/src/lib/engagement.repository.ts above).
+  "libs/canonicalization/src/tests/canonicalization.tripwires.spec.ts"
+  "libs/canonicalization/src/lib/canonicalization.repository.ts"
   "pact/consumers/ats-thin/src/engagement-create.consumer.test.ts"
   "pact/consumers/ats-thin/src/engagement-transition.consumer.test.ts"
   "pact/consumers/ats-thin/src/engagement-reads.consumer.test.ts"

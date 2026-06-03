@@ -96,6 +96,15 @@ const INGESTION_SURFACE_MIGRATION = resolve(
   ROOT,
   'libs/ingestion/prisma/migrations/20260516183528_add_skill_surface_forms/migration.sql',
 );
+// T2-2a additive — resolved_talent_id + resolution_method columns + the new
+// ResolutionMethod enum. Without this migration, IngestionRepository.createPayload's
+// Prisma RETURNING * fails because the generated client expects the new columns
+// (the additive applied to schema.prisma forces the Prisma client to read them),
+// surfacing as a 500 INTERNAL_ERROR on the ingestion-consumer pacts.
+const INGESTION_T2_ADDITIVE_MIGRATION = resolve(
+  ROOT,
+  'libs/ingestion/prisma/migrations/20260603160100_add_resolved_talent_id_to_raw_payload_reference/migration.sql',
+);
 const EXAMINATION_INIT_MIGRATION = resolve(
   ROOT,
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
@@ -1291,6 +1300,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         CONSENT_MIGRATION,
         INGESTION_INIT_MIGRATION,
         INGESTION_SURFACE_MIGRATION,
+        INGESTION_T2_ADDITIVE_MIGRATION,
         EXAMINATION_INIT_MIGRATION,
         EXAMINATION_LIVE_LIST_MIGRATION,
         // M4 PR-5 §4.10 — ExaminationOverride table + immutability trigger

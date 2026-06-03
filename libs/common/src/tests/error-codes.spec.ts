@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 34 codes including PR-A8-1 IMPORT_* triple', () => {
+  it('ERROR_CODES contains the 35 codes including PR-A8-1 IMPORT_* triple and T2-2a CANONICALIZATION_PAYLOAD_NOT_FOUND', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -73,6 +73,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'IMPORT_THRESHOLD_EXCEEDED',
       'IMPORT_ALREADY_REVERTED',
       'IMPORT_REVERT_WINDOW_EXPIRED',
+      'CANONICALIZATION_PAYLOAD_NOT_FOUND',
     ]);
   });
 });

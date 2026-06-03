@@ -250,6 +250,19 @@
 //     that may have accreted on the imported entities. The recruiter
 //     who needs a late revert escalates to a manual delete.
 // Total: 34 codes.
+//
+// T2-2a adds CANONICALIZATION_PAYLOAD_NOT_FOUND (HTTP 404) for the
+// canonicalize service's RawPayloadReference lookup refusal. Mirrors the
+// A3 not-found info-leak-closing precedent: cross-tenant access is
+// ABSORBED into not-found (no enumeration of other-tenant payload ids).
+// 404 fits the semantic — the payload either does not exist or is not
+// visible to the calling tenant, indistinguishably. The
+// 'core_talent_not_found' case (caller passed a core_talent_id that
+// doesn't resolve in `talent.Talent`) reuses the existing NOT_FOUND code
+// (HTTP 404) with details.reason='core_talent_not_found' per the
+// Directive §5 "or reuse NOT_FOUND — confirm" option; this is the
+// closest fit to the PR-A5b-2 TALENT_LINK_INVALID detail-reason discriminator
+// pattern. Total: 35 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -286,6 +299,7 @@ export const ERROR_CODES = [
   'IMPORT_THRESHOLD_EXCEEDED',  // PR-A8-1 — import batch's failure_count exceeded the configured threshold; the entire batch was rejected (no rows persisted) — the recruiter inspects details.{failure_count,row_count,threshold_pct}, fixes, re-imports
   'IMPORT_ALREADY_REVERTED',  // PR-A8-1 — POST /v1/imports/:id/revert refused: batch already in terminal state (reverted | rejected) — re-revert is a no-op rejection (the SUBMITTAL_ALREADY_CONFIRMED 409 precedent)
   'IMPORT_REVERT_WINDOW_EXPIRED',  // PR-A8-1 — POST /v1/imports/:id/revert refused: batch.created_at is older than the configured window (default 7 days) — reversion is bounded so downstream consumers don't get yanked out from under
+  'CANONICALIZATION_PAYLOAD_NOT_FOUND',  // T2-2a — canonicalize() RawPayloadReference lookup refusal; cross-tenant ABSORBED into not-found (no enumeration of other-tenant payload ids — A3 info-leak-closing precedent)
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
