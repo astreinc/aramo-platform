@@ -9,6 +9,7 @@ import { TalentRecordModule } from '@aramo/talent-record';
 
 import { ImportController } from './import.controller.js';
 import { ImportService } from './import.service.js';
+import { MappingSuggestionService } from './mapping/mapping-suggestion.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // ImportModule — PR-A8-1 Gate 5 (the import ENGINE).
@@ -42,7 +43,7 @@ import { PrismaService } from './prisma/prisma.service.js';
     TalentRecordModule,
   ],
   controllers: [ImportController],
-  providers: [PrismaService, ImportService],
-  exports: [ImportService],
+  providers: [PrismaService, ImportService, MappingSuggestionService],
+  exports: [ImportService, MappingSuggestionService],
 })
 export class ImportModule {}

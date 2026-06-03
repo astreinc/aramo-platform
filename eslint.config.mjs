@@ -238,6 +238,27 @@ export default [
       'libs/identity/prisma/seed.ts',
       'libs/identity/src/tests/seed.spec.ts',
       'libs/identity/src/tests/identity.integration.spec.ts',
+      // PR-A8-2: the import-seam INBOUND-vocabulary synonym table. The
+      // talent_record identity-field synonym sets accept "candidate" /
+      // "applicant" as inbound CSV-header aliases (every OpenCATS /
+      // Dice / Indeed / legacy-ATS export carries them) — the
+      // heuristic translates them into the canonical `first_name` /
+      // `last_name` target fields at the import boundary. NEVER
+      // displayed, NEVER stored as a field name. Paired with the
+      // parallel scripts/verify-vocabulary.sh TIER2_EXCLUDES entry
+      // (vocabulary enforcement has the two surfaces; exclusions
+      // applied in lockstep per the PR-A1a precedent above). The
+      // ESLint `candidate` rule still applies to every other file in
+      // the tree.
+      'libs/import/src/lib/mapping/field-catalog.ts',
+      // The paired unit spec exercises the inbound-vocabulary
+      // carve-out: it constructs "Candidate" / "Applicant" header
+      // strings as test input and asserts the heuristic translates
+      // them into first_name / last_name. Same lockstep precedent
+      // as the M5 PR-6 / PR-7 / PR-8a / PR-9b carve-out + spec
+      // entries above (the assertion file needs the exemption the
+      // source file needs).
+      'libs/import/src/tests/mapping-suggestion.service.spec.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',
