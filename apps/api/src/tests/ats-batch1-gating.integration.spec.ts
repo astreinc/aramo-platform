@@ -72,6 +72,19 @@ const CONTACT_INIT = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql',
 );
+// PR-A8-1 — additive back-reference columns on the target schemas.
+// Every spec that creates rows in {company, contact, requisition,
+// talent_record} MUST apply the corresponding add_import_batch_id_*
+// migration: the Prisma client's RETURNING projection includes the
+// new column; absent in DB → 500 INTERNAL_ERROR on POST create.
+const COMPANY_IMPORT_BACK_REF = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260603140100_add_import_batch_id_to_company/migration.sql',
+);
+const CONTACT_IMPORT_BACK_REF = resolve(
+  ROOT,
+  'libs/contact/prisma/migrations/20260603140100_add_import_batch_id_to_contact/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-ats-batch1-gating-spec';
@@ -156,7 +169,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // single multi-statement query (the pg client handles `;`-separated
       // DDL when sent in one shot). Mirrors the portal-refusal spec's
       // boot-time migration loop.
-      for (const p of [ENTITLEMENT_INIT, COMPANY_INIT, CONTACT_INIT]) {
+      for (const p of [
+        ENTITLEMENT_INIT,
+        COMPANY_INIT,
+        CONTACT_INIT,
+        COMPANY_IMPORT_BACK_REF,
+        CONTACT_IMPORT_BACK_REF,
+      ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 

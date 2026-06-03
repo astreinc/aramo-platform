@@ -84,6 +84,25 @@ const TALENT_RECORD_LINK_ADD = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260603020000_add_core_talent_link_to_talent_record/migration.sql',
 );
+// PR-A8-1 — additive back-reference columns on the 4 ATS targets.
+// The Prisma client's RETURNING projection includes import_batch_id;
+// absent in DB → 500 INTERNAL_ERROR on POST create.
+const COMPANY_IMPORT_BACK_REF = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260603140100_add_import_batch_id_to_company/migration.sql',
+);
+const CONTACT_IMPORT_BACK_REF = resolve(
+  ROOT,
+  'libs/contact/prisma/migrations/20260603140100_add_import_batch_id_to_contact/migration.sql',
+);
+const REQUISITION_IMPORT_BACK_REF = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql',
+);
+const TALENT_RECORD_IMPORT_BACK_REF = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-ats-batch5-calendar-saved-list-spec';
@@ -171,10 +190,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         CALENDAR_INIT,
         SAVED_LIST_INIT,
         COMPANY_INIT,
+        COMPANY_IMPORT_BACK_REF,
         CONTACT_INIT,
+        CONTACT_IMPORT_BACK_REF,
         REQUISITION_INIT,
+        REQUISITION_IMPORT_BACK_REF,
         TALENT_RECORD_INIT,
         TALENT_RECORD_LINK_ADD,
+        TALENT_RECORD_IMPORT_BACK_REF,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
