@@ -193,6 +193,25 @@
 // accounting. The recruiter resolves either by raising the
 // requisition's `openings` count first or by placing the talent on a
 // different requisition. Total: 29 codes.
+//
+// PR-A5b-2 adds TALENT_LINK_INVALID (HTTP 422) for the TalentRecord ↔
+// Core-Talent linker's cross-schema validation refusal. Two failure
+// modes share the code (distinguished by details.reason):
+//   - 'core_talent_not_found' — the given core_talent_id does not
+//     resolve to a row in `talent.Talent` (the Core identity does not
+//     exist).
+//   - 'tenant_overlay_missing' — the Core Talent exists, but no
+//     TalentTenantOverlay exists for (talent_id, request.tenant_id);
+//     the requesting tenant has no relationship to the identity, so
+//     the link is rejected.
+// 422 (Unprocessable) fits — the request is well-formed (the id is a
+// valid UUID), but the referenced data is invalid for domain reasons.
+// Mirrors the M5 PR-3 ENGAGEMENT_REFERENCE_NOT_FOUND (422) and M4
+// PR-4 EXAMINATION_PINNED_OUTDATED precedents for cross-schema
+// validator rejections. The linker is ASSOCIATE-ONLY: it never
+// resolves identity (no findTalentByEmail surface) and never creates
+// Core rows — this code is the refusal point when the caller's chosen
+// id doesn't validate. Total: 30 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -224,6 +243,7 @@ export const ERROR_CODES = [
   'TENANT_CAPABILITY_NOT_ENTITLED',  // PR-A1b — EntitlementGuard refusal when the tenant lacks the @RequireCapability the route demands (distinct from scope-axis INSUFFICIENT_PERMISSIONS per Ruling 1)
   'INVALID_PIPELINE_TRANSITION',  // PR-A5a — pipeline state-machine canTransition guard rejected an illegal status change; the load-bearing refusal of A5a (mirrors SUBMITTAL_STATE_INVALID / ENGAGEMENT_STATE_INVALID at the ATS-domain layer)
   'REQUISITION_NO_OPENINGS',  // PR-A5b-1 — pipeline transition to `placed` refused because the target requisition's openings_available is already 0; the entire transition tx rolls back (Pipeline.status / PipelineStatusHistory / Activity / UsageEvent all reverted) — over-capacity is a data-integrity refusal, not a silent floor (Gate 5 Lead-reviewed ruling)
+  'TALENT_LINK_INVALID',  // PR-A5b-2 — TalentRecord-to-Core-Talent linker cross-schema validator refusal; details.reason ∈ {'core_talent_not_found','tenant_overlay_missing'} (the keystone's ASSOCIATE-NOT-RESOLVE refusal point)
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

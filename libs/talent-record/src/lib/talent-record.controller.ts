@@ -21,8 +21,11 @@ import {
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import type { CreateTalentRecordRequestDto } from './dto/create-talent-record-request.dto.js';
+import { LinkTalentRecordRequestDto } from './dto/link-talent-record-request.dto.js';
+import type { TalentLinkView } from './dto/talent-link.view.js';
 import type { TalentRecordView } from './dto/talent-record.view.js';
 import type { UpdateTalentRecordRequestDto } from './dto/update-talent-record-request.dto.js';
+import { TalentLinkService } from './talent-link.service.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
 
 // TalentRecordController — PR-A4 Gate 5 ATS Batch 3.
@@ -47,7 +50,10 @@ import { TalentRecordRepository } from './talent-record.repository.js';
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
 export class TalentRecordController {
-  constructor(private readonly repo: TalentRecordRepository) {}
+  constructor(
+    private readonly repo: TalentRecordRepository,
+    private readonly linkService: TalentLinkService,
+  ) {}
 
   @Get()
   @HttpCode(HttpStatus.OK)
@@ -133,6 +139,72 @@ export class TalentRecordController {
     await this.repo.delete({
       tenant_id: authContext.tenant_id,
       id,
+      requestId,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // PR-A5b-2 — Core-Talent link routes (the keystone).
+  //
+  // Scope reuse: the existing seeded `talent:read` / `talent:edit`
+  // scopes cover the read / write surface naturally. A dedicated
+  // `talent:link` scope was considered but not warranted — linking is
+  // a per-record edit (the route shape and the data shape both fit
+  // under `talent:edit`'s authority), and consolidating reduces the
+  // scope-catalog churn at the keystone. If Gate 5 finds otherwise,
+  // a dedicated scope can be added without rewriting the routes.
+  //
+  // SACRED BOUNDARIES (enforced by TalentLinkService):
+  //   - LINK-NOT-CREATE — never mutates Core.
+  //   - ASSOCIATE-NOT-RESOLVE — core_talent_id is an explicit input.
+  // -------------------------------------------------------------------------
+
+  @Get(':id/link')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:read')
+  @RequireSiteMatch()
+  async getLink(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+  ): Promise<TalentLinkView> {
+    return this.linkService.getLink({
+      tenant_id: authContext.tenant_id,
+      talent_record_id: id,
+      requestId,
+    });
+  }
+
+  @Post(':id/link')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:edit')
+  @RequireSiteMatch()
+  async link(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Body() body: LinkTalentRecordRequestDto,
+    @RequestId() requestId: string,
+  ): Promise<TalentLinkView> {
+    return this.linkService.link({
+      tenant_id: authContext.tenant_id,
+      talent_record_id: id,
+      core_talent_id: body.core_talent_id,
+      requestId,
+    });
+  }
+
+  @Delete(':id/link')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:edit')
+  @RequireSiteMatch()
+  async unlink(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+  ): Promise<TalentLinkView> {
+    return this.linkService.unlink({
+      tenant_id: authContext.tenant_id,
+      talent_record_id: id,
       requestId,
     });
   }
