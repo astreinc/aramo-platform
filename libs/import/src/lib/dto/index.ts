@@ -14,3 +14,12 @@ export type {
   ImportBatchView,
   ImportFailureView,
 } from './import-batch.view.js';
+export type { SuggestMappingRequestDto } from './suggest-mapping-request.dto.js';
+export type {
+  MappingConfidence,
+  MappingReason,
+  SuggestedFieldMapping,
+  FieldReferenceDoc,
+  SourceColumnSamples,
+  SuggestMappingResponseDto,
+} from './suggest-mapping-response.dto.js';

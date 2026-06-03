@@ -92,6 +92,21 @@ TIER2_EXCLUDES=(
   "Aramo-*-Closure-Record-*.docx"     # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1): closure records preserved for fidelity
   "eslint.config.mjs"                 # PR-1: ESLint vocabulary rule patterns literally contain anti-terms
   "scripts/verify-vocabulary.sh"      # PR-1: this script contains the patterns being searched for
+  # PR-A8-2: import-seam INBOUND-vocabulary synonym table. The talent_record
+  # identity-field synonym sets accept "candidate" / "applicant" as inbound
+  # CSV-header aliases (every OpenCATS / Dice / Indeed / legacy-ATS export
+  # carries them) — the heuristic translates them into the canonical
+  # `first_name` / `last_name` target fields at the import boundary. NEVER
+  # displayed, NEVER stored as a field name. Same translation-purpose
+  # pattern as the eslint.config.mjs and scripts/verify-vocabulary.sh
+  # entries above — a file that legitimately lists an anti-term because
+  # its job is to translate AWAY from it.
+  "libs/import/src/lib/mapping/field-catalog.ts"
+  # Paired unit spec: constructs "Candidate" / "Applicant" header strings
+  # as test input and asserts the heuristic translates them to first_name
+  # / last_name. Same lockstep pattern as the M5 PR-6 / PR-7 source +
+  # spec entries above.
+  "libs/import/src/tests/mapping-suggestion.service.spec.ts"
   # PR-M0R-2 Amendment v1.1 §4.5 (Policy 1, PO-ratified 2026-05-15):
   # refusal-enforcement script in ci/scripts/verify-*.ts legitimately
   # contains the terms it enforces against by design. Same structural

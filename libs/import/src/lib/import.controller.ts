@@ -24,7 +24,10 @@ import type {
 } from './dto/import-batch.view.js';
 import { isImportTargetEntity } from './dto/import-target-entity.js';
 import type { RunImportRequestDto } from './dto/run-import-request.dto.js';
+import type { SuggestMappingRequestDto } from './dto/suggest-mapping-request.dto.js';
+import type { SuggestMappingResponseDto } from './dto/suggest-mapping-response.dto.js';
 import { ImportService } from './import.service.js';
+import { MappingSuggestionService } from './mapping/mapping-suggestion.service.js';
 
 // ImportController — PR-A8-1 Gate 5 (the import ENGINE).
 //
@@ -71,7 +74,10 @@ import { ImportService } from './import.service.js';
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
 export class ImportController {
-  constructor(private readonly importService: ImportService) {}
+  constructor(
+    private readonly importService: ImportService,
+    private readonly mappingSuggestion: MappingSuggestionService,
+  ) {}
 
   // -------------------------------------------------------------------------
   // Read surface.
@@ -193,6 +199,67 @@ export class ImportController {
       imported_by_id: authContext.sub,
       input: body,
       requestId,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // PR-A8-2 — AI-assisted column-mapping (deterministic heuristic).
+  //
+  // POST /v1/imports/suggest-mapping returns a SuggestedMapping the
+  // user reviews/corrects before confirming into POST /v1/imports.
+  // SUGGEST-not-auto-apply: A8-2 NEVER runs an import on its own
+  // suggestion (the suggest [A8-2] → user confirms → import [A8-1]
+  // flow).
+  //
+  // Same scope as POST /v1/imports (`import:create`) — a pre-import
+  // step under the same authority. The class-level guard chain
+  // (JwtAuthGuard / EntitlementGuard / RolesGuard +
+  // @RequireCapability('ats')) gates entitlement + tenant axes; the
+  // route-level @RequireScopes + @RequireSiteMatch gate scope + site.
+  // The same A2 three-axis pattern as every other ImportController
+  // route.
+  //
+  // ADR-0015 boundary: this route's handler delegates to
+  // MappingSuggestionService — a DETERMINISTIC heuristic. NO LLM
+  // call, NO ai-draft import, NO external network. The
+  // no-llm-boundary spec asserts this structurally.
+  @Post('suggest-mapping')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('import:create')
+  @RequireSiteMatch()
+  async suggestMapping(
+    @AuthContext() _authContext: AuthContextType,
+    @Body() body: SuggestMappingRequestDto,
+    @RequestId() requestId: string,
+  ): Promise<SuggestMappingResponseDto> {
+    if (!isImportTargetEntity(body.target_entity)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `invalid target_entity: ${String(body.target_entity)}`,
+        400,
+        { requestId, details: { target_entity: body.target_entity } },
+      );
+    }
+    if (!Array.isArray(body.headers) || body.headers.some((h) => typeof h !== 'string')) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'headers must be a string[]',
+        400,
+        { requestId },
+      );
+    }
+    if (!Array.isArray(body.sample_rows)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'sample_rows must be an array of row objects',
+        400,
+        { requestId },
+      );
+    }
+    return this.mappingSuggestion.suggest({
+      target_entity: body.target_entity,
+      headers: body.headers,
+      sample_rows: body.sample_rows,
     });
   }
 
