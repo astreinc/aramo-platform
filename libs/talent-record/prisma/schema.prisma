@@ -7,9 +7,21 @@
 // PR-A4 Gate 5 (post-amendment) — the recruiter-facing ATS talent
 // record. Renamed from "libs/talent" to avoid collision with the
 // pre-existing Core libs/talent (tenant-AGNOSTIC identity Talent +
-// TalentTenantOverlay, PR-10 baseline). This lib is STANDALONE —
-// NO link to Core `talent.Talent` at this batch (the Core-Talent
-// adapter is A5's responsibility per amendment §3 / §5).
+// TalentTenantOverlay, PR-10 baseline).
+//
+// PR-A5b-2 (the keystone) — the Core-Talent link lands here as an
+// additive nullable `core_talent_id` column referencing
+// `talent.Talent.id` (Architecture v2.0 §7.3 — UUID-only, no FK).
+// The link is set/cleared by TalentLinkService, NEVER by a free PATCH
+// (the service runs the two-step in-tenant gate: (1) Talent identity
+// exists in Core, (2) this tenant has an overlay for it). The link
+// column is the ATS side ONLY — Core `talent.*` schema is unchanged.
+// SACRED BOUNDARIES: LINK-NOT-CREATE (the linker NEVER calls
+// createTalent / createOverlay — proven structurally by the
+// integration spec's bit-identical talent.* row-counts) and
+// ASSOCIATE-NOT-RESOLVE (the linker takes core_talent_id as an
+// explicit input; the lib carries no `findTalentByEmail` /
+// resolveIdentity surface — proven by absence).
 //
 // Refusals enforced structurally:
 //   - R10 — NO portal-forbidden numeric/ordinal fields. The talent
@@ -78,15 +90,30 @@ model TalentRecord {
   owner_id      String? @db.Uuid
   entered_by_id String? @db.Uuid
 
+  // PR-A5b-2 — the Core-Talent link (the keystone of the ATS↔Core
+  // seam). Logical cross-schema reference to `talent.Talent.id`
+  // (Architecture §7.3 — UUID-only, no FK). Nullable: an UNLINKED
+  // TalentRecord is valid (most records start unlinked). Set ONLY by
+  // TalentLinkService via the dedicated /link routes; the in-tenant
+  // gate is the existence of a TalentTenantOverlay for
+  // (talent_id = core_talent_id, tenant_id = record.tenant_id).
+  // LINK-NOT-CREATE: the linker NEVER mutates Core. ASSOCIATE-NOT-
+  // RESOLVE: the linker takes this id as an explicit input; the lib
+  // carries no identity-resolution surface.
+  core_talent_id String? @db.Uuid
+
   // Timestamps.
   created_at DateTime @default(now()) @db.Timestamptz
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
 
   // Indexes — every query path leads with tenant_id; (last, first)
-  // serves the dominant "search by name" recruiter query path.
+  // serves the dominant "search by name" recruiter query path. PR-A5b-2
+  // adds (tenant, core_talent_id) for the "which records in tenant are
+  // linked to this Core Talent" query.
   @@index([tenant_id, last_name, first_name])
   @@index([tenant_id, site_id])
   @@index([tenant_id, is_hot])
+  @@index([tenant_id, core_talent_id])
 
   @@schema("talent_record")
 }

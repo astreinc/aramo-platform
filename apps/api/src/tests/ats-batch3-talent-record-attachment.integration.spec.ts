@@ -53,6 +53,12 @@ const TALENT_RECORD_INIT = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
 );
+// PR-A5b-2 — additive core_talent_id column (the keystone link). Applied
+// AFTER TALENT_RECORD_INIT so the ALTER TABLE finds its target.
+const TALENT_RECORD_LINK_ADD = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260603020000_add_core_talent_link_to_talent_record/migration.sql',
+);
 const ATTACHMENT_INIT = resolve(
   ROOT,
   'libs/attachment/prisma/migrations/20260602120000_init_attachment_model/migration.sql',
@@ -143,7 +149,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new Client({ connectionString: url });
       await setupClient.connect();
 
-      for (const p of [ENTITLEMENT_INIT, TALENT_RECORD_INIT, ATTACHMENT_INIT]) {
+      for (const p of [
+        ENTITLEMENT_INIT,
+        TALENT_RECORD_INIT,
+        TALENT_RECORD_LINK_ADD,
+        ATTACHMENT_INIT,
+      ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 

@@ -4,6 +4,12 @@
 // ONLY. There is NO portal-forbidden numeric / ordinal field. Test
 // ats-batch3-talent-record-attachment.integration.spec.ts asserts this
 // structurally at runtime.
+//
+// PR-A5b-2 adds `core_talent_id` — the Core-Talent link (nullable; null
+// for unlinked records, populated by TalentLinkService when the record
+// has been associated with a Core Talent identity). The PATCH update
+// surface deliberately excludes this field so the link can only be
+// set via the dedicated /link routes (which run the in-tenant gate).
 export interface TalentRecordView {
   id: string;
   tenant_id: string;
@@ -33,6 +39,7 @@ export interface TalentRecordView {
   best_time_to_call: string | null;
   owner_id: string | null;
   entered_by_id: string | null;
+  core_talent_id: string | null;
   created_at: string;
   updated_at: string;
 }

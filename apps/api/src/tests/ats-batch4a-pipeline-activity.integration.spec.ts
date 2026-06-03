@@ -100,6 +100,15 @@ const TALENT_RECORD_INIT = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
 );
+// PR-A5b-2 — additive core_talent_id column. Applied AFTER
+// TALENT_RECORD_INIT so the ALTER TABLE finds its target. Required
+// here (even though A5a/A5b-1 don't exercise the link) for schema
+// parity — the live Prisma client compiled against the schema expects
+// the column to exist.
+const TALENT_RECORD_LINK_ADD = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260603020000_add_core_talent_link_to_talent_record/migration.sql',
+);
 const ACTIVITY_INIT = resolve(
   ROOT,
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
@@ -120,6 +129,7 @@ const MIGRATIONS = [
   METERING_INIT,
   REQUISITION_INIT,
   TALENT_RECORD_INIT,
+  TALENT_RECORD_LINK_ADD,
   ACTIVITY_INIT,
   PIPELINE_INIT,
 ];

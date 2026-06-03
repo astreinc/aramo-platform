@@ -1,4 +1,11 @@
 // UpdateTalentRecordRequestDto — PATCH /v1/talent-records/:id payload.
+//
+// PR-A5b-2: `core_talent_id` is DELIBERATELY EXCLUDED. The Core-Talent
+// link is owned by TalentLinkService and set only via the dedicated
+// POST/DELETE /v1/talent-records/:id/link routes (which run the
+// in-tenant gate via TalentRepository.findOverlayByTenant). The
+// allowlist-walk in TalentRecordRepository.update structurally
+// prevents any free-form column update from setting the link.
 export interface UpdateTalentRecordRequestDto {
   first_name?: string;
   last_name?: string;

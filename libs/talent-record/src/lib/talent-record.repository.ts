@@ -45,6 +45,8 @@ interface TalentRecordRow {
   best_time_to_call: string | null;
   owner_id: string | null;
   entered_by_id: string | null;
+  // PR-A5b-2 — the Core-Talent link (nullable; null for unlinked).
+  core_talent_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -80,6 +82,7 @@ function projectView(row: TalentRecordRow): TalentRecordView {
     best_time_to_call: row.best_time_to_call,
     owner_id: row.owner_id,
     entered_by_id: row.entered_by_id,
+    core_talent_id: row.core_talent_id,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -231,5 +234,49 @@ export class TalentRecordRepository {
       );
     }
     await this.prisma.talentRecord.delete({ where: { id: args.id } });
+  }
+
+  // -------------------------------------------------------------------------
+  // PR-A5b-2 — Core-Talent link write surface (data-only).
+  //
+  // setLink / clearLink are PRIMITIVE column writes — no cross-lib
+  // validation lives here. The two-step in-tenant gate
+  // (Talent exists in Core + tenant has an overlay) is run by
+  // TalentLinkService BEFORE calling these methods. Both calls are
+  // tenant-scoped at the row level (WHERE id = :id AND tenant_id = :t)
+  // so a controller mistake cannot set the link on a row from a
+  // different tenant.
+  // -------------------------------------------------------------------------
+
+  async setLink(args: {
+    tenant_id: string;
+    id: string;
+    core_talent_id: string;
+  }): Promise<TalentRecordView | null> {
+    const result = await this.prisma.talentRecord.updateMany({
+      where: { id: args.id, tenant_id: args.tenant_id },
+      data: { core_talent_id: args.core_talent_id },
+    });
+    if (result.count === 0) {
+      // Row was not in tenant (or vanished) — caller handles as
+      // NOT_FOUND. We don't throw here so the read-after-write below
+      // is the single fetch point.
+      return null;
+    }
+    return this.findById({ tenant_id: args.tenant_id, id: args.id });
+  }
+
+  async clearLink(args: {
+    tenant_id: string;
+    id: string;
+  }): Promise<TalentRecordView | null> {
+    const result = await this.prisma.talentRecord.updateMany({
+      where: { id: args.id, tenant_id: args.tenant_id },
+      data: { core_talent_id: null },
+    });
+    if (result.count === 0) {
+      return null;
+    }
+    return this.findById({ tenant_id: args.tenant_id, id: args.id });
   }
 }
