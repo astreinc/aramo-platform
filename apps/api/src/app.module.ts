@@ -8,6 +8,7 @@ import { ActivityModule } from '@aramo/activity';
 import { AttachmentModule } from '@aramo/attachment';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
+import { CalendarModule } from '@aramo/calendar';
 import { CompanyModule } from '@aramo/company';
 import { ConsentModule } from '@aramo/consent';
 import { ContactModule } from '@aramo/contact';
@@ -19,6 +20,7 @@ import { OutboxPublisherModule } from '@aramo/outbox-publisher';
 import { PipelineModule } from '@aramo/pipeline';
 import { PortalModule } from '@aramo/portal';
 import { RequisitionModule } from '@aramo/requisition';
+import { SavedListModule } from '@aramo/saved-list';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { SubmittalModule } from '@aramo/submittal';
 import { TalentRecordModule } from '@aramo/talent-record';
@@ -89,6 +91,27 @@ import { TalentRecordModule } from '@aramo/talent-record';
     // is A5b.
     ActivityModule,
     PipelineModule,
+    // PR-A6 Gate 5+6 (combined) — ATS finishers batch 5: calendar +
+    // saved-list. Both are pattern-reuse leaves with NO new design
+    // decision (the combined-mode guardrail held — no fork surfaced):
+    //   - CalendarModule is STANDALONE (no domain dep). Owner-or-admin
+    //     edit/delete predicate (the A3 shape, single-owner field):
+    //     recruiter holding `calendar:event-edit` edits OWN events;
+    //     actors in the tenant_admin tier (proxy: scopes include
+    //     `calendar:event-delete`) edit any. Non-owner recruiter edit
+    //     → 404 NOT_FOUND (A3 info-leak-closing precedent).
+    //   - SavedListModule depends on {company, contact, requisition,
+    //     talent-record} for service-layer owner validation (the A4
+    //     attachment shape generalized — all 4 ATS entities are now
+    //     live, so all 4 owner paths are wired vs. A4's 1-of-4 stub).
+    //     Homogeneity invariant: a SavedList.item_type fixes the type
+    //     of all its entries (per-add mismatch → 422
+    //     SAVED_LIST_ITEM_TYPE_MISMATCH). Static lists only — the
+    //     OpenCATS dynamic-list path is dormant (directive §8).
+    // None of the 4 entity modules imports SavedListModule — all 4
+    // edges are forward; no cycle (lint:nx-boundaries enforces).
+    CalendarModule,
+    SavedListModule,
     // M5 PR-11 §4.5/§4.6 — SkillsTaxonomyModule registers the
     // skill-canonicalization queue + no-op processor (Architecture v2.1
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).

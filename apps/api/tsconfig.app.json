@@ -14,6 +14,7 @@
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
       "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
+      "@aramo/calendar": ["../../dist/libs/calendar/src/index.d.ts"],
       "@aramo/company": ["../../dist/libs/company/src/index.d.ts"],
       "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
       "@aramo/contact": ["../../dist/libs/contact/src/index.d.ts"],
@@ -27,6 +28,7 @@
       "@aramo/pipeline": ["../../dist/libs/pipeline/src/index.d.ts"],
       "@aramo/portal": ["../../dist/libs/portal/src/index.d.ts"],
       "@aramo/requisition": ["../../dist/libs/requisition/src/index.d.ts"],
+      "@aramo/saved-list": ["../../dist/libs/saved-list/src/index.d.ts"],
       "@aramo/skills-taxonomy": ["../../dist/libs/skills-taxonomy/src/index.d.ts"],
       "@aramo/submittal": ["../../dist/libs/submittal/src/index.d.ts"],
       "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"]

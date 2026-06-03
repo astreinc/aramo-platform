@@ -32,6 +32,11 @@ export default defineConfig({
       // @aramo/authorization alias so vitest runtime resolves the
       // AppModule import (apps/api wires AuthorizationModule).
       '@aramo/authorization': resolve(root, 'libs/authorization/src/index.ts'),
+      // PR-A6 Gate 5+6 (combined) — calendar leaf (recruiter-facing
+      // event log; owner-or-admin edit/delete predicate, the A3 shape).
+      // Mirrors tsconfig.base.json alias so vitest runtime resolves
+      // the apps/api AppModule import + the A6 integration spec.
+      '@aramo/calendar': resolve(root, 'libs/calendar/src/index.ts'),
       '@aramo/consent': resolve(root, 'libs/consent/src/index.ts'),
       // PR-A2 Gate 5 — first ATS-domain leaves (company + contact). Mirrors
       // tsconfig.base.json aliases so vitest runtime resolves the AppModule
@@ -81,6 +86,11 @@ export default defineConfig({
       // tsconfig.base.json alias so vitest runtime resolves the
       // AppModule import + the assignment-visibility integration spec.
       '@aramo/requisition': resolve(root, 'libs/requisition/src/index.ts'),
+      // PR-A6 Gate 5+6 (combined) — saved-list leaf (typed-polymorphic
+      // static-list, the A4 shape generalized to all 4 ATS entities).
+      // Mirrors tsconfig.base.json alias so vitest runtime resolves
+      // the apps/api AppModule import + the A6 integration spec.
+      '@aramo/saved-list': resolve(root, 'libs/saved-list/src/index.ts'),
       '@aramo/skills-taxonomy': resolve(root, 'libs/skills-taxonomy/src/index.ts'),
       '@aramo/submittal': resolve(root, 'libs/submittal/src/index.ts'),
       '@aramo/talent': resolve(root, 'libs/talent/src/index.ts'),

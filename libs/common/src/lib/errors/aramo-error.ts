@@ -46,6 +46,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   INVALID_PIPELINE_TRANSITION: 422,
   REQUISITION_NO_OPENINGS: 409,
   TALENT_LINK_INVALID: 422,
+  SAVED_LIST_ITEM_TYPE_MISMATCH: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

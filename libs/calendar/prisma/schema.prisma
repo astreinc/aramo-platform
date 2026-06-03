@@ -1,0 +1,86 @@
+// Per-module Prisma schema for the `calendar` module — PR-A6 (ATS finishers).
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
+// and doc/05-conventions.md "Database Conventions". Cross-schema
+// references UUID-only without FK constraints (§7.3).
+//
+// PR-A6 Gate 5+6 (combined) — the ATS calendar finisher. CalendarEvent is
+// the recruiter-facing event row (call / email / meeting / interview /
+// personal / other). Pure reference-CRUD (Ruling 7: no state machine,
+// no event log, no metering, no outbox).
+//
+// Owner-or-admin edit/delete predicate (the A3 shape — assignment
+// visibility, reapplied to a single-owner field):
+//   - calendar:event-create (recruiter+) → may create.
+//   - calendar:event-edit (recruiter+) → may edit OWN events
+//     (owner_id == AuthContext.sub).
+//   - calendar:event-delete (tenant_admin only — Ruling 1 destructive)
+//     → may delete (and serves as the see-all-edit-all tenant_admin tier
+//     proxy: actors holding it may edit any tenant event).
+//   - A non-owner recruiter editing another's event → 404 NOT_FOUND
+//     (mirrors A3's info-leak-closing choice — the row is outside the
+//     actor's visible set, not a forbidden action).
+//
+// Cross-schema references (Architecture §7.3 — UUID-only, no FK):
+//   - owner_id: logical identity.User reference (the recruiter who
+//     entered the event).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["calendar"]
+}
+
+// CalendarEventType — closed list of OpenCATS-port event kinds. Locked
+// vocabulary (R12): all values are domain-neutral and Tier-2-clean.
+enum CalendarEventType {
+  call
+  email
+  meeting
+  interview
+  personal
+  other
+
+  @@schema("calendar")
+}
+
+// CalendarEvent — recruiter-facing calendar row. Tenant + site scoped.
+// owner_id identifies the recruiter who entered the event; the owner
+// predicate (service-layer) governs edit/delete.
+model CalendarEvent {
+  // Identity.
+  id        String  @id @default(uuid()) @db.Uuid
+  tenant_id String  @db.Uuid
+  site_id   String? @db.Uuid
+
+  // Owner — the recruiter who entered the event. Required.
+  owner_id String @db.Uuid
+
+  // Classification.
+  type CalendarEventType
+
+  // Content.
+  title       String
+  description String?
+
+  // Time window.
+  starts_at DateTime  @db.Timestamptz
+  ends_at   DateTime? @db.Timestamptz
+  all_day   Boolean   @default(false)
+
+  // Timestamps.
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  // Indexes — canonical tenant-axis lead + the dominant
+  // "events I own" + "events in a window" lookups.
+  @@index([tenant_id, owner_id])
+  @@index([tenant_id, starts_at])
+  @@index([tenant_id, site_id])
+
+  @@schema("calendar")
+}
