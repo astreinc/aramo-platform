@@ -8,6 +8,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { v7 as uuidv7 } from 'uuid';
+import { PrismaService as CanonicalizationPrismaService } from '@aramo/canonicalization';
 import { PrismaService as ConsentPrismaService, OutboxPublisherRepository } from '@aramo/consent';
 import { PrismaService as EngagementPrismaService } from '@aramo/engagement';
 import { PrismaService as SubmittalPrismaService } from '@aramo/submittal';
@@ -16,6 +17,9 @@ import { OutboxPublisherModule } from '../lib/outbox-publisher.module.js';
 import { OUTBOX_PUBLISHER_QUEUE_NAME } from '../lib/outbox-publisher.queue.constants.js';
 
 // M6 PR-2 §5 Cat 5 — multi-schema outbox publisher integration spec.
+// T2-2b — extended to prove the 4th-schema drain (canonicalization;
+// the talent.canonicalized events T2-2a writes in-tx are now consumed +
+// published, and the existing three schemas continue to drain).
 //
 // Relocated from libs/consent/src/tests at M6 PR-2 §4 (the publisher
 // itself relocated to libs/outbox-publisher). Extended to prove:
@@ -23,9 +27,13 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from '../lib/outbox-publisher.queue.const
 //         3-/4-write $transaction array form);
 //   (ii)  tx rollback leaves NO orphan outbox row;
 //   (iii) the relocated publisher drains consent + engagement +
-//         submittal OutboxEvent tables in a single tick.
+//         submittal + canonicalization OutboxEvent tables in a single
+//         tick (the T2-2b 4th-schema drain — talent.canonicalized
+//         events are consumed; payload is R10-clean: talent_id +
+//         tenant_id + resolution_method + payload_id, no tier/score/
+//         rank/match).
 //
-// MIGRATIONS apply-list (9 files, dependency-ordered):
+// MIGRATIONS apply-list (10 files, dependency-ordered):
 //   1. libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql
 //   2. libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql
 //   3. libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql
@@ -35,6 +43,7 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from '../lib/outbox-publisher.queue.const
 //   7. libs/submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql
 //   8. libs/submittal/prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql
 //   9. libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql
+//  10. libs/canonicalization/prisma/migrations/20260603160000_init_canonicalization_schema/migration.sql
 //
 // PL-66 Cat 5 contract: real Redis 7 + Postgres 17 testcontainers; no
 // mocks for the database or queue.
@@ -49,6 +58,7 @@ const MIGRATION_FILES: ReadonlyArray<readonly [string, string]> = [
   ['submittal-event-log', '../../../submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql'],
   ['submittal-rename', '../../../submittal/prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql'],
   ['submittal-outbox', '../../../submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'],
+  ['canonicalization-init', '../../../canonicalization/prisma/migrations/20260603160000_init_canonicalization_schema/migration.sql'],
 ];
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
@@ -61,6 +71,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let consentPrisma: ConsentPrismaService;
     let engagementPrisma: EngagementPrismaService;
     let submittalPrisma: SubmittalPrismaService;
+    let canonicalizationPrisma: CanonicalizationPrismaService;
     let moduleRef: TestingModule;
     let publisherQueue: Queue;
     let savedRedisUrl: string | undefined;
@@ -99,10 +110,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       consentPrisma = new ConsentPrismaService(pgUrl);
       engagementPrisma = new EngagementPrismaService(pgUrl);
       submittalPrisma = new SubmittalPrismaService(pgUrl);
+      canonicalizationPrisma = new CanonicalizationPrismaService(pgUrl);
       await Promise.all([
         consentPrisma.$connect(),
         engagementPrisma.$connect(),
         submittalPrisma.$connect(),
+        canonicalizationPrisma.$connect(),
       ]);
 
       savedRedisUrl = process.env['REDIS_URL'];
@@ -119,6 +132,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .useValue(engagementPrisma)
         .overrideProvider(SubmittalPrismaService)
         .useValue(submittalPrisma)
+        .overrideProvider(CanonicalizationPrismaService)
+        .useValue(canonicalizationPrisma)
         .compile();
 
       const app = moduleRef.createNestApplication();
@@ -149,15 +164,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consentPrisma?.$disconnect(),
         engagementPrisma?.$disconnect(),
         submittalPrisma?.$disconnect(),
+        canonicalizationPrisma?.$disconnect(),
       ]);
       await Promise.all([redisContainer?.stop(), pgContainer?.stop()]);
     }, 60_000);
 
-    // (iii) Publisher drains rows from all three schemas in one tick.
-    it('drains consent + engagement + submittal OutboxEvent rows; preserves pre-published rows', async () => {
+    // (iii) Publisher drains rows from all four schemas in one tick.
+    // T2-2b — adds the canonicalization 4th-schema participant + an
+    // R10-clean payload assertion on the talent.canonicalized event
+    // (no tier / score / rank / match — only talent_id + tenant_id +
+    // resolution_method + payload_id, per T2-2a's emission shape).
+    it('drains consent + engagement + submittal + canonicalization OutboxEvent rows; preserves pre-published rows', async () => {
       const preExistingPublishedAt = new Date('2025-01-01T00:00:00Z');
 
-      // Seed 2 unpublished rows per schema (6 total).
+      // Seed 2 unpublished rows per schema (8 total).
       for (let i = 0; i < 2; i++) {
         await consentPrisma.outboxEvent.create({
           data: {
@@ -183,14 +203,34 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             event_payload: { idx: i } as never,
           },
         });
+        // T2-2b — talent.canonicalized payload mirrors T2-2a's emission
+        // (CanonicalizationRepository.canonicalize): talent_id +
+        // tenant_id + resolution_method + payload_id. R10-clean.
+        await canonicalizationPrisma.outboxEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: TENANT_A,
+            event_type: 'talent.canonicalized',
+            event_payload: {
+              talent_id: uuidv7(),
+              tenant_id: TENANT_A,
+              resolution_method: 'caller_supplied',
+              payload_id: uuidv7(),
+            } as never,
+          },
+        });
       }
 
-      // Seed 1 already-published row per schema (3 total) to prove the
+      // Seed 1 already-published row per schema (4 total) to prove the
       // publisher does NOT re-stamp them.
-      const prePublished: Record<'consent' | 'engagement' | 'submittal', string> = {
+      const prePublished: Record<
+        'consent' | 'engagement' | 'submittal' | 'canonicalization',
+        string
+      > = {
         consent: uuidv7(),
         engagement: uuidv7(),
         submittal: uuidv7(),
+        canonicalization: uuidv7(),
       };
       await consentPrisma.outboxEvent.create({
         data: {
@@ -219,6 +259,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           published_at: preExistingPublishedAt,
         },
       });
+      await canonicalizationPrisma.outboxEvent.create({
+        data: {
+          id: prePublished.canonicalization,
+          tenant_id: TENANT_A,
+          event_type: 'talent.canonicalized',
+          event_payload: {
+            talent_id: uuidv7(),
+            tenant_id: TENANT_A,
+            resolution_method: 'caller_supplied',
+            payload_id: uuidv7(),
+          } as never,
+          published_at: preExistingPublishedAt,
+        },
+      });
 
       await publisherQueue.add('tick', {});
 
@@ -237,7 +291,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Assert: each schema has 3 published rows total (2 newly drained
       // + 1 pre-published).
-      const [consentPublished, engagementPublished, submittalPublished] = await Promise.all([
+      const [
+        consentPublished,
+        engagementPublished,
+        submittalPublished,
+        canonicalizationPublished,
+      ] = await Promise.all([
         consentPrisma.outboxEvent.findMany({
           where: { tenant_id: TENANT_A, published_at: { not: null } },
         }),
@@ -247,22 +306,55 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         submittalPrisma.outboxEvent.findMany({
           where: { tenant_id: TENANT_A, published_at: { not: null } },
         }),
+        canonicalizationPrisma.outboxEvent.findMany({
+          where: { tenant_id: TENANT_A, published_at: { not: null } },
+        }),
       ]);
       expect(consentPublished).toHaveLength(3);
       expect(engagementPublished).toHaveLength(3);
       expect(submittalPublished).toHaveLength(3);
+      expect(canonicalizationPublished).toHaveLength(3);
 
-      // Assert: pre-existing published_at values are preserved on all 3
+      // T2-2b — R10-clean payload assertion on the drained
+      // talent.canonicalized events: the published rows carry only
+      // {talent_id, tenant_id, resolution_method, payload_id}; no
+      // tier / score / rank / match keys (vocab-clean per the R10
+      // boundary).
+      const forbidden = ['tier', 'score', 'rank', 'match'];
+      const drainedCanonical = canonicalizationPublished.filter(
+        (row) => row.id !== prePublished.canonicalization,
+      );
+      expect(drainedCanonical).toHaveLength(2);
+      for (const row of drainedCanonical) {
+        expect(row.event_type).toBe('talent.canonicalized');
+        const payload = row.event_payload as Record<string, unknown>;
+        expect(Object.keys(payload).sort()).toEqual([
+          'payload_id',
+          'resolution_method',
+          'talent_id',
+          'tenant_id',
+        ]);
+        for (const banned of forbidden) {
+          expect(
+            Object.keys(payload).some((k) => k.toLowerCase().includes(banned)),
+            `payload key contains forbidden vocab '${banned}'`,
+          ).toBe(false);
+        }
+      }
+
+      // Assert: pre-existing published_at values are preserved on all 4
       // pre-published rows.
       for (const [schema, id] of Object.entries(prePublished) as ReadonlyArray<
-        ['consent' | 'engagement' | 'submittal', string]
+        ['consent' | 'engagement' | 'submittal' | 'canonicalization', string]
       >) {
         const client =
           schema === 'consent'
             ? consentPrisma
             : schema === 'engagement'
               ? engagementPrisma
-              : submittalPrisma;
+              : schema === 'submittal'
+                ? submittalPrisma
+                : canonicalizationPrisma;
         const row = await client.outboxEvent.findUnique({ where: { id } });
         expect(row?.published_at?.getTime(), `pre-published ${schema} row`).toBe(
           preExistingPublishedAt.getTime(),
@@ -394,8 +486,27 @@ function splitDdl(sql: string): string[] {
   const out: string[] = [];
   let current = '';
   let inDollar = false;
+  let inLineComment = false;
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i];
+    if (inLineComment) {
+      current += ch;
+      if (ch === '\n') {
+        inLineComment = false;
+      }
+      continue;
+    }
+    if (!inDollar && sql.startsWith('--', i)) {
+      // T2-2b — skip `;` inside `-- ...` line comments. The
+      // canonicalization init migration carries a `;` inside its
+      // header comment block ("...(talent, talent_evidence, ingestion)
+      // already exist;..."); without this guard the splitter cuts the
+      // header in two and feeds the comment-tail to the DB as SQL.
+      inLineComment = true;
+      current += '--';
+      i += 1;
+      continue;
+    }
     if (sql.startsWith('$$', i)) {
       inDollar = !inDollar;
       current += '$$';

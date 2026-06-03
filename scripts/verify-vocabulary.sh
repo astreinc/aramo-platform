@@ -211,6 +211,12 @@ TIER2_EXCLUDES=(
   # libs/engagement/src/lib/engagement.repository.ts above).
   "libs/canonicalization/src/tests/canonicalization.tripwires.spec.ts"
   "libs/canonicalization/src/lib/canonicalization.repository.ts"
+  # T2-2b — outbox-publisher integration spec asserts the drained
+  # talent.canonicalized payload is R10-clean by enumerating the
+  # forbidden vocabulary (tier/score/rank/match) as a negative-shape
+  # anti-token list. Same structural pattern + same Charter-Level
+  # rationale as the canonicalization.tripwires.spec.ts entry above.
+  "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts"
   "pact/consumers/ats-thin/src/engagement-create.consumer.test.ts"
   "pact/consumers/ats-thin/src/engagement-transition.consumer.test.ts"
   "pact/consumers/ats-thin/src/engagement-reads.consumer.test.ts"
