@@ -1446,6 +1446,16 @@ components:
         (defense-in-depth; application-layer guard returns structured
         error before SQL UPDATE attempt). Mirrors M5 PR-3
         ENGAGEMENT_STATE_INVALID precedent.
+        PR-A5b-1 adds REQUISITION_NO_OPENINGS (HTTP 409) for the
+        pipeline-transition-to-`placed` over-capacity refusal: a
+        placement against a requisition whose openings_available has
+        been exhausted (== 0) refuses the entire transition tx
+        (Pipeline.status / PipelineStatusHistory / Activity /
+        UsageEvent all roll back). 409 (Conflict) — the request is
+        well-formed but conflicts with current resource state (the
+        slot is taken). The Lead-reviewed alternatives (silent floor
+        at 0, allow-and-go-negative-with-warning) were rejected as
+        data-integrity hazards.
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1477,6 +1487,7 @@ components:
         - CONSENT_NOT_GRANTED_AT_SEND
         - TENANT_CAPABILITY_NOT_ENTITLED
         - INVALID_PIPELINE_TRANSITION
+        - REQUISITION_NO_OPENINGS
 
     ErrorObject:
       type: object
