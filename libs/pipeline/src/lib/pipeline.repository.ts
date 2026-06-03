@@ -397,10 +397,20 @@ export class PipelineRepository {
    * List pipelines. Optionally filter by requisition_id or talent_record_id
    * (the dominant recruiter-UI queries: "all talents on this req" and
    * "all reqs for this talent"). Tenant-scoped throughout.
+   *
+   * PR-A8-4 — `requisition_ids` (plural) accepts the A3-visible
+   * requisition set resolved upstream. This is the same shape as
+   * `count`'s `requisition_ids` arg (PR-A7) — pipeline.requisition_id
+   * is a cross-schema logical UUID so Prisma can't traverse the
+   * assignment relation in-query; the role-visibility predicate is
+   * composed at the consuming service layer (export / reporting).
+   * `requisition_id` (singular) and `requisition_ids` (plural) are
+   * mutually exclusive — the export caller never sets both.
    */
   async list(args: {
     tenant_id: string;
     requisition_id?: string;
+    requisition_ids?: readonly string[];
     talent_record_id?: string;
     limit?: number;
   }): Promise<PipelineView[]> {
@@ -411,6 +421,9 @@ export class PipelineRepository {
         ...(args.requisition_id === undefined
           ? {}
           : { requisition_id: args.requisition_id }),
+        ...(args.requisition_ids === undefined
+          ? {}
+          : { requisition_id: { in: [...args.requisition_ids] } }),
         ...(args.talent_record_id === undefined
           ? {}
           : { talent_record_id: args.talent_record_id }),

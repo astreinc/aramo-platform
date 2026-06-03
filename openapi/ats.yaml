@@ -1235,6 +1235,110 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/exports/{entity_type}:
+    get:
+      operationId: exportEntity
+      summary: Export ATS entities as RFC-4180 CSV (PR-A8-4).
+      description: |
+        Exports ATS rows visible to the actor as a CSV download.
+
+        R10 boundary (load-bearing, structural): emits ATS fields ONLY —
+        company / contact / requisition / talent_record / pipeline.
+        NO Core tier / score / match / examination / engagement /
+        submittal column appears. The export lib reads NO Core schema
+        (the lint:nx-boundaries graph for libs/export has zero Core
+        edges; the integration spec verifies it by omitting every
+        Core migration from the test container and asserting the
+        routes still serve 200). A CSV travels, which is the highest-
+        risk R10 surface — this is why the boundary is structural,
+        not a runtime filter.
+
+        A3-visibility (load-bearing): a recruiter (`requisition:read`
+        only) exports own-visible rows — assigned requisitions and
+        pipelines on those requisitions (via the assignments-some
+        predicate). tenant_admin (`requisition:read:all`) exports
+        tenant-wide. Reference-entity exports (company / contact /
+        talent_record) are tenant-wide for BOTH roles — A3 is
+        assignment-keyed and the A7 precedent set that it does not
+        apply to reference data. Export is NOT a visibility-bypass.
+
+        Column selection: the optional `columns` query parameter
+        accepts a comma-separated list of ATS field names. Default:
+        all columns. An unknown column → 400 VALIDATION_ERROR.
+
+        CSV format: RFC-4180 — fields containing `,`, `"`, CR, or LF
+        are double-quote-wrapped with embedded `"` doubled (`""`);
+        records terminated by CRLF. Headers are the canonical Aramo
+        ATS field names — the talent_record export NEVER carries
+        "candidate" / "applicant" (the inbound vocabulary alias is
+        import-only; outbound speaks Talent).
+
+        Refusal codes (closed list at PR-A8-4):
+          - 400 VALIDATION_ERROR — invalid entity_type, unknown column,
+            invalid limit, or too many columns requested.
+          - 401 AUTH_REQUIRED — missing/invalid JWT.
+          - 403 INSUFFICIENT_PERMISSIONS — missing `export:read` scope.
+          - 403 TENANT_CAPABILITY_NOT_ENTITLED — tenant lacks the
+            'ats' capability.
+      parameters:
+        - name: entity_type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - company
+              - contact
+              - requisition
+              - talent_record
+              - pipeline
+        - name: columns
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Comma-separated list of ATS field names to include. Default:
+            every column in the entity's catalog. An unknown column →
+            400 VALIDATION_ERROR.
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: |
+            Site-axis filter. RequireSiteMatch enforces that the JWT
+            site claim matches when present.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+          description: |
+            Maximum number of rows. Default 5000; max 10000. A
+            streaming bulk-export endpoint is a separate later batch.
+      responses:
+        '200':
+          description: |
+            RFC-4180 CSV body. Header row uses canonical Aramo ATS
+            field names. Content-Disposition is set by the controller
+            so a browser download is named exports-<entity>.csv.
+          content:
+            text/csv:
+              schema:
+                type: string
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant

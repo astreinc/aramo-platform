@@ -259,6 +259,19 @@ export default [
       // entries above (the assertion file needs the exemption the
       // source file needs).
       'libs/import/src/tests/mapping-suggestion.service.spec.ts',
+      // PR-A8-4: OUTBOUND-vocabulary enforcement. The export field-
+      // catalog unit spec + the integration spec carry an anti-token
+      // list containing `candidate` / `applicant` / `joborder`
+      // precisely because they assert the export's CSV header row
+      // contains ZERO of those tokens (export speaks Talent; the
+      // inbound carve-out at libs/import does NOT apply outbound).
+      // Same refusal-enforcement-by-listing-the-anti-terms pattern
+      // as the pre-existing PR-A8-2 + ci/scripts/verify-*.ts entries
+      // above. Lockstep with the matching scripts/verify-vocabulary.sh
+      // TIER2_EXCLUDES entries (the vocabulary enforcement has two
+      // surfaces; exclusions applied to both per the PR-A1a precedent).
+      'libs/export/src/tests/field-catalog.spec.ts',
+      'apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',

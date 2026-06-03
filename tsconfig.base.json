@@ -41,6 +41,7 @@
       "@aramo/entitlement": ["libs/entitlement/src/index.ts"],
       "@aramo/entrustability": ["libs/entrustability/src/index.ts"],
       "@aramo/events": ["libs/events/src/index.ts"],
+      "@aramo/export": ["libs/export/src/index.ts"],
       "@aramo/evidence": ["libs/evidence/src/index.ts"],
       "@aramo/examination": ["libs/examination/src/index.ts"],
       "@aramo/identity": ["libs/identity/src/index.ts"],

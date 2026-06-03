@@ -59,6 +59,11 @@ export default defineConfig({
       '@aramo/events': resolve(root, 'libs/events/src/index.ts'),
       '@aramo/evidence': resolve(root, 'libs/evidence/src/index.ts'),
       '@aramo/examination': resolve(root, 'libs/examination/src/index.ts'),
+      // PR-A8-4 Gate 5 — export leaf (ATS CSV export, R10 + A3-visibility
+      // guarded). Mirrors tsconfig.base.json @aramo/export alias so the
+      // vitest runtime resolves the AppModule import (apps/api wires
+      // ExportModule) and the apps/api integration spec.
+      '@aramo/export': resolve(root, 'libs/export/src/index.ts'),
       '@aramo/identity': resolve(root, 'libs/identity/src/index.ts'),
       // PR-A8-1 Gate 5 — import-engine leaf (audited reversible batches
       // + partial-commit). Mirrors tsconfig.base.json alias so vitest
