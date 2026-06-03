@@ -107,6 +107,17 @@ TIER2_EXCLUDES=(
   # / last_name. Same lockstep pattern as the M5 PR-6 / PR-7 source +
   # spec entries above.
   "libs/import/src/tests/mapping-suggestion.service.spec.ts"
+  # PR-A8-4: OUTBOUND-vocabulary enforcement. The export field-catalog
+  # unit spec + the integration spec carry an anti-token list containing
+  # `candidate` / `applicant` / `joborder` precisely because they assert
+  # the export's CSV header row contains ZERO of these tokens (export
+  # speaks Talent; the inbound carve-out at libs/import does NOT apply
+  # outbound). Same refusal-enforcement-by-listing-the-anti-terms
+  # pattern as the pre-existing PR-A8-2 + ci/scripts/verify-*.ts entries
+  # above. Lockstep with the matching eslint.config.mjs TIER2_EXCLUDES
+  # entries.
+  "libs/export/src/tests/field-catalog.spec.ts"
+  "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts"
   # PR-M0R-2 Amendment v1.1 §4.5 (Policy 1, PO-ratified 2026-05-15):
   # refusal-enforcement script in ci/scripts/verify-*.ts legitimately
   # contains the terms it enforces against by design. Same structural

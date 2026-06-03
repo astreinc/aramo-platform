@@ -14,6 +14,7 @@ import { ConsentModule } from '@aramo/consent';
 import { ContactModule } from '@aramo/contact';
 import { EngagementModule } from '@aramo/engagement';
 import { EntitlementModule } from '@aramo/entitlement';
+import { ExportModule } from '@aramo/export';
 import { ImportModule } from '@aramo/import';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
@@ -127,6 +128,24 @@ import { TalentRecordModule } from '@aramo/talent-record';
     // EEO reporting (A4-deferred fields don't exist) and PDF rendering
     // (presentation, deferred).
     ReportingModule,
+    // PR-A8-4 Gate 5 — ATS-domain CSV export. Reads-only over the 5
+    // ATS-domain entities (company / contact / requisition /
+    // talent_record / pipeline) — the dependency closure is the R10
+    // structural seam-exclusion proof: ExportModule does NOT import
+    // any Core / engagement / submittal / examination / matching /
+    // talent / job_domain module. The integration spec replays the
+    // A7 reporting-service pattern by OMITTING every Core migration
+    // from the test container and asserting the export routes still
+    // serve 200 (if any Core read existed it would 500). A3-
+    // visibility composes inside ExportService — recruiter exports
+    // own-assigned requisitions + pipelines (via
+    // RequisitionRepository.listForActor + upstream-resolved
+    // requisition_ids); tenant_admin exports tenant-wide. The
+    // OUTBOUND-VOCABULARY rule: header rows carry canonical Aramo
+    // ATS field names; outbound-anti-tokens NEVER appear (the
+    // libs/import inbound alias is import-only — see the integration
+    // spec OUTBOUND_ANTI_TOKENS list).
+    ExportModule,
     // PR-A8-1 Gate 5 — ATS import ENGINE. Audited reversible batches
     // with partial-commit semantics. Imports rows into 4 ATS targets
     // (company / contact / requisition / talent_record) via each
