@@ -114,6 +114,19 @@ export class CalendarRepository {
     return row === null ? null : projectView(row as CalendarEventRow);
   }
 
+  // PR-A7 — tenant-scoped count for the reporting aggregator.
+  async count(args: {
+    tenant_id: string;
+    site_id?: string;
+  }): Promise<number> {
+    return this.prisma.calendarEvent.count({
+      where: {
+        tenant_id: args.tenant_id,
+        ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+      },
+    });
+  }
+
   async list(args: {
     tenant_id: string;
     site_id?: string;

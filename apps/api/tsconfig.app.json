@@ -27,6 +27,7 @@
       "@aramo/outbox-publisher": ["../../dist/libs/outbox-publisher/src/index.d.ts"],
       "@aramo/pipeline": ["../../dist/libs/pipeline/src/index.d.ts"],
       "@aramo/portal": ["../../dist/libs/portal/src/index.d.ts"],
+      "@aramo/reporting": ["../../dist/libs/reporting/src/index.d.ts"],
       "@aramo/requisition": ["../../dist/libs/requisition/src/index.d.ts"],
       "@aramo/saved-list": ["../../dist/libs/saved-list/src/index.d.ts"],
       "@aramo/skills-taxonomy": ["../../dist/libs/skills-taxonomy/src/index.d.ts"],

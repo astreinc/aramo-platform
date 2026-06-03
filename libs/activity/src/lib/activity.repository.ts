@@ -113,4 +113,11 @@ export class ActivityRepository {
     });
     return (rows as ActivityRow[]).map(projectView);
   }
+
+  // PR-A7 — tenant-scoped count for the reporting aggregator.
+  async count(args: { tenant_id: string }): Promise<number> {
+    return this.prisma.activity.count({
+      where: { tenant_id: args.tenant_id },
+    });
+  }
 }
