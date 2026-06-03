@@ -117,6 +117,17 @@ const PIPELINE_INIT = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
 );
+// PR-A8-1 — additive back-reference columns on requisition +
+// talent_record. The Prisma client's RETURNING projection includes
+// import_batch_id; absent in DB → 500 INTERNAL_ERROR on POST create.
+const REQUISITION_IMPORT_BACK_REF = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql',
+);
+const TALENT_RECORD_IMPORT_BACK_REF = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
+);
 
 // Submittal & engagement migrations carry the submittal schema (the A5b
 // boundary asserts no submittal row is touched). We don't load them —
@@ -128,8 +139,10 @@ const MIGRATIONS = [
   ENTITLEMENT_INIT,
   METERING_INIT,
   REQUISITION_INIT,
+  REQUISITION_IMPORT_BACK_REF,
   TALENT_RECORD_INIT,
   TALENT_RECORD_LINK_ADD,
+  TALENT_RECORD_IMPORT_BACK_REF,
   ACTIVITY_INIT,
   PIPELINE_INIT,
 ];

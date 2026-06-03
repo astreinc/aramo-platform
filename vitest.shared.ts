@@ -60,6 +60,11 @@ export default defineConfig({
       '@aramo/evidence': resolve(root, 'libs/evidence/src/index.ts'),
       '@aramo/examination': resolve(root, 'libs/examination/src/index.ts'),
       '@aramo/identity': resolve(root, 'libs/identity/src/index.ts'),
+      // PR-A8-1 Gate 5 — import-engine leaf (audited reversible batches
+      // + partial-commit). Mirrors tsconfig.base.json alias so vitest
+      // runtime resolves the apps/api AppModule import + the A8-1
+      // integration spec.
+      '@aramo/import': resolve(root, 'libs/import/src/index.ts'),
       '@aramo/ingestion': resolve(root, 'libs/ingestion/src/index.ts'),
       '@aramo/job-domain': resolve(root, 'libs/job-domain/src/index.ts'),
       '@aramo/matching': resolve(root, 'libs/matching/src/index.ts'),

@@ -1,0 +1,191 @@
+// Per-module Prisma schema for the `import` module — PR-A8-1 (the
+// import ENGINE — audited reversible batches + partial-commit).
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
+// and doc/05-conventions.md "Database Conventions". Cross-schema
+// references UUID-only without FK constraints (§7.3).
+//
+// PR-A8-1 Gate 5 — the foundation of the A8 sub-program. Accepts a
+// CONFIRMED column→field mapping (mapping INFERENCE is A8-2) and a
+// delimited row set; runs a per-row import against one of 4 ATS targets
+// (company / contact / requisition / talent_record) with partial-commit
+// semantics and a configurable failure threshold.
+//
+// THE non-negotiable boundary (directive §0): importing target_entity
+// `talent_record` creates `talent_record.TalentRecord` rows with
+// `core_talent_id` NULL. The engine NEVER calls Core Talent's
+// createTalent / createOverlay — canonicalization is M6-owned (T2). The
+// integration spec proves this by `talent.*` bit-identical row-counts
+// pre/post (the A5b-2 boundary proof pattern, replayed at the import
+// layer).
+//
+// Cross-schema logical references (§7.3 — UUID-only, no FK):
+//   - tenant_id              → identity.Tenant   (the import tenant)
+//   - site_id                → identity.Site      (optional, per A2 norm)
+//   - imported_by_id         → identity.User      (the actor)
+//   - ImportFailure.import_batch_id → INTRA-SCHEMA FK to ImportBatch
+//
+// Per A8-1 directive §2: each of the 4 target entities gets an
+// ADDITIVE nullable `import_batch_id` back-reference column (one
+// additive migration per target lib) so a batch's rows are
+// attributable + revertable by deleteMany WHERE import_batch_id = :id.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["import"]
+}
+
+// ImportTargetEntity — the 4 ATS targets the engine can import into.
+// Vocabulary-locked per R12 (only the canonical Aramo terms appear).
+// NO other targets at A8-1: résumé/file ingestion is A8-3 (file
+// ingestion lives in libs/ingestion already); the ATS-side reference
+// data is the A8-1 surface.
+enum ImportTargetEntity {
+  company
+  contact
+  requisition
+  talent_record
+
+  @@schema("import")
+}
+
+// ImportBatchStatus — the lifecycle of an import batch.
+//   - pending             → in-flight (rows being applied).
+//   - committed           → all rows succeeded.
+//   - partially_committed → some rows succeeded, some failed (failures
+//                            below the configured threshold; the valid
+//                            rows persist; the failed rows are recorded
+//                            in ImportFailure for fix-and-reimport).
+//   - rejected            → failures exceeded the configured threshold;
+//                            the WHOLE batch was rolled back; NO rows
+//                            persisted in the target table.
+//   - reverted            → an admin called POST /v1/imports/:id/revert;
+//                            the batch's rows were deleted via the
+//                            import_batch_id back-reference.
+enum ImportBatchStatus {
+  pending
+  committed
+  partially_committed
+  rejected
+  reverted
+
+  @@schema("import")
+}
+
+// ImportBatch — first-class audit + reversion handle for a run of the
+// engine. Every successfully-inserted target row carries this batch's
+// id in its `import_batch_id` column (the back-reference per directive
+// §2). Reversion deletes the batch's rows via `WHERE import_batch_id =
+// :batch.id` (the deleteMany at each target lib, tenant-scoped).
+//
+// Tenant + site axes per the PR-A1 tenancy foundation:
+//   - tenant_id is REQUIRED (tenant axis, Architecture §7.2).
+//   - site_id is OPTIONAL (per A2 norm; an import that targets
+//     tenant-wide rows uses NULL; a site-scoped import carries it and
+//     the route enforces @RequireSiteMatch).
+//
+// AUDIT shape: row_count + success_count + failure_count are the
+// dashboard view. created_at / committed_at / reverted_at give the
+// timeline.
+model ImportBatch {
+  // Identity.
+  id        String  @id @default(uuid()) @db.Uuid
+  tenant_id String  @db.Uuid
+  site_id   String? @db.Uuid
+
+  // Provenance (UUID-only logical ref to identity.User).
+  imported_by_id String @db.Uuid
+
+  // The target table the engine inserted into. Fixed at batch creation;
+  // a batch imports into exactly one target entity (per A8-1 directive
+  // §3 — the engine surfaces 4 paths, one per target, and each batch is
+  // single-target). Multi-target imports are out of scope.
+  target_entity ImportTargetEntity
+
+  // Origin metadata. source_filename is the recruiter-supplied filename
+  // (a UX artifact; the engine does not store the file bytes — that's
+  // A8-3 résumé/S3). Free text.
+  source_filename String
+
+  // Audit counters. row_count is the input cardinality; success_count
+  // and failure_count partition it (success + failure == row_count once
+  // the batch terminates).
+  row_count       Int @default(0)
+  success_count   Int @default(0)
+  failure_count   Int @default(0)
+
+  status ImportBatchStatus @default(pending)
+
+  // Timeline.
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  committed_at DateTime? @db.Timestamptz
+  reverted_at  DateTime? @db.Timestamptz
+
+  // Intra-schema relation to per-row failures (FK; intra-schema is
+  // allowed per §7.3). ON DELETE CASCADE — deleting a batch removes
+  // its failure rows. We do NOT delete batches programmatically (the
+  // audit lives forever); CASCADE is a safety net for admin recovery.
+  failures ImportFailure[]
+
+  // Indexes — every query path leads with tenant_id.
+  @@index([tenant_id, created_at])
+  @@index([tenant_id, target_entity])
+  @@index([tenant_id, status])
+  @@index([tenant_id, imported_by_id])
+
+  @@schema("import")
+}
+
+// ImportFailure — one row per failed row in an import batch. The
+// failed-rows-with-reasons artifact (directive §3.4): the client fetches
+// these via GET /v1/imports/:id/failures, fixes the offending rows
+// outside the system, and re-imports. The shape is rich enough for an
+// automated re-import client (row_number + original_row_data) and rich
+// enough for human inspection (failure_reason + offending_fields).
+//
+// Tenant_id is denormalized from the parent batch for the canonical
+// tenant-axis index (every lookup is in-tenant).
+//
+// original_row_data is a JSONB blob of the input row as keyed by the
+// confirmed mapping (column name → value). offending_fields is a
+// JSONB array of field names whose validation failed (subset of
+// original_row_data keys).
+model ImportFailure {
+  // Identity.
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Parent batch (intra-schema FK).
+  import_batch_id String      @db.Uuid
+  import_batch    ImportBatch @relation(fields: [import_batch_id], references: [id], onDelete: Cascade)
+
+  // The 1-based row number in the input file (the recruiter sees this
+  // in the UX failed-rows table — "row 14: bad email").
+  row_number Int
+
+  // The closed-list failure cause. Phrased as a stable token (the UX
+  // can localize). NOT an ErrorCode — failures are PER-ROW (data
+  // problems), distinct from the BATCH-level error codes
+  // (IMPORT_THRESHOLD_EXCEEDED / IMPORT_REVERT_WINDOW_EXPIRED) that
+  // surface as HTTP responses.
+  failure_reason String
+
+  // JSONB blobs (PG-native; B-tree-indexable on the fields if needed
+  // later). offending_fields is the list of field names whose
+  // validation failed; original_row_data is the row's mapped k/v pairs.
+  offending_fields  Json
+  original_row_data Json
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  // Index — the canonical "all failures for batch X in tenant T"
+  // lookup (the GET /failures path).
+  @@index([tenant_id, import_batch_id, row_number])
+
+  @@schema("import")
+}

@@ -1474,6 +1474,19 @@ components:
         list's `item_type` is rejected. The calendar owner-or-admin
         predicate (the A3 shape) reuses NOT_FOUND (A3 info-leak-
         closing precedent) rather than introducing a new code.
+        PR-A8-1 adds three codes for the import engine — the audited
+        reversible batch + partial-commit model.
+        IMPORT_THRESHOLD_EXCEEDED (HTTP 422) — the runImport batch's
+        failure_count exceeded the configured threshold; the entire
+        batch was rejected (no rows persisted). The recruiter
+        inspects details.{failure_count,row_count,threshold_pct},
+        fixes the source file, re-imports.
+        IMPORT_ALREADY_REVERTED (HTTP 409) — POST /v1/imports/:id/
+        revert refused because the batch is in a terminal state
+        (reverted | rejected). 409 mirrors SUBMITTAL_ALREADY_CONFIRMED.
+        IMPORT_REVERT_WINDOW_EXPIRED (HTTP 409) — POST /v1/imports/
+        :id/revert refused because batch.created_at is older than
+        the configured window (default 7 days).
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1508,6 +1521,9 @@ components:
         - REQUISITION_NO_OPENINGS
         - TALENT_LINK_INVALID
         - SAVED_LIST_ITEM_TYPE_MISMATCH
+        - IMPORT_THRESHOLD_EXCEEDED
+        - IMPORT_ALREADY_REVERTED
+        - IMPORT_REVERT_WINDOW_EXPIRED
 
     ErrorObject:
       type: object

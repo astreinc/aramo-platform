@@ -102,6 +102,16 @@ model TalentRecord {
   // carries no identity-resolution surface.
   core_talent_id String? @db.Uuid
 
+  // PR-A8-1 — back-reference to the import batch that created this row
+  // (NULL for rows created outside the import engine). Cross-schema
+  // logical reference to import.ImportBatch.id (§7.3). THE non-
+  // negotiable boundary (directive §0): imports of target_entity
+  // 'talent_record' create rows here with `core_talent_id` NULL — the
+  // engine NEVER calls Core's createTalent / createOverlay. The
+  // bit-identical talent.* row-counts pre/post the import is the
+  // load-bearing integration-spec assertion.
+  import_batch_id String? @db.Uuid
+
   // Timestamps.
   created_at DateTime @default(now()) @db.Timestamptz
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
@@ -114,6 +124,7 @@ model TalentRecord {
   @@index([tenant_id, site_id])
   @@index([tenant_id, is_hot])
   @@index([tenant_id, core_talent_id])
+  @@index([tenant_id, import_batch_id])
 
   @@schema("talent_record")
 }

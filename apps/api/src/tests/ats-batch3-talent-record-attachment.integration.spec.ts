@@ -63,6 +63,13 @@ const ATTACHMENT_INIT = resolve(
   ROOT,
   'libs/attachment/prisma/migrations/20260602120000_init_attachment_model/migration.sql',
 );
+// PR-A8-1 — additive back-reference column on TalentRecord. The
+// Prisma client's RETURNING projection includes import_batch_id;
+// absent in DB → 500 INTERNAL_ERROR on POST create.
+const TALENT_RECORD_IMPORT_BACK_REF = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-ats-batch3-talent-record-attachment-spec';
@@ -153,6 +160,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ENTITLEMENT_INIT,
         TALENT_RECORD_INIT,
         TALENT_RECORD_LINK_ADD,
+        TALENT_RECORD_IMPORT_BACK_REF,
         ATTACHMENT_INIT,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));

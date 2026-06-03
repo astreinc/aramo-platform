@@ -138,6 +138,77 @@ export class ContactRepository {
     return projectView(row as ContactRow);
   }
 
+  // PR-A8-1 — import-engine create. Mirrors create() including the
+  // cross-schema company_id in-tenant validation (Architecture §7.2);
+  // attributes the row to the import batch for reversion.
+  async createForImport(args: {
+    tenant_id: string;
+    entered_by_id: string;
+    import_batch_id: string;
+    input: CreateContactRequestDto;
+    requestId: string;
+  }): Promise<ContactView> {
+    const parent = await this.companyRepository.findById({
+      tenant_id: args.tenant_id,
+      id: args.input.company_id,
+    });
+    if (parent === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'Company not found in tenant',
+        404,
+        {
+          requestId: args.requestId,
+          details: { company_id: args.input.company_id },
+        },
+      );
+    }
+
+    const row = await this.prisma.contact.create({
+      data: {
+        tenant_id: args.tenant_id,
+        site_id: args.input.site_id ?? null,
+        company_id: args.input.company_id,
+        company_department_id: args.input.company_department_id ?? null,
+        first_name: args.input.first_name,
+        last_name: args.input.last_name,
+        title: args.input.title ?? null,
+        email1: args.input.email1 ?? null,
+        email2: args.input.email2 ?? null,
+        phone_work: args.input.phone_work ?? null,
+        phone_cell: args.input.phone_cell ?? null,
+        phone_other: args.input.phone_other ?? null,
+        address: args.input.address ?? null,
+        address2: args.input.address2 ?? null,
+        city: args.input.city ?? null,
+        state: args.input.state ?? null,
+        zip: args.input.zip ?? null,
+        is_hot: args.input.is_hot ?? false,
+        notes: args.input.notes ?? null,
+        reports_to_id: args.input.reports_to_id ?? null,
+        owner_id: args.input.owner_id ?? args.entered_by_id,
+        entered_by_id: args.entered_by_id,
+        import_batch_id: args.import_batch_id,
+      },
+    });
+    return projectView(row as ContactRow);
+  }
+
+  // PR-A8-1 — import-engine reversion. Tenant-scoped deleteMany by the
+  // back-reference. Returns the delete count.
+  async deleteByImportBatch(args: {
+    tenant_id: string;
+    import_batch_id: string;
+  }): Promise<number> {
+    const result = await this.prisma.contact.deleteMany({
+      where: {
+        tenant_id: args.tenant_id,
+        import_batch_id: args.import_batch_id,
+      },
+    });
+    return result.count;
+  }
+
   async findById(args: {
     tenant_id: string;
     id: string;

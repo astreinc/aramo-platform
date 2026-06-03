@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 31 codes including PR-A6 SAVED_LIST_ITEM_TYPE_MISMATCH', () => {
+  it('ERROR_CODES contains the 34 codes including PR-A8-1 IMPORT_* triple', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -70,6 +70,9 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'REQUISITION_NO_OPENINGS',
       'TALENT_LINK_INVALID',
       'SAVED_LIST_ITEM_TYPE_MISMATCH',
+      'IMPORT_THRESHOLD_EXCEEDED',
+      'IMPORT_ALREADY_REVERTED',
+      'IMPORT_REVERT_WINDOW_EXPIRED',
     ]);
   });
 });

@@ -222,6 +222,34 @@
 // invariant. The calendar owner-or-admin predicate (the A3 shape)
 // reuses NOT_FOUND (the A3 info-leak-closing precedent) rather than
 // introducing a dedicated calendar code. Total: 31 codes.
+//
+// PR-A8-1 adds three codes for the import engine — the audited
+// reversible batch + partial-commit model (parity-quad each per the
+// M5 PR-2 precedent: TS tuple + HTTP map + openapi/common.yaml +
+// parity test):
+//   - IMPORT_THRESHOLD_EXCEEDED (HTTP 422) — the runImport batch's
+//     failure_count exceeded the configured threshold; the entire
+//     batch was rejected and ALL its rows rolled back (status:
+//     'rejected'). The recruiter inspects details.failure_count /
+//     details.row_count / details.threshold_pct, fixes the source
+//     file, and re-imports. 422 (Unprocessable) fits: the request was
+//     well-formed but the data quality failed the tenant's quality
+//     gate. NOT a server-side fault — the engine's contract is to
+//     refuse a too-dirty batch up-front rather than persist garbage.
+//   - IMPORT_ALREADY_REVERTED (HTTP 409) — POST /v1/imports/:id/revert
+//     refuses when the batch's status is already 'reverted' (or
+//     'rejected'; rejected batches never persisted rows so there's
+//     nothing to revert). 409 (Conflict) fits the
+//     SUBMITTAL_ALREADY_CONFIRMED precedent: well-formed request,
+//     conflict with current resource state.
+//   - IMPORT_REVERT_WINDOW_EXPIRED (HTTP 409) — POST /v1/imports/:id/
+//     revert refuses when the batch's created_at is older than the
+//     configured revert window (default 7 days). Reversion is bounded
+//     so a long-running import doesn't get yanked out from under
+//     downstream consumers (engagements, pipeline rows, talent links)
+//     that may have accreted on the imported entities. The recruiter
+//     who needs a late revert escalates to a manual delete.
+// Total: 34 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -255,6 +283,9 @@ export const ERROR_CODES = [
   'REQUISITION_NO_OPENINGS',  // PR-A5b-1 — pipeline transition to `placed` refused because the target requisition's openings_available is already 0; the entire transition tx rolls back (Pipeline.status / PipelineStatusHistory / Activity / UsageEvent all reverted) — over-capacity is a data-integrity refusal, not a silent floor (Gate 5 Lead-reviewed ruling)
   'TALENT_LINK_INVALID',  // PR-A5b-2 — TalentRecord-to-Core-Talent linker cross-schema validator refusal; details.reason ∈ {'core_talent_not_found','tenant_overlay_missing'} (the keystone's ASSOCIATE-NOT-RESOLVE refusal point)
   'SAVED_LIST_ITEM_TYPE_MISMATCH',  // PR-A6 — saved-list add-entry homogeneity-invariant refusal: entry's item_type differs from parent SavedList.item_type (the typed-polymorphism A4-shape integrity check at the list-side)
+  'IMPORT_THRESHOLD_EXCEEDED',  // PR-A8-1 — import batch's failure_count exceeded the configured threshold; the entire batch was rejected (no rows persisted) — the recruiter inspects details.{failure_count,row_count,threshold_pct}, fixes, re-imports
+  'IMPORT_ALREADY_REVERTED',  // PR-A8-1 — POST /v1/imports/:id/revert refused: batch already in terminal state (reverted | rejected) — re-revert is a no-op rejection (the SUBMITTAL_ALREADY_CONFIRMED 409 precedent)
+  'IMPORT_REVERT_WINDOW_EXPIRED',  // PR-A8-1 — POST /v1/imports/:id/revert refused: batch.created_at is older than the configured window (default 7 days) — reversion is bounded so downstream consumers don't get yanked out from under
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

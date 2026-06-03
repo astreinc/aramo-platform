@@ -101,6 +101,60 @@ export class CompanyRepository {
     return projectView(row as CompanyRow);
   }
 
+  // PR-A8-1 — import-engine create. Identical to create() except the
+  // row carries `import_batch_id` so deleteByImportBatch can revert it.
+  // Kept separate from the free create() surface so the public
+  // free-form CRUD never accidentally attributes a row to a batch.
+  async createForImport(args: {
+    tenant_id: string;
+    entered_by_id: string;
+    import_batch_id: string;
+    input: CreateCompanyRequestDto;
+  }): Promise<CompanyView> {
+    const { tenant_id, entered_by_id, import_batch_id, input } = args;
+    const row = await this.prisma.company.create({
+      data: {
+        tenant_id,
+        site_id: input.site_id ?? null,
+        name: input.name,
+        address: input.address ?? null,
+        address2: input.address2 ?? null,
+        city: input.city ?? null,
+        state: input.state ?? null,
+        zip: input.zip ?? null,
+        phone1: input.phone1 ?? null,
+        phone2: input.phone2 ?? null,
+        fax_number: input.fax_number ?? null,
+        url: input.url ?? null,
+        key_technologies: input.key_technologies ?? null,
+        notes: input.notes ?? null,
+        is_hot: input.is_hot ?? false,
+        billing_contact_id: input.billing_contact_id ?? null,
+        owner_id: input.owner_id ?? entered_by_id,
+        entered_by_id,
+        import_batch_id,
+      },
+    });
+    return projectView(row as CompanyRow);
+  }
+
+  // PR-A8-1 — import-engine reversion. deleteMany by the back-reference;
+  // tenant-scoped at the row level (an admin in tenant A cannot revert
+  // a batch in tenant B even if they hold the batch_id). Returns the
+  // delete count for the audit log.
+  async deleteByImportBatch(args: {
+    tenant_id: string;
+    import_batch_id: string;
+  }): Promise<number> {
+    const result = await this.prisma.company.deleteMany({
+      where: {
+        tenant_id: args.tenant_id,
+        import_batch_id: args.import_batch_id,
+      },
+    });
+    return result.count;
+  }
+
   async findById(args: {
     tenant_id: string;
     id: string;
