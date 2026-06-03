@@ -1467,6 +1467,13 @@ components:
         cross-schema-validator precedent. The linker is ASSOCIATE-
         ONLY (no resolution, no creation); this code is the refusal
         point when the caller's chosen id doesn't validate.
+        PR-A6 adds SAVED_LIST_ITEM_TYPE_MISMATCH (HTTP 422) for the
+        saved-list homogeneity invariant: a SavedList's `item_type`
+        (fixed at creation) constrains every entry's type. An
+        add-entry request whose `item_type` differs from the parent
+        list's `item_type` is rejected. The calendar owner-or-admin
+        predicate (the A3 shape) reuses NOT_FOUND (A3 info-leak-
+        closing precedent) rather than introducing a new code.
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1500,6 +1507,7 @@ components:
         - INVALID_PIPELINE_TRANSITION
         - REQUISITION_NO_OPENINGS
         - TALENT_LINK_INVALID
+        - SAVED_LIST_ITEM_TYPE_MISMATCH
 
     ErrorObject:
       type: object

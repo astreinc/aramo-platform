@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 30 codes including PR-A5b-2 TALENT_LINK_INVALID', () => {
+  it('ERROR_CODES contains the 31 codes including PR-A6 SAVED_LIST_ITEM_TYPE_MISMATCH', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -69,6 +69,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'INVALID_PIPELINE_TRANSITION',
       'REQUISITION_NO_OPENINGS',
       'TALENT_LINK_INVALID',
+      'SAVED_LIST_ITEM_TYPE_MISMATCH',
     ]);
   });
 });

@@ -212,6 +212,16 @@
 // resolves identity (no findTalentByEmail surface) and never creates
 // Core rows — this code is the refusal point when the caller's chosen
 // id doesn't validate. Total: 30 codes.
+//
+// PR-A6 adds SAVED_LIST_ITEM_TYPE_MISMATCH (HTTP 422) for the saved-list
+// homogeneity invariant: a SavedList's `item_type` (fixed at creation)
+// constrains every entry's type. An add-entry request whose
+// `item_type` differs from the parent list's `item_type` is rejected
+// with this code. 422 (Unprocessable) fits — the request is
+// well-formed but conflicts with the list's typed-polymorphism
+// invariant. The calendar owner-or-admin predicate (the A3 shape)
+// reuses NOT_FOUND (the A3 info-leak-closing precedent) rather than
+// introducing a dedicated calendar code. Total: 31 codes.
 
 export const ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -244,6 +254,7 @@ export const ERROR_CODES = [
   'INVALID_PIPELINE_TRANSITION',  // PR-A5a — pipeline state-machine canTransition guard rejected an illegal status change; the load-bearing refusal of A5a (mirrors SUBMITTAL_STATE_INVALID / ENGAGEMENT_STATE_INVALID at the ATS-domain layer)
   'REQUISITION_NO_OPENINGS',  // PR-A5b-1 — pipeline transition to `placed` refused because the target requisition's openings_available is already 0; the entire transition tx rolls back (Pipeline.status / PipelineStatusHistory / Activity / UsageEvent all reverted) — over-capacity is a data-integrity refusal, not a silent floor (Gate 5 Lead-reviewed ruling)
   'TALENT_LINK_INVALID',  // PR-A5b-2 — TalentRecord-to-Core-Talent linker cross-schema validator refusal; details.reason ∈ {'core_talent_not_found','tenant_overlay_missing'} (the keystone's ASSOCIATE-NOT-RESOLVE refusal point)
+  'SAVED_LIST_ITEM_TYPE_MISMATCH',  // PR-A6 — saved-list add-entry homogeneity-invariant refusal: entry's item_type differs from parent SavedList.item_type (the typed-polymorphism A4-shape integrity check at the list-side)
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

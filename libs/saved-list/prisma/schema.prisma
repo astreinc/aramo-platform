@@ -1,0 +1,107 @@
+// Per-module Prisma schema for the `saved_list` module — PR-A6 (ATS finishers).
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
+// and doc/05-conventions.md "Database Conventions". Cross-schema
+// references UUID-only without FK constraints (§7.3).
+//
+// PR-A6 Gate 5+6 (combined) — the typed-polymorphic saved-list finisher
+// (the OpenCATS `static saved list` port — DYNAMIC SAVED LISTS ARE
+// DORMANT and not built here).
+//
+// Two entities:
+//   - SavedList: a tenant's named bucket. Its `item_type` is fixed at
+//     creation and constrains the type of every entry it can hold
+//     (homogeneity invariant).
+//   - SavedListEntry: a typed polymorphic pointer (item_type + item_id)
+//     to a row in another PG namespace. Cross-schema FK is forbidden
+//     (§7.3), so referential integrity is the service's responsibility
+//     at add-entry time (the A4 attachment shape — switch-dispatch on
+//     the type, look up the row in the matching repository).
+//
+// Vocabulary discipline (R12): item_type values use the Aramo canonical
+// terms (talent_record / company / contact / requisition), not the
+// legacy OpenCATS labels. The locked-vocabulary verifier enforces.
+//
+// Cross-schema references (§7.3 — UUID-only, no FK):
+//   - SavedList.owner_id: identity.User UUID — the list's creator.
+//   - SavedListEntry.item_id: the typed entity UUID, resolved at add
+//     time against the matching tenant-scoped repository.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["saved_list"]
+}
+
+// SavedListItemType — the typed-polymorphism discriminator. All four
+// values are wired at PR-A6 (unlike A4 attachment where 3 of 4 were
+// stubbed for later batches — at A6 all 4 ATS entities are live, so the
+// service-layer owner validation wires all four).
+enum SavedListItemType {
+  talent_record
+  company
+  contact
+  requisition
+
+  @@schema("saved_list")
+}
+
+// SavedList — the bucket. item_type is fixed at creation (homogeneity
+// invariant — a list is for one type of entity). Static lists only
+// (dynamic-list path dormant, per A6 directive §8).
+model SavedList {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenant_id String  @db.Uuid
+  site_id   String? @db.Uuid
+
+  // Identity / authorship.
+  owner_id String @db.Uuid
+  name     String
+
+  // The homogeneity discriminator. Fixed at creation; cannot be PATCH'd.
+  item_type SavedListItemType
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  // Intra-schema relation to entries (FK; intra-schema is allowed per §7.3).
+  entries SavedListEntry[]
+
+  @@index([tenant_id, owner_id])
+  @@index([tenant_id, item_type])
+  @@index([tenant_id, site_id])
+
+  @@schema("saved_list")
+}
+
+// SavedListEntry — a typed polymorphic pointer. The (item_type, item_id)
+// pair points to a row in another PG namespace; referential integrity is
+// service-layer (the A4 shape). @@unique([saved_list_id, item_id])
+// prevents duplicate adds; the per-add homogeneity check ensures
+// item_type always matches the parent SavedList.item_type.
+model SavedListEntry {
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Parent (intra-schema FK).
+  saved_list_id String    @db.Uuid
+  saved_list    SavedList @relation(fields: [saved_list_id], references: [id], onDelete: Cascade)
+
+  // Typed polymorphic pointer. item_type is denormalized from the parent
+  // SavedList for query convenience + per-add validation; the homogeneity
+  // invariant pins it to parent.item_type.
+  item_type SavedListItemType
+  item_id   String            @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  // Prevent duplicates within a list.
+  @@unique([saved_list_id, item_id])
+  @@index([tenant_id, item_type, item_id])
+
+  @@schema("saved_list")
+}
