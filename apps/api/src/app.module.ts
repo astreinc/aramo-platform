@@ -9,6 +9,7 @@ import { AttachmentModule } from '@aramo/attachment';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { CalendarModule } from '@aramo/calendar';
+import { CanonicalizationModule } from '@aramo/canonicalization';
 import { CompanyModule } from '@aramo/company';
 import { ConsentModule } from '@aramo/consent';
 import { ContactModule } from '@aramo/contact';
@@ -162,6 +163,17 @@ import { TalentRecordModule } from '@aramo/talent-record';
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).
     SkillsTaxonomyModule,
     SubmittalModule,
+    // T2-2a — canonicalization orchestrator (NEW leaf lib). Lead-authored
+    // per Aramo-T2-2a-Canonicalization-Orchestration-Directive-v1_0-LOCKED.md.
+    // Service-only at T2-2a (no controller). Imported here BEFORE
+    // OutboxPublisherModule so the dependency direction stays forward:
+    // canonicalization -> {ingestion, talent, talent_evidence} via Nest
+    // module imports + via the multi-schema Prisma follower (Option A,
+    // §1 Ruling 1). T2-2b extends OutboxPublisherModule to inject
+    // CanonicalizationOutboxRepository and drain the 4th schema; that
+    // edge does NOT yet exist at T2-2a (the split seam — events sit
+    // unpublished, harmless because no consumer).
+    CanonicalizationModule,
     // M6 PR-2 §4 — OutboxPublisherModule (new leaf lib). Hosts the
     // relocated outbox-publisher BullMQ queue + processor; drains
     // consent + engagement + submittal OutboxEvent tables. Imported

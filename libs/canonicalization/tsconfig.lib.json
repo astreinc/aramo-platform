@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/libs/canonicalization",
+    "rootDir": "src",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "declaration": true,
+    "types": ["node"],
+    "paths": {
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/ingestion": ["../../dist/libs/ingestion/src/index.d.ts"],
+      "@aramo/talent": ["../../dist/libs/talent/src/index.d.ts"],
+      "@aramo/talent-evidence": ["../../dist/libs/talent-evidence/src/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/tests/**/*"]
+}
