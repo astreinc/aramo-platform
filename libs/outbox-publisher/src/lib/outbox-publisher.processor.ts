@@ -2,6 +2,7 @@ import { Inject, type OnApplicationBootstrap } from '@nestjs/common';
 import { BullRegistrar, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { type AramoLogger, RedisConnectionConfig } from '@aramo/common';
+import { CanonicalizationOutboxRepository } from '@aramo/canonicalization';
 import { OutboxPublisherRepository } from '@aramo/consent';
 import { EngagementOutboxRepository } from '@aramo/engagement';
 import { SubmittalOutboxRepository } from '@aramo/submittal';
@@ -12,6 +13,9 @@ import {
 } from './outbox-publisher.queue.constants.js';
 
 // M6 PR-2 §4 — multi-schema outbox publisher (relocated + extended).
+// T2-2b — extended to drain the canonicalization schema as its 4th
+// (was consent + engagement + submittal; the T2-2a-written
+// talent.canonicalized events are now consumed + published).
 //
 // Relocated from libs/consent (M5 PR-11 placement) to the new leaf lib
 // libs/outbox-publisher per M6 PR-2 §4 / Amendment §2.4. The relocation
@@ -21,18 +25,21 @@ import {
 // no-cycle enforcement).
 //
 // Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6 binding (extended
-// to the M6 PR-2 multi-schema scope: consent + engagement + submittal).
-// Polls each schema's OutboxEvent table for unpublished rows, emits them
-// downstream (logged at this PR; SNS dispatch lands at PR-3), and marks
-// each row published_at = now(). Examination is OUT OF SCOPE (deferred
-// to PR-2d — no transaction boundary on examination mutations today).
+// to the M6 PR-2 multi-schema scope: consent + engagement + submittal),
+// further extended at T2-2b to add canonicalization as the 4th schema —
+// settled-pattern reuse, no new design surface (the drainSchema helper
+// loop accepts any OutboxRepositoryShape participant). Polls each
+// schema's OutboxEvent table for unpublished rows, emits them downstream
+// (logged at this PR; SNS dispatch lands at PR-3), and marks each row
+// published_at = now(). Examination is OUT OF SCOPE (deferred to PR-2d —
+// no transaction boundary on examination mutations today).
 //
 // Per-schema drain semantics:
 //   - Each repository's findUnpublishedEvents returns up to
 //     OUTBOX_PUBLISHER_BATCH_SIZE rows, oldest first.
 //   - markPublished bulk-stamps published_at on the drained rows.
 //   - Failures in one schema's drain do NOT abort the other schemas;
-//     each drain is wrapped so the tick attempts all three.
+//     each drain is wrapped so the tick attempts all four.
 //
 // Lifecycle mirrors libs/matching/src/lib/matching.processor.ts pattern
 // (ADR-0018 Decision 1): manualRegistration + onApplicationBootstrap gate
@@ -74,6 +81,7 @@ export class OutboxPublisherProcessor
     private readonly consentOutbox: OutboxPublisherRepository,
     private readonly engagementOutbox: EngagementOutboxRepository,
     private readonly submittalOutbox: SubmittalOutboxRepository,
+    private readonly canonicalizationOutbox: CanonicalizationOutboxRepository,
     private readonly registrar: BullRegistrar,
     private readonly redisConfig: RedisConnectionConfig,
     @Inject('OutboxPublisherProcessorLogger')
@@ -104,6 +112,12 @@ export class OutboxPublisherProcessor
       batchSize,
       job,
     );
+    const canonicalizationCount = await this.drainSchema(
+      'canonicalization',
+      this.canonicalizationOutbox,
+      batchSize,
+      job,
+    );
 
     this.logger.log({
       event: 'outbox_publisher_tick_completed',
@@ -112,12 +126,14 @@ export class OutboxPublisherProcessor
       consent_published_count: consentCount,
       engagement_published_count: engagementCount,
       submittal_published_count: submittalCount,
-      total_published_count: consentCount + engagementCount + submittalCount,
+      canonicalization_published_count: canonicalizationCount,
+      total_published_count:
+        consentCount + engagementCount + submittalCount + canonicalizationCount,
     });
   }
 
   private async drainSchema(
-    schemaName: 'consent' | 'engagement' | 'submittal',
+    schemaName: 'consent' | 'engagement' | 'submittal' | 'canonicalization',
     repo: OutboxRepositoryShape,
     batchSize: number,
     job: Job<OutboxPublisherTickInput>,

@@ -5,6 +5,7 @@ import {
   createAramoLogger,
   RedisConnectionConfig,
 } from '@aramo/common';
+import { CanonicalizationModule } from '@aramo/canonicalization';
 import { ConsentModule } from '@aramo/consent';
 import { EngagementModule } from '@aramo/engagement';
 import { SubmittalModule } from '@aramo/submittal';
@@ -40,12 +41,16 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from './outbox-publisher.queue.constants.
 //     reader/writer; emission stays in libs/consent per Ruling 3).
 //   - EngagementModule — exports EngagementOutboxRepository.
 //   - SubmittalModule — exports SubmittalOutboxRepository.
+//   - CanonicalizationModule — exports CanonicalizationOutboxRepository
+//     (T2-2b: the 4th-schema drain edge; canonicalization is the leaf
+//     here too — it does not import outbox-publisher).
 @Module({
   imports: [
     CommonModule,
     ConsentModule,
     EngagementModule,
     SubmittalModule,
+    CanonicalizationModule,
     BullModule.forRootAsync({
       extraOptions: { manualRegistration: true },
       useFactory: (cfg: RedisConnectionConfig) => {

@@ -9,6 +9,7 @@
     "tsBuildInfoFile": "../../dist/libs/outbox-publisher/.tsbuildinfo",
     "types": ["node"],
     "paths": {
+      "@aramo/canonicalization": ["../../dist/libs/canonicalization/src/index.d.ts"],
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
       "@aramo/engagement": ["../../dist/libs/engagement/src/index.d.ts"],
