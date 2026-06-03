@@ -137,6 +137,75 @@ export class TalentRecordRepository {
     return projectView(row as TalentRecordRow);
   }
 
+  // PR-A8-1 — import-engine create. Mirrors create(); attributes the
+  // row to the import batch for reversion. Sets `core_talent_id = NULL`
+  // unconditionally — THE non-negotiable boundary (directive §0): the
+  // engine creates `TalentRecord` rows but NEVER calls Core Talent's
+  // createTalent / createOverlay. Canonicalization is M6/T2. The
+  // load-bearing integration-spec assertion is `talent.*` bit-identical
+  // row-count pre/post (the A5b-2 boundary proof, replayed at the
+  // import layer).
+  async createForImport(args: {
+    tenant_id: string;
+    entered_by_id: string;
+    import_batch_id: string;
+    input: CreateTalentRecordRequestDto;
+  }): Promise<TalentRecordView> {
+    const { tenant_id, entered_by_id, import_batch_id, input } = args;
+    const row = await this.prisma.talentRecord.create({
+      data: {
+        tenant_id,
+        site_id: input.site_id ?? null,
+        first_name: input.first_name,
+        last_name: input.last_name,
+        email1: input.email1 ?? null,
+        email2: input.email2 ?? null,
+        phone_home: input.phone_home ?? null,
+        phone_cell: input.phone_cell ?? null,
+        phone_work: input.phone_work ?? null,
+        address: input.address ?? null,
+        address2: input.address2 ?? null,
+        city: input.city ?? null,
+        state: input.state ?? null,
+        zip: input.zip ?? null,
+        source: input.source ?? null,
+        key_skills: input.key_skills ?? null,
+        current_employer: input.current_employer ?? null,
+        current_pay: input.current_pay ?? null,
+        desired_pay: input.desired_pay ?? null,
+        date_available:
+          input.date_available === undefined
+            ? null
+            : new Date(input.date_available),
+        can_relocate: input.can_relocate ?? false,
+        is_hot: input.is_hot ?? false,
+        notes: input.notes ?? null,
+        web_site: input.web_site ?? null,
+        best_time_to_call: input.best_time_to_call ?? null,
+        owner_id: input.owner_id ?? entered_by_id,
+        entered_by_id,
+        // core_talent_id is OMITTED — defaults to NULL. THE boundary.
+        import_batch_id,
+      },
+    });
+    return projectView(row as TalentRecordRow);
+  }
+
+  // PR-A8-1 — import-engine reversion. Tenant-scoped deleteMany by the
+  // back-reference. Returns the delete count for the audit log.
+  async deleteByImportBatch(args: {
+    tenant_id: string;
+    import_batch_id: string;
+  }): Promise<number> {
+    const result = await this.prisma.talentRecord.deleteMany({
+      where: {
+        tenant_id: args.tenant_id,
+        import_batch_id: args.import_batch_id,
+      },
+    });
+    return result.count;
+  }
+
   async findById(args: {
     tenant_id: string;
     id: string;

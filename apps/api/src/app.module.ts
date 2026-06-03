@@ -14,6 +14,7 @@ import { ConsentModule } from '@aramo/consent';
 import { ContactModule } from '@aramo/contact';
 import { EngagementModule } from '@aramo/engagement';
 import { EntitlementModule } from '@aramo/entitlement';
+import { ImportModule } from '@aramo/import';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
 import { OutboxPublisherModule } from '@aramo/outbox-publisher';
@@ -126,6 +127,17 @@ import { TalentRecordModule } from '@aramo/talent-record';
     // EEO reporting (A4-deferred fields don't exist) and PDF rendering
     // (presentation, deferred).
     ReportingModule,
+    // PR-A8-1 Gate 5 — ATS import ENGINE. Audited reversible batches
+    // with partial-commit semantics. Imports rows into 4 ATS targets
+    // (company / contact / requisition / talent_record) via each
+    // target lib's createForImport surface; reverts via the additive
+    // import_batch_id back-reference column. THE non-negotiable
+    // boundary: this lib does NOT import @aramo/talent (the Core lib)
+    // — importing target_entity 'talent_record' creates TalentRecord
+    // rows with core_talent_id NULL; canonicalization is M6-owned
+    // (T2). The integration spec proves it via bit-identical talent.*
+    // row-counts pre/post.
+    ImportModule,
     // M5 PR-11 §4.5/§4.6 — SkillsTaxonomyModule registers the
     // skill-canonicalization queue + no-op processor (Architecture v2.1
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).

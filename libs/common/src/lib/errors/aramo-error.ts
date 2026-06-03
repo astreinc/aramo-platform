@@ -47,6 +47,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   REQUISITION_NO_OPENINGS: 409,
   TALENT_LINK_INVALID: 422,
   SAVED_LIST_ITEM_TYPE_MISMATCH: 422,
+  IMPORT_THRESHOLD_EXCEEDED: 422,
+  IMPORT_ALREADY_REVERTED: 409,
+  IMPORT_REVERT_WINDOW_EXPIRED: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

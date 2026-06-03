@@ -70,6 +70,13 @@ model Company {
   owner_id           String? @db.Uuid
   entered_by_id      String? @db.Uuid
 
+  // PR-A8-1 — back-reference to the import batch that created this row
+  // (NULL for rows created outside the import engine). The reversion
+  // key (deleteMany WHERE import_batch_id = :id) only touches rows
+  // created by the batch — manually-created rows are untouched. Cross-
+  // schema logical reference to import.ImportBatch.id (§7.3).
+  import_batch_id String? @db.Uuid
+
   // Timestamps. updated_at populates on every row write (reference CRUD —
   // not column-scoped immutable like the workflow entities; no trigger).
   created_at DateTime @default(now()) @db.Timestamptz
@@ -82,6 +89,7 @@ model Company {
   @@index([tenant_id, name])
   @@index([tenant_id, site_id])
   @@index([tenant_id, is_hot])
+  @@index([tenant_id, import_batch_id])
 
   @@schema("company")
 }

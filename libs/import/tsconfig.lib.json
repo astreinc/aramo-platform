@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/libs/import",
+    "rootDir": "src",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "declaration": true,
+    "types": ["node"],
+    "paths": {
+      "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
+      "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
+      "@aramo/company": ["../../dist/libs/company/src/index.d.ts"],
+      "@aramo/contact": ["../../dist/libs/contact/src/index.d.ts"],
+      "@aramo/requisition": ["../../dist/libs/requisition/src/index.d.ts"],
+      "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/tests/**/*"]
+}

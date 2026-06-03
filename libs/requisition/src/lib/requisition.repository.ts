@@ -140,6 +140,64 @@ export class RequisitionRepository {
     return projectView(row as RequisitionRow);
   }
 
+  // PR-A8-1 — import-engine create. Mirrors create(); attributes the row
+  // to the import batch for reversion. NO assignment-row insert is done
+  // here — imported reqs land WITHOUT recruiter assignments by design
+  // (tenant_admin can assign post-import via the existing assign route).
+  async createForImport(args: {
+    tenant_id: string;
+    entered_by_id: string;
+    import_batch_id: string;
+    input: CreateRequisitionRequestDto;
+  }): Promise<RequisitionView> {
+    const { tenant_id, entered_by_id, import_batch_id, input } = args;
+    const row = await this.prisma.requisition.create({
+      data: {
+        tenant_id,
+        site_id: input.site_id ?? null,
+        title: input.title,
+        company_id: input.company_id,
+        contact_id: input.contact_id ?? null,
+        company_department_id: input.company_department_id ?? null,
+        status: input.status ?? 'active',
+        type: input.type ?? null,
+        duration: input.duration ?? null,
+        rate_max: input.rate_max ?? null,
+        salary: input.salary ?? null,
+        description: input.description ?? null,
+        notes: input.notes ?? null,
+        is_hot: input.is_hot ?? false,
+        openings: input.openings ?? 1,
+        openings_available: input.openings_available ?? input.openings ?? 1,
+        start_date: input.start_date === undefined ? null : new Date(input.start_date),
+        city: input.city ?? null,
+        state: input.state ?? null,
+        recruiter_id: input.recruiter_id ?? entered_by_id,
+        owner_id: input.owner_id ?? entered_by_id,
+        entered_by_id,
+        import_batch_id,
+      },
+    });
+    return projectView(row as RequisitionRow);
+  }
+
+  // PR-A8-1 — import-engine reversion. Tenant-scoped deleteMany by the
+  // back-reference. Cascade-deletes RequisitionAssignment rows via the
+  // intra-schema FK (ON DELETE CASCADE in the schema). Returns the
+  // delete count for the audit log.
+  async deleteByImportBatch(args: {
+    tenant_id: string;
+    import_batch_id: string;
+  }): Promise<number> {
+    const result = await this.prisma.requisition.deleteMany({
+      where: {
+        tenant_id: args.tenant_id,
+        import_batch_id: args.import_batch_id,
+      },
+    });
+    return result.count;
+  }
+
   async update(args: {
     tenant_id: string;
     id: string;
