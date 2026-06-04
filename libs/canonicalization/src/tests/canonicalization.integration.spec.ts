@@ -15,7 +15,9 @@ import { AramoError } from '@aramo/common';
 
 import { CanonicalizationModule } from '../lib/canonicalization.module.js';
 import { CanonicalizationOutboxRepository } from '../lib/canonicalization-outbox.repository.js';
+import { CanonicalizationRepository } from '../lib/canonicalization.repository.js';
 import { CanonicalizationService } from '../lib/canonicalization.service.js';
+import { CanonicalizationTriggerProcessor } from '../lib/canonicalization-trigger.processor.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 // T2-2a — canonicalization integration spec. Real Postgres 17 via
@@ -121,6 +123,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let service: CanonicalizationService;
     let prisma: PrismaService;
     let outbox: CanonicalizationOutboxRepository;
+    let triggerProcessor: CanonicalizationTriggerProcessor;
     let dbClient: Client;
 
     beforeAll(async () => {
@@ -146,6 +149,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       service = app.get(CanonicalizationService);
       prisma = app.get(PrismaService);
       outbox = app.get(CanonicalizationOutboxRepository);
+      triggerProcessor = app.get(CanonicalizationTriggerProcessor);
 
       dbClient = new Client({ connectionString: url });
       await dbClient.connect();
@@ -552,6 +556,506 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(typeof sample.tenant_id).toBe('string');
       expect(typeof sample.id).toBe('string');
       expect(sample.created_at).toBeInstanceOf(Date);
+    });
+
+    // ===================================================================
+    // T2-3 — RESOLUTION + TRIGGER proofs (§4 of the T2-3 Gate-5 prompt).
+    //
+    //   1. Resolution NEW identity (verified email unseen → CREATE-NEW).
+    //   2. Resolution EXISTING identity (verified email matches existing
+    //      verified TalentContactMethod → resolves to that Talent +
+    //      new overlay if absent for the incoming tenant; no new Talent).
+    //   3. CROSS-TENANT resolution (T2-1 model: same verified email
+    //      arriving in a DIFFERENT tenant → resolves to the same Core
+    //      Talent + a new tenant overlay; Talent count +0; overlay +1).
+    //   4. UNVERIFIED email does NOT resolve (existing contact-method
+    //      with verification_status='unverified' is held as evidence,
+    //      not an identity key → CREATE-NEW Talent).
+    //   5. The trigger: an unresolved RawPayloadReference → trigger
+    //      processor drains it → canonicalize fires automatically →
+    //      resolved_talent_id set + Talent + overlay + evidence + outbox
+    //      event written.
+    //   6. Trigger durability + idempotency: a re-fired tick is a no-op
+    //      (polling query excludes resolved rows; canonicalize's
+    //      resolved_talent_id short-circuit catches any race). A failed
+    //      canonicalize leaves the row unresolved → next tick re-picks.
+    //   7. Boundary tripwire (re-frame): resolution lives IN Core
+    //      canonicalization (the prior 4 proofs are the positive
+    //      evidence). The ATS no-resolution tripwire lives separately at
+    //      apps/api/src/tests/ats-batch4b-talent-link.integration.spec.ts
+    //      and is asserted there — this spec confirms the Core side.
+    //   8. R10: the resolution result + the emitted outbox event carry
+    //      no tier/score/rank/match output vocabulary.
+    // ===================================================================
+
+    // T2-3 tenant IDs distinct from TENANT_ID / OTHER_TENANT_ID to keep
+    // the cross-tenant proof independent of prior fixtures.
+    const TENANT_A = '33333333-3333-7333-8333-333333333333';
+    const TENANT_B = '44444444-4444-7444-8444-444444444444';
+
+    it('T2-3 proof 1 — RESOLUTION NEW IDENTITY: never-seen verified email + core_talent_id omitted → CREATE-NEW Talent (resolution_method = new_identity)', async () => {
+      const payloadId = uuidv7();
+      const uniqueEmail = `t2-3-new-${randomUUID()}@example.com`;
+      await insertPayload(dbClient, {
+        id: payloadId,
+        tenant_id: TENANT_A,
+        source: 'talent_direct',
+        storage_ref: 's3://bucket/t2-3-p1',
+        sha256: 't2-3-p1-' + 'a'.repeat(56),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: uniqueEmail,
+        profile_url: null,
+      });
+
+      const beforeTalents = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM "talent"."Talent"`,
+      );
+
+      // Production-path invocation: core_talent_id + resolution_method
+      // are OMITTED — the inline resolver runs.
+      const result = await service.canonicalize({
+        payload_id: payloadId,
+        source_channel: 'self_signup',
+        authContext: { tenant_id: TENANT_A },
+        requestId: randomUUID(),
+      });
+
+      expect(result.already_canonicalized).toBe(false);
+      expect(result.resolution_method).toBe('new_identity');
+      expect(result.outbox_event_id).not.toBeNull();
+
+      // +1 Talent (the resolver missed and CREATE-NEW fired).
+      const afterTalents = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM "talent"."Talent"`,
+      );
+      expect(
+        Number(afterTalents.rows[0]!.count) -
+          Number(beforeTalents.rows[0]!.count),
+      ).toBe(1);
+
+      // RawPayloadReference.resolution_method = 'new_identity' (the
+      // computed value the service wrote — not caller_supplied).
+      const updatedPayload = await dbClient.query(
+        `SELECT resolved_talent_id, resolution_method
+           FROM "ingestion"."RawPayloadReference" WHERE id = $1`,
+        [payloadId],
+      );
+      expect(updatedPayload.rows[0].resolved_talent_id).toBe(result.talent_id);
+      expect(updatedPayload.rows[0].resolution_method).toBe('new_identity');
+    });
+
+    it('T2-3 proof 2 — RESOLUTION EXISTING IDENTITY (same tenant): verified email matches an existing verified TalentContactMethod → resolves to that Talent (resolution_method = verified_email_match; Talent count +0)', async () => {
+      // Seed an existing Talent in TENANT_A via a prior canonicalize call
+      // (the cheapest deterministic way to produce a verified
+      // TalentContactMethod row, since the canonicalize tx is the only
+      // writer per the proof-7 R12 invariant).
+      const seedEmail = `t2-3-existing-${randomUUID()}@example.com`;
+      const seedPayloadId = uuidv7();
+      await insertPayload(dbClient, {
+        id: seedPayloadId,
+        tenant_id: TENANT_A,
+        source: 'talent_direct',
+        storage_ref: 's3://bucket/t2-3-p2-seed',
+        sha256: 't2-3-p2-seed' + 'b'.repeat(52),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: seedEmail,
+        profile_url: null,
+      });
+      const seed = await service.canonicalize({
+        payload_id: seedPayloadId,
+        source_channel: 'self_signup',
+        authContext: { tenant_id: TENANT_A },
+        requestId: randomUUID(),
+      });
+      expect(seed.resolution_method).toBe('new_identity');
+
+      // A SECOND payload arrives in the SAME tenant with the SAME
+      // verified email. The resolver should hit and resolve to seed
+      // Talent (no new Talent).
+      const payloadId = uuidv7();
+      await insertPayload(dbClient, {
+        id: payloadId,
+        tenant_id: TENANT_A,
+        source: 'astre_import',
+        storage_ref: 's3://bucket/t2-3-p2',
+        sha256: 't2-3-p2-' + 'c'.repeat(56),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: seedEmail,
+        profile_url: null,
+      });
+
+      const beforeTalents = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM "talent"."Talent"`,
+      );
+
+      const result = await service.canonicalize({
+        payload_id: payloadId,
+        source_channel: 'import',
+        authContext: { tenant_id: TENANT_A },
+        requestId: randomUUID(),
+      });
+
+      expect(result.already_canonicalized).toBe(false);
+      expect(result.resolution_method).toBe('verified_email_match');
+      expect(result.talent_id).toBe(seed.talent_id);
+
+      // Talent count UNCHANGED (the resolver hit; no new Talent created).
+      const afterTalents = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM "talent"."Talent"`,
+      );
+      expect(afterTalents.rows[0]!.count).toBe(beforeTalents.rows[0]!.count);
+
+      // RawPayloadReference.resolution_method = 'verified_email_match'.
+      const updatedPayload = await dbClient.query(
+        `SELECT resolved_talent_id, resolution_method
+           FROM "ingestion"."RawPayloadReference" WHERE id = $1`,
+        [payloadId],
+      );
+      expect(updatedPayload.rows[0].resolved_talent_id).toBe(seed.talent_id);
+      expect(updatedPayload.rows[0].resolution_method).toBe('verified_email_match');
+    });
+
+    it('T2-3 proof 3 — CROSS-TENANT RESOLUTION (T2-1 model — one Talent, tenant-scoped overlays): same verified email arriving in TENANT_B resolves to the TENANT_A Core Talent + a new TENANT_B overlay (no new Talent, +1 overlay)', async () => {
+      // Seed in TENANT_A.
+      const seedEmail = `t2-3-cross-${randomUUID()}@example.com`;
+      const seedPayloadId = uuidv7();
+      await insertPayload(dbClient, {
+        id: seedPayloadId,
+        tenant_id: TENANT_A,
+        source: 'talent_direct',
+        storage_ref: 's3://bucket/t2-3-p3-seed',
+        sha256: 't2-3-p3-seed' + 'd'.repeat(52),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: seedEmail,
+        profile_url: null,
+      });
+      const seed = await service.canonicalize({
+        payload_id: seedPayloadId,
+        source_channel: 'self_signup',
+        authContext: { tenant_id: TENANT_A },
+        requestId: randomUUID(),
+      });
+
+      // A payload arrives in TENANT_B with the same verified email.
+      // T2-1 rule: one Jane, tenant-scoped overlay. Expected:
+      //   - Same Core Talent (no new Talent).
+      //   - A new overlay for TENANT_B.
+      //   - resolution_method = 'verified_email_match' (the cross-tenant
+      //     hit).
+      const payloadId = uuidv7();
+      await insertPayload(dbClient, {
+        id: payloadId,
+        tenant_id: TENANT_B,
+        source: 'astre_import',
+        storage_ref: 's3://bucket/t2-3-p3',
+        sha256: 't2-3-p3-' + 'e'.repeat(56),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: seedEmail,
+        profile_url: null,
+      });
+
+      const beforeTalents = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM "talent"."Talent"`,
+      );
+      const beforeOverlaysB = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM "talent"."TalentTenantOverlay" WHERE tenant_id = $1`,
+        [TENANT_B],
+      );
+
+      const result = await service.canonicalize({
+        payload_id: payloadId,
+        source_channel: 'import',
+        authContext: { tenant_id: TENANT_B },
+        requestId: randomUUID(),
+      });
+
+      expect(result.resolution_method).toBe('verified_email_match');
+      expect(result.talent_id).toBe(seed.talent_id);
+      expect(result.tenant_id).toBe(TENANT_B);
+
+      // Talent count +0 (the SAME Core Talent is reused — the T2-1 model).
+      const afterTalents = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM "talent"."Talent"`,
+      );
+      expect(afterTalents.rows[0]!.count).toBe(beforeTalents.rows[0]!.count);
+
+      // TENANT_B overlay count +1 (the new tenant overlay for the same
+      // Talent identity).
+      const afterOverlaysB = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM "talent"."TalentTenantOverlay" WHERE tenant_id = $1`,
+        [TENANT_B],
+      );
+      expect(
+        Number(afterOverlaysB.rows[0]!.count) -
+          Number(beforeOverlaysB.rows[0]!.count),
+      ).toBe(1);
+
+      // Cross-tenant evidence isolation — TENANT_B got its OWN
+      // TalentContactMethod row tagged with tenant_id=TENANT_B (the
+      // evidence is overlay-scoped, even though the identity is shared).
+      const bContacts = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM "talent_evidence"."TalentContactMethod"
+           WHERE talent_id = $1 AND tenant_id = $2 AND value = $3`,
+        [seed.talent_id, TENANT_B, seedEmail],
+      );
+      expect(Number(bContacts.rows[0]!.count)).toBe(1);
+    });
+
+    it('T2-3 proof 4 — UNVERIFIED EMAIL DOES NOT RESOLVE: a TalentContactMethod with verification_status="unverified" is held as evidence, not as an identity key → CREATE-NEW Talent', async () => {
+      // Seed a Talent with an UNverified email contact method directly
+      // (canonicalize only writes verified=true for verified_email; the
+      // unverified case comes from elsewhere — we insert directly to
+      // simulate). Use a unique email so this is the only contact-method
+      // row matching.
+      const unverifiedEmail = `t2-3-unverified-${randomUUID()}@example.com`;
+      const seedTalentId = uuidv7();
+      await dbClient.query(
+        `INSERT INTO "talent"."Talent" (id, lifecycle_status, updated_at)
+           VALUES ($1, 'active', NOW())`,
+        [seedTalentId],
+      );
+      await dbClient.query(
+        `INSERT INTO "talent_evidence"."TalentContactMethod"
+           (id, talent_id, tenant_id, type, value, is_primary,
+            verification_status, created_at)
+           VALUES ($1, $2, $3, 'email', $4, false, 'unverified', NOW())`,
+        [uuidv7(), seedTalentId, TENANT_A, unverifiedEmail],
+      );
+
+      // A payload arrives with the same email (verified). The resolver
+      // must NOT match (the existing contact method is unverified) →
+      // CREATE-NEW.
+      const payloadId = uuidv7();
+      await insertPayload(dbClient, {
+        id: payloadId,
+        tenant_id: TENANT_A,
+        source: 'talent_direct',
+        storage_ref: 's3://bucket/t2-3-p4',
+        sha256: 't2-3-p4-' + 'f'.repeat(56),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: unverifiedEmail,
+        profile_url: null,
+      });
+
+      const beforeTalents = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM "talent"."Talent"`,
+      );
+
+      const result = await service.canonicalize({
+        payload_id: payloadId,
+        source_channel: 'self_signup',
+        authContext: { tenant_id: TENANT_A },
+        requestId: randomUUID(),
+      });
+
+      expect(result.resolution_method).toBe('new_identity');
+      expect(result.talent_id).not.toBe(seedTalentId);
+
+      // +1 Talent (resolver did NOT match the unverified contact-method;
+      // CREATE-NEW fired).
+      const afterTalents = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM "talent"."Talent"`,
+      );
+      expect(
+        Number(afterTalents.rows[0]!.count) -
+          Number(beforeTalents.rows[0]!.count),
+      ).toBe(1);
+    });
+
+    it('T2-3 proof 5 — THE TRIGGER: an unresolved RawPayloadReference is drained automatically by the processor (no caller invokes canonicalize directly)', async () => {
+      // Insert a payload (the trigger's outbox row — resolved_talent_id
+      // IS NULL). No caller-supplied canonicalize.
+      const payloadId = uuidv7();
+      const triggerEmail = `t2-3-trigger-${randomUUID()}@example.com`;
+      await insertPayload(dbClient, {
+        id: payloadId,
+        tenant_id: TENANT_A,
+        source: 'talent_direct',
+        storage_ref: 's3://bucket/t2-3-p5',
+        sha256: 't2-3-p5-' + '1'.repeat(56),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: triggerEmail,
+        profile_url: null,
+      });
+
+      // Confirm the polling query SEES the row (the trigger's read seam).
+      const repo = app.get(CanonicalizationRepository);
+      const unresolvedBefore = await repo.findUnresolvedPayloadBatch({
+        limit: 1000,
+      });
+      expect(unresolvedBefore.some((r) => r.id === payloadId)).toBe(true);
+
+      // Drive the trigger (drainBatch is the in-process drain seam the
+      // BullMQ tick would call). Expect: the row gets resolved + the
+      // canonicalization side effects fire.
+      const drain1 = await triggerProcessor.drainBatch({
+        batchSize: 1000,
+        jobId: 't2-3-proof-5',
+      });
+      expect(drain1.attempted).toBeGreaterThan(0);
+      expect(drain1.failed).toBe(0);
+
+      // The specific payload is now resolved.
+      const updatedPayload = await dbClient.query(
+        `SELECT resolved_talent_id, resolution_method
+           FROM "ingestion"."RawPayloadReference" WHERE id = $1`,
+        [payloadId],
+      );
+      expect(updatedPayload.rows[0].resolved_talent_id).not.toBeNull();
+      expect(updatedPayload.rows[0].resolution_method).toBe('new_identity');
+
+      // The talent.canonicalized event was written to the outbox.
+      const ev = await dbClient.query(
+        `SELECT event_type FROM "canonicalization"."OutboxEvent"
+           WHERE (event_payload->>'payload_id') = $1`,
+        [payloadId],
+      );
+      expect(ev.rowCount).toBe(1);
+      expect(ev.rows[0].event_type).toBe('talent.canonicalized');
+    });
+
+    it('T2-3 proof 6 — TRIGGER DURABILITY + IDEMPOTENCY: a re-fired tick is a no-op (polling query excludes resolved rows; resolved_talent_id short-circuit catches any race)', async () => {
+      // Insert + drive once to get a resolved row.
+      const payloadId = uuidv7();
+      const email = `t2-3-idem-${randomUUID()}@example.com`;
+      await insertPayload(dbClient, {
+        id: payloadId,
+        tenant_id: TENANT_A,
+        source: 'talent_direct',
+        storage_ref: 's3://bucket/t2-3-p6',
+        sha256: 't2-3-p6-' + '2'.repeat(56),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: email,
+        profile_url: null,
+      });
+      await triggerProcessor.drainBatch({
+        batchSize: 1000,
+        jobId: 't2-3-proof-6-first',
+      });
+      const resolvedRow = await dbClient.query<{
+        resolved_talent_id: string;
+        resolution_method: string;
+      }>(
+        `SELECT resolved_talent_id, resolution_method
+           FROM "ingestion"."RawPayloadReference" WHERE id = $1`,
+        [payloadId],
+      );
+      expect(resolvedRow.rows[0].resolved_talent_id).not.toBeNull();
+      const firstTalentId = resolvedRow.rows[0].resolved_talent_id;
+
+      // Snapshot the per-payload outbox + evidence counts.
+      const beforeEvents = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM "canonicalization"."OutboxEvent"
+           WHERE (event_payload->>'payload_id') = $1`,
+        [payloadId],
+      );
+      const beforeContacts = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM "talent_evidence"."TalentContactMethod"
+           WHERE talent_id = $1`,
+        [firstTalentId],
+      );
+
+      // Polling-query layer: the resolved row is EXCLUDED from
+      // findUnresolvedPayloadBatch (durability layer (a)).
+      const repo = app.get(CanonicalizationRepository);
+      const unresolved = await repo.findUnresolvedPayloadBatch({ limit: 1000 });
+      expect(unresolved.some((r) => r.id === payloadId)).toBe(false);
+
+      // Short-circuit layer: even if the row WERE re-picked (the race
+      // case), canonicalize's resolved_talent_id check fires (already_
+      // canonicalized = true; outbox_event_id = null; contacts_created = 0).
+      const direct = await service.canonicalize({
+        payload_id: payloadId,
+        source_channel: 'self_signup',
+        authContext: { tenant_id: TENANT_A },
+        requestId: randomUUID(),
+      });
+      expect(direct.already_canonicalized).toBe(true);
+      expect(direct.outbox_event_id).toBeNull();
+      expect(direct.contact_methods_created).toBe(0);
+      expect(direct.talent_id).toBe(firstTalentId);
+
+      // No dup writes: outbox event count + contact count unchanged.
+      const afterEvents = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM "canonicalization"."OutboxEvent"
+           WHERE (event_payload->>'payload_id') = $1`,
+        [payloadId],
+      );
+      expect(afterEvents.rows[0]!.count).toBe(beforeEvents.rows[0]!.count);
+      const afterContacts = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM "talent_evidence"."TalentContactMethod"
+           WHERE talent_id = $1`,
+        [firstTalentId],
+      );
+      expect(afterContacts.rows[0]!.count).toBe(beforeContacts.rows[0]!.count);
+
+      // Re-running the trigger is also a no-op for this payload.
+      const drain2 = await triggerProcessor.drainBatch({
+        batchSize: 1000,
+        jobId: 't2-3-proof-6-second',
+      });
+      // The drain may pick up OTHER unresolved rows from prior proofs,
+      // but the failed count must be 0 (durability) and the targeted
+      // payload's writes remain unchanged.
+      expect(drain2.failed).toBe(0);
+      const finalEvents = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM "canonicalization"."OutboxEvent"
+           WHERE (event_payload->>'payload_id') = $1`,
+        [payloadId],
+      );
+      expect(finalEvents.rows[0]!.count).toBe(beforeEvents.rows[0]!.count);
+    });
+
+    it('T2-3 proof 8 — R10: the outbox event payload from a T2-3 resolution carries no tier/score/rank/match-class keys', async () => {
+      // Find an event from any T2-3 resolution above (TENANT_A / TENANT_B).
+      const events = await dbClient.query<{
+        event_type: string;
+        event_payload: Record<string, unknown>;
+      }>(
+        `SELECT event_type, event_payload FROM "canonicalization"."OutboxEvent"
+           WHERE tenant_id IN ($1, $2) ORDER BY created_at ASC`,
+        [TENANT_A, TENANT_B],
+      );
+      expect(events.rowCount).toBeGreaterThan(0);
+      const sample = events.rows[0]!;
+      expect(sample.event_type).toBe('talent.canonicalized');
+      const payload = sample.event_payload;
+      // The 4 expected keys ONLY.
+      expect(Object.keys(payload).sort()).toEqual(
+        ['payload_id', 'resolution_method', 'talent_id', 'tenant_id'].sort(),
+      );
+      // The R10 forbidden output keys are absent.
+      for (const k of [
+        'tier',
+        'rank',
+        'rank_ordinal',
+        'score',
+        'why_matched_sentence',
+        'strengths',
+        'gaps',
+        'risk_flags',
+        'recruiter_notes',
+        'override_id',
+        'internal_engagement_state',
+      ]) {
+        expect(payload).not.toHaveProperty(k);
+      }
     });
 
     // Silence unused-var lint for the prisma handle (kept for future
