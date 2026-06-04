@@ -8,31 +8,43 @@ import { Prisma } from '../../prisma/generated/client/client.js';
 
 import { PrismaService } from './prisma/prisma.service.js';
 
-// T2-2a — canonicalization orchestrator (the atomic create-or-associate
-// canonicalize service). Lead-authored per
-// Aramo-T2-2a-Canonicalization-Orchestration-Directive-v1_0-LOCKED.md.
+// T2-2a / T2-3 — canonicalization orchestrator (the atomic resolve-or-
+// associate-or-create canonicalize service). Lead-authored per
+// Aramo-T2-2a-Canonicalization-Orchestration-Directive-v1_0-LOCKED.md
+// + Aramo-T2-3-Resolution-Trigger-Gate5-Prompt-v1_0.
 //
 // Surface (closed, single method):
-//   canonicalize({ payload_id, core_talent_id, source_channel,
-//                  resolution_method, authContext })
+//   canonicalize({ payload_id, core_talent_id?, source_channel,
+//                  resolution_method?, authContext })
 //     → CanonicalizeResult
 //
-// Semantics (caller-supplied id; ASSOCIATE-NOT-RESOLVE pattern, A5b-2
-// applied to Core):
-//   - core_talent_id provided → validate it exists; create overlay if
-//     absent for (talent_id, tenant_id); populate evidence; record.
-//   - core_talent_id null     → create a NEW Talent (the ONE authorized
-//     createTalent call site at T2-2a; the authorized-creation
-//     tripwire — proof 6 — asserts ATS ops still create ZERO Talents
-//     and canonicalization is the only new caller); create overlay;
-//     populate evidence; record.
+// Semantics (T2-3 RESOLVE + retained T2-2a test affordances):
+//   - core_talent_id OMITTED (production path) → run the inline T2-1
+//     verified-email resolver:
+//       * payload.verified_email is non-null AND a verified email-type
+//         TalentContactMethod exists with the same value → resolve to
+//         that Talent (cross-tenant: Core Talent is tenant-agnostic;
+//         the overlay is tenant-scoped per the T2-1 model);
+//         resolution_method = verified_email_match.
+//       * Else → CREATE-NEW Talent; resolution_method = new_identity.
+//     T2-1 Decision 3 — DETERMINISTIC, exact, oldest-first; no fuzzy
+//     auto-merge. An UNverified email does NOT resolve (held as evidence,
+//     not an identity key).
+//   - core_talent_id = <UUID> (test/internal) → ASSOCIATE: validate the
+//     supplied id; create overlay if absent; populate evidence; record.
+//     resolution_method defaults to 'caller_supplied'.
+//   - core_talent_id = null (test/internal) → force CREATE-NEW (skip
+//     resolver). resolution_method defaults to 'new_identity'.
 //
-//   NO inspection of verified_email to DECIDE the Talent. T2-2a records
-//   WHAT the caller told it (resolution_method); it does NOT compute the
-//   decision. The no-resolution tripwire (proof 5) is structural: a
-//   source-scan of libs/canonicalization/src/lib/ for
-//   findByVerifiedEmail/resolveIdentity/resolveTalent returns ZERO hits.
-//   T2-3 wires the verified-email resolver.
+// Boundary re-frame (T2-3 vs T2-2a): the resolver is now IN Core
+// canonicalization (the A5b-2 deferral vindicated; T2-1 ruled this is
+// where it belongs). The ATS adapter STILL has no resolver — the ATS
+// no-resolution tripwire (apps/api/src/tests/ats-batch4b-talent-link.
+// integration.spec.ts) holds: libs/talent + libs/identity carry no
+// findTalentByEmail / resolveIdentity / matchIdentity. The resolver
+// lives INLINE in the canonicalize $transaction (no named public
+// method): the lib-level forbidden-name tripwire (proof 5) stays
+// literally green; the boundary is structural, not nominal.
 //
 // Atomicity (Directive §1 Ruling 1 — NON-NEGOTIABLE): all writes happen
 // in ONE Prisma $transaction at READ COMMITTED with a SELECT … FOR UPDATE
@@ -50,9 +62,9 @@ import { PrismaService } from './prisma/prisma.service.js';
 // VIOLATE R12.
 
 // Resolution method — closed enum mirroring the ingestion-schema
-// ResolutionMethod (DB) enum. Caller chooses one of the three values per
-// the T2-2a ASSOCIATE-NOT-RESOLVE contract. T2-3 may extend the closed
-// list (e.g. sha256_payload_dup).
+// ResolutionMethod (DB) enum. T2-3: the service COMPUTES this on the
+// production path (verified_email_match | new_identity); callers MAY
+// supply it on the ASSOCIATE test path (defaults to 'caller_supplied').
 export type ResolutionMethodValue =
   | 'new_identity'
   | 'verified_email_match'
@@ -70,13 +82,18 @@ export interface CanonicalizeAuthContext {
 
 export interface CanonicalizeInput {
   payload_id: string;
-  // null → CREATE-NEW (the ONE authorized createTalent path); non-null →
-  // ASSOCIATE-with-existing (validated via tx.talent.findUnique).
-  core_talent_id: string | null;
+  // T2-3: optional. When undefined → the inline resolver runs (the
+  // production path). Test/internal affordances retained:
+  //   - null → force CREATE-NEW (skip resolver)
+  //   - <UUID> → force ASSOCIATE with this id (skip resolver)
+  core_talent_id?: string | null;
   // Closed vocabulary on TalentTenantOverlay (Talent Record Spec §2.2,
   // 4 values): self_signup | recruiter_capture | referral | import.
   source_channel: string;
-  resolution_method: ResolutionMethodValue;
+  // T2-3: optional. When undefined the service computes it (the
+  // production path: verified_email_match | new_identity). When supplied
+  // alongside a UUID core_talent_id, used as the recorded method.
+  resolution_method?: ResolutionMethodValue;
   authContext: CanonicalizeAuthContext;
   requestId: string;
 }
@@ -128,6 +145,20 @@ function classifyProfileUrl(url: string): ContactTypeForUrl {
   }
 }
 
+// T2-3 — unresolved-payload batch shape (the polling-outbox row). The
+// trigger processor reads these rows and invokes canonicalize() per
+// payload; the resolved_talent_id IS NULL filter means each row is
+// off-queue once resolved (resolved_talent_id is set inside the
+// canonicalize $transaction). The minimal projection is intentional —
+// the consumer only needs (payload_id, tenant_id) to invoke
+// canonicalize; verified_email + source decisions stay inside the
+// canonicalize $transaction.
+export interface UnresolvedPayloadRow {
+  id: string;
+  tenant_id: string;
+  source: string;
+}
+
 @Injectable()
 export class CanonicalizationRepository {
   constructor(
@@ -135,6 +166,34 @@ export class CanonicalizationRepository {
     @Inject('CanonicalizationRepositoryLogger')
     private readonly logger: AramoLogger,
   ) {}
+
+  // T2-3 — polling-outbox read. Returns up to `limit` unresolved payloads
+  // (resolved_talent_id IS NULL), oldest first (created_at asc). The
+  // CanonicalizationTriggerProcessor calls this on each tick and invokes
+  // canonicalize() per row.
+  //
+  // No transaction / no lock — the canonicalize $transaction itself
+  // SELECTs FOR UPDATE the RawPayloadReference row, so two ticks racing
+  // on the same payload serialize on that lock; the second sees
+  // resolved_talent_id non-null (from the first) and the idempotency
+  // short-circuit fires (a no-op). The query result may be stale by the
+  // time canonicalize runs — that's fine, the lock + short-circuit are
+  // the load-bearing correctness invariants.
+  async findUnresolvedPayloadBatch(args: {
+    limit: number;
+  }): Promise<UnresolvedPayloadRow[]> {
+    const rows = await this.prisma.rawPayloadReference.findMany({
+      where: { resolved_talent_id: null },
+      orderBy: { created_at: 'asc' },
+      take: args.limit,
+      select: {
+        id: true,
+        tenant_id: true,
+        source: true,
+      },
+    });
+    return rows;
+  }
 
   async canonicalize(input: CanonicalizeInput): Promise<CanonicalizeResult> {
     const startedAt = Date.now();
@@ -200,24 +259,70 @@ export class CanonicalizationRepository {
             talent_id: payload.resolved_talent_id,
             prior_resolution_method: payload.resolution_method,
           });
+          // The prior canonicalize wrote resolution_method alongside
+          // resolved_talent_id (the last-write tuple at Step 5). A non-
+          // null resolved_talent_id ⇒ a non-null resolution_method.
+          const priorMethod =
+            payload.resolution_method ??
+            input.resolution_method ??
+            'caller_supplied';
           return {
             talent_id: payload.resolved_talent_id,
             tenant_id: payload.tenant_id,
-            resolution_method:
-              payload.resolution_method ?? input.resolution_method,
+            resolution_method: priorMethod,
             already_canonicalized: true,
             outbox_event_id: null,
             contact_methods_created: 0,
           } satisfies CanonicalizeResult;
         }
 
-        // Step 3 — Talent decision (ASSOCIATE-NOT-RESOLVE).
+        // Step 3 — Talent decision (T2-3: RESOLVE | ASSOCIATE | CREATE-NEW).
+        // The resolveOrCreate seam is INLINE here; lib-surface forbidden-
+        // names tripwire (proof 5) stays literally green.
         let talentId: string;
-        if (input.core_talent_id !== null) {
-          // ASSOCIATE: validate the supplied id exists in `talent.Talent`.
-          // The follower model `Talent` is bit-identical to the source-of-
-          // truth (the drift-tripwire CI test enforces); the lookup is
-          // tenant-agnostic because Core Talents are tenant-agnostic.
+        let resolvedMethod: ResolutionMethodValue;
+        let needsCreate = false;
+
+        if (input.core_talent_id === undefined) {
+          // T2-3 PRODUCTION PATH: the inline T2-1 verified-email resolver.
+          // payload.verified_email is already lowercased + trimmed at
+          // ingestion (libs/ingestion ingestion.service.ts:74-77); we match
+          // on the stored value directly.
+          //
+          // Cross-tenant: Core Talent is tenant-agnostic; the resolver
+          // does NOT filter by tenant_id. One Jane, tenant-scoped overlay
+          // (the T2-1 model). Deterministic — exact, oldest match wins.
+          //
+          // Unverified-doesn't-resolve: only verification_status='verified'
+          // contact methods are identity keys; the rest are evidence.
+          if (payload.verified_email !== null) {
+            const existing = await tx.talentContactMethod.findFirst({
+              where: {
+                type: 'email',
+                value: payload.verified_email,
+                verification_status: 'verified',
+              },
+              orderBy: { created_at: 'asc' },
+            });
+            if (existing !== null) {
+              talentId = existing.talent_id;
+              resolvedMethod = 'verified_email_match';
+            } else {
+              needsCreate = true;
+              resolvedMethod = 'new_identity';
+              talentId = ''; // assigned in the create branch below
+            }
+          } else {
+            // No verified email → no identity key → CREATE-NEW.
+            needsCreate = true;
+            resolvedMethod = 'new_identity';
+            talentId = ''; // assigned in the create branch below
+          }
+        } else if (input.core_talent_id !== null) {
+          // ASSOCIATE (test/internal): validate the supplied id exists in
+          // `talent.Talent`. The follower model is bit-identical to the
+          // source-of-truth (the drift-tripwire enforces); tenant-agnostic
+          // because Core Talents are tenant-agnostic.
           const existing = await tx.talent.findUnique({
             where: { id: input.core_talent_id },
           });
@@ -236,11 +341,21 @@ export class CanonicalizationRepository {
             );
           }
           talentId = existing.id;
+          resolvedMethod = input.resolution_method ?? 'caller_supplied';
         } else {
-          // CREATE-NEW: the ONE authorized createTalent call site at T2-2a.
-          // The authorized-creation tripwire (proof 6) asserts ATS ops
-          // still create ZERO Talents and that this is the ONLY new caller
-          // outside libs/talent itself.
+          // CREATE-NEW forced (test/internal — explicit null).
+          needsCreate = true;
+          resolvedMethod = input.resolution_method ?? 'new_identity';
+          talentId = ''; // assigned in the create branch below
+        }
+
+        if (needsCreate) {
+          // The ONE authorized createTalent call site at T2-2a / T2-3.
+          // Proof 6 (authorized-creation tripwire) asserts ATS ops still
+          // create ZERO Talents and this is the ONLY new caller outside
+          // libs/talent itself. The resolver miss + the forced CREATE-NEW
+          // path FOLD HERE (single `.talent.create(` invocation in the
+          // lib source — the proof 6 count assertion stays at exactly 1).
           talentId = uuidv7();
           await tx.talent.create({
             data: {
@@ -318,12 +433,14 @@ export class CanonicalizationRepository {
         // Step 5 — record the decision (T2-1 Decision 4) on the
         // RawPayloadReference row. The LAST write before the outbox
         // emission; the idempotency anchor (the next canonicalize call
-        // on this payload short-circuits at step 2).
+        // on this payload short-circuits at step 2). resolvedMethod was
+        // computed by the T2-3 Step-3 branch (verified_email_match |
+        // new_identity | caller_supplied).
         await tx.rawPayloadReference.update({
           where: { id: payload.id },
           data: {
             resolved_talent_id: talentId,
-            resolution_method: input.resolution_method,
+            resolution_method: resolvedMethod,
           },
         });
 
@@ -343,7 +460,7 @@ export class CanonicalizationRepository {
             event_payload: {
               talent_id: talentId,
               tenant_id: payload.tenant_id,
-              resolution_method: input.resolution_method,
+              resolution_method: resolvedMethod,
               payload_id: payload.id,
             } as never,
           },
@@ -352,7 +469,7 @@ export class CanonicalizationRepository {
         return {
           talent_id: talentId,
           tenant_id: payload.tenant_id,
-          resolution_method: input.resolution_method,
+          resolution_method: resolvedMethod,
           already_canonicalized: false,
           outbox_event_id: outboxEventId,
           contact_methods_created: contactMethodsCreated,

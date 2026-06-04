@@ -3,22 +3,40 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-// T2-2a — structural tripwires (no DB required; static source-file
+// T2-2a / T2-3 — structural tripwires (no DB required; static source-file
 // scans). Per Directive §4 proofs 5-7 and the standing
 // Charter-R10/R12-clean enforcement.
 //
-//   Proof 5 — no-resolution tripwire (A5b-2 applied to Core): the
-//             canonicalize service takes core_talent_id as INPUT; a
-//             source-scan of libs/canonicalization/src/lib/ for
-//             findByVerifiedEmail / resolveIdentity / resolveTalent
-//             returns ZERO hits. T2-3 introduces the resolver (the
-//             ASSOCIATE-NOT-RESOLVE → ASSOCIATE+RESOLVE upgrade).
+//   Proof 5 — RE-FRAMED at T2-3 — resolution-lives-in-Core tripwire.
+//             OLD (T2-2a): "canonicalize does NOT resolve."
+//             NEW (T2-3): "ONLY Core canonicalization resolves; the ATS
+//             still never does." The boundary shifted (the A5b-2
+//             deferral vindicated; T2-1 ruled resolution belongs in
+//             Core). Concretely:
+//               (a) core_talent_id is OPTIONAL on canonicalize's input
+//                   (undefined → the inline resolver runs; null/UUID →
+//                   the test-affordance ASSOCIATE-NOT-RESOLVE path).
+//               (b) The inline T2-1 verified-email match exists IN the
+//                   canonicalize $transaction (tx.talentContactMethod.
+//                   findFirst on type='email' / verification_status=
+//                   'verified').
+//               (c) NO standalone named resolver method on the lib
+//                   surface (findByVerifiedEmail / resolveIdentity /
+//                   resolveTalent are still forbidden as identifiers).
+//             The ATS no-resolution tripwire lives separately at
+//             apps/api/src/tests/ats-batch4b-talent-link.integration.
+//             spec.ts and STAYS untouched (libs/talent + libs/identity
+//             carry no findTalentByEmail / resolveIdentity / matchIdentity
+//             — the structural commitment that resolution lives in
+//             Core ONLY).
 //   Proof 6 — authorized-creation tripwire: canonicalization is the ONLY
 //             new createTalent call site outside libs/talent's own
 //             repository. ATS-side libs (talent-record, import) must
 //             continue to NOT call createTalent. The Directive's
 //             "talent.* bit-identical under ATS ops" assertion holds
-//             structurally.
+//             structurally. T2-3 folds the resolver-miss + the explicit-
+//             null CREATE-NEW paths into a SINGLE `.talent.create(` call
+//             site (the count assertion stays at exactly 1).
 //   Proof 7 — R10/R12: the canonicalize source carries no
 //             tier / score / rank / match output vocabulary, and the
 //             populated evidence shape is contact-method-only (R12-
@@ -58,28 +76,49 @@ function stripComments(src: string): string {
     .replace(/\/\/[^\n]*/g, '');
 }
 
-describe('T2-2a — Proof 5: no-resolution tripwire (A5b-2 applied to Core)', () => {
-  it('canonicalize takes core_talent_id as INPUT (caller-supplied), not derived', () => {
+describe('T2-3 — Proof 5 (re-framed): resolution lives in Core canonicalization ONLY', () => {
+  it('canonicalize takes core_talent_id as OPTIONAL input (T2-3: undefined → resolver runs; null/UUID → caller-supplied test path)', () => {
     const repo = readFileSync(
       resolve(LIB_SRC, 'canonicalization.repository.ts'),
       'utf8',
     );
-    // The CanonicalizeInput interface MUST declare core_talent_id as a
-    // caller-supplied field (string | null) — never as a computed/derived
-    // result of an internal lookup. The presence of this declaration is
-    // the structural commitment.
-    expect(repo).toMatch(/core_talent_id:\s*string\s*\|\s*null/);
+    // The CanonicalizeInput interface MUST declare core_talent_id as
+    // OPTIONAL (`?: string | null`). The optional shape encodes the
+    // T2-3 production path (undefined ⇒ resolve) while retaining the
+    // T2-2a test affordances (null ⇒ force CREATE-NEW; UUID ⇒ associate).
+    expect(repo).toMatch(/core_talent_id\?:\s*string\s*\|\s*null/);
   });
 
-  it('NO resolver method on the canonicalize surface (no findByVerifiedEmail / resolveIdentity / resolveTalent)', () => {
+  it('the inline T2-1 verified-email resolver IS present in the canonicalize $transaction', () => {
+    const repo = readFileSync(
+      resolve(LIB_SRC, 'canonicalization.repository.ts'),
+      'utf8',
+    );
+    const code = stripComments(repo);
+    // The structural commitment of the T2-3 re-frame: the resolver lives
+    // INLINE here (a `tx.talentContactMethod.findFirst` looking up by
+    // type='email', verification_status='verified', value=verified_email).
+    // The presence of this lookup is the positive evidence that
+    // resolution exists in Core.
+    expect(code).toMatch(/talentContactMethod\.findFirst/);
+    expect(code).toMatch(/type:\s*'email'/);
+    expect(code).toMatch(/verification_status:\s*'verified'/);
+    // The value matched is the payload's verified_email (already
+    // normalized by ingestion — .trim().toLowerCase() at write time).
+    expect(code).toMatch(/value:\s*payload\.verified_email/);
+  });
+
+  it('NO standalone named resolver method on the canonicalize lib surface (findByVerifiedEmail / resolveIdentity / resolveTalent)', () => {
+    // The resolver is INLINE in the $transaction, not a named public
+    // method. The forbidden-identifier check stays literally green —
+    // the substrate-cleanest seam (no `resolveOrCreate` method hangs
+    // off CanonicalizationService).
     const sources = readAllSrc();
     const forbidden = ['findByVerifiedEmail', 'resolveIdentity', 'resolveTalent'];
     const hits: Array<{ file: string; identifier: string; lineSnippet: string }> = [];
     for (const [file, src] of sources) {
       const codeOnly = stripComments(src);
       for (const id of forbidden) {
-        // Match as a word (call or definition), excluding bare type/word
-        // refs inside string literals. We match the identifier itself.
         const re = new RegExp(`\\b${id}\\b`);
         if (re.test(codeOnly)) {
           hits.push({ file, identifier: id, lineSnippet: codeOnly.split('\n').find((l) => re.test(l)) ?? '' });
@@ -89,22 +128,18 @@ describe('T2-2a — Proof 5: no-resolution tripwire (A5b-2 applied to Core)', ()
     expect(hits).toEqual([]);
   });
 
-  it('canonicalize does NOT read RawPayloadReference.verified_email to DECIDE the Talent (only to populate evidence)', () => {
-    // The structural commitment is: verified_email is read for evidence
-    // population (TalentContactMethod.value), NEVER as input to a Talent-
-    // lookup. We check that `verified_email` is only referenced in the
-    // evidence-creation branch — specifically, that it's never used as a
-    // `where:` argument to a Talent or overlay lookup.
+  it('the resolver is deterministic + exact + verified-only (T2-1 Decision 3 — no fuzzy auto-merge, unverified does not resolve)', () => {
     const repo = readFileSync(
       resolve(LIB_SRC, 'canonicalization.repository.ts'),
       'utf8',
     );
     const code = stripComments(repo);
-    // The TalentContactMethod.create path uses verified_email as `value`.
-    expect(code).toMatch(/value:\s*payload\.verified_email/);
-    // No `where: { verified_email` (or any verified_email in a where
-    // clause) — this is the forbidden lookup pattern.
-    expect(code).not.toMatch(/where:[^}]*verified_email/);
+    // Determinism: oldest match wins (orderBy created_at asc).
+    expect(code).toMatch(/orderBy:\s*\{\s*created_at:\s*'asc'\s*\}/);
+    // The lookup uses verification_status='verified' (the gate that
+    // distinguishes identity keys from mere evidence — an unverified
+    // email does NOT resolve).
+    expect(code).toMatch(/verification_status:\s*'verified'/);
   });
 });
 

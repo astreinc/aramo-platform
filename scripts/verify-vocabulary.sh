@@ -211,6 +211,15 @@ TIER2_EXCLUDES=(
   # libs/engagement/src/lib/engagement.repository.ts above).
   "libs/canonicalization/src/tests/canonicalization.tripwires.spec.ts"
   "libs/canonicalization/src/lib/canonicalization.repository.ts"
+  # T2-3 — canonicalization integration spec proof 8 asserts the
+  # talent.canonicalized outbox-event payload is R10-clean by enumerating
+  # the forbidden match-class output vocabulary (tier/score/rank/match)
+  # as a negative-shape anti-token list against the emitted event keys.
+  # Same structural pattern + same Charter-Level rationale as the
+  # canonicalization.tripwires.spec.ts entry above (the proof's
+  # describe-block comment + the assertion array both legitimately name
+  # the forbidden tokens to verify their absence).
+  "libs/canonicalization/src/tests/canonicalization.integration.spec.ts"
   # T2-2b — outbox-publisher integration spec asserts the drained
   # talent.canonicalized payload is R10-clean by enumerating the
   # forbidden vocabulary (tier/score/rank/match) as a negative-shape
