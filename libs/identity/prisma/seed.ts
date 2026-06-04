@@ -8,6 +8,16 @@
 // Idempotent: re-running produces no errors, no duplicates, identical state.
 // Determinism: all UUIDs and the cognito provider_subject are hardcoded so
 // integration tests can rely on stable IDs.
+//
+// AUTHZ-1 (2026-06-04) expands the tenant role catalog from 4 to 13. The
+// 4 pre-AUTHZ-1 role keys (tenant_admin, recruiter, viewer, candidate)
+// are preserved verbatim with their existing scope bundles unchanged
+// (DDR D7 additive-migration discipline — A2–A8 permission checks must
+// stay green). The DDR display names are carried on Role.description.
+// 9 new tenant roles are seeded (tenant_owner, hiring_manager,
+// account_manager, interviewer, sourcer, coordinator, finance_hr,
+// auditor, external_agency) with bundles assembled from the live
+// 43-scope catalog (no new scope keys — gap-and-note discipline).
 
 import { PrismaPg } from '@prisma/adapter-pg';
 
@@ -27,6 +37,16 @@ export const SEED_IDS = {
     recruiter: '01900000-0000-7000-8000-000000000011',
     viewer: '01900000-0000-7000-8000-000000000012',
     candidate: '01900000-0000-7000-8000-000000000013', // PR-A1a Ruling 3
+    // AUTHZ-1 — 9 new tenant roles (closed catalog; 0014..001c).
+    tenant_owner: '01900000-0000-7000-8000-000000000014',
+    hiring_manager: '01900000-0000-7000-8000-000000000015',
+    account_manager: '01900000-0000-7000-8000-000000000016',
+    interviewer: '01900000-0000-7000-8000-000000000017',
+    sourcer: '01900000-0000-7000-8000-000000000018',
+    coordinator: '01900000-0000-7000-8000-000000000019',
+    finance_hr: '01900000-0000-7000-8000-00000000001a',
+    auditor: '01900000-0000-7000-8000-00000000001b',
+    external_agency: '01900000-0000-7000-8000-00000000001c',
   },
   scopes: {
     'consent:read': '01900000-0000-7000-8000-000000000020',
@@ -249,6 +269,16 @@ export const SEED_IDS = {
     scope_attachment_delete_created: '01900000-0000-7000-8000-000000000225',
     scope_pipeline_read_created: '01900000-0000-7000-8000-000000000226',
     scope_activity_create_created: '01900000-0000-7000-8000-000000000227',
+    // AUTHZ-1 — 9 new identity.role.created audit events (0228..0230).
+    role_tenant_owner_created: '01900000-0000-7000-8000-000000000228',
+    role_hiring_manager_created: '01900000-0000-7000-8000-000000000229',
+    role_account_manager_created: '01900000-0000-7000-8000-00000000022a',
+    role_interviewer_created: '01900000-0000-7000-8000-00000000022b',
+    role_sourcer_created: '01900000-0000-7000-8000-00000000022c',
+    role_coordinator_created: '01900000-0000-7000-8000-00000000022d',
+    role_finance_hr_created: '01900000-0000-7000-8000-00000000022e',
+    role_auditor_created: '01900000-0000-7000-8000-00000000022f',
+    role_external_agency_created: '01900000-0000-7000-8000-000000000230',
   },
 } as const;
 
@@ -442,6 +472,146 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   'recruiter:activity:create': SEED_IDS.role_scopes.recruiter_activity_create,
 };
 
+// AUTHZ-1 — bundle catalog for the 9 new tenant roles. Each entry is
+// (role_key, scope_keys[]). The list iteration order pins the deterministic
+// UUID generation for AUTHZ1_ROLE_SCOPE_ROW_IDS below — do not re-order
+// without bumping the offset to a fresh range (otherwise existing dev DBs
+// would see RoleScope.id collisions on re-seed).
+//
+// Per-bundle Lead rulings (AUTHZ-1 §4):
+//   - tenant_owner: Owner = Admin scope set (position-only distinction).
+//   - hiring_manager: read + approve + feedback; NO :delete, NO :read:all.
+//   - account_manager: Recruiter's 31 + tenant:admin:user-manage + requisition:assign.
+//   - interviewer: narrowest (Lead exact set: talent:read + activity:create + activity:read).
+//   - sourcer: intake-focused; NO :delete, NO submittal.
+//   - coordinator: Lead exact set (calendar:event-create + calendar:event-edit +
+//     talent:read + activity:create). calendar:event-delete deferred — Ruling 1
+//     reserves entity-destruction to tenant_admin; reschedule is an edit.
+//   - finance_hr: offer approval surface; compensation visibility is D5.
+//   - auditor: Lead exact set (5 read scopes). report:read + audit-log:read
+//     gap-and-noted — deferred to the Reporting/Audit DDR.
+//   - external_agency: most restricted; D4 will enforce explicitly-shared
+//     visibility on these reads.
+const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  // tenant_owner — 43 scopes (full tenant_admin set; position-only distinction).
+  ['tenant_owner', [
+    'consent:read', 'consent:write', 'consent:decision-log:read',
+    'auth:session:read', 'identity:user:read', 'identity:tenant:read',
+    'requisition:read', 'requisition:read:all',
+    'submittal:create', 'submittal:approve',
+    'talent:read', 'talent:create', 'talent:edit', 'talent:delete', 'talent:search',
+    'company:read', 'company:create', 'company:edit', 'company:delete',
+    'contact:read', 'contact:create', 'contact:edit', 'contact:delete',
+    'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity', 'pipeline:remove',
+    'calendar:event-create', 'calendar:event-edit', 'calendar:event-delete',
+    'activity:read', 'examination:read',
+    'requisition:create', 'requisition:edit', 'requisition:delete',
+    'tenant:admin:user-manage', 'tenant:admin:settings',
+    'requisition:assign',
+    'attachment:read', 'attachment:create', 'attachment:delete',
+    'pipeline:read', 'activity:create',
+  ]],
+  // hiring_manager — 12 scopes (read + approve + feedback).
+  ['hiring_manager', [
+    'auth:session:read', 'consent:read',
+    'talent:read', 'company:read', 'contact:read', 'requisition:read',
+    'activity:read', 'examination:read', 'pipeline:read', 'attachment:read',
+    'submittal:approve', 'activity:create',
+  ]],
+  // account_manager — 33 scopes (Recruiter's 31 + tenant:admin:user-manage + requisition:assign).
+  ['account_manager', [
+    'consent:read', 'consent:write', 'consent:decision-log:read',
+    'auth:session:read',
+    'requisition:read', 'submittal:create', 'submittal:approve',
+    'talent:read', 'talent:create', 'talent:edit', 'talent:search',
+    'company:read', 'company:create', 'company:edit',
+    'contact:read', 'contact:create', 'contact:edit',
+    'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity',
+    'calendar:event-create', 'calendar:event-edit',
+    'activity:read', 'examination:read',
+    'requisition:create', 'requisition:edit',
+    'attachment:read', 'attachment:create', 'attachment:delete',
+    'pipeline:read', 'activity:create',
+    // AM-specific delegations on top of Recruiter's operational set.
+    'tenant:admin:user-manage', 'requisition:assign',
+  ]],
+  // interviewer — 3 scopes (Lead exact set; calendar:read gap deferred).
+  ['interviewer', [
+    'talent:read', 'activity:read', 'activity:create',
+  ]],
+  // sourcer — 14 scopes (intake-focused; NO :delete, NO submittal).
+  ['sourcer', [
+    'auth:session:read',
+    'talent:read', 'talent:create', 'talent:search',
+    'company:read', 'contact:read', 'contact:create',
+    'requisition:read',
+    'pipeline:read', 'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity',
+    'activity:read', 'activity:create',
+  ]],
+  // coordinator — 4 scopes (Lead exact set; calendar:event-delete deferred).
+  ['coordinator', [
+    'calendar:event-create', 'calendar:event-edit',
+    'talent:read', 'activity:create',
+  ]],
+  // finance_hr — 6 scopes (offer approval; compensation visibility is D5).
+  ['finance_hr', [
+    'auth:session:read',
+    'talent:read', 'requisition:read', 'submittal:approve',
+    'activity:read', 'activity:create',
+  ]],
+  // auditor — 5 scopes (Lead exact set; report:read + audit-log:read deferred).
+  ['auditor', [
+    'auth:session:read',
+    'consent:decision-log:read',
+    'identity:user:read', 'identity:tenant:read',
+    'activity:read',
+  ]],
+  // external_agency — 2 scopes (most restricted; D4 will enforce sharing).
+  ['external_agency', [
+    'talent:read', 'requisition:read',
+  ]],
+];
+
+// AUTHZ-1 — role.created audit-event manifest for the 9 new roles.
+// Pattern mirrors the A1A2_NEW_SCOPES manifest used for scope.created
+// events; the closed-list test validates catalog shape, not each audit
+// event individually.
+const AUTHZ1_ROLE_AUDIT_EVENTS: Array<{
+  audit_id: string;
+  role_id: string;
+  key: string;
+}> = [
+  { audit_id: SEED_IDS.audit_events.role_tenant_owner_created, role_id: SEED_IDS.roles.tenant_owner, key: 'tenant_owner' },
+  { audit_id: SEED_IDS.audit_events.role_hiring_manager_created, role_id: SEED_IDS.roles.hiring_manager, key: 'hiring_manager' },
+  { audit_id: SEED_IDS.audit_events.role_account_manager_created, role_id: SEED_IDS.roles.account_manager, key: 'account_manager' },
+  { audit_id: SEED_IDS.audit_events.role_interviewer_created, role_id: SEED_IDS.roles.interviewer, key: 'interviewer' },
+  { audit_id: SEED_IDS.audit_events.role_sourcer_created, role_id: SEED_IDS.roles.sourcer, key: 'sourcer' },
+  { audit_id: SEED_IDS.audit_events.role_coordinator_created, role_id: SEED_IDS.roles.coordinator, key: 'coordinator' },
+  { audit_id: SEED_IDS.audit_events.role_finance_hr_created, role_id: SEED_IDS.roles.finance_hr, key: 'finance_hr' },
+  { audit_id: SEED_IDS.audit_events.role_auditor_created, role_id: SEED_IDS.roles.auditor, key: 'auditor' },
+  { audit_id: SEED_IDS.audit_events.role_external_agency_created, role_id: SEED_IDS.roles.external_agency, key: 'external_agency' },
+];
+
+// AUTHZ-1 — generate the 122 new RoleScope row IDs deterministically.
+// Offset 0x14b continues the pre-AUTHZ-1 sequence (last HK-IDENT-SCOPES
+// entry was 0x14a). The (role, scope) iteration order in AUTHZ1_BUNDLES
+// pins the assignment, so a given (role, scope) pair always produces the
+// same UUID on every seed run. seed.spec.ts walks SEED_IDS for UUID
+// validity; the AUTHZ-1 ids live in this separate map but each value is
+// a UUID string by construction.
+const AUTHZ1_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x14b;
+  for (const [role, scopes] of AUTHZ1_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -496,11 +666,30 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
     },
   });
 
-  // 5. Roles (4 entries per §6 + PR-A1a Ruling 3).
-  await upsertRole(prisma, SEED_IDS.roles.tenant_admin, 'tenant_admin', 'Tenant administrator — full scope set');
-  await upsertRole(prisma, SEED_IDS.roles.recruiter, 'recruiter', 'Domain-operator role for talent and consent management');
-  await upsertRole(prisma, SEED_IDS.roles.viewer, 'viewer', 'Read-only role');
-  await upsertRole(prisma, SEED_IDS.roles.candidate, 'candidate', 'Portal-user role for talent subjects authenticating via the portal');
+  // 5. Roles (13 entries: 4 pre-AUTHZ-1 + 9 AUTHZ-1).
+  // Descriptions carry the DDR display name + intent. The Role.key
+  // strings are PRESERVED unchanged per AUTHZ-1 §1 (A2–A8 permission
+  // checks reference these keys verbatim and must stay green).
+  // upsertRole's update path is {} so descriptions update only on fresh
+  // seeds; pre-existing rows retain whatever description they were
+  // first seeded with. That is acceptable for AUTHZ-1 — the catalog
+  // contract is the (key, scope-bundle) pair, which is verified by
+  // test 17. The display-name re-map is observed on fresh dev/test DBs
+  // (every integration spec starts a fresh Postgres container).
+  await upsertRole(prisma, SEED_IDS.roles.tenant_admin, 'tenant_admin', 'Tenant Admin — administrative operator of the tenant (users, roles, settings; full scope set)');
+  await upsertRole(prisma, SEED_IDS.roles.recruiter, 'recruiter', 'Recruiter — core operator (assigned requisitions/talents; no destructive scopes, no see-all)');
+  await upsertRole(prisma, SEED_IDS.roles.viewer, 'viewer', 'Viewer — generic read-only role across the operational entities');
+  await upsertRole(prisma, SEED_IDS.roles.candidate, 'candidate', 'Candidate — portal-user role for talent subjects authenticating via the portal');
+  // AUTHZ-1 — 9 new tenant roles.
+  await upsertRole(prisma, SEED_IDS.roles.tenant_owner, 'tenant_owner', 'Tenant Owner — singular top authority within a tenant (same scope set as Tenant Admin; org-position distinction)');
+  await upsertRole(prisma, SEED_IDS.roles.hiring_manager, 'hiring_manager', 'Hiring Manager — views jobs/candidates, gives feedback, approves submittal stages');
+  await upsertRole(prisma, SEED_IDS.roles.account_manager, 'account_manager', 'Account Manager — recruiter-manager; operational scope plus user-manage and requisition:assign');
+  await upsertRole(prisma, SEED_IDS.roles.interviewer, 'interviewer', 'Interviewer — narrowest tenant role; views assigned candidates and records interview feedback');
+  await upsertRole(prisma, SEED_IDS.roles.sourcer, 'sourcer', 'Sourcer — intake-focused; adds talents and manages the pipeline-sourcing surface');
+  await upsertRole(prisma, SEED_IDS.roles.coordinator, 'coordinator', 'Coordinator — calendar/scheduling logistics for interviews and events');
+  await upsertRole(prisma, SEED_IDS.roles.finance_hr, 'finance_hr', 'Finance/HR — offer-approval surface (compensation visibility is D5)');
+  await upsertRole(prisma, SEED_IDS.roles.auditor, 'auditor', 'Auditor/Compliance — read-only audit logs, decision logs, sessions, identity');
+  await upsertRole(prisma, SEED_IDS.roles.external_agency, 'external_agency', 'External Agency — most restricted; sees explicitly-shared talents and requisitions only');
 
   // 6. Scopes (6 pre-A1a + 7 PR-A1a = 13 entries).
   await upsertScope(prisma, SEED_IDS.scopes['consent:read'], 'consent:read', 'Read consent state');
@@ -559,13 +748,32 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['pipeline:read'], 'pipeline:read', 'Read pipelines / pipeline history');
   await upsertScope(prisma, SEED_IDS.scopes['activity:create'], 'activity:create', 'Create a manual activity entry');
 
-  // 7. RoleScope assignments (13 pre-A1a + 12 PR-A1a = 25 rows total).
+  // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
     const role_id = roleIdForKey(roleKey);
     for (const scopeKey of scopeKeys) {
       const rsId = ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`Missing fixed RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // 7b. AUTHZ-1 RoleScope assignments — 122 rows for the 9 new roles.
+  // Uses AUTHZ1_BUNDLES as the source of truth + the deterministic
+  // AUTHZ1_ROLE_SCOPE_ROW_IDS generator.
+  for (const [roleKey, scopeKeys] of AUTHZ1_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = AUTHZ1_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`AUTHZ-1: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({
@@ -758,6 +966,18 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
     subject_id: SEED_IDS.roles.candidate,
     payload: { role_id: SEED_IDS.roles.candidate, key: 'candidate' },
   });
+
+  // AUTHZ-1 — 9 new identity.role.created audit events. The catalog
+  // expansion adds NO new scope rows, so no scope.created events here.
+  for (const entry of AUTHZ1_ROLE_AUDIT_EVENTS) {
+    await upsertAudit(prisma, {
+      id: entry.audit_id,
+      tenant_id: null,
+      event_type: 'identity.role.created',
+      subject_id: entry.role_id,
+      payload: { role_id: entry.role_id, key: entry.key },
+    });
+  }
   await upsertAudit(prisma, {
     id: SEED_IDS.audit_events.scope_requisition_read_created,
     tenant_id: null,
@@ -898,11 +1118,12 @@ async function upsertScope(
 }
 
 function roleIdForKey(key: string): string {
-  if (key === 'tenant_admin') return SEED_IDS.roles.tenant_admin;
-  if (key === 'recruiter') return SEED_IDS.roles.recruiter;
-  if (key === 'viewer') return SEED_IDS.roles.viewer;
-  if (key === 'candidate') return SEED_IDS.roles.candidate;
-  throw new Error(`Unknown role key in seed: ${key}`);
+  // AUTHZ-1: 13-role catalog. Looks up the seeded role id by key.
+  const id = (SEED_IDS.roles as Record<string, string>)[key];
+  if (id === undefined) {
+    throw new Error(`Unknown role key in seed: ${key}`);
+  }
+  return id;
 }
 
 function scopeIdForKey(key: string): string {
