@@ -295,6 +295,39 @@ resource "aws_s3_bucket_lifecycle_configuration" "resumes" {
       days_after_initiation = 7
     }
   }
+
+  # Rule 5 — A8-3b orphan-sweep: expire objects tagged
+  # `lifecycle = orphan-pending` after var.orphan_retention_days (default 1d).
+  #
+  # A8-3b Option A correctness depends on this rule. The recruiter flow:
+  #   1. E1 (POST /v1/talent-records/resume-upload-url) returns a presigned
+  #      PUT URL with `x-amz-tagging: lifecycle=orphan-pending` baked in.
+  #   2. The browser PUTs to S3 -- the object lands tagged orphan-pending.
+  #   3. E2 (POST /v1/talent-records/draft-from-resume) parses the S3
+  #      object via presigned GET -- the tag is NOT touched.
+  #   4. E3 (POST /v1/talent-records + POST /v1/attachments) creates the
+  #      TalentRecord + Attachment row. On is_resume=true, AttachmentService
+  #      calls ObjectStorageService.markResumeCommitted which calls
+  #      s3:PutObjectTagging to clear the orphan-pending tag.
+  #
+  # If the recruiter ABANDONS between steps 2 and 4, the tag stays;
+  # this rule sweeps the object after 24h. Without this rule, every
+  # abandoned upload would persist as PII-dense leakage indefinitely.
+  rule {
+    id     = "expire-orphan-pending"
+    status = "Enabled"
+
+    filter {
+      tag {
+        key   = "lifecycle"
+        value = "orphan-pending"
+      }
+    }
+
+    expiration {
+      days = var.orphan_retention_days
+    }
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -307,6 +340,16 @@ resource "aws_s3_bucket_lifecycle_configuration" "resumes" {
 # operation removes the Attachment ROW + tags the S3 object's current
 # version for lifecycle expiration — the bytes age out per the
 # retention policy).
+#
+# A8-3b adds PutObjectTagging — required for two operations:
+#   1. Signing presigned PUT URLs that bake `x-amz-tagging: lifecycle=
+#      orphan-pending` into the signed payload (the principal that
+#      signs the URL must hold the action the URL would invoke).
+#   2. The post-Attachment-create tag-clear (ObjectStorageService.
+#      markResumeCommitted), which removes the orphan-pending tag so
+#      the lifecycle Rule 5 does not sweep a committed attachment.
+# PutObjectTagging is still strictly less than DeleteObject (it cannot
+# remove bytes; only metadata).
 #
 # kms:GenerateDataKey + kms:Decrypt on the dedicated CMK are required
 # for SSE-KMS PUT/GET respectively.
@@ -322,6 +365,7 @@ data "aws_iam_policy_document" "app_least_privilege" {
     actions = [
       "s3:PutObject",
       "s3:GetObject",
+      "s3:PutObjectTagging",
     ]
     resources = ["${aws_s3_bucket.resumes.arn}/*"]
   }

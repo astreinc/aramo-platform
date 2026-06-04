@@ -42,3 +42,14 @@ export interface PresignedGetResult {
   presigned_url: string;
   expires_at: string;
 }
+
+/**
+ * A8-3b — input shape for ObjectStorageService.markResumeCommitted.
+ * Called by AttachmentService after a successful is_resume=true
+ * Attachment.create; clears the `lifecycle=orphan-pending` tag so the
+ * S3 lifecycle Rule 5 does not sweep the committed object.
+ */
+export interface MarkResumeCommittedInput {
+  storage_key: string;
+  requestId: string;
+}

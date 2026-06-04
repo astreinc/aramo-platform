@@ -41,3 +41,12 @@ export type {
   OrphanedReferenceSample,
 } from './lib/cross-schema-consistency.repository.js';
 export { CROSS_SCHEMA_CONSISTENCY_QUEUE_NAME } from './lib/cross-schema-consistency.queue.constants.js';
+// A8-3b — no-LLM-boundary assertion helper, lifted from the A8-2 spec.
+// ADR-0015 Decision 10 enforces "AI isolated to ai-draft" via structural
+// specs in each consumer lib (libs/import A8-2; libs/resume-parse A8-3b).
+// The helper is the single source of truth so the two specs cannot drift.
+export {
+  findNoLlmBoundaryViolations,
+  assertModuleHasNoLlmImports,
+  type NoLlmBoundaryViolation,
+} from './lib/testing/no-llm-boundary-assertion.js';

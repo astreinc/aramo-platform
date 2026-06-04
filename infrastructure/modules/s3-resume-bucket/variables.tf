@@ -73,6 +73,17 @@ variable "noncurrent_version_retention_days" {
   }
 }
 
+variable "orphan_retention_days" {
+  description = "Days after which `lifecycle = orphan-pending` objects are expired. A8-3b Option A correctness depends on this sweep: a recruiter who initiates a résumé upload (E1 presigned PUT) but never completes the create+attach flow (E3) leaves an orphan PII-dense object in the bucket. The presigned PUT bakes the tag into the URL; AttachmentService clears the tag on successful is_resume=true attach. Default 1 (24h)."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.orphan_retention_days >= 1
+    error_message = "orphan_retention_days must be ≥ 1 (single-day floor; a sub-day sweep cadence is achievable only via S3 Object Lifecycle Management API, which the bucket lifecycle does not support)."
+  }
+}
+
 variable "access_log_retention_days" {
   description = "Days after which the S3 server access logs expire in the resumes-logs bucket. Default 365 (1 year — audit-trail retention)."
   type        = number

@@ -57,6 +57,7 @@
       "@aramo/portal": ["libs/portal/src/index.ts"],
       "@aramo/reporting": ["libs/reporting/src/index.ts"],
       "@aramo/requisition": ["libs/requisition/src/index.ts"],
+      "@aramo/resume-parse": ["libs/resume-parse/src/index.ts"],
       "@aramo/saved-list": ["libs/saved-list/src/index.ts"],
       "@aramo/skills-taxonomy": ["libs/skills-taxonomy/src/index.ts"],
       "@aramo/submittal": ["libs/submittal/src/index.ts"],

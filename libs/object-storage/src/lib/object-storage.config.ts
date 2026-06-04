@@ -25,6 +25,21 @@ import { AramoError } from '@aramo/common';
 export const OBJECT_STORAGE_MAX_EXPIRY_SECONDS = 300;
 export const OBJECT_STORAGE_DEFAULT_EXPIRY_SECONDS = 300;
 
+// A8-3b — orphan-sweep tag constants.
+//
+// The S3 lifecycle Rule 5 (infrastructure/modules/s3-resume-bucket/main.tf)
+// filters on tag `lifecycle = orphan-pending` and expires matching objects
+// after var.orphan_retention_days (default 1d). The presigned PUT URL
+// bakes this tag into the signed payload; AttachmentService calls
+// markResumeCommitted on successful is_resume=true attach, which replaces
+// the tag with `lifecycle = committed` so the sweep skips it.
+//
+// Keeping the tag key + values as constants prevents drift between the
+// terraform rule, the presigner, and the tag-clear call.
+export const ORPHAN_SWEEP_TAG_KEY = 'lifecycle' as const;
+export const ORPHAN_SWEEP_TAG_VALUE_PENDING = 'orphan-pending' as const;
+export const ORPHAN_SWEEP_TAG_VALUE_COMMITTED = 'committed' as const;
+
 export interface ObjectStorageConfig {
   readonly bucket: string;
   readonly region: string;
