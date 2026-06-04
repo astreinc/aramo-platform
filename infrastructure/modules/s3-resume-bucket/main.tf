@@ -116,8 +116,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "resumes_logs" {
   # The logs bucket holds server-access-log records that NAME the
   # résumé bucket's object keys (which embed tenant_id + talent_record_id
   # in the key path). The logs are therefore résumé-class data and ride
-  # the SAME dedicated CMK as the main bucket -- NOT S3-managed AES256.
-  # (tfsec aws-s3-encryption-customer-key.)
+  # the SAME dedicated CMK as the main bucket -- NOT S3-managed AES256
+  # (the tfsec dedicated-CMK rule + the PII floor for résumé-class data).
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm     = "aws:kms"
