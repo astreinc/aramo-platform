@@ -11,6 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { v7 as uuidv7 } from 'uuid';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
@@ -19,9 +20,19 @@ import {
   RolesGuard,
 } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
+import {
+  ObjectStorageService,
+  type PresignedPutResult,
+} from '@aramo/object-storage';
+import {
+  ResumeParserService,
+  type ParseResumeResult,
+} from '@aramo/resume-parse';
 
 import type { CreateTalentRecordRequestDto } from './dto/create-talent-record-request.dto.js';
+import type { DraftFromResumeRequestDto } from './dto/draft-from-resume-request.dto.js';
 import { LinkTalentRecordRequestDto } from './dto/link-talent-record-request.dto.js';
+import type { ResumeUploadUrlRequestDto } from './dto/resume-upload-url-request.dto.js';
 import type { TalentLinkView } from './dto/talent-link.view.js';
 import type { TalentRecordView } from './dto/talent-record.view.js';
 import type { UpdateTalentRecordRequestDto } from './dto/update-talent-record-request.dto.js';
@@ -53,6 +64,8 @@ export class TalentRecordController {
   constructor(
     private readonly repo: TalentRecordRepository,
     private readonly linkService: TalentLinkService,
+    private readonly objectStorage: ObjectStorageService,
+    private readonly resumeParser: ResumeParserService,
   ) {}
 
   @Get()
@@ -205,6 +218,100 @@ export class TalentRecordController {
     return this.linkService.unlink({
       tenant_id: authContext.tenant_id,
       talent_record_id: id,
+      requestId,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // A8-3b — résumé upload + parse-to-prefill (E1 + E2).
+  //
+  // Option A ordering (the Lead-ruled flow): parse-first, attach-on-create.
+  // The recruiter:
+  //   E1) POSTs /resume-upload-url -- the service returns a presigned PUT
+  //       URL (the browser uploads bytes directly to S3; the API never
+  //       hosts bytes). The PUT URL bakes `lifecycle=orphan-pending` into
+  //       the signed payload so the S3 lifecycle Rule 5 sweeps abandoned
+  //       uploads after 24h.
+  //   E2) POSTs /draft-from-resume with the returned storage_key -- the
+  //       service parses the S3 object deterministically (pdf-parse or
+  //       mammoth; NO LLM per ADR-0015 Decision 10) and returns the
+  //       prefill + parse_status. The recruiter reviews + edits.
+  //   E3) POSTs /v1/talent-records (the existing create) with the final
+  //       fields; client follows with POST /v1/attachments to bind the
+  //       résumé. The Attachment.create path calls
+  //       ObjectStorageService.markResumeCommitted to clear the orphan tag.
+  //
+  // Scope reuse (Gate 5 decision §2.3e): E1 uses attachment:create
+  // (recruiter has it); E2 uses talent:read (read-shaped, returns a
+  // talent-shape, no DB write). NO new `resume:parse` scope.
+  // -------------------------------------------------------------------------
+
+  @Post('resume-upload-url')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('attachment:create')
+  @RequireSiteMatch()
+  async createResumeUploadUrl(
+    @AuthContext() authContext: AuthContextType,
+    @Body() body: ResumeUploadUrlRequestDto,
+    @RequestId() requestId: string,
+  ): Promise<PresignedPutResult> {
+    if (typeof body.filename !== 'string' || body.filename.length === 0) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'filename must be a non-empty string',
+        422,
+        { requestId, details: { field: 'filename' } },
+      );
+    }
+    if (typeof body.content_type !== 'string' || body.content_type.length === 0) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'content_type must be a non-empty string',
+        422,
+        { requestId, details: { field: 'content_type' } },
+      );
+    }
+
+    // Option A: the TalentRecord does not exist yet. Generate a draft
+    // partition UUID to scope the S3 key; this UUID is internal --
+    // the client receives only the opaque storage_key. The eventual
+    // TalentRecord (created at E3) has its own id; the Attachment row
+    // binds the storage_key (opaque) to the new TalentRecord id.
+    const draft_partition_id = uuidv7();
+
+    return this.objectStorage.createResumePresignedPut({
+      tenant_id: authContext.tenant_id,
+      talent_record_id: draft_partition_id,
+      filename: body.filename,
+      content_type: body.content_type,
+      requestId,
+    });
+  }
+
+  @Post('draft-from-resume')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:read')
+  @RequireSiteMatch()
+  async draftFromResume(
+    @AuthContext() _authContext: AuthContextType,
+    @Body() body: DraftFromResumeRequestDto,
+    @RequestId() requestId: string,
+  ): Promise<ParseResumeResult> {
+    if (typeof body.storage_key !== 'string' || body.storage_key.length === 0) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'storage_key must be a non-empty string',
+        422,
+        { requestId, details: { field: 'storage_key' } },
+      );
+    }
+
+    // The parser NEVER throws on parse failure -- it returns
+    // { prefill: {}, parse_status: 'failed' }. The recruiter can still
+    // proceed to E3 (manual create) -- parse-failure-is-non-blocking
+    // (the proof §4.4 invariant).
+    return this.resumeParser.parseFromStorageKey({
+      storage_key: body.storage_key,
       requestId,
     });
   }

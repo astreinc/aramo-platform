@@ -1,10 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  PutObjectCommand,
+  PutObjectTaggingCommand,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { AramoError, type AramoLogger } from '@aramo/common';
 
 import {
   OBJECT_STORAGE_DEFAULT_EXPIRY_SECONDS,
+  ORPHAN_SWEEP_TAG_KEY,
+  ORPHAN_SWEEP_TAG_VALUE_COMMITTED,
+  ORPHAN_SWEEP_TAG_VALUE_PENDING,
   assertExpiryWithinCap,
 } from './object-storage.config.js';
 import { buildResumeObjectKey, parseResumeObjectKey } from './key-convention.js';
@@ -13,6 +20,7 @@ import { S3ClientFactory } from './s3-client.factory.js';
 import type {
   CreatePresignedGetInput,
   CreateResumePresignedPutInput,
+  MarkResumeCommittedInput,
   PresignedGetResult,
   PresignedPutResult,
 } from './types/presigned-url.types.js';
@@ -57,6 +65,15 @@ export class ObjectStorageService {
     const { bucket } = this.s3Factory.getConfig();
     const client = this.s3Factory.getClient();
 
+    // A8-3b — bake the orphan-sweep tag into the signed payload. The
+    // browser sends `x-amz-tagging` as part of the PUT; S3 applies the
+    // tag at object-create time. The S3 lifecycle Rule 5 (the
+    // terraform module) expires objects tagged orphan-pending after
+    // var.orphan_retention_days (default 1d). On successful is_resume=true
+    // attach, markResumeCommitted clears the tag so the object is not
+    // swept. Without this tag, an abandoned upload would leak indefinitely.
+    const orphanTagging = `${ORPHAN_SWEEP_TAG_KEY}=${ORPHAN_SWEEP_TAG_VALUE_PENDING}`;
+
     let presigned_url: string;
     try {
       presigned_url = await getSignedUrl(
@@ -65,6 +82,7 @@ export class ObjectStorageService {
           Bucket: bucket,
           Key: storage_key,
           ContentType: input.content_type,
+          Tagging: orphanTagging,
         }),
         { expiresIn: expiresInSeconds },
       );
@@ -161,5 +179,75 @@ export class ObjectStorageService {
     });
 
     return { presigned_url, expires_at };
+  }
+
+  /**
+   * A8-3b — clear the orphan-pending tag on a résumé object after the
+   * Attachment row is committed. AttachmentService calls this from its
+   * create path when is_resume=true, the post-DB-commit step.
+   *
+   * Failure semantics: this method THROWS on S3 failure. The caller
+   * (AttachmentService) is expected to log + alert on failure but NOT
+   * roll back the Attachment row -- the worst case is that the
+   * committed object is swept in 24h, recoverable via S3 versioning
+   * (object versions persist for var.noncurrent_version_retention_days,
+   * default 90d). The Attachment row remains a valid pointer; a future
+   * reconciliation job (HK) can re-tag if needed.
+   */
+  async markResumeCommitted(input: MarkResumeCommittedInput): Promise<void> {
+    if (input.storage_key.length === 0) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'storage_key must be non-empty',
+        400,
+        { requestId: input.requestId, details: { field: 'storage_key' } },
+      );
+    }
+
+    const { bucket } = this.s3Factory.getConfig();
+    const client = this.s3Factory.getClient();
+
+    try {
+      await client.send(
+        new PutObjectTaggingCommand({
+          Bucket: bucket,
+          Key: input.storage_key,
+          Tagging: {
+            TagSet: [
+              {
+                Key: ORPHAN_SWEEP_TAG_KEY,
+                Value: ORPHAN_SWEEP_TAG_VALUE_COMMITTED,
+              },
+            ],
+          },
+        }),
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new AramoError(
+        'OBJECT_STORAGE_UPLOAD_FAILED',
+        `object tag-clear failed: ${message}`,
+        502,
+        {
+          requestId: input.requestId,
+          details: {
+            kind: 'mark_committed_failed',
+            bucket,
+            storage_key: input.storage_key,
+          },
+        },
+      );
+    }
+
+    const parsed = parseResumeObjectKey(input.storage_key);
+    this.logger.log({
+      event: 'object_storage.resume_marked_committed',
+      requestId: input.requestId,
+      bucket,
+      storage_key: input.storage_key,
+      ...(parsed !== null
+        ? { talent_record_id_hash: hashIdentifierForLog(parsed.talent_record_id) }
+        : {}),
+    });
   }
 }

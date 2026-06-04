@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
+import { ObjectStorageModule } from '@aramo/object-storage';
 import { TalentRecordModule } from '@aramo/talent-record';
 
 import { AttachmentController } from './attachment.controller.js';
@@ -14,6 +15,10 @@ import { PrismaService } from './prisma/prisma.service.js';
 //   - AuthModule          → JwtAuthGuard
 //   - AuthorizationModule → RolesGuard
 //   - EntitlementModule   → EntitlementGuard
+//   - ObjectStorageModule → ObjectStorageService (A8-3b: the orphan-
+//                           sweep coordination on is_resume=true attach;
+//                           markResumeCommitted clears the tag baked
+//                           into the presigned PUT URL)
 //   - TalentRecordModule  → TalentRecordRepository (the only owner path
 //                           wired at A4 — the directional attachment →
 //                           talent-record edge; no cycle, talent-record
@@ -26,6 +31,7 @@ import { PrismaService } from './prisma/prisma.service.js';
     AuthModule,
     AuthorizationModule,
     EntitlementModule,
+    ObjectStorageModule,
     TalentRecordModule,
   ],
   controllers: [AttachmentController],

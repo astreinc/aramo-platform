@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   Param,
   Post,
   Query,
@@ -18,6 +19,7 @@ import {
   RolesGuard,
 } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
+import { ObjectStorageService } from '@aramo/object-storage';
 
 import type { AttachmentOwnerType } from './dto/attachment-owner-type.js';
 import { isAttachmentOwnerType } from './dto/attachment-owner-type.js';
@@ -48,7 +50,12 @@ import { AttachmentRepository } from './attachment.repository.js';
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
 export class AttachmentController {
-  constructor(private readonly repo: AttachmentRepository) {}
+  private readonly logger = new Logger(AttachmentController.name);
+
+  constructor(
+    private readonly repo: AttachmentRepository,
+    private readonly objectStorage: ObjectStorageService,
+  ) {}
 
   @Get()
   @HttpCode(HttpStatus.OK)
@@ -117,12 +124,40 @@ export class AttachmentController {
     @Body() body: CreateAttachmentRequestDto,
     @RequestId() requestId: string,
   ): Promise<AttachmentView> {
-    return this.repo.create({
+    const view = await this.repo.create({
       tenant_id: authContext.tenant_id,
       uploaded_by_id: authContext.sub,
       input: body,
       requestId,
     });
+
+    // A8-3b — Option A orphan-sweep coordination. On successful
+    // is_resume=true attach, clear the `lifecycle=orphan-pending` tag
+    // baked into the presigned PUT URL at upload time so the S3
+    // lifecycle Rule 5 does not sweep this committed résumé.
+    //
+    // Failure semantics: the tag-clear is NOT transactional with the
+    // Attachment row. If it fails, the row is still valid (correctly
+    // points at the S3 object); the worst case is the object is swept
+    // in 24h, recoverable via the noncurrent-version retention window.
+    // Log + continue, do NOT throw -- request-failure here would
+    // confuse the recruiter ("did the attach succeed?") and the answer
+    // is YES.
+    if (view.is_resume) {
+      try {
+        await this.objectStorage.markResumeCommitted({
+          storage_key: view.storage_key,
+          requestId,
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `attachment.mark_committed_failed: request=${requestId} attachment=${view.id} storage_key=${view.storage_key} -- ${message}`,
+        );
+      }
+    }
+
+    return view;
   }
 
   @Delete(':id')
