@@ -64,12 +64,25 @@ describe('seed scope catalog — key format (test 18)', () => {
   });
 });
 
-describe('seed role catalog (§6 closed set, PR-A1a expansion)', () => {
-  it('seed role keys are exactly the four locked entries (3 pre-A1a + 1 candidate)', () => {
+describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 expansion)', () => {
+  it('seed role keys are exactly the 13 locked entries (4 pre-AUTHZ-1 + 9 AUTHZ-1)', () => {
+    // AUTHZ-1 (2026-06-04): tenant role catalog expanded from 4 to 13.
+    // The 4 pre-AUTHZ-1 keys are preserved verbatim; 9 new tenant
+    // roles added. Platform-tier super_admin is OUT OF SCOPE and lives
+    // in AUTHZ-2 (apps/platform-admin).
     expect([...SEED_ROLE_KEYS].sort()).toEqual([
+      'account_manager',
+      'auditor',
       'candidate',
+      'coordinator',
+      'external_agency',
+      'finance_hr',
+      'hiring_manager',
+      'interviewer',
       'recruiter',
+      'sourcer',
       'tenant_admin',
+      'tenant_owner',
       'viewer',
     ]);
   });

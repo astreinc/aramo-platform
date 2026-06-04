@@ -113,11 +113,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(extId?.user_id).toBe(SEED_IDS.user_admin);
 
       const roles = await prisma.role.findMany({ orderBy: { key: 'asc' } });
-      // PR-A1a Ruling 3: candidate role added.
+      // AUTHZ-1 (2026-06-04): tenant role catalog expanded from 4 to 13.
+      // The 4 pre-AUTHZ-1 keys are preserved verbatim; 9 new tenant
+      // roles added (tenant_owner, hiring_manager, account_manager,
+      // interviewer, sourcer, coordinator, finance_hr, auditor,
+      // external_agency). Platform-tier super_admin is AUTHZ-2.
       expect(roles.map((r) => r.key)).toEqual([
+        'account_manager',
+        'auditor',
         'candidate',
+        'coordinator',
+        'external_agency',
+        'finance_hr',
+        'hiring_manager',
+        'interviewer',
         'recruiter',
+        'sourcer',
         'tenant_admin',
+        'tenant_owner',
         'viewer',
       ]);
 
@@ -174,8 +187,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]);
 
       const roleScopes = await prisma.roleScope.count();
-      // HK-IDENT-SCOPES: +11 role_scope rows (6 tenant_admin + 5 recruiter). 77 -> 88.
-      expect(roleScopes).toBe(88);
+      // AUTHZ-1: +122 role_scope rows for the 9 new tenant roles
+      // (tenant_owner 43 + hiring_manager 12 + account_manager 33 +
+      // interviewer 3 + sourcer 14 + coordinator 4 + finance_hr 6 +
+      // auditor 5 + external_agency 2). 88 -> 210.
+      expect(roleScopes).toBe(210);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -189,8 +205,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(sa?.name).toBe(SEED_SERVICE_ACCOUNT_NAME);
 
       const auditRows = await prisma.identityAuditEvent.findMany();
-      // 1 tenant + 1 user + 1 membership + 1 external_identity + 3 roles + 6 scopes + 1 SA = 14.
-      expect(auditRows.length).toBe(14);
+      // AUTHZ-1 audit count audit. The earlier assertion in this slot
+      // (14) was stale — it captured the pre-A1a baseline but was not
+      // updated when PR-A1a, PR-A1a-2, and HK-IDENT-SCOPES extended the
+      // seed's audit emission. Re-derived breakdown:
+      //   - pre-A1a baseline (1 tenant + 1 user + 1 membership +
+      //     1 external_identity + 3 roles + 6 scopes + 1 SA)         = 14
+      //   - PR-A1a (1 role.candidate + 8 portal/ATS-subset scopes)   = +9
+      //   - PR-A1a-2 + HK-IDENT-SCOPES (33 scope.created entries in
+      //     the A1A2_NEW_SCOPES loop: 27 + 6)                         = +33
+      //   - AUTHZ-1 (9 role.created events for the new tenant roles) = +9
+      //                                                       total   = 65
+      expect(auditRows.length).toBe(65);
       // Every audit event uses actor_type 'system' and actor_id = SA id.
       for (const row of auditRows) {
         expect(row.actor_type).toBe('system');
@@ -430,7 +456,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Test 17 — scope catalog correctness
     // -----------------------------------------------------------------
 
-    it('test 17 — scope catalog correctness: tenant_admin 43/recruiter 31/viewer 10/candidate 4 per §6+§9 + PR-A1a-2 + HK-IDENT-SCOPES', async () => {
+    it('test 17 — scope catalog correctness: 13-role catalog per §6+§9 + PR-A1a-2 + HK-IDENT-SCOPES + AUTHZ-1 (tenant_admin 43, recruiter 31, viewer 10, candidate 4, tenant_owner 43, hiring_manager 12, account_manager 33, interviewer 3, sourcer 14, coordinator 4, finance_hr 6, auditor 5, external_agency 2)', async () => {
       // tenant_admin scope set (43 post HK-IDENT-SCOPES; 37 + 6)
       const adminScopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
@@ -579,6 +605,224 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'portal:consent:write',
         'portal:profile:edit',
         'portal:profile:read',
+      ]);
+
+      // ====================================================================
+      // AUTHZ-1 — 9 new tenant role bundles (assembled from the live
+      // 43-scope catalog; no new scope keys added — gap-and-note discipline).
+      // Bundle composition is the catalog LOCK; any change requires a
+      // directive amendment + Lead approval.
+      // ====================================================================
+
+      // Helper: assert a role's bundle by role.key.
+      const expectRoleScopes = async (
+        roleKey: string,
+        expected: string[],
+      ): Promise<void> => {
+        const rows = await prisma.roleScope.findMany({
+          where: { role: { key: roleKey } },
+          include: { scope: true },
+        });
+        const keys = [...new Set(rows.map((r) => r.scope.key))].sort();
+        expect(keys, `role ${roleKey} bundle`).toEqual([...expected].sort());
+      };
+
+      // tenant_owner — 43 scopes. Owner = Admin scope set (position-only
+      // distinction per AUTHZ-1 §4 Lead lean; AUTHZ-2 may add platform-
+      // facing tenant-lifecycle scopes that distinguish Owner).
+      await expectRoleScopes('tenant_owner', [
+        'activity:create', 'activity:read',
+        'attachment:create', 'attachment:delete', 'attachment:read',
+        'auth:session:read',
+        'calendar:event-create', 'calendar:event-delete', 'calendar:event-edit',
+        'company:create', 'company:delete', 'company:edit', 'company:read',
+        'consent:decision-log:read', 'consent:read', 'consent:write',
+        'contact:create', 'contact:delete', 'contact:edit', 'contact:read',
+        'examination:read',
+        'identity:tenant:read', 'identity:user:read',
+        'pipeline:add', 'pipeline:add-activity', 'pipeline:change-status',
+        'pipeline:read', 'pipeline:remove',
+        'requisition:assign', 'requisition:create', 'requisition:delete',
+        'requisition:edit', 'requisition:read', 'requisition:read:all',
+        'submittal:approve', 'submittal:create',
+        'talent:create', 'talent:delete', 'talent:edit', 'talent:read', 'talent:search',
+        'tenant:admin:settings', 'tenant:admin:user-manage',
+      ]);
+
+      // hiring_manager — 12 scopes (read + approve + feedback; NO :delete,
+      // NO :read:all). Sees jobs/candidates/contacts/companies, the
+      // examination output, pipeline state, and attachments; approves
+      // submittals and creates feedback activities.
+      await expectRoleScopes('hiring_manager', [
+        'activity:create', 'activity:read',
+        'attachment:read',
+        'auth:session:read',
+        'company:read', 'consent:read', 'contact:read',
+        'examination:read', 'pipeline:read',
+        'requisition:read', 'submittal:approve', 'talent:read',
+      ]);
+
+      // account_manager — 33 scopes (Recruiter's 31 operational set +
+      // tenant:admin:user-manage + requisition:assign). The two AM-specific
+      // delegations: managing the user/membership surface within scope, and
+      // assigning users to requisitions (the management act).
+      await expectRoleScopes('account_manager', [
+        'activity:create', 'activity:read',
+        'attachment:create', 'attachment:delete', 'attachment:read',
+        'auth:session:read',
+        'calendar:event-create', 'calendar:event-edit',
+        'company:create', 'company:edit', 'company:read',
+        'consent:decision-log:read', 'consent:read', 'consent:write',
+        'contact:create', 'contact:edit', 'contact:read',
+        'examination:read',
+        'pipeline:add', 'pipeline:add-activity', 'pipeline:change-status',
+        'pipeline:read',
+        'requisition:assign', 'requisition:create', 'requisition:edit', 'requisition:read',
+        'submittal:approve', 'submittal:create',
+        'talent:create', 'talent:edit', 'talent:read', 'talent:search',
+        'tenant:admin:user-manage',
+      ]);
+
+      // interviewer — 3 scopes (narrowest tenant role; views assigned
+      // candidates, reads activity log, records interview feedback).
+      // calendar:read gap deferred — Interviewer learns of events via
+      // direct invitation, not via a calendar read primitive.
+      await expectRoleScopes('interviewer', [
+        'activity:create', 'activity:read', 'talent:read',
+      ]);
+
+      // sourcer — 14 scopes (intake-focused; NO :delete, NO submittal).
+      // Adds talents, manages the pipeline-sourcing surface, reads
+      // requisitions/companies/contacts to source against.
+      await expectRoleScopes('sourcer', [
+        'activity:create', 'activity:read',
+        'auth:session:read',
+        'company:read', 'contact:create', 'contact:read',
+        'pipeline:add', 'pipeline:add-activity', 'pipeline:change-status', 'pipeline:read',
+        'requisition:read',
+        'talent:create', 'talent:read', 'talent:search',
+      ]);
+
+      // coordinator — 4 scopes (Lead exact set). Scheduling logistics:
+      // creates/edits calendar events, reads talent context, records
+      // scheduling activities. calendar:event-delete deferred (Ruling 1
+      // reserves entity-destruction to tenant_admin; reschedule = edit).
+      await expectRoleScopes('coordinator', [
+        'activity:create',
+        'calendar:event-create', 'calendar:event-edit',
+        'talent:read',
+      ]);
+
+      // finance_hr — 6 scopes (offer-approval surface). Compensation field
+      // visibility is D5 (field-masking) — the compensation fields don't
+      // yet exist on the entities; D5 wires the mask matrix after they're
+      // modeled.
+      await expectRoleScopes('finance_hr', [
+        'activity:create', 'activity:read',
+        'auth:session:read',
+        'requisition:read', 'submittal:approve', 'talent:read',
+      ]);
+
+      // auditor — 5 scopes (Lead exact set; read-only audit-side surface).
+      // Sees consent decision log, sessions, identity, activity log. The
+      // operational reads (talent:read, requisition:read, etc.) are NOT
+      // in the bundle — Auditor reads the audit trail and identity state,
+      // not the operational data. report:read + audit-log:read deferred
+      // to the Reporting/Audit DDR.
+      await expectRoleScopes('auditor', [
+        'activity:read', 'auth:session:read',
+        'consent:decision-log:read',
+        'identity:tenant:read', 'identity:user:read',
+      ]);
+
+      // external_agency — 2 scopes (most restricted tenant role). D4 will
+      // enforce that talent:read + requisition:read see ONLY explicitly-
+      // shared records (a stricter predicate than Recruiter's assigned-only).
+      await expectRoleScopes('external_agency', [
+        'requisition:read', 'talent:read',
+      ]);
+    });
+
+    // -----------------------------------------------------------------
+    // AUTHZ-1 — multi-role union (DDR D7 mechanism proof)
+    // -----------------------------------------------------------------
+
+    it('AUTHZ-1 — a user holding two roles in a tenant gets the DEDUPED union of both scope bundles', async () => {
+      // The catalog mechanism MUST support multiple roles on one
+      // membership (the 12-role catalog assumes this — a user may be
+      // both Coordinator and Interviewer, for example). The junction
+      // table UserTenantMembershipRole carries the assignments;
+      // RoleRepository.findScopeKeysForUserInTenant walks the role
+      // graph and DEDUPES the scope keys across all assignments.
+      //
+      // Setup: a fresh user with one membership in the seed tenant,
+      // holding BOTH coordinator (4 scopes) and interviewer (3 scopes).
+      // Their scope sets overlap on {talent:read, activity:create},
+      // so the deduped union is 4 + 3 - 2 = 5 unique scopes.
+      const userId = '01900000-0000-7000-8000-0000000000a1';
+      const membershipId = '01900000-0000-7000-8000-0000000000a2';
+      const coordinatorAssignId = '01900000-0000-7000-8000-0000000000a3';
+      const interviewerAssignId = '01900000-0000-7000-8000-0000000000a4';
+
+      await prisma.user.upsert({
+        where: { id: userId },
+        update: {},
+        create: {
+          id: userId,
+          email: 'authz1-multirole@aramo.dev',
+          display_name: 'AUTHZ-1 multirole',
+          is_active: true,
+        },
+      });
+      await prisma.userTenantMembership.upsert({
+        where: { user_id_tenant_id: { user_id: userId, tenant_id: SEED_IDS.tenant } },
+        update: {},
+        create: {
+          id: membershipId,
+          user_id: userId,
+          tenant_id: SEED_IDS.tenant,
+          is_active: true,
+        },
+      });
+      await prisma.userTenantMembershipRole.upsert({
+        where: {
+          membership_id_role_id: {
+            membership_id: membershipId,
+            role_id: SEED_IDS.roles.coordinator,
+          },
+        },
+        update: {},
+        create: {
+          id: coordinatorAssignId,
+          membership_id: membershipId,
+          role_id: SEED_IDS.roles.coordinator,
+        },
+      });
+      await prisma.userTenantMembershipRole.upsert({
+        where: {
+          membership_id_role_id: {
+            membership_id: membershipId,
+            role_id: SEED_IDS.roles.interviewer,
+          },
+        },
+        update: {},
+        create: {
+          id: interviewerAssignId,
+          membership_id: membershipId,
+          role_id: SEED_IDS.roles.interviewer,
+        },
+      });
+
+      const scopes = await roleSvc.getScopesByUserAndTenant({
+        user_id: userId,
+        tenant_id: SEED_IDS.tenant,
+      });
+      expect([...scopes].sort()).toEqual([
+        'activity:create',
+        'activity:read',
+        'calendar:event-create',
+        'calendar:event-edit',
+        'talent:read',
       ]);
     });
 
