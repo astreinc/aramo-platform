@@ -19,6 +19,7 @@ import { ExportModule } from '@aramo/export';
 import { ImportModule } from '@aramo/import';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
+import { ObjectStorageModule } from '@aramo/object-storage';
 import { OutboxPublisherModule } from '@aramo/outbox-publisher';
 import { PipelineModule } from '@aramo/pipeline';
 import { PortalModule } from '@aramo/portal';
@@ -174,6 +175,16 @@ import { TalentRecordModule } from '@aramo/talent-record';
     // edge does NOT yet exist at T2-2a (the split seam — events sit
     // unpublished, harmless because no consumer).
     CanonicalizationModule,
+    // A8-3a — ObjectStorageModule (new leaf lib). The platform's first
+    // live S3 substrate: presigned PUT/GET helpers + tenant-scoped key
+    // convention + PII floor (≤ 300s expiry cap + access-log emission).
+    // Activates the dormant A4 Attachment.storage_key + M2
+    // RawPayloadReference.storage_ref patterns end-to-end. Leaf lib:
+    // imports = [] (AramoError + AramoLogger are TS-level imports);
+    // exports = [ObjectStorageService] only. Consumers (A8-3b résumé
+    // upload; later A4 owner_types) consume ObjectStorageService at
+    // the cross-lib boundary.
+    ObjectStorageModule,
     // M6 PR-2 §4 — OutboxPublisherModule (new leaf lib). Hosts the
     // relocated outbox-publisher BullMQ queue + processor; drains
     // consent + engagement + submittal OutboxEvent tables. Imported
