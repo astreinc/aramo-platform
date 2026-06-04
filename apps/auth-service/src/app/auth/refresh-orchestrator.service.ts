@@ -15,7 +15,8 @@ const REFRESH_TOKEN_BYTES = 32;
 const DEFAULT_GRACE_SECONDS = 30;
 
 export interface RefreshInput {
-  consumer: 'recruiter' | 'portal' | 'ingestion';
+  // AUTHZ-2: 'platform' is the 4th consumer_type (Lead ruling 3).
+  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform';
   refreshCookie: string | undefined;
 }
 

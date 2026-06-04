@@ -49,4 +49,36 @@ export class IdentityAuditService {
       });
     }
   }
+
+  // AUTHZ-2: global-event emission (tenant_id=null). The repository's
+  // assertMappingObeyed enforces that the event_type is NOT in
+  // TENANT_SCOPED_EVENT_TYPES (directive §6 closed mapping). Used by
+  // IdentityService.createUserFromInvitation for identity.user.created +
+  // identity.external_identity.linked (both global per the mapping).
+  async writeGlobalEvent(params: {
+    event_type: EventType;
+    actor_type: 'user';
+    actor_id: string;
+    subject_id: string;
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      await this.auditRepo.writeEvent({
+        event_type: params.event_type,
+        actor_type: params.actor_type,
+        actor_id: params.actor_id,
+        tenant_id: null,
+        subject_id: params.subject_id,
+        event_payload: params.payload,
+      });
+    } catch (err) {
+      this.logger.warn({
+        event: 'identity_audit_write_failed',
+        error_message: (err as Error).message,
+        event_type: params.event_type,
+        actor_id: params.actor_id,
+        subject_id: params.subject_id,
+      });
+    }
+  }
 }

@@ -53,6 +53,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   CANONICALIZATION_PAYLOAD_NOT_FOUND: 404,
   OBJECT_STORAGE_UPLOAD_FAILED: 502,
   PRESIGNED_URL_EXPIRED: 410,
+  TENANT_ALREADY_EXISTS: 409,
+  COGNITO_PROVISION_FAILED: 502,
+  INVITATION_ALREADY_EXISTS: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

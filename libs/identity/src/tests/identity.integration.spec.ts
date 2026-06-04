@@ -114,10 +114,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const roles = await prisma.role.findMany({ orderBy: { key: 'asc' } });
       // AUTHZ-1 (2026-06-04): tenant role catalog expanded from 4 to 13.
-      // The 4 pre-AUTHZ-1 keys are preserved verbatim; 9 new tenant
-      // roles added (tenant_owner, hiring_manager, account_manager,
-      // interviewer, sourcer, coordinator, finance_hr, auditor,
-      // external_agency). Platform-tier super_admin is AUTHZ-2.
+      // AUTHZ-2 (2026-06-04): adds the platform-tier super_admin role
+      // (catalog row 14; namespace-separate from the 13 tenant roles).
       expect(roles.map((r) => r.key)).toEqual([
         'account_manager',
         'auditor',
@@ -129,13 +127,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'interviewer',
         'recruiter',
         'sourcer',
+        'super_admin',
         'tenant_admin',
         'tenant_owner',
         'viewer',
       ]);
 
       const scopes = await prisma.scope.findMany({ orderBy: { key: 'asc' } });
-      // HK-IDENT-SCOPES: +6 scopes (41 -> 47).
+      // HK-IDENT-SCOPES: +6 scopes (41 -> 47). AUTHZ-2: +3 platform:*
+      // scopes (the SEPARATE namespace; 47 tenant + 3 platform = 50 rows
+      // in the catalog, but the tenant-catalog assertion in proof 7
+      // /proof 8 still pins the tenant slice at 47).
       expect(scopes.map((s) => s.key)).toEqual([
         'activity:create',
         'activity:read',
@@ -165,6 +167,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:change-status',
         'pipeline:read',
         'pipeline:remove',
+        // AUTHZ-2: 3 platform-namespace scopes interleaved alphabetically.
+        'platform:admin:invite',
+        'platform:tenant:provision',
+        'platform:tenant:read',
         'portal:consent:read',
         'portal:consent:write',
         'portal:profile:edit',
@@ -191,7 +197,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // (tenant_owner 43 + hiring_manager 12 + account_manager 33 +
       // interviewer 3 + sourcer 14 + coordinator 4 + finance_hr 6 +
       // auditor 5 + external_agency 2). 88 -> 210.
-      expect(roleScopes).toBe(210);
+      // AUTHZ-2: +3 role_scope rows for the super_admin platform-role
+      // bundle (the 3 platform:* scopes). 210 -> 213. The tenant
+      // 47-scope catalog is UNCHANGED — the platform scopes form a
+      // SEPARATE namespace.
+      expect(roleScopes).toBe(213);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -205,18 +215,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(sa?.name).toBe(SEED_SERVICE_ACCOUNT_NAME);
 
       const auditRows = await prisma.identityAuditEvent.findMany();
-      // AUTHZ-1 audit count audit. The earlier assertion in this slot
-      // (14) was stale — it captured the pre-A1a baseline but was not
-      // updated when PR-A1a, PR-A1a-2, and HK-IDENT-SCOPES extended the
-      // seed's audit emission. Re-derived breakdown:
+      // AUTHZ-2 audit count. Re-derived breakdown:
       //   - pre-A1a baseline (1 tenant + 1 user + 1 membership +
       //     1 external_identity + 3 roles + 6 scopes + 1 SA)         = 14
       //   - PR-A1a (1 role.candidate + 8 portal/ATS-subset scopes)   = +9
       //   - PR-A1a-2 + HK-IDENT-SCOPES (33 scope.created entries in
       //     the A1A2_NEW_SCOPES loop: 27 + 6)                         = +33
       //   - AUTHZ-1 (9 role.created events for the new tenant roles) = +9
-      //                                                       total   = 65
-      expect(auditRows.length).toBe(65);
+      //   - AUTHZ-2 (1 platform tenant.created + 1 super_admin
+      //     role.created + 3 platform scope.created)                  = +5
+      //                                                       total   = 70
+      expect(auditRows.length).toBe(70);
       // Every audit event uses actor_type 'system' and actor_id = SA id.
       for (const row of auditRows) {
         expect(row.actor_type).toBe('system');
@@ -232,6 +241,84 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const countsAfter = await collectCounts(prisma);
       expect(countsAfter).toEqual(countsBefore);
+    });
+
+    // -----------------------------------------------------------------
+    // AUTHZ-2 §5 proof 7 — platform-scope namespace separation.
+    //   - The 47 tenant scope keys do not contain any platform:* scope.
+    //   - The super_admin role bundle is exactly the 3 platform:* scopes.
+    //   - No tenant role bundle contains any platform:* scope.
+    // -----------------------------------------------------------------
+    it('AUTHZ-2 proof 7 — platform scope namespace is disjoint from tenant 47-catalog', async () => {
+      const tenantScopes = await prisma.scope.findMany({
+        where: { NOT: { key: { startsWith: 'platform:' } } },
+        select: { key: true },
+      });
+      expect(tenantScopes.length).toBe(47);
+      for (const s of tenantScopes) {
+        expect(s.key.startsWith('platform:')).toBe(false);
+      }
+
+      const platformScopes = await prisma.scope.findMany({
+        where: { key: { startsWith: 'platform:' } },
+        select: { key: true },
+      });
+      expect(platformScopes.map((s) => s.key).sort()).toEqual([
+        'platform:admin:invite',
+        'platform:tenant:provision',
+        'platform:tenant:read',
+      ]);
+
+      const superAdmin = await prisma.role.findUnique({
+        where: { key: 'super_admin' },
+        include: { role_scopes: { include: { scope: true } } },
+      });
+      expect(superAdmin).not.toBeNull();
+      const superAdminScopes = superAdmin!.role_scopes
+        .map((rs) => rs.scope.key)
+        .sort();
+      expect(superAdminScopes).toEqual([
+        'platform:admin:invite',
+        'platform:tenant:provision',
+        'platform:tenant:read',
+      ]);
+
+      // No tenant role holds any platform:* scope (the DDR §13.1
+      // namespace-partition tripwire).
+      const tenantRoles = await prisma.role.findMany({
+        where: { key: { not: 'super_admin' } },
+        include: { role_scopes: { include: { scope: true } } },
+      });
+      for (const r of tenantRoles) {
+        for (const rs of r.role_scopes) {
+          expect(rs.scope.key.startsWith('platform:')).toBe(false);
+        }
+      }
+    });
+
+    // -----------------------------------------------------------------
+    // AUTHZ-2 §5 proof 8 — no tenant-permission regression. The 13
+    // tenant role catalog is byte-identical to the AUTHZ-1 baseline.
+    // -----------------------------------------------------------------
+    it('AUTHZ-2 proof 8 — tenant 13-role catalog byte-identical to AUTHZ-1', async () => {
+      const tenantRoles = await prisma.role.findMany({
+        where: { key: { not: 'super_admin' } },
+        select: { key: true },
+      });
+      expect(tenantRoles.length).toBe(13);
+    });
+
+    // -----------------------------------------------------------------
+    // AUTHZ-2 §5 proof 2 supporting — the sentinel platform Tenant is
+    // seeded (Lead ruling 2 B1).
+    // -----------------------------------------------------------------
+    it('AUTHZ-2 sentinel — the platform Tenant row exists with name "Aramo Platform"', async () => {
+      const sentinel = await prisma.tenant.findUnique({
+        where: { id: SEED_IDS.platform_tenant },
+      });
+      expect(sentinel).not.toBeNull();
+      expect(sentinel?.name).toBe('Aramo Platform');
+      expect(sentinel?.is_active).toBe(true);
     });
 
     // -----------------------------------------------------------------
@@ -914,7 +1001,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('TENANT_SCOPED_EVENT_TYPES set matches directive §6 mapping exactly', () => {
       // Updated by PR-8.0a-Reground §6 amendment: 4 session.* event_types
       // added to the tenant-scoped set (prereq's 2 entries + 4 new = 6).
+      // AUTHZ-2: +2 invitation.* events (both tenant-scoped, carry the
+      // invited-into tenant_id). 6 -> 8.
       expect([...TENANT_SCOPED_EVENT_TYPES].sort()).toEqual([
+        'identity.invitation.accepted',
+        'identity.invitation.created',
         'identity.membership.created',
         'identity.session.issued',
         'identity.session.refreshed',

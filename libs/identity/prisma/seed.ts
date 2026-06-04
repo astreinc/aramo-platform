@@ -18,6 +18,21 @@
 // account_manager, interviewer, sourcer, coordinator, finance_hr,
 // auditor, external_agency) with bundles assembled from the live
 // 43-scope catalog (no new scope keys — gap-and-note discipline).
+//
+// AUTHZ-2 (2026-06-04) seeds the PLATFORM TIER (a separate namespace
+// from the 13-tenant-role / 47-tenant-scope catalog):
+//   - 1 sentinel Tenant row (PLATFORM_TENANT_SENTINEL_ID, name='Aramo
+//     Platform') backing the platform JWT's tenant_id claim (Lead
+//     ruling 2: B1; preserves the closed JWT contract).
+//   - 1 platform role (super_admin).
+//   - 3 platform:* scopes (Lead ruling 5: the 3-scope minimum set).
+//   - 1 RoleScope-per-scope assignment for the super_admin bundle.
+//   - 1 role.created + 3 scope.created audit events for the platform
+//     surface (all GLOBAL — actor=system, tenant_id=null).
+//   - 1 tenant.created audit event for the sentinel Tenant (the only
+//     tenant-scoped platform-seed event, carrying its own tenant_id).
+// The TENANT catalog (lines above) is UNCHANGED — assertion in §5
+// proof step 8: A2–A8 + the AUTHZ-1 13-role bundle stays byte-identical.
 
 import { PrismaPg } from '@prisma/adapter-pg';
 
@@ -32,6 +47,12 @@ export const SEED_IDS = {
   service_account_system: '01900000-0000-7000-8000-000000000003',
   external_identity_admin: '01900000-0000-7000-8000-000000000004',
   membership_admin: '01900000-0000-7000-8000-000000000005',
+  // AUTHZ-2 — sentinel Tenant for the platform tier (Lead ruling 2 B1).
+  // The UUID matches libs/auth's PLATFORM_TENANT_SENTINEL_ID; both files
+  // hold the value literal-for-literal so the JWT-issuance pipeline and
+  // the seed agree without a cross-package import (libs/identity does not
+  // import @aramo/auth per the substrate dependency direction).
+  platform_tenant: '01900000-0000-7000-8000-000000000100',
   roles: {
     tenant_admin: '01900000-0000-7000-8000-000000000010',
     recruiter: '01900000-0000-7000-8000-000000000011',
@@ -47,6 +68,8 @@ export const SEED_IDS = {
     finance_hr: '01900000-0000-7000-8000-00000000001a',
     auditor: '01900000-0000-7000-8000-00000000001b',
     external_agency: '01900000-0000-7000-8000-00000000001c',
+    // AUTHZ-2 — 1 platform role (super_admin; platform:* scope namespace).
+    super_admin: '01900000-0000-7000-8000-00000000001d',
   },
   scopes: {
     'consent:read': '01900000-0000-7000-8000-000000000020',
@@ -107,6 +130,13 @@ export const SEED_IDS = {
     'attachment:delete': '01900000-0000-7000-8000-000000000086',
     'pipeline:read': '01900000-0000-7000-8000-000000000087',
     'activity:create': '01900000-0000-7000-8000-000000000088',
+    // AUTHZ-2 — 3 platform-namespace scopes (Lead ruling 5; the minimum set).
+    // Bound only to the super_admin platform role; no tenant role holds any
+    // platform:* scope. The DDR §13.1 tripwire is enforced by namespace
+    // partition + the consumer_type check at the guard layer.
+    'platform:tenant:provision': '01900000-0000-7000-8000-000000000089',
+    'platform:tenant:read': '01900000-0000-7000-8000-00000000008a',
+    'platform:admin:invite': '01900000-0000-7000-8000-00000000008b',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // ...030..03c (13 assignments total: 6 tenant_admin + 4 recruiter + 3 viewer).
@@ -207,6 +237,14 @@ export const SEED_IDS = {
     recruiter_attachment_delete: '01900000-0000-7000-8000-000000000148',
     recruiter_pipeline_read: '01900000-0000-7000-8000-000000000149',
     recruiter_activity_create: '01900000-0000-7000-8000-00000000014a',
+    // AUTHZ-2 — super_admin platform-role bundle (3 RoleScope rows).
+    // Offset 0x300..0x302 deliberately leaves a gap above the AUTHZ-1
+    // generated range (0x14b..0x1c8 — 122 rows in AUTHZ1_ROLE_SCOPE_ROW_IDS)
+    // so the platform-namespace IDs are visually distinct in the audit
+    // stream. No tenant RoleScope row uses these IDs.
+    super_admin_platform_tenant_provision: '01900000-0000-7000-8000-000000000300',
+    super_admin_platform_tenant_read: '01900000-0000-7000-8000-000000000301',
+    super_admin_platform_admin_invite: '01900000-0000-7000-8000-000000000302',
   },
   membership_role_admin: '01900000-0000-7000-8000-000000000040',
   audit_events: {
@@ -279,8 +317,25 @@ export const SEED_IDS = {
     role_finance_hr_created: '01900000-0000-7000-8000-00000000022e',
     role_auditor_created: '01900000-0000-7000-8000-00000000022f',
     role_external_agency_created: '01900000-0000-7000-8000-000000000230',
+    // AUTHZ-2 — 1 platform tenant.created + 1 super_admin role.created +
+    // 3 platform scope.created audit events (0231..0235). The tenant.created
+    // event is the only tenant-scoped row in the platform-seed bundle
+    // (carries the platform_tenant sentinel id); the other 4 are global.
+    platform_tenant_created: '01900000-0000-7000-8000-000000000231',
+    role_super_admin_created: '01900000-0000-7000-8000-000000000232',
+    scope_platform_tenant_provision_created:
+      '01900000-0000-7000-8000-000000000233',
+    scope_platform_tenant_read_created: '01900000-0000-7000-8000-000000000234',
+    scope_platform_admin_invite_created: '01900000-0000-7000-8000-000000000235',
   },
 } as const;
+
+// AUTHZ-2 — display name for the sentinel Tenant. The name appears in
+// /platform/tenants reads to distinguish the sentinel from real tenants
+// (Lead ruling 2: a real but seed-only Tenant row, not a freestanding
+// constant — keeps the JWT-issuance pipeline + the SessionOrchestrator's
+// getTenantsByUser flow unchanged).
+export const PLATFORM_TENANT_NAME = 'Aramo Platform';
 
 export const SEED_COGNITO_SUB = 'fixed-dev-cognito-sub-01';
 export const SEED_TENANT_NAME = 'Aramo Dev Tenant';
@@ -369,6 +424,14 @@ const ROLE_SCOPE_ASSIGNMENTS = {
     'portal:profile:edit',
     'portal:consent:read',
     'portal:consent:write',
+  ],
+  // AUTHZ-2 — platform-tier super_admin role bundle. The 3 platform:*
+  // scopes; NO tenant scopes. The DDR §13.1 tripwire (a platform token
+  // never satisfies a tenant guard) is enforced by namespace partition.
+  super_admin: [
+    'platform:tenant:provision',
+    'platform:tenant:read',
+    'platform:admin:invite',
   ],
 } as const;
 
@@ -470,6 +533,13 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   'recruiter:attachment:delete': SEED_IDS.role_scopes.recruiter_attachment_delete,
   'recruiter:pipeline:read': SEED_IDS.role_scopes.recruiter_pipeline_read,
   'recruiter:activity:create': SEED_IDS.role_scopes.recruiter_activity_create,
+  // AUTHZ-2 — super_admin platform-role bundle (3 RoleScope rows).
+  'super_admin:platform:tenant:provision':
+    SEED_IDS.role_scopes.super_admin_platform_tenant_provision,
+  'super_admin:platform:tenant:read':
+    SEED_IDS.role_scopes.super_admin_platform_tenant_read,
+  'super_admin:platform:admin:invite':
+    SEED_IDS.role_scopes.super_admin_platform_admin_invite,
 };
 
 // AUTHZ-1 — bundle catalog for the 9 new tenant roles. Each entry is
@@ -641,6 +711,22 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
     },
   });
 
+  // 1b. AUTHZ-2 — sentinel "Aramo Platform" Tenant (Lead ruling 2 B1).
+  // The platform JWT's tenant_id claim references this row; the
+  // SessionOrchestrator's getTenantsByUser flow finds it for super_admin
+  // users so the singleton membership path is reused (no separate platform
+  // orchestrator). The row is is_active=true so the platform tier is
+  // operable; deactivation is the rollback marker.
+  await prisma.tenant.upsert({
+    where: { id: SEED_IDS.platform_tenant },
+    update: {},
+    create: {
+      id: SEED_IDS.platform_tenant,
+      name: PLATFORM_TENANT_NAME,
+      is_active: true,
+    },
+  });
+
   // 2. User (admin).
   await prisma.user.upsert({
     where: { id: SEED_IDS.user_admin },
@@ -690,6 +776,8 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertRole(prisma, SEED_IDS.roles.finance_hr, 'finance_hr', 'Finance/HR — offer-approval surface (compensation visibility is D5)');
   await upsertRole(prisma, SEED_IDS.roles.auditor, 'auditor', 'Auditor/Compliance — read-only audit logs, decision logs, sessions, identity');
   await upsertRole(prisma, SEED_IDS.roles.external_agency, 'external_agency', 'External Agency — most restricted; sees explicitly-shared talents and requisitions only');
+  // AUTHZ-2 — 1 platform role (super_admin; platform:* scope namespace).
+  await upsertRole(prisma, SEED_IDS.roles.super_admin, 'super_admin', 'Super Admin — platform-tier operator (Aramo SaaS). Provisions tenants, invites Tenant Owners + platform admins. Holds ONLY platform:* scopes; never a tenant scope.');
 
   // 6. Scopes (6 pre-A1a + 7 PR-A1a = 13 entries).
   await upsertScope(prisma, SEED_IDS.scopes['consent:read'], 'consent:read', 'Read consent state');
@@ -747,6 +835,11 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['attachment:delete'], 'attachment:delete', 'Detach a file from its owner (recruiter+ via bounded Ruling 1 carve-out — junction/link delete, not entity destruction)');
   await upsertScope(prisma, SEED_IDS.scopes['pipeline:read'], 'pipeline:read', 'Read pipelines / pipeline history');
   await upsertScope(prisma, SEED_IDS.scopes['activity:create'], 'activity:create', 'Create a manual activity entry');
+  // AUTHZ-2 — 3 platform-namespace scopes (Lead ruling 5; separate from
+  // the 47 tenant scopes above).
+  await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:provision'], 'platform:tenant:provision', 'Platform-tier: create a tenant + entitlement seed + Tenant-Owner invite (super_admin only)');
+  await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:read'], 'platform:tenant:read', 'Platform-tier: list/read tenants for the platform-admin view (super_admin only)');
+  await upsertScope(prisma, SEED_IDS.scopes['platform:admin:invite'], 'platform:admin:invite', 'Platform-tier: invite another platform admin against the platform Cognito pool (super_admin only)');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -978,6 +1071,60 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
       payload: { role_id: entry.role_id, key: entry.key },
     });
   }
+
+  // AUTHZ-2 — 1 platform tenant.created (tenant-scoped, carries the
+  // sentinel id) + 1 role.created (super_admin, global) + 3 scope.created
+  // (the 3 platform:* scopes, global). The tenant-scoped/global split
+  // mirrors the pre-existing pattern; assertMappingObeyed enforces it at
+  // write time.
+  await upsertAudit(prisma, {
+    id: SEED_IDS.audit_events.platform_tenant_created,
+    tenant_id: SEED_IDS.platform_tenant,
+    event_type: 'identity.tenant.created',
+    subject_id: SEED_IDS.platform_tenant,
+    payload: {
+      tenant_id: SEED_IDS.platform_tenant,
+      name: PLATFORM_TENANT_NAME,
+      source: 'authz-2.seed',
+    },
+  });
+  await upsertAudit(prisma, {
+    id: SEED_IDS.audit_events.role_super_admin_created,
+    tenant_id: null,
+    event_type: 'identity.role.created',
+    subject_id: SEED_IDS.roles.super_admin,
+    payload: { role_id: SEED_IDS.roles.super_admin, key: 'super_admin' },
+  });
+  await upsertAudit(prisma, {
+    id: SEED_IDS.audit_events.scope_platform_tenant_provision_created,
+    tenant_id: null,
+    event_type: 'identity.scope.created',
+    subject_id: SEED_IDS.scopes['platform:tenant:provision'],
+    payload: {
+      scope_id: SEED_IDS.scopes['platform:tenant:provision'],
+      key: 'platform:tenant:provision',
+    },
+  });
+  await upsertAudit(prisma, {
+    id: SEED_IDS.audit_events.scope_platform_tenant_read_created,
+    tenant_id: null,
+    event_type: 'identity.scope.created',
+    subject_id: SEED_IDS.scopes['platform:tenant:read'],
+    payload: {
+      scope_id: SEED_IDS.scopes['platform:tenant:read'],
+      key: 'platform:tenant:read',
+    },
+  });
+  await upsertAudit(prisma, {
+    id: SEED_IDS.audit_events.scope_platform_admin_invite_created,
+    tenant_id: null,
+    event_type: 'identity.scope.created',
+    subject_id: SEED_IDS.scopes['platform:admin:invite'],
+    payload: {
+      scope_id: SEED_IDS.scopes['platform:admin:invite'],
+      key: 'platform:admin:invite',
+    },
+  });
   await upsertAudit(prisma, {
     id: SEED_IDS.audit_events.scope_requisition_read_created,
     tenant_id: null,

@@ -20,8 +20,17 @@
 // account_manager, interviewer, sourcer, coordinator, finance_hr,
 // auditor, external_agency. Per AUTHZ-1 §4 Lead ruling, viewer is
 // kept as the 13th catalog entry (a generic read role distinct from
-// the audit-focused auditor). The platform-tier super_admin role is
-// OUT OF SCOPE for AUTHZ-1 and lives in AUTHZ-2 (apps/platform-admin).
+// the audit-focused auditor).
+//
+// AUTHZ-2 (2026-06-04) adds the PLATFORM-TIER role `super_admin` — the
+// 14th catalog entry but in a separate NAMESPACE: its bundle holds only
+// `platform:*` scopes (never tenant scopes), and the 13 tenant roles
+// hold only tenant scopes (never `platform:*`). The DDR §13.1 tripwire
+// is enforced by namespace partition + the consumer_type check at the
+// guard layer — a platform token never satisfies a tenant guard, and
+// vice versa. The TENANT 13-role catalog (rows above) is UNCHANGED
+// (assertion in §5 proof step 8: A2–A8 + the AUTHZ-1 13-role bundle
+// test stays green byte-for-byte).
 export const SEED_ROLE_KEYS = [
   // 4 pre-AUTHZ-1 tenant roles (keys preserved; descriptions re-mapped).
   'tenant_admin',
@@ -38,6 +47,8 @@ export const SEED_ROLE_KEYS = [
   'finance_hr',
   'auditor',
   'external_agency',
+  // AUTHZ-2 — 1 platform role (super_admin; platform:* scope namespace only).
+  'super_admin',
 ] as const;
 export type SeedRoleKey = (typeof SEED_ROLE_KEYS)[number];
 

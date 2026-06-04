@@ -4,7 +4,8 @@
 
 export interface SessionResponseDto {
   sub: string;
-  consumer_type: 'recruiter' | 'portal' | 'ingestion';
+  // AUTHZ-2: 'platform' is the 4th consumer_type (Lead ruling 3).
+  consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform';
   tenant_id: string;
   scopes: string[];
   iat: number;

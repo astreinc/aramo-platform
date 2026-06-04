@@ -71,10 +71,12 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
     }
   });
 
-  // Schema/catalog test 47: EVENT_TYPES tuple now contains 11 values; arbitrary
+  // Schema/catalog test 47: EVENT_TYPES tuple now contains 13 values; arbitrary
   // strings are still rejected.
-  it('EVENT_TYPES contains 11 values (7 prereq + 4 new) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(11);
+  // AUTHZ-2: +2 invitation lifecycle events (identity.invitation.created +
+  // identity.invitation.accepted; both tenant-scoped). 11 -> 13.
+  it('EVENT_TYPES contains 13 values (7 prereq + 4 session + 2 invitation) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(13);
     const create = vi.fn().mockResolvedValue({ id: 'r' });
     const repo = new IdentityAuditRepository(makePrisma(create));
 
@@ -91,8 +93,10 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  // Schema/catalog test 48: tenant-scoped index covers all 6 tenant-scoped types.
-  it('TENANT_SCOPED_EVENT_TYPES contains all 6 tenant-scoped values', () => {
+  // Schema/catalog test 48: tenant-scoped index covers all 8 tenant-scoped
+  // types. AUTHZ-2 adds invitation.created + invitation.accepted (both
+  // tenant-scoped; carry the invited-into tenant_id).
+  it('TENANT_SCOPED_EVENT_TYPES contains all 8 tenant-scoped values', () => {
     const expected = [
       'identity.tenant.created',
       'identity.membership.created',
@@ -100,8 +104,10 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       'identity.session.refreshed',
       'identity.session.revoked',
       'identity.session.reuse_detected',
+      'identity.invitation.created',
+      'identity.invitation.accepted',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(6);
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(8);
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

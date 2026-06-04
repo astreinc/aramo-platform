@@ -1510,6 +1510,21 @@ components:
         longer valid. The canonical PII-floor refusal at the URL-
         bearer-token boundary; surfaced when downstream code or
         audit re-presents a stored URL past its TTL.
+        AUTHZ-2 adds three codes for the platform tier + invitation
+        flow (apps/platform-admin; the audit's absent capability).
+        TENANT_ALREADY_EXISTS (HTTP 409) — tenant-provisioning refusal
+        when a tenant with the requested name already exists.
+        COGNITO_PROVISION_FAILED (HTTP 502) — the Cognito AdminCreateUser
+        upstream failure (Pattern A; Cognito-first is the load-bearing
+        external integration). Mirrors OBJECT_STORAGE_UPLOAD_FAILED at
+        the IdP boundary so the platform-admin UI can surface a
+        retryable upstream error rather than INTERNAL_ERROR.
+        INVITATION_ALREADY_EXISTS (HTTP 409) — re-invite refusal for
+        the (email, tenant_id) pair when the User already holds a
+        membership with the same role set. AdminGetUser is the
+        idempotency check; Cognito is NOT re-created. The other three
+        re-invite cases (same-tenant-different-roles, new-tenant,
+        Cognito-identity-drift) reconcile rather than raise.
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1550,6 +1565,9 @@ components:
         - CANONICALIZATION_PAYLOAD_NOT_FOUND
         - OBJECT_STORAGE_UPLOAD_FAILED
         - PRESIGNED_URL_EXPIRED
+        - TENANT_ALREADY_EXISTS
+        - COGNITO_PROVISION_FAILED
+        - INVITATION_ALREADY_EXISTS
 
     ErrorObject:
       type: object

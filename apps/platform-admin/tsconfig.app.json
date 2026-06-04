@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/apps/platform-admin",
+    "rootDir": "src",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "declaration": false,
+    "tsBuildInfoFile": "../../dist/apps/platform-admin/.tsbuildinfo",
+    "types": ["node"],
+    "paths": {
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
+      "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
+      "@aramo/identity": ["../../dist/libs/identity/src/index.d.ts"],
+      "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/tests/**/*", "**/*.spec.ts"]
+}
