@@ -85,6 +85,12 @@ export default defineConfig({
       // $transaction arrays). Leaf: deps = @aramo/common + 'uuid'; no
       // back-edge into any domain.
       '@aramo/metering': resolve(root, 'libs/metering/src/index.ts'),
+      // A8-3a — new leaf lib hosting the S3 object-storage substrate
+      // (S3 client + presigned PUT/GET helpers + tenant-scoped key
+      // convention + PII-floor access-log redaction). Mirrors
+      // tsconfig.base.json @aramo/object-storage alias so vitest
+      // runtime resolves the apps/api AppModule import.
+      '@aramo/object-storage': resolve(root, 'libs/object-storage/src/index.ts'),
       // M6 PR-2 §4 — new leaf lib hosting the relocated outbox-publisher.
       // Mirrors tsconfig.base.json @aramo/outbox-publisher alias so
       // vitest runtime resolves the apps/api AppModule import.

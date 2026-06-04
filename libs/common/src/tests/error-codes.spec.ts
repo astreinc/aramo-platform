@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 35 codes including PR-A8-1 IMPORT_* triple and T2-2a CANONICALIZATION_PAYLOAD_NOT_FOUND', () => {
+  it('ERROR_CODES contains the 37 codes including PR-A8-1 IMPORT_* triple, T2-2a CANONICALIZATION_PAYLOAD_NOT_FOUND, and A8-3a OBJECT_STORAGE_UPLOAD_FAILED + PRESIGNED_URL_EXPIRED', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -74,6 +74,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'IMPORT_ALREADY_REVERTED',
       'IMPORT_REVERT_WINDOW_EXPIRED',
       'CANONICALIZATION_PAYLOAD_NOT_FOUND',
+      'OBJECT_STORAGE_UPLOAD_FAILED',
+      'PRESIGNED_URL_EXPIRED',
     ]);
   });
 });

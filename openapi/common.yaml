@@ -1496,6 +1496,20 @@ components:
         `talent.Talent`) reuses the existing NOT_FOUND code with
         details.reason='core_talent_not_found' per the Directive §5
         "or reuse NOT_FOUND" option.
+        A8-3a adds two codes for the object-storage substrate (the
+        first live S3 backing for the dormant A4 Attachment.storage_key
+        + M2 RawPayloadReference.storage_ref patterns).
+        OBJECT_STORAGE_UPLOAD_FAILED (HTTP 502) — presigned-URL
+        generation or upstream S3 PUT/GET failure at the
+        ObjectStorageService boundary. Distinct from INTERNAL_ERROR
+        so the recruiter UI can render an actionable "try again"
+        instead of a generic 500.
+        PRESIGNED_URL_EXPIRED (HTTP 410) — a presigned URL was used
+        after expires_at. 410 (Gone) matches the bearer-token
+        semantics: the URL itself is the credential, and it is no
+        longer valid. The canonical PII-floor refusal at the URL-
+        bearer-token boundary; surfaced when downstream code or
+        audit re-presents a stored URL past its TTL.
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1534,6 +1548,8 @@ components:
         - IMPORT_ALREADY_REVERTED
         - IMPORT_REVERT_WINDOW_EXPIRED
         - CANONICALIZATION_PAYLOAD_NOT_FOUND
+        - OBJECT_STORAGE_UPLOAD_FAILED
+        - PRESIGNED_URL_EXPIRED
 
     ErrorObject:
       type: object

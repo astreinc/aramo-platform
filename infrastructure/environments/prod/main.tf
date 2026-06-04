@@ -2,6 +2,11 @@
 # Aramo M5 PR-10a — VPC + RDS modules appended (first M5 AWS data-plane PR;
 # CIDR 10.0.0.0/16 per ADR-0016 Decision 11; db.t3.medium / Postgres 15.7;
 # multi-AZ true per Architecture §17.2 RPO 15min / RTO 1hr targets).
+# Aramo A8-3a — s3-resume-bucket module appended (the platform's first
+# live object-storage backing; the dormant A4 Attachment.storage_key +
+# M2 RawPayloadReference.storage_ref patterns now reference real S3
+# objects). Dedicated SSE-KMS CMK + private bucket + scoped CORS +
+# lifecycle aligned to TalentDocumentRetentionPolicy (the PII floor).
 #
 # Replaces PR-8's empty-foundation placeholder with the api + auth
 # CloudWatch log groups defined by the cloudwatch-log-group module
@@ -50,5 +55,15 @@ module "rds" {
   deletion_protection     = true
   backup_retention_period = 35            # PR-10b: prod 35d per ADR-0017 Decision 2; Architecture §17.2 RPO 15min via PITR
   backup_window           = "03:00-04:00" # PR-10b: UTC low-traffic per ADR-0017 Decision 3
+  tags                    = local.common_tags
+}
+
+module "resume_bucket" {
+  source = "../../modules/s3-resume-bucket"
+
+  environment             = var.environment
+  cors_allowed_origins    = var.resume_bucket_cors_allowed_origins
+  retention_days_default  = var.resume_bucket_retention_days_default
+  retention_days_extended = var.resume_bucket_retention_days_extended
   tags                    = local.common_tags
 }

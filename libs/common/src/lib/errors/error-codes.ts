@@ -300,6 +300,8 @@ export const ERROR_CODES = [
   'IMPORT_ALREADY_REVERTED',  // PR-A8-1 — POST /v1/imports/:id/revert refused: batch already in terminal state (reverted | rejected) — re-revert is a no-op rejection (the SUBMITTAL_ALREADY_CONFIRMED 409 precedent)
   'IMPORT_REVERT_WINDOW_EXPIRED',  // PR-A8-1 — POST /v1/imports/:id/revert refused: batch.created_at is older than the configured window (default 7 days) — reversion is bounded so downstream consumers don't get yanked out from under
   'CANONICALIZATION_PAYLOAD_NOT_FOUND',  // T2-2a — canonicalize() RawPayloadReference lookup refusal; cross-tenant ABSORBED into not-found (no enumeration of other-tenant payload ids — A3 info-leak-closing precedent)
+  'OBJECT_STORAGE_UPLOAD_FAILED',  // A8-3a — presigned-URL generation OR upstream S3 PUT/GET failure at the ObjectStorageService boundary. HTTP 502 (upstream-dependency error class). Distinct from INTERNAL_ERROR so the recruiter UI can render an actionable "try again" vs. a generic 500.
+  'PRESIGNED_URL_EXPIRED',  // A8-3a — pre-signed URL used after expires_at. HTTP 410 (Gone — the resource representation referenced by the signed URL is no longer available). Surfaced when downstream code or audit re-presents a stored URL past its TTL; the canonical PII-floor refusal at the URL-bearer-token boundary.
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
