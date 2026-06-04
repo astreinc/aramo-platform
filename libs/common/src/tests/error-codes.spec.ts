@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 37 codes including PR-A8-1 IMPORT_* triple, T2-2a CANONICALIZATION_PAYLOAD_NOT_FOUND, and A8-3a OBJECT_STORAGE_UPLOAD_FAILED + PRESIGNED_URL_EXPIRED', () => {
+  it('ERROR_CODES contains the 40 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 platform-tier codes)', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -76,6 +76,10 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'CANONICALIZATION_PAYLOAD_NOT_FOUND',
       'OBJECT_STORAGE_UPLOAD_FAILED',
       'PRESIGNED_URL_EXPIRED',
+      // AUTHZ-2 — 3 platform-tier codes.
+      'TENANT_ALREADY_EXISTS',
+      'COGNITO_PROVISION_FAILED',
+      'INVITATION_ALREADY_EXISTS',
     ]);
   });
 });

@@ -14,15 +14,18 @@ import { ALG, ISSUER } from './jwt-issuer.service.js';
 // the Authorization header. Per directive §4 + §8.5.
 
 export interface CookieJwtPayload {
+  // AUTHZ-2: 'platform' is the 4th consumer_type (Lead ruling 3 — extend
+  // auth-service; reuse the PKCE/JWKS pipeline). Matches CONSUMER_TYPES
+  // in libs/auth/auth-context.types.ts.
   sub: string;
-  consumer_type: 'recruiter' | 'portal' | 'ingestion';
+  consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform';
   tenant_id: string;
   scopes: string[];
   iat: number;
   exp: number;
 }
 
-const CONSUMER_TYPES = ['recruiter', 'portal', 'ingestion'] as const;
+const CONSUMER_TYPES = ['recruiter', 'portal', 'ingestion', 'platform'] as const;
 
 @Injectable()
 export class CookieVerifierService {

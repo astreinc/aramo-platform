@@ -85,8 +85,30 @@ export const SEED_SCOPE_KEYS = [
   'attachment:delete',          // recruiter+ (Ruling 1 carve-out — junction/link delete)
   'pipeline:read',              // recruiter+
   'activity:create',            // recruiter+
+  // AUTHZ-2 — platform-tier scopes (a SEPARATE namespace from the 47 tenant
+  // scopes above; Lead ruling 5 — the 3-scope minimum set). The bundle is
+  // assigned only to the platform `super_admin` role; no tenant role holds
+  // any platform:* scope, and no platform role holds any tenant scope. The
+  // DDR §13.1 tripwire is enforced by namespace partition + the consumer_type
+  // check at the guard layer. Deferrals (gap-and-noted to later platform
+  // PRs): platform:tenant:deactivate, platform:tenant:entitlement:edit,
+  // platform:billing:*, platform:audit:read.
+  'platform:tenant:provision',  // super_admin only — create tenant + entitlement seed + Tenant-Owner invite
+  'platform:tenant:read',       // super_admin only — list/read tenants for the platform view
+  'platform:admin:invite',      // super_admin only — invite another platform admin (against the platform Cognito pool)
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
+
+// AUTHZ-2 — the platform-namespace scope subset, used by tests + the
+// EntitlementGuard / RolesGuard separation proofs to assert that no tenant
+// role bundle contains any of these and no platform role bundle contains
+// anything outside this subset.
+export const PLATFORM_SCOPE_KEYS = [
+  'platform:tenant:provision',
+  'platform:tenant:read',
+  'platform:admin:invite',
+] as const;
+export type PlatformScopeKey = (typeof PLATFORM_SCOPE_KEYS)[number];
 
 // Scope-key format regex (directive §9 test 18). Authoritative reference
 // for both validation and tests.

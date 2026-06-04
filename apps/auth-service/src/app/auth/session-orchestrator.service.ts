@@ -24,7 +24,13 @@ const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 const REFRESH_TOKEN_BYTES = 32;
 
 export interface CallbackInput {
-  consumer: 'recruiter' | 'portal' | 'ingestion';
+  // AUTHZ-2: 'platform' is the 4th consumer_type (Lead ruling 3 —
+  // extend auth-service, no second auth stack). At Gate 6 the platform
+  // login flow uses the SEPARATE Cognito user pool (Lead ruling 4 A1);
+  // the env-var routing per-consumer is a readiness-track follow-on
+  // (real Cognito + IAM + 2 pools before PROD), since the proofs use
+  // JwtIssuerService directly to mint platform JWTs (mocked Cognito).
+  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform';
   code: string | undefined;
   state: string | undefined;
   cognitoError: string | undefined;

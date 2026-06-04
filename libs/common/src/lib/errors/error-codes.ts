@@ -302,6 +302,9 @@ export const ERROR_CODES = [
   'CANONICALIZATION_PAYLOAD_NOT_FOUND',  // T2-2a — canonicalize() RawPayloadReference lookup refusal; cross-tenant ABSORBED into not-found (no enumeration of other-tenant payload ids — A3 info-leak-closing precedent)
   'OBJECT_STORAGE_UPLOAD_FAILED',  // A8-3a — presigned-URL generation OR upstream S3 PUT/GET failure at the ObjectStorageService boundary. HTTP 502 (upstream-dependency error class). Distinct from INTERNAL_ERROR so the recruiter UI can render an actionable "try again" vs. a generic 500.
   'PRESIGNED_URL_EXPIRED',  // A8-3a — pre-signed URL used after expires_at. HTTP 410 (Gone — the resource representation referenced by the signed URL is no longer available). Surfaced when downstream code or audit re-presents a stored URL past its TTL; the canonical PII-floor refusal at the URL-bearer-token boundary.
+  'TENANT_ALREADY_EXISTS',  // AUTHZ-2 — provisioning refusal: a Tenant with the requested name already exists (case-insensitive uniqueness over name). HTTP 409. Idempotent re-provision is rejected at the platform-tier boundary (Lead ruling 2 — same-name → 409, not silently aliased).
+  'COGNITO_PROVISION_FAILED',  // AUTHZ-2 — Cognito AdminCreateUser upstream failure (Pattern A; the load-bearing external integration). HTTP 502. Distinct from INTERNAL_ERROR so the platform-admin UI can surface "Cognito unavailable, retry" vs. a generic 500. Mirrors OBJECT_STORAGE_UPLOAD_FAILED at the IdP boundary.
+  'INVITATION_ALREADY_EXISTS',  // AUTHZ-2 — re-invite refusal for the (email, tenant_id) pair when the User already holds a membership in the tenant with the same role set. HTTP 409. AdminGetUser is the idempotency check; Cognito is NOT re-created. The two same-tenant-different-roles / new-tenant / drift cases (Ruling 8) do NOT raise this — they reconcile.
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

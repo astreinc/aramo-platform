@@ -23,6 +23,14 @@ export const EVENT_TYPES = [
   'identity.session.refreshed',
   'identity.session.revoked',
   'identity.session.reuse_detected',
+  // AUTHZ-2 — invitation lifecycle. Both tenant-scoped (carry the
+  // invited-into tenant_id). `created` is emitted when provisionTenant
+  // /invite mirrors the new (User + ExternalIdentity + Membership +
+  // MembershipRole) after AdminCreateUser returns the Cognito sub.
+  // `accepted` is emitted by apps/auth-service on the invitee's first
+  // successful /callback (the existing resolve seam now finds them).
+  'identity.invitation.created',
+  'identity.invitation.accepted',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -38,6 +46,10 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.session.refreshed',
   'identity.session.revoked',
   'identity.session.reuse_detected',
+  // AUTHZ-2: both invitation events are tenant-scoped (the invited-into
+  // tenant).
+  'identity.invitation.created',
+  'identity.invitation.accepted',
 ]);
 
 export interface WriteAuditEventInput {

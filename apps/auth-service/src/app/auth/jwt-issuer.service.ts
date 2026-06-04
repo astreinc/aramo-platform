@@ -18,7 +18,12 @@ export const ACCESS_TOKEN_TTL_SECONDS = 900;
 
 export interface JwtIssuancePayload {
   sub: string;
-  consumer_type: 'recruiter' | 'portal' | 'ingestion';
+  // AUTHZ-2: 'platform' is the 4th consumer_type (Lead ruling 3 — extend
+  // auth-service, reuse the issuance pipeline). The platform JWT carries
+  // tenant_id = PLATFORM_TENANT_SENTINEL_ID (Lead ruling 2 B1) and only
+  // platform:* scopes; the DDR §13.1 tripwire is enforced at the route
+  // guard layer (the consumer_type + scope-namespace partition).
+  consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform';
   tenant_id: string;
   scopes: string[];
   // PR-A1a-3 Ruling 1: optional site axis. Stamped by orchestrators when

@@ -4,6 +4,7 @@ export { AuthContext } from './lib/auth-context.decorator.js';
 export {
   ACTOR_KINDS,
   CONSUMER_TYPES,
+  PLATFORM_TENANT_SENTINEL_ID,
   type ActorKind,
   type AuthContext as AuthContextType,
   type ConsumerType,

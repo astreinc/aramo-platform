@@ -20,6 +20,13 @@ import { TenantService } from './tenant.service.js';
 // remains internal).
 // M4-close HK-PR-4 — AramoLogger provider for IdentityAuditService
 // (Style A constructor DI; mirrors libs/submittal PR-9 PoC pattern).
+//
+// AUTHZ-2: no provider changes. IdentityService + TenantService gained
+// write methods (createUserFromInvitation / provisionTenant) but the
+// provider wiring is the same — the new dependencies (IdentityAuditService
+// on TenantService, IdentityAuditService on IdentityService) were already
+// available in the module since AuditService was registered for the
+// auth-service session pipeline.
 @Module({
   imports: [CommonModule],
   providers: [
@@ -37,6 +44,13 @@ import { TenantService } from './tenant.service.js';
       useFactory: () => createAramoLogger(IdentityAuditService.name),
     },
   ],
-  exports: [IdentityService, TenantService, RoleService, IdentityAuditService],
+  exports: [
+    IdentityService,
+    TenantService,
+    RoleService,
+    IdentityAuditService,
+    IdentityRepository,
+    TenantRepository,
+  ],
 })
 export class IdentityModule {}
