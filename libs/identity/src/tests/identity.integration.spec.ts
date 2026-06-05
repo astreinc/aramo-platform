@@ -1074,6 +1074,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // tenant_id the substrate write happened in). 8 -> 17.
       // Settings S2: +1 tenant_setting.updated (17 -> 18).
       // Settings S3a: +1 tenant_user.disabled (18 -> 19).
+      // Settings S3b: +2 tenant_user.role_assigned + tenant_user.role_removed (19 -> 21).
       expect([...TENANT_SCOPED_EVENT_TYPES].sort()).toEqual([
         'identity.invitation.accepted',
         'identity.invitation.created',
@@ -1092,6 +1093,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.tenant.created',
         'identity.tenant_setting.updated',
         'identity.tenant_user.disabled',
+        'identity.tenant_user.role_assigned',
+        'identity.tenant_user.role_removed',
         'identity.user_client_assignment.created',
         'identity.user_client_assignment.removed',
       ]);

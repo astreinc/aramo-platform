@@ -102,6 +102,20 @@ export class IdentityRepository {
     return rows.map((r) => r.role_id);
   }
 
+  // Settings S3b — needed by TenantUserLifecycleService.assignTenantUserRoles
+  // for the before/after role-key audit payloads (role KEYS, not IDs, so the
+  // change-log row is human-readable). Joins through Role to project the key
+  // column; only active role assignments are returned (an inactive role's
+  // scopes already do not resolve at session-issuance time per RoleRepository
+  // .findScopeKeysForUserInTenant). Deterministic order (asc).
+  async findRoleKeysForMembership(membership_id: string): Promise<string[]> {
+    const rows = await this.prisma.userTenantMembershipRole.findMany({
+      where: { membership_id, role: { is_active: true } },
+      select: { role: { select: { key: true } } },
+    });
+    return rows.map((r) => r.role.key).sort();
+  }
+
   async findRoleIdsByKeys(role_keys: readonly string[]): Promise<Map<string, string>> {
     if (role_keys.length === 0) return new Map();
     const rows = await this.prisma.role.findMany({

@@ -53,6 +53,19 @@ export interface DisableResult {
   already_disabled: boolean;
 }
 
+// Settings S3b — role-assign result. The reconcile can yield BOTH adds AND
+// removes in a single PATCH; the controller emits two audit events when both
+// deltas are non-empty (and zero when neither is — the empty-delta-no-audit
+// precedent). before / after carry role KEYS (not ids) so the audit row is
+// human-readable; the delta lists are derived from the key sets.
+export interface AssignRolesResult {
+  membership_id: string;
+  before_role_keys: string[];
+  after_role_keys: string[];
+  added_role_keys: string[];
+  removed_role_keys: string[];
+}
+
 @Injectable()
 export class TenantUserLifecycleService {
   private readonly logger = new Logger(TenantUserLifecycleService.name);
@@ -268,6 +281,119 @@ export class TenantUserLifecycleService {
       membership_id: result.membership_id,
       changed: true,
       already_disabled: false,
+    };
+  }
+
+  // ROLE-ASSIGN (S3b) — single-store; no Cognito; no cross-store saga.
+  //
+  // Flow (the S3 Gate-5 design, confirmed at S3b Gate-5):
+  //   step 0: resolve role_keys -> role_ids (resolveRoleIdsByKeys throws
+  //           VALIDATION_ERROR on unknown).
+  //   step 1: THE D5 INTEGRITY GATE (load-bearing) — RoleBundleValidator
+  //           asserts the UNION of the requested role-set's scopes is
+  //           non-invertible (the merged validator; field-masking owns
+  //           the boundary). Fires WRITE-TIME, BEFORE the reconcile —
+  //           an invertible union can NEVER persist.
+  //   step 2: find the membership (user_id + tenant_id from the caller's
+  //           session) — 404 if missing (per-tenant isolation).
+  //   step 3: snapshot before-state (role KEYS for the audit payload).
+  //   step 4: reconcile via the merged replaceMembershipRoles (atomic
+  //           createMany/deleteMany on UserTenantMembershipRole).
+  //   step 5: compute the key-set delta (added / removed).
+  //
+  // The controller emits role_assigned / role_removed events from the
+  // delta (per the S2 app-layer two-call seam); an empty delta (both
+  // sides empty) suppresses BOTH events (the S2 no-op-no-audit
+  // precedent).
+  //
+  // Step 1 is intentionally BEFORE step 2's membership lookup so a bad
+  // role-set rejects without leaking membership existence (a tenant_admin
+  // who proposes an invertible union gets the same 400 whether or not
+  // the user has a membership in the tenant). The membership-not-found
+  // branch is the per-tenant isolation 404 (same as disable).
+  async assignTenantUserRoles(args: {
+    tenant_id: string;
+    user_id: string;
+    role_keys: readonly string[];
+    actor_user_id: string;
+    request_id: string;
+  }): Promise<AssignRolesResult> {
+    if (args.role_keys.length === 0) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'role-assign requires at least one role_key',
+        400,
+        {
+          requestId: args.request_id,
+          details: { reason: 'empty_role_keys' },
+        },
+      );
+    }
+
+    // Step 0 — resolve. Unknown key surfaces as VALIDATION_ERROR
+    // (existing behavior at resolveRoleIdsByKeys).
+    const role_ids = await this.identitySvc.resolveRoleIdsByKeys(
+      args.role_keys,
+    );
+
+    // Step 1 — THE D5 INTEGRITY GATE. The merged validator already
+    // short-circuits on length<2; here we feed the full distinct set so
+    // a 1-role assignment is also covered (trivially passes — the
+    // single-role bundles are individually proven non-invertible at
+    // seed time).
+    await this.roleBundle.assertUnionNonInvertible({
+      role_keys: args.role_keys,
+      request_id: args.request_id,
+    });
+
+    // Step 2 — locate the membership in THIS tenant. 404 if absent;
+    // per-tenant isolation.
+    const membership = await this.identitySvc.findMembership({
+      user_id: args.user_id,
+      tenant_id: args.tenant_id,
+    });
+    if (membership === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'membership not found for user in this tenant',
+        404,
+        {
+          requestId: args.request_id,
+          details: { user_id: args.user_id, tenant_id: args.tenant_id },
+        },
+      );
+    }
+
+    // Step 3 — snapshot before-state (KEYS for the audit payload).
+    const before_role_keys =
+      await this.identitySvc.findRoleKeysForMembership(membership.id);
+
+    // Step 4 — reconcile. The merged primitive is atomic
+    // (createMany/deleteMany inside $transaction).
+    await this.identitySvc.replaceMembershipRoles({
+      membership_id: membership.id,
+      role_ids,
+    });
+
+    // Step 5 — compute key-set delta. We compute from keys rather than
+    // ids because the audit payload carries keys, and a key-based diff
+    // is the human-readable change-log primary identity used downstream.
+    const beforeSet = new Set(before_role_keys);
+    const afterSet = new Set(args.role_keys);
+    const after_role_keys = [...afterSet].sort();
+    const added_role_keys = [...afterSet]
+      .filter((k) => !beforeSet.has(k))
+      .sort();
+    const removed_role_keys = [...beforeSet]
+      .filter((k) => !afterSet.has(k))
+      .sort();
+
+    return {
+      membership_id: membership.id,
+      before_role_keys: [...before_role_keys].sort(),
+      after_role_keys,
+      added_role_keys,
+      removed_role_keys,
     };
   }
 }

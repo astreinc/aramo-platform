@@ -68,6 +68,23 @@ export const EVENT_TYPES = [
   // identity.membership.created + identity.invitation.created events
   // emitted by createUserFromInvitation (no new event_type for invite).
   'identity.tenant_user.disabled',
+  // Settings S3b — tenant-user role-assign. Emitted by
+  // TenantUserManagementController.assignRoles (PATCH /v1/tenant/users/
+  // :user_id/roles) AFTER the merged replaceMembershipRoles reconcile
+  // commits. TWO events because reconcile can produce both adds AND
+  // removes in a single PATCH (the role-set diff); the controller
+  // emits each only when its delta is non-empty (the S2 no-op-no-audit
+  // precedent — an unchanged role-set emits NEITHER event). Both
+  // tenant-scoped (the membership's tenant). subject_id is the
+  // affected user_id; payload carries
+  //   { membership_id,
+  //     added_role_keys / removed_role_keys,  -- per event
+  //     before_role_keys, after_role_keys }
+  // The D5 union-non-invertibility check (the merged
+  // RoleBundleValidator) fires BEFORE the reconcile commits, so an
+  // invertible union never reaches the audit path.
+  'identity.tenant_user.role_assigned',
+  'identity.tenant_user.role_removed',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -105,6 +122,11 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   // disables once per tenant). subject_id is the user_id; tenant_id is
   // the membership's tenant.
   'identity.tenant_user.disabled',
+  // Settings S3b — tenant-user role-assign is per-tenant (the
+  // membership's roles live in one tenant). Same subject_id +
+  // tenant_id discipline as disable.
+  'identity.tenant_user.role_assigned',
+  'identity.tenant_user.role_removed',
 ]);
 
 export interface WriteAuditEventInput {

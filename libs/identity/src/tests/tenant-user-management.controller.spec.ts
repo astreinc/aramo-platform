@@ -54,6 +54,7 @@ interface Mocks {
   lifecycle: {
     inviteTenantUser: ReturnType<typeof vi.fn>;
     disableTenantUser: ReturnType<typeof vi.fn>;
+    assignTenantUserRoles: ReturnType<typeof vi.fn>;
   };
   audit: { writeEvent: ReturnType<typeof vi.fn> };
   ctl: TenantUserManagementController;
@@ -63,6 +64,7 @@ function makeMocks(): Mocks {
   const lifecycle = {
     inviteTenantUser: vi.fn(),
     disableTenantUser: vi.fn(),
+    assignTenantUserRoles: vi.fn(),
   };
   const audit = {
     writeEvent: vi.fn().mockResolvedValue(undefined),
@@ -267,5 +269,194 @@ describe('TenantUserManagementController.disable — audit seam (S2 precedent)',
     };
     expect(args.tenant_id).toBe(TENANT_ID);
     expect(args.user_id).toBe(USER_ID);
+  });
+});
+
+// Settings S3b — PATCH /v1/tenant/users/:user_id/roles unit proofs.
+//
+// Body parsing, the per-event audit gating (BOTH events, ONE event, NEITHER
+// event depending on the delta), and the implicit-tenant pattern.
+
+describe('TenantUserManagementController.assignRoles — body parsing', () => {
+  it('non-object body → VALIDATION_ERROR (missing_body)', async () => {
+    const { ctl } = makeMocks();
+    await expect(
+      ctl.assignRoles(makeAuthContext(), USER_ID, null, REQUEST_ID),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'missing_body' } },
+    });
+  });
+
+  it('empty role_keys → VALIDATION_ERROR (empty_role_keys); saga not called', async () => {
+    const { ctl, lifecycle } = makeMocks();
+    await expect(
+      ctl.assignRoles(makeAuthContext(), USER_ID, { role_keys: [] }, REQUEST_ID),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'empty_role_keys' } },
+    });
+    expect(lifecycle.assignTenantUserRoles).not.toHaveBeenCalled();
+  });
+
+  it('role_keys with non-string item → VALIDATION_ERROR (invalid_role_key_item)', async () => {
+    const { ctl } = makeMocks();
+    await expect(
+      ctl.assignRoles(
+        makeAuthContext(),
+        USER_ID,
+        { role_keys: ['recruiter', 99] },
+        REQUEST_ID,
+      ),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'invalid_role_key_item' } },
+    });
+  });
+});
+
+describe('TenantUserManagementController.assignRoles — per-event audit gate', () => {
+  it('adds AND removes → BOTH events emitted (role_assigned + role_removed) with full payloads', async () => {
+    const { ctl, lifecycle, audit } = makeMocks();
+    lifecycle.assignTenantUserRoles.mockResolvedValue({
+      membership_id: 'mem-1',
+      before_role_keys: ['recruiter', 'sourcer'],
+      after_role_keys: ['account_manager', 'recruiter'],
+      added_role_keys: ['account_manager'],
+      removed_role_keys: ['sourcer'],
+    });
+    const result = await ctl.assignRoles(
+      makeAuthContext(),
+      USER_ID,
+      { role_keys: ['account_manager', 'recruiter'] },
+      REQUEST_ID,
+    );
+    expect(result.added_role_keys).toEqual(['account_manager']);
+    expect(result.removed_role_keys).toEqual(['sourcer']);
+    expect(audit.writeEvent).toHaveBeenCalledTimes(2);
+    const eventTypes = audit.writeEvent.mock.calls
+      .map((c) => (c[0] as { event_type: string }).event_type)
+      .sort();
+    expect(eventTypes).toEqual([
+      'identity.tenant_user.role_assigned',
+      'identity.tenant_user.role_removed',
+    ]);
+    // role_assigned event carries added_role_keys
+    const assignedCall = audit.writeEvent.mock.calls.find(
+      (c) =>
+        (c[0] as { event_type: string }).event_type ===
+        'identity.tenant_user.role_assigned',
+    );
+    expect(assignedCall?.[0]).toMatchObject({
+      tenant_id: TENANT_ID,
+      subject_id: USER_ID,
+      actor_id: ACTOR_ID,
+      payload: {
+        membership_id: 'mem-1',
+        added_role_keys: ['account_manager'],
+        before_role_keys: ['recruiter', 'sourcer'],
+        after_role_keys: ['account_manager', 'recruiter'],
+      },
+    });
+    // role_removed event carries removed_role_keys
+    const removedCall = audit.writeEvent.mock.calls.find(
+      (c) =>
+        (c[0] as { event_type: string }).event_type ===
+        'identity.tenant_user.role_removed',
+    );
+    expect(removedCall?.[0]).toMatchObject({
+      payload: {
+        membership_id: 'mem-1',
+        removed_role_keys: ['sourcer'],
+      },
+    });
+  });
+
+  it('only adds (no removes) → ONLY role_assigned emitted', async () => {
+    const { ctl, lifecycle, audit } = makeMocks();
+    lifecycle.assignTenantUserRoles.mockResolvedValue({
+      membership_id: 'mem-1',
+      before_role_keys: ['recruiter'],
+      after_role_keys: ['account_manager', 'recruiter'],
+      added_role_keys: ['account_manager'],
+      removed_role_keys: [],
+    });
+    await ctl.assignRoles(
+      makeAuthContext(),
+      USER_ID,
+      { role_keys: ['account_manager', 'recruiter'] },
+      REQUEST_ID,
+    );
+    expect(audit.writeEvent).toHaveBeenCalledTimes(1);
+    expect(audit.writeEvent.mock.calls[0]?.[0]).toMatchObject({
+      event_type: 'identity.tenant_user.role_assigned',
+    });
+  });
+
+  it('only removes (no adds) → ONLY role_removed emitted', async () => {
+    const { ctl, lifecycle, audit } = makeMocks();
+    lifecycle.assignTenantUserRoles.mockResolvedValue({
+      membership_id: 'mem-1',
+      before_role_keys: ['recruiter', 'sourcer'],
+      after_role_keys: ['recruiter'],
+      added_role_keys: [],
+      removed_role_keys: ['sourcer'],
+    });
+    await ctl.assignRoles(
+      makeAuthContext(),
+      USER_ID,
+      { role_keys: ['recruiter'] },
+      REQUEST_ID,
+    );
+    expect(audit.writeEvent).toHaveBeenCalledTimes(1);
+    expect(audit.writeEvent.mock.calls[0]?.[0]).toMatchObject({
+      event_type: 'identity.tenant_user.role_removed',
+    });
+  });
+
+  it('empty delta (no adds, no removes) → NEITHER event emitted (S2 no-op-no-audit, generalized)', async () => {
+    const { ctl, lifecycle, audit } = makeMocks();
+    lifecycle.assignTenantUserRoles.mockResolvedValue({
+      membership_id: 'mem-1',
+      before_role_keys: ['recruiter'],
+      after_role_keys: ['recruiter'],
+      added_role_keys: [],
+      removed_role_keys: [],
+    });
+    await ctl.assignRoles(
+      makeAuthContext(),
+      USER_ID,
+      { role_keys: ['recruiter'] },
+      REQUEST_ID,
+    );
+    expect(audit.writeEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('TenantUserManagementController.assignRoles — implicit-tenant', () => {
+  it('saga called with authContext.tenant_id, NOT body-supplied', async () => {
+    const { ctl, lifecycle } = makeMocks();
+    lifecycle.assignTenantUserRoles.mockResolvedValue({
+      membership_id: 'mem-1',
+      before_role_keys: [],
+      after_role_keys: ['recruiter'],
+      added_role_keys: ['recruiter'],
+      removed_role_keys: [],
+    });
+    await ctl.assignRoles(
+      makeAuthContext(TENANT_ID),
+      USER_ID,
+      // hostile body smuggling a tenant_id
+      { tenant_id: OTHER_TENANT_ID, role_keys: ['recruiter'] },
+      REQUEST_ID,
+    );
+    const args = lifecycle.assignTenantUserRoles.mock.calls[0]?.[0] as {
+      tenant_id: string;
+      user_id: string;
+      role_keys: readonly string[];
+    };
+    expect(args.tenant_id).toBe(TENANT_ID);
+    expect(args.user_id).toBe(USER_ID);
+    expect(args.role_keys).toEqual(['recruiter']);
   });
 });

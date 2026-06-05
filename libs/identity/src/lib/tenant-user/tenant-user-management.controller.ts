@@ -4,6 +4,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -163,6 +164,97 @@ export class TenantUserManagementController {
 
     return result;
   }
+
+  // PATCH /v1/tenant/users/:user_id/roles — role-assign (Settings S3b).
+  //
+  // Request: { role_keys: string[] (>=1) } — the DESIRED role-set
+  //   (the reconciliation computes adds/removes against the current set).
+  // Response (200): {
+  //   membership_id,
+  //   before_role_keys, after_role_keys,
+  //   added_role_keys, removed_role_keys
+  // }
+  //
+  // Errors:
+  //   400 VALIDATION_ERROR (empty role_keys; unknown role_key; INVERTIBLE
+  //                         role-union — the load-bearing D5 rejection)
+  //   404 NOT_FOUND        (no membership for user_id in this tenant —
+  //                         per-tenant isolation)
+  //
+  // THE D5 INTEGRITY GATE (load-bearing) — the merged RoleBundleValidator
+  // asserts the UNION of the requested role-set's scopes is non-invertible
+  // BEFORE the reconcile commits. An invertible union NEVER persists. See
+  // TenantUserLifecycleService.assignTenantUserRoles step 1.
+  //
+  // AUDIT (two-call seam — S2 precedent):
+  //   - added_role_keys.length > 0 → emit identity.tenant_user.role_assigned
+  //   - removed_role_keys.length > 0 → emit identity.tenant_user.role_removed
+  //   - both empty (no-op PATCH; role-set unchanged) → NEITHER event emitted
+  //     (the S2 no-op-no-audit precedent extended to two-event reconciles).
+  // Each event's payload carries the full before/after sets so the audit
+  // row reads as a coherent change-log entry on its own.
+  @Patch(':user_id/roles')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('tenant:admin:user-manage')
+  async assignRoles(
+    @AuthContext() authContext: AuthContextType,
+    @Param('user_id') userId: string,
+    @Body() body: unknown,
+    @RequestId() requestId: string,
+  ): Promise<{
+    membership_id: string;
+    before_role_keys: string[];
+    after_role_keys: string[];
+    added_role_keys: string[];
+    removed_role_keys: string[];
+  }> {
+    const role_keys = parseAssignRolesBody(body, requestId);
+    const result = await this.lifecycle.assignTenantUserRoles({
+      tenant_id: authContext.tenant_id,
+      user_id: userId,
+      role_keys,
+      actor_user_id: authContext.sub,
+      request_id: requestId,
+    });
+
+    // App-layer two-call audit seam — per-delta gating. The S2 precedent
+    // says no-op writes emit no audit; here that generalizes to per-event
+    // (an assignment with only adds emits ONLY role_assigned; with only
+    // removes, ONLY role_removed; with both deltas, BOTH events; with
+    // neither, NEITHER).
+    if (result.added_role_keys.length > 0) {
+      await this.audit.writeEvent({
+        event_type: 'identity.tenant_user.role_assigned',
+        actor_type: 'user',
+        actor_id: authContext.sub,
+        tenant_id: authContext.tenant_id,
+        subject_id: userId,
+        payload: {
+          membership_id: result.membership_id,
+          added_role_keys: result.added_role_keys,
+          before_role_keys: result.before_role_keys,
+          after_role_keys: result.after_role_keys,
+        },
+      });
+    }
+    if (result.removed_role_keys.length > 0) {
+      await this.audit.writeEvent({
+        event_type: 'identity.tenant_user.role_removed',
+        actor_type: 'user',
+        actor_id: authContext.sub,
+        tenant_id: authContext.tenant_id,
+        subject_id: userId,
+        payload: {
+          membership_id: result.membership_id,
+          removed_role_keys: result.removed_role_keys,
+          before_role_keys: result.before_role_keys,
+          after_role_keys: result.after_role_keys,
+        },
+      });
+    }
+
+    return result;
+  }
 }
 
 // --- helpers --------------------------------------------------------------
@@ -217,6 +309,45 @@ function parseInviteBody(body: unknown, requestId: string): ParsedInviteBody {
     role_keys.push(rk);
   }
   return { email, display_name, role_keys };
+}
+
+// Settings S3b — parse PATCH role-assign body. Shape mirrors invite's
+// role_keys validation (the §3 union check fires later — this just
+// enforces the array shape). Empty array rejected at the controller as a
+// belt-and-suspenders check; the lifecycle service also rejects empty.
+function parseAssignRolesBody(
+  body: unknown,
+  requestId: string,
+): string[] {
+  if (typeof body !== 'object' || body === null) {
+    throw new AramoError('VALIDATION_ERROR', 'request body required', 400, {
+      requestId,
+      details: { reason: 'missing_body' },
+    });
+  }
+  const obj = body as Record<string, unknown>;
+  const role_keys_raw = obj['role_keys'];
+  if (!Array.isArray(role_keys_raw) || role_keys_raw.length === 0) {
+    throw new AramoError(
+      'VALIDATION_ERROR',
+      'role_keys must be a non-empty array of strings',
+      400,
+      { requestId, details: { reason: 'empty_role_keys' } },
+    );
+  }
+  const role_keys: string[] = [];
+  for (const rk of role_keys_raw) {
+    if (typeof rk !== 'string' || rk.length === 0) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'role_keys must be non-empty strings',
+        400,
+        { requestId, details: { reason: 'invalid_role_key_item' } },
+      );
+    }
+    role_keys.push(rk);
+  }
+  return role_keys;
 }
 
 function parseOptionalReason(body: unknown, requestId: string): string | null {

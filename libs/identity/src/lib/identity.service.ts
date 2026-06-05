@@ -228,6 +228,10 @@ export class IdentityService {
     return this.identityRepo.findRoleIdsForMembership(membership_id);
   }
 
+  async findRoleKeysForMembership(membership_id: string): Promise<string[]> {
+    return this.identityRepo.findRoleKeysForMembership(membership_id);
+  }
+
   // Settings S3a — soft-disable a tenant membership. Identity-first leg
   // of the disable saga (the Cognito leg is the lifecycle service's job
   // because libs/identity does not import the AWS SDK; the controller's
