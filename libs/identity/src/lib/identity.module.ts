@@ -18,6 +18,14 @@ import { TeamRepository } from './team.repository.js';
 import { TeamService } from './team.service.js';
 import { TenantRepository } from './tenant.repository.js';
 import { TenantService } from './tenant.service.js';
+// Settings S3a — tenant-user lifecycle (invite + disable).
+import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
+import {
+  StubTenantCognitoAdapter,
+  TENANT_COGNITO_PORT,
+} from './tenant-user/tenant-cognito.port.js';
+import { TenantUserLifecycleService } from './tenant-user/tenant-user-lifecycle.service.js';
+import { TenantUserManagementController } from './tenant-user/tenant-user-management.controller.js';
 
 // Per directive §3 dependency direction: libs/auth/ may consume @aramo/identity
 // types, but libs/identity/ does not import @aramo/auth. CommonModule is fine
@@ -46,7 +54,15 @@ import { TenantService } from './tenant.service.js';
 // where guards are first applied to identity-write operations).
 @Module({
   imports: [AuthModule, AuthorizationModule, CommonModule, EntitlementModule],
-  controllers: [D4aController],
+  controllers: [
+    D4aController,
+    // Settings S3a — tenant-tier user lifecycle endpoints (invite +
+    // disable). Lives here (parallel to D4aController) per the Settings
+    // charter §4.2 "user-management home = libs/identity"; the Cognito
+    // cross-store reach is via TenantCognitoPort (no AWS-SDK edge into
+    // libs/identity).
+    TenantUserManagementController,
+  ],
   providers: [
     PrismaService,
     IdentityRepository,
@@ -62,6 +78,21 @@ import { TenantService } from './tenant.service.js';
     ManagementEdgeService,
     TeamRepository,
     TeamService,
+    // Settings S3a — tenant-user lifecycle providers. RoleBundleValidator
+    // hosts the shared D5 union-non-invertibility check (a thin consumer
+    // of @aramo/field-masking's assertNonInvertibleBundle; the field-
+    // masking lib remains the single owner of the non-invertibility
+    // math). The TENANT_COGNITO_PORT default binding is the
+    // StubTenantCognitoAdapter (throws on first call); apps/api
+    // OVERRIDES this binding by registering a provider with the same
+    // token mapped to the live AWS-SDK adapter at AppModule wiring.
+    // Tests inject a mock implementation directly.
+    RoleBundleValidator,
+    TenantUserLifecycleService,
+    {
+      provide: TENANT_COGNITO_PORT,
+      useClass: StubTenantCognitoAdapter,
+    },
     {
       provide: 'IdentityAuditServiceLogger',
       useFactory: () => createAramoLogger(IdentityAuditService.name),
@@ -81,6 +112,12 @@ import { TenantService } from './tenant.service.js';
     ManagementEdgeService,
     TeamRepository,
     TeamService,
+    // Settings S3a — export the lifecycle service + the validator + the
+    // Cognito port token. The token export lets apps/api re-register the
+    // provider against the live AWS-SDK adapter (overrides the stub
+    // bound above).
+    RoleBundleValidator,
+    TenantUserLifecycleService,
   ],
 })
 export class IdentityModule {}

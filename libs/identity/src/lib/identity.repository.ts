@@ -69,6 +69,16 @@ export class IdentityRepository {
     return row === null ? null : toUserDto(row);
   }
 
+  // Settings S3a — needed by TenantUserLifecycleService to derive the
+  // Cognito Username (Aramo's Cognito convention is Username=email; see
+  // apps/platform-admin/src/app/platform/cognito/cognito-admin.service.ts)
+  // from the URL-supplied user_id at disable. Returns null when the user
+  // has been hard-deleted (so the controller maps to NOT_FOUND).
+  async findUserById(user_id: string): Promise<UserDto | null> {
+    const row = await this.prisma.user.findUnique({ where: { id: user_id } });
+    return row === null ? null : toUserDto(row);
+  }
+
   async findMembership(args: {
     user_id: string;
     tenant_id: string;
@@ -198,6 +208,83 @@ export class IdentityRepository {
       }
     });
     return { membership_id, membership_role_ids };
+  }
+
+  // Settings S3a — soft-disable a tenant membership (identity-first leg
+  // of the disable saga). UPDATE-by-natural-key on (user_id, tenant_id);
+  // idempotent (re-disable of an already-disabled membership returns
+  // { changed: false, already_disabled: true } without re-stamping
+  // deactivated_at). Returns the prior state so the lifecycle service
+  // can decide whether to invoke the Cognito leg and whether to emit
+  // an audit event. Returns null when no membership exists for the
+  // (user_id, tenant_id) pair — the controller maps that to 404.
+  //
+  // Per-tenant isolation: the WHERE clause includes BOTH user_id AND
+  // tenant_id, so a tenant_admin in tenant A cannot disable a user's
+  // membership in tenant B even if the user_id were leaked (which it
+  // can't be — the controller derives tenant_id from the session).
+  async disableMembership(args: {
+    user_id: string;
+    tenant_id: string;
+  }): Promise<
+    | { changed: true; membership_id: string; previously_active: true }
+    | { changed: false; membership_id: string; previously_active: false }
+    | null
+  > {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.userTenantMembership.findUnique({
+        where: {
+          user_id_tenant_id: {
+            user_id: args.user_id,
+            tenant_id: args.tenant_id,
+          },
+        },
+        select: { id: true, is_active: true },
+      });
+      if (existing === null) return null;
+      if (existing.is_active !== true) {
+        return {
+          changed: false,
+          membership_id: existing.id,
+          previously_active: false,
+        };
+      }
+      await tx.userTenantMembership.update({
+        where: { id: existing.id },
+        data: { is_active: false, deactivated_at: new Date() },
+      });
+      return {
+        changed: true,
+        membership_id: existing.id,
+        previously_active: true,
+      };
+    });
+  }
+
+  // Settings S3a — re-enable a tenant membership. Called as the
+  // COMPENSATION step when the Cognito leg of the disable saga fails
+  // after the identity flip committed; restores is_active=true and
+  // clears deactivated_at so the prior state is recovered cleanly.
+  // Also idempotent. Returns the membership_id (or null when missing).
+  async reEnableMembership(args: {
+    user_id: string;
+    tenant_id: string;
+  }): Promise<{ membership_id: string } | null> {
+    const existing = await this.prisma.userTenantMembership.findUnique({
+      where: {
+        user_id_tenant_id: {
+          user_id: args.user_id,
+          tenant_id: args.tenant_id,
+        },
+      },
+      select: { id: true },
+    });
+    if (existing === null) return null;
+    await this.prisma.userTenantMembership.update({
+      where: { id: existing.id },
+      data: { is_active: true, deactivated_at: null },
+    });
+    return { membership_id: existing.id };
   }
 
   // AUTHZ-2: same-tenant role replacement (Lead ruling 8 case 2). The
