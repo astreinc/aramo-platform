@@ -47,7 +47,9 @@ export const EVENT_TYPES = [
   // Settings S2 — tenant-config write event. Emitted by the app-layer
   // two-call seam in apps/api's TenantSettingsController (the controller
   // is the seam; libs/settings stays a LEAF — NO @aramo/identity import
-  // there). Tenant-scoped (the writing tenant). Payload shape:
+  // there). Tenant-scoped (the writing tenant). subject_id is the
+  // tenant_id (the @db.Uuid column cannot carry the string setting key;
+  // the key lives in the payload). Payload shape:
   //   { key: KnownSettingKey, value: SettingValueOf<K>,
   //     previous_value: SettingValueOf<K> | null }
   // First-set (no prior row) sends `previous_value: null`. The event is

@@ -169,16 +169,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Foundation proof (d) — the scope-gate behavior.
     // -----------------------------------------------------------------------
 
-    it('200 — tenant_admin (holding tenant:admin:settings) gets `{}` (empty registry)', async () => {
+    it('200 — tenant_admin (holding tenant:admin:settings) gets the registry view with defaults', async () => {
       const res = await fetch(`http://127.0.0.1:${port}/v1/tenant/settings`, {
         headers: { Authorization: `Bearer ${tenantAdminJwt}` },
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as Record<string, unknown>;
-      // S1 invariant: the materialized view is `{}` while the
-      // `KNOWN_SETTINGS` registry is empty. S2's first key flips that
-      // entry on.
-      expect(body).toEqual({});
+      // S2 invariant: the registry has one entry —
+      // compensation.display_default. A no-row tenant gets the
+      // code-defined default (`both`); the entry surfaces in the view.
+      // (S1 shipped the registry empty; S2 lit up this first key.)
+      expect(body).toEqual({
+        'compensation.display_default': 'both',
+      });
     });
 
     it('403 — recruiter (lacking tenant:admin:settings) is rejected by the scope-gate', async () => {

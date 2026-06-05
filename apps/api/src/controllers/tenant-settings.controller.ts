@@ -159,17 +159,19 @@ export class TenantSettingsController {
 
     // App-layer two-call audit seam (Gate-5 Ruling 1). identity.tenant_
     // setting.updated is tenant-scoped (TENANT_SCOPED_EVENT_TYPES); the
-    // subject is the setting key (one row per setting per tenant — the
-    // composite PK makes the key a stable subject id for cross-event
-    // correlation). Best-effort: the wrapper swallows write failures
-    // and logs at warn level — the setting write already committed and
-    // must not be rolled back on audit failure.
+    // subject is the TENANT (its config is what changed) — the
+    // IdentityAuditEvent.subject_id column is @db.Uuid so the row's
+    // composite-PK string key cannot serve as a subject; the key lives
+    // in the payload where the keyset traversal can match it via
+    // event_payload->>'key'. Best-effort: the audit wrapper swallows
+    // write failures and logs at warn level — the setting write already
+    // committed and must not be rolled back on audit failure.
     await this.audit.writeEvent({
       event_type: 'identity.tenant_setting.updated',
       actor_type: 'user',
       actor_id: authContext.sub,
       tenant_id: authContext.tenant_id,
-      subject_id: result.key,
+      subject_id: authContext.tenant_id,
       payload: {
         key: result.key,
         value: result.value,

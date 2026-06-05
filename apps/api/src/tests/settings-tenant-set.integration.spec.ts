@@ -207,13 +207,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(setting.rows[0]?.last_modified_by).toBe(TENANT_ADMIN_A_SUB);
 
       // The audit event committed with the {key, value, previous_value}
-      // payload + the correct tenant scope + actor.
+      // payload + the correct tenant scope + actor. subject_id is the
+      // tenant_id (the @db.Uuid column cannot carry the string setting
+      // key — the key lives in the payload), so the WHERE filters on
+      // (event_type, tenant_id, payload->>'key') instead.
       const audit = await setupClient.query(
         `SELECT tenant_id, actor_id, event_type, subject_id, event_payload
          FROM identity."IdentityAuditEvent"
          WHERE event_type = $1
            AND tenant_id = $2
-           AND subject_id = $3`,
+           AND event_payload->>'key' = $3`,
         [
           'identity.tenant_setting.updated',
           TENANT_A,
@@ -222,6 +225,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       expect(audit.rows).toHaveLength(1);
       expect(audit.rows[0]?.actor_id).toBe(TENANT_ADMIN_A_SUB);
+      expect(audit.rows[0]?.subject_id).toBe(TENANT_A);
       expect(audit.rows[0]?.event_payload).toEqual({
         key: 'compensation.display_default',
         value: 'spread',
