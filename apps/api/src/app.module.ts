@@ -18,7 +18,7 @@ import { ContactModule } from '@aramo/contact';
 import { EngagementModule } from '@aramo/engagement';
 import { EntitlementModule } from '@aramo/entitlement';
 import { ExportModule } from '@aramo/export';
-import { IdentityModule } from '@aramo/identity';
+import { IdentityModule, TENANT_COGNITO_PORT } from '@aramo/identity';
 import { ImportModule } from '@aramo/import';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
@@ -34,6 +34,7 @@ import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { SubmittalModule } from '@aramo/submittal';
 import { TalentRecordModule } from '@aramo/talent-record';
 
+import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { CompensationFieldMaskInterceptor } from './interceptors/compensation-field-mask.interceptor.js';
 
@@ -263,6 +264,18 @@ import { CompensationFieldMaskInterceptor } from './interceptors/compensation-fi
     {
       provide: APP_INTERCEPTOR,
       useClass: CompensationFieldMaskInterceptor,
+    },
+    // Settings S3a — override the TENANT_COGNITO_PORT default binding
+    // (libs/identity's StubTenantCognitoAdapter, which throws on call)
+    // with the live AWS-SDK-backed TenantCognitoAdapter. Provider order
+    // is last-wins in Nest: AppModule's binding shadows the stub bound
+    // in IdentityModule, so TenantUserLifecycleService receives the
+    // live adapter. Integration tests override at TestingModule level
+    // via overrideProvider(TENANT_COGNITO_PORT).
+    TenantCognitoAdapter,
+    {
+      provide: TENANT_COGNITO_PORT,
+      useExisting: TenantCognitoAdapter,
     },
   ],
 })

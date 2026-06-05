@@ -48,3 +48,23 @@ export {
   CursorDecodeError,
 } from './lib/util/identity-audit-cursor.js';
 export type { IdentityAuditCursorPayload } from './lib/util/identity-audit-cursor.js';
+// Settings S3a — tenant-user lifecycle public surface. Exports the
+// validator + saga service for testing; the Cognito port token + interface
+// for apps/api to bind a live AWS-SDK adapter. The StubTenantCognitoAdapter
+// is exported so apps/api can replace it cleanly.
+export {
+  RoleBundleValidator,
+  SEE_ALL_ROLE_KEYS,
+} from './lib/tenant-user/role-bundle-validator.js';
+export {
+  TenantUserLifecycleService,
+} from './lib/tenant-user/tenant-user-lifecycle.service.js';
+export type {
+  InviteResult,
+  DisableResult,
+} from './lib/tenant-user/tenant-user-lifecycle.service.js';
+export {
+  TENANT_COGNITO_PORT,
+  StubTenantCognitoAdapter,
+} from './lib/tenant-user/tenant-cognito.port.js';
+export type { TenantCognitoPort } from './lib/tenant-user/tenant-cognito.port.js';

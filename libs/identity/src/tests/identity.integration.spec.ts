@@ -1072,6 +1072,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // AUTHZ-2: +2 invitation.* events (6 -> 8).
       // AUTHZ-D4a: +9 team-model events (all tenant-scoped — they carry the
       // tenant_id the substrate write happened in). 8 -> 17.
+      // Settings S2: +1 tenant_setting.updated (17 -> 18).
+      // Settings S3a: +1 tenant_user.disabled (18 -> 19).
       expect([...TENANT_SCOPED_EVENT_TYPES].sort()).toEqual([
         'identity.invitation.accepted',
         'identity.invitation.created',
@@ -1088,6 +1090,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.team.membership.added',
         'identity.team.membership.removed',
         'identity.tenant.created',
+        'identity.tenant_setting.updated',
+        'identity.tenant_user.disabled',
         'identity.user_client_assignment.created',
         'identity.user_client_assignment.removed',
       ]);

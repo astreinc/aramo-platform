@@ -56,6 +56,18 @@ export const EVENT_TYPES = [
   // BEST-EFFORT — an audit failure logs at warn level but never blocks
   // the setting write (the program-wide identity-audit posture).
   'identity.tenant_setting.updated',
+  // Settings S3a — tenant-user lifecycle (DISABLE leg). Emitted by
+  // TenantUserManagementController.disable after the identity-first
+  // soft-disable (UserTenantMembership.is_active=false + deactivated_at)
+  // commits AND the Cognito AdminDisableUser leg succeeds (per the
+  // saga; a Cognito failure rolls back the membership flip and the
+  // event is NOT emitted). Tenant-scoped (the membership's tenant).
+  // subject_id is the disabled user_id; payload carries membership_id
+  // + reason (optional). The INVITE leg reuses the existing
+  // identity.user.created + identity.external_identity.linked +
+  // identity.membership.created + identity.invitation.created events
+  // emitted by createUserFromInvitation (no new event_type for invite).
+  'identity.tenant_user.disabled',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -88,6 +100,11 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.user_client_assignment.removed',
   // Settings S2 — tenant-config writes carry the writing-tenant's id.
   'identity.tenant_setting.updated',
+  // Settings S3a — tenant-user lifecycle DISABLE is per-tenant (the
+  // membership lives in one tenant; a user with memberships in N tenants
+  // disables once per tenant). subject_id is the user_id; tenant_id is
+  // the membership's tenant.
+  'identity.tenant_user.disabled',
 ]);
 
 export interface WriteAuditEventInput {
