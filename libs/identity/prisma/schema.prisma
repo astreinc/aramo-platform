@@ -30,6 +30,13 @@ model User {
   memberships     UserTenantMembership[]
   external_identities ExternalIdentity[]
 
+  // AUTHZ-D4a — Axis-1 management hierarchy (intra-schema FK both ends).
+  managed_edges       ManagementEdge[] @relation("ManagementEdgeManager")
+  reporting_edges     ManagementEdge[] @relation("ManagementEdgeReport")
+  // AUTHZ-D4a — Axis-2 account-ownership pods (AM-anchored Teams + Membership).
+  owned_teams         Team[]           @relation("TeamOwner")
+  team_memberships    TeamMembership[]
+
   @@index([is_active])
   @@schema("identity")
 }
@@ -192,5 +199,101 @@ model IdentityAuditEvent {
   @@index([tenant_id, subject_id, created_at(sort: Desc), id(sort: Desc)])
   // Global/system keyset traversal: (created_at DESC, id DESC).
   @@index([created_at(sort: Desc), id(sort: Desc)])
+  @@schema("identity")
+}
+
+// =============================================================================
+// AUTHZ-D4a — the team-model substrate (WRITE-SIDE only; D4b enforces).
+// Three greenfield relationship families introduced in PR 2 of the re-sequenced
+// authorization build (DDR Amendment v1.1 §4/§6). D4a stores; D4b's composed
+// visibility predicate reads these to filter the 6 entities. AFTER D4a, no
+// entity's read behavior changes — D4a is pure-additive substrate.
+// =============================================================================
+
+// ManagementEdge — Axis-1 management hierarchy (Amendment §4 / §5 / §6).
+// Many-to-many manager-user -> report-user; a user may have multiple managers
+// (e.g. matrixed reporting), and a manager may have multiple reports.
+//
+// Both endpoints are identity.User (intra-schema FKs — conventional Prisma
+// relations). Cycle-prevented at edge-create (the cycle-check walks upward
+// from report_user_id; if manager_user_id appears in the ancestor set the
+// edge is rejected with MANAGEMENT_CYCLE_REJECTED 409). Depth cap (3) is a
+// read-side concern enforced by D4b's traversal — not by edge-create — so
+// an org may have a deeper reporting chain than the visibility cap.
+model ManagementEdge {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenant_id        String   @db.Uuid
+
+  // Intra-schema FKs to identity.User on both endpoints.
+  manager_user_id  String   @db.Uuid
+  report_user_id   String   @db.Uuid
+  manager          User     @relation("ManagementEdgeManager", fields: [manager_user_id], references: [id])
+  report           User     @relation("ManagementEdgeReport",  fields: [report_user_id],  references: [id])
+
+  // Provenance.
+  created_at       DateTime @default(now()) @db.Timestamptz
+  created_by_id    String?  @db.Uuid
+
+  // D4b read paths:
+  //   "all reports of manager X in tenant T"  -> (tenant_id, manager_user_id)
+  //   "all managers of report Y in tenant T"  -> (tenant_id, report_user_id)
+  @@index([tenant_id, manager_user_id])
+  @@index([tenant_id, report_user_id])
+
+  // One edge per (manager, report) — re-set is a no-op (idempotent).
+  @@unique([manager_user_id, report_user_id])
+
+  @@schema("identity")
+}
+
+// Team — Axis-2 account-ownership pod (Amendment §4 / §5.4 AM-anchored).
+// A pod owns a set of clients (via TeamClientOwnership in libs/company); pod
+// members (via TeamMembership) see the pod's owned clients. AM-anchored:
+// one AM per pod via owner_user_id (Lead Gate-5 ruling — co-AMs deferred to a
+// future amendment). Many-to-many at the user side (a user may belong to
+// multiple pods).
+model Team {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenant_id       String   @db.Uuid
+  name            String
+
+  // AM-anchor (Amendment §5.4). Intra-schema FK to identity.User.
+  owner_user_id   String   @db.Uuid
+  owner           User     @relation("TeamOwner", fields: [owner_user_id], references: [id])
+
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamptz
+  updated_at      DateTime @updatedAt @db.Timestamptz
+
+  memberships     TeamMembership[]
+
+  @@unique([tenant_id, name])
+  @@index([tenant_id, owner_user_id])
+  @@index([tenant_id, is_active])
+  @@schema("identity")
+}
+
+// TeamMembership — pod membership (many-to-many user ↔ Team). Intra-schema
+// FKs to both Team and User. Cascade delete from Team (when a Team row is
+// hard-deleted, its memberships drop; soft-deactivate via Team.is_active is
+// the recommended path).
+model TeamMembership {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenant_id       String   @db.Uuid
+
+  team_id         String   @db.Uuid
+  team            Team     @relation(fields: [team_id], references: [id], onDelete: Cascade)
+
+  user_id         String   @db.Uuid
+  user            User     @relation(fields: [user_id], references: [id])
+
+  added_at        DateTime @default(now()) @db.Timestamptz
+  added_by_id     String?  @db.Uuid
+
+  // D4b read paths:
+  //   "all pods user X is in (tenant T)"      -> (tenant_id, user_id)
+  //   "all members of pod P"                  -> (team_id) via @@unique
+  @@unique([team_id, user_id])
+  @@index([tenant_id, user_id])
   @@schema("identity")
 }

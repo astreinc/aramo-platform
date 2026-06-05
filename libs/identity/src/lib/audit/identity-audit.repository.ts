@@ -31,6 +31,19 @@ export const EVENT_TYPES = [
   // successful /callback (the existing resolve seam now finds them).
   'identity.invitation.created',
   'identity.invitation.accepted',
+  // AUTHZ-D4a — 9 team-model substrate event_types (all tenant-scoped;
+  // emitted by the assign-to-client / set-management-edge / manage-pod
+  // mechanisms). D4a is WRITE-SIDE only — these events record substrate
+  // writes; D4b's predicate (read-side) emits no events.
+  'identity.management_edge.set',
+  'identity.management_edge.cleared',
+  'identity.team.created',
+  'identity.team.membership.added',
+  'identity.team.membership.removed',
+  'identity.team.client_ownership.added',
+  'identity.team.client_ownership.removed',
+  'identity.user_client_assignment.created',
+  'identity.user_client_assignment.removed',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -50,6 +63,17 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   // tenant).
   'identity.invitation.created',
   'identity.invitation.accepted',
+  // AUTHZ-D4a: all 9 team-model events are tenant-scoped (carry the
+  // tenant_id the substrate write happened in).
+  'identity.management_edge.set',
+  'identity.management_edge.cleared',
+  'identity.team.created',
+  'identity.team.membership.added',
+  'identity.team.membership.removed',
+  'identity.team.client_ownership.added',
+  'identity.team.client_ownership.removed',
+  'identity.user_client_assignment.created',
+  'identity.user_client_assignment.removed',
 ]);
 
 export interface WriteAuditEventInput {

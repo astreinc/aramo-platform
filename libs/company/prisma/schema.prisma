@@ -85,6 +85,11 @@ model Company {
   // Intra-schema relation to CompanyDepartment (FK below).
   departments CompanyDepartment[]
 
+  // AUTHZ-D4a — intra-schema joins to the D4a join tables (the back-refs
+  // for the user-assignment + team-ownership axes; both defined below).
+  user_assignments  UserClientAssignment[]
+  team_ownerships   TeamClientOwnership[]
+
   // Indexes — canonical tenant-axis filter + site-axis filter + name lookup.
   @@index([tenant_id, name])
   @@index([tenant_id, site_id])
@@ -117,6 +122,90 @@ model CompanyDepartment {
   // Indexes — canonical tenant + parent-company lookup.
   @@index([tenant_id, company_id])
   @@index([tenant_id, site_id])
+
+  @@schema("company")
+}
+
+// =============================================================================
+// AUTHZ-D4a — the team-model substrate, company-side (WRITE-SIDE only).
+// Two greenfield join tables introduced in PR 2 of the re-sequenced
+// authorization build (DDR Amendment v1.1 §4/§6). D4a stores; D4b's composed
+// visibility predicate reads these to filter the 6 entities. AFTER D4a, no
+// entity's read behavior changes — D4a is pure-additive substrate.
+//
+// Schema-per-module + cross-schema reference (Architecture §7.3): user_id +
+// team_id are CROSS-SCHEMA logical references to identity.User and
+// identity.Team — UUID-only, NO FK. Mirrors RequisitionAssignment.user_id.
+// company_id is an intra-schema FK to Company (conventional Prisma relation).
+// =============================================================================
+
+// UserClientAssignment — the direct-assignment axis (Amendment §4 / Lead
+// Gate-5 ruling 6). A user is directly assigned to a client (company); D4b
+// reads this as the direct-axis contributor to the union predicate.
+// Many-to-many; idempotent re-assign (silent no-op via ON CONFLICT DO
+// NOTHING — mirrors RequisitionAssignment per Lead Gate-5 ruling 6).
+//
+// Scope: company:assign (account_manager + tenant_admin + tenant_owner;
+// Recruiting Manager does NOT get it — RM manages PEOPLE; client-assignment
+// is the AM act, mirroring requisition:assign).
+model UserClientAssignment {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenant_id        String   @db.Uuid
+
+  // Cross-schema logical reference to identity.User (no FK; §7.3).
+  user_id          String   @db.Uuid
+
+  // Intra-schema FK to Company.
+  company_id       String   @db.Uuid
+  company          Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  assigned_at      DateTime @default(now()) @db.Timestamptz
+  assigned_by_id   String?  @db.Uuid
+
+  // D4b read paths:
+  //   "all clients assigned to user X in tenant T"   -> (tenant_id, user_id)
+  //   "all users assigned to client C in tenant T"   -> (tenant_id, company_id)
+  @@index([tenant_id, user_id])
+  @@index([tenant_id, company_id])
+
+  // One assignment per (user, company) — re-assign is idempotent.
+  @@unique([user_id, company_id])
+
+  @@schema("company")
+}
+
+// TeamClientOwnership — Axis-2 pod -> client linkage. A pod (identity.Team)
+// owns a set of clients (company.Company); D4b reads this as the
+// pod-clients contributor to the union predicate. Many-to-many: a pod owns
+// multiple companies, and a company may be owned by multiple pods.
+//
+// team_id is a CROSS-SCHEMA logical reference to identity.Team (no FK;
+// §7.3); company_id is an intra-schema FK to Company. This mirrors the
+// RequisitionAssignment cross-schema pattern (user_id is the logical ref).
+// Lifecycle: hard delete of a row is the unlink (no soft-delete on the
+// ownership join itself; pod-side soft-state is on Team.is_active).
+model TeamClientOwnership {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenant_id        String   @db.Uuid
+
+  // Cross-schema logical reference to identity.Team (no FK; §7.3).
+  team_id          String   @db.Uuid
+
+  // Intra-schema FK to Company.
+  company_id       String   @db.Uuid
+  company          Company  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  assigned_at      DateTime @default(now()) @db.Timestamptz
+  assigned_by_id   String?  @db.Uuid
+
+  // D4b read paths:
+  //   "all companies owned by pod P (tenant T)"  -> (tenant_id, team_id)
+  //   "all pods owning company C (tenant T)"     -> (tenant_id, company_id)
+  @@index([tenant_id, team_id])
+  @@index([tenant_id, company_id])
+
+  // One ownership per (team, company) — re-add is idempotent.
+  @@unique([team_id, company_id])
 
   @@schema("company")
 }

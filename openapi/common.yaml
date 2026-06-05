@@ -1525,6 +1525,14 @@ components:
         idempotency check; Cognito is NOT re-created. The other three
         re-invite cases (same-tenant-different-roles, new-tenant,
         Cognito-identity-drift) reconcile rather than raise.
+        AUTHZ-D4a adds one code for the team-model substrate.
+        MANAGEMENT_CYCLE_REJECTED (HTTP 409) — set-management-edge
+        refusal: the proposed (manager_user_id, report_user_id) edge
+        would create a cycle in the management graph. The cycle check
+        walks upward from report_user_id; if manager_user_id appears
+        in the ancestor set, the edge is rejected. Mirrors the
+        SUBMITTAL_ALREADY_CONFIRMED / IMPORT_ALREADY_REVERTED 409
+        state-conflict precedent.
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1568,6 +1576,7 @@ components:
         - TENANT_ALREADY_EXISTS
         - COGNITO_PROVISION_FAILED
         - INVITATION_ALREADY_EXISTS
+        - MANAGEMENT_CYCLE_REJECTED
 
     ErrorObject:
       type: object

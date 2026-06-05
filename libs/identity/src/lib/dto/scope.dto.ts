@@ -85,6 +85,14 @@ export const SEED_SCOPE_KEYS = [
   'attachment:delete',          // recruiter+ (Ruling 1 carve-out — junction/link delete)
   'pipeline:read',              // recruiter+
   'activity:create',            // recruiter+
+  // AUTHZ-D4a — 4 team-model mechanism + see-all scopes (DDR Amendment v1.1
+  // §4/§6; Lead Gate-5 ruling 2 narrows company:read:all to TA+TO only to
+  // mirror requisition:read:all — the see-all stays reserved to the top tier,
+  // and operational-tier breadth comes from D4b's predicate, not a see-all).
+  'company:assign',             // account_manager + tenant_admin + tenant_owner (mirrors requisition:assign as AM act; RM does NOT get it)
+  'org:manage',                 // recruiting_manager + tenant_admin + tenant_owner (Axis-1 management-edge mgmt; distinct from tenant:admin:user-manage which is user provisioning)
+  'team:manage',                // account_manager + tenant_admin + tenant_owner (Axis-2 pod create/membership/ownership; AM is the pod operator per §5.4)
+  'company:read:all',           // tenant_admin + tenant_owner ONLY (mirrors requisition:read:all; see-all reserved to top tier)
   // AUTHZ-2 — platform-tier scopes (a SEPARATE namespace from the 47 tenant
   // scopes above; Lead ruling 5 — the 3-scope minimum set). The bundle is
   // assigned only to the platform `super_admin` role; no tenant role holds
