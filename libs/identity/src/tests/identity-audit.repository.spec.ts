@@ -71,12 +71,12 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
     }
   });
 
-  // Schema/catalog test 47: EVENT_TYPES tuple now contains 13 values; arbitrary
+  // Schema/catalog test 47: EVENT_TYPES tuple now contains 22 values; arbitrary
   // strings are still rejected.
-  // AUTHZ-2: +2 invitation lifecycle events (identity.invitation.created +
-  // identity.invitation.accepted; both tenant-scoped). 11 -> 13.
-  it('EVENT_TYPES contains 13 values (7 prereq + 4 session + 2 invitation) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(13);
+  // AUTHZ-2: +2 invitation lifecycle events (11 -> 13).
+  // AUTHZ-D4a: +9 team-model substrate events (13 -> 22).
+  it('EVENT_TYPES contains 22 values (7 prereq + 4 session + 2 invitation + 9 D4a team-model) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(22);
     const create = vi.fn().mockResolvedValue({ id: 'r' });
     const repo = new IdentityAuditRepository(makePrisma(create));
 
@@ -93,10 +93,10 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  // Schema/catalog test 48: tenant-scoped index covers all 8 tenant-scoped
-  // types. AUTHZ-2 adds invitation.created + invitation.accepted (both
-  // tenant-scoped; carry the invited-into tenant_id).
-  it('TENANT_SCOPED_EVENT_TYPES contains all 8 tenant-scoped values', () => {
+  // Schema/catalog test 48: tenant-scoped index covers all 17 tenant-scoped
+  // types. AUTHZ-2 adds invitation.created + invitation.accepted (6 -> 8);
+  // AUTHZ-D4a adds 9 team-model substrate events (8 -> 17).
+  it('TENANT_SCOPED_EVENT_TYPES contains all 17 tenant-scoped values', () => {
     const expected = [
       'identity.tenant.created',
       'identity.membership.created',
@@ -106,8 +106,18 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       'identity.session.reuse_detected',
       'identity.invitation.created',
       'identity.invitation.accepted',
+      // AUTHZ-D4a — 9 team-model substrate events.
+      'identity.management_edge.set',
+      'identity.management_edge.cleared',
+      'identity.team.created',
+      'identity.team.membership.added',
+      'identity.team.membership.removed',
+      'identity.team.client_ownership.added',
+      'identity.team.client_ownership.removed',
+      'identity.user_client_assignment.created',
+      'identity.user_client_assignment.removed',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(8);
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(17);
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

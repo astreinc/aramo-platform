@@ -66,6 +66,11 @@ const IDENTITY_SITE_AXIS_MIGRATION = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
 );
+// AUTHZ-D4a — PL-95 finally exercised (the first authz migration; identity-side).
+const IDENTITY_D4A_MIGRATION = resolve(
+  __dirname,
+  '../../../../libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql',
+);
 
 function splitDdl(sql: string): string[] {
   return sql.replace(/--[^\n]*$/gm, '').split(/;\s*\n/);
@@ -288,6 +293,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const stmt of [
         ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_SITE_AXIS_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_D4A_MIGRATION, 'utf8')),
         ...ENTITLEMENT_DDL_STATEMENTS,
       ]) {
         const t = stmt.trim();

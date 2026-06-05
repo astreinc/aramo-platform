@@ -49,6 +49,16 @@ const IDENTITY_MIGRATION = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+// AUTHZ-D4a — the FIRST authz migration into the pact verifier MIGRATIONS
+// set (PL-95 finally exercised). Adds the team-model substrate (3 identity-
+// schema tables: ManagementEdge / Team / TeamMembership) so apps/auth-service
+// boots cleanly against the post-D4a schema. The company-side migration
+// (UserClientAssignment + TeamClientOwnership) is NOT needed for the pact
+// verifier because apps/auth-service does not touch the company schema.
+const IDENTITY_D4A_MIGRATION = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql',
+);
 const AUTH_STORAGE_MIGRATION = resolve(
   ROOT,
   'libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
@@ -84,6 +94,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await setup.$connect();
       for (const stmt of [
         ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_D4A_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
       ]) {
         const t = stmt.trim();

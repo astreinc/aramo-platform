@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 40 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 platform-tier codes)', () => {
+  it('ERROR_CODES contains the 41 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a)', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -80,6 +80,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'TENANT_ALREADY_EXISTS',
       'COGNITO_PROVISION_FAILED',
       'INVITATION_ALREADY_EXISTS',
+      // AUTHZ-D4a — 1 management-edge cycle code.
+      'MANAGEMENT_CYCLE_REJECTED',
     ]);
   });
 });

@@ -143,6 +143,12 @@ export const SEED_IDS = {
     'platform:tenant:provision': '01900000-0000-7000-8000-000000000089',
     'platform:tenant:read': '01900000-0000-7000-8000-00000000008a',
     'platform:admin:invite': '01900000-0000-7000-8000-00000000008b',
+    // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6; Lead Gate-5 ruling 2
+    // narrows company:read:all to TA+TO only — mirrors requisition:read:all).
+    'company:assign': '01900000-0000-7000-8000-00000000008c',
+    'org:manage': '01900000-0000-7000-8000-00000000008d',
+    'team:manage': '01900000-0000-7000-8000-00000000008e',
+    'company:read:all': '01900000-0000-7000-8000-00000000008f',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -237,13 +243,18 @@ export const SEED_IDS = {
     recruiter_pipeline_read: '01900000-0000-7000-8000-000000000149',
     recruiter_activity_create: '01900000-0000-7000-8000-00000000014a',
     // AUTHZ-2 — super_admin platform-role bundle (3 RoleScope rows).
-    // Offset 0x300..0x302 deliberately leaves a gap above the AUTHZ-1
-    // generated range (0x14b..0x1c8 — 122 rows in AUTHZ1_ROLE_SCOPE_ROW_IDS)
-    // so the platform-namespace IDs are visually distinct in the audit
-    // stream. No tenant RoleScope row uses these IDs.
+    // Offset 0x300..0x302 is the platform tier; AUTHZ-1b moved the
+    // AUTHZ-1 generator range to 0x400+ so 0x303..0x3ff is free.
     super_admin_platform_tenant_provision: '01900000-0000-7000-8000-000000000300',
     super_admin_platform_tenant_read: '01900000-0000-7000-8000-000000000301',
     super_admin_platform_admin_invite: '01900000-0000-7000-8000-000000000302',
+    // AUTHZ-D4a — 4 RoleScope rows for tenant_admin's new team-model
+    // scopes (the other bundle holders go through AUTHZ1_ROLE_SCOPE_ROW_IDS
+    // since they live in AUTHZ1_BUNDLES).
+    tenant_admin_company_assign: '01900000-0000-7000-8000-000000000303',
+    tenant_admin_org_manage: '01900000-0000-7000-8000-000000000304',
+    tenant_admin_team_manage: '01900000-0000-7000-8000-000000000305',
+    tenant_admin_company_read_all: '01900000-0000-7000-8000-000000000306',
   },
   membership_role_admin: '01900000-0000-7000-8000-000000000040',
   audit_events: {
@@ -329,6 +340,12 @@ export const SEED_IDS = {
       '01900000-0000-7000-8000-000000000233',
     scope_platform_tenant_read_created: '01900000-0000-7000-8000-000000000234',
     scope_platform_admin_invite_created: '01900000-0000-7000-8000-000000000235',
+    // AUTHZ-D4a — 4 scope.created audit events for the new team-model scopes
+    // (0x236..0x239). All global (no tenant_id) per the scope.created mapping.
+    scope_company_assign_created: '01900000-0000-7000-8000-000000000236',
+    scope_org_manage_created: '01900000-0000-7000-8000-000000000237',
+    scope_team_manage_created: '01900000-0000-7000-8000-000000000238',
+    scope_company_read_all_created: '01900000-0000-7000-8000-000000000239',
   },
 } as const;
 
@@ -378,6 +395,10 @@ const ROLE_SCOPE_ASSIGNMENTS = {
     'requisition:assign',
     'attachment:read', 'attachment:create', 'attachment:delete',
     'pipeline:read', 'activity:create',
+    // AUTHZ-D4a — tenant_admin gets all 4 new team-model scopes (mirrors
+    // the requisition:assign/requisition:read:all pattern — TA holds the
+    // full operational set plus the see-all + the management mechanisms).
+    'company:assign', 'org:manage', 'team:manage', 'company:read:all',
   ],
   recruiter: [
     'consent:read',
@@ -522,6 +543,11 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
     SEED_IDS.role_scopes.super_admin_platform_tenant_read,
   'super_admin:platform:admin:invite':
     SEED_IDS.role_scopes.super_admin_platform_admin_invite,
+  // AUTHZ-D4a — 4 new tenant_admin RoleScope rows for the team-model scopes.
+  'tenant_admin:company:assign': SEED_IDS.role_scopes.tenant_admin_company_assign,
+  'tenant_admin:org:manage': SEED_IDS.role_scopes.tenant_admin_org_manage,
+  'tenant_admin:team:manage': SEED_IDS.role_scopes.tenant_admin_team_manage,
+  'tenant_admin:company:read:all': SEED_IDS.role_scopes.tenant_admin_company_read_all,
 };
 
 // AUTHZ-1 / AUTHZ-1b — bundle catalog for the 9 staffing-tenant roles
@@ -557,7 +583,8 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
 //     Onboarding/Operations DDR. The role lands with its current-
 //     capability bundle so invitations and assignments can reference it.
 const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
-  // tenant_owner — 43 scopes (full tenant_admin set; position-only distinction).
+  // tenant_owner — 47 scopes (full tenant_admin set incl. AUTHZ-D4a's 4 new
+  // scopes; position-only distinction from tenant_admin).
   ['tenant_owner', [
     'consent:read', 'consent:write', 'consent:decision-log:read',
     'auth:session:read', 'identity:user:read', 'identity:tenant:read',
@@ -574,11 +601,15 @@ const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
     'requisition:assign',
     'attachment:read', 'attachment:create', 'attachment:delete',
     'pipeline:read', 'activity:create',
+    // AUTHZ-D4a — tenant_owner gets the full team-model set (mirrors TA).
+    'company:assign', 'org:manage', 'team:manage', 'company:read:all',
   ]],
-  // account_manager — 33 scopes (Recruiter's 31 + tenant:admin:user-manage +
-  // requisition:assign). The two AM-specific delegations on top of
-  // Recruiter's operational set: managing the user/membership surface
-  // and assigning users to requisitions (the management act).
+  // account_manager — 35 scopes (Recruiter's 31 + tenant:admin:user-manage +
+  // requisition:assign + AUTHZ-D4a's company:assign + team:manage).
+  // AM is the client-ownership anchor (Amendment §5.4 + D4a Lead ruling 6).
+  // Three AM-specific delegations on top of Recruiter's operational set:
+  // user/membership mgmt; requisition:assign (the management act);
+  // company:assign + team:manage (the D4a client-ownership mechanisms).
   ['account_manager', [
     'consent:read', 'consent:write', 'consent:decision-log:read',
     'auth:session:read',
@@ -593,6 +624,8 @@ const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
     'attachment:read', 'attachment:create', 'attachment:delete',
     'pipeline:read', 'activity:create',
     'tenant:admin:user-manage', 'requisition:assign',
+    // AUTHZ-D4a — AM is the demand-side / client-ownership anchor.
+    'company:assign', 'team:manage',
   ]],
   // sourcer — 14 scopes (intake-focused; NO :delete, NO submittal).
   ['sourcer', [
@@ -617,9 +650,11 @@ const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
     'identity:user:read', 'identity:tenant:read',
     'activity:read',
   ]],
-  // recruiting_manager — 32 scopes (Recruiter's 31 + tenant:admin:user-manage;
-  // NO requisition:assign). RM manages PEOPLE (user-manage provisions /
-  // manages their reports); assign is the AM's. Team-tier visibility at D4b.
+  // recruiting_manager — 33 scopes (Recruiter's 31 + tenant:admin:user-manage
+  // + AUTHZ-D4a's org:manage; NO requisition:assign / NO company:assign —
+  // those are the AM's acts). RM manages PEOPLE (user-manage provisions /
+  // manages their reports; org:manage sets the management hierarchy);
+  // team-tier visibility at D4b.
   ['recruiting_manager', [
     'consent:read', 'consent:write', 'consent:decision-log:read',
     'auth:session:read',
@@ -634,6 +669,8 @@ const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
     'attachment:read', 'attachment:create', 'attachment:delete',
     'pipeline:read', 'activity:create',
     'tenant:admin:user-manage',
+    // AUTHZ-D4a — RM is the management-hierarchy operator (Axis-1).
+    'org:manage',
   ]],
   // delivery_manager — 12 scopes (the fulfillment quality gate: read +
   // submittal:approve + activity:create). NO requisition:read:all —
@@ -876,6 +913,12 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:provision'], 'platform:tenant:provision', 'Platform-tier: create a tenant + entitlement seed + Tenant-Owner invite (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:read'], 'platform:tenant:read', 'Platform-tier: list/read tenants for the platform-admin view (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:admin:invite'], 'platform:admin:invite', 'Platform-tier: invite another platform admin against the platform Cognito pool (super_admin only)');
+  // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6). Lead Gate-5 ruling 2
+  // narrowed company:read:all to TA+TO only (mirrors requisition:read:all).
+  await upsertScope(prisma, SEED_IDS.scopes['company:assign'], 'company:assign', 'Assign / unassign a user to a client (account_manager + tenant_admin + tenant_owner; mirrors requisition:assign as the AM act)');
+  await upsertScope(prisma, SEED_IDS.scopes['org:manage'], 'org:manage', 'Set / clear a management edge (Axis-1 hierarchy; recruiting_manager + tenant_admin + tenant_owner; distinct from tenant:admin:user-manage which is user provisioning)');
+  await upsertScope(prisma, SEED_IDS.scopes['team:manage'], 'team:manage', 'Create / manage a pod + its membership + its client-ownership (Axis-2; account_manager + tenant_admin + tenant_owner; AM is the pod operator)');
+  await upsertScope(prisma, SEED_IDS.scopes['company:read:all'], 'company:read:all', 'Read every company in the tenant (tenant_admin + tenant_owner only; the see-all stays reserved to the top tier — operational breadth comes from D4b)');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -1250,6 +1293,11 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
     { audit_id: SEED_IDS.audit_events.scope_attachment_delete_created, key: 'attachment:delete' },
     { audit_id: SEED_IDS.audit_events.scope_pipeline_read_created, key: 'pipeline:read' },
     { audit_id: SEED_IDS.audit_events.scope_activity_create_created, key: 'activity:create' },
+    // AUTHZ-D4a — 4 new scope.created audit events for the team-model scopes.
+    { audit_id: SEED_IDS.audit_events.scope_company_assign_created, key: 'company:assign' },
+    { audit_id: SEED_IDS.audit_events.scope_org_manage_created, key: 'org:manage' },
+    { audit_id: SEED_IDS.audit_events.scope_team_manage_created, key: 'team:manage' },
+    { audit_id: SEED_IDS.audit_events.scope_company_read_all_created, key: 'company:read:all' },
   ];
   for (const entry of A1A2_NEW_SCOPES) {
     const scope_id = (SEED_IDS.scopes as Record<string, string>)[entry.key];

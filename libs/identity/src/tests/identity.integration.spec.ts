@@ -30,9 +30,10 @@ import {
   SEED_SERVICE_ACCOUNT_NAME,
 } from '../../prisma/seed.js';
 
-// PL-93 PR-A1a: integration spec applies BOTH the init migration AND the
-// new add_site_axis migration so the test database matches the post-A1a
-// schema (Site model + UserTenantMembership.site_id).
+// PL-93 PR-A1a: integration spec applies the init migration + add_site_axis
+// + AUTHZ-D4a's add_authz_team_models so the test database matches the
+// post-D4a schema (Site model + UserTenantMembership.site_id +
+// ManagementEdge + Team + TeamMembership).
 const MIGRATION_PATHS = [
   resolve(
     __dirname,
@@ -41,6 +42,11 @@ const MIGRATION_PATHS = [
   resolve(
     __dirname,
     '../../prisma/migrations/20260601000000_add_site_axis/migration.sql',
+  ),
+  // AUTHZ-D4a — PL-95 finally exercised (the first authz migration).
+  resolve(
+    __dirname,
+    '../../prisma/migrations/20260604000000_add_authz_team_models/migration.sql',
   ),
 ];
 
@@ -137,9 +143,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const scopes = await prisma.scope.findMany({ orderBy: { key: 'asc' } });
       // HK-IDENT-SCOPES: +6 scopes (41 -> 47). AUTHZ-2: +3 platform:*
-      // scopes (the SEPARATE namespace; 47 tenant + 3 platform = 50 rows
-      // in the catalog, but the tenant-catalog assertion in proof 7
-      // /proof 8 still pins the tenant slice at 47).
+      // scopes (a SEPARATE namespace). AUTHZ-D4a: +4 team-model scopes
+      // (company:assign, org:manage, team:manage, company:read:all) —
+      // tenant scopes 47 -> 51; the platform slice is unchanged at 3.
+      // Total in the catalog: 51 + 3 = 54.
       expect(scopes.map((s) => s.key)).toEqual([
         'activity:create',
         'activity:read',
@@ -150,10 +157,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'calendar:event-create',
         'calendar:event-delete',
         'calendar:event-edit',
+        'company:assign',
         'company:create',
         'company:delete',
         'company:edit',
         'company:read',
+        'company:read:all',
         'consent:decision-log:read',
         'consent:read',
         'consent:write',
@@ -164,6 +173,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'examination:read',
         'identity:tenant:read',
         'identity:user:read',
+        'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
         'pipeline:change-status',
@@ -190,22 +200,27 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'talent:edit',
         'talent:read',
         'talent:search',
+        'team:manage',
         'tenant:admin:settings',
         'tenant:admin:user-manage',
       ]);
 
       const roleScopes = await prisma.roleScope.count();
       // AUTHZ-1 / AUTHZ-1b row count for the 9 staffing-tenant roles:
-      //   tenant_owner 43 + account_manager 33 + sourcer 14 + finance 6 +
-      //   auditor 5 + recruiting_manager 32 + delivery_manager 12 +
-      //   lead_recruiter 31 + back_office 12 = 188 rows.
+      //   tenant_owner 47 + account_manager 35 + sourcer 14 + finance 6 +
+      //   auditor 5 + recruiting_manager 33 + delivery_manager 12 +
+      //   lead_recruiter 31 + back_office 12 = 195 rows. (AUTHZ-D4a adds
+      //   4 scopes to tenant_owner, 2 to account_manager, 1 to recruiting_manager
+      //   — +7 rows over the AUTHZ-1b 188.)
       // Pre-A1a / A1a / A1a-2 / HK rows (kept roles only — viewer retired):
-      //   tenant_admin 43 + recruiter 31 + candidate 4 = 78 rows.
+      //   tenant_admin 47 + recruiter 31 + candidate 4 = 82 rows. (AUTHZ-D4a
+      //   adds 4 to tenant_admin — +4 over AUTHZ-1b 78.)
       // AUTHZ-2 super_admin: +3 (the 3 platform:* scopes).
-      // Tenant rows: 78 + 188 = 266. Total with platform: 266 + 3 = 269.
-      // The tenant 47-scope catalog is UNCHANGED — the platform scopes
-      // form a SEPARATE namespace.
-      expect(roleScopes).toBe(269);
+      // Tenant rows: 82 + 195 = 277. Total with platform: 277 + 3 = 280.
+      // (AUTHZ-D4a: 269 -> 280; +11 rows for the 4 new scopes across the
+      // bundles holding them — see the commit plan §4 for the per-scope
+      // role-assignment.)
+      expect(roleScopes).toBe(280);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -219,20 +234,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(sa?.name).toBe(SEED_SERVICE_ACCOUNT_NAME);
 
       const auditRows = await prisma.identityAuditEvent.findMany();
-      // AUTHZ-1b audit count. Re-derived breakdown:
+      // AUTHZ-D4a audit count. Re-derived breakdown:
       //   - pre-A1a baseline (1 tenant + 1 user + 1 membership +
-      //     1 external_identity + 2 roles [tenant_admin + recruiter;
-      //     viewer's role.created retired at AUTHZ-1b] + 6 scopes
-      //     + 1 SA)                                                   = 13
+      //     1 external_identity + 2 roles + 6 scopes + 1 SA)          = 13
       //   - PR-A1a (1 role.candidate + 8 portal/ATS-subset scopes)   = +9
-      //   - PR-A1a-2 + HK-IDENT-SCOPES (33 scope.created entries in
-      //     the A1A2_NEW_SCOPES loop: 27 + 6)                         = +33
+      //   - PR-A1a-2 + HK-IDENT-SCOPES (33 scope.created entries:
+      //     27 + 6)                                                    = +33
       //   - AUTHZ-1 / AUTHZ-1b (9 role.created events for the 9
-      //     staffing-tenant roles; same count as AUTHZ-1 — slot reuse) = +9
+      //     staffing-tenant roles)                                     = +9
       //   - AUTHZ-2 (1 platform tenant.created + 1 super_admin
       //     role.created + 3 platform scope.created)                  = +5
-      //                                                       total   = 69
-      expect(auditRows.length).toBe(69);
+      //   - AUTHZ-D4a (4 scope.created events for the team-model
+      //     scopes; the +9 runtime EVENT_TYPES are emitted by the
+      //     mechanisms at use-time, NOT at seed-time)                  = +4
+      //                                                       total   = 73
+      expect(auditRows.length).toBe(73);
       // Every audit event uses actor_type 'system' and actor_id = SA id.
       for (const row of auditRows) {
         expect(row.actor_type).toBe('system');
@@ -252,16 +268,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // -----------------------------------------------------------------
     // AUTHZ-2 §5 proof 7 — platform-scope namespace separation.
-    //   - The 47 tenant scope keys do not contain any platform:* scope.
+    //   - The tenant scope keys do not contain any platform:* scope.
     //   - The super_admin role bundle is exactly the 3 platform:* scopes.
     //   - No tenant role bundle contains any platform:* scope.
+    // AUTHZ-D4a: tenant catalog grew 47 -> 51 (+4 team-model scopes); the
+    // namespace separation principle is unchanged — platform:* still
+    // disjoint from the tenant slice.
     // -----------------------------------------------------------------
-    it('AUTHZ-2 proof 7 — platform scope namespace is disjoint from tenant 47-catalog', async () => {
+    it('AUTHZ-2 proof 7 — platform scope namespace is disjoint from tenant catalog (51 post-D4a)', async () => {
       const tenantScopes = await prisma.scope.findMany({
         where: { NOT: { key: { startsWith: 'platform:' } } },
         select: { key: true },
       });
-      expect(tenantScopes.length).toBe(47);
+      expect(tenantScopes.length).toBe(51);
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -357,14 +376,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(tenants[0]?.id).toBe(SEED_IDS.tenant);
     });
 
-    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (43 scopes post HK-IDENT-SCOPES)', async () => {
+    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (47 scopes post AUTHZ-D4a)', async () => {
       const scopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
       });
       const sorted = [...scopes].sort();
-      // HK-IDENT-SCOPES: tenant_admin gains the 6 deferred ATS scopes
+      // HK-IDENT-SCOPES: tenant_admin gained the 6 deferred ATS scopes
       // (recruiter+ includes tenant_admin). 37 + 6 = 43.
+      // AUTHZ-D4a: tenant_admin gains the 4 team-model scopes. 43 + 4 = 47.
       expect(sorted).toEqual([
         'activity:create',
         'activity:read',
@@ -375,10 +395,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'calendar:event-create',
         'calendar:event-delete',
         'calendar:event-edit',
+        'company:assign',
         'company:create',
         'company:delete',
         'company:edit',
         'company:read',
+        'company:read:all',
         'consent:decision-log:read',
         'consent:read',
         'consent:write',
@@ -389,6 +411,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'examination:read',
         'identity:tenant:read',
         'identity:user:read',
+        'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
         'pipeline:change-status',
@@ -407,6 +430,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'talent:edit',
         'talent:read',
         'talent:search',
+        'team:manage',
         'tenant:admin:settings',
         'tenant:admin:user-manage',
       ]);
@@ -552,8 +576,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Test 17 — scope catalog correctness
     // -----------------------------------------------------------------
 
-    it('test 17 — scope catalog correctness: 12-role staffing catalog per AUTHZ-1b (tenant_admin 43, recruiter 31, candidate 4, tenant_owner 43, account_manager 33, sourcer 14, finance 6, auditor 5, recruiting_manager 32, delivery_manager 12, lead_recruiter 31, back_office 12)', async () => {
-      // tenant_admin scope set (43 post HK-IDENT-SCOPES; 37 + 6)
+    it('test 17 — scope catalog correctness: 12-role staffing catalog per AUTHZ-1b + AUTHZ-D4a (tenant_admin 47, recruiter 31, candidate 4, tenant_owner 47, account_manager 35, sourcer 14, finance 6, auditor 5, recruiting_manager 33, delivery_manager 12, lead_recruiter 31, back_office 12)', async () => {
+      // tenant_admin scope set (47 post AUTHZ-D4a; 43 + 4 team-model scopes)
       const adminScopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
@@ -568,10 +592,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'calendar:event-create',
         'calendar:event-delete',
         'calendar:event-edit',
+        'company:assign',
         'company:create',
         'company:delete',
         'company:edit',
         'company:read',
+        'company:read:all',
         'consent:decision-log:read',
         'consent:read',
         'consent:write',
@@ -582,6 +608,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'examination:read',
         'identity:tenant:read',
         'identity:user:read',
+        'org:manage',
         'pipeline:add',
         'pipeline:add-activity',
         'pipeline:change-status',
@@ -600,6 +627,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'talent:edit',
         'talent:read',
         'talent:search',
+        'team:manage',
         'tenant:admin:settings',
         'tenant:admin:user-manage',
       ]);
@@ -663,6 +691,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:assign',
         'tenant:admin:user-manage',
         'tenant:admin:settings',
+        // AUTHZ-D4a — recruiter has NO team-model mechanism scopes
+        // and NO see-all (company:read:all stays TA+TO).
+        'company:assign',
+        'org:manage',
+        'team:manage',
+        'company:read:all',
       ];
       for (const forbidden of FORBIDDEN_FOR_RECRUITER) {
         expect(
@@ -708,38 +742,41 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(keys, `role ${roleKey} bundle`).toEqual([...expected].sort());
       };
 
-      // tenant_owner — 43 scopes. Owner = Admin scope set (position-only
-      // distinction per AUTHZ-1 §4 Lead lean; AUTHZ-2 may add platform-
-      // facing tenant-lifecycle scopes that distinguish Owner).
+      // tenant_owner — 47 scopes (post-AUTHZ-D4a; 43 + 4 team-model scopes).
+      // Owner = Admin scope set incl. the AUTHZ-D4a top-tier additions.
       await expectRoleScopes('tenant_owner', [
         'activity:create', 'activity:read',
         'attachment:create', 'attachment:delete', 'attachment:read',
         'auth:session:read',
         'calendar:event-create', 'calendar:event-delete', 'calendar:event-edit',
-        'company:create', 'company:delete', 'company:edit', 'company:read',
+        'company:assign', 'company:create', 'company:delete', 'company:edit', 'company:read', 'company:read:all',
         'consent:decision-log:read', 'consent:read', 'consent:write',
         'contact:create', 'contact:delete', 'contact:edit', 'contact:read',
         'examination:read',
         'identity:tenant:read', 'identity:user:read',
+        'org:manage',
         'pipeline:add', 'pipeline:add-activity', 'pipeline:change-status',
         'pipeline:read', 'pipeline:remove',
         'requisition:assign', 'requisition:create', 'requisition:delete',
         'requisition:edit', 'requisition:read', 'requisition:read:all',
         'submittal:approve', 'submittal:create',
         'talent:create', 'talent:delete', 'talent:edit', 'talent:read', 'talent:search',
+        'team:manage',
         'tenant:admin:settings', 'tenant:admin:user-manage',
       ]);
 
-      // account_manager — 33 scopes (Recruiter's 31 operational set +
-      // tenant:admin:user-manage + requisition:assign). The two AM-specific
-      // delegations: managing the user/membership surface within scope, and
-      // assigning users to requisitions (the management act).
+      // account_manager — 35 scopes (Recruiter's 31 operational set +
+      // tenant:admin:user-manage + requisition:assign + AUTHZ-D4a's
+      // company:assign + team:manage). AM is the client-ownership anchor
+      // (Amendment §5.4 + D4a Lead ruling 6); three AM-specific
+      // delegations: user/membership mgmt, requisition:assign, and the
+      // D4a client-ownership mechanisms.
       await expectRoleScopes('account_manager', [
         'activity:create', 'activity:read',
         'attachment:create', 'attachment:delete', 'attachment:read',
         'auth:session:read',
         'calendar:event-create', 'calendar:event-edit',
-        'company:create', 'company:edit', 'company:read',
+        'company:assign', 'company:create', 'company:edit', 'company:read',
         'consent:decision-log:read', 'consent:read', 'consent:write',
         'contact:create', 'contact:edit', 'contact:read',
         'examination:read',
@@ -748,6 +785,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:assign', 'requisition:create', 'requisition:edit', 'requisition:read',
         'submittal:approve', 'submittal:create',
         'talent:create', 'talent:edit', 'talent:read', 'talent:search',
+        'team:manage',
         'tenant:admin:user-manage',
       ]);
 
@@ -786,12 +824,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity:tenant:read', 'identity:user:read',
       ]);
 
-      // recruiting_manager — 32 scopes (Recruiter's 31 + tenant:admin:
-      // user-manage; NO requisition:assign). RM manages PEOPLE (the
-      // user-manage scope provisions/manages their reports); assigning
-      // requisitions is the AM's act, so the bundles differ by 1 scope
-      // (the AUTHZ-1b §2 distinction). Broader visibility comes from
-      // the TEAM MODEL at D4b (Axis-1 anchor), NOT a see-all scope.
+      // recruiting_manager — 33 scopes (Recruiter's 31 + tenant:admin:
+      // user-manage + AUTHZ-D4a's org:manage; NO requisition:assign,
+      // NO company:assign — those are the AM's acts). RM manages PEOPLE
+      // (user-manage + org:manage are the Axis-1 management operations);
+      // team-tier visibility at D4b (NOT a see-all scope here).
       await expectRoleScopes('recruiting_manager', [
         'activity:create', 'activity:read',
         'attachment:create', 'attachment:delete', 'attachment:read',
@@ -801,6 +838,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'consent:decision-log:read', 'consent:read', 'consent:write',
         'contact:create', 'contact:edit', 'contact:read',
         'examination:read',
+        'org:manage',
         'pipeline:add', 'pipeline:add-activity', 'pipeline:change-status',
         'pipeline:read',
         'requisition:create', 'requisition:edit', 'requisition:read',
@@ -1031,17 +1069,27 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('TENANT_SCOPED_EVENT_TYPES set matches directive §6 mapping exactly', () => {
       // Updated by PR-8.0a-Reground §6 amendment: 4 session.* event_types
       // added to the tenant-scoped set (prereq's 2 entries + 4 new = 6).
-      // AUTHZ-2: +2 invitation.* events (both tenant-scoped, carry the
-      // invited-into tenant_id). 6 -> 8.
+      // AUTHZ-2: +2 invitation.* events (6 -> 8).
+      // AUTHZ-D4a: +9 team-model events (all tenant-scoped — they carry the
+      // tenant_id the substrate write happened in). 8 -> 17.
       expect([...TENANT_SCOPED_EVENT_TYPES].sort()).toEqual([
         'identity.invitation.accepted',
         'identity.invitation.created',
+        'identity.management_edge.cleared',
+        'identity.management_edge.set',
         'identity.membership.created',
         'identity.session.issued',
         'identity.session.refreshed',
         'identity.session.reuse_detected',
         'identity.session.revoked',
+        'identity.team.client_ownership.added',
+        'identity.team.client_ownership.removed',
+        'identity.team.created',
+        'identity.team.membership.added',
+        'identity.team.membership.removed',
         'identity.tenant.created',
+        'identity.user_client_assignment.created',
+        'identity.user_client_assignment.removed',
       ]);
     });
   },
