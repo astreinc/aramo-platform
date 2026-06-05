@@ -18,6 +18,7 @@ import { ContactModule } from '@aramo/contact';
 import { EngagementModule } from '@aramo/engagement';
 import { EntitlementModule } from '@aramo/entitlement';
 import { ExportModule } from '@aramo/export';
+import { IdentityModule } from '@aramo/identity';
 import { ImportModule } from '@aramo/import';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
@@ -196,17 +197,29 @@ import { CompensationFieldMaskInterceptor } from './interceptors/compensation-fi
     // consent + engagement + submittal OutboxEvent tables. Imported
     // here (and only here) — leaf lib, leaf import.
     OutboxPublisherModule,
+    // Settings S2 — IdentityModule provides IdentityAuditService for the
+    // app-layer two-call AUDIT SEAM in TenantSettingsController (the PUT
+    // /v1/tenant/settings/:key path emits identity.tenant_setting.updated).
+    // The seam lives at the controller (NOT inside libs/settings) so the
+    // settings lib stays a true LEAF — its only @aramo/* edge is
+    // @aramo/common. This mirrors the libs/company → @aramo/identity
+    // cross-lib audit-emission edge (the D4a precedent) and D5's field-
+    // mask interceptor placement (terminal lib + app-level cross-cutting
+    // wire). IdentityModule was already in the apps/api module graph
+    // transitively via CompanyModule; the direct import here makes
+    // IdentityAuditService injectable into TenantSettingsController.
+    IdentityModule,
     // Settings S1 — SettingsModule (NEW LEAF lib, depends only on
     // @aramo/common). Tenant-configuration foundation: the TenantSetting
     // model + the read-through TenantSettingService that powers the
-    // first consumer of the seeded `tenant:admin:settings` scope. The
-    // TenantSettingsController (apps/api/src/controllers/) wires the
-    // GET /v1/tenant/settings endpoint to the service; the controller
-    // lives in apps/api so libs/settings stays a true leaf (the guard-
-    // chain dependencies on auth/authorization/entitlement live at the
-    // application boundary). READ-ONLY in S1 — the write surface lands
-    // with S2 (the pricing-model-default key + its validator + its
-    // audit-event shape).
+    // first consumer of the seeded `tenant:admin:settings` scope. S2
+    // lights up the first KNOWN_SETTINGS key (compensation.display_default)
+    // + the write path (set<K> + per-key validator + PUT /v1/tenant/
+    // settings/:key). The TenantSettingsController (apps/api/src/
+    // controllers/) wires both verbs to the service; the controller lives
+    // in apps/api so libs/settings stays a true leaf (the guard-chain
+    // dependencies on auth/authorization/entitlement AND the IdentityAudit
+    // edge live at the application boundary).
     SettingsModule,
     // AUTHZ-D4b Gate 6 — VisibilityModule. The terminal lib that hosts
     // the composed visibility resolver (Amendment v1.1 §4.3 — direct ∪

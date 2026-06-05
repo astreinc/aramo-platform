@@ -6,11 +6,13 @@ export {
   KNOWN_SETTINGS,
   KNOWN_SETTING_KEYS,
   isKnownSettingKey,
+  isCompensationDisplayDefault,
 } from './lib/known-settings.js';
 export type {
   KnownSettingKey,
   SettingDefinition,
   SettingValueOf,
+  CompensationDisplayDefault,
 } from './lib/known-settings.js';
 
 export type { TenantSettingsView } from './lib/dto/tenant-settings.view.js';
