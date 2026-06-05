@@ -77,6 +77,14 @@ const REQUISITION_INIT = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
 );
+// Prisma client's RETURNING projection on requisition CREATE includes
+// import_batch_id (PR-A8-1 additive back-reference); without this
+// migration, the column doesn't exist → 500 INTERNAL_ERROR. Same
+// requirement as ats-batch2-requisition.integration.spec.ts.
+const REQUISITION_IMPORT_BACK_REF = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-authz-d4b-spec';
@@ -379,6 +387,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         COMPANY_IMPORT_BACK_REF,
         COMPANY_D4A,
         REQUISITION_INIT,
+        REQUISITION_IMPORT_BACK_REF,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
