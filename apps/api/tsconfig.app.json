@@ -35,6 +35,7 @@
       "@aramo/reporting": ["../../dist/libs/reporting/src/index.d.ts"],
       "@aramo/requisition": ["../../dist/libs/requisition/src/index.d.ts"],
       "@aramo/saved-list": ["../../dist/libs/saved-list/src/index.d.ts"],
+      "@aramo/settings": ["../../dist/libs/settings/src/index.d.ts"],
       "@aramo/skills-taxonomy": ["../../dist/libs/skills-taxonomy/src/index.d.ts"],
       "@aramo/submittal": ["../../dist/libs/submittal/src/index.d.ts"],
       "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"],
