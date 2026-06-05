@@ -69,6 +69,12 @@ export default defineConfig({
       // vitest runtime resolves the AppModule import (apps/api wires
       // ExportModule) and the apps/api integration spec.
       '@aramo/export': resolve(root, 'libs/export/src/index.ts'),
+      // AUTHZ-D5 — field-masking leaf (the scope→field-set map + the
+      // omit-by-scope function; cycle-safe terminal lib called from the
+      // apps/api CompensationFieldMaskInterceptor). Mirrors
+      // tsconfig.base.json @aramo/field-masking alias so vitest runtime
+      // resolves the apps/api AppModule import + the D5 catalog tests.
+      '@aramo/field-masking': resolve(root, 'libs/field-masking/src/index.ts'),
       '@aramo/identity': resolve(root, 'libs/identity/src/index.ts'),
       // PR-A8-1 Gate 5 — import-engine leaf (audited reversible batches
       // + partial-commit). Mirrors tsconfig.base.json alias so vitest

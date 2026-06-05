@@ -22,6 +22,7 @@
       "@aramo/engagement": ["../../dist/libs/engagement/src/index.d.ts"],
       "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
       "@aramo/export": ["../../dist/libs/export/src/index.d.ts"],
+      "@aramo/field-masking": ["../../dist/libs/field-masking/src/index.d.ts"],
       "@aramo/import": ["../../dist/libs/import/src/index.d.ts"],
       "@aramo/ingestion": ["../../dist/libs/ingestion/src/index.d.ts"],
       "@aramo/matching": ["../../dist/libs/matching/src/index.d.ts"],

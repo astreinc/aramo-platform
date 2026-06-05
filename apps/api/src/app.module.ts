@@ -32,6 +32,8 @@ import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { SubmittalModule } from '@aramo/submittal';
 import { TalentRecordModule } from '@aramo/talent-record';
 
+import { CompensationFieldMaskInterceptor } from './interceptors/compensation-field-mask.interceptor.js';
+
 @Module({
   imports: [
     CommonModule,
@@ -214,6 +216,18 @@ import { TalentRecordModule } from '@aramo/talent-record';
     {
       provide: APP_INTERCEPTOR,
       useClass: VisibilityInterceptor,
+    },
+    // AUTHZ-D5 — register the CompensationFieldMaskInterceptor as a
+    // global interceptor. Shape-1 mirror of VisibilityInterceptor: runs
+    // AFTER controller methods complete, walks the response value, and
+    // omits comp fields the actor's compensation:view:* scopes don't
+    // grant (delegates to libs/field-masking — a NEW terminal lib).
+    // D4b masked WHICH RECORDS the actor sees; D5 masks WHICH FIELDS on
+    // those records — the two compose. The interceptor lives here (not
+    // in the terminal lib) per the D5 commit plan §1.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: CompensationFieldMaskInterceptor,
     },
   ],
 })

@@ -149,6 +149,26 @@ export const SEED_IDS = {
     'org:manage': '01900000-0000-7000-8000-00000000008d',
     'team:manage': '01900000-0000-7000-8000-00000000008e',
     'company:read:all': '01900000-0000-7000-8000-00000000008f',
+    // AUTHZ-D5 — 6 compensation:view:* scopes (the field-masking scope
+    // family). Scope-keyed because the JWT carries `scopes: string[]`
+    // only (no role claim) — see libs/field-masking. The grouping per
+    // scope is the matrix-level call (compensation-field-map.ts):
+    //   view:pay     — pay_rate_* + salary_*   (candidate-economics)
+    //   view:bill    — bill_rate_* + placement_fee_* (agency-economics)
+    //   view:revenue — bill_rate_* (rate-only; no fee)
+    //   view:spread:amount  — margin_amount
+    //   view:spread:percent — markup_percent
+    //   view:margin:percent — margin_percent
+    // THE ENFORCED INVARIANT (libs/field-masking
+    // assertNonInvertibleBundle): no role holds both view:pay AND any
+    // spread scope (pay + spread = bill). Proven across all bundles by
+    // seed.spec / d5-non-invertibility.spec.
+    'compensation:view:pay': '01900000-0000-7000-8000-000000000090',
+    'compensation:view:bill': '01900000-0000-7000-8000-000000000091',
+    'compensation:view:revenue': '01900000-0000-7000-8000-000000000092',
+    'compensation:view:spread:amount': '01900000-0000-7000-8000-000000000093',
+    'compensation:view:spread:percent': '01900000-0000-7000-8000-000000000094',
+    'compensation:view:margin:percent': '01900000-0000-7000-8000-000000000095',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -346,6 +366,15 @@ export const SEED_IDS = {
     scope_org_manage_created: '01900000-0000-7000-8000-000000000237',
     scope_team_manage_created: '01900000-0000-7000-8000-000000000238',
     scope_company_read_all_created: '01900000-0000-7000-8000-000000000239',
+    // AUTHZ-D5 — 6 scope.created audit events for the compensation:view:*
+    // scope family (0x23a..0x23f). All global; emitted via A1A2_NEW_SCOPES
+    // manifest below.
+    scope_compensation_view_pay_created: '01900000-0000-7000-8000-00000000023a',
+    scope_compensation_view_bill_created: '01900000-0000-7000-8000-00000000023b',
+    scope_compensation_view_revenue_created: '01900000-0000-7000-8000-00000000023c',
+    scope_compensation_view_spread_amount_created: '01900000-0000-7000-8000-00000000023d',
+    scope_compensation_view_spread_percent_created: '01900000-0000-7000-8000-00000000023e',
+    scope_compensation_view_margin_percent_created: '01900000-0000-7000-8000-00000000023f',
   },
 } as const;
 
@@ -754,6 +783,105 @@ const AUTHZ1_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// AUTHZ-D5 — the LOCKED role-to-view matrix (commit plan §2). Discrete
+// bundle structure separate from ROLE_SCOPE_ASSIGNMENTS + AUTHZ1_BUNDLES
+// so existing RoleScope UUIDs are not shifted. UUIDs generated from a
+// disjoint range (0x500+) below to keep the address space clean.
+//
+// THE ENFORCED INVARIANT (libs/field-masking assertNonInvertibleBundle):
+// no role holds both compensation:view:pay AND any spread scope. The
+// matrix below satisfies this mechanically — every entry with view:pay
+// has zero spread scopes; every entry with a spread scope has no
+// view:pay. The see-all tier (tenant_admin, tenant_owner) is exempt by
+// design (holds every scope; "inversion" is intended, not a leak).
+//
+// THE ACCEPTED-DERIVATION (soft, by-design): account_manager holds
+// view:bill + view:spread:percent + view:margin:percent + view:revenue
+// — they can compute pay = bill − (bill × margin%). This is the matrix
+// intent (AM's incentive IS margin); a UI default, not a security
+// boundary. Recorded so the EEO DDR (Settings, the hard-boundary case)
+// does not inherit this softness.
+//
+// Roles with NO comp scopes (sourcer, auditor, candidate, super_admin)
+// are absent from this table — the field-masking interceptor omits
+// every comp field for them.
+export const D5_COMPENSATION_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  // see-all tier (TA + TO) — every comp scope. Mirrors the requisition:read:all
+  // pattern at D4b: top-tier roles see everything; operational tiers get the
+  // narrower per-side cuts below.
+  ['tenant_admin', [
+    'compensation:view:pay',
+    'compensation:view:bill',
+    'compensation:view:revenue',
+    'compensation:view:spread:amount',
+    'compensation:view:spread:percent',
+    'compensation:view:margin:percent',
+  ]],
+  ['tenant_owner', [
+    'compensation:view:pay',
+    'compensation:view:bill',
+    'compensation:view:revenue',
+    'compensation:view:spread:amount',
+    'compensation:view:spread:percent',
+    'compensation:view:margin:percent',
+  ]],
+  // account_manager — agency-economics side. bill + fee + the two
+  // percent spread views + revenue. NO view:pay (the invariant holds);
+  // pay is derivable from bill − margin (the soft-boundary, by design).
+  ['account_manager', [
+    'compensation:view:bill',
+    'compensation:view:revenue',
+    'compensation:view:spread:percent',
+    'compensation:view:margin:percent',
+  ]],
+  // recruiter / recruiting_manager / lead_recruiter — candidate-economics
+  // side. pay + salary. NO spread scopes (the invariant holds).
+  ['recruiter', ['compensation:view:pay']],
+  ['recruiting_manager', ['compensation:view:pay']],
+  ['lead_recruiter', ['compensation:view:pay']],
+  // back_office — operational pay visibility (onboarding / payroll-facing).
+  // Same shape as recruiter for the matrix; no spread.
+  ['back_office', ['compensation:view:pay']],
+  // delivery_manager — fulfillment-economics. All spread + margin views +
+  // revenue. NO view:pay (the invariant holds); pay is derivable by the
+  // same soft-boundary as AM (intended).
+  ['delivery_manager', [
+    'compensation:view:revenue',
+    'compensation:view:spread:amount',
+    'compensation:view:spread:percent',
+    'compensation:view:margin:percent',
+  ]],
+  // finance — offer-approval / margin-reporting surface. margin% + revenue.
+  // NO view:pay (the invariant holds); narrower than AM by design (Finance
+  // sees the headline ratio + the revenue, NOT the spread itself).
+  ['finance', [
+    'compensation:view:revenue',
+    'compensation:view:margin:percent',
+  ]],
+  // Roles intentionally absent (zero comp scopes): sourcer (intake-focused;
+  // doesn't negotiate); auditor (NONE by default — grantable via Settings
+  // toggle, not seeded); candidate (portal-tier — no requisition read);
+  // super_admin (platform-tier — no tenant requisition surface).
+];
+
+// AUTHZ-D5 — deterministic RoleScope row IDs for the comp-bundle grants
+// above. Disjoint range starting at 0x500 (AUTHZ-1's 0x400+ range +
+// AUTHZ-D4a's 0x303+ range stay untouched — no shift). The (role, scope)
+// iteration order pins the assignment, so a given pair always produces
+// the same UUID on every seed run. Total rows: 6+6+4+1+1+1+1+4+2 = 26.
+const D5_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x500;
+  for (const [role, scopes] of D5_COMPENSATION_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -919,6 +1047,16 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['org:manage'], 'org:manage', 'Set / clear a management edge (Axis-1 hierarchy; recruiting_manager + tenant_admin + tenant_owner; distinct from tenant:admin:user-manage which is user provisioning)');
   await upsertScope(prisma, SEED_IDS.scopes['team:manage'], 'team:manage', 'Create / manage a pod + its membership + its client-ownership (Axis-2; account_manager + tenant_admin + tenant_owner; AM is the pod operator)');
   await upsertScope(prisma, SEED_IDS.scopes['company:read:all'], 'company:read:all', 'Read every company in the tenant (tenant_admin + tenant_owner only; the see-all stays reserved to the top tier — operational breadth comes from D4b)');
+  // AUTHZ-D5 — 6 compensation:view:* scopes (the field-masking scope
+  // family). Keyed at the response interceptor (apps/api
+  // CompensationFieldMaskInterceptor) via libs/field-masking. See the
+  // commit plan §2 / the locked role-to-view matrix in D5_COMPENSATION_BUNDLES.
+  await upsertScope(prisma, SEED_IDS.scopes['compensation:view:pay'], 'compensation:view:pay', 'View pay_rate_* + salary_* on the requisition read (candidate-economics anchor; recruiter / recruiting_manager / lead_recruiter / back_office / TA + TO)');
+  await upsertScope(prisma, SEED_IDS.scopes['compensation:view:bill'], 'compensation:view:bill', 'View bill_rate_* + placement_fee_* on the requisition read (agency-economics anchor; account_manager + TA + TO)');
+  await upsertScope(prisma, SEED_IDS.scopes['compensation:view:revenue'], 'compensation:view:revenue', 'View bill_rate_* on the requisition read (revenue view; account_manager + finance + delivery_manager + TA + TO; rate-only, no placement fee)');
+  await upsertScope(prisma, SEED_IDS.scopes['compensation:view:spread:amount'], 'compensation:view:spread:amount', 'View margin_amount on the requisition read (the $ spread; delivery_manager + TA + TO; NOT grantable together with view:pay — D5 enforced invariant)');
+  await upsertScope(prisma, SEED_IDS.scopes['compensation:view:spread:percent'], 'compensation:view:spread:percent', 'View markup_percent on the requisition read (account_manager + delivery_manager + TA + TO; NOT grantable together with view:pay)');
+  await upsertScope(prisma, SEED_IDS.scopes['compensation:view:margin:percent'], 'compensation:view:margin:percent', 'View margin_percent on the requisition read (account_manager + finance + delivery_manager + TA + TO; NOT grantable together with view:pay)');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -946,6 +1084,27 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
       const rsId = AUTHZ1_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`AUTHZ-1: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // 7c. AUTHZ-D5 RoleScope assignments — 26 rows for the compensation
+  // bundle grants per the LOCKED role-to-view matrix
+  // (D5_COMPENSATION_BUNDLES). UUID range 0x500+ (disjoint from
+  // ROLE_SCOPE_ROW_IDS' 0x30-0x3xx and AUTHZ1_ROLE_SCOPE_ROW_IDS' 0x400+
+  // — no shift to existing RoleScope.id assignments).
+  for (const [roleKey, scopeKeys] of D5_COMPENSATION_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = D5_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`AUTHZ-D5: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({
@@ -1298,6 +1457,13 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
     { audit_id: SEED_IDS.audit_events.scope_org_manage_created, key: 'org:manage' },
     { audit_id: SEED_IDS.audit_events.scope_team_manage_created, key: 'team:manage' },
     { audit_id: SEED_IDS.audit_events.scope_company_read_all_created, key: 'company:read:all' },
+    // AUTHZ-D5 — 6 new scope.created audit events for the compensation:view:* scopes.
+    { audit_id: SEED_IDS.audit_events.scope_compensation_view_pay_created, key: 'compensation:view:pay' },
+    { audit_id: SEED_IDS.audit_events.scope_compensation_view_bill_created, key: 'compensation:view:bill' },
+    { audit_id: SEED_IDS.audit_events.scope_compensation_view_revenue_created, key: 'compensation:view:revenue' },
+    { audit_id: SEED_IDS.audit_events.scope_compensation_view_spread_amount_created, key: 'compensation:view:spread:amount' },
+    { audit_id: SEED_IDS.audit_events.scope_compensation_view_spread_percent_created, key: 'compensation:view:spread:percent' },
+    { audit_id: SEED_IDS.audit_events.scope_compensation_view_margin_percent_created, key: 'compensation:view:margin:percent' },
   ];
   for (const entry of A1A2_NEW_SCOPES) {
     const scope_id = (SEED_IDS.scopes as Record<string, string>)[entry.key];
