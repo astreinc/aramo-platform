@@ -240,6 +240,17 @@ const AI_DRAFT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql',
 );
+// Settings S1 — the FIRST settings-schema migration into the api pact-verifier
+// MIGRATIONS set (PL-95). AppModule wires SettingsModule (the GET /v1/tenant/
+// settings endpoint) post-Settings-S1; the settings PrismaService is lazy
+// (no boot-time DB hit per the post-PR-17 uniform pattern), so the pact
+// contracts in this verifier do NOT currently target /v1/tenant/settings
+// (no consumer yet). Applying the migration is harmless and keeps the
+// verifier prepared for future settings-touching consumer pacts.
+const SETTINGS_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/settings/prisma/migrations/20260605000000_init_settings_model/migration.sql',
+);
 const INGESTION_PACT = resolve(
   ROOT,
   'pact/pacts/ingestion-consumer-aramo-core.json',
@@ -1355,6 +1366,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // engagement + submittal state-transition write method).
         METERING_INIT_MIGRATION,
+        // Settings S1 — additive substrate for the GET /v1/tenant/settings
+        // endpoint AppModule wires post-S1. No current consumer pact targets
+        // /v1/tenant/settings; the migration applies harmlessly and keeps
+        // the verifier ready for future settings-touching consumer pacts
+        // (the S2 pricing-model write, S3 user-management, etc.).
+        SETTINGS_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }

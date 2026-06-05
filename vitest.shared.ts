@@ -133,6 +133,12 @@ export default defineConfig({
       // Mirrors tsconfig.base.json alias so vitest runtime resolves
       // the apps/api AppModule import + the A6 integration spec.
       '@aramo/saved-list': resolve(root, 'libs/saved-list/src/index.ts'),
+      // Settings S1 — settings leaf (the tenant-config foundation:
+      // TenantSettingService + the closed-set KNOWN_SETTINGS registry).
+      // Mirrors tsconfig.base.json @aramo/settings alias so vitest runtime
+      // resolves the apps/api AppModule import (SettingsModule wiring) +
+      // the settings-tenant-get integration spec.
+      '@aramo/settings': resolve(root, 'libs/settings/src/index.ts'),
       '@aramo/skills-taxonomy': resolve(root, 'libs/skills-taxonomy/src/index.ts'),
       '@aramo/submittal': resolve(root, 'libs/submittal/src/index.ts'),
       '@aramo/talent': resolve(root, 'libs/talent/src/index.ts'),

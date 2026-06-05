@@ -1,0 +1,90 @@
+// Per-module Prisma schema for the `settings` module.
+//
+// Settings S1 — the tenant-configuration FOUNDATION (the substrate S2–S5 +
+// the import-config TODO-consumers attach to).
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture) +
+// doc/05-conventions.md "Database Conventions". Cross-schema references
+// elsewhere in the program are UUID-only without FK constraints (§7.3).
+//
+// Lib placement (Settings S1 Gate-5 Ruling 2 — the UUID-logical-only variant):
+// `libs/settings` is a TRUE LEAF — depends only on `@aramo/common`. There is
+// NO `@aramo/identity` edge: tenant_id / last_modified_by are logical UUIDs
+// (no Prisma `@relation`, no FK to identity.Tenant / identity.User). The
+// Settings sub-program lives in its own home; this matches the libs/field-
+// masking + libs/visibility leaf-lib shape established for sibling concerns.
+//
+// Model shape (Gate-5 Ruling 1 — pattern B): key-value rows, not discrete
+// typed columns and not a single JSON blob.
+//   - (A) discrete columns would force a migration per future setting; the
+//     sub-program adds settings over time (S2 pricing-model, S6+ email/
+//     custom-fields/careers-portal/questionnaires). Halt condition.
+//   - (B) key-value preserves per-key audit + per-key access control +
+//     per-key constraints; new settings register in the code-side
+//     `KNOWN_SETTINGS` registry — no migration per setting. CHOSEN.
+//   - (C) JSON blob per tenant would lose per-key audit + per-key access
+//     control + per-key constraints.
+//
+// Type-safety recovery (the typed-accessor pattern, libs/settings/src/lib/
+// known-settings.ts): a `KnownSettingKey` closed-set union + parametric
+// `TenantSettingService.get<K>(tenant, key) -> SettingValueOf<K>` give the
+// pattern-(A) type guarantees in code without the schema cost. Unknown keys
+// are a compile error.
+//
+// Read seam (Gate-5 Ruling 3): READ-ONLY in S1. The service exposes only
+// `get<K>` + `getAll`; no `set()`, no write endpoint. The write path lands
+// with S2 (the first concrete known-key — pricing-model — defines the audit-
+// event shape + validator). ERROR_CODES +0 (missing key = default-fallback,
+// not an error); EVENT_TYPES +0 (no write events in S1).
+//
+// Default-fallback: a key with no row returns the code-defined default from
+// the `KNOWN_SETTINGS` registry (the import-config TODO-consumer pattern —
+// `loadImportEngineConfig` reads env-or-default today; after the follow-up
+// migration the same default lives on `SettingDefinition.default`).
+//
+// Tenant isolation: enforced at the repository (`WHERE tenant_id = $1` on
+// every query). The Gate-5 §4 foundation proof (e) — tenant A's row invisible
+// to tenant B's `getAll`.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["settings"]
+}
+
+model TenantSetting {
+  // Cross-schema UUID reference to identity.Tenant (§7.3 — UUID-only, no FK).
+  tenant_id          String   @db.Uuid
+
+  // The setting key. Validated at the service boundary against the closed-set
+  // `KNOWN_SETTINGS` registry; the DB column is plain TEXT so the same table
+  // serves every future known-key without a column add (the pattern-B win).
+  key                String
+
+  // The setting value as JSONB. The typed-accessor on the service layer (see
+  // `SettingDefinition<K, V>`) projects this back to the per-key value type
+  // (string | number | enum | struct), recovering pattern-(A) type-safety in
+  // code without the schema cost.
+  value              Json
+
+  // Provenance. created_at + updated_at follow Prisma conventions;
+  // last_modified_by is a logical UUID reference to identity.User (no FK —
+  // §7.3). Nullable for the S1 read-only path (no S1 writer yet); the S2
+  // write path requires it.
+  created_at         DateTime @default(now()) @db.Timestamptz
+  updated_at         DateTime @updatedAt @db.Timestamptz
+  last_modified_by   String?  @db.Uuid
+
+  // Composite PK — one row per (tenant, key). A re-set of the same key is an
+  // UPDATE not an INSERT (S2 concern; the unique invariant lives in the
+  // schema, not on the write path).
+  @@id([tenant_id, key])
+  // Tenant-scoped getAll (`WHERE tenant_id`) — the per-tenant isolation read
+  // path.
+  @@index([tenant_id])
+  @@schema("settings")
+}

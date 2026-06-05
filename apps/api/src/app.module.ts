@@ -28,10 +28,12 @@ import { PortalModule } from '@aramo/portal';
 import { ReportingModule } from '@aramo/reporting';
 import { RequisitionModule } from '@aramo/requisition';
 import { SavedListModule } from '@aramo/saved-list';
+import { SettingsModule } from '@aramo/settings';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { SubmittalModule } from '@aramo/submittal';
 import { TalentRecordModule } from '@aramo/talent-record';
 
+import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { CompensationFieldMaskInterceptor } from './interceptors/compensation-field-mask.interceptor.js';
 
 @Module({
@@ -194,6 +196,18 @@ import { CompensationFieldMaskInterceptor } from './interceptors/compensation-fi
     // consent + engagement + submittal OutboxEvent tables. Imported
     // here (and only here) — leaf lib, leaf import.
     OutboxPublisherModule,
+    // Settings S1 — SettingsModule (NEW LEAF lib, depends only on
+    // @aramo/common). Tenant-configuration foundation: the TenantSetting
+    // model + the read-through TenantSettingService that powers the
+    // first consumer of the seeded `tenant:admin:settings` scope. The
+    // TenantSettingsController (apps/api/src/controllers/) wires the
+    // GET /v1/tenant/settings endpoint to the service; the controller
+    // lives in apps/api so libs/settings stays a true leaf (the guard-
+    // chain dependencies on auth/authorization/entitlement live at the
+    // application boundary). READ-ONLY in S1 — the write surface lands
+    // with S2 (the pricing-model-default key + its validator + its
+    // audit-event shape).
+    SettingsModule,
     // AUTHZ-D4b Gate 6 — VisibilityModule. The terminal lib that hosts
     // the composed visibility resolver (Amendment v1.1 §4.3 — direct ∪
     // transitive-reports[depth-3] ∪ pod-clients ∪ [ALL if
@@ -206,6 +220,14 @@ import { CompensationFieldMaskInterceptor } from './interceptors/compensation-fi
     // (identity / company / requisition / pipeline) are fully wired
     // before its providers are constructed.
     VisibilityModule,
+  ],
+  controllers: [
+    // Settings S1 — the GET /v1/tenant/settings endpoint (the seeded
+    // `tenant:admin:settings` scope's first consumer). Implicit-tenant
+    // from AuthContext; per-tenant isolation via WHERE tenant_id in the
+    // repository. Lives here (not in libs/settings) to preserve the
+    // leaf-lib invariant on the new lib.
+    TenantSettingsController,
   ],
   providers: [
     // AUTHZ-D4b Gate 6 — register the VisibilityInterceptor as a global
