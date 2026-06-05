@@ -1,7 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AramoError, type VisibilityContextShape } from '@aramo/common';
 
+import { Prisma } from '../../prisma/generated/client/client.js';
+
+import { computeDerivedViews } from './compensation-views.js';
 import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
+import type { RatePeriod } from './dto/rate-period.js';
+import type { RequisitionCompensationModel } from './dto/requisition-compensation-model.js';
 import type { RequisitionView } from './dto/requisition.view.js';
 import type { RequisitionStatus } from './dto/requisition-status.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
@@ -78,6 +83,30 @@ function buildVisibilityWhere(
   };
 }
 
+// Compensation-Field Modeling v1.1 §2 — translate the create DTO's
+// optional comp fields into the Prisma create data payload. All
+// fields default to null when omitted (existing rows pre-migration
+// also surface as null — additive contract). Decimal strings are
+// handed off as-is; Prisma's adapter coerces via decimal.js. Returned
+// as Record<string, unknown> to spread into the `data` argument.
+function buildCompensationCreateData(
+  input: CreateRequisitionRequestDto,
+): Record<string, unknown> {
+  return {
+    compensation_model: input.compensation_model ?? null,
+    pay_rate_amount: input.pay_rate_amount ?? null,
+    pay_rate_currency: input.pay_rate_currency ?? null,
+    pay_rate_period: input.pay_rate_period ?? null,
+    bill_rate_amount: input.bill_rate_amount ?? null,
+    bill_rate_currency: input.bill_rate_currency ?? null,
+    bill_rate_period: input.bill_rate_period ?? null,
+    placement_fee_percent: input.placement_fee_percent ?? null,
+    placement_fee_amount: input.placement_fee_amount ?? null,
+    salary_amount: input.salary_amount ?? null,
+    salary_currency: input.salary_currency ?? null,
+  };
+}
+
 interface RequisitionRow {
   id: string;
   tenant_id: string;
@@ -104,9 +133,43 @@ interface RequisitionRow {
   entered_by_id: string | null;
   created_at: Date;
   updated_at: Date;
+  // Compensation-Field Modeling v1.1 §2 — structured comp surface.
+  // Prisma deserializes Decimal columns to Prisma.Decimal instances;
+  // projectView serializes them back to decimal strings for the
+  // RequisitionView contract.
+  compensation_model: RequisitionCompensationModel | null;
+  pay_rate_amount: Prisma.Decimal | null;
+  pay_rate_currency: string | null;
+  pay_rate_period: RatePeriod | null;
+  bill_rate_amount: Prisma.Decimal | null;
+  bill_rate_currency: string | null;
+  bill_rate_period: RatePeriod | null;
+  placement_fee_percent: Prisma.Decimal | null;
+  placement_fee_amount: Prisma.Decimal | null;
+  salary_amount: Prisma.Decimal | null;
+  salary_currency: string | null;
+}
+
+// Serialize a Decimal money field to a fixed-2 decimal string. Null
+// passes through. v1.1 §10 halt: never coerce to JS number — float
+// drift on a 12,2 column would surface as off-by-cent.
+function decimalToFixed2(value: Prisma.Decimal | null): string | null {
+  return value === null ? null : value.toFixed(2);
 }
 
 function projectView(row: RequisitionRow): RequisitionView {
+  // v1.1 §2.2 — derived views computed from the two stored facts.
+  // The compute is the single canonical site (projectView is THE
+  // row→view mapper for every read path: list, get-by-id, create,
+  // update, find-admin, find-for-import).
+  const derived = computeDerivedViews({
+    pay_rate_amount: row.pay_rate_amount,
+    pay_rate_currency: row.pay_rate_currency,
+    pay_rate_period: row.pay_rate_period,
+    bill_rate_amount: row.bill_rate_amount,
+    bill_rate_currency: row.bill_rate_currency,
+    bill_rate_period: row.bill_rate_period,
+  });
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -133,6 +196,20 @@ function projectView(row: RequisitionRow): RequisitionView {
     entered_by_id: row.entered_by_id,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
+    compensation_model: row.compensation_model,
+    pay_rate_amount: decimalToFixed2(row.pay_rate_amount),
+    pay_rate_currency: row.pay_rate_currency,
+    pay_rate_period: row.pay_rate_period,
+    bill_rate_amount: decimalToFixed2(row.bill_rate_amount),
+    bill_rate_currency: row.bill_rate_currency,
+    bill_rate_period: row.bill_rate_period,
+    placement_fee_percent: decimalToFixed2(row.placement_fee_percent),
+    placement_fee_amount: decimalToFixed2(row.placement_fee_amount),
+    salary_amount: decimalToFixed2(row.salary_amount),
+    salary_currency: row.salary_currency,
+    margin_amount: derived.margin_amount,
+    markup_percent: derived.markup_percent,
+    margin_percent: derived.margin_percent,
   };
 }
 
@@ -176,6 +253,7 @@ export class RequisitionRepository {
         recruiter_id: input.recruiter_id ?? entered_by_id,
         owner_id: input.owner_id ?? entered_by_id,
         entered_by_id,
+        ...buildCompensationCreateData(input),
       },
     });
     return projectView(row as RequisitionRow);
@@ -217,6 +295,7 @@ export class RequisitionRepository {
         owner_id: input.owner_id ?? entered_by_id,
         entered_by_id,
         import_batch_id,
+        ...buildCompensationCreateData(input),
       },
     });
     return projectView(row as RequisitionRow);
@@ -277,6 +356,20 @@ export class RequisitionRepository {
     if (i.state !== undefined) data['state'] = i.state;
     if (i.recruiter_id !== undefined) data['recruiter_id'] = i.recruiter_id;
     if (i.owner_id !== undefined) data['owner_id'] = i.owner_id;
+    // v1.1 §2 — comp fields. Each follows the same PATCH semantics:
+    // undefined → unchanged; null → cleared; string → set (Decimal
+    // strings are passed through; Prisma coerces via decimal.js).
+    if (i.compensation_model !== undefined) data['compensation_model'] = i.compensation_model;
+    if (i.pay_rate_amount !== undefined) data['pay_rate_amount'] = i.pay_rate_amount;
+    if (i.pay_rate_currency !== undefined) data['pay_rate_currency'] = i.pay_rate_currency;
+    if (i.pay_rate_period !== undefined) data['pay_rate_period'] = i.pay_rate_period;
+    if (i.bill_rate_amount !== undefined) data['bill_rate_amount'] = i.bill_rate_amount;
+    if (i.bill_rate_currency !== undefined) data['bill_rate_currency'] = i.bill_rate_currency;
+    if (i.bill_rate_period !== undefined) data['bill_rate_period'] = i.bill_rate_period;
+    if (i.placement_fee_percent !== undefined) data['placement_fee_percent'] = i.placement_fee_percent;
+    if (i.placement_fee_amount !== undefined) data['placement_fee_amount'] = i.placement_fee_amount;
+    if (i.salary_amount !== undefined) data['salary_amount'] = i.salary_amount;
+    if (i.salary_currency !== undefined) data['salary_currency'] = i.salary_currency;
 
     const row = await this.prisma.requisition.update({
       where: { id: args.id },

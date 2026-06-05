@@ -85,6 +85,13 @@ const REQUISITION_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql',
 );
+// Compensation-Field Modeling v1.1 — 2 enums + 10 nullable comp cols
+// on requisition. Prisma's RETURNING projection covers them; absent
+// in DB → 500 INTERNAL_ERROR on every requisition read/write.
+const REQUISITION_COMPENSATION_FIELDS = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-authz-d4b-spec';
@@ -388,6 +395,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         COMPANY_D4A,
         REQUISITION_INIT,
         REQUISITION_IMPORT_BACK_REF,
+        REQUISITION_COMPENSATION_FIELDS,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
