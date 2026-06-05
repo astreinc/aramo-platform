@@ -121,7 +121,11 @@ const PLATFORM_TENANT_READ_SCOPE_ID = '01900000-0000-7000-8000-00000000008a';
 const PLATFORM_ADMIN_INVITE_SCOPE_ID = '01900000-0000-7000-8000-00000000008b';
 const TENANT_OWNER_ROLE_ID = '01900000-0000-7000-8000-000000000014';
 const RECRUITER_ROLE_ID = '01900000-0000-7000-8000-000000000011';
-const HIRING_MANAGER_ROLE_ID = '01900000-0000-7000-8000-000000000015';
+// AUTHZ-1b fixture swap: hiring_manager retired -> use account_manager
+// (UUID 0x16, in the staffing catalog). The fixture just needs a third
+// non-tenant_owner non-recruiter role to exercise the multi-role invite
+// path; AM is a stable kept role.
+const ACCOUNT_MANAGER_ROLE_ID = '01900000-0000-7000-8000-000000000016';
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'apps/platform-admin — integration (Pattern A invitation flow, real Postgres, mocked Cognito)',
@@ -214,7 +218,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ],
       });
       // The 3 tenant roles the invitation proofs need (tenant_owner +
-      // recruiter + hiring_manager). The full 13-role catalog assertion
+      // recruiter + account_manager — AUTHZ-1b fixture swap from the
+      // retired hiring_manager). The full 12-role catalog assertion
       // lives in libs/identity/src/tests/identity.integration.spec.ts.
       await p.role.createMany({
         data: [
@@ -231,9 +236,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             is_active: true,
           },
           {
-            id: HIRING_MANAGER_ROLE_ID,
-            key: 'hiring_manager',
-            description: 'Hiring Manager',
+            id: ACCOUNT_MANAGER_ROLE_ID,
+            key: 'account_manager',
+            description: 'Account Manager',
             is_active: true,
           },
         ],
@@ -512,9 +517,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // -------------------------------------------------------------------
-    // Proof 5 — Multi-role invite uses the AUTHZ-1 catalog.
+    // Proof 5 — Multi-role invite uses the staffing catalog.
     // -------------------------------------------------------------------
-    it('proof 5 — invite with multiple role_keys assigns each via the AUTHZ-1 catalog', async () => {
+    it('proof 5 — invite with multiple role_keys assigns each via the staffing catalog', async () => {
       const provToken = await platformJwt();
       const provRes = await request(app.getHttpServer())
         .post('/platform/tenants')
@@ -528,7 +533,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .set('Authorization', `Bearer ${provToken}`)
         .send({
           email: 'multi@multi.co',
-          role_keys: ['recruiter', 'hiring_manager'],
+          role_keys: ['recruiter', 'account_manager'],
         });
       expect(res.status).toBe(201);
 
@@ -547,7 +552,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const roleKeys = membership?.role_assignments
         .map((a) => a.role.key)
         .sort() ?? [];
-      expect(roleKeys).toEqual(['hiring_manager', 'recruiter']);
+      expect(roleKeys).toEqual(['account_manager', 'recruiter']);
     });
   },
 );
