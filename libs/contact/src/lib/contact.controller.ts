@@ -9,8 +9,10 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
@@ -41,9 +43,12 @@ export class ContactController {
     @AuthContext() authContext: AuthContextType,
     @Query('company_id') companyId: string | undefined,
     @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
   ): Promise<{ items: ContactView[] }> {
-    const items = await this.contactRepository.list({
+    const visibility = await req.resolveVisibility!();
+    const items = await this.contactRepository.listForActor({
       tenant_id: authContext.tenant_id,
+      visibility,
       company_id: companyId,
       site_id: siteIdFromQuery,
     });
@@ -58,15 +63,18 @@ export class ContactController {
     @AuthContext() authContext: AuthContextType,
     @Param('id') id: string,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<ContactView> {
-    const view = await this.contactRepository.findById({
+    const visibility = await req.resolveVisibility!();
+    const view = await this.contactRepository.findByIdForActor({
       tenant_id: authContext.tenant_id,
       id,
+      visibility,
     });
     if (view === null) {
       throw new AramoError(
         'NOT_FOUND',
-        'Contact not found in tenant',
+        'Contact not found in tenant (or not visible to actor)',
         404,
         { requestId, details: { id } },
       );

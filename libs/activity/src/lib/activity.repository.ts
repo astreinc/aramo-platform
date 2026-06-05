@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { VisibilityContextShape } from '@aramo/common';
 
 import type { ActivityView } from './dto/activity.view.js';
 import type { ActivityType } from './dto/activity-type.js';
@@ -120,4 +121,125 @@ export class ActivityRepository {
       where: { tenant_id: args.tenant_id },
     });
   }
+
+  // AUTHZ-D4b — visibility-scoped read paths.
+  //
+  // Activity is the POLYMORPHIC entity — subject_type discriminates the
+  // visibility resolution:
+  //   - 'pipeline'      → subject_id ∈ visible_pipeline_ids
+  //   - 'requisition'   → subject_id ∈ visible_requisition_ids
+  //   - 'company'       → subject_id ∈ visible_client_ids
+  //   - 'talent_record' → UNRESTRICTED (pool-open per the §5 boundary —
+  //                       a talent note is a talent read; tenant-wide)
+  //
+  // Implemented as a single Prisma `where` (one query-layer OR per
+  // DDR D6 — NO post-query filter, NO leak risk). When the actor has
+  // see_all_company AND see_all_requisition, the visibility OR is
+  // dropped entirely (every row is visible).
+  async findByIdForActor(args: {
+    tenant_id: string;
+    id: string;
+    visibility: VisibilityContextShape;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    visible_pipeline_ids: ReadonlySet<string> | null;
+  }): Promise<ActivityView | null> {
+    const where: Record<string, unknown> = {
+      tenant_id: args.tenant_id,
+      id: args.id,
+      ...buildActivityVisibilityWhere({
+        visibility: args.visibility,
+        visible_requisition_ids: args.visible_requisition_ids,
+        visible_pipeline_ids: args.visible_pipeline_ids,
+      }),
+    };
+    const row = await this.prisma.activity.findFirst({ where });
+    return row === null ? null : projectView(row as ActivityRow);
+  }
+
+  async listForActor(args: {
+    tenant_id: string;
+    visibility: VisibilityContextShape;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    visible_pipeline_ids: ReadonlySet<string> | null;
+    subject_type?: string;
+    subject_id?: string;
+    limit?: number;
+  }): Promise<ActivityView[]> {
+    const limit = Math.min(args.limit ?? 50, 200);
+    const bothSubjectFiltersProvided =
+      args.subject_type !== undefined && args.subject_id !== undefined;
+    const where: Record<string, unknown> = {
+      tenant_id: args.tenant_id,
+      ...(bothSubjectFiltersProvided
+        ? { subject_type: args.subject_type, subject_id: args.subject_id }
+        : {}),
+      ...buildActivityVisibilityWhere({
+        visibility: args.visibility,
+        visible_requisition_ids: args.visible_requisition_ids,
+        visible_pipeline_ids: args.visible_pipeline_ids,
+      }),
+    };
+    const rows = await this.prisma.activity.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      take: limit,
+    });
+    return (rows as ActivityRow[]).map(projectView);
+  }
+}
+
+// Build the activity polymorphic visibility OR (query-layer per DDR D6).
+// Returns {} when the actor has see-all for both company + requisition
+// (no scoping needed). The `talent_record` subject_type is intentionally
+// unrestricted (the §5 pool-open boundary). Empty IN-sets collapse the
+// matching branch to "no match" — Prisma handles `in: []` correctly.
+function buildActivityVisibilityWhere(args: {
+  visibility: VisibilityContextShape;
+  visible_requisition_ids: ReadonlySet<string> | null;
+  visible_pipeline_ids: ReadonlySet<string> | null;
+}): Record<string, unknown> {
+  const seeAllCompany = args.visibility.see_all_company;
+  const seeAllReq = args.visibility.see_all_requisition;
+  if (seeAllCompany && seeAllReq) return {};
+
+  const visibleClients = args.visibility.visible_client_ids;
+  const visibleReqs = args.visible_requisition_ids;
+  const visiblePipelines = args.visible_pipeline_ids;
+
+  const branches: Array<Record<string, unknown>> = [];
+
+  // pipeline branch
+  if (visiblePipelines === null) {
+    branches.push({ subject_type: 'pipeline' });
+  } else {
+    branches.push({
+      subject_type: 'pipeline',
+      subject_id: { in: Array.from(visiblePipelines) },
+    });
+  }
+
+  // requisition branch
+  if (visibleReqs === null) {
+    branches.push({ subject_type: 'requisition' });
+  } else {
+    branches.push({
+      subject_type: 'requisition',
+      subject_id: { in: Array.from(visibleReqs) },
+    });
+  }
+
+  // company branch
+  if (seeAllCompany || visibleClients === null) {
+    branches.push({ subject_type: 'company' });
+  } else {
+    branches.push({
+      subject_type: 'company',
+      subject_id: { in: Array.from(visibleClients) },
+    });
+  }
+
+  // talent_record branch — UNRESTRICTED per §5 pool-open boundary.
+  branches.push({ subject_type: 'talent_record' });
+
+  return { OR: branches };
 }

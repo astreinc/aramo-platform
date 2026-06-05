@@ -9,8 +9,10 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
@@ -72,9 +74,12 @@ export class CompanyController {
   async list(
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
   ): Promise<{ items: CompanyView[] }> {
-    const items = await this.companyRepository.list({
+    const visibility = await req.resolveVisibility!();
+    const items = await this.companyRepository.listForActor({
       tenant_id: authContext.tenant_id,
+      visibility,
       site_id: siteIdFromQuery,
     });
     return { items };
@@ -88,15 +93,21 @@ export class CompanyController {
     @AuthContext() authContext: AuthContextType,
     @Param('id') id: string,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<CompanyView> {
-    const view = await this.companyRepository.findById({
+    const visibility = await req.resolveVisibility!();
+    const view = await this.companyRepository.findByIdForActor({
       tenant_id: authContext.tenant_id,
       id,
+      visibility,
     });
     if (view === null) {
+      // 404 — regardless of whether the row genuinely does not exist
+      // or is outside the actor's visible set (the A3 precedent —
+      // never 403 for a visibility miss; the scope passed).
       throw new AramoError(
         'NOT_FOUND',
-        'Company not found in tenant',
+        'Company not found in tenant (or not visible to actor)',
         404,
         { requestId, details: { id } },
       );

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ActivityRepository } from '@aramo/activity';
 import { CalendarRepository } from '@aramo/calendar';
+import type { VisibilityContextShape } from '@aramo/common';
 import { CompanyRepository } from '@aramo/company';
 import { ContactRepository } from '@aramo/contact';
 import { PipelineRepository } from '@aramo/pipeline';
@@ -63,13 +64,16 @@ import type {
 // A3 visibility applies to the recruiter-assignment domain only, NOT
 // to the reference-data surface.
 
-const REQUISITION_READ_ALL = 'requisition:read:all';
-
 interface ActorContext {
   tenant_id: string;
   user_id: string;
   scopes: readonly string[];
   site_id?: string;
+  // AUTHZ-D4b — composed visibility predicate result, resolved upstream
+  // at the controller boundary (via req.resolveVisibility()) and passed
+  // through. Replaces the prior actor_scopes / actor_user_id thread for
+  // the requisition / pipeline scoping.
+  visibility: VisibilityContextShape;
 }
 
 @Injectable()
@@ -138,14 +142,12 @@ export class ReportingService {
     const [total, by_status] = await Promise.all([
       this.requisitionRepository.countForActor({
         tenant_id: actor.tenant_id,
-        actor_scopes: actor.scopes,
-        actor_user_id: actor.user_id,
+        visibility: actor.visibility,
         ...(actor.site_id === undefined ? {} : { site_id: actor.site_id }),
       }),
       this.requisitionRepository.countByStatusForActor({
         tenant_id: actor.tenant_id,
-        actor_scopes: actor.scopes,
-        actor_user_id: actor.user_id,
+        visibility: actor.visibility,
         ...(actor.site_id === undefined ? {} : { site_id: actor.site_id }),
       }),
     ]);
@@ -273,11 +275,10 @@ export class ReportingService {
   private async resolveVisibleRequisitionIds(
     actor: ActorContext,
   ): Promise<readonly string[] | undefined> {
-    if (actor.scopes.includes(REQUISITION_READ_ALL)) return undefined;
+    if (actor.visibility.see_all_requisition) return undefined;
     const reqs = await this.requisitionRepository.listForActor({
       tenant_id: actor.tenant_id,
-      actor_scopes: actor.scopes,
-      actor_user_id: actor.user_id,
+      visibility: actor.visibility,
       ...(actor.site_id === undefined ? {} : { site_id: actor.site_id }),
       limit: 200,
     });

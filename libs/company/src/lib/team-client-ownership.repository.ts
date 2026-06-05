@@ -78,4 +78,22 @@ export class TeamClientOwnershipRepository {
     });
     return rows as TeamClientOwnershipRow[];
   }
+
+  // AUTHZ-D4b — bulk variant for the Axis-2 (pod-clients) resolution.
+  // Given a set of (active) team IDs (TeamRepository.findActiveTeamIdsForUser),
+  // return the union of company_ids the pods own. Empty team_ids → [].
+  async findCompanyIdsForTeams(args: {
+    tenant_id: string;
+    team_ids: readonly string[];
+  }): Promise<string[]> {
+    if (args.team_ids.length === 0) return [];
+    const rows = await this.prisma.teamClientOwnership.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        team_id: { in: Array.from(args.team_ids) },
+      },
+      select: { company_id: true },
+    });
+    return rows.map((r) => r.company_id);
+  }
 }

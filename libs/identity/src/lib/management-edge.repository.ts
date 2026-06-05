@@ -109,4 +109,41 @@ export class ManagementEdgeRepository {
     });
     return rows as ManagementEdgeRow[];
   }
+
+  // AUTHZ-D4b — walk DOWNWARD from a manager collecting transitive
+  // report user IDs up to max_depth (default 3 per D4a Lead-ruling 4 —
+  // depth applies at TRAVERSAL, not edge-creation). Excludes the
+  // starting manager.
+  //
+  // Implemented as a depth-bounded BFS over frontiers (each iteration
+  // expands one tier of reports); cap on max_depth + the visited set
+  // bound a malformed graph (which the write-side cycle-check already
+  // prevents — visited is a safety belt).
+  async findTransitiveReportUserIds(args: {
+    tenant_id: string;
+    manager_user_id: string;
+    max_depth?: number;
+  }): Promise<Set<string>> {
+    const maxDepth = args.max_depth ?? 3;
+    const visited = new Set<string>();
+    let frontier: string[] = [args.manager_user_id];
+    for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
+      const edges = await this.prisma.managementEdge.findMany({
+        where: {
+          tenant_id: args.tenant_id,
+          manager_user_id: { in: frontier },
+        },
+        select: { report_user_id: true },
+      });
+      const next: string[] = [];
+      for (const e of edges) {
+        if (visited.has(e.report_user_id)) continue;
+        if (e.report_user_id === args.manager_user_id) continue;
+        visited.add(e.report_user_id);
+        next.push(e.report_user_id);
+      }
+      frontier = next;
+    }
+    return visited;
+  }
 }

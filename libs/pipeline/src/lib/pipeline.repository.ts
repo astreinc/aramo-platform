@@ -393,6 +393,65 @@ export class PipelineRepository {
     return row === null ? null : projectView(row as PipelineRow);
   }
 
+  // AUTHZ-D4b — visibility-scoped read paths. Pipeline inherits its
+  // requisition's visibility — the cascade filters on
+  // `requisition_id IN visible_requisition_ids`. The visible
+  // requisition IDs are pre-resolved by the controller (via
+  // VisibilityResolverService) and passed in. null means see_all_
+  // requisition → unrestricted.
+  async findByIdForActor(args: {
+    tenant_id: string;
+    id: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+  }): Promise<PipelineView | null> {
+    if (args.visible_requisition_ids !== null) {
+      const row = await this.prisma.pipeline.findFirst({
+        where: {
+          tenant_id: args.tenant_id,
+          id: args.id,
+          requisition_id: { in: Array.from(args.visible_requisition_ids) },
+        },
+      });
+      return row === null ? null : projectView(row as PipelineRow);
+    }
+    return this.findById({ tenant_id: args.tenant_id, id: args.id });
+  }
+
+  async listForActor(args: {
+    tenant_id: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    requisition_id?: string;
+    talent_record_id?: string;
+    limit?: number;
+  }): Promise<PipelineView[]> {
+    const limit = Math.min(args.limit ?? 50, 200);
+    const where: Record<string, unknown> = { tenant_id: args.tenant_id };
+    if (args.visible_requisition_ids !== null) {
+      where['requisition_id'] = {
+        in: Array.from(args.visible_requisition_ids),
+      };
+    }
+    if (args.requisition_id !== undefined) {
+      // narrow: caller wants ONE requisition; AND with the visibility set.
+      if (
+        args.visible_requisition_ids !== null &&
+        !args.visible_requisition_ids.has(args.requisition_id)
+      ) {
+        return [];
+      }
+      where['requisition_id'] = args.requisition_id;
+    }
+    if (args.talent_record_id !== undefined) {
+      where['talent_record_id'] = args.talent_record_id;
+    }
+    const rows = await this.prisma.pipeline.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      take: limit,
+    });
+    return (rows as PipelineRow[]).map(projectView);
+  }
+
   /**
    * List pipelines. Optionally filter by requisition_id or talent_record_id
    * (the dominant recruiter-UI queries: "all talents on this req" and
@@ -491,5 +550,24 @@ export class PipelineRepository {
       orderBy: { changed_at: 'asc' },
     });
     return (rows as PipelineStatusHistoryRow[]).map(projectHistoryView);
+  }
+
+  // AUTHZ-D4b — return the SET of pipeline IDs whose requisition is in
+  // the visible-requisition set. Consumed by VisibilityResolverService
+  // to memoize `visible_pipeline_ids` for the activity polymorphic OR.
+  // Empty input → []; the resolver short-circuits on requisition see-all.
+  async findIdsForRequisitions(args: {
+    tenant_id: string;
+    requisition_ids: readonly string[];
+  }): Promise<string[]> {
+    if (args.requisition_ids.length === 0) return [];
+    const rows = await this.prisma.pipeline.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        requisition_id: { in: Array.from(args.requisition_ids) },
+      },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
   }
 }

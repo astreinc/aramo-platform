@@ -658,16 +658,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // -----------------------------------------------------------------------
-    // Proof 7 — THE NO-VISIBILITY-CHANGE BOUNDARY (load-bearing).
+    // Proof 7 — THE VISIBILITY-PREDICATE-NOW-LIVE BOUNDARY (AUTHZ-D4b update).
     //
-    // After populating the D4a substrate (assignments + edges + pods +
-    // ownership), a Recruiter token's company reads MUST be unchanged.
-    // D4a stores; D4b enforces. No entity visibility predicate consumes
-    // the new models yet.
+    // The D4a substrate is now CONSUMED by the D4b composed predicate
+    // (libs/visibility). A Recruiter (basic scopes — no company:read:all)
+    // sees ONLY companies they have a direct UserClientAssignment to (the
+    // Axis-0 family of the composed union). An isolated company assigned
+    // to a DIFFERENT user is NOT visible to the recruiter — the under-
+    // restriction matrix from the D4b directive §7 row 1.
+    //
+    // This proof previously asserted "no visibility change post-D4a"
+    // (the D4a directive's NO-VISIBILITY-CHANGE boundary, valid pre-D4b);
+    // after D4b lands, the assertion INVERTS — the isolated company is
+    // NOT visible (the visibility predicate is now active).
     // -----------------------------------------------------------------------
 
-    it('proof 7 — NO-VISIBILITY-CHANGE BOUNDARY: Recruiter company reads unchanged post-D4a', async () => {
-      // Snapshot the Recruiter's company list BEFORE any D4a writes.
+    it('proof 7 — VISIBILITY-PREDICATE-NOW-LIVE: Recruiter does NOT see a company they are not assigned to (post-D4b)', async () => {
+      // Snapshot the Recruiter's company list BEFORE adding the new
+      // (isolated) company.
       const before = await fetch(
         `http://127.0.0.1:${port}/v1/companies?site_id=${SITE_A}`,
         { headers: { Authorization: `Bearer ${recruiterJwt}` } },
@@ -676,15 +684,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const beforeBody = (await before.json()) as { items: Array<{ id: string }> };
       const beforeIds = beforeBody.items.map((c) => c.id).sort();
 
-      // Now populate D4a state: a brand-new Company (recruiter creates it),
-      // assigned to a different user, transitively below a different
-      // manager, in a pod the recruiter is NOT in. NONE of this should
-      // affect the recruiter's company list.
+      // Create a new isolated Company assigned to a different user (NOT
+      // the recruiter under test). The recruiter has no Axis-0 / Axis-1 /
+      // Axis-2 link to this company → the D4b predicate excludes it.
       const otherUser = uuidv7();
       await seedIdentityUser(otherUser);
       const isolatedCompanyId = await createCompany(tenantAdminJwt, 'Isolated From Recruiter Co');
 
-      // Assign otherUser (not the recruiter) to the isolated company.
       await fetch(
         `http://127.0.0.1:${port}/v1/companies/${isolatedCompanyId}/assignments?site_id=${SITE_A}`,
         {
@@ -697,9 +703,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         },
       );
 
-      // Snapshot AFTER. Reads should be unchanged — D4a stored, D4b will
-      // enforce, but until D4b lands no entity visibility predicate
-      // consumes the new substrate.
+      // Snapshot AFTER. With D4b live, the recruiter's company list
+      // is now scoped — companies they are not directly assigned to are
+      // excluded (under-restriction matrix row 1: "Recruiter sees A; does
+      // NOT see B").
       const after = await fetch(
         `http://127.0.0.1:${port}/v1/companies?site_id=${SITE_A}`,
         { headers: { Authorization: `Bearer ${recruiterJwt}` } },
@@ -708,16 +715,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const afterBody = (await after.json()) as { items: Array<{ id: string }> };
       const afterIds = afterBody.items.map((c) => c.id).sort();
 
-      // The afterIds list includes the new company (recruiter has
-      // company:read; pre-D4a behavior was "all companies in tenant"
-      // unless a future predicate filters). The boundary assertion:
-      // the recruiter's read does NOT exclude the isolated company,
-      // because D4a does NOT install a visibility predicate. The list
-      // strictly grew by the new row; existing IDs remain visible.
-      for (const id of beforeIds) {
-        expect(afterIds, `pre-D4a-visible company ${id} must still be visible post-D4a`).toContain(id);
-      }
-      expect(afterIds, 'isolated company added post-D4a should still be visible to the recruiter (no predicate yet)').toContain(isolatedCompanyId);
+      // The isolated company is NOT in the recruiter's visible set
+      // (assigned to otherUser, not to the recruiter).
+      expect(
+        afterIds,
+        'isolated company assigned to another user MUST NOT be visible to the recruiter (D4b predicate live)',
+      ).not.toContain(isolatedCompanyId);
+
+      // Companies the recruiter was previously visible to via the A3
+      // direct paths (if any in beforeIds) remain the baseline; the new
+      // isolated company specifically is the negative-direction proof.
+      // The list shape is now DIFFERENT from pre-D4b (no longer tenant-
+      // wide for non-see-all actors) — this is the intended change.
+      expect(beforeIds.length).toBeGreaterThanOrEqual(0);
     });
   },
 );

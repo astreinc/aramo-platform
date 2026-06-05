@@ -1400,7 +1400,20 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: ['ingestion:write', 'submittal:create', 'submittal:approve'],
+        // AUTHZ-D4b: pact-provider verifies the API CONTRACT (response
+        // shapes / status codes), not visibility scoping. Add the
+        // requisition:read:all bit so the D4b cascade short-circuits on
+        // GET /v1/submittals/:id (otherwise the recruiter — no D4a
+        // UserClientAssignment seeded in the pact state — gets 404 on
+        // the visibility cascade). Same escalation pattern as the
+        // submittal-get / submittal-evidence-package negative-shape
+        // specs (D4b commit-plan §2 ruling 5 — vocab/contract tests).
+        scopes: [
+          'ingestion:write',
+          'submittal:create',
+          'submittal:approve',
+          'requisition:read:all',
+        ],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()

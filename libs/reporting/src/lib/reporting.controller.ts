@@ -4,8 +4,10 @@ import {
   HttpCode,
   HttpStatus,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
   RequireScopes,
@@ -53,11 +55,14 @@ export class ReportingController {
   async tenantCounts(
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
   ): Promise<TenantCountsReportView> {
+    const visibility = await req.resolveVisibility!();
     return this.reportingService.getTenantCounts({
       tenant_id: authContext.tenant_id,
       user_id: authContext.sub,
       scopes: authContext.scopes,
+      visibility,
       ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
     });
   }
@@ -69,11 +74,14 @@ export class ReportingController {
   async requisitionRollup(
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
   ): Promise<RequisitionStatusRollupView> {
+    const visibility = await req.resolveVisibility!();
     return this.reportingService.getRequisitionRollup({
       tenant_id: authContext.tenant_id,
       user_id: authContext.sub,
       scopes: authContext.scopes,
+      visibility,
       ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
     });
   }
@@ -85,11 +93,14 @@ export class ReportingController {
   async pipelineRollup(
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
   ): Promise<PipelineStageRollupView> {
+    const visibility = await req.resolveVisibility!();
     return this.reportingService.getPipelineRollup({
       tenant_id: authContext.tenant_id,
       user_id: authContext.sub,
       scopes: authContext.scopes,
+      visibility,
       ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
     });
   }
@@ -104,11 +115,14 @@ export class ReportingController {
   async placementCount(
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
   ): Promise<PlacementCountReportView> {
+    const visibility = await req.resolveVisibility!();
     return this.reportingService.getPlacementCount({
       tenant_id: authContext.tenant_id,
       user_id: authContext.sub,
       scopes: authContext.scopes,
+      visibility,
       ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
     });
   }

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AramoError } from '@aramo/common';
+import { AramoError, type VisibilityContextShape } from '@aramo/common';
 
 import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
 import type { RequisitionView } from './dto/requisition.view.js';
@@ -28,13 +28,54 @@ import { PrismaService } from './prisma/prisma.service.js';
 // the row is simply outside their visibility set. See the
 // findByIdForActor method below.
 //
-// The branch is mechanical: see `actorSeesAll(scopes)` — when true,
-// drop the assignment predicate; when false, AND in the predicate.
+// The branch is mechanical: see `buildVisibilityWhere(visibility)` —
+// see_all_requisition drops everything; else the OR-union is AND-ed.
+//
+// === AUTHZ-D4b — the composed OR-union (the A3 branch PRESERVED) ===
+//
+// D4b extends the A3 predicate with a SECOND OR arm — D4b client-axis
+// visibility (the recruiter sees a req whose CLIENT is in their
+// visible_client_ids, regardless of direct req-assignment):
+//
+//   - `requisition:read:all` → unrestricted (A3 short-circuit, preserved)
+//   - else → OR-union:
+//       (a) company_id ∈ visibility.visible_client_ids       (D4b NEW)
+//       (b) assignments.some.user_id = actor_user_id          (A3 PRESERVED)
+//
+// The A3 branch is preserved VERBATIM as an OR-arm — a recruiter
+// directly assigned to a req STILL sees it even if they're not
+// assigned to its client. The new arm extends: a recruiter assigned
+// to a CLIENT sees ALL its reqs even without direct assignment.
+//
+// All 4 read paths (listForActor / findByIdForActor / countForActor /
+// countByStatusForActor) apply the same union — list / find / count /
+// group-by are consistently scoped so a count cannot leak unseen rows.
+//
+// The 404-vs-403 contract is preserved: a recruiter whose scope passes
+// but whose composed predicate excludes the row gets null → 404, not 403.
 
-const SCOPE_READ_ALL = 'requisition:read:all';
+// VisibilityContextShape carried as a structural TYPE from @aramo/common
+// (the D4b Gate-5 Ruling 1 cycle-avoidance: libs/requisition does NOT
+// import @aramo/visibility; the resolved context is passed as a param;
+// the import goes the other way — visibility depends on requisition for
+// the visible_requisition_ids derived set).
 
-function actorSeesAll(scopes: readonly string[]): boolean {
-  return scopes.includes(SCOPE_READ_ALL);
+// Build the composed Prisma `where` predicate for the 4 read paths.
+// see_all_requisition → no filter (A3's read:all preserved). Else
+// returns the OR-union (D4b client + A3 direct). null visible_client_ids
+// (see_all_company without read:all — a hypothetical) → no filter
+// (every client is visible; the OR collapses to TRUE).
+function buildVisibilityWhere(
+  visibility: VisibilityContextShape,
+): Record<string, unknown> {
+  if (visibility.see_all_requisition) return {};
+  if (visibility.visible_client_ids === null) return {};
+  return {
+    OR: [
+      { company_id: { in: Array.from(visibility.visible_client_ids) } },
+      { assignments: { some: { user_id: visibility.actor_user_id } } },
+    ],
+  };
 }
 
 interface RequisitionRow {
@@ -271,28 +312,27 @@ export class RequisitionRepository {
   /**
    * List requisitions visible to the actor.
    *
-   * Applies the visibility predicate (`actorSeesAll(scopes)`):
-   *   - scopes contain `requisition:read:all` → no assignment filter
-   *   - scopes contain only `requisition:read` → AND `assignments some
-   *     { user_id: actor_user_id }` (Prisma `some` translates to a
-   *     correlated EXISTS — the query predicate per Ruling 2).
+   * Applies the composed visibility predicate (A3 + D4b):
+   *   - see_all_requisition (requisition:read:all) → no filter
+   *   - else → OR-union:
+   *       (a) company_id ∈ visibility.visible_client_ids   (D4b client-axis)
+   *       (b) assignments.some.user_id = actor_user_id     (A3 direct, preserved)
+   *
+   * `assignments: { some: ... }` translates to a correlated EXISTS — a
+   * query-layer predicate (D6).
    */
   async listForActor(args: {
     tenant_id: string;
-    actor_scopes: readonly string[];
-    actor_user_id: string;
+    visibility: VisibilityContextShape;
     site_id?: string;
     limit?: number;
   }): Promise<RequisitionView[]> {
     const limit = Math.min(args.limit ?? 50, 200);
-    const seesAll = actorSeesAll(args.actor_scopes);
     const rows = await this.prisma.requisition.findMany({
       where: {
         tenant_id: args.tenant_id,
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
-        ...(seesAll
-          ? {}
-          : { assignments: { some: { user_id: args.actor_user_id } } }),
+        ...buildVisibilityWhere(args.visibility),
       },
       orderBy: { created_at: 'desc' },
       take: limit,
@@ -312,17 +352,13 @@ export class RequisitionRepository {
   async findByIdForActor(args: {
     tenant_id: string;
     id: string;
-    actor_scopes: readonly string[];
-    actor_user_id: string;
+    visibility: VisibilityContextShape;
   }): Promise<RequisitionView | null> {
-    const seesAll = actorSeesAll(args.actor_scopes);
     const row = await this.prisma.requisition.findFirst({
       where: {
         tenant_id: args.tenant_id,
         id: args.id,
-        ...(seesAll
-          ? {}
-          : { assignments: { some: { user_id: args.actor_user_id } } }),
+        ...buildVisibilityWhere(args.visibility),
       },
     });
     return row === null ? null : projectView(row as RequisitionRow);
@@ -349,18 +385,14 @@ export class RequisitionRepository {
   // tenant; recruiter sees only assigned reqs.
   async countForActor(args: {
     tenant_id: string;
-    actor_scopes: readonly string[];
-    actor_user_id: string;
+    visibility: VisibilityContextShape;
     site_id?: string;
   }): Promise<number> {
-    const seesAll = actorSeesAll(args.actor_scopes);
     return this.prisma.requisition.count({
       where: {
         tenant_id: args.tenant_id,
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
-        ...(seesAll
-          ? {}
-          : { assignments: { some: { user_id: args.actor_user_id } } }),
+        ...buildVisibilityWhere(args.visibility),
       },
     });
   }
@@ -372,19 +404,15 @@ export class RequisitionRepository {
   // { some: ... }`).
   async countByStatusForActor(args: {
     tenant_id: string;
-    actor_scopes: readonly string[];
-    actor_user_id: string;
+    visibility: VisibilityContextShape;
     site_id?: string;
   }): Promise<Array<{ status: RequisitionStatus; count: number }>> {
-    const seesAll = actorSeesAll(args.actor_scopes);
     const rows = await this.prisma.requisition.groupBy({
       by: ['status'],
       where: {
         tenant_id: args.tenant_id,
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
-        ...(seesAll
-          ? {}
-          : { assignments: { some: { user_id: args.actor_user_id } } }),
+        ...buildVisibilityWhere(args.visibility),
       },
       _count: { _all: true },
     });
@@ -392,5 +420,32 @@ export class RequisitionRepository {
       status: r.status as RequisitionStatus,
       count: r._count._all,
     }));
+  }
+
+  // AUTHZ-D4b — return the SET of requisition IDs visible to the actor
+  // under the composed A3 + D4b OR-union. Consumed by
+  // VisibilityResolverService to memoize `visible_requisition_ids` for the
+  // pipeline / submittal / activity cascade.
+  //
+  // visible_client_ids === null means see_all_company → the IN-set
+  // collapses (no client restriction beyond the A3 OR — caller can also
+  // short-circuit via see_all_requisition before invoking).
+  async findVisibleRequisitionIds(args: {
+    tenant_id: string;
+    actor_user_id: string;
+    visible_client_ids: ReadonlySet<string> | null;
+  }): Promise<string[]> {
+    const where: Record<string, unknown> = { tenant_id: args.tenant_id };
+    if (args.visible_client_ids !== null) {
+      where['OR'] = [
+        { company_id: { in: Array.from(args.visible_client_ids) } },
+        { assignments: { some: { user_id: args.actor_user_id } } },
+      ];
+    }
+    const rows = await this.prisma.requisition.findMany({
+      where,
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
   }
 }

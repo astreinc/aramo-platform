@@ -130,4 +130,24 @@ export class TeamRepository {
     });
     return rows as TeamMembershipRow[];
   }
+
+  // AUTHZ-D4b — return the IDs of every ACTIVE team the user is a
+  // member of in tenant. Used by VisibilityResolverService to resolve
+  // the Axis-2 pod-clients union. Inactive teams (is_active=false) are
+  // excluded — pod ownership of clients lapses when the team is
+  // deactivated (Amendment §4 boundary).
+  async findActiveTeamIdsForUser(args: {
+    tenant_id: string;
+    user_id: string;
+  }): Promise<string[]> {
+    const rows = await this.prisma.teamMembership.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        user_id: args.user_id,
+        team: { is_active: true },
+      },
+      select: { team_id: true },
+    });
+    return rows.map((r) => r.team_id);
+  }
 }

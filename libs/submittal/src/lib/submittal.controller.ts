@@ -10,8 +10,10 @@ import {
   Inject,
   Param,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import {
   AramoError,
   type AramoLogger,
@@ -390,18 +392,21 @@ export class SubmittalController {
     @Param('submittal_id') submittal_id: string,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<TalentSubmittalRecordView> {
     this.assertConsumerIsRecruiter(authContext, requestId);
     this.assertSubmittalIdIsUuid(submittal_id, requestId);
 
-    const submittal = await this.submittalRepository.findById({
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const submittal = await this.submittalRepository.findByIdForActor({
       tenant_id: authContext.tenant_id,
       id: submittal_id,
+      visible_requisition_ids: visibleReqIds,
     });
     if (submittal === null) {
       throw new AramoError(
         'NOT_FOUND',
-        'TalentSubmittalRecord not found',
+        'TalentSubmittalRecord not found (or not visible to actor)',
         404,
         { requestId, details: { submittal_id } },
       );
@@ -433,18 +438,21 @@ export class SubmittalController {
     @Param('submittal_id') submittal_id: string,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<TalentJobEvidencePackageView> {
     this.assertConsumerIsRecruiter(authContext, requestId);
     this.assertSubmittalIdIsUuid(submittal_id, requestId);
 
-    const submittal = await this.submittalRepository.findById({
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const submittal = await this.submittalRepository.findByIdForActor({
       tenant_id: authContext.tenant_id,
       id: submittal_id,
+      visible_requisition_ids: visibleReqIds,
     });
     if (submittal === null) {
       throw new AramoError(
         'NOT_FOUND',
-        'TalentSubmittalRecord not found',
+        'TalentSubmittalRecord not found (or not visible to actor)',
         404,
         { requestId, details: { submittal_id } },
       );

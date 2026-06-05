@@ -1,9 +1,11 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import {
   CommonModule,
   CrossSchemaConsistencyModule,
   RequestIdMiddleware,
 } from '@aramo/common';
+import { VisibilityInterceptor, VisibilityModule } from '@aramo/visibility';
 import { ActivityModule } from '@aramo/activity';
 import { AttachmentModule } from '@aramo/attachment';
 import { AuthModule } from '@aramo/auth';
@@ -190,6 +192,29 @@ import { TalentRecordModule } from '@aramo/talent-record';
     // consent + engagement + submittal OutboxEvent tables. Imported
     // here (and only here) — leaf lib, leaf import.
     OutboxPublisherModule,
+    // AUTHZ-D4b Gate 6 — VisibilityModule. The terminal lib that hosts
+    // the composed visibility resolver (Amendment v1.1 §4.3 — direct ∪
+    // transitive-reports[depth-3] ∪ pod-clients ∪ [ALL if
+    // company:read:all]) + VisibilityInterceptor (global, lazy +
+    // memoized per request). NO entity lib imports @aramo/visibility
+    // (the Gate-5 Ruling 1 cycle-avoidance discipline — the 6 entity
+    // libs receive the resolved VisibilityContext as a parameter,
+    // typed via a structural shape declared in @aramo/common). Imported
+    // here AFTER every entity module so the resolver's dependencies
+    // (identity / company / requisition / pipeline) are fully wired
+    // before its providers are constructed.
+    VisibilityModule,
+  ],
+  providers: [
+    // AUTHZ-D4b Gate 6 — register the VisibilityInterceptor as a global
+    // interceptor (APP_INTERCEPTOR). Runs after JwtAuthGuard so the
+    // AuthContext is available on the request when the interceptor
+    // attaches the lazy resolveVisibility() / resolveVisibleRequisitionIds()
+    // / resolveVisiblePipelineIds() functions.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: VisibilityInterceptor,
+    },
   ],
 })
 export class AppModule implements NestModule {
