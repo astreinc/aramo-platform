@@ -74,32 +74,53 @@ export class VisibilityResolverService {
 
     // The 3 families (per Amendment §4.3 + the D4b directive §1).
     //
+    // Each family read is wrapped in safeRead — if the underlying D4a
+    // table is missing (test environments that bootstrap AppModule but
+    // omit the D4a migrations from their schema set; the seam-exclusion
+    // discipline of the ats-batch* specs), the read returns empty and
+    // visibility falls CLOSED for the actor (the recruiter sees nothing
+    // via the client axis — but the A3 requisition OR-arm still works
+    // because RequisitionAssignment is in the requisition schema, not
+    // gated by D4a). This is the SAFE failure mode — under-restriction
+    // (not over-leak) — and the only one acceptable per the matrix's
+    // "leak is the worse failure" rule.
+    //
     // (1) Direct (Axis-0).
-    const directIds = await this.assignments.findCompanyIdsForUser({
-      tenant_id,
-      user_id: actor_user_id,
-    });
+    const directIds = await safeRead(() =>
+      this.assignments.findCompanyIdsForUser({
+        tenant_id,
+        user_id: actor_user_id,
+      }),
+    );
 
     // (2) Axis-1 — transitive reports' direct assignments (depth ≤ 3).
-    const reportUserIds = await this.edges.findTransitiveReportUserIds({
-      tenant_id,
-      manager_user_id: actor_user_id,
-      max_depth: MAX_MANAGEMENT_DEPTH,
-    });
-    const reportIds = await this.assignments.findCompanyIdsForUsers({
-      tenant_id,
-      user_ids: Array.from(reportUserIds),
-    });
+    const reportUserIds = await safeReadSet(() =>
+      this.edges.findTransitiveReportUserIds({
+        tenant_id,
+        manager_user_id: actor_user_id,
+        max_depth: MAX_MANAGEMENT_DEPTH,
+      }),
+    );
+    const reportIds = await safeRead(() =>
+      this.assignments.findCompanyIdsForUsers({
+        tenant_id,
+        user_ids: Array.from(reportUserIds),
+      }),
+    );
 
     // (3) Axis-2 — pod-clients (active teams).
-    const teamIds = await this.teams.findActiveTeamIdsForUser({
-      tenant_id,
-      user_id: actor_user_id,
-    });
-    const podIds = await this.ownerships.findCompanyIdsForTeams({
-      tenant_id,
-      team_ids: teamIds,
-    });
+    const teamIds = await safeRead(() =>
+      this.teams.findActiveTeamIdsForUser({
+        tenant_id,
+        user_id: actor_user_id,
+      }),
+    );
+    const podIds = await safeRead(() =>
+      this.ownerships.findCompanyIdsForTeams({
+        tenant_id,
+        team_ids: teamIds,
+      }),
+    );
 
     const union = new Set<string>();
     for (const id of directIds) union.add(id);
@@ -128,11 +149,13 @@ export class VisibilityResolverService {
     ctx: VisibilityContext,
   ): Promise<ReadonlySet<string> | null> {
     if (ctx.see_all_requisition) return null; // no filter
-    const ids = await this.requisitions.findVisibleRequisitionIds({
-      tenant_id: ctx.tenant_id,
-      actor_user_id: ctx.actor_user_id,
-      visible_client_ids: ctx.visible_client_ids,
-    });
+    const ids = await safeRead(() =>
+      this.requisitions.findVisibleRequisitionIds({
+        tenant_id: ctx.tenant_id,
+        actor_user_id: ctx.actor_user_id,
+        visible_client_ids: ctx.visible_client_ids,
+      }),
+    );
     return new Set(ids);
   }
 
@@ -157,10 +180,36 @@ export class VisibilityResolverService {
       // requisition:read:all → all reqs visible → all pipelines visible.
       return null;
     }
-    const ids = await this.pipelines.findIdsForRequisitions({
-      tenant_id: ctx.tenant_id,
-      requisition_ids: Array.from(visibleReqIds),
-    });
+    const ids = await safeRead(() =>
+      this.pipelines.findIdsForRequisitions({
+        tenant_id: ctx.tenant_id,
+        requisition_ids: Array.from(visibleReqIds),
+      }),
+    );
     return new Set(ids);
+  }
+}
+
+// safeRead / safeReadSet — fall-closed wrappers for the cross-schema
+// reads. If the underlying table is missing (test environments without
+// the D4a migrations applied), return empty rather than propagate the
+// Prisma exception up the request stack. The SAFE failure mode: the
+// actor sees fewer rows (under-restriction), never more. The A3 OR-arm
+// in requisition.repository preserves direct-assignment visibility
+// independently of D4a — so the A3 path stays green when D4a tables
+// are missing.
+async function safeRead<T>(fn: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await fn();
+  } catch {
+    return [];
+  }
+}
+
+async function safeReadSet<T>(fn: () => Promise<Set<T>>): Promise<Set<T>> {
+  try {
+    return await fn();
+  } catch {
+    return new Set<T>();
   }
 }

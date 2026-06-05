@@ -75,7 +75,7 @@ const COMPANY_D4A = resolve(
 );
 const REQUISITION_INIT = resolve(
   ROOT,
-  'libs/requisition/prisma/migrations/20260602160000_init_requisition_model/migration.sql',
+  'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
 );
 
 const ISSUER = 'Aramo Core Auth';
