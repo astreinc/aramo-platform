@@ -53,6 +53,9 @@ interface Mocks {
     findUserById: ReturnType<typeof vi.fn>;
     disableMembership: ReturnType<typeof vi.fn>;
     reEnableMembership: ReturnType<typeof vi.fn>;
+    findMembership: ReturnType<typeof vi.fn>;
+    findRoleKeysForMembership: ReturnType<typeof vi.fn>;
+    replaceMembershipRoles: ReturnType<typeof vi.fn>;
   };
   roleBundle: {
     assertUnionNonInvertible: ReturnType<typeof vi.fn>;
@@ -73,6 +76,9 @@ function makeMocks(): Mocks {
     findUserById: vi.fn(),
     disableMembership: vi.fn(),
     reEnableMembership: vi.fn(),
+    findMembership: vi.fn(),
+    findRoleKeysForMembership: vi.fn(),
+    replaceMembershipRoles: vi.fn(),
   };
   const roleBundle = {
     assertUnionNonInvertible: vi.fn().mockResolvedValue(undefined),
@@ -360,5 +366,198 @@ describe('TenantUserLifecycleService.disableTenantUser', () => {
       return fn !== undefined && fn.mock.calls.length > 0;
     });
     expect(calledMethods.sort()).toEqual(['disableMembership', 'findUserById']);
+  });
+});
+
+// Settings S3b — assignTenantUserRoles saga proofs.
+//
+// The D5-integrity surface. Mocks the merged RoleBundleValidator + the
+// merged IdentityService primitives (resolveRoleIdsByKeys + findMembership +
+// findRoleKeysForMembership + replaceMembershipRoles) and asserts:
+//   - empty role_keys → 400 VALIDATION_ERROR (no DB call, no reconcile)
+//   - unknown role_key → VALIDATION_ERROR (via resolveRoleIdsByKeys; no
+//     reconcile)
+//   - INVERTIBLE union → VALIDATION_ERROR (the load-bearing D5 rejection,
+//     write-time BEFORE the reconcile so the invertible bundle NEVER
+//     persists)
+//   - membership not found (user has no membership in this tenant) → 404
+//     NOT_FOUND, no reconcile
+//   - happy path → reconcile + correct before/after/added/removed key
+//     sets (sorted)
+//   - empty delta (PATCH with the same role-set as current) → adds+removes
+//     both empty; the controller will then suppress both audit events
+//   - implicit-tenant: findMembership called with authContext.tenant_id
+
+const MEMBERSHIP_ID = '01900000-0000-7000-8000-0000000000cc';
+
+describe('TenantUserLifecycleService.assignTenantUserRoles', () => {
+  it('empty role_keys → VALIDATION_ERROR; no DB call', async () => {
+    const { service, identitySvc, roleBundle } = makeMocks();
+    await expect(
+      service.assignTenantUserRoles({
+        tenant_id: TENANT_ID,
+        user_id: USER_ID,
+        role_keys: [],
+        actor_user_id: ACTOR_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      statusCode: 400,
+      context: { details: { reason: 'empty_role_keys' } },
+    });
+    expect(identitySvc.resolveRoleIdsByKeys).not.toHaveBeenCalled();
+    expect(roleBundle.assertUnionNonInvertible).not.toHaveBeenCalled();
+    expect(identitySvc.replaceMembershipRoles).not.toHaveBeenCalled();
+  });
+
+  it('unknown role_key → VALIDATION_ERROR; no D5 check, no reconcile', async () => {
+    const { service, identitySvc, roleBundle } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockRejectedValue(
+      Object.assign(new Error('Unknown role key(s)'), {
+        code: 'VALIDATION_ERROR',
+        statusCode: 400,
+        context: {
+          requestId: REQUEST_ID,
+          details: { missing_role_keys: ['bogus'] },
+        },
+      }),
+    );
+    await expect(
+      service.assignTenantUserRoles({
+        tenant_id: TENANT_ID,
+        user_id: USER_ID,
+        role_keys: ['bogus'],
+        actor_user_id: ACTOR_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(roleBundle.assertUnionNonInvertible).not.toHaveBeenCalled();
+    expect(identitySvc.replaceMembershipRoles).not.toHaveBeenCalled();
+  });
+
+  it('INVERTIBLE union → 400 NO PERSIST (the load-bearing D5 rejection)', async () => {
+    const { service, identitySvc, roleBundle } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-pay', 'rid-spr']);
+    roleBundle.assertUnionNonInvertible.mockRejectedValue(
+      Object.assign(new Error('invertible'), {
+        code: 'VALIDATION_ERROR',
+        statusCode: 400,
+        context: {
+          requestId: REQUEST_ID,
+          details: {
+            reason: 'invertible_role_union',
+            role_keys: ['view_pay', 'view_spread'],
+          },
+        },
+      }),
+    );
+    await expect(
+      service.assignTenantUserRoles({
+        tenant_id: TENANT_ID,
+        user_id: USER_ID,
+        role_keys: ['view_pay', 'view_spread'],
+        actor_user_id: ACTOR_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'invertible_role_union' } },
+    });
+    // THE INVARIANT — the invertible union NEVER reaches the reconcile.
+    expect(identitySvc.findMembership).not.toHaveBeenCalled();
+    expect(identitySvc.replaceMembershipRoles).not.toHaveBeenCalled();
+  });
+
+  it('membership not found in this tenant → 404 NOT_FOUND; no reconcile', async () => {
+    const { service, identitySvc } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-1']);
+    identitySvc.findMembership.mockResolvedValue(null);
+    await expect(
+      service.assignTenantUserRoles({
+        tenant_id: TENANT_ID,
+        user_id: USER_ID,
+        role_keys: ['recruiter'],
+        actor_user_id: ACTOR_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    expect(identitySvc.replaceMembershipRoles).not.toHaveBeenCalled();
+  });
+
+  it('happy path with both adds AND removes → correct deltas (sorted)', async () => {
+    const { service, identitySvc, roleBundle } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-am', 'rid-rc']);
+    identitySvc.findMembership.mockResolvedValue({ id: MEMBERSHIP_ID });
+    identitySvc.findRoleKeysForMembership.mockResolvedValue([
+      'recruiter',
+      'sourcer',
+    ]);
+    identitySvc.replaceMembershipRoles.mockResolvedValue({
+      added_role_ids: ['rid-am'],
+      removed_role_ids: ['rid-sourcer'],
+    });
+    const result = await service.assignTenantUserRoles({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      role_keys: ['account_manager', 'recruiter'],
+      actor_user_id: ACTOR_ID,
+      request_id: REQUEST_ID,
+    });
+    expect(result.membership_id).toBe(MEMBERSHIP_ID);
+    expect(result.before_role_keys).toEqual(['recruiter', 'sourcer']);
+    expect(result.after_role_keys).toEqual(['account_manager', 'recruiter']);
+    expect(result.added_role_keys).toEqual(['account_manager']);
+    expect(result.removed_role_keys).toEqual(['sourcer']);
+    // The D5 gate fired BEFORE the reconcile.
+    expect(roleBundle.assertUnionNonInvertible).toHaveBeenCalled();
+    expect(identitySvc.replaceMembershipRoles).toHaveBeenCalledWith({
+      membership_id: MEMBERSHIP_ID,
+      role_ids: ['rid-am', 'rid-rc'],
+    });
+  });
+
+  it('empty delta (PATCH with current role-set) → adds+removes both empty', async () => {
+    const { service, identitySvc } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-rc']);
+    identitySvc.findMembership.mockResolvedValue({ id: MEMBERSHIP_ID });
+    identitySvc.findRoleKeysForMembership.mockResolvedValue(['recruiter']);
+    identitySvc.replaceMembershipRoles.mockResolvedValue({
+      added_role_ids: [],
+      removed_role_ids: [],
+    });
+    const result = await service.assignTenantUserRoles({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      role_keys: ['recruiter'],
+      actor_user_id: ACTOR_ID,
+      request_id: REQUEST_ID,
+    });
+    expect(result.added_role_keys).toEqual([]);
+    expect(result.removed_role_keys).toEqual([]);
+    expect(result.before_role_keys).toEqual(['recruiter']);
+    expect(result.after_role_keys).toEqual(['recruiter']);
+  });
+
+  it('per-tenant isolation: findMembership is called with authContext.tenant_id', async () => {
+    const { service, identitySvc } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-rc']);
+    identitySvc.findMembership.mockResolvedValue({ id: MEMBERSHIP_ID });
+    identitySvc.findRoleKeysForMembership.mockResolvedValue([]);
+    identitySvc.replaceMembershipRoles.mockResolvedValue({
+      added_role_ids: ['rid-rc'],
+      removed_role_ids: [],
+    });
+    await service.assignTenantUserRoles({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      role_keys: ['recruiter'],
+      actor_user_id: ACTOR_ID,
+      request_id: REQUEST_ID,
+    });
+    expect(identitySvc.findMembership).toHaveBeenCalledWith({
+      user_id: USER_ID,
+      tenant_id: TENANT_ID,
+    });
   });
 });
