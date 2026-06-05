@@ -22,6 +22,7 @@ import {
 } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
+import { validateCompensationInput } from './compensation-validation.js';
 import type { AssignRequisitionRequestDto } from './dto/assign-requisition-request.dto.js';
 import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
 import type { RequisitionAssignmentView } from './dto/requisition-assignment.view.js';
@@ -120,7 +121,12 @@ export class RequisitionController {
   async create(
     @AuthContext() authContext: AuthContextType,
     @Body() body: CreateRequisitionRequestDto,
+    @RequestId() requestId: string,
   ): Promise<RequisitionView> {
+    // v1.1 §2.3 closed-set guards (ISO-4217 + rate period + comp
+    // model + Decimal-string shape). Throws AramoError VALIDATION_ERROR
+    // (400) on miss — never reaches the repository layer.
+    validateCompensationInput(body, requestId);
     return this.requisitionRepository.create({
       tenant_id: authContext.tenant_id,
       entered_by_id: authContext.sub,
@@ -138,6 +144,7 @@ export class RequisitionController {
     @Body() body: UpdateRequisitionRequestDto,
     @RequestId() requestId: string,
   ): Promise<RequisitionView> {
+    validateCompensationInput(body, requestId);
     return this.requisitionRepository.update({
       tenant_id: authContext.tenant_id,
       id,

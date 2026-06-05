@@ -124,6 +124,11 @@ const REQUISITION_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql',
 );
+// Compensation-Field Modeling v1.1 — 2 enums + 10 nullable comp cols.
+const REQUISITION_COMPENSATION_FIELDS = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql',
+);
 const TALENT_RECORD_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
@@ -140,6 +145,7 @@ const MIGRATIONS = [
   METERING_INIT,
   REQUISITION_INIT,
   REQUISITION_IMPORT_BACK_REF,
+  REQUISITION_COMPENSATION_FIELDS,
   TALENT_RECORD_INIT,
   TALENT_RECORD_LINK_ADD,
   TALENT_RECORD_IMPORT_BACK_REF,

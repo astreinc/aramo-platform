@@ -62,6 +62,34 @@ enum RequisitionStatus {
   @@schema("requisition")
 }
 
+// RatePeriod — Compensation-Field Modeling v1.1 §2.1. Discrete period
+// for pay_rate / bill_rate. The derived-view compute (margin_amount,
+// markup_percent, margin_percent in projectView) requires bill + pay
+// to share the same period (else the views return null per v1.1 §2.2
+// guard + proof 13). NOT used for the perm path (placement_fee_*,
+// salary_*) — those are flat numbers, not period-rated.
+enum RatePeriod {
+  HOURLY
+  DAILY
+  WEEKLY
+  MONTHLY
+  ANNUAL
+
+  @@schema("requisition")
+}
+
+// RequisitionCompensationModel — v1.1 §2.3 discriminator. CONTRACT
+// uses bill/pay rates + the derived views; PERMANENT uses placement_fee
+// + structured salary. Both shapes COEXIST on Requisition (the
+// irrelevant fields stay null) — one migration covers both, per the
+// PO's "include now" rationale (avoids a second perm migration later).
+enum RequisitionCompensationModel {
+  CONTRACT
+  PERMANENT
+
+  @@schema("requisition")
+}
+
 // Requisition — the ATS-domain job-order entity. OpenCATS doc-04 field
 // shapes; greenfield port with the canonical Aramo tenant + site axes
 // added.
@@ -85,11 +113,50 @@ model Requisition {
   // Job-order metadata.
   type        String?
   duration    String?
+  // Legacy free-text comp fields. Compensation-Field Modeling v1.1 §6
+  // — COEXIST + deprecated; the structured successors live below
+  // (pay_rate_amount/bill_rate_amount supersede rate_max; salary_amount
+  // supersedes salary). A later cleanup PR drops these after the
+  // frontend migration window closes.
   rate_max    String?
   salary      String?
   description String?
   notes       String?
   is_hot      Boolean @default(false)
+
+  // Compensation-Field Modeling v1.1 §2 — the structured comp surface.
+  // All fields optional (`?`) so the existing rows + the maskability
+  // contract (v1.1 §3) work: D5 omits a field → undefined; the
+  // discriminator gates which fields are meaningful at the application
+  // layer (a CONTRACT req leaves placement_fee_*/salary_* null; a
+  // PERMANENT req leaves bill_rate_*/pay_rate_* null). Currency is a
+  // String? guarded at the controller boundary against a closed
+  // ISO-4217 allowlist (v1.0 §2.3 — NOT an enum, to avoid migration
+  // churn when the allowlist evolves).
+
+  // §2.3 discriminator — CONTRACT or PERMANENT.
+  compensation_model RequisitionCompensationModel?
+
+  // §2.1 — the two stored facts (CONTRACT). The derived views
+  // (margin_amount, markup_percent, margin_percent) are computed-on-
+  // read in projectView (NOT stored — §2.2 + §10 halt).
+  pay_rate_amount   Decimal?    @db.Decimal(12, 2)
+  pay_rate_currency String?
+  pay_rate_period   RatePeriod?
+
+  bill_rate_amount   Decimal?    @db.Decimal(12, 2)
+  bill_rate_currency String?
+  bill_rate_period   RatePeriod?
+
+  // §2.3 — PERMANENT-side fields. placement_fee_percent and
+  // placement_fee_amount MAY BOTH be set (one fee model vs the other,
+  // or a hybrid) — the application doesn't constrain. salary_amount /
+  // salary_currency is the structured successor to the legacy `salary`
+  // free-text field (§6).
+  placement_fee_percent Decimal? @db.Decimal(5, 2)
+  placement_fee_amount  Decimal? @db.Decimal(12, 2)
+  salary_amount         Decimal? @db.Decimal(12, 2)
+  salary_currency       String?
 
   // Openings counts (stored fields; directive §4 — NO decrement logic
   // at this batch; the pipeline at A5 will own placement -> decrement).
