@@ -63,7 +63,8 @@
       "@aramo/submittal": ["libs/submittal/src/index.ts"],
       "@aramo/talent": ["libs/talent/src/index.ts"],
       "@aramo/talent-evidence": ["libs/talent-evidence/src/index.ts"],
-      "@aramo/talent-record": ["libs/talent-record/src/index.ts"]
+      "@aramo/talent-record": ["libs/talent-record/src/index.ts"],
+      "@aramo/visibility": ["libs/visibility/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp", "dist", "build", "**/prisma/generated"]

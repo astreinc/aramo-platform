@@ -8,8 +8,10 @@ import {
   Param,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
@@ -57,9 +59,12 @@ export class PipelineController {
     @AuthContext() authContext: AuthContextType,
     @Query('requisition_id') requisitionId: string | undefined,
     @Query('talent_record_id') talentRecordId: string | undefined,
+    @Req() req: Request,
   ): Promise<{ items: PipelineView[] }> {
-    const items = await this.pipelineRepository.list({
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const items = await this.pipelineRepository.listForActor({
       tenant_id: authContext.tenant_id,
+      visible_requisition_ids: visibleReqIds,
       ...(requisitionId === undefined ? {} : { requisition_id: requisitionId }),
       ...(talentRecordId === undefined
         ? {}
@@ -76,15 +81,18 @@ export class PipelineController {
     @AuthContext() authContext: AuthContextType,
     @Param('id') id: string,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<PipelineView> {
-    const view = await this.pipelineRepository.findById({
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const view = await this.pipelineRepository.findByIdForActor({
       tenant_id: authContext.tenant_id,
       id,
+      visible_requisition_ids: visibleReqIds,
     });
     if (view === null) {
       throw new AramoError(
         'NOT_FOUND',
-        'Pipeline not found in tenant',
+        'Pipeline not found in tenant (or not visible to actor)',
         404,
         { requestId, details: { id } },
       );

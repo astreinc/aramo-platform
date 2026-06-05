@@ -4,8 +4,10 @@ import {
   HttpCode,
   HttpStatus,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
   RequireScopes,
@@ -41,11 +43,14 @@ export class DashboardController {
   async get(
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
   ): Promise<DashboardView> {
+    const visibility = await req.resolveVisibility!();
     return this.reportingService.getDashboard({
       tenant_id: authContext.tenant_id,
       user_id: authContext.sub,
       scopes: authContext.scopes,
+      visibility,
       ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
     });
   }

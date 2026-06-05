@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AramoError } from '@aramo/common';
+import { AramoError, type VisibilityContextShape } from '@aramo/common';
 import { CompanyRepository } from '@aramo/company';
 
 import type { ContactView } from './dto/contact.view.js';
@@ -232,6 +232,62 @@ export class ContactRepository {
         ...(args.company_id === undefined ? {} : { company_id: args.company_id }),
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
       },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+    });
+    return (rows as ContactRow[]).map(projectView);
+  }
+
+  // AUTHZ-D4b — visibility-scoped read paths. Contact's visibility is
+  // direct: contact.company_id ∈ visibility.visible_client_ids. The
+  // see_all_company short-circuit (TA + TO per D4a §6) drops the filter.
+  async findByIdForActor(args: {
+    tenant_id: string;
+    id: string;
+    visibility: VisibilityContextShape;
+  }): Promise<ContactView | null> {
+    const row = await this.prisma.contact.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+    });
+    if (row === null) return null;
+    if (!args.visibility.see_all_company) {
+      const visible = args.visibility.visible_client_ids;
+      if (visible !== null && !visible.has((row as ContactRow).company_id)) {
+        return null;
+      }
+    }
+    return projectView(row as ContactRow);
+  }
+
+  async listForActor(args: {
+    tenant_id: string;
+    visibility: VisibilityContextShape;
+    company_id?: string;
+    site_id?: string;
+    limit?: number;
+  }): Promise<ContactView[]> {
+    const limit = Math.min(args.limit ?? 50, 200);
+    const where: Record<string, unknown> = {
+      tenant_id: args.tenant_id,
+      ...(args.company_id === undefined ? {} : { company_id: args.company_id }),
+      ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+    };
+    if (!args.visibility.see_all_company) {
+      const visible = args.visibility.visible_client_ids;
+      if (visible !== null) {
+        // Compose with any caller-supplied company_id narrowing: if the
+        // narrow target is NOT in the visible set, the actor cannot see
+        // any of its contacts → return [] without a DB call.
+        if (args.company_id !== undefined && !visible.has(args.company_id)) {
+          return [];
+        }
+        if (args.company_id === undefined) {
+          where['company_id'] = { in: Array.from(visible) };
+        }
+      }
+    }
+    const rows = await this.prisma.contact.findMany({
+      where,
       orderBy: { created_at: 'desc' },
       take: limit,
     });

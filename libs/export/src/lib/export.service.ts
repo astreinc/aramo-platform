@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AramoError } from '@aramo/common';
+import { AramoError, type VisibilityContextShape } from '@aramo/common';
 import { CompanyRepository } from '@aramo/company';
 import { ContactRepository } from '@aramo/contact';
 import { PipelineRepository } from '@aramo/pipeline';
@@ -68,9 +68,10 @@ interface ActorContext {
   user_id: string;
   scopes: readonly string[];
   site_id?: string;
+  // AUTHZ-D4b — composed visibility predicate result, resolved at the
+  // controller boundary via req.resolveVisibility() and passed through.
+  visibility: VisibilityContextShape;
 }
-
-const REQUISITION_READ_ALL = 'requisition:read:all';
 
 // The pipeline.requisition_ids filter is composed from the actor's
 // A3-visible requisition set. The A7 visibility-ceiling cap (200)
@@ -176,13 +177,13 @@ export class ExportService {
         return asRecords(await this.talentRecordRepository.list(baseArgs));
 
       case 'requisition':
-        // A3-visibility predicate is APPLIED inside listForActor —
-        // recruiter sees only assigned reqs; tenant_admin sees all.
+        // A3 + D4b visibility predicate is APPLIED inside listForActor —
+        // the composed OR-union (client-axis OR direct-assignment);
+        // tenant_admin with read:all sees all.
         return asRecords(
           await this.requisitionRepository.listForActor({
             tenant_id: args.actor.tenant_id,
-            actor_scopes: args.actor.scopes,
-            actor_user_id: args.actor.user_id,
+            visibility: args.actor.visibility,
             ...(args.actor.site_id === undefined
               ? {}
               : { site_id: args.actor.site_id }),
@@ -230,11 +231,10 @@ export class ExportService {
   private async resolveVisibleRequisitionIds(
     actor: ActorContext,
   ): Promise<readonly string[] | undefined> {
-    if (actor.scopes.includes(REQUISITION_READ_ALL)) return undefined;
+    if (actor.visibility.see_all_requisition) return undefined;
     const reqs = await this.requisitionRepository.listForActor({
       tenant_id: actor.tenant_id,
-      actor_scopes: actor.scopes,
-      actor_user_id: actor.user_id,
+      visibility: actor.visibility,
       ...(actor.site_id === undefined ? {} : { site_id: actor.site_id }),
       limit: A3_VISIBILITY_CEILING,
     });

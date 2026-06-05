@@ -90,4 +90,36 @@ export class UserClientAssignmentRepository {
     });
     return rows as UserClientAssignmentRow[];
   }
+
+  // AUTHZ-D4b — return the SET of company IDs the user is directly
+  // assigned to in tenant. The Axis-0 (direct) source-of-visibility for
+  // the composed predicate.
+  async findCompanyIdsForUser(args: {
+    tenant_id: string;
+    user_id: string;
+  }): Promise<string[]> {
+    const rows = await this.prisma.userClientAssignment.findMany({
+      where: { tenant_id: args.tenant_id, user_id: args.user_id },
+      select: { company_id: true },
+    });
+    return rows.map((r) => r.company_id);
+  }
+
+  // AUTHZ-D4b — bulk variant for the Axis-1 (transitive-reports)
+  // resolution. Given a set of report user IDs (the BFS result), return
+  // the union of their direct assignments. Empty user_ids → [].
+  async findCompanyIdsForUsers(args: {
+    tenant_id: string;
+    user_ids: readonly string[];
+  }): Promise<string[]> {
+    if (args.user_ids.length === 0) return [];
+    const rows = await this.prisma.userClientAssignment.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        user_id: { in: Array.from(args.user_ids) },
+      },
+      select: { company_id: true },
+    });
+    return rows.map((r) => r.company_id);
+  }
 }

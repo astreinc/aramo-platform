@@ -6,8 +6,10 @@ import {
   HttpStatus,
   Param,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
 import {
@@ -72,6 +74,7 @@ export class ExportController {
     @Query() query: ExportQueryDto,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<string> {
     // entity_type — validated by class-validator (@IsIn). Belt-and-
     // braces re-narrow here so the switch in the service is exhaustive.
@@ -93,6 +96,7 @@ export class ExportController {
     const columns = parseColumns(query.columns, requestId);
     const limit = parseLimit(query.limit, requestId);
 
+    const visibility = await req.resolveVisibility!();
     return this.exportService.exportEntity({
       entity_type: params.entity_type as ExportEntityType,
       ...(columns === undefined ? {} : { columns }),
@@ -101,6 +105,7 @@ export class ExportController {
         tenant_id: authContext.tenant_id,
         user_id: authContext.sub,
         scopes: authContext.scopes,
+        visibility,
         ...(query.site_id === undefined ? {} : { site_id: query.site_id }),
       },
       requestId,

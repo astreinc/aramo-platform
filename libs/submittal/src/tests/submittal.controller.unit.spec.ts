@@ -472,16 +472,39 @@ function makeEvidencePackageView(): Record<string, unknown> {
 interface GetMockSetup {
   controller: SubmittalController;
   findById: ReturnType<typeof vi.fn>;
+  findByIdForActor: ReturnType<typeof vi.fn>;
   evidenceFindById: ReturnType<typeof vi.fn>;
+}
+
+// AUTHZ-D4b — minimal Request mock providing the visibility resolver
+// hooks the controller's GET routes call. Returns null (the
+// see-all-requisition short-circuit) so the unit test doesn't have to
+// thread the composed predicate — its job is to test the controller
+// logic, not the resolver itself.
+function makeMockReq(): unknown {
+  return {
+    resolveVisibility: () =>
+      Promise.resolve({
+        tenant_id: TENANT_A,
+        actor_user_id: RECRUITER_ID,
+        see_all_company: true,
+        see_all_requisition: true,
+        visible_client_ids: null,
+      }),
+    resolveVisibleRequisitionIds: () => Promise.resolve(null),
+    resolveVisiblePipelineIds: () => Promise.resolve(null),
+  };
 }
 
 function buildGet(): GetMockSetup {
   const findById = vi.fn().mockResolvedValue(makeSubmittalView());
+  const findByIdForActor = vi.fn().mockResolvedValue(makeSubmittalView());
   const evidenceFindById = vi.fn().mockResolvedValue(makeEvidencePackageView());
   const mockRepo = {
     createSubmittal: vi.fn(),
     confirmSubmittal: vi.fn(),
     findById,
+    findByIdForActor,
   } as unknown as SubmittalRepository;
   const mockIdempotency = {
     lookup: vi.fn(),
@@ -491,7 +514,7 @@ function buildGet(): GetMockSetup {
     findById: evidenceFindById,
   } as unknown as EvidenceRepository;
   const controller = new SubmittalController(mockRepo, mockIdempotency, mockEvidence, makeMockLogger());
-  return { controller, findById, evidenceFindById };
+  return { controller, findById, findByIdForActor, evidenceFindById };
 }
 
 describe('SubmittalController.getSubmittal (unit)', () => {
@@ -506,6 +529,7 @@ describe('SubmittalController.getSubmittal (unit)', () => {
         SUBMITTAL_ID,
         makeAuth({ consumer_type: 'portal' }),
         REQUEST_ID,
+        makeMockReq() as never,
       );
       throw new Error('expected throw');
     } catch (err) {
@@ -517,7 +541,12 @@ describe('SubmittalController.getSubmittal (unit)', () => {
 
   it('2. submittal_id non-UUID → VALIDATION_ERROR 400', async () => {
     try {
-      await ctx.controller.getSubmittal('not-a-uuid', makeAuth(), REQUEST_ID);
+      await ctx.controller.getSubmittal(
+        'not-a-uuid',
+        makeAuth(),
+        REQUEST_ID,
+        makeMockReq() as never,
+      );
       throw new Error('expected throw');
     } catch (err) {
       expect((err as AramoError).code).toBe('VALIDATION_ERROR');
@@ -527,9 +556,14 @@ describe('SubmittalController.getSubmittal (unit)', () => {
   });
 
   it('3. missing submittal → NOT_FOUND 404', async () => {
-    ctx.findById.mockResolvedValue(null);
+    ctx.findByIdForActor.mockResolvedValue(null);
     try {
-      await ctx.controller.getSubmittal(SUBMITTAL_ID, makeAuth(), REQUEST_ID);
+      await ctx.controller.getSubmittal(
+        SUBMITTAL_ID,
+        makeAuth(),
+        REQUEST_ID,
+        makeMockReq() as never,
+      );
       throw new Error('expected throw');
     } catch (err) {
       expect((err as AramoError).code).toBe('NOT_FOUND');
@@ -542,12 +576,14 @@ describe('SubmittalController.getSubmittal (unit)', () => {
       SUBMITTAL_ID,
       makeAuth(),
       REQUEST_ID,
+      makeMockReq() as never,
     );
     expect(result.id).toBe(SUBMITTAL_ID);
     expect(result.state).toBe('draft');
-    expect(ctx.findById).toHaveBeenCalledWith({
+    expect(ctx.findByIdForActor).toHaveBeenCalledWith({
       tenant_id: TENANT_A,
       id: SUBMITTAL_ID,
+      visible_requisition_ids: null,
     });
   });
 });
@@ -564,6 +600,7 @@ describe('SubmittalController.getEvidencePackage (unit)', () => {
         SUBMITTAL_ID,
         makeAuth({ consumer_type: 'portal' }),
         REQUEST_ID,
+        makeMockReq() as never,
       );
       throw new Error('expected throw');
     } catch (err) {
@@ -580,6 +617,7 @@ describe('SubmittalController.getEvidencePackage (unit)', () => {
         'not-a-uuid',
         makeAuth(),
         REQUEST_ID,
+        makeMockReq() as never,
       );
       throw new Error('expected throw');
     } catch (err) {
@@ -591,12 +629,13 @@ describe('SubmittalController.getEvidencePackage (unit)', () => {
   });
 
   it('3. missing submittal → NOT_FOUND 404 (TalentSubmittalRecord not found)', async () => {
-    ctx.findById.mockResolvedValue(null);
+    ctx.findByIdForActor.mockResolvedValue(null);
     try {
       await ctx.controller.getEvidencePackage(
         SUBMITTAL_ID,
         makeAuth(),
         REQUEST_ID,
+        makeMockReq() as never,
       );
       throw new Error('expected throw');
     } catch (err) {
@@ -613,6 +652,7 @@ describe('SubmittalController.getEvidencePackage (unit)', () => {
         SUBMITTAL_ID,
         makeAuth(),
         REQUEST_ID,
+        makeMockReq() as never,
       );
       throw new Error('expected throw');
     } catch (err) {
@@ -631,12 +671,14 @@ describe('SubmittalController.getEvidencePackage (unit)', () => {
       SUBMITTAL_ID,
       makeAuth(),
       REQUEST_ID,
+      makeMockReq() as never,
     );
     expect(result.id).toBe(EVIDENCE_PKG_ID);
     expect(result.submittal_record_id).toBe(SUBMITTAL_ID);
-    expect(ctx.findById).toHaveBeenCalledWith({
+    expect(ctx.findByIdForActor).toHaveBeenCalledWith({
       tenant_id: TENANT_A,
       id: SUBMITTAL_ID,
+      visible_requisition_ids: null,
     });
     expect(ctx.evidenceFindById).toHaveBeenCalledWith({
       tenant_id: TENANT_A,

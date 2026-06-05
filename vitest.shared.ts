@@ -135,6 +135,11 @@ export default defineConfig({
       // talent record; renamed from `talent` to avoid collision with
       // Core libs/talent identity. Amendment §3.)
       '@aramo/talent-record': resolve(root, 'libs/talent-record/src/index.ts'),
+      // AUTHZ-D4b Gate 6 — visibility leaf (the composed predicate +
+      // global interceptor). Mirrors tsconfig.base.json @aramo/visibility
+      // alias so vitest runtime resolves the apps/api AppModule import
+      // and the authz-d4b-visibility-matrix integration spec.
+      '@aramo/visibility': resolve(root, 'libs/visibility/src/index.ts'),
     },
   },
   test: {

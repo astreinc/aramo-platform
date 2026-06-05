@@ -292,6 +292,29 @@ export class SubmittalRepository {
     return row === null ? null : projectView(row as TalentSubmittalRecordRow);
   }
 
+  // AUTHZ-D4b — visibility-scoped findById. Submittal inherits its
+  // requisition's visibility — the cascade filters on
+  // `job_id IN visible_requisition_ids` (job_id is the cross-schema UUID
+  // pointer to requisition.Requisition.id per Architecture §7.3).
+  // null visible_requisition_ids → see_all_requisition → unrestricted.
+  async findByIdForActor(input: {
+    tenant_id: string;
+    id: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+  }): Promise<TalentSubmittalRecordView | null> {
+    const where: Record<string, unknown> = {
+      tenant_id: input.tenant_id,
+      id: input.id,
+    };
+    if (input.visible_requisition_ids !== null) {
+      where['job_id'] = { in: Array.from(input.visible_requisition_ids) };
+    }
+    const row = await this.prisma.talentSubmittalRecord.findFirst({
+      where,
+    });
+    return row === null ? null : projectView(row as TalentSubmittalRecordRow);
+  }
+
   async findByTenantAndEvidencePackage(input: {
     tenant_id: string;
     evidence_package_id: string;

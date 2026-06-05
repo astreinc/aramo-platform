@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AramoError } from '@aramo/common';
+import { AramoError, type VisibilityContextShape } from '@aramo/common';
 
 import type { CompanyView } from './dto/company.view.js';
 import type { CreateCompanyRequestDto } from './dto/create-company-request.dto.js';
@@ -176,6 +176,46 @@ export class CompanyRepository {
         tenant_id: args.tenant_id,
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
       },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+    });
+    return (rows as CompanyRow[]).map(projectView);
+  }
+
+  // AUTHZ-D4b — visibility-scoped read paths. The cascade applies
+  // `id IN visibility.visible_client_ids` (or unrestricted when
+  // see_all_company). All queries are query-layer (DDR D6).
+  async findByIdForActor(args: {
+    tenant_id: string;
+    id: string;
+    visibility: VisibilityContextShape;
+  }): Promise<CompanyView | null> {
+    if (!args.visibility.see_all_company) {
+      const visible = args.visibility.visible_client_ids;
+      if (visible !== null && !visible.has(args.id)) return null;
+    }
+    return this.findById({ tenant_id: args.tenant_id, id: args.id });
+  }
+
+  async listForActor(args: {
+    tenant_id: string;
+    visibility: VisibilityContextShape;
+    site_id?: string;
+    limit?: number;
+  }): Promise<CompanyView[]> {
+    const limit = Math.min(args.limit ?? 50, 200);
+    const where: Record<string, unknown> = {
+      tenant_id: args.tenant_id,
+      ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+    };
+    if (!args.visibility.see_all_company) {
+      const visible = args.visibility.visible_client_ids;
+      if (visible !== null) {
+        where['id'] = { in: Array.from(visible) };
+      }
+    }
+    const rows = await this.prisma.company.findMany({
+      where,
       orderBy: { created_at: 'desc' },
       take: limit,
     });

@@ -9,8 +9,10 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
@@ -70,11 +72,12 @@ export class RequisitionController {
   async list(
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
   ): Promise<{ items: RequisitionView[] }> {
+    const visibility = await req.resolveVisibility!();
     const items = await this.requisitionRepository.listForActor({
       tenant_id: authContext.tenant_id,
-      actor_scopes: authContext.scopes,
-      actor_user_id: authContext.sub,
+      visibility,
       site_id: siteIdFromQuery,
     });
     return { items };
@@ -88,12 +91,13 @@ export class RequisitionController {
     @AuthContext() authContext: AuthContextType,
     @Param('id') id: string,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<RequisitionView> {
+    const visibility = await req.resolveVisibility!();
     const view = await this.requisitionRepository.findByIdForActor({
       tenant_id: authContext.tenant_id,
       id,
-      actor_scopes: authContext.scopes,
-      actor_user_id: authContext.sub,
+      visibility,
     });
     if (view === null) {
       // Ruling 2: 404 (not in visible set) regardless of whether the

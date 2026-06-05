@@ -7,8 +7,10 @@ import {
   Param,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
@@ -49,9 +51,16 @@ export class ActivityController {
     @AuthContext() authContext: AuthContextType,
     @Query('subject_type') subjectType: string | undefined,
     @Query('subject_id') subjectId: string | undefined,
+    @Req() req: Request,
   ): Promise<{ items: ActivityView[] }> {
-    const items = await this.activityRepository.list({
+    const visibility = await req.resolveVisibility!();
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const visiblePipelineIds = await req.resolveVisiblePipelineIds!();
+    const items = await this.activityRepository.listForActor({
       tenant_id: authContext.tenant_id,
+      visibility,
+      visible_requisition_ids: visibleReqIds,
+      visible_pipeline_ids: visiblePipelineIds,
       ...(subjectType === undefined ? {} : { subject_type: subjectType }),
       ...(subjectId === undefined ? {} : { subject_id: subjectId }),
     });
@@ -66,15 +75,22 @@ export class ActivityController {
     @AuthContext() authContext: AuthContextType,
     @Param('id') id: string,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<ActivityView> {
-    const view = await this.activityRepository.findById({
+    const visibility = await req.resolveVisibility!();
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const visiblePipelineIds = await req.resolveVisiblePipelineIds!();
+    const view = await this.activityRepository.findByIdForActor({
       tenant_id: authContext.tenant_id,
       id,
+      visibility,
+      visible_requisition_ids: visibleReqIds,
+      visible_pipeline_ids: visiblePipelineIds,
     });
     if (view === null) {
       throw new AramoError(
         'NOT_FOUND',
-        'Activity not found in tenant',
+        'Activity not found in tenant (or not visible to actor)',
         404,
         { requestId, details: { id } },
       );

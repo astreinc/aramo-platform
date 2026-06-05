@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/libs/visibility",
+    "rootDir": "src",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "declaration": true,
+    "tsBuildInfoFile": "../../dist/libs/visibility/.tsbuildinfo",
+    "types": ["node"],
+    "paths": {
+      "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/identity": ["../../dist/libs/identity/src/index.d.ts"],
+      "@aramo/company": ["../../dist/libs/company/src/index.d.ts"],
+      "@aramo/requisition": ["../../dist/libs/requisition/src/index.d.ts"],
+      "@aramo/pipeline": ["../../dist/libs/pipeline/src/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/tests/**/*", "**/*.spec.ts"]
+}
