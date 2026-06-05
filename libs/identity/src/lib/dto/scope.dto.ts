@@ -68,8 +68,8 @@ export const SEED_SCOPE_KEYS = [
   'calendar:event-edit',        // recruiter+ (own events)
   'calendar:event-delete',      // tenant_admin only
   // activity + examination + requisition (5)
-  'activity:read',              // viewer+
-  'examination:read',           // viewer+ (read-only Core output)
+  'activity:read',              // back_office+
+  'examination:read',           // back_office+ (read-only Core output)
   'requisition:create',         // recruiter+
   'requisition:edit',           // recruiter+
   'requisition:delete',         // tenant_admin only

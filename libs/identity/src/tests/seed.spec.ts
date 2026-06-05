@@ -64,11 +64,15 @@ describe('seed scope catalog — key format (test 18)', () => {
   });
 });
 
-describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-2 expansions)', () => {
-  it('seed role keys are exactly the 14 locked entries (13 tenant + 1 platform)', () => {
-    // AUTHZ-1 (2026-06-04): tenant role catalog expanded from 4 to 13.
+describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1b + AUTHZ-2)', () => {
+  it('seed role keys are exactly the 13 locked entries (12 tenant + 1 platform)', () => {
+    // AUTHZ-1 (2026-06-04): tenant role catalog expanded 4 -> 13.
+    // AUTHZ-1b (2026-06-04): revised to the 12 staffing-tenant roles
+    // (retire viewer/hiring_manager/interviewer/coordinator/external_agency;
+    // add recruiting_manager/delivery_manager/lead_recruiter/back_office;
+    // rename finance_hr -> finance; preserve candidate).
     // AUTHZ-2 (2026-06-04): adds the PLATFORM-TIER super_admin role
-    // (catalog row 14). The 13 tenant role keys hold ONLY tenant scopes;
+    // (catalog row 13). The 12 tenant role keys hold ONLY tenant scopes;
     // the platform super_admin row holds ONLY platform:* scopes. The
     // namespace partition + the consumer_type check at the guard layer
     // is the DDR §13.1 tripwire (a platform token never satisfies a
@@ -76,18 +80,17 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-2
     expect([...SEED_ROLE_KEYS].sort()).toEqual([
       'account_manager',
       'auditor',
+      'back_office',
       'candidate',
-      'coordinator',
-      'external_agency',
-      'finance_hr',
-      'hiring_manager',
-      'interviewer',
+      'delivery_manager',
+      'finance',
+      'lead_recruiter',
       'recruiter',
+      'recruiting_manager',
       'sourcer',
       'super_admin',
       'tenant_admin',
       'tenant_owner',
-      'viewer',
     ]);
   });
 });

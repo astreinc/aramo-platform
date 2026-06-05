@@ -242,8 +242,10 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
   });
 
   it('multi-role invite (proof 5): role_keys plural -> multiple UserTenantMembershipRole writes', async () => {
+    // AUTHZ-1b fixture swap: hiring_manager retired -> use account_manager
+    // (a kept staffing role) as the second role_keys entry.
     const mocks = makeMocks();
-    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['r-rec', 'r-hm']);
+    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['r-rec', 'r-am']);
     mocks.cognito.adminGetUser.mockResolvedValue(null);
     mocks.identitySvc.findUserByEmail.mockResolvedValue(null);
     mocks.cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'cog-x' });
@@ -256,18 +258,18 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
     const out = await svc.inviteUserIntoTenant({
       tenant_id: 't1',
       email: 'r@t.io',
-      role_keys: ['recruiter', 'hiring_manager'],
+      role_keys: ['recruiter', 'account_manager'],
       actor_user_id: 'sa',
       pool: 'tenant',
     });
 
     expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(
       expect.objectContaining({
-        role_ids: ['r-rec', 'r-hm'],
+        role_ids: ['r-rec', 'r-am'],
       }),
     );
     expect(out.status).toBe('invitation_sent');
-    expect(out.role_keys).toEqual(['recruiter', 'hiring_manager']);
+    expect(out.role_keys).toEqual(['recruiter', 'account_manager']);
   });
 });
 
@@ -301,8 +303,9 @@ describe('PlatformInvitationService — inviteUserIntoTenant idempotency (proof 
   });
 
   it('case 2: same tenant + DIFFERENT roles -> reconcile (replaceMembershipRoles)', async () => {
+    // AUTHZ-1b fixture swap: hiring_manager retired -> account_manager.
     const mocks = makeMocks();
-    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['r-rec', 'r-hm']);
+    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['r-rec', 'r-am']);
     mocks.cognito.adminGetUser.mockResolvedValue({ cognito_sub: 'sub-1' });
     mocks.identitySvc.findUserByEmail.mockResolvedValue({
       id: 'u-1', email: 'u@t.io', display_name: null, is_active: true, deactivated_at: null, created_at: '', updated_at: '',
@@ -312,7 +315,7 @@ describe('PlatformInvitationService — inviteUserIntoTenant idempotency (proof 
     });
     mocks.identitySvc.findRoleIdsForMembership.mockResolvedValue(['r-rec']);
     mocks.identitySvc.replaceMembershipRoles.mockResolvedValue({
-      added_role_ids: ['r-hm'],
+      added_role_ids: ['r-am'],
       removed_role_ids: [],
     });
 
@@ -320,14 +323,14 @@ describe('PlatformInvitationService — inviteUserIntoTenant idempotency (proof 
     const out = await svc.inviteUserIntoTenant({
       tenant_id: 't1',
       email: 'u@t.io',
-      role_keys: ['recruiter', 'hiring_manager'],
+      role_keys: ['recruiter', 'account_manager'],
       actor_user_id: 'sa',
       pool: 'tenant',
     });
     expect(out.status).toBe('roles_updated');
     expect(mocks.identitySvc.replaceMembershipRoles).toHaveBeenCalledWith({
       membership_id: 'mem-1',
-      role_ids: ['r-rec', 'r-hm'],
+      role_ids: ['r-rec', 'r-am'],
     });
   });
 

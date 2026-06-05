@@ -31,7 +31,7 @@ import { ActivityRepository } from './activity.repository.js';
 //   @RequireSiteMatch()                 // route-level — site axis
 //
 // === Scope gating (HK-IDENT-SCOPES — proper scopes seeded) ===
-// The seeded catalog includes `activity:read` (viewer+) and now
+// The seeded catalog includes `activity:read` (back_office+) and now
 // `activity:create` (recruiter+). The POST route keys on the proper
 // `activity:create` scope, replacing the A5a `pipeline:add-activity`
 // borrow.

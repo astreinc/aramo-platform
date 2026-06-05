@@ -11,42 +11,39 @@
 // rules on (a) gate exclusion for this file vs (b) role rename to e.g.
 // `portal_subject`.
 //
-// AUTHZ-1 (2026-06-04) expands the tenant role catalog from 4 to 13.
-// The 4 pre-A1a keys are PRESERVED unchanged (DDR D7 additive-migration
-// discipline — A2–A8 permission checks reference these keys verbatim
-// and must stay green). The re-map to DDR display names is carried on
-// the Role.description column (see prisma/seed.ts), NOT on the keys.
-// 9 new tenant roles are added: tenant_owner, hiring_manager,
-// account_manager, interviewer, sourcer, coordinator, finance_hr,
-// auditor, external_agency. Per AUTHZ-1 §4 Lead ruling, viewer is
-// kept as the 13th catalog entry (a generic read role distinct from
-// the audit-focused auditor).
+// AUTHZ-1 (2026-06-04) expanded the tenant role catalog from 4 to 13.
+// AUTHZ-1b (2026-06-04) revises the catalog to the staffing-vertical set
+// (13 -> 12): retires 5 non-staffing roles (viewer, hiring_manager,
+// interviewer, coordinator, external_agency — no A2-A8 regression: every
+// guard is scope-keyed, ZERO role-name-keyed on the retired roles), adds
+// 4 staffing roles (recruiting_manager, delivery_manager, lead_recruiter,
+// back_office), renames finance_hr -> finance (KEY rename; bundle
+// preserved; grep-confirmed zero JWT/guard refs). candidate is preserved.
+// No new scope keys are added (management roles' broader visibility comes
+// from the TEAM MODEL at D4a/b, NOT a see-all scope here).
 //
-// AUTHZ-2 (2026-06-04) adds the PLATFORM-TIER role `super_admin` — the
-// 14th catalog entry but in a separate NAMESPACE: its bundle holds only
-// `platform:*` scopes (never tenant scopes), and the 13 tenant roles
+// AUTHZ-2 (2026-06-04) adds the PLATFORM-TIER role `super_admin` — a
+// 13th catalog entry but in a separate NAMESPACE: its bundle holds only
+// `platform:*` scopes (never tenant scopes), and the 12 tenant roles
 // hold only tenant scopes (never `platform:*`). The DDR §13.1 tripwire
 // is enforced by namespace partition + the consumer_type check at the
 // guard layer — a platform token never satisfies a tenant guard, and
-// vice versa. The TENANT 13-role catalog (rows above) is UNCHANGED
-// (assertion in §5 proof step 8: A2–A8 + the AUTHZ-1 13-role bundle
-// test stays green byte-for-byte).
+// vice versa.
 export const SEED_ROLE_KEYS = [
-  // 4 pre-AUTHZ-1 tenant roles (keys preserved; descriptions re-mapped).
+  // Pre-AUTHZ-1 tenant roles preserved across AUTHZ-1b (keys identical).
   'tenant_admin',
   'recruiter',
-  'viewer',
   'candidate',
-  // AUTHZ-1 — 9 new tenant roles.
+  // AUTHZ-1 / AUTHZ-1b — 9 staffing-tenant roles.
   'tenant_owner',
-  'hiring_manager',
   'account_manager',
-  'interviewer',
   'sourcer',
-  'coordinator',
-  'finance_hr',
+  'finance', // AUTHZ-1b KEY rename: finance_hr -> finance (bundle preserved)
   'auditor',
-  'external_agency',
+  'recruiting_manager', // AUTHZ-1b (people-management; Recruiter + user-manage)
+  'delivery_manager',   // AUTHZ-1b (fulfillment quality gate; read + submittal:approve)
+  'lead_recruiter',     // AUTHZ-1b (= Recruiter operationally; lead-ness via D4b)
+  'back_office',        // AUTHZ-1b (operational-read + activity; capability scopes deferred)
   // AUTHZ-2 — 1 platform role (super_admin; platform:* scope namespace only).
   'super_admin',
 ] as const;
