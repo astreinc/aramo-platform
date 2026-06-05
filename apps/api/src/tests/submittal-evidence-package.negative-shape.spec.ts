@@ -301,12 +301,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
        // carries submittal:create so the setup POST /v1/submittals
        // (RolesGuard @RequireScopes('submittal:create')) passes through.
        // No confirm-flow on this spec (GET evidence-package after setup).
+       //
+       // AUTHZ-D4b: this spec tests RESPONSE VOCABULARY (no Match-Class
+       // keys), not visibility. The recruiter mint adds `requisition:read:all`
+       // so the D4b cascade short-circuits — without it, the GET
+       // /v1/submittals/:id/evidence-package returns 404 (recruiter has no
+       // D4a UserClientAssignment in this spec → empty visible_requisition_ids).
+       // The escalation is justified per the D4b commit-plan §2 ruling 5.
       recruiterJwt = await new SignJWT({
         sub: RECRUITER_ID,
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: ['submittal:create'],
+        scopes: ['submittal:create', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()

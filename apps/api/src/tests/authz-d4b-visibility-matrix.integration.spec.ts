@@ -221,7 +221,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       company_id: string,
     ): Promise<void> {
       const res = await fetch(
-        `http://127.0.0.1:${port}/v1/d4a/companies/${company_id}/assign?site_id=${SITE_A}`,
+        `http://127.0.0.1:${port}/v1/companies/${company_id}/assignments?site_id=${SITE_A}`,
         {
           method: 'POST',
           headers: {
@@ -239,7 +239,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       report_user_id: string,
     ): Promise<void> {
       const res = await fetch(
-        `http://127.0.0.1:${port}/v1/d4a/management-edges?site_id=${SITE_A}`,
+        `http://127.0.0.1:${port}/v1/management/edges?site_id=${SITE_A}`,
         {
           method: 'POST',
           headers: {
@@ -258,7 +258,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       name: string,
     ): Promise<string> {
       const create = await fetch(
-        `http://127.0.0.1:${port}/v1/d4a/teams?site_id=${SITE_A}`,
+        `http://127.0.0.1:${port}/v1/teams?site_id=${SITE_A}`,
         {
           method: 'POST',
           headers: {
@@ -271,7 +271,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect([200, 201]).toContain(create.status);
       const team_id = ((await create.json()) as { id: string }).id;
       const add = await fetch(
-        `http://127.0.0.1:${port}/v1/d4a/teams/${team_id}/members?site_id=${SITE_A}`,
+        `http://127.0.0.1:${port}/v1/teams/${team_id}/members?site_id=${SITE_A}`,
         {
           method: 'POST',
           headers: {
@@ -290,14 +290,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       company_id: string,
     ): Promise<void> {
       const res = await fetch(
-        `http://127.0.0.1:${port}/v1/d4a/companies/${company_id}/team-ownership?site_id=${SITE_A}`,
+        `http://127.0.0.1:${port}/v1/teams/${team_id}/clients?site_id=${SITE_A}`,
         {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${taJwt}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ team_id }),
+          body: JSON.stringify({ company_id }),
         },
       );
       expect([200, 201]).toContain(res.status);
