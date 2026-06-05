@@ -104,6 +104,20 @@ export const SEED_SCOPE_KEYS = [
   'platform:tenant:provision',  // super_admin only — create tenant + entitlement seed + Tenant-Owner invite
   'platform:tenant:read',       // super_admin only — list/read tenants for the platform view
   'platform:admin:invite',      // super_admin only — invite another platform admin (against the platform Cognito pool)
+  // AUTHZ-D5 — 6 compensation:view:* scopes (the field-masking scope
+  // family). The FINAL authorization PR — field-level masking of the
+  // requisition read DTO's compensation surface (D4b masked WHICH
+  // RECORDS; D5 masks WHICH FIELDS). Keyed at the response interceptor
+  // (apps/api CompensationFieldMaskInterceptor) via libs/field-masking.
+  // The LOCKED role-to-view matrix lives at libs/identity/prisma/seed.ts
+  // D5_COMPENSATION_BUNDLES. THE ENFORCED INVARIANT: no role holds both
+  // view:pay AND any spread scope (proven by seed.spec).
+  'compensation:view:pay',              // recruiter / recruiting_manager / lead_recruiter / back_office / TA + TO
+  'compensation:view:bill',             // account_manager + TA + TO (with placement_fee_*)
+  'compensation:view:revenue',          // account_manager + finance + delivery_manager + TA + TO (bill_rate_* only)
+  'compensation:view:spread:amount',    // delivery_manager + TA + TO (margin_amount; NOT view:pay holders)
+  'compensation:view:spread:percent',   // account_manager + delivery_manager + TA + TO
+  'compensation:view:margin:percent',   // account_manager + finance + delivery_manager + TA + TO
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 
