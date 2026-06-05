@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AramoError } from '@aramo/common';
 
 import type { TenantSettingsView } from './dto/tenant-settings.view.js';
 import {
@@ -7,33 +8,46 @@ import {
   type KnownSettingKey,
   type SettingValueOf,
 } from './known-settings.js';
+import { PrismaService } from './prisma/prisma.service.js';
 import { TenantSettingRepository } from './tenant-setting.repository.js';
 
-// TenantSettingService — the S1 read seam (Gate-5 Ruling 3).
+// TenantSettingService — the read seam (S1) + the write seam (S2).
 //
-// Shape: read-through with default-fallback.
-//   - get<K>(tenant, key) -> row-value (when present) or code-default
-//     (never throws; missing key is the default-fallback, not an error)
-//   - getAll(tenant)      -> materialized per-tenant view: every known-key
-//                            mapped to its row-value-or-default
+// Shape:
+//   - get<K>(tenant, key)              -> row-value (when present) or
+//                                          code-default (never throws)
+//   - getAll(tenant)                   -> materialized per-tenant view
+//   - set<K>(tenant, key, value, by)   -> {key, value, previous_value}
+//                                          (read-then-upsert in $transaction;
+//                                          records last_modified_by; the
+//                                          validator runs before the write)
 //
-// No memoization in S1 (Gate-5 Ruling 3): config reads are cold-path; the
-// D4b visibility-resolver memo pattern was driven by per-request re-resolution
-// across many entities, which has no analog here. Caching is added later if
-// (and only if) a hot path emerges.
+// Parametric typing: `K extends KnownSettingKey` constrains callers to the
+// closed-set registry; an unknown key fails to compile rather than silently
+// returning undefined OR silently writing to a phantom key. The JSONB
+// column's `unknown` value is projected back through `SettingValueOf<K>`.
 //
-// Parametric typing: `get<K extends KnownSettingKey>` constrains callers to
-// the closed-set registry; an unknown key fails to compile rather than
-// silently returning undefined. The JSONB column's `unknown` value is
-// projected back through `SettingValueOf<K>` — the per-key value type the
-// registry declared.
+// S2 PRECEDENT: the validator step. Every write runs `definition.validate`
+// against the incoming value (the SettingDefinition co-locates type +
+// default + validator). Bad values throw VALIDATION_ERROR (400). The
+// `details.reason` is fixed at `'invalid_value'` so callers can
+// distinguish bad-value from unknown-key (the controller's
+// `isKnownSettingKey` returns false at the boundary BEFORE `set<K>` is
+// invoked; rejecting unknown keys with the same error code but a
+// different `reason` keeps both halves of the closed-set-at-write
+// invariant introspectable).
 //
-// READ-ONLY surface in S1 (intentional — the directive §0 "MINIMAL by
-// design"). The write path + its validator + its audit-event shape land
-// with S2 (the pricing-model-default key is the concrete first writer).
+// AUDIT SEAM: the service does NOT emit identity.tenant_setting.updated —
+// the controller emits it (the app-layer two-call seam, Gate-5 Ruling 1).
+// This preserves the LEAF: libs/settings imports only @aramo/common
+// (NO @aramo/identity), mirroring D5's field-mask interceptor placement
+// (terminal lib + app-level cross-cutting wire).
 @Injectable()
 export class TenantSettingService {
-  constructor(private readonly repository: TenantSettingRepository) {}
+  constructor(
+    private readonly repository: TenantSettingRepository,
+    private readonly prisma: PrismaService,
+  ) {}
 
   // Single-key read with default-fallback. Never throws.
   //
@@ -41,36 +55,18 @@ export class TenantSettingService {
   //   - Row exists for (tenant, key): return the stored JSONB value cast
   //     to `SettingValueOf<K>` (the typed-accessor projection).
   //   - No row: return `KNOWN_SETTINGS[key].default` — the code-defined
-  //     default. This is the import-config TODO-consumer pattern:
-  //     env-or-default today, tenant-or-default after the future
-  //     migration.
+  //     default.
   //
   // The `as` cast at the row-value path is the typed-accessor's load-
   // bearing assumption: callers (the only callers permitted are the typed
   // `K extends KnownSettingKey`) trust that any value the system wrote
   // was the V the registry declared. S2's write path enforces this at
-  // write time (the validator step); S1 only reads, so the cast is
-  // sound by induction over empty writes.
+  // write time via the validator step.
   async get<K extends KnownSettingKey>(
     tenantId: string,
     key: K,
   ): Promise<SettingValueOf<K>> {
-    // The empty-registry (S1) edge: when `KNOWN_SETTINGS` has no entries,
-    // `K extends never` and this code path is statically unreachable. The
-    // explicit cast lets the body compile against the empty registry while
-    // still preserving the typed-accessor contract for S2+ callers (whose
-    // `K` is a concrete key).
-    const registry = KNOWN_SETTINGS as Readonly<
-      Record<string, { default: unknown } | undefined>
-    >;
-    // By construction the entry exists — `K extends KnownSettingKey` means
-    // `key` is a registered key. The explicit guard satisfies
-    // noUncheckedIndexedAccess and serves as a defense-in-depth tripwire
-    // (if it ever fires, a downstream contract was violated).
-    const definition = registry[key];
-    if (definition === undefined) {
-      throw new Error(`KNOWN_SETTINGS missing entry for key '${key}'`);
-    }
+    const definition = KNOWN_SETTINGS[key];
     const row = await this.repository.findOne(tenantId, key);
     if (row === null) {
       return definition.default as SettingValueOf<K>;
@@ -83,35 +79,74 @@ export class TenantSettingService {
   // absent). DB rows for unknown-to-this-version keys are filtered out
   // (forward-compat: a newer writer's row remains harmless to an older
   // reader's view).
-  //
-  // In S1 the registry is EMPTY (Gate-5 Ruling 1), so the response is
-  // literally `{}` for every tenant. The shape lights up as S2+ register
-  // their known-keys.
   async getAll(tenantId: string): Promise<TenantSettingsView> {
     const rows = await this.repository.findAllForTenant(tenantId);
     const rowMap = new Map<string, unknown>();
     for (const r of rows) rowMap.set(r.key, r.value);
 
-    // Same empty-registry cast as `get<K>` — the iteration is over zero
-    // entries in S1, so the indexing never runs at all; the cast lets the
-    // body compile against the empty registry shape.
-    const registry = KNOWN_SETTINGS as Readonly<
-      Record<string, { default: unknown } | undefined>
-    >;
     const view: Record<string, unknown> = {};
     for (const key of KNOWN_SETTING_KEYS) {
       if (rowMap.has(key)) {
         view[key] = rowMap.get(key);
       } else {
-        // Same construction-soundness reasoning as `get<K>`: `key` comes
-        // from `KNOWN_SETTING_KEYS`, which is `Object.keys(KNOWN_SETTINGS)`.
-        const entry = registry[key];
-        if (entry === undefined) {
-          throw new Error(`KNOWN_SETTINGS missing entry for key '${key}'`);
-        }
-        view[key] = entry.default;
+        view[key] = KNOWN_SETTINGS[key].default;
       }
     }
     return view as TenantSettingsView;
+  }
+
+  // S2 write path. Read-then-upsert in a single $transaction so the
+  // previous_value capture cannot race against a concurrent setter.
+  //
+  // Returns `{key, value, previous_value}`:
+  //   - `value`           — the value the caller just set (post-validation)
+  //   - `previous_value`  — the row's prior JSONB value, or `null` when
+  //                         no row existed (first-set; the row was
+  //                         INSERTed, not UPDATEd)
+  //
+  // The validator runs FIRST. A value that fails `definition.validate`
+  // throws VALIDATION_ERROR (400) with `details.reason='invalid_value'`
+  // and the allowed-set surfaced (when introspectable from the
+  // definition). The DB is never touched on a bad-value path.
+  //
+  // requestId threads the AramoError context for halt-and-surface
+  // observability (the consent.controller / import.controller pattern).
+  async set<K extends KnownSettingKey>(
+    tenantId: string,
+    key: K,
+    value: unknown,
+    actorUserId: string,
+    requestId: string,
+  ): Promise<{
+    key: K;
+    value: SettingValueOf<K>;
+    previous_value: SettingValueOf<K> | null;
+  }> {
+    const definition = KNOWN_SETTINGS[key];
+    if (!definition.validate(value)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `invalid value for setting '${String(key)}'`,
+        400,
+        {
+          requestId,
+          details: { reason: 'invalid_value', key },
+        },
+      );
+    }
+    // Defense-in-depth: the controller `isKnownSettingKey` guard rejects
+    // unknown keys at the boundary; the typed signature here re-enforces
+    // it via `K extends KnownSettingKey`. No runtime check needed past
+    // the validator step.
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await this.repository.findOneOnTx(tx, tenantId, key);
+      await this.repository.upsertOnTx(tx, tenantId, key, value, actorUserId);
+      return {
+        key,
+        value: value as SettingValueOf<K>,
+        previous_value:
+          existing === null ? null : (existing.value as SettingValueOf<K>),
+      };
+    });
   }
 }

@@ -1,46 +1,75 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isCompensationDisplayDefault,
+  isKnownSettingKey,
   KNOWN_SETTINGS,
   KNOWN_SETTING_KEYS,
-  isKnownSettingKey,
 } from '../index.js';
 
-// Settings S1 — known-settings registry shape proof.
-//
-// The S1 invariant (Gate-5 Ruling 1; commit plan §4 gate 9): the registry is
-// SHIPPED EMPTY in S1. S2's pricing-model-default is the FIRST entry; until
-// then the foundation runs against an empty registry and the GET /v1/tenant/
-// settings response is `{}` for every tenant.
-//
-// These tests prove the FOUNDATION shape — registry-as-source-of-truth, the
-// closed-set discipline, and the runtime guard. They are forward-compatible:
-// when S2 adds the first key, the only assertion that flips is the count
-// (and `isKnownSettingKey('compensation.display_default')` becomes true).
-describe('KNOWN_SETTINGS — the closed-set registry (S1 ships EMPTY)', () => {
-  it('S1 ships ZERO known-keys (the empty foundation)', () => {
-    // The single load-bearing S1 invariant: building a generic write
-    // validator now (without a concrete first known-key) would speculate
-    // the audit-event shape — the over-build halt condition from the
-    // directive §6. S2 lights the first entry up.
-    expect(Object.keys(KNOWN_SETTINGS)).toEqual([]);
-    expect(KNOWN_SETTING_KEYS).toEqual([]);
+// Settings S2 — known-settings registry shape proofs (the closed-set
+// contract). S1 shipped EMPTY; S2 lights up the FIRST entry:
+// `compensation.display_default` with the PO-chosen `both` default.
+
+describe('KNOWN_SETTINGS — the closed-set registry (S2: first key)', () => {
+  it('ships exactly one known-key — compensation.display_default', () => {
+    expect(Object.keys(KNOWN_SETTINGS)).toEqual([
+      'compensation.display_default',
+    ]);
+    expect(KNOWN_SETTING_KEYS).toEqual(['compensation.display_default']);
+  });
+
+  it('compensation.display_default carries the PO-chosen default `both`', () => {
+    const definition = KNOWN_SETTINGS['compensation.display_default'];
+    expect(definition.key).toBe('compensation.display_default');
+    expect(definition.default).toBe('both');
+  });
+
+  it('compensation.display_default validator (the S2 PRECEDENT) accepts the 3 enum values', () => {
+    const definition = KNOWN_SETTINGS['compensation.display_default'];
+    expect(definition.validate('spread')).toBe(true);
+    expect(definition.validate('markup')).toBe(true);
+    expect(definition.validate('both')).toBe(true);
+  });
+
+  it('compensation.display_default validator rejects every other value', () => {
+    const definition = KNOWN_SETTINGS['compensation.display_default'];
+    // Adjacent enum-looking strings — the closed-set is exactly 3.
+    expect(definition.validate('SPREAD')).toBe(false);
+    expect(definition.validate('margin_percent')).toBe(false);
+    expect(definition.validate('')).toBe(false);
+    // Wrong type shapes.
+    expect(definition.validate(0)).toBe(false);
+    expect(definition.validate(true)).toBe(false);
+    expect(definition.validate(null)).toBe(false);
+    expect(definition.validate(undefined)).toBe(false);
+    expect(definition.validate({})).toBe(false);
+    expect(definition.validate([])).toBe(false);
   });
 
   it('KNOWN_SETTING_KEYS is frozen (closed-set discipline)', () => {
-    // The registry MUST be immutable at runtime — every consumer
-    // (TenantSettingService.getAll, isKnownSettingKey, future validators)
-    // assumes the key-set never mutates within a process. Mutation would
-    // create surprising read-of-default behavior across requests.
     expect(Object.isFrozen(KNOWN_SETTING_KEYS)).toBe(true);
   });
 });
 
-describe('isKnownSettingKey — runtime guard', () => {
-  it('rejects every input while the registry is empty', () => {
-    // S1 acceptance: every input is rejected (registry empty). After S2,
-    // the registered keys flip to `true`; everything else stays `false`.
-    expect(isKnownSettingKey('compensation.display_default')).toBe(false);
+describe('isCompensationDisplayDefault — exported validator predicate', () => {
+  it('matches the registry validator (single source of truth)', () => {
+    expect(isCompensationDisplayDefault('spread')).toBe(true);
+    expect(isCompensationDisplayDefault('markup')).toBe(true);
+    expect(isCompensationDisplayDefault('both')).toBe(true);
+    expect(isCompensationDisplayDefault('margin_percent')).toBe(false);
+    expect(isCompensationDisplayDefault(42)).toBe(false);
+  });
+});
+
+describe('isKnownSettingKey — runtime guard (the controller boundary check)', () => {
+  it('accepts the registered key', () => {
+    expect(isKnownSettingKey('compensation.display_default')).toBe(true);
+  });
+
+  it('rejects unregistered keys (the unknown-key-at-write halt)', () => {
+    expect(isKnownSettingKey('compensation.display.default')).toBe(false);
+    expect(isKnownSettingKey('compensation_display_default')).toBe(false);
     expect(isKnownSettingKey('import.failure_threshold_pct')).toBe(false);
     expect(isKnownSettingKey('anything_at_all')).toBe(false);
     expect(isKnownSettingKey('')).toBe(false);

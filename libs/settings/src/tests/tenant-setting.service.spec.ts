@@ -1,91 +1,205 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import type { Prisma } from '../../prisma/generated/client/client.js';
+import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { TenantSettingService } from '../lib/tenant-setting.service.js';
 import { TenantSettingRepository } from '../lib/tenant-setting.repository.js';
 
-// Settings S1 — TenantSettingService unit tests.
+// Settings S2 — TenantSettingService unit tests.
 //
-// The S1 service surface is `get<K>` + `getAll`. With the `KNOWN_SETTINGS`
-// registry shipped EMPTY (Gate-5 Ruling 1), the directly-testable behavior
-// is:
-//   - getAll returns `{}` regardless of what rows the repository surfaces
-//     (forward-compatibility: unknown-key DB rows are filtered out — the
-//     view contains exactly the registered keys, which in S1 is none).
-//   - the repository is consulted for every read (no memoization — Gate-5
-//     Ruling 3; D4b's per-request memo pattern has no analog here).
-//
-// `get<K>` is not exercised here because `K extends KnownSettingKey` is
-// `never` in S1 (the empty registry). The full default-fallback /
-// row-projection cascade is covered by the integration spec via the
-// repository surface; service-level get<K> lights up in S2 when a key
-// exists to compile against.
+// S1 covered getAll's empty-registry shape. S2 lights up:
+//   - get<K>('compensation.display_default') — typed-accessor + default-
+//     fallback for the first concrete known-key (proofs (c)/(d))
+//   - getAll surfaces compensation.display_default with the default `both`
+//   - set<K>('compensation.display_default', value) — read-then-upsert in
+//     $transaction returning {key, value, previous_value}; validator
+//     rejects bad values BEFORE the DB is touched (proof (e))
+
+const TENANT = '11111111-0000-7000-8000-aaaaaaaaaaaa';
+const ACTOR = '00000000-0000-7000-8000-000000000bb1';
+const REQ = 'req-test-1';
 
 function makeRepoStub(args: {
   findOne?: (tenantId: string, key: string) => Promise<{ value: unknown } | null>;
   findAllForTenant?: (tenantId: string) => Promise<ReadonlyArray<{ key: string; value: unknown }>>;
+  findOneOnTx?: (
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    key: string,
+  ) => Promise<{ value: unknown } | null>;
+  upsertOnTx?: (
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    key: string,
+    value: unknown,
+    lastModifiedBy: string,
+  ) => Promise<{ value: unknown }>;
 }): TenantSettingRepository {
   return {
     findOne: args.findOne ?? (async () => null),
     findAllForTenant: args.findAllForTenant ?? (async () => []),
+    findOneOnTx: args.findOneOnTx ?? (async () => null),
+    upsertOnTx: args.upsertOnTx ?? (async (_tx, _t, _k, v) => ({ value: v })),
   } as unknown as TenantSettingRepository;
 }
 
-describe('TenantSettingService.getAll — S1 empty-registry behavior', () => {
-  it('returns `{}` when the registry is empty AND no rows exist', async () => {
-    const repo = makeRepoStub({});
-    const svc = new TenantSettingService(repo);
+// Minimal PrismaService stub. set<K> uses $transaction(async (tx) => …);
+// the stub invokes the callback with a sentinel tx object so the
+// repository stubs above receive a non-null first arg.
+function makePrismaStub(): PrismaService {
+  const stub: Pick<PrismaService, '$transaction'> = {
+    $transaction: (async (
+      callback: (tx: Prisma.TransactionClient) => Promise<unknown>,
+    ) => callback({} as Prisma.TransactionClient)) as PrismaService['$transaction'],
+  };
+  return stub as unknown as PrismaService;
+}
 
-    const view = await svc.getAll('01900000-0000-7000-8000-000000000aaa');
+describe('TenantSettingService.get<K> — S2 typed-accessor proofs', () => {
+  it('returns the code-default `both` when no row exists (default-fallback)', async () => {
+    const repo = makeRepoStub({ findOne: async () => null });
+    const svc = new TenantSettingService(repo, makePrismaStub());
 
-    expect(view).toEqual({});
+    const value = await svc.get(TENANT, 'compensation.display_default');
+
+    expect(value).toBe('both');
   });
 
-  it('returns `{}` even when DB rows exist for unknown-to-S1 keys', async () => {
-    // Forward-compat invariant: an older reader against a newer writer
-    // must drop unknown keys, not error. In S1 every key is unknown, so
-    // every row is filtered. Once S2 registers a key, that key's row
-    // surfaces; other rows still drop.
+  it('returns the row-value when a row exists (typed-accessor projection)', async () => {
+    const repo = makeRepoStub({
+      findOne: async () => ({ value: 'markup' }),
+    });
+    const svc = new TenantSettingService(repo, makePrismaStub());
+
+    const value = await svc.get(TENANT, 'compensation.display_default');
+
+    expect(value).toBe('markup');
+  });
+});
+
+describe('TenantSettingService.getAll — S2 view materialization', () => {
+  it('surfaces compensation.display_default with the default `both` when no row exists', async () => {
+    const repo = makeRepoStub({ findAllForTenant: async () => [] });
+    const svc = new TenantSettingService(repo, makePrismaStub());
+
+    const view = await svc.getAll(TENANT);
+
+    expect(view).toEqual({
+      'compensation.display_default': 'both',
+    });
+  });
+
+  it('surfaces the row-value when one exists', async () => {
     const repo = makeRepoStub({
       findAllForTenant: async () => [
-        { key: 'future.unknown_key', value: 'whatever' },
-        { key: 'another.future_key', value: { nested: 1 } },
+        { key: 'compensation.display_default', value: 'spread' },
       ],
     });
-    const svc = new TenantSettingService(repo);
+    const svc = new TenantSettingService(repo, makePrismaStub());
 
-    const view = await svc.getAll('01900000-0000-7000-8000-000000000aaa');
+    const view = await svc.getAll(TENANT);
 
-    expect(view).toEqual({});
+    expect(view).toEqual({
+      'compensation.display_default': 'spread',
+    });
   });
 
-  it('consults the repository on every call (no memoization)', async () => {
-    // Gate-5 Ruling 3: read-through; config is cold-path; no D4b-style
-    // per-request memo. Two getAll calls hit the repo twice.
-    const findAllForTenant = vi.fn(async () => []);
-    const repo = makeRepoStub({ findAllForTenant });
-    const svc = new TenantSettingService(repo);
+  it('filters DB rows for unknown-to-S2 keys (forward-compat invariant)', async () => {
+    const repo = makeRepoStub({
+      findAllForTenant: async () => [
+        { key: 'compensation.display_default', value: 'markup' },
+        { key: 'future.unknown_key', value: 'whatever' },
+      ],
+    });
+    const svc = new TenantSettingService(repo, makePrismaStub());
 
-    await svc.getAll('01900000-0000-7000-8000-000000000aaa');
-    await svc.getAll('01900000-0000-7000-8000-000000000aaa');
+    const view = await svc.getAll(TENANT);
 
-    expect(findAllForTenant).toHaveBeenCalledTimes(2);
+    expect(view).toEqual({
+      'compensation.display_default': 'markup',
+    });
+  });
+});
+
+describe('TenantSettingService.set<K> — S2 write-path proofs', () => {
+  it('upserts a valid value and returns {key, value, previous_value: null} on first-set', async () => {
+    const findOneOnTx = vi.fn(async () => null);
+    const upsertOnTx = vi.fn(async (_tx, _t, _k, v) => ({ value: v }));
+    const repo = makeRepoStub({ findOneOnTx, upsertOnTx });
+    const svc = new TenantSettingService(repo, makePrismaStub());
+
+    const result = await svc.set(
+      TENANT,
+      'compensation.display_default',
+      'spread',
+      ACTOR,
+      REQ,
+    );
+
+    expect(result).toEqual({
+      key: 'compensation.display_default',
+      value: 'spread',
+      previous_value: null,
+    });
+    expect(findOneOnTx).toHaveBeenCalledTimes(1);
+    expect(upsertOnTx).toHaveBeenCalledTimes(1);
+    // last_modified_by threaded through to the upsert primitive (the
+    // schema-side provenance — Settings S2 directive §1).
+    expect(upsertOnTx).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      'compensation.display_default',
+      'spread',
+      ACTOR,
+    );
   });
 
-  it('passes the tenant_id through to the repository verbatim', async () => {
-    // Per-tenant isolation is enforced by the WHERE tenant_id in the
-    // repository; the service's job is to deliver the tenant_id from the
-    // auth context unchanged. The endpoint-level isolation proof is the
-    // integration spec; this is the in-process plumbing proof.
-    const findAllForTenant = vi.fn(async () => []);
-    const repo = makeRepoStub({ findAllForTenant });
-    const svc = new TenantSettingService(repo);
+  it('captures previous_value atomically (read-then-upsert in the tx)', async () => {
+    const findOneOnTx = vi.fn(async () => ({ value: 'both' }));
+    const upsertOnTx = vi.fn(async (_tx, _t, _k, v) => ({ value: v }));
+    const repo = makeRepoStub({ findOneOnTx, upsertOnTx });
+    const svc = new TenantSettingService(repo, makePrismaStub());
 
-    const tenantA = '01900000-0000-7000-8000-000000000aaa';
-    const tenantB = '01900000-0000-7000-8000-000000000bbb';
-    await svc.getAll(tenantA);
-    await svc.getAll(tenantB);
+    const result = await svc.set(
+      TENANT,
+      'compensation.display_default',
+      'markup',
+      ACTOR,
+      REQ,
+    );
 
-    expect(findAllForTenant).toHaveBeenNthCalledWith(1, tenantA);
-    expect(findAllForTenant).toHaveBeenNthCalledWith(2, tenantB);
+    expect(result).toEqual({
+      key: 'compensation.display_default',
+      value: 'markup',
+      previous_value: 'both',
+    });
+  });
+
+  it('rejects an invalid value with VALIDATION_ERROR — the DB is not touched', async () => {
+    const findOneOnTx = vi.fn(async () => null);
+    const upsertOnTx = vi.fn(async (_tx, _t, _k, v) => ({ value: v }));
+    const repo = makeRepoStub({ findOneOnTx, upsertOnTx });
+    const svc = new TenantSettingService(repo, makePrismaStub());
+
+    await expect(
+      svc.set(
+        TENANT,
+        'compensation.display_default',
+        'margin_percent',
+        ACTOR,
+        REQ,
+      ),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      statusCode: 400,
+      context: {
+        details: {
+          reason: 'invalid_value',
+          key: 'compensation.display_default',
+        },
+      },
+    });
+    expect(findOneOnTx).not.toHaveBeenCalled();
+    expect(upsertOnTx).not.toHaveBeenCalled();
   });
 });

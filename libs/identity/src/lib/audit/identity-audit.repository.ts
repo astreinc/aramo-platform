@@ -44,6 +44,18 @@ export const EVENT_TYPES = [
   'identity.team.client_ownership.removed',
   'identity.user_client_assignment.created',
   'identity.user_client_assignment.removed',
+  // Settings S2 — tenant-config write event. Emitted by the app-layer
+  // two-call seam in apps/api's TenantSettingsController (the controller
+  // is the seam; libs/settings stays a LEAF — NO @aramo/identity import
+  // there). Tenant-scoped (the writing tenant). subject_id is the
+  // tenant_id (the @db.Uuid column cannot carry the string setting key;
+  // the key lives in the payload). Payload shape:
+  //   { key: KnownSettingKey, value: SettingValueOf<K>,
+  //     previous_value: SettingValueOf<K> | null }
+  // First-set (no prior row) sends `previous_value: null`. The event is
+  // BEST-EFFORT — an audit failure logs at warn level but never blocks
+  // the setting write (the program-wide identity-audit posture).
+  'identity.tenant_setting.updated',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -74,6 +86,8 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.team.client_ownership.removed',
   'identity.user_client_assignment.created',
   'identity.user_client_assignment.removed',
+  // Settings S2 — tenant-config writes carry the writing-tenant's id.
+  'identity.tenant_setting.updated',
 ]);
 
 export interface WriteAuditEventInput {
