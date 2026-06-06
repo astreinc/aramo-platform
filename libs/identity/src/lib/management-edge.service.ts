@@ -98,6 +98,14 @@ export class ManagementEdgeService {
     return row;
   }
 
+  // Settings S5-BE2 — list every management edge in the tenant. Reading A
+  // (scope-gated tenant-wide): the controller's org:manage gate is the
+  // only authority check; this pass-through reads tenant-scoped from the
+  // repo. No resolver call.
+  async listAllForTenant(tenant_id: string): Promise<ManagementEdgeRow[]> {
+    return this.repo.findAllForTenant(tenant_id);
+  }
+
   async clearEdge(args: {
     tenant_id: string;
     id: string;

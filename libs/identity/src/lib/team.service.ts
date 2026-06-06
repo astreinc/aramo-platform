@@ -104,6 +104,42 @@ export class TeamService {
     return row;
   }
 
+  // Settings S5-BE2 — list every team in the tenant. Reading A
+  // (scope-gated tenant-wide): the controller's team:manage gate is the
+  // only authority check; this pass-through reads tenant-scoped from the
+  // repo. No resolver call. Both active AND inactive teams surface
+  // (is_active is on the row; FE renders the distinction).
+  async listAllTeamsForTenant(tenant_id: string): Promise<TeamRow[]> {
+    return this.repo.findAllTeamsForTenant(tenant_id);
+  }
+
+  // Settings S5-BE2 — list a team's memberships. Reading A: gated by
+  // team:manage upstream. Prechecks team existence in tenant → 404 if
+  // not (the existence-non-leak rule per S5-BE1; mirrors addMembership's
+  // precondition). Empty list = team exists with no members.
+  async listMembersForTeam(args: {
+    tenant_id: string;
+    team_id: string;
+    request_id: string;
+  }): Promise<TeamMembershipRow[]> {
+    const team = await this.repo.findTeamById({
+      tenant_id: args.tenant_id,
+      id: args.team_id,
+    });
+    if (team === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'Team not found in tenant',
+        404,
+        { requestId: args.request_id, details: { team_id: args.team_id } },
+      );
+    }
+    return this.repo.findMembershipsForTeam({
+      tenant_id: args.tenant_id,
+      team_id: args.team_id,
+    });
+  }
+
   async removeMembership(args: {
     tenant_id: string;
     team_id: string;
