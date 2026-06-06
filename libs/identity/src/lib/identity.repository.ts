@@ -94,6 +94,67 @@ export class IdentityRepository {
     return row === null ? null : toMembershipDto(row);
   }
 
+  // Settings S5-BE1 — tenant-users list (the user-roster the S5b admin view
+  // renders). Returns every membership in the tenant (active AND disabled
+  // both surface; the directive (c) proof requires the S3a soft-disable
+  // state to be visible at the read). Each row carries identity (email +
+  // display_name) + membership-level state (is_active + deactivated_at —
+  // the membership soft-disable columns the S3a saga writes, NOT
+  // User.is_active which is the global flag) + site_id (PR-A1a Ruling 4,
+  // nullable) + role_keys (sorted asc; only active roles surface — matches
+  // findRoleKeysForMembership's precedent so the read shape is consistent
+  // with what S3b's audit payloads carry).
+  //
+  // Per-tenant isolation: WHERE clause filters on tenant_id ONLY. The
+  // controller derives tenant_id from authContext (never from the body),
+  // so a tenant_admin in tenant A reads only tenant A's roster.
+  //
+  // Order: (joined_at asc, user_id asc) — stable for the UI; matches the
+  // intuition that newer-joined users appear later. No pagination (S5-BE1
+  // lean — matches the requisition list precedent).
+  async listTenantUsers(tenant_id: string): Promise<TenantUserView[]> {
+    const rows = await this.prisma.userTenantMembership.findMany({
+      where: { tenant_id },
+      include: {
+        user: true,
+        role_assignments: {
+          where: { role: { is_active: true } },
+          include: { role: { select: { key: true } } },
+        },
+      },
+      orderBy: [{ joined_at: 'asc' }, { user_id: 'asc' }],
+    });
+    return rows.map(toTenantUserView);
+  }
+
+  // Settings S5-BE1 — tenant-user detail. Same shape as a list row, single
+  // row. Returns null when no membership for (user_id, tenant_id) — the
+  // controller maps null → 404 NOT_FOUND. Per-tenant isolation: a
+  // `:user_id` belonging to a user without a membership in this tenant
+  // returns null (NOT a leaked row from another tenant — the WHERE is on
+  // the composite key user_id_tenant_id).
+  async getTenantUser(args: {
+    user_id: string;
+    tenant_id: string;
+  }): Promise<TenantUserView | null> {
+    const row = await this.prisma.userTenantMembership.findUnique({
+      where: {
+        user_id_tenant_id: {
+          user_id: args.user_id,
+          tenant_id: args.tenant_id,
+        },
+      },
+      include: {
+        user: true,
+        role_assignments: {
+          where: { role: { is_active: true } },
+          include: { role: { select: { key: true } } },
+        },
+      },
+    });
+    return row === null ? null : toTenantUserView(row);
+  }
+
   async findRoleIdsForMembership(membership_id: string): Promise<string[]> {
     const rows = await this.prisma.userTenantMembershipRole.findMany({
       where: { membership_id },
@@ -407,5 +468,46 @@ function toMembershipDto(row: MembershipRow): MembershipDto {
       row.deactivated_at !== null ? row.deactivated_at.toISOString() : null,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
+  };
+}
+
+// Settings S5-BE1 — the tenant-user read shape (list row + detail). The
+// S5b admin view's contract. Surfaces:
+//   - user_id / email / display_name (User identity)
+//   - is_active / deactivated_at (MEMBERSHIP-level — UserTenantMembership.
+//     is_active + deactivated_at; the columns the S3a soft-disable saga
+//     writes. NOT User.is_active which is the global flag.)
+//   - site_id (PR-A1a Ruling 4, nullable)
+//   - role_keys (sorted asc; only active roles — matches
+//     findRoleKeysForMembership)
+export interface TenantUserView {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  is_active: boolean;
+  deactivated_at: string | null;
+  site_id: string | null;
+  role_keys: string[];
+}
+
+type TenantUserRow = {
+  user_id: string;
+  site_id: string | null;
+  is_active: boolean;
+  deactivated_at: Date | null;
+  user: { email: string; display_name: string | null };
+  role_assignments: { role: { key: string } }[];
+};
+
+function toTenantUserView(row: TenantUserRow): TenantUserView {
+  return {
+    user_id: row.user_id,
+    email: row.user.email,
+    display_name: row.user.display_name,
+    is_active: row.is_active,
+    deactivated_at:
+      row.deactivated_at !== null ? row.deactivated_at.toISOString() : null,
+    site_id: row.site_id,
+    role_keys: row.role_assignments.map((ra) => ra.role.key).sort(),
   };
 }

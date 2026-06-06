@@ -3,6 +3,8 @@ import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 
 import type { IdentityAuditService } from '../lib/audit/identity-audit.service.js';
+import type { IdentityService } from '../lib/identity.service.js';
+import type { TenantUserView } from '../lib/identity.repository.js';
 import type {
   DisableResult,
   InviteResult,
@@ -57,6 +59,10 @@ interface Mocks {
     assignTenantUserRoles: ReturnType<typeof vi.fn>;
   };
   audit: { writeEvent: ReturnType<typeof vi.fn> };
+  identity: {
+    listTenantUsers: ReturnType<typeof vi.fn>;
+    getTenantUser: ReturnType<typeof vi.fn>;
+  };
   ctl: TenantUserManagementController;
 }
 
@@ -69,11 +75,16 @@ function makeMocks(): Mocks {
   const audit = {
     writeEvent: vi.fn().mockResolvedValue(undefined),
   };
+  const identity = {
+    listTenantUsers: vi.fn(),
+    getTenantUser: vi.fn(),
+  };
   const ctl = new TenantUserManagementController(
     lifecycle as unknown as TenantUserLifecycleService,
     audit as unknown as IdentityAuditService,
+    identity as unknown as IdentityService,
   );
-  return { lifecycle, audit, ctl };
+  return { lifecycle, audit, identity, ctl };
 }
 
 describe('TenantUserManagementController.invite — body parsing', () => {
@@ -458,5 +469,185 @@ describe('TenantUserManagementController.assignRoles — implicit-tenant', () =>
     expect(args.tenant_id).toBe(TENANT_ID);
     expect(args.user_id).toBe(USER_ID);
     expect(args.role_keys).toEqual(['recruiter']);
+  });
+});
+
+// Settings S5-BE1 — GET /v1/tenant/users (list) + GET /:user_id (detail).
+//
+// The Cat-5 proofs (a-f from the directive §3) at the controller-boundary
+// slice. The read shape, the (c) disabled-user-surfaces end-to-end, the
+// (d) role_keys reflect assigned roles, the (f) cross-tenant 404, and the
+// per-tenant isolation (the IdentityService is called with
+// authContext.tenant_id, NEVER a body- or path-supplied tenant_id).
+//
+// Decorator-driven authz (RequireScopes('tenant:admin:user-manage')) is
+// structurally identical to the S3a/S3b mutate routes on this controller;
+// guard-fire-401/403 is the integration layer's job — proof (e) lives at
+// the AppModule boot test which exercises Nest's guard pipeline.
+
+const SITE_ID = '01900000-0000-7000-8000-000000000099';
+
+function makeView(overrides: Partial<TenantUserView> = {}): TenantUserView {
+  return {
+    user_id: USER_ID,
+    email: 'alice@example.com',
+    display_name: 'Alice',
+    is_active: true,
+    deactivated_at: null,
+    site_id: null,
+    role_keys: ['recruiter'],
+    ...overrides,
+  };
+}
+
+describe('TenantUserManagementController.list — Cat-5 (a) (c) (d) + scoping', () => {
+  it('(a) returns { items: TenantUserView[] } with the full row shape', async () => {
+    const { ctl, identity } = makeMocks();
+    const alice = makeView({ user_id: USER_ID, email: 'alice@example.com' });
+    const bob = makeView({
+      user_id: '01900000-0000-7000-8000-0000000000cc',
+      email: 'bob@example.com',
+      display_name: null,
+      site_id: SITE_ID,
+      role_keys: ['account_manager', 'recruiter'],
+    });
+    identity.listTenantUsers.mockResolvedValue([alice, bob]);
+
+    const result = await ctl.list(makeAuthContext());
+
+    expect(result).toEqual({ items: [alice, bob] });
+    // The shape: every locked field surfaces (Gate-6 §1).
+    const first = result.items[0];
+    expect(first).toBeDefined();
+    expect(first?.user_id).toEqual(expect.any(String));
+    expect(first?.email).toEqual(expect.any(String));
+    expect(
+      first?.display_name === null || typeof first?.display_name === 'string',
+    ).toBe(true);
+    expect(first?.is_active).toEqual(expect.any(Boolean));
+    expect(first?.deactivated_at).toBeNull();
+    expect(first?.site_id).toBeNull();
+    expect(first?.role_keys).toEqual(expect.any(Array));
+    // Site_id surfaces on a site-scoped membership (the bob fixture).
+    expect(result.items[1]?.site_id).toBe(SITE_ID);
+  });
+
+  it('(c) a disabled user surfaces with is_active=false + deactivated_at set (the S3a state surfaces end-to-end)', async () => {
+    const { ctl, identity } = makeMocks();
+    const disabledAt = '2026-06-01T12:00:00.000Z';
+    identity.listTenantUsers.mockResolvedValue([
+      makeView({
+        is_active: false,
+        deactivated_at: disabledAt,
+      }),
+    ]);
+
+    const result = await ctl.list(makeAuthContext());
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.is_active).toBe(false);
+    expect(result.items[0]?.deactivated_at).toBe(disabledAt);
+  });
+
+  it('(d) role_keys reflect the assigned roles (sorted asc — matches findRoleKeysForMembership precedent)', async () => {
+    const { ctl, identity } = makeMocks();
+    identity.listTenantUsers.mockResolvedValue([
+      makeView({ role_keys: ['account_manager', 'recruiter', 'sourcer'] }),
+    ]);
+
+    const result = await ctl.list(makeAuthContext());
+
+    expect(result.items[0]?.role_keys).toEqual([
+      'account_manager',
+      'recruiter',
+      'sourcer',
+    ]);
+  });
+
+  it('per-tenant isolation: identity.listTenantUsers is called with authContext.tenant_id', async () => {
+    const { ctl, identity } = makeMocks();
+    identity.listTenantUsers.mockResolvedValue([]);
+
+    await ctl.list(makeAuthContext(TENANT_ID));
+
+    expect(identity.listTenantUsers).toHaveBeenCalledTimes(1);
+    expect(identity.listTenantUsers).toHaveBeenCalledWith(TENANT_ID);
+    expect(identity.listTenantUsers).not.toHaveBeenCalledWith(OTHER_TENANT_ID);
+  });
+
+  it('list endpoint emits NO audit (read path — events-from-reads is the wrong-side of the EVENT_TYPES boundary)', async () => {
+    const { ctl, identity, audit } = makeMocks();
+    identity.listTenantUsers.mockResolvedValue([makeView()]);
+    await ctl.list(makeAuthContext());
+    expect(audit.writeEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('TenantUserManagementController.detail — Cat-5 (b) (f) + scoping', () => {
+  it('(b) returns the single TenantUserView when the membership exists', async () => {
+    const { ctl, identity } = makeMocks();
+    const view = makeView({ role_keys: ['recruiter'] });
+    identity.getTenantUser.mockResolvedValue(view);
+
+    const result = await ctl.detail(makeAuthContext(), USER_ID, REQUEST_ID);
+
+    expect(result).toEqual(view);
+    expect(identity.getTenantUser).toHaveBeenCalledWith({
+      user_id: USER_ID,
+      tenant_id: TENANT_ID,
+    });
+  });
+
+  it('(f) cross-tenant :user_id → 404 NOT_FOUND (per-tenant isolation; NOT 403 — don\'t leak existence)', async () => {
+    const { ctl, identity } = makeMocks();
+    // identity returns null when the (user_id, tenant_id) composite has no
+    // membership row — exactly the cross-tenant case the directive flags.
+    identity.getTenantUser.mockResolvedValue(null);
+
+    await expect(
+      ctl.detail(makeAuthContext(TENANT_ID), USER_ID, REQUEST_ID),
+    ).rejects.toBeInstanceOf(AramoError);
+    await expect(
+      ctl.detail(makeAuthContext(TENANT_ID), USER_ID, REQUEST_ID),
+    ).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      statusCode: 404,
+      context: { details: { user_id: USER_ID, tenant_id: TENANT_ID } },
+    });
+  });
+
+  it('per-tenant isolation: identity.getTenantUser is called with authContext.tenant_id, NEVER an other-tenant value', async () => {
+    const { ctl, identity } = makeMocks();
+    identity.getTenantUser.mockResolvedValue(makeView());
+
+    await ctl.detail(makeAuthContext(TENANT_ID), USER_ID, REQUEST_ID);
+
+    const args = identity.getTenantUser.mock.calls[0]?.[0] as {
+      user_id: string;
+      tenant_id: string;
+    };
+    expect(args.tenant_id).toBe(TENANT_ID);
+    expect(args.tenant_id).not.toBe(OTHER_TENANT_ID);
+    expect(args.user_id).toBe(USER_ID);
+  });
+
+  it('detail endpoint emits NO audit (read path)', async () => {
+    const { ctl, identity, audit } = makeMocks();
+    identity.getTenantUser.mockResolvedValue(makeView());
+    await ctl.detail(makeAuthContext(), USER_ID, REQUEST_ID);
+    expect(audit.writeEvent).not.toHaveBeenCalled();
+  });
+
+  it('(c) disabled user surfaces at detail too (is_active=false + deactivated_at set)', async () => {
+    const { ctl, identity } = makeMocks();
+    const disabledAt = '2026-06-01T12:00:00.000Z';
+    identity.getTenantUser.mockResolvedValue(
+      makeView({ is_active: false, deactivated_at: disabledAt }),
+    );
+
+    const result = await ctl.detail(makeAuthContext(), USER_ID, REQUEST_ID);
+
+    expect(result.is_active).toBe(false);
+    expect(result.deactivated_at).toBe(disabledAt);
   });
 });

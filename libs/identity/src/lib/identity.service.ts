@@ -5,7 +5,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { IdentityAuditService } from './audit/identity-audit.service.js';
 import type { MembershipDto } from './dto/membership.dto.js';
 import type { UserDto } from './dto/user.dto.js';
-import { IdentityRepository } from './identity.repository.js';
+import { IdentityRepository, type TenantUserView } from './identity.repository.js';
 
 // IdentityService — at AUTHZ-1, this surface was resolve-only (the original
 // "never creates a User" §3 + §11 halt rule), with the auth-service
@@ -46,6 +46,23 @@ export class IdentityService {
     tenant_id: string;
   }): Promise<MembershipDto | null> {
     return this.identityRepo.findMembership(args);
+  }
+
+  // Settings S5-BE1 — tenant-users reads (the S5b prereq). The user-roster
+  // is an ADMIN function gated by tenant:admin:user-manage; the read is
+  // TENANT-WIDE within the admin scope (NOT D4b work-visibility-scoped —
+  // the mutate side of the controller is already tenant-wide; a narrowed
+  // read would be incoherent). The repo scopes the WHERE to tenant_id;
+  // the controller derives tenant_id from authContext.
+  async listTenantUsers(tenant_id: string): Promise<TenantUserView[]> {
+    return this.identityRepo.listTenantUsers(tenant_id);
+  }
+
+  async getTenantUser(args: {
+    user_id: string;
+    tenant_id: string;
+  }): Promise<TenantUserView | null> {
+    return this.identityRepo.getTenantUser(args);
   }
 
   // AUTHZ-2: the FIRST runtime User-write surface. Originally bounded to
