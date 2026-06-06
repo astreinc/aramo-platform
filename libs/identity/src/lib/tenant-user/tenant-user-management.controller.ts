@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -14,6 +15,8 @@ import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import { IdentityAuditService } from '../audit/identity-audit.service.js';
+import { IdentityService } from '../identity.service.js';
+import type { TenantUserView } from '../identity.repository.js';
 
 import { TenantUserLifecycleService } from './tenant-user-lifecycle.service.js';
 
@@ -58,7 +61,79 @@ export class TenantUserManagementController {
   constructor(
     private readonly lifecycle: TenantUserLifecycleService,
     private readonly audit: IdentityAuditService,
+    private readonly identity: IdentityService,
   ) {}
+
+  // Settings S5-BE1 — GET /v1/tenant/users.
+  //
+  // Tenant-users list (the S5b admin user-management view's roster). Each
+  // row carries identity (email + display_name) + MEMBERSHIP-level state
+  // (is_active + deactivated_at — the S3a soft-disable columns; NOT
+  // User.is_active which is the global flag) + site_id (PR-A1a Ruling 4,
+  // nullable) + role_keys (sorted asc; only active roles). Both active
+  // AND disabled users surface so the admin view can render the full
+  // roster (the (c) proof — a disabled user appears with is_active=false).
+  //
+  // SCOPING (the locked Gate-5 §2): the user-roster is TENANT-WIDE within
+  // the tenant:admin:user-manage scope — NOT D4b work-visibility-scoped.
+  // The user-roster is an ADMIN function (who's in the tenant); the D4b
+  // resolver scopes record-level WORK visibility (which clients/reqs you
+  // see — that's S5-BE2's surface, not this one). A user-manager needs
+  // the whole roster to do the admin job, and the mutate side of THIS
+  // controller is already tenant-wide — a narrowed read would be
+  // incoherent (a user-manager who can disable a user must also see that
+  // user in the list).
+  //
+  // PER-TENANT ISOLATION (load-bearing): the repo scopes the WHERE clause
+  // on tenant_id; tenant_id derives from authContext (NEVER from a query
+  // param or body). A tenant_admin in tenant A reads ONLY tenant A's
+  // roster.
+  //
+  // PAGINATION: none for S5-BE1 (matches the requisition list precedent).
+  // Tenant user-count is bounded; add pagination only if a real volume
+  // concern emerges.
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('tenant:admin:user-manage')
+  async list(
+    @AuthContext() authContext: AuthContextType,
+  ): Promise<{ items: TenantUserView[] }> {
+    const items = await this.identity.listTenantUsers(authContext.tenant_id);
+    return { items };
+  }
+
+  // Settings S5-BE1 — GET /v1/tenant/users/:user_id.
+  //
+  // Tenant-user detail (same row shape as the list, single object). 404
+  // when no membership exists for (user_id, tenant_id) — this is the
+  // per-tenant isolation 404 (the (f) proof): a `:user_id` belonging to a
+  // user in tenant B → 404 NOT 403 (don't leak existence cross-tenant).
+  // Reuses the existing NOT_FOUND code (ERROR_CODES +0).
+  @Get(':user_id')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('tenant:admin:user-manage')
+  async detail(
+    @AuthContext() authContext: AuthContextType,
+    @Param('user_id') userId: string,
+    @RequestId() requestId: string,
+  ): Promise<TenantUserView> {
+    const row = await this.identity.getTenantUser({
+      user_id: userId,
+      tenant_id: authContext.tenant_id,
+    });
+    if (row === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'membership not found for user in this tenant',
+        404,
+        {
+          requestId,
+          details: { user_id: userId, tenant_id: authContext.tenant_id },
+        },
+      );
+    }
+    return row;
+  }
 
   // POST /v1/tenant/users/invitations — invite a new tenant user.
   //
