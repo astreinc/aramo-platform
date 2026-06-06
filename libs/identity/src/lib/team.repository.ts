@@ -131,6 +131,25 @@ export class TeamRepository {
     return rows as TeamMembershipRow[];
   }
 
+  // Settings S5-BE2 — list ALL teams in the tenant (active AND inactive
+  // both surface; is_active is a field on the row so the FE can render
+  // the distinction). The scope-gated tenant-wide read (Reading A,
+  // PO-ratified): a holder of team:manage lists every team in the tenant
+  // — the same authority the team:manage write side already grants
+  // (a POST /v1/teams creates any team in the tenant, no visibility
+  // narrowing). The reads match the writes (read = write authority).
+  //
+  // No resolver call (Reading A). Tenant-scoped WHERE on tenant_id is
+  // the only filter. Order: (name asc, id asc) — stable for the S5c
+  // team-picker render.
+  async findAllTeamsForTenant(tenant_id: string): Promise<TeamRow[]> {
+    const rows = await this.prisma.team.findMany({
+      where: { tenant_id },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    });
+    return rows as TeamRow[];
+  }
+
   // AUTHZ-D4b — return the IDs of every ACTIVE team the user is a
   // member of in tenant. Used by VisibilityResolverService to resolve
   // the Axis-2 pod-clients union. Inactive teams (is_active=false) are

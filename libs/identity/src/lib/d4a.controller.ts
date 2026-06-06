@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -14,7 +15,9 @@ import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import { ManagementEdgeService } from './management-edge.service.js';
+import type { ManagementEdgeRow } from './management-edge.repository.js';
 import { TeamService } from './team.service.js';
+import type { TeamMembershipRow, TeamRow } from './team.repository.js';
 
 // AUTHZ-D4a — identity-side mechanism controller (Axis-1 hierarchy +
 // Axis-2 pods). Exposes the org:manage and team:manage (identity-side)
@@ -37,6 +40,30 @@ export class D4aController {
   ) {}
 
   // --- Axis-1: management edges (org:manage) -------------------------------
+
+  // Settings S5-BE2 — list the management edges (the org-tree).
+  //
+  // READING A (PO-ratified): scope-gated tenant-wide — a holder of
+  // org:manage lists every edge in the tenant. The reads MATCH the
+  // existing mutate authority (POST /v1/management/edges accepts ANY
+  // two users in the tenant — no D4b narrowing). NO resolver call;
+  // NO resolver extension; the D4b resolver logic UNCHANGED. Cf the
+  // S5 charter §4 correction note (PL-85 — these aren't D4b
+  // work-visibility entities; the resolver has no visible_edge_ids set;
+  // §4's "NOT see-all" intent is satisfied by the explicit scope gate).
+  //
+  // Per-tenant isolation: the repo's WHERE filters on tenant_id which
+  // derives from authContext (NEVER from a query param). The response
+  // is { items: [...] } — empty for a tenant with no edges.
+  @Get('management/edges')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('org:manage')
+  async listEdges(
+    @AuthContext() authContext: AuthContextType,
+  ): Promise<{ items: ManagementEdgeRow[] }> {
+    const items = await this.mgmtEdges.listAllForTenant(authContext.tenant_id);
+    return { items };
+  }
 
   @Post('management/edges')
   @HttpCode(HttpStatus.CREATED)
@@ -77,6 +104,47 @@ export class D4aController {
   }
 
   // --- Axis-2: teams + memberships (team:manage) ---------------------------
+
+  // Settings S5-BE2 — list the teams (the pods).
+  //
+  // READING A: scope-gated tenant-wide — a holder of team:manage lists
+  // every team in the tenant (active + inactive both surface; the
+  // is_active field is on the row). The reads MATCH the existing mutate
+  // authority (POST /v1/teams creates any team in the tenant — no D4b
+  // narrowing). NO resolver call.
+  @Get('teams')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('team:manage')
+  async listTeams(
+    @AuthContext() authContext: AuthContextType,
+  ): Promise<{ items: TeamRow[] }> {
+    const items = await this.teams.listAllTeamsForTenant(authContext.tenant_id);
+    return { items };
+  }
+
+  // Settings S5-BE2 — list a team's memberships.
+  //
+  // READING A: scope-gated tenant-wide. The team:manage holder can list
+  // members of ANY team in the tenant (parity with POST/DELETE
+  // teams/:teamId/members which target any team). A cross-tenant
+  // :teamId → 404 (the existence-non-leak rule per S5-BE1; the
+  // findTeamById precheck in TeamService.listMembersForTeam returns
+  // null for a cross-tenant team_id which becomes 404).
+  @Get('teams/:teamId/members')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('team:manage')
+  async listTeamMembers(
+    @AuthContext() authContext: AuthContextType,
+    @Param('teamId') teamId: string,
+    @RequestId() requestId: string,
+  ): Promise<{ items: TeamMembershipRow[] }> {
+    const items = await this.teams.listMembersForTeam({
+      tenant_id: authContext.tenant_id,
+      team_id: teamId,
+      request_id: requestId,
+    });
+    return { items };
+  }
 
   @Post('teams')
   @HttpCode(HttpStatus.CREATED)

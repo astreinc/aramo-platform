@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -14,6 +15,8 @@ import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import { D4aCompanyService } from './d4a.service.js';
+import type { TeamClientOwnershipRow } from './team-client-ownership.repository.js';
+import type { UserClientAssignmentRow } from './user-client-assignment.repository.js';
 
 // AUTHZ-D4a — company-side mechanism controller. Hosts the
 // direct-assignment mechanism (company:assign) and the Axis-2 client-
@@ -27,6 +30,35 @@ export class D4aCompanyController {
   constructor(private readonly d4a: D4aCompanyService) {}
 
   // --- Direct-assignment (company:assign) ----------------------------------
+
+  // Settings S5-BE2 — list a company's user assignments.
+  //
+  // READING A (PO-ratified): scope-gated tenant-wide — a holder of
+  // company:assign lists every assignment for the company (parity with
+  // POST/DELETE /v1/companies/:companyId/assignments which target any
+  // company in the tenant; no D4b visible_client_ids narrowing on the
+  // write side). The reads MATCH the existing mutate authority. NO
+  // resolver call; NO resolver extension; the D4b resolver logic
+  // UNCHANGED. Cf the S5 charter §4 correction note (PL-85).
+  //
+  // Cross-tenant :companyId → 404 (existence-non-leak per S5-BE1;
+  // companyRepo.findById tenant-scoped precheck in
+  // listAssignmentsForCompany).
+  @Get('companies/:companyId/assignments')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('company:assign')
+  async listCompanyAssignments(
+    @AuthContext() authContext: AuthContextType,
+    @Param('companyId') companyId: string,
+    @RequestId() requestId: string,
+  ): Promise<{ items: UserClientAssignmentRow[] }> {
+    const items = await this.d4a.listAssignmentsForCompany({
+      tenant_id: authContext.tenant_id,
+      company_id: companyId,
+      request_id: requestId,
+    });
+    return { items };
+  }
 
   @Post('companies/:companyId/assignments')
   @HttpCode(HttpStatus.CREATED)
@@ -70,6 +102,32 @@ export class D4aCompanyController {
   }
 
   // --- Axis-2 client-ownership (team:manage, company-side) -----------------
+
+  // Settings S5-BE2 — list a team's client ownerships.
+  //
+  // READING A: scope-gated tenant-wide. The team:manage holder lists
+  // every team-client edge for the team in the tenant (parity with
+  // POST/DELETE /v1/teams/:teamId/clients).
+  //
+  // NO team-existence precheck (the §7.3 cross-schema rule preserved
+  // from addClientOwnership: Team lives in identity; this controller
+  // does not impose a cross-schema FK lookup). The TeamClientOwnership
+  // WHERE on tenant_id is sufficient — a cross-tenant :teamId yields an
+  // empty list (no leak; indistinguishable from a tenant-local team with
+  // no clients). NO resolver call.
+  @Get('teams/:teamId/clients')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('team:manage')
+  async listTeamClients(
+    @AuthContext() authContext: AuthContextType,
+    @Param('teamId') teamId: string,
+  ): Promise<{ items: TeamClientOwnershipRow[] }> {
+    const items = await this.d4a.listClientsForTeam({
+      tenant_id: authContext.tenant_id,
+      team_id: teamId,
+    });
+    return { items };
+  }
 
   @Post('teams/:teamId/clients')
   @HttpCode(HttpStatus.CREATED)

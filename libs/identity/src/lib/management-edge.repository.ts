@@ -110,6 +110,24 @@ export class ManagementEdgeRepository {
     return rows as ManagementEdgeRow[];
   }
 
+  // Settings S5-BE2 — list ALL management edges in the tenant. The
+  // scope-gated tenant-wide read (Reading A, PO-ratified): a holder of
+  // org:manage lists every edge in the tenant — the same authority the
+  // org:manage write side already grants (a POST /v1/management/edges
+  // can target ANY two users in the tenant, no visibility narrowing).
+  // The reads match the writes (read = write authority).
+  //
+  // No resolver call (Reading A). Tenant-scoped WHERE on tenant_id is
+  // the only filter. Order: (created_at asc, id asc) — stable for the
+  // S5c org-tree render.
+  async findAllForTenant(tenant_id: string): Promise<ManagementEdgeRow[]> {
+    const rows = await this.prisma.managementEdge.findMany({
+      where: { tenant_id },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+    });
+    return rows as ManagementEdgeRow[];
+  }
+
   // AUTHZ-D4b — walk DOWNWARD from a manager collecting transitive
   // report user IDs up to max_depth (default 3 per D4a Lead-ruling 4 —
   // depth applies at TRAVERSAL, not edge-creation). Excludes the

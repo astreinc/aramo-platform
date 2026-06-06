@@ -174,6 +174,67 @@ export class D4aCompanyService {
     return row;
   }
 
+  // Settings S5-BE2 — list a company's user assignments.
+  //
+  // READING A (PO-ratified): scope-gated tenant-wide. The company:assign
+  // holder lists every assignment for the company (parity with
+  // POST/DELETE /v1/companies/:companyId/assignments which target any
+  // company in the tenant — no D4b visible_client_ids narrowing on the
+  // write side, so the read MUST match the write authority).
+  //
+  // Precheck: company exists in tenant → 404 if not (mirrors
+  // assignUserToClient's existence check; the existence-non-leak rule
+  // per S5-BE1). NO resolver call (Reading A).
+  async listAssignmentsForCompany(args: {
+    tenant_id: string;
+    company_id: string;
+    request_id: string;
+  }): Promise<UserClientAssignmentRow[]> {
+    const company = await this.companyRepo.findById({
+      tenant_id: args.tenant_id,
+      id: args.company_id,
+    });
+    if (company === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'Company not found in tenant',
+        404,
+        {
+          requestId: args.request_id,
+          details: { company_id: args.company_id },
+        },
+      );
+    }
+    return this.assignments.findByCompany({
+      tenant_id: args.tenant_id,
+      company_id: args.company_id,
+    });
+  }
+
+  // Settings S5-BE2 — list a team's client ownerships.
+  //
+  // READING A: scope-gated tenant-wide. The team:manage holder lists
+  // every team-client edge for the team. Parity with the mutates
+  // (POST/DELETE /v1/teams/:teamId/clients accept any team_id in the
+  // tenant; no D4b narrowing).
+  //
+  // NO team-existence precheck (the §7.3 cross-schema rule — Team lives
+  // in identity, the existing addClientOwnership service explicitly
+  // notes "D4a does not impose a cross-schema FK lookup here — that
+  // would re-introduce the cross-schema coupling §7.3 forbids"). The
+  // tenant_id WHERE on TeamClientOwnership is sufficient — a cross-
+  // tenant :teamId returns empty (no leak; indistinguishable from a
+  // tenant-local team with no clients). NO resolver call.
+  async listClientsForTeam(args: {
+    tenant_id: string;
+    team_id: string;
+  }): Promise<TeamClientOwnershipRow[]> {
+    return this.ownerships.findByTeam({
+      tenant_id: args.tenant_id,
+      team_id: args.team_id,
+    });
+  }
+
   async removeClientOwnership(args: {
     tenant_id: string;
     team_id: string;
