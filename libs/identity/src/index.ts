@@ -68,3 +68,11 @@ export {
   StubTenantCognitoAdapter,
 } from './lib/tenant-user/tenant-cognito.port.js';
 export type { TenantCognitoPort } from './lib/tenant-user/tenant-cognito.port.js';
+// Settings S4 — AuditFinancialsGate port (the auditor_with_financials
+// grant's policy precondition). apps/api binds the real adapter that
+// reads via TenantSettingService.
+export {
+  AUDIT_FINANCIALS_GATE,
+  StubAuditFinancialsGateAdapter,
+} from './lib/tenant-user/audit-financials-gate.port.js';
+export type { AuditFinancialsGate } from './lib/tenant-user/audit-financials-gate.port.js';

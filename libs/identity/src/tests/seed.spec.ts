@@ -65,7 +65,7 @@ describe('seed scope catalog — key format (test 18)', () => {
 });
 
 describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1b + AUTHZ-2)', () => {
-  it('seed role keys are exactly the 13 locked entries (12 tenant + 1 platform)', () => {
+  it('seed role keys are exactly the 14 locked entries (13 tenant + 1 platform)', () => {
     // AUTHZ-1 (2026-06-04): tenant role catalog expanded 4 -> 13.
     // AUTHZ-1b (2026-06-04): revised to the 12 staffing-tenant roles
     // (retire viewer/hiring_manager/interviewer/coordinator/external_agency;
@@ -77,9 +77,16 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1
     // namespace partition + the consumer_type check at the guard layer
     // is the DDR §13.1 tripwire (a platform token never satisfies a
     // tenant guard, and vice versa).
+    // Settings S4 (2026-06-05): adds the tenant-tier
+    // `auditor_with_financials` role (12 -> 13 tenant; 14 total). The
+    // role's GRANT is gated by the audit.financials_enabled KNOWN_SETTING
+    // at the role-assign path; the SEED of the role itself is
+    // unconditional (the GATE is keyed at the membership-write boundary,
+    // NOT at the role-existence boundary).
     expect([...SEED_ROLE_KEYS].sort()).toEqual([
       'account_manager',
       'auditor',
+      'auditor_with_financials',
       'back_office',
       'candidate',
       'delivery_manager',

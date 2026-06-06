@@ -7,6 +7,7 @@ export {
   KNOWN_SETTING_KEYS,
   isKnownSettingKey,
   isCompensationDisplayDefault,
+  isBoolean,
 } from './lib/known-settings.js';
 export type {
   KnownSettingKey,

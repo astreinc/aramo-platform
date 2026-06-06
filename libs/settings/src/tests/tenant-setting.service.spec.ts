@@ -78,7 +78,7 @@ describe('TenantSettingService.get<K> — S2 typed-accessor proofs', () => {
 });
 
 describe('TenantSettingService.getAll — S2 view materialization', () => {
-  it('surfaces compensation.display_default with the default `both` when no row exists', async () => {
+  it('surfaces every known-key with its code-default when no row exists (S2 + S4)', async () => {
     const repo = makeRepoStub({ findAllForTenant: async () => [] });
     const svc = new TenantSettingService(repo, makePrismaStub());
 
@@ -86,10 +86,11 @@ describe('TenantSettingService.getAll — S2 view materialization', () => {
 
     expect(view).toEqual({
       'compensation.display_default': 'both',
+      'audit.financials_enabled': false,
     });
   });
 
-  it('surfaces the row-value when one exists', async () => {
+  it('surfaces the row-value when one exists; absent keys still default', async () => {
     const repo = makeRepoStub({
       findAllForTenant: async () => [
         { key: 'compensation.display_default', value: 'spread' },
@@ -101,10 +102,11 @@ describe('TenantSettingService.getAll — S2 view materialization', () => {
 
     expect(view).toEqual({
       'compensation.display_default': 'spread',
+      'audit.financials_enabled': false,
     });
   });
 
-  it('filters DB rows for unknown-to-S2 keys (forward-compat invariant)', async () => {
+  it('filters DB rows for unknown-to-this-version keys (forward-compat invariant)', async () => {
     const repo = makeRepoStub({
       findAllForTenant: async () => [
         { key: 'compensation.display_default', value: 'markup' },
@@ -117,6 +119,7 @@ describe('TenantSettingService.getAll — S2 view materialization', () => {
 
     expect(view).toEqual({
       'compensation.display_default': 'markup',
+      'audit.financials_enabled': false,
     });
   });
 });

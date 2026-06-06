@@ -232,8 +232,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         },
       });
       const view = await svc.getAll(TENANT_A);
+      // S4 added audit.financials_enabled (boolean, default false) to the
+      // closed-set registry; getAll materializes every known-key with its
+      // row-value-or-default, so the view shape grew by one entry.
       expect(view).toEqual({
         'compensation.display_default': 'markup',
+        'audit.financials_enabled': false,
       });
     });
   },

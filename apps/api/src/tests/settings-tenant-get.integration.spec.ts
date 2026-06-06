@@ -175,12 +175,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as Record<string, unknown>;
-      // S2 invariant: the registry has one entry —
-      // compensation.display_default. A no-row tenant gets the
-      // code-defined default (`both`); the entry surfaces in the view.
-      // (S1 shipped the registry empty; S2 lit up this first key.)
+      // S2 + S4 invariant: the registry has two entries —
+      // compensation.display_default (S2) + audit.financials_enabled
+      // (S4). A no-row tenant gets each key's code-defined default
+      // (`both` + `false`); both entries surface in the view.
+      // (S1 shipped the registry empty.)
       expect(body).toEqual({
         'compensation.display_default': 'both',
+        'audit.financials_enabled': false,
       });
     });
 

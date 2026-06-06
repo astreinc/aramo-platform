@@ -125,9 +125,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // candidate). AUTHZ-2 (2026-06-04): adds the platform-tier
       // super_admin role (catalog row 13; namespace-separate from the
       // 12 tenant roles).
+      // Settings S4 (2026-06-05): adds tenant-tier auditor_with_financials
+      // (catalog 14 total = 13 tenant + 1 platform; the grant is gated by
+      // the audit.financials_enabled KNOWN_SETTING at the role-assign
+      // path, NOT at seed/catalog level).
       expect(roles.map((r) => r.key)).toEqual([
         'account_manager',
         'auditor',
+        'auditor_with_financials',
         'back_office',
         'candidate',
         'delivery_manager',
@@ -216,11 +221,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   tenant_admin 47 + recruiter 31 + candidate 4 = 82 rows. (AUTHZ-D4a
       //   adds 4 to tenant_admin — +4 over AUTHZ-1b 78.)
       // AUTHZ-2 super_admin: +3 (the 3 platform:* scopes).
-      // Tenant rows: 82 + 195 = 277. Total with platform: 277 + 3 = 280.
-      // (AUTHZ-D4a: 269 -> 280; +11 rows for the 4 new scopes across the
-      // bundles holding them — see the commit plan §4 for the per-scope
-      // role-assignment.)
-      expect(roleScopes).toBe(280);
+      // Settings S4 auditor_with_financials: 5 Auditor non-comp scopes +
+      //   6 see-all compensation:view:* = +11 rows (0x405..0x409 in the
+      //   AUTHZ-1 range; 0x50c..0x511 in the D5 range, post-D5's 0x500..
+      //   0x50b for the 26 existing rows).
+      // Tenant rows: 82 + 195 + 11 = 288. Total with platform: 288 + 3 = 291.
+      expect(roleScopes).toBe(291);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -234,7 +240,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(sa?.name).toBe(SEED_SERVICE_ACCOUNT_NAME);
 
       const auditRows = await prisma.identityAuditEvent.findMany();
-      // AUTHZ-D4a audit count. Re-derived breakdown:
+      // Settings S4 audit count. Re-derived breakdown:
       //   - pre-A1a baseline (1 tenant + 1 user + 1 membership +
       //     1 external_identity + 2 roles + 6 scopes + 1 SA)          = 13
       //   - PR-A1a (1 role.candidate + 8 portal/ATS-subset scopes)   = +9
@@ -247,8 +253,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   - AUTHZ-D4a (4 scope.created events for the team-model
       //     scopes; the +9 runtime EVENT_TYPES are emitted by the
       //     mechanisms at use-time, NOT at seed-time)                  = +4
-      //                                                       total   = 73
-      expect(auditRows.length).toBe(73);
+      //   - Settings S4 (1 role.created event for the
+      //     auditor_with_financials seed role; the role grants no new
+      //     scopes, so no scope.created events)                       = +1
+      //                                                       total   = 74
+      expect(auditRows.length).toBe(74);
       // Every audit event uses actor_type 'system' and actor_id = SA id.
       for (const row of auditRows) {
         expect(row.actor_type).toBe('system');
@@ -324,16 +333,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // -----------------------------------------------------------------
     // AUTHZ-2 §5 proof 8 — no tenant-permission regression from the
-    // platform tier. The tenant catalog is the AUTHZ-1b 12-role staffing
-    // set; assertion was 13 pre-AUTHZ-1b. The kept-role bundles are
-    // still byte-identical (no A2-A8 regression).
+    // platform tier. The tenant catalog was the AUTHZ-1b 12-role staffing
+    // set; Settings S4 grows it to 13 by adding auditor_with_financials
+    // (the gated see-all-comp grant). The kept-role bundles are still
+    // byte-identical (no A2-A8 regression).
     // -----------------------------------------------------------------
-    it('AUTHZ-2 proof 8 — tenant 12-role catalog (AUTHZ-1b staffing set), no platform leakage', async () => {
+    it('Settings S4 — tenant 13-role catalog (AUTHZ-1b staffing set + auditor_with_financials), no platform leakage', async () => {
       const tenantRoles = await prisma.role.findMany({
         where: { key: { not: 'super_admin' } },
         select: { key: true },
       });
-      expect(tenantRoles.length).toBe(12);
+      expect(tenantRoles.length).toBe(13);
     });
 
     // -----------------------------------------------------------------

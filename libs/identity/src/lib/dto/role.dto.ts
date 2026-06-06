@@ -29,6 +29,14 @@
 // is enforced by namespace partition + the consumer_type check at the
 // guard layer — a platform token never satisfies a tenant guard, and
 // vice versa.
+//
+// Settings S4 (2026-06-05) adds the tenant-tier `auditor_with_financials`
+// role — the Auditor/Compliance bundle's 5 read scopes + the see-all
+// compensation:view:* set. Tenant catalog grows 12 → 13 (total 14
+// including super_admin). Grantable only when the tenant's
+// `audit.financials_enabled` KNOWN_SETTING is true (the GATE precondition
+// fires at the role-assign path; the seed grant of the role is not gated
+// — the GATE is keyed at the membership-write boundary).
 export const SEED_ROLE_KEYS = [
   // Pre-AUTHZ-1 tenant roles preserved across AUTHZ-1b (keys identical).
   'tenant_admin',
@@ -44,6 +52,9 @@ export const SEED_ROLE_KEYS = [
   'delivery_manager',   // AUTHZ-1b (fulfillment quality gate; read + submittal:approve)
   'lead_recruiter',     // AUTHZ-1b (= Recruiter operationally; lead-ness via D4b)
   'back_office',        // AUTHZ-1b (operational-read + activity; capability scopes deferred)
+  // Settings S4 — auditor_with_financials (compliance + see-all-comp,
+  // gated by audit.financials_enabled).
+  'auditor_with_financials',
   // AUTHZ-2 — 1 platform role (super_admin; platform:* scope namespace only).
   'super_admin',
 ] as const;

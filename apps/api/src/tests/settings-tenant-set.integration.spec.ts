@@ -392,8 +392,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as Record<string, unknown>;
+      // S4 added audit.financials_enabled (default false) to the closed-
+      // set registry; the materialized view now carries both keys.
       expect(body).toEqual({
         'compensation.display_default': 'markup',
+        'audit.financials_enabled': false,
       });
     });
   },

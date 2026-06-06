@@ -93,6 +93,44 @@ export function isCompensationDisplayDefault(
   );
 }
 
+// `audit.financials_enabled` — the SECOND registered key (S4).
+//
+// Boolean toggle that enables the tenant's compliance-tier
+// "Auditor with Financials" grant. When TRUE, a tenant_admin may assign
+// the seeded `auditor_with_financials` role (compliance reads + the
+// see-all compensation:view:* set) to a tenant user via the S3b
+// PATCH /v1/tenant/users/:user_id/roles surface. When FALSE (the
+// out-of-box default), the role-assign path rejects any grant of
+// `auditor_with_financials` with VALIDATION_ERROR
+// (details.reason='financials_audit_not_enabled') — the S4 GATE,
+// enforced by `TenantUserLifecycleService.assignTenantUserRoles`.
+//
+// DEFAULT FALSE (the PO ruling at S4 Gate-5): tenants opt IN to the
+// financial-auditor grant; the role's see-all-comp visibility is a
+// deliberate disclosure that should be explicit, not silent. The
+// toggle's WRITE path is the existing S2 PUT /v1/tenant/settings/:key
+// — no new endpoint (Path B's "almost no new code" property; the S4
+// proofs cover the toggle flip via the same PUT the S2 precedent
+// exercises).
+//
+// NARROW GATE (the PO ruling): assigning ANY OTHER role-set is
+// UNAFFECTED by this setting. The precondition reads the toggle only
+// when the requested role-keys contain the literal
+// `auditor_with_financials` — recruiter / account_manager / etc. flow
+// through unchanged. The grant rejection is a separate `details.reason`
+// from D5 (`financials_audit_not_enabled` vs. `invertible_role_union`)
+// so callers can distinguish a policy-precondition failure from an
+// integrity-boundary failure.
+//
+// DISPLAY-ONLY NOTHING: unlike compensation.display_default (which
+// changes a render default but never grants), this setting GATES a
+// grant. A future S5 tenant-console UI surfaces it with the explicit
+// label "Enable financial-auditor grant" + the named consequence.
+
+export function isBoolean(value: unknown): value is boolean {
+  return typeof value === 'boolean';
+}
+
 // The closed-set registry. S2 lights up the first key; S3+ register
 // additional keys here with NO migration (the pattern-B win).
 //
@@ -103,6 +141,11 @@ export const KNOWN_SETTINGS = {
     key: 'compensation.display_default',
     default: 'both' as CompensationDisplayDefault,
     validate: isCompensationDisplayDefault,
+  },
+  'audit.financials_enabled': {
+    key: 'audit.financials_enabled',
+    default: false,
+    validate: isBoolean,
   },
 } as const satisfies Record<string, SettingDefinition<unknown>>;
 

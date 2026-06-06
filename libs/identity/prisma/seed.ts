@@ -76,6 +76,11 @@ export const SEED_IDS = {
     back_office: '01900000-0000-7000-8000-00000000001c', // AUTHZ-1b (slot reused from retired external_agency)
     // AUTHZ-2 — 1 platform role (super_admin; platform:* scope namespace).
     super_admin: '01900000-0000-7000-8000-00000000001d',
+    // Settings S4 — auditor_with_financials. The Auditor/Compliance bundle +
+    // the see-all compensation:view:* scopes. Trivially non-invertible
+    // (holds every comp scope BY DESIGN — the see-all bypass applies; see
+    // SEE_ALL_ROLE_KEYS extension below). Catalog +1 tenant role.
+    auditor_with_financials: '01900000-0000-7000-8000-00000000001e',
   },
   scopes: {
     'consent:read': '01900000-0000-7000-8000-000000000020',
@@ -375,6 +380,10 @@ export const SEED_IDS = {
     scope_compensation_view_spread_amount_created: '01900000-0000-7000-8000-00000000023d',
     scope_compensation_view_spread_percent_created: '01900000-0000-7000-8000-00000000023e',
     scope_compensation_view_margin_percent_created: '01900000-0000-7000-8000-00000000023f',
+    // Settings S4 — 1 identity.role.created audit event for the new
+    // auditor_with_financials seed role. No new scope.created events
+    // (S4 grants via existing comp scopes — Path B).
+    role_auditor_with_financials_created: '01900000-0000-7000-8000-000000000240',
   },
 } as const;
 
@@ -679,6 +688,19 @@ const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
     'identity:user:read', 'identity:tenant:read',
     'activity:read',
   ]],
+  // Settings S4 — auditor_with_financials. The Auditor bundle's 5 read scopes
+  // verbatim (compliance-tier reads). The 6 see-all comp scopes are added
+  // separately via D5_COMPENSATION_BUNDLES so the RoleScope row-id space
+  // stays partitioned (AUTHZ-1 0x400+ for non-comp; D5 0x500+ for comp).
+  // Grantable ONLY when the tenant's audit.financials_enabled=true (the S4
+  // GATE precondition fires at the role-assign path; see
+  // TenantUserLifecycleService.assignTenantUserRoles).
+  ['auditor_with_financials', [
+    'auth:session:read',
+    'consent:decision-log:read',
+    'identity:user:read', 'identity:tenant:read',
+    'activity:read',
+  ]],
   // recruiting_manager — 33 scopes (Recruiter's 31 + tenant:admin:user-manage
   // + AUTHZ-D4a's org:manage; NO requisition:assign / NO company:assign —
   // those are the AM's acts). RM manages PEOPLE (user-manage provisions /
@@ -758,6 +780,8 @@ const AUTHZ1_ROLE_AUDIT_EVENTS: Array<{
   { audit_id: SEED_IDS.audit_events.role_finance_created, role_id: SEED_IDS.roles.finance, key: 'finance' },
   { audit_id: SEED_IDS.audit_events.role_auditor_created, role_id: SEED_IDS.roles.auditor, key: 'auditor' },
   { audit_id: SEED_IDS.audit_events.role_back_office_created, role_id: SEED_IDS.roles.back_office, key: 'back_office' },
+  // Settings S4 — 1 new role.created event for auditor_with_financials.
+  { audit_id: SEED_IDS.audit_events.role_auditor_with_financials_created, role_id: SEED_IDS.roles.auditor_with_financials, key: 'auditor_with_financials' },
 ];
 
 // AUTHZ-1 / AUTHZ-1b — generate the 188 staffing-catalog RoleScope row
@@ -862,6 +886,27 @@ export const D5_COMPENSATION_BUNDLES: ReadonlyArray<readonly [string, readonly s
   // doesn't negotiate); auditor (NONE by default — grantable via Settings
   // toggle, not seeded); candidate (portal-tier — no requisition read);
   // super_admin (platform-tier — no tenant requisition surface).
+  //
+  // Settings S4 — auditor_with_financials. The compliance see-all-comp
+  // grant. Holds every compensation:view:* scope (the see-all-comp set);
+  // mirrors the see-all tier (TA/TO) shape for COMP visibility. Joins the
+  // SEE_ALL_ROLE_KEYS bypass in role-bundle-validator so the D5 union
+  // check exempts unions involving this role (holding view:pay alongside
+  // every spread is the grant's whole point — NOT a leak). Non-
+  // invertibility is asserted trivially via assertNonInvertibleBundle's
+  // {seeAll:true} arg in d5-non-invertibility.spec. The role's GRANT to
+  // any membership is gated by the audit.financials_enabled
+  // KNOWN_SETTING via the S4 GATE precondition at the role-assign path
+  // (TenantUserLifecycleService.assignTenantUserRoles); the SEED of the
+  // role itself is unconditional.
+  ['auditor_with_financials', [
+    'compensation:view:pay',
+    'compensation:view:bill',
+    'compensation:view:revenue',
+    'compensation:view:spread:amount',
+    'compensation:view:spread:percent',
+    'compensation:view:margin:percent',
+  ]],
 ];
 
 // AUTHZ-D5 — deterministic RoleScope row IDs for the comp-bundle grants
@@ -952,7 +997,8 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
     },
   });
 
-  // 5. Roles (13 entries: 12 AUTHZ-1b tenant roles + 1 AUTHZ-2 platform role).
+  // 5. Roles (14 entries: 13 tenant roles [12 AUTHZ-1b + 1 S4
+  // auditor_with_financials] + 1 AUTHZ-2 platform role).
   // Descriptions carry the DDR display name + intent. The Role.key strings
   // are PRESERVED across AUTHZ-1b for the kept roles (tenant_admin,
   // recruiter, candidate, tenant_owner, account_manager, sourcer, auditor)
@@ -977,6 +1023,10 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertRole(prisma, SEED_IDS.roles.delivery_manager, 'delivery_manager', 'Delivery Manager — fulfillment quality gate; read + submittal:approve (no see-all — team-oversight visibility comes from D4b)');
   await upsertRole(prisma, SEED_IDS.roles.lead_recruiter, 'lead_recruiter', 'Lead Recruiter — operationally a Recruiter; lead-ness is team-tier visibility via D4b (Axis-1 mid-tier)');
   await upsertRole(prisma, SEED_IDS.roles.back_office, 'back_office', 'Back Office — operational-read + activity entry (the onboarding/timesheet/compliance capability scopes are deferred to the Onboarding/Operations DDR)');
+  // Settings S4 — Auditor/Compliance + see-all comp. Grantable ONLY when
+  // the tenant's audit.financials_enabled=true (the GATE precondition
+  // fires WRITE-TIME at the role-assign path).
+  await upsertRole(prisma, SEED_IDS.roles.auditor_with_financials, 'auditor_with_financials', 'Auditor with Financials — compliance reads + every compensation:view:* (the see-all-comp grant; gated by audit.financials_enabled)');
   // AUTHZ-2 — 1 platform role (super_admin; platform:* scope namespace).
   await upsertRole(prisma, SEED_IDS.roles.super_admin, 'super_admin', 'Super Admin — platform-tier operator (Aramo SaaS). Provisions tenants, invites Tenant Owners + platform admins. Holds ONLY platform:* scopes; never a tenant scope.');
 

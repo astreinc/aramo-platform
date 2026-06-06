@@ -34,6 +34,15 @@ export const SEE_ALL_ROLE_KEYS: ReadonlySet<string> = new Set([
   'tenant_admin',
   'tenant_owner',
   'super_admin',
+  // Settings S4 — auditor_with_financials. Holds view:pay alongside every
+  // spread BY DESIGN (the see-all-comp grant; the whole point of the
+  // role). The D5 union check exempts it via the same bypass that exempts
+  // the tenant see-all tier. The S4 GATE precondition (read of the
+  // tenant's audit.financials_enabled KNOWN_SETTING) is a SEPARATE,
+  // narrower gate keyed to this one role at the role-assign path; the
+  // D5 bypass here is the bundle-math exemption (comp seeAll), not the
+  // policy gate.
+  'auditor_with_financials',
 ]);
 
 @Injectable()

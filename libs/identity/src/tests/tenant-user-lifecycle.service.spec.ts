@@ -4,6 +4,7 @@ import type { UserDto } from '../lib/dto/user.dto.js';
 import type { IdentityService } from '../lib/identity.service.js';
 import type { RoleBundleValidator } from '../lib/tenant-user/role-bundle-validator.js';
 import type { TenantCognitoPort } from '../lib/tenant-user/tenant-cognito.port.js';
+import type { AuditFinancialsGate } from '../lib/tenant-user/audit-financials-gate.port.js';
 import { TenantUserLifecycleService } from '../lib/tenant-user/tenant-user-lifecycle.service.js';
 
 // Settings S3a — TenantUserLifecycleService saga proofs.
@@ -66,6 +67,9 @@ interface Mocks {
     adminDisableUser: ReturnType<typeof vi.fn>;
     adminEnableUser: ReturnType<typeof vi.fn>;
   };
+  auditFinancialsGate: {
+    isFinancialsAuditEnabled: ReturnType<typeof vi.fn>;
+  };
   service: TenantUserLifecycleService;
 }
 
@@ -89,12 +93,20 @@ function makeMocks(): Mocks {
     adminDisableUser: vi.fn(),
     adminEnableUser: vi.fn(),
   };
+  // Settings S4 — AuditFinancialsGate port mock. Defaults to NOT-called
+  // (the GATE precondition fires ONLY when the requested role-set
+  // contains 'auditor_with_financials'); tests that exercise the gate
+  // override the implementation explicitly.
+  const auditFinancialsGate = {
+    isFinancialsAuditEnabled: vi.fn().mockResolvedValue(false),
+  };
   const service = new TenantUserLifecycleService(
     identitySvc as unknown as IdentityService,
     roleBundle as unknown as RoleBundleValidator,
     cognito as unknown as TenantCognitoPort,
+    auditFinancialsGate as unknown as AuditFinancialsGate,
   );
-  return { identitySvc, roleBundle, cognito, service };
+  return { identitySvc, roleBundle, cognito, auditFinancialsGate, service };
 }
 
 describe('TenantUserLifecycleService.inviteTenantUser', () => {
@@ -559,5 +571,181 @@ describe('TenantUserLifecycleService.assignTenantUserRoles', () => {
       user_id: USER_ID,
       tenant_id: TENANT_ID,
     });
+  });
+});
+
+// Settings S4 — assignTenantUserRoles + the auditor_with_financials GATE
+// precondition.
+//
+// THE LOAD-BEARING S4 PROOFS (commit plan §4 (e) (f) (g)):
+//   (e) the grant via S3b's PATCH when the toggle is ON   → succeeds
+//   (f) the grant of auditor_with_financials when OFF      → REJECTED
+//                                                            (VALIDATION_ERROR
+//                                                            with details
+//                                                            .reason=
+//                                                            'financials_audit_
+//                                                            not_enabled')
+//   (g) the GATE is NARROW — assigning ANY OTHER role-set is
+//       UNAFFECTED by audit.financials_enabled (S3b's general behavior
+//       unchanged; the gate read is not invoked for non-target roles)
+
+describe('TenantUserLifecycleService.assignTenantUserRoles — Settings S4 GATE precondition', () => {
+  it('auditor_with_financials + toggle OFF → REJECTED (financials_audit_not_enabled); no D5 check, no reconcile', async () => {
+    const { service, identitySvc, roleBundle, auditFinancialsGate } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-awf']);
+    auditFinancialsGate.isFinancialsAuditEnabled.mockResolvedValue(false);
+    const promise = service.assignTenantUserRoles({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      role_keys: ['auditor_with_financials'],
+      actor_user_id: ACTOR_ID,
+      request_id: REQUEST_ID,
+    });
+    await expect(promise).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      statusCode: 400,
+      context: {
+        requestId: REQUEST_ID,
+        details: {
+          reason: 'financials_audit_not_enabled',
+          role_key: 'auditor_with_financials',
+        },
+      },
+    });
+    // The GATE fires WRITE-TIME, BEFORE any side effect.
+    expect(auditFinancialsGate.isFinancialsAuditEnabled).toHaveBeenCalledWith(
+      TENANT_ID,
+    );
+    expect(roleBundle.assertUnionNonInvertible).not.toHaveBeenCalled();
+    expect(identitySvc.findMembership).not.toHaveBeenCalled();
+    expect(identitySvc.replaceMembershipRoles).not.toHaveBeenCalled();
+  });
+
+  it('auditor_with_financials + toggle ON → succeeds (D5 + reconcile run; gate consulted with tenant_id)', async () => {
+    const { service, identitySvc, roleBundle, auditFinancialsGate } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-awf']);
+    auditFinancialsGate.isFinancialsAuditEnabled.mockResolvedValue(true);
+    identitySvc.findMembership.mockResolvedValue({ id: MEMBERSHIP_ID });
+    identitySvc.findRoleKeysForMembership.mockResolvedValue([]);
+    identitySvc.replaceMembershipRoles.mockResolvedValue({
+      added_role_ids: ['rid-awf'],
+      removed_role_ids: [],
+    });
+    const result = await service.assignTenantUserRoles({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      role_keys: ['auditor_with_financials'],
+      actor_user_id: ACTOR_ID,
+      request_id: REQUEST_ID,
+    });
+    expect(result.membership_id).toBe(MEMBERSHIP_ID);
+    expect(result.added_role_keys).toEqual(['auditor_with_financials']);
+    expect(result.removed_role_keys).toEqual([]);
+    expect(auditFinancialsGate.isFinancialsAuditEnabled).toHaveBeenCalledWith(
+      TENANT_ID,
+    );
+    // The D5 union check still runs on the ON path; it short-circuits at
+    // length<2 here, so the call is allowed-but-no-op. The reconcile
+    // does fire.
+    expect(roleBundle.assertUnionNonInvertible).toHaveBeenCalled();
+    expect(identitySvc.replaceMembershipRoles).toHaveBeenCalledWith({
+      membership_id: MEMBERSHIP_ID,
+      role_ids: ['rid-awf'],
+    });
+  });
+
+  it('the GATE is NARROW — assigning recruiter (no auditor_with_financials) NEVER reads the toggle, regardless of its value', async () => {
+    const { service, identitySvc, roleBundle, auditFinancialsGate } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-rc']);
+    // Toggle is OFF; if the GATE were a global precondition, this would
+    // wrongly reject. The NARROW gate is keyed to the single role-key —
+    // recruiter must flow through untouched.
+    auditFinancialsGate.isFinancialsAuditEnabled.mockResolvedValue(false);
+    identitySvc.findMembership.mockResolvedValue({ id: MEMBERSHIP_ID });
+    identitySvc.findRoleKeysForMembership.mockResolvedValue([]);
+    identitySvc.replaceMembershipRoles.mockResolvedValue({
+      added_role_ids: ['rid-rc'],
+      removed_role_ids: [],
+    });
+    const result = await service.assignTenantUserRoles({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      role_keys: ['recruiter'],
+      actor_user_id: ACTOR_ID,
+      request_id: REQUEST_ID,
+    });
+    expect(result.added_role_keys).toEqual(['recruiter']);
+    // THE NARROW INVARIANT — the gate is NEVER consulted for a non-
+    // target role-set.
+    expect(auditFinancialsGate.isFinancialsAuditEnabled).not.toHaveBeenCalled();
+    // Confirm S3b's general behavior is preserved: D5 check + reconcile
+    // run as before.
+    expect(roleBundle.assertUnionNonInvertible).toHaveBeenCalled();
+    expect(identitySvc.replaceMembershipRoles).toHaveBeenCalled();
+  });
+
+  it('NARROW — assigning recruiter + sourcer (no auditor_with_financials in the set) NEVER reads the toggle', async () => {
+    const { service, identitySvc, auditFinancialsGate } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-rc', 'rid-srl']);
+    auditFinancialsGate.isFinancialsAuditEnabled.mockResolvedValue(false);
+    identitySvc.findMembership.mockResolvedValue({ id: MEMBERSHIP_ID });
+    identitySvc.findRoleKeysForMembership.mockResolvedValue([]);
+    identitySvc.replaceMembershipRoles.mockResolvedValue({
+      added_role_ids: ['rid-rc', 'rid-srl'],
+      removed_role_ids: [],
+    });
+    await service.assignTenantUserRoles({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      role_keys: ['recruiter', 'sourcer'],
+      actor_user_id: ACTOR_ID,
+      request_id: REQUEST_ID,
+    });
+    expect(auditFinancialsGate.isFinancialsAuditEnabled).not.toHaveBeenCalled();
+  });
+
+  it('the GATE fires when auditor_with_financials sits ALONGSIDE other roles in the requested set (multi-role grant, toggle OFF)', async () => {
+    const { service, identitySvc, roleBundle, auditFinancialsGate } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-rc', 'rid-awf']);
+    auditFinancialsGate.isFinancialsAuditEnabled.mockResolvedValue(false);
+    const promise = service.assignTenantUserRoles({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      role_keys: ['recruiter', 'auditor_with_financials'],
+      actor_user_id: ACTOR_ID,
+      request_id: REQUEST_ID,
+    });
+    await expect(promise).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'financials_audit_not_enabled' } },
+    });
+    expect(roleBundle.assertUnionNonInvertible).not.toHaveBeenCalled();
+    expect(identitySvc.replaceMembershipRoles).not.toHaveBeenCalled();
+  });
+
+  it('unknown role_key (auditor_with_financials misspelled) → resolveRoleIdsByKeys throws FIRST; the gate is never consulted', async () => {
+    // The GATE fires AFTER resolveRoleIdsByKeys (ordering preserved).
+    // A misspelled key throws at the resolver before the gate read.
+    const { service, identitySvc, auditFinancialsGate } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockRejectedValue(
+      Object.assign(new Error('Unknown role key(s)'), {
+        code: 'VALIDATION_ERROR',
+        statusCode: 400,
+        context: {
+          requestId: REQUEST_ID,
+          details: { missing_role_keys: ['auditor_with_financialz'] },
+        },
+      }),
+    );
+    await expect(
+      service.assignTenantUserRoles({
+        tenant_id: TENANT_ID,
+        user_id: USER_ID,
+        role_keys: ['auditor_with_financialz'],
+        actor_user_id: ACTOR_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(auditFinancialsGate.isFinancialsAuditEnabled).not.toHaveBeenCalled();
   });
 });

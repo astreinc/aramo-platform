@@ -9,6 +9,17 @@ import {
   TENANT_COGNITO_PORT,
   type TenantCognitoPort,
 } from './tenant-cognito.port.js';
+import {
+  AUDIT_FINANCIALS_GATE,
+  type AuditFinancialsGate,
+} from './audit-financials-gate.port.js';
+
+// Settings S4 — the narrow role-key whose grant is policy-gated by the
+// tenant's `audit.financials_enabled` KNOWN_SETTING. Exported as a const
+// (not a string-literal repeated at the call site) so the load-bearing
+// match is single-source-of-truth between the precondition and the
+// proof-side tests.
+const AUDITOR_WITH_FINANCIALS_ROLE_KEY = 'auditor_with_financials';
 
 // Settings S3a — TenantUserLifecycleService.
 //
@@ -74,6 +85,8 @@ export class TenantUserLifecycleService {
     private readonly identitySvc: IdentityService,
     private readonly roleBundle: RoleBundleValidator,
     @Inject(TENANT_COGNITO_PORT) private readonly cognito: TenantCognitoPort,
+    @Inject(AUDIT_FINANCIALS_GATE)
+    private readonly auditFinancialsGate: AuditFinancialsGate,
   ) {}
 
   // INVITE — 2-leg saga.
@@ -335,6 +348,46 @@ export class TenantUserLifecycleService {
     const role_ids = await this.identitySvc.resolveRoleIdsByKeys(
       args.role_keys,
     );
+
+    // Settings S4 — THE NARROW GATE PRECONDITION.
+    //
+    // Policy gate keyed to the SINGLE role-key 'auditor_with_financials':
+    // the tenant's `audit.financials_enabled` KNOWN_SETTING must be true
+    // BEFORE the grant persists. The check fires ONLY when the requested
+    // role-set contains this one key — every other role-set flows
+    // through unchanged (S3b's general behavior is preserved; the GATE
+    // is NOT a global precondition).
+    //
+    // Order: AFTER resolve (so an unknown role-key fails fast with the
+    // existing error shape), BEFORE the D5 union check + the membership
+    // lookup. The precondition is policy, not integrity — both are
+    // checked write-time, before any membership-row mutation. A
+    // rejected GATE NEVER reaches the reconcile.
+    //
+    // Rejection: VALIDATION_ERROR (400) with
+    // details.reason='financials_audit_not_enabled' — a SEPARATE reason
+    // from the D5 boundary's 'invertible_role_union' so callers can
+    // distinguish a policy-precondition failure from an integrity
+    // failure. Details carry the role_key for self-correction.
+    if (args.role_keys.includes(AUDITOR_WITH_FINANCIALS_ROLE_KEY)) {
+      const enabled = await this.auditFinancialsGate.isFinancialsAuditEnabled(
+        args.tenant_id,
+      );
+      if (!enabled) {
+        throw new AramoError(
+          'VALIDATION_ERROR',
+          'audit.financials_enabled must be true to grant auditor_with_financials',
+          400,
+          {
+            requestId: args.request_id,
+            details: {
+              reason: 'financials_audit_not_enabled',
+              role_key: AUDITOR_WITH_FINANCIALS_ROLE_KEY,
+            },
+          },
+        );
+      }
+    }
 
     // Step 1 — THE D5 INTEGRITY GATE. The merged validator already
     // short-circuits on length<2; here we feed the full distinct set so

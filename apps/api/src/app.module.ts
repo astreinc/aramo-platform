@@ -18,7 +18,11 @@ import { ContactModule } from '@aramo/contact';
 import { EngagementModule } from '@aramo/engagement';
 import { EntitlementModule } from '@aramo/entitlement';
 import { ExportModule } from '@aramo/export';
-import { IdentityModule, TENANT_COGNITO_PORT } from '@aramo/identity';
+import {
+  AUDIT_FINANCIALS_GATE,
+  IdentityModule,
+  TENANT_COGNITO_PORT,
+} from '@aramo/identity';
 import { ImportModule } from '@aramo/import';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
@@ -37,6 +41,10 @@ import { TalentRecordModule } from '@aramo/talent-record';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { CompensationFieldMaskInterceptor } from './interceptors/compensation-field-mask.interceptor.js';
+// Settings S4 — live AUDIT_FINANCIALS_GATE adapter (reads via
+// TenantSettingService; bridges libs/identity's port to libs/settings'
+// service without coupling either lib).
+import { AuditFinancialsGateAdapter } from './settings/audit-financials-gate.adapter.js';
 
 @Module({
   imports: [
@@ -276,6 +284,20 @@ import { CompensationFieldMaskInterceptor } from './interceptors/compensation-fi
     {
       provide: TENANT_COGNITO_PORT,
       useExisting: TenantCognitoAdapter,
+    },
+    // Settings S4 — override the AUDIT_FINANCIALS_GATE default binding
+    // (libs/identity's StubAuditFinancialsGateAdapter, which throws on
+    // call) with the live AuditFinancialsGateAdapter that reads via
+    // TenantSettingService. Provider order is last-wins in Nest:
+    // AppModule's binding shadows the stub bound in IdentityModule, so
+    // TenantUserLifecycleService.assignTenantUserRoles receives the
+    // real read path for the GATE precondition. SettingsModule is
+    // already imported above so TenantSettingService is available
+    // for constructor injection here.
+    AuditFinancialsGateAdapter,
+    {
+      provide: AUDIT_FINANCIALS_GATE,
+      useExisting: AuditFinancialsGateAdapter,
     },
   ],
 })
