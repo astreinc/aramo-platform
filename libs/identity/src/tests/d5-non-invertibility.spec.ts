@@ -25,7 +25,18 @@ import { SEED_ROLE_KEYS } from '../lib/dto/index.js';
 // holding view:pay + every spread scope is the intended see-all — not a
 // leak. The exemption is keyed by role bundle, NOT by an "if Spread"
 // branch in the runtime mask (which would defeat its purpose).
-const SEE_ALL_ROLES = new Set(['tenant_admin', 'tenant_owner']);
+//
+// Settings S4 adds auditor_with_financials to the bypass set: the role
+// holds every comp scope by design (the compliance see-all-comp grant);
+// the policy GATE that prevents the role from being granted lives at
+// the role-assign path (read of tenant's audit.financials_enabled
+// KNOWN_SETTING), NOT here. This file's job is the bundle-math proof;
+// it doesn't model the GATE.
+const SEE_ALL_ROLES = new Set([
+  'tenant_admin',
+  'tenant_owner',
+  'auditor_with_financials',
+]);
 
 describe('AUTHZ-D5 — THE ENFORCED INVARIANT (no role holds view:pay + any spread)', () => {
   for (const [roleKey, scopes] of D5_COMPENSATION_BUNDLES) {
@@ -46,7 +57,7 @@ describe('AUTHZ-D5 — THE ENFORCED INVARIANT (no role holds view:pay + any spre
     }
   });
 
-  it('see-all roles (TA / TO) hold every compensation:view:* scope', () => {
+  it('see-all roles (TA / TO / auditor_with_financials) hold every compensation:view:* scope', () => {
     for (const role of SEE_ALL_ROLES) {
       const entry = D5_COMPENSATION_BUNDLES.find(([k]) => k === role);
       expect(entry, `${role} missing from D5_COMPENSATION_BUNDLES`).toBeDefined();
@@ -110,6 +121,18 @@ describe('AUTHZ-D5 — per-role view-set matches the LOCKED matrix', () => {
 
   it('see-all tier (tenant_owner) sees every comp field', () => {
     expect([...maskedKeys('tenant_owner')].sort()).toEqual([...COMPENSATION_FIELD_KEYS].sort());
+  });
+
+  it('Settings S4 — auditor_with_financials sees every comp field (the see-all-comp grant)', () => {
+    // Proves the bundle-shape contract: the role holds the see-all-comp set,
+    // so the field-mask interceptor surfaces every comp field. The GATE
+    // that prevents the role from being GRANTED to a membership (when
+    // audit.financials_enabled=false) is exercised at the role-assign
+    // path; this test asserts the post-grant behavior matches the see-all
+    // tier (TA/TO) shape for comp visibility.
+    expect([...maskedKeys('auditor_with_financials')].sort()).toEqual([
+      ...COMPENSATION_FIELD_KEYS,
+    ].sort());
   });
 
   it('recruiter sees pay/salary; bill + spread + fee masked', () => {

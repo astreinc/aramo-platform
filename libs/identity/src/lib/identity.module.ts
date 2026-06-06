@@ -26,6 +26,11 @@ import {
 } from './tenant-user/tenant-cognito.port.js';
 import { TenantUserLifecycleService } from './tenant-user/tenant-user-lifecycle.service.js';
 import { TenantUserManagementController } from './tenant-user/tenant-user-management.controller.js';
+// Settings S4 — auditor_with_financials GATE precondition port.
+import {
+  AUDIT_FINANCIALS_GATE,
+  StubAuditFinancialsGateAdapter,
+} from './tenant-user/audit-financials-gate.port.js';
 
 // Per directive §3 dependency direction: libs/auth/ may consume @aramo/identity
 // types, but libs/identity/ does not import @aramo/auth. CommonModule is fine
@@ -92,6 +97,14 @@ import { TenantUserManagementController } from './tenant-user/tenant-user-manage
     {
       provide: TENANT_COGNITO_PORT,
       useClass: StubTenantCognitoAdapter,
+    },
+    // Settings S4 — AUDIT_FINANCIALS_GATE default binding. The stub
+    // throws on first call; apps/api OVERRIDES this binding with the
+    // TenantSettingService-backed adapter (last-wins, mirrors the
+    // TENANT_COGNITO_PORT precedent). Tests inject a mock directly.
+    {
+      provide: AUDIT_FINANCIALS_GATE,
+      useClass: StubAuditFinancialsGateAdapter,
     },
     {
       provide: 'IdentityAuditServiceLogger',
