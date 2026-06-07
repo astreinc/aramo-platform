@@ -1,5 +1,8 @@
 import { Route, Routes } from 'react-router-dom';
 
+import { CompanyAssignmentsView } from './assignments/CompanyAssignmentsView';
+import { RequisitionAssignmentsView } from './assignments/RequisitionAssignmentsView';
+import { TeamClientsView } from './assignments/TeamClientsView';
 import { RouteGuard } from './auth/RouteGuard';
 import { useSession } from './auth/session';
 import { ToastProvider } from './components/Toast';
@@ -87,6 +90,39 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <TeamMembersView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="teams/:teamId/clients"
+                      element={
+                        <RouteGuard
+                          requireScope="team:manage"
+                          sessionStateOverride={state}
+                        >
+                          <TeamClientsView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="companies/:companyId/assignments"
+                      element={
+                        <RouteGuard
+                          requireScope="company:assign"
+                          sessionStateOverride={state}
+                        >
+                          <CompanyAssignmentsView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="requisitions/:requisitionId/assignments"
+                      element={
+                        <RouteGuard
+                          requireScope="requisition:assign"
+                          sessionStateOverride={state}
+                        >
+                          <RequisitionAssignmentsView />
                         </RouteGuard>
                       }
                     />
