@@ -3,7 +3,7 @@
 // Wires the existing endpoints (S5-BE2 reads + D4a mutates); S5c-2
 // adds no backend route.
 
-import { apiClient } from '../api/client';
+import { apiClient } from '@aramo/fe-foundation';
 
 import type {
   AddMemberRequest,

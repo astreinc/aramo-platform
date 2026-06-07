@@ -4,7 +4,7 @@
 // source 403 fallback uses the SHARED probe from users/users-api.ts
 // (extracted at S5c-2 ruling 7 — three S5c surfaces share one probe).
 
-import { apiClient } from '../api/client';
+import { apiClient } from '@aramo/fe-foundation';
 
 import type {
   AddEdgeRequest,

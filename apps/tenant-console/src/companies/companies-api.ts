@@ -14,7 +14,7 @@
 // visible to you are listed"), and the proper fix is filed as the
 // follow-up `GET /v1/companies/assignable` (NOT built in S5c-3).
 
-import { ApiError, apiClient } from '../api/client';
+import { ApiError, apiClient } from '@aramo/fe-foundation';
 
 export const COMPANIES_PATH = '/v1/companies';
 

@@ -44,6 +44,7 @@
       "@aramo/events": ["libs/events/src/index.ts"],
       "@aramo/export": ["libs/export/src/index.ts"],
       "@aramo/evidence": ["libs/evidence/src/index.ts"],
+      "@aramo/fe-foundation": ["libs/fe-foundation/src/index.ts"],
       "@aramo/field-masking": ["libs/field-masking/src/index.ts"],
       "@aramo/examination": ["libs/examination/src/index.ts"],
       "@aramo/identity": ["libs/identity/src/index.ts"],

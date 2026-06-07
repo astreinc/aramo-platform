@@ -1,10 +1,9 @@
 import { useState } from 'react';
-
-import { Button } from '../components/Button';
-import { Dialog } from '../components/Dialog';
-import { FormField } from '../components/FormField';
-import { InlineAlert } from '../components/InlineAlert';
-import { useToast } from '../components/Toast';
+import { Button } from '@aramo/fe-foundation';
+import { Dialog } from '@aramo/fe-foundation';
+import { FormField } from '@aramo/fe-foundation';
+import { InlineAlert } from '@aramo/fe-foundation';
+import { useToast } from '@aramo/fe-foundation';
 
 import { messageForDisableError, type ErrorMessage } from './error-messages';
 import type { TenantUserView } from './types';

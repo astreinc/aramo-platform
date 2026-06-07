@@ -18,8 +18,7 @@
 // server's array order — purely cosmetic, not aggregation.
 
 import { useEffect, useState } from 'react';
-
-import { ApiError } from '../api/client';
+import { ApiError } from '@aramo/fe-foundation';
 
 import { getTalentConsentState } from './consent-api';
 import {

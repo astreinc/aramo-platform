@@ -7,7 +7,7 @@
 // scope cannot read the setting; the BE rejection is the source of
 // truth).
 
-import { ApiError, apiClient } from '../api/client';
+import { ApiError, apiClient } from '@aramo/fe-foundation';
 
 import type {
   AssignRolesRequest,

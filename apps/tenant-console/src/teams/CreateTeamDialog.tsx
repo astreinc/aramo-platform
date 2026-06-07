@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
+import { Button } from '@aramo/fe-foundation';
+import { Combobox, type ComboboxItem } from '@aramo/fe-foundation';
+import { Dialog } from '@aramo/fe-foundation';
+import { FormField } from '@aramo/fe-foundation';
+import { InlineAlert } from '@aramo/fe-foundation';
+import { useToast } from '@aramo/fe-foundation';
 
-import { Button } from '../components/Button';
-import { Combobox, type ComboboxItem } from '../components/Combobox';
-import { Dialog } from '../components/Dialog';
-import { FormField } from '../components/FormField';
-import { InlineAlert } from '../components/InlineAlert';
-import { useToast } from '../components/Toast';
 import type { UserRosterState } from '../users/users-api';
 
 import {

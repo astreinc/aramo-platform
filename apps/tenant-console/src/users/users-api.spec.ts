@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
-import { ApiError } from '../api/client';
+import { ApiError } from '@aramo/fe-foundation';
 
 import {
   assignTenantUserRoles,

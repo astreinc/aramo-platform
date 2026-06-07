@@ -1,11 +1,10 @@
 import { useState } from 'react';
-
-import { ApiError } from '../api/client';
-import { Card } from '../components/Card';
-import { FormField } from '../components/FormField';
-import { InlineAlert } from '../components/InlineAlert';
-import { Switch } from '../components/Switch';
-import { useToast } from '../components/Toast';
+import { ApiError } from '@aramo/fe-foundation';
+import { Card } from '@aramo/fe-foundation';
+import { FormField } from '@aramo/fe-foundation';
+import { InlineAlert } from '@aramo/fe-foundation';
+import { Switch } from '@aramo/fe-foundation';
+import { useToast } from '@aramo/fe-foundation';
 
 import { setTenantSetting } from './settings-api';
 

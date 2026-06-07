@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-
-import { Button } from '../components/Button';
-import { InlineAlert } from '../components/InlineAlert';
-import { PageHeader } from '../components/PageHeader';
-import { Table, type TableColumn } from '../components/Table';
+import { Button } from '@aramo/fe-foundation';
+import { InlineAlert } from '@aramo/fe-foundation';
+import { PageHeader } from '@aramo/fe-foundation';
+import { Table, type TableColumn } from '@aramo/fe-foundation';
 
 import { DisableConfirmDialog } from './DisableConfirmDialog';
 import { InviteDialog } from './InviteDialog';

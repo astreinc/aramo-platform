@@ -1,20 +1,34 @@
+import {
+  RouteGuard,
+  Shell,
+  ToastProvider,
+  useSession,
+  type ShellNavItem,
+} from '@aramo/fe-foundation';
 import { Route, Routes } from 'react-router-dom';
 
 import { CompanyAssignmentsView } from './assignments/CompanyAssignmentsView';
 import { RequisitionAssignmentsView } from './assignments/RequisitionAssignmentsView';
 import { TeamClientsView } from './assignments/TeamClientsView';
-import { RouteGuard } from './auth/RouteGuard';
-import { useSession } from './auth/session';
-import { ToastProvider } from './components/Toast';
 import { ConsentView } from './consent/ConsentView';
+import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { LandingPage } from './routes/LandingPage';
 import { LoginPage } from './routes/LoginPage';
-import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { SettingsView } from './settings/SettingsView';
-import { Shell } from './shell/Shell';
 import { TeamMembersView } from './teams/TeamMembersView';
 import { TeamsListView } from './teams/TeamsListView';
 import { UsersListView } from './users/UsersListView';
+
+// The tenant-console nav. Each item is rendered by Shell only when the
+// session carries `requireScope` (the S5a hasScope axis at the nav
+// boundary). Order is the original Shell.tsx order, preserved at
+// repoint so the rendered nav is byte-identical to pre-extraction.
+const TENANT_CONSOLE_NAV: readonly ShellNavItem[] = [
+  { to: '/users', label: 'Users', requireScope: 'tenant:admin:user-manage' },
+  { to: '/org', label: 'Organisation', requireScope: 'org:manage' },
+  { to: '/teams', label: 'Teams', requireScope: 'team:manage' },
+  { to: '/settings', label: 'Settings', requireScope: 'tenant:admin:settings' },
+];
 
 export function App() {
   const state = useSession();
@@ -28,7 +42,11 @@ export function App() {
           element={
             <RouteGuard sessionStateOverride={state}>
               {state.status === 'authenticated' ? (
-                <Shell session={state.session}>
+                <Shell
+                  session={state.session}
+                  brand="Aramo · Tenant Console"
+                  navItems={TENANT_CONSOLE_NAV}
+                >
                   <Routes>
                     <Route
                       index

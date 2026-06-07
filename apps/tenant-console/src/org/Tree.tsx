@@ -1,6 +1,5 @@
 import { useState } from 'react';
-
-import { Button } from '../components/Button';
+import { Button } from '@aramo/fe-foundation';
 
 import type { TreeNode } from './types';
 

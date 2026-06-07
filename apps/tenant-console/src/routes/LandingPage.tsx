@@ -1,4 +1,4 @@
-import type { Session } from '../auth/session';
+import type { Session } from '@aramo/fe-foundation';
 
 interface LandingPageProps {
   session: Session;

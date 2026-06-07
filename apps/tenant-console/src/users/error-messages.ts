@@ -20,7 +20,7 @@
 // separate operator message that points the admin at the Settings
 // toggle, mirroring the FinancialsToggle vocabulary.
 
-import { ApiError } from '../api/client';
+import { ApiError } from '@aramo/fe-foundation';
 
 import { findRoleEntry } from './types';
 

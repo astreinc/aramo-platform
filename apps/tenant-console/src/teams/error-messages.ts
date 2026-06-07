@@ -8,7 +8,7 @@
 //
 // 404 templates mirror the S5b / S5c-1 per-tenant isolation message.
 
-import { ApiError } from '../api/client';
+import { ApiError } from '@aramo/fe-foundation';
 
 export interface ErrorMessage {
   readonly title: string;

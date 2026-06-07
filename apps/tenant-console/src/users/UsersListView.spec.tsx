@@ -1,7 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-
-import { ToastProvider } from '../components/Toast';
+import { ToastProvider } from '@aramo/fe-foundation';
 
 import { UsersListView } from './UsersListView';
 import type { TenantUserView } from './types';
