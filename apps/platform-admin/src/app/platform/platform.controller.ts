@@ -64,6 +64,7 @@ export class PlatformController {
       owner_display_name: body.owner_display_name ?? null,
       capabilities: body.capabilities,
       actor_user_id: authCtx.sub,
+      request_id: requestId,
     });
     return {
       tenant_id: result.tenant_id,
@@ -104,6 +105,7 @@ export class PlatformController {
       display_name: body.display_name ?? null,
       actor_user_id: authCtx.sub,
       pool: 'tenant',
+      request_id: requestId,
     });
     return result;
   }
@@ -121,6 +123,7 @@ export class PlatformController {
       email: body.email,
       display_name: body.display_name ?? null,
       actor_user_id: authCtx.sub,
+      request_id: requestId,
     });
     return result;
   }

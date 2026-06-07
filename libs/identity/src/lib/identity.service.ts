@@ -6,6 +6,7 @@ import { IdentityAuditService } from './audit/identity-audit.service.js';
 import type { MembershipDto } from './dto/membership.dto.js';
 import type { UserDto } from './dto/user.dto.js';
 import { IdentityRepository, type TenantUserView } from './identity.repository.js';
+import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
 
 // IdentityService — at AUTHZ-1, this surface was resolve-only (the original
 // "never creates a User" §3 + §11 halt rule), with the auth-service
@@ -19,11 +20,25 @@ import { IdentityRepository, type TenantUserView } from './identity.repository.j
 // reachable only from apps/platform-admin (no tenant feature lib /
 // apps/api edge); the §5 step 8 regression proof guards no behavior
 // change for the resolve path consumers.
+//
+// D-AUTHZ-PLATFORM-INVITE-1 (Gate-6, in-service ruling): the D5 union-non-
+// invertibility check moves INTO the three membership-role-write methods
+// (createUserFromInvitation / addMembershipForExistingUser /
+// replaceMembershipRoles). The prior caller-side contract (documented but
+// unenforced) was honored by the tenant tier and silently violated by the
+// platform tier — a super_admin could persist an invertible scope union
+// via POST /platform/tenants/:tenant_id/invitations. Safe-by-construction:
+// every caller (tenant, platform, future) is now covered without remembering
+// to call the validator. The validator throw fires BEFORE any DB write or
+// audit emission, so audit-on-success is preserved. The validator no-ops
+// at length<2 (single-role invites are zero-cost). The identity → field-
+// masking edge already exists (S3a) and is acyclic.
 @Injectable()
 export class IdentityService {
   constructor(
     private readonly identityRepo: IdentityRepository,
     private readonly audit: IdentityAuditService,
+    private readonly roleBundle: RoleBundleValidator,
   ) {}
 
   async resolveUser(args: {
@@ -69,36 +84,37 @@ export class IdentityService {
   // the platform-tier invitation flow (apps/platform-admin) after Cognito
   // AdminCreateUser returned the Cognito sub.
   //
-  // Settings S3a (DUAL-TIER consumer — the seam is data-parameterized;
-  // tenant_id + role_ids + actor_user_id are all caller-supplied, so the
-  // SAME method serves both tiers without a signature change):
-  //   - PLATFORM tier (apps/platform-admin / PlatformInvitationService):
-  //     tenant_id = newly-provisioned tenant (first-act case) or an
-  //     existing tenant; actor = super_admin; Cognito pool = platform OR
-  //     tenant per the platform-invitation routing.
-  //   - TENANT tier (TenantUserManagementController via
-  //     TenantUserLifecycleService): tenant_id = the calling admin's
-  //     own tenant (from AuthContext, NEVER from the request body —
-  //     per-tenant isolation); actor = the tenant_admin caller; Cognito
-  //     pool = tenant. The shared D5 union-non-invertibility validator
-  //     (see RoleBundleValidator) fires BEFORE this method is called
-  //     when the invite carries multiple roles; an invertible union is
-  //     rejected at the controller boundary and never reaches the
-  //     identity tx.
-  // The actor_user_id flows through as the audit events' actor_id; the
-  // emitted audit events (identity.user.created, identity.external_
-  // identity.linked, identity.membership.created, identity.invitation.
-  // created) are unchanged between tiers — the tenant_id on each event
-  // is enough to distinguish the call site.
+  // Settings S3a (DUAL-TIER consumer): tenant tier (TenantUserLifecycleService)
+  // + platform tier (PlatformInvitationService). The actor_user_id flows
+  // through as the audit events' actor_id; the emitted audit events
+  // (identity.user.created, identity.external_identity.linked,
+  // identity.membership.created, identity.invitation.created) are unchanged
+  // between tiers — the tenant_id on each event is enough to distinguish
+  // the call site.
+  //
+  // D-AUTHZ-PLATFORM-INVITE-1 (in-service): role_keys + request_id are
+  // threaded in so the D5 union-non-invertibility check runs HERE, BEFORE
+  // the DB write and BEFORE any audit emission. Every caller is covered;
+  // the prior caller-side contract is retired.
   async createUserFromInvitation(args: {
     email: string;
     display_name: string | null;
     provider: string;
     provider_subject: string;
     tenant_id: string;
+    role_keys: readonly string[];
     role_ids: readonly string[];
     actor_user_id: string;
+    request_id: string;
   }): Promise<{ user: UserDto; membership_id: string }> {
+    // D5 integrity gate — in-service. No-ops at length<2; rejects an
+    // invertible union with VALIDATION_ERROR (details.reason=
+    // 'invertible_role_union'); see-all-tier bypass derived internally.
+    await this.roleBundle.assertUnionNonInvertible({
+      role_keys: args.role_keys,
+      request_id: args.request_id,
+    });
+
     const user_id = uuidv7();
     const result =
       await this.identityRepo.createUserWithExternalIdentityAndMembership({
@@ -163,12 +179,27 @@ export class IdentityService {
   // invitee already has identity.User + ExternalIdentity (in Cognito and
   // mirrored); the invitation only needs a new UserTenantMembership +
   // MembershipRole rows.
+  //
+  // D-AUTHZ-PLATFORM-INVITE-1 (in-service): role_keys + request_id threaded
+  // for the D5 gate (fires BEFORE the membership-existence check and the
+  // DB write).
   async addMembershipForExistingUser(args: {
     user_id: string;
     tenant_id: string;
+    role_keys: readonly string[];
     role_ids: readonly string[];
     actor_user_id: string;
+    request_id: string;
   }): Promise<{ membership_id: string }> {
+    // D5 integrity gate — in-service. Fires BEFORE the existence check so
+    // an invertible bundle is rejected without revealing whether the
+    // membership already exists (consistent with the role-assign
+    // ordering at S3b).
+    await this.roleBundle.assertUnionNonInvertible({
+      role_keys: args.role_keys,
+      request_id: args.request_id,
+    });
+
     const existing = await this.identityRepo.findMembership({
       user_id: args.user_id,
       tenant_id: args.tenant_id,
@@ -179,7 +210,7 @@ export class IdentityService {
         'User already holds a membership in this tenant',
         409,
         {
-          requestId: 'invitation',
+          requestId: args.request_id,
           details: {
             user_id: args.user_id,
             tenant_id: args.tenant_id,
@@ -217,10 +248,21 @@ export class IdentityService {
 
   // AUTHZ-2: same-tenant role replacement (Lead ruling 8 case 2). The
   // membership row stays; the role junction is reconciled.
+  //
+  // D-AUTHZ-PLATFORM-INVITE-1 (in-service): role_keys + request_id threaded
+  // for the D5 gate (fires BEFORE the reconcile so an invertible union
+  // never reaches the createMany/deleteMany inside the $transaction).
   async replaceMembershipRoles(args: {
     membership_id: string;
+    role_keys: readonly string[];
     role_ids: readonly string[];
+    request_id: string;
   }): Promise<{ added_role_ids: string[]; removed_role_ids: string[] }> {
+    await this.roleBundle.assertUnionNonInvertible({
+      role_keys: args.role_keys,
+      request_id: args.request_id,
+    });
+
     return this.identityRepo.replaceMembershipRoles({
       membership_id: args.membership_id,
       role_ids: args.role_ids,

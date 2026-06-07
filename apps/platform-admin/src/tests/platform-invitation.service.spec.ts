@@ -9,6 +9,16 @@ import type { CognitoAdminService } from '../app/platform/cognito/cognito-admin.
 // Postgres + a mocked Cognito client; here the persistence layer is
 // mocked too so the test asserts the orchestration: which service is
 // called when, in what order, with what arguments.
+//
+// D-AUTHZ-PLATFORM-INVITE-1 (Gate-6 update): the platform invite methods
+// now take a `request_id` arg (threaded from PlatformController via
+// @RequestId) and the IdentityService write calls now also carry
+// `role_keys` + `request_id` so the in-service D5 union-non-invertibility
+// check has its inputs. The exploit-rejected proof + the safe-by-
+// construction proofs live in the integration spec + identity.service
+// .spec.ts respectively; this file verifies the orchestration threading.
+
+const TEST_REQUEST_ID = 'rq-plat-001';
 
 interface Mocks {
   cognito: {
@@ -96,6 +106,7 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
       owner_email: 'owner@acme.io',
       owner_display_name: 'Acme Owner',
       actor_user_id: 'super-admin-1',
+      request_id: TEST_REQUEST_ID,
     });
 
     // Pattern A: Cognito is called BEFORE identity-tx.
@@ -105,13 +116,18 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
       display_name: 'Acme Owner',
     });
     expect(mocks.tenantSvc.provisionTenant).toHaveBeenCalled();
+    // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded so the
+    // in-service D5 union check has its inputs. tenant_owner is a see-
+    // all-tier role (validator's see-all bypass).
     expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(
       expect.objectContaining({
         email: 'owner@acme.io',
         provider: 'cognito',
         provider_subject: 'cog-sub-123',
         tenant_id: 'tenant-x',
+        role_keys: ['tenant_owner'],
         role_ids: ['role-id-tenant-owner'],
+        request_id: TEST_REQUEST_ID,
       }),
     );
     expect(mocks.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({
@@ -152,6 +168,7 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
         name: 'AcmeCo',
         owner_email: 'owner@acme.io',
         actor_user_id: 'a',
+        request_id: TEST_REQUEST_ID,
       }),
     ).rejects.toMatchObject({ code: 'TENANT_ALREADY_EXISTS', statusCode: 409 });
 
@@ -172,6 +189,7 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
         name: 'NewCo',
         owner_email: 'o@new.co',
         actor_user_id: 'a',
+        request_id: TEST_REQUEST_ID,
       }),
     ).rejects.toThrow('db down');
 
@@ -206,6 +224,7 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
         name: 'NewCo',
         owner_email: 'o@new.co',
         actor_user_id: 'a',
+        request_id: TEST_REQUEST_ID,
       }),
     ).rejects.toBeInstanceOf(AramoError);
 
@@ -231,6 +250,7 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
         name: 'NewCo',
         owner_email: 'o@new.co',
         actor_user_id: 'a',
+        request_id: TEST_REQUEST_ID,
       }),
     ).rejects.toMatchObject({
       code: 'COGNITO_PROVISION_FAILED',
@@ -261,11 +281,18 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
       role_keys: ['recruiter', 'account_manager'],
       actor_user_id: 'sa',
       pool: 'tenant',
+      request_id: TEST_REQUEST_ID,
     });
 
+    // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id are threaded into
+    // the IdentityService write call so the in-service D5 union check has
+    // its inputs. (The unit-level mock doesn't run the validator; the
+    // safe-by-construction proof lives in identity.service.spec.ts.)
     expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(
       expect.objectContaining({
+        role_keys: ['recruiter', 'account_manager'],
         role_ids: ['r-rec', 'r-am'],
+        request_id: TEST_REQUEST_ID,
       }),
     );
     expect(out.status).toBe('invitation_sent');
@@ -294,6 +321,7 @@ describe('PlatformInvitationService — inviteUserIntoTenant idempotency (proof 
         role_keys: ['recruiter'],
         actor_user_id: 'sa',
         pool: 'tenant',
+        request_id: TEST_REQUEST_ID,
       }),
     ).rejects.toMatchObject({
       code: 'INVITATION_ALREADY_EXISTS',
@@ -326,11 +354,15 @@ describe('PlatformInvitationService — inviteUserIntoTenant idempotency (proof 
       role_keys: ['recruiter', 'account_manager'],
       actor_user_id: 'sa',
       pool: 'tenant',
+      request_id: TEST_REQUEST_ID,
     });
     expect(out.status).toBe('roles_updated');
+    // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded.
     expect(mocks.identitySvc.replaceMembershipRoles).toHaveBeenCalledWith({
       membership_id: 'mem-1',
+      role_keys: ['recruiter', 'account_manager'],
       role_ids: ['r-rec', 'r-am'],
+      request_id: TEST_REQUEST_ID,
     });
   });
 
@@ -354,10 +386,20 @@ describe('PlatformInvitationService — inviteUserIntoTenant idempotency (proof 
       role_keys: ['recruiter'],
       actor_user_id: 'sa',
       pool: 'tenant',
+      request_id: TEST_REQUEST_ID,
     });
     expect(out.status).toBe('membership_added');
     expect(out.membership_id).toBe('mem-new');
     expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+    // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded into
+    // the add-membership call.
+    expect(mocks.identitySvc.addMembershipForExistingUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role_keys: ['recruiter'],
+        role_ids: ['r-rec'],
+        request_id: TEST_REQUEST_ID,
+      }),
+    );
   });
 
   it('case 4: drift (Cognito has user, identity does not) -> mirror identity from existing Cognito sub', async () => {
@@ -377,14 +419,19 @@ describe('PlatformInvitationService — inviteUserIntoTenant idempotency (proof 
       role_keys: ['recruiter'],
       actor_user_id: 'sa',
       pool: 'tenant',
+      request_id: TEST_REQUEST_ID,
     });
     expect(out.status).toBe('invitation_sent');
     // The existing Cognito sub is reused (no AdminCreateUser).
     expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+    // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded.
     expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: 'cognito',
         provider_subject: 'drift-sub',
+        role_keys: ['recruiter'],
+        role_ids: ['r-rec'],
+        request_id: TEST_REQUEST_ID,
       }),
     );
   });
@@ -406,6 +453,7 @@ describe('PlatformInvitationService — platform admin invite (proof 7 platform-
     await svc.invitePlatformAdmin({
       email: 'p@a.io',
       actor_user_id: 'sa',
+      request_id: TEST_REQUEST_ID,
     });
 
     expect(mocks.identitySvc.resolveRoleIdsByKeys).toHaveBeenCalledWith([
@@ -415,9 +463,14 @@ describe('PlatformInvitationService — platform admin invite (proof 7 platform-
       expect.objectContaining({ pool: 'platform', email: 'p@a.io' }),
     );
     // Sentinel tenant id is the PLATFORM_TENANT_SENTINEL_ID from libs/auth.
+    // D-AUTHZ-PLATFORM-INVITE-1: super_admin is a see-all-tier role
+    // (validator bypass); role_keys + request_id threaded uniformly.
     expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(
       expect.objectContaining({
         tenant_id: '01900000-0000-7000-8000-000000000100',
+        role_keys: ['super_admin'],
+        role_ids: ['r-super'],
+        request_id: TEST_REQUEST_ID,
       }),
     );
   });

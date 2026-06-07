@@ -79,6 +79,7 @@ export class PlatformInvitationService {
     owner_display_name?: string | null;
     capabilities?: readonly string[];
     actor_user_id: string;
+    request_id: string;
   }): Promise<ProvisionResult> {
     // 0. Validate capability set (default = core,ats,portal).
     const desired: readonly Capability[] =
@@ -149,14 +150,21 @@ export class PlatformInvitationService {
         actor_user_id: args.actor_user_id,
       });
       tenant_id = tenant.id;
+      // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded so the
+      // in-service D5 union-non-invertibility check has what it needs. The
+      // owner role is hard-fixed to ['tenant_owner'] (a see-all-tier role
+      // exempted by the validator's bypass) so the bundle math is trivially
+      // safe — but the threading is uniform across all callers.
       const created = await this.identitySvc.createUserFromInvitation({
         email: args.owner_email,
         display_name: args.owner_display_name ?? null,
         provider: 'cognito',
         provider_subject: cognito_sub,
         tenant_id,
+        role_keys: ['tenant_owner'],
         role_ids,
         actor_user_id: args.actor_user_id,
+        request_id: args.request_id,
       });
       owner_user_id = created.user.id;
       membership_id = created.membership_id;
@@ -217,6 +225,7 @@ export class PlatformInvitationService {
     display_name?: string | null;
     actor_user_id: string;
     pool: 'tenant' | 'platform';
+    request_id: string;
   }): Promise<InviteResult> {
     const role_ids = await this.identitySvc.resolveRoleIdsByKeys(args.role_keys);
 
@@ -260,9 +269,13 @@ export class PlatformInvitationService {
           );
         }
         // Same-tenant role replacement (Lead ruling 8 case 2).
+        // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded for
+        // the in-service D5 union-non-invertibility check.
         await this.identitySvc.replaceMembershipRoles({
           membership_id: membership.id,
+          role_keys: args.role_keys,
           role_ids,
+          request_id: args.request_id,
         });
         return {
           tenant_id: args.tenant_id,
@@ -273,11 +286,15 @@ export class PlatformInvitationService {
         };
       }
       // New-tenant for existing user (Lead ruling 8 case 3).
+      // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded for
+      // the in-service D5 union-non-invertibility check.
       const added = await this.identitySvc.addMembershipForExistingUser({
         user_id: identityExisting.id,
         tenant_id: args.tenant_id,
+        role_keys: args.role_keys,
         role_ids,
         actor_user_id: args.actor_user_id,
+        request_id: args.request_id,
       });
       return {
         tenant_id: args.tenant_id,
@@ -291,14 +308,18 @@ export class PlatformInvitationService {
     if (cognitoExisting !== null && identityExisting === null) {
       // Drift recovery (Lead ruling 8 case 4). Reuse the existing
       // Cognito sub; write identity rows mirror-style.
+      // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded for
+      // the in-service D5 union-non-invertibility check.
       const created = await this.identitySvc.createUserFromInvitation({
         email: args.email,
         display_name: args.display_name ?? null,
         provider: 'cognito',
         provider_subject: cognitoExisting.cognito_sub,
         tenant_id: args.tenant_id,
+        role_keys: args.role_keys,
         role_ids,
         actor_user_id: args.actor_user_id,
+        request_id: args.request_id,
       });
       return {
         tenant_id: args.tenant_id,
@@ -336,14 +357,21 @@ export class PlatformInvitationService {
 
     let created;
     try {
+      // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded for
+      // the in-service D5 union-non-invertibility check. An invertible
+      // bundle throws VALIDATION_ERROR inside createUserFromInvitation —
+      // the catch block below rolls back the Cognito user so neither
+      // store retains the invertible state.
       created = await this.identitySvc.createUserFromInvitation({
         email: args.email,
         display_name: args.display_name ?? null,
         provider: 'cognito',
         provider_subject: cognito_sub,
         tenant_id: args.tenant_id,
+        role_keys: args.role_keys,
         role_ids,
         actor_user_id: args.actor_user_id,
+        request_id: args.request_id,
       });
     } catch (err) {
       await this.compensateCognito(args.email, args.pool).catch(
@@ -368,6 +396,7 @@ export class PlatformInvitationService {
     email: string;
     display_name?: string | null;
     actor_user_id: string;
+    request_id: string;
   }): Promise<InviteResult> {
     return this.inviteUserIntoTenant({
       tenant_id: PLATFORM_TENANT_SENTINEL_ID,
@@ -376,6 +405,7 @@ export class PlatformInvitationService {
       display_name: args.display_name ?? null,
       actor_user_id: args.actor_user_id,
       pool: 'platform',
+      request_id: args.request_id,
     });
   }
 
