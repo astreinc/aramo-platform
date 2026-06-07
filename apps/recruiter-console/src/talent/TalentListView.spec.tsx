@@ -1,8 +1,14 @@
+import type { ReactElement } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TalentListView } from './TalentListView';
 import type { TalentRecordView } from './types';
+
+function renderInRouter(ui: ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 function makeTalent(
   id: string,
@@ -71,7 +77,7 @@ describe('TalentListView', () => {
 
   it('frames the list as the tenant POOL — not a personal list', async () => {
     mockFetch([]);
-    render(<TalentListView />);
+    renderInRouter(<TalentListView />);
     // Header carries the pool framing.
     await waitFor(() =>
       expect(screen.getByText('Talent')).toBeInTheDocument(),
@@ -99,7 +105,7 @@ describe('TalentListView', () => {
         can_relocate: true,
       }),
     ]);
-    render(<TalentListView />);
+    renderInRouter(<TalentListView />);
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
@@ -115,7 +121,7 @@ describe('TalentListView', () => {
 
   it('surfaces a permission message when the BE returns 403', async () => {
     mockFetchError(403);
-    render(<TalentListView />);
+    renderInRouter(<TalentListView />);
     await waitFor(() =>
       expect(
         screen.getByText(/do not have permission to view talent/i),
@@ -128,7 +134,7 @@ describe('TalentListView', () => {
       makeTalent(`tal-${i}`, `First${i}`, `Last${i}`),
     );
     mockFetch(items);
-    render(<TalentListView />);
+    renderInRouter(<TalentListView />);
     await waitFor(() =>
       expect(
         screen.getByTestId('talent-cap-banner'),
@@ -141,12 +147,24 @@ describe('TalentListView', () => {
 
   it('does NOT show the cap banner when the list is under the cap', async () => {
     mockFetch([makeTalent('tal-1', 'Ada', 'Lovelace')]);
-    render(<TalentListView />);
+    renderInRouter(<TalentListView />);
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
     expect(
       screen.queryByTestId('talent-cap-banner'),
     ).not.toBeInTheDocument();
+  });
+
+  // R3 — the primary-name cell links to /talent/:id (ruling 5: column-
+  // content change, Table frozen).
+  it('the name cell links to the talent detail at /talent/:id', async () => {
+    mockFetch([makeTalent('tal-42', 'Ada', 'Lovelace')]);
+    renderInRouter(<TalentListView />);
+    await waitFor(() =>
+      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
+    );
+    const link = screen.getByRole('link', { name: 'Ada Lovelace' });
+    expect(link).toHaveAttribute('href', '/talent/tal-42');
   });
 });

@@ -16,6 +16,17 @@ export async function listPipelinesForRequisition(
   );
 }
 
+// R3 — the talent DETAIL Pipelines tab. The Gate-5 KEY confirmation:
+// /v1/pipelines accepts a talent_record_id filter (libs/pipeline/src/
+// lib/pipeline.controller.ts:54-74, line 61). Fully supported.
+export async function listPipelinesForTalent(
+  talentId: string,
+): Promise<PipelineListResponse> {
+  return apiClient.get<PipelineListResponse>(
+    `/v1/pipelines?talent_record_id=${encodeURIComponent(talentId)}`,
+  );
+}
+
 export async function getPipelineHistory(
   pipelineId: string,
 ): Promise<PipelineHistoryResponse> {
