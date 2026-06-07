@@ -6,6 +6,7 @@ import { ToastProvider } from './components/Toast';
 import { ConsentView } from './consent/ConsentView';
 import { LandingPage } from './routes/LandingPage';
 import { LoginPage } from './routes/LoginPage';
+import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { SettingsView } from './settings/SettingsView';
 import { Shell } from './shell/Shell';
 import { UsersListView } from './users/UsersListView';
@@ -51,6 +52,17 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <UsersListView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="org"
+                      element={
+                        <RouteGuard
+                          requireScope="org:manage"
+                          sessionStateOverride={state}
+                        >
+                          <OrgHierarchyView />
                         </RouteGuard>
                       }
                     />
