@@ -1,0 +1,119 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { RequisitionsListView } from './RequisitionsListView';
+import type { RequisitionStatus, RequisitionView } from './types';
+
+function makeReq(
+  id: string,
+  title: string,
+  status: RequisitionStatus,
+): RequisitionView {
+  return {
+    id,
+    tenant_id: 't',
+    site_id: null,
+    title,
+    company_id: 'co-1',
+    contact_id: null,
+    company_department_id: null,
+    status,
+    type: null,
+    duration: null,
+    rate_max: null,
+    salary: null,
+    description: null,
+    notes: null,
+    is_hot: false,
+    openings: 2,
+    openings_available: 1,
+    start_date: null,
+    city: null,
+    state: null,
+    recruiter_id: null,
+    owner_id: null,
+    entered_by_id: null,
+    created_at: '2026-06-01T00:00:00Z',
+    updated_at: '2026-06-01T00:00:00Z',
+    compensation_model: null,
+    pay_rate_amount: null,
+    pay_rate_currency: null,
+    pay_rate_period: null,
+    bill_rate_amount: null,
+    bill_rate_currency: null,
+    bill_rate_period: null,
+    placement_fee_percent: null,
+    placement_fee_amount: null,
+    salary_amount: null,
+    salary_currency: null,
+    margin_amount: null,
+    markup_percent: null,
+    margin_percent: null,
+  };
+}
+
+const OPEN = makeReq('req-open', 'Senior Engineer', 'active');
+const HOLD = makeReq('req-hold', 'Mid Engineer', 'on_hold');
+const CLOSED = makeReq('req-closed', 'Junior Engineer', 'closed');
+const FILLED = makeReq('req-filled', 'Architect', 'full');
+
+function mockFetch(items: readonly RequisitionView[]) {
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response(JSON.stringify({ items }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  );
+}
+
+describe('RequisitionsListView', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders only active (non-closed) requisitions by default', async () => {
+    mockFetch([OPEN, HOLD, CLOSED, FILLED]);
+    render(
+      <MemoryRouter>
+        <RequisitionsListView />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('Mid Engineer')).toBeInTheDocument();
+    expect(screen.queryByText('Junior Engineer')).not.toBeInTheDocument();
+    expect(screen.queryByText('Architect')).not.toBeInTheDocument();
+  });
+
+  it('reveals closed and filled requisitions when "Show closed" toggles on', async () => {
+    mockFetch([OPEN, CLOSED, FILLED]);
+    render(
+      <MemoryRouter>
+        <RequisitionsListView />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('Junior Engineer')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('switch'));
+
+    expect(screen.getByText('Junior Engineer')).toBeInTheDocument();
+    expect(screen.getByText('Architect')).toBeInTheDocument();
+  });
+
+  it('renders the empty-state copy when no active requisitions exist', async () => {
+    mockFetch([CLOSED, FILLED]);
+    render(
+      <MemoryRouter>
+        <RequisitionsListView />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/no open requisitions/i)).toBeInTheDocument(),
+    );
+  });
+});
