@@ -79,3 +79,108 @@ export interface RequisitionView {
 export interface RequisitionListResponse {
   readonly items: readonly RequisitionView[];
 }
+
+// R4 — mutate-side hand-mirrors.
+
+// Hand-mirrored from libs/requisition/src/lib/dto/rate-period.ts:6-12.
+// Closed list — value-list, no drift spec.
+export const RATE_PERIOD_VALUES = [
+  'HOURLY',
+  'DAILY',
+  'WEEKLY',
+  'MONTHLY',
+  'ANNUAL',
+] as const;
+export type RatePeriod = (typeof RATE_PERIOD_VALUES)[number];
+
+// Hand-mirrored from libs/requisition/src/lib/dto/requisition-compensation-
+// model.ts:10-13. Discriminator: CONTRACT uses bill/pay; PERMANENT uses
+// placement_fee + structured salary. The BE does NOT enforce per-branch
+// field constraints (ruling 2 Option A — the form hides off-branch fields
+// + sends only on-branch comp; NO auto-clear on a flip).
+export const COMPENSATION_MODEL_VALUES = ['CONTRACT', 'PERMANENT'] as const;
+export type CompensationModel = (typeof COMPENSATION_MODEL_VALUES)[number];
+
+// Hand-mirrored from libs/requisition/src/lib/dto/create-requisition-
+// request.dto.ts. POST /v1/requisitions body shape.
+//
+// R4 OMISSIONS (Lead rulings):
+// - site_id (ruling 4: no GET /v1/sites; @RequireSiteMatch validates session)
+// - openings_available (ruling 3: conceptually derived; A5 automates later)
+// - rate_max + salary (ruling 5: pre-Compensation-v1.1 legacy; dropped +
+//   deprecation carry filed)
+// - type, duration, company_department_id, recruiter_id, owner_id
+//   (administrative / out-of-scope for R4 — the form's first cut)
+export interface CreateRequisitionRequest {
+  readonly title: string;
+  readonly company_id: string;
+  readonly contact_id?: string;
+  readonly status?: RequisitionStatus;
+  readonly description?: string;
+  readonly notes?: string;
+  readonly is_hot?: boolean;
+  readonly openings?: number;
+  readonly start_date?: string;
+  readonly city?: string;
+  readonly state?: string;
+
+  // v1.1 §2.3 discriminator
+  readonly compensation_model?: CompensationModel;
+
+  // v1.1 §2.1 CONTRACT-side (decimal-as-string per the wire format —
+  // see decimal-format.ts)
+  readonly pay_rate_amount?: string;
+  readonly pay_rate_currency?: string;
+  readonly pay_rate_period?: RatePeriod;
+  readonly bill_rate_amount?: string;
+  readonly bill_rate_currency?: string;
+  readonly bill_rate_period?: RatePeriod;
+
+  // v1.1 §2.3 PERMANENT-side
+  readonly placement_fee_percent?: string;
+  readonly placement_fee_amount?: string;
+  readonly salary_amount?: string;
+  readonly salary_currency?: string;
+}
+
+// Hand-mirrored from libs/requisition/src/lib/dto/update-requisition-
+// request.dto.ts. PATCH /v1/requisitions/:id body shape — TRUE PATCH
+// semantics (verified at Gate-5: libs/requisition/src/lib/requisition.
+// repository.ts:321-379 builds `data: {}` and only adds keys where
+// !== undefined; Prisma's update only touches present keys).
+//
+//   - omitted (undefined / absent) → column UNCHANGED in DB
+//   - explicit null → column NULLED
+//
+// THE D5-DEFENSIVE RULE (ruling 1): a recruiter without compensation:
+// view:* MUST OMIT comp fields entirely from the PATCH (never null
+// them — null would BLANK live pay data the writer can't see).
+//
+// `status` is freely editable (no transition guard); not nullable.
+// `site_id` is NOT in UPDATE (CREATE-only / immutable).
+export interface UpdateRequisitionRequest {
+  readonly title?: string;
+  readonly contact_id?: string | null;
+  readonly status?: RequisitionStatus;
+  readonly description?: string | null;
+  readonly notes?: string | null;
+  readonly is_hot?: boolean;
+  readonly openings?: number;
+  readonly start_date?: string | null;
+  readonly city?: string | null;
+  readonly state?: string | null;
+
+  readonly compensation_model?: CompensationModel | null;
+
+  readonly pay_rate_amount?: string | null;
+  readonly pay_rate_currency?: string | null;
+  readonly pay_rate_period?: RatePeriod | null;
+  readonly bill_rate_amount?: string | null;
+  readonly bill_rate_currency?: string | null;
+  readonly bill_rate_period?: RatePeriod | null;
+
+  readonly placement_fee_percent?: string | null;
+  readonly placement_fee_amount?: string | null;
+  readonly salary_amount?: string | null;
+  readonly salary_currency?: string | null;
+}

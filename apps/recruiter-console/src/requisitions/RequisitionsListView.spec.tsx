@@ -59,11 +59,15 @@ const CLOSED = makeReq('req-closed', 'Junior Engineer', 'closed');
 const FILLED = makeReq('req-filled', 'Architect', 'full');
 
 function mockFetch(items: readonly RequisitionView[]) {
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response(JSON.stringify({ items }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    }),
+  // R4 — the view now also calls useSession (for the requisition:create
+  // gate); both fetches share this mock. Use mockImplementation so each
+  // call gets a fresh Response (Response bodies are read-once).
+  vi.spyOn(globalThis, 'fetch').mockImplementation(
+    async () =>
+      new Response(JSON.stringify({ items }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
   );
 }
 
@@ -115,5 +119,53 @@ describe('RequisitionsListView', () => {
     await waitFor(() =>
       expect(screen.getByText(/no open requisitions/i)).toBeInTheDocument(),
     );
+  });
+
+  // R4 — the "+ New requisition" CTA is gated by the requisition:create
+  // scope. Hidden for read-only recruiters; visible (and links to
+  // /requisitions/new) when the scope is held.
+  it('hides "+ New requisition" when requisition:create is not held', async () => {
+    mockFetch([OPEN]);
+    render(
+      <MemoryRouter>
+        <RequisitionsListView
+          sessionOverride={{
+            sub: 'u1',
+            consumer_type: 'recruiter',
+            tenant_id: 't',
+            scopes: ['requisition:read'],
+            iat: 0,
+            exp: 0,
+          }}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('link', { name: /\+ new requisition/i })).toBeNull();
+  });
+
+  it('shows "+ New requisition" linking to /requisitions/new when requisition:create is held', async () => {
+    mockFetch([OPEN]);
+    render(
+      <MemoryRouter>
+        <RequisitionsListView
+          sessionOverride={{
+            sub: 'u1',
+            consumer_type: 'recruiter',
+            tenant_id: 't',
+            scopes: ['requisition:read', 'requisition:create'],
+            iat: 0,
+            exp: 0,
+          }}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
+    );
+    const link = screen.getByRole('link', { name: /\+ new requisition/i });
+    expect(link).toHaveAttribute('href', '/requisitions/new');
   });
 });
