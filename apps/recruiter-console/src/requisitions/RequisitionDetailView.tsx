@@ -4,6 +4,8 @@ import {
   Card,
   InlineAlert,
   PageHeader,
+  hasScope,
+  useSession,
 } from '@aramo/fe-foundation';
 
 import { ActivityTimeline } from '../activity/ActivityTimeline';
@@ -29,6 +31,10 @@ export function RequisitionDetailView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const sessionState = useSession();
+  const canEdit =
+    sessionState.status === 'authenticated' &&
+    hasScope(sessionState.session, 'requisition:edit');
 
   useEffect(() => {
     if (reqId === undefined) return;
@@ -80,6 +86,11 @@ export function RequisitionDetailView() {
       <PageHeader title={req.title} description={`Status: ${req.status}`} />
       <div className="req-detail__toolbar">
         <Link to="/requisitions">← Back to requisitions</Link>
+        {canEdit ? (
+          <Link to={`/requisitions/${req.id}/edit`} className="req-detail__edit-link">
+            Edit
+          </Link>
+        ) : null}
         <LogNoteDialog
           requisitionId={req.id}
           onSaved={() => setRefreshKey((k) => k + 1)}

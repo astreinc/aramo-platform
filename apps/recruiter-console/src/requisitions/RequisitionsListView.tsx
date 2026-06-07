@@ -5,6 +5,9 @@ import {
   InlineAlert,
   PageHeader,
   Switch,
+  hasScope,
+  useSession,
+  type Session,
 } from '@aramo/fe-foundation';
 
 import { listRequisitions } from './requisitions-api';
@@ -16,11 +19,28 @@ import { isClosedStatus, type RequisitionView } from './types';
 // Visibility (D4b) is BE-applied — the recruiter sees own-assigned;
 // invisible→404 on detail; the LIST already only contains visible reqs.
 
-export function RequisitionsListView() {
+interface RequisitionsListViewProps {
+  // R4 test seam — pass a fixed session so the "+ New" gate is
+  // exercisable in tests without mounting the real session hook.
+  readonly sessionOverride?: Session;
+}
+
+export function RequisitionsListView({ sessionOverride }: RequisitionsListViewProps = {}) {
   const [items, setItems] = useState<readonly RequisitionView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
+  const sessionState = useSession();
+  const session: Session | null =
+    sessionOverride ??
+    (sessionState.status === 'authenticated' ? sessionState.session : null);
+  // Defensive: in tests the session fetch may return a non-Session
+  // shape (a global fetch mock for the LIST endpoint can leak into the
+  // session probe). Guard so an unparseable session can't crash render.
+  const canCreate =
+    session !== null &&
+    Array.isArray(session.scopes) &&
+    hasScope(session, 'requisition:create');
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +76,11 @@ export function RequisitionsListView() {
           <Switch checked={showClosed} onCheckedChange={setShowClosed} />
           <span>Show closed</span>
         </label>
+        {canCreate ? (
+          <Link to="/requisitions/new" className="reqs-list__new-link">
+            + New requisition
+          </Link>
+        ) : null}
       </div>
       {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
       {loading ? (

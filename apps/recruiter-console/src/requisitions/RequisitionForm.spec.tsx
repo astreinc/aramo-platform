@@ -1,0 +1,640 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Session } from '@aramo/fe-foundation';
+
+import type { CompanyView, ContactView } from '../companies/types';
+
+import { RequisitionForm } from './RequisitionForm';
+import type { RequisitionStatus, RequisitionView } from './types';
+
+function makeSession(scopes: string[]): Session {
+  return {
+    sub: 'u1',
+    consumer_type: 'recruiter',
+    tenant_id: 't',
+    scopes,
+    iat: 0,
+    exp: 0,
+  };
+}
+
+function makeCompany(id: string, name: string): CompanyView {
+  return {
+    id,
+    tenant_id: 't',
+    site_id: null,
+    name,
+    address: null,
+    address2: null,
+    city: null,
+    state: null,
+    zip: null,
+    phone1: null,
+    phone2: null,
+    fax_number: null,
+    url: null,
+    key_technologies: null,
+    notes: null,
+    is_hot: false,
+    billing_contact_id: null,
+    owner_id: null,
+    entered_by_id: null,
+    created_at: '2026-06-01T00:00:00Z',
+    updated_at: '2026-06-01T00:00:00Z',
+  };
+}
+
+function makeContact(
+  id: string,
+  first: string,
+  last: string,
+  companyId: string,
+): ContactView {
+  return {
+    id,
+    tenant_id: 't',
+    site_id: null,
+    first_name: first,
+    last_name: last,
+    title: null,
+    email1: null,
+    email2: null,
+    phone_work: null,
+    phone_cell: null,
+    phone_other: null,
+    address: null,
+    company_id: companyId,
+    company_department_id: null,
+    is_hot: false,
+    notes: null,
+    left_company: false,
+    reports_to_id: null,
+    owner_id: null,
+    entered_by_id: null,
+    created_at: '2026-06-01T00:00:00Z',
+    updated_at: '2026-06-01T00:00:00Z',
+  };
+}
+
+function makeReq(
+  overrides: Partial<RequisitionView> = {},
+): RequisitionView {
+  return {
+    id: 'req-1',
+    tenant_id: 't',
+    site_id: null,
+    title: 'Senior Engineer',
+    company_id: 'co-1',
+    contact_id: null,
+    company_department_id: null,
+    status: 'active' as RequisitionStatus,
+    type: null,
+    duration: null,
+    rate_max: null,
+    salary: null,
+    description: null,
+    notes: null,
+    is_hot: false,
+    openings: 2,
+    openings_available: 2,
+    start_date: null,
+    city: null,
+    state: null,
+    recruiter_id: null,
+    owner_id: null,
+    entered_by_id: null,
+    created_at: '2026-06-01T00:00:00Z',
+    updated_at: '2026-06-01T00:00:00Z',
+    compensation_model: null,
+    pay_rate_amount: null,
+    pay_rate_currency: null,
+    pay_rate_period: null,
+    bill_rate_amount: null,
+    bill_rate_currency: null,
+    bill_rate_period: null,
+    placement_fee_percent: null,
+    placement_fee_amount: null,
+    salary_amount: null,
+    salary_currency: null,
+    margin_amount: null,
+    markup_percent: null,
+    margin_percent: null,
+    ...overrides,
+  };
+}
+
+interface MockedRequest {
+  readonly url: string;
+  readonly method: string;
+  readonly body: unknown;
+}
+
+function installFetch(
+  handler: (req: MockedRequest) =>
+    | { status: number; body: unknown }
+    | Promise<{ status: number; body: unknown }>,
+): MockedRequest[] {
+  const calls: MockedRequest[] = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : (input as Request).url;
+    const method = init?.method ?? 'GET';
+    let body: unknown = undefined;
+    if (init?.body !== undefined && init.body !== null) {
+      try {
+        body = JSON.parse(String(init.body));
+      } catch {
+        body = init.body;
+      }
+    }
+    const req: MockedRequest = { url, method, body };
+    calls.push(req);
+    const res = await handler(req);
+    return new Response(JSON.stringify(res.body), {
+      status: res.status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+  return calls;
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+const COMPANIES = [makeCompany('co-1', 'Acme Corp'), makeCompany('co-2', 'Other Co')];
+const CONTACTS_CO1 = [makeContact('ct-1', 'Jane', 'Doe', 'co-1')];
+
+describe('RequisitionForm — CREATE', () => {
+  it('renders the basics + disables submit until title + company are set', async () => {
+    installFetch((req) => {
+      if (req.url.includes('/v1/companies')) {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      return { status: 200, body: { items: [] } };
+    });
+    render(
+      <RequisitionForm
+        mode="create"
+        session={makeSession(['requisition:create'])}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const submit = await screen.findByRole('button', { name: /create requisition/i });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'New Role' } });
+    // Still disabled (no company picked).
+    expect(submit).toBeDisabled();
+  });
+
+  it('submits POST with the basics; no compensation when the actor has no view scopes (D5 hidden section)', async () => {
+    const onSuccess = vi.fn();
+    const calls = installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      if (req.url.includes('/v1/contacts') && req.method === 'GET') {
+        return { status: 200, body: { items: CONTACTS_CO1 } };
+      }
+      if (req.url === '/v1/requisitions' && req.method === 'POST') {
+        return { status: 201, body: makeReq() };
+      }
+      return { status: 404, body: {} };
+    });
+    render(
+      <RequisitionForm
+        mode="create"
+        session={makeSession(['requisition:create'])}
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+      />,
+    );
+    // Compensation section is hidden (no view scopes).
+    await waitFor(() => {
+      expect(screen.queryByText('Compensation')).toBeNull();
+    });
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'New Role' } });
+    // Pick company via the Combobox.
+    fireEvent.click(screen.getByTestId('company-picker'));
+    fireEvent.click(await screen.findByTestId('company-picker-option-co-1'));
+    fireEvent.click(screen.getByRole('button', { name: /create requisition/i }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const postCall = calls.find((c) => c.method === 'POST');
+    expect(postCall?.body).toMatchObject({
+      title: 'New Role',
+      company_id: 'co-1',
+      openings: 1,
+    });
+    // No compensation fields in the body (no view scopes → none visible).
+    const body = postCall?.body as Record<string, unknown>;
+    expect(body).not.toHaveProperty('compensation_model');
+    expect(body).not.toHaveProperty('pay_rate_amount');
+    expect(body).not.toHaveProperty('salary_amount');
+  });
+
+  it('CREATE with compensation:view:pay + CONTRACT discriminator sends ONLY on-branch+visible comp', async () => {
+    const onSuccess = vi.fn();
+    const calls = installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      if (req.url.includes('/v1/contacts') && req.method === 'GET') {
+        return { status: 200, body: { items: [] } };
+      }
+      if (req.url === '/v1/requisitions' && req.method === 'POST') {
+        return { status: 201, body: makeReq() };
+      }
+      return { status: 404, body: {} };
+    });
+    render(
+      <RequisitionForm
+        mode="create"
+        session={makeSession(['requisition:create', 'compensation:view:pay'])}
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+      />,
+    );
+    // Wait for companies to load (so the picker is enabled). Without
+    // this, clicking the picker too early can race with Radix Popover
+    // state and leave the popover closed.
+    await waitFor(() => {
+      expect(screen.getByTestId('company-picker')).not.toBeDisabled();
+    });
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Contract Role' } });
+    fireEvent.click(screen.getByTestId('company-picker'));
+    fireEvent.click(await screen.findByTestId('company-picker-option-co-1'));
+    // Choose CONTRACT discriminator.
+    fireEvent.click(screen.getByLabelText('Contract'));
+    fireEvent.change(screen.getByLabelText('Pay rate amount'), {
+      target: { value: '60.00' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /create requisition/i }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const body = calls.find((c) => c.method === 'POST')?.body as Record<string, unknown>;
+    // On-branch + visible only: pay_rate_amount is visible under view:pay.
+    expect(body).toMatchObject({
+      compensation_model: 'CONTRACT',
+      pay_rate_amount: '60.00',
+    });
+    // bill_rate_amount is on the CONTRACT branch but the actor lacks
+    // view:bill — NOT sent (D5 defensive FE — ruling 1).
+    expect(body).not.toHaveProperty('bill_rate_amount');
+    // PERMANENT-side off-branch never sent.
+    expect(body).not.toHaveProperty('salary_amount');
+    expect(body).not.toHaveProperty('placement_fee_amount');
+  });
+});
+
+describe('RequisitionForm — EDIT (PATCH semantics + D5 safety)', () => {
+  it('pre-fills from initial; omits unchanged fields from PATCH', async () => {
+    const onSuccess = vi.fn();
+    const initial = makeReq({ title: 'Senior Engineer', notes: 'hello' });
+    const calls = installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      if (req.url.includes('/v1/contacts') && req.method === 'GET') {
+        return { status: 200, body: { items: CONTACTS_CO1 } };
+      }
+      if (req.url.includes('/v1/requisitions/req-1') && req.method === 'PATCH') {
+        return { status: 200, body: makeReq() };
+      }
+      return { status: 404, body: {} };
+    });
+    render(
+      <RequisitionForm
+        mode="edit"
+        session={makeSession(['requisition:edit'])}
+        initial={initial}
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+      />,
+    );
+    // Pre-filled.
+    const title = await screen.findByLabelText('Title') as HTMLInputElement;
+    expect(title.value).toBe('Senior Engineer');
+    expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('hello');
+    // Submit without changes.
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const patchBody = calls.find((c) => c.method === 'PATCH')?.body as Record<
+      string,
+      unknown
+    >;
+    // No changes → empty body.
+    expect(Object.keys(patchBody)).toHaveLength(0);
+  });
+
+  it('sends explicit null when a nullable field is cleared (description / notes / etc.)', async () => {
+    const onSuccess = vi.fn();
+    const initial = makeReq({ notes: 'hello' });
+    const calls = installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      if (req.url.includes('/v1/contacts')) {
+        return { status: 200, body: { items: [] } };
+      }
+      if (req.method === 'PATCH') {
+        return { status: 200, body: makeReq() };
+      }
+      return { status: 404, body: {} };
+    });
+    render(
+      <RequisitionForm
+        mode="edit"
+        session={makeSession(['requisition:edit'])}
+        initial={initial}
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.change(await screen.findByLabelText('Notes'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const body = calls.find((c) => c.method === 'PATCH')?.body as Record<string, unknown>;
+    expect(body).toEqual({ notes: null });
+  });
+
+  // LOAD-BEARING D5 SAFETY TEST (ruling 1 — Frame B; no-blanking).
+  it('a recruiter WITHOUT compensation:view:pay editing a req does NOT include comp fields in the PATCH body (no blanking)', async () => {
+    const onSuccess = vi.fn();
+    // The initial req HAS comp data in the DB but the read masked it
+    // (the recruiter never received it). The view-shape thus has nulls
+    // for comp fields. We add an extra change to title so the PATCH
+    // body is non-empty and we can assert the comp keys are absent.
+    const initial = makeReq({
+      // BE-masked: comp fields stripped to null in the response shape.
+      pay_rate_amount: null,
+      salary_amount: null,
+    });
+    const calls = installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      if (req.url.includes('/v1/contacts')) {
+        return { status: 200, body: { items: [] } };
+      }
+      if (req.method === 'PATCH') {
+        return { status: 200, body: makeReq() };
+      }
+      return { status: 404, body: {} };
+    });
+    render(
+      <RequisitionForm
+        mode="edit"
+        session={makeSession(['requisition:edit'])} // NO compensation:view:* scope
+        initial={initial}
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+      />,
+    );
+    // Compensation section is hidden entirely.
+    await waitFor(() => {
+      expect(screen.queryByText('Compensation')).toBeNull();
+    });
+    // Change the title so PATCH body is non-empty.
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Updated' } });
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const body = calls.find((c) => c.method === 'PATCH')?.body as Record<string, unknown>;
+    expect(body.title).toBe('Updated');
+    // NO compensation fields in the body — ruling 1 omit-not-null.
+    expect(body).not.toHaveProperty('compensation_model');
+    expect(body).not.toHaveProperty('pay_rate_amount');
+    expect(body).not.toHaveProperty('pay_rate_currency');
+    expect(body).not.toHaveProperty('pay_rate_period');
+    expect(body).not.toHaveProperty('bill_rate_amount');
+    expect(body).not.toHaveProperty('bill_rate_currency');
+    expect(body).not.toHaveProperty('bill_rate_period');
+    expect(body).not.toHaveProperty('placement_fee_amount');
+    expect(body).not.toHaveProperty('placement_fee_percent');
+    expect(body).not.toHaveProperty('salary_amount');
+    expect(body).not.toHaveProperty('salary_currency');
+  });
+
+  it('changing the discriminator CONTRACT→PERMANENT omits the off-branch CONTRACT fields (no auto-clear)', async () => {
+    const onSuccess = vi.fn();
+    const initial = makeReq({
+      compensation_model: 'CONTRACT',
+      pay_rate_amount: '60.00',
+      pay_rate_currency: 'USD',
+    });
+    const calls = installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      if (req.url.includes('/v1/contacts')) {
+        return { status: 200, body: { items: [] } };
+      }
+      if (req.method === 'PATCH') {
+        return { status: 200, body: makeReq() };
+      }
+      return { status: 404, body: {} };
+    });
+    render(
+      <RequisitionForm
+        mode="edit"
+        session={makeSession(['requisition:edit', 'compensation:view:pay'])}
+        initial={initial}
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+      />,
+    );
+    await screen.findByLabelText('Title');
+    // Flip discriminator to PERMANENT.
+    fireEvent.click(screen.getByLabelText('Permanent'));
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const body = calls.find((c) => c.method === 'PATCH')?.body as Record<string, unknown>;
+    // Discriminator changed.
+    expect(body.compensation_model).toBe('PERMANENT');
+    // CONTRACT-side fields NOT in the body — ruling 2 (no auto-clear);
+    // they remain in the DB at their pre-existing values.
+    expect(body).not.toHaveProperty('pay_rate_amount');
+    expect(body).not.toHaveProperty('pay_rate_currency');
+    expect(body).not.toHaveProperty('bill_rate_amount');
+  });
+
+  it('clearing the discriminator (Not specified) sends compensation_model: null', async () => {
+    const onSuccess = vi.fn();
+    const initial = makeReq({ compensation_model: 'CONTRACT' });
+    const calls = installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      if (req.url.includes('/v1/contacts')) {
+        return { status: 200, body: { items: [] } };
+      }
+      if (req.method === 'PATCH') {
+        return { status: 200, body: makeReq() };
+      }
+      return { status: 404, body: {} };
+    });
+    render(
+      <RequisitionForm
+        mode="edit"
+        session={makeSession(['requisition:edit', 'compensation:view:pay'])}
+        initial={initial}
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+      />,
+    );
+    await screen.findByLabelText('Title');
+    fireEvent.click(screen.getByLabelText('Not specified'));
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const body = calls.find((c) => c.method === 'PATCH')?.body as Record<string, unknown>;
+    expect(body.compensation_model).toBeNull();
+  });
+});
+
+describe('RequisitionForm — submit errors', () => {
+  it('surfaces a friendly message when the BE returns 400 VALIDATION_ERROR with a field', async () => {
+    installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      if (req.url.includes('/v1/contacts')) {
+        return { status: 200, body: { items: [] } };
+      }
+      if (req.method === 'POST') {
+        return {
+          status: 400,
+          body: {
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'Invalid pay_rate_amount',
+              details: { field: 'pay_rate_amount' },
+            },
+          },
+        };
+      }
+      return { status: 404, body: {} };
+    });
+    render(
+      <RequisitionForm
+        mode="create"
+        session={makeSession(['requisition:create', 'compensation:view:pay'])}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('company-picker')).not.toBeDisabled();
+    });
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'X' } });
+    fireEvent.click(screen.getByTestId('company-picker'));
+    fireEvent.click(await screen.findByTestId('company-picker-option-co-1'));
+    fireEvent.click(screen.getByRole('button', { name: /create requisition/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/the field "pay_rate_amount" has an invalid value/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('surfaces a permission message on 403', async () => {
+    installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      if (req.url.includes('/v1/contacts')) {
+        return { status: 200, body: { items: [] } };
+      }
+      if (req.method === 'POST') {
+        return { status: 403, body: { message: 'forbidden' } };
+      }
+      return { status: 404, body: {} };
+    });
+    render(
+      <RequisitionForm
+        mode="create"
+        session={makeSession(['requisition:create'])}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('company-picker')).not.toBeDisabled();
+    });
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'X' } });
+    fireEvent.click(screen.getByTestId('company-picker'));
+    fireEvent.click(await screen.findByTestId('company-picker-option-co-1'));
+    fireEvent.click(screen.getByRole('button', { name: /create requisition/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/do not have permission to create requisitions/i),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe('RequisitionForm — pickers', () => {
+  it('contact picker is disabled until a company is chosen', async () => {
+    installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      return { status: 200, body: { items: [] } };
+    });
+    render(
+      <RequisitionForm
+        mode="create"
+        session={makeSession(['requisition:create'])}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    await screen.findByRole('combobox', { name: 'Company' });
+    const contactBtn = screen.getByRole('combobox', { name: 'Contact' });
+    expect(contactBtn).toBeDisabled();
+  });
+
+  it('shows the company-picker limitation banner when the visible-companies list hits the 50 cap', async () => {
+    const fifty = Array.from({ length: 50 }, (_, i) =>
+      makeCompany(`co-${i}`, `Co ${i}`),
+    );
+    installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: fifty } };
+      }
+      return { status: 200, body: { items: [] } };
+    });
+    render(
+      <RequisitionForm
+        mode="create"
+        session={makeSession(['requisition:create'])}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(/showing first 50 visible companies/i),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe('RequisitionForm — cancel', () => {
+  it('clicking Cancel fires onCancel', async () => {
+    const onCancel = vi.fn();
+    installFetch(() => ({ status: 200, body: { items: [] } }));
+    render(
+      <RequisitionForm
+        mode="create"
+        session={makeSession(['requisition:create'])}
+        onSuccess={vi.fn()}
+        onCancel={onCancel}
+      />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    expect(onCancel).toHaveBeenCalled();
+  });
+});

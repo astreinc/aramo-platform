@@ -10,7 +10,9 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { CompaniesListView } from './companies/CompaniesListView';
 import { CompanyDetailView } from './companies/CompanyDetailView';
 import { LoginPage } from './routes/LoginPage';
+import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
+import { RequisitionEditView } from './requisitions/RequisitionEditView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
 import { TalentDetailView } from './talent/TalentDetailView';
 import { TalentListView } from './talent/TalentListView';
@@ -70,6 +72,17 @@ export function App() {
                       }
                     />
                     <Route
+                      path="requisitions/new"
+                      element={
+                        <RouteGuard
+                          requireScope="requisition:create"
+                          sessionStateOverride={state}
+                        >
+                          <RequisitionCreateView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
                       path="requisitions/:reqId"
                       element={
                         <RouteGuard
@@ -77,6 +90,17 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <RequisitionDetailView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="requisitions/:reqId/edit"
+                      element={
+                        <RouteGuard
+                          requireScope="requisition:edit"
+                          sessionStateOverride={state}
+                        >
+                          <RequisitionEditView />
                         </RouteGuard>
                       }
                     />
