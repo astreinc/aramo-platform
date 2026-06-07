@@ -1,0 +1,85 @@
+/* Aramo Tenant Console — design tokens (Settings S5a foundation).
+ *
+ * The single source of truth for color, typography, spacing, radius, and
+ * shadow. Components reference these vars exclusively; raw hex/px values
+ * outside this file are a drift signal.
+ *
+ * Direction (PO-delegated, Lead lean): clean, professional, dense SaaS-admin
+ * — refined minimalism executed with precision. Distinctive-not-generic:
+ *   - Type: Geist + Geist Mono (intentional non-Inter alternative)
+ *   - Spine: warm-stone neutrals (avoids the cold-slate AI default)
+ *   - Accent: deep teal (avoids the purple-gradient cliché)
+ *   - Density: 32-px controls, 14-px body, 4-px base unit
+ *   - Radii: restrained (4/6/8 px) — clean, not playful
+ */
+
+:root {
+  /* Neutral spine — warm stone */
+  --c-bg: #FAFAF9;
+  --c-surface: #FFFFFF;
+  --c-surface-2: #F5F5F4;
+  --c-border: #E7E5E4;
+  --c-border-strong: #D6D3D1;
+  --c-text: #1C1917;
+  --c-text-muted: #57534E;
+  --c-text-subtle: #78716C;
+
+  /* Accent — deep teal */
+  --c-accent: #0F766E;
+  --c-accent-hover: #115E59;
+  --c-accent-active: #134E4A;
+  --c-accent-soft: #CCFBF1;
+  --c-accent-fg: #FFFFFF;
+
+  /* States */
+  --c-danger: #B91C1C;
+  --c-danger-soft: #FEF2F2;
+  --c-danger-border: #FECACA;
+  --c-success: #15803D;
+  --c-success-soft: #F0FDF4;
+  --c-success-border: #BBF7D0;
+  --c-focus-ring: #0F766E;
+
+  /* Typography */
+  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
+  --fs-12: 0.75rem;
+  --fs-14: 0.875rem;
+  --fs-16: 1rem;
+  --fs-20: 1.25rem;
+  --fs-28: 1.75rem;
+  --lh-tight: 1.25;
+  --lh-normal: 1.5;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  /* Space — 4-px scale */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* Radius — restrained */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+
+  /* Shadow — paper-thin */
+  --sh-1: 0 1px 2px rgba(28, 25, 23, 0.04);
+  --sh-2: 0 2px 8px rgba(28, 25, 23, 0.06), 0 1px 2px rgba(28, 25, 23, 0.04);
+  --sh-3: 0 8px 24px rgba(28, 25, 23, 0.08), 0 2px 4px rgba(28, 25, 23, 0.04);
+
+  /* Density */
+  --control-h-sm: 28px;
+  --control-h-md: 32px;
+  --control-h-lg: 36px;
+
+  /* Layout */
+  --shell-nav-w: 220px;
+}

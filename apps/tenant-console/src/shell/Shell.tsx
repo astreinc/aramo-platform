@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react';
 
 import { apiClient } from '../api/client';
+import { hasScope } from '../auth/scopes';
 import { LOGIN_PATH, LOGOUT_PATH, type Session } from '../auth/session';
+import { Button } from '../components/Button';
+import { NavLink } from '../components/NavLink';
 
 interface ShellProps {
   session: Session;
@@ -23,24 +26,25 @@ export function Shell({ session, children, onLogoutComplete }: ShellProps) {
   };
 
   return (
-    <div className="aramo-shell">
-      <header className="aramo-shell__header">
-        <span className="aramo-shell__brand">Aramo Tenant Console</span>
-        <span
-          className="aramo-shell__tenant"
-          data-testid="shell-tenant-id"
-        >
+    <div className="tc-shell">
+      <header className="tc-shell__header">
+        <span className="tc-shell__brand">Aramo · Tenant Console</span>
+        <span className="tc-shell__tenant" data-testid="shell-tenant-id">
           Tenant: {session.tenant_id}
         </span>
-        <button
-          type="button"
-          className="aramo-shell__logout"
-          onClick={handleLogout}
-        >
+        <Button variant="secondary" size="sm" onClick={handleLogout}>
           Log out
-        </button>
+        </Button>
       </header>
-      <main className="aramo-shell__main">{children}</main>
+      <nav className="tc-shell__nav" aria-label="Primary">
+        <NavLink to="/" end>
+          Home
+        </NavLink>
+        {hasScope(session, 'tenant:admin:settings') && (
+          <NavLink to="/settings">Settings</NavLink>
+        )}
+      </nav>
+      <main className="tc-shell__main">{children}</main>
     </div>
   );
 }
