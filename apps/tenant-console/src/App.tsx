@@ -9,6 +9,8 @@ import { LoginPage } from './routes/LoginPage';
 import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { SettingsView } from './settings/SettingsView';
 import { Shell } from './shell/Shell';
+import { TeamMembersView } from './teams/TeamMembersView';
+import { TeamsListView } from './teams/TeamsListView';
 import { UsersListView } from './users/UsersListView';
 
 export function App() {
@@ -63,6 +65,28 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <OrgHierarchyView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="teams"
+                      element={
+                        <RouteGuard
+                          requireScope="team:manage"
+                          sessionStateOverride={state}
+                        >
+                          <TeamsListView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="teams/:teamId"
+                      element={
+                        <RouteGuard
+                          requireScope="team:manage"
+                          sessionStateOverride={state}
+                        >
+                          <TeamMembersView />
                         </RouteGuard>
                       }
                     />

@@ -46,6 +46,9 @@ export function Shell({ session, children, onLogoutComplete }: ShellProps) {
         {hasScope(session, 'org:manage') && (
           <NavLink to="/org">Organisation</NavLink>
         )}
+        {hasScope(session, 'team:manage') && (
+          <NavLink to="/teams">Teams</NavLink>
+        )}
         {hasScope(session, 'tenant:admin:settings') && (
           <NavLink to="/settings">Settings</NavLink>
         )}

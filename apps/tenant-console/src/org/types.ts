@@ -98,13 +98,9 @@ export const TREE_DEPTH_SOFT_CAP = 10;
 // NOT treat them as errors (PL-94 §2 ruling 4).
 export type EdgeRejectionReason = 'self_loop' | 'cycle';
 
-// ─── Picker-source probe outcome (S5c-1 §2 ruling 6) ─────────────────
+// ─── Picker-source probe outcome (Settings S5c-2 ruling 7) ───────────
 //
-// `GET /v1/tenant/users` is gated `tenant:admin:user-manage`, NOT
-// `org:manage`. An org:manage admin without user-manage scope gets 403.
-// The FE try-reads; on 200 the add-edge picker uses rich name selects;
-// on 403 it degrades to raw-UUID inputs (the BE bad-UUID rejection is
-// the floor). NEVER block the editor.
-export type UserRosterState =
-  | { state: 'ready'; users: readonly TenantUserView[] }
-  | { state: 'forbidden' };
+// `UserRosterState` and its probe now live in users/users-api.ts (the
+// shared S5c-1 + S5c-2 + S5c-3 surface). org/edges-api.ts re-exports
+// the type for back-compatible imports from the org/* module.
+export type { UserRosterState } from '../users/users-api';
