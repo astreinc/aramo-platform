@@ -2,19 +2,30 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { UserDto } from '../lib/dto/user.dto.js';
 import type { IdentityService } from '../lib/identity.service.js';
-import type { RoleBundleValidator } from '../lib/tenant-user/role-bundle-validator.js';
 import type { TenantCognitoPort } from '../lib/tenant-user/tenant-cognito.port.js';
 import type { AuditFinancialsGate } from '../lib/tenant-user/audit-financials-gate.port.js';
 import { TenantUserLifecycleService } from '../lib/tenant-user/tenant-user-lifecycle.service.js';
 
 // Settings S3a — TenantUserLifecycleService saga proofs.
 //
-// The cross-store saga + compensation + D5 validator integration. Mocks
-// IdentityService + RoleBundleValidator + TenantCognitoPort; asserts:
+// D-AUTHZ-PLATFORM-INVITE-1 update (Gate-6, in-service ruling):
+// RoleBundleValidator is no longer a dependency of the lifecycle service —
+// the D5 union-non-invertibility check moved INTO IdentityService's write
+// methods. Tests that previously asserted the LIFECYCLE called the
+// validator have been rewritten to either (a) prove the lifecycle no
+// longer touches a validator (its constructor signature has shrunk) or
+// (b) assert the rejection by mocking IdentityService.* to throw — the
+// rejection now surfaces from inside the IdentityService mock, exactly
+// the way it would surface from the real IdentityService at runtime.
+// The safe-by-construction proofs (the D5 check actually firing inside
+// IdentityService) live in identity.service.spec.ts.
+//
+// The cross-store saga + compensation. Mocks IdentityService +
+// TenantCognitoPort + AuditFinancialsGate; asserts:
 //   INVITE:
 //     - empty role_keys → 400 VALIDATION_ERROR (no Cognito call)
-//     - invertible union → 400 VALIDATION_ERROR (no Cognito call —
-//       validator fires BEFORE the side effect)
+//     - identity-tx VALIDATION_ERROR (invertible union surfacing from
+//       IdentityService.createUserFromInvitation) → Cognito rollback
 //     - Cognito failure on step 1 → 502 COGNITO_PROVISION_FAILED, no
 //       identity-tx, no rollback (Cognito never persisted)
 //     - identity-tx failure post-Cognito → re-throw + adminDeleteUser
@@ -58,9 +69,6 @@ interface Mocks {
     findRoleKeysForMembership: ReturnType<typeof vi.fn>;
     replaceMembershipRoles: ReturnType<typeof vi.fn>;
   };
-  roleBundle: {
-    assertUnionNonInvertible: ReturnType<typeof vi.fn>;
-  };
   cognito: {
     adminCreateUser: ReturnType<typeof vi.fn>;
     adminDeleteUser: ReturnType<typeof vi.fn>;
@@ -84,9 +92,6 @@ function makeMocks(): Mocks {
     findRoleKeysForMembership: vi.fn(),
     replaceMembershipRoles: vi.fn(),
   };
-  const roleBundle = {
-    assertUnionNonInvertible: vi.fn().mockResolvedValue(undefined),
-  };
   const cognito = {
     adminCreateUser: vi.fn(),
     adminDeleteUser: vi.fn().mockResolvedValue(undefined),
@@ -100,18 +105,19 @@ function makeMocks(): Mocks {
   const auditFinancialsGate = {
     isFinancialsAuditEnabled: vi.fn().mockResolvedValue(false),
   };
+  // D-AUTHZ-PLATFORM-INVITE-1: lifecycle constructor shrank — no more
+  // RoleBundleValidator arg (the D5 check lives inside IdentityService).
   const service = new TenantUserLifecycleService(
     identitySvc as unknown as IdentityService,
-    roleBundle as unknown as RoleBundleValidator,
     cognito as unknown as TenantCognitoPort,
     auditFinancialsGate as unknown as AuditFinancialsGate,
   );
-  return { identitySvc, roleBundle, cognito, auditFinancialsGate, service };
+  return { identitySvc, cognito, auditFinancialsGate, service };
 }
 
 describe('TenantUserLifecycleService.inviteTenantUser', () => {
-  it('empty role_keys → VALIDATION_ERROR (no Cognito call)', async () => {
-    const { service, cognito, roleBundle } = makeMocks();
+  it('empty role_keys → VALIDATION_ERROR (no Cognito call, no identity-tx)', async () => {
+    const { service, cognito, identitySvc } = makeMocks();
     await expect(
       service.inviteTenantUser({
         tenant_id: TENANT_ID,
@@ -127,13 +133,23 @@ describe('TenantUserLifecycleService.inviteTenantUser', () => {
       context: { details: { reason: 'empty_role_keys' } },
     });
     expect(cognito.adminCreateUser).not.toHaveBeenCalled();
-    expect(roleBundle.assertUnionNonInvertible).not.toHaveBeenCalled();
+    expect(identitySvc.createUserFromInvitation).not.toHaveBeenCalled();
   });
 
-  it('invertible role union → VALIDATION_ERROR (validator fires BEFORE Cognito)', async () => {
-    const { service, cognito, identitySvc, roleBundle } = makeMocks();
+  // D-AUTHZ-PLATFORM-INVITE-1: the D5 union-non-invertibility check moved
+  // INTO IdentityService.createUserFromInvitation. The lifecycle test
+  // exercises the boundary by mocking the IdentityService method to throw
+  // exactly the AramoError shape the real validator throws. Behavior
+  // shift: the validator now fires AFTER Cognito (inside the identity-tx),
+  // so an invertible bundle does create a Cognito user and the rollback
+  // path compensates — single-source-of-enforcement traded for one extra
+  // upstream side effect per bad bundle. The safe-by-construction proof
+  // (the validator actually firing) lives in identity.service.spec.ts.
+  it('invertible role union → VALIDATION_ERROR surfaces from identity-tx; Cognito created then rolled back', async () => {
+    const { service, cognito, identitySvc } = makeMocks();
     identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-1', 'rid-2']);
-    roleBundle.assertUnionNonInvertible.mockRejectedValue(
+    cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'cog-sub-bad' });
+    identitySvc.createUserFromInvitation.mockRejectedValue(
       Object.assign(new Error('invertible'), {
         code: 'VALIDATION_ERROR',
         statusCode: 400,
@@ -156,8 +172,9 @@ describe('TenantUserLifecycleService.inviteTenantUser', () => {
       code: 'VALIDATION_ERROR',
       context: { details: { reason: 'invertible_role_union' } },
     });
-    expect(cognito.adminCreateUser).not.toHaveBeenCalled();
-    expect(identitySvc.createUserFromInvitation).not.toHaveBeenCalled();
+    // Cognito WAS reached (the in-service trade); rollback compensates.
+    expect(cognito.adminCreateUser).toHaveBeenCalled();
+    expect(cognito.adminDeleteUser).toHaveBeenCalledWith({ email: EMAIL });
   });
 
   it('Cognito AdminCreateUser failure → 502 COGNITO_PROVISION_FAILED; no identity-tx, no rollback', async () => {
@@ -228,7 +245,9 @@ describe('TenantUserLifecycleService.inviteTenantUser', () => {
         actor_user_id: ACTOR_ID,
         provider: 'cognito',
         provider_subject: 'cog-sub-1',
+        role_keys: ['rA', 'rB'],
         role_ids: ['rid-1', 'rid-2'],
+        request_id: REQUEST_ID,
       }),
     );
     expect(cognito.adminDeleteUser).not.toHaveBeenCalled();
@@ -404,7 +423,7 @@ const MEMBERSHIP_ID = '01900000-0000-7000-8000-0000000000cc';
 
 describe('TenantUserLifecycleService.assignTenantUserRoles', () => {
   it('empty role_keys → VALIDATION_ERROR; no DB call', async () => {
-    const { service, identitySvc, roleBundle } = makeMocks();
+    const { service, identitySvc } = makeMocks();
     await expect(
       service.assignTenantUserRoles({
         tenant_id: TENANT_ID,
@@ -419,12 +438,11 @@ describe('TenantUserLifecycleService.assignTenantUserRoles', () => {
       context: { details: { reason: 'empty_role_keys' } },
     });
     expect(identitySvc.resolveRoleIdsByKeys).not.toHaveBeenCalled();
-    expect(roleBundle.assertUnionNonInvertible).not.toHaveBeenCalled();
     expect(identitySvc.replaceMembershipRoles).not.toHaveBeenCalled();
   });
 
-  it('unknown role_key → VALIDATION_ERROR; no D5 check, no reconcile', async () => {
-    const { service, identitySvc, roleBundle } = makeMocks();
+  it('unknown role_key → VALIDATION_ERROR; no reconcile', async () => {
+    const { service, identitySvc } = makeMocks();
     identitySvc.resolveRoleIdsByKeys.mockRejectedValue(
       Object.assign(new Error('Unknown role key(s)'), {
         code: 'VALIDATION_ERROR',
@@ -444,14 +462,22 @@ describe('TenantUserLifecycleService.assignTenantUserRoles', () => {
         request_id: REQUEST_ID,
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
-    expect(roleBundle.assertUnionNonInvertible).not.toHaveBeenCalled();
     expect(identitySvc.replaceMembershipRoles).not.toHaveBeenCalled();
   });
 
-  it('INVERTIBLE union → 400 NO PERSIST (the load-bearing D5 rejection)', async () => {
-    const { service, identitySvc, roleBundle } = makeMocks();
+  // D-AUTHZ-PLATFORM-INVITE-1: the D5 union-non-invertibility check moved
+  // INTO IdentityService.replaceMembershipRoles. Re-ordering note: the
+  // membership lookup + findRoleKeysForMembership now run BEFORE the
+  // validator (which fires inside replaceMembershipRoles). The lifecycle
+  // surfaces the rejection unchanged; the safe-by-construction proof
+  // (the validator's actual short-circuit inside the $transaction
+  // boundary) lives in identity.service.spec.ts.
+  it('INVERTIBLE union → 400 surfaces from replaceMembershipRoles; the reconcile is reached but the validator inside it short-circuits before any DB write', async () => {
+    const { service, identitySvc } = makeMocks();
     identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-pay', 'rid-spr']);
-    roleBundle.assertUnionNonInvertible.mockRejectedValue(
+    identitySvc.findMembership.mockResolvedValue({ id: MEMBERSHIP_ID });
+    identitySvc.findRoleKeysForMembership.mockResolvedValue([]);
+    identitySvc.replaceMembershipRoles.mockRejectedValue(
       Object.assign(new Error('invertible'), {
         code: 'VALIDATION_ERROR',
         statusCode: 400,
@@ -476,9 +502,17 @@ describe('TenantUserLifecycleService.assignTenantUserRoles', () => {
       code: 'VALIDATION_ERROR',
       context: { details: { reason: 'invertible_role_union' } },
     });
-    // THE INVARIANT — the invertible union NEVER reaches the reconcile.
-    expect(identitySvc.findMembership).not.toHaveBeenCalled();
-    expect(identitySvc.replaceMembershipRoles).not.toHaveBeenCalled();
+    // The reconcile method WAS called (new ordering) but the validator
+    // inside it threw before the createMany/deleteMany — proven in
+    // identity.service.spec.ts safe-by-construction suite.
+    expect(identitySvc.replaceMembershipRoles).toHaveBeenCalledWith(
+      expect.objectContaining({
+        membership_id: MEMBERSHIP_ID,
+        role_keys: ['view_pay', 'view_spread'],
+        role_ids: ['rid-pay', 'rid-spr'],
+        request_id: REQUEST_ID,
+      }),
+    );
   });
 
   it('membership not found in this tenant → 404 NOT_FOUND; no reconcile', async () => {
@@ -498,7 +532,7 @@ describe('TenantUserLifecycleService.assignTenantUserRoles', () => {
   });
 
   it('happy path with both adds AND removes → correct deltas (sorted)', async () => {
-    const { service, identitySvc, roleBundle } = makeMocks();
+    const { service, identitySvc } = makeMocks();
     identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-am', 'rid-rc']);
     identitySvc.findMembership.mockResolvedValue({ id: MEMBERSHIP_ID });
     identitySvc.findRoleKeysForMembership.mockResolvedValue([
@@ -521,11 +555,16 @@ describe('TenantUserLifecycleService.assignTenantUserRoles', () => {
     expect(result.after_role_keys).toEqual(['account_manager', 'recruiter']);
     expect(result.added_role_keys).toEqual(['account_manager']);
     expect(result.removed_role_keys).toEqual(['sourcer']);
-    // The D5 gate fired BEFORE the reconcile.
-    expect(roleBundle.assertUnionNonInvertible).toHaveBeenCalled();
+    // D-AUTHZ-PLATFORM-INVITE-1: the D5 gate fires INSIDE
+    // replaceMembershipRoles (not before it in the lifecycle); the
+    // safe-by-construction proof lives in identity.service.spec.ts.
+    // Here we verify the lifecycle threads role_keys + request_id
+    // through so the in-service check has its inputs.
     expect(identitySvc.replaceMembershipRoles).toHaveBeenCalledWith({
       membership_id: MEMBERSHIP_ID,
+      role_keys: ['account_manager', 'recruiter'],
       role_ids: ['rid-am', 'rid-rc'],
+      request_id: REQUEST_ID,
     });
   });
 
@@ -590,8 +629,8 @@ describe('TenantUserLifecycleService.assignTenantUserRoles', () => {
 //       unchanged; the gate read is not invoked for non-target roles)
 
 describe('TenantUserLifecycleService.assignTenantUserRoles — Settings S4 GATE precondition', () => {
-  it('auditor_with_financials + toggle OFF → REJECTED (financials_audit_not_enabled); no D5 check, no reconcile', async () => {
-    const { service, identitySvc, roleBundle, auditFinancialsGate } = makeMocks();
+  it('auditor_with_financials + toggle OFF → REJECTED (financials_audit_not_enabled); no reconcile', async () => {
+    const { service, identitySvc, auditFinancialsGate } = makeMocks();
     identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-awf']);
     auditFinancialsGate.isFinancialsAuditEnabled.mockResolvedValue(false);
     const promise = service.assignTenantUserRoles({
@@ -616,13 +655,12 @@ describe('TenantUserLifecycleService.assignTenantUserRoles — Settings S4 GATE 
     expect(auditFinancialsGate.isFinancialsAuditEnabled).toHaveBeenCalledWith(
       TENANT_ID,
     );
-    expect(roleBundle.assertUnionNonInvertible).not.toHaveBeenCalled();
     expect(identitySvc.findMembership).not.toHaveBeenCalled();
     expect(identitySvc.replaceMembershipRoles).not.toHaveBeenCalled();
   });
 
-  it('auditor_with_financials + toggle ON → succeeds (D5 + reconcile run; gate consulted with tenant_id)', async () => {
-    const { service, identitySvc, roleBundle, auditFinancialsGate } = makeMocks();
+  it('auditor_with_financials + toggle ON → succeeds (reconcile runs; gate consulted with tenant_id)', async () => {
+    const { service, identitySvc, auditFinancialsGate } = makeMocks();
     identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-awf']);
     auditFinancialsGate.isFinancialsAuditEnabled.mockResolvedValue(true);
     identitySvc.findMembership.mockResolvedValue({ id: MEMBERSHIP_ID });
@@ -644,18 +682,21 @@ describe('TenantUserLifecycleService.assignTenantUserRoles — Settings S4 GATE 
     expect(auditFinancialsGate.isFinancialsAuditEnabled).toHaveBeenCalledWith(
       TENANT_ID,
     );
-    // The D5 union check still runs on the ON path; it short-circuits at
-    // length<2 here, so the call is allowed-but-no-op. The reconcile
-    // does fire.
-    expect(roleBundle.assertUnionNonInvertible).toHaveBeenCalled();
+    // D-AUTHZ-PLATFORM-INVITE-1: the D5 union check now runs INSIDE
+    // replaceMembershipRoles (the in-service ruling); the lifecycle
+    // threads role_keys + request_id so the in-service validator has
+    // its inputs. The validator's short-circuit at length<2 keeps the
+    // single-role assignment zero-cost.
     expect(identitySvc.replaceMembershipRoles).toHaveBeenCalledWith({
       membership_id: MEMBERSHIP_ID,
+      role_keys: ['auditor_with_financials'],
       role_ids: ['rid-awf'],
+      request_id: REQUEST_ID,
     });
   });
 
   it('the GATE is NARROW — assigning recruiter (no auditor_with_financials) NEVER reads the toggle, regardless of its value', async () => {
-    const { service, identitySvc, roleBundle, auditFinancialsGate } = makeMocks();
+    const { service, identitySvc, auditFinancialsGate } = makeMocks();
     identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-rc']);
     // Toggle is OFF; if the GATE were a global precondition, this would
     // wrongly reject. The NARROW gate is keyed to the single role-key —
@@ -678,9 +719,7 @@ describe('TenantUserLifecycleService.assignTenantUserRoles — Settings S4 GATE 
     // THE NARROW INVARIANT — the gate is NEVER consulted for a non-
     // target role-set.
     expect(auditFinancialsGate.isFinancialsAuditEnabled).not.toHaveBeenCalled();
-    // Confirm S3b's general behavior is preserved: D5 check + reconcile
-    // run as before.
-    expect(roleBundle.assertUnionNonInvertible).toHaveBeenCalled();
+    // Reconcile still fires (D5 inside it — the in-service check).
     expect(identitySvc.replaceMembershipRoles).toHaveBeenCalled();
   });
 
@@ -705,7 +744,7 @@ describe('TenantUserLifecycleService.assignTenantUserRoles — Settings S4 GATE 
   });
 
   it('the GATE fires when auditor_with_financials sits ALONGSIDE other roles in the requested set (multi-role grant, toggle OFF)', async () => {
-    const { service, identitySvc, roleBundle, auditFinancialsGate } = makeMocks();
+    const { service, identitySvc, auditFinancialsGate } = makeMocks();
     identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-rc', 'rid-awf']);
     auditFinancialsGate.isFinancialsAuditEnabled.mockResolvedValue(false);
     const promise = service.assignTenantUserRoles({
@@ -719,7 +758,6 @@ describe('TenantUserLifecycleService.assignTenantUserRoles — Settings S4 GATE 
       code: 'VALIDATION_ERROR',
       context: { details: { reason: 'financials_audit_not_enabled' } },
     });
-    expect(roleBundle.assertUnionNonInvertible).not.toHaveBeenCalled();
     expect(identitySvc.replaceMembershipRoles).not.toHaveBeenCalled();
   });
 

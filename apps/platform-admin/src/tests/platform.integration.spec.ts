@@ -131,6 +131,16 @@ const RECRUITER_ROLE_ID = '01900000-0000-7000-8000-000000000011';
 // non-tenant_owner non-recruiter role to exercise the multi-role invite
 // path; AM is a stable kept role.
 const ACCOUNT_MANAGER_ROLE_ID = '01900000-0000-7000-8000-000000000016';
+// D-AUTHZ-PLATFORM-INVITE-1 — the exploit-rejected proof fixture. A 4th
+// tenant role + two compensation scopes (view:pay + a spread) seeded so
+// the validator has the role->scope edges needed to detect the D5 leak.
+// Pairing recruiter (view:pay) with finance (view:spread:amount) produces
+// the invertible union — the exact pattern the defect could persist.
+const FINANCE_ROLE_ID = '01900000-0000-7000-8000-00000000001a';
+const COMPENSATION_VIEW_PAY_SCOPE_ID =
+  '01900000-0000-7000-8000-000000000090';
+const COMPENSATION_VIEW_SPREAD_AMOUNT_SCOPE_ID =
+  '01900000-0000-7000-8000-000000000091';
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'apps/platform-admin — integration (Pattern A invitation flow, real Postgres, mocked Cognito)',
@@ -222,10 +232,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           },
         ],
       });
-      // The 3 tenant roles the invitation proofs need (tenant_owner +
-      // recruiter + account_manager — AUTHZ-1b fixture swap from the
-      // retired hiring_manager). The full 12-role catalog assertion
-      // lives in libs/identity/src/tests/identity.integration.spec.ts.
+      // The 4 tenant roles the invitation proofs need (tenant_owner +
+      // recruiter + account_manager + finance). The full 12-role catalog
+      // assertion lives in libs/identity/src/tests/identity.integration
+      // .spec.ts. D-AUTHZ-PLATFORM-INVITE-1: the `finance` role is added
+      // so the exploit-rejected proof can pair it with `recruiter` to
+      // produce an invertible (view:pay + view:spread) union.
       await p.role.createMany({
         data: [
           {
@@ -245,6 +257,48 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             key: 'account_manager',
             description: 'Account Manager',
             is_active: true,
+          },
+          {
+            id: FINANCE_ROLE_ID,
+            key: 'finance',
+            description: 'Finance',
+            is_active: true,
+          },
+        ],
+      });
+      // D-AUTHZ-PLATFORM-INVITE-1 — compensation scopes for the
+      // exploit-rejected proof. Two RoleScope edges seed the leak shape:
+      //   recruiter -> compensation:view:pay
+      //   finance   -> compensation:view:spread:amount
+      // Their UNION is the canonical D5-invertible bundle (pay
+      // reconstructable from bill - spread). account_manager and
+      // tenant_owner stay unseeded for comp scopes (proof 5's
+      // recruiter+AM stays safe — union = {view:pay}).
+      await p.scope.createMany({
+        data: [
+          {
+            id: COMPENSATION_VIEW_PAY_SCOPE_ID,
+            key: 'compensation:view:pay',
+            description: 'Compensation: view pay',
+          },
+          {
+            id: COMPENSATION_VIEW_SPREAD_AMOUNT_SCOPE_ID,
+            key: 'compensation:view:spread:amount',
+            description: 'Compensation: view spread amount',
+          },
+        ],
+      });
+      await p.roleScope.createMany({
+        data: [
+          {
+            id: uuidv7(),
+            role_id: RECRUITER_ROLE_ID,
+            scope_id: COMPENSATION_VIEW_PAY_SCOPE_ID,
+          },
+          {
+            id: uuidv7(),
+            role_id: FINANCE_ROLE_ID,
+            scope_id: COMPENSATION_VIEW_SPREAD_AMOUNT_SCOPE_ID,
           },
         ],
       });
@@ -350,7 +404,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         mw.use(req as never, _res as never, next);
       });
       await app.init();
-    });
+    }, 120_000);
 
     afterAll(async () => {
       await app.close();
@@ -363,7 +417,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           process.env[k] = v;
         }
       }
-    });
+    }, 30_000);
 
     async function platformJwt(scopes?: string[]): Promise<string> {
       return signJwt({
@@ -559,6 +613,125 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .map((a) => a.role.key)
         .sort() ?? [];
       expect(roleKeys).toEqual(['account_manager', 'recruiter']);
+    });
+
+    // -------------------------------------------------------------------
+    // D-AUTHZ-PLATFORM-INVITE-1 — the EXPLOIT-REJECTED PROOF (load-bearing).
+    //
+    // The defect: PlatformInvitationService.inviteUserIntoTenant wrote
+    // membership-roles via 3 IdentityService methods WITHOUT running the
+    // RoleBundleValidator — a super_admin could persist an invertible
+    // scope union via POST /platform/tenants/:tenant_id/invitations.
+    //
+    // The fix (in-service, §2 ruling): assertUnionNonInvertible moved
+    // INTO IdentityService's 3 write methods — safe-by-construction.
+    //
+    // The proof: a super_admin POSTs role_keys=['recruiter','finance']
+    // (recruiter holds view:pay, finance holds view:spread:amount, per the
+    // seed above; their union IS invertible — the D5 leak). The response
+    // must be 400 VALIDATION_ERROR with details.reason='invertible_role_
+    // union' AND zero rows must have persisted in either the membership
+    // or membership-role tables for the invitee email.
+    // -------------------------------------------------------------------
+    it('D-AUTHZ-PLATFORM-INVITE-1 — invertible bundle on platform invite → 400, ZERO rows persisted, no Cognito user retained', async () => {
+      // Provision a fresh tenant to receive the (rejected) invite.
+      const provToken = await platformJwt();
+      const provRes = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ name: 'ExploitProbe Co', owner_email: 'owner@exploit.probe' });
+      expect(provRes.status).toBe(201);
+      const tenantId = provRes.body.tenant_id;
+
+      // Snapshot row counts BEFORE the rejected invite.
+      const exploitEmail = 'exploit@victim.io';
+      const membershipsBefore =
+        await identityPrisma.userTenantMembership.count({
+          where: { tenant_id: tenantId },
+        });
+      const membershipRolesBefore =
+        await identityPrisma.userTenantMembershipRole.count();
+
+      // THE EXPLOIT — a super_admin attempts to grant an invertible union
+      // (recruiter + finance = view:pay + view:spread:amount = D5 leak).
+      const res = await request(app.getHttpServer())
+        .post(`/platform/tenants/${tenantId}/invitations`)
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({
+          email: exploitEmail,
+          role_keys: ['recruiter', 'finance'],
+        });
+
+      // THE LOAD-BEARING ASSERTION — the in-service validator rejects.
+      expect(res.status).toBe(400);
+      expect(res.body?.error?.code).toBe('VALIDATION_ERROR');
+      expect(res.body?.error?.details?.reason).toBe('invertible_role_union');
+
+      // The invertible union NEVER persisted. The Cognito user MAY have
+      // been created (in-service trade — validator fires AFTER Cognito on
+      // the greenfield branch), but the identity-tx never committed and
+      // the Cognito-rollback compensation fires. Either way, neither the
+      // membership nor any membership-role rows exist for the invitee.
+      const membershipsAfter =
+        await identityPrisma.userTenantMembership.count({
+          where: { tenant_id: tenantId },
+        });
+      const membershipRolesAfter =
+        await identityPrisma.userTenantMembershipRole.count();
+      // Pre = the just-provisioned owner's membership. Post must equal Pre.
+      expect(membershipsAfter).toBe(membershipsBefore);
+      expect(membershipRolesAfter).toBe(membershipRolesBefore);
+
+      // No User row in identity for the exploit email — the identity-tx
+      // never committed.
+      const invitee = await identityPrisma.user.findUnique({
+        where: { email: exploitEmail },
+      });
+      expect(invitee).toBeNull();
+    });
+
+    // The defense-in-depth DTO guard — an unknown role_key is rejected at
+    // the DTO BEFORE the IdentityService.resolveRoleIdsByKeys DB roundtrip
+    // (which would have caught it as a second layer).
+    it('D-AUTHZ-PLATFORM-INVITE-1 — unknown role_key rejected at the DTO (defense-in-depth, before any DB call)', async () => {
+      const provToken = await platformJwt();
+      const provRes = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ name: 'DtoGuard Co', owner_email: 'owner@dto.guard' });
+      expect(provRes.status).toBe(201);
+      const tenantId = provRes.body.tenant_id;
+
+      const res = await request(app.getHttpServer())
+        .post(`/platform/tenants/${tenantId}/invitations`)
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({
+          email: 'should-not-persist@dto.guard',
+          role_keys: ['nonexistent_role_key'],
+        });
+      // class-validator's @IsIn surfaces a 400 VALIDATION_ERROR.
+      expect(res.status).toBe(400);
+      expect(res.body?.error?.code).toBe('VALIDATION_ERROR');
+    });
+
+    // The safe see-all bypass — the in-service validator exempts
+    // see-all-tier roles (tenant_admin / tenant_owner / super_admin /
+    // auditor_with_financials). The two safe platform routes
+    // (provisionTenant + invitePlatformAdmin) hard-fix to see-all roles
+    // and must keep succeeding. Proof 2 (above) covers provisionTenant;
+    // here we cover invitePlatformAdmin's safety.
+    it('D-AUTHZ-PLATFORM-INVITE-1 — invitePlatformAdmin (super_admin, see-all-tier) still succeeds (bypass)', async () => {
+      const provToken = await platformJwt();
+      const res = await request(app.getHttpServer())
+        .post('/platform/admins/invitations')
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ email: 'new-platform-admin@aramo.platform' });
+      expect(res.status).toBe(201);
+      // The new admin's membership is at the sentinel platform tenant.
+      const admin = await identityPrisma.user.findUnique({
+        where: { email: 'new-platform-admin@aramo.platform' },
+      });
+      expect(admin).not.toBeNull();
     });
   },
 );

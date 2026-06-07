@@ -4,7 +4,6 @@ import { AramoError } from '@aramo/common';
 import { IdentityService } from '../identity.service.js';
 import type { UserDto } from '../dto/user.dto.js';
 
-import { RoleBundleValidator } from './role-bundle-validator.js';
 import {
   TENANT_COGNITO_PORT,
   type TenantCognitoPort,
@@ -81,9 +80,15 @@ export interface AssignRolesResult {
 export class TenantUserLifecycleService {
   private readonly logger = new Logger(TenantUserLifecycleService.name);
 
+  // D-AUTHZ-PLATFORM-INVITE-1 (Gate-6, in-service ruling): RoleBundleValidator
+  // is no longer a dependency here — the D5 union-non-invertibility check
+  // moved INTO IdentityService's three membership-role-write methods, so
+  // every caller (tenant, platform, future) is covered safe-by-construction.
+  // The validator remains a provider in IdentityModule (registered for
+  // IdentityService injection); other consumers of libs/identity can still
+  // import the class directly if they need it.
   constructor(
     private readonly identitySvc: IdentityService,
-    private readonly roleBundle: RoleBundleValidator,
     @Inject(TENANT_COGNITO_PORT) private readonly cognito: TenantCognitoPort,
     @Inject(AUDIT_FINANCIALS_GATE)
     private readonly auditFinancialsGate: AuditFinancialsGate,
@@ -127,13 +132,18 @@ export class TenantUserLifecycleService {
       args.role_keys,
     );
 
-    // Step 0c — D5 union-non-invertibility (no-op on 0/1 roles). Runs
-    // BEFORE the Cognito side effect so a bad bundle never touches the
-    // pool.
-    await this.roleBundle.assertUnionNonInvertible({
-      role_keys: args.role_keys,
-      request_id: args.request_id,
-    });
+    // D-AUTHZ-PLATFORM-INVITE-1 (Gate-6, in-service ruling): the D5 union-
+    // non-invertibility check that historically lived HERE (BEFORE the
+    // Cognito leg) has been moved INTO IdentityService.createUserFromInvitation
+    // (libs/identity/.../identity.service.ts) so every caller is covered
+    // safe-by-construction. The validator now fires AFTER the Cognito
+    // leg but BEFORE any identity-tx persist or audit emission — the
+    // Cognito-rollback-on-identity-failure path catches the rejection
+    // and compensates. The single-source-of-enforcement property
+    // matters more than the early-rejection optimization for tenant-
+    // tier invites (the Cognito-side-effect cost is per-invite, not
+    // per-validation; and the platform-tier miss that motivated this
+    // ruling proved the prior caller-side contract was fragile).
 
     // Step 1 — Cognito-first.
     let cognito_sub: string;
@@ -162,7 +172,11 @@ export class TenantUserLifecycleService {
       );
     }
 
-    // Step 2 — identity tx; compensate Cognito on failure.
+    // Step 2 — identity tx; compensate Cognito on failure. The D5 union-
+    // non-invertibility check fires INSIDE createUserFromInvitation
+    // (D-AUTHZ-PLATFORM-INVITE-1 in-service ruling) — a VALIDATION_ERROR
+    // here triggers the Cognito rollback in the catch block below, so
+    // an invertible bundle never persists in either store.
     try {
       const created = await this.identitySvc.createUserFromInvitation({
         email: args.email,
@@ -170,8 +184,10 @@ export class TenantUserLifecycleService {
         provider: 'cognito',
         provider_subject: cognito_sub,
         tenant_id: args.tenant_id,
+        role_keys: args.role_keys,
         role_ids,
         actor_user_id: args.actor_user_id,
+        request_id: args.request_id,
       });
       return {
         user: created.user,
@@ -389,15 +405,21 @@ export class TenantUserLifecycleService {
       }
     }
 
-    // Step 1 — THE D5 INTEGRITY GATE. The merged validator already
-    // short-circuits on length<2; here we feed the full distinct set so
-    // a 1-role assignment is also covered (trivially passes — the
-    // single-role bundles are individually proven non-invertible at
-    // seed time).
-    await this.roleBundle.assertUnionNonInvertible({
-      role_keys: args.role_keys,
-      request_id: args.request_id,
-    });
+    // D-AUTHZ-PLATFORM-INVITE-1 (Gate-6, in-service ruling): the D5 union-
+    // non-invertibility check that historically lived HERE (between the S4
+    // gate and the membership lookup) has been moved INTO
+    // IdentityService.replaceMembershipRoles. The S4 gate stays here
+    // (policy precondition, not integrity); the D5 check fires inside the
+    // reconcile primitive in step 4 below. Re-ordering note: this changes
+    // the rejection ordering for the (invertible-union + missing-membership)
+    // case — pre-fix the D5 400 surfaced; post-fix the membership lookup
+    // runs first and a missing membership returns 404 before the D5 check
+    // is reached. The information-disclosure tradeoff (was: same 400 for
+    // missing-or-present; now: 404 if missing, 400 if present-and-
+    // invertible) is acceptable per the in-service ruling — the
+    // membership-existence info is already exposed by the disable surface,
+    // and the single-source-of-enforcement guarantee outweighs the
+    // ordering nuance.
 
     // Step 2 — locate the membership in THIS tenant. 404 if absent;
     // per-tenant isolation.
@@ -422,10 +444,15 @@ export class TenantUserLifecycleService {
       await this.identitySvc.findRoleKeysForMembership(membership.id);
 
     // Step 4 — reconcile. The merged primitive is atomic
-    // (createMany/deleteMany inside $transaction).
+    // (createMany/deleteMany inside $transaction). The D5 union-non-
+    // invertibility check fires INSIDE replaceMembershipRoles
+    // (D-AUTHZ-PLATFORM-INVITE-1 in-service) — an invertible union
+    // throws VALIDATION_ERROR here and never reaches the $transaction.
     await this.identitySvc.replaceMembershipRoles({
       membership_id: membership.id,
+      role_keys: args.role_keys,
       role_ids,
+      request_id: args.request_id,
     });
 
     // Step 5 — compute key-set delta. We compute from keys rather than

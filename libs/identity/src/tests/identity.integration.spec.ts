@@ -81,7 +81,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       prisma = new PrismaService(url);
       await prisma.$connect();
 
-      identitySvc = new IdentityService(new IdentityRepository(prisma));
+      // D-AUTHZ-PLATFORM-INVITE-1 — IdentityService now also takes
+      // IdentityAuditService + RoleBundleValidator. The read paths exercised
+      // in this spec never reach either dependency, so stub them with
+      // undefined-casts (mirrors the resolveUser unit spec pattern).
+      identitySvc = new IdentityService(
+        new IdentityRepository(prisma),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        undefined as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        undefined as any,
+      );
       tenantSvc = new TenantService(new TenantRepository(prisma));
       roleSvc = new RoleService(new RoleRepository(prisma));
       auditRepo = new IdentityAuditRepository(prisma);
