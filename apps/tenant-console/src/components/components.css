@@ -661,6 +661,90 @@
   font-family: var(--font-mono);
 }
 
+/* ─── Tree (Settings S5c-1 — the org-hierarchy editor) ─── */
+
+.tc-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tc-tree__children {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--sp-5);
+  border-left: 1px solid var(--c-border);
+  margin-left: var(--sp-3);
+}
+
+.tc-tree__item {
+  margin: 0;
+  padding: 0;
+  outline: none;
+}
+
+.tc-tree__item:focus-visible > .tc-tree__row {
+  box-shadow: 0 0 0 2px var(--c-focus-ring);
+  border-radius: var(--r-sm);
+}
+
+.tc-tree__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-14);
+}
+
+.tc-tree__row:hover {
+  background-color: var(--c-surface-2);
+  border-radius: var(--r-sm);
+}
+
+.tc-tree__toggle {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--c-text-muted);
+  font-size: var(--fs-12);
+  cursor: pointer;
+  padding: 0;
+  border-radius: var(--r-sm);
+}
+
+.tc-tree__toggle:hover:not(.tc-tree__toggle--leaf) {
+  background-color: var(--c-border);
+  color: var(--c-text);
+}
+
+.tc-tree__toggle--leaf {
+  cursor: default;
+  color: var(--c-text-subtle);
+}
+
+.tc-tree__label {
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.tc-tree__email {
+  color: var(--c-text-muted);
+  font-size: var(--fs-12);
+  font-family: var(--font-mono);
+}
+
+.tc-tree-empty {
+  padding: var(--sp-6);
+  text-align: center;
+  border: 1px dashed var(--c-border);
+  border-radius: var(--r-md);
+  background-color: var(--c-surface);
+}
+
 /* ─── ForbiddenState ─── */
 
 .tc-forbidden {
