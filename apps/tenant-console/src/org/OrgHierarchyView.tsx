@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-
-import { ApiError } from '../api/client';
-import { Button } from '../components/Button';
-import { InlineAlert } from '../components/InlineAlert';
-import { PageHeader } from '../components/PageHeader';
-import { useToast } from '../components/Toast';
+import { ApiError } from '@aramo/fe-foundation';
+import { Button } from '@aramo/fe-foundation';
+import { InlineAlert } from '@aramo/fe-foundation';
+import { PageHeader } from '@aramo/fe-foundation';
+import { useToast } from '@aramo/fe-foundation';
 
 import { AddEdgeDialog } from './AddEdgeDialog';
 import { Tree } from './Tree';

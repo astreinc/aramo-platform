@@ -10,7 +10,7 @@
 // `details.reason='self_loop' | 'cycle'`. The R10 line: render
 // operator-legible copy; no internal leak.
 
-import { ApiError } from '../api/client';
+import { ApiError } from '@aramo/fe-foundation';
 
 export interface ErrorMessage {
   readonly title: string;

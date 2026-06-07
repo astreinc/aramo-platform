@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@aramo/fe-foundation';
+import { ToastProvider } from '@aramo/fe-foundation';
 
-import { ApiError } from '../api/client';
-import { ToastProvider } from '../components/Toast';
 import type { UserRosterState } from '../users/users-api';
 
 import { CompanyAssignmentsView } from './CompanyAssignmentsView';

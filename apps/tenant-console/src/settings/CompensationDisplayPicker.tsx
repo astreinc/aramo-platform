@@ -1,11 +1,10 @@
 import { useState } from 'react';
-
-import { ApiError } from '../api/client';
-import { Button } from '../components/Button';
-import { Card } from '../components/Card';
-import { InlineAlert } from '../components/InlineAlert';
-import { RadioGroup } from '../components/RadioGroup';
-import { useToast } from '../components/Toast';
+import { ApiError } from '@aramo/fe-foundation';
+import { Button } from '@aramo/fe-foundation';
+import { Card } from '@aramo/fe-foundation';
+import { InlineAlert } from '@aramo/fe-foundation';
+import { RadioGroup } from '@aramo/fe-foundation';
+import { useToast } from '@aramo/fe-foundation';
 
 import { setTenantSetting } from './settings-api';
 import type { CompensationDisplayDefault } from './types';

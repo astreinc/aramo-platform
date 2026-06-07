@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-
-import { ApiError } from '../api/client';
+import { ApiError } from '@aramo/fe-foundation';
 
 import {
   messageForAddTeamClient,

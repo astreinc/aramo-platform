@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { ApiError } from '@aramo/fe-foundation';
+import { Button } from '@aramo/fe-foundation';
+import { Combobox, type ComboboxItem } from '@aramo/fe-foundation';
+import { FormField } from '@aramo/fe-foundation';
+import { InlineAlert } from '@aramo/fe-foundation';
+import { PageHeader } from '@aramo/fe-foundation';
+import { useToast } from '@aramo/fe-foundation';
 
-import { ApiError } from '../api/client';
-import { Button } from '../components/Button';
-import { Combobox, type ComboboxItem } from '../components/Combobox';
-import { FormField } from '../components/FormField';
-import { InlineAlert } from '../components/InlineAlert';
-import { PageHeader } from '../components/PageHeader';
-import { useToast } from '../components/Toast';
 import type { TenantUserView } from '../users/types';
 import {
   probeUserRoster,

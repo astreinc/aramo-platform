@@ -10,7 +10,9 @@
     "noEmit": true,
     "tsBuildInfoFile": "../../dist/apps/tenant-console/.tsbuildinfo",
     "types": ["node", "vite/client"],
-    "paths": {}
+    "paths": {
+      "@aramo/fe-foundation": ["../../dist/libs/fe-foundation/src/index.d.ts"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["src/**/*.spec.ts", "src/**/*.spec.tsx", "src/test-setup.ts"]

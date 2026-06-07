@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Button } from '@aramo/fe-foundation';
+import { InlineAlert } from '@aramo/fe-foundation';
+import { PageHeader } from '@aramo/fe-foundation';
+import { Table, type TableColumn } from '@aramo/fe-foundation';
 
-import { Button } from '../components/Button';
-import { InlineAlert } from '../components/InlineAlert';
-import { PageHeader } from '../components/PageHeader';
-import { Table, type TableColumn } from '../components/Table';
 import type { TenantUserView } from '../users/types';
 import {
   probeUserRoster,

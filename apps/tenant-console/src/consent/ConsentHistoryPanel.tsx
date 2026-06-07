@@ -13,8 +13,7 @@
 //   - is_anonymized:true ⇒ neutral anonymized state (PR-9 §4.4)
 
 import { useEffect, useState } from 'react';
-
-import { ApiError } from '../api/client';
+import { ApiError } from '@aramo/fe-foundation';
 
 import { getTalentConsentHistory } from './consent-api';
 import type { ConsentHistoryEvent, ConsentHistoryResponse } from './types';

@@ -8,7 +8,7 @@
 // is handled as SUCCESS at the consumer (the mapper is for non-404
 // errors only).
 
-import { ApiError } from '../api/client';
+import { ApiError } from '@aramo/fe-foundation';
 
 export interface ErrorMessage {
   readonly title: string;

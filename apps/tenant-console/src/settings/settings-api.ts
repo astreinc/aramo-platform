@@ -3,7 +3,7 @@
 //   GET /v1/tenant/settings           -> TenantSettingsView
 //   PUT /v1/tenant/settings/:key      -> { key, value, previous_value }
 
-import { apiClient } from '../api/client';
+import { apiClient } from '@aramo/fe-foundation';
 
 import type {
   TenantSettingSetResult,

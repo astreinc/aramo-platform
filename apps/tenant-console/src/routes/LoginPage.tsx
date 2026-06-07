@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
-
-import { redirectToLogin } from '../auth/session';
+import { redirectToLogin } from '@aramo/fe-foundation';
 
 interface LoginPageProps {
   // Test seam.

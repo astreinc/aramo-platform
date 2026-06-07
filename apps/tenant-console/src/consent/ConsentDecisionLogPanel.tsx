@@ -13,8 +13,7 @@
 //     exists and leaves it as-is.
 
 import { useEffect, useState } from 'react';
-
-import { ApiError } from '../api/client';
+import { ApiError } from '@aramo/fe-foundation';
 
 import { getTalentConsentDecisionLog } from './consent-api';
 import type {

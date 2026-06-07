@@ -1,15 +1,8 @@
 /* Aramo Tenant Console — root stylesheet.
  *
- * Order matters: tokens.css declares every CSS custom property the rest
- * of the app consumes; fonts.css declares the @font-face for Geist; the
- * base block below uses the tokens to style the document body.
- *
- * Components ship co-located CSS (or apply token-based inline styles)
- * built on the same vars. Raw hex/px outside this file or tokens.css is
- * a drift signal. */
-
-@import './design/tokens.css';
-@import './design/fonts.css';
+ * Theme tokens (tokens.css) and the @font-face declarations (fonts.css)
+ * are loaded by the @aramo/fe-foundation barrel at the App entry. The
+ * base block below uses those tokens to style the document body. */
 
 *,
 *::before,

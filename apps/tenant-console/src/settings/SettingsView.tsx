@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-
-import { InlineAlert } from '../components/InlineAlert';
-import { PageHeader } from '../components/PageHeader';
+import { InlineAlert } from '@aramo/fe-foundation';
+import { PageHeader } from '@aramo/fe-foundation';
 
 import { CompensationDisplayPicker } from './CompensationDisplayPicker';
 import { FinancialsToggle } from './FinancialsToggle';

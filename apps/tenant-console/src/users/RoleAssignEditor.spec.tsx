@@ -1,8 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-
-import { ApiError } from '../api/client';
-import { ToastProvider } from '../components/Toast';
+import { ApiError } from '@aramo/fe-foundation';
+import { ToastProvider } from '@aramo/fe-foundation';
 
 import { RoleAssignEditor } from './RoleAssignEditor';
 import type { TenantUserView } from './types';

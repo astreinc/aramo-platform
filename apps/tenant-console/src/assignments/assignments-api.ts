@@ -10,7 +10,7 @@
 //   - Cross-tenant :id → 404 (D + F precheck parent; E returns empty
 //     list per §7.3 cross-schema rule).
 
-import { apiClient } from '../api/client';
+import { apiClient } from '@aramo/fe-foundation';
 
 import type {
   AddTeamClientRequest,

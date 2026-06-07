@@ -12,7 +12,7 @@
 // client-side per PR-9 §4.3). limit / scope / event_type filters are
 // server-supported but PR-9 does not surface them in the UI.
 
-import { apiClient } from '../api/client';
+import { apiClient } from '@aramo/fe-foundation';
 
 import type {
   ConsentDecisionLogResponse,

@@ -1,8 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
+import { ToastProvider } from '@aramo/fe-foundation';
 
-import { ToastProvider } from '../components/Toast';
 import type { UserRosterState } from '../users/users-api';
 
 import { TeamsListView } from './TeamsListView';
