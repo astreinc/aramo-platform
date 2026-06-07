@@ -1,0 +1,153 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { CompaniesListView } from './CompaniesListView';
+import type { CompanyView } from './types';
+
+function makeCompany(
+  id: string,
+  name: string,
+  overrides: Partial<CompanyView> = {},
+): CompanyView {
+  return {
+    id,
+    tenant_id: 't',
+    site_id: null,
+    name,
+    address: null,
+    address2: null,
+    city: null,
+    state: null,
+    zip: null,
+    phone1: null,
+    phone2: null,
+    fax_number: null,
+    url: null,
+    key_technologies: null,
+    notes: null,
+    is_hot: false,
+    billing_contact_id: null,
+    owner_id: null,
+    entered_by_id: null,
+    created_at: '2026-06-01T00:00:00Z',
+    updated_at: '2026-06-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+function mockFetch(items: readonly CompanyView[], status = 200) {
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response(JSON.stringify({ items }), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  );
+}
+
+function mockFetchError(status: number) {
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response(JSON.stringify({ message: 'forbidden' }), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  );
+}
+
+describe('CompaniesListView', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('frames the list as the recruiter\'s VISIBLE clients (D4b scoping)', async () => {
+    mockFetch([]);
+    render(<CompaniesListView />);
+    await waitFor(() =>
+      expect(screen.getByText('Companies')).toBeInTheDocument(),
+    );
+    // Header carries the visibility framing.
+    expect(screen.getByText(/your visible clients/i)).toBeInTheDocument();
+    // Empty-state is honest about visibility scoping.
+    expect(
+      screen.getByText(/no companies visible to you yet/i),
+    ).toBeInTheDocument();
+    // No inline limitation note — a visible-only LIST is correct behavior.
+    expect(
+      screen.queryByText(/some companies may not be shown/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/limited view/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders the columns from the company fields', async () => {
+    mockFetch([
+      makeCompany('co-1', 'Acme Corp', {
+        city: 'San Francisco',
+        state: 'CA',
+        phone1: '555-0200',
+        key_technologies: 'TypeScript, Postgres, Kubernetes',
+        is_hot: true,
+      }),
+    ]);
+    render(<CompaniesListView />);
+    await waitFor(() =>
+      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('San Francisco, CA')).toBeInTheDocument();
+    expect(screen.getByText('555-0200')).toBeInTheDocument();
+    expect(
+      screen.getByText(/TypeScript, Postgres, Kubernetes/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Yes')).toBeInTheDocument();
+  });
+
+  it('surfaces a permission message when the BE returns 403', async () => {
+    mockFetchError(403);
+    render(<CompaniesListView />);
+    await waitFor(() =>
+      expect(
+        screen.getByText(/do not have permission to view companies/i),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it('discloses the truncation when the BE default cap is hit', async () => {
+    const items = Array.from({ length: 50 }, (_, i) =>
+      makeCompany(`co-${i}`, `Company ${i}`),
+    );
+    mockFetch(items);
+    render(<CompaniesListView />);
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('companies-cap-banner'),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(/showing first 50 companies/i),
+    ).toBeInTheDocument();
+  });
+
+  it('does NOT show the cap banner when the list is under the cap', async () => {
+    mockFetch([makeCompany('co-1', 'Acme Corp')]);
+    render(<CompaniesListView />);
+    await waitFor(() =>
+      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByTestId('companies-cap-banner'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('rows are non-navigating in R2 (no detail surface)', async () => {
+    mockFetch([makeCompany('co-1', 'Acme Corp')]);
+    render(<CompaniesListView />);
+    await waitFor(() =>
+      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+    );
+    // No anchor / button wrapping the row content.
+    expect(screen.queryByRole('link', { name: /acme corp/i })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /acme corp/i }),
+    ).toBeNull();
+  });
+});

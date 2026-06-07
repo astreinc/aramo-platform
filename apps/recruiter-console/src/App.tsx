@@ -7,17 +7,30 @@ import {
 } from '@aramo/fe-foundation';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
+import { CompaniesListView } from './companies/CompaniesListView';
 import { LoginPage } from './routes/LoginPage';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
+import { TalentListView } from './talent/TalentListView';
 
-// The recruiter nav. R1 ships a single surface — Requisitions. R2+
-// adds Talent / Companies / Dashboard as the breadth lands.
+// The recruiter nav. R1 shipped Requisitions; R2 adds Talent + Companies
+// (the read-first breadth). Each item is scope-gated by its read scope —
+// Shell renders only the items the session's scopes allow.
 const RECRUITER_NAV: readonly ShellNavItem[] = [
   {
     to: '/requisitions',
     label: 'Requisitions',
     requireScope: 'requisition:read',
+  },
+  {
+    to: '/talent',
+    label: 'Talent',
+    requireScope: 'talent:read',
+  },
+  {
+    to: '/companies',
+    label: 'Companies',
+    requireScope: 'company:read',
   },
 ];
 
@@ -62,6 +75,28 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <RequisitionDetailView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="talent"
+                      element={
+                        <RouteGuard
+                          requireScope="talent:read"
+                          sessionStateOverride={state}
+                        >
+                          <TalentListView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="companies"
+                      element={
+                        <RouteGuard
+                          requireScope="company:read"
+                          sessionStateOverride={state}
+                        >
+                          <CompaniesListView />
                         </RouteGuard>
                       }
                     />
