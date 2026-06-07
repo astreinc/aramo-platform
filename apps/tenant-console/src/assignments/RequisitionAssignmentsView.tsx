@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
 import { Button } from '../components/Button';
@@ -15,45 +15,36 @@ import {
 } from '../users/users-api';
 
 import {
-  messageForAddMemberError,
-  messageForFetchTeamMembersError,
-  messageForRemoveMemberError,
+  assignUserToRequisition,
+  fetchRequisitionAssignments,
+  unassignUserFromRequisition,
+} from './assignments-api';
+import {
+  messageForAssignRequisition,
+  messageForFetchRequisitionAssignments,
+  messageForUnassignRequisition,
   type ErrorMessage,
 } from './error-messages';
-import {
-  addMember,
-  fetchTeamMembers,
-  removeMember,
-} from './teams-api';
-import type { TeamMembershipRow } from './types';
+import type { RequisitionAssignmentView } from './types';
 
-// Settings S5c-2 — TeamMembersView at /teams/:teamId.
+// Settings S5c-3 — Requisition-assign editor at /requisitions/
+// :requisitionId/assignments (PL-94 §2 ruling 4: deep-link only — no
+// Requisitions list in tenant-admin nav; recruiter-app territory).
 //
-// PL-94 §2 ruling 3 — the sub-route for the members editor.
-//
-// PL-94 §2 ruling 5/6 — Combobox-add (non-members pre-filtered at the
-// CONSUMER; the Combobox stays generic); idempotency mirrored:
-//   - add duplicate → SILENT SUCCESS (BE returns 201 with existing
-//     row; the FE refreshes the list, no error UI)
-//   - DELETE 404 → SILENT SUCCESS ("Member already removed" toast)
-//
-// PL-94 §2 ruling 7 — roster-403 fallback. The member-add Combobox
-// degrades to a raw-UUID input + helper copy. The member-list rows
-// still render — they show raw user_id when the roster join is
-// unavailable.
+// Mirrors CompanyAssignmentsView's structure (user-picker over the
+// roster); the parent is a requisition instead of a company.
 
 interface Props {
-  // Test seam: bypasses useParams when supplied.
-  teamIdOverride?: string;
-  fetchMembersFn?: (teamId: string) => Promise<{ items: readonly TeamMembershipRow[] }>;
+  requisitionIdOverride?: string;
+  fetchAssignmentsFn?: (id: string) => Promise<{ items: readonly RequisitionAssignmentView[] }>;
   probeRosterFn?: () => Promise<UserRosterState>;
-  addMemberFn?: typeof addMember;
-  removeMemberFn?: typeof removeMember;
+  assignFn?: typeof assignUserToRequisition;
+  unassignFn?: typeof unassignUserFromRequisition;
 }
 
 type LoadState =
   | { status: 'loading' }
-  | { status: 'ready'; members: readonly TeamMembershipRow[] }
+  | { status: 'ready'; rows: readonly RequisitionAssignmentView[] }
   | { status: 'error'; message: string };
 
 interface PendingRemoval {
@@ -63,11 +54,11 @@ interface PendingRemoval {
 
 function rosterToItems(
   roster: UserRosterState,
-  memberUserIds: ReadonlySet<string>,
+  assignedUserIds: ReadonlySet<string>,
 ): ReadonlyArray<ComboboxItem> {
   if (roster.state !== 'ready') return [];
   return [...roster.users]
-    .filter((u) => !memberUserIds.has(u.user_id))
+    .filter((u) => !assignedUserIds.has(u.user_id))
     .sort((a, b) => {
       const an = a.display_name ?? a.email;
       const bn = b.display_name ?? b.email;
@@ -80,20 +71,20 @@ function rosterToItems(
     }));
 }
 
-export function TeamMembersView({
-  teamIdOverride,
-  fetchMembersFn,
+export function RequisitionAssignmentsView({
+  requisitionIdOverride,
+  fetchAssignmentsFn,
   probeRosterFn,
-  addMemberFn,
-  removeMemberFn,
+  assignFn,
+  unassignFn,
 }: Props = {}) {
-  const params = useParams<{ teamId?: string }>();
-  const teamId = teamIdOverride ?? params.teamId ?? '';
+  const params = useParams<{ requisitionId?: string }>();
+  const requisitionId = requisitionIdOverride ?? params.requisitionId ?? '';
 
-  const fetchMembersFun = fetchMembersFn ?? fetchTeamMembers;
+  const fetchAssignmentsFun = fetchAssignmentsFn ?? fetchRequisitionAssignments;
   const probeRoster = probeRosterFn ?? probeUserRoster;
-  const addMemberFun = addMemberFn ?? addMember;
-  const removeMemberFun = removeMemberFn ?? removeMember;
+  const assignFun = assignFn ?? assignUserToRequisition;
+  const unassignFun = unassignFn ?? unassignUserFromRequisition;
   const toast = useToast();
 
   const [state, setState] = useState<LoadState>({ status: 'loading' });
@@ -106,24 +97,24 @@ export function TeamMembersView({
 
   const refresh = () => {
     setState({ status: 'loading' });
-    fetchMembersFun(teamId)
-      .then((view) => setState({ status: 'ready', members: view.items }))
+    fetchAssignmentsFun(requisitionId)
+      .then((view) => setState({ status: 'ready', rows: view.items }))
       .catch((err: unknown) => {
-        const msg = messageForFetchTeamMembersError(err);
+        const msg = messageForFetchRequisitionAssignments(err);
         setState({ status: 'error', message: msg.title });
       });
   };
 
   useEffect(() => {
     let cancelled = false;
-    fetchMembersFun(teamId)
+    fetchAssignmentsFun(requisitionId)
       .then((view) => {
         if (cancelled) return;
-        setState({ status: 'ready', members: view.items });
+        setState({ status: 'ready', rows: view.items });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        const msg = messageForFetchTeamMembersError(err);
+        const msg = messageForFetchRequisitionAssignments(err);
         setState({ status: 'error', message: msg.title });
       });
     probeRoster()
@@ -138,7 +129,7 @@ export function TeamMembersView({
     return () => {
       cancelled = true;
     };
-  }, [fetchMembersFun, probeRoster, teamId]);
+  }, [fetchAssignmentsFun, probeRoster, requisitionId]);
 
   const rosterById = useMemo(() => {
     const m = new Map<string, TenantUserView>();
@@ -148,17 +139,17 @@ export function TeamMembersView({
     return m;
   }, [roster]);
 
-  const memberUserIds = useMemo(() => {
+  const assignedUserIds = useMemo(() => {
     const s = new Set<string>();
     if (state.status === 'ready') {
-      for (const m of state.members) s.add(m.user_id);
+      for (const r of state.rows) s.add(r.user_id);
     }
     return s;
   }, [state]);
 
   const comboboxItems = useMemo(
-    () => rosterToItems(roster, memberUserIds),
-    [roster, memberUserIds],
+    () => rosterToItems(roster, assignedUserIds),
+    [roster, assignedUserIds],
   );
 
   const onAdd = async () => {
@@ -168,24 +159,16 @@ export function TeamMembersView({
     setAddError(null);
     setAdding(true);
     try {
-      await addMemberFun({ teamId, body: { user_id: targetUserId } });
-      toast.show('Member added.');
+      await assignFun({ requisitionId, body: { user_id: targetUserId } });
+      toast.show('User assigned.');
       setPickerValue(null);
       setUuidInput('');
       refresh();
     } catch (err: unknown) {
-      setAddError(messageForAddMemberError(err));
+      setAddError(messageForAssignRequisition(err));
     } finally {
       setAdding(false);
     }
-  };
-
-  const onRequestRemove = (userId: string) => {
-    setPendingRemoval({ userId, stage: 'confirm' });
-  };
-
-  const onCancelRemove = () => {
-    setPendingRemoval(null);
   };
 
   const onConfirmRemove = async () => {
@@ -193,20 +176,18 @@ export function TeamMembersView({
     const userId = pendingRemoval.userId;
     setPendingRemoval({ userId, stage: 'removing' });
     try {
-      await removeMemberFun({ teamId, userId });
-      toast.show('Member removed.');
+      await unassignFun({ requisitionId, userId });
+      toast.show('User unassigned.');
       setPendingRemoval(null);
       refresh();
     } catch (err: unknown) {
-      // PL-94 §2 ruling 6 — DELETE 404 is idempotent success.
       if (err instanceof ApiError && err.status === 404) {
-        toast.show('Member already removed.');
+        toast.show('User already unassigned.');
         setPendingRemoval(null);
         refresh();
         return;
       }
-      const msg = messageForRemoveMemberError(err);
-      toast.show(msg.title);
+      toast.show(messageForUnassignRequisition(err).title);
       setPendingRemoval(null);
     }
   };
@@ -219,24 +200,11 @@ export function TeamMembersView({
   return (
     <section>
       <PageHeader
-        title="Team members"
-        description="Add or remove members of this team."
+        title="Requisition assignments"
+        description="Users assigned to this requisition."
       />
-      <div className="tc-page-actions">
-        <Link to="/teams" className="tc-helper" data-testid="back-to-teams">
-          ← Back to teams
-        </Link>
-        {/* Settings S5c-3 — sibling sub-route to the team-clients editor. */}
-        <Link
-          to={`/teams/${teamId}/clients`}
-          className="tc-link"
-          data-testid="manage-clients-link"
-        >
-          Manage clients →
-        </Link>
-      </div>
       {state.status === 'loading' && (
-        <p className="tc-helper">Loading members…</p>
+        <p className="tc-helper">Loading assignments…</p>
       )}
       {state.status === 'error' && (
         <InlineAlert variant="error">{state.message}</InlineAlert>
@@ -250,35 +218,35 @@ export function TeamMembersView({
                   items={comboboxItems}
                   value={pickerValue}
                   onSelect={(item) => setPickerValue(item.value)}
-                  placeholder="Select a user to add…"
+                  placeholder="Select a user to assign…"
                   emptyMessage="No remaining users."
-                  ariaLabel="Add team member"
+                  ariaLabel="Assign a user to this requisition"
                   disabled={adding}
-                  testId="add-member-combobox"
+                  testId="assign-req-user-combobox"
                 />
               </div>
             ) : (
               <FormField
-                label={<label htmlFor="add-member-uuid">User ID</label>}
+                label={<label htmlFor="assign-req-user-uuid">User ID</label>}
                 helper="Roster unavailable to your role — paste the UUID."
               >
                 <input
-                  id="add-member-uuid"
+                  id="assign-req-user-uuid"
                   type="text"
                   className="tc-input"
                   value={uuidInput}
                   disabled={adding}
                   onChange={(ev) => setUuidInput(ev.target.value)}
-                  data-testid="add-member-uuid-input"
+                  data-testid="assign-req-user-uuid-input"
                 />
               </FormField>
             )}
             <Button
               onClick={onAdd}
               disabled={!canAdd}
-              data-testid="add-member-submit"
+              data-testid="assign-req-user-submit"
             >
-              {adding ? 'Adding…' : 'Add member'}
+              {adding ? 'Assigning…' : 'Assign user'}
             </Button>
           </div>
           {addError !== null && (
@@ -292,23 +260,26 @@ export function TeamMembersView({
               )}
             </InlineAlert>
           )}
-          {state.members.length === 0 ? (
+          {state.rows.length === 0 ? (
             <div className="tc-tree-empty">
-              <p className="tc-helper">No members yet.</p>
+              <p className="tc-helper">No users assigned to this requisition yet.</p>
             </div>
           ) : (
-            <ul className="tc-member-list" aria-label="Team members">
-              {state.members.map((m) => {
-                const u = rosterById.get(m.user_id);
-                const name = u?.display_name ?? u?.email ?? m.user_id;
+            <ul
+              className="tc-member-list"
+              aria-label="Requisition-assigned users"
+            >
+              {state.rows.map((r) => {
+                const u = rosterById.get(r.user_id);
+                const name = u?.display_name ?? u?.email ?? r.user_id;
                 const email = u?.email;
-                const added = new Date(m.added_at).toLocaleDateString();
-                const isPending = pendingRemoval?.userId === m.user_id;
+                const assigned = new Date(r.assigned_at).toLocaleDateString();
+                const isPending = pendingRemoval?.userId === r.user_id;
                 return (
                   <li
-                    key={m.id}
+                    key={r.id}
                     className="tc-member-list__row"
-                    data-testid={`member-row-${m.user_id}`}
+                    data-testid={`req-assignment-row-${r.user_id}`}
                   >
                     <div>
                       <div className="tc-member-list__name">{name}</div>
@@ -316,26 +287,28 @@ export function TeamMembersView({
                         <div className="tc-member-list__email">{email}</div>
                       )}
                     </div>
-                    <span className="tc-member-list__added">Added {added}</span>
+                    <span className="tc-member-list__added">
+                      Assigned {assigned}
+                    </span>
                     <div className="tc-member-list__actions">
                       {isPending ? (
                         <>
-                          <span className="tc-helper">Remove?</span>
+                          <span className="tc-helper">Unassign?</span>
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={onConfirmRemove}
                             disabled={pendingRemoval?.stage === 'removing'}
-                            data-testid={`confirm-remove-${m.user_id}`}
+                            data-testid={`confirm-unassign-req-${r.user_id}`}
                           >
                             {pendingRemoval?.stage === 'removing'
-                              ? 'Removing…'
+                              ? 'Unassigning…'
                               : 'Confirm'}
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={onCancelRemove}
+                            onClick={() => setPendingRemoval(null)}
                             disabled={pendingRemoval?.stage === 'removing'}
                           >
                             Cancel
@@ -345,10 +318,12 @@ export function TeamMembersView({
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => onRequestRemove(m.user_id)}
-                          data-testid={`remove-member-${m.user_id}`}
+                          onClick={() =>
+                            setPendingRemoval({ userId: r.user_id, stage: 'confirm' })
+                          }
+                          data-testid={`unassign-req-${r.user_id}`}
                         >
-                          Remove
+                          Unassign
                         </Button>
                       )}
                     </div>
