@@ -1,8 +1,14 @@
+import type { ReactElement } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CompaniesListView } from './CompaniesListView';
 import type { CompanyView } from './types';
+
+function renderInRouter(ui: ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 function makeCompany(
   id: string,
@@ -60,7 +66,7 @@ describe('CompaniesListView', () => {
 
   it('frames the list as the recruiter\'s VISIBLE clients (D4b scoping)', async () => {
     mockFetch([]);
-    render(<CompaniesListView />);
+    renderInRouter(<CompaniesListView />);
     await waitFor(() =>
       expect(screen.getByText('Companies')).toBeInTheDocument(),
     );
@@ -89,7 +95,7 @@ describe('CompaniesListView', () => {
         is_hot: true,
       }),
     ]);
-    render(<CompaniesListView />);
+    renderInRouter(<CompaniesListView />);
     await waitFor(() =>
       expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
     );
@@ -103,7 +109,7 @@ describe('CompaniesListView', () => {
 
   it('surfaces a permission message when the BE returns 403', async () => {
     mockFetchError(403);
-    render(<CompaniesListView />);
+    renderInRouter(<CompaniesListView />);
     await waitFor(() =>
       expect(
         screen.getByText(/do not have permission to view companies/i),
@@ -116,7 +122,7 @@ describe('CompaniesListView', () => {
       makeCompany(`co-${i}`, `Company ${i}`),
     );
     mockFetch(items);
-    render(<CompaniesListView />);
+    renderInRouter(<CompaniesListView />);
     await waitFor(() =>
       expect(
         screen.getByTestId('companies-cap-banner'),
@@ -129,7 +135,7 @@ describe('CompaniesListView', () => {
 
   it('does NOT show the cap banner when the list is under the cap', async () => {
     mockFetch([makeCompany('co-1', 'Acme Corp')]);
-    render(<CompaniesListView />);
+    renderInRouter(<CompaniesListView />);
     await waitFor(() =>
       expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
     );
@@ -138,16 +144,16 @@ describe('CompaniesListView', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('rows are non-navigating in R2 (no detail surface)', async () => {
-    mockFetch([makeCompany('co-1', 'Acme Corp')]);
-    render(<CompaniesListView />);
+  // R3 — the primary-name cell links to /companies/:id (ruling 5: column-
+  // content change, Table frozen). This replaces R2's "non-navigating
+  // rows" assertion now that the detail view exists.
+  it('the name cell links to the company detail at /companies/:id', async () => {
+    mockFetch([makeCompany('co-42', 'Acme Corp')]);
+    renderInRouter(<CompaniesListView />);
     await waitFor(() =>
       expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
     );
-    // No anchor / button wrapping the row content.
-    expect(screen.queryByRole('link', { name: /acme corp/i })).toBeNull();
-    expect(
-      screen.queryByRole('button', { name: /acme corp/i }),
-    ).toBeNull();
+    const link = screen.getByRole('link', { name: 'Acme Corp' });
+    expect(link).toHaveAttribute('href', '/companies/co-42');
   });
 });

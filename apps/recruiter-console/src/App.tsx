@@ -8,9 +8,11 @@ import {
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { CompaniesListView } from './companies/CompaniesListView';
+import { CompanyDetailView } from './companies/CompanyDetailView';
 import { LoginPage } from './routes/LoginPage';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
+import { TalentDetailView } from './talent/TalentDetailView';
 import { TalentListView } from './talent/TalentListView';
 
 // The recruiter nav. R1 shipped Requisitions; R2 adds Talent + Companies
@@ -90,6 +92,17 @@ export function App() {
                       }
                     />
                     <Route
+                      path="talent/:talentId"
+                      element={
+                        <RouteGuard
+                          requireScope="talent:read"
+                          sessionStateOverride={state}
+                        >
+                          <TalentDetailView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
                       path="companies"
                       element={
                         <RouteGuard
@@ -97,6 +110,17 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <CompaniesListView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="companies/:companyId"
+                      element={
+                        <RouteGuard
+                          requireScope="company:read"
+                          sessionStateOverride={state}
+                        >
+                          <CompanyDetailView />
                         </RouteGuard>
                       }
                     />

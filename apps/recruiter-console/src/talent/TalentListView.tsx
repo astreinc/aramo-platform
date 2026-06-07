@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   InlineAlert,
   PageHeader,
@@ -19,7 +20,9 @@ import type { TalentRecordView } from './types';
 // list hits the cap the view surfaces an honest truncation disclosure.
 // Cursor pagination is a backend-first carry.
 //
-// Rows are non-navigating (no detail in R2 — the LIST only).
+// R3 — the primary-name cell renders a <Link> to /talent/:id. Ruling 5:
+// row-nav is a column-content change (not a Table rowHref prop) so the
+// frozen foundation Table stays untouched. Explicit focusable affordance.
 
 // Mirrors the BE default cap (libs/talent-record/src/lib/talent-record
 // .repository.ts list()). When the list length equals the cap, we
@@ -51,7 +54,7 @@ const columns: ReadonlyArray<TableColumn<TalentRecordView>> = [
   {
     key: 'name',
     header: 'Name',
-    render: (t) => fullName(t),
+    render: (t) => <Link to={`/talent/${t.id}`}>{fullName(t)}</Link>,
   },
   {
     key: 'email',

@@ -44,3 +44,34 @@ export interface TalentRecordView {
 export interface TalentRecordListResponse {
   readonly items: readonly TalentRecordView[];
 }
+
+// Hand-mirrored from libs/attachment/src/lib/dto/attachment.view.ts.
+// Source-annotated. R3 hand-mirrors instead of importing @aramo/attachment
+// (a forbidden domain edge). Flat field list — no drift spec (rule of
+// three; mirror-of-logic-only).
+//
+// Ruling 1 (substrate truth over directive): the BE owner_type enum for
+// a talent attachment is 'talent', NOT 'talent_record'. The A4 wire-up
+// is authoritative on its own enum.
+export type AttachmentOwnerType = 'talent' | 'requisition' | 'company' | 'contact';
+
+export interface AttachmentView {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly site_id: string | null;
+  readonly owner_type: AttachmentOwnerType;
+  readonly owner_id: string;
+  readonly file_name: string;
+  readonly mime: string | null;
+  readonly size_bytes: number;
+  readonly storage_key: string;
+  readonly is_resume: boolean;
+  readonly uploaded_by_id: string | null;
+  readonly uploaded_at: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+export interface AttachmentListResponse {
+  readonly items: readonly AttachmentView[];
+}

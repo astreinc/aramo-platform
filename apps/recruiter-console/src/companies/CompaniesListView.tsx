@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   InlineAlert,
   PageHeader,
@@ -20,10 +21,11 @@ import type { CompanyView } from './types';
 // Large-table treatment (ruling 5): mirrors the Talent LIST cap banner.
 // Cursor pagination is a backend-first carry.
 //
-// Rows are non-navigating (no detail in R2). The S5c-3 #1 discovery gap
-// (ruling 4) closes at a FUTURE recruiter-tier company-detail PR, NOT
-// cross-app into the admin-tier S5c-3 assignments editor (different app
-// / scope / intent — the editor stays admin-tier + deep-link-only).
+// R3 — the primary-name cell renders a <Link> to /companies/:id. Ruling
+// 5: row-nav is a column-content change (not a Table rowHref prop) so
+// the frozen foundation Table stays untouched. The S5c-3 #1 discovery
+// gap closes at the recruiter-tier company-detail (R3) — NOT cross-app
+// into the admin-tier S5c-3 assignments editor.
 
 // Mirrors the BE default cap (libs/company/src/lib/company.repository.ts
 // listForActor()).
@@ -51,7 +53,7 @@ const columns: ReadonlyArray<TableColumn<CompanyView>> = [
   {
     key: 'name',
     header: 'Name',
-    render: (c) => c.name,
+    render: (c) => <Link to={`/companies/${c.id}`}>{c.name}</Link>,
   },
   {
     key: 'location',
