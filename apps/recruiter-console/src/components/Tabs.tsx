@@ -46,7 +46,9 @@ export function Tabs({ items, ariaLabel, initialId }: TabsProps) {
 
   const focus = (index: number) => {
     const clamped = (index + items.length) % items.length;
-    setSelected(items[clamped].id);
+    const next = items[clamped];
+    if (next === undefined) return;
+    setSelected(next.id);
     tabRefs.current[clamped]?.focus();
   };
 
