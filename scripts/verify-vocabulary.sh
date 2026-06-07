@@ -322,6 +322,18 @@ TIER2_EXCLUDES=(
   # principal), NOT entity vocabulary. Same file-scoped exclusion pattern
   # as the four sibling libs/identity entries above.
   "libs/identity/src/tests/d5-non-invertibility.spec.ts"
+  # Settings S5b Ruling 5 (Gate-5): the tenant-console user-management
+  # picker mirrors the role catalog (PL-94 §2 ruling 5 — "include candidate;
+  # the picker mirrors the catalog"). `candidate` here is the JWT role-name
+  # (the PR-A1a Ruling B portal-user principal role identifier), NOT entity
+  # vocabulary for the talent record. The mirror lives in the FE because
+  # the GET roles-catalog endpoint is a deferred follow-up (PL-94 §2 ruling
+  # 2 — hand-mirror + smoke spec). Same file-scoped exclusion pattern as
+  # the five sibling libs/identity entries above. Paired with the matching
+  # eslint.config.mjs TIER2_EXCLUDES entries.
+  "apps/tenant-console/src/users/types.ts"
+  "apps/tenant-console/src/users/types.spec.ts"
+  "apps/tenant-console/src/users/RolePicker.spec.tsx"
   # PR-A4 Gate 5: ATS Batch 3 R10-enforcement integration spec. Per the
   # M0R-2 Amendment v1.1 §4.5 / PR-A2 R10-spec precedent: refusal-
   # enforcement specs legitimately enumerate the forbidden Match-Class

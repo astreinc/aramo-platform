@@ -8,6 +8,7 @@ import { LandingPage } from './routes/LandingPage';
 import { LoginPage } from './routes/LoginPage';
 import { SettingsView } from './settings/SettingsView';
 import { Shell } from './shell/Shell';
+import { UsersListView } from './users/UsersListView';
 
 export function App() {
   const state = useSession();
@@ -39,6 +40,17 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <SettingsView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="users"
+                      element={
+                        <RouteGuard
+                          requireScope="tenant:admin:user-manage"
+                          sessionStateOverride={state}
+                        >
+                          <UsersListView />
                         </RouteGuard>
                       }
                     />

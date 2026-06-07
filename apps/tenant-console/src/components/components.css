@@ -381,6 +381,286 @@
   min-width: 240px;
 }
 
+/* ─── Table (Settings S5b) ─── */
+
+.tc-table-wrap {
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background-color: var(--c-surface);
+  overflow-x: auto;
+}
+
+.tc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-14);
+  color: var(--c-text);
+}
+
+.tc-table__caption {
+  text-align: left;
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-12);
+  color: var(--c-text-muted);
+  caption-side: top;
+}
+
+.tc-table thead th {
+  text-align: left;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: var(--sp-3) var(--sp-4);
+  background-color: var(--c-surface-2);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.tc-table tbody td {
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--c-border);
+  vertical-align: middle;
+}
+
+.tc-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.tc-table__row--muted td {
+  color: var(--c-text-subtle);
+  background-color: var(--c-surface-2);
+}
+
+.tc-table__empty {
+  text-align: center;
+  padding: var(--sp-6) var(--sp-4);
+  color: var(--c-text-muted);
+  font-size: var(--fs-14);
+}
+
+/* ─── Badge (status pill — S5b) ─── */
+
+.tc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  border: 1px solid;
+  line-height: 1.4;
+}
+
+.tc-badge--active {
+  background-color: var(--c-success-soft);
+  color: var(--c-success);
+  border-color: var(--c-success-border);
+}
+
+.tc-badge--disabled {
+  background-color: var(--c-surface-2);
+  color: var(--c-text-muted);
+  border-color: var(--c-border-strong);
+}
+
+.tc-badge--role {
+  background-color: var(--c-accent-soft);
+  color: var(--c-accent-active);
+  border-color: var(--c-accent);
+  margin-right: var(--sp-1);
+}
+
+/* ─── Dialog (Settings S5b) ─── */
+
+.tc-dialog__overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(28, 25, 23, 0.45);
+  z-index: 60;
+  animation: tc-dialog-overlay-in 120ms ease-out;
+}
+
+@keyframes tc-dialog-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.tc-dialog__content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - var(--sp-8)));
+  max-height: calc(100vh - var(--sp-10));
+  overflow-y: auto;
+  background-color: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-3);
+  z-index: 61;
+  padding: var(--sp-5) var(--sp-6) var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.tc-dialog__content--sm {
+  width: min(420px, calc(100vw - var(--sp-8)));
+}
+
+.tc-dialog__content--lg {
+  width: min(680px, calc(100vw - var(--sp-8)));
+}
+
+.tc-dialog__title {
+  margin: 0;
+  font-size: var(--fs-16);
+  font-weight: var(--fw-semibold);
+  color: var(--c-text);
+}
+
+.tc-dialog__description {
+  margin: 0;
+  font-size: var(--fs-14);
+  color: var(--c-text-muted);
+}
+
+.tc-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.tc-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--c-border);
+  margin-top: var(--sp-2);
+}
+
+/* ─── RolePicker (Settings S5b) ─── */
+
+.tc-role-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  padding: var(--sp-2);
+  background-color: var(--c-surface);
+}
+
+.tc-role-picker__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.tc-role-picker__row:hover:not([data-disabled='true']) {
+  background-color: var(--c-surface-2);
+}
+
+.tc-role-picker__row[data-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tc-role-picker__check {
+  margin-top: 2px;
+  width: 14px;
+  height: 14px;
+}
+
+.tc-role-picker__labels {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.tc-role-picker__label {
+  font-size: var(--fs-14);
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.tc-role-picker__helper {
+  font-size: var(--fs-12);
+  color: var(--c-text-muted);
+}
+
+/* ─── Input (Settings S5b — used in InviteDialog) ─── */
+
+.tc-input {
+  width: 100%;
+  height: var(--control-h-md);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--c-border-strong);
+  background-color: var(--c-surface);
+  font-size: var(--fs-14);
+  color: var(--c-text);
+  font-family: var(--font-sans);
+}
+
+.tc-input:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-accent-soft);
+}
+
+.tc-input[disabled] {
+  background-color: var(--c-surface-2);
+  cursor: not-allowed;
+}
+
+/* ─── Page actions row (UsersListView header) ─── */
+
+.tc-page-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.tc-helper--right {
+  margin-left: auto;
+}
+
+/* ─── Diff block (RoleAssignEditor before/after) ─── */
+
+.tc-diff {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3);
+  background-color: var(--c-surface-2);
+  border-radius: var(--r-md);
+  border: 1px solid var(--c-border);
+  font-size: var(--fs-12);
+}
+
+.tc-diff__label {
+  color: var(--c-text-muted);
+  font-weight: var(--fw-medium);
+}
+
+.tc-diff__value {
+  color: var(--c-text);
+  font-family: var(--font-mono);
+}
+
 /* ─── ForbiddenState ─── */
 
 .tc-forbidden {
