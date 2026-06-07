@@ -661,6 +661,207 @@
   font-family: var(--font-mono);
 }
 
+/* ─── Link (Settings S5c-2 — team-name + back links) ─── */
+
+.tc-link {
+  color: var(--c-accent);
+  text-decoration: none;
+  font-weight: var(--fw-medium);
+}
+
+.tc-link:hover {
+  text-decoration: underline;
+}
+
+/* ─── Combobox (Settings S5c-2 — the shared searchable picker) ─── */
+
+.tc-combobox-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  height: var(--control-h-md);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--c-border-strong);
+  background-color: var(--c-surface);
+  font-size: var(--fs-14);
+  font-family: var(--font-sans);
+  color: var(--c-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.tc-combobox-trigger:focus-visible {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-accent-soft);
+}
+
+.tc-combobox-trigger:disabled {
+  background-color: var(--c-surface-2);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.tc-combobox-trigger__placeholder {
+  flex: 1;
+  color: var(--c-text-subtle);
+}
+
+.tc-combobox-trigger__label {
+  flex: 1;
+}
+
+.tc-combobox-trigger__chevron {
+  color: var(--c-text-muted);
+  font-size: var(--fs-12);
+}
+
+.tc-combobox__content {
+  width: var(--radix-popover-trigger-width);
+  min-width: 220px;
+  max-height: 320px;
+  background-color: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 70;
+}
+
+.tc-combobox__search {
+  padding: var(--sp-2);
+  border-bottom: 1px solid var(--c-border);
+  background-color: var(--c-surface);
+}
+
+.tc-combobox__input {
+  width: 100%;
+  height: var(--control-h-sm);
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background-color: var(--c-surface);
+  font-size: var(--fs-14);
+  font-family: var(--font-sans);
+  color: var(--c-text);
+}
+
+.tc-combobox__input:focus {
+  outline: none;
+  border-color: var(--c-accent);
+}
+
+.tc-combobox__listbox {
+  list-style: none;
+  margin: 0;
+  padding: var(--sp-1);
+  overflow-y: auto;
+  max-height: 240px;
+}
+
+.tc-combobox__option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.tc-combobox__option[data-highlighted='true'] {
+  background-color: var(--c-accent-soft);
+}
+
+.tc-combobox__option[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tc-combobox__option[aria-selected='true'] {
+  font-weight: var(--fw-semibold);
+}
+
+.tc-combobox__option-label {
+  font-size: var(--fs-14);
+  color: var(--c-text);
+}
+
+.tc-combobox__option-description {
+  font-size: var(--fs-12);
+  color: var(--c-text-muted);
+  font-family: var(--font-mono);
+}
+
+.tc-combobox__empty {
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-12);
+  color: var(--c-text-muted);
+  text-align: center;
+}
+
+/* ─── Member list (Settings S5c-2 — team-members editor) ─── */
+
+.tc-member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background-color: var(--c-surface);
+  overflow: hidden;
+}
+
+.tc-member-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.tc-member-list__row:last-child {
+  border-bottom: none;
+}
+
+.tc-member-list__name {
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.tc-member-list__email {
+  font-size: var(--fs-12);
+  color: var(--c-text-muted);
+  font-family: var(--font-mono);
+}
+
+.tc-member-list__added {
+  color: var(--c-text-muted);
+  font-size: var(--fs-12);
+  margin-left: auto;
+}
+
+.tc-member-list__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.tc-add-member {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: var(--sp-4) 0;
+}
+
+.tc-add-member__picker {
+  flex: 1;
+  max-width: 360px;
+}
+
 /* ─── Tree (Settings S5c-1 — the org-hierarchy editor) ─── */
 
 .tc-tree {

@@ -2,6 +2,7 @@ import './components.css';
 
 export { Button } from './Button';
 export { Card } from './Card';
+export { Combobox, type ComboboxItem, type ComboboxProps } from './Combobox';
 export { Dialog, DialogClose } from './Dialog';
 export { ForbiddenState } from './ForbiddenState';
 export { FormField } from './FormField';

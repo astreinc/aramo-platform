@@ -107,3 +107,37 @@ export async function probeFinancialsToggle(): Promise<FinancialsToggleState> {
     throw err;
   }
 }
+
+// Settings S5c-2 ruling 7 — SHARED roster-probe (extracted from
+// S5c-1's org/edges-api.ts; the S5c-1 surface now imports from here).
+//
+// `GET /v1/tenant/users` is gated `tenant:admin:user-manage`. The
+// S5c surfaces (org-hierarchy, team-owner picker, team-member picker)
+// run under DIFFERENT scopes (`org:manage`, `team:manage`). A holder
+// of one of those scopes WITHOUT user-manage gets 403 — the consumer
+// degrades to a raw-UUID input. NEVER blocks the editor; the BE
+// rejection is the floor.
+//
+// Three live consumers as of S5c-2: AddEdgeDialog (S5c-1) +
+// CreateTeamDialog (S5c-2) + the team-members add (S5c-2). S5c-3 will
+// add a fourth.
+
+export type UserRosterState =
+  | { state: 'ready'; users: readonly TenantUserView[] }
+  | { state: 'forbidden' };
+
+interface MinimalRosterView {
+  readonly items?: readonly TenantUserView[];
+}
+
+export async function probeUserRoster(): Promise<UserRosterState> {
+  try {
+    const view = await apiClient.get<MinimalRosterView>(USERS_PATH);
+    return { state: 'ready', users: view.items ?? [] };
+  } catch (err: unknown) {
+    if (err instanceof ApiError && err.status === 403) {
+      return { state: 'forbidden' };
+    }
+    throw err;
+  }
+}
