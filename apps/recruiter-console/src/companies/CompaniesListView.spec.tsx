@@ -67,15 +67,17 @@ describe('CompaniesListView', () => {
   it('frames the list as the recruiter\'s VISIBLE clients (D4b scoping)', async () => {
     mockFetch([]);
     renderInRouter(<CompaniesListView />);
+    // Wait for the empty-state (post-fetch), not the header (always
+    // present pre-fetch). Asserting the post-fetch text first removes
+    // a CI flake where the test could outrun the fetch resolution.
     await waitFor(() =>
-      expect(screen.getByText('Companies')).toBeInTheDocument(),
+      expect(
+        screen.getByText(/no companies visible to you yet/i),
+      ).toBeInTheDocument(),
     );
+    expect(screen.getByText('Companies')).toBeInTheDocument();
     // Header carries the visibility framing.
     expect(screen.getByText(/your visible clients/i)).toBeInTheDocument();
-    // Empty-state is honest about visibility scoping.
-    expect(
-      screen.getByText(/no companies visible to you yet/i),
-    ).toBeInTheDocument();
     // No inline limitation note — a visible-only LIST is correct behavior.
     expect(
       screen.queryByText(/some companies may not be shown/i),
