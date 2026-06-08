@@ -4,6 +4,9 @@ import {
   InlineAlert,
   PageHeader,
   Table,
+  hasScope,
+  useSession,
+  type Session,
   type TableColumn,
 } from '@aramo/fe-foundation';
 
@@ -92,10 +95,27 @@ const columns: ReadonlyArray<TableColumn<TalentRecordView>> = [
   },
 ];
 
-export function TalentListView() {
+interface TalentListViewProps {
+  // R5 test seam — pass a fixed session so the "+ New" gate is
+  // exercisable in tests without mounting the real session hook.
+  readonly sessionOverride?: Session;
+}
+
+export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const [items, setItems] = useState<readonly TalentRecordView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const sessionState = useSession();
+  const session: Session | null =
+    sessionOverride ??
+    (sessionState.status === 'authenticated' ? sessionState.session : null);
+  // Defensive (R4 LIST precedent): in tests the session fetch may
+  // return a non-Session shape; guard so a malformed session can't
+  // crash render.
+  const canCreate =
+    session !== null &&
+    Array.isArray(session.scopes) &&
+    hasScope(session, 'talent:create');
 
   useEffect(() => {
     let cancelled = false;
@@ -123,6 +143,13 @@ export function TalentListView() {
         title="Talent"
         description="Tenant talent pool — visible to all recruiters in your site."
       />
+      {canCreate ? (
+        <p className="talent-list__toolbar">
+          <Link to="/talent/new" className="talent-list__new-link">
+            + New talent
+          </Link>
+        </p>
+      ) : null}
       {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
       {loading ? (
         <p>Loading talent…</p>
