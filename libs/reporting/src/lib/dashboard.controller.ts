@@ -25,7 +25,9 @@ import { ReportingService } from './reporting.service.js';
 // (tenant counts + requisition rollup + pipeline rollup + ATS-internal
 // placement count + upcoming calendar events + recent activity) into a
 // single payload so a recruiter UI does not have to N-round-trip on
-// load. Scope-gated on `dashboard:read` (NOT seeded — gap-and-note).
+// load. Scope-gated on `dashboard:read` (seeded by Reporting-Scope-Seed;
+// granted to the 8 operational roles — TA / TO / AM / RM / recruiter /
+// LR / BO / DM. Auditor-tier deferred to the Reporting/Audit DDR).
 //
 // The composition reuses ReportingService — every byte returned is
 // from an ATS-side schema. NO Core / submittal / engagement /
