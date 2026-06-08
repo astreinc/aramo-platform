@@ -367,6 +367,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return body.items.map((r) => r.id);
     }
 
+    async function listRequisitionIdsByCompany(
+      jwt: string,
+      company_id: string,
+    ): Promise<string[]> {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}&company_id=${company_id}`,
+        { headers: { Authorization: `Bearer ${jwt}` } },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: Array<{ id: string }> };
+      return body.items.map((r) => r.id);
+    }
+
     async function getRequisition(
       jwt: string,
       id: string,
@@ -632,6 +645,53 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(seenReqs).not.toContain(reqC);
       expect((await getRequisition(recA3Jwt, reqA3only)).status).toBe(200);
       expect((await getRequisition(recA3Jwt, reqB)).status).toBe(404);
+    });
+
+    // ----------------------------------------------------------------------
+    // Matrix row 7 — D4b + ?company_id filter compose (R3 carry close).
+    //                AM has a pod for A + C. ?company_id=companyA narrows
+    //                their visibility-resolved list to reqA (NOT reqC).
+    //                ?company_id=companyB returns empty (B is outside the
+    //                pod — the D4b OR-arm fails, A3 fails for AM here too,
+    //                so the AND-with-company-filter naturally empties).
+    // ----------------------------------------------------------------------
+    it('matrix-7 — D4b + ?company_id compose: AM with pod A+C narrows to reqA at ?company_id=A; empty at ?company_id=B', async () => {
+      const atA = await listRequisitionIdsByCompany(accountManagerJwt, companyA);
+      expect(atA).toContain(reqA);
+      expect(atA).not.toContain(reqB);
+      expect(atA).not.toContain(reqC);
+      expect(atA).not.toContain(reqD);
+
+      const atC = await listRequisitionIdsByCompany(accountManagerJwt, companyC);
+      expect(atC).toContain(reqC);
+      expect(atC).not.toContain(reqA);
+
+      // B is outside AM's pod → empty under filter (D4b OR-arm fails for
+      // companyB; AM has no A3 assignment).
+      const atB = await listRequisitionIdsByCompany(accountManagerJwt, companyB);
+      expect(atB).toEqual([]);
+    });
+
+    // ----------------------------------------------------------------------
+    // Matrix row 8 — A3 OR-arm SURVIVES the ?company_id filter
+    //                (security-critical — the filter must never SUPPRESS
+    //                the A3 branch within visibility). REC_A3 has no
+    //                client-axis visibility, but a direct RequisitionAssignment
+    //                to reqA3only (which lives at companyB).
+    //                ?company_id=companyB → still returns reqA3only
+    //                (the A3 OR-arm matches; the top-level company_id
+    //                also matches → AND is TRUE).
+    //                ?company_id=companyA → empty (no assignment at A;
+    //                no D4b for A) — the filter NARROWS within visibility.
+    // ----------------------------------------------------------------------
+    it('matrix-8 — A3 OR-arm preserved under ?company_id filter: REC_A3 sees reqA3only at ?company_id=B', async () => {
+      const atB = await listRequisitionIdsByCompany(recA3Jwt, companyB);
+      expect(atB).toContain(reqA3only);
+      expect(atB).not.toContain(reqB); // REC_A3 not assigned to reqB
+
+      // The filter narrows: REC_A3 sees nothing at companyA (no A3 + no D4b).
+      const atA = await listRequisitionIdsByCompany(recA3Jwt, companyA);
+      expect(atA).toEqual([]);
     });
   },
 );

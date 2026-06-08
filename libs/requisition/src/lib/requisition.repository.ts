@@ -463,6 +463,7 @@ export class RequisitionRepository {
     tenant_id: string;
     visibility: VisibilityContextShape;
     site_id?: string;
+    company_id?: string;
     limit?: number;
   }): Promise<RequisitionView[]> {
     const limit = Math.min(args.limit ?? 50, 200);
@@ -470,6 +471,9 @@ export class RequisitionRepository {
       where: {
         tenant_id: args.tenant_id,
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+        // Top-level AND with the A3/D4b OR-union below — narrows within
+        // visibility. Index-backed by @@index([tenant_id, company_id]).
+        ...(args.company_id === undefined ? {} : { company_id: args.company_id }),
         ...buildVisibilityWhere(args.visibility),
       },
       orderBy: { created_at: 'desc' },

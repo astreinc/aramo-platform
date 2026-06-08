@@ -73,6 +73,7 @@ export class RequisitionController {
   async list(
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
+    @Query('company_id') companyIdFromQuery: string | undefined,
     @Req() req: Request,
   ): Promise<{ items: RequisitionView[] }> {
     const visibility = await req.resolveVisibility!();
@@ -80,6 +81,7 @@ export class RequisitionController {
       tenant_id: authContext.tenant_id,
       visibility,
       site_id: siteIdFromQuery,
+      company_id: companyIdFromQuery,
     });
     return { items };
   }

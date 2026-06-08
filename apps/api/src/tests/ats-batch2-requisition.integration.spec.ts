@@ -102,6 +102,13 @@ const TENANT_ADMIN_SCOPES = [
 ];
 
 const COMPANY_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
+// Section D — ?company_id filter constants. Two in-tenant companies for
+// the narrow-vs-not split; FOREIGN_COMPANY is a UUID belonging to no req
+// in TENANT_ATS (the cross-tenant isolation probe — tenant_id AND
+// company_id must isolate without leak).
+const FILTER_COMPANY_X = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
+const FILTER_COMPANY_Y = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
+const FOREIGN_COMPANY = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'PR-A3 ATS Batch 2 — requisition + assignment-visibility proofs (real Postgres 17)',
@@ -501,6 +508,182 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         },
       );
       expect(getRevoked.status).toBe(404);
+    });
+
+    // -------------------------------------------------------------------------
+    // D) The ?company_id query-filter proofs (close the R3 carry).
+    //    The filter is a TOP-LEVEL Prisma WHERE key, AND-ed with the existing
+    //    A3 OR-arm:   tenant_id AND (site_id?) AND (company_id?) AND (D4b OR A3).
+    //    The D4b-composes + A3-override-under-filter assertions live in
+    //    authz-d4b-visibility-matrix.integration.spec.ts (that spec has the
+    //    pod/team identity setup the directive's §1c (ii) + (iii) require);
+    //    here we prove filter-narrows + A3+filter compose + no-visibility-empty
+    //    + cross-tenant isolation + site+company AND-compose. Backward-compat
+    //    is proven implicitly by Section A+B+C above (no ?company_id supplied).
+    // -------------------------------------------------------------------------
+
+    it('Company filter: admin ?company_id=X returns ONLY reqs at X (filter narrows)', async () => {
+      const xCreate = await fetch(`http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: 'company-filter-narrow X',
+          company_id: FILTER_COMPANY_X,
+          site_id: SITE_A,
+        }),
+      });
+      expect(xCreate.status).toBe(201);
+      const reqAtX = ((await xCreate.json()) as { id: string }).id;
+
+      const yCreate = await fetch(`http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: 'company-filter-narrow Y',
+          company_id: FILTER_COMPANY_Y,
+          site_id: SITE_A,
+        }),
+      });
+      expect(yCreate.status).toBe(201);
+      const reqAtY = ((await yCreate.json()) as { id: string }).id;
+
+      const xRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}&company_id=${FILTER_COMPANY_X}`,
+        { headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` } },
+      );
+      expect(xRes.status).toBe(200);
+      const xBody = (await xRes.json()) as {
+        items: Array<{ id: string; company_id: string }>;
+      };
+      const xIds = xBody.items.map((i) => i.id);
+      expect(xIds).toContain(reqAtX);
+      expect(xIds).not.toContain(reqAtY);
+      expect(xBody.items.every((i) => i.company_id === FILTER_COMPANY_X)).toBe(true);
+    });
+
+    it('Company filter: recruiter A3 + ?company_id compose — only the matched-company assigned req', async () => {
+      // Admin creates 2 reqs at X and Y; assigns recruiter A to BOTH.
+      // The A3 OR-arm puts both in recruiter A's visibility (without
+      // a filter); ?company_id=X must narrow to ONLY the X one.
+      const xCreate = await fetch(`http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: 'company-filter-A3 X',
+          company_id: FILTER_COMPANY_X,
+          site_id: SITE_A,
+        }),
+      });
+      const reqA3X = ((await xCreate.json()) as { id: string }).id;
+      const yCreate = await fetch(`http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: 'company-filter-A3 Y',
+          company_id: FILTER_COMPANY_Y,
+          site_id: SITE_A,
+        }),
+      });
+      const reqA3Y = ((await yCreate.json()) as { id: string }).id;
+
+      for (const id of [reqA3X, reqA3Y]) {
+        const r = await fetch(
+          `http://127.0.0.1:${port}/v1/requisitions/${id}/assignments?site_id=${SITE_A}`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ user_id: RECRUITER_A }),
+          },
+        );
+        expect(r.status).toBe(201);
+      }
+
+      // Recruiter A's full list (no filter) — sanity: includes both.
+      const baseRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`,
+        { headers: { Authorization: `Bearer ${recruiterAJwt_Ats_SiteA}` } },
+      );
+      const baseBody = (await baseRes.json()) as { items: Array<{ id: string }> };
+      const baseIds = baseBody.items.map((i) => i.id);
+      expect(baseIds).toContain(reqA3X);
+      expect(baseIds).toContain(reqA3Y);
+
+      // ?company_id=X narrows to only the X-side assignment.
+      const xRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}&company_id=${FILTER_COMPANY_X}`,
+        { headers: { Authorization: `Bearer ${recruiterAJwt_Ats_SiteA}` } },
+      );
+      expect(xRes.status).toBe(200);
+      const xIds = ((await xRes.json()) as { items: Array<{ id: string }> }).items.map((i) => i.id);
+      expect(xIds).toContain(reqA3X);
+      expect(xIds).not.toContain(reqA3Y);
+
+      // ?company_id=Y narrows to only the Y-side assignment.
+      const yRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}&company_id=${FILTER_COMPANY_Y}`,
+        { headers: { Authorization: `Bearer ${recruiterAJwt_Ats_SiteA}` } },
+      );
+      expect(yRes.status).toBe(200);
+      const yIds = ((await yRes.json()) as { items: Array<{ id: string }> }).items.map((i) => i.id);
+      expect(yIds).toContain(reqA3Y);
+      expect(yIds).not.toContain(reqA3X);
+    });
+
+    it('Company filter: recruiter B (no visibility) + ?company_id=X → empty', async () => {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}&company_id=${FILTER_COMPANY_X}`,
+        { headers: { Authorization: `Bearer ${recruiterBJwt_Ats_SiteA}` } },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: Array<unknown> };
+      expect(body.items).toEqual([]);
+    });
+
+    it('Company filter: ?company_id=<foreign UUID> → empty (no cross-tenant leak)', async () => {
+      // Admin in TENANT_ATS can see every req in TENANT_ATS; even so,
+      // ?company_id=<UUID belonging to no req in TENANT_ATS> returns
+      // empty — the (tenant_id AND company_id) AND-composition isolates.
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}&company_id=${FOREIGN_COMPANY}`,
+        { headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` } },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: Array<unknown> };
+      expect(body.items).toEqual([]);
+    });
+
+    it('Company filter: ?site_id + ?company_id AND-compose (both narrow at the WHERE)', async () => {
+      // Every returned row matches BOTH the requested site_id and company_id.
+      // (Section A already proved the wrong-site guard at the auth layer;
+      // here we prove the WHERE-level AND on the matching path.)
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}&company_id=${FILTER_COMPANY_X}`,
+        { headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` } },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        items: Array<{ id: string; site_id: string | null; company_id: string }>;
+      };
+      expect(body.items.length).toBeGreaterThan(0);
+      for (const item of body.items) {
+        expect(item.site_id).toBe(SITE_A);
+        expect(item.company_id).toBe(FILTER_COMPANY_X);
+      }
     });
   },
 );
