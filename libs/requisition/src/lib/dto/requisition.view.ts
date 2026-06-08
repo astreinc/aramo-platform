@@ -30,8 +30,6 @@ export interface RequisitionView {
   status: RequisitionStatus;
   type: string | null;
   duration: string | null;
-  rate_max: string | null;
-  salary: string | null;
   description: string | null;
   notes: string | null;
   is_hot: boolean;

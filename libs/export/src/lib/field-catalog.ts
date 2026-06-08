@@ -136,8 +136,6 @@ const REQUISITION_COLUMNS: readonly string[] = [
   'status',
   'type',
   'duration',
-  'rate_max',
-  'salary',
   'description',
   'notes',
   'is_hot',

@@ -90,8 +90,6 @@ function makeReq(
     status: 'active' as RequisitionStatus,
     type: null,
     duration: null,
-    rate_max: null,
-    salary: null,
     description: null,
     notes: null,
     is_hot: false,

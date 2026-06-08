@@ -685,5 +685,154 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(item.company_id).toBe(FILTER_COMPANY_X);
       }
     });
+
+    // -------------------------------------------------------------------------
+    // E) D-AUTHZ-COMP-WRITE-2 — close the D5 write-path circumvention via
+    //    the legacy rate_max/salary pair (Amendment v1.1 Ruling 2).
+    //
+    //    THE CLOSURE MECHANISM is silent-drop-at-repo, NOT 400-rejection:
+    //    the request DTOs are plain TS interfaces (no class-validator
+    //    metadata) and ValidationPipe runs forbidNonWhitelisted:false, so
+    //    a body with {"salary":"..."} succeeds at the HTTP layer. The
+    //    leak closes because repo.create / repo.update no longer read
+    //    input.salary / input.rate_max — the Prisma `data` object omits
+    //    the keys, the persisted row's columns stay NULL. The proof
+    //    therefore asserts on PERSISTENCE (a direct SQL read), not on
+    //    a 4xx status.
+    //
+    //    The recruiter A JWT (RECRUITER_SCOPES above: read+create+edit;
+    //    NO compensation:edit:pay) is the exact actor the defect record
+    //    names — the previously-leaking write must now drop on the floor.
+    //    The structured-comp gate (D-AUTHZ-COMP-WRITE-1) is unchanged;
+    //    its unit spec (libs/requisition/src/tests/compensation-edit-
+    //    gate.spec.ts) covers (v).
+    // -------------------------------------------------------------------------
+
+    it('D5 write-path closed (POST): recruiter without comp:edit:pay POSTing {salary} → 201, persisted row.salary IS NULL', async () => {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${recruiterAJwt_Ats_SiteA}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: 'D-AUTHZ-COMP-WRITE-2 POST closure probe',
+            company_id: COMPANY_ID,
+            site_id: SITE_A,
+            // The previously-leaking write — would have persisted pre-fix
+            // (no gate covered this field, the DTO accepted it). Post-fix
+            // the repo no longer reads input.salary; the column stays NULL.
+            salary: '150000',
+            rate_max: '85/hr',
+          }),
+        },
+      );
+      expect(res.status).toBe(201);
+      const created = (await res.json()) as { id: string };
+
+      // Persistence proof — read the columns directly from Postgres.
+      const row = await setupClient.query(
+        'SELECT rate_max, salary FROM requisition."Requisition" WHERE id = $1::uuid',
+        [created.id],
+      );
+      expect(row.rows.length).toBe(1);
+      expect(row.rows[0].rate_max).toBeNull();
+      expect(row.rows[0].salary).toBeNull();
+    });
+
+    it('D5 write-path closed (PATCH): recruiter PATCHing {rate_max} → 200, persisted row stays NULL', async () => {
+      // Admin creates the req so the PATCH target exists.
+      const createRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: 'D-AUTHZ-COMP-WRITE-2 PATCH closure target',
+            company_id: COMPANY_ID,
+            site_id: SITE_A,
+          }),
+        },
+      );
+      const reqId = ((await createRes.json()) as { id: string }).id;
+
+      // Admin assigns recruiter A so the visibility + edit-scope paths line up.
+      const assignRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions/${reqId}/assignments?site_id=${SITE_A}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ user_id: RECRUITER_A }),
+        },
+      );
+      expect(assignRes.status).toBe(201);
+
+      // Recruiter A PATCH with rate_max+salary in the body.
+      const patchRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions/${reqId}?site_id=${SITE_A}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${recruiterAJwt_Ats_SiteA}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            rate_max: '85/hr',
+            salary: '150000',
+            // a non-comp field that DOES still patch — sanity that the
+            // request itself is not rejected, the legacy keys silently drop.
+            notes: 'sanity touch',
+          }),
+        },
+      );
+      expect(patchRes.status).toBe(200);
+
+      // Persistence proof — legacy columns stay NULL; the notes field
+      // confirms the rest of the PATCH applied.
+      const row = await setupClient.query(
+        'SELECT rate_max, salary, notes FROM requisition."Requisition" WHERE id = $1::uuid',
+        [reqId],
+      );
+      expect(row.rows.length).toBe(1);
+      expect(row.rows[0].rate_max).toBeNull();
+      expect(row.rows[0].salary).toBeNull();
+      expect(row.rows[0].notes).toBe('sanity touch');
+    });
+
+    it('Read surface gone: GET /v1/requisitions and detail GET responses have no rate_max/salary keys', async () => {
+      // LIST shape — admin sees the full list; no item carries the
+      // deprecated keys (the projectView projection no longer includes them).
+      const listRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`,
+        { headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` } },
+      );
+      expect(listRes.status).toBe(200);
+      const list = (await listRes.json()) as { items: Array<Record<string, unknown>> };
+      expect(list.items.length).toBeGreaterThan(0);
+      for (const item of list.items) {
+        expect(item).not.toHaveProperty('rate_max');
+        expect(item).not.toHaveProperty('salary');
+      }
+
+      // Detail shape — same assertion on a single row.
+      const firstId = list.items[0]?.['id'] as string;
+      expect(typeof firstId).toBe('string');
+      const detail = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions/${firstId}?site_id=${SITE_A}`,
+        { headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` } },
+      );
+      expect(detail.status).toBe(200);
+      const detailBody = (await detail.json()) as Record<string, unknown>;
+      expect(detailBody).not.toHaveProperty('rate_max');
+      expect(detailBody).not.toHaveProperty('salary');
+    });
   },
 );
