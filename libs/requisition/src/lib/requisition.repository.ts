@@ -119,8 +119,6 @@ interface RequisitionRow {
   status: RequisitionStatus;
   type: string | null;
   duration: string | null;
-  rate_max: string | null;
-  salary: string | null;
   description: string | null;
   notes: string | null;
   is_hot: boolean;
@@ -182,8 +180,6 @@ function projectView(row: RequisitionRow): RequisitionView {
     status: row.status,
     type: row.type,
     duration: row.duration,
-    rate_max: row.rate_max,
-    salary: row.salary,
     description: row.description,
     notes: row.notes,
     is_hot: row.is_hot,
@@ -256,8 +252,6 @@ export class RequisitionRepository {
         status: input.status ?? 'active',
         type: input.type ?? null,
         duration: input.duration ?? null,
-        rate_max: input.rate_max ?? null,
-        salary: input.salary ?? null,
         description: input.description ?? null,
         notes: input.notes ?? null,
         is_hot: input.is_hot ?? false,
@@ -313,8 +307,6 @@ export class RequisitionRepository {
         status: input.status ?? 'active',
         type: input.type ?? null,
         duration: input.duration ?? null,
-        rate_max: input.rate_max ?? null,
-        salary: input.salary ?? null,
         description: input.description ?? null,
         notes: input.notes ?? null,
         is_hot: input.is_hot ?? false,
@@ -389,8 +381,6 @@ export class RequisitionRepository {
     if (i.status !== undefined) data['status'] = i.status;
     if (i.type !== undefined) data['type'] = i.type;
     if (i.duration !== undefined) data['duration'] = i.duration;
-    if (i.rate_max !== undefined) data['rate_max'] = i.rate_max;
-    if (i.salary !== undefined) data['salary'] = i.salary;
     if (i.description !== undefined) data['description'] = i.description;
     if (i.notes !== undefined) data['notes'] = i.notes;
     if (i.is_hot !== undefined) data['is_hot'] = i.is_hot;

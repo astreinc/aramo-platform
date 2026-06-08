@@ -43,8 +43,6 @@ export interface RequisitionView {
   readonly status: RequisitionStatus;
   readonly type: string | null;
   readonly duration: string | null;
-  readonly rate_max: string | null;
-  readonly salary: string | null;
   readonly description: string | null;
   readonly notes: string | null;
   readonly is_hot: boolean;
@@ -108,7 +106,8 @@ export type CompensationModel = (typeof COMPENSATION_MODEL_VALUES)[number];
 // - site_id (ruling 4: no GET /v1/sites; @RequireSiteMatch validates session)
 // - openings_available (ruling 3: conceptually derived; A5 automates later)
 // - rate_max + salary (ruling 5: pre-Compensation-v1.1 legacy; dropped +
-//   deprecation carry filed)
+//   the D5 write-leak via this pair is closed by D-AUTHZ-COMP-WRITE-2;
+//   the columns persist inertly until PR-2's data-gated drop)
 // - type, duration, company_department_id, recruiter_id, owner_id
 //   (administrative / out-of-scope for R4 — the form's first cut)
 export interface CreateRequisitionRequest {

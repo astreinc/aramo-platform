@@ -37,8 +37,6 @@ describe('RequisitionEditView', () => {
             status: 'active',
             type: null,
             duration: null,
-            rate_max: null,
-            salary: null,
             description: null,
             notes: null,
             is_hot: false,

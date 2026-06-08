@@ -158,8 +158,12 @@ const REQUISITION_CATALOG: readonly FieldCatalogEntry[] = [
   { field: 'notes',       type: 'string', required: false, example: 'Hiring-manager priority', synonyms: ['notes', 'comments'] },
   { field: 'type',        type: 'string', required: false, example: 'Full-time',       synonyms: ['type', 'jobtype', 'employmenttype', 'contracttype'] },
   { field: 'duration',    type: 'string', required: false, example: '6 months',        synonyms: ['duration', 'length', 'term', 'period'] },
-  { field: 'rate_max',    type: 'money',  required: false, example: '85.00',           synonyms: ['ratemax', 'maxrate', 'rate', 'hourlyrate', 'payrate'] },
-  { field: 'salary',      type: 'money',  required: false, example: '150000',          synonyms: ['salary', 'pay', 'compensation', 'comp'] },
+  // D-AUTHZ-COMP-WRITE-2 — the deprecated rate_max/salary entries were
+  // removed here. Their synonyms (pay/compensation/comp/rate/hourlyrate/
+  // payrate) bypassed the compensation-edit-gate (which keys on the
+  // structured fields only); the CSV path is now no longer a write
+  // surface for the legacy pair. Use the structured columns (pay_rate_*,
+  // bill_rate_*, salary_amount, salary_currency, placement_fee_*) instead.
   { field: 'openings',    type: 'int',    required: false, example: '3',               synonyms: ['openings', 'positions', 'headcount', 'slots', 'count'] },
   { field: 'openings_available', type: 'int', required: false, example: '2',           synonyms: ['openingsavailable', 'available', 'openpositions'] },
   { field: 'start_date',  type: 'date',   required: false, example: '2026-08-01',      synonyms: ['startdate', 'start', 'datestart', 'begindate'] },

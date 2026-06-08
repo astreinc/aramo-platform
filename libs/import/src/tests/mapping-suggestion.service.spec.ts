@@ -326,6 +326,80 @@ describe('MappingSuggestionService — inbound-vocabulary aliases (Gate-5 SPLIT 
   });
 });
 
+// D-AUTHZ-COMP-WRITE-2 — the import-surface closure proof. The legacy
+// rate_max/salary field-catalog entries used to map CSV synonyms
+// ('pay', 'compensation', 'comp', 'rate', 'hourlyrate', 'payrate',
+// 'ratemax', 'maxrate') to compensation columns that were OUTSIDE the
+// D-AUTHZ-COMP-WRITE-1 gate's COMP_FIELDS_BY_SCOPE set — a D5 write-path
+// circumvention via the CSV import. The entries are removed from the
+// requisition catalog; these headers must no longer be claimed by ANY
+// requisition field.
+describe('MappingSuggestionService — D-AUTHZ-COMP-WRITE-2 legacy comp synonyms are gone', () => {
+  const svc = new MappingSuggestionService();
+
+  // Every synonym from the removed rate_max + salary catalog entries.
+  // Headers that used to map to legacy comp fields; none must map now.
+  const REMOVED_LEGACY_HEADERS = [
+    // ex-rate_max synonyms
+    'ratemax',
+    'maxrate',
+    'rate',
+    'hourlyrate',
+    'payrate',
+    // ex-salary synonyms
+    'pay',
+    'compensation',
+    'comp',
+    // the field names themselves — a CSV header literally named 'rate_max'
+    // or 'salary' must also no longer claim anything.
+    'rate_max',
+    'salary',
+  ];
+
+  it('the requisition catalog has no rate_max or salary entry (the field-catalog edit landed)', () => {
+    const res = svc.suggest({
+      target_entity: 'requisition',
+      headers: REMOVED_LEGACY_HEADERS,
+      sample_rows: [],
+    });
+    expect(res.suggestions.find((s) => s.field === 'rate_max')).toBeUndefined();
+    expect(res.suggestions.find((s) => s.field === 'salary')).toBeUndefined();
+  });
+
+  it('no removed-legacy header is claimed by ANY requisition field (the D5 import-leak closes)', () => {
+    const res = svc.suggest({
+      target_entity: 'requisition',
+      headers: REMOVED_LEGACY_HEADERS,
+      sample_rows: [],
+    });
+    for (const header of REMOVED_LEGACY_HEADERS) {
+      const claimed = res.suggestions.find(
+        (s) => s.suggested_source_column === header,
+      );
+      expect(
+        claimed,
+        `header=${header} must NOT be claimed by any requisition field (legacy comp surface removed)`,
+      ).toBeUndefined();
+    }
+  });
+
+  it('the remaining requisition catalog is unaffected — "title" / "company_id" still claim correctly', () => {
+    // The import catalog never declared the structured comp fields
+    // (pay_rate_*/bill_rate_*/salary_amount/etc.) — the legacy pair was
+    // the ONLY comp surface in the importer (which is precisely why its
+    // removal closes the import-side D5 leak). Sanity: the rest of the
+    // requisition catalog is intact post-edit.
+    const res = svc.suggest({
+      target_entity: 'requisition',
+      headers: ['Job Title', 'Company'],
+      sample_rows: [],
+    });
+    const titleSugg = res.suggestions.find((s) => s.field === 'title');
+    expect(titleSugg?.suggested_source_column).toBe('Job Title');
+    expect(titleSugg?.confidence).toBe('high');
+  });
+});
+
 describe('MappingSuggestionService — reference-docs + samples (§3 contract)', () => {
   const svc = new MappingSuggestionService();
 

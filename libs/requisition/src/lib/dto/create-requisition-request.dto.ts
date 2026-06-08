@@ -20,8 +20,6 @@ export interface CreateRequisitionRequestDto {
   status?: RequisitionStatus;
   type?: string;
   duration?: string;
-  rate_max?: string;
-  salary?: string;
   description?: string;
   notes?: string;
   is_hot?: boolean;
