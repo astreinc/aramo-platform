@@ -8,7 +8,11 @@ import {
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { CompaniesListView } from './companies/CompaniesListView';
+import { CompanyCreateView } from './companies/CompanyCreateView';
 import { CompanyDetailView } from './companies/CompanyDetailView';
+import { CompanyEditView } from './companies/CompanyEditView';
+import { ContactCreateView } from './contacts/ContactCreateView';
+import { ContactEditView } from './contacts/ContactEditView';
 import { LoginPage } from './routes/LoginPage';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
@@ -162,6 +166,17 @@ export function App() {
                       }
                     />
                     <Route
+                      path="companies/new"
+                      element={
+                        <RouteGuard
+                          requireScope="company:create"
+                          sessionStateOverride={state}
+                        >
+                          <CompanyCreateView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
                       path="companies/:companyId"
                       element={
                         <RouteGuard
@@ -169,6 +184,39 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <CompanyDetailView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="companies/:companyId/edit"
+                      element={
+                        <RouteGuard
+                          requireScope="company:edit"
+                          sessionStateOverride={state}
+                        >
+                          <CompanyEditView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="companies/:companyId/contacts/new"
+                      element={
+                        <RouteGuard
+                          requireScope="contact:create"
+                          sessionStateOverride={state}
+                        >
+                          <ContactCreateView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="contacts/:contactId/edit"
+                      element={
+                        <RouteGuard
+                          requireScope="contact:edit"
+                          sessionStateOverride={state}
+                        >
+                          <ContactEditView />
                         </RouteGuard>
                       }
                     />

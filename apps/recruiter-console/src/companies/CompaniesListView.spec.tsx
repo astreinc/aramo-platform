@@ -2,12 +2,24 @@ import type { ReactElement } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Session } from '@aramo/fe-foundation';
 
 import { CompaniesListView } from './CompaniesListView';
 import type { CompanyView } from './types';
 
 function renderInRouter(ui: ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
+function makeSession(scopes: string[]): Session {
+  return {
+    sub: 'u1',
+    consumer_type: 'recruiter',
+    tenant_id: 't',
+    scopes,
+    iat: 0,
+    exp: 0,
+  };
 }
 
 function makeCompany(
@@ -41,21 +53,28 @@ function makeCompany(
   };
 }
 
+// R6' — view now does a session probe via useSession() alongside the
+// LIST fetch. `mockResolvedValue(new Response(...))` returns the SAME
+// Response (body read-once); the second fetch consumes an already-read
+// body and the items vanish. mockImplementation yields a fresh Response
+// per call (R4 lesson, applied here).
 function mockFetch(items: readonly CompanyView[], status = 200) {
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response(JSON.stringify({ items }), {
-      status,
-      headers: { 'Content-Type': 'application/json' },
-    }),
+  vi.spyOn(globalThis, 'fetch').mockImplementation(
+    async () =>
+      new Response(JSON.stringify({ items }), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
   );
 }
 
 function mockFetchError(status: number) {
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response(JSON.stringify({ message: 'forbidden' }), {
-      status,
-      headers: { 'Content-Type': 'application/json' },
-    }),
+  vi.spyOn(globalThis, 'fetch').mockImplementation(
+    async () =>
+      new Response(JSON.stringify({ message: 'forbidden' }), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
   );
 }
 
@@ -157,5 +176,33 @@ describe('CompaniesListView', () => {
     );
     const link = screen.getByRole('link', { name: 'Acme Corp' });
     expect(link).toHaveAttribute('href', '/companies/co-42');
+  });
+
+  // R6' — the LIST CTA (scope-gated).
+  it('renders "+ New company" when the session holds company:create', async () => {
+    mockFetch([]);
+    renderInRouter(
+      <CompaniesListView sessionOverride={makeSession(['company:create'])} />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(/no companies visible to you yet/i),
+      ).toBeInTheDocument(),
+    );
+    const link = screen.getByRole('link', { name: /\+ new company/i });
+    expect(link).toHaveAttribute('href', '/companies/new');
+  });
+
+  it('hides "+ New company" when company:create is absent', async () => {
+    mockFetch([]);
+    renderInRouter(
+      <CompaniesListView sessionOverride={makeSession(['company:read'])} />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(/no companies visible to you yet/i),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('link', { name: /\+ new company/i })).toBeNull();
   });
 });

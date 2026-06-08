@@ -4,6 +4,9 @@ import {
   InlineAlert,
   PageHeader,
   Table,
+  hasScope,
+  useSession,
+  type Session,
   type TableColumn,
 } from '@aramo/fe-foundation';
 
@@ -82,10 +85,27 @@ const columns: ReadonlyArray<TableColumn<CompanyView>> = [
   },
 ];
 
-export function CompaniesListView() {
+interface CompaniesListViewProps {
+  // R4-style test seam — pass a fixed session so the "+ New company"
+  // gate is exercisable in tests without mounting the real session hook.
+  readonly sessionOverride?: Session;
+}
+
+export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = {}) {
   const [items, setItems] = useState<readonly CompanyView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const sessionState = useSession();
+  const session: Session | null =
+    sessionOverride ??
+    (sessionState.status === 'authenticated' ? sessionState.session : null);
+  // Defensive: a global fetch mock for the LIST endpoint can leak into
+  // the session probe in tests. Guard so an unparseable session can't
+  // crash render (R4 RequisitionsListView precedent).
+  const canCreate =
+    session !== null &&
+    Array.isArray(session.scopes) &&
+    hasScope(session, 'company:create');
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +133,13 @@ export function CompaniesListView() {
         title="Companies"
         description="Your visible clients — the companies you can see through assignments, reports, or pod-client teams."
       />
+      <div className="companies-list__toolbar">
+        {canCreate ? (
+          <Link to="/companies/new" className="companies-list__new-link">
+            + New company
+          </Link>
+        ) : null}
+      </div>
       {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
       {loading ? (
         <p>Loading companies…</p>

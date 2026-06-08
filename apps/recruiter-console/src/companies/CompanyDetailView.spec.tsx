@@ -391,4 +391,96 @@ describe('CompanyDetailView', () => {
       ).toBeInTheDocument(),
     );
   });
+
+  // R6' — the edit affordances (scope-gated).
+  it('renders an "Edit" link on Profile when company:edit is granted', async () => {
+    installFetch({ '/v1/companies/co-1': makeCompany() });
+    renderAt(
+      '/companies/co-1',
+      makeSession(['company:read', 'company:edit']),
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+    );
+    const editLink = screen.getByRole('link', { name: 'Edit' });
+    expect(editLink).toHaveAttribute('href', '/companies/co-1/edit');
+  });
+
+  it('hides the Profile "Edit" link when company:edit is absent', async () => {
+    installFetch({ '/v1/companies/co-1': makeCompany() });
+    renderAt('/companies/co-1', makeSession(['company:read']));
+    await waitFor(() =>
+      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('link', { name: 'Edit' })).toBeNull();
+  });
+
+  it('Contacts tab renders "+ New contact" when contact:create is granted', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany(),
+      '/v1/contacts': { items: [] },
+    });
+    renderAt(
+      '/companies/co-1',
+      makeSession(['company:read', 'contact:read', 'contact:create']),
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Contacts' }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(/no contacts for this company yet/i),
+      ).toBeInTheDocument(),
+    );
+    const newLink = screen.getByRole('link', { name: /\+ new contact/i });
+    expect(newLink).toHaveAttribute(
+      'href',
+      '/companies/co-1/contacts/new',
+    );
+  });
+
+  it('Contacts tab renders per-row "Edit" links when contact:edit is granted', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany(),
+      '/v1/contacts': {
+        items: [makeContact('ct-1', 'Jane', 'Doe', { title: 'CTO' })],
+      },
+    });
+    renderAt(
+      '/companies/co-1',
+      makeSession(['company:read', 'contact:read', 'contact:edit']),
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Contacts' }));
+    await waitFor(() =>
+      expect(screen.getByText('Jane Doe')).toBeInTheDocument(),
+    );
+    const editLink = screen.getByRole('link', { name: 'Edit' });
+    expect(editLink).toHaveAttribute('href', '/contacts/ct-1/edit');
+  });
+
+  it('Contacts tab hides "+ New contact" and per-row "Edit" when their scopes are absent', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany(),
+      '/v1/contacts': {
+        items: [makeContact('ct-1', 'Jane', 'Doe')],
+      },
+    });
+    renderAt(
+      '/companies/co-1',
+      makeSession(['company:read', 'contact:read']),
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Contacts' }));
+    await waitFor(() =>
+      expect(screen.getByText('Jane Doe')).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('link', { name: /\+ new contact/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Edit' })).toBeNull();
+  });
 });

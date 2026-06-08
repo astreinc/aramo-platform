@@ -65,3 +65,56 @@ export interface ContactView {
 export interface ContactListResponse {
   readonly items: readonly ContactView[];
 }
+
+// R6' — hand-mirrored CREATE/PATCH request shapes.
+// Source: libs/company/src/lib/dto/create-company-request.dto.ts
+//       + libs/company/src/lib/dto/update-company-request.dto.ts
+// Flat-fields hand-mirror (no drift spec — rule of three: that pattern
+// is for mirrored LOGIC, not flat DTO field lists).
+//
+// Tiered field set (ruling A): name + most-used inline; the address
+// block / secondary phones / fax behind the form's "More fields" collapse.
+// The DTO accepts all fields uniformly — tiering is a UX concern only.
+//
+// billing_contact_id (ruling B): the DTO accepts it on CREATE, but
+// the form omits it on CREATE (chicken-and-egg: a new company has no
+// contacts yet). EDIT-only.
+//
+// owner_id (ruling F): no GET /v1/users:assignable endpoint today —
+// the form does not surface a picker. Server defaults owner_id to
+// entered_by_id (the creating recruiter).
+export interface CreateCompanyRequest {
+  readonly name: string;
+  readonly address?: string;
+  readonly address2?: string;
+  readonly city?: string;
+  readonly state?: string;
+  readonly zip?: string;
+  readonly phone1?: string;
+  readonly phone2?: string;
+  readonly fax_number?: string;
+  readonly url?: string;
+  readonly key_technologies?: string;
+  readonly notes?: string;
+  readonly is_hot?: boolean;
+}
+
+// PATCH semantics: omit=unchanged; null=clear. Same shape as R4's
+// UpdateRequisitionRequest + R5's UpdateTalentRecordRequest. name
+// stays non-nullable (required field; PATCH may rename but not clear).
+export interface UpdateCompanyRequest {
+  readonly name?: string;
+  readonly address?: string | null;
+  readonly address2?: string | null;
+  readonly city?: string | null;
+  readonly state?: string | null;
+  readonly zip?: string | null;
+  readonly phone1?: string | null;
+  readonly phone2?: string | null;
+  readonly fax_number?: string | null;
+  readonly url?: string | null;
+  readonly key_technologies?: string | null;
+  readonly notes?: string | null;
+  readonly is_hot?: boolean;
+  readonly billing_contact_id?: string | null;
+}
