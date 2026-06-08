@@ -4,6 +4,8 @@ import type {
   CompanyListResponse,
   CompanyView,
   ContactListResponse,
+  CreateCompanyRequest,
+  UpdateCompanyRequest,
 } from './types';
 
 // The companies LIST is the D4b-VISIBILITY-RESOLVED surface: the BE
@@ -35,5 +37,25 @@ export async function listContactsForCompany(
   const params = new URLSearchParams({ company_id: companyId });
   return apiClient.get<ContactListResponse>(
     `/v1/contacts?${params.toString()}`,
+  );
+}
+
+// R6' — company mutate. Both endpoints scope-gated server-side: POST
+// requires company:create; PATCH requires company:edit. The recruiter
+// role-bundle holds both (libs/identity/prisma/seed.ts ROLE_SCOPE_
+// ASSIGNMENTS recruiter block — Gate-5 confirmed).
+export async function createCompany(
+  body: CreateCompanyRequest,
+): Promise<CompanyView> {
+  return apiClient.post<CompanyView>('/v1/companies', body);
+}
+
+export async function updateCompany(
+  id: string,
+  body: UpdateCompanyRequest,
+): Promise<CompanyView> {
+  return apiClient.patch<CompanyView>(
+    `/v1/companies/${encodeURIComponent(id)}`,
+    body,
   );
 }

@@ -4,6 +4,7 @@ import {
   Card,
   InlineAlert,
   PageHeader,
+  hasScope,
   useSession,
   type Session,
 } from '@aramo/fe-foundation';
@@ -127,18 +128,29 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
   if (company === null || session === null) return null;
 
   const scopes = session.scopes;
+  const canEditCompany = hasScope(session, 'company:edit');
+  const canCreateContact = hasScope(session, 'contact:create');
+  const canEditContact = hasScope(session, 'contact:edit');
   const tabs: TabItem[] = [
     {
       id: 'profile',
       label: 'Profile',
-      content: <ProfilePanel company={company} />,
+      content: (
+        <ProfilePanel company={company} canEdit={canEditCompany} />
+      ),
     },
   ];
   if (scopes.includes('contact:read')) {
     tabs.push({
       id: 'contacts',
       label: 'Contacts',
-      content: <ContactsPanel companyId={company.id} />,
+      content: (
+        <ContactsPanel
+          companyId={company.id}
+          canCreate={canCreateContact}
+          canEdit={canEditContact}
+        />
+      ),
     });
   }
   if (scopes.includes('requisition:read')) {
@@ -170,9 +182,25 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
   );
 }
 
-function ProfilePanel({ company }: { company: CompanyView }) {
+function ProfilePanel({
+  company,
+  canEdit,
+}: {
+  company: CompanyView;
+  canEdit: boolean;
+}) {
   return (
     <Card>
+      {canEdit ? (
+        <div className="detail__actions">
+          <Link
+            to={`/companies/${company.id}/edit`}
+            className="detail__edit-link"
+          >
+            Edit
+          </Link>
+        </div>
+      ) : null}
       <dl className="detail__meta">
         <div>
           <dt>Location</dt>
@@ -205,7 +233,15 @@ function ProfilePanel({ company }: { company: CompanyView }) {
   );
 }
 
-function ContactsPanel({ companyId }: { companyId: string }) {
+function ContactsPanel({
+  companyId,
+  canCreate,
+  canEdit,
+}: {
+  companyId: string;
+  canCreate: boolean;
+  canEdit: boolean;
+}) {
   const [items, setItems] = useState<readonly ContactView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -230,20 +266,40 @@ function ContactsPanel({ companyId }: { companyId: string }) {
 
   if (loading) return <p>Loading contacts…</p>;
   if (error !== null) return <InlineAlert variant="error">{error}</InlineAlert>;
-  if (items.length === 0) {
-    return <p>No contacts for this company yet.</p>;
-  }
+
   return (
-    <ul className="detail__list">
-      {items.map((c) => (
-        <li key={c.id}>
-          <strong>{fullContactName(c)}</strong>
-          {c.title !== null && c.title !== '' ? ` · ${c.title}` : ''}
-          {c.email1 !== null && c.email1 !== '' ? ` · ${c.email1}` : ''}
-          {c.left_company ? ' · (left company)' : ''}
-        </li>
-      ))}
-    </ul>
+    <div>
+      {canCreate ? (
+        <div className="detail__actions">
+          <Link
+            to={`/companies/${companyId}/contacts/new`}
+            className="detail__new-link"
+          >
+            + New contact
+          </Link>
+        </div>
+      ) : null}
+      {items.length === 0 ? (
+        <p>No contacts for this company yet.</p>
+      ) : (
+        <ul className="detail__list">
+          {items.map((c) => (
+            <li key={c.id}>
+              <strong>{fullContactName(c)}</strong>
+              {c.title !== null && c.title !== '' ? ` · ${c.title}` : ''}
+              {c.email1 !== null && c.email1 !== '' ? ` · ${c.email1}` : ''}
+              {c.left_company ? ' · (left company)' : ''}
+              {canEdit ? (
+                <>
+                  {' · '}
+                  <Link to={`/contacts/${c.id}/edit`}>Edit</Link>
+                </>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
