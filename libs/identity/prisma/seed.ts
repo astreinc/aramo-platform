@@ -179,6 +179,13 @@ export const SEED_IDS = {
     // IN-SERVICE at the requisition repository write methods.
     'compensation:edit:pay': '01900000-0000-7000-8000-000000000096',
     'compensation:edit:bill': '01900000-0000-7000-8000-000000000097',
+    // Reporting-Scope-Seed — 2 reporting:* scopes (continue the 0x90
+    // range: 0x98, 0x99). Operational reads of the PR-A7 ATS-internal
+    // dashboard + per-metric routes. Granted to the 8 OPERATIONAL roles
+    // via REPORTING_SEED_BUNDLES; auditor-tier deferred to the
+    // Reporting/Audit DDR (Ruling B-iii).
+    'dashboard:read': '01900000-0000-7000-8000-000000000098',
+    'report:read': '01900000-0000-7000-8000-000000000099',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -614,8 +621,11 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
 //   - sourcer: intake-focused; NO :delete, NO submittal.
 //   - finance: offer-approval surface; compensation visibility is D5.
 //     Renamed from finance_hr (KEY rename; bundle preserved verbatim).
-//   - auditor: Lead exact set (5 read scopes). report:read + audit-log:read
-//     gap-and-noted — deferred to the Reporting/Audit DDR.
+//   - auditor: Lead exact set (5 read scopes). report:read seeded by
+//     Reporting-Scope-Seed (granted to the 8 OPERATIONAL roles, per
+//     Amendment v1.1 Ruling B-iii); the AUDITOR-tier report:read +
+//     audit-log:read remain gap-and-noted — deferred to the un-authored
+//     Reporting/Audit DDR.
 //   - recruiting_manager: Recruiter's 31 + tenant:admin:user-manage; NO
 //     requisition:assign (RM manages PEOPLE; assign is the AM's act,
 //     which keeps RM and AM functionally distinct). Broader visibility
@@ -691,7 +701,10 @@ const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
     'talent:read', 'requisition:read', 'submittal:approve',
     'activity:read', 'activity:create',
   ]],
-  // auditor — 5 scopes (Lead exact set; report:read + audit-log:read deferred).
+  // auditor — 5 scopes (Lead exact set; AUDITOR-tier report:read +
+  // audit-log:read deferred to the Reporting/Audit DDR — note:
+  // report:read is seeded for the 8 OPERATIONAL roles via
+  // REPORTING_SEED_BUNDLES, NOT for the auditor tier).
   ['auditor', [
     'auth:session:read',
     'consent:decision-log:read',
@@ -968,6 +981,61 @@ const D5_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Reporting-Scope-Seed — operational reporting reads (Amendment v1.1
+// Rulings B-iii + C + D). Closes the PR-A7 gap-and-note: GET /v1/dashboard
+// + the 4 GET /v1/reports/* routes were built with @RequireScopes guards
+// on dashboard:read / report:read, but the two scopes were never seeded —
+// every JWT 403'd on the reporting surface (R1 dropped the recruiter-home
+// dashboard for this reason and filed a carry).
+//
+// 8 operational roles × 2 scopes = 16 grants at a FRESH 0x600+
+// deterministic sub-range. APPEND-DON'T-RENUMBER: the AUTHZ1_BUNDLES
+// (0x400+) and D5 (0x500+) ranges stay untouched. Iteration order pins
+// the assignment, so a given (role, scope) pair always produces the same
+// UUID on every seed run. DO NOT REORDER without bumping the offset to a
+// fresh range.
+//
+// AUDITOR / auditor_with_financials NOT in this list — the auditor-tier
+// compliance-read surface (report:read at the auditor tier + audit-log:read)
+// is deferred to the un-authored Reporting/Audit DDR. Sourcer + finance
+// also OUT: sourcer is intake-focused (the dashboard is the recruiter-home);
+// finance has requisition:read but NOT pipeline:read (the pipeline rollup
+// isn't in its scope).
+//
+// The derivation rule: grant to the roles that hold the requisition +
+// pipeline read scopes the rollups derive from. The A3/D4b composed-
+// visibility predicate in ReportingService then governs WHAT each role
+// SEES once through the gate — the seed grants ACCESS, not visibility.
+const REPORTING_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_owner', ['dashboard:read', 'report:read']],
+  ['tenant_admin', ['dashboard:read', 'report:read']],
+  ['account_manager', ['dashboard:read', 'report:read']],
+  ['recruiting_manager', ['dashboard:read', 'report:read']],
+  ['recruiter', ['dashboard:read', 'report:read']],
+  ['lead_recruiter', ['dashboard:read', 'report:read']],
+  ['back_office', ['dashboard:read', 'report:read']],
+  ['delivery_manager', ['dashboard:read', 'report:read']],
+];
+
+// Reporting-Scope-Seed — deterministic RoleScope row IDs for the 16
+// reporting-bundle grants above. Disjoint range starting at 0x600
+// (AUTHZ-1's 0x400+ range and AUTHZ-D5's 0x500+ range stay untouched —
+// no shift to existing RoleScope.id assignments). The (role, scope)
+// iteration order in REPORTING_SEED_BUNDLES pins the assignment, so a
+// given pair always produces the same UUID on every seed run.
+const REPORTING_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x600;
+  for (const [role, scopes] of REPORTING_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -1156,6 +1224,12 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   // margin:%) gate read-only DERIVED fields — no writeable surface.
   await upsertScope(prisma, SEED_IDS.scopes['compensation:edit:pay'], 'compensation:edit:pay', 'Write pay_rate_* + salary_* on a requisition (candidate-economics author; recruiter / RM / LR / back_office + TA + TO; NOT grantable together with any compensation:view:spread:* — D-AUTHZ-COMP-WRITE-1 view∪edit invariant: writing pay + reading spread reconstructs bill)');
   await upsertScope(prisma, SEED_IDS.scopes['compensation:edit:bill'], 'compensation:edit:bill', 'Write bill_rate_* + placement_fee_* on a requisition (agency-economics author; account_manager + TA + TO)');
+  // Reporting-Scope-Seed — 2 reporting:* scopes (close the PR-A7
+  // gap-and-note: dashboard.controller.ts:28). Description copy per
+  // Amendment v1.1 Ruling E (the ATS-internal seam-exclusion is explicit
+  // in the dashboard:read description).
+  await upsertScope(prisma, SEED_IDS.scopes['dashboard:read'], 'dashboard:read', 'Read the ATS-internal dashboard composition (tenant counts, requisition/pipeline rollups, ATS-internal placement count, upcoming events, recent activity). ATS-domain only; no Core/examination read.');
+  await upsertScope(prisma, SEED_IDS.scopes['report:read'], 'report:read', 'Read per-metric ATS-internal reports (tenant-counts, requisition-rollup, pipeline-rollup, placement-count).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -1204,6 +1278,27 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
       const rsId = D5_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`AUTHZ-D5: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // 7d. Reporting-Scope-Seed RoleScope assignments — 16 rows (8 roles ×
+  // 2 scopes) per REPORTING_SEED_BUNDLES. UUID range 0x600+ (disjoint
+  // from the 0x30-0x3xx trio range, AUTHZ-1's 0x400+, AUTHZ-D5's 0x500+
+  // — no shift to existing RoleScope.id assignments). Closes the R1
+  // dashboard:read carry and the PR-A7 reporting-scope gap-and-note.
+  for (const [roleKey, scopeKeys] of REPORTING_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = REPORTING_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`Reporting-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

@@ -126,6 +126,18 @@ export const SEED_SCOPE_KEYS = [
   // margin:%) gate read-only DERIVED fields — no writeable surface.
   'compensation:edit:pay',              // recruiter / RM / LR / back_office / TA + TO (mirrors view:pay's writeable subset)
   'compensation:edit:bill',             // account_manager + TA + TO (mirrors view:bill's writeable subset; AM is the agency-economics author)
+  // Reporting-Scope-Seed — 2 reporting:* scopes (PR-A7 gap-and-note
+  // closure). dashboard:read gates GET /v1/dashboard (the ATS-internal
+  // composition route); report:read gates the 4 GET /v1/reports/*
+  // per-metric routes. ATS-internal-only by design (libs/reporting
+  // seam-exclusion: includes_core_submittal_placements: false). Granted
+  // to the 8 OPERATIONAL roles only (TA / TO / AM / RM / recruiter[floor]
+  // / LR / BO / DM). NOT granted to auditor / auditor_with_financials —
+  // the auditor-tier compliance-read surface (report:read at the
+  // auditor tier + audit-log:read) is deferred to the un-authored
+  // Reporting/Audit DDR (Reporting-Scope-Seed v1.1 Ruling B-iii).
+  'dashboard:read',                     // 8 operational roles (recruiter floor; tenant_admin/owner/AM/RM/LR/BO/DM)
+  'report:read',                        // 8 operational roles (mirrors dashboard:read; auditor-tier deferred to Reporting/Audit DDR)
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

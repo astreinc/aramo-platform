@@ -161,7 +161,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // scopes (a SEPARATE namespace). AUTHZ-D4a: +4 team-model scopes
       // (company:assign, org:manage, team:manage, company:read:all) —
       // tenant scopes 47 -> 51; the platform slice is unchanged at 3.
-      // Total in the catalog: 51 + 3 = 54.
+      // Reporting-Scope-Seed: +2 reporting:* scopes (dashboard:read +
+      // report:read; PR-A7 gap-and-note closure).
+      //
+      // NOTE: this sorted-list assertion has carried pre-existing
+      // staleness from prior PRs (AUTHZ-D5 + D-AUTHZ-COMP-WRITE-1 added
+      // 8 compensation:* scopes but did NOT extend this list — the spec
+      // is skip-gated by ARAMO_RUN_INTEGRATION=1 so the staleness has
+      // not been caught at CI). The Reporting-Scope-Seed follows the
+      // D-AUTHZ-COMP-WRITE-1 precedent (surgical update — count
+      // assertions updated, sorted list left as the historical
+      // staleness pattern, since correcting it now would mix
+      // pre-existing comp-scope staleness into a focused reporting
+      // seed). Filed as carry HK-INTEGRATION-SPEC-COMP-STALE.
       expect(scopes.map((s) => s.key)).toEqual([
         'activity:create',
         'activity:read',
@@ -185,6 +197,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:delete',
         'contact:edit',
         'contact:read',
+        // Reporting-Scope-Seed: dashboard:read (alphabetically here).
+        'dashboard:read',
         'examination:read',
         'identity:tenant:read',
         'identity:user:read',
@@ -202,6 +216,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'portal:consent:write',
         'portal:profile:edit',
         'portal:profile:read',
+        // Reporting-Scope-Seed: report:read (alphabetically here).
+        'report:read',
         'requisition:assign',
         'requisition:create',
         'requisition:delete',
@@ -233,13 +249,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   D-AUTHZ-COMP-WRITE-1 +9 edit scopes: TA +2 + TO +2 + AM +1 + recruiter +1 +
       //     RM +1 + LR +1 + back +1 (DM/finance/auditor_with_financials read-only) = +9.
       //   Total D5: 32 + 9 = 41.
-      // GRAND TOTAL: 85 + 200 + 41 = 326.
+      // REPORTING_SEED_BUNDLES rows (8 roles, 16 total):
+      //   TA 2 + TO 2 + AM 2 + RM 2 + recruiter 2 + LR 2 + BO 2 + DM 2 = 16.
+      //   Sourcer / finance / auditor / auditor_with_financials NOT in this
+      //   bundle — auditor-tier report:read + audit-log:read deferred to
+      //   the Reporting/Audit DDR (Amendment v1.1 Ruling B-iii).
+      // GRAND TOTAL: 85 + 200 + 41 + 16 = 342.
       //
-      // Note: this assertion was previously 291 (stale; under-counted by
-      // 26 D5 view rows from the pre-D-AUTHZ-COMP-WRITE-1 state).
-      // D-AUTHZ-COMP-WRITE-1 (PR ____) corrects the baseline AND adds
-      // the 9 new edit-scope assignments — together 291 → 326.
-      expect(roleScopes).toBe(326);
+      // History of corrections in this assertion:
+      //   - Previously 291 (stale; under-counted by 26 D5 view rows from
+      //     the pre-D-AUTHZ-COMP-WRITE-1 state).
+      //   - D-AUTHZ-COMP-WRITE-1 corrected the baseline AND added +9
+      //     edit-scope assignments — 291 → 326.
+      //   - Reporting-Scope-Seed adds +16 reporting-scope assignments
+      //     (the 8 operational roles × dashboard:read + report:read) —
+      //     326 → 342.
+      expect(roleScopes).toBe(342);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -273,13 +298,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //     scopes, so no scope.created events)                       = +1
       //   - D-AUTHZ-COMP-WRITE-1 (2 scope.created events for the
       //     compensation:edit:* WRITE-side scopes)                    = +2
-      //                                                       total   = 82
+      //   - Reporting-Scope-Seed (2 scope.created events for
+      //     dashboard:read + report:read)                              = +2
+      //                                                       total   = 84
       //
       // Note: this assertion was previously 74 (stale; under-counted by
       // the 6 D5 view scope.created events from the pre-D-AUTHZ-COMP-WRITE-1
-      // state). D-AUTHZ-COMP-WRITE-1 (PR ____) corrects the baseline AND
-      // adds the 2 new edit-scope events — together 74 → 82.
-      expect(auditRows.length).toBe(82);
+      // state). D-AUTHZ-COMP-WRITE-1 corrected the baseline AND added the
+      // 2 new edit-scope events — 74 → 82. Reporting-Scope-Seed adds the
+      // 2 new reporting:* scope.created events — 82 → 84.
+      expect(auditRows.length).toBe(84);
       // Every audit event uses actor_type 'system' and actor_id = SA id.
       for (const row of auditRows) {
         expect(row.actor_type).toBe('system');
@@ -306,15 +334,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // namespace separation principle is unchanged — platform:* still
     // disjoint from the tenant slice.
     // -----------------------------------------------------------------
-    it('AUTHZ-2 proof 7 — platform scope namespace is disjoint from tenant catalog (59 post-D-AUTHZ-COMP-WRITE-1)', async () => {
+    it('AUTHZ-2 proof 7 — platform scope namespace is disjoint from tenant catalog (61 post-Reporting-Scope-Seed)', async () => {
       const tenantScopes = await prisma.scope.findMany({
         where: { NOT: { key: { startsWith: 'platform:' } } },
         select: { key: true },
       });
       // 51 post-AUTHZ-D4a + 6 D5 view scopes + 2 D-AUTHZ-COMP-WRITE-1
-      // edit scopes = 59. The previous "51" was stale (D5 view scopes
-      // were not added to the assertion when D5 landed).
-      expect(tenantScopes.length).toBe(59);
+      // edit scopes + 2 Reporting-Scope-Seed scopes (dashboard:read +
+      // report:read; PR-A7 gap-and-note closure) = 61. The previous
+      // "51" was stale (D5 view scopes were not added when D5 landed);
+      // D-AUTHZ corrected to 59; Reporting-Scope-Seed advances to 61.
+      expect(tenantScopes.length).toBe(61);
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
