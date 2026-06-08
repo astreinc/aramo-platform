@@ -198,6 +198,9 @@ export class ImportController {
       tenant_id: authContext.tenant_id,
       imported_by_id: authContext.sub,
       input: body,
+      // D-AUTHZ-COMP-WRITE-1 — thread the initiating actor's scopes
+      // through to per-target createForImport gates (ruling 3).
+      scopes: authContext.scopes,
       requestId,
     });
   }

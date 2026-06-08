@@ -174,6 +174,11 @@ export const SEED_IDS = {
     'compensation:view:spread:amount': '01900000-0000-7000-8000-000000000093',
     'compensation:view:spread:percent': '01900000-0000-7000-8000-000000000094',
     'compensation:view:margin:percent': '01900000-0000-7000-8000-000000000095',
+    // D-AUTHZ-COMP-WRITE-1 — 2 compensation:edit:* scopes (continue the
+    // D5 0x90 range: 0x96, 0x97). The WRITE-side floor scopes; enforced
+    // IN-SERVICE at the requisition repository write methods.
+    'compensation:edit:pay': '01900000-0000-7000-8000-000000000096',
+    'compensation:edit:bill': '01900000-0000-7000-8000-000000000097',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -384,6 +389,11 @@ export const SEED_IDS = {
     // auditor_with_financials seed role. No new scope.created events
     // (S4 grants via existing comp scopes — Path B).
     role_auditor_with_financials_created: '01900000-0000-7000-8000-000000000240',
+    // D-AUTHZ-COMP-WRITE-1 — 2 identity.scope.created audit events for
+    // the compensation:edit:* scopes (continue the 0x240 audit range:
+    // 0x241, 0x242). Emitted via A1A2_NEW_SCOPES manifest below.
+    scope_compensation_edit_pay_created: '01900000-0000-7000-8000-000000000241',
+    scope_compensation_edit_bill_created: '01900000-0000-7000-8000-000000000242',
   },
 } as const;
 
@@ -829,6 +839,21 @@ const AUTHZ1_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // Roles with NO comp scopes (sourcer, auditor, candidate, super_admin)
 // are absent from this table — the field-masking interceptor omits
 // every comp field for them.
+// D-AUTHZ-COMP-WRITE-1 — bundle extension (ruling 7): grant edit ONLY
+// where the role authors that compensation data:
+//   - see-all tier (TA / TO) + edit:pay + edit:bill (writes everything).
+//   - recruiter / recruiting_manager / lead_recruiter / back_office +
+//     edit:pay (mirror view:pay; candidate-economics authors).
+//   - account_manager + edit:bill (mirror view:bill; agency-economics
+//     author; NO edit:pay — preserves the soft-derivation read-side
+//     symmetry on the write side).
+//   - delivery_manager / finance / auditor_with_financials — NO edit
+//     scopes (read-only/review/audit roles; least-privilege + SoD —
+//     an audit role writing what it audits is a separation-of-duties
+//     violation). If a workflow emerges later that demands write, add
+//     it deliberately with that workflow, not speculatively.
+//   - sourcer / candidate / super_admin / auditor — absent from the
+//     table (no comp surface).
 export const D5_COMPENSATION_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   // see-all tier (TA + TO) — every comp scope. Mirrors the requisition:read:all
   // pattern at D4b: top-tier roles see everything; operational tiers get the
@@ -840,6 +865,9 @@ export const D5_COMPENSATION_BUNDLES: ReadonlyArray<readonly [string, readonly s
     'compensation:view:spread:amount',
     'compensation:view:spread:percent',
     'compensation:view:margin:percent',
+    // D-AUTHZ-COMP-WRITE-1 — see-all writes everything.
+    'compensation:edit:pay',
+    'compensation:edit:bill',
   ]],
   ['tenant_owner', [
     'compensation:view:pay',
@@ -848,27 +876,37 @@ export const D5_COMPENSATION_BUNDLES: ReadonlyArray<readonly [string, readonly s
     'compensation:view:spread:amount',
     'compensation:view:spread:percent',
     'compensation:view:margin:percent',
+    'compensation:edit:pay',
+    'compensation:edit:bill',
   ]],
   // account_manager — agency-economics side. bill + fee + the two
   // percent spread views + revenue. NO view:pay (the invariant holds);
   // pay is derivable from bill − margin (the soft-boundary, by design).
+  // D-AUTHZ-COMP-WRITE-1: + edit:bill (AM is the agency-economics author;
+  // mirrors view:bill). NO edit:pay — preserves the soft-derivation
+  // read-side symmetry on the write side.
   ['account_manager', [
     'compensation:view:bill',
     'compensation:view:revenue',
     'compensation:view:spread:percent',
     'compensation:view:margin:percent',
+    'compensation:edit:bill',
   ]],
   // recruiter / recruiting_manager / lead_recruiter — candidate-economics
   // side. pay + salary. NO spread scopes (the invariant holds).
-  ['recruiter', ['compensation:view:pay']],
-  ['recruiting_manager', ['compensation:view:pay']],
-  ['lead_recruiter', ['compensation:view:pay']],
+  // D-AUTHZ-COMP-WRITE-1: + edit:pay (the candidate-economics authors).
+  ['recruiter', ['compensation:view:pay', 'compensation:edit:pay']],
+  ['recruiting_manager', ['compensation:view:pay', 'compensation:edit:pay']],
+  ['lead_recruiter', ['compensation:view:pay', 'compensation:edit:pay']],
   // back_office — operational pay visibility (onboarding / payroll-facing).
   // Same shape as recruiter for the matrix; no spread.
-  ['back_office', ['compensation:view:pay']],
+  // D-AUTHZ-COMP-WRITE-1: + edit:pay (payroll-facing write surface).
+  ['back_office', ['compensation:view:pay', 'compensation:edit:pay']],
   // delivery_manager — fulfillment-economics. All spread + margin views +
   // revenue. NO view:pay (the invariant holds); pay is derivable by the
   // same soft-boundary as AM (intended).
+  // D-AUTHZ-COMP-WRITE-1: NO edit scopes (read-only review role; a
+  // separate write workflow would add it deliberately).
   ['delivery_manager', [
     'compensation:view:revenue',
     'compensation:view:spread:amount',
@@ -878,6 +916,7 @@ export const D5_COMPENSATION_BUNDLES: ReadonlyArray<readonly [string, readonly s
   // finance — offer-approval / margin-reporting surface. margin% + revenue.
   // NO view:pay (the invariant holds); narrower than AM by design (Finance
   // sees the headline ratio + the revenue, NOT the spread itself).
+  // D-AUTHZ-COMP-WRITE-1: NO edit scopes (read-only offer-approval role).
   ['finance', [
     'compensation:view:revenue',
     'compensation:view:margin:percent',
@@ -899,6 +938,8 @@ export const D5_COMPENSATION_BUNDLES: ReadonlyArray<readonly [string, readonly s
   // KNOWN_SETTING via the S4 GATE precondition at the role-assign path
   // (TenantUserLifecycleService.assignTenantUserRoles); the SEED of the
   // role itself is unconditional.
+  // D-AUTHZ-COMP-WRITE-1: NO edit scopes — an audit role writing what it
+  // audits is a separation-of-duties violation. Read-only.
   ['auditor_with_financials', [
     'compensation:view:pay',
     'compensation:view:bill',
@@ -1107,6 +1148,14 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['compensation:view:spread:amount'], 'compensation:view:spread:amount', 'View margin_amount on the requisition read (the $ spread; delivery_manager + TA + TO; NOT grantable together with view:pay — D5 enforced invariant)');
   await upsertScope(prisma, SEED_IDS.scopes['compensation:view:spread:percent'], 'compensation:view:spread:percent', 'View markup_percent on the requisition read (account_manager + delivery_manager + TA + TO; NOT grantable together with view:pay)');
   await upsertScope(prisma, SEED_IDS.scopes['compensation:view:margin:percent'], 'compensation:view:margin:percent', 'View margin_percent on the requisition read (account_manager + finance + delivery_manager + TA + TO; NOT grantable together with view:pay)');
+  // D-AUTHZ-COMP-WRITE-1 — 2 compensation:edit:* scopes (the WRITE-side
+  // floor; closes the D5 write-path circumvention). Enforced IN-SERVICE
+  // at the requisition repository (create / update / createForImport)
+  // BEFORE the Prisma write + BEFORE audit. The minimum-coherent write
+  // set: the 4 derived/subset view scopes (revenue / spread:* /
+  // margin:%) gate read-only DERIVED fields — no writeable surface.
+  await upsertScope(prisma, SEED_IDS.scopes['compensation:edit:pay'], 'compensation:edit:pay', 'Write pay_rate_* + salary_* on a requisition (candidate-economics author; recruiter / RM / LR / back_office + TA + TO; NOT grantable together with any compensation:view:spread:* — D-AUTHZ-COMP-WRITE-1 view∪edit invariant: writing pay + reading spread reconstructs bill)');
+  await upsertScope(prisma, SEED_IDS.scopes['compensation:edit:bill'], 'compensation:edit:bill', 'Write bill_rate_* + placement_fee_* on a requisition (agency-economics author; account_manager + TA + TO)');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -1514,6 +1563,10 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
     { audit_id: SEED_IDS.audit_events.scope_compensation_view_spread_amount_created, key: 'compensation:view:spread:amount' },
     { audit_id: SEED_IDS.audit_events.scope_compensation_view_spread_percent_created, key: 'compensation:view:spread:percent' },
     { audit_id: SEED_IDS.audit_events.scope_compensation_view_margin_percent_created, key: 'compensation:view:margin:percent' },
+    // D-AUTHZ-COMP-WRITE-1 — 2 new scope.created audit events for the
+    // compensation:edit:* WRITE-side scopes.
+    { audit_id: SEED_IDS.audit_events.scope_compensation_edit_pay_created, key: 'compensation:edit:pay' },
+    { audit_id: SEED_IDS.audit_events.scope_compensation_edit_bill_created, key: 'compensation:edit:bill' },
   ];
   for (const entry of A1A2_NEW_SCOPES) {
     const scope_id = (SEED_IDS.scopes as Record<string, string>)[entry.key];

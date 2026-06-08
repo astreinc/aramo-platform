@@ -1,5 +1,9 @@
 import {
+  COMPENSATION_EDIT_BILL,
+  COMPENSATION_EDIT_PAY,
+  COMPENSATION_EDIT_SCOPES,
   COMPENSATION_FIELD_KEYS,
+  COMPENSATION_SPREAD_SCOPES,
   COMPENSATION_VIEW_MARGIN_PERCENT,
   COMPENSATION_VIEW_PAY,
   COMPENSATION_VIEW_SCOPES,
@@ -48,8 +52,12 @@ describe('AUTHZ-D5 — THE ENFORCED INVARIANT (no role holds view:pay + any spre
     });
   }
 
-  it('every scope listed in any bundle is a recognised compensation:view:* scope', () => {
-    const known = new Set<string>(COMPENSATION_VIEW_SCOPES);
+  it('every scope listed in any bundle is a recognised compensation:view:* or compensation:edit:* scope', () => {
+    // D-AUTHZ-COMP-WRITE-1 — the bundle now carries view AND edit scopes.
+    const known = new Set<string>([
+      ...COMPENSATION_VIEW_SCOPES,
+      ...COMPENSATION_EDIT_SCOPES,
+    ]);
     for (const [role, scopes] of D5_COMPENSATION_BUNDLES) {
       for (const s of scopes) {
         expect(known.has(s), `${role} holds unknown comp scope ${s}`).toBe(true);
@@ -78,6 +86,78 @@ describe('AUTHZ-D5 — THE ENFORCED INVARIANT (no role holds view:pay + any spre
       expect(set.has(COMPENSATION_VIEW_SPREAD_AMOUNT), `${role}: pay + spread:amount`).toBe(false);
       expect(set.has(COMPENSATION_VIEW_SPREAD_PERCENT), `${role}: pay + spread:percent`).toBe(false);
       expect(set.has(COMPENSATION_VIEW_MARGIN_PERCENT), `${role}: pay + margin:percent`).toBe(false);
+    }
+  });
+
+  // D-AUTHZ-COMP-WRITE-1 — the view∪edit write-then-derive invariant
+  // applied to the operational tier (the see-all bypass set is exempt).
+  // No operational role holds compensation:edit:pay alongside any
+  // spread VIEW scope: a user that could WRITE a known pay value AND
+  // READ a spread view could derive the bill via spread arithmetic.
+  it('operational tiers never hold edit:pay alongside any spread VIEW scope', () => {
+    for (const [role, scopes] of D5_COMPENSATION_BUNDLES) {
+      if (SEE_ALL_ROLES.has(role)) continue;
+      const set = new Set(scopes);
+      if (!set.has(COMPENSATION_EDIT_PAY)) continue;
+      for (const spread of COMPENSATION_SPREAD_SCOPES) {
+        expect(
+          set.has(spread),
+          `${role} holds edit:pay AND ${spread} — write-then-derive channel`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  // D-AUTHZ-COMP-WRITE-1 — ruling 7 SoD: read-only/review/audit roles
+  // are absent from the edit-scope set. delivery_manager / finance read
+  // for review; auditor_with_financials reads for compliance. Granting
+  // them write would be a separation-of-duties violation. If a workflow
+  // emerges later that demands write, grant it deliberately with that
+  // workflow.
+  it('read-only / review / audit roles hold ZERO compensation:edit:* scopes', () => {
+    const readOnlyRoles = new Set(['delivery_manager', 'finance', 'auditor_with_financials']);
+    for (const [role, scopes] of D5_COMPENSATION_BUNDLES) {
+      if (!readOnlyRoles.has(role)) continue;
+      const set = new Set(scopes);
+      for (const editScope of COMPENSATION_EDIT_SCOPES) {
+        expect(
+          set.has(editScope),
+          `${role} (read-only/review/audit) holds ${editScope} — SoD violation`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  // D-AUTHZ-COMP-WRITE-1 — symmetry: every role that holds view:X
+  // ALSO holds edit:X (except the read-only/review/audit roles above).
+  // The writeable surface mirrors what the role authors.
+  it('roles that AUTHOR comp data hold edit:X paired with view:X (mirror property)', () => {
+    const authorRoles = new Set([
+      'tenant_admin',
+      'tenant_owner',
+      'recruiter',
+      'recruiting_manager',
+      'lead_recruiter',
+      'back_office',
+    ]);
+    for (const [role, scopes] of D5_COMPENSATION_BUNDLES) {
+      if (!authorRoles.has(role)) continue;
+      const set = new Set(scopes);
+      if (set.has(COMPENSATION_VIEW_PAY)) {
+        expect(
+          set.has(COMPENSATION_EDIT_PAY),
+          `${role} holds view:pay but missing edit:pay (mirror property)`,
+        ).toBe(true);
+      }
+    }
+    // account_manager: holds view:bill + edit:bill (not view:pay or
+    // edit:pay — agency-economics author, candidate-economics observer).
+    const am = D5_COMPENSATION_BUNDLES.find(([k]) => k === 'account_manager');
+    expect(am).toBeDefined();
+    if (am !== undefined) {
+      const set = new Set(am[1]);
+      expect(set.has(COMPENSATION_EDIT_BILL), 'account_manager missing edit:bill').toBe(true);
+      expect(set.has(COMPENSATION_EDIT_PAY), 'account_manager unexpectedly holds edit:pay').toBe(false);
     }
   });
 });

@@ -214,6 +214,14 @@ export class ImportService {
     tenant_id: string;
     imported_by_id: string;
     input: RunImportRequestDto;
+    // D-AUTHZ-COMP-WRITE-1 — the initiating actor's scopes (ruling 3:
+    // the recruiter who authorized the import; not actor-trusted). The
+    // per-target createForImport methods enforce field-group-specific
+    // gates BEFORE persist — if the recruiter lacks the matching
+    // compensation:edit:* scope, the row throws + is counted as a
+    // per-row failure (the existing partial-commit / threshold
+    // semantics handle the rest).
+    scopes: readonly string[];
     requestId: string;
   }): Promise<ImportBatchView> {
     const { tenant_id, imported_by_id, input } = args;
@@ -269,6 +277,12 @@ export class ImportService {
           imported_by_id,
           import_batch_id: batch.id,
           mapped,
+          // D-AUTHZ-COMP-WRITE-1 — thread the initiating actor's scopes
+          // through to per-target createForImport methods. Targets that
+          // gate scope-keyed fields (requisition's compensation:edit:*)
+          // enforce per-row; an absent scope causes a per-row failure
+          // (caught here, recorded, threshold semantics apply).
+          scopes: args.scopes,
           requestId: args.requestId,
         });
         success_count++;
@@ -380,6 +394,10 @@ export class ImportService {
     imported_by_id: string;
     import_batch_id: string;
     mapped: Record<string, unknown>;
+    // D-AUTHZ-COMP-WRITE-1 — the initiating actor's scopes. Forwarded to
+    // each target's createForImport for any field-group gates the target
+    // enforces (today: requisition's compensation:edit:*).
+    scopes: readonly string[];
     requestId: string;
   }): Promise<void> {
     const base = {
@@ -409,6 +427,9 @@ export class ImportService {
         await this.requisitionRepository.createForImport({
           ...base,
           input: args.mapped as never,
+          // D-AUTHZ-COMP-WRITE-1 — gate fires inside createForImport.
+          scopes: args.scopes,
+          requestId: args.requestId,
         });
         return;
       case 'talent_record':

@@ -48,3 +48,32 @@ export const COMPENSATION_SPREAD_SCOPES = [
   COMPENSATION_VIEW_SPREAD_PERCENT,
   COMPENSATION_VIEW_MARGIN_PERCENT,
 ] as const;
+
+// D-AUTHZ-COMP-WRITE-1 — compensation:edit:* scope family.
+//
+// The WRITE-side floor that closes the D5 write-path circumvention. The
+// read-side enforces field omission on the response DTO; the write-side
+// enforces scope-gating on the requisition write methods (create / update
+// / createForImport) at the repository boundary. Two scopes — exactly
+// the writeable surface:
+//   - edit:pay  → pay_rate_amount/currency/period + salary_amount/currency
+//   - edit:bill → bill_rate_amount/currency/period + placement_fee_*
+// The 4 other view-side scopes (revenue / spread:amount / spread:percent
+// / margin:percent) gate read-only DERIVED fields (computed in projectView
+// from the two stored facts) — no writeable surface, no edit scope.
+//
+// THE WRITE-THEN-DERIVE THREAT: a user holding edit:pay + a spread VIEW
+// scope can WRITE a known pay then READ-derive the bill via the spread
+// view. assertNonInvertibleBundle's view∪edit extension forbids this
+// combination across the bundle. The see-all bypass set (TA / TO /
+// auditor_with_financials / super_admin) is unchanged.
+
+export const COMPENSATION_EDIT_PAY = 'compensation:edit:pay' as const;
+export const COMPENSATION_EDIT_BILL = 'compensation:edit:bill' as const;
+
+export const COMPENSATION_EDIT_SCOPES = [
+  COMPENSATION_EDIT_PAY,
+  COMPENSATION_EDIT_BILL,
+] as const;
+
+export type CompensationEditScope = (typeof COMPENSATION_EDIT_SCOPES)[number];

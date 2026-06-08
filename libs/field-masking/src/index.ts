@@ -33,8 +33,14 @@ export {
   COMPENSATION_VIEW_MARGIN_PERCENT,
   COMPENSATION_VIEW_SCOPES,
   COMPENSATION_SPREAD_SCOPES,
+  COMPENSATION_EDIT_PAY,
+  COMPENSATION_EDIT_BILL,
+  COMPENSATION_EDIT_SCOPES,
 } from './lib/compensation-scope.js';
-export type { CompensationViewScope } from './lib/compensation-scope.js';
+export type {
+  CompensationViewScope,
+  CompensationEditScope,
+} from './lib/compensation-scope.js';
 
 export {
   COMPENSATION_FIELD_KEYS,
