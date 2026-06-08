@@ -53,20 +53,26 @@ function makeTalent(
 }
 
 function mockFetch(items: readonly TalentRecordView[], status = 200) {
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response(JSON.stringify({ items }), {
-      status,
-      headers: { 'Content-Type': 'application/json' },
-    }),
+  // R5 — the view now also calls useSession (for the talent:create
+  // gate); both fetches share this mock. Use mockImplementation so each
+  // call gets a fresh Response (Response bodies are read-once). Same
+  // pattern as R4's RequisitionsListView spec.
+  vi.spyOn(globalThis, 'fetch').mockImplementation(
+    async () =>
+      new Response(JSON.stringify({ items }), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
   );
 }
 
 function mockFetchError(status: number) {
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response(JSON.stringify({ message: 'forbidden' }), {
-      status,
-      headers: { 'Content-Type': 'application/json' },
-    }),
+  vi.spyOn(globalThis, 'fetch').mockImplementation(
+    async () =>
+      new Response(JSON.stringify({ message: 'forbidden' }), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }),
   );
 }
 
@@ -166,5 +172,47 @@ describe('TalentListView', () => {
     );
     const link = screen.getByRole('link', { name: 'Ada Lovelace' });
     expect(link).toHaveAttribute('href', '/talent/tal-42');
+  });
+
+  // R5 — the "+ New talent" CTA is gated by the talent:create scope.
+  it('hides "+ New talent" when talent:create is not held', async () => {
+    mockFetch([makeTalent('tal-1', 'Ada', 'Lovelace')]);
+    renderInRouter(
+      <TalentListView
+        sessionOverride={{
+          sub: 'u1',
+          consumer_type: 'recruiter',
+          tenant_id: 't',
+          scopes: ['talent:read'],
+          iat: 0,
+          exp: 0,
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('link', { name: /\+ new talent/i })).toBeNull();
+  });
+
+  it('shows "+ New talent" linking to /talent/new when talent:create is held', async () => {
+    mockFetch([makeTalent('tal-1', 'Ada', 'Lovelace')]);
+    renderInRouter(
+      <TalentListView
+        sessionOverride={{
+          sub: 'u1',
+          consumer_type: 'recruiter',
+          tenant_id: 't',
+          scopes: ['talent:read', 'talent:create'],
+          iat: 0,
+          exp: 0,
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
+    );
+    const link = screen.getByRole('link', { name: /\+ new talent/i });
+    expect(link).toHaveAttribute('href', '/talent/new');
   });
 });

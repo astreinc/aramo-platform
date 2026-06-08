@@ -14,7 +14,9 @@ import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionEditView } from './requisitions/RequisitionEditView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
+import { TalentCreateView } from './talent/TalentCreateView';
 import { TalentDetailView } from './talent/TalentDetailView';
+import { TalentEditView } from './talent/TalentEditView';
 import { TalentListView } from './talent/TalentListView';
 
 // The recruiter nav. R1 shipped Requisitions; R2 adds Talent + Companies
@@ -116,6 +118,17 @@ export function App() {
                       }
                     />
                     <Route
+                      path="talent/new"
+                      element={
+                        <RouteGuard
+                          requireScope="talent:create"
+                          sessionStateOverride={state}
+                        >
+                          <TalentCreateView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
                       path="talent/:talentId"
                       element={
                         <RouteGuard
@@ -123,6 +136,17 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <TalentDetailView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="talent/:talentId/edit"
+                      element={
+                        <RouteGuard
+                          requireScope="talent:edit"
+                          sessionStateOverride={state}
+                        >
+                          <TalentEditView />
                         </RouteGuard>
                       }
                     />

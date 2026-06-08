@@ -4,6 +4,7 @@ import {
   Card,
   InlineAlert,
   PageHeader,
+  hasScope,
   useSession,
   type Session,
 } from '@aramo/fe-foundation';
@@ -138,14 +139,25 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
     });
   }
 
+  const canEdit =
+    Array.isArray(session.scopes) && hasScope(session, 'talent:edit');
+
   return (
     <section>
       <PageHeader
         title={fullName(talent)}
         description="From your tenant talent pool."
       />
-      <p>
+      <p className="talent-detail__toolbar">
         <Link to="/talent">← Back to talent</Link>
+        {canEdit ? (
+          <>
+            {' · '}
+            <Link to={`/talent/${talent.id}/edit`} className="talent-detail__edit-link">
+              Edit
+            </Link>
+          </>
+        ) : null}
       </p>
       <Tabs items={tabs} ariaLabel="Talent details" />
     </section>
