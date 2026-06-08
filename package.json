@@ -41,7 +41,7 @@
     "verify:vocabulary": "bash scripts/verify-vocabulary.sh"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "~0.98.0",
+    "@anthropic-ai/sdk": "~0.102.0",
     "@aws-sdk/client-cognito-identity-provider": "~3.1053.0",
     "@aws-sdk/client-s3": "~3.1053.0",
     "@aws-sdk/client-secrets-manager": "~3.1053.0",
