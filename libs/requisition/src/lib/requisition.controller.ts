@@ -127,10 +127,16 @@ export class RequisitionController {
     // model + Decimal-string shape). Throws AramoError VALIDATION_ERROR
     // (400) on miss — never reaches the repository layer.
     validateCompensationInput(body, requestId);
+    // D-AUTHZ-COMP-WRITE-1 — the WRITE-side floor lives at the
+    // repository (the deepest layer all 3 write paths traverse); the
+    // controller threads the AuthContext.scopes through. The gate
+    // rejects 403 BEFORE any DB write or audit emission.
     return this.requisitionRepository.create({
       tenant_id: authContext.tenant_id,
       entered_by_id: authContext.sub,
       input: body,
+      scopes: authContext.scopes,
+      requestId,
     });
   }
 
@@ -149,6 +155,7 @@ export class RequisitionController {
       tenant_id: authContext.tenant_id,
       id,
       input: body,
+      scopes: authContext.scopes,
       requestId,
     });
   }

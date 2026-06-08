@@ -3,6 +3,7 @@ import { AramoError, type VisibilityContextShape } from '@aramo/common';
 
 import { Prisma } from '../../prisma/generated/client/client.js';
 
+import { assertCompensationEditScopes } from './compensation-edit-gate.js';
 import { computeDerivedViews } from './compensation-views.js';
 import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
 import type { RatePeriod } from './dto/rate-period.js';
@@ -227,8 +228,23 @@ export class RequisitionRepository {
     tenant_id: string;
     entered_by_id: string;
     input: CreateRequisitionRequestDto;
+    // D-AUTHZ-COMP-WRITE-1 — the initiating actor's scopes (the in-service
+    // floor). The caller (controller / import service) MUST thread the
+    // AuthContext.scopes through; the gate rejects 403 BEFORE any DB write.
+    scopes: readonly string[];
+    requestId: string;
   }): Promise<RequisitionView> {
     const { tenant_id, entered_by_id, input } = args;
+    // D-AUTHZ-COMP-WRITE-1 — the WRITE-side floor. Rejects 403
+    // INSUFFICIENT_PERMISSIONS if the caller writes a compensation
+    // field-group without the matching compensation:edit:* scope. The
+    // gate keys on presence-in-input, NOT on buildCompensationCreateData's
+    // null-default writes (which would over-block).
+    assertCompensationEditScopes({
+      input,
+      scopes: args.scopes,
+      requestId: args.requestId,
+    });
     const row = await this.prisma.requisition.create({
       data: {
         tenant_id,
@@ -263,13 +279,29 @@ export class RequisitionRepository {
   // to the import batch for reversion. NO assignment-row insert is done
   // here — imported reqs land WITHOUT recruiter assignments by design
   // (tenant_admin can assign post-import via the existing assign route).
+  //
+  // D-AUTHZ-COMP-WRITE-1 — the import path is the THIRD write call site
+  // (ImportService → here); a controller-only gate would miss it. The
+  // initiating actor's scopes (the recruiter who authorized runImport)
+  // are threaded from the controller through ImportService to here. The
+  // gate fires identically to create() — a recruiter without
+  // compensation:edit:pay attempting to import pay fields → 403, the
+  // whole row counted as a failure (NOT the silent-pass leak the carry
+  // flagged).
   async createForImport(args: {
     tenant_id: string;
     entered_by_id: string;
     import_batch_id: string;
     input: CreateRequisitionRequestDto;
+    scopes: readonly string[];
+    requestId: string;
   }): Promise<RequisitionView> {
     const { tenant_id, entered_by_id, import_batch_id, input } = args;
+    assertCompensationEditScopes({
+      input,
+      scopes: args.scopes,
+      requestId: args.requestId,
+    });
     const row = await this.prisma.requisition.create({
       data: {
         tenant_id,
@@ -322,8 +354,21 @@ export class RequisitionRepository {
     tenant_id: string;
     id: string;
     input: UpdateRequisitionRequestDto;
+    // D-AUTHZ-COMP-WRITE-1 — the initiating actor's scopes.
+    scopes: readonly string[];
     requestId: string;
   }): Promise<RequisitionView> {
+    // D-AUTHZ-COMP-WRITE-1 — fire the WRITE-side floor BEFORE the
+    // tenant-existence read so a 403 on a comp-field write does not
+    // leak existence-in-tenant information through a 404-vs-403 timing
+    // difference. The gate is presence-in-input keyed, NOT what the
+    // PATCH spread writes (ruling 4: null-as-clear requires the scope —
+    // the input.K !== undefined check captures both set and clear).
+    assertCompensationEditScopes({
+      input: args.input,
+      scopes: args.scopes,
+      requestId: args.requestId,
+    });
     const existing = await this.prisma.requisition.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
       select: { id: true },

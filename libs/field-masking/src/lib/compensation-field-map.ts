@@ -1,4 +1,5 @@
 import {
+  COMPENSATION_EDIT_PAY,
   COMPENSATION_SPREAD_SCOPES,
   COMPENSATION_VIEW_BILL,
   COMPENSATION_VIEW_MARGIN_PERCENT,
@@ -126,19 +127,28 @@ export function omitMaskedCompensationFields<T extends Record<string, unknown>>(
   return out as T;
 }
 
-// THE ENFORCED INVARIANT (the load-bearing §4 gate 1). Asserts that no
-// (role, scope-set) bundle holds both view:pay AND any spread scope.
+// THE ENFORCED INVARIANT (the load-bearing §4 gate 1). Asserts that the
+// (role, scope-set) bundle satisfies the non-invertibility design across
+// BOTH the read side AND the read∪write-side write-then-derive threat.
 // Throws on violation with the offending role + the colliding scopes.
 //
-// This is the mechanical proof of the non-invertibility design: pay +
-// any spread arithmetic reconstructs bill, so the two MUST NOT co-occur
-// in any bundle (other than the see-all tier, which is allowed to hold
-// every scope and is the I4 exception).
+// READ-SIDE (D5 original): pay + any spread arithmetic reconstructs
+// bill, so view:pay MUST NOT co-occur with any spread VIEW scope in any
+// bundle (other than the see-all tier).
+//
+// VIEW∪EDIT (D-AUTHZ-COMP-WRITE-1 extension — the write-then-derive
+// channel): a user holding edit:pay alongside any spread VIEW scope can
+// WRITE a known pay value then READ-derive the bill (margin_amount from
+// pay+spread). Symmetric to the read-side leak — the gate must close
+// it. edit:bill is safe alongside spread views (writing bill doesn't
+// derive pay from a spread view; bill is the read input the spread view
+// already reveals derivatively, no additional leak).
 //
 // Called from the seed.spec catalog test against every role bundle. The
-// see-all tier (TA / TO / super_admin / Exec) bypasses the check by
-// design (it holds view:pay + every spread scope; the "inversion" is
-// not a leak when the role intentionally sees everything).
+// see-all tier (TA / TO / auditor_with_financials / super_admin)
+// bypasses BOTH checks by design (it holds view:pay + edit:pay + every
+// spread scope; the "inversion" is not a leak when the role
+// intentionally sees everything).
 export function assertNonInvertibleBundle(
   roleKey: string,
   scopes: Iterable<string>,
@@ -146,12 +156,22 @@ export function assertNonInvertibleBundle(
 ): void {
   if (options.seeAll === true) return;
   const set = new Set(scopes);
-  if (!set.has(COMPENSATION_VIEW_PAY)) return;
   const spreadHeld = COMPENSATION_SPREAD_SCOPES.filter((s) => set.has(s));
   if (spreadHeld.length === 0) return;
-  throw new Error(
-    `D5 non-invertibility violation: role "${roleKey}" holds compensation:view:pay AND spread scope(s) ${spreadHeld.join(
-      ', ',
-    )}. pay + spread reconstructs bill (the enforced invariant forbids this combination — see libs/field-masking).`,
-  );
+  // Read-side: view:pay + spread:* → derive bill from a viewed pay.
+  if (set.has(COMPENSATION_VIEW_PAY)) {
+    throw new Error(
+      `D5 non-invertibility violation: role "${roleKey}" holds compensation:view:pay AND spread scope(s) ${spreadHeld.join(
+        ', ',
+      )}. pay + spread reconstructs bill (the enforced invariant forbids this combination — see libs/field-masking).`,
+    );
+  }
+  // View∪edit: edit:pay + spread:* → write a known pay then derive bill.
+  if (set.has(COMPENSATION_EDIT_PAY)) {
+    throw new Error(
+      `D-AUTHZ-COMP-WRITE-1 view∪edit non-invertibility violation: role "${roleKey}" holds compensation:edit:pay AND spread scope(s) ${spreadHeld.join(
+        ', ',
+      )}. Writing pay + reading spread reconstructs bill (the write-then-derive channel — see libs/field-masking).`,
+    );
+  }
 }

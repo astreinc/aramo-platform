@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  COMPENSATION_EDIT_BILL,
+  COMPENSATION_EDIT_PAY,
   COMPENSATION_FIELD_KEYS,
   COMPENSATION_VIEW_BILL,
   COMPENSATION_VIEW_MARGIN_PERCENT,
@@ -301,6 +303,103 @@ describe('assertNonInvertibleBundle — THE ENFORCED INVARIANT', () => {
       assertNonInvertibleBundle('tenant_admin', [
         COMPENSATION_VIEW_PAY,
         COMPENSATION_VIEW_BILL,
+        COMPENSATION_VIEW_SPREAD_AMOUNT,
+      ]),
+    ).toThrow();
+  });
+});
+
+// D-AUTHZ-COMP-WRITE-1 — the view∪edit write-then-derive threat. The
+// extension closes a hypothetical bundle pairing compensation:edit:pay
+// with a spread VIEW scope: such a user could WRITE a known pay value
+// then READ-derive the bill via the spread view. The same shape as the
+// D5 read-side invariant projected onto the write set.
+describe('assertNonInvertibleBundle — D-AUTHZ-COMP-WRITE-1 view∪edit extension', () => {
+  it('rejects edit:pay + view:spread:amount (write pay, read margin_amount → derive bill)', () => {
+    expect(() =>
+      assertNonInvertibleBundle('test_role', [
+        COMPENSATION_EDIT_PAY,
+        COMPENSATION_VIEW_SPREAD_AMOUNT,
+      ]),
+    ).toThrow(/view∪edit non-invertibility.*compensation:edit:pay.*compensation:view:spread:amount/i);
+  });
+
+  it('rejects edit:pay + view:spread:percent (write pay, read markup% → derive bill)', () => {
+    expect(() =>
+      assertNonInvertibleBundle('test_role', [
+        COMPENSATION_EDIT_PAY,
+        COMPENSATION_VIEW_SPREAD_PERCENT,
+      ]),
+    ).toThrow(/compensation:edit:pay.*compensation:view:spread:percent/i);
+  });
+
+  it('rejects edit:pay + view:margin:percent (write pay, read margin% → derive bill)', () => {
+    expect(() =>
+      assertNonInvertibleBundle('test_role', [
+        COMPENSATION_EDIT_PAY,
+        COMPENSATION_VIEW_MARGIN_PERCENT,
+      ]),
+    ).toThrow(/compensation:edit:pay.*compensation:view:margin:percent/i);
+  });
+
+  it('rejects edit:pay + multiple spread VIEW scopes (lists every offender)', () => {
+    expect(() =>
+      assertNonInvertibleBundle('test_role', [
+        COMPENSATION_EDIT_PAY,
+        COMPENSATION_VIEW_SPREAD_AMOUNT,
+        COMPENSATION_VIEW_SPREAD_PERCENT,
+        COMPENSATION_VIEW_MARGIN_PERCENT,
+      ]),
+    ).toThrow(/spread:amount.*spread:percent.*margin:percent/);
+  });
+
+  it('accepts edit:pay alone (recruiter / RM / LR / back_office bundles)', () => {
+    expect(() =>
+      assertNonInvertibleBundle('recruiter', [
+        COMPENSATION_VIEW_PAY,
+        COMPENSATION_EDIT_PAY,
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts edit:bill alone alongside spread VIEW scopes (account_manager bundle)', () => {
+    // AM holds edit:bill + spread VIEW scopes by design (writes bill;
+    // reads spread/margin% derivatively). The threat is edit:PAY + spread
+    // view, not edit:bill + spread view.
+    expect(() =>
+      assertNonInvertibleBundle('account_manager', [
+        COMPENSATION_VIEW_BILL,
+        COMPENSATION_VIEW_REVENUE,
+        COMPENSATION_VIEW_SPREAD_PERCENT,
+        COMPENSATION_VIEW_MARGIN_PERCENT,
+        COMPENSATION_EDIT_BILL,
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts edit:pay + edit:bill (see-all-tier shape) when seeAll: true', () => {
+    expect(() =>
+      assertNonInvertibleBundle(
+        'tenant_admin',
+        [
+          COMPENSATION_VIEW_PAY,
+          COMPENSATION_VIEW_BILL,
+          COMPENSATION_VIEW_REVENUE,
+          COMPENSATION_VIEW_SPREAD_AMOUNT,
+          COMPENSATION_VIEW_SPREAD_PERCENT,
+          COMPENSATION_VIEW_MARGIN_PERCENT,
+          COMPENSATION_EDIT_PAY,
+          COMPENSATION_EDIT_BILL,
+        ],
+        { seeAll: true },
+      ),
+    ).not.toThrow();
+  });
+
+  it('without seeAll the same TA-shape bundle rejects (the edit:pay + spread view tripwire)', () => {
+    expect(() =>
+      assertNonInvertibleBundle('tenant_admin', [
+        COMPENSATION_EDIT_PAY,
         COMPENSATION_VIEW_SPREAD_AMOUNT,
       ]),
     ).toThrow();

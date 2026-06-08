@@ -221,22 +221,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]);
 
       const roleScopes = await prisma.roleScope.count();
-      // AUTHZ-1 / AUTHZ-1b row count for the 9 staffing-tenant roles:
+      // ROLE_SCOPE_ASSIGNMENTS rows (4 roles, 85 total):
+      //   tenant_admin 47 + recruiter 31 + candidate 4 + super_admin 3 = 85.
+      // AUTHZ1_BUNDLES rows (10 roles, 200 total):
       //   tenant_owner 47 + account_manager 35 + sourcer 14 + finance 6 +
-      //   auditor 5 + recruiting_manager 33 + delivery_manager 12 +
-      //   lead_recruiter 31 + back_office 12 = 195 rows. (AUTHZ-D4a adds
-      //   4 scopes to tenant_owner, 2 to account_manager, 1 to recruiting_manager
-      //   — +7 rows over the AUTHZ-1b 188.)
-      // Pre-A1a / A1a / A1a-2 / HK rows (kept roles only — viewer retired):
-      //   tenant_admin 47 + recruiter 31 + candidate 4 = 82 rows. (AUTHZ-D4a
-      //   adds 4 to tenant_admin — +4 over AUTHZ-1b 78.)
-      // AUTHZ-2 super_admin: +3 (the 3 platform:* scopes).
-      // Settings S4 auditor_with_financials: 5 Auditor non-comp scopes +
-      //   6 see-all compensation:view:* = +11 rows (0x405..0x409 in the
-      //   AUTHZ-1 range; 0x50c..0x511 in the D5 range, post-D5's 0x500..
-      //   0x50b for the 26 existing rows).
-      // Tenant rows: 82 + 195 + 11 = 288. Total with platform: 288 + 3 = 291.
-      expect(roleScopes).toBe(291);
+      //   auditor 5 + auditor_with_financials 5 + recruiting_manager 33 +
+      //   delivery_manager 12 + lead_recruiter 31 + back_office 12 = 200.
+      // D5_COMPENSATION_BUNDLES rows (10 roles):
+      //   pre-D-AUTHZ-COMP-WRITE-1 view-only: TA 6 + TO 6 + AM 4 + recruiter 1 +
+      //     RM 1 + LR 1 + back 1 + DM 4 + finance 2 + auditor_with_financials 6 = 32.
+      //   D-AUTHZ-COMP-WRITE-1 +9 edit scopes: TA +2 + TO +2 + AM +1 + recruiter +1 +
+      //     RM +1 + LR +1 + back +1 (DM/finance/auditor_with_financials read-only) = +9.
+      //   Total D5: 32 + 9 = 41.
+      // GRAND TOTAL: 85 + 200 + 41 = 326.
+      //
+      // Note: this assertion was previously 291 (stale; under-counted by
+      // 26 D5 view rows from the pre-D-AUTHZ-COMP-WRITE-1 state).
+      // D-AUTHZ-COMP-WRITE-1 (PR ____) corrects the baseline AND adds
+      // the 9 new edit-scope assignments — together 291 → 326.
+      expect(roleScopes).toBe(326);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -250,7 +253,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(sa?.name).toBe(SEED_SERVICE_ACCOUNT_NAME);
 
       const auditRows = await prisma.identityAuditEvent.findMany();
-      // Settings S4 audit count. Re-derived breakdown:
+      // D-AUTHZ-COMP-WRITE-1 audit count. Re-derived breakdown:
       //   - pre-A1a baseline (1 tenant + 1 user + 1 membership +
       //     1 external_identity + 2 roles + 6 scopes + 1 SA)          = 13
       //   - PR-A1a (1 role.candidate + 8 portal/ATS-subset scopes)   = +9
@@ -263,11 +266,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   - AUTHZ-D4a (4 scope.created events for the team-model
       //     scopes; the +9 runtime EVENT_TYPES are emitted by the
       //     mechanisms at use-time, NOT at seed-time)                  = +4
+      //   - AUTHZ-D5 (6 scope.created events for the
+      //     compensation:view:* scopes)                                = +6
       //   - Settings S4 (1 role.created event for the
       //     auditor_with_financials seed role; the role grants no new
       //     scopes, so no scope.created events)                       = +1
-      //                                                       total   = 74
-      expect(auditRows.length).toBe(74);
+      //   - D-AUTHZ-COMP-WRITE-1 (2 scope.created events for the
+      //     compensation:edit:* WRITE-side scopes)                    = +2
+      //                                                       total   = 82
+      //
+      // Note: this assertion was previously 74 (stale; under-counted by
+      // the 6 D5 view scope.created events from the pre-D-AUTHZ-COMP-WRITE-1
+      // state). D-AUTHZ-COMP-WRITE-1 (PR ____) corrects the baseline AND
+      // adds the 2 new edit-scope events — together 74 → 82.
+      expect(auditRows.length).toBe(82);
       // Every audit event uses actor_type 'system' and actor_id = SA id.
       for (const row of auditRows) {
         expect(row.actor_type).toBe('system');
@@ -294,12 +306,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // namespace separation principle is unchanged — platform:* still
     // disjoint from the tenant slice.
     // -----------------------------------------------------------------
-    it('AUTHZ-2 proof 7 — platform scope namespace is disjoint from tenant catalog (51 post-D4a)', async () => {
+    it('AUTHZ-2 proof 7 — platform scope namespace is disjoint from tenant catalog (59 post-D-AUTHZ-COMP-WRITE-1)', async () => {
       const tenantScopes = await prisma.scope.findMany({
         where: { NOT: { key: { startsWith: 'platform:' } } },
         select: { key: true },
       });
-      expect(tenantScopes.length).toBe(51);
+      // 51 post-AUTHZ-D4a + 6 D5 view scopes + 2 D-AUTHZ-COMP-WRITE-1
+      // edit scopes = 59. The previous "51" was stale (D5 view scopes
+      // were not added to the assertion when D5 landed).
+      expect(tenantScopes.length).toBe(59);
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }

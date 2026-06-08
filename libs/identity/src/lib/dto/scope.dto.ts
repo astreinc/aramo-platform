@@ -118,6 +118,14 @@ export const SEED_SCOPE_KEYS = [
   'compensation:view:spread:amount',    // delivery_manager + TA + TO (margin_amount; NOT view:pay holders)
   'compensation:view:spread:percent',   // account_manager + delivery_manager + TA + TO
   'compensation:view:margin:percent',   // account_manager + finance + delivery_manager + TA + TO
+  // D-AUTHZ-COMP-WRITE-1 — 2 compensation:edit:* scopes (the WRITE-side
+  // floor; closes the D5 write-path circumvention). Enforced IN-SERVICE
+  // at the requisition repository (create / update / createForImport)
+  // BEFORE the Prisma write + BEFORE audit. The minimum-coherent write
+  // set: the 4 derived/subset view scopes (revenue / spread:* /
+  // margin:%) gate read-only DERIVED fields — no writeable surface.
+  'compensation:edit:pay',              // recruiter / RM / LR / back_office / TA + TO (mirrors view:pay's writeable subset)
+  'compensation:edit:bill',             // account_manager + TA + TO (mirrors view:bill's writeable subset; AM is the agency-economics author)
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 
