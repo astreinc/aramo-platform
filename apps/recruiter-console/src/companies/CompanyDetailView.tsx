@@ -40,11 +40,11 @@ import type { CompanyView, ContactView } from './types';
 // Activity are added only when their per-feature scope is granted. A
 // tab the actor can't read is HIDDEN.
 //
-// Ruling 2 (Assigned-reqs GAP): /v1/requisitions does NOT accept a
-// company_id filter today (Gate-5 confirmed). We fetch the actor's
-// visible reqs (server-capped at 50) and filter client-side. The
-// limitation banner is PRECISE about the already-capped set — a match
-// outside the first 50 visible reqs is missed; users must know.
+// Assigned-reqs: /v1/requisitions?company_id=<id> (server ANDs
+// company_id with the A3/D4b visibility predicate; the FE just passes
+// company_id and renders). The R3 client-side filter + capped-50
+// banner were retired when ?company_id shipped — the company-scoped
+// list is now complete within the actor's visibility.
 //
 // Ruling 3 (Activity CONFIRMED-BUT-EMPTY): subject_type='company' is
 // accepted by the read endpoint, but no write path produces such rows
@@ -52,8 +52,6 @@ import type { CompanyView, ContactView } from './types';
 // activities are ever written) + an end-user-honest empty-state. The
 // copy stays user-facing, NOT architectural — recruiters do not need
 // to read internal substrate detail.
-
-const REQS_FETCH_CAP = 50;
 
 interface CompanyDetailViewProps {
   // Test seam — mirrors fe-foundation's RouteGuard.sessionStateOverride.
@@ -305,21 +303,15 @@ function ContactsPanel({
 
 function AssignedReqsPanel({ companyId }: { companyId: string }) {
   const [items, setItems] = useState<readonly RequisitionView[]>([]);
-  const [totalFetched, setTotalFetched] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    listRequisitions()
+    listRequisitions({ company_id: companyId })
       .then((res) => {
         if (cancelled) return;
-        setTotalFetched(res.items.length);
-        setItems(
-          res.items
-            .filter((r) => r.company_id === companyId)
-            .filter((r) => !isClosedStatus(r.status)),
-        );
+        setItems(res.items.filter((r) => !isClosedStatus(r.status)));
         setLoading(false);
       })
       .catch((err) => {
@@ -335,21 +327,8 @@ function AssignedReqsPanel({ companyId }: { companyId: string }) {
   if (loading) return <p>Loading requisitions…</p>;
   if (error !== null) return <InlineAlert variant="error">{error}</InlineAlert>;
 
-  // Ruling 2: the BE has no company_id filter on /v1/requisitions. We
-  // fetch the actor's visible reqs (capped server-side at 50) and filter
-  // client-side. The banner is PRECISE about the already-capped set —
-  // a match outside the first 50 visible reqs is missed.
-  const truncated = totalFetched >= REQS_FETCH_CAP;
-
   return (
     <div>
-      {truncated ? (
-        <p role="status" data-testid="assigned-reqs-banner">
-          Showing this company's active requisitions found in your first{' '}
-          {REQS_FETCH_CAP} visible requisitions. Matches beyond that page are
-          not included; server-side company filtering is on the roadmap.
-        </p>
-      ) : null}
       {items.length === 0 ? (
         <p>No active requisitions for this company yet.</p>
       ) : (
