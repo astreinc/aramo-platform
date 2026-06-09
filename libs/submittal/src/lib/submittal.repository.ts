@@ -328,6 +328,36 @@ export class SubmittalRepository {
     return row === null ? null : projectView(row as TalentSubmittalRecordRow);
   }
 
+  // R6 discovery lookup — submittal-by-(talent_id, job_id) for the wizard.
+  // The (tenant, talent, job) triple is unique by domain convention (one
+  // active submittal per talent/job pair); we still pick the most-recently-
+  // created row to keep behavior deterministic if a revoked + re-created
+  // pair ever lands. Visibility-scoped via visible_requisition_ids — the
+  // submittal cascade inherits its requisition's visibility (job_id ∈
+  // visible_requisition_ids; null = see_all_requisition → unrestricted).
+  async findByTenantTalentJobForActor(input: {
+    tenant_id: string;
+    talent_id: string;
+    job_id: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+  }): Promise<TalentSubmittalRecordView | null> {
+    if (
+      input.visible_requisition_ids !== null
+      && !input.visible_requisition_ids.has(input.job_id)
+    ) {
+      return null;
+    }
+    const row = await this.prisma.talentSubmittalRecord.findFirst({
+      where: {
+        tenant_id: input.tenant_id,
+        talent_id: input.talent_id,
+        job_id: input.job_id,
+      },
+      orderBy: { created_at: 'desc' },
+    });
+    return row === null ? null : projectView(row as TalentSubmittalRecordRow);
+  }
+
   // M4 PR-4 confirm flow + M5 PR-8b2 rename + cutover.
   //
   // Per Ruling 12: M4 /confirm endpoint semantic becomes canonical

@@ -269,10 +269,37 @@ describe('TalentDetailView', () => {
     // Link points at the req detail.
     const link = screen.getByRole('link', { name: /Requisition req-1/ });
     expect(link).toHaveAttribute('href', '/requisitions/req-1');
+    // R6 — Submittal link is HIDDEN when submittal:create is not granted.
+    expect(
+      screen.queryByRole('link', { name: 'Submittal' }),
+    ).not.toBeInTheDocument();
     // URL filter verification.
     const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
     const pipelineCall = calls.find((c) => String(c[0]).includes('/v1/pipelines'));
     expect(String(pipelineCall?.[0])).toContain('talent_record_id=tal-1');
+  });
+
+  it('Pipelines tab renders a Submittal link when submittal:create is granted (R6 entry point)', async () => {
+    installFetch({
+      '/v1/talent-records/tal-1': makeTalent(),
+      '/v1/pipelines': { items: [makePipeline('p-1', 'req-1')] },
+    });
+    renderAt(
+      '/talent/tal-1',
+      makeSession(['talent:read', 'pipeline:read', 'submittal:create']),
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Pipelines' }));
+    await waitFor(() =>
+      expect(screen.getByText(/Requisition req-1/)).toBeInTheDocument(),
+    );
+    const submittalLink = screen.getByRole('link', { name: 'Submittal' });
+    expect(submittalLink).toHaveAttribute(
+      'href',
+      '/talent/tal-1/submittal/req-1',
+    );
   });
 
   it('surfaces the detail error when the talent fetch returns 404', async () => {

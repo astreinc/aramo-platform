@@ -10,6 +10,7 @@ import {
   Inject,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -375,6 +376,48 @@ export class SubmittalController {
     return response;
   }
 
+  // R6 — GET /v1/submittals?talent_id=&job_id= discovery lookup.
+  //
+  // The wizard's "resume or create" path: returns the existing submittal
+  // for a (talent_id, job_id) pair under the actor's visibility, or null
+  // when no submittal exists. Reuses submittal:create (the Lead-approved
+  // +0-scope path: anyone who can create can discover whether one already
+  // exists).
+  //
+  // Five ordered steps:
+  //   1. consumer_type must be 'recruiter' (INSUFFICIENT_PERMISSIONS 403)
+  //   2. talent_id + job_id query params required + UUID (VALIDATION_ERROR 400)
+  //   3. visibility cascade resolves visible_requisition_ids
+  //   4. submittalRepository.findByTenantTalentJobForActor
+  //   5. wrap in { submittal: View | null } (the directive-approved shape)
+  //
+  // No NOT_FOUND on missing — the discovery semantic: null = create-new
+  // path; non-null = resume at submittal.state. No Idempotency-Key (GET).
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('submittal:create')
+  async findByTalentAndJob(
+    @Query('talent_id') talent_id: string | undefined,
+    @Query('job_id') job_id: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+    @Req() req: Request,
+  ): Promise<{ submittal: TalentSubmittalRecordView | null }> {
+    this.assertConsumerIsRecruiter(authContext, requestId);
+    this.assertQueryUuid(talent_id, 'talent_id', requestId);
+    this.assertQueryUuid(job_id, 'job_id', requestId);
+
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const submittal =
+      await this.submittalRepository.findByTenantTalentJobForActor({
+        tenant_id: authContext.tenant_id,
+        talent_id: talent_id!,
+        job_id: job_id!,
+        visible_requisition_ids: visibleReqIds,
+      });
+    return { submittal };
+  }
+
   // M4 PR-6 §4.1 — GET /v1/submittals/{submittal_id}.
   //
   // Tenant-scoped read of a TalentSubmittalRecord. Five ordered steps:
@@ -486,6 +529,29 @@ export class SubmittalController {
         'submittal_id path parameter must be a UUID',
         400,
         { requestId, details: { invalid_field: 'submittal_id' } },
+      );
+    }
+  }
+
+  private assertQueryUuid(
+    value: string | undefined,
+    field: 'talent_id' | 'job_id',
+    requestId: string,
+  ): void {
+    if (value === undefined || value.length === 0) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `${field} query parameter is required`,
+        400,
+        { requestId, details: { missing_field: field } },
+      );
+    }
+    if (!UUID_REGEX.test(value)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `${field} query parameter must be a UUID`,
+        400,
+        { requestId, details: { invalid_field: field } },
       );
     }
   }

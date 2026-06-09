@@ -135,7 +135,12 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
     tabs.push({
       id: 'pipelines',
       label: 'Pipelines',
-      content: <PipelinesPanel talentId={talent.id} />,
+      content: (
+        <PipelinesPanel
+          talentId={talent.id}
+          canStartSubmittal={scopes.includes('submittal:create')}
+        />
+      ),
     });
   }
 
@@ -297,7 +302,13 @@ function ActivityPanel({ talentId }: { talentId: string }) {
   );
 }
 
-function PipelinesPanel({ talentId }: { talentId: string }) {
+function PipelinesPanel({
+  talentId,
+  canStartSubmittal,
+}: {
+  talentId: string;
+  canStartSubmittal: boolean;
+}) {
   const [items, setItems] = useState<readonly PipelineView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -333,6 +344,14 @@ function PipelinesPanel({ talentId }: { talentId: string }) {
             Requisition {p.requisition_id}
           </Link>{' '}
           — {PIPELINE_STATUS_LABELS[p.status]}
+          {canStartSubmittal && (
+            <>
+              {' · '}
+              <Link to={`/talent/${talentId}/submittal/${p.requisition_id}`}>
+                Submittal
+              </Link>
+            </>
+          )}
         </li>
       ))}
     </ul>

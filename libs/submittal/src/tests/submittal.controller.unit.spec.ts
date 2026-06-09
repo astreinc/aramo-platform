@@ -842,3 +842,159 @@ describe('SubmittalController.revokeSubmittal (unit)', () => {
     expect(ctx.persist).not.toHaveBeenCalled();
   });
 });
+
+// =============================================================================
+// R6 — findByTalentAndJob controller unit tests (the discovery handler the
+// wizard hits at entry to resume-or-create).
+// =============================================================================
+
+interface LookupSetup {
+  controller: SubmittalController;
+  findByTenantTalentJobForActor: ReturnType<typeof vi.fn>;
+}
+
+function buildLookup(): LookupSetup {
+  const findByTenantTalentJobForActor = vi.fn().mockResolvedValue(null);
+  const mockRepo = {
+    createSubmittal: vi.fn(),
+    findByTenantTalentJobForActor,
+  } as unknown as SubmittalRepository;
+  const mockIdempotency = {
+    lookup: vi.fn(),
+    persist: vi.fn(),
+  } as unknown as IdempotencyService;
+  const mockEvidence = { findById: vi.fn() } as unknown as EvidenceRepository;
+  const controller = new SubmittalController(
+    mockRepo,
+    mockIdempotency,
+    mockEvidence,
+    makeMockLogger(),
+  );
+  return { controller, findByTenantTalentJobForActor };
+}
+
+function makeLookupReq(): unknown {
+  return {
+    resolveVisibility: () =>
+      Promise.resolve({
+        tenant_id: TENANT_A,
+        actor_user_id: RECRUITER_ID,
+        see_all_company: true,
+        see_all_requisition: true,
+        visible_client_ids: null,
+      }),
+    resolveVisibleRequisitionIds: () => Promise.resolve(null),
+    resolveVisiblePipelineIds: () => Promise.resolve(null),
+  };
+}
+
+describe('SubmittalController.findByTalentAndJob (unit)', () => {
+  let ctx: LookupSetup;
+  beforeEach(() => {
+    ctx = buildLookup();
+  });
+
+  it('1. consumer_type !== "recruiter" → INSUFFICIENT_PERMISSIONS 403', async () => {
+    try {
+      await ctx.controller.findByTalentAndJob(
+        TALENT_A,
+        JOB_ID,
+        makeAuth({ consumer_type: 'portal' }),
+        REQUEST_ID,
+        makeLookupReq() as never,
+      );
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('INSUFFICIENT_PERMISSIONS');
+      expect((err as AramoError).statusCode).toBe(403);
+    }
+    expect(ctx.findByTenantTalentJobForActor).not.toHaveBeenCalled();
+  });
+
+  it('2. missing talent_id → VALIDATION_ERROR 400', async () => {
+    try {
+      await ctx.controller.findByTalentAndJob(
+        undefined,
+        JOB_ID,
+        makeAuth(),
+        REQUEST_ID,
+        makeLookupReq() as never,
+      );
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('VALIDATION_ERROR');
+      expect((err as AramoError).statusCode).toBe(400);
+      expect((err as AramoError).context.details).toMatchObject({
+        missing_field: 'talent_id',
+      });
+    }
+  });
+
+  it('3. non-UUID job_id → VALIDATION_ERROR 400', async () => {
+    try {
+      await ctx.controller.findByTalentAndJob(
+        TALENT_A,
+        'not-a-uuid',
+        makeAuth(),
+        REQUEST_ID,
+        makeLookupReq() as never,
+      );
+      throw new Error('expected throw');
+    } catch (err) {
+      expect((err as AramoError).code).toBe('VALIDATION_ERROR');
+      expect((err as AramoError).statusCode).toBe(400);
+      expect((err as AramoError).context.details).toMatchObject({
+        invalid_field: 'job_id',
+      });
+    }
+  });
+
+  it('4. no submittal exists → 200 { submittal: null } (create-new semantic)', async () => {
+    ctx.findByTenantTalentJobForActor.mockResolvedValue(null);
+    const result = await ctx.controller.findByTalentAndJob(
+      TALENT_A,
+      JOB_ID,
+      makeAuth(),
+      REQUEST_ID,
+      makeLookupReq() as never,
+    );
+    expect(result).toEqual({ submittal: null });
+    expect(ctx.findByTenantTalentJobForActor).toHaveBeenCalledWith({
+      tenant_id: TENANT_A,
+      talent_id: TALENT_A,
+      job_id: JOB_ID,
+      visible_requisition_ids: null,
+    });
+  });
+
+  it('5. submittal exists → 200 { submittal: View } (resume semantic)', async () => {
+    const stored = {
+      id: '99990000-0000-7000-8000-000000000001',
+      tenant_id: TENANT_A,
+      talent_id: TALENT_A,
+      job_id: JOB_ID,
+      evidence_package_id: '99990000-0000-7000-8000-000000000002',
+      pinned_examination_id: EXAM_ID,
+      state: 'handoff_draft',
+      created_by: RECRUITER_ID,
+      justification: null,
+      failed_criterion_acknowledgments: null,
+      created_at: new Date('2026-05-23T12:00:00Z'),
+      confirmed_at: null,
+      revoked_at: null,
+      revoked_by: null,
+      revocation_justification: null,
+    };
+    ctx.findByTenantTalentJobForActor.mockResolvedValue(stored);
+    const result = await ctx.controller.findByTalentAndJob(
+      TALENT_A,
+      JOB_ID,
+      makeAuth(),
+      REQUEST_ID,
+      makeLookupReq() as never,
+    );
+    expect(result.submittal).not.toBeNull();
+    expect(result.submittal?.id).toBe(stored.id);
+    expect(result.submittal?.state).toBe('handoff_draft');
+  });
+});
