@@ -199,6 +199,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:read',
         // Reporting-Scope-Seed: dashboard:read (alphabetically here).
         'dashboard:read',
+        // R7 BE-prereq: 3 engagement scopes (alphabetically here).
+        'engagement:outreach',
+        'engagement:read',
+        'engagement:write',
         'examination:read',
         'identity:tenant:read',
         'identity:user:read',
@@ -254,7 +258,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   Sourcer / finance / auditor / auditor_with_financials NOT in this
       //   bundle — auditor-tier report:read + audit-log:read deferred to
       //   the Reporting/Audit DDR (Amendment v1.1 Ruling B-iii).
-      // GRAND TOTAL: 85 + 200 + 41 + 16 = 342.
+      // ENGAGEMENT_SEED_BUNDLES rows (8 roles, 20 total) — R7 BE-prereq:
+      //   write-tier 6 × 3 (read+write+outreach) = 18; read-only 2 × 1 = 2.
+      //   TA 3 + TO 3 + AM 3 + RM 3 + recruiter 3 + LR 3 + DM 1 + BO 1 = 20.
+      //   Sourcer / finance / auditor / auditor_with_financials / candidate
+      //   / super_admin NOT in this bundle (Amendment v1.1 §2 Ruling 2).
+      // GRAND TOTAL: 85 + 200 + 41 + 16 + 20 = 362.
       //
       // History of corrections in this assertion:
       //   - Previously 291 (stale; under-counted by 26 D5 view rows from
@@ -264,7 +273,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   - Reporting-Scope-Seed adds +16 reporting-scope assignments
       //     (the 8 operational roles × dashboard:read + report:read) —
       //     326 → 342.
-      expect(roleScopes).toBe(342);
+      //   - R7 BE-prereq adds +20 engagement-scope assignments (6 write-
+      //     tier × 3 + 2 read-only × 1; Amendment v1.1 §2 Ruling 2) —
+      //     342 → 362.
+      expect(roleScopes).toBe(362);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -334,17 +346,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // namespace separation principle is unchanged — platform:* still
     // disjoint from the tenant slice.
     // -----------------------------------------------------------------
-    it('AUTHZ-2 proof 7 — platform scope namespace is disjoint from tenant catalog (61 post-Reporting-Scope-Seed)', async () => {
+    it('AUTHZ-2 proof 7 — platform scope namespace is disjoint from tenant catalog (64 post-R7-BE-prereq)', async () => {
       const tenantScopes = await prisma.scope.findMany({
         where: { NOT: { key: { startsWith: 'platform:' } } },
         select: { key: true },
       });
       // 51 post-AUTHZ-D4a + 6 D5 view scopes + 2 D-AUTHZ-COMP-WRITE-1
       // edit scopes + 2 Reporting-Scope-Seed scopes (dashboard:read +
-      // report:read; PR-A7 gap-and-note closure) = 61. The previous
+      // report:read; PR-A7 gap-and-note closure) + 3 R7 BE-prereq
+      // engagement scopes (engagement:read / :write / :outreach;
+      // Amendment v1.1 §1 Ruling 1 — outreach SoD) = 64. The previous
       // "51" was stale (D5 view scopes were not added when D5 landed);
-      // D-AUTHZ corrected to 59; Reporting-Scope-Seed advances to 61.
-      expect(tenantScopes.length).toBe(61);
+      // D-AUTHZ corrected to 59; Reporting-Scope-Seed advances to 61;
+      // R7 BE-prereq advances to 64.
+      expect(tenantScopes.length).toBe(64);
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }

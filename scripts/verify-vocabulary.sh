@@ -244,6 +244,12 @@ TIER2_EXCLUDES=(
   # rationale as the M5 PR-2 / PR-4 entries above.
   "libs/common/src/lib/errors/error-codes.ts"
   "libs/engagement/src/lib/engagement.module.ts"
+  # R7 BE-prereq — the engagement scope catalog (`engagement:outreach`
+  # as the canonical scope-action vocabulary; same domain-scope-action
+  # pattern as `compensation:edit:pay` / `submittal:create`). Mirrored
+  # in eslint.config.mjs.
+  "libs/identity/src/lib/dto/scope.dto.ts"
+  "libs/identity/prisma/seed.ts"
   "libs/engagement/src/index.ts"
   "libs/engagement/src/lib/dto/outreach-send-request.dto.ts"
   "libs/engagement/src/lib/dto/outreach-send-response.dto.ts"

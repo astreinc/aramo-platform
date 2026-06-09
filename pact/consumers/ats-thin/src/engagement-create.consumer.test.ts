@@ -122,12 +122,18 @@ describe('ATS thin consumer → POST /v1/engagements', () => {
         }).jsonBody({ talent_id: uuid(TALENT_ID), requisition_id: uuid(REQ_ID) });
       })
       .willRespondWith(403, (b) => {
+        // R7 BE-prereq: the 403 for portal-JWT now fires at the
+        // RolesGuard layer (scope-missing) BEFORE the controller's
+        // assertConsumerIsRecruiter (which used to populate
+        // details.consumer_type). The contract surface — 403 +
+        // INSUFFICIENT_PERMISSIONS + matching request_id — is
+        // preserved; details is implementation-specific and dropped
+        // from the contract.
         b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
           error: {
             code: like('INSUFFICIENT_PERMISSIONS'),
-            message: like('engagement endpoints are recruiter-only'),
+            message: like('Required scopes not granted'),
             request_id: uuid(REQUEST_ID),
-            details: like({ consumer_type: 'portal' }),
           },
         });
       })

@@ -217,7 +217,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_A,
-        scopes: [],
+        // R7 BE-prereq: engagement endpoints now scope-gated +
+        // D4b-composed. requisition:read:all bypasses the D4b
+        // visibility check so the happy-path tests proceed.
+        scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -508,7 +511,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_B,
-        scopes: [],
+        // R7 BE-prereq: engagement endpoints now scope-gated +
+        // D4b-composed. requisition:read:all bypasses the D4b
+        // visibility check so the happy-path tests proceed.
+        scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()

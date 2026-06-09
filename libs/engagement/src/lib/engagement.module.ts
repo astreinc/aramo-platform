@@ -47,6 +47,13 @@ import { PrismaService } from './prisma/prisma.service.js';
 //   - DELIVERY_PROVIDER_TOKEN provider — SendStubDeliveryProvider at
 //     PR-6 (Ruling 3 Q7-Stub). Mirrors the libs/ai-draft DRAFT_PROVIDER
 //     wiring pattern.
+// R7 BE-prereq Amendment v1.1 §2 (the scope-gating) + §3 (D4b
+// visibility): the controller's guard chain grows to
+// (JwtAuthGuard, RolesGuard) + per-route @RequireScopes(engagement:
+// read|:write|:outreach) — the submittal precedent. RolesGuard +
+// VisibilityInterceptor are wired globally in apps/api (AuthorizationModule
+// + APP_INTERCEPTOR); engagement.module needs only AuthModule +
+// per-domain dep modules.
 @Module({
   imports: [
     AuthModule,

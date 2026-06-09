@@ -10,8 +10,11 @@ import {
   Inject,
   Param,
   Post,
+  Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import {
   AramoError,
   type AramoLogger,
@@ -19,11 +22,13 @@ import {
   hashCanonicalizedBody,
 } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
+import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { ConsentService, IdempotencyService } from '@aramo/consent';
 import { AiDraftService } from '@aramo/ai-draft';
 
 import type { CreateEngagementRequestDto } from './dto/create-engagement-request.dto.js';
 import type { CreateEngagementResponseDto } from './dto/create-engagement-response.dto.js';
+import type { EngagementListResponseDto } from './dto/engagement-list-response.dto.js';
 import type { TransitionEngagementRequestDto } from './dto/transition-engagement-request.dto.js';
 import type { TransitionEngagementResponseDto } from './dto/transition-engagement-response.dto.js';
 import type { EngagementListEventsResponseDto } from './dto/engagement-list-events-response.dto.js';
@@ -45,15 +50,45 @@ import { EngagementRepository } from './engagement.repository.js';
 
 // M5 PR-4 §4.1 — EngagementController.
 //
-// First HTTP-bearing surface in libs/engagement. Four endpoints:
+// First HTTP-bearing surface in libs/engagement. Endpoints (8 total
+// after R7 BE-prereq P1 adds the LIST):
+//   - GET  /v1/engagements                              (LIST — R7 BE-prereq)
 //   - POST /v1/engagements                              (create)
 //   - POST /v1/engagements/{id}/transitions             (state transition)
+//   - POST /v1/engagements/{id}/outreach                (outreach + delivery)
+//   - POST /v1/engagements/{id}/response                (record response)
+//   - POST /v1/engagements/{id}/conversation            (record conversation)
 //   - GET  /v1/engagements/{id}                         (read engagement)
 //   - GET  /v1/engagements/{id}/events                  (read event log)
 //
-// Auth posture (Ruling 8): class-level JwtAuthGuard + per-route
-// consumer_type === 'recruiter' assertion. Non-recruiter consumers
-// (portal, ingestion) 403'd at the route with INSUFFICIENT_PERMISSIONS.
+// Auth posture (Ruling 8 + R7 BE-prereq Amendment v1.1 §1+§5):
+// class-level JwtAuthGuard + RolesGuard (the submittal precedent —
+// scope-gated, recruiter-only, no @RequireCapability since the
+// engagement endpoints have no per-tenant entitlement axis); per-route
+// @RequireScopes(engagement:read / engagement:write / engagement:outreach)
+// + per-route consumer_type === 'recruiter' assertion (defense in
+// depth: the scope gate is the primary check; the consumer_type
+// assertion stays as a belt-and-suspenders constraint that platform
+// tokens never satisfy). Non-recruiter consumers 403 with
+// INSUFFICIENT_PERMISSIONS.
+//
+// === D4b visibility (R7 BE-prereq Amendment v1.1 §3 Ruling 3 D) ===
+// Engagement is visible iff its requisition_id is in the actor's
+// visible-requisition set (req.resolveVisibleRequisitionIds!() —
+// null = see-all). The controller threads the resolved set through:
+//   - Reads (LIST + GET /:id + GET /:id/events): composed at the repo's
+//     findByTenant{,AndId,AndTalent,AndRequisition} (single source of
+//     truth — invisible-requisition engagement returns null → 404).
+//   - Writes (transitions / outreach / response / conversation): the
+//     repo's write methods accept the same visibility set and pass it
+//     to their internal findByTenantAndId pre-read (uniform inheritance).
+//   - Create: assertRequisitionVisible(body.requisition_id, visibleReqIds)
+//     fires BEFORE repo.createEngagement — 404 if the requisition the
+//     engagement would attach to isn't visible.
+// Not-visible response code is 404 NOT_FOUND uniformly (the non-leak
+// posture, matching the requisition precedent); the scope-gate 403
+// INSUFFICIENT_PERMISSIONS stays distinct (no-capability vs not-this-
+// record).
 //
 // POST endpoint pattern (Ruling 4 — 9-step):
 //   1. consumer_type check (assertConsumerIsRecruiter)
@@ -89,8 +124,23 @@ import { EngagementRepository } from './engagement.repository.js';
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// R7 BE-prereq §3 — null-safe resolver for the actor's visible-requisition
+// set. The VisibilityInterceptor (apps/api APP_INTERCEPTOR) attaches
+// `req.resolveVisibleRequisitionIds()` to every authenticated request
+// (see libs/visibility/src/lib/visibility.interceptor.ts). Returns:
+//   - ReadonlySet<string> → narrow visibility filter (A3-OR-D4b composed).
+//   - null                → see-all (callers w/ requisition:read:all OR
+//                            the back-compat unit-test path where no Request
+//                            is injected; visibility check trivially passes).
+async function resolveVisibleReqIds(
+  req: Request | undefined,
+): Promise<ReadonlySet<string> | null> {
+  if (req?.resolveVisibleRequisitionIds === undefined) return null;
+  return req.resolveVisibleRequisitionIds();
+}
+
 @Controller('v1/engagements')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class EngagementController {
   constructor(
     private readonly engagementRepository: EngagementRepository,
@@ -110,18 +160,88 @@ export class EngagementController {
     private readonly deliveryProvider: DeliveryProvider,
   ) {}
 
+  // ---- GET /v1/engagements (LIST — R7 BE-prereq P1) --------------------
+  //
+  // The actor's visible engagements (D4b-composed). Filter semantics:
+  //   - no filter   → all visible engagements in tenant
+  //   - ?talent_id  → that talent's visible engagements
+  //   - ?requisition_id → that requisition's engagements (empty if the
+  //                  requisition itself is invisible to the actor)
+  //   - both        → the intersection (at most one row by natural key)
+
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('engagement:read')
+  async listEngagements(
+    @AuthContext() authContext: AuthContextType,
+    @Query('talent_id') talentIdFromQuery: string | undefined,
+    @Query('requisition_id') requisitionIdFromQuery: string | undefined,
+    @RequestId() requestId: string,
+    @Req() req?: Request,
+  ): Promise<EngagementListResponseDto> {
+    this.assertConsumerIsRecruiter(authContext, requestId);
+    const visibleReqIds = await resolveVisibleReqIds(req);
+    let items: TalentJobEngagementView[];
+    if (
+      talentIdFromQuery !== undefined &&
+      requisitionIdFromQuery !== undefined
+    ) {
+      // Both filters: intersection. The natural key (tenant, talent,
+      // requisition) gives at most one row. Use the requisition-filtered
+      // path (handles the invisible-requisition short-circuit) then
+      // narrow by talent_id in-memory.
+      const reqScoped = await this.engagementRepository.findByTenantAndRequisition({
+        tenant_id: authContext.tenant_id,
+        requisition_id: requisitionIdFromQuery,
+        visible_requisition_ids: visibleReqIds,
+      });
+      items = reqScoped.filter((e) => e.talent_id === talentIdFromQuery);
+    } else if (talentIdFromQuery !== undefined) {
+      items = await this.engagementRepository.findByTenantAndTalent({
+        tenant_id: authContext.tenant_id,
+        talent_id: talentIdFromQuery,
+        visible_requisition_ids: visibleReqIds,
+      });
+    } else if (requisitionIdFromQuery !== undefined) {
+      items = await this.engagementRepository.findByTenantAndRequisition({
+        tenant_id: authContext.tenant_id,
+        requisition_id: requisitionIdFromQuery,
+        visible_requisition_ids: visibleReqIds,
+      });
+    } else {
+      items = await this.engagementRepository.findByTenant({
+        tenant_id: authContext.tenant_id,
+        visible_requisition_ids: visibleReqIds,
+      });
+    }
+    return { items };
+  }
+
   // ---- POST /v1/engagements --------------------------------------------
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('engagement:write')
   async createEngagement(
     @Body() body: CreateEngagementRequestDto,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req?: Request,
   ): Promise<CreateEngagementResponseDto> {
     // Step 1 — auth posture (recruiter-only).
     this.assertConsumerIsRecruiter(authContext, requestId);
+
+    // Step 1.5 — R7 BE-prereq Amendment v1.1 §3 Ruling 3 — create is the
+    // special case (no pre-existing engagement to gate via
+    // findByTenantAndId). The visibility check is on the requisition the
+    // engagement would attach to: 404 NOT_FOUND if invisible.
+    const visibleReqIds = await resolveVisibleReqIds(req);
+    this.assertRequisitionVisible(
+      body.requisition_id,
+      visibleReqIds,
+      requestId,
+    );
 
     // Step 2 — Idempotency-Key required + UUID-shaped.
     const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
@@ -185,12 +305,14 @@ export class EngagementController {
 
   @Post(':id/transitions')
   @HttpCode(HttpStatus.OK)
+  @RequireScopes('engagement:write')
   async transitionEngagement(
     @Param('id') id: string,
     @Body() body: TransitionEngagementRequestDto,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req?: Request,
   ): Promise<TransitionEngagementResponseDto> {
     // Step 1 — auth.
     this.assertConsumerIsRecruiter(authContext, requestId);
@@ -216,6 +338,9 @@ export class EngagementController {
     }
 
     // Step 6 — repository call.
+    // R7 BE-prereq §3 — visibility passed through to the repo's
+    // internal findByTenantAndId pre-read (invisible requisition → 404).
+    const visibleReqIds = await resolveVisibleReqIds(req);
     let engagement: TalentJobEngagementView;
     try {
       const result = await this.engagementRepository.transitionState({
@@ -223,6 +348,7 @@ export class EngagementController {
         event_id: body.event_id,
         tenant_id: authContext.tenant_id,
         to_state: body.to_state,
+        visible_requisition_ids: visibleReqIds,
       });
       engagement = result.engagement;
     } catch (err) {
@@ -290,12 +416,14 @@ export class EngagementController {
 
   @Post(':id/outreach')
   @HttpCode(HttpStatus.OK)
+  @RequireScopes('engagement:outreach')
   async sendOutreach(
     @Param('id') id: string,
     @Body() body: OutreachSendRequestDto,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req?: Request,
   ): Promise<OutreachSendResponseDto> {
     // Step 1 — auth.
     this.assertConsumerIsRecruiter(authContext, requestId);
@@ -339,10 +467,15 @@ export class EngagementController {
     // Mirrors the existing GET /:id null-handling pattern below at the
     // same controller — NOT_FOUND 404 with the canonical
     // "TalentJobEngagement not found" message.
+    // R7 BE-prereq §3 — visibility composes here (the FIRST findByTenantAndId
+    // for outreach); invisible requisition → null → 404 BEFORE the
+    // consent check + AI draft + delivery + write.
+    const visibleReqIds = await resolveVisibleReqIds(req);
     const engagementForConsentCheck =
       await this.engagementRepository.findByTenantAndId({
         tenant_id: authContext.tenant_id,
         id,
+        visible_requisition_ids: visibleReqIds,
       });
     if (engagementForConsentCheck === null) {
       throw new AramoError(
@@ -521,6 +654,10 @@ export class EngagementController {
         outreach_event_id: randomUUID(),
         transition_event_id: randomUUID(),
         outreach_payload: outreachPayload,
+        // R7 BE-prereq §3 — uniform pass-through (the pre-read already
+        // applied visibility, but the repo's write method re-applies on
+        // its internal findByTenantAndId — single source of truth).
+        visible_requisition_ids: visibleReqIds,
       });
     } catch (err) {
       if (err instanceof AramoError) {
@@ -592,12 +729,14 @@ export class EngagementController {
 
   @Post(':id/response')
   @HttpCode(HttpStatus.OK)
+  @RequireScopes('engagement:write')
   async recordResponse(
     @Param('id') id: string,
     @Body() body: RecordResponseRequestDto,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req?: Request,
   ): Promise<RecordResponseResponseDto> {
     // Step 1 — auth.
     this.assertConsumerIsRecruiter(authContext, requestId);
@@ -631,6 +770,8 @@ export class EngagementController {
     });
 
     // Step 6 — repository call (atomic 3-write + cross-event-ref).
+    // R7 BE-prereq §3 — visibility passed through to internal pre-read.
+    const visibleReqIds = await resolveVisibleReqIds(req);
     let repoResult;
     try {
       repoResult = await this.engagementRepository.recordResponse({
@@ -643,6 +784,7 @@ export class EngagementController {
           recorded_by_user_id: authContext.sub,
           outreach_event_ref_id: body.outreach_event_ref_id,
         },
+        visible_requisition_ids: visibleReqIds,
       });
     } catch (err) {
       if (err instanceof AramoError) {
@@ -714,12 +856,14 @@ export class EngagementController {
 
   @Post(':id/conversation')
   @HttpCode(HttpStatus.OK)
+  @RequireScopes('engagement:write')
   async recordConversationStarted(
     @Param('id') id: string,
     @Body() body: RecordConversationStartedRequestDto,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req?: Request,
   ): Promise<RecordConversationStartedResponseDto> {
     // Step 1 — auth.
     this.assertConsumerIsRecruiter(authContext, requestId);
@@ -752,6 +896,8 @@ export class EngagementController {
     });
 
     // Step 6 — repository call (atomic 3-write).
+    // R7 BE-prereq §3 — visibility passed through to internal pre-read.
+    const visibleReqIds = await resolveVisibleReqIds(req);
     let repoResult;
     try {
       repoResult = await this.engagementRepository.recordConversationStarted({
@@ -763,6 +909,7 @@ export class EngagementController {
           conversation_started_at: body.conversation_started_at,
           recorded_by_user_id: authContext.sub,
         },
+        visible_requisition_ids: visibleReqIds,
       });
     } catch (err) {
       if (err instanceof AramoError) {
@@ -803,10 +950,12 @@ export class EngagementController {
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
+  @RequireScopes('engagement:read')
   async getEngagement(
     @Param('id') id: string,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req?: Request,
   ): Promise<TalentJobEngagementView> {
     // Step 1 — auth.
     this.assertConsumerIsRecruiter(authContext, requestId);
@@ -814,10 +963,15 @@ export class EngagementController {
     // Step 2 — id UUID validation.
     this.assertEngagementIdIsUuid(id, requestId);
 
-    // Step 3 — repository read (tenant-scoped).
+    // Step 3 — repository read (tenant-scoped + D4b-composed).
+    // R7 BE-prereq §3 — invisible-requisition engagement returns null →
+    // the existing null→404 path fires (Amendment v1.1 Ruling 4 — 404
+    // not 403, the non-leak posture).
+    const visibleReqIds = await resolveVisibleReqIds(req);
     const engagement = await this.engagementRepository.findByTenantAndId({
       tenant_id: authContext.tenant_id,
       id,
+      visible_requisition_ids: visibleReqIds,
     });
 
     // Step 4 — null → 404.
@@ -838,10 +992,12 @@ export class EngagementController {
 
   @Get(':id/events')
   @HttpCode(HttpStatus.OK)
+  @RequireScopes('engagement:read')
   async getEngagementEvents(
     @Param('id') id: string,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req?: Request,
   ): Promise<EngagementListEventsResponseDto> {
     // Step 1 — auth.
     this.assertConsumerIsRecruiter(authContext, requestId);
@@ -849,15 +1005,15 @@ export class EngagementController {
     // Step 2 — id UUID validation.
     this.assertEngagementIdIsUuid(id, requestId);
 
-    // Step 3 — engagement existence check (tenant-scoped). The events
-    // endpoint is a chained read: confirm the parent engagement is
-    // visible in the tenant BEFORE returning events. Without this
-    // pre-check, a non-existent engagement_id would return an empty
-    // events array (information-leak path: same response shape as a
-    // newly-created engagement with no events yet).
+    // Step 3 — engagement existence check (tenant-scoped + D4b).
+    // R7 BE-prereq §3 — visibility composed at the gate; without this
+    // the events endpoint would leak parent-engagement existence via
+    // empty-array vs 404 distinction.
+    const visibleReqIds = await resolveVisibleReqIds(req);
     const engagement = await this.engagementRepository.findByTenantAndId({
       tenant_id: authContext.tenant_id,
       id,
+      visible_requisition_ids: visibleReqIds,
     });
     if (engagement === null) {
       throw new AramoError(
@@ -927,6 +1083,34 @@ export class EngagementController {
         'engagement id path parameter must be a UUID',
         400,
         { requestId, details: { invalid_field: 'engagement_id' } },
+      );
+    }
+  }
+
+  // R7 BE-prereq Amendment v1.1 §3 Ruling 3 — create-time visibility
+  // assertion. The create endpoint has no pre-existing engagement to
+  // gate via findByTenantAndId; visibility is on the requisition the
+  // engagement WOULD attach to. The not-visible response is 404
+  // NOT_FOUND (Ruling 4 — uniform non-leak posture; mirrors the
+  // requisition repo's invisible-but-existing behavior).
+  //
+  // visibleReqIds === null ⇒ see-all (requisition:read:all-tier or
+  // back-compat callers — no check applied).
+  private assertRequisitionVisible(
+    requisitionId: string,
+    visibleReqIds: ReadonlySet<string> | null,
+    requestId: string,
+  ): void {
+    if (visibleReqIds === null) return;
+    if (!visibleReqIds.has(requisitionId)) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'Requisition not found in tenant (or not visible to actor)',
+        404,
+        {
+          requestId,
+          details: { requisition_id: requisitionId },
+        },
       );
     }
   }

@@ -103,11 +103,16 @@ export interface CreateEngagementResult {
 }
 
 // M5 PR-3 §4.1 — transitionState input/output shapes.
+// R7 BE-prereq §3 — visible_requisition_ids flows through to the
+// internal findByTenantAndId pre-read (Amendment v1.1 Ruling 3 D — the
+// 4 mutate-existing endpoints inherit the visibility check via the
+// repo's single source of truth).
 export interface TransitionStateInput {
   engagement_id: string;
   event_id: string;
   tenant_id: string;
   to_state: EngagementStateValue;
+  visible_requisition_ids?: ReadonlySet<string> | null;
 }
 
 export interface TransitionStateResult {
@@ -137,6 +142,8 @@ export interface SendOutreachInput {
   outreach_event_id: string;
   transition_event_id: string;
   outreach_payload: OutreachSentPayload;
+  // R7 BE-prereq §3 — passed through to internal findByTenantAndId.
+  visible_requisition_ids?: ReadonlySet<string> | null;
 }
 
 export interface SendOutreachResult {
@@ -179,6 +186,8 @@ export interface RecordResponseInput {
   response_event_id: string;
   transition_event_id: string;
   response_payload: EngagementResponseReceivedPayload;
+  // R7 BE-prereq §3 — passed through to internal findByTenantAndId.
+  visible_requisition_ids?: ReadonlySet<string> | null;
 }
 
 export interface RecordResponseResult {
@@ -217,6 +226,8 @@ export interface RecordConversationStartedInput {
   conversation_event_id: string;
   transition_event_id: string;
   conversation_payload: EngagementConversationStartedPayload;
+  // R7 BE-prereq §3 — passed through to internal findByTenantAndId.
+  visible_requisition_ids?: ReadonlySet<string> | null;
 }
 
 export interface RecordConversationStartedResult {
@@ -282,15 +293,37 @@ export class EngagementRepository {
     return view;
   }
 
+  // R7 BE-prereq §3 (Amendment v1.1 Ruling 3 D): the 4 read methods now
+  // compose D4b visibility. `visible_requisition_ids` is the actor's
+  // visible-requisition set (from req.resolveVisibleRequisitionIds!()):
+  //   - null  ⇒ see-all (no filter; see-all-requisition callers, internal,
+  //              and back-compat unguarded test paths fall here).
+  //   - Set   ⇒ engagement is visible iff its requisition_id ∈ the set.
+  // Single source of truth — write-method internal pre-reads also flow
+  // through findByTenantAndId, so the write paths inherit the check
+  // uniformly via the write-method's `visible_requisition_ids` pass-through.
+
   async findByTenantAndId(input: {
     tenant_id: string;
     id: string;
+    visible_requisition_ids?: ReadonlySet<string> | null;
   }): Promise<TalentJobEngagementView | null> {
     const startedAt = Date.now();
     const row = await this.prisma.talentJobEngagement.findFirst({
       where: { tenant_id: input.tenant_id, id: input.id },
     });
-    const view = row === null ? null : projectView(row as TalentJobEngagementRow);
+    let view = row === null ? null : projectView(row as TalentJobEngagementRow);
+    if (
+      view !== null &&
+      input.visible_requisition_ids instanceof Set &&
+      !input.visible_requisition_ids.has(view.requisition_id)
+    ) {
+      // The row exists in the tenant but its requisition is not visible
+      // to the actor (D4b composition). Return null — the controller's
+      // existing null→404 path fires (Amendment v1.1 Ruling 4 — 404 not
+      // 403; the non-leak posture).
+      view = null;
+    }
     this.logger.log({
       event: 'engagement.findByTenantAndId',
       tenant_id: input.tenant_id,
@@ -304,10 +337,20 @@ export class EngagementRepository {
   async findByTenantAndTalent(input: {
     tenant_id: string;
     talent_id: string;
+    visible_requisition_ids?: ReadonlySet<string> | null;
   }): Promise<TalentJobEngagementView[]> {
     const startedAt = Date.now();
+    const visIds = input.visible_requisition_ids;
+    const reqFilter =
+      visIds instanceof Set
+        ? { requisition_id: { in: Array.from(visIds) } }
+        : {};
     const rows = await this.prisma.talentJobEngagement.findMany({
-      where: { tenant_id: input.tenant_id, talent_id: input.talent_id },
+      where: {
+        tenant_id: input.tenant_id,
+        talent_id: input.talent_id,
+        ...reqFilter,
+      },
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     });
     const views = (rows as TalentJobEngagementRow[]).map((r) => projectView(r));
@@ -324,8 +367,26 @@ export class EngagementRepository {
   async findByTenantAndRequisition(input: {
     tenant_id: string;
     requisition_id: string;
+    visible_requisition_ids?: ReadonlySet<string> | null;
   }): Promise<TalentJobEngagementView[]> {
     const startedAt = Date.now();
+    if (
+      input.visible_requisition_ids instanceof Set &&
+      !input.visible_requisition_ids.has(input.requisition_id)
+    ) {
+      // The requested requisition is not in the actor's visible set —
+      // short-circuit empty (avoids the DB round-trip; mirrors the
+      // requisition repo's see-all-skip posture).
+      this.logger.log({
+        event: 'engagement.findByTenantAndRequisition',
+        tenant_id: input.tenant_id,
+        requisition_id: input.requisition_id,
+        result_count: 0,
+        invisible_requisition: true,
+        latency_ms: Date.now() - startedAt,
+      });
+      return [];
+    }
     const rows = await this.prisma.talentJobEngagement.findMany({
       where: {
         tenant_id: input.tenant_id,
@@ -338,6 +399,37 @@ export class EngagementRepository {
       event: 'engagement.findByTenantAndRequisition',
       tenant_id: input.tenant_id,
       requisition_id: input.requisition_id,
+      result_count: views.length,
+      latency_ms: Date.now() - startedAt,
+    });
+    return views;
+  }
+
+  // R7 BE-prereq P1 §1 — the new findByTenant for the LIST no-filter
+  // branch. D4b-composed: returns the tenant's engagements narrowed to
+  // the actor's visible-requisition set (or all engagements when the
+  // visibility set is null — see-all callers).
+  async findByTenant(input: {
+    tenant_id: string;
+    visible_requisition_ids?: ReadonlySet<string> | null;
+  }): Promise<TalentJobEngagementView[]> {
+    const startedAt = Date.now();
+    const visIds = input.visible_requisition_ids;
+    const reqFilter =
+      visIds instanceof Set
+        ? { requisition_id: { in: Array.from(visIds) } }
+        : {};
+    const rows = await this.prisma.talentJobEngagement.findMany({
+      where: {
+        tenant_id: input.tenant_id,
+        ...reqFilter,
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    });
+    const views = (rows as TalentJobEngagementRow[]).map((r) => projectView(r));
+    this.logger.log({
+      event: 'engagement.findByTenant',
+      tenant_id: input.tenant_id,
       result_count: views.length,
       latency_ms: Date.now() - startedAt,
     });
@@ -489,10 +581,14 @@ export class EngagementRepository {
       to_state: input.to_state,
     });
 
-    // ---- Step 1: read current engagement (tenant-scoped) --------------
+    // ---- Step 1: read current engagement (tenant-scoped + D4b) -------
+    // R7 BE-prereq §3 — visibility passed through to the single source
+    // of truth (findByTenantAndId composes; invisible requisition →
+    // null → NOT_FOUND, the non-leak posture).
     const current = await this.findByTenantAndId({
       tenant_id: input.tenant_id,
       id: input.engagement_id,
+      visible_requisition_ids: input.visible_requisition_ids,
     });
     if (current === null) {
       this.logger.log({
@@ -612,10 +708,13 @@ export class EngagementRepository {
       transition_event_id: input.transition_event_id,
     });
 
-    // ---- Step 1: read current engagement (tenant-scoped) --------------
+    // ---- Step 1: read current engagement (tenant-scoped + D4b) -------
+    // R7 BE-prereq §3 — visibility passed through; invisible
+    // requisition → null → NOT_FOUND.
     const current = await this.findByTenantAndId({
       tenant_id: input.tenant_id,
       id: input.engagement_id,
+      visible_requisition_ids: input.visible_requisition_ids,
     });
     if (current === null) {
       this.logger.log({
@@ -748,10 +847,13 @@ export class EngagementRepository {
       outreach_event_ref_id: input.response_payload.outreach_event_ref_id,
     });
 
-    // ---- Step 1: read current engagement (tenant-scoped) --------------
+    // ---- Step 1: read current engagement (tenant-scoped + D4b) -------
+    // R7 BE-prereq §3 — visibility passed through; invisible
+    // requisition → null → NOT_FOUND.
     const current = await this.findByTenantAndId({
       tenant_id: input.tenant_id,
       id: input.engagement_id,
+      visible_requisition_ids: input.visible_requisition_ids,
     });
     if (current === null) {
       this.logger.log({
@@ -936,10 +1038,13 @@ export class EngagementRepository {
       conversation_started_at: input.conversation_payload.conversation_started_at,
     });
 
-    // ---- Step 1: read current engagement (tenant-scoped) --------------
+    // ---- Step 1: read current engagement (tenant-scoped + D4b) -------
+    // R7 BE-prereq §3 — visibility passed through; invisible
+    // requisition → null → NOT_FOUND.
     const current = await this.findByTenantAndId({
       tenant_id: input.tenant_id,
       id: input.engagement_id,
+      visible_requisition_ids: input.visible_requisition_ids,
     });
     if (current === null) {
       this.logger.log({
