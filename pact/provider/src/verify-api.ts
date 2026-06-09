@@ -1431,6 +1431,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'submittal:approve',
           'requisition:read:all',
           // R7 BE-prereq: engagement endpoints now scope-gated.
+          // requisition:read:all is already present above and bypasses
+          // the D4b visibility check on engagement endpoints (provider
+          // tests verify the API contract, not visibility scoping).
           'engagement:read',
           'engagement:write',
           'engagement:outreach',

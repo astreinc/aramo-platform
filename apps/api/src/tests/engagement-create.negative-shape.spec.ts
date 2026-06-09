@@ -162,7 +162,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: [],
+        // R7 BE-prereq: engagement endpoints now scope-gated.
+        // requisition:read:all bypasses D4b visibility — focus is
+        // response shape / Match-Class leak scan, not authz axes.
+        scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
