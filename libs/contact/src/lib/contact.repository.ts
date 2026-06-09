@@ -322,6 +322,28 @@ export class ContactRepository {
     });
   }
 
+  // Tasks backend — the contact visible-id set (consumed by libs/visibility's
+  // resolveVisibleContactIds for the polymorphic Task visibility). LIFTS the
+  // existing contact-visibility rule (contact.company_id ∈ visible_client_ids)
+  // to an id-set read — it does NOT reinvent it. Returns contact ids whose
+  // company is in the given visible-company set, tenant-scoped (query-layer;
+  // no fetch-then-filter). Empty company set → []. The see-all case is handled
+  // by the resolver (returns null before calling this).
+  async findContactIdsForCompanies(args: {
+    tenant_id: string;
+    company_ids: readonly string[];
+  }): Promise<string[]> {
+    if (args.company_ids.length === 0) return [];
+    const rows = await this.prisma.contact.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        company_id: { in: Array.from(args.company_ids) },
+      },
+      select: { id: true },
+    });
+    return (rows as Array<{ id: string }>).map((r) => r.id);
+  }
+
   async update(args: {
     tenant_id: string;
     id: string;

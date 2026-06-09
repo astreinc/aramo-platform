@@ -161,6 +161,10 @@ export const SEED_SCOPE_KEYS = [
   'company:search',                     // 9 company:read holders (TA/TO/AM/RM/recruiter/LR/BO/DM/sourcer)
   'requisition:search',                 // 10 requisition:read holders (the 9 above + finance)
   'contact:search',                     // 9 contact:read holders (mirrors company:read set)
+  // Tasks backend (2) — the actionable/assignable to-do (the last core
+  // recruiter surface). Granted to the 9 activity:create operational roles.
+  'task:read',                          // 9 operational roles
+  'task:write',                         // 9 operational roles
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 
