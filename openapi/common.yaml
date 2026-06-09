@@ -2999,7 +2999,10 @@ components:
             created_at (mirrors EngagementEventRepository
             .findByEngagementId repository-layer ordering).
 
-    OutreachSendRequest:
+    # Outreach Draft/Preview Directive v1.0 / Amendment v1.1 §1 — the DRAFT
+    # request (the prompt shape the atomic outreach formerly carried; SEND
+    # no longer takes a prompt).
+    OutreachDraftRequest:
       type: object
       additionalProperties: false
       required:
@@ -3027,8 +3030,70 @@ components:
           type: string
           description: |
             Optional opaque correlation handle. Recipient resolution from
-            TalentContactMethod is deferred per M5 PR-6 Ruling 7 — the
-            substrate at PR-6 does not look up contact rows.
+            TalentContactMethod is deferred — the substrate does not look
+            up contact rows.
+
+    # Outreach Draft/Preview Amendment v1.1 §1 — the DRAFT response.
+    OutreachDraftResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - draft_event_id
+        - draft_text
+        - ai_draft_audit_record_id
+      properties:
+        draft_event_id:
+          type: string
+          format: uuid
+          description: |
+            The TalentEngagementEvent id of the appended outreach_drafted
+            row. The recruiter posts this back to /outreach/send.
+        draft_text:
+          type: string
+          description: The AI-generated draft the recruiter reviews/edits.
+        ai_draft_audit_record_id:
+          type: string
+          format: uuid
+          description: The ai_draft.AiDraftEvent linkage for this draft.
+        consent_warning:
+          type: object
+          additionalProperties: false
+          description: |
+            NON-BLOCKING (Amendment v1.1 Ruling 1). Present only when the
+            soft consent pre-check returned 'denied' at draft time. The
+            draft still succeeded; the BINDING consent gate fires at SEND.
+          properties:
+            reason_code:
+              type: string
+            display_message:
+              type: string
+
+    # Outreach Draft/Preview Amendment v1.1 §2 — the SEND request takes the
+    # source draft event id + the recruiter-approved (possibly-edited) text.
+    OutreachSendRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - draft_event_id
+        - final_text
+      properties:
+        draft_event_id:
+          type: string
+          format: uuid
+          description: |
+            The source outreach_drafted event being sent. Validated to
+            resolve to an outreach_drafted event on the same engagement +
+            tenant (→ 422 ENGAGEMENT_REFERENCE_NOT_FOUND otherwise).
+        final_text:
+          type: string
+          minLength: 1
+          description: |
+            The text actually delivered (the recruiter-approved, possibly-
+            edited draft). May differ from the source draft's draft_text;
+            both persist (editable-trail invariant).
+        recipient_handle:
+          type: string
+          description: Optional opaque correlation handle.
 
     OutreachSentPayload:
       type: object
@@ -3042,13 +3107,16 @@ components:
         - delivered_at
         - delivery_channel
         - delivery_id
+        - final_text
+        - source_draft_event_id
       properties:
         ai_draft_audit_record_id:
           type: string
           format: uuid
           description: |
             Links the engagement-event row to its ai_draft.AiDraftEvent
-            audit trail (M5 PR-5 substrate).
+            audit trail (M5 PR-5 substrate). Carried forward from the
+            source outreach_drafted event.
         model_used:
           type: string
           description: Concrete model id returned by the LLM provider.
@@ -3075,6 +3143,17 @@ components:
           description: |
             Synthetic delivery identifier from the provider
             (SendStubDeliveryProvider at PR-6 — UUID v4).
+        final_text:
+          type: string
+          description: |
+            The text actually delivered (Amendment v1.1 §2). The sent half
+            of the editable trail; may differ from the source draft text.
+        source_draft_event_id:
+          type: string
+          format: uuid
+          description: |
+            The outreach_drafted event this send was produced from
+            (Amendment v1.1 §2 — links sent → drafted).
 
     OutreachSendResponse:
       type: object

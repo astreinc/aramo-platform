@@ -59,6 +59,8 @@ const MIGRATIONS = [
   // M6 PR-2 §3 — engagement + submittal OutboxEvent migrations required
   // because state-transition write methods now emit an in-tx outbox row.
   M('libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
+  // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
+  M('libs/engagement/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql'),
   M('libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   M('libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql'),
   // PR-A1c §4 — metering schema required (in-tx UsageEvent INSERT).
@@ -298,15 +300,34 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       };
       await transition('evaluated');
       await transition('engaged');
-      const outreachRes = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterJwt}`,
-          'Idempotency-Key': randomUUID(),
-          'Content-Type': 'application/json',
+      // Outreach Draft/Preview split: DRAFT then SEND to reach
+      // awaiting_response with an outreach_sent event.
+      const draftRes = await fetch(
+        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach/draft`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${recruiterJwt}`,
+            'Idempotency-Key': randomUUID(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ prompt: 'Reach out.' }),
         },
-        body: JSON.stringify({ prompt: 'Reach out.' }),
-      });
+      );
+      expect(draftRes.status).toBe(200);
+      const draftBody = (await draftRes.json()) as { draft_event_id: string };
+      const outreachRes = await fetch(
+        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach/send`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${recruiterJwt}`,
+            'Idempotency-Key': randomUUID(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ draft_event_id: draftBody.draft_event_id, final_text: 'Reach out.' }),
+        },
+      );
       expect(outreachRes.status).toBe(200);
       const outreachBody = (await outreachRes.json()) as {
         outreach_event: { id: string };

@@ -58,6 +58,8 @@ const MIGRATIONS = [
   // because the happy-path assertion(s) reach the state-transition method
   // which now emits an in-tx outbox row.
   M('libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
+  // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
+  M('libs/engagement/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql'),
   M('libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   M('libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql'),
   // PR-A1c §4 — metering schema required (in-tx UsageEvent INSERT).
@@ -114,7 +116,7 @@ function splitDdl(sql: string): string[] {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'POST /v1/engagements/{id}/outreach — negative-shape (no Match-Class vocabulary leak)',
+  'POST /v1/engagements/{id}/outreach/send — negative-shape (no Match-Class vocabulary leak)',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -295,22 +297,47 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         body: JSON.stringify({ to_state: 'engaged', event_id: randomUUID() }),
       });
 
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterJwt}`,
-          'Idempotency-Key': randomUUID(),
-          'Content-Type': 'application/json',
+      // Outreach Draft/Preview split: DRAFT then SEND. Walk the SEND
+      // response (OutreachSendResponse) for Match-Class vocabulary leaks.
+      const draftRes = await fetch(
+        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach/draft`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${recruiterJwt}`,
+            'Idempotency-Key': randomUUID(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ prompt: 'Reach out to talent about the role.', max_tokens: 256 }),
         },
-        body: JSON.stringify({ prompt: 'Reach out to talent about the role.', max_tokens: 256 }),
-      });
+      );
+      expect(draftRes.status).toBe(200);
+      const draftBody = (await draftRes.json()) as { draft_event_id: string };
+
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/engagements/${engagementId}/outreach/send`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${recruiterJwt}`,
+            'Idempotency-Key': randomUUID(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            draft_event_id: draftBody.draft_event_id,
+            final_text: 'Reach out to talent about the role.',
+          }),
+        },
+      );
       expect(res.status).toBe(200);
-      const body = (await res.json()) as unknown;
+      // Also walk the DRAFT response for vocabulary leaks.
+      const sendBody = (await res.json()) as unknown;
       const hits: Array<{ path: string; key: string }> = [];
-      walk(body, '$', hits);
+      walk(draftBody, '$', hits);
+      walk(sendBody, '$', hits);
       expect(
         hits,
-        `Match-Class vocabulary leaked into outreach-send response: ${hits.map((h) => h.path).join(', ')}`,
+        `Match-Class vocabulary leaked into outreach response: ${hits.map((h) => h.path).join(', ')}`,
       ).toEqual([]);
     });
   },

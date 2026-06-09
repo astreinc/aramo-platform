@@ -254,6 +254,10 @@ TIER2_EXCLUDES=(
   "libs/engagement/src/lib/dto/outreach-send-request.dto.ts"
   "libs/engagement/src/lib/dto/outreach-send-response.dto.ts"
   "libs/engagement/src/lib/dto/outreach-sent-payload.ts"
+  # Outreach Draft/Preview Directive v1.0 / Amendment v1.1 — the draft half.
+  "libs/engagement/src/lib/dto/outreach-draft-request.dto.ts"
+  "libs/engagement/src/lib/dto/outreach-draft-response.dto.ts"
+  "libs/engagement/src/lib/dto/outreach-drafted-payload.ts"
   "libs/engagement/src/lib/delivery/delivery-provider.interface.ts"
   "libs/engagement/src/lib/delivery/send-stub.provider.ts"
   "libs/engagement/src/lib/engagement.controller.ts"

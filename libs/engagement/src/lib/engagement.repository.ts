@@ -10,6 +10,7 @@ import { canTransition, type EngagementStateValue } from './engagement-state.js'
 import type { EngagementEventTypeValue } from './engagement-event.js';
 import type { EngagementConversationStartedPayload } from './dto/engagement-conversation-started-payload.js';
 import type { EngagementResponseReceivedPayload } from './dto/engagement-response-received-payload.js';
+import type { OutreachDraftedPayload } from './dto/outreach-drafted-payload.js';
 import type { OutreachSentPayload } from './dto/outreach-sent-payload.js';
 import type { TalentJobEngagementView } from './dto/talent-job-engagement.view.js';
 import type { TalentEngagementEventView } from './dto/talent-engagement-event.view.js';
@@ -120,6 +121,34 @@ export interface TransitionStateResult {
   event: TalentEngagementEventView;
 }
 
+// Outreach Draft/Preview Directive v1.0 / Amendment v1.1 §1 —
+// draftOutreach input/output shapes.
+//
+// Single repository method paired with the DRAFT endpoint. Generation
+// only: persists ONE outreach_drafted event (the AI draft text +
+// audit linkage). NO state change, NO outbox, NO transaction — a single
+// append (the event log is append-only; the immutability trigger is
+// unaffected).
+//
+// Pre-append guards:
+//   - findByTenantAndId(engagement_id, tenant_id) → null ⇒ NOT_FOUND 404.
+//   - canTransition(current.state, 'awaiting_response') ⇒ false ⇒
+//     ENGAGEMENT_STATE_INVALID 422 (Amendment v1.1 Ruling 2 — DRAFT is
+//     GATED to `engaged`, the same precondition SEND enforces: "you can
+//     only draft what you can send", no stranded drafts).
+export interface DraftOutreachInput {
+  engagement_id: string;
+  tenant_id: string;
+  draft_event_id: string;
+  drafted_payload: OutreachDraftedPayload;
+  // R7 BE-prereq §3 — passed through to internal findByTenantAndId.
+  visible_requisition_ids?: ReadonlySet<string> | null;
+}
+
+export interface DraftOutreachResult {
+  draft_event: TalentEngagementEventView;
+}
+
 // M5 PR-6 §4.4 — sendOutreach input/output shapes (Ruling 1 Sub-Q1b).
 //
 // Single repository method paired with the EngagementController
@@ -130,6 +159,12 @@ export interface TransitionStateResult {
 //
 // Pre-transaction guards:
 //   - findByTenantAndId(engagement_id, tenant_id) → null ⇒ NOT_FOUND 404.
+//   - Cross-event reference validation (Outreach Draft/Preview Amendment
+//     v1.1 §2): source_draft_event_id MUST resolve to an event in the
+//     SAME tenant + SAME engagement + event_type='outreach_drafted'. Any
+//     of (null lookup / cross-engagement / cross-tenant / wrong-event-
+//     type) ⇒ ENGAGEMENT_REFERENCE_NOT_FOUND 422. Mirrors recordResponse's
+//     outreach_event_ref_id guard.
 //   - canTransition(current.state, 'awaiting_response') ⇒ false ⇒
 //     ENGAGEMENT_STATE_INVALID 422.
 //
@@ -139,6 +174,9 @@ export interface TransitionStateResult {
 export interface SendOutreachInput {
   engagement_id: string;
   tenant_id: string;
+  // Outreach Draft/Preview Amendment v1.1 §2 — the source outreach_drafted
+  // event this send was produced from (cross-event-ref validated).
+  source_draft_event_id: string;
   outreach_event_id: string;
   transition_event_id: string;
   outreach_payload: OutreachSentPayload;
@@ -690,14 +728,113 @@ export class EngagementRepository {
     return result;
   }
 
-  // sendOutreach — M5 PR-6 Directive v1.0 §4.4 + Ruling 1 Sub-Q1b.
-  // Read current → NOT_FOUND guard → canTransition(engaged →
-  // awaiting_response) guard → atomic 3-write transaction (engagement
-  // update + outreach_sent event + state_transition event). Mirrors the
-  // transitionState fail-fast pattern: AI/delivery side-effects occur in
-  // the controller BEFORE this method is called, so a pre-transaction
-  // failure (AI provider, delivery) leaves engagement state + event log
-  // unchanged (no partial-state observability).
+  // draftOutreach — Outreach Draft/Preview Directive v1.0 / Amendment
+  // v1.1 §1. Read current → NOT_FOUND guard → canTransition(engaged →
+  // awaiting_response) GATE (Ruling 2 — DRAFT gated to `engaged`, the same
+  // precondition SEND enforces) → append ONE outreach_drafted event.
+  //
+  // Generation only: NO state mutation, NO outbox, NO transaction. The
+  // single append is atomic by itself; the append-only immutability
+  // trigger is unaffected. Multiple drafts per engagement are permitted
+  // (the recruiter may re-draft) — each call appends a fresh row.
+  async draftOutreach(input: DraftOutreachInput): Promise<DraftOutreachResult> {
+    const startedAt = Date.now();
+    this.logger.log({
+      event: 'engagement.outreach_draft_started',
+      tenant_id: input.tenant_id,
+      engagement_id: input.engagement_id,
+      draft_event_id: input.draft_event_id,
+    });
+
+    // ---- Step 1: read current engagement (tenant-scoped + D4b) -------
+    const current = await this.findByTenantAndId({
+      tenant_id: input.tenant_id,
+      id: input.engagement_id,
+      visible_requisition_ids: input.visible_requisition_ids,
+    });
+    if (current === null) {
+      this.logger.log({
+        event: 'engagement.outreach_draft_refused',
+        error_code: 'NOT_FOUND',
+        tenant_id: input.tenant_id,
+        engagement_id: input.engagement_id,
+      });
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentJobEngagement not found',
+        404,
+        {
+          requestId: 'engagement-outreach-draft',
+          details: { engagement_id: input.engagement_id, tenant_id: input.tenant_id },
+        },
+      );
+    }
+
+    // ---- Step 2: DRAFT state-gate (Amendment v1.1 Ruling 2) -----------
+    // DRAFT requires the engagement be in a send-eligible state — i.e.
+    // canTransition(state, 'awaiting_response') (only `engaged` qualifies).
+    // No stranded drafts: you can only draft what you can send.
+    const SEND_TARGET: EngagementStateValue = 'awaiting_response';
+    if (!canTransition(current.state, SEND_TARGET)) {
+      this.logger.log({
+        event: 'engagement.outreach_draft_refused',
+        error_code: 'ENGAGEMENT_STATE_INVALID',
+        tenant_id: input.tenant_id,
+        engagement_id: input.engagement_id,
+        from_state: current.state,
+        to_state: SEND_TARGET,
+      });
+      throw new AramoError(
+        'ENGAGEMENT_STATE_INVALID',
+        `Illegal engagement state transition: ${current.state} -> ${SEND_TARGET}`,
+        422,
+        {
+          requestId: 'engagement-outreach-draft',
+          details: {
+            engagement_id: input.engagement_id,
+            from_state: current.state,
+            to_state: SEND_TARGET,
+          },
+        },
+      );
+    }
+
+    // ---- Step 3: append the PENDING outreach_drafted event ------------
+    // Single create — no $transaction (one row), no state change, no
+    // outbox. The draft is PENDING until SEND.
+    const draftRow = await this.prisma.talentEngagementEvent.create({
+      data: {
+        id: input.draft_event_id,
+        tenant_id: input.tenant_id,
+        engagement_id: input.engagement_id,
+        event_type: 'outreach_drafted',
+        event_payload: input.drafted_payload as never,
+      },
+    });
+
+    const result: DraftOutreachResult = {
+      draft_event: projectEventView(draftRow as TalentEngagementEventRow),
+    };
+    this.logger.log({
+      event: 'engagement.outreach_drafted',
+      tenant_id: result.draft_event.tenant_id,
+      engagement_id: result.draft_event.engagement_id,
+      draft_event_id: result.draft_event.id,
+      latency_ms: Date.now() - startedAt,
+    });
+    return result;
+  }
+
+  // sendOutreach — M5 PR-6 Directive v1.0 §4.4 + Ruling 1 Sub-Q1b;
+  // extended by the Outreach Draft/Preview Amendment v1.1 §2.
+  // Read current → NOT_FOUND guard → source-draft cross-event-ref guard →
+  // canTransition(engaged → awaiting_response) guard → atomic 4-write
+  // transaction (engagement update + outreach_sent event [now carrying
+  // final_text + source_draft_event_id] + state_transition event +
+  // outbox). Mirrors the transitionState fail-fast pattern: AI/delivery
+  // side-effects occur in the controller BEFORE this method is called, so
+  // a pre-transaction failure (AI provider, delivery) leaves engagement
+  // state + event log unchanged (no partial-state observability).
   async sendOutreach(input: SendOutreachInput): Promise<SendOutreachResult> {
     const startedAt = Date.now();
     this.logger.log({
@@ -730,6 +867,49 @@ export class EngagementRepository {
         {
           requestId: 'engagement-outreach',
           details: { engagement_id: input.engagement_id, tenant_id: input.tenant_id },
+        },
+      );
+    }
+
+    // ---- Step 1.5: source-draft cross-event-ref validation -----------
+    // Outreach Draft/Preview Amendment v1.1 §2. The source_draft_event_id
+    // MUST resolve to an event in the SAME tenant + SAME engagement +
+    // event_type='outreach_drafted'. Mirrors recordResponse's
+    // outreach_event_ref_id guard: defends against null lookup,
+    // cross-tenant (findByTenantAndId returns null), cross-engagement
+    // pollution, and pointing at a non-draft event type.
+    const draftRef = await this.engagementEventRepository.findByTenantAndId({
+      tenant_id: input.tenant_id,
+      id: input.source_draft_event_id,
+    });
+    if (
+      draftRef === null ||
+      draftRef.engagement_id !== input.engagement_id ||
+      draftRef.event_type !== 'outreach_drafted'
+    ) {
+      this.logger.log({
+        event: 'engagement.outreach_refused',
+        error_code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        tenant_id: input.tenant_id,
+        engagement_id: input.engagement_id,
+        source_draft_event_id: input.source_draft_event_id,
+        ref_resolved: draftRef !== null,
+        ref_engagement_match:
+          draftRef !== null && draftRef.engagement_id === input.engagement_id,
+        ref_event_type: draftRef?.event_type ?? null,
+      });
+      throw new AramoError(
+        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'draft_event_id not found, not in tenant, or not an outreach_drafted event',
+        422,
+        {
+          requestId: 'engagement-outreach',
+          details: {
+            field: 'draft_event_id',
+            draft_event_id: input.source_draft_event_id,
+            engagement_id: input.engagement_id,
+            tenant_id: input.tenant_id,
+          },
         },
       );
     }

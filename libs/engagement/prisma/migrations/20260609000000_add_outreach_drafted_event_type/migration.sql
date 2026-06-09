@@ -1,0 +1,21 @@
+-- Outreach Draft/Preview Backend Directive v1.0 / Amendment v1.1 §3 (Ruling 3).
+-- Add the outreach_drafted value to the EngagementEventType enum.
+--
+-- This is the state-model substrate for the human-in-the-loop outreach
+-- split. POST /v1/engagements/{id}/outreach/draft appends an
+-- outreach_drafted event (the AI draft text + ai_draft_audit_record_id,
+-- PENDING, no delivery), and POST .../outreach/send later appends the
+-- outreach_sent event (the final, possibly-edited text + a back-reference
+-- to the source draft). Both are appends, so the TalentEngagementEvent
+-- BEFORE-UPDATE immutability trigger
+-- (engagement.reject_engagement_event_update) is unaffected and preserved.
+--
+-- AlterEnum: a pure additive ADD VALUE (PG12+, not used in this migration,
+-- so it commits cleanly). Positioned BEFORE outreach_sent to mirror the
+-- schema.prisma ordering (drafted precedes sent in the workflow).
+--
+-- NOTE: keep this comment block free of literal semicolons and free of
+-- the dollar-quote delimiter sequence — the integration test migration
+-- applier splits on the statement terminator outside dollar-quoted
+-- regions but does not strip line comments (M5 PR-2 precedent).
+ALTER TYPE "engagement"."EngagementEventType" ADD VALUE 'outreach_drafted' BEFORE 'outreach_sent';

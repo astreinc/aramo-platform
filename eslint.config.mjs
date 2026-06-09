@@ -187,6 +187,14 @@ export default [
       'libs/engagement/src/lib/dto/outreach-send-request.dto.ts',
       'libs/engagement/src/lib/dto/outreach-send-response.dto.ts',
       'libs/engagement/src/lib/dto/outreach-sent-payload.ts',
+      // Outreach Draft/Preview Directive v1.0 / Amendment v1.1 — the draft
+      // half of the split. Same canonical engagement-outreach vocabulary
+      // rationale as the outreach-send DTOs above (`outreach_drafted` event
+      // type + the draft endpoint name, not misuse of `outreach` as a
+      // standalone entity name).
+      'libs/engagement/src/lib/dto/outreach-draft-request.dto.ts',
+      'libs/engagement/src/lib/dto/outreach-draft-response.dto.ts',
+      'libs/engagement/src/lib/dto/outreach-drafted-payload.ts',
       'libs/engagement/src/lib/delivery/delivery-provider.interface.ts',
       'libs/engagement/src/lib/delivery/send-stub.provider.ts',
       'libs/engagement/src/lib/engagement.controller.ts',

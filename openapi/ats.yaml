@@ -857,59 +857,52 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/engagements/{engagement_id}/outreach:
+  # Outreach Draft/Preview Directive v1.0 / Amendment v1.1 — the atomic
+  # POST /v1/engagements/{id}/outreach (prompt→draft→send in one call, no
+  # preview) was REMOVED and split into /outreach/draft + /outreach/send.
+  # Leaving the atomic path live would let a caller send without preview,
+  # defeating the human-in-the-loop guarantee — its removal is a
+  # compliance requirement, and draft→preview→send is now the only path.
+  /v1/engagements/{engagement_id}/outreach/draft:
     post:
-      operationId: sendOutreach
-      summary: Send an AI-drafted outreach for an engagement (M5 PR-6).
+      operationId: draftOutreach
+      summary: Generate + persist a PENDING AI outreach draft (no delivery).
       description: |
-        Generates an AI-drafted outreach via libs/ai-draft (Anthropic
-        adapter at M5 PR-5), invokes the injected DeliveryProvider
-        (SendStubDeliveryProvider at PR-6 — no real network I/O), and
-        atomically transitions the engagement from 'engaged' to
-        'awaiting_response' with a paired `outreach_sent` event row +
-        `state_transition` event row.
+        The GENERATION half of the human-in-the-loop outreach split. Runs
+        AiDraftService.generateDraft (libs/ai-draft; Anthropic adapter at
+        M5 PR-5) and persists a PENDING `outreach_drafted` event carrying
+        the AI draft text + ai_draft_audit_record_id. Returns the drafted
+        text + the draft event id for the recruiter to review (and
+        optionally edit) before sending.
 
-        Side-effect ordering (M5 PR-6 §4.1 + Rulings 1 + 11): AI draft
-        + delivery happen BEFORE the DB write. If either fails, the
-        engagement state column + event log are unchanged (no partial-
-        state observability). The repository's $transaction guarantees
-        the 3 writes commit together OR none commit.
+        NO delivery, NO outbox, NO state transition — drafting never sends.
 
-        Pre-write guards (in order):
+        Guards (in order):
           1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
           2. Idempotency-Key required + UUID-shaped.
-          3. engagement_id path param UUID validation.
-          4. Body hash for replay-vs-conflict.
-          5. Idempotency lookup (replay short-circuit).
-          6. AiDraftService.generateDraft (with error-code remap).
-          7. DeliveryProvider.deliver (SendStub pass-through at PR-6).
-          8. EngagementRepository.sendOutreach atomic transaction.
+          3. engagement_id path param UUID validation + idempotency lookup.
+          4. Pre-read engagement (visibility) → 404 NOT_FOUND.
+          5. DRAFT state-gate (Amendment v1.1 Ruling 2): the engagement
+             MUST be in 'engaged' (the only send-eligible state) → 422
+             ENGAGEMENT_STATE_INVALID otherwise. You can only draft what
+             you can send (no stranded drafts; no wasted LLM tokens).
+          6. SOFT consent pre-check (Amendment v1.1 Ruling 1): NON-BLOCKING
+             — on denied the response carries `consent_warning`, but the
+             draft still succeeds. The binding consent gate is at SEND.
+          7. AiDraftService.generateDraft (with error-code remap, Ruling 6).
+          8. Append the outreach_drafted event.
 
         AI error remapping (Ruling 6):
           - kind ∈ {provider_unavailable, provider_internal_error}
             → 502 AI_PROVIDER_UNAVAILABLE.
           - kind === 'provider_rate_limited' → 429 AI_RATE_LIMITED.
-          - any other kind → pass-through (e.g. provider_auth_failed
-            remains 500 INTERNAL_ERROR).
+          - any other kind → 500 INTERNAL_ERROR pass-through.
 
-        Refusal codes:
-          - 422 ENGAGEMENT_STATE_INVALID — engagement not in 'engaged'
-            state.
-          - 502 AI_PROVIDER_UNAVAILABLE — LLM transport / vendor-internal
-            failure.
-          - 429 AI_RATE_LIMITED — LLM rate-limit response.
-          - 409 IDEMPOTENCY_KEY_CONFLICT — same key, different body.
-          - 404 NOT_FOUND — engagement_id not visible in tenant.
-          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
-          - 403 CONSENT_NOT_GRANTED_AT_SEND — runtime contacting-consent
-            check at Step 5.5 (M5 PR-9b §4.1 / Plan v1.5 §M5 Track B item
-            3) returned denied. ConsentDecisionDto embedded in
-            error.details.consent_decision (reason_code discriminates
-            stale_consent | scope_dependency_unmet | channel_not_consented
-            | consent_state_unknown).
-          - 500 INTERNAL_ERROR — consent check resolver substrate fault
-            (decision.result === 'error' per Ruling 8).
-          - 400 VALIDATION_ERROR — DTO shape / Idempotency-Key issues.
+        Refusal codes: 422 ENGAGEMENT_STATE_INVALID, 502
+        AI_PROVIDER_UNAVAILABLE, 429 AI_RATE_LIMITED, 409
+        IDEMPOTENCY_KEY_CONFLICT, 404 NOT_FOUND, 403 INSUFFICIENT_PERMISSIONS,
+        400 VALIDATION_ERROR. NOTE: no 403 CONSENT_NOT_GRANTED_AT_SEND here
+        — consent is a non-blocking warning at draft; it binds at SEND.
       parameters:
         - name: engagement_id
           in: path
@@ -924,41 +917,34 @@ paths:
             type: string
             format: uuid
           description: |
-            UUID idempotency key. Same key + same body returns the prior
-            response; same key + different body returns 409
-            IDEMPOTENCY_KEY_CONFLICT. Missing or non-UUID returns 400
-            VALIDATION_ERROR.
+            UUID idempotency key (the DRAFT key — independent of the SEND
+            key). Same key + same body returns the prior draft response;
+            same key + different body returns 409 IDEMPOTENCY_KEY_CONFLICT.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: 'common.yaml#/components/schemas/OutreachSendRequest'
+              $ref: 'common.yaml#/components/schemas/OutreachDraftRequest'
       responses:
         '200':
           description: |
-            Outreach drafted + delivered (stub) + engagement transitioned
-            to 'awaiting_response'.
+            AI draft generated + persisted PENDING (outreach_drafted event).
+            No delivery occurred. consent_warning present iff the soft
+            consent pre-check returned denied.
           content:
             application/json:
               schema:
-                $ref: 'common.yaml#/components/schemas/OutreachSendResponse'
+                $ref: 'common.yaml#/components/schemas/OutreachDraftResponse'
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
           description: |
-            Authenticated but request is forbidden. Two codes can surface
-            here:
-              - INSUFFICIENT_PERMISSIONS — non-recruiter consumer
-                (recruiter-only endpoint per PR-6 Ruling 8).
-              - CONSENT_NOT_GRANTED_AT_SEND — runtime contacting-consent
-                check at Step 5.5 (M5 PR-9b §4.1 — Plan v1.5 §M5 Track B
-                item 3 closure) returned `result: 'denied'`. Full
-                ConsentDecisionDto embedded in
-                error.details.consent_decision; reason_code discriminates
-                denial cause without growing the error registry.
+            INSUFFICIENT_PERMISSIONS — non-recruiter consumer (recruiter-only
+            endpoint). Consent denial does NOT surface here at draft time —
+            it is a non-blocking warning in the 200 response body.
           content:
             application/json:
               schema:
@@ -981,6 +967,117 @@ paths:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '502':
           description: AI provider unavailable (AI_PROVIDER_UNAVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
+  /v1/engagements/{engagement_id}/outreach/send:
+    post:
+      operationId: sendOutreach
+      summary: Deliver a recruiter-approved outreach draft (consent-at-send).
+      description: |
+        The DELIVERY half of the human-in-the-loop split. Takes the source
+        draft event id + the recruiter-approved (possibly-edited) final
+        text; runs the BINDING consent-at-send check; delivers via the
+        injected DeliveryProvider (SendStub at PR-6); then atomically
+        transitions the engagement from 'engaged' to 'awaiting_response'
+        with a paired `outreach_sent` event (carrying the final sent text
+        + a back-reference to the source draft) + `state_transition` event
+        + outbox emit. The repository $transaction guarantees all writes
+        commit together OR none commit.
+
+        The editable trail: outreach_sent.final_text may differ from the
+        source outreach_drafted.draft_text (the recruiter edited); both
+        persist, so what the AI proposed and what the recruiter sent are
+        BOTH provable.
+
+        Guards (in order):
+          1. consumer_type === 'recruiter' (403 INSUFFICIENT_PERMISSIONS).
+          2. Idempotency-Key required + UUID-shaped (the SEND key).
+          3. engagement_id path param UUID validation + idempotency lookup.
+          4. Pre-read engagement (visibility) → 404 NOT_FOUND.
+          5. State pre-gate BEFORE delivery (canTransition → 422). True
+             single-send: a second send finds 'awaiting_response' and 422s
+             WITHOUT re-delivering.
+          6. Source-draft cross-event-ref validation: draft_event_id must
+             resolve to an outreach_drafted event on this engagement +
+             tenant → 422 ENGAGEMENT_REFERENCE_NOT_FOUND otherwise.
+          7. BINDING consent-at-send → 403 CONSENT_NOT_GRANTED_AT_SEND
+             (denied) / 500 INTERNAL_ERROR (resolver fault).
+          8. DeliveryProvider.deliver(final_text).
+          9. EngagementRepository.sendOutreach atomic transaction.
+
+        Refusal codes: 422 ENGAGEMENT_STATE_INVALID, 422
+        ENGAGEMENT_REFERENCE_NOT_FOUND, 403 CONSENT_NOT_GRANTED_AT_SEND, 403
+        INSUFFICIENT_PERMISSIONS, 500 INTERNAL_ERROR (consent resolver
+        fault), 409 IDEMPOTENCY_KEY_CONFLICT, 404 NOT_FOUND, 400
+        VALIDATION_ERROR. NOTE: no AI error codes here — generation
+        happened at /outreach/draft.
+      parameters:
+        - name: engagement_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            UUID idempotency key (the SEND key — independent of the DRAFT
+            key). Same key + same body returns the prior response; same key
+            + different body returns 409 IDEMPOTENCY_KEY_CONFLICT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'common.yaml#/components/schemas/OutreachSendRequest'
+      responses:
+        '200':
+          description: |
+            Final text delivered (stub) + engagement transitioned to
+            'awaiting_response'; outreach_sent event persists the final
+            text + source draft back-reference.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/OutreachSendResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Authenticated but request is forbidden. Two codes can surface:
+              - INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+              - CONSENT_NOT_GRANTED_AT_SEND — the BINDING runtime
+                contacting-consent check returned `result: 'denied'`. Full
+                ConsentDecisionDto embedded in
+                error.details.consent_decision; reason_code discriminates
+                the denial cause without growing the error registry.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Idempotency-Key collision (same key, different body).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+        '500':
+          description: Consent resolver substrate fault (INTERNAL_ERROR).
           content:
             application/json:
               schema:
