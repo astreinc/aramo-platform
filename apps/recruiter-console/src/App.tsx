@@ -13,6 +13,7 @@ import { CompanyDetailView } from './companies/CompanyDetailView';
 import { CompanyEditView } from './companies/CompanyEditView';
 import { ContactCreateView } from './contacts/ContactCreateView';
 import { ContactEditView } from './contacts/ContactEditView';
+import { EngagementDetailView } from './engagement/EngagementDetailView';
 import { IndexRoute } from './dashboard/IndexRoute';
 import { LoginPage } from './routes/LoginPage';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
@@ -167,6 +168,17 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <SubmittalWizard />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="engagements/:engagementId"
+                      element={
+                        <RouteGuard
+                          requireScope="engagement:read"
+                          sessionStateOverride={state}
+                        >
+                          <EngagementDetailView />
                         </RouteGuard>
                       }
                     />

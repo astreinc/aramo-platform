@@ -10,6 +10,7 @@ import {
 } from '@aramo/fe-foundation';
 
 import { Tabs, type TabItem } from '../components/Tabs';
+import { EngagementsPanel } from '../engagement/EngagementsPanel';
 import { listActivities } from '../activity/activity-api';
 import { timelineErrorMessage } from '../activity/error-messages';
 import type { ActivityView } from '../activity/types';
@@ -141,6 +142,13 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
           canStartSubmittal={scopes.includes('submittal:create')}
         />
       ),
+    });
+  }
+  if (scopes.includes('engagement:read')) {
+    tabs.push({
+      id: 'engagements',
+      label: 'Engagements',
+      content: <EngagementsPanel talentId={talent.id} />,
     });
   }
 
