@@ -219,6 +219,12 @@ export class TalentRecordRepository {
   async list(args: {
     tenant_id: string;
     site_id?: string;
+    // Search PR-1 — optional ILIKE-contains quick-search term (trimmed,
+    // non-empty when present; the controller gates ?q= on talent:search).
+    // Trigram-accelerated via the pg_trgm GIN indexes on first_name /
+    // last_name. The OR is a sibling key ANDed with tenant+site (talent is
+    // pool-open — no visibility OR to collide with).
+    q?: string;
     limit?: number;
   }): Promise<TalentRecordView[]> {
     const limit = Math.min(args.limit ?? 50, 200);
@@ -226,6 +232,14 @@ export class TalentRecordRepository {
       where: {
         tenant_id: args.tenant_id,
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+        ...(args.q === undefined
+          ? {}
+          : {
+              OR: [
+                { first_name: { contains: args.q, mode: 'insensitive' } },
+                { last_name: { contains: args.q, mode: 'insensitive' } },
+              ],
+            }),
       },
       orderBy: { created_at: 'desc' },
       take: limit,

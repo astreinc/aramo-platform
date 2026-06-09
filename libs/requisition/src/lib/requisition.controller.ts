@@ -66,6 +66,12 @@ export class RequisitionController {
   // CRUD routes — recruiter divergence: delete → tenant_admin only
   // -------------------------------------------------------------------------
 
+  // Search PR-1 — the LIST route gates on requisition:read (route-static).
+  // The optional ?q= quick-search ADDITIONALLY requires requisition:search
+  // WHEN q is present; the no-q LIST keeps its requisition:read-only gate.
+  // The trigram (title) filter ANDs with the A3-OR-D4b visibility predicate
+  // (and any company_id narrowing) — NARROWS within the visible set, never
+  // widens.
   @Get()
   @HttpCode(HttpStatus.OK)
   @RequireScopes('requisition:read')
@@ -74,14 +80,26 @@ export class RequisitionController {
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
     @Query('company_id') companyIdFromQuery: string | undefined,
+    @Query('q') q: string | undefined,
+    @RequestId() requestId: string,
     @Req() req: Request,
   ): Promise<{ items: RequisitionView[] }> {
+    const searchTerm = q?.trim() ? q.trim() : undefined;
+    if (searchTerm !== undefined && !authContext.scopes.includes('requisition:search')) {
+      throw new AramoError(
+        'INSUFFICIENT_PERMISSIONS',
+        'requisition:search scope required for ?q= quick-search',
+        403,
+        { requestId, details: { reason: 'search_scope_missing', required_scope: 'requisition:search' } },
+      );
+    }
     const visibility = await req.resolveVisibility!();
     const items = await this.requisitionRepository.listForActor({
       tenant_id: authContext.tenant_id,
       visibility,
       site_id: siteIdFromQuery,
       company_id: companyIdFromQuery,
+      q: searchTerm,
     });
     return { items };
   }

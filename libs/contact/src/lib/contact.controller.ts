@@ -35,6 +35,11 @@ import { ContactRepository } from './contact.repository.js';
 export class ContactController {
   constructor(private readonly contactRepository: ContactRepository) {}
 
+  // Search PR-1 — the LIST route gates on contact:read (route-static). The
+  // optional ?q= quick-search ADDITIONALLY requires contact:search WHEN q is
+  // present; the no-q LIST keeps its contact:read-only gate. The trigram
+  // (first_name/last_name OR) filter ANDs with the D4b visibility predicate
+  // (and any company_id narrowing) — NARROWS within the visible set.
   @Get()
   @HttpCode(HttpStatus.OK)
   @RequireScopes('contact:read')
@@ -43,14 +48,26 @@ export class ContactController {
     @AuthContext() authContext: AuthContextType,
     @Query('company_id') companyId: string | undefined,
     @Query('site_id') siteIdFromQuery: string | undefined,
+    @Query('q') q: string | undefined,
+    @RequestId() requestId: string,
     @Req() req: Request,
   ): Promise<{ items: ContactView[] }> {
+    const searchTerm = q?.trim() ? q.trim() : undefined;
+    if (searchTerm !== undefined && !authContext.scopes.includes('contact:search')) {
+      throw new AramoError(
+        'INSUFFICIENT_PERMISSIONS',
+        'contact:search scope required for ?q= quick-search',
+        403,
+        { requestId, details: { reason: 'search_scope_missing', required_scope: 'contact:search' } },
+      );
+    }
     const visibility = await req.resolveVisibility!();
     const items = await this.contactRepository.listForActor({
       tenant_id: authContext.tenant_id,
       visibility,
       company_id: companyId,
       site_id: siteIdFromQuery,
+      q: searchTerm,
     });
     return { items };
   }

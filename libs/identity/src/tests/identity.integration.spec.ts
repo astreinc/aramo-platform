@@ -276,7 +276,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   - R7 BE-prereq adds +20 engagement-scope assignments (6 write-
       //     tier × 3 + 2 read-only × 1; Amendment v1.1 §2 Ruling 2) —
       //     342 → 362.
-      expect(roleScopes).toBe(362);
+      //   - Search PR-1 adds +28 search-scope assignments (per-entity
+      //     :read-holder parity; SEARCH_SEED_BUNDLES @ 0x800+): company:search
+      //     × 9 + requisition:search × 10 + contact:search × 9 = 28
+      //     (talent:search REUSED — already counted in the 85+200 above) —
+      //     362 → 390.
+      // Search-Scope-Seed breakdown — 28 rows:
+      //   company:search  — TA/TO/AM/RM/recruiter/LR/BO/DM/sourcer        (9)
+      //   requisition:search — the 9 above + finance                      (10)
+      //   contact:search  — same 9 as company:search                      (9)
+      expect(roleScopes).toBe(390);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },

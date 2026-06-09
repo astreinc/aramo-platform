@@ -147,6 +147,20 @@ export const SEED_SCOPE_KEYS = [
   'engagement:read',                    // 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office)
   'engagement:write',                   // 6 write-tier roles: TA / TO / AM / RM / LR / recruiter (floor)
   'engagement:outreach',                // 6 write-tier roles (mirrors :write; outreach SoD encoding)
+  // Search PR-1 — per-entity quick-search scopes (Lead rulings R1/R2). The
+  // ?q= text-search parameter on the per-entity LIST endpoints is gated on
+  // these scopes WHEN q is present (the no-q LIST keeps its existing :read
+  // gate). talent:search ALREADY exists (above) and is REUSED for
+  // /v1/talent-records?q= — its grant set stays the A1a "Constrained Talent
+  // Access" deliberately-narrow set (NOT expanded to talent:read parity; see
+  // seed.ts SEARCH note). These 3 NEW scopes follow per-entity :read-holder
+  // parity (R2): each is granted to the roles that hold the entity's :read
+  // scope. The trigram match still NARROWS within the entity's existing
+  // visibility predicate — search grants ACCESS, the resolver governs WHAT
+  // is seen.
+  'company:search',                     // 9 company:read holders (TA/TO/AM/RM/recruiter/LR/BO/DM/sourcer)
+  'requisition:search',                 // 10 requisition:read holders (the 9 above + finance)
+  'contact:search',                     // 9 contact:read holders (mirrors company:read set)
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

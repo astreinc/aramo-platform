@@ -67,6 +67,11 @@ export class CompanyController {
   // Company routes
   // ---------------------------------------------------------------------------
 
+  // Search PR-1 — the LIST route gates on company:read (route-static). The
+  // optional ?q= quick-search ADDITIONALLY requires company:search WHEN q is
+  // present; the no-q LIST keeps its company:read-only gate. The trigram
+  // (name) filter ANDs with the D4b visibility predicate — NARROWS within
+  // the visible set, never widens.
   @Get()
   @HttpCode(HttpStatus.OK)
   @RequireScopes('company:read')
@@ -74,13 +79,25 @@ export class CompanyController {
   async list(
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
+    @Query('q') q: string | undefined,
+    @RequestId() requestId: string,
     @Req() req: Request,
   ): Promise<{ items: CompanyView[] }> {
+    const searchTerm = q?.trim() ? q.trim() : undefined;
+    if (searchTerm !== undefined && !authContext.scopes.includes('company:search')) {
+      throw new AramoError(
+        'INSUFFICIENT_PERMISSIONS',
+        'company:search scope required for ?q= quick-search',
+        403,
+        { requestId, details: { reason: 'search_scope_missing', required_scope: 'company:search' } },
+      );
+    }
     const visibility = await req.resolveVisibility!();
     const items = await this.companyRepository.listForActor({
       tenant_id: authContext.tenant_id,
       visibility,
       site_id: siteIdFromQuery,
+      q: searchTerm,
     });
     return { items };
   }

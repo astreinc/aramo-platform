@@ -201,12 +201,21 @@ export class CompanyRepository {
     tenant_id: string;
     visibility: VisibilityContextShape;
     site_id?: string;
+    // Search PR-1 — optional ILIKE-contains quick-search over `name`
+    // (trimmed, non-empty when present; the controller gates ?q= on
+    // company:search). Trigram-accelerated via the pg_trgm GIN index on
+    // name. ANDed (sibling key) with the D4b visibility filter below —
+    // NARROWS within the visible set, never widens.
+    q?: string;
     limit?: number;
   }): Promise<CompanyView[]> {
     const limit = Math.min(args.limit ?? 50, 200);
     const where: Record<string, unknown> = {
       tenant_id: args.tenant_id,
       ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+      ...(args.q === undefined
+        ? {}
+        : { name: { contains: args.q, mode: 'insensitive' } }),
     };
     if (!args.visibility.see_all_company) {
       const visible = args.visibility.visible_client_ids;
