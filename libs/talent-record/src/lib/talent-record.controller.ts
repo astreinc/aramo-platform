@@ -68,6 +68,12 @@ export class TalentRecordController {
     private readonly resumeParser: ResumeParserService,
   ) {}
 
+  // Search PR-1 — the LIST route gates on talent:read (route-static). The
+  // optional ?q= quick-search ADDITIONALLY requires talent:search (REUSED
+  // A1a "Constrained Talent Access" scope) WHEN q is present; the no-q LIST
+  // keeps its talent:read-only gate (backward-compat by construction). The
+  // trigram filter NARROWS within the existing tenant+site scope (talent is
+  // pool-open — no per-record visibility resolver).
   @Get()
   @HttpCode(HttpStatus.OK)
   @RequireScopes('talent:read')
@@ -75,10 +81,22 @@ export class TalentRecordController {
   async list(
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
+    @Query('q') q: string | undefined,
+    @RequestId() requestId: string,
   ): Promise<{ items: TalentRecordView[] }> {
+    const searchTerm = q?.trim() ? q.trim() : undefined;
+    if (searchTerm !== undefined && !authContext.scopes.includes('talent:search')) {
+      throw new AramoError(
+        'INSUFFICIENT_PERMISSIONS',
+        'talent:search scope required for ?q= quick-search',
+        403,
+        { requestId, details: { reason: 'search_scope_missing', required_scope: 'talent:search' } },
+      );
+    }
     const items = await this.repo.list({
       tenant_id: authContext.tenant_id,
       site_id: siteIdFromQuery,
+      q: searchTerm,
     });
     return { items };
   }

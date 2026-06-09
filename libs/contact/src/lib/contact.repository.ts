@@ -264,6 +264,13 @@ export class ContactRepository {
     visibility: VisibilityContextShape;
     company_id?: string;
     site_id?: string;
+    // Search PR-1 — optional ILIKE-contains quick-search over
+    // first_name/last_name (trimmed, non-empty when present; the controller
+    // gates ?q= on contact:search). Trigram-accelerated via the pg_trgm GIN
+    // indexes on first_name / last_name. The OR is a sibling key ANDed with
+    // the D4b visibility filter (which keys on `company_id`, not OR — no
+    // collision) — NARROWS within the visible set.
+    q?: string;
     limit?: number;
   }): Promise<ContactView[]> {
     const limit = Math.min(args.limit ?? 50, 200);
@@ -271,6 +278,14 @@ export class ContactRepository {
       tenant_id: args.tenant_id,
       ...(args.company_id === undefined ? {} : { company_id: args.company_id }),
       ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+      ...(args.q === undefined
+        ? {}
+        : {
+            OR: [
+              { first_name: { contains: args.q, mode: 'insensitive' } },
+              { last_name: { contains: args.q, mode: 'insensitive' } },
+            ],
+          }),
     };
     if (!args.visibility.see_all_company) {
       const visible = args.visibility.visible_client_ids;

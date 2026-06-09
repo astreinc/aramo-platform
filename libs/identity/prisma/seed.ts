@@ -193,6 +193,13 @@ export const SEED_IDS = {
     'engagement:read': '01900000-0000-7000-8000-00000000009a',
     'engagement:write': '01900000-0000-7000-8000-00000000009b',
     'engagement:outreach': '01900000-0000-7000-8000-00000000009c',
+    // Search PR-1 — 3 per-entity quick-search scopes (continue the 0x90
+    // range: 0x9d / 0x9e / 0x9f). talent:search is REUSED (0x6c above), so
+    // only company/requisition/contact get new scope ids. Granted via
+    // SEARCH_SEED_BUNDLES (per-entity :read-holder parity; range 0x800+).
+    'company:search': '01900000-0000-7000-8000-00000000009d',
+    'requisition:search': '01900000-0000-7000-8000-00000000009e',
+    'contact:search': '01900000-0000-7000-8000-00000000009f',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1094,6 +1101,65 @@ const ENGAGEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Search PR-1 — per-entity quick-search role-scope bundle (Lead rulings
+// R1/R2). Grants the 3 NEW search scopes (company:search / requisition:search
+// / contact:search) following PER-ENTITY :read-HOLDER PARITY: each search
+// scope goes to exactly the roles that hold that entity's :read scope (the
+// Reporting-Scope-Seed derivation rule — grant the new capability to the
+// holders of the adjacent existing one). The entity's existing visibility
+// predicate still governs WHAT each role SEES once through the gate; the
+// seed grants ACCESS.
+//
+// talent:search is NOT in this bundle — it is REUSED as-is (already granted
+// to its 7 A1a-bundle holders). Its grant set stays the deliberately-narrow
+// "Constrained Talent Access" set from the A1a audit (delivery_manager /
+// back_office / finance can talent:read a handed record but do NOT search
+// the pool). Reconciling R1 ("reuse talent:search") with R2 ("read-parity"):
+// reuse is honored literally; read-parity applies to the 3 NEW scopes —
+// expanding the deliberately-constrained talent:search is out of scope for
+// an additive search PR (flagged in the post-merge record for the Lead).
+//
+// :read-holder sets (from ROLE_SCOPE_ASSIGNMENTS + AUTHZ1_BUNDLES above):
+//   company:read     — TA, recruiter, TO, AM, sourcer, RM, DM, LR, BO        (9)
+//   contact:read     — same 9 as company:read                                 (9)
+//   requisition:read — the 9 above + finance                                  (10)
+// auditor / auditor_with_financials / candidate / super_admin hold none of
+// the three :read scopes → hold no :search scope → 403 on any ?q=.
+//
+// Iteration order pins the deterministic 0x800+ RoleScope row ids — DO NOT
+// REORDER without bumping the offset to a fresh range.
+const SEARCH_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_owner', ['company:search', 'requisition:search', 'contact:search']],
+  ['tenant_admin', ['company:search', 'requisition:search', 'contact:search']],
+  ['account_manager', ['company:search', 'requisition:search', 'contact:search']],
+  ['recruiting_manager', ['company:search', 'requisition:search', 'contact:search']],
+  ['recruiter', ['company:search', 'requisition:search', 'contact:search']],
+  ['lead_recruiter', ['company:search', 'requisition:search', 'contact:search']],
+  ['back_office', ['company:search', 'requisition:search', 'contact:search']],
+  ['delivery_manager', ['company:search', 'requisition:search', 'contact:search']],
+  ['sourcer', ['company:search', 'requisition:search', 'contact:search']],
+  ['finance', ['requisition:search']],
+];
+
+// Search PR-1 — deterministic RoleScope row ids for the 28 search-bundle
+// grants (9 roles × 3 + finance × 1). Disjoint range starting at 0x800
+// (AUTHZ-1 0x400+, D5 0x500+, Reporting 0x600+, Engagement 0x700+ all stay
+// untouched — append-don't-renumber). The (role, scope) iteration order in
+// SEARCH_SEED_BUNDLES pins the assignment, so a given pair always produces
+// the same UUID on every seed run.
+const SEARCH_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x800;
+  for (const [role, scopes] of SEARCH_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -1297,6 +1363,15 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['engagement:read'], 'engagement:read', 'Read engagements (GET /v1/engagements LIST, GET /v1/engagements/:id, GET /v1/engagements/:id/events). 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office). D4b-composed at read time (engagement visible iff its requisition_id is in the actor visible-requisition set).');
   await upsertScope(prisma, SEED_IDS.scopes['engagement:write'], 'engagement:write', 'Mutate engagements (POST create / transitions / response / conversation). 6 roles: TA / TO / AM / RM / LR / recruiter[floor]. Write-path visibility: the controller (create) + the repo findByTenantAndId (the 4 mutate-existing) compose D4b — invisible-requisition engagements return 404.');
   await upsertScope(prisma, SEED_IDS.scopes['engagement:outreach'], 'engagement:outreach', 'Send outbound engagement outreach (POST /v1/engagements/:id/outreach). Separate from :write per outreach SoD — the only engagement write with external side-effects (AI draft + consent-at-send + outbound delivery + LLM cost). Same 6 roles as :write.');
+  // Search PR-1 — 3 per-entity quick-search scopes (Lead rulings R1/R2).
+  // Gate the ?q= trigram filter on the per-entity LIST endpoints WHEN q is
+  // present (the no-q LIST keeps its :read gate). talent:search is REUSED
+  // (seeded above) for /v1/talent-records?q=. Granted via SEARCH_SEED_BUNDLES
+  // (per-entity :read-holder parity). NO scope.created audit events (mirrors
+  // the Reporting / Engagement-Scope-Seed precedent).
+  await upsertScope(prisma, SEED_IDS.scopes['company:search'], 'company:search', 'Quick-search companies by name (GET /v1/companies?q=). Trigram (ILIKE-contains) match ANDed with the D4b company visibility predicate — narrows within the visible set. Granted to the 9 company:read holders.');
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:search'], 'requisition:search', 'Quick-search requisitions by title (GET /v1/requisitions?q=). Trigram (ILIKE-contains) match ANDed with the A3-OR-D4b requisition visibility predicate. Granted to the 10 requisition:read holders (the 9 + finance).');
+  await upsertScope(prisma, SEED_IDS.scopes['contact:search'], 'contact:search', 'Quick-search contacts by name (GET /v1/contacts?q=). Trigram (ILIKE-contains) match over first_name/last_name ANDed with the D4b contact visibility predicate. Granted to the 9 contact:read holders.');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -1387,6 +1462,28 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
       const rsId = ENGAGEMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`R7 Engagement-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // 7f. Search PR-1 RoleScope assignments — 28 rows (9 roles × 3 search
+  // scopes + finance × 1) per SEARCH_SEED_BUNDLES. UUID range 0x800+
+  // (append-don't-renumber — AUTHZ-1's 0x400+, AUTHZ-D5's 0x500+,
+  // Reporting's 0x600+, Engagement's 0x700+ all stay untouched). Grants the
+  // 3 NEW company/requisition/contact :search scopes by per-entity
+  // :read-holder parity; talent:search is REUSED (granted in 7/7b above).
+  for (const [roleKey, scopeKeys] of SEARCH_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = SEARCH_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`Search-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

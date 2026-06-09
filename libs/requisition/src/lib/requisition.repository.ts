@@ -454,6 +454,13 @@ export class RequisitionRepository {
     visibility: VisibilityContextShape;
     site_id?: string;
     company_id?: string;
+    // Search PR-1 — optional ILIKE-contains quick-search over `title`
+    // (trimmed, non-empty when present; the controller gates ?q= on
+    // requisition:search). Trigram-accelerated via the pg_trgm GIN index on
+    // title. A single-column `title` key (NOT an OR) so it does NOT collide
+    // with buildVisibilityWhere's top-level OR — it ANDs as a sibling,
+    // narrowing within the A3-OR-D4b visible set.
+    q?: string;
     limit?: number;
   }): Promise<RequisitionView[]> {
     const limit = Math.min(args.limit ?? 50, 200);
@@ -464,6 +471,9 @@ export class RequisitionRepository {
         // Top-level AND with the A3/D4b OR-union below — narrows within
         // visibility. Index-backed by @@index([tenant_id, company_id]).
         ...(args.company_id === undefined ? {} : { company_id: args.company_id }),
+        ...(args.q === undefined
+          ? {}
+          : { title: { contains: args.q, mode: 'insensitive' } }),
         ...buildVisibilityWhere(args.visibility),
       },
       orderBy: { created_at: 'desc' },
