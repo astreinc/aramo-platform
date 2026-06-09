@@ -5,6 +5,7 @@ import {
   searchContacts,
   searchRequisitions,
   searchTalent,
+  searchTalentByResume,
 } from './search-api';
 
 // Search FE /search — the ?q= URL construction (consuming the PR#221
@@ -36,5 +37,16 @@ describe('search-api — ?q= URL construction', () => {
     expect(paths[2]).toBe('/v1/requisitions?q=engineer');
     // URLSearchParams encodes the space (as + per application/x-www-form-urlencoded).
     expect(paths[3]).toBe('/v1/contacts?q=a+b');
+  });
+
+  // Search PR-2 — the résumé content-search call uses the DISTINCT ?resume_q=
+  // param against the same talent-records path (never ?q=&?resume_q=).
+  it('searchTalentByResume targets /v1/talent-records?resume_q= (distinct param)', async () => {
+    const spy = mockOk();
+    await searchTalentByResume('kubernetes');
+    const path = String(spy.mock.calls[0]?.[0]);
+    expect(path).toBe('/v1/talent-records?resume_q=kubernetes');
+    expect(path).not.toContain('q=kubernetes&');
+    expect(path).not.toContain('&resume_q=');
   });
 });

@@ -27,6 +27,22 @@ export async function searchTalent(q: string): Promise<TalentRecordListResponse>
   );
 }
 
+// Search PR-2 — the résumé CONTENT-search call (distinct ?resume_q= param).
+// The BE matches the persisted+redacted résumé body (websearch_to_tsquery,
+// ts_rank-ordered), ANDed with the talent visibility, gated on talent:search
+// (the SAME scope as the name ?q= — D3 reuse). Each returned item carries a
+// `resume_snippet` (ts_headline excerpt over the redacted text). Fired as a
+// SEPARATE call from searchTalent — the FE merges name OR résumé matches
+// (NOT ?q=&?resume_q= together, which the BE ANDs → near-empty).
+export async function searchTalentByResume(
+  q: string,
+): Promise<TalentRecordListResponse> {
+  const params = new URLSearchParams({ resume_q: q });
+  return apiClient.get<TalentRecordListResponse>(
+    `/v1/talent-records?${params.toString()}`,
+  );
+}
+
 export async function searchCompanies(q: string): Promise<CompanyListResponse> {
   return apiClient.get<CompanyListResponse>(withQuery('/v1/companies', q));
 }
