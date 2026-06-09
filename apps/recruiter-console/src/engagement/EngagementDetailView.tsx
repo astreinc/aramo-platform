@@ -15,6 +15,7 @@ import type { TalentRecordView } from '../talent/types';
 
 import { EngagementTransitionControl } from './EngagementTransitionControl';
 import { EventLog } from './EventLog';
+import { OutreachComposer } from './OutreachComposer';
 import { ResponseLogger } from './ResponseLogger';
 import { ConversationLogger } from './ConversationLogger';
 import {
@@ -48,9 +49,9 @@ import {
 // read-only actor (engagement:read, no :write) sees the state + event log
 // but no controls.
 //
-// PR-1 (this PR) ships everything except the draft→preview→send composer
-// (§6) — that is PR-2 (fast-follow), an additive section gated on
-// engagement:outreach.
+// PR-1 shipped everything except the draft→preview→send composer (§6).
+// PR-2 (this change) adds that composer as an ADDITIVE section gated on
+// engagement:outreach + the engaged-state gate (computed from the mirror).
 
 interface EngagementDetailViewProps {
   // Test seam mirroring TalentDetailView's sessionOverride.
@@ -153,6 +154,7 @@ export function EngagementDetailView({
   if (engagement === null || session === null) return null;
 
   const canWrite = hasScope(session, 'engagement:write');
+  const canOutreach = hasScope(session, 'engagement:outreach');
   const outreachSentEvents = events.filter(
     (e) => e.event_type === 'outreach_sent',
   );
@@ -204,6 +206,17 @@ export function EngagementDetailView({
           <EngagementTransitionControl
             from={engagement.state}
             onSubmit={handleTransition}
+          />
+        </Card>
+      ) : null}
+
+      {canOutreach ? (
+        <Card>
+          <h2>Outreach</h2>
+          <OutreachComposer
+            engagementId={engagement.id}
+            state={engagement.state}
+            onSent={reload}
           />
         </Card>
       ) : null}

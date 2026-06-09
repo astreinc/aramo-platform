@@ -82,3 +82,56 @@ export function conversationErrorMessage(error: unknown): string {
   }
   return 'The conversation could not be recorded. Please try again.';
 }
+
+// ---- outreach composer (PR-2) — draft + send error maps ----------------
+
+// Draft (the generation half). 502 AI_PROVIDER_UNAVAILABLE +
+// 429 AI_RATE_LIMITED are the LLM-transport failures; 422
+// ENGAGEMENT_STATE_INVALID is the state-machine refusal (drafting requires
+// the talent to be engaged). The soft consent_warning is NOT an error — it
+// rides on a 200 response and is surfaced non-blocking by the composer.
+export function outreachDraftErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === 'AI_PROVIDER_UNAVAILABLE' || error.status === 502) {
+      return 'The drafting service is temporarily unavailable. Please try again in a moment.';
+    }
+    if (error.code === 'AI_RATE_LIMITED' || error.status === 429) {
+      return 'Too many drafts in a short time. Please wait a moment and try again.';
+    }
+    if (error.status === 403) {
+      return 'You do not have permission to draft outreach.';
+    }
+    if (error.status === 404) {
+      return 'This engagement is no longer available.';
+    }
+    if (error.code === 'ENGAGEMENT_STATE_INVALID' || error.status === 422) {
+      return 'Outreach can only be drafted once the talent is engaged. Reload and try again.';
+    }
+  }
+  return 'The draft could not be generated. Please try again.';
+}
+
+// Send (the delivery half). 403 CONSENT_NOT_GRANTED_AT_SEND is the BINDING,
+// NON-overridable consent gate — checked BEFORE the generic 403 so it gets
+// its own message (the composer offers no override path; this is distinct
+// from the soft draft-time consent_warning).
+export function outreachSendErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === 'CONSENT_NOT_GRANTED_AT_SEND') {
+      return 'Consent is not granted for this talent, so this outreach cannot be sent.';
+    }
+    if (error.status === 403) {
+      return 'You do not have permission to send outreach.';
+    }
+    if (error.status === 404) {
+      return 'This engagement is no longer available.';
+    }
+    if (error.code === 'ENGAGEMENT_REFERENCE_NOT_FOUND') {
+      return 'The draft could not be found. Reload and try again.';
+    }
+    if (error.code === 'ENGAGEMENT_STATE_INVALID' || error.status === 422) {
+      return 'This outreach can no longer be sent from the current state. Reload and try again.';
+    }
+  }
+  return 'The outreach could not be sent. Please try again.';
+}

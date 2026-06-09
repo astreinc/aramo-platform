@@ -4,6 +4,10 @@ import type {
   EngagementEventsResponse,
   EngagementListResponse,
   EngagementView,
+  OutreachDraftRequest,
+  OutreachDraftResponse,
+  OutreachSendRequest,
+  OutreachSendResponse,
   RecordConversationRequest,
   RecordConversationResponse,
   RecordResponseRequest,
@@ -78,6 +82,45 @@ export async function recordConversation(
 ): Promise<RecordConversationResponse> {
   return apiClient.post<RecordConversationResponse>(
     `/v1/engagements/${id}/conversation`,
+    body,
+    { headers: { 'Idempotency-Key': idempotencyKey } },
+  );
+}
+
+// POST /v1/engagements/:id/outreach/draft — the GENERATION half of the
+// draft→preview→send split (PR-2). NO delivery happens here: it appends a
+// PENDING outreach_drafted event and returns the AI text for the recruiter
+// to review/edit. The Idempotency-Key is RE-MINTED per generation attempt
+// by the caller (a changed prompt is a new operation — a re-draft must
+// actually re-run, never replay). The optional consent_warning on the
+// response is NON-blocking (the binding gate is at SEND).
+export async function draftOutreach(
+  id: string,
+  body: OutreachDraftRequest,
+  idempotencyKey: string,
+): Promise<OutreachDraftResponse> {
+  return apiClient.post<OutreachDraftResponse>(
+    `/v1/engagements/${id}/outreach/draft`,
+    body,
+    { headers: { 'Idempotency-Key': idempotencyKey } },
+  );
+}
+
+// POST /v1/engagements/:id/outreach/send — the DELIVERY half. The
+// Idempotency-Key is KEYED ON draft_event_id (stable across send retries →
+// dedupes, never double-delivers). On success the engagement advances to
+// awaiting_response and an outreach_sent event is appended (carrying
+// final_text + source_draft_event_id — the editable trail). 403
+// CONSENT_NOT_GRANTED_AT_SEND is the BINDING, NON-overridable consent gate
+// (distinct from the soft draft-time consent_warning) — the FE offers no
+// override path.
+export async function sendOutreach(
+  id: string,
+  body: OutreachSendRequest,
+  idempotencyKey: string,
+): Promise<OutreachSendResponse> {
+  return apiClient.post<OutreachSendResponse>(
+    `/v1/engagements/${id}/outreach/send`,
     body,
     { headers: { 'Idempotency-Key': idempotencyKey } },
   );
