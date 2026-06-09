@@ -363,6 +363,23 @@ TIER2_EXCLUDES=(
   # (locked artifact filenames preserved for fidelity).
   "apps/recruiter-console/src/submittals/submittals-api.ts"
   "apps/recruiter-console/src/submittals/SubmittalWizard.tsx"
+  # Recruiter R7 — the engagement FE surface (the recruiter-console consumer
+  # of the engagement backend). `outreach` appears here as the canonical
+  # engagement event-type discriminant (`outreach_drafted` / `outreach_sent`),
+  # the response-picker source (a response answers a prior `outreach_sent`
+  # event — `outreach_event_ref_id`), and the recruiter-facing product
+  # vocabulary in copy ("Outreach sent" / "the selected outreach") — NOT a
+  # misuse of `outreach` as a standalone entity name competing with
+  # `engagement`. Same canonical-vocabulary rationale as the libs/engagement
+  # M5 PR-2/PR-6/PR-7 entries above. Lockstep with the matching
+  # eslint.config.mjs TIER2_EXCLUDES entries.
+  "apps/recruiter-console/src/engagement/types.ts"
+  "apps/recruiter-console/src/engagement/engagement-api.ts"
+  "apps/recruiter-console/src/engagement/EventLog.tsx"
+  "apps/recruiter-console/src/engagement/ResponseLogger.tsx"
+  "apps/recruiter-console/src/engagement/EngagementDetailView.tsx"
+  "apps/recruiter-console/src/engagement/error-messages.ts"
+  "apps/recruiter-console/src/engagement/EngagementDetailView.spec.tsx"
 )
 
 # =============================================================================
