@@ -1,0 +1,79 @@
+// Per-module Prisma schema for the `task` module — Tasks backend (the last
+// core recruiter surface; the actionable, due-dated, assignable to-do the
+// track lacked — the Activity log + CalendarEvent exist but neither is a task).
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture).
+// Cross-schema references are UUID-only without FK constraints (§7.3):
+// owner_id (the linked entity), assignee_id + created_by_user_id (identity.User)
+// are all logical UUID refs — NO FK.
+//
+// ASSEMBLED FROM ESTABLISHED PATTERNS (not invented):
+//   - the polymorphic owner_type/owner_id link mirrors Activity.subject_type/
+//     subject_id + Attachment.owner_type/owner_id (4 targets: talent_record /
+//     requisition / company / contact).
+//   - the assignee is identity.User (the CalendarEvent.owner_id UUID-only
+//     precedent), validated within-tenant at the app layer.
+//   - visibility is composed at READ time by reusing the libs/visibility
+//     resolvers (a task is visible iff its linked entity is) — NOT a column.
+//
+// Refusals enforced structurally:
+//   - R10 — NO portal-forbidden numeric/ordinal fields (title/notes/dates only).
+//   - R12 — locked vocabulary; the OpenCATS legacy anti-token never appears.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["task"]
+}
+
+// TaskStatus — the binary to-do lifecycle (Ruling R2: open/done; in_progress
+// is a follow-on if recruiters ask). String-backed closed set.
+enum TaskStatus {
+  open
+  done
+
+  @@schema("task")
+}
+
+// Task — the recruiter to-do. Polymorphic on (owner_type, owner_id) —
+// UUID-only cross-schema reference; the linked entity's visibility gates the
+// task at read time (the libs/visibility resolver reuse). owner is IMMUTABLE
+// after create (a task does not migrate entities — delete + recreate).
+model Task {
+  // Identity.
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+
+  // The to-do.
+  title       String
+  description String?
+  due_date    DateTime?  @db.Timestamptz
+  status      TaskStatus @default(open)
+
+  // Assignee — a within-tenant identity.User (validated at the app layer
+  // against the GET /v1/tenant/users roster; cross-tenant rejected). Nullable
+  // — an unassigned task is valid. UUID-only logical ref (§7.3).
+  assignee_id String? @db.Uuid
+
+  // Provenance — the creating identity.User (UUID-only logical ref).
+  created_by_user_id String @db.Uuid
+
+  // Polymorphic entity-link (cross-schema UUID-only). owner_type ∈
+  // {talent_record, requisition, company, contact}. IMMUTABLE after create.
+  owner_type String
+  owner_id   String @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  // Indexes — the my-tasks/upcoming sort (assignee + due) and the by-entity
+  // lookup (owner). Both lead with tenant_id.
+  @@index([tenant_id, assignee_id, due_date])
+  @@index([tenant_id, owner_type, owner_id])
+
+  @@schema("task")
+}

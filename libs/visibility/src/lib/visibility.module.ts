@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CompanyModule } from '@aramo/company';
+import { ContactModule } from '@aramo/contact';
 import { IdentityModule } from '@aramo/identity';
 import { PipelineModule } from '@aramo/pipeline';
 import { RequisitionModule } from '@aramo/requisition';
@@ -22,7 +23,17 @@ import { VisibilityResolverService } from './visibility-resolver.service.js';
 // polymorphic OR). The reverse edges do not exist — verified by
 // lint:nx-boundaries on import-x/no-cycle.
 @Module({
-  imports: [IdentityModule, CompanyModule, RequisitionModule, PipelineModule],
+  imports: [
+    IdentityModule,
+    CompanyModule,
+    RequisitionModule,
+    PipelineModule,
+    // Tasks backend — ContactModule supplies ContactRepository for
+    // resolveVisibleContactIds (the 4th owner_type). Directional edge
+    // (visibility → contact); contact does NOT import visibility (it takes
+    // VisibilityContextShape from @aramo/common) — no cycle.
+    ContactModule,
+  ],
   providers: [VisibilityResolverService, VisibilityInterceptor],
   exports: [VisibilityResolverService, VisibilityInterceptor],
 })

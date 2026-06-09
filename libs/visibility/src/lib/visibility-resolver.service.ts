@@ -8,6 +8,7 @@ import {
   TeamClientOwnershipRepository,
   UserClientAssignmentRepository,
 } from '@aramo/company';
+import { ContactRepository } from '@aramo/contact';
 import { RequisitionRepository } from '@aramo/requisition';
 import { PipelineRepository } from '@aramo/pipeline';
 
@@ -46,6 +47,7 @@ export class VisibilityResolverService {
     private readonly teams: TeamRepository,
     private readonly requisitions: RequisitionRepository,
     private readonly pipelines: PipelineRepository,
+    private readonly contacts: ContactRepository,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -184,6 +186,31 @@ export class VisibilityResolverService {
       this.pipelines.findIdsForRequisitions({
         tenant_id: ctx.tenant_id,
         requisition_ids: Array.from(visibleReqIds),
+      }),
+    );
+    return new Set(ids);
+  }
+
+  // -------------------------------------------------------------------------
+  // Derived set: visible_contact_ids — consumed ONLY by the Tasks polymorphic
+  // OR's contact branch (Tasks backend). A contact inherits its company's
+  // visibility (contact.company_id ∈ visible_client_ids) — the SAME rule
+  // contact.repository already enforces; this LIFTS it to an id-set so a
+  // task-on-a-contact composes exactly like task-on-a-company.
+  //
+  // see_all_company (visible_client_ids === null) → null (all contacts
+  // visible; the IN-filter is skipped upstream). Otherwise the set is the
+  // contacts whose company is in visible_client_ids.
+  // -------------------------------------------------------------------------
+
+  async resolveVisibleContactIds(
+    ctx: VisibilityContext,
+  ): Promise<ReadonlySet<string> | null> {
+    if (ctx.see_all_company || ctx.visible_client_ids === null) return null;
+    const ids = await safeRead(() =>
+      this.contacts.findContactIdsForCompanies({
+        tenant_id: ctx.tenant_id,
+        company_ids: Array.from(ctx.visible_client_ids as ReadonlySet<string>),
       }),
     );
     return new Set(ids);

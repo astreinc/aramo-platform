@@ -37,6 +37,7 @@ import { SettingsModule } from '@aramo/settings';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { SubmittalModule } from '@aramo/submittal';
 import { TalentRecordModule, ResumeReindexModule } from '@aramo/talent-record';
+import { TaskModule, TASK_ASSIGNEE_VALIDATOR } from '@aramo/task';
 
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
@@ -45,6 +46,9 @@ import { CompensationFieldMaskInterceptor } from './interceptors/compensation-fi
 // TenantSettingService; bridges libs/identity's port to libs/settings'
 // service without coupling either lib).
 import { AuditFinancialsGateAdapter } from './settings/audit-financials-gate.adapter.js';
+// Tasks backend — live TASK_ASSIGNEE_VALIDATOR adapter (validates an
+// assignee is an active within-tenant member via IdentityService).
+import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
 
 @Module({
   imports: [
@@ -98,6 +102,10 @@ import { AuditFinancialsGateAdapter } from './settings/audit-financials-gate.ada
     // Core libs/talent (tenant-AGNOSTIC identity, PR-10 baseline).
     TalentRecordModule,
     AttachmentModule,
+    // Tasks backend — the last core recruiter surface (the actionable,
+    // due-dated, assignable to-do). Leaf module; the assignee-validation port
+    // is overridden below with the identity-backed adapter.
+    TaskModule,
     // Search PR-2 — the résumé re-extract worker. SEPARATE from
     // TalentRecordModule (imported widely) so only apps/api stands up the
     // BullMQ tick worker; AttachmentModule gets ResumeTextService.enqueueReindex
@@ -304,6 +312,18 @@ import { AuditFinancialsGateAdapter } from './settings/audit-financials-gate.ada
     {
       provide: AUDIT_FINANCIALS_GATE,
       useExisting: AuditFinancialsGateAdapter,
+    },
+    // Tasks backend — override the TASK_ASSIGNEE_VALIDATOR default binding
+    // (libs/task's StubTaskAssigneeValidator, accept-any) with the live
+    // IdentityService-backed adapter. Last-wins (the TENANT_COGNITO_PORT /
+    // AUDIT_FINANCIALS_GATE precedent): AppModule's binding shadows the stub
+    // bound in TaskModule, so TaskController validates assignees against the
+    // real within-tenant active-membership read. IdentityModule is imported
+    // above so IdentityService is available for constructor injection here.
+    TaskAssigneeAdapter,
+    {
+      provide: TASK_ASSIGNEE_VALIDATOR,
+      useExisting: TaskAssigneeAdapter,
     },
   ],
 })

@@ -13,6 +13,7 @@
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/identity": ["../../dist/libs/identity/src/index.d.ts"],
       "@aramo/company": ["../../dist/libs/company/src/index.d.ts"],
+      "@aramo/contact": ["../../dist/libs/contact/src/index.d.ts"],
       "@aramo/requisition": ["../../dist/libs/requisition/src/index.d.ts"],
       "@aramo/pipeline": ["../../dist/libs/pipeline/src/index.d.ts"]
     }

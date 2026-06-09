@@ -147,6 +147,11 @@ export default defineConfig({
       // talent record; renamed from `talent` to avoid collision with
       // Core libs/talent identity. Amendment §3.)
       '@aramo/talent-record': resolve(root, 'libs/talent-record/src/index.ts'),
+      // Tasks backend — task leaf (the actionable/assignable to-do; the last
+      // core recruiter surface). Mirrors tsconfig.base.json @aramo/task alias
+      // so vitest runtime resolves the apps/api AppModule import (TaskModule +
+      // the TASK_ASSIGNEE_VALIDATOR override). The add-alias-in-same-PR lesson.
+      '@aramo/task': resolve(root, 'libs/task/src/index.ts'),
       // AUTHZ-D4b Gate 6 — visibility leaf (the composed predicate +
       // global interceptor). Mirrors tsconfig.base.json @aramo/visibility
       // alias so vitest runtime resolves the apps/api AppModule import

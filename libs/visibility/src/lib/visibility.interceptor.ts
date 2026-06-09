@@ -84,6 +84,19 @@ export class VisibilityInterceptor implements NestInterceptor {
       return cachedPipelineIds;
     };
 
+    // Tasks backend — the contact visible-id set (the 4th owner_type's
+    // resolver). Memoized per request like the others.
+    let cachedContactIds: Promise<ReadonlySet<string> | null> | undefined;
+    req.resolveVisibleContactIds = (): Promise<
+      ReadonlySet<string> | null
+    > => {
+      if (cachedContactIds !== undefined) return cachedContactIds;
+      cachedContactIds = getBase().then((ctx) =>
+        this.resolver.resolveVisibleContactIds(ctx),
+      );
+      return cachedContactIds;
+    };
+
     return next.handle();
   }
 }
