@@ -68,12 +68,20 @@ export class TalentRecordController {
     private readonly resumeParser: ResumeParserService,
   ) {}
 
-  // Search PR-1 — the LIST route gates on talent:read (route-static). The
-  // optional ?q= quick-search ADDITIONALLY requires talent:search (REUSED
-  // A1a "Constrained Talent Access" scope) WHEN q is present; the no-q LIST
-  // keeps its talent:read-only gate (backward-compat by construction). The
-  // trigram filter NARROWS within the existing tenant+site scope (talent is
-  // pool-open — no per-record visibility resolver).
+  // Search PR-1/PR-2 — the LIST route gates on talent:read (route-static).
+  //
+  // Two OPTIONAL search params, both ADDITIONALLY requiring talent:search
+  // (REUSED A1a "Constrained Talent Access" scope — D3, no new scope) WHEN
+  // present; the no-search LIST keeps its talent:read-only gate (backward-
+  // compat by construction):
+  //   - ?q=         PR-1 name quick-search (ILIKE-contains, pg_trgm) — UNCHANGED.
+  //   - ?resume_q=  PR-2 résumé content-search (websearch_to_tsquery over the
+  //                 persisted+redacted résumé text; ts_rank-ordered; D2 snippets).
+  //
+  // Both NARROW within the existing tenant+site scope (talent is pool-open —
+  // no per-record visibility resolver; the match never widens visibility).
+  // Ruling R4 — when BOTH ?q= and ?resume_q= are present, the filters AND
+  // (name-match AND résumé-match), ts_rank-ordered.
   @Get()
   @HttpCode(HttpStatus.OK)
   @RequireScopes('talent:read')
@@ -82,17 +90,36 @@ export class TalentRecordController {
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
     @Query('q') q: string | undefined,
+    @Query('resume_q') resumeQ: string | undefined,
     @RequestId() requestId: string,
   ): Promise<{ items: TalentRecordView[] }> {
     const searchTerm = q?.trim() ? q.trim() : undefined;
-    if (searchTerm !== undefined && !authContext.scopes.includes('talent:search')) {
+    const resumeTerm = resumeQ?.trim() ? resumeQ.trim() : undefined;
+    if (
+      (searchTerm !== undefined || resumeTerm !== undefined) &&
+      !authContext.scopes.includes('talent:search')
+    ) {
       throw new AramoError(
         'INSUFFICIENT_PERMISSIONS',
-        'talent:search scope required for ?q= quick-search',
+        'talent:search scope required for ?q= / ?resume_q= search',
         403,
         { requestId, details: { reason: 'search_scope_missing', required_scope: 'talent:search' } },
       );
     }
+
+    // PR-2 résumé content-search path. Ruling R4 — pass the name term so the
+    // repo ANDs the name filter when ?q= is also present.
+    if (resumeTerm !== undefined) {
+      const items = await this.repo.searchByResumeText({
+        tenant_id: authContext.tenant_id,
+        site_id: siteIdFromQuery,
+        resume_q: resumeTerm,
+        q: searchTerm,
+      });
+      return { items };
+    }
+
+    // PR-1 / no-search path — UNCHANGED (backward-compat by construction).
     const items = await this.repo.list({
       tenant_id: authContext.tenant_id,
       site_id: siteIdFromQuery,

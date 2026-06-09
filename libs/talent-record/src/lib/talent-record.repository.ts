@@ -88,6 +88,57 @@ function projectView(row: TalentRecordRow): TalentRecordView {
   };
 }
 
+// Search PR-2 — raw-SQL row from searchByResumeText. tr.* yields the snake-
+// case TalentRecord columns; the pg adapter may hand back timestamptz as Date
+// OR string, so the projection coerces defensively.
+interface RawSearchRow extends Omit<TalentRecordRow, 'date_available' | 'created_at' | 'updated_at'> {
+  date_available: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+  resume_snippet: string | null;
+}
+
+function toIso(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function projectSearchRow(row: RawSearchRow): TalentRecordView {
+  return {
+    id: row.id,
+    tenant_id: row.tenant_id,
+    site_id: row.site_id,
+    first_name: row.first_name,
+    last_name: row.last_name,
+    email1: row.email1,
+    email2: row.email2,
+    phone_home: row.phone_home,
+    phone_cell: row.phone_cell,
+    phone_work: row.phone_work,
+    address: row.address,
+    address2: row.address2,
+    city: row.city,
+    state: row.state,
+    zip: row.zip,
+    source: row.source,
+    key_skills: row.key_skills,
+    current_employer: row.current_employer,
+    current_pay: row.current_pay,
+    desired_pay: row.desired_pay,
+    date_available: row.date_available === null ? null : toIso(row.date_available),
+    can_relocate: row.can_relocate,
+    is_hot: row.is_hot,
+    notes: row.notes,
+    web_site: row.web_site,
+    best_time_to_call: row.best_time_to_call,
+    owner_id: row.owner_id,
+    entered_by_id: row.entered_by_id,
+    core_talent_id: row.core_talent_id,
+    created_at: toIso(row.created_at),
+    updated_at: toIso(row.updated_at),
+    resume_snippet: row.resume_snippet,
+  };
+}
+
 @Injectable()
 export class TalentRecordRepository {
   private readonly logger = new Logger(TalentRecordRepository.name);
@@ -245,6 +296,72 @@ export class TalentRecordRepository {
       take: limit,
     });
     return (rows as TalentRecordRow[]).map(projectView);
+  }
+
+  // Search PR-2 — résumé full-text content-search (GET /v1/talent-records
+  // ?resume_q=). DISTINCT from PR-1's ?q= name-search (which is untouched).
+  //
+  // Lead rulings: R3 — websearch_to_tsquery('english', :q) matched against the
+  // GENERATED tsvector (GIN-indexed), ts_rank-ordered; ts_headline yields the
+  // D2 snippet over the REDACTED text (no SSN). R4 — when ?q= is ALSO present,
+  // the name-ILIKE is ANDed (both filters narrow).
+  //
+  // VISIBILITY-AND: talent is pool-open (no per-record resolver), so the
+  // "visibility" is tenant + optional site. Both are bound in the WHERE — a
+  // résumé match in another tenant (or another site, when site-scoped) is
+  // structurally absent. The match NARROWS within tenant+site; it never widens.
+  //
+  // Hand-authored raw SQL (Prisma cannot express @@ / ts_rank / ts_headline).
+  // Parameterized positionally ($1..$n) — no interpolation of user input.
+  async searchByResumeText(args: {
+    tenant_id: string;
+    site_id?: string;
+    resume_q: string;
+    // Optional name filter — present only when ?q= AND ?resume_q= both given
+    // (Ruling R4 AND). ILIKE-contains over first_name/last_name (PR-1 parity).
+    q?: string;
+    limit?: number;
+  }): Promise<TalentRecordView[]> {
+    const limit = Math.min(args.limit ?? 50, 200);
+
+    // $1 = the résumé query text (used in ts_headline, the @@ match, ts_rank).
+    // $2 = tenant_id.
+    const params: unknown[] = [args.resume_q, args.tenant_id];
+    const conds: string[] = [
+      'tr.tenant_id = $2',
+      "rt.search_tsv @@ websearch_to_tsquery('english', $1)",
+    ];
+    if (args.site_id !== undefined) {
+      params.push(args.site_id);
+      conds.push(`tr.site_id = $${params.length}`);
+    }
+    if (args.q !== undefined) {
+      params.push(`%${args.q}%`);
+      const p = params.length;
+      conds.push(`(tr.first_name ILIKE $${p} OR tr.last_name ILIKE $${p})`);
+    }
+    params.push(limit);
+    const limitPlaceholder = `$${params.length}`;
+
+    const sql = `
+      SELECT tr.*,
+             ts_headline('english', rt.redacted_text,
+               websearch_to_tsquery('english', $1),
+               'StartSel=<mark>,StopSel=</mark>,MaxFragments=2,MinWords=5,MaxWords=18'
+             ) AS resume_snippet
+      FROM "talent_record"."TalentRecord" tr
+      JOIN "talent_record"."talent_resume_text" rt
+        ON rt.talent_record_id = tr.id
+      WHERE ${conds.join(' AND ')}
+      ORDER BY ts_rank(rt.search_tsv, websearch_to_tsquery('english', $1)) DESC
+      LIMIT ${limitPlaceholder}
+    `;
+
+    const rows = await this.prisma.$queryRawUnsafe<RawSearchRow[]>(
+      sql,
+      ...params,
+    );
+    return rows.map(projectSearchRow);
   }
 
   // PR-A7 — tenant-scoped count for the reporting aggregator.
