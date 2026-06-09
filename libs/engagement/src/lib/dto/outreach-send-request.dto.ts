@@ -1,40 +1,30 @@
-import {
-  IsInt,
-  IsNotEmpty,
-  IsOptional,
-  IsPositive,
-  IsString,
-} from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 
-// M5 PR-6 §4.2 — HTTP request DTO for POST /v1/engagements/{id}/outreach.
+// Outreach Draft/Preview Directive v1.0 / Amendment v1.1 §2 — HTTP request
+// DTO for POST /v1/engagements/{id}/outreach/send.
 //
-// Body shape per directive §4.2:
-//   - prompt: required non-empty string (the user-supplied LLM prompt;
-//     AiDraftService applies pre-redaction before sending to the
-//     provider).
-//   - max_tokens: optional positive integer; defaults to 512 at the
-//     controller boundary when omitted (per directive §4.1 step 6).
-//   - system_message: optional system message passed through to the
-//     provider verbatim.
-//   - recipient_handle: optional opaque handle the caller can attach
-//     for correlation. Recipient resolution from TalentContactMethod is
-//     deferred per Ruling 7 — the substrate at PR-6 does not look up
-//     contact rows.
+// The delivery half of the draft→preview→send split. SEND no longer takes
+// a prompt (that moved to POST .../outreach/draft, OutreachDraftRequestDto);
+// it takes the source draft event id + the recruiter-approved final text.
+//
+//   - draft_event_id: the outreach_drafted event the recruiter is sending
+//     from. The repository validates it resolves to an outreach_drafted
+//     event on the SAME engagement + SAME tenant (cross-event-ref guard,
+//     mirroring recordResponse's outreach_event_ref_id validation) →
+//     ENGAGEMENT_REFERENCE_NOT_FOUND 422 otherwise.
+//   - final_text: required non-empty string — the text actually delivered.
+//     May differ from the source draft's draft_text (the recruiter edited);
+//     both persist (editable-trail invariant).
+//   - recipient_handle: optional opaque correlation handle.
 //
 // tenant_id derived from JWT AuthContext (NOT in body).
 export class OutreachSendRequestDto {
+  @IsUUID()
+  draft_event_id!: string;
+
   @IsString()
   @IsNotEmpty()
-  prompt!: string;
-
-  @IsOptional()
-  @IsInt()
-  @IsPositive()
-  max_tokens?: number;
-
-  @IsOptional()
-  @IsString()
-  system_message?: string;
+  final_text!: string;
 
   @IsOptional()
   @IsString()

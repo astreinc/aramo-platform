@@ -222,6 +222,13 @@ const ENGAGEMENT_OUTBOX_MIGRATION = resolve(
   ROOT,
   'libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql',
 );
+// Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
+// Required by the outreach draft + send pact interactions (the send path
+// reads a seeded outreach_drafted event for the cross-event-ref check).
+const ENGAGEMENT_OUTREACH_DRAFTED_MIGRATION = resolve(
+  ROOT,
+  'libs/engagement/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql',
+);
 // M6 PR-2 §3 — submittal schema OutboxEvent (in its own `submittal` PG
 // namespace; the migration includes CREATE SCHEMA IF NOT EXISTS). Applied
 // after the submittal canonical-rename so the schema-creation step runs
@@ -1355,6 +1362,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // the event-log substrate so the OutboxEvent table is in the
         // same `engagement` namespace as the prior tables.
         ENGAGEMENT_OUTBOX_MIGRATION,
+        // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted
+        // enum value (the draft + send pact split).
+        ENGAGEMENT_OUTREACH_DRAFTED_MIGRATION,
         // M5 PR-6 §4.14 — ai-draft schema for outreach-send state
         // handlers. AiDraftService writes audit-event rows even when
         // the DraftProvider is mocked at AppModule bootstrap.
@@ -3160,6 +3170,117 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               action: 'revoked',
               occurredAt: '2026-04-01T00:00:00.000Z',
             });
+          });
+        },
+
+      // ===== Outreach Draft/Preview SEND pacts =====
+      // SEND reads a prior outreach_drafted event (cross-event-ref check)
+      // before the consent-at-send gate. Seed engaged engagement + the
+      // full consent chain + a seeded outreach_drafted event with a fixed
+      // id the consumer references as draft_event_id.
+      'a recruiter has authenticated and an engagement in engaged state with a prior outreach_drafted event exists for tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            await seedEngagementRow(c, {
+              id: '00000000-0000-7000-8000-ffff00000f01',
+              state: 'engaged',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000051',
+              scope: 'profile_storage',
+              action: 'granted',
+              occurredAt: '2026-05-25T00:00:00.000Z',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000052',
+              scope: 'matching',
+              action: 'granted',
+              occurredAt: '2026-05-25T00:00:00.000Z',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000053',
+              scope: 'contacting',
+              action: 'granted',
+              occurredAt: '2026-05-25T00:00:00.000Z',
+            });
+            await c.query(
+              `INSERT INTO engagement."TalentEngagementEvent"
+                 (id, tenant_id, engagement_id, event_type, event_payload, created_at)
+               VALUES ($1, $2, $3, 'outreach_drafted'::engagement."EngagementEventType", $4::jsonb, NOW())`,
+              [
+                '00000000-0000-7000-8000-ffff0dddd001',
+                TENANT_ID,
+                '00000000-0000-7000-8000-ffff00000f01',
+                JSON.stringify({
+                  draft_text: 'Mocked AI draft for pact verification.',
+                  ai_draft_audit_record_id: '00000000-0000-7000-8000-ffff0a000001',
+                  model_used: 'claude-sonnet-mock',
+                  input_tokens: 10,
+                  output_tokens: 20,
+                  duration_ms: 100,
+                  prompt: 'Reach out to talent about the role.',
+                  max_tokens: 512,
+                }),
+              ],
+            );
+          });
+        },
+
+      'an engagement in engaged state with a prior outreach_drafted event but contacting consent revoked exists for the tenant':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedEngagementBasics(c);
+            await seedEngagementRow(c, {
+              id: '00000000-0000-7000-8000-ffff00000f31',
+              state: 'engaged',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000061',
+              scope: 'profile_storage',
+              action: 'granted',
+              occurredAt: '2026-01-01T00:00:00.000Z',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000063',
+              scope: 'matching',
+              action: 'granted',
+              occurredAt: '2026-01-01T00:00:00.000Z',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000064',
+              scope: 'contacting',
+              action: 'granted',
+              occurredAt: '2026-01-01T00:00:00.000Z',
+            });
+            await seedConsentEvent(c, {
+              id: '00000000-0000-7000-8000-ffff0c000065',
+              scope: 'contacting',
+              action: 'revoked',
+              occurredAt: '2026-04-01T00:00:00.000Z',
+            });
+            await c.query(
+              `INSERT INTO engagement."TalentEngagementEvent"
+                 (id, tenant_id, engagement_id, event_type, event_payload, created_at)
+               VALUES ($1, $2, $3, 'outreach_drafted'::engagement."EngagementEventType", $4::jsonb, NOW())`,
+              [
+                '00000000-0000-7000-8000-ffff0dddd031',
+                TENANT_ID,
+                '00000000-0000-7000-8000-ffff00000f31',
+                JSON.stringify({
+                  draft_text: 'Mocked AI draft for pact verification.',
+                  ai_draft_audit_record_id: '00000000-0000-7000-8000-ffff0a000031',
+                  model_used: 'claude-sonnet-mock',
+                  input_tokens: 10,
+                  output_tokens: 20,
+                  duration_ms: 100,
+                  prompt: 'Reach out to talent about the role.',
+                  max_tokens: 512,
+                }),
+              ],
+            );
           });
         },
 

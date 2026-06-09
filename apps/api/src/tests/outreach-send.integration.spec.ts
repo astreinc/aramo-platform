@@ -64,6 +64,8 @@ const MIGRATIONS = [
   // M6 PR-2 §3 — engagement + submittal OutboxEvent migrations required
   // because state-transition write methods now emit an in-tx outbox row.
   M('libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
+  // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
+  M('libs/engagement/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql'),
   M('libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   M('libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql'),
   // PR-A1c §4 — metering schema required (in-tx UsageEvent INSERT).
@@ -75,7 +77,6 @@ const AUDIENCE = 'aramo-outreach-send-integration';
 const ALG = 'RS256';
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
-const TENANT_B = '22222222-2222-7222-8222-222222222222';
 const TALENT_A = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const RECRUITER_A = '00000000-0000-7000-8000-000000000bb1';
 const JOB_ID = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
@@ -124,7 +125,7 @@ function splitDdl(sql: string): string[] {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'POST /v1/engagements/{id}/outreach — HTTP integration (real Postgres 17)',
+  'POST /v1/engagements/{id}/outreach/draft + /send — HTTP integration (real Postgres 17)',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -347,34 +348,82 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return r.rows[0]?.state ?? '';
     }
 
-    it('happy path: 200 + state awaiting_response + 2 new events + AiDraftEvent rows present', { timeout: 60_000 }, async () => {
-      const id = await createAndAdvanceToEngaged();
-      const eventsBefore = await countEvents(id);
-
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
+    // Outreach Draft/Preview split helpers.
+    function draftOutreach(
+      id: string,
+      opts: { key?: string; prompt?: string; max_tokens?: number } = {},
+    ): Promise<Response> {
+      return fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach/draft`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${recruiterJwt}`,
-          'Idempotency-Key': randomUUID(),
+          'Idempotency-Key': opts.key ?? randomUUID(),
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt: 'Reach out to talent.', max_tokens: 256 }),
+        body: JSON.stringify({
+          prompt: opts.prompt ?? 'Reach out to talent.',
+          ...(opts.max_tokens !== undefined ? { max_tokens: opts.max_tokens } : {}),
+        }),
       });
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as {
+    }
+
+    function sendOutreach(
+      id: string,
+      draftEventId: string,
+      opts: { key?: string; final_text?: string; jwt?: string } = {},
+    ): Promise<Response> {
+      return fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach/send`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${opts.jwt ?? recruiterJwt}`,
+          'Idempotency-Key': opts.key ?? randomUUID(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          draft_event_id: draftEventId,
+          final_text: opts.final_text ?? 'Reach out to talent.',
+        }),
+      });
+    }
+
+    async function draftAndGetId(id: string): Promise<string> {
+      const r = await draftOutreach(id);
+      expect(r.status).toBe(200);
+      const b = (await r.json()) as { draft_event_id: string };
+      return b.draft_event_id;
+    }
+
+    it('happy path: DRAFT (no delivery) then SEND → awaiting_response + 3 total events + AiDraftEvent rows', { timeout: 60_000 }, async () => {
+      const id = await createAndAdvanceToEngaged();
+      const eventsBefore = await countEvents(id);
+
+      // DRAFT — persists ONE outreach_drafted event, NO delivery, state stays engaged.
+      const draftRes = await draftOutreach(id, { max_tokens: 256 });
+      expect(draftRes.status).toBe(200);
+      const draft = (await draftRes.json()) as {
+        draft_event_id: string;
+        draft_text: string;
+        ai_draft_audit_record_id: string;
+      };
+      expect(draft.draft_event_id).toBeTruthy();
+      expect(draft.draft_text).toBeTruthy();
+      expect(await readEngagementState(id)).toBe('engaged');
+      expect((await countEvents(id)) - eventsBefore).toBe(1); // outreach_drafted only
+
+      // SEND — delivers, transitions to awaiting_response, +2 events.
+      const sendRes = await sendOutreach(id, draft.draft_event_id, { final_text: 'Edited final.' });
+      expect(sendRes.status).toBe(200);
+      const body = (await sendRes.json()) as {
         engagement: { state: string };
-        outreach_event: { event_type: string; event_payload: Record<string, unknown> };
+        outreach_event: { event_type: string };
         delivery_id: string;
       };
       expect(body.engagement.state).toBe('awaiting_response');
       expect(body.outreach_event.event_type).toBe('outreach_sent');
       expect(body.delivery_id).toBeTruthy();
+      // Total events: 1 (drafted) + 2 (sent + transition) = 3.
+      expect((await countEvents(id)) - eventsBefore).toBe(3);
 
-      const eventsAfter = await countEvents(id);
-      expect(eventsAfter - eventsBefore).toBe(2); // outreach_sent + state_transition
-
-      // AiDraftEvent rows present (at least request_built + request_sent +
-      // response_received).
       const aiCount = await setup.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM ai_draft."AiDraftEvent" WHERE tenant_id = $1::uuid`,
         [TENANT_A],
@@ -382,11 +431,58 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(Number(aiCount.rows[0]?.count ?? 0)).toBeGreaterThanOrEqual(3);
     });
 
-    it('pre-transaction failure: AI throws provider_unavailable → 502; state unchanged + no events appended', { timeout: 60_000 }, async () => {
+    it('DRAFT no-delivery / no-transition proof: drafting leaves state engaged + appends only outreach_drafted + emits no outbox', { timeout: 60_000 }, async () => {
       const id = await createAndAdvanceToEngaged();
-      const stateBefore = await readEngagementState(id);
       const eventsBefore = await countEvents(id);
+      // Outbox rows for this engagement already exist from the setup
+      // transitions (create→evaluated→engaged each emit a state_transition
+      // outbox row). DRAFT must add NONE.
+      const outboxForEngagement = async (): Promise<number> => {
+        const r = await setup.query<{ count: string }>(
+          `SELECT COUNT(*)::text AS count FROM engagement."OutboxEvent"
+           WHERE event_payload->>'engagement_id' = $1`,
+          [id],
+        );
+        return Number(r.rows[0]?.count ?? 0);
+      };
+      const outboxBefore = await outboxForEngagement();
 
+      const draftRes = await draftOutreach(id);
+      expect(draftRes.status).toBe(200);
+      // No delivery, no state transition — generation only.
+      expect(await readEngagementState(id)).toBe('engaged');
+      // Exactly one new event, and it is an outreach_drafted (no
+      // outreach_sent, no state_transition).
+      expect((await countEvents(id)) - eventsBefore).toBe(1);
+      const evt = await setup.query<{ event_type: string }>(
+        `SELECT event_type::text AS event_type FROM engagement."TalentEngagementEvent"
+         WHERE engagement_id = $1::uuid ORDER BY created_at DESC LIMIT 1`,
+        [id],
+      );
+      expect(evt.rows[0]?.event_type).toBe('outreach_drafted');
+      // Drafting emitted NO new outbox row.
+      expect(await outboxForEngagement()).toBe(outboxBefore);
+    });
+
+    it('multi-draft: two DRAFT calls append two outreach_drafted rows; SEND from either succeeds', { timeout: 60_000 }, async () => {
+      const id = await createAndAdvanceToEngaged();
+      const draft1 = await draftAndGetId(id);
+      const draft2 = await draftAndGetId(id);
+      expect(draft1).not.toBe(draft2);
+      const drafted = await setup.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM engagement."TalentEngagementEvent"
+         WHERE engagement_id = $1::uuid AND event_type = 'outreach_drafted'`,
+        [id],
+      );
+      expect(Number(drafted.rows[0]?.count ?? 0)).toBe(2);
+      // SEND from the second draft succeeds.
+      const sendRes = await sendOutreach(id, draft2);
+      expect(sendRes.status).toBe(200);
+    });
+
+    it('DRAFT: AI throws provider_unavailable → 502; no draft persisted', { timeout: 60_000 }, async () => {
+      const id = await createAndAdvanceToEngaged();
+      const eventsBefore = await countEvents(id);
       mutableDraftProvider.next = {
         kind: 'throw',
         error: new AramoError('INTERNAL_ERROR', 'connection refused', 502, {
@@ -394,26 +490,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           details: { kind: 'provider_unavailable' },
         }),
       };
-
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterJwt}`,
-          'Idempotency-Key': randomUUID(),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: 'Reach out to talent.' }),
-      });
+      const res = await draftOutreach(id);
       expect(res.status).toBe(502);
       const body = (await res.json()) as { error: { code: string } };
       expect(body.error?.code).toBe('AI_PROVIDER_UNAVAILABLE');
-
-      // Atomicity: state unchanged, no events appended.
-      expect(await readEngagementState(id)).toBe(stateBefore);
+      // No draft event appended.
       expect(await countEvents(id)).toBe(eventsBefore);
     });
 
-    it('rate limit: AI throws provider_rate_limited → 429 AI_RATE_LIMITED', { timeout: 60_000 }, async () => {
+    it('DRAFT: AI throws provider_rate_limited → 429 AI_RATE_LIMITED', { timeout: 60_000 }, async () => {
       const id = await createAndAdvanceToEngaged();
       mutableDraftProvider.next = {
         kind: 'throw',
@@ -422,21 +507,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           details: { kind: 'provider_rate_limited' },
         }),
       };
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterJwt}`,
-          'Idempotency-Key': randomUUID(),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: 'Reach out to talent.' }),
-      });
+      const res = await draftOutreach(id);
       expect(res.status).toBe(429);
       const body = (await res.json()) as { error: { code: string } };
       expect(body.error?.code).toBe('AI_RATE_LIMITED');
     });
 
-    it('illegal state: 422 ENGAGEMENT_STATE_INVALID when engagement in surfaced state', { timeout: 60_000 }, async () => {
+    it('DRAFT illegal state: 422 ENGAGEMENT_STATE_INVALID when engagement in surfaced state (gated to engaged)', { timeout: 60_000 }, async () => {
       const createRes = await fetch(`http://127.0.0.1:${port}/v1/engagements`, {
         method: 'POST',
         headers: {
@@ -449,41 +526,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const createBody = (await createRes.json()) as { engagement: { id: string } };
       const id = createBody.engagement.id;
 
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterJwt}`,
-          'Idempotency-Key': randomUUID(),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: 'Reach out to talent.' }),
-      });
+      const res = await draftOutreach(id);
       expect(res.status).toBe(422);
       const body = (await res.json()) as { error: { code: string } };
       expect(body.error?.code).toBe('ENGAGEMENT_STATE_INVALID');
     });
 
-    it('NOT_FOUND 404 when engagement does not exist', { timeout: 30_000 }, async () => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/99999999-9999-7999-8999-999999999999/outreach`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${recruiterJwt}`,
-            'Idempotency-Key': randomUUID(),
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ prompt: 'Reach out to talent.' }),
-        },
-      );
+    it('SEND: ENGAGEMENT_REFERENCE_NOT_FOUND 422 when draft_event_id is unknown', { timeout: 60_000 }, async () => {
+      const id = await createAndAdvanceToEngaged();
+      const res = await sendOutreach(id, '99999999-9999-7999-8999-999999999999');
+      expect(res.status).toBe(422);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error?.code).toBe('ENGAGEMENT_REFERENCE_NOT_FOUND');
+    });
+
+    it('DRAFT NOT_FOUND 404 when engagement does not exist', { timeout: 30_000 }, async () => {
+      const res = await draftOutreach('99999999-9999-7999-8999-999999999999');
       expect(res.status).toBe(404);
       const body = (await res.json()) as { error: { code: string } };
       expect(body.error?.code).toBe('NOT_FOUND');
     });
 
-    it('INSUFFICIENT_PERMISSIONS 403 with portal JWT', { timeout: 30_000 }, async () => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/v1/engagements/00000000-0000-7000-8000-000000000aaa/outreach`,
+    it('INSUFFICIENT_PERMISSIONS 403 with portal JWT (both draft + send)', { timeout: 30_000 }, async () => {
+      const draftRes = await fetch(
+        `http://127.0.0.1:${port}/v1/engagements/00000000-0000-7000-8000-000000000aaa/outreach/draft`,
         {
           method: 'POST',
           headers: {
@@ -494,134 +560,79 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           body: JSON.stringify({ prompt: 'Reach out to talent.' }),
         },
       );
-      expect(res.status).toBe(403);
-      const body = (await res.json()) as { error: { code: string } };
-      expect(body.error?.code).toBe('INSUFFICIENT_PERMISSIONS');
-    });
+      expect(draftRes.status).toBe(403);
+      expect(((await draftRes.json()) as { error: { code: string } }).error?.code).toBe(
+        'INSUFFICIENT_PERMISSIONS',
+      );
 
-    it('tenant isolation: cross-tenant POST returns 404 (not visible in calling tenant)', { timeout: 60_000 }, async () => {
-      const id = await createAndAdvanceToEngaged();
-      // Insert a foreign-tenant overlay so cross-tenant attempt resolves
-      // shape-wise but the read-by-tenant filter still 404s.
-      const kp = await generateKeyPair(ALG);
-      const otherPublic = await exportSPKI(kp.publicKey as never);
-      void otherPublic;
-      const otherTenantJwt = await new SignJWT({
-        sub: RECRUITER_A,
-        consumer_type: 'recruiter',
-        actor_kind: 'user',
-        tenant_id: TENANT_B,
-        // R7 BE-prereq: engagement endpoints now scope-gated +
-        // D4b-composed. requisition:read:all bypasses the D4b
-        // visibility check so the happy-path tests proceed.
-        scopes: ['engagement:read', 'engagement:write', 'engagement:outreach', 'requisition:read:all'],
-      })
-        .setProtectedHeader({ alg: ALG })
-        .setIssuedAt()
-        .setIssuer(ISSUER)
-        .setAudience(AUDIENCE)
-        .setExpirationTime('1h')
-        .sign(kp.privateKey as SignKey);
-      // The new JWT was signed with a different key so it will fail auth
-      // entirely; emulate cross-tenant by attempting against TENANT_B
-      // using the original recruiter JWT (TENANT_A) hitting an engagement
-      // id that does not exist in TENANT_A — same observed-effect
-      // (NOT_FOUND). The strict cross-tenant proof would require a JWT
-      // signed by the same key with a different tenant claim; the JWT
-      // setup at bootstrap signs only TENANT_A, so this assertion is
-      // covered by the NOT_FOUND case above. We re-issue the request
-      // for parity with the directive's tenant-isolation cell.
-      void otherTenantJwt;
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterJwt}`,
-          'Idempotency-Key': randomUUID(),
-          'Content-Type': 'application/json',
+      const sendRes = await fetch(
+        `http://127.0.0.1:${port}/v1/engagements/00000000-0000-7000-8000-000000000aaa/outreach/send`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${portalJwt}`,
+            'Idempotency-Key': randomUUID(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            draft_event_id: '00000000-0000-7000-8000-000000000bbb',
+            final_text: 'x',
+          }),
         },
-        body: JSON.stringify({ prompt: 'Reach out to talent.' }),
-      });
-      // Engagement exists in TENANT_A; using recruiter JWT (TENANT_A),
-      // first attempt succeeds. To check tenant isolation cleanly,
-      // assert that a non-existent engagement under TENANT_A returns
-      // 404 (already covered above) — this case here just asserts that
-      // the happy-path tenant pairing still works.
-      expect([200, 404]).toContain(res.status);
+      );
+      expect(sendRes.status).toBe(403);
+      expect(((await sendRes.json()) as { error: { code: string } }).error?.code).toBe(
+        'INSUFFICIENT_PERMISSIONS',
+      );
     });
 
-    it('idempotency replay: same key + same body returns identical response', { timeout: 60_000 }, async () => {
+    it('single-send: a second SEND of the same draft 422s (state already awaiting_response — no double-send)', { timeout: 60_000 }, async () => {
       const id = await createAndAdvanceToEngaged();
+      const draftEventId = await draftAndGetId(id);
+      const first = await sendOutreach(id, draftEventId);
+      expect(first.status).toBe(200);
+      // Second send (new idempotency key) finds state awaiting_response → 422.
+      const second = await sendOutreach(id, draftEventId);
+      expect(second.status).toBe(422);
+      expect(((await second.json()) as { error: { code: string } }).error?.code).toBe(
+        'ENGAGEMENT_STATE_INVALID',
+      );
+    });
+
+    it('SEND idempotency replay: same key + same body returns identical response', { timeout: 60_000 }, async () => {
+      const id = await createAndAdvanceToEngaged();
+      const draftEventId = await draftAndGetId(id);
       const key = randomUUID();
-      const body = JSON.stringify({ prompt: 'Reach out to talent.', max_tokens: 128 });
-      const first = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterJwt}`,
-          'Idempotency-Key': key,
-          'Content-Type': 'application/json',
-        },
-        body,
-      });
+      const first = await sendOutreach(id, draftEventId, { key, final_text: 'Final text.' });
       expect(first.status).toBe(200);
       const firstBody = await first.json();
-      const second = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterJwt}`,
-          'Idempotency-Key': key,
-          'Content-Type': 'application/json',
-        },
-        body,
-      });
+      const second = await sendOutreach(id, draftEventId, { key, final_text: 'Final text.' });
       expect(second.status).toBe(200);
-      const secondBody = await second.json();
-      expect(secondBody).toEqual(firstBody);
+      expect(await second.json()).toEqual(firstBody);
     });
 
-    it('idempotency conflict: same key + different body → 409 IDEMPOTENCY_KEY_CONFLICT', { timeout: 60_000 }, async () => {
+    it('SEND idempotency conflict: same key + different body → 409 IDEMPOTENCY_KEY_CONFLICT', { timeout: 60_000 }, async () => {
       const id = await createAndAdvanceToEngaged();
+      const draftEventId = await draftAndGetId(id);
       const key = randomUUID();
-      const first = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterJwt}`,
-          'Idempotency-Key': key,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: 'Reach out to talent.', max_tokens: 128 }),
-      });
+      const first = await sendOutreach(id, draftEventId, { key, final_text: 'Text A.' });
       expect(first.status).toBe(200);
-      const second = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterJwt}`,
-          'Idempotency-Key': key,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: 'DIFFERENT prompt body.', max_tokens: 256 }),
-      });
+      const second = await sendOutreach(id, draftEventId, { key, final_text: 'DIFFERENT text B.' });
       expect(second.status).toBe(409);
-      const secondBody = (await second.json()) as { error: { code: string } };
-      expect(secondBody.error?.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+      expect(((await second.json()) as { error: { code: string } }).error?.code).toBe(
+        'IDEMPOTENCY_KEY_CONFLICT',
+      );
     });
 
-    it('outreach_sent event_payload conforms to OutreachSentPayload (8 fields, correct types)', { timeout: 60_000 }, async () => {
+    it('outreach_sent payload conforms to OutreachSentPayload (10 fields incl final_text + source_draft_event_id)', { timeout: 60_000 }, async () => {
       const id = await createAndAdvanceToEngaged();
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterJwt}`,
-          'Idempotency-Key': randomUUID(),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: 'Reach out to talent.' }),
-      });
+      const draftEventId = await draftAndGetId(id);
+      const res = await sendOutreach(id, draftEventId, { final_text: 'The approved final text.' });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         outreach_event: { event_payload: Record<string, unknown> };
       };
       const payload = body.outreach_event.event_payload;
-      // 8 required fields per OutreachSentPayload.
       expect(typeof payload['ai_draft_audit_record_id']).toBe('string');
       expect(typeof payload['model_used']).toBe('string');
       expect(typeof payload['input_tokens']).toBe('number');
@@ -630,7 +641,38 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(typeof payload['delivered_at']).toBe('string');
       expect(payload['delivery_channel']).toBe('email');
       expect(typeof payload['delivery_id']).toBe('string');
-      expect(Object.keys(payload)).toHaveLength(8);
+      // The editable-trail additions.
+      expect(payload['final_text']).toBe('The approved final text.');
+      expect(payload['source_draft_event_id']).toBe(draftEventId);
+      expect(Object.keys(payload)).toHaveLength(10);
+    });
+
+    it('editable trail: final_text differs from the AI draft_text; both persist + are linked', { timeout: 60_000 }, async () => {
+      const id = await createAndAdvanceToEngaged();
+      const draftRes = await draftOutreach(id);
+      expect(draftRes.status).toBe(200);
+      const draft = (await draftRes.json()) as { draft_event_id: string; draft_text: string };
+      const edited = `EDITED: ${draft.draft_text} (recruiter changes)`;
+      const sendRes = await sendOutreach(id, draft.draft_event_id, { final_text: edited });
+      expect(sendRes.status).toBe(200);
+      // The drafted text persists on the outreach_drafted event...
+      const draftedRow = await setup.query<{ event_payload: Record<string, unknown> }>(
+        `SELECT event_payload FROM engagement."TalentEngagementEvent" WHERE id = $1::uuid`,
+        [draft.draft_event_id],
+      );
+      const draftedPayload = draftedRow.rows[0]?.event_payload as Record<string, unknown>;
+      expect(draftedPayload['draft_text']).toBe(draft.draft_text);
+      // ...and the final (edited) text persists on the outreach_sent event,
+      // linked back to the draft. drafted_text !== final_text is provable.
+      const sentRow = await setup.query<{ event_payload: Record<string, unknown> }>(
+        `SELECT event_payload FROM engagement."TalentEngagementEvent"
+         WHERE engagement_id = $1::uuid AND event_type = 'outreach_sent' LIMIT 1`,
+        [id],
+      );
+      const sentPayload = sentRow.rows[0]?.event_payload as Record<string, unknown>;
+      expect(sentPayload['final_text']).toBe(edited);
+      expect(sentPayload['final_text']).not.toBe(draft.draft_text);
+      expect(sentPayload['source_draft_event_id']).toBe(draft.draft_event_id);
     });
   },
 );

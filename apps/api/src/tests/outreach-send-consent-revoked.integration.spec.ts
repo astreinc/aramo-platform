@@ -69,6 +69,8 @@ const MIGRATIONS = [
   // M6 PR-2 §3 — engagement + submittal OutboxEvent migrations required
   // because state-transition write methods now emit an in-tx outbox row.
   M('libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
+  // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
+  M('libs/engagement/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql'),
   M('libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   M('libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql'),
   // PR-A1c §4 — metering schema required (in-tx UsageEvent INSERT).
@@ -127,7 +129,7 @@ function splitDdl(sql: string): string[] {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'POST /v1/engagements/{id}/outreach — consent-at-send refusal integration (M5 PR-9b)',
+  'POST /v1/engagements/{id}/outreach/send — consent-at-send refusal integration (Outreach Draft/Preview; relocated from atomic /outreach)',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -389,23 +391,64 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return Number(r.rows[0]?.count ?? 0);
     }
 
-    it('revoked-at-send: granted then revoked → 403 CONSENT_NOT_GRANTED_AT_SEND + no new events', { timeout: 60_000 }, async () => {
-      // Grant first so the engagement can be created.
-      await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
-      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
-      // Now revoke — BEFORE outreach-send attempt.
-      await seedContactingRevoke(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-04-01T00:00:00.000Z'));
-      const eventsBefore = await countEvents(id);
-
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
+    // Outreach Draft/Preview split — DRAFT half. Under the split, drafting
+    // is NEVER blocked by consent (it warns, non-blocking). Returns the
+    // raw Response + the parsed body so callers can assert status +
+    // consent_warning + extract draft_event_id.
+    async function draftOutreach(
+      jwt: string,
+      id: string,
+    ): Promise<{ status: number; body: { draft_event_id?: string; consent_warning?: unknown } }> {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach/draft`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${recruiterAJwt}`,
+          Authorization: `Bearer ${jwt}`,
           'Idempotency-Key': randomUUID(),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ prompt: 'Reach out.', max_tokens: 256 }),
       });
+      const body = (await res.json()) as { draft_event_id?: string; consent_warning?: unknown };
+      return { status: res.status, body };
+    }
+
+    // Outreach Draft/Preview split — SEND half. The BINDING consent gate.
+    function sendOutreach(
+      jwt: string,
+      id: string,
+      draftEventId: string,
+      key: string = randomUUID(),
+    ): Promise<Response> {
+      return fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach/send`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${jwt}`,
+          'Idempotency-Key': key,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ draft_event_id: draftEventId, final_text: 'Reach out.' }),
+      });
+    }
+
+    it('revoked-at-send: DRAFT succeeds (consent does NOT block at draft) but SEND → 403 + no new events', { timeout: 60_000 }, async () => {
+      // Grant first so the engagement can be created.
+      await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
+      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      // Now revoke — BEFORE the outreach attempt.
+      await seedContactingRevoke(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-04-01T00:00:00.000Z'));
+
+      // The relocation made explicit: DRAFT is NOT blocked by consent —
+      // it succeeds (200) and surfaces a non-blocking consent_warning.
+      const draft = await draftOutreach(recruiterAJwt, id);
+      expect(draft.status).toBe(200);
+      expect(draft.body.draft_event_id).toBeDefined();
+      expect(draft.body.consent_warning).toBeDefined();
+
+      // Count AFTER drafting (the draft persisted an outreach_drafted event).
+      const eventsBefore = await countEvents(id);
+
+      // The BINDING gate fires at SEND.
+      const res = await sendOutreach(recruiterAJwt, id, draft.body.draft_event_id as string);
       expect(res.status).toBe(403);
       const body = (await res.json()) as { error: { code: string; details: { consent_decision: { result: string }; engagement_id: string } } };
       expect(body.error.code).toBe('CONSENT_NOT_GRANTED_AT_SEND');
@@ -413,36 +456,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(body.error.details.engagement_id).toBe(id);
 
       // No new outreach_sent / state_transition events written; the
-      // refusal short-circuits Step 5.5 before Step 8 atomic write.
+      // refusal short-circuits BEFORE delivery + the atomic write.
       const eventsAfter = await countEvents(id);
       expect(eventsAfter).toBe(eventsBefore);
     });
 
-    it('contacting-never-granted (prerequisites only): engagement → 403 CONSENT_NOT_GRANTED_AT_SEND', { timeout: 60_000 }, async () => {
+    it('contacting-never-granted (prerequisites only): DRAFT ok, SEND → 403 CONSENT_NOT_GRANTED_AT_SEND', { timeout: 60_000 }, async () => {
       // Realistic production scenario: profile_storage + matching are
       // granted (talent is searchable + has been matched), but
       // contacting has never been granted. The dependency chain check
       // passes; the requested-scope check fails → resolver returns
-      // result='denied' (not the 422 dep-unmet throw) → Step 5.5
-      // converts to 403 CONSENT_NOT_GRANTED_AT_SEND.
-      //
-      // Note: the engagement-create endpoint at PR-3 does NOT itself
-      // enforce contacting consent (that gap is exactly what Track B
-      // item 3 closes at send time). So creating + advancing the
-      // engagement to engaged state proceeds even without a contacting
-      // grant — the runtime check at Step 5.5 is the new enforcement.
+      // result='denied' → the binding consent-at-send check converts to
+      // 403 CONSENT_NOT_GRANTED_AT_SEND.
       await seedPrerequisiteChainOnly(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
       const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
 
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterAJwt}`,
-          'Idempotency-Key': randomUUID(),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: 'Reach out.' }),
-      });
+      const draft = await draftOutreach(recruiterAJwt, id);
+      expect(draft.status).toBe(200);
+
+      const res = await sendOutreach(recruiterAJwt, id, draft.body.draft_event_id as string);
       expect(res.status).toBe(403);
       const body = (await res.json()) as { error: { code: string } };
       expect(body.error.code).toBe('CONSENT_NOT_GRANTED_AT_SEND');
@@ -457,84 +489,55 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedContactingGrant(TALENT_B, TENANT_B, RECRUITER_B, new Date('2026-01-01T00:00:00.000Z'));
       const idB = await createEngagementAdvanceToEngaged(recruiterBJwt, TALENT_B, REQ_B);
 
-      const resA = await fetch(`http://127.0.0.1:${port}/v1/engagements/${idA}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterAJwt}`,
-          'Idempotency-Key': randomUUID(),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: 'Reach out A.' }),
-      });
+      const draftA = await draftOutreach(recruiterAJwt, idA);
+      expect(draftA.status).toBe(200);
+      const resA = await sendOutreach(recruiterAJwt, idA, draftA.body.draft_event_id as string);
       expect(resA.status).toBe(403);
 
-      const resB = await fetch(`http://127.0.0.1:${port}/v1/engagements/${idB}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterBJwt}`,
-          'Idempotency-Key': randomUUID(),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: 'Reach out B.' }),
-      });
+      const draftB = await draftOutreach(recruiterBJwt, idB);
+      expect(draftB.status).toBe(200);
+      const resB = await sendOutreach(recruiterBJwt, idB, draftB.body.draft_event_id as string);
       expect(resB.status).toBe(200);
     });
 
-    it('idempotency replay stability: same key + same body returns 403 again (stable refusal)', { timeout: 60_000 }, async () => {
+    it('idempotency replay stability: same SEND key + same body returns 403 again (stable refusal)', { timeout: 60_000 }, async () => {
       await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
       const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
       await seedContactingRevoke(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-04-01T00:00:00.000Z'));
 
+      const draft = await draftOutreach(recruiterAJwt, id);
+      expect(draft.status).toBe(200);
+      const draftEventId = draft.body.draft_event_id as string;
       const key = randomUUID();
-      const body = JSON.stringify({ prompt: 'Reach out.' });
 
-      const first = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterAJwt}`,
-          'Idempotency-Key': key,
-          'Content-Type': 'application/json',
-        },
-        body,
-      });
+      const first = await sendOutreach(recruiterAJwt, id, draftEventId, key);
       expect(first.status).toBe(403);
 
-      // Retry with the same key + body — the idempotency record was
-      // NOT persisted (Step 5.5 throws before Step 9 persist), so the
-      // second call runs Step 5.5 freshly and re-evaluates the consent
-      // state. Because the revoke is still in effect, the refusal is
-      // stable: 403 again.
-      const second = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterAJwt}`,
-          'Idempotency-Key': key,
-          'Content-Type': 'application/json',
-        },
-        body,
-      });
+      // Retry with the same key + body — the idempotency record was NOT
+      // persisted (the binding consent check throws before the persist),
+      // so the second call re-evaluates the consent state freshly. The
+      // revoke is still in effect, so the refusal is stable: 403 again.
+      const second = await sendOutreach(recruiterAJwt, id, draftEventId, key);
       expect(second.status).toBe(403);
       const secondBody = (await second.json()) as { error: { code: string } };
       expect(secondBody.error.code).toBe('CONSENT_NOT_GRANTED_AT_SEND');
     });
 
-    it('AI draft NOT consumed when consent denied (Step 5.5 short-circuits before Step 6)', { timeout: 60_000 }, async () => {
+    it('SEND consumes NO AI draft (generation is at DRAFT; consent-denied send delivers nothing)', { timeout: 60_000 }, async () => {
       await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
       const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
       await seedContactingRevoke(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-04-01T00:00:00.000Z'));
-      // Reset counter AFTER setup so we measure only the outreach call.
-      draftProviderCalls.count = 0;
 
-      const res = await fetch(`http://127.0.0.1:${port}/v1/engagements/${id}/outreach`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${recruiterAJwt}`,
-          'Idempotency-Key': randomUUID(),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: 'Reach out.' }),
-      });
+      // Draft first (this DOES consume one AI call — consent is a warning
+      // at draft, not a block).
+      const draft = await draftOutreach(recruiterAJwt, id);
+      expect(draft.status).toBe(200);
+
+      // Reset the counter AFTER drafting so we measure only the SEND call.
+      draftProviderCalls.count = 0;
+      const res = await sendOutreach(recruiterAJwt, id, draft.body.draft_event_id as string);
       expect(res.status).toBe(403);
+      // SEND never calls the AI provider — generation already happened.
       expect(draftProviderCalls.count).toBe(0);
     });
   },

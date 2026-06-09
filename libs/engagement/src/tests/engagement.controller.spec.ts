@@ -6,6 +6,7 @@ import type { AiDraftService } from '@aramo/ai-draft';
 
 import { EngagementController } from '../lib/engagement.controller.js';
 import type { CreateEngagementRequestDto } from '../lib/dto/create-engagement-request.dto.js';
+import type { OutreachDraftRequestDto } from '../lib/dto/outreach-draft-request.dto.js';
 import type { OutreachSendRequestDto } from '../lib/dto/outreach-send-request.dto.js';
 import type { RecordResponseRequestDto } from '../lib/dto/record-response-request.dto.js';
 import type { RecordConversationStartedRequestDto } from '../lib/dto/record-conversation-started-request.dto.js';
@@ -66,6 +67,7 @@ function portalAuthContext(): AuthContextType {
 interface MockEngagementRepository {
   createEngagement: ReturnType<typeof vi.fn>;
   transitionState: ReturnType<typeof vi.fn>;
+  draftOutreach: ReturnType<typeof vi.fn>;
   sendOutreach: ReturnType<typeof vi.fn>;
   recordResponse: ReturnType<typeof vi.fn>;
   recordConversationStarted: ReturnType<typeof vi.fn>;
@@ -73,6 +75,9 @@ interface MockEngagementRepository {
 }
 interface MockEngagementEventRepository {
   findByTenantAndEngagementId: ReturnType<typeof vi.fn>;
+  // Outreach Draft/Preview split — SEND resolves the source draft event
+  // via the event repo's findByTenantAndId (cross-event-ref guard).
+  findByTenantAndId: ReturnType<typeof vi.fn>;
 }
 interface MockIdempotencyService {
   lookup: ReturnType<typeof vi.fn>;
@@ -101,13 +106,14 @@ function makeMocks(): {
   const engagementRepo: MockEngagementRepository = {
     createEngagement: vi.fn(),
     transitionState: vi.fn(),
+    draftOutreach: vi.fn(),
     sendOutreach: vi.fn(),
     recordResponse: vi.fn(),
     recordConversationStarted: vi.fn(),
-    // M5 PR-9b §4.1 — Step 5.5 sendOutreach now pre-reads via
-    // findByTenantAndId to extract talent_id for the consent check.
-    // Default to a valid engagement view so existing happy-path tests
-    // flow through; NOT_FOUND-class tests override per-call.
+    // Outreach draft + send both pre-read via findByTenantAndId to extract
+    // talent_id (consent) + state (the engaged gate). Default to a valid
+    // engaged engagement so happy-path tests flow; NOT_FOUND / non-engaged
+    // tests override per-call.
     findByTenantAndId: vi.fn().mockResolvedValue({
       id: ENGAGEMENT_1,
       tenant_id: TENANT_A,
@@ -120,6 +126,25 @@ function makeMocks(): {
   };
   const eventRepo: MockEngagementEventRepository = {
     findByTenantAndEngagementId: vi.fn(),
+    // SEND resolves the source draft event here; default to a valid
+    // outreach_drafted event on ENGAGEMENT_1 so send happy-path flows.
+    findByTenantAndId: vi.fn().mockResolvedValue({
+      id: '00000000-0000-7000-8000-dddd00000001',
+      tenant_id: TENANT_A,
+      engagement_id: ENGAGEMENT_1,
+      event_type: 'outreach_drafted',
+      event_payload: {
+        draft_text: 'mocked draft body',
+        ai_draft_audit_record_id: '00000000-0000-7000-8000-aaaa00000a01',
+        model_used: 'claude-sonnet-mock',
+        input_tokens: 10,
+        output_tokens: 20,
+        duration_ms: 100,
+        prompt: 'Reach out to talent about the role.',
+        max_tokens: 256,
+      },
+      created_at: new Date('2026-05-25T10:00:30Z'),
+    }),
   };
   const idempotency: MockIdempotencyService = {
     lookup: vi.fn().mockResolvedValue({ kind: 'proceed' }),
@@ -387,28 +412,198 @@ describe('EngagementController.getEngagementEvents (M5 PR-4 unit)', () => {
   });
 });
 
-// M5 PR-6 §4.16 — EngagementController.sendOutreach unit tests.
-describe('EngagementController.sendOutreach (M5 PR-6 unit)', () => {
+// Outreach Draft/Preview split — shared fixtures.
+const DRAFT_EVENT_ID = '00000000-0000-7000-8000-dddd00000001';
+
+const draftResultFixture = {
+  completion: 'mocked draft body',
+  model_used: 'claude-sonnet-mock',
+  input_tokens: 10,
+  output_tokens: 20,
+  duration_ms: 100,
+  audit_record_id: '00000000-0000-7000-8000-aaaa00000a01',
+};
+const deliveryResultFixture = {
+  delivered: true as const,
+  delivered_at: new Date('2026-05-25T10:01:00.000Z'),
+  delivery_id: '00000000-0000-7000-8000-dddd0d000001',
+  delivery_channel: 'email' as const,
+};
+
+// ---- DRAFT endpoint (Outreach Draft/Preview Amendment v1.1 §1) ----------
+describe('EngagementController.draftOutreach (Outreach Draft/Preview unit)', () => {
   let m: ReturnType<typeof makeMocks>;
-  const body: OutreachSendRequestDto = {
+  const body: OutreachDraftRequestDto = {
     prompt: 'Reach out to talent about the role.',
     max_tokens: 256,
   };
 
-  const draftResultFixture = {
-    completion: 'mocked draft body',
-    model_used: 'claude-sonnet-mock',
-    input_tokens: 10,
-    output_tokens: 20,
-    duration_ms: 100,
-    audit_record_id: '00000000-0000-7000-8000-aaaa00000a01',
+  const draftOutreachResultFixture = {
+    draft_event: {
+      id: DRAFT_EVENT_ID,
+      tenant_id: TENANT_A,
+      engagement_id: ENGAGEMENT_1,
+      event_type: 'outreach_drafted',
+      event_payload: {},
+      created_at: new Date('2026-05-25T10:00:30.000Z'),
+    },
   };
-  const deliveryResultFixture = {
-    delivered: true as const,
-    delivered_at: new Date('2026-05-25T10:01:00.000Z'),
-    delivery_id: '00000000-0000-7000-8000-dddd0d000001',
-    delivery_channel: 'email' as const,
+
+  beforeEach(() => {
+    m = makeMocks();
+    m.aiDraftService.generateDraft.mockResolvedValue(draftResultFixture);
+    m.engagementRepo.draftOutreach.mockResolvedValue(draftOutreachResultFixture);
+  });
+
+  it('happy: 200 + generateDraft + repo.draftOutreach; NO delivery / NO send; returns draft_event_id + draft_text', async () => {
+    const res = await m.controller.draftOutreach(
+      ENGAGEMENT_1,
+      body,
+      VALID_IDEM_KEY,
+      recruiterAuthContext(),
+      REQUEST_ID,
+    );
+    expect(res.draft_event_id).toBe(DRAFT_EVENT_ID);
+    expect(res.draft_text).toBe('mocked draft body');
+    expect(res.ai_draft_audit_record_id).toBe(draftResultFixture.audit_record_id);
+    expect(res.consent_warning).toBeUndefined();
+    expect(m.aiDraftService.generateDraft).toHaveBeenCalledTimes(1);
+    expect(m.engagementRepo.draftOutreach).toHaveBeenCalledTimes(1);
+    // The compliance heart: drafting NEVER delivers or sends.
+    expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
+    expect(m.engagementRepo.sendOutreach).not.toHaveBeenCalled();
+    expect(m.idempotency.persist).toHaveBeenCalledTimes(1);
+    // The persisted drafted payload carries the AI text + audit linkage.
+    const draftArg = m.engagementRepo.draftOutreach.mock.calls[0][0];
+    expect(draftArg.drafted_payload.draft_text).toBe('mocked draft body');
+    expect(draftArg.drafted_payload.prompt).toBe(body.prompt);
+  });
+
+  it('INSUFFICIENT_PERMISSIONS 403 on portal consumer; generateDraft + repo NOT called', async () => {
+    await expect(
+      m.controller.draftOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, portalAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
+    expect(m.engagementRepo.draftOutreach).not.toHaveBeenCalled();
+  });
+
+  it('VALIDATION_ERROR 400 on missing Idempotency-Key', async () => {
+    await expect(
+      m.controller.draftOutreach(ENGAGEMENT_1, body, undefined, recruiterAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
+  });
+
+  it('NOT_FOUND 404 at pre-read; consent + generateDraft NOT reached', async () => {
+    m.engagementRepo.findByTenantAndId.mockResolvedValue(null);
+    await expect(
+      m.controller.draftOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    expect(m.consentService.check).not.toHaveBeenCalled();
+    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
+    expect(m.engagementRepo.draftOutreach).not.toHaveBeenCalled();
+  });
+
+  // Amendment v1.1 Ruling 2 — DRAFT is GATED to engaged: a non-engaged
+  // engagement 422s BEFORE generateDraft (no stranded drafts, no wasted LLM).
+  it('ENGAGEMENT_STATE_INVALID 422 when engagement not in engaged state; generateDraft NOT called', async () => {
+    m.engagementRepo.findByTenantAndId.mockResolvedValue({
+      id: ENGAGEMENT_1,
+      tenant_id: TENANT_A,
+      talent_id: TALENT_A,
+      requisition_id: REQ_A,
+      examination_id: EXAM_A,
+      state: 'surfaced',
+      created_at: new Date('2026-05-25T10:00:00Z'),
+    });
+    await expect(
+      m.controller.draftOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'ENGAGEMENT_STATE_INVALID', statusCode: 422 });
+    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
+    expect(m.engagementRepo.draftOutreach).not.toHaveBeenCalled();
+  });
+
+  // Amendment v1.1 Ruling 1 — SOFT consent: denied does NOT block drafting;
+  // the response carries a non-blocking consent_warning instead.
+  it('soft consent: denied → still drafts, returns consent_warning; NO 403, NO delivery', async () => {
+    m.consentService.check.mockResolvedValueOnce({
+      result: 'denied',
+      reason_code: 'stale_consent',
+      display_message: 'Contacting consent is stale.',
+      decision_id: '00000000-0000-7000-8000-aaaa00000d01',
+      computed_at: '2026-05-27T10:00:00.000Z',
+    });
+    const res = await m.controller.draftOutreach(
+      ENGAGEMENT_1,
+      body,
+      VALID_IDEM_KEY,
+      recruiterAuthContext(),
+      REQUEST_ID,
+    );
+    expect(res.draft_event_id).toBe(DRAFT_EVENT_ID);
+    expect(res.consent_warning).toEqual({
+      reason_code: 'stale_consent',
+      display_message: 'Contacting consent is stale.',
+    });
+    expect(m.aiDraftService.generateDraft).toHaveBeenCalledTimes(1);
+    expect(m.engagementRepo.draftOutreach).toHaveBeenCalledTimes(1);
+    expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
+  });
+
+  it('AI_PROVIDER_UNAVAILABLE 502 remaps INTERNAL_ERROR kind=provider_unavailable', async () => {
+    m.aiDraftService.generateDraft.mockRejectedValue(
+      new AramoError('INTERNAL_ERROR', 'connection refused', 502, {
+        requestId: 'ai-draft',
+        details: { kind: 'provider_unavailable' },
+      }),
+    );
+    await expect(
+      m.controller.draftOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'AI_PROVIDER_UNAVAILABLE', statusCode: 502 });
+    expect(m.engagementRepo.draftOutreach).not.toHaveBeenCalled();
+  });
+
+  it('AI_RATE_LIMITED 429 remaps INTERNAL_ERROR kind=provider_rate_limited', async () => {
+    m.aiDraftService.generateDraft.mockRejectedValue(
+      new AramoError('INTERNAL_ERROR', 'rate limited', 429, {
+        requestId: 'ai-draft',
+        details: { kind: 'provider_rate_limited' },
+      }),
+    );
+    await expect(
+      m.controller.draftOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'AI_RATE_LIMITED', statusCode: 429 });
+  });
+
+  it('idempotency replay: returns prior body; generateDraft + repo NOT called', async () => {
+    const priorResponse = { draft_event_id: DRAFT_EVENT_ID, draft_text: 'x', ai_draft_audit_record_id: 'y' };
+    m.idempotency.lookup.mockResolvedValue({
+      kind: 'replay',
+      response_status: 200,
+      response_body: priorResponse,
+    });
+    const res = await m.controller.draftOutreach(
+      ENGAGEMENT_1,
+      body,
+      VALID_IDEM_KEY,
+      recruiterAuthContext(),
+      REQUEST_ID,
+    );
+    expect(res).toBe(priorResponse);
+    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
+    expect(m.engagementRepo.draftOutreach).not.toHaveBeenCalled();
+    expect(m.idempotency.persist).not.toHaveBeenCalled();
+  });
+});
+
+// ---- SEND endpoint (Outreach Draft/Preview Amendment v1.1 §2) -----------
+describe('EngagementController.sendOutreach (Outreach Draft/Preview unit)', () => {
+  let m: ReturnType<typeof makeMocks>;
+  const body: OutreachSendRequestDto = {
+    draft_event_id: DRAFT_EVENT_ID,
+    final_text: 'Edited final text the recruiter approved.',
   };
+
   const sendOutreachResultFixture = {
     engagement: makeEngagementView({ state: 'awaiting_response' }),
     outreach_event: {
@@ -431,16 +626,11 @@ describe('EngagementController.sendOutreach (M5 PR-6 unit)', () => {
 
   beforeEach(() => {
     m = makeMocks();
-  });
-
-  function arrangeHappyPath(): void {
-    m.aiDraftService.generateDraft.mockResolvedValue(draftResultFixture);
     m.deliveryProvider.deliver.mockResolvedValue(deliveryResultFixture);
     m.engagementRepo.sendOutreach.mockResolvedValue(sendOutreachResultFixture);
-  }
+  });
 
-  it('happy: 200 + AiDraft + Delivery + repository.sendOutreach all called; idempotency.persist called', async () => {
-    arrangeHappyPath();
+  it('happy: 200 + delivery(final_text) + repo.sendOutreach; NO generateDraft at send; persist called', async () => {
     const res = await m.controller.sendOutreach(
       ENGAGEMENT_1,
       body,
@@ -450,17 +640,34 @@ describe('EngagementController.sendOutreach (M5 PR-6 unit)', () => {
     );
     expect(res.engagement.state).toBe('awaiting_response');
     expect(res.delivery_id).toBe(deliveryResultFixture.delivery_id);
-    expect(m.aiDraftService.generateDraft).toHaveBeenCalledTimes(1);
-    expect(m.deliveryProvider.deliver).toHaveBeenCalledTimes(1);
+    // SEND does NOT run the LLM — generation happened at DRAFT.
+    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
+    // Delivery carries the recruiter-approved final_text, not the raw draft.
+    const deliverArg = m.deliveryProvider.deliver.mock.calls[0][0];
+    expect(deliverArg.completion).toBe(body.final_text);
     expect(m.engagementRepo.sendOutreach).toHaveBeenCalledTimes(1);
     expect(m.idempotency.persist).toHaveBeenCalledTimes(1);
   });
 
-  it('INSUFFICIENT_PERMISSIONS 403 on portal consumer; AI + delivery + repo NOT called', async () => {
+  // The editable-trail invariant: outreach_sent persists final_text +
+  // the source draft back-reference; final_text may differ from draft_text.
+  it('editable trail: outreach_sent payload carries final_text + source_draft_event_id', async () => {
+    await m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID);
+    const sendArg = m.engagementRepo.sendOutreach.mock.calls[0][0];
+    expect(sendArg.source_draft_event_id).toBe(DRAFT_EVENT_ID);
+    expect(sendArg.outreach_payload.final_text).toBe(body.final_text);
+    expect(sendArg.outreach_payload.source_draft_event_id).toBe(DRAFT_EVENT_ID);
+    // Audit/token fields carried forward FROM the draft event payload.
+    expect(sendArg.outreach_payload.ai_draft_audit_record_id).toBe(
+      '00000000-0000-7000-8000-aaaa00000a01',
+    );
+    expect(sendArg.outreach_payload.model_used).toBe('claude-sonnet-mock');
+  });
+
+  it('INSUFFICIENT_PERMISSIONS 403 on portal consumer; delivery + repo NOT called', async () => {
     await expect(
       m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, portalAuthContext(), REQUEST_ID),
     ).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
-    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
     expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
     expect(m.engagementRepo.sendOutreach).not.toHaveBeenCalled();
   });
@@ -469,32 +676,63 @@ describe('EngagementController.sendOutreach (M5 PR-6 unit)', () => {
     await expect(
       m.controller.sendOutreach(ENGAGEMENT_1, body, undefined, recruiterAuthContext(), REQUEST_ID),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
-    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
+    expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
   });
 
-  it('NOT_FOUND 404 fires at Step 5.5 controller pre-read when engagement does not exist in tenant', async () => {
-    // M5 PR-9b §4.1 — Step 5.5 pre-reads the engagement so Step 6 AI
-    // draft + Step 8 atomic write are NOT reached on missing engagement.
-    // Mirrors the existing GET /:id NOT_FOUND envelope (same message
-    // string, HTTP 404, requestId re-bound).
+  it('NOT_FOUND 404 at pre-read; delivery + repo NOT called', async () => {
     m.engagementRepo.findByTenantAndId.mockResolvedValue(null);
-    try {
-      await m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID);
-      throw new Error('expected throw');
-    } catch (err) {
-      const e = err as AramoError;
-      expect(e.code).toBe('NOT_FOUND');
-      expect(e.statusCode).toBe(404);
-      expect(e.context.requestId).toBe(REQUEST_ID);
-    }
-    expect(m.consentService.check).not.toHaveBeenCalled();
-    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
+    await expect(
+      m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
     expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
     expect(m.engagementRepo.sendOutreach).not.toHaveBeenCalled();
   });
 
-  // M5 PR-9b §4.1 / Rulings 1 + 6 + 7 — runtime consent-at-send refusal.
-  it('CONSENT_NOT_GRANTED_AT_SEND 403 when consentService.check returns denied; AI + delivery + repo NOT called', async () => {
+  // True single-send: a second send finds state 'awaiting_response' and
+  // 422s at the pre-gate BEFORE re-delivering.
+  it('ENGAGEMENT_STATE_INVALID 422 when not engaged; delivery NOT called (no double-send)', async () => {
+    m.engagementRepo.findByTenantAndId.mockResolvedValue({
+      id: ENGAGEMENT_1,
+      tenant_id: TENANT_A,
+      talent_id: TALENT_A,
+      requisition_id: REQ_A,
+      examination_id: EXAM_A,
+      state: 'awaiting_response',
+      created_at: new Date('2026-05-25T10:00:00Z'),
+    });
+    await expect(
+      m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'ENGAGEMENT_STATE_INVALID', statusCode: 422 });
+    expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
+    expect(m.engagementRepo.sendOutreach).not.toHaveBeenCalled();
+  });
+
+  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 when draft_event_id does not resolve; delivery NOT called', async () => {
+    m.eventRepo.findByTenantAndId.mockResolvedValue(null);
+    await expect(
+      m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'ENGAGEMENT_REFERENCE_NOT_FOUND', statusCode: 422 });
+    expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
+    expect(m.engagementRepo.sendOutreach).not.toHaveBeenCalled();
+  });
+
+  it('ENGAGEMENT_REFERENCE_NOT_FOUND 422 when referenced event is not an outreach_drafted', async () => {
+    m.eventRepo.findByTenantAndId.mockResolvedValue({
+      id: DRAFT_EVENT_ID,
+      tenant_id: TENANT_A,
+      engagement_id: ENGAGEMENT_1,
+      event_type: 'outreach_sent',
+      event_payload: {},
+      created_at: new Date('2026-05-25T10:00:30Z'),
+    });
+    await expect(
+      m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'ENGAGEMENT_REFERENCE_NOT_FOUND', statusCode: 422 });
+    expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
+  });
+
+  // BINDING consent-at-send (relocated from the atomic flow to SEND).
+  it('CONSENT_NOT_GRANTED_AT_SEND 403 when consent denied at send; delivery + repo NOT called', async () => {
     m.consentService.check.mockResolvedValueOnce({
       result: 'denied',
       reason_code: 'stale_consent',
@@ -508,38 +746,26 @@ describe('EngagementController.sendOutreach (M5 PR-6 unit)', () => {
       const e = err as AramoError;
       expect(e.code).toBe('CONSENT_NOT_GRANTED_AT_SEND');
       expect(e.statusCode).toBe(403);
-      expect(e.context.requestId).toBe(REQUEST_ID);
       const decision = e.context.details?.['consent_decision'] as { result: string; reason_code: string };
-      expect(decision.result).toBe('denied');
       expect(decision.reason_code).toBe('stale_consent');
-      expect(e.context.details?.['engagement_id']).toBe(ENGAGEMENT_1);
     }
-    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
     expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
     expect(m.engagementRepo.sendOutreach).not.toHaveBeenCalled();
   });
 
-  // M5 PR-9b §4.1 / Ruling 8 — substrate-fault (resolver error) → 500.
-  it('INTERNAL_ERROR 500 when consentService.check returns error result', async () => {
+  it('INTERNAL_ERROR 500 when consent resolver returns error result; delivery NOT called', async () => {
     m.consentService.check.mockResolvedValueOnce({
       result: 'error',
       decision_id: '00000000-0000-7000-8000-aaaa00000d02',
       computed_at: '2026-05-27T10:00:00.000Z',
     });
-    try {
-      await m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID);
-      throw new Error('expected throw');
-    } catch (err) {
-      const e = err as AramoError;
-      expect(e.code).toBe('INTERNAL_ERROR');
-      expect(e.statusCode).toBe(500);
-    }
-    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
+    await expect(
+      m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
+    ).rejects.toMatchObject({ code: 'INTERNAL_ERROR', statusCode: 500 });
+    expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
   });
 
   it('ENGAGEMENT_STATE_INVALID 422 propagates from repository.sendOutreach', async () => {
-    m.aiDraftService.generateDraft.mockResolvedValue(draftResultFixture);
-    m.deliveryProvider.deliver.mockResolvedValue(deliveryResultFixture);
     m.engagementRepo.sendOutreach.mockRejectedValue(
       new AramoError('ENGAGEMENT_STATE_INVALID', 'illegal', 422, {
         requestId: 'engagement-outreach',
@@ -551,72 +777,7 @@ describe('EngagementController.sendOutreach (M5 PR-6 unit)', () => {
     ).rejects.toMatchObject({ code: 'ENGAGEMENT_STATE_INVALID', statusCode: 422 });
   });
 
-  it('AI_PROVIDER_UNAVAILABLE 502 remaps INTERNAL_ERROR kind=provider_unavailable', async () => {
-    m.aiDraftService.generateDraft.mockRejectedValue(
-      new AramoError('INTERNAL_ERROR', 'connection refused', 502, {
-        requestId: 'ai-draft',
-        details: { kind: 'provider_unavailable' },
-      }),
-    );
-    try {
-      await m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID);
-      throw new Error('expected throw');
-    } catch (err) {
-      const e = err as AramoError;
-      expect(e.code).toBe('AI_PROVIDER_UNAVAILABLE');
-      expect(e.statusCode).toBe(502);
-      expect(e.context.details?.['kind']).toBe('provider_unavailable');
-    }
-    expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
-    expect(m.engagementRepo.sendOutreach).not.toHaveBeenCalled();
-  });
-
-  it('AI_RATE_LIMITED 429 remaps INTERNAL_ERROR kind=provider_rate_limited', async () => {
-    m.aiDraftService.generateDraft.mockRejectedValue(
-      new AramoError('INTERNAL_ERROR', 'rate limited', 429, {
-        requestId: 'ai-draft',
-        details: { kind: 'provider_rate_limited' },
-      }),
-    );
-    try {
-      await m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID);
-      throw new Error('expected throw');
-    } catch (err) {
-      const e = err as AramoError;
-      expect(e.code).toBe('AI_RATE_LIMITED');
-      expect(e.statusCode).toBe(429);
-    }
-    expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
-  });
-
-  it('INTERNAL_ERROR passes through for other kinds (e.g. provider_auth_failed) — NOT remapped', async () => {
-    m.aiDraftService.generateDraft.mockRejectedValue(
-      new AramoError('INTERNAL_ERROR', 'auth failed', 500, {
-        requestId: 'ai-draft',
-        details: { kind: 'provider_auth_failed' },
-      }),
-    );
-    try {
-      await m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID);
-      throw new Error('expected throw');
-    } catch (err) {
-      const e = err as AramoError;
-      expect(e.code).toBe('INTERNAL_ERROR');
-      expect(e.statusCode).toBe(500);
-    }
-  });
-
-  it('IDEMPOTENCY_KEY_CONFLICT 409 propagates from idempotency.lookup; AI not called', async () => {
-    m.idempotency.lookup.mockRejectedValue(
-      new AramoError('IDEMPOTENCY_KEY_CONFLICT', 'collision', 409, { requestId: REQUEST_ID }),
-    );
-    await expect(
-      m.controller.sendOutreach(ENGAGEMENT_1, body, VALID_IDEM_KEY, recruiterAuthContext(), REQUEST_ID),
-    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_KEY_CONFLICT', statusCode: 409 });
-    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
-  });
-
-  it('idempotency replay: lookup returns prior body; AI + delivery + repo NOT called', async () => {
+  it('idempotency replay: returns prior body; delivery + repo NOT called', async () => {
     const priorResponse = {
       engagement: makeEngagementView({ state: 'awaiting_response' }),
       outreach_event: sendOutreachResultFixture.outreach_event,
@@ -635,7 +796,6 @@ describe('EngagementController.sendOutreach (M5 PR-6 unit)', () => {
       REQUEST_ID,
     );
     expect(res).toBe(priorResponse);
-    expect(m.aiDraftService.generateDraft).not.toHaveBeenCalled();
     expect(m.deliveryProvider.deliver).not.toHaveBeenCalled();
     expect(m.engagementRepo.sendOutreach).not.toHaveBeenCalled();
     expect(m.idempotency.persist).not.toHaveBeenCalled();

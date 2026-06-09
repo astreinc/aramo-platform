@@ -82,6 +82,7 @@ enum EngagementState {
 // amendments.
 enum EngagementEventType {
   state_transition
+  outreach_drafted
   outreach_sent
   response_received
   conversation_started

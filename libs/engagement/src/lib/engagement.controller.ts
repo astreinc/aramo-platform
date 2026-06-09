@@ -32,8 +32,11 @@ import type { EngagementListResponseDto } from './dto/engagement-list-response.d
 import type { TransitionEngagementRequestDto } from './dto/transition-engagement-request.dto.js';
 import type { TransitionEngagementResponseDto } from './dto/transition-engagement-response.dto.js';
 import type { EngagementListEventsResponseDto } from './dto/engagement-list-events-response.dto.js';
+import { OutreachDraftRequestDto } from './dto/outreach-draft-request.dto.js';
+import type { OutreachDraftResponseDto } from './dto/outreach-draft-response.dto.js';
 import { OutreachSendRequestDto } from './dto/outreach-send-request.dto.js';
 import type { OutreachSendResponseDto } from './dto/outreach-send-response.dto.js';
+import type { OutreachDraftedPayload } from './dto/outreach-drafted-payload.js';
 import type { OutreachSentPayload } from './dto/outreach-sent-payload.js';
 import { RecordResponseRequestDto } from './dto/record-response-request.dto.js';
 import type { RecordResponseResponseDto } from './dto/record-response-response.dto.js';
@@ -47,19 +50,28 @@ import type {
 import { DELIVERY_PROVIDER_TOKEN } from './delivery/tokens.js';
 import { EngagementEventRepository } from './engagement-event.repository.js';
 import { EngagementRepository } from './engagement.repository.js';
+import { canTransition } from './engagement-state.js';
 
 // M5 PR-4 §4.1 — EngagementController.
 //
-// First HTTP-bearing surface in libs/engagement. Endpoints (8 total
-// after R7 BE-prereq P1 adds the LIST):
+// First HTTP-bearing surface in libs/engagement. Endpoints (9 total
+// after the Outreach Draft/Preview split replaces the atomic outreach
+// endpoint with draft + send):
 //   - GET  /v1/engagements                              (LIST — R7 BE-prereq)
 //   - POST /v1/engagements                              (create)
 //   - POST /v1/engagements/{id}/transitions             (state transition)
-//   - POST /v1/engagements/{id}/outreach                (outreach + delivery)
+//   - POST /v1/engagements/{id}/outreach/draft          (AI draft + persist PENDING — NO delivery)
+//   - POST /v1/engagements/{id}/outreach/send           (deliver approved draft + consent-at-send)
 //   - POST /v1/engagements/{id}/response                (record response)
 //   - POST /v1/engagements/{id}/conversation            (record conversation)
 //   - GET  /v1/engagements/{id}                         (read engagement)
 //   - GET  /v1/engagements/{id}/events                  (read event log)
+//
+// The atomic POST /v1/engagements/{id}/outreach (prompt→draft→send in one
+// call, no preview) was REMOVED by the Outreach Draft/Preview Directive
+// v1.0 — leaving it live would let a caller send without preview, a hole
+// in the human-in-the-loop guarantee. The split makes draft→preview→send
+// the ONLY outreach path (a compliance requirement, not cleanup).
 //
 // Auth posture (Ruling 8 + R7 BE-prereq Amendment v1.1 §1+§5):
 // class-level JwtAuthGuard + RolesGuard (the submittal precedent —
@@ -376,55 +388,44 @@ export class EngagementController {
     return response;
   }
 
-  // ---- POST /v1/engagements/{id}/outreach ------------------------------
+  // ---- POST /v1/engagements/{id}/outreach/draft ------------------------
   //
-  // M5 PR-6 §4.1 — 9-step idempotency flow extended with AI draft +
-  // delivery side-effects BEFORE the repository write:
-  //   1. assertConsumerIsRecruiter (recruiter-only per Ruling 8).
-  //   2. assertIdempotencyKeyRequired.
+  // Outreach Draft/Preview Directive v1.0 / Amendment v1.1 §1 — the
+  // GENERATION half of the human-in-the-loop split. Runs the LLM and
+  // persists a PENDING outreach_drafted event; returns the drafted text +
+  // the draft event id. NO delivery, NO outbox, NO state transition, NO
+  // binding consent gate.
+  //
+  // Flow:
+  //   1. assertConsumerIsRecruiter (recruiter-only).
+  //   2. assertIdempotencyKeyRequired (draft key).
   //   3. assertEngagementIdIsUuid.
-  //   4. hashCanonicalizedBody.
-  //   5. idempotencyService.lookup (replay-or-conflict-or-proceed).
-  //   6. aiDraftService.generateDraft + error-code remap.
-  //   7. deliveryProvider.deliver (SendStub pass-through).
-  //   8. engagementRepository.sendOutreach (atomic 3-write).
-  //   9. response compose + idempotencyService.persist + return.
+  //   4. hashCanonicalizedBody + idempotencyService.lookup (replay).
+  //   5. pre-read engagement (visibility) → NOT_FOUND 404.
+  //   6. DRAFT state-gate (Amendment v1.1 Ruling 2): canTransition(state,
+  //      'awaiting_response') → 422 BEFORE generateDraft (no stranded
+  //      drafts, no wasted LLM tokens on a non-engaged engagement).
+  //   7. SOFT consent pre-check (Amendment v1.1 Ruling 1): NON-BLOCKING —
+  //      on 'denied' attach consent_warning to the response but STILL
+  //      draft. The binding consent gate is at SEND, not here.
+  //   8. aiDraftService.generateDraft + error-code remap (Ruling 6).
+  //   9. engagementRepository.draftOutreach (append outreach_drafted).
+  //  10. response compose + idempotencyService.persist + return.
   //
-  // Ordering rationale (per directive §4.1 + Rulings 1 + 11):
-  // AI + delivery happen BEFORE the DB write. If either fails, the
-  // engagement state column + event log are unchanged (no partial-
-  // state observability). The repository.sendOutreach atomic
-  // transaction guarantees that all 3 writes (engagement update +
-  // outreach_sent event + state_transition event) commit together OR
-  // none commit.
-  //
-  // Error-code remapping (Ruling 6):
-  //   AiDraftService.generateDraft INTERNAL_ERROR throws are remapped:
-  //     - kind ∈ {provider_unavailable, provider_internal_error}
-  //         → AI_PROVIDER_UNAVAILABLE 502
-  //     - kind === 'provider_rate_limited' → AI_RATE_LIMITED 429
-  //     - any other kind → pass-through (e.g. provider_auth_failed
-  //       remains INTERNAL_ERROR 500; secret-cache errors pass through).
-  //   DeliveryProvider AramoError throws pass through. The SendStub
-  //   adapter at PR-6 never fails; real adapters at future PRs may
-  //   surface delivery-layer codes.
-  //
-  // Structured logging discipline (Ruling 10): entry / success / refusal
-  // paths log audit_record_id + delivery_id + model_used + token counts
-  // + duration_ms + delivery_channel + engagement_id + tenant_id. NEVER
-  // raw prompt, raw completion, recipient_handle.
+  // Structured-logging discipline: NEVER raw prompt, raw completion, or
+  // recipient_handle — only audit_record_id + model + token counts.
 
-  @Post(':id/outreach')
+  @Post(':id/outreach/draft')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('engagement:outreach')
-  async sendOutreach(
+  async draftOutreach(
     @Param('id') id: string,
-    @Body() body: OutreachSendRequestDto,
+    @Body() body: OutreachDraftRequestDto,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
     @Req() req?: Request,
-  ): Promise<OutreachSendResponseDto> {
+  ): Promise<OutreachDraftResponseDto> {
     // Step 1 — auth.
     this.assertConsumerIsRecruiter(authContext, requestId);
 
@@ -434,10 +435,8 @@ export class EngagementController {
     // Step 3 — id UUID validation.
     this.assertEngagementIdIsUuid(id, requestId);
 
-    // Step 4 — body hash.
+    // Step 4 — body hash + idempotency lookup (replay short-circuit).
     const requestHash = hashCanonicalizedBody(body as unknown);
-
-    // Step 5 — idempotency lookup (replay short-circuit).
     const lookup = await this.idempotencyService.lookup({
       tenant_id: authContext.tenant_id,
       key,
@@ -445,39 +444,25 @@ export class EngagementController {
       requestId,
     });
     if (lookup.kind === 'replay') {
-      return lookup.response_body as OutreachSendResponseDto;
+      return lookup.response_body as OutreachDraftResponseDto;
     }
 
     this.logger.log({
-      event: 'engagement.outreach_endpoint_started',
+      event: 'engagement.outreach_draft_endpoint_started',
       tenant_id: authContext.tenant_id,
       engagement_id: id,
       request_id: requestId,
     });
 
-    // ===== Step 5.5: Consent-at-send enforcement (M5 PR-9b — Plan v1.5
-    // §M5 Track B item 3). Closes the audit Axis C gap: PR-6 wired
-    // ConsentService only at engagement-create time; PR-9b extends to
-    // message-send time. M5 Exit Criteria: "No outreach without runtime
-    // contacting consent." =====
-
-    // Per Ruling 4 — controller pre-read of engagement to obtain
-    // talent_id (the consent check is per-talent; the request body
-    // does not carry talent_id, only engagement_id via URL path).
-    // Mirrors the existing GET /:id null-handling pattern below at the
-    // same controller — NOT_FOUND 404 with the canonical
-    // "TalentJobEngagement not found" message.
-    // R7 BE-prereq §3 — visibility composes here (the FIRST findByTenantAndId
-    // for outreach); invisible requisition → null → 404 BEFORE the
-    // consent check + AI draft + delivery + write.
+    // Step 5 — pre-read engagement (visibility) → NOT_FOUND 404. Also
+    // supplies talent_id for the soft consent check + state for the gate.
     const visibleReqIds = await resolveVisibleReqIds(req);
-    const engagementForConsentCheck =
-      await this.engagementRepository.findByTenantAndId({
-        tenant_id: authContext.tenant_id,
-        id,
-        visible_requisition_ids: visibleReqIds,
-      });
-    if (engagementForConsentCheck === null) {
+    const engagement = await this.engagementRepository.findByTenantAndId({
+      tenant_id: authContext.tenant_id,
+      id,
+      visible_requisition_ids: visibleReqIds,
+    });
+    if (engagement === null) {
       throw new AramoError(
         'NOT_FOUND',
         'TalentJobEngagement not found',
@@ -486,14 +471,42 @@ export class EngagementController {
       );
     }
 
-    // Per Rulings 2 + 3 + 5: undefined idempotency-key (runtime gating
-    // semantics — every send call writes a fresh decision-log entry);
-    // operation 'engagement' (maps to contacting scope per
-    // OPERATION_SCOPE_MAP); channel 'email' (mirrors hardcoded delivery
-    // channel at Step 7).
+    // Step 6 — DRAFT state-gate (Amendment v1.1 Ruling 2). Gate BEFORE
+    // generateDraft so no LLM tokens are spent on a non-engaged
+    // engagement. (The repository re-gates as single source of truth.)
+    if (!canTransition(engagement.state, 'awaiting_response')) {
+      this.logger.log({
+        event: 'engagement.outreach_draft_refused',
+        error_code: 'ENGAGEMENT_STATE_INVALID',
+        tenant_id: authContext.tenant_id,
+        engagement_id: id,
+        from_state: engagement.state,
+        to_state: 'awaiting_response',
+      });
+      throw new AramoError(
+        'ENGAGEMENT_STATE_INVALID',
+        `Illegal engagement state transition: ${engagement.state} -> awaiting_response`,
+        422,
+        {
+          requestId,
+          details: {
+            engagement_id: id,
+            from_state: engagement.state,
+            to_state: 'awaiting_response',
+          },
+        },
+      );
+    }
+
+    // Step 7 — SOFT consent pre-check (Amendment v1.1 Ruling 1).
+    // NON-BLOCKING: on 'denied' we attach a warning but still draft. The
+    // BINDING gate fires at SEND. A resolver 'error' is logged and
+    // ignored here (it must not block drafting); the binding check at
+    // SEND will surface it as 500 if it persists.
+    let consentWarning: OutreachDraftResponseDto['consent_warning'];
     const consentDecision = await this.consentService.check(
       {
-        talent_id: engagementForConsentCheck.talent_id,
+        talent_id: engagement.talent_id,
         operation: 'engagement',
         channel: 'email',
       },
@@ -501,52 +514,24 @@ export class EngagementController {
       authContext,
       requestId,
     );
-
-    // Per Rulings 1 + 6 + 7: denied → throw 403 CONSENT_NOT_GRANTED_AT_SEND;
-    // full ConsentDecisionDto embedded in error.details.consent_decision so
-    // clients can branch on reason_code without extra error codes.
     if (consentDecision.result === 'denied') {
+      consentWarning = {
+        ...(consentDecision.reason_code !== undefined
+          ? { reason_code: consentDecision.reason_code }
+          : {}),
+        ...(consentDecision.display_message !== undefined
+          ? { display_message: consentDecision.display_message }
+          : {}),
+      };
       this.logger.log({
-        event: 'engagement.outreach_refused',
-        error_code: 'CONSENT_NOT_GRANTED_AT_SEND',
+        event: 'engagement.outreach_draft_consent_warning',
         tenant_id: authContext.tenant_id,
         engagement_id: id,
         reason_code: consentDecision.reason_code,
       });
-      throw new AramoError(
-        'CONSENT_NOT_GRANTED_AT_SEND',
-        'consent denied at send time',
-        403,
-        {
-          requestId,
-          details: {
-            consent_decision: consentDecision,
-            engagement_id: id,
-          },
-        },
-      );
     }
 
-    // Per Ruling 8: 'error' is a resolver-substrate fault, not a refusal —
-    // 500 INTERNAL_ERROR (clients must retry, not back off as on 403).
-    if (consentDecision.result === 'error') {
-      throw new AramoError(
-        'INTERNAL_ERROR',
-        'consent check resolver failure',
-        500,
-        {
-          requestId,
-          details: {
-            consent_decision: consentDecision,
-            engagement_id: id,
-          },
-        },
-      );
-    }
-    // consentDecision.result === 'allowed' — continue to Step 6.
-    // ===== End Step 5.5 =====
-
-    // Step 6 — AI draft (with error-code remap).
+    // Step 8 — AI draft (with error-code remap, Ruling 6).
     let draftResult;
     try {
       draftResult = await this.aiDraftService.generateDraft({
@@ -566,7 +551,7 @@ export class EngagementController {
           (kind === 'provider_unavailable' || kind === 'provider_internal_error')
         ) {
           this.logger.log({
-            event: 'engagement.outreach_refused',
+            event: 'engagement.outreach_draft_refused',
             error_code: 'AI_PROVIDER_UNAVAILABLE',
             tenant_id: authContext.tenant_id,
             engagement_id: id,
@@ -582,28 +567,19 @@ export class EngagementController {
             },
           );
         }
-        if (
-          err.code === 'INTERNAL_ERROR' &&
-          kind === 'provider_rate_limited'
-        ) {
+        if (err.code === 'INTERNAL_ERROR' && kind === 'provider_rate_limited') {
           this.logger.log({
-            event: 'engagement.outreach_refused',
+            event: 'engagement.outreach_draft_refused',
             error_code: 'AI_RATE_LIMITED',
             tenant_id: authContext.tenant_id,
             engagement_id: id,
             kind,
           });
-          throw new AramoError(
-            'AI_RATE_LIMITED',
-            'AI provider rate-limited',
-            429,
-            {
-              requestId,
-              details: { kind },
-            },
-          );
+          throw new AramoError('AI_RATE_LIMITED', 'AI provider rate-limited', 429, {
+            requestId,
+            details: { kind },
+          });
         }
-        // Pass-through with requestId re-binding.
         throw new AramoError(err.code, err.message, err.statusCode, {
           ...err.context,
           requestId,
@@ -612,11 +588,265 @@ export class EngagementController {
       throw err;
     }
 
-    // Step 7 — delivery (SendStub at PR-6; never fails).
+    // Step 9 — persist the PENDING outreach_drafted event.
+    const draftedPayload: OutreachDraftedPayload = {
+      draft_text: draftResult.completion,
+      ai_draft_audit_record_id: draftResult.audit_record_id,
+      model_used: draftResult.model_used,
+      input_tokens: draftResult.input_tokens,
+      output_tokens: draftResult.output_tokens,
+      duration_ms: draftResult.duration_ms,
+      prompt: body.prompt,
+      max_tokens: body.max_tokens ?? 512,
+      ...(body.system_message !== undefined
+        ? { system_message: body.system_message }
+        : {}),
+      ...(body.recipient_handle !== undefined
+        ? { recipient_handle: body.recipient_handle }
+        : {}),
+    };
+
+    let repoResult;
+    try {
+      repoResult = await this.engagementRepository.draftOutreach({
+        engagement_id: id,
+        tenant_id: authContext.tenant_id,
+        draft_event_id: randomUUID(),
+        drafted_payload: draftedPayload,
+        visible_requisition_ids: visibleReqIds,
+      });
+    } catch (err) {
+      if (err instanceof AramoError) {
+        throw new AramoError(err.code, err.message, err.statusCode, {
+          ...err.context,
+          requestId,
+        });
+      }
+      throw err;
+    }
+
+    // Step 10 — response compose.
+    const response: OutreachDraftResponseDto = {
+      draft_event_id: repoResult.draft_event.id,
+      draft_text: draftResult.completion,
+      ai_draft_audit_record_id: draftResult.audit_record_id,
+      ...(consentWarning !== undefined ? { consent_warning: consentWarning } : {}),
+    };
+
+    await this.idempotencyService.persist({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      response_status: HttpStatus.OK,
+      response_body: response,
+    });
+
+    this.logger.log({
+      event: 'engagement.outreach_draft_endpoint_succeeded',
+      tenant_id: authContext.tenant_id,
+      engagement_id: id,
+      draft_event_id: repoResult.draft_event.id,
+      audit_record_id: draftResult.audit_record_id,
+      model_used: draftResult.model_used,
+      input_tokens: draftResult.input_tokens,
+      output_tokens: draftResult.output_tokens,
+      duration_ms: draftResult.duration_ms,
+      consent_warned: consentWarning !== undefined,
+    });
+
+    return response;
+  }
+
+  // ---- POST /v1/engagements/{id}/outreach/send -------------------------
+  //
+  // Outreach Draft/Preview Directive v1.0 / Amendment v1.1 §2 — the
+  // DELIVERY half of the split. Takes the source draft event id + the
+  // recruiter-approved (possibly-edited) final text; runs the BINDING
+  // consent-at-send check; delivers; then the existing atomic SEND
+  // $transaction (state → awaiting_response + outreach_sent event [now
+  // carrying final_text + source_draft_event_id] + state_transition event
+  // + outbox emit + metered usage).
+  //
+  // Flow:
+  //   1. assertConsumerIsRecruiter.
+  //   2. assertIdempotencyKeyRequired (send key — independent of draft key).
+  //   3. assertEngagementIdIsUuid.
+  //   4. hashCanonicalizedBody + idempotencyService.lookup (replay).
+  //   5. pre-read engagement (visibility) → NOT_FOUND 404.
+  //   6. state pre-gate (canTransition → 422) BEFORE delivery — prevents
+  //      double-send / wasted delivery (true single-send-per-engaged).
+  //   7. source-draft cross-event-ref validation → 422 (also yields the
+  //      draft payload's audit/token fields for the outreach_sent payload).
+  //   8. BINDING consent-at-send (denied → 403 CONSENT_NOT_GRANTED_AT_SEND;
+  //      resolver error → 500).
+  //   9. deliveryProvider.deliver (final_text).
+  //  10. engagementRepository.sendOutreach (re-validates ref + re-gates +
+  //      atomic $transaction).
+  //  11. response compose + idempotencyService.persist + return.
+
+  @Post(':id/outreach/send')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('engagement:outreach')
+  async sendOutreach(
+    @Param('id') id: string,
+    @Body() body: OutreachSendRequestDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+    @Req() req?: Request,
+  ): Promise<OutreachSendResponseDto> {
+    // Step 1 — auth.
+    this.assertConsumerIsRecruiter(authContext, requestId);
+
+    // Step 2 — Idempotency-Key required.
+    const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
+
+    // Step 3 — id UUID validation.
+    this.assertEngagementIdIsUuid(id, requestId);
+
+    // Step 4 — body hash + idempotency lookup (replay short-circuit).
+    const requestHash = hashCanonicalizedBody(body as unknown);
+    const lookup = await this.idempotencyService.lookup({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      requestId,
+    });
+    if (lookup.kind === 'replay') {
+      return lookup.response_body as OutreachSendResponseDto;
+    }
+
+    this.logger.log({
+      event: 'engagement.outreach_send_endpoint_started',
+      tenant_id: authContext.tenant_id,
+      engagement_id: id,
+      request_id: requestId,
+    });
+
+    // Step 5 — pre-read engagement (visibility) → NOT_FOUND 404.
+    const visibleReqIds = await resolveVisibleReqIds(req);
+    const engagement = await this.engagementRepository.findByTenantAndId({
+      tenant_id: authContext.tenant_id,
+      id,
+      visible_requisition_ids: visibleReqIds,
+    });
+    if (engagement === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'TalentJobEngagement not found',
+        404,
+        { requestId, details: { engagement_id: id } },
+      );
+    }
+
+    // Step 6 — state pre-gate BEFORE delivery (true single-send: a second
+    // send finds state 'awaiting_response' and 422s WITHOUT re-delivering).
+    if (!canTransition(engagement.state, 'awaiting_response')) {
+      this.logger.log({
+        event: 'engagement.outreach_send_refused',
+        error_code: 'ENGAGEMENT_STATE_INVALID',
+        tenant_id: authContext.tenant_id,
+        engagement_id: id,
+        from_state: engagement.state,
+        to_state: 'awaiting_response',
+      });
+      throw new AramoError(
+        'ENGAGEMENT_STATE_INVALID',
+        `Illegal engagement state transition: ${engagement.state} -> awaiting_response`,
+        422,
+        {
+          requestId,
+          details: {
+            engagement_id: id,
+            from_state: engagement.state,
+            to_state: 'awaiting_response',
+          },
+        },
+      );
+    }
+
+    // Step 7 — source-draft cross-event-ref validation BEFORE delivery.
+    // Resolve the draft event; it must be an outreach_drafted event on
+    // this engagement + tenant. Yields the draft payload's audit/token
+    // fields for the outreach_sent payload (links sent → drafted → LLM).
+    const draftRef = await this.engagementEventRepository.findByTenantAndId({
+      tenant_id: authContext.tenant_id,
+      id: body.draft_event_id,
+    });
+    if (
+      draftRef === null ||
+      draftRef.engagement_id !== id ||
+      draftRef.event_type !== 'outreach_drafted'
+    ) {
+      this.logger.log({
+        event: 'engagement.outreach_send_refused',
+        error_code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        tenant_id: authContext.tenant_id,
+        engagement_id: id,
+        draft_event_id: body.draft_event_id,
+        ref_resolved: draftRef !== null,
+        ref_event_type: draftRef?.event_type ?? null,
+      });
+      throw new AramoError(
+        'ENGAGEMENT_REFERENCE_NOT_FOUND',
+        'draft_event_id not found, not in tenant, or not an outreach_drafted event',
+        422,
+        {
+          requestId,
+          details: {
+            field: 'draft_event_id',
+            draft_event_id: body.draft_event_id,
+            engagement_id: id,
+          },
+        },
+      );
+    }
+    const draftedPayload = draftRef.event_payload as OutreachDraftedPayload;
+
+    // Step 8 — BINDING consent-at-send. Mirrors the relocated M5 PR-9b
+    // gate. denied → 403 CONSENT_NOT_GRANTED_AT_SEND; resolver error →
+    // 500 INTERNAL_ERROR (retry, not back-off).
+    const consentDecision = await this.consentService.check(
+      {
+        talent_id: engagement.talent_id,
+        operation: 'engagement',
+        channel: 'email',
+      },
+      undefined,
+      authContext,
+      requestId,
+    );
+    if (consentDecision.result === 'denied') {
+      this.logger.log({
+        event: 'engagement.outreach_send_refused',
+        error_code: 'CONSENT_NOT_GRANTED_AT_SEND',
+        tenant_id: authContext.tenant_id,
+        engagement_id: id,
+        reason_code: consentDecision.reason_code,
+      });
+      throw new AramoError(
+        'CONSENT_NOT_GRANTED_AT_SEND',
+        'consent denied at send time',
+        403,
+        {
+          requestId,
+          details: { consent_decision: consentDecision, engagement_id: id },
+        },
+      );
+    }
+    if (consentDecision.result === 'error') {
+      throw new AramoError('INTERNAL_ERROR', 'consent check resolver failure', 500, {
+        requestId,
+        details: { consent_decision: consentDecision, engagement_id: id },
+      });
+    }
+
+    // Step 9 — delivery (SendStub at PR-6; never fails). Delivers the
+    // recruiter-approved final_text — NOT the raw draft (it may be edited).
     let deliveryResult: DeliveryResult;
     try {
       deliveryResult = await this.deliveryProvider.deliver({
-        completion: draftResult.completion,
+        completion: body.final_text,
         delivery_channel: 'email',
         tenant_id: authContext.tenant_id,
         requestId,
@@ -634,16 +864,20 @@ export class EngagementController {
       throw err;
     }
 
-    // Step 8 — repository write (atomic 3-write transaction).
+    // Step 10 — repository write (atomic 4-write transaction). The
+    // outreach_sent payload carries the FINAL sent text + the source draft
+    // back-reference + the AI-draft audit/token fields from the draft.
     const outreachPayload: OutreachSentPayload = {
-      ai_draft_audit_record_id: draftResult.audit_record_id,
-      model_used: draftResult.model_used,
-      input_tokens: draftResult.input_tokens,
-      output_tokens: draftResult.output_tokens,
-      duration_ms: draftResult.duration_ms,
+      ai_draft_audit_record_id: draftedPayload.ai_draft_audit_record_id,
+      model_used: draftedPayload.model_used,
+      input_tokens: draftedPayload.input_tokens,
+      output_tokens: draftedPayload.output_tokens,
+      duration_ms: draftedPayload.duration_ms,
       delivered_at: deliveryResult.delivered_at.toISOString(),
       delivery_channel: 'email',
       delivery_id: deliveryResult.delivery_id,
+      final_text: body.final_text,
+      source_draft_event_id: body.draft_event_id,
     };
 
     let repoResult;
@@ -651,12 +885,10 @@ export class EngagementController {
       repoResult = await this.engagementRepository.sendOutreach({
         engagement_id: id,
         tenant_id: authContext.tenant_id,
+        source_draft_event_id: body.draft_event_id,
         outreach_event_id: randomUUID(),
         transition_event_id: randomUUID(),
         outreach_payload: outreachPayload,
-        // R7 BE-prereq §3 — uniform pass-through (the pre-read already
-        // applied visibility, but the repo's write method re-applies on
-        // its internal findByTenantAndId — single source of truth).
         visible_requisition_ids: visibleReqIds,
       });
     } catch (err) {
@@ -669,14 +901,13 @@ export class EngagementController {
       throw err;
     }
 
-    // Step 9 — response compose.
+    // Step 11 — response compose.
     const response: OutreachSendResponseDto = {
       engagement: repoResult.engagement,
       outreach_event: repoResult.outreach_event,
       delivery_id: deliveryResult.delivery_id,
     };
 
-    // Step 10 — persist idempotency record (post-mutation success only).
     await this.idempotencyService.persist({
       tenant_id: authContext.tenant_id,
       key,
@@ -686,16 +917,14 @@ export class EngagementController {
     });
 
     this.logger.log({
-      event: 'engagement.outreach_endpoint_succeeded',
+      event: 'engagement.outreach_send_endpoint_succeeded',
       tenant_id: authContext.tenant_id,
       engagement_id: id,
-      audit_record_id: draftResult.audit_record_id,
+      source_draft_event_id: body.draft_event_id,
+      outreach_event_id: repoResult.outreach_event.id,
       delivery_id: deliveryResult.delivery_id,
       delivery_channel: 'email',
-      model_used: draftResult.model_used,
-      input_tokens: draftResult.input_tokens,
-      output_tokens: draftResult.output_tokens,
-      duration_ms: draftResult.duration_ms,
+      model_used: draftedPayload.model_used,
     });
 
     return response;

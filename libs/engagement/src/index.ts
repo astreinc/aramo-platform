@@ -18,9 +18,19 @@ export type { TransitionEngagementResponseDto } from './lib/dto/transition-engag
 export type { EngagementListEventsResponseDto } from './lib/dto/engagement-list-events-response.dto.js';
 
 // M5 PR-6 — outreach HTTP DTOs + delivery port.
+// Outreach Draft/Preview Directive v1.0 / Amendment v1.1 — the atomic
+// outreach endpoint is split into DRAFT (OutreachDraftRequestDto /
+// OutreachDraftResponseDto) + SEND (OutreachSendRequestDto now carries
+// {draft_event_id, final_text}; OutreachSendResponseDto unchanged).
+export { OutreachDraftRequestDto } from './lib/dto/outreach-draft-request.dto.js';
+export type {
+  OutreachDraftResponseDto,
+  OutreachDraftConsentWarning,
+} from './lib/dto/outreach-draft-response.dto.js';
 export { OutreachSendRequestDto } from './lib/dto/outreach-send-request.dto.js';
 export type { OutreachSendResponseDto } from './lib/dto/outreach-send-response.dto.js';
 export type { OutreachSentPayload } from './lib/dto/outreach-sent-payload.js';
+export type { OutreachDraftedPayload } from './lib/dto/outreach-drafted-payload.js';
 export type {
   DeliveryProvider,
   DeliveryInput,
