@@ -380,6 +380,11 @@ TIER2_EXCLUDES=(
   "apps/recruiter-console/src/engagement/EngagementDetailView.tsx"
   "apps/recruiter-console/src/engagement/error-messages.ts"
   "apps/recruiter-console/src/engagement/EngagementDetailView.spec.tsx"
+  # Recruiter R7 PR-2 — the draft→preview→send outreach composer. Same
+  # canonical-vocabulary rationale as the PR-1 entries above; lockstep with
+  # the matching eslint.config.mjs TIER2_EXCLUDES entries.
+  "apps/recruiter-console/src/engagement/OutreachComposer.tsx"
+  "apps/recruiter-console/src/engagement/OutreachComposer.spec.tsx"
 )
 
 # =============================================================================

@@ -195,3 +195,54 @@ export interface RecordConversationResponse {
   readonly engagement: EngagementView;
   readonly conversation_event: EngagementEventView;
 }
+
+// ---- outreach composer (PR-2) — draft → preview → send -----------------
+// Hand-mirrored from libs/engagement/src/lib/dto/outreach-draft-request.dto.ts,
+// outreach-draft-response.dto.ts, outreach-send-request.dto.ts, and
+// outreach-send-response.dto.ts. The composer is a pure FE consumer of the
+// PR#218 draft/send split (the atomic outreach path was removed — preview-
+// before-send is the only path).
+
+// POST /v1/engagements/:id/outreach/draft — the GENERATION half. The prompt
+// runs the LLM; max_tokens/system_message are optional provider passthroughs;
+// recipient_handle is an optional opaque correlation handle. Carried with an
+// Idempotency-Key header RE-MINTED per generation attempt (a changed prompt
+// is a new operation — a re-draft must actually re-run, never replay).
+export interface OutreachDraftRequest {
+  readonly prompt: string;
+  readonly max_tokens?: number;
+  readonly system_message?: string;
+  readonly recipient_handle?: string;
+}
+
+// consent_warning — OPTIONAL, NON-blocking soft pre-check returned at draft
+// time. Informational only: drafting still succeeded. The BINDING consent
+// gate (403 CONSENT_NOT_GRANTED_AT_SEND) fires at SEND, not here.
+export interface OutreachDraftConsentWarning {
+  readonly reason_code?: string;
+  readonly display_message?: string;
+}
+
+export interface OutreachDraftResponse {
+  readonly draft_event_id: string;
+  readonly draft_text: string;
+  readonly ai_draft_audit_record_id: string;
+  readonly consent_warning?: OutreachDraftConsentWarning;
+}
+
+// POST /v1/engagements/:id/outreach/send — the DELIVERY half. Takes the
+// source draft_event_id + the recruiter-approved final_text (which may differ
+// from draft_text — the editable trail). Carried with an Idempotency-Key
+// header KEYED ON draft_event_id (stable across send retries → dedupes,
+// never double-delivers).
+export interface OutreachSendRequest {
+  readonly draft_event_id: string;
+  readonly final_text: string;
+  readonly recipient_handle?: string;
+}
+
+export interface OutreachSendResponse {
+  readonly engagement: EngagementView;
+  readonly outreach_event: EngagementEventView;
+  readonly delivery_id: string;
+}
