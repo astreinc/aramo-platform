@@ -20,6 +20,7 @@ import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionEditView } from './requisitions/RequisitionEditView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
+import { SearchView } from './search/SearchView';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
 import { TalentCreateView } from './talent/TalentCreateView';
 import { TalentDetailView } from './talent/TalentDetailView';
@@ -51,6 +52,15 @@ const RECRUITER_NAV: readonly ShellNavItem[] = [
     label: 'Companies',
     requireScope: 'company:read',
   },
+  // Search FE — always-visible (R-NAV): reachability is "any of the 4
+  // search scopes", which a single requireScope can't express. The /search
+  // VIEW does the per-section scope-gating (and shows "no access" if the
+  // actor holds zero search scopes) — so the nav entry carries no
+  // requireScope (shown for any authenticated user).
+  {
+    to: '/search',
+    label: 'Search',
+  },
 ];
 
 export function App() {
@@ -72,6 +82,10 @@ export function App() {
                 >
                   <Routes>
                     <Route index element={<IndexRoute />} />
+                    {/* Search FE — authenticated-only route (R-NAV); the
+                        SearchView does per-section scope-gating internally,
+                        so no per-route requireScope here. */}
+                    <Route path="search" element={<SearchView />} />
                     <Route
                       path="requisitions"
                       element={
