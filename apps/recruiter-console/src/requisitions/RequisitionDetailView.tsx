@@ -13,6 +13,7 @@ import { LogNoteDialog } from '../activity/LogNoteDialog';
 import { Kanban } from '../pipeline/Kanban';
 import { listPipelinesForRequisition } from '../pipeline/pipeline-api';
 import type { PipelineView } from '../pipeline/types';
+import { TasksPanel } from '../task/TasksPanel';
 
 import { getRequisition } from './requisitions-api';
 import { detailErrorMessage } from './error-messages';
@@ -35,6 +36,15 @@ export function RequisitionDetailView() {
   const canEdit =
     sessionState.status === 'authenticated' &&
     hasScope(sessionState.session, 'requisition:edit');
+  // Tasks FE (Ruling 2) — req-detail is flat-sectioned (not tabbed), so the
+  // Tasks surface is a scope-gated section (the tab idiom adapted to the
+  // host's layout); same posture as the Pipeline/Activity sections.
+  const canReadTasks =
+    sessionState.status === 'authenticated' &&
+    hasScope(sessionState.session, 'task:read');
+  const canWriteTasks =
+    sessionState.status === 'authenticated' &&
+    hasScope(sessionState.session, 'task:write');
 
   useEffect(() => {
     if (reqId === undefined) return;
@@ -127,6 +137,16 @@ export function RequisitionDetailView() {
         pipelineIds={pipelineIds}
         refreshKey={refreshKey}
       />
+      {canReadTasks ? (
+        <>
+          <h2>Tasks</h2>
+          <TasksPanel
+            ownerType="requisition"
+            ownerId={req.id}
+            canWrite={canWriteTasks}
+          />
+        </>
+      ) : null}
     </section>
   );
 }

@@ -10,6 +10,7 @@ import {
 } from '@aramo/fe-foundation';
 
 import { Tabs, type TabItem } from '../components/Tabs';
+import { TasksPanel } from '../task/TasksPanel';
 import { listActivities } from '../activity/activity-api';
 import { timelineErrorMessage } from '../activity/error-messages';
 import type { ActivityView } from '../activity/types';
@@ -163,6 +164,19 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
       id: 'activity',
       label: 'Activity',
       content: <ActivityPanel companyId={company.id} />,
+    });
+  }
+  if (scopes.includes('task:read')) {
+    tabs.push({
+      id: 'tasks',
+      label: 'Tasks',
+      content: (
+        <TasksPanel
+          ownerType="company"
+          ownerId={company.id}
+          canWrite={scopes.includes('task:write')}
+        />
+      ),
     });
   }
 

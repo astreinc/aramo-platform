@@ -11,6 +11,7 @@ import {
 
 import { Tabs, type TabItem } from '../components/Tabs';
 import { EngagementsPanel } from '../engagement/EngagementsPanel';
+import { TasksPanel } from '../task/TasksPanel';
 import { listActivities } from '../activity/activity-api';
 import { timelineErrorMessage } from '../activity/error-messages';
 import type { ActivityView } from '../activity/types';
@@ -149,6 +150,19 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
       id: 'engagements',
       label: 'Engagements',
       content: <EngagementsPanel talentId={talent.id} />,
+    });
+  }
+  if (scopes.includes('task:read')) {
+    tabs.push({
+      id: 'tasks',
+      label: 'Tasks',
+      content: (
+        <TasksPanel
+          ownerType="talent_record"
+          ownerId={talent.id}
+          canWrite={scopes.includes('task:write')}
+        />
+      ),
     });
   }
 
