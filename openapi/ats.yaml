@@ -628,17 +628,88 @@ paths:
   #
   # Four endpoints exposing the M5 PR-1/2/3 engagement substrate at the
   # ATS-thin recruiter-facing surface:
+  #   GET  /v1/engagements                   — LIST (R7 BE-prereq P1; D4b-composed)
   #   POST /v1/engagements                   — create (Ruling 4 + Ruling 9)
   #   POST /v1/engagements/{id}/transitions  — state transition (Ruling 10)
+  #   POST /v1/engagements/{id}/outreach     — outreach send (M5 PR-6)
+  #   POST /v1/engagements/{id}/response     — record response (M5 PR-7)
+  #   POST /v1/engagements/{id}/conversation — record conversation (M5 PR-8a)
   #   GET  /v1/engagements/{id}              — read engagement (Ruling 5)
   #   GET  /v1/engagements/{id}/events       — read event log (Ruling 5)
   #
   # All endpoints recruiter-only (Ruling 8); non-recruiter consumers 403'd
   # with INSUFFICIENT_PERMISSIONS. POST endpoints require Idempotency-Key
   # header (M4 PR-3 precedent).
+  #
+  # R7 BE-prereq (Amendment v1.1) — scope-gating + D4b visibility:
+  #   - engagement:read    gates the 3 GETs (LIST + read + events)
+  #   - engagement:write   gates create / transitions / response / conversation
+  #   - engagement:outreach gates the outreach send (SoD — external side-effects)
+  # The controller decorators (@RequireScopes(...)) carry the gate; openapi
+  # documents shape, not authz (uniform with the rest of ATS — Amendment v1.1
+  # §5 Ruling 5(c)).
+  # D4b visibility: engagement is visible iff its requisition_id is in the
+  # actor's visible-requisition set; invisible → 404 (the non-leak posture).
   # =========================================================================
 
   /v1/engagements:
+    get:
+      operationId: listEngagements
+      summary: List the actor's visible engagements (R7 BE-prereq P1).
+      description: |
+        Returns the engagements visible to the authenticated actor in the
+        current tenant. D4b-composed: an engagement is visible iff its
+        requisition_id is in the actor's visible-requisition set (A3
+        directly-assigned OR D4b pod-resolved).
+
+        Filter semantics (both query params optional):
+          - no filter        → all visible engagements in tenant
+          - ?talent_id       → that talent's visible engagements
+          - ?requisition_id  → that requisition's engagements (empty if
+                               the requisition itself is invisible to
+                               the actor — no existence leak)
+          - both             → the intersection (at most one row by the
+                               natural key (tenant, talent, requisition))
+
+        Refusal codes:
+          - 403 INSUFFICIENT_PERMISSIONS — missing engagement:read scope
+            OR non-recruiter consumer.
+      parameters:
+        - name: talent_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional talent_id filter.
+        - name: requisition_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional requisition_id filter.
+      responses:
+        '200':
+          description: Engagement list (D4b-scoped to the actor's visible set).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: 'common.yaml#/components/schemas/TalentJobEngagementView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
     post:
       operationId: createEngagement
       summary: Create a new TalentJobEngagement (M5 PR-4).

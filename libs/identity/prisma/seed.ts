@@ -186,6 +186,13 @@ export const SEED_IDS = {
     // Reporting/Audit DDR (Ruling B-iii).
     'dashboard:read': '01900000-0000-7000-8000-000000000098',
     'report:read': '01900000-0000-7000-8000-000000000099',
+    // R7 BE-prereq — 3 engagement-domain scopes (Amendment v1.1 §1
+    // Ruling B: outreach SoD). Continues the 0x90 reporting range:
+    // 0x9a / 0x9b / 0x9c. Closes the documented A1a-2 deferral
+    // (scope.dto.ts:23-25 prior to this PR).
+    'engagement:read': '01900000-0000-7000-8000-00000000009a',
+    'engagement:write': '01900000-0000-7000-8000-00000000009b',
+    'engagement:outreach': '01900000-0000-7000-8000-00000000009c',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1036,6 +1043,57 @@ const REPORTING_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// R7 BE-prereq — engagement-domain role-scope bundle (Amendment v1.1 §2
+// Ruling 2: 8-role grant set, 20 RoleScope rows). Write-tier 6 roles get
+// :read + :write + :outreach; read-only 2 roles (delivery_manager / back_office)
+// get :read only. The 6 excluded roles (sourcer / finance / auditor /
+// auditor_with_financials / candidate / super_admin) hold zero engagement
+// scopes — they 403 on every engagement route.
+//
+// Bundle composition rationale:
+//   - tenant_owner / tenant_admin: full operational tier; write-tier baseline.
+//   - account_manager (35-scope demand-side anchor): has submittal:create +
+//     pipeline mgmt — legitimately engages talent on owned clients.
+//   - recruiting_manager (33-scope mgmt operator): has submittal:create +
+//     pipeline mgmt + team-tier visibility.
+//   - lead_recruiter (= Recruiter verbatim per AUTHZ1_BUNDLES comment):
+//     write-tier mirror of recruiter.
+//   - recruiter (the FLOOR): the workflow's primary actor.
+//   - delivery_manager / back_office (read-only): fulfillment-quality + ops
+//     read; mirror their existing broad-read bundles (talent:read + pipeline:read
+//     + activity:read etc.) — they SEE engagement workflow state but neither
+//     drive it nor send outreach.
+const ENGAGEMENT_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_owner', ['engagement:read', 'engagement:write', 'engagement:outreach']],
+  ['tenant_admin', ['engagement:read', 'engagement:write', 'engagement:outreach']],
+  ['account_manager', ['engagement:read', 'engagement:write', 'engagement:outreach']],
+  ['recruiting_manager', ['engagement:read', 'engagement:write', 'engagement:outreach']],
+  ['recruiter', ['engagement:read', 'engagement:write', 'engagement:outreach']],
+  ['lead_recruiter', ['engagement:read', 'engagement:write', 'engagement:outreach']],
+  ['delivery_manager', ['engagement:read']],
+  ['back_office', ['engagement:read']],
+];
+
+// R7 BE-prereq — deterministic RoleScope row IDs for the 20 engagement-
+// bundle grants above. Disjoint range starting at 0x700 (AUTHZ-1's 0x400+,
+// AUTHZ-D5's 0x500+, Reporting's 0x600+ all stay untouched — append-don't-
+// renumber per Amendment v1.1 §2). The (role, scope) iteration order in
+// ENGAGEMENT_SEED_BUNDLES pins the assignment, so a given pair always
+// produces the same UUID on every seed run. DO NOT REORDER without
+// bumping the offset to a fresh range.
+const ENGAGEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x700;
+  for (const [role, scopes] of ENGAGEMENT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -1230,6 +1288,15 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   // in the dashboard:read description).
   await upsertScope(prisma, SEED_IDS.scopes['dashboard:read'], 'dashboard:read', 'Read the ATS-internal dashboard composition (tenant counts, requisition/pipeline rollups, ATS-internal placement count, upcoming events, recent activity). ATS-domain only; no Core/examination read.');
   await upsertScope(prisma, SEED_IDS.scopes['report:read'], 'report:read', 'Read per-metric ATS-internal reports (tenant-counts, requisition-rollup, pipeline-rollup, placement-count).');
+  // R7 BE-prereq — 3 engagement-domain scopes (closes the A1a-2 deferral).
+  // 3-scope split (Amendment v1.1 §1 Ruling B; outreach SoD). The 8 engagement
+  // routes gate via @RequireScopes(...) — read on the 3 GETs (incl. the new
+  // LIST), write on create/transitions/response/conversation, outreach on the
+  // outreach route. NO scope.created audit events (mirrors the Reporting-Scope-
+  // Seed precedent).
+  await upsertScope(prisma, SEED_IDS.scopes['engagement:read'], 'engagement:read', 'Read engagements (GET /v1/engagements LIST, GET /v1/engagements/:id, GET /v1/engagements/:id/events). 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office). D4b-composed at read time (engagement visible iff its requisition_id is in the actor visible-requisition set).');
+  await upsertScope(prisma, SEED_IDS.scopes['engagement:write'], 'engagement:write', 'Mutate engagements (POST create / transitions / response / conversation). 6 roles: TA / TO / AM / RM / LR / recruiter[floor]. Write-path visibility: the controller (create) + the repo findByTenantAndId (the 4 mutate-existing) compose D4b — invisible-requisition engagements return 404.');
+  await upsertScope(prisma, SEED_IDS.scopes['engagement:outreach'], 'engagement:outreach', 'Send outbound engagement outreach (POST /v1/engagements/:id/outreach). Separate from :write per outreach SoD — the only engagement write with external side-effects (AI draft + consent-at-send + outbound delivery + LLM cost). Same 6 roles as :write.');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -1299,6 +1366,27 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
       const rsId = REPORTING_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`Reporting-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // 7e. R7 BE-prereq RoleScope assignments — 20 rows (6 write-tier × 3 +
+  // 2 read-only × 1) per ENGAGEMENT_SEED_BUNDLES. UUID range 0x700+
+  // (append-don't-renumber per Amendment v1.1 §2 — AUTHZ-1's 0x400+,
+  // AUTHZ-D5's 0x500+, Reporting's 0x600+ all stay untouched). Closes
+  // the documented A1a-2 engagement-scope deferral and enables the R7 FE.
+  for (const [roleKey, scopeKeys] of ENGAGEMENT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = ENGAGEMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`R7 Engagement-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

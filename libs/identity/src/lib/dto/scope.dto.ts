@@ -20,9 +20,10 @@
 // Viewer is read-only on the domain entities recruiter can see (+ search +
 // examination/activity reads).
 //
-// Note: `submittal:read` + the engagement-domain scopes are NOT in this
-// catalog; their bare routes (GET /v1/submittals/:id, all 7 engagement
-// routes) remain unguarded at A1a-2 and are deferred to a follow-on PR.
+// Note: the engagement-domain scopes shipped at R7 BE-prereq (3 scopes:
+// engagement:read/write/outreach; outreach SoD per Lead ruling). The
+// remaining `submittal:read` deferral (the bare GET /v1/submittals/:id
+// route) stays a separate carry — own follow-on PR.
 export const SEED_SCOPE_KEYS = [
   // Existing pre-A1a catalog
   'consent:read',
@@ -138,6 +139,14 @@ export const SEED_SCOPE_KEYS = [
   // Reporting/Audit DDR (Reporting-Scope-Seed v1.1 Ruling B-iii).
   'dashboard:read',                     // 8 operational roles (recruiter floor; tenant_admin/owner/AM/RM/LR/BO/DM)
   'report:read',                        // 8 operational roles (mirrors dashboard:read; auditor-tier deferred to Reporting/Audit DDR)
+  // R7 BE-prereq — engagement-domain scopes (closes the A1a-2 deferral).
+  // 3-scope split per Lead Amendment v1.1 §1 Ruling B (outreach SoD):
+  // outreach is the only engagement write with EXTERNAL side-effects
+  // (AI draft + consent-at-send + outbound delivery + LLM cost) — gets
+  // its OWN scope so "record-but-not-send" is encodable.
+  'engagement:read',                    // 8 roles: write-tier 6 + read-only 2 (delivery_manager / back_office)
+  'engagement:write',                   // 6 write-tier roles: TA / TO / AM / RM / LR / recruiter (floor)
+  'engagement:outreach',                // 6 write-tier roles (mirrors :write; outreach SoD encoding)
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

@@ -175,6 +175,14 @@ export default [
       // above: `outreach` appears as the canonical engagement event-type
       // discriminant + new endpoint name, not as misuse of `outreach`
       // as a standalone entity name.
+      // R7 BE-prereq — the engagement scope catalog (`engagement:outreach`
+      // as the canonical scope-action vocabulary; same domain-scope-action
+      // pattern as `compensation:edit:pay` / `submittal:create`). The
+      // identity files carry the engagement scope key + grant bundle —
+      // canonical scope naming, not misuse of `outreach` as a standalone
+      // entity name. Mirrored in scripts/verify-vocabulary.sh.
+      'libs/identity/src/lib/dto/scope.dto.ts',
+      'libs/identity/prisma/seed.ts',
       'libs/engagement/src/index.ts',
       'libs/engagement/src/lib/dto/outreach-send-request.dto.ts',
       'libs/engagement/src/lib/dto/outreach-send-response.dto.ts',

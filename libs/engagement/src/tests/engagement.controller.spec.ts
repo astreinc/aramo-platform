@@ -967,3 +967,244 @@ describe('EngagementController.recordConversationStarted (M5 PR-8a unit)', () =>
     expect(m.idempotency.persist).not.toHaveBeenCalled();
   });
 });
+
+// =========================================================================
+// R7 BE-prereq — P1 (LIST) + P3 (D4b visibility) proofs.
+//
+// The P2 scope-gate proofs live at the RolesGuard layer (the @RequireScopes
+// decorators), tested in apps/api integration tests where the guard fires
+// (the unit-level controller spec calls handlers directly, bypassing the
+// guard). The unit-level proofs cover the controller logic:
+//   - listEngagements dispatches to the correct repo method by filter shape.
+//   - assertRequisitionVisible fires 404 on create when the requisition is
+//     invisible.
+//   - The mutate-existing endpoints (transitions/response/conversation/
+//     outreach) thread visible_requisition_ids through to the repo.
+// =========================================================================
+
+// Mock Request shape — a recruiter with a NARROW visible-requisition set
+// (the engagement's requisition is in the set ⇒ visible; not in ⇒ 404).
+function reqWithVisibleReqs(
+  ...reqIds: string[]
+): { resolveVisibleRequisitionIds: () => Promise<ReadonlySet<string>> } {
+  return {
+    resolveVisibleRequisitionIds: () =>
+      Promise.resolve(new Set<string>(reqIds)),
+  };
+}
+
+// Empty visible set — invisible-to-the-actor everything.
+function reqWithNoVisibleReqs(): {
+  resolveVisibleRequisitionIds: () => Promise<ReadonlySet<string>>;
+} {
+  return {
+    resolveVisibleRequisitionIds: () => Promise.resolve(new Set<string>()),
+  };
+}
+
+describe('EngagementController.listEngagements (R7 BE-prereq P1 unit)', () => {
+  let m: ReturnType<typeof makeMocks>;
+  beforeEach(() => {
+    m = makeMocks();
+    // Add the new findByTenant / findByTenantAndTalent / findByTenantAndRequisition
+    // mock methods used by the LIST dispatcher.
+    (m.engagementRepo as unknown as Record<string, unknown>)['findByTenant'] =
+      vi.fn().mockResolvedValue([makeEngagementView()]);
+    (m.engagementRepo as unknown as Record<string, unknown>)['findByTenantAndTalent'] =
+      vi.fn().mockResolvedValue([makeEngagementView()]);
+    (m.engagementRepo as unknown as Record<string, unknown>)['findByTenantAndRequisition'] =
+      vi.fn().mockResolvedValue([makeEngagementView()]);
+  });
+
+  it('no-filter LIST dispatches to findByTenant with the visible set', async () => {
+    const res = await m.controller.listEngagements(
+      recruiterAuthContext(),
+      undefined,
+      undefined,
+      REQUEST_ID,
+      reqWithVisibleReqs(REQ_A) as never,
+    );
+    expect(res.items).toHaveLength(1);
+    const repo = m.engagementRepo as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    expect(repo['findByTenant']).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenant_id: TENANT_A,
+        visible_requisition_ids: expect.any(Set),
+      }),
+    );
+  });
+
+  it('?talent_id LIST dispatches to findByTenantAndTalent', async () => {
+    await m.controller.listEngagements(
+      recruiterAuthContext(),
+      TALENT_A,
+      undefined,
+      REQUEST_ID,
+      reqWithVisibleReqs(REQ_A) as never,
+    );
+    const repo = m.engagementRepo as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    expect(repo['findByTenantAndTalent']).toHaveBeenCalledWith(
+      expect.objectContaining({ talent_id: TALENT_A }),
+    );
+    expect(repo['findByTenant']).not.toHaveBeenCalled();
+  });
+
+  it('?requisition_id LIST dispatches to findByTenantAndRequisition', async () => {
+    await m.controller.listEngagements(
+      recruiterAuthContext(),
+      undefined,
+      REQ_A,
+      REQUEST_ID,
+      reqWithVisibleReqs(REQ_A) as never,
+    );
+    const repo = m.engagementRepo as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    expect(repo['findByTenantAndRequisition']).toHaveBeenCalledWith(
+      expect.objectContaining({ requisition_id: REQ_A }),
+    );
+  });
+
+  it('?talent_id&?requisition_id LIST narrows the requisition path by talent_id', async () => {
+    const repo = m.engagementRepo as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    repo['findByTenantAndRequisition'].mockResolvedValue([
+      makeEngagementView({ talent_id: TALENT_A }),
+      makeEngagementView({
+        id: 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee',
+        talent_id: 'ffffffff-ffff-7fff-8fff-ffffffffffff',
+      }),
+    ]);
+    const res = await m.controller.listEngagements(
+      recruiterAuthContext(),
+      TALENT_A,
+      REQ_A,
+      REQUEST_ID,
+      reqWithVisibleReqs(REQ_A) as never,
+    );
+    expect(res.items).toHaveLength(1);
+    expect(res.items[0]?.talent_id).toBe(TALENT_A);
+  });
+
+  it('non-recruiter consumer 403s INSUFFICIENT_PERMISSIONS', async () => {
+    await expect(
+      m.controller.listEngagements(
+        portalAuthContext(),
+        undefined,
+        undefined,
+        REQUEST_ID,
+        reqWithVisibleReqs(REQ_A) as never,
+      ),
+    ).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+    });
+  });
+});
+
+describe('EngagementController D4b visibility composition (R7 BE-prereq P3 unit)', () => {
+  let m: ReturnType<typeof makeMocks>;
+  beforeEach(() => {
+    m = makeMocks();
+  });
+
+  it('create with invisible requisition_id → 404 NOT_FOUND (assertRequisitionVisible)', async () => {
+    // body.requisition_id = REQ_A; but the actor's visible set does NOT
+    // contain REQ_A — 404 fires before any repo call.
+    const body: CreateEngagementRequestDto = {
+      talent_id: TALENT_A,
+      requisition_id: REQ_A,
+      examination_id: EXAM_A,
+    };
+    await expect(
+      m.controller.createEngagement(
+        body,
+        VALID_IDEM_KEY,
+        recruiterAuthContext(),
+        REQUEST_ID,
+        reqWithNoVisibleReqs() as never,
+      ),
+    ).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      statusCode: 404,
+    });
+    expect(m.engagementRepo.createEngagement).not.toHaveBeenCalled();
+  });
+
+  it('create with visible requisition_id → proceeds to repo.createEngagement', async () => {
+    const body: CreateEngagementRequestDto = {
+      talent_id: TALENT_A,
+      requisition_id: REQ_A,
+      examination_id: EXAM_A,
+    };
+    m.engagementRepo.createEngagement.mockResolvedValue({
+      engagement: makeEngagementView(),
+      event: { id: EVENT_1 },
+    });
+    await m.controller.createEngagement(
+      body,
+      VALID_IDEM_KEY,
+      recruiterAuthContext(),
+      REQUEST_ID,
+      reqWithVisibleReqs(REQ_A) as never,
+    );
+    expect(m.engagementRepo.createEngagement).toHaveBeenCalled();
+  });
+
+  it('see-all (req=undefined back-compat) → no visibility filter applied; create proceeds', async () => {
+    // Existing tests that don't pass req still work — null visible set
+    // = see-all per the resolveVisibleReqIds helper.
+    const body: CreateEngagementRequestDto = {
+      talent_id: TALENT_A,
+      requisition_id: REQ_A,
+      examination_id: EXAM_A,
+    };
+    m.engagementRepo.createEngagement.mockResolvedValue({
+      engagement: makeEngagementView(),
+      event: { id: EVENT_1 },
+    });
+    // No req arg — undefined.
+    await m.controller.createEngagement(
+      body,
+      VALID_IDEM_KEY,
+      recruiterAuthContext(),
+      REQUEST_ID,
+    );
+    expect(m.engagementRepo.createEngagement).toHaveBeenCalled();
+  });
+
+  it('transitions threads visible_requisition_ids to repo.transitionState', async () => {
+    m.engagementRepo.transitionState.mockResolvedValue({
+      engagement: makeEngagementView({ state: 'evaluated' }),
+      event: { id: EVENT_1 },
+    });
+    await m.controller.transitionEngagement(
+      ENGAGEMENT_1,
+      { event_id: EVENT_1, to_state: 'evaluated' } as TransitionEngagementRequestDto,
+      VALID_IDEM_KEY,
+      recruiterAuthContext(),
+      REQUEST_ID,
+      reqWithVisibleReqs(REQ_A) as never,
+    );
+    expect(m.engagementRepo.transitionState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        engagement_id: ENGAGEMENT_1,
+        visible_requisition_ids: expect.any(Set),
+      }),
+    );
+  });
+
+  it('GET /:id with invisible requisition → 404 via repo.findByTenantAndId(null)', async () => {
+    // Simulate the repo returning null (the D4b composition matched
+    // requisition not in set → null projection).
+    m.engagementRepo.findByTenantAndId.mockResolvedValueOnce(null);
+    await expect(
+      m.controller.getEngagement(
+        ENGAGEMENT_1,
+        recruiterAuthContext(),
+        REQUEST_ID,
+        reqWithNoVisibleReqs() as never,
+      ),
+    ).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      statusCode: 404,
+    });
+  });
+});
