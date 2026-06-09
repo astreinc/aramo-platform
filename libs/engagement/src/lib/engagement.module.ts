@@ -1,10 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AiDraftModule } from '@aramo/ai-draft';
 import { AuthModule } from '@aramo/auth';
-import { AuthorizationModule } from '@aramo/authorization';
 import { createAramoLogger } from '@aramo/common';
 import { ConsentModule } from '@aramo/consent';
-import { EntitlementModule } from '@aramo/entitlement';
 import { ExaminationModule } from '@aramo/examination';
 import { JobDomainModule } from '@aramo/job-domain';
 import { TalentModule } from '@aramo/talent';
@@ -51,16 +49,14 @@ import { PrismaService } from './prisma/prisma.service.js';
 //     wiring pattern.
 // R7 BE-prereq Amendment v1.1 §2 (the scope-gating) + §3 (D4b
 // visibility): the controller's guard chain grows to
-// (JwtAuthGuard, EntitlementGuard, RolesGuard) + @RequireCapability('ats')
-// + per-route @RequireScopes(engagement:read|:write|:outreach). The
-// VisibilityInterceptor is APP_INTERCEPTOR-registered in apps/api and
-// attaches req.resolveVisibleRequisitionIds() globally — no module
-// import needed here for the visibility surface.
+// (JwtAuthGuard, RolesGuard) + per-route @RequireScopes(engagement:
+// read|:write|:outreach) — the submittal precedent. RolesGuard +
+// VisibilityInterceptor are wired globally in apps/api (AuthorizationModule
+// + APP_INTERCEPTOR); engagement.module needs only AuthModule +
+// per-domain dep modules.
 @Module({
   imports: [
     AuthModule,
-    AuthorizationModule,
-    EntitlementModule,
     ConsentModule,
     TalentModule,
     JobDomainModule,

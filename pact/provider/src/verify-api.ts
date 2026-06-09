@@ -1430,6 +1430,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'submittal:create',
           'submittal:approve',
           'requisition:read:all',
+          // R7 BE-prereq: engagement endpoints now scope-gated.
+          'engagement:read',
+          'engagement:write',
+          'engagement:outreach',
         ],
       })
         .setProtectedHeader({ alg: ALG })

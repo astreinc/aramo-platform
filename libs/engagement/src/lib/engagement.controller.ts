@@ -22,11 +22,7 @@ import {
   hashCanonicalizedBody,
 } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
-import {
-  RequireScopes,
-  RolesGuard,
-} from '@aramo/authorization';
-import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
+import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { ConsentService, IdempotencyService } from '@aramo/consent';
 import { AiDraftService } from '@aramo/ai-draft';
 
@@ -66,13 +62,15 @@ import { EngagementRepository } from './engagement.repository.js';
 //   - GET  /v1/engagements/{id}/events                  (read event log)
 //
 // Auth posture (Ruling 8 + R7 BE-prereq Amendment v1.1 §1+§5):
-// class-level JwtAuthGuard + EntitlementGuard + RolesGuard +
-// @RequireCapability('ats'); per-route @RequireScopes(engagement:read /
-// engagement:write / engagement:outreach) + per-route
-// consumer_type === 'recruiter' assertion (defense in depth: the scope
-// gate is the primary check; the consumer_type assertion stays as a
-// belt-and-suspenders constraint that platform tokens never satisfy).
-// Non-recruiter consumers 403 with INSUFFICIENT_PERMISSIONS.
+// class-level JwtAuthGuard + RolesGuard (the submittal precedent —
+// scope-gated, recruiter-only, no @RequireCapability since the
+// engagement endpoints have no per-tenant entitlement axis); per-route
+// @RequireScopes(engagement:read / engagement:write / engagement:outreach)
+// + per-route consumer_type === 'recruiter' assertion (defense in
+// depth: the scope gate is the primary check; the consumer_type
+// assertion stays as a belt-and-suspenders constraint that platform
+// tokens never satisfy). Non-recruiter consumers 403 with
+// INSUFFICIENT_PERMISSIONS.
 //
 // === D4b visibility (R7 BE-prereq Amendment v1.1 §3 Ruling 3 D) ===
 // Engagement is visible iff its requisition_id is in the actor's
@@ -142,8 +140,7 @@ async function resolveVisibleReqIds(
 }
 
 @Controller('v1/engagements')
-@UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
-@RequireCapability('ats')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class EngagementController {
   constructor(
     private readonly engagementRepository: EngagementRepository,
