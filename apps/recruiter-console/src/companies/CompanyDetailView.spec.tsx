@@ -244,13 +244,15 @@ describe('CompanyDetailView', () => {
     expect(String(contactCall?.[0])).toContain('company_id=co-1');
   });
 
-  it('Assigned reqs tab filters reqs client-side by company_id (active only)', async () => {
+  it('Assigned reqs calls /v1/requisitions?company_id=<id> and filters closed client-side', async () => {
     installFetch({
       '/v1/companies/co-1': makeCompany(),
+      // Server-scoped: the BE only returns co-1 reqs (it ANDs company_id
+      // with the A3/D4b predicate). The FE retains an active-only client
+      // filter (R1 framing — open reqs in the company view).
       '/v1/requisitions': {
         items: [
           makeReq('r-1', 'Senior Engineer', 'co-1', 'active'),
-          makeReq('r-2', 'Junior Engineer', 'co-OTHER', 'active'),
           makeReq('r-3', 'Closed Role', 'co-1', 'closed'),
           makeReq('r-4', 'Open Role', 'co-1', 'on_hold'),
         ],
@@ -269,18 +271,24 @@ describe('CompanyDetailView', () => {
     );
     // Open Role (on_hold) is active for the recruiter (R1's "open" framing).
     expect(screen.getByText('Open Role')).toBeInTheDocument();
-    // The other-company req and the closed req are filtered out.
-    expect(screen.queryByText('Junior Engineer')).toBeNull();
+    // The closed req is filtered out client-side.
     expect(screen.queryByText('Closed Role')).toBeNull();
     // Link points at the req detail.
     expect(
       screen.getByRole('link', { name: 'Senior Engineer' }),
     ).toHaveAttribute('href', '/requisitions/r-1');
+    // The fetch URL carried company_id=co-1 (server-side scoping).
+    const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
+    const reqCall = calls.find((c) => String(c[0]).includes('/v1/requisitions'));
+    expect(String(reqCall?.[0])).toContain('company_id=co-1');
   });
 
-  it('Assigned reqs shows the PRECISE limitation banner when the BE returns the cap (ruling 2)', async () => {
+  it('Assigned reqs renders without the retired capped-50 banner regardless of result size', async () => {
+    // The R3 client-side filter + capped-50 banner are retired (server
+    // now scopes via ?company_id). Even with 50 returned items, no
+    // limitation banner appears.
     const items = Array.from({ length: 50 }, (_, i) =>
-      makeReq(`r-${i}`, `Req ${i}`, i === 0 ? 'co-1' : 'co-OTHER', 'active'),
+      makeReq(`r-${i}`, `Req ${i}`, 'co-1', 'active'),
     );
     installFetch({
       '/v1/companies/co-1': makeCompany(),
@@ -295,34 +303,16 @@ describe('CompanyDetailView', () => {
     );
     fireEvent.click(screen.getByRole('tab', { name: 'Assigned reqs' }));
     await waitFor(() =>
-      expect(screen.getByTestId('assigned-reqs-banner')).toBeInTheDocument(),
-    );
-    // PRECISION test (ruling 2): the banner names the already-capped set
-    // honestly — it does NOT claim completeness, and it surfaces that
-    // matches beyond the page are missed.
-    const banner = screen.getByTestId('assigned-reqs-banner');
-    expect(banner.textContent).toMatch(/first 50 visible requisitions/i);
-    expect(banner.textContent).toMatch(/matches beyond that page are not included/i);
-    expect(banner.textContent).toMatch(/server-side company filtering is on the roadmap/i);
-  });
-
-  it('Assigned reqs hides the limitation banner when under the cap', async () => {
-    installFetch({
-      '/v1/companies/co-1': makeCompany(),
-      '/v1/requisitions': { items: [makeReq('r-1', 'A', 'co-1', 'active')] },
-    });
-    renderAt(
-      '/companies/co-1',
-      makeSession(['company:read', 'requisition:read']),
-    );
-    await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByRole('tab', { name: 'Assigned reqs' }));
-    await waitFor(() =>
-      expect(screen.getByText('A')).toBeInTheDocument(),
+      expect(screen.getByText('Req 0')).toBeInTheDocument(),
     );
     expect(screen.queryByTestId('assigned-reqs-banner')).toBeNull();
+    // The retired copy is absent.
+    expect(
+      screen.queryByText(/first 50 visible requisitions/i),
+    ).toBeNull();
+    expect(
+      screen.queryByText(/server-side company filtering is on the roadmap/i),
+    ).toBeNull();
   });
 
   it('Activity tab calls subject_type=company and shows the user-honest empty-state (ruling 3)', async () => {

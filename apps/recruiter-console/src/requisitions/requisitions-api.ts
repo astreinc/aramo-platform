@@ -11,9 +11,22 @@ import type {
 // sees only assigned-or-client-visible reqs; invisible → 404. R1 calls
 // these endpoints raw — the active/closed split happens FE-side over
 // the visibility-scoped result set.
-
-export async function listRequisitions(): Promise<RequisitionListResponse> {
-  return apiClient.get<RequisitionListResponse>('/v1/requisitions');
+//
+// The optional company_id arg is the company-detail consumer (the
+// requisitions-by-company FE follow-on). The server ANDs company_id
+// with the A3/D4b visibility predicate — no client-side filter, no
+// truncation banner.
+export async function listRequisitions(
+  params?: { company_id?: string },
+): Promise<RequisitionListResponse> {
+  const companyId = params?.company_id;
+  if (companyId === undefined || companyId === '') {
+    return apiClient.get<RequisitionListResponse>('/v1/requisitions');
+  }
+  const search = new URLSearchParams({ company_id: companyId });
+  return apiClient.get<RequisitionListResponse>(
+    `/v1/requisitions?${search.toString()}`,
+  );
 }
 
 export async function getRequisition(id: string): Promise<RequisitionView> {
