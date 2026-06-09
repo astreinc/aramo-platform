@@ -5,7 +5,7 @@ import {
   useSession,
   type ShellNavItem,
 } from '@aramo/fe-foundation';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 
 import { CompaniesListView } from './companies/CompaniesListView';
 import { CompanyCreateView } from './companies/CompanyCreateView';
@@ -13,6 +13,7 @@ import { CompanyDetailView } from './companies/CompanyDetailView';
 import { CompanyEditView } from './companies/CompanyEditView';
 import { ContactCreateView } from './contacts/ContactCreateView';
 import { ContactEditView } from './contacts/ContactEditView';
+import { IndexRoute } from './dashboard/IndexRoute';
 import { LoginPage } from './routes/LoginPage';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
@@ -25,9 +26,15 @@ import { TalentEditView } from './talent/TalentEditView';
 import { TalentListView } from './talent/TalentListView';
 
 // The recruiter nav. R1 shipped Requisitions; R2 adds Talent + Companies
-// (the read-first breadth). Each item is scope-gated by its read scope —
+// (the read-first breadth); R-home prepends Dashboard FIRST (the home
+// affordance per Ruling C). Each item is scope-gated by its read scope —
 // Shell renders only the items the session's scopes allow.
 const RECRUITER_NAV: readonly ShellNavItem[] = [
+  {
+    to: '/',
+    label: 'Dashboard',
+    requireScope: 'dashboard:read',
+  },
   {
     to: '/requisitions',
     label: 'Requisitions',
@@ -63,10 +70,7 @@ export function App() {
                   navItems={RECRUITER_NAV}
                 >
                   <Routes>
-                    <Route
-                      index
-                      element={<Navigate to="/requisitions" replace />}
-                    />
+                    <Route index element={<IndexRoute />} />
                     <Route
                       path="requisitions"
                       element={
