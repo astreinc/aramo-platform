@@ -18,6 +18,7 @@ import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionEditView } from './requisitions/RequisitionEditView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
+import { SubmittalWizard } from './submittals/SubmittalWizard';
 import { TalentCreateView } from './talent/TalentCreateView';
 import { TalentDetailView } from './talent/TalentDetailView';
 import { TalentEditView } from './talent/TalentEditView';
@@ -151,6 +152,17 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <TalentEditView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="talent/:talentId/submittal/:requisitionId"
+                      element={
+                        <RouteGuard
+                          requireScope="submittal:create"
+                          sessionStateOverride={state}
+                        >
+                          <SubmittalWizard />
                         </RouteGuard>
                       }
                     />

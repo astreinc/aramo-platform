@@ -343,6 +343,16 @@ TIER2_EXCLUDES=(
   # reasoning/match_*). Same structural pattern as M3 PR-9 portal-
   # refusal and M4 PR-3 submittal-create negative-shape specs.
   "apps/api/src/tests/ats-batch3-talent-record-attachment.integration.spec.ts"
+  # Recruiter R6 — the PHASE-B-CARRY (T1) code anchor at the wizard's
+  # create-path identity seam references the LOCKED carry filename
+  # `Aramo-Carry-T1-Identity-Bridge-and-ATS-Score-Store-Phase-B.md` BY
+  # NAME (the directive's mandated debt-containment mechanism — grep-able
+  # via "PHASE-B-CARRY"). The filename contains the forbidden token
+  # `Score` (locked artifact name; out of this PR's control). Same
+  # structural pattern as the `Aramo-*-LOCKED.docx` glob entry above
+  # (locked artifact filenames preserved for fidelity).
+  "apps/recruiter-console/src/submittals/submittals-api.ts"
+  "apps/recruiter-console/src/submittals/SubmittalWizard.tsx"
 )
 
 # =============================================================================

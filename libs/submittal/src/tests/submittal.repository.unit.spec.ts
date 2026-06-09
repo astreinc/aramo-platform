@@ -701,3 +701,126 @@ describe('SubmittalRepository.revokeSubmittal (unit)', () => {
     expect(update).not.toHaveBeenCalled();
   });
 });
+
+// =============================================================================
+// R6 — findByTenantTalentJobForActor unit tests (the discovery lookup the
+// recruiter wizard uses to resume-or-create).
+// =============================================================================
+
+function buildLookupRepo(opts: {
+  findFirstResult: unknown;
+}): {
+  repo: SubmittalRepository;
+  findFirst: ReturnType<typeof vi.fn>;
+} {
+  const findFirst = vi.fn().mockResolvedValue(opts.findFirstResult);
+  const mockPrisma: MockPrisma = {
+    talentSubmittalRecord: {
+      create: vi.fn(),
+      findFirst,
+    },
+  };
+  const mockEvidence = {} as unknown as EvidenceRepository;
+  const mockExamination = {} as unknown as ExaminationRepository;
+  const mockEventRepo = {} as unknown as TalentSubmittalEventRepository;
+  const repo = new SubmittalRepository(
+    mockPrisma as unknown as PrismaService,
+    mockEvidence,
+    mockExamination,
+    makeMockLogger(),
+    mockEventRepo,
+  );
+  return { repo, findFirst };
+}
+
+describe('SubmittalRepository.findByTenantTalentJobForActor (unit)', () => {
+  const VISIBLE_REQ_A = JOB_ID;
+  const OTHER_JOB = '00000000-0000-7000-8000-00000000ff01';
+
+  it('returns the submittal when visible_requisition_ids is null (see_all_requisition)', async () => {
+    const stored = {
+      id: '99990000-0000-7000-8000-000000000001',
+      tenant_id: TENANT_A,
+      talent_id: TALENT_A,
+      job_id: JOB_ID,
+      evidence_package_id: '99990000-0000-7000-8000-000000000002',
+      pinned_examination_id: EXAM_ID,
+      state: 'handoff_draft',
+      created_by: RECRUITER_ID,
+      justification: null,
+      failed_criterion_acknowledgments: null,
+      created_at: new Date('2026-05-23T12:00:00Z'),
+      confirmed_at: null,
+      revoked_at: null,
+      revoked_by: null,
+      revocation_justification: null,
+    };
+    const { repo, findFirst } = buildLookupRepo({ findFirstResult: stored });
+    const result = await repo.findByTenantTalentJobForActor({
+      tenant_id: TENANT_A,
+      talent_id: TALENT_A,
+      job_id: JOB_ID,
+      visible_requisition_ids: null,
+    });
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe(stored.id);
+    expect(result?.state).toBe('handoff_draft');
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { tenant_id: TENANT_A, talent_id: TALENT_A, job_id: JOB_ID },
+      orderBy: { created_at: 'desc' },
+    });
+  });
+
+  it('returns the submittal when job_id is in the visible set', async () => {
+    const { repo } = buildLookupRepo({
+      findFirstResult: {
+        id: '99990000-0000-7000-8000-000000000001',
+        tenant_id: TENANT_A,
+        talent_id: TALENT_A,
+        job_id: JOB_ID,
+        evidence_package_id: '99990000-0000-7000-8000-000000000002',
+        pinned_examination_id: EXAM_ID,
+        state: 'created',
+        created_by: RECRUITER_ID,
+        justification: null,
+        failed_criterion_acknowledgments: null,
+        created_at: new Date('2026-05-23T12:00:00Z'),
+        confirmed_at: null,
+        revoked_at: null,
+        revoked_by: null,
+        revocation_justification: null,
+      },
+    });
+    const result = await repo.findByTenantTalentJobForActor({
+      tenant_id: TENANT_A,
+      talent_id: TALENT_A,
+      job_id: JOB_ID,
+      visible_requisition_ids: new Set([VISIBLE_REQ_A]),
+    });
+    expect(result).not.toBeNull();
+    expect(result?.state).toBe('created');
+  });
+
+  it('returns null without querying when job_id is NOT in the visible set', async () => {
+    const { repo, findFirst } = buildLookupRepo({ findFirstResult: null });
+    const result = await repo.findByTenantTalentJobForActor({
+      tenant_id: TENANT_A,
+      talent_id: TALENT_A,
+      job_id: JOB_ID,
+      visible_requisition_ids: new Set([OTHER_JOB]),
+    });
+    expect(result).toBeNull();
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it('returns null when no submittal exists (the create-new path)', async () => {
+    const { repo } = buildLookupRepo({ findFirstResult: null });
+    const result = await repo.findByTenantTalentJobForActor({
+      tenant_id: TENANT_A,
+      talent_id: TALENT_A,
+      job_id: JOB_ID,
+      visible_requisition_ids: null,
+    });
+    expect(result).toBeNull();
+  });
+});
