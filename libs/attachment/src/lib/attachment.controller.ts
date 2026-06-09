@@ -20,6 +20,7 @@ import {
 } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { ObjectStorageService } from '@aramo/object-storage';
+import { ResumeTextService } from '@aramo/talent-record';
 
 import type { AttachmentOwnerType } from './dto/attachment-owner-type.js';
 import { isAttachmentOwnerType } from './dto/attachment-owner-type.js';
@@ -55,6 +56,11 @@ export class AttachmentController {
   constructor(
     private readonly repo: AttachmentRepository,
     private readonly objectStorage: ObjectStorageService,
+    // Search PR-2 — the résumé-text re-extract enqueue. attachment →
+    // talent-record is the EXISTING directional edge (validateOwner); pushing
+    // the reindex signal here (rather than talent-record polling attachment)
+    // keeps that direction and avoids a cycle.
+    private readonly resumeText: ResumeTextService,
   ) {}
 
   @Get()
@@ -154,6 +160,29 @@ export class AttachmentController {
         this.logger.error(
           `attachment.mark_committed_failed: request=${requestId} attachment=${view.id} storage_key=${view.storage_key} -- ${message}`,
         );
+      }
+
+      // Search PR-2 (Ruling R1) — enqueue the async résumé-text re-extract.
+      // THIS is the post-create seam: the résumé Attachment has just bound to
+      // its TalentRecord (owner_type='talent', owner_id=talent_record_id), so
+      // we key the reindex to the real talent_record_id. A single fast upsert
+      // (no S3 fetch here — the worker does that asynchronously). Best-effort,
+      // mirroring markResumeCommitted: a failure must NOT fail the attach (the
+      // recruiter's file IS attached; the next re-attach replays the enqueue).
+      if (view.owner_type === 'talent') {
+        try {
+          await this.resumeText.enqueueReindex({
+            tenant_id: view.tenant_id,
+            talent_record_id: view.owner_id,
+            attachment_id: view.id,
+            storage_key: view.storage_key,
+          });
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            `attachment.resume_reindex_enqueue_failed: request=${requestId} attachment=${view.id} talent_record=${view.owner_id} -- ${message}`,
+          );
+        }
       }
     }
 

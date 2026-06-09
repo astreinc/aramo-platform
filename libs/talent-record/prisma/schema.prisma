@@ -116,6 +116,15 @@ model TalentRecord {
   created_at DateTime @default(now()) @db.Timestamptz
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
 
+  // Search PR-2 — the dedicated résumé-text row (1:1-latest). The
+  // persisted+redacted résumé body lives in TalentResumeText (the
+  // PII-isolation model — NOT a column on this core CRM row). The
+  // relation carries onDelete: Cascade on the FK side so deleting a
+  // TalentRecord PURGES its résumé-text row + the tsvector GIN entry
+  // (D1 self-cleaning; the cascade is DB-enforced, not service-path-
+  // dependent).
+  resume_text TalentResumeText?
+
   // Indexes — every query path leads with tenant_id; (last, first)
   // serves the dominant "search by name" recruiter query path. PR-A5b-2
   // adds (tenant, core_talent_id) for the "which records in tenant are
@@ -126,5 +135,70 @@ model TalentRecord {
   @@index([tenant_id, core_talent_id])
   @@index([tenant_id, import_batch_id])
 
+  @@schema("talent_record")
+}
+
+// Search PR-2 — the persisted, redacted résumé body text for content-
+// search. Authorized by the ADR-0015 Addendum (Résumé-Text-Persistence):
+// the parse pipeline DISCARDS the text today; PR-2 RE-EXTRACTS it post-
+// create (from the retained S3 file) keyed to the real talent_record_id,
+// redacts SSN-shaped patterns at persist (D4), and indexes it.
+//
+// PII-isolation model (addendum §3): a DEDICATED table, NOT a column on
+// TalentRecord — so erasure has a single clean target and the large
+// free-text PII blob stays off the core entity. Same-schema (talent_record)
+// with a real FK → the D1 purge-on-delete cascade is a DB guarantee.
+//
+// 1:1-latest (talent_record_id @unique): re-attaching a résumé upserts
+// this row back to `pending` (versioning is a registered follow-on, not
+// v1). `storage_key` is the re-extract source pointer (the attachment's
+// S3 key, passed at enqueue — talent-record never reads the attachment
+// schema, which would cycle).
+//
+// The `search_tsv` generated tsvector column + its GIN index are added
+// by the hand-authored migration (Prisma cannot express GENERATED ALWAYS
+// / tsvector); declared here as Unsupported so the schema is drift-free.
+model TalentResumeText {
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+
+  // 1:1-latest FK to the owning TalentRecord (same-schema → onDelete
+  // Cascade is the D1 purge guarantee).
+  talent_record_id String @unique @db.Uuid
+
+  // Provenance: which résumé Attachment produced this text. Cross-schema
+  // (attachment schema) → UUID-only, NO FK (§7.3). Re-extract source
+  // pointer lives alongside.
+  attachment_id String? @db.Uuid
+  storage_key   String?
+
+  // Lifecycle: 'pending' (enqueued at résumé-attachment commit, awaiting
+  // the async re-extract) | 'extracted' (text persisted + indexed) |
+  // 'failed' (extraction failed; re-enqueue replays). Pending/failed rows
+  // carry no text → empty tsvector → never match a ?resume_q= (correct).
+  status String @default("pending")
+
+  // The REDACTED résumé body (SSN-shaped patterns removed at persist —
+  // D4). What is indexed + snippet-shown. Nullable while pending.
+  redacted_text String?
+
+  // The generated full-text index column — GENERATED ALWAYS AS
+  // (to_tsvector('english', coalesce(redacted_text,''))) STORED, with a
+  // GIN index. Declared Unsupported (Prisma cannot model it); the
+  // migration owns its definition. Never written by Prisma.
+  search_tsv Unsupported("tsvector")?
+
+  extracted_at DateTime? @db.Timestamptz
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  updated_at   DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  talent_record TalentRecord @relation(fields: [talent_record_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([status])
+  // The directive names the table `talent_resume_text` (snake); the Prisma
+  // model is PascalCase, so @@map binds the client to the real table. Field
+  // names already match their snake columns (no per-field @map needed).
+  @@map("talent_resume_text")
   @@schema("talent_record")
 }

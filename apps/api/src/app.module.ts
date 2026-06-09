@@ -36,7 +36,7 @@ import { SavedListModule } from '@aramo/saved-list';
 import { SettingsModule } from '@aramo/settings';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { SubmittalModule } from '@aramo/submittal';
-import { TalentRecordModule } from '@aramo/talent-record';
+import { TalentRecordModule, ResumeReindexModule } from '@aramo/talent-record';
 
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
@@ -98,6 +98,12 @@ import { AuditFinancialsGateAdapter } from './settings/audit-financials-gate.ada
     // Core libs/talent (tenant-AGNOSTIC identity, PR-10 baseline).
     TalentRecordModule,
     AttachmentModule,
+    // Search PR-2 — the résumé re-extract worker. SEPARATE from
+    // TalentRecordModule (imported widely) so only apps/api stands up the
+    // BullMQ tick worker; AttachmentModule gets ResumeTextService.enqueueReindex
+    // via TalentRecordModule WITHOUT the worker. Imported AFTER both, since it
+    // depends on TalentRecordModule (ResumeTextService.drainPendingBatch).
+    ResumeReindexModule,
     // PR-A5a Gate 5 — fourth ATS-domain batch (part a): pipeline state
     // machine + activity log. ActivityModule is imported BEFORE
     // PipelineModule because PipelineModule depends on it (pipeline ->

@@ -6,6 +6,7 @@ import { STALE_CONSENT_QUEUE_NAME } from '@aramo/consent';
 import { OUTBOX_PUBLISHER_QUEUE_NAME } from '@aramo/outbox-publisher';
 import { CROSS_SCHEMA_CONSISTENCY_QUEUE_NAME } from '@aramo/common';
 import { SKILL_CANONICALIZATION_QUEUE_NAME } from '@aramo/skills-taxonomy';
+import { RESUME_REINDEX_QUEUE_NAME } from '@aramo/talent-record';
 
 // M5 PR-11 §4.6 — application bootstrap registration for the 4 Aramo Core
 // BullMQ jobs (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6;
@@ -45,6 +46,16 @@ const SCHEDULES = [
     job_name: 'daily-scan',
     job_id: 'skill-canonicalization-daily',
     repeat: { pattern: '0 5 * * *', tz: 'UTC' as const },
+  },
+  // Search PR-2 — the résumé re-extract tick. Drains `pending`
+  // talent_resume_text rows (the polling-outbox signal written at the résumé-
+  // attachment commit seam): S3 fetch + deterministic extract + D4 redaction +
+  // persist. Every 60s — re-extract is search-infra, near-real-time is ample.
+  {
+    queue_name: RESUME_REINDEX_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'resume-reindex-60s',
+    repeat: { every: 60_000 },
   },
 ] as const;
 
