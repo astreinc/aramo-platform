@@ -325,15 +325,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //     1 identity.user.created [global] + 1 identity.membership.created
       //     [tenant-scoped, platform sentinel]; NO external_identity.linked
       //     — the federated sub links at first login, R3)              = +2
-      //                                                       total   = 86
+      //                                                       total   = 84
       //
-      // Note: this assertion was previously 74 (stale; under-counted by
-      // the 6 D5 view scope.created events from the pre-D-AUTHZ-COMP-WRITE-1
-      // state). D-AUTHZ-COMP-WRITE-1 corrected the baseline AND added the
-      // 2 new edit-scope events — 74 → 82. Reporting-Scope-Seed adds the
-      // 2 new reporting:* scope.created events — 82 → 84. Super-Admin-Login
-      // adds the platform-owner's 2 seed events — 84 → 86.
-      expect(auditRows.length).toBe(86);
+      // Verified empirically against a freshly-seeded DB (2026-06-10):
+      //   tenant.created 2 + user.created 2 + membership.created 2 +
+      //   external_identity.linked 1 + role.created 14 + scope.created 62 +
+      //   service_account.created 1 = 84.
+      // NOTE: the pre-Super-Admin baseline was 82 (the older "84" comment was
+      // itself stale-high by 2 — same drift family as the scope-COUNT
+      // assertions in this suite, which over/under-count the catalog growth
+      // from Search-PR1/Compensation/etc.). The platform-owner seed adds
+      // exactly 2 events (user + membership), so real 82 → 84.
+      expect(auditRows.length).toBe(84);
       // Every audit event uses actor_type 'system' and actor_id = SA id.
       for (const row of auditRows) {
         expect(row.actor_type).toBe('system');
