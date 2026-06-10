@@ -238,6 +238,42 @@ export class AuthController {
         { requestId, details },
       );
     }
+    if (result.kind === 'auth_error') {
+      // P4: user/config-class failures map to a clean 4xx with
+      // details.reason (debuggable first login), not a blank 500.
+      //   - token-content rejections (email_not_verified, missing_email,
+      //     missing_sub, wrong_token_use) → 401 INVALID_TOKEN.
+      //   - no_active_tenant → 403 TENANT_ACCESS_DENIED.
+      //   - user_not_provisioned (+ default) → 403 INSUFFICIENT_PERMISSIONS.
+      // Existing ERROR_CODES only — no new code is registered.
+      const TOKEN_REASONS = new Set([
+        'email_not_verified',
+        'missing_email',
+        'missing_sub',
+        'wrong_token_use',
+      ]);
+      const details = { reason: result.reason };
+      if (TOKEN_REASONS.has(result.reason)) {
+        throw new AramoError('INVALID_TOKEN', 'IdP token rejected', 401, {
+          requestId,
+          details,
+        });
+      }
+      if (result.reason === 'no_active_tenant') {
+        throw new AramoError(
+          'TENANT_ACCESS_DENIED',
+          'No active tenant membership',
+          403,
+          { requestId, details },
+        );
+      }
+      throw new AramoError(
+        'INSUFFICIENT_PERMISSIONS',
+        'Identity not provisioned',
+        403,
+        { requestId, details },
+      );
+    }
     // internal_error
     throw new AramoError(
       'INTERNAL_ERROR',

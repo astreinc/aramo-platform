@@ -70,6 +70,18 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
         created_at: '',
         updated_at: '',
       }),
+      // R3 reconcile-by-verified-email seam (default: no email match — the
+      // success-path tests resolve by sub and never reach reconcile).
+      findUserByEmail: vi.fn().mockResolvedValue(null),
+      linkExternalIdentity: vi.fn().mockResolvedValue({
+        id: 'ext-1',
+        provider: 'cognito',
+        provider_subject: COGNITO_SUB,
+        user_id: USER_ID,
+        email_snapshot: 'a@b.c',
+        created_at: '',
+        updated_at: '',
+      }),
     } as unknown as IdentityService,
     tenant: {
       getTenantsByUser: vi.fn().mockResolvedValue([
@@ -113,6 +125,7 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
     } as unknown as JwtIssuerService,
     audit: {
       writeEvent: vi.fn().mockResolvedValue(undefined),
+      writeGlobalEvent: vi.fn().mockResolvedValue(undefined),
     } as unknown as IdentityAuditService,
   };
   return { ...base, ...overrides };
@@ -233,8 +246,8 @@ describe('SessionOrchestratorService.handleCallback', () => {
     expect(result.tenants[0]).toEqual({ id: TENANT_ID, name: 'Tenant One' });
   });
 
-  // Test 30: 0 active memberships → INTERNAL_ERROR no_active_tenant.
-  it('returns internal_error with reason no_active_tenant when user has 0 memberships', async () => {
+  // Test 30 (P4): 0 active memberships → auth_error no_active_tenant (4xx).
+  it('returns auth_error with reason no_active_tenant when user has 0 memberships', async () => {
     const mocks = makeMocks({
       tenant: {
         getTenantsByUser: vi.fn().mockResolvedValue([]),
@@ -249,16 +262,19 @@ describe('SessionOrchestratorService.handleCallback', () => {
       cognitoErrorDescription: undefined,
       pkceStateCipher: 'cipher',
     });
-    expect(result.kind).toBe('internal_error');
-    if (result.kind !== 'internal_error') return;
+    expect(result.kind).toBe('auth_error');
+    if (result.kind !== 'auth_error') return;
     expect(result.reason).toBe('no_active_tenant');
   });
 
-  // Test 31: resolveUser returns null → INTERNAL_ERROR user_not_provisioned.
-  it('returns internal_error with reason user_not_provisioned when resolveUser returns null', async () => {
+  // Test 31 (P4 + R3): resolveUser null AND no email match → auth_error
+  // user_not_provisioned (4xx), and NOTHING is created (no open JIT).
+  it('returns auth_error user_not_provisioned when resolveUser null and no seeded email matches; creates nothing', async () => {
     const mocks = makeMocks({
       identity: {
         resolveUser: vi.fn().mockResolvedValue(null),
+        findUserByEmail: vi.fn().mockResolvedValue(null),
+        linkExternalIdentity: vi.fn(),
       } as unknown as IdentityService,
     });
     const svc = makeService(mocks);
@@ -270,9 +286,127 @@ describe('SessionOrchestratorService.handleCallback', () => {
       cognitoErrorDescription: undefined,
       pkceStateCipher: 'cipher',
     });
-    expect(result.kind).toBe('internal_error');
-    if (result.kind !== 'internal_error') return;
+    expect(result.kind).toBe('auth_error');
+    if (result.kind !== 'auth_error') return;
     expect(result.reason).toBe('user_not_provisioned');
+    // No open JIT: nothing linked, no token minted.
+    expect(mocks.identity.linkExternalIdentity).not.toHaveBeenCalled();
+    expect(mocks.jwtIssuer.sign).not.toHaveBeenCalled();
+  });
+
+  // R3: first login (sub unknown) → reconcile by verified email to the
+  // seeded identity → LINK the federated sub → proceed to success. The
+  // email is matched normalized-exact (lowercase + trim).
+  it('R3 — reconciles by verified email and links the federated sub when resolveUser misses', async () => {
+    const SEEDED_ID = '01900000-0000-7000-8000-0000000000ff';
+    const linkExternalIdentity = vi.fn().mockResolvedValue({
+      id: 'ext-new',
+      provider: 'cognito',
+      provider_subject: COGNITO_SUB,
+      user_id: SEEDED_ID,
+      email_snapshot: 'Owner@Aramo.AI',
+      created_at: '',
+      updated_at: '',
+    });
+    const findUserByEmail = vi.fn().mockResolvedValue({
+      id: SEEDED_ID,
+      email: 'owner@aramo.ai',
+      display_name: 'Aramo Platform Owner',
+      is_active: true,
+      deactivated_at: null,
+      created_at: '',
+      updated_at: '',
+    });
+    const mocks = makeMocks({
+      cognito: {
+        verify: vi.fn().mockResolvedValue({
+          sub: COGNITO_SUB,
+          email: '  Owner@Aramo.AI ', // mixed case + whitespace
+          email_verified: true,
+          token_use: 'id',
+        }),
+      } as unknown as CognitoVerifierService,
+      identity: {
+        resolveUser: vi.fn().mockResolvedValue(null),
+        findUserByEmail,
+        linkExternalIdentity,
+      } as unknown as IdentityService,
+    });
+    const svc = makeService(mocks);
+
+    const result = await svc.handleCallback({
+      consumer: 'recruiter',
+      code: 'c',
+      state: 'state-1',
+      cognitoError: undefined,
+      cognitoErrorDescription: undefined,
+      pkceStateCipher: 'cipher',
+    });
+
+    expect(result.kind).toBe('success');
+    // Normalized-exact: lowercased + trimmed before lookup.
+    expect(findUserByEmail).toHaveBeenCalledWith('owner@aramo.ai');
+    // The federated sub is linked to the seeded user.
+    expect(linkExternalIdentity).toHaveBeenCalledWith({
+      user_id: SEEDED_ID,
+      provider: 'cognito',
+      provider_subject: COGNITO_SUB,
+      email_snapshot: '  Owner@Aramo.AI ',
+    });
+    // The canonical sub-link audit event is emitted (global).
+    expect(mocks.audit.writeGlobalEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'identity.external_identity.linked',
+        actor_id: SEEDED_ID,
+        subject_id: SEEDED_ID,
+      }),
+    );
+  });
+
+  // P4: a token-content rejection from the verifier (typed error) maps to
+  // auth_error (4xx), NOT internal_error (500). A non-typed verifier failure
+  // (JWKS/network) stays internal_error.
+  it('P4 — verifier CognitoVerificationError maps to auth_error; plain Error stays internal_error', async () => {
+    const { CognitoVerificationError } = await import(
+      '../app/auth/cognito-verifier.service.js'
+    );
+    const authMocks = makeMocks({
+      cognito: {
+        verify: vi
+          .fn()
+          .mockRejectedValue(new CognitoVerificationError('email_not_verified')),
+      } as unknown as CognitoVerifierService,
+    });
+    const authResult = await makeService(authMocks).handleCallback({
+      consumer: 'recruiter',
+      code: 'c',
+      state: 'state-1',
+      cognitoError: undefined,
+      cognitoErrorDescription: undefined,
+      pkceStateCipher: 'cipher',
+    });
+    expect(authResult.kind).toBe('auth_error');
+    if (authResult.kind === 'auth_error') {
+      expect(authResult.reason).toBe('email_not_verified');
+    }
+
+    const serverMocks = makeMocks({
+      cognito: {
+        verify: vi.fn().mockRejectedValue(new Error('jwks fetch failed')),
+      } as unknown as CognitoVerifierService,
+    });
+    const serverResult = await makeService(serverMocks).handleCallback({
+      consumer: 'recruiter',
+      code: 'c',
+      state: 'state-1',
+      cognitoError: undefined,
+      cognitoErrorDescription: undefined,
+      pkceStateCipher: 'cipher',
+    });
+    expect(serverResult.kind).toBe('internal_error');
+    if (serverResult.kind === 'internal_error') {
+      expect(serverResult.reason).toBe('cognito_verification_failed');
+    }
   });
 
   it('returns validation_error when state mismatches between query and decrypted cookie', async () => {

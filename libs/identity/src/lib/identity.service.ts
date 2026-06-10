@@ -3,6 +3,7 @@ import { AramoError } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { IdentityAuditService } from './audit/identity-audit.service.js';
+import type { ExternalIdentityDto } from './dto/external-identity.dto.js';
 import type { MembershipDto } from './dto/membership.dto.js';
 import type { UserDto } from './dto/user.dto.js';
 import { IdentityRepository, type TenantUserView } from './identity.repository.js';
@@ -50,6 +51,20 @@ export class IdentityService {
 
   async findUserByEmail(email: string): Promise<UserDto | null> {
     return this.identityRepo.findUserByEmail(email);
+  }
+
+  // Super-Admin-Login R3: the reconcile-by-verified-email spine's link step.
+  // Links a federated sub to an EXISTING User (resolved by verified email).
+  // Creates no User and no membership — see the repository docstring. The
+  // auth-service SessionOrchestrator calls this when resolveUser-by-sub
+  // misses but the IdP-verified email matches a seeded identity.
+  async linkExternalIdentity(args: {
+    user_id: string;
+    provider: string;
+    provider_subject: string;
+    email_snapshot: string | null;
+  }): Promise<ExternalIdentityDto> {
+    return this.identityRepo.linkExternalIdentity(args);
   }
 
   async findUserById(user_id: string): Promise<UserDto | null> {

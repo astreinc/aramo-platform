@@ -10,7 +10,10 @@ import {
 import { RefreshTokenService } from '@aramo/auth-storage';
 
 import type { TenantSelectionTenantDto } from './dto/tenant-selection-error.dto.js';
-import { CognitoVerifierService } from './cognito-verifier.service.js';
+import {
+  CognitoVerifierService,
+  CognitoVerificationError,
+} from './cognito-verifier.service.js';
 import { JwtIssuerService } from './jwt-issuer.service.js';
 import { PkceService } from './pkce.service.js';
 
@@ -53,6 +56,16 @@ export type CallbackResult =
   | {
       kind: 'tenant_selection_required';
       tenants: TenantSelectionTenantDto[];
+    }
+  // Super-Admin-Login P4: user/config-class failures (a rejected IdP token,
+  // an identity that is not provisioned, no active membership) — the
+  // controller maps these to a clean 4xx with details.reason so the first
+  // login is debuggable, NOT a blank 500. Distinct from internal_error,
+  // which stays reserved for genuine server/infra faults (token-exchange,
+  // refresh-token persist, JWT sign, JWKS/network verification failures).
+  | {
+      kind: 'auth_error';
+      reason: string;
     }
   | {
       kind: 'internal_error';
@@ -123,20 +136,58 @@ export class SessionOrchestratorService {
       cognito = await this.cognito.verify(idToken);
     } catch (err) {
       this.logger.warn(`cognito verification failed: ${(err as Error).message}`);
+      // P4: a token-content rejection (email_not_verified, missing claim,
+      // wrong token_use) is a 4xx auth_error; signature / JWKS / network /
+      // iss / aud / exp failures (plain Errors from jose) stay 500.
+      if (err instanceof CognitoVerificationError) {
+        return { kind: 'auth_error', reason: err.reason };
+      }
       return { kind: 'internal_error', reason: 'cognito_verification_failed' };
     }
 
-    const user = await this.identity.resolveUser({
+    // R3: resolve by federated sub; on miss, reconcile-by-verified-email.
+    let user = await this.identity.resolveUser({
       provider: 'cognito',
       provider_subject: cognito.sub,
     });
     if (user === null) {
-      return { kind: 'internal_error', reason: 'user_not_provisioned' };
+      // The federated newcomer / sub-mismatch case. Reconcile by the IdP-
+      // verified email (normalized-exact: lowercase + trim) to a SEEDED
+      // identity, then LINK the federated sub so a second login resolves by
+      // sub via the normal path (idempotent). NO open JIT: a non-matching
+      // email returns a clean 403 (P4) and creates nothing. This spine is
+      // reused by the full Auth-Hardening milestone for invited users +
+      // tenant first-admins; v1 gates its effect to the existing-user case.
+      const normalizedEmail = cognito.email.trim().toLowerCase();
+      const seeded = await this.identity.findUserByEmail(normalizedEmail);
+      if (seeded === null) {
+        return { kind: 'auth_error', reason: 'user_not_provisioned' };
+      }
+      await this.identity.linkExternalIdentity({
+        user_id: seeded.id,
+        provider: 'cognito',
+        provider_subject: cognito.sub,
+        email_snapshot: cognito.email,
+      });
+      // Canonical audit event for sub-linking (global; best-effort — the
+      // wrapper swallows failures). actor = the self-authenticating user.
+      await this.audit.writeGlobalEvent({
+        event_type: 'identity.external_identity.linked',
+        actor_type: 'user',
+        actor_id: seeded.id,
+        subject_id: seeded.id,
+        payload: {
+          provider: 'cognito',
+          provider_subject: cognito.sub,
+          reason: 'reconcile_by_verified_email',
+        },
+      });
+      user = seeded;
     }
 
     const tenants = await this.tenant.getTenantsByUser({ user_id: user.id });
     if (tenants.length === 0) {
-      return { kind: 'internal_error', reason: 'no_active_tenant' };
+      return { kind: 'auth_error', reason: 'no_active_tenant' };
     }
     if (tenants.length > 1) {
       return {

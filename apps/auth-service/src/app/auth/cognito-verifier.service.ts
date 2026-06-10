@@ -8,16 +8,53 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 //   - aud matches AUTH_COGNITO_CLIENT_ID.
 //   - exp not past.
 //   - email present.
-//   - email_verified === true.
+//   - email_verified satisfied (see normalization below).
 //   - token_use === "id".
 //
-// Failure of any check → caller maps to 500 INTERNAL_ERROR with
-// `error.details.reason = "cognito_verification_failed"`.
+// Error CLASSING (Super-Admin-Login P4): token-content rejections
+// (missing sub/email, email_not_verified, wrong token_use) throw a typed
+// `CognitoVerificationError` so the orchestrator maps them to a 4xx
+// auth_error (the IdP gave us a token we reject — a client/config fault,
+// debuggable). Signature / JWKS / network / iss / aud / exp failures come
+// out of jose's jwtVerify as plain Errors and remain 500 (genuine server
+// or infra faults). The discriminator is `instanceof CognitoVerificationError`.
+//
+// email_verified normalization (Super-Admin-Login P1, verifier-side):
+// Cognito emits `email_verified` as a real boolean for native users, but a
+// federated IdP (Microsoft) surfaces it as the STRING "true". We accept the
+// string ONLY when the token presents a trusted-federation provider signal
+// (the `identities[].providerName` / `cognito:username` prefix, matched
+// against AUTH_TRUSTED_IDP_NAMES). Native / untrusted tokens keep the strict
+// boolean `=== true` gate. The gate is PARSED (we read the IdP's verified
+// assertion), never REMOVED — an unverified native email still fails. The
+// pre-token-generation Lambda is the full-milestone PROD normalization; this
+// is the contained slice mechanism (no net-new Lambda/Terraform).
+
+// Token-content rejection (4xx auth_error class). `reason` is surfaced as
+// the orchestrator's auth_error reason and the controller's details.reason.
+export class CognitoVerificationError extends Error {
+  constructor(public readonly reason: string) {
+    super(reason);
+    this.name = 'CognitoVerificationError';
+  }
+}
+
+interface CognitoFederatedIdentity {
+  providerName?: string;
+  providerType?: string;
+  userId?: string;
+}
 
 export interface CognitoIdTokenClaims extends JWTPayload {
   email?: string;
-  email_verified?: boolean;
+  // boolean for native Cognito users; string "true"/"false" for federated.
+  email_verified?: boolean | string;
   token_use?: string;
+  // Federated-provider signals (present only on federated tokens). The
+  // verifier did not read these pre-Super-Admin-Login; they scope the
+  // string-normalization to trusted federation.
+  identities?: CognitoFederatedIdentity[];
+  'cognito:username'?: string;
 }
 
 export interface VerifiedCognitoIdToken {
@@ -52,16 +89,16 @@ export class CognitoVerifierService {
     });
     const p = result.payload;
     if (typeof p.sub !== 'string' || p.sub.length === 0) {
-      throw new Error('cognito_id_token_missing_sub');
+      throw new CognitoVerificationError('missing_sub');
     }
     if (typeof p.email !== 'string' || p.email.length === 0) {
-      throw new Error('cognito_id_token_missing_email');
+      throw new CognitoVerificationError('missing_email');
     }
-    if (p.email_verified !== true) {
-      throw new Error('cognito_id_token_email_not_verified');
+    if (!this.isEmailVerified(p)) {
+      throw new CognitoVerificationError('email_not_verified');
     }
     if (p.token_use !== 'id') {
-      throw new Error('cognito_id_token_wrong_token_use');
+      throw new CognitoVerificationError('wrong_token_use');
     }
     return {
       sub: p.sub,
@@ -69,6 +106,47 @@ export class CognitoVerifierService {
       email_verified: true,
       token_use: 'id',
     };
+  }
+
+  // email_verified gate with trusted-federation normalization (P1).
+  //   - boolean `true` always passes (native + already-normalized federation).
+  //   - string "true" passes ONLY for a trusted-federation provider.
+  //   - everything else (false, "false", undefined, string "true" from an
+  //     untrusted/native token) FAILS — the gate is intact.
+  private isEmailVerified(p: CognitoIdTokenClaims): boolean {
+    if (p.email_verified === true) return true;
+    if (p.email_verified === 'true' && this.isTrustedFederation(p)) return true;
+    return false;
+  }
+
+  // Reads the federated-provider signal (the `identities[].providerName`
+  // claim, with a `cognito:username` "<ProviderName>_..." prefix fallback)
+  // and matches it against AUTH_TRUSTED_IDP_NAMES (comma-separated, case-
+  // insensitive). Empty config → no provider is trusted, so string-form
+  // email_verified never passes (fail-closed). This is the signal the
+  // verifier did not previously read.
+  private isTrustedFederation(p: CognitoIdTokenClaims): boolean {
+    const configured = (process.env['AUTH_TRUSTED_IDP_NAMES'] ?? '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => s.length > 0);
+    if (configured.length === 0) return false;
+
+    if (Array.isArray(p.identities)) {
+      for (const ident of p.identities) {
+        const name = (ident?.providerName ?? '').toLowerCase();
+        if (name.length > 0 && configured.includes(name)) return true;
+      }
+    }
+
+    const username =
+      typeof p['cognito:username'] === 'string' ? p['cognito:username'] : '';
+    const underscore = username.indexOf('_');
+    if (underscore > 0) {
+      const prefix = username.slice(0, underscore).toLowerCase();
+      if (configured.includes(prefix)) return true;
+    }
+    return false;
   }
 
   // Cognito issuer URL pattern, per AWS docs:

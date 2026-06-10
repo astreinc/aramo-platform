@@ -251,6 +251,44 @@ export class IdentityRepository {
     });
   }
 
+  // Super-Admin-Login R3: link a federated ExternalIdentity to an EXISTING
+  // User — the reconcile-by-verified-email spine. Upsert on the
+  // (provider, provider_subject) unique key (mirrors the seed's
+  // externalIdentity.upsert): create the row on first federated login,
+  // or re-point/refresh email_snapshot if the sub already exists. Creates
+  // NO User and NO membership — the User must already exist (the caller
+  // matched it by verified email; open JIT / tenant auto-create is the
+  // full-milestone path, deliberately NOT here). Idempotent: a second
+  // login resolves by the now-linked sub via findUserByExternalIdentity,
+  // so this upsert's create branch fires at most once per (provider, sub).
+  async linkExternalIdentity(args: {
+    user_id: string;
+    provider: string;
+    provider_subject: string;
+    email_snapshot: string | null;
+  }): Promise<ExternalIdentityDto> {
+    const row = await this.prisma.externalIdentity.upsert({
+      where: {
+        provider_provider_subject: {
+          provider: args.provider,
+          provider_subject: args.provider_subject,
+        },
+      },
+      update: {
+        user_id: args.user_id,
+        email_snapshot: args.email_snapshot,
+      },
+      create: {
+        id: uuidv7(),
+        provider: args.provider,
+        provider_subject: args.provider_subject,
+        user_id: args.user_id,
+        email_snapshot: args.email_snapshot,
+      },
+    });
+    return toExternalIdentityDto(row);
+  }
+
   // AUTHZ-2: bind an additional UserTenantMembership for an existing User
   // (the new-tenant re-invite case from Lead ruling 8 case 3). Reused by
   // the invitation service when AdminGetUser confirms the Cognito user

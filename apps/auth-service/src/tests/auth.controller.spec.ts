@@ -217,7 +217,7 @@ describe('AuthController.logout (idempotent)', () => {
 });
 
 describe('AuthController.callback (orchestrator-result mapping)', () => {
-  it('on success: sets access + refresh cookies, clears pkce_state, returns 204', async () => {
+  it('on success: sets access + refresh cookies, clears pkce_state, 302-redirects into the app', async () => {
     const sessionOrch = {
       handleCallback: vi.fn().mockResolvedValue({
         kind: 'success',
@@ -242,7 +242,73 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
     );
     // 3 cookie operations: access, refresh, clear pkce
     expect(res.cookie).toHaveBeenCalledTimes(3);
-    expect(res.status).toHaveBeenCalledWith(204);
+    // Local-dev enablement: the hosted-UI callback is a top-level browser
+    // redirect, so success is a 302 back into the app (NOT a bodyless 204).
+    expect(res.status).not.toHaveBeenCalledWith(204);
+    expect(res.redirect).toHaveBeenCalledTimes(1);
+    const [status, location] = res.redirect.mock.calls[0]!;
+    expect(status).toBe(302);
+    expect(typeof location).toBe('string');
+    expect((location as string).length).toBeGreaterThan(0);
+  });
+
+  // Super-Admin-Login P4: auth_error → clean 4xx by class (debuggable),
+  // never a blank 500. Existing ERROR_CODES only.
+  it('on auth_error email_not_verified: throws 401 INVALID_TOKEN with details.reason', async () => {
+    const sessionOrch = {
+      handleCallback: vi.fn().mockResolvedValue({
+        kind: 'auth_error',
+        reason: 'email_not_verified',
+      }),
+    } as unknown as SessionOrchestratorService;
+    const ctl = makeController({ sessionOrch });
+    const res = makeRes();
+    const req = { cookies: { aramo_pkce_state: 'cipher' }, requestId: 'r' } as never;
+    await expect(
+      ctl.callback('recruiter', 'code', 'state', undefined, undefined, req, res as never),
+    ).rejects.toMatchObject({
+      code: 'INVALID_TOKEN',
+      statusCode: 401,
+      context: { details: { reason: 'email_not_verified' } },
+    });
+  });
+
+  it('on auth_error user_not_provisioned: throws 403 INSUFFICIENT_PERMISSIONS', async () => {
+    const sessionOrch = {
+      handleCallback: vi.fn().mockResolvedValue({
+        kind: 'auth_error',
+        reason: 'user_not_provisioned',
+      }),
+    } as unknown as SessionOrchestratorService;
+    const ctl = makeController({ sessionOrch });
+    const res = makeRes();
+    const req = { cookies: { aramo_pkce_state: 'cipher' }, requestId: 'r' } as never;
+    await expect(
+      ctl.callback('recruiter', 'code', 'state', undefined, undefined, req, res as never),
+    ).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { reason: 'user_not_provisioned' } },
+    });
+  });
+
+  it('on auth_error no_active_tenant: throws 403 TENANT_ACCESS_DENIED', async () => {
+    const sessionOrch = {
+      handleCallback: vi.fn().mockResolvedValue({
+        kind: 'auth_error',
+        reason: 'no_active_tenant',
+      }),
+    } as unknown as SessionOrchestratorService;
+    const ctl = makeController({ sessionOrch });
+    const res = makeRes();
+    const req = { cookies: { aramo_pkce_state: 'cipher' }, requestId: 'r' } as never;
+    await expect(
+      ctl.callback('recruiter', 'code', 'state', undefined, undefined, req, res as never),
+    ).rejects.toMatchObject({
+      code: 'TENANT_ACCESS_DENIED',
+      statusCode: 403,
+      context: { details: { reason: 'no_active_tenant' } },
+    });
   });
 
   it('on tenant_selection_required: throws 409 TENANT_SELECTION_REQUIRED with tenants in details', async () => {

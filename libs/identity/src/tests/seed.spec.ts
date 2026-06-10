@@ -5,6 +5,7 @@ import {
   SEED_COGNITO_SUB,
   SEED_TENANT_NAME,
   SEED_ADMIN_EMAIL,
+  SEED_OWNER_EMAIL,
   SEED_SERVICE_ACCOUNT_NAME,
 } from '../../prisma/seed.js';
 import { SCOPE_KEY_FORMAT, SEED_SCOPE_KEYS, SEED_ROLE_KEYS } from '../lib/dto/index.js';
@@ -37,6 +38,13 @@ describe('seed determinism — hardcoded UUIDs (tests 10/11 supporting, unit tie
     expect(SEED_TENANT_NAME).toBe('Aramo Dev Tenant');
     expect(SEED_ADMIN_EMAIL).toBe('admin@aramo.dev');
     expect(SEED_SERVICE_ACCOUNT_NAME).toBe('system-bootstrap');
+  });
+
+  // Super-Admin-Login R2 — the platform owner's reconcile anchor. Stored
+  // lowercase so R3's normalized-exact email match hits deterministically.
+  it('SEED_OWNER_EMAIL is the platform super-admin reconcile anchor (lowercase)', () => {
+    expect(SEED_OWNER_EMAIL).toBe('purush@aramo.ai');
+    expect(SEED_OWNER_EMAIL).toBe(SEED_OWNER_EMAIL.toLowerCase());
   });
 });
 

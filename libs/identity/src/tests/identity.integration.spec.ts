@@ -321,14 +321,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //     compensation:edit:* WRITE-side scopes)                    = +2
       //   - Reporting-Scope-Seed (2 scope.created events for
       //     dashboard:read + report:read)                              = +2
-      //                                                       total   = 84
+      //   - Super-Admin-Login R2 (the platform owner's seed:
+      //     1 identity.user.created [global] + 1 identity.membership.created
+      //     [tenant-scoped, platform sentinel]; NO external_identity.linked
+      //     — the federated sub links at first login, R3)              = +2
+      //                                                       total   = 86
       //
       // Note: this assertion was previously 74 (stale; under-counted by
       // the 6 D5 view scope.created events from the pre-D-AUTHZ-COMP-WRITE-1
       // state). D-AUTHZ-COMP-WRITE-1 corrected the baseline AND added the
       // 2 new edit-scope events — 74 → 82. Reporting-Scope-Seed adds the
-      // 2 new reporting:* scope.created events — 82 → 84.
-      expect(auditRows.length).toBe(84);
+      // 2 new reporting:* scope.created events — 82 → 84. Super-Admin-Login
+      // adds the platform-owner's 2 seed events — 84 → 86.
+      expect(auditRows.length).toBe(86);
       // Every audit event uses actor_type 'system' and actor_id = SA id.
       for (const row of auditRows) {
         expect(row.actor_type).toBe('system');
@@ -463,6 +468,77 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenants = await tenantSvc.getTenantsByUser({ user_id: SEED_IDS.user_admin });
       expect(tenants).toHaveLength(1);
       expect(tenants[0]?.id).toBe(SEED_IDS.tenant);
+    });
+
+    // Super-Admin-Login R2 — the platform owner's bootstrap. He has NO
+    // seeded sub (resolveUser misses until first login), exactly ONE active
+    // membership (into the platform sentinel tenant), and his scope union is
+    // EXACTLY the 3 platform:* scopes — no tenant data scope (no over-grant).
+    it('R2 — platform owner: no seeded sub, single platform-tenant membership, platform:* scopes only', async () => {
+      const owner = await prisma.user.findUnique({
+        where: { id: SEED_IDS.user_owner },
+      });
+      expect(owner?.email).toBe('purush@aramo.ai');
+
+      // findUserByEmail (the R3 anchor) resolves the owner by verified email.
+      const byEmail = await identitySvc.findUserByEmail('purush@aramo.ai');
+      expect(byEmail?.id).toBe(SEED_IDS.user_owner);
+
+      // Exactly one active membership, into the platform sentinel tenant.
+      const tenants = await tenantSvc.getTenantsByUser({
+        user_id: SEED_IDS.user_owner,
+      });
+      expect(tenants).toHaveLength(1);
+      expect(tenants[0]?.id).toBe(SEED_IDS.platform_tenant);
+
+      // Scope union = the 3 platform:* scopes ONLY (super_admin bundle).
+      const scopes = await roleSvc.getScopesByUserAndTenant({
+        user_id: SEED_IDS.user_owner,
+        tenant_id: SEED_IDS.platform_tenant,
+      });
+      expect([...scopes].sort()).toEqual([
+        'platform:admin:invite',
+        'platform:tenant:provision',
+        'platform:tenant:read',
+      ]);
+      // No tenant data scope leaked into the platform owner.
+      expect(scopes.some((s) => !s.startsWith('platform:'))).toBe(false);
+    });
+
+    // R3 — reconcile-by-verified-email round trip against the real DB:
+    // link a federated sub to the seeded owner, then resolveUser finds him
+    // by that sub (idempotent normal path on the second login).
+    it('R3 — linkExternalIdentity links a federated sub to the owner; resolveUser then hits by sub', async () => {
+      const FED_SUB = 'microsoft-federated-sub-test-01';
+      // No sub is seeded for the owner: resolveUser misses before the link
+      // (the sub-mismatch trap the reconcile spine solves).
+      const beforeLink = await identitySvc.resolveUser({
+        provider: 'cognito',
+        provider_subject: FED_SUB,
+      });
+      expect(beforeLink).toBeNull();
+      await identitySvc.linkExternalIdentity({
+        user_id: SEED_IDS.user_owner,
+        provider: 'cognito',
+        provider_subject: FED_SUB,
+        email_snapshot: 'purush@aramo.ai',
+      });
+      const resolved = await identitySvc.resolveUser({
+        provider: 'cognito',
+        provider_subject: FED_SUB,
+      });
+      expect(resolved?.id).toBe(SEED_IDS.user_owner);
+      // Idempotent: a second link of the same sub does not duplicate or throw.
+      await identitySvc.linkExternalIdentity({
+        user_id: SEED_IDS.user_owner,
+        provider: 'cognito',
+        provider_subject: FED_SUB,
+        email_snapshot: 'purush@aramo.ai',
+      });
+      const again = await prisma.externalIdentity.findMany({
+        where: { provider: 'cognito', provider_subject: FED_SUB },
+      });
+      expect(again).toHaveLength(1);
     });
 
     it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (47 scopes post AUTHZ-D4a)', async () => {

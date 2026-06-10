@@ -244,8 +244,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const cbRes = await request(app.getHttpServer())
         .get(`/auth/recruiter/callback?code=c&state=${state}`)
-        .set('Cookie', pkceCookie);
-      expect(cbRes.status).toBe(204);
+        .set('Cookie', pkceCookie)
+        .redirects(0); // success is now a 302 into the app; do not follow it
+      expect(cbRes.status).toBe(302);
       const cbCookies = cbRes.headers['set-cookie'] as unknown as string[];
       const accessHeader = cbCookies.find((c) =>
         c.startsWith('aramo_access_token='),

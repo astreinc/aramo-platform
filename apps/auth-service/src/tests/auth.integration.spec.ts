@@ -230,8 +230,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const { pkceCookie, state } = await prepareLogin('recruiter');
       const res = await request(app.getHttpServer())
         .get(`/auth/recruiter/callback?code=c&state=${state}`)
-        .set('Cookie', pkceCookie);
-      expect(res.status).toBe(204);
+        .set('Cookie', pkceCookie)
+        .redirects(0); // success is now a 302 into the app; do not follow it
+      // Local-dev enablement: hosted-UI callback success is a 302 back into
+      // the app (was a bodyless 204). Cookies are set on the 302 itself.
+      expect(res.status).toBe(302);
+      expect(res.headers['location']).toBeDefined();
       const cookies = res.headers['set-cookie'] as unknown as string[];
       expect(cookies.some((c) => c.startsWith('aramo_access_token='))).toBe(true);
       expect(cookies.some((c) => c.startsWith('aramo_refresh_token='))).toBe(true);
@@ -250,7 +254,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const { pkceCookie, state } = await prepareLogin('recruiter');
       const cb = await request(app.getHttpServer())
         .get(`/auth/recruiter/callback?code=c&state=${state}`)
-        .set('Cookie', pkceCookie);
+        .set('Cookie', pkceCookie)
+        .redirects(0); // success is now a 302 into the app; do not follow it
       const refreshHeader = (cb.headers['set-cookie'] as unknown as string[])
         .find((c) => c.startsWith('aramo_refresh_token='))!;
       const refreshCookie = refreshHeader.split(';')[0]!;
@@ -279,7 +284,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const { pkceCookie, state } = await prepareLogin('recruiter');
       const cb = await request(app.getHttpServer())
         .get(`/auth/recruiter/callback?code=c&state=${state}`)
-        .set('Cookie', pkceCookie);
+        .set('Cookie', pkceCookie)
+        .redirects(0); // success is now a 302 into the app; do not follow it
       const refreshCookie = (cb.headers['set-cookie'] as unknown as string[])
         .find((c) => c.startsWith('aramo_refresh_token='))!
         .split(';')[0]!;
@@ -305,7 +311,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const { pkceCookie, state } = await prepareLogin('recruiter');
       const cb = await request(app.getHttpServer())
         .get(`/auth/recruiter/callback?code=c&state=${state}`)
-        .set('Cookie', pkceCookie);
+        .set('Cookie', pkceCookie)
+        .redirects(0); // success is now a 302 into the app; do not follow it
       const refreshCookie = (cb.headers['set-cookie'] as unknown as string[])
         .find((c) => c.startsWith('aramo_refresh_token='))!
         .split(';')[0]!;
@@ -326,7 +333,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const { pkceCookie, state } = await prepareLogin('recruiter');
       const cb = await request(app.getHttpServer())
         .get(`/auth/recruiter/callback?code=c&state=${state}`)
-        .set('Cookie', pkceCookie);
+        .set('Cookie', pkceCookie)
+        .redirects(0); // success is now a 302 into the app; do not follow it
       const accessCookie = (cb.headers['set-cookie'] as unknown as string[])
         .find((c) => c.startsWith('aramo_access_token='))!
         .split(';')[0]!;

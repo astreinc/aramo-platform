@@ -51,6 +51,15 @@ export const SEED_IDS = {
   service_account_system: '01900000-0000-7000-8000-000000000003',
   external_identity_admin: '01900000-0000-7000-8000-000000000004',
   membership_admin: '01900000-0000-7000-8000-000000000005',
+  // Super-Admin-Login R2 — the platform super-admin (purush@aramo.ai)
+  // bootstrap. User + a membership into the platform sentinel tenant +
+  // a super_admin role-assignment. NO ExternalIdentity is seeded: his
+  // federated (Microsoft) sub is unknown until first login, when the
+  // reconcile-by-verified-email spine (R3) links it. He holds ONLY the
+  // 3 platform:* scopes (via super_admin) — never a tenant data scope.
+  user_owner: '01900000-0000-7000-8000-000000000006',
+  membership_owner: '01900000-0000-7000-8000-000000000007',
+  membership_role_owner: '01900000-0000-7000-8000-000000000041',
   // AUTHZ-2 — sentinel Tenant for the platform tier (Lead ruling 2 B1).
   // The UUID matches libs/auth's PLATFORM_TENANT_SENTINEL_ID; both files
   // hold the value literal-for-literal so the JWT-issuance pipeline and
@@ -421,6 +430,13 @@ export const SEED_IDS = {
     // 0x241, 0x242). Emitted via A1A2_NEW_SCOPES manifest below.
     scope_compensation_edit_pay_created: '01900000-0000-7000-8000-000000000241',
     scope_compensation_edit_bill_created: '01900000-0000-7000-8000-000000000242',
+    // Super-Admin-Login R2 — 2 audit events for the platform-owner seed:
+    // identity.user.created (global) + identity.membership.created (tenant-
+    // scoped, carries the platform sentinel tenant id). NO
+    // external_identity.linked here — the sub is linked at first login (R3),
+    // which emits that event at runtime.
+    owner_user_created: '01900000-0000-7000-8000-000000000243',
+    owner_membership_created: '01900000-0000-7000-8000-000000000244',
   },
 } as const;
 
@@ -435,6 +451,12 @@ export const SEED_COGNITO_SUB = 'fixed-dev-cognito-sub-01';
 export const SEED_TENANT_NAME = 'Aramo Dev Tenant';
 export const SEED_ADMIN_EMAIL = 'admin@aramo.dev';
 export const SEED_ADMIN_DISPLAY_NAME = 'Aramo Dev Admin';
+// Super-Admin-Login R2 — the platform super-admin (Aramo SaaS owner). The
+// email is the reconcile anchor: R3 matches the IdP-verified email (lower-
+// cased, exact) against this row, so it is stored lowercase. No sub is
+// seeded (linked at first login).
+export const SEED_OWNER_EMAIL = 'purush@aramo.ai';
+export const SEED_OWNER_DISPLAY_NAME = 'Aramo Platform Owner';
 export const SEED_SERVICE_ACCOUNT_NAME = 'system-bootstrap';
 export const SEED_SERVICE_ACCOUNT_DESCRIPTION =
   'System actor for seed/migration audit events';
@@ -1258,6 +1280,22 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
     },
   });
 
+  // 2b. Super-Admin-Login R2 — the platform super-admin (purush@aramo.ai).
+  // User row only; the membership + role are seeded below (steps 3b/8b) and
+  // the ExternalIdentity sub is linked at first login (R3). Email stored
+  // lowercase so the reconcile-by-verified-email match (normalized-exact)
+  // hits deterministically.
+  await prisma.user.upsert({
+    where: { id: SEED_IDS.user_owner },
+    update: {},
+    create: {
+      id: SEED_IDS.user_owner,
+      email: SEED_OWNER_EMAIL,
+      display_name: SEED_OWNER_DISPLAY_NAME,
+      is_active: true,
+    },
+  });
+
   // 9. ServiceAccount (system actor for audit events).
   // Created before any audit row so audit rows can reference it as actor_id.
   await prisma.serviceAccount.upsert({
@@ -1590,6 +1628,45 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
     },
   });
 
+  // 3b. Super-Admin-Login R2 — the platform owner's membership into the
+  // PLATFORM SENTINEL tenant (NOT the dev tenant). This satisfies
+  // getTenantsByUser's >=1-active-membership requirement and, paired with
+  // the super_admin role below, yields exactly the 3 platform:* scopes at
+  // session issuance — the singleton-membership path is reused (no separate
+  // platform orchestrator).
+  await prisma.userTenantMembership.upsert({
+    where: {
+      user_id_tenant_id: {
+        user_id: SEED_IDS.user_owner,
+        tenant_id: SEED_IDS.platform_tenant,
+      },
+    },
+    update: {},
+    create: {
+      id: SEED_IDS.membership_owner,
+      user_id: SEED_IDS.user_owner,
+      tenant_id: SEED_IDS.platform_tenant,
+      is_active: true,
+    },
+  });
+
+  // 8b. Super-Admin-Login R2 — assign super_admin (platform:* only) to the
+  // owner membership. He holds NO tenant data scope (no over-grant).
+  await prisma.userTenantMembershipRole.upsert({
+    where: {
+      membership_id_role_id: {
+        membership_id: SEED_IDS.membership_owner,
+        role_id: SEED_IDS.roles.super_admin,
+      },
+    },
+    update: {},
+    create: {
+      id: SEED_IDS.membership_role_owner,
+      membership_id: SEED_IDS.membership_owner,
+      role_id: SEED_IDS.roles.super_admin,
+    },
+  });
+
   // 4. ExternalIdentity (cognito provider).
   await prisma.externalIdentity.upsert({
     where: {
@@ -1646,6 +1723,28 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
       provider: 'cognito',
       provider_subject: SEED_COGNITO_SUB,
       user_id: SEED_IDS.user_admin,
+    },
+  });
+  // Super-Admin-Login R2 — the platform owner's 2 seed audit events.
+  // identity.user.created is GLOBAL; identity.membership.created is TENANT-
+  // scoped (carries the platform sentinel tenant id). NO
+  // external_identity.linked — the sub links at first login (R3 emits it).
+  await upsertAudit(prisma, {
+    id: SEED_IDS.audit_events.owner_user_created,
+    tenant_id: null, // global event
+    event_type: 'identity.user.created',
+    subject_id: SEED_IDS.user_owner,
+    payload: { user_id: SEED_IDS.user_owner, email: SEED_OWNER_EMAIL },
+  });
+  await upsertAudit(prisma, {
+    id: SEED_IDS.audit_events.owner_membership_created,
+    tenant_id: SEED_IDS.platform_tenant, // tenant-scoped event
+    event_type: 'identity.membership.created',
+    subject_id: SEED_IDS.user_owner,
+    payload: {
+      membership_id: SEED_IDS.membership_owner,
+      user_id: SEED_IDS.user_owner,
+      tenant_id: SEED_IDS.platform_tenant,
     },
   });
   await upsertAudit(prisma, {
