@@ -31,7 +31,7 @@ export interface VerifiedCognitoIdToken {
 export class CognitoVerifierService {
   private readonly logger = new Logger(CognitoVerifierService.name);
   private cachedJwks: ReturnType<typeof createRemoteJWKSet> | undefined;
-  private cachedDomain: string | undefined;
+  private cachedIssuer: string | undefined;
 
   async verify(idToken: string): Promise<VerifiedCognitoIdToken> {
     const domain = process.env['AUTH_COGNITO_DOMAIN'];
@@ -43,7 +43,7 @@ export class CognitoVerifierService {
       throw new Error('AUTH_COGNITO_CLIENT_ID is not configured');
     }
     const expectedIssuer = this.deriveIssuer(domain);
-    const jwks = this.resolveJwks(domain);
+    const jwks = this.resolveJwks(expectedIssuer);
 
     const result = await jwtVerify<CognitoIdTokenClaims>(idToken, jwks, {
       issuer: expectedIssuer,
@@ -77,28 +77,32 @@ export class CognitoVerifierService {
   // URL. PR-8.0a-Reground accepts either an explicit override env or the
   // canonical Cognito issuer derivation.
   //
-  // To keep the directive's contract, we treat AUTH_COGNITO_DOMAIN as the
-  // hosted-UI domain (used for the JWKS URL) and require the issuer URL
-  // to be set via convention: the JWKS endpoint in Cognito sits at
-  // `https://${domain}/.well-known/jwks.json`. For the `iss` claim
-  // matching, AWS publishes the userpool URL; if AUTH_COGNITO_ISSUER is
-  // set we use that, else we derive `https://${domain}` (which matches
-  // hosted-UI domains for development setups). Operational deployments
-  // SHOULD set AUTH_COGNITO_ISSUER explicitly.
+  // A real Cognito user pool emits `iss` = the userpool URL
+  //   https://cognito-idp.<region>.amazonaws.com/<userPoolId>
+  // and serves its JWKS at `<iss>/.well-known/jwks.json` — NOT under the
+  // hosted-UI domain. So when AUTH_COGNITO_ISSUER is set we use it for both
+  // the `iss` check (deriveIssuer) AND the JWKS URL (resolveJwks). When it
+  // is unset we fall back to `https://${domain}`, preserving the original
+  // dev/hosted-domain behaviour where issuer and JWKS share the domain.
+  // Operational deployments against a real pool MUST set AUTH_COGNITO_ISSUER.
   private deriveIssuer(domain: string): string {
     const explicit = process.env['AUTH_COGNITO_ISSUER'];
     if (explicit !== undefined && explicit.length > 0) return explicit;
     return `https://${domain}`;
   }
 
-  private resolveJwks(domain: string): ReturnType<typeof createRemoteJWKSet> {
-    if (this.cachedJwks !== undefined && this.cachedDomain === domain) {
+  // JWKS URL is derived from the (issuer) base so it tracks a real pool's
+  // cognito-idp endpoint when AUTH_COGNITO_ISSUER is set, and the hosted-UI
+  // domain when it is not. Cache keyed on the issuer base.
+  private resolveJwks(issuer: string): ReturnType<typeof createRemoteJWKSet> {
+    if (this.cachedJwks !== undefined && this.cachedIssuer === issuer) {
       return this.cachedJwks;
     }
-    const url = new URL(`https://${domain}/.well-known/jwks.json`);
+    const base = issuer.replace(/\/+$/, '');
+    const url = new URL(`${base}/.well-known/jwks.json`);
     const jwks = createRemoteJWKSet(url);
     this.cachedJwks = jwks;
-    this.cachedDomain = domain;
+    this.cachedIssuer = issuer;
     return jwks;
   }
 }
