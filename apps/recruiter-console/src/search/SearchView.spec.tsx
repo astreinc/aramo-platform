@@ -171,3 +171,120 @@ describe('SearchView — scope-gating + fan-out', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Search PR-2 — the résumé ?resume_q= wiring into the Talent section.
+// ---------------------------------------------------------------------------
+
+// A talent mock distinguishing the name ?q= call from the résumé ?resume_q=
+// call. `talentFail` lets a test fail ONE of the two talent calls.
+function mockTalentResume(opts: { talentFail?: 'name' | 'resume' } = {}) {
+  const json = (items: unknown) =>
+    new Response(JSON.stringify({ items }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  const fail = () => new Response('{}', { status: 500 });
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.includes('/v1/talent-records')) {
+      const isResume = url.includes('resume_q=');
+      if (isResume) {
+        if (opts.talentFail === 'resume') return fail();
+        // résumé matches: Jane (also a name match → dedupe + snippet upgrade)
+        // and Bob (résumé-only → snippet).
+        return json([
+          { id: 'tal-1', first_name: 'Jane', last_name: 'Doe', email1: null, current_employer: 'Acme', resume_snippet: 'prior <mark>Jane</mark> hit' },
+          { id: 'tal-2', first_name: 'Bob', last_name: 'Lee', email1: null, current_employer: null, resume_snippet: 'led the <mark>Kubernetes</mark> migration' },
+        ]);
+      }
+      if (opts.talentFail === 'name') return fail();
+      // name matches: Jane (dedupes with résumé) and Carol (name-only).
+      return json([
+        { id: 'tal-1', first_name: 'Jane', last_name: 'Doe', email1: null, current_employer: 'Acme' },
+        { id: 'tal-3', first_name: 'Carol', last_name: 'Ng', email1: null, current_employer: null },
+      ]);
+    }
+    if (url.includes('/v1/companies')) return json([{ id: 'co-1', name: 'Acme Corp' }]);
+    if (url.includes('/v1/requisitions')) return json([{ id: 'req-1', title: 'Senior Engineer' }]);
+    if (url.includes('/v1/contacts')) return json([{ id: 'ct-1', first_name: 'Sam', last_name: 'Smith', title: 'CTO' }]);
+    return new Response('{}', { status: 404 });
+  });
+}
+
+describe('SearchView — Search PR-2 résumé wiring', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('#1 fires TWO talent calls — ?q= AND ?resume_q= (NOT a combined ?q=&resume_q=)', async () => {
+    const spy = mockTalentResume();
+    render(
+      <MemoryRouter>
+        <SearchView sessionOverride={session(['talent:search'])} />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
+    await waitFor(() => expect(screen.getByText('Bob Lee')).toBeInTheDocument());
+    const paths = entitySearchPaths(spy);
+    expect(paths.some((p) => p === '/v1/talent-records?q=a')).toBe(true);
+    expect(paths.some((p) => p === '/v1/talent-records?resume_q=a')).toBe(true);
+    // The AND-zeroing combined call is NEVER fired.
+    expect(paths.some((p) => p.includes('q=a&resume_q=') || p.includes('resume_q=a&q='))).toBe(false);
+  });
+
+  it('#2 merge + dedupe — a talent matched by BOTH name and résumé appears once', async () => {
+    mockTalentResume();
+    render(
+      <MemoryRouter>
+        <SearchView sessionOverride={session(['talent:search'])} />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
+    await waitFor(() => expect(screen.getByText('Bob Lee')).toBeInTheDocument());
+    // Jane is in both the name and résumé results — rendered exactly once.
+    expect(screen.getAllByText('Jane Doe')).toHaveLength(1);
+  });
+
+  it('#3 snippet — a résumé-match renders its resume_snippet; a name-only match does not', async () => {
+    mockTalentResume();
+    render(
+      <MemoryRouter>
+        <SearchView sessionOverride={session(['talent:search'])} />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
+    await waitFor(() => expect(screen.getByText('Bob Lee')).toBeInTheDocument());
+    // Bob matched via résumé → snippet rendered, <mark> stripped to text.
+    expect(screen.getByText(/Matched in résumé: led the Kubernetes migration/)).toBeInTheDocument();
+    // Carol matched by name only → no snippet for her row.
+    expect(screen.getByText('Carol Ng')).toBeInTheDocument();
+    const snippets = screen.getAllByTestId('resume-snippet').map((n) => n.textContent ?? '');
+    expect(snippets.some((t) => t.includes('Carol'))).toBe(false);
+  });
+
+  it('#4 scope-gate — no talent:search → no Talent section, NEITHER talent call fired', async () => {
+    const spy = mockTalentResume();
+    render(
+      <MemoryRouter>
+        <SearchView sessionOverride={session(['company:search'])} />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
+    await waitFor(() => expect(screen.getByText('Acme Corp')).toBeInTheDocument());
+    expect(entitySearchPaths(spy).some((p) => p.includes('/v1/talent-records'))).toBe(false);
+    expect(screen.queryByRole('region', { name: 'Talent' })).toBeNull();
+  });
+
+  it('#5 allSettled isolation — the name call 500s, the Talent section still renders the résumé results', async () => {
+    mockTalentResume({ talentFail: 'name' });
+    render(
+      <MemoryRouter>
+        <SearchView sessionOverride={session(['talent:search'])} />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'a' } });
+    // The résumé call survived → Bob (résumé-only) renders; the section is NOT in error.
+    await waitFor(() => expect(screen.getByText('Bob Lee')).toBeInTheDocument());
+    expect(screen.getByText(/Matched in résumé: led the Kubernetes migration/)).toBeInTheDocument();
+    expect(screen.queryByText(/talent search could not be completed/i)).toBeNull();
+  });
+});

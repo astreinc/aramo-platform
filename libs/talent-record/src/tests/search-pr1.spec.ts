@@ -46,7 +46,7 @@ describe('Search PR-1 — talent ?q= scope-gate (controller)', () => {
     const { ctl } = makeController();
     const auth = makeAuthContext(['talent:read']); // read but NOT search
     await expect(
-      ctl.list(auth, undefined, 'jane', REQUEST_ID),
+      ctl.list(auth, undefined, 'jane', undefined, REQUEST_ID),
     ).rejects.toMatchObject({
       code: 'INSUFFICIENT_PERMISSIONS',
       statusCode: 403,
@@ -57,7 +57,7 @@ describe('Search PR-1 — talent ?q= scope-gate (controller)', () => {
     const { ctl } = makeController();
     const auth = makeAuthContext(['talent:read']);
     try {
-      await ctl.list(auth, undefined, 'jane', REQUEST_ID);
+      await ctl.list(auth, undefined, 'jane', undefined, REQUEST_ID);
       throw new Error('expected throw');
     } catch (e) {
       const err = e as AramoError;
@@ -71,7 +71,7 @@ describe('Search PR-1 — talent ?q= scope-gate (controller)', () => {
   it('q present WITH talent:search → repo.list called with the trimmed term', async () => {
     const { ctl, repo } = makeController();
     const auth = makeAuthContext(['talent:read', 'talent:search']);
-    await ctl.list(auth, undefined, '  jane  ', REQUEST_ID);
+    await ctl.list(auth, undefined, '  jane  ', undefined, REQUEST_ID);
     expect(repo.list).toHaveBeenCalledWith(
       expect.objectContaining({ tenant_id: TENANT_ID, q: 'jane' }),
     );
@@ -80,7 +80,7 @@ describe('Search PR-1 — talent ?q= scope-gate (controller)', () => {
   it('no q → repo.list called with q undefined (backward-compat; no gate)', async () => {
     const { ctl, repo } = makeController();
     const auth = makeAuthContext(['talent:read']); // no search scope needed
-    await ctl.list(auth, undefined, undefined, REQUEST_ID);
+    await ctl.list(auth, undefined, undefined, undefined, REQUEST_ID);
     expect(repo.list).toHaveBeenCalledWith(
       expect.objectContaining({ tenant_id: TENANT_ID, q: undefined }),
     );
@@ -89,7 +89,7 @@ describe('Search PR-1 — talent ?q= scope-gate (controller)', () => {
   it('whitespace-only q → treated as absent (no gate, q undefined)', async () => {
     const { ctl, repo } = makeController();
     const auth = makeAuthContext(['talent:read']);
-    await ctl.list(auth, undefined, '   ', REQUEST_ID);
+    await ctl.list(auth, undefined, '   ', undefined, REQUEST_ID);
     expect(repo.list).toHaveBeenCalledWith(
       expect.objectContaining({ q: undefined }),
     );

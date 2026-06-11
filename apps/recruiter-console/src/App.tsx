@@ -22,6 +22,7 @@ import { RequisitionEditView } from './requisitions/RequisitionEditView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
 import { SearchView } from './search/SearchView';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
+import { MyTasksView } from './task/MyTasksView';
 import { TalentCreateView } from './talent/TalentCreateView';
 import { TalentDetailView } from './talent/TalentDetailView';
 import { TalentEditView } from './talent/TalentEditView';
@@ -61,6 +62,14 @@ const RECRUITER_NAV: readonly ShellNavItem[] = [
     to: '/search',
     label: 'Search',
   },
+  // Tasks FE (Ruling 1) — "my tasks / upcoming". task:read is a SINGLE scope
+  // (unlike search's any-of-4), so a requireScope nav entry is correct: Shell
+  // shows it only to task:read holders.
+  {
+    to: '/tasks',
+    label: 'Tasks',
+    requireScope: 'task:read',
+  },
 ];
 
 export function App() {
@@ -86,6 +95,17 @@ export function App() {
                         SearchView does per-section scope-gating internally,
                         so no per-route requireScope here. */}
                     <Route path="search" element={<SearchView />} />
+                    <Route
+                      path="tasks"
+                      element={
+                        <RouteGuard
+                          requireScope="task:read"
+                          sessionStateOverride={state}
+                        >
+                          <MyTasksView />
+                        </RouteGuard>
+                      }
+                    />
                     <Route
                       path="requisitions"
                       element={

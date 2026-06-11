@@ -39,6 +39,11 @@ export interface TalentRecordView {
   readonly core_talent_id: string | null;
   readonly created_at: string;
   readonly updated_at: string;
+  // Search PR-2 — the résumé-content-match excerpt (ts_headline over the
+  // REDACTED résumé text). Present ONLY on items returned by the ?resume_q=
+  // content-search path; absent on every other read (the BE omits it).
+  // Optional so name-search / LIST responses mirror unchanged.
+  readonly resume_snippet?: string | null;
 }
 
 export interface TalentRecordListResponse {

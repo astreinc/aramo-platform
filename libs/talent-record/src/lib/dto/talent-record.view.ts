@@ -42,4 +42,11 @@ export interface TalentRecordView {
   core_talent_id: string | null;
   created_at: string;
   updated_at: string;
+
+  // Search PR-2 — the résumé-content-match excerpt (ts_headline over the
+  // REDACTED résumé text — D2 snippet, never an SSN). Present ONLY on items
+  // returned by the ?resume_q= content-search path; OMITTED (undefined) on
+  // every other read, so a normal list response is byte-identical to today
+  // (backward-compat). NOT a portal-forbidden numeric/ordinal field (R10).
+  resume_snippet?: string | null;
 }

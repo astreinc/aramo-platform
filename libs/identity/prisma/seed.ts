@@ -200,6 +200,12 @@ export const SEED_IDS = {
     'company:search': '01900000-0000-7000-8000-00000000009d',
     'requisition:search': '01900000-0000-7000-8000-00000000009e',
     'contact:search': '01900000-0000-7000-8000-00000000009f',
+    // Tasks backend — 2 scopes (the actionable/assignable to-do; the last
+    // core recruiter surface). Next free ids after the 0x9f search range:
+    // 0xa0 / 0xa1. Granted via TASK_SEED_BUNDLES (the 9 activity:create
+    // operational roles; range 0x81c+, append-don't-renumber).
+    'task:read': '01900000-0000-7000-8000-0000000000a0',
+    'task:write': '01900000-0000-7000-8000-0000000000a1',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1160,6 +1166,41 @@ const SEARCH_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Tasks backend — RoleScope grants. task:read + task:write to the 9
+// OPERATIONAL roles (the activity:create holders — the tier that creates
+// follow-ups). auditor / auditor_with_financials / finance (activity:read but
+// NOT create) are excluded from v1; read can widen later. candidate /
+// super_admin hold neither. 9 roles × 2 scopes = 18 rows.
+const TASK_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_owner', ['task:read', 'task:write']],
+  ['tenant_admin', ['task:read', 'task:write']],
+  ['account_manager', ['task:read', 'task:write']],
+  ['recruiting_manager', ['task:read', 'task:write']],
+  ['recruiter', ['task:read', 'task:write']],
+  ['lead_recruiter', ['task:read', 'task:write']],
+  ['back_office', ['task:read', 'task:write']],
+  ['delivery_manager', ['task:read', 'task:write']],
+  ['sourcer', ['task:read', 'task:write']],
+];
+
+// Deterministic RoleScope row ids for the 18 task-bundle grants. Disjoint
+// range starting at 0x81c (the next free after Search PR-1's 0x800..0x81b;
+// AUTHZ-1 0x400+, D5 0x500+, Reporting 0x600+, Engagement 0x700+, Search
+// 0x800+ all stay untouched — append-don't-renumber). The (role, scope)
+// iteration order pins the assignment.
+const TASK_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x81c;
+  for (const [role, scopes] of TASK_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -1372,6 +1413,8 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['company:search'], 'company:search', 'Quick-search companies by name (GET /v1/companies?q=). Trigram (ILIKE-contains) match ANDed with the D4b company visibility predicate — narrows within the visible set. Granted to the 9 company:read holders.');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:search'], 'requisition:search', 'Quick-search requisitions by title (GET /v1/requisitions?q=). Trigram (ILIKE-contains) match ANDed with the A3-OR-D4b requisition visibility predicate. Granted to the 10 requisition:read holders (the 9 + finance).');
   await upsertScope(prisma, SEED_IDS.scopes['contact:search'], 'contact:search', 'Quick-search contacts by name (GET /v1/contacts?q=). Trigram (ILIKE-contains) match over first_name/last_name ANDed with the D4b contact visibility predicate. Granted to the 9 contact:read holders.');
+  await upsertScope(prisma, SEED_IDS.scopes['task:read'], 'task:read', 'Read tasks (GET /v1/tasks my-tasks + by-entity, GET /v1/tasks/:id). Every read ANDs the linked-entity visibility (a task on a non-visible owner is absent). Granted to the 9 operational roles.');
+  await upsertScope(prisma, SEED_IDS.scopes['task:write'], 'task:write', 'Create / update / delete tasks (POST + PATCH + DELETE /v1/tasks). Create asserts the owner entity is visible (404 if not); the assignee must be an active within-tenant user. Granted to the 9 operational roles.');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -1484,6 +1527,26 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
       const rsId = SEARCH_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`Search-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // 7g. Tasks backend RoleScope assignments — 18 rows (9 operational roles ×
+  // task:read + task:write) per TASK_SEED_BUNDLES. UUID range 0x81c+
+  // (append-don't-renumber — the 0x400/0x500/0x600/0x700/0x800 ranges all
+  // stay untouched).
+  for (const [roleKey, scopeKeys] of TASK_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = TASK_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`Tasks-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

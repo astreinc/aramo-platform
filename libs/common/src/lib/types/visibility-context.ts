@@ -40,5 +40,11 @@ declare module 'express-serve-static-core' {
     resolveVisibility?: () => Promise<VisibilityContextShape>;
     resolveVisibleRequisitionIds?: () => Promise<ReadonlySet<string> | null>;
     resolveVisiblePipelineIds?: () => Promise<ReadonlySet<string> | null>;
+    // Tasks backend — the contact visible-id set (contacts whose company is
+    // visible: contact.company_id ∈ visible_client_ids). Completes the
+    // 4-owner_type set for the polymorphic Task visibility (the other 3 reuse
+    // resolveVisibility/resolveVisibleRequisitionIds + pool-open talent).
+    // null → see-all (the company:read:all short-circuit).
+    resolveVisibleContactIds?: () => Promise<ReadonlySet<string> | null>;
   }
 }

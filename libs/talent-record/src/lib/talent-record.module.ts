@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { createAramoLogger } from '@aramo/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
@@ -10,6 +11,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 import { TalentRecordController } from './talent-record.controller.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
 import { TalentLinkService } from './talent-link.service.js';
+import { ResumeTextService } from './resume-text/resume-text.service.js';
 
 // TalentRecordModule — PR-A4 Gate 5 ATS Batch 3.
 //
@@ -44,7 +46,21 @@ import { TalentLinkService } from './talent-link.service.js';
     TalentModule,
   ],
   controllers: [TalentRecordController],
-  providers: [PrismaService, TalentRecordRepository, TalentLinkService],
-  exports: [TalentRecordRepository, TalentLinkService],
+  providers: [
+    PrismaService,
+    TalentRecordRepository,
+    TalentLinkService,
+    // Search PR-2 — the résumé-text re-extract + persistence service. The
+    // enqueue side is consumed by AttachmentController (the commit seam);
+    // the drain side by the ResumeReindexProcessor (the separate worker
+    // module). ObjectStorageModule + ResumeParseModule (already imported)
+    // supply its deps; no new module edge.
+    ResumeTextService,
+    {
+      provide: 'ResumeTextServiceLogger',
+      useFactory: () => createAramoLogger(ResumeTextService.name),
+    },
+  ],
+  exports: [TalentRecordRepository, TalentLinkService, ResumeTextService],
 })
 export class TalentRecordModule {}
