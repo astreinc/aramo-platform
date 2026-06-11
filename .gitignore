@@ -51,3 +51,7 @@ pact/pacts/
 *.tfvars
 # Note: .terraform.lock.hcl files ARE committed (per Ruling 6).
 # Note: *.tfvars.example files ARE committed (per §4.6).
+
+# --- Local-dev only (never merge to main) ---
+.claude/scheduled_tasks.lock
+tools/local-run-link.sh
