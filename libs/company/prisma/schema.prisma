@@ -73,6 +73,15 @@ model Company {
   industry    String?
   // Address completion (the existing address block has no country).
   country String?
+
+  // Address-Autocomplete v1.0 — the place reference captured when the address
+  // block was populated via the backend-proxied provider typeahead. A place_id
+  // is provider-specific, so address_provider is stored alongside it to
+  // disambiguate the id on any future vendor switch. NO geo
+  // (latitude/longitude/verified_at) — that enrichment is deferred (carry).
+  // NULL for any company entered manually or before this feature.
+  address_provider_place_id String?
+  address_provider          String? // e.g. "google"
   // Firmographics.
   employee_count_band String? // free-text band label (e.g. "11-50")
   annual_revenue_band String?

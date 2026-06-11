@@ -8,6 +8,7 @@ import {
   type ComboboxItem,
 } from '@aramo/fe-foundation';
 
+import { AddressTypeahead } from './AddressTypeahead';
 import {
   createCompanyDepartment,
   deleteCompanyDepartment,
@@ -15,6 +16,7 @@ import {
   listContactsForCompany,
 } from './companies-api';
 import type {
+  AddressDetails,
   CompanyDepartmentView,
   CompanyView,
   ContactView,
@@ -60,6 +62,10 @@ interface MoreFormState {
   phone2: string;
   fax_number: string;
   notes: string;
+  // Address-Autocomplete v1.0 — provider place reference, set when the address
+  // block is populated via the typeahead; '' for a manually-typed address.
+  address_provider_place_id: string;
+  address_provider: string;
 }
 
 // Company-Fields v1.1 — the additive un-gated text fields (string form
@@ -212,6 +218,8 @@ function emptyState(): FormState {
     phone2: '',
     fax_number: '',
     notes: '',
+    address_provider_place_id: '',
+    address_provider: '',
     billing_contact_id: '',
     ...EMPTY_EXPANDED,
     ...EMPTY_COMMERCIAL,
@@ -233,6 +241,8 @@ function stateFromInitial(initial: CompanyView): FormState {
     phone2: initial.phone2 ?? '',
     fax_number: initial.fax_number ?? '',
     notes: initial.notes ?? '',
+    address_provider_place_id: initial.address_provider_place_id ?? '',
+    address_provider: initial.address_provider ?? '',
     billing_contact_id: initial.billing_contact_id ?? '',
     // Expanded un-gated.
     status: initial.status ?? 'active',
@@ -322,6 +332,14 @@ function buildCreateBody(
   }
   const tags = splitTags(state.tags);
   if (tags.length > 0) body['tags'] = tags;
+  // Address-Autocomplete v1.0 — stamp the provider place reference when the
+  // address came from the typeahead (manual entry leaves these blank).
+  if (state.address_provider_place_id.trim() !== '') {
+    body['address_provider_place_id'] = state.address_provider_place_id;
+    if (state.address_provider.trim() !== '') {
+      body['address_provider'] = state.address_provider;
+    }
+  }
   // Commercial: only the holder's payload carries these (the section is not
   // in the DOM for non-holders, and the server strips them regardless).
   if (canSeeCommercial) {
@@ -383,6 +401,18 @@ function buildPatchBody(
   const initTags = [...initial.tags];
   if (JSON.stringify(curTags) !== JSON.stringify(initTags)) {
     body['tags'] = curTags;
+  }
+
+  // Address-Autocomplete v1.0 — provider place reference diff (null clears).
+  const initPlaceId = initial.address_provider_place_id ?? '';
+  if (state.address_provider_place_id !== initPlaceId) {
+    body['address_provider_place_id'] =
+      state.address_provider_place_id === '' ? null : state.address_provider_place_id;
+  }
+  const initProvider = initial.address_provider ?? '';
+  if (state.address_provider !== initProvider) {
+    body['address_provider'] =
+      state.address_provider === '' ? null : state.address_provider;
   }
 
   // Commercial — only when the actor holds the scope (otherwise the section
@@ -471,6 +501,24 @@ export function CompanyForm(props: CompanyFormProps) {
     setState((s) => ({ ...s, [key]: next }));
   }
 
+  // Address-Autocomplete v1.0 — populate the (still-editable) address fields
+  // from a selected suggestion + stamp the provider place reference. A null
+  // field from the provider leaves the existing value untouched for country
+  // (the firmographics select); blank for the rest.
+  function populateFromAddress(details: AddressDetails): void {
+    setState((s) => ({
+      ...s,
+      address: details.address ?? '',
+      address2: details.address2 ?? '',
+      city: details.city ?? '',
+      state: details.state ?? '',
+      zip: details.zip ?? '',
+      country: details.country ?? s.country,
+      address_provider_place_id: details.place_id,
+      address_provider: details.provider,
+    }));
+  }
+
   const submitting = props.submitting === true;
   const submitError = props.submitError ?? null;
   const nameValid = state.name.trim() !== '';
@@ -545,6 +593,19 @@ export function CompanyForm(props: CompanyFormProps) {
         <summary>More fields</summary>
         <fieldset className="company-form__address" disabled={submitting}>
           <legend>Address</legend>
+          {/* Address-Autocomplete v1.0 — optional typeahead. Populates the
+              editable fields below; manual entry always works (the inputs
+              remain). No-op visually when the feature is disabled server-side
+              (the lookup returns empty). */}
+          <FormField
+            label="Find address"
+            helper="Search to auto-fill the fields below — you can still edit them."
+          >
+            <AddressTypeahead
+              onSelectAddress={populateFromAddress}
+              testId="address-typeahead"
+            />
+          </FormField>
           <FormField label="Address">
             <input
               type="text"

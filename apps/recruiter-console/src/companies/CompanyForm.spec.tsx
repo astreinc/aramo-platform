@@ -50,6 +50,9 @@ function makeCompany(overrides: Partial<CompanyView> = {}): CompanyView {
     general_email: null,
     last_activity_at: null,
     next_action_at: null,
+    // Address-Autocomplete v1.0 — provider place reference.
+    address_provider_place_id: null,
+    address_provider: null,
     ...overrides,
   };
 }
@@ -321,6 +324,111 @@ describe('CompanyForm — EDIT (PATCH omit-vs-null + billing_contact_id)', () =>
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     const body = onSubmit.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(body).toEqual({ is_hot: true });
+  });
+});
+
+describe('CompanyForm — Address-Autocomplete v1.0 (typeahead populate)', () => {
+  function installAddressFetch(): void {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : (input as Request).url;
+      if (url.includes('/v1/address-lookup/autocomplete')) {
+        return new Response(
+          JSON.stringify({
+            suggestions: [
+              {
+                place_id: 'gpid-1',
+                description: '1600 Amphitheatre Pkwy, Mountain View, CA',
+                primary_text: '1600 Amphitheatre Pkwy',
+                secondary_text: 'Mountain View, CA',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url.includes('/v1/address-lookup/details')) {
+        return new Response(
+          JSON.stringify({
+            details: {
+              place_id: 'gpid-1',
+              provider: 'google',
+              address: '1600 Amphitheatre Pkwy',
+              address2: null,
+              city: 'Mountain View',
+              state: 'CA',
+              zip: '94043',
+              country: 'US',
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', { status: 200 });
+    });
+  }
+
+  it('populates the editable address fields and stamps the place reference on CREATE', async () => {
+    installAddressFetch();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <CompanyForm
+        mode="create"
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        canSeeCommercial={false}
+      />,
+    );
+    fireEvent.change(await screen.findByLabelText('Name'), {
+      target: { value: 'NewCo' },
+    });
+    fireEvent.click(screen.getByText('More fields'));
+    // Drive the async typeahead → select the suggestion → details populate.
+    fireEvent.change(screen.getByTestId('address-typeahead'), {
+      target: { value: '1600 amph' },
+    });
+    fireEvent.click(await screen.findByTestId('address-typeahead-option-gpid-1'));
+    // The City field (editable) is filled from the resolved details.
+    await waitFor(() =>
+      expect((screen.getByLabelText('City') as HTMLInputElement).value).toBe('Mountain View'),
+    );
+    expect((screen.getByLabelText('Address') as HTMLInputElement).value).toBe(
+      '1600 Amphitheatre Pkwy',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const body = onSubmit.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(body['address']).toBe('1600 Amphitheatre Pkwy');
+    expect(body['city']).toBe('Mountain View');
+    expect(body['zip']).toBe('94043');
+    expect(body['address_provider_place_id']).toBe('gpid-1');
+    expect(body['address_provider']).toBe('google');
+  });
+
+  it('still allows manual address entry (no place reference stamped)', async () => {
+    installFetch();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <CompanyForm
+        mode="create"
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        canSeeCommercial={false}
+      />,
+    );
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'NewCo' } });
+    fireEvent.click(screen.getByText('More fields'));
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Austin' } });
+    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const body = onSubmit.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(body['city']).toBe('Austin');
+    expect(body).not.toHaveProperty('address_provider_place_id');
+    expect(body).not.toHaveProperty('address_provider');
   });
 });
 
