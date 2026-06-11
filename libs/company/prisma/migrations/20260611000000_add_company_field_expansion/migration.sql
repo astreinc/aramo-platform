@@ -14,6 +14,7 @@ ALTER TABLE "company"."Company"
     ADD COLUMN "status" TEXT NOT NULL DEFAULT 'active',
     ADD COLUMN "description" TEXT,
     ADD COLUMN "industry" TEXT,
+    ADD COLUMN "country" TEXT,
     ADD COLUMN "employee_count_band" TEXT,
     ADD COLUMN "annual_revenue_band" TEXT,
     ADD COLUMN "founded_year" INTEGER,
