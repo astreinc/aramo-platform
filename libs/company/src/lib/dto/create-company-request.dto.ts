@@ -42,6 +42,13 @@ export interface CreateCompanyRequestDto {
   tags?: string[];
   general_email?: string;
 
+  // Address-Autocomplete v1.0 — the provider place reference, set by the FE
+  // when the address block was populated via the typeahead. Optional; a
+  // manually-typed address omits them. address_provider disambiguates the
+  // provider-specific place_id.
+  address_provider_place_id?: string;
+  address_provider?: string;
+
   // Company-Fields v1.1 — GATED commercial fields. Accepted only when the
   // actor holds company:read_commercial; stripped at the repository write
   // boundary otherwise (see commercial-write-strip.ts). Decimals are

@@ -38,6 +38,11 @@ export interface UpdateCompanyRequestDto {
   tags?: string[];
   general_email?: string | null;
 
+  // Address-Autocomplete v1.0 — the provider place reference (partial-update;
+  // null clears). Set when an address is (re)populated via the typeahead.
+  address_provider_place_id?: string | null;
+  address_provider?: string | null;
+
   // Company-Fields v1.1 — GATED commercial fields (stripped for non-holders
   // at the repository write boundary — a non-holder edit never nulls an
   // existing commercial value).

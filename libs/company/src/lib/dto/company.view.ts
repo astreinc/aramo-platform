@@ -45,6 +45,11 @@ export interface CompanyView {
   last_activity_at: string | null;
   next_action_at: string | null;
 
+  // Address-Autocomplete v1.0 — the provider place reference (un-gated; always
+  // projected). NULL for manually-entered companies.
+  address_provider_place_id: string | null;
+  address_provider: string | null;
+
   // Company-Fields v1.1 — GATED commercial fields. Projected here, but the
   // apps/api field-masking interceptor DELETES these keys for actors lacking
   // company:read_commercial (key absent from JSON, not null). Decimals are

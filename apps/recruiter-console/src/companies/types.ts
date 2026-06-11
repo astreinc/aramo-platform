@@ -48,6 +48,10 @@ export interface CompanyView {
   readonly last_activity_at: string | null;
   readonly next_action_at: string | null;
 
+  // Address-Autocomplete v1.0 — provider place reference (un-gated).
+  readonly address_provider_place_id: string | null;
+  readonly address_provider: string | null;
+
   // Company-Fields v1.1 — GATED commercial fields. The apps/api field-masking
   // interceptor OMITS these keys (absent from JSON, not null) for actors
   // lacking company:read_commercial — hence optional here.
@@ -166,6 +170,12 @@ export interface CreateCompanyRequest {
   readonly tags?: readonly string[];
   readonly general_email?: string;
 
+  // Address-Autocomplete v1.0 — provider place reference, set by the FE when
+  // the address block was populated via the typeahead. Omitted for a
+  // manually-typed address.
+  readonly address_provider_place_id?: string;
+  readonly address_provider?: string;
+
   // Company-Fields v1.1 — gated commercial (sent only by holders; stripped
   // server-side for non-holders).
   readonly fee_model?: string;
@@ -219,4 +229,35 @@ export interface UpdateCompanyRequest {
   readonly payment_terms?: string | null;
   readonly credit_status?: string | null;
   readonly default_currency?: string | null;
+}
+
+// Address-Autocomplete v1.0 — hand-mirrored from
+// libs/company/src/lib/dto/address-suggestion.dto.ts + address-details.dto.ts.
+// Backend-proxied provider lookup (the key never reaches the browser). Flat
+// shapes — no drift spec (rule of three).
+export interface AddressSuggestion {
+  readonly place_id: string;
+  readonly description: string;
+  readonly primary_text: string;
+  readonly secondary_text: string;
+}
+
+export interface AddressAutocompleteResponse {
+  readonly suggestions: readonly AddressSuggestion[];
+}
+
+export interface AddressDetails {
+  readonly place_id: string;
+  readonly provider: string;
+  readonly address: string | null;
+  readonly address2: string | null;
+  readonly city: string | null;
+  readonly state: string | null;
+  readonly zip: string | null;
+  readonly country: string | null;
+}
+
+export interface AddressDetailsResponse {
+  // null when the feature is disabled or the provider failed (never-block).
+  readonly details: AddressDetails | null;
 }

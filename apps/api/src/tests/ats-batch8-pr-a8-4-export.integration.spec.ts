@@ -84,6 +84,10 @@ const COMPANY_FIELD_EXPANSION = resolve(
   ROOT,
   'libs/company/prisma/migrations/20260611000000_add_company_field_expansion/migration.sql',
 );
+const COMPANY_ADDRESS_PLACE_REF = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260611120000_add_company_address_place_ref/migration.sql',
+);
 const CONTACT_INIT = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql',
@@ -262,6 +266,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ENTITLEMENT_INIT,
         COMPANY_INIT,
         COMPANY_FIELD_EXPANSION,
+        COMPANY_ADDRESS_PLACE_REF,
         COMPANY_IMPORT_BACK_REF,
         CONTACT_INIT,
         CONTACT_IMPORT_BACK_REF,

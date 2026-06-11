@@ -4,6 +4,8 @@ import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
 import { IdentityModule } from '@aramo/identity';
 
+import { AddressLookupController } from './address-lookup.controller.js';
+import { AddressLookupService } from './address-lookup.service.js';
 import { CompanyController } from './company.controller.js';
 import { CompanyDepartmentRepository } from './company-department.repository.js';
 import { CompanyRepository } from './company.repository.js';
@@ -30,7 +32,12 @@ import { UserClientAssignmentRepository } from './user-client-assignment.reposit
 //     identity imports from libs/company — no cycle.
 @Module({
   imports: [AuthModule, AuthorizationModule, EntitlementModule, IdentityModule],
-  controllers: [CompanyController, D4aCompanyController],
+  controllers: [
+    CompanyController,
+    D4aCompanyController,
+    // Address-Autocomplete v1.0 — backend proxy for provider address lookup.
+    AddressLookupController,
+  ],
   providers: [
     PrismaService,
     CompanyRepository,
@@ -39,6 +46,8 @@ import { UserClientAssignmentRepository } from './user-client-assignment.reposit
     UserClientAssignmentRepository,
     TeamClientOwnershipRepository,
     D4aCompanyService,
+    // Address-Autocomplete v1.0 — provider selection + enablement gate.
+    AddressLookupService,
   ],
   exports: [
     CompanyRepository,

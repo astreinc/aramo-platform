@@ -61,6 +61,9 @@ interface CompanyRow {
   general_email: string | null;
   last_activity_at: Date | null;
   next_action_at: Date | null;
+  // Address-Autocomplete v1.0 — provider place reference.
+  address_provider_place_id: string | null;
+  address_provider: string | null;
   // Company-Fields v1.1 — gated commercial (Decimal cols as DecimalLike).
   fee_model: string | null;
   default_contract_markup_pct: DecimalLike | null;
@@ -113,6 +116,9 @@ function projectView(row: CompanyRow): CompanyView {
       row.last_activity_at !== null ? row.last_activity_at.toISOString() : null,
     next_action_at:
       row.next_action_at !== null ? row.next_action_at.toISOString() : null,
+    // Address-Autocomplete v1.0 — provider place reference (un-gated).
+    address_provider_place_id: row.address_provider_place_id,
+    address_provider: row.address_provider,
     // Company-Fields v1.1 — gated commercial (Decimal → string; interceptor
     // omits these keys for non-holders of company:read_commercial).
     fee_model: row.fee_model,
@@ -191,6 +197,10 @@ function additiveCreateData(input: CreateCompanyRequestDto) {
     default_perm_fee_pct: input.default_perm_fee_pct ?? null,
     payment_terms: input.payment_terms ?? null,
     credit_status: input.credit_status ?? null,
+    // Address-Autocomplete v1.0 — provider place reference (nullable; null when
+    // the address was typed manually).
+    address_provider_place_id: input.address_provider_place_id ?? null,
+    address_provider: input.address_provider ?? null,
     ...(input.status === undefined ? {} : { status: input.status }),
     ...(input.exclusivity === undefined ? {} : { exclusivity: input.exclusivity }),
     ...(input.tags === undefined ? {} : { tags: input.tags }),
@@ -453,6 +463,10 @@ export class CompanyRepository {
         ...(input.exclusivity === undefined ? {} : { exclusivity: input.exclusivity }),
         ...(input.tags === undefined ? {} : { tags: input.tags }),
         ...(input.general_email === undefined ? {} : { general_email: input.general_email }),
+        // Address-Autocomplete v1.0 — provider place reference (present-key-only;
+        // null clears).
+        ...(input.address_provider_place_id === undefined ? {} : { address_provider_place_id: input.address_provider_place_id }),
+        ...(input.address_provider === undefined ? {} : { address_provider: input.address_provider }),
         // Company-Fields v1.1 — gated commercial (absent after strip for
         // non-holders → not set → existing value preserved).
         ...(input.fee_model === undefined ? {} : { fee_model: input.fee_model }),
