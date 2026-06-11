@@ -12,10 +12,11 @@ import { SCOPE_KEY_FORMAT, SEED_SCOPE_KEYS } from '../lib/dto/index.js';
 // ARAMO_RUN_INTEGRATION=1 gated): 362 → 390.
 
 describe('Search PR-1 — scope catalog parity', () => {
-  it('SEED_SCOPE_KEYS has 72 keys (67 + 3 search + 2 task)', () => {
+  it('SEED_SCOPE_KEYS has 73 keys (67 + 3 search + 2 task + 1 commercial)', () => {
     // Search PR-1 took 67→70 (company/requisition/contact :search); the Tasks
-    // backend appended task:read + task:write (70→72).
-    expect(SEED_SCOPE_KEYS).toHaveLength(72);
+    // backend appended task:read + task:write (70→72); Company-Fields v1.1
+    // appended company:read_commercial (72→73).
+    expect(SEED_SCOPE_KEYS).toHaveLength(73);
   });
 
   it('the 3 NEW per-entity search scopes are in the catalog', () => {

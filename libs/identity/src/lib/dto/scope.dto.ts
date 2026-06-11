@@ -94,6 +94,15 @@ export const SEED_SCOPE_KEYS = [
   'org:manage',                 // recruiting_manager + tenant_admin + tenant_owner (Axis-1 management-edge mgmt; distinct from tenant:admin:user-manage which is user provisioning)
   'team:manage',                // account_manager + tenant_admin + tenant_owner (Axis-2 pod create/membership/ownership; AM is the pod operator per §5.4)
   'company:read:all',           // tenant_admin + tenant_owner ONLY (mirrors requisition:read:all; see-all reserved to top tier)
+  // Company-Fields v1.1 — field-gate scope for the Company COMMERCIAL layer
+  // (fee_model / markup / perm-fee / payment_terms / credit_status /
+  // currency). Mirrors the compensation field-masking pattern (apps/api
+  // interceptor omits the fields for non-holders; the company repo strips
+  // them on write). ONE scope governs read AND write (commercial fields are
+  // pre-fill defaults — no see-but-not-edit split). Granted to the
+  // agency-economics tier: tenant_admin + tenant_owner + account_manager
+  // (NOT base recruiter; NOT the delivery tier).
+  'company:read_commercial',    // tenant_admin + tenant_owner + account_manager (agency margin = client economics)
   // AUTHZ-2 — platform-tier scopes (a SEPARATE namespace from the 47 tenant
   // scopes above; Lead ruling 5 — the 3-scope minimum set). The bundle is
   // assigned only to the platform `super_admin` role; no tenant role holds

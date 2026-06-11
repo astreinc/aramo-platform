@@ -8,8 +8,14 @@ import {
   type ComboboxItem,
 } from '@aramo/fe-foundation';
 
-import { listContactsForCompany } from './companies-api';
+import {
+  createCompanyDepartment,
+  deleteCompanyDepartment,
+  listCompanyDepartments,
+  listContactsForCompany,
+} from './companies-api';
 import type {
+  CompanyDepartmentView,
   CompanyView,
   ContactView,
   CreateCompanyRequest,
@@ -56,10 +62,73 @@ interface MoreFormState {
   notes: string;
 }
 
-interface FormState extends InlineFormState, MoreFormState {
+// Company-Fields v1.1 — the additive un-gated text fields (string form
+// state; founded_year/tags handled specially below).
+interface ExpandedFormState {
+  status: string;
+  description: string;
+  industry: string;
+  country: string;
+  employee_count_band: string;
+  annual_revenue_band: string;
+  founded_year: string; // numeric input value; parsed on submit
+  ownership_type: string;
+  registration_number: string;
+  source: string;
+  client_tier: string;
+  supplier_status: string;
+  exclusivity: boolean;
+  tags: string; // comma-separated input; split on submit
+  general_email: string;
+}
+
+// Company-Fields v1.1 — the GATED commercial fields (rendered only when the
+// actor holds company:read_commercial; absent from the DOM otherwise so they
+// are never sent on save).
+interface CommercialFormState {
+  fee_model: string;
+  default_contract_markup_pct: string;
+  default_perm_fee_pct: string;
+  payment_terms: string;
+  credit_status: string;
+  default_currency: string;
+}
+
+interface FormState
+  extends InlineFormState,
+    MoreFormState,
+    ExpandedFormState,
+    CommercialFormState {
   // EDIT-only (ruling B). Empty string represents "no selection / null".
   billing_contact_id: string;
 }
+
+const EMPTY_EXPANDED: ExpandedFormState = {
+  status: 'active',
+  description: '',
+  industry: '',
+  country: '',
+  employee_count_band: '',
+  annual_revenue_band: '',
+  founded_year: '',
+  ownership_type: '',
+  registration_number: '',
+  source: '',
+  client_tier: '',
+  supplier_status: '',
+  exclusivity: false,
+  tags: '',
+  general_email: '',
+};
+
+const EMPTY_COMMERCIAL: CommercialFormState = {
+  fee_model: '',
+  default_contract_markup_pct: '',
+  default_perm_fee_pct: '',
+  payment_terms: '',
+  credit_status: '',
+  default_currency: '',
+};
 
 function emptyState(): FormState {
   return {
@@ -77,6 +146,8 @@ function emptyState(): FormState {
     fax_number: '',
     notes: '',
     billing_contact_id: '',
+    ...EMPTY_EXPANDED,
+    ...EMPTY_COMMERCIAL,
   };
 }
 
@@ -96,63 +167,166 @@ function stateFromInitial(initial: CompanyView): FormState {
     fax_number: initial.fax_number ?? '',
     notes: initial.notes ?? '',
     billing_contact_id: initial.billing_contact_id ?? '',
+    // Expanded un-gated.
+    status: initial.status ?? 'active',
+    description: initial.description ?? '',
+    industry: initial.industry ?? '',
+    country: initial.country ?? '',
+    employee_count_band: initial.employee_count_band ?? '',
+    annual_revenue_band: initial.annual_revenue_band ?? '',
+    founded_year: initial.founded_year !== null ? String(initial.founded_year) : '',
+    ownership_type: initial.ownership_type ?? '',
+    registration_number: initial.registration_number ?? '',
+    source: initial.source ?? '',
+    client_tier: initial.client_tier ?? '',
+    supplier_status: initial.supplier_status ?? '',
+    exclusivity: initial.exclusivity,
+    tags: initial.tags.join(', '),
+    general_email: initial.general_email ?? '',
+    // Commercial — absent from the view (omitted by the interceptor) for
+    // non-holders, so these read back '' until a holder loads the form.
+    fee_model: initial.fee_model ?? '',
+    default_contract_markup_pct: initial.default_contract_markup_pct ?? '',
+    default_perm_fee_pct: initial.default_perm_fee_pct ?? '',
+    payment_terms: initial.payment_terms ?? '',
+    credit_status: initial.credit_status ?? '',
+    default_currency: initial.default_currency ?? '',
   };
 }
 
-function buildCreateBody(state: FormState): CreateCompanyRequest {
+// The un-gated string fields sent verbatim when non-empty (create) /
+// diffed (patch). founded_year (number), exclusivity (boolean), tags (array)
+// are handled specially.
+const UNGATED_STRING_FIELDS = [
+  'phone1',
+  'url',
+  'key_technologies',
+  'address',
+  'address2',
+  'city',
+  'state',
+  'zip',
+  'phone2',
+  'fax_number',
+  'notes',
+  'description',
+  'industry',
+  'country',
+  'employee_count_band',
+  'annual_revenue_band',
+  'ownership_type',
+  'registration_number',
+  'source',
+  'client_tier',
+  'supplier_status',
+  'general_email',
+] as const;
+
+const COMMERCIAL_STRING_FIELDS = [
+  'fee_model',
+  'default_contract_markup_pct',
+  'default_perm_fee_pct',
+  'payment_terms',
+  'credit_status',
+  'default_currency',
+] as const;
+
+function buildCreateBody(
+  state: FormState,
+  canSeeCommercial: boolean,
+): CreateCompanyRequest {
   const body: Record<string, unknown> = {
     name: state.name.trim(),
   };
-  const stringFields: ReadonlyArray<keyof (InlineFormState & MoreFormState)> = [
-    'phone1',
-    'url',
-    'key_technologies',
-    'address',
-    'address2',
-    'city',
-    'state',
-    'zip',
-    'phone2',
-    'fax_number',
-    'notes',
-  ];
-  for (const k of stringFields) {
+  for (const k of UNGATED_STRING_FIELDS) {
     const v = state[k];
-    if (typeof v === 'string' && v !== '') body[k] = v;
+    if (typeof v === 'string' && v.trim() !== '') body[k] = v.trim();
+  }
+  // status defaults to 'active' (DB default) — send only when changed away
+  // from it, so a plain create stays a minimal body.
+  if (state.status.trim() !== '' && state.status !== 'active') {
+    body['status'] = state.status;
   }
   if (state.is_hot) body['is_hot'] = true;
+  if (state.exclusivity) body['exclusivity'] = true;
+  if (state.founded_year.trim() !== '') {
+    const n = Number.parseInt(state.founded_year, 10);
+    if (Number.isFinite(n)) body['founded_year'] = n;
+  }
+  const tags = splitTags(state.tags);
+  if (tags.length > 0) body['tags'] = tags;
+  // Commercial: only the holder's payload carries these (the section is not
+  // in the DOM for non-holders, and the server strips them regardless).
+  if (canSeeCommercial) {
+    for (const k of COMMERCIAL_STRING_FIELDS) {
+      const v = state[k];
+      if (typeof v === 'string' && v.trim() !== '') body[k] = v.trim();
+    }
+  }
   // Ruling B: billing_contact_id is NOT sent on CREATE — no picker
   // is rendered; the form state for it stays at '' on CREATE.
   return body as unknown as CreateCompanyRequest;
 }
 
+function splitTags(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((t) => t.trim())
+    .filter((t) => t !== '');
+}
+
 function buildPatchBody(
   state: FormState,
   initial: CompanyView,
+  canSeeCommercial: boolean,
 ): UpdateCompanyRequest {
   const body: Record<string, unknown> = {};
   if (state.name !== initial.name) body['name'] = state.name.trim();
   if (state.is_hot !== initial.is_hot) body['is_hot'] = state.is_hot;
+  if (state.exclusivity !== initial.exclusivity) {
+    body['exclusivity'] = state.exclusivity;
+  }
 
   const initialAsRecord = initial as unknown as Record<string, unknown>;
-  const nullableStrings: ReadonlyArray<keyof MoreFormState | keyof InlineFormState> = [
-    'phone1',
-    'url',
-    'key_technologies',
-    'address',
-    'address2',
-    'city',
-    'state',
-    'zip',
-    'phone2',
-    'fax_number',
-    'notes',
-  ];
-  for (const k of nullableStrings) {
+  // status is non-nullable (defaulted) — diff but never clear-to-null.
+  if (state.status !== (initial.status ?? 'active')) {
+    body['status'] = state.status;
+  }
+  for (const k of UNGATED_STRING_FIELDS) {
     const initVal = initialAsRecord[k] ?? '';
     const cur = state[k] as string;
     if (cur !== initVal) {
       body[k] = cur === '' ? null : cur;
+    }
+  }
+
+  // founded_year — numeric diff; empty clears to null.
+  const initFounded = initial.founded_year !== null ? String(initial.founded_year) : '';
+  if (state.founded_year.trim() !== initFounded) {
+    if (state.founded_year.trim() === '') {
+      body['founded_year'] = null;
+    } else {
+      const n = Number.parseInt(state.founded_year, 10);
+      if (Number.isFinite(n)) body['founded_year'] = n;
+    }
+  }
+
+  // tags — array diff (compare normalized).
+  const curTags = splitTags(state.tags);
+  const initTags = [...initial.tags];
+  if (JSON.stringify(curTags) !== JSON.stringify(initTags)) {
+    body['tags'] = curTags;
+  }
+
+  // Commercial — only when the actor holds the scope (otherwise the section
+  // is not rendered and these stay '' === initial '' → no diff anyway).
+  if (canSeeCommercial) {
+    for (const k of COMMERCIAL_STRING_FIELDS) {
+      const initVal = (initialAsRecord[k] as string | null | undefined) ?? '';
+      const cur = state[k] as string;
+      if (cur !== initVal) {
+        body[k] = cur === '' ? null : cur;
+      }
     }
   }
 
@@ -170,6 +344,10 @@ interface CommonProps {
   readonly onCancel: () => void;
   readonly submitting?: boolean;
   readonly submitError?: string | null;
+  // Company-Fields v1.1 — true iff the actor holds company:read_commercial.
+  // When false, the Commercial section is NOT rendered (absent from the DOM,
+  // so its fields are never collected or sent on save).
+  readonly canSeeCommercial: boolean;
 }
 
 interface CreateProps extends CommonProps {
@@ -235,9 +413,11 @@ export function CompanyForm(props: CompanyFormProps) {
     ev.preventDefault();
     if (!canSubmit) return;
     if (props.mode === 'create') {
-      await props.onSubmit(buildCreateBody(state));
+      await props.onSubmit(buildCreateBody(state, props.canSeeCommercial));
     } else {
-      await props.onSubmit(buildPatchBody(state, props.initial));
+      await props.onSubmit(
+        buildPatchBody(state, props.initial, props.canSeeCommercial),
+      );
     }
   }
 
@@ -371,6 +551,81 @@ export function CompanyForm(props: CompanyFormProps) {
             />
           </FormField>
         </fieldset>
+
+        {/* Company-Fields v1.1 — Profile / lifecycle. */}
+        <fieldset className="company-form__profile" disabled={submitting}>
+          <legend>Profile</legend>
+          <FormField label="Status" helper="prospect | active | inactive | do_not_contact">
+            <input
+              type="text"
+              value={state.status}
+              onChange={(ev) => set('status', ev.target.value)}
+              aria-label="Status"
+            />
+          </FormField>
+          <FormField label="Industry">
+            <input
+              type="text"
+              value={state.industry}
+              onChange={(ev) => set('industry', ev.target.value)}
+              aria-label="Industry"
+            />
+          </FormField>
+          <FormField label="Description">
+            <textarea
+              value={state.description}
+              onChange={(ev) => set('description', ev.target.value)}
+              aria-label="Description"
+              rows={2}
+            />
+          </FormField>
+        </fieldset>
+
+        {/* Company-Fields v1.1 — Firmographics. */}
+        <fieldset className="company-form__firmographics" disabled={submitting}>
+          <legend>Firmographics</legend>
+          <FormField label="Country">
+            <input type="text" value={state.country} onChange={(ev) => set('country', ev.target.value)} aria-label="Country" />
+          </FormField>
+          <FormField label="Employees (band)">
+            <input type="text" value={state.employee_count_band} onChange={(ev) => set('employee_count_band', ev.target.value)} aria-label="Employees (band)" />
+          </FormField>
+          <FormField label="Revenue (band)">
+            <input type="text" value={state.annual_revenue_band} onChange={(ev) => set('annual_revenue_band', ev.target.value)} aria-label="Revenue (band)" />
+          </FormField>
+          <FormField label="Founded year">
+            <input type="number" value={state.founded_year} onChange={(ev) => set('founded_year', ev.target.value)} aria-label="Founded year" />
+          </FormField>
+          <FormField label="Ownership type" helper="private | public | nonprofit | government">
+            <input type="text" value={state.ownership_type} onChange={(ev) => set('ownership_type', ev.target.value)} aria-label="Ownership type" />
+          </FormField>
+          <FormField label="Registration number">
+            <input type="text" value={state.registration_number} onChange={(ev) => set('registration_number', ev.target.value)} aria-label="Registration number" />
+          </FormField>
+          <FormField label="General email">
+            <input type="email" value={state.general_email} onChange={(ev) => set('general_email', ev.target.value)} aria-label="General email" />
+          </FormField>
+        </fieldset>
+
+        {/* Company-Fields v1.1 — Relationship. */}
+        <fieldset className="company-form__relationship" disabled={submitting}>
+          <legend>Relationship</legend>
+          <FormField label="Source">
+            <input type="text" value={state.source} onChange={(ev) => set('source', ev.target.value)} aria-label="Source" />
+          </FormField>
+          <FormField label="Client tier" helper="a | b | c">
+            <input type="text" value={state.client_tier} onChange={(ev) => set('client_tier', ev.target.value)} aria-label="Client tier" />
+          </FormField>
+          <FormField label="Supplier status" helper="preferred | approved | exclusive | open">
+            <input type="text" value={state.supplier_status} onChange={(ev) => set('supplier_status', ev.target.value)} aria-label="Supplier status" />
+          </FormField>
+          <FormField label="Tags" helper="Comma-separated.">
+            <input type="text" value={state.tags} onChange={(ev) => set('tags', ev.target.value)} aria-label="Tags" />
+          </FormField>
+          <FormField label="Exclusivity">
+            <Switch checked={state.exclusivity} onCheckedChange={(c) => set('exclusivity', c)} aria-label="Exclusivity" />
+          </FormField>
+        </fieldset>
       </details>
 
       {props.mode === 'edit' ? (
@@ -415,6 +670,40 @@ export function CompanyForm(props: CompanyFormProps) {
         </fieldset>
       ) : null}
 
+      {/* Company-Fields v1.1 — GATED commercial section. Rendered ONLY when
+          the actor holds company:read_commercial; absent from the DOM
+          otherwise, so its fields are never collected or sent on save. */}
+      {props.canSeeCommercial ? (
+        <fieldset className="company-form__commercial" disabled={submitting}>
+          <legend>Commercial defaults</legend>
+          <FormField label="Fee model" helper="contract | perm | both">
+            <input type="text" value={state.fee_model} onChange={(ev) => set('fee_model', ev.target.value)} aria-label="Fee model" />
+          </FormField>
+          <FormField label="Default contract markup %">
+            <input type="text" inputMode="decimal" value={state.default_contract_markup_pct} onChange={(ev) => set('default_contract_markup_pct', ev.target.value)} aria-label="Default contract markup %" />
+          </FormField>
+          <FormField label="Default perm fee %">
+            <input type="text" inputMode="decimal" value={state.default_perm_fee_pct} onChange={(ev) => set('default_perm_fee_pct', ev.target.value)} aria-label="Default perm fee %" />
+          </FormField>
+          <FormField label="Payment terms" helper="e.g. net_30">
+            <input type="text" value={state.payment_terms} onChange={(ev) => set('payment_terms', ev.target.value)} aria-label="Payment terms" />
+          </FormField>
+          <FormField label="Credit status">
+            <input type="text" value={state.credit_status} onChange={(ev) => set('credit_status', ev.target.value)} aria-label="Credit status" />
+          </FormField>
+          <FormField label="Default currency" helper="ISO-4217 (default USD)">
+            <input type="text" value={state.default_currency} onChange={(ev) => set('default_currency', ev.target.value)} aria-label="Default currency" />
+          </FormField>
+        </fieldset>
+      ) : null}
+
+      {/* Company-Fields v1.1 — departments editor (EDIT-only; the company
+          must exist first). The CompanyDepartment CRUD sub-routes already
+          existed — surfaced here. */}
+      {props.mode === 'edit' ? (
+        <DepartmentsEditor companyId={props.initial.id} disabled={submitting} />
+      ) : null}
+
       {submitError !== null ? (
         <InlineAlert variant="error">{submitError}</InlineAlert>
       ) : null}
@@ -437,5 +726,115 @@ export function CompanyForm(props: CompanyFormProps) {
         </Button>
       </div>
     </form>
+  );
+}
+
+// Company-Fields v1.1 — the departments editor. List + add + remove against
+// the existing /v1/companies/:id/departments CRUD. Self-contained (its own
+// fetch/mutate state); independent of the company-form submit. Rendered only
+// in EDIT mode (a company must exist before it can have departments).
+function DepartmentsEditor({
+  companyId,
+  disabled,
+}: {
+  readonly companyId: string;
+  readonly disabled: boolean;
+}) {
+  const [departments, setDepartments] = useState<readonly CompanyDepartmentView[]>([]);
+  const [newName, setNewName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function refresh(): void {
+    listCompanyDepartments(companyId)
+      .then((res) => setDepartments(res.items))
+      .catch(() => setError('Could not load departments.'));
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    listCompanyDepartments(companyId)
+      .then((res) => {
+        if (!cancelled) setDepartments(res.items);
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not load departments.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
+
+  async function onAdd(): Promise<void> {
+    const name = newName.trim();
+    if (name === '' || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await createCompanyDepartment(companyId, { name });
+      setNewName('');
+      refresh();
+    } catch {
+      setError('Could not add the department.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRemove(id: string): Promise<void> {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteCompanyDepartment(companyId, id);
+      refresh();
+    } catch {
+      setError('Could not remove the department.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <fieldset className="company-form__departments" disabled={disabled || busy}>
+      <legend>Departments</legend>
+      {departments.length === 0 ? (
+        <p className="company-form__departments-empty">No departments yet.</p>
+      ) : (
+        <ul className="company-form__departments-list">
+          {departments.map((d) => (
+            <li key={d.id}>
+              <span>{d.name}</span>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void onRemove(d.id)}
+                aria-label={`Remove ${d.name}`}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <FormField label="Add department">
+        <input
+          type="text"
+          value={newName}
+          onChange={(ev) => setNewName(ev.target.value)}
+          aria-label="Add department"
+        />
+      </FormField>
+      <Button
+        type="button"
+        variant="secondary"
+        onClick={() => void onAdd()}
+        disabled={newName.trim() === '' || busy}
+      >
+        Add department
+      </Button>
+      {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
+    </fieldset>
   );
 }

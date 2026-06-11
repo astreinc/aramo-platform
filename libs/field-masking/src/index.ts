@@ -49,3 +49,11 @@ export {
   visibleCompensationFields,
 } from './lib/compensation-field-map.js';
 export type { CompensationFieldKey } from './lib/compensation-field-map.js';
+
+// Company-Fields v1.1 — the company commercial mask (second consumer).
+export {
+  COMPANY_READ_COMMERCIAL,
+  COMPANY_COMMERCIAL_FIELD_KEYS,
+  omitMaskedCommercialFields,
+} from './lib/commercial-field-map.js';
+export type { CompanyCommercialFieldKey } from './lib/commercial-field-map.js';

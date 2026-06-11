@@ -465,6 +465,46 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(tenants[0]?.id).toBe(SEED_IDS.tenant);
     });
 
+    // Company-Fields v1.1 — §4 LOAD-BEARING gate 3 (grant-table). The
+    // company:read_commercial scope is granted to EXACTLY the agency-economics
+    // tier (tenant_admin + tenant_owner + account_manager) and to NO other
+    // role — base recruiter and the delivery tier (recruiting_manager /
+    // lead_recruiter / delivery_manager) are asserted ABSENT.
+    it('Company-Fields v1.1 — grant-table: company:read_commercial → {tenant_admin, tenant_owner, account_manager} only', async () => {
+      const rows = await prisma.roleScope.findMany({
+        where: { scope: { key: 'company:read_commercial' } },
+        include: { role: { select: { key: true } } },
+      });
+      const grantedRoles = rows.map((r) => r.role.key).sort();
+      expect(grantedRoles).toEqual([
+        'account_manager',
+        'tenant_admin',
+        'tenant_owner',
+      ]);
+      // Explicit absence assertions (the moat — no margin visibility creep).
+      for (const role of [
+        'recruiter',
+        'recruiting_manager',
+        'lead_recruiter',
+        'delivery_manager',
+        'sourcer',
+        'back_office',
+        'finance',
+        'auditor',
+        'candidate',
+      ]) {
+        expect(grantedRoles).not.toContain(role);
+      }
+    });
+
+    // Company-Fields v1.1 — §4 gate 5 (backward-compat) is proven elsewhere:
+    // the migration's `ADD COLUMN ... NOT NULL DEFAULT` clauses backfill
+    // existing rows (status='active', exclusivity=false, tags='{}') at the DB
+    // layer, and the CompanyForm specs prove the "existing-shaped
+    // create/update behaves identically" path (minimal CREATE body + empty
+    // no-change PATCH). The company table is not in this identity-only
+    // testcontainer, so no Company-row assertion is made here.
+
     it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (47 scopes post AUTHZ-D4a)', async () => {
       const scopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,

@@ -25,4 +25,34 @@ export interface CompanyView {
   entered_by_id: string | null;
   created_at: string;
   updated_at: string;
+
+  // Company-Fields v1.1 — un-gated additive fields (always projected).
+  status: string;
+  description: string | null;
+  industry: string | null;
+  country: string | null;
+  employee_count_band: string | null;
+  annual_revenue_band: string | null;
+  founded_year: number | null;
+  ownership_type: string | null;
+  registration_number: string | null;
+  source: string | null;
+  client_tier: string | null;
+  supplier_status: string | null;
+  exclusivity: boolean;
+  tags: string[];
+  general_email: string | null;
+  last_activity_at: string | null;
+  next_action_at: string | null;
+
+  // Company-Fields v1.1 — GATED commercial fields. Projected here, but the
+  // apps/api field-masking interceptor DELETES these keys for actors lacking
+  // company:read_commercial (key absent from JSON, not null). Decimals are
+  // serialized as strings (no float drift), per the compensation pattern.
+  fee_model: string | null;
+  default_contract_markup_pct: string | null;
+  default_perm_fee_pct: string | null;
+  payment_terms: string | null;
+  credit_status: string | null;
+  default_currency: string | null;
 }

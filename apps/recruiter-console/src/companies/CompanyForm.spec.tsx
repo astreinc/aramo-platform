@@ -31,6 +31,25 @@ function makeCompany(overrides: Partial<CompanyView> = {}): CompanyView {
     entered_by_id: null,
     created_at: '2026-06-01T00:00:00Z',
     updated_at: '2026-06-01T00:00:00Z',
+    // Company-Fields v1.1 — un-gated additive (default-equivalent values so a
+    // no-change EDIT still produces an empty PATCH).
+    status: 'active',
+    description: null,
+    industry: null,
+    country: null,
+    employee_count_band: null,
+    annual_revenue_band: null,
+    founded_year: null,
+    ownership_type: null,
+    registration_number: null,
+    source: null,
+    client_tier: null,
+    supplier_status: null,
+    exclusivity: false,
+    tags: [],
+    general_email: null,
+    last_activity_at: null,
+    next_action_at: null,
     ...overrides,
   };
 }
@@ -88,6 +107,13 @@ function installFetch(items: readonly ContactView[] = []): MockedRequest[] {
         headers: { 'Content-Type': 'application/json' },
       });
     }
+    // Company-Fields v1.1 — the EDIT-mode departments editor fetches this.
+    if (url.includes('/departments')) {
+      return new Response(JSON.stringify({ items: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     return new Response('{}', { status: 200 });
   });
   return calls;
@@ -105,6 +131,7 @@ describe('CompanyForm — CREATE (ruling B: billing_contact_id absent)', () => {
         mode="create"
         onSubmit={vi.fn().mockResolvedValue(undefined)}
         onCancel={vi.fn()}
+      canSeeCommercial={false}
       />,
     );
     await screen.findByLabelText('Name');
@@ -119,6 +146,7 @@ describe('CompanyForm — CREATE (ruling B: billing_contact_id absent)', () => {
         mode="create"
         onSubmit={vi.fn().mockResolvedValue(undefined)}
         onCancel={vi.fn()}
+      canSeeCommercial={false}
       />,
     );
     const submit = await screen.findByRole('button', { name: /create company/i });
@@ -135,6 +163,7 @@ describe('CompanyForm — CREATE (ruling B: billing_contact_id absent)', () => {
         mode="create"
         onSubmit={onSubmit}
         onCancel={vi.fn()}
+      canSeeCommercial={false}
       />,
     );
     fireEvent.change(await screen.findByLabelText('Name'), {
@@ -159,6 +188,7 @@ describe('CompanyForm — CREATE (ruling B: billing_contact_id absent)', () => {
         mode="create"
         onSubmit={vi.fn().mockResolvedValue(undefined)}
         onCancel={vi.fn()}
+      canSeeCommercial={false}
       />,
     );
     await screen.findByLabelText('Name');
@@ -189,6 +219,7 @@ describe('CompanyForm — EDIT (PATCH omit-vs-null + billing_contact_id)', () =>
         initial={initial}
         onSubmit={onSubmit}
         onCancel={vi.fn()}
+      canSeeCommercial={false}
       />,
     );
     const name = (await screen.findByLabelText('Name')) as HTMLInputElement;
@@ -212,6 +243,7 @@ describe('CompanyForm — EDIT (PATCH omit-vs-null + billing_contact_id)', () =>
         initial={initial}
         onSubmit={onSubmit}
         onCancel={vi.fn()}
+      canSeeCommercial={false}
       />,
     );
     fireEvent.change(await screen.findByLabelText('Website'), {
@@ -234,6 +266,7 @@ describe('CompanyForm — EDIT (PATCH omit-vs-null + billing_contact_id)', () =>
         initial={makeCompany()}
         onSubmit={vi.fn().mockResolvedValue(undefined)}
         onCancel={vi.fn()}
+      canSeeCommercial={false}
       />,
     );
     await waitFor(() => {
@@ -253,6 +286,7 @@ describe('CompanyForm — EDIT (PATCH omit-vs-null + billing_contact_id)', () =>
         initial={initial}
         onSubmit={onSubmit}
         onCancel={vi.fn()}
+      canSeeCommercial={false}
       />,
     );
     await waitFor(() => {
@@ -275,6 +309,7 @@ describe('CompanyForm — EDIT (PATCH omit-vs-null + billing_contact_id)', () =>
         initial={initial}
         onSubmit={onSubmit}
         onCancel={vi.fn()}
+      canSeeCommercial={false}
       />,
     );
     fireEvent.click(await screen.findByLabelText('Hot'));
@@ -294,6 +329,7 @@ describe('CompanyForm — cancel + submitting state', () => {
         mode="create"
         onSubmit={vi.fn().mockResolvedValue(undefined)}
         onCancel={onCancel}
+      canSeeCommercial={false}
       />,
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
@@ -308,10 +344,72 @@ describe('CompanyForm — cancel + submitting state', () => {
         onSubmit={vi.fn().mockResolvedValue(undefined)}
         onCancel={vi.fn()}
         submitError="The field &quot;name&quot; has an invalid value. Please check and try again."
+      canSeeCommercial={false}
       />,
     );
     expect(
       await screen.findByText(/the field "name" has an invalid value/i),
     ).toBeInTheDocument();
+  });
+});
+
+describe('CompanyForm — Company-Fields v1.1 commercial gating', () => {
+  it('does NOT render the commercial section when canSeeCommercial is false', async () => {
+    installFetch();
+    render(
+      <CompanyForm
+        mode="create"
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        onCancel={vi.fn()}
+        canSeeCommercial={false}
+      />,
+    );
+    await screen.findByLabelText('Name');
+    expect(screen.queryByText('Commercial defaults')).toBeNull();
+    expect(screen.queryByLabelText('Default contract markup %')).toBeNull();
+    expect(screen.queryByLabelText('Fee model')).toBeNull();
+  });
+
+  it('renders the commercial section AND includes its fields in the CREATE body when canSeeCommercial is true', async () => {
+    installFetch();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <CompanyForm
+        mode="create"
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        canSeeCommercial={true}
+      />,
+    );
+    fireEvent.change(await screen.findByLabelText('Name'), {
+      target: { value: 'NewCo' },
+    });
+    const markup = screen.getByLabelText('Default contract markup %');
+    fireEvent.change(markup, { target: { value: '25.00' } });
+    fireEvent.change(screen.getByLabelText('Fee model'), {
+      target: { value: 'contract' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const body = onSubmit.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(body['default_contract_markup_pct']).toBe('25.00');
+    expect(body['fee_model']).toBe('contract');
+  });
+
+  it('surfaces the un-gated Profile/Firmographics/Relationship fields (e.g. Industry, Country, Client tier)', async () => {
+    installFetch();
+    render(
+      <CompanyForm
+        mode="create"
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        onCancel={vi.fn()}
+        canSeeCommercial={false}
+      />,
+    );
+    await screen.findByLabelText('Name');
+    fireEvent.click(screen.getByText('More fields'));
+    expect(screen.getByLabelText('Industry')).toBeInTheDocument();
+    expect(screen.getByLabelText('Country')).toBeInTheDocument();
+    expect(screen.getByLabelText('Client tier')).toBeInTheDocument();
   });
 });
