@@ -75,6 +75,10 @@ const COMPANY_INIT = resolve(
   ROOT,
   'libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql',
 );
+const COMPANY_FIELD_EXPANSION = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260611000000_add_company_field_expansion/migration.sql',
+);
 const COMPANY_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/company/prisma/migrations/20260603140100_add_import_batch_id_to_company/migration.sql',
@@ -185,6 +189,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         IDENTITY_D4A,
         ENTITLEMENT_INIT,
         COMPANY_INIT,
+        COMPANY_FIELD_EXPANSION,
         COMPANY_IMPORT_BACK_REF,
         COMPANY_D4A,
       ]) {

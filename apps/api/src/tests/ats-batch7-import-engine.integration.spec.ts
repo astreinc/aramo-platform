@@ -61,6 +61,10 @@ const COMPANY_INIT = resolve(
   ROOT,
   'libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql',
 );
+const COMPANY_FIELD_EXPANSION = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260611000000_add_company_field_expansion/migration.sql',
+);
 const CONTACT_INIT = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql',
@@ -108,6 +112,7 @@ const MIGRATIONS = [
   ENTITLEMENT_INIT,
   TALENT_INIT,
   COMPANY_INIT,
+  COMPANY_FIELD_EXPANSION,
   CONTACT_INIT,
   REQUISITION_INIT,
   TALENT_RECORD_INIT,
