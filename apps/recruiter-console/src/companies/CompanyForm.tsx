@@ -103,11 +103,78 @@ interface FormState
   billing_contact_id: string;
 }
 
+// Company-Fields v1.1 — dropdown option sets (FE constraint only; the BE
+// columns stay String-not-enum). Machine value stored; label shown. Values
+// match the directive vocabularies EXACTLY.
+interface Opt {
+  readonly value: string;
+  readonly label: string;
+}
+const STATUS_OPTS: readonly Opt[] = [
+  { value: 'prospect', label: 'Prospect' },
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'do_not_contact', label: 'Do Not Contact' },
+];
+const OWNERSHIP_OPTS: readonly Opt[] = [
+  { value: 'private', label: 'Private' },
+  { value: 'public', label: 'Public' },
+  { value: 'nonprofit', label: 'Nonprofit' },
+  { value: 'government', label: 'Government' },
+];
+const FEE_MODEL_OPTS: readonly Opt[] = [
+  { value: 'contract', label: 'Contract' },
+  { value: 'perm', label: 'Perm' },
+  { value: 'both', label: 'Both' },
+];
+const SUPPLIER_STATUS_OPTS: readonly Opt[] = [
+  { value: 'preferred', label: 'Preferred' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'exclusive', label: 'Exclusive' },
+  { value: 'open', label: 'Open' },
+];
+const PAYMENT_TERMS_OPTS: readonly Opt[] = [
+  { value: 'net_15', label: 'Net 15' },
+  { value: 'net_30', label: 'Net 30' },
+  { value: 'net_45', label: 'Net 45' },
+  { value: 'net_60', label: 'Net 60' },
+];
+// Store ISO alpha-2; display full name. Short set, US default, includes India.
+const COUNTRY_OPTS: readonly Opt[] = [
+  { value: 'US', label: 'United States' },
+  { value: 'CA', label: 'Canada' },
+  { value: 'MX', label: 'Mexico' },
+  { value: 'GB', label: 'United Kingdom' },
+  { value: 'IE', label: 'Ireland' },
+  { value: 'IN', label: 'India' },
+  { value: 'AU', label: 'Australia' },
+  { value: 'DE', label: 'Germany' },
+  { value: 'FR', label: 'France' },
+  { value: 'NL', label: 'Netherlands' },
+  { value: 'SG', label: 'Singapore' },
+  { value: 'AE', label: 'United Arab Emirates' },
+  { value: 'PH', label: 'Philippines' },
+  { value: 'NZ', label: 'New Zealand' },
+];
+
+function renderOptions(opts: readonly Opt[], includeBlank: boolean) {
+  return (
+    <>
+      {includeBlank ? <option value="">—</option> : null}
+      {opts.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </>
+  );
+}
+
 const EMPTY_EXPANDED: ExpandedFormState = {
   status: 'active',
   description: '',
   industry: '',
-  country: '',
+  country: 'US', // US default (directive)
   employee_count_band: '',
   annual_revenue_band: '',
   founded_year: '',
@@ -127,7 +194,7 @@ const EMPTY_COMMERCIAL: CommercialFormState = {
   default_perm_fee_pct: '',
   payment_terms: '',
   credit_status: '',
-  default_currency: '',
+  default_currency: 'USD', // locked to USD for now (directive)
 };
 
 function emptyState(): FormState {
@@ -190,7 +257,7 @@ function stateFromInitial(initial: CompanyView): FormState {
     default_perm_fee_pct: initial.default_perm_fee_pct ?? '',
     payment_terms: initial.payment_terms ?? '',
     credit_status: initial.credit_status ?? '',
-    default_currency: initial.default_currency ?? '',
+    default_currency: initial.default_currency ?? 'USD', // locked field
   };
 }
 
@@ -555,13 +622,14 @@ export function CompanyForm(props: CompanyFormProps) {
         {/* Company-Fields v1.1 — Profile / lifecycle. */}
         <fieldset className="company-form__profile" disabled={submitting}>
           <legend>Profile</legend>
-          <FormField label="Status" helper="prospect | active | inactive | do_not_contact">
-            <input
-              type="text"
+          <FormField label="Status">
+            <select
               value={state.status}
               onChange={(ev) => set('status', ev.target.value)}
               aria-label="Status"
-            />
+            >
+              {renderOptions(STATUS_OPTS, false)}
+            </select>
           </FormField>
           <FormField label="Industry">
             <input
@@ -585,7 +653,9 @@ export function CompanyForm(props: CompanyFormProps) {
         <fieldset className="company-form__firmographics" disabled={submitting}>
           <legend>Firmographics</legend>
           <FormField label="Country">
-            <input type="text" value={state.country} onChange={(ev) => set('country', ev.target.value)} aria-label="Country" />
+            <select value={state.country} onChange={(ev) => set('country', ev.target.value)} aria-label="Country">
+              {renderOptions(COUNTRY_OPTS, true)}
+            </select>
           </FormField>
           <FormField label="Employees (band)">
             <input type="text" value={state.employee_count_band} onChange={(ev) => set('employee_count_band', ev.target.value)} aria-label="Employees (band)" />
@@ -596,8 +666,10 @@ export function CompanyForm(props: CompanyFormProps) {
           <FormField label="Founded year">
             <input type="number" value={state.founded_year} onChange={(ev) => set('founded_year', ev.target.value)} aria-label="Founded year" />
           </FormField>
-          <FormField label="Ownership type" helper="private | public | nonprofit | government">
-            <input type="text" value={state.ownership_type} onChange={(ev) => set('ownership_type', ev.target.value)} aria-label="Ownership type" />
+          <FormField label="Ownership type">
+            <select value={state.ownership_type} onChange={(ev) => set('ownership_type', ev.target.value)} aria-label="Ownership type">
+              {renderOptions(OWNERSHIP_OPTS, true)}
+            </select>
           </FormField>
           <FormField label="Registration number">
             <input type="text" value={state.registration_number} onChange={(ev) => set('registration_number', ev.target.value)} aria-label="Registration number" />
@@ -616,8 +688,10 @@ export function CompanyForm(props: CompanyFormProps) {
           <FormField label="Client tier" helper="a | b | c">
             <input type="text" value={state.client_tier} onChange={(ev) => set('client_tier', ev.target.value)} aria-label="Client tier" />
           </FormField>
-          <FormField label="Supplier status" helper="preferred | approved | exclusive | open">
-            <input type="text" value={state.supplier_status} onChange={(ev) => set('supplier_status', ev.target.value)} aria-label="Supplier status" />
+          <FormField label="Supplier status">
+            <select value={state.supplier_status} onChange={(ev) => set('supplier_status', ev.target.value)} aria-label="Supplier status">
+              {renderOptions(SUPPLIER_STATUS_OPTS, true)}
+            </select>
           </FormField>
           <FormField label="Tags" helper="Comma-separated.">
             <input type="text" value={state.tags} onChange={(ev) => set('tags', ev.target.value)} aria-label="Tags" />
@@ -676,8 +750,10 @@ export function CompanyForm(props: CompanyFormProps) {
       {props.canSeeCommercial ? (
         <fieldset className="company-form__commercial" disabled={submitting}>
           <legend>Commercial defaults</legend>
-          <FormField label="Fee model" helper="contract | perm | both">
-            <input type="text" value={state.fee_model} onChange={(ev) => set('fee_model', ev.target.value)} aria-label="Fee model" />
+          <FormField label="Fee model">
+            <select value={state.fee_model} onChange={(ev) => set('fee_model', ev.target.value)} aria-label="Fee model">
+              {renderOptions(FEE_MODEL_OPTS, true)}
+            </select>
           </FormField>
           <FormField label="Default contract markup %">
             <input type="text" inputMode="decimal" value={state.default_contract_markup_pct} onChange={(ev) => set('default_contract_markup_pct', ev.target.value)} aria-label="Default contract markup %" />
@@ -685,14 +761,22 @@ export function CompanyForm(props: CompanyFormProps) {
           <FormField label="Default perm fee %">
             <input type="text" inputMode="decimal" value={state.default_perm_fee_pct} onChange={(ev) => set('default_perm_fee_pct', ev.target.value)} aria-label="Default perm fee %" />
           </FormField>
-          <FormField label="Payment terms" helper="e.g. net_30">
-            <input type="text" value={state.payment_terms} onChange={(ev) => set('payment_terms', ev.target.value)} aria-label="Payment terms" />
+          <FormField label="Payment terms">
+            <select value={state.payment_terms} onChange={(ev) => set('payment_terms', ev.target.value)} aria-label="Payment terms">
+              {renderOptions(PAYMENT_TERMS_OPTS, true)}
+            </select>
           </FormField>
           <FormField label="Credit status">
             <input type="text" value={state.credit_status} onChange={(ev) => set('credit_status', ev.target.value)} aria-label="Credit status" />
           </FormField>
-          <FormField label="Default currency" helper="ISO-4217 (default USD)">
-            <input type="text" value={state.default_currency} onChange={(ev) => set('default_currency', ev.target.value)} aria-label="Default currency" />
+          <FormField label="Default currency" helper="USD only for now.">
+            <input
+              type="text"
+              value="USD"
+              aria-label="Default currency"
+              disabled
+              readOnly
+            />
           </FormField>
         </fieldset>
       ) : null}

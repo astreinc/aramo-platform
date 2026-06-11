@@ -175,10 +175,14 @@ describe('CompanyForm — CREATE (ruling B: billing_contact_id absent)', () => {
     fireEvent.click(screen.getByRole('button', { name: /create company/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     const body = onSubmit.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(body).toEqual({ name: 'NewCo', phone1: '555-1234' });
+    // Company-Fields v1.1 — country defaults to 'US' (the directive default),
+    // so it rides along on every create; status stays at its DB default
+    // ('active') so it is NOT sent.
+    expect(body).toEqual({ name: 'NewCo', phone1: '555-1234', country: 'US' });
     expect(body).not.toHaveProperty('billing_contact_id');
     expect(body).not.toHaveProperty('address');
     expect(body).not.toHaveProperty('is_hot');
+    expect(body).not.toHaveProperty('status');
   });
 
   it('More fields disclosure is hidden by default and reveals additional inputs when opened', async () => {

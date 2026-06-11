@@ -130,6 +130,42 @@ function projectView(row: CompanyRow): CompanyView {
   };
 }
 
+// Company-Fields v1.1 — boundary coercion for the NEW typed columns. The
+// deepest write boundary all callers traverse (create / createForImport /
+// update), so a blank form field, a stray "" from any client, or a numeric
+// string never reaches Prisma as an un-parseable value:
+//   - Decimal cols (default_contract_markup_pct / default_perm_fee_pct):
+//     "" → null  (Prisma: "Failed to parse empty string. Expected decimal").
+//   - Int (founded_year): "" → null; numeric string → number; else → null.
+//   - DateTime? rollups (last_activity_at / next_action_at): "" → null.
+//   - String[] (tags): a non-array (e.g. "") → undefined (omitted, never sent
+//     as a bare string — Prisma rejects String for a String[] column).
+// String columns ("" is a valid TEXT value) are left untouched. Idempotent.
+export function normalizeNewTypedFields<T>(input: T): T {
+  const out: Record<string, unknown> = { ...(input as Record<string, unknown>) };
+  for (const k of [
+    'default_contract_markup_pct',
+    'default_perm_fee_pct',
+    'last_activity_at',
+    'next_action_at',
+  ]) {
+    if (out[k] === '') out[k] = null;
+  }
+  if ('founded_year' in out) {
+    const v = out['founded_year'];
+    if (v === '') {
+      out['founded_year'] = null;
+    } else if (typeof v === 'string') {
+      const n = Number.parseInt(v, 10);
+      out['founded_year'] = Number.isFinite(n) ? n : null;
+    }
+  }
+  if ('tags' in out && !Array.isArray(out['tags'])) {
+    out['tags'] = undefined;
+  }
+  return out as T;
+}
+
 // Company-Fields v1.1 — the new-column CREATE block (un-gated + commercial).
 // Nullable columns are written as null when omitted; the DEFAULTed columns
 // (status / exclusivity / tags / default_currency) are OMITTED when not
@@ -179,7 +215,9 @@ export class CompanyRepository {
     scopes: readonly string[];
   }): Promise<CompanyView> {
     const { tenant_id, entered_by_id } = args;
-    const input = stripUnscopedCommercialFields(args.input, args.scopes);
+    const input = normalizeNewTypedFields(
+      stripUnscopedCommercialFields(args.input, args.scopes),
+    );
     const row = await this.prisma.company.create({
       data: {
         tenant_id,
@@ -216,7 +254,8 @@ export class CompanyRepository {
     import_batch_id: string;
     input: CreateCompanyRequestDto;
   }): Promise<CompanyView> {
-    const { tenant_id, entered_by_id, import_batch_id, input } = args;
+    const { tenant_id, entered_by_id, import_batch_id } = args;
+    const input = normalizeNewTypedFields(args.input);
     const row = await this.prisma.company.create({
       data: {
         tenant_id,
@@ -377,7 +416,9 @@ export class CompanyRepository {
         { requestId: args.requestId, details: { id: args.id } },
       );
     }
-    const input = stripUnscopedCommercialFields(args.input, args.scopes);
+    const input = normalizeNewTypedFields(
+      stripUnscopedCommercialFields(args.input, args.scopes),
+    );
     const row = await this.prisma.company.update({
       where: { id: args.id },
       data: {
