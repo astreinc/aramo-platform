@@ -65,6 +65,46 @@ model Company {
   notes            String?
   is_hot           Boolean @default(false)
 
+  // Company-Fields v1.1 — UN-GATED additive columns (all optional/defaulted;
+  // String-not-enum per R5; closed-vocab values documented inline).
+  // Identity / lifecycle.
+  status      String  @default("active") // prospect|active|inactive|do_not_contact
+  description String?
+  industry    String?
+  // Address completion (the existing address block has no country).
+  country String?
+  // Firmographics.
+  employee_count_band String? // free-text band label (e.g. "11-50")
+  annual_revenue_band String?
+  founded_year        Int?
+  ownership_type      String? // private|public|nonprofit|government
+  registration_number String?
+  // Relationship.
+  source          String?
+  client_tier     String?  // a|b|c
+  supplier_status String?  // preferred|approved|exclusive|open
+  exclusivity     Boolean  @default(false)
+  tags            String[] @default([])
+  // Contact completion.
+  general_email String?
+  // Activity rollup — populated by other surfaces; nullable now, wired later.
+  last_activity_at DateTime? @db.Timestamptz
+  next_action_at   DateTime? @db.Timestamptz
+
+  // Company-Fields v1.1 — GATED (🔒) COMMERCIAL columns. Visibility +
+  // writability gated by the `company:read_commercial` scope (read: omitted
+  // from CompanyView by the apps/api field-masking interceptor for
+  // non-holders; write: stripped at the repository boundary for non-holders).
+  // R3: markup is canonical; margin is DERIVED for display, never stored.
+  // Perm fee is a SEPARATE field (not a markup). These are DEFAULTS that
+  // pre-fill a requisition/placement — NOT the source of truth for revenue.
+  fee_model                   String?  // contract|perm|both
+  default_contract_markup_pct Decimal? @db.Decimal(6, 2)
+  default_perm_fee_pct        Decimal? @db.Decimal(5, 2)
+  payment_terms               String?  // e.g. net_30
+  credit_status               String?
+  default_currency            String?  @default("USD") // ISO-4217
+
   // Cross-schema logical references (UUID-only, no FK per §7.3).
   billing_contact_id String? @db.Uuid
   owner_id           String? @db.Uuid
@@ -95,6 +135,8 @@ model Company {
   @@index([tenant_id, site_id])
   @@index([tenant_id, is_hot])
   @@index([tenant_id, import_batch_id])
+  // Company-Fields v1.1 — status is the new primary list filter (R5).
+  @@index([tenant_id, status])
 
   @@schema("company")
 }

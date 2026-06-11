@@ -2,9 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AramoError, type VisibilityContextShape } from '@aramo/common';
 
 import type { CompanyView } from './dto/company.view.js';
+import { stripUnscopedCommercialFields } from './commercial-write-strip.js';
 import type { CreateCompanyRequestDto } from './dto/create-company-request.dto.js';
 import type { UpdateCompanyRequestDto } from './dto/update-company-request.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
+
+// Decimal columns (default_contract_markup_pct / default_perm_fee_pct) come
+// back from Prisma as a Decimal instance; projected to string on the wire
+// (no float drift — the compensation pattern). Typed structurally so the
+// repo needn't import the generated Prisma.Decimal.
+type DecimalLike = { toString(): string };
 
 // CompanyRepository — write + read surface for Company. Reference-CRUD
 // per Ruling 7 (no metering, no event log, no state machine).
@@ -36,6 +43,31 @@ interface CompanyRow {
   entered_by_id: string | null;
   created_at: Date;
   updated_at: Date;
+  // Company-Fields v1.1 — un-gated.
+  status: string;
+  description: string | null;
+  industry: string | null;
+  country: string | null;
+  employee_count_band: string | null;
+  annual_revenue_band: string | null;
+  founded_year: number | null;
+  ownership_type: string | null;
+  registration_number: string | null;
+  source: string | null;
+  client_tier: string | null;
+  supplier_status: string | null;
+  exclusivity: boolean;
+  tags: string[];
+  general_email: string | null;
+  last_activity_at: Date | null;
+  next_action_at: Date | null;
+  // Company-Fields v1.1 — gated commercial (Decimal cols as DecimalLike).
+  fee_model: string | null;
+  default_contract_markup_pct: DecimalLike | null;
+  default_perm_fee_pct: DecimalLike | null;
+  payment_terms: string | null;
+  credit_status: string | null;
+  default_currency: string | null;
 }
 
 function projectView(row: CompanyRow): CompanyView {
@@ -61,6 +93,110 @@ function projectView(row: CompanyRow): CompanyView {
     entered_by_id: row.entered_by_id,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
+    // Company-Fields v1.1 — un-gated.
+    status: row.status,
+    description: row.description,
+    industry: row.industry,
+    country: row.country,
+    employee_count_band: row.employee_count_band,
+    annual_revenue_band: row.annual_revenue_band,
+    founded_year: row.founded_year,
+    ownership_type: row.ownership_type,
+    registration_number: row.registration_number,
+    source: row.source,
+    client_tier: row.client_tier,
+    supplier_status: row.supplier_status,
+    exclusivity: row.exclusivity,
+    tags: row.tags,
+    general_email: row.general_email,
+    last_activity_at:
+      row.last_activity_at !== null ? row.last_activity_at.toISOString() : null,
+    next_action_at:
+      row.next_action_at !== null ? row.next_action_at.toISOString() : null,
+    // Company-Fields v1.1 — gated commercial (Decimal → string; interceptor
+    // omits these keys for non-holders of company:read_commercial).
+    fee_model: row.fee_model,
+    default_contract_markup_pct:
+      row.default_contract_markup_pct !== null
+        ? row.default_contract_markup_pct.toString()
+        : null,
+    default_perm_fee_pct:
+      row.default_perm_fee_pct !== null
+        ? row.default_perm_fee_pct.toString()
+        : null,
+    payment_terms: row.payment_terms,
+    credit_status: row.credit_status,
+    default_currency: row.default_currency,
+  };
+}
+
+// Company-Fields v1.1 — boundary coercion for the NEW typed columns. The
+// deepest write boundary all callers traverse (create / createForImport /
+// update), so a blank form field, a stray "" from any client, or a numeric
+// string never reaches Prisma as an un-parseable value:
+//   - Decimal cols (default_contract_markup_pct / default_perm_fee_pct):
+//     "" → null  (Prisma: "Failed to parse empty string. Expected decimal").
+//   - Int (founded_year): "" → null; numeric string → number; else → null.
+//   - DateTime? rollups (last_activity_at / next_action_at): "" → null.
+//   - String[] (tags): a non-array (e.g. "") → undefined (omitted, never sent
+//     as a bare string — Prisma rejects String for a String[] column).
+// String columns ("" is a valid TEXT value) are left untouched. Idempotent.
+export function normalizeNewTypedFields<T>(input: T): T {
+  const out: Record<string, unknown> = { ...(input as Record<string, unknown>) };
+  for (const k of [
+    'default_contract_markup_pct',
+    'default_perm_fee_pct',
+    'last_activity_at',
+    'next_action_at',
+  ]) {
+    if (out[k] === '') out[k] = null;
+  }
+  if ('founded_year' in out) {
+    const v = out['founded_year'];
+    if (v === '') {
+      out['founded_year'] = null;
+    } else if (typeof v === 'string') {
+      const n = Number.parseInt(v, 10);
+      out['founded_year'] = Number.isFinite(n) ? n : null;
+    }
+  }
+  if ('tags' in out && !Array.isArray(out['tags'])) {
+    out['tags'] = undefined;
+  }
+  return out as T;
+}
+
+// Company-Fields v1.1 — the new-column CREATE block (un-gated + commercial).
+// Nullable columns are written as null when omitted; the DEFAULTed columns
+// (status / exclusivity / tags / default_currency) are OMITTED when not
+// supplied so the DB @default applies. Commercial fields arrive here already
+// stripped for non-holders (the repo strips before calling this), so a
+// non-holder's create writes null/default for them.
+function additiveCreateData(input: CreateCompanyRequestDto) {
+  return {
+    description: input.description ?? null,
+    industry: input.industry ?? null,
+    country: input.country ?? null,
+    employee_count_band: input.employee_count_band ?? null,
+    annual_revenue_band: input.annual_revenue_band ?? null,
+    founded_year: input.founded_year ?? null,
+    ownership_type: input.ownership_type ?? null,
+    registration_number: input.registration_number ?? null,
+    source: input.source ?? null,
+    client_tier: input.client_tier ?? null,
+    supplier_status: input.supplier_status ?? null,
+    general_email: input.general_email ?? null,
+    fee_model: input.fee_model ?? null,
+    default_contract_markup_pct: input.default_contract_markup_pct ?? null,
+    default_perm_fee_pct: input.default_perm_fee_pct ?? null,
+    payment_terms: input.payment_terms ?? null,
+    credit_status: input.credit_status ?? null,
+    ...(input.status === undefined ? {} : { status: input.status }),
+    ...(input.exclusivity === undefined ? {} : { exclusivity: input.exclusivity }),
+    ...(input.tags === undefined ? {} : { tags: input.tags }),
+    ...(input.default_currency === undefined
+      ? {}
+      : { default_currency: input.default_currency }),
   };
 }
 
@@ -74,8 +210,14 @@ export class CompanyRepository {
     tenant_id: string;
     entered_by_id: string;
     input: CreateCompanyRequestDto;
+    // Company-Fields v1.1 — the actor's scopes; commercial fields are
+    // stripped from the input when company:read_commercial is absent.
+    scopes: readonly string[];
   }): Promise<CompanyView> {
-    const { tenant_id, entered_by_id, input } = args;
+    const { tenant_id, entered_by_id } = args;
+    const input = normalizeNewTypedFields(
+      stripUnscopedCommercialFields(args.input, args.scopes),
+    );
     const row = await this.prisma.company.create({
       data: {
         tenant_id,
@@ -96,6 +238,7 @@ export class CompanyRepository {
         billing_contact_id: input.billing_contact_id ?? null,
         owner_id: input.owner_id ?? entered_by_id,
         entered_by_id,
+        ...additiveCreateData(input),
       },
     });
     return projectView(row as CompanyRow);
@@ -111,7 +254,8 @@ export class CompanyRepository {
     import_batch_id: string;
     input: CreateCompanyRequestDto;
   }): Promise<CompanyView> {
-    const { tenant_id, entered_by_id, import_batch_id, input } = args;
+    const { tenant_id, entered_by_id, import_batch_id } = args;
+    const input = normalizeNewTypedFields(args.input);
     const row = await this.prisma.company.create({
       data: {
         tenant_id,
@@ -133,6 +277,11 @@ export class CompanyRepository {
         owner_id: input.owner_id ?? entered_by_id,
         entered_by_id,
         import_batch_id,
+        // Company-Fields v1.1 — un-gated additive columns. The import field-
+        // mapping does not surface the commercial fields (a separate mapping
+        // concern), so additiveCreateData writes null/default for them here —
+        // no commercial bypass of the gate via import.
+        ...additiveCreateData(input),
       },
     });
     return projectView(row as CompanyRow);
@@ -249,6 +398,11 @@ export class CompanyRepository {
     id: string;
     input: UpdateCompanyRequestDto;
     requestId: string;
+    // Company-Fields v1.1 — actor scopes; commercial fields stripped from the
+    // input when company:read_commercial is absent. Because update writes
+    // present-keys-only, a stripped (now-absent) commercial field is NOT set,
+    // so an existing commercial value is preserved (never nulled).
+    scopes: readonly string[];
   }): Promise<CompanyView> {
     const existing = await this.findById({
       tenant_id: args.tenant_id,
@@ -262,24 +416,51 @@ export class CompanyRepository {
         { requestId: args.requestId, details: { id: args.id } },
       );
     }
+    const input = normalizeNewTypedFields(
+      stripUnscopedCommercialFields(args.input, args.scopes),
+    );
     const row = await this.prisma.company.update({
       where: { id: args.id },
       data: {
-        ...(args.input.name === undefined ? {} : { name: args.input.name }),
-        ...(args.input.address === undefined ? {} : { address: args.input.address }),
-        ...(args.input.address2 === undefined ? {} : { address2: args.input.address2 }),
-        ...(args.input.city === undefined ? {} : { city: args.input.city }),
-        ...(args.input.state === undefined ? {} : { state: args.input.state }),
-        ...(args.input.zip === undefined ? {} : { zip: args.input.zip }),
-        ...(args.input.phone1 === undefined ? {} : { phone1: args.input.phone1 }),
-        ...(args.input.phone2 === undefined ? {} : { phone2: args.input.phone2 }),
-        ...(args.input.fax_number === undefined ? {} : { fax_number: args.input.fax_number }),
-        ...(args.input.url === undefined ? {} : { url: args.input.url }),
-        ...(args.input.key_technologies === undefined ? {} : { key_technologies: args.input.key_technologies }),
-        ...(args.input.notes === undefined ? {} : { notes: args.input.notes }),
-        ...(args.input.is_hot === undefined ? {} : { is_hot: args.input.is_hot }),
-        ...(args.input.billing_contact_id === undefined ? {} : { billing_contact_id: args.input.billing_contact_id }),
-        ...(args.input.owner_id === undefined ? {} : { owner_id: args.input.owner_id }),
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.address === undefined ? {} : { address: input.address }),
+        ...(input.address2 === undefined ? {} : { address2: input.address2 }),
+        ...(input.city === undefined ? {} : { city: input.city }),
+        ...(input.state === undefined ? {} : { state: input.state }),
+        ...(input.zip === undefined ? {} : { zip: input.zip }),
+        ...(input.phone1 === undefined ? {} : { phone1: input.phone1 }),
+        ...(input.phone2 === undefined ? {} : { phone2: input.phone2 }),
+        ...(input.fax_number === undefined ? {} : { fax_number: input.fax_number }),
+        ...(input.url === undefined ? {} : { url: input.url }),
+        ...(input.key_technologies === undefined ? {} : { key_technologies: input.key_technologies }),
+        ...(input.notes === undefined ? {} : { notes: input.notes }),
+        ...(input.is_hot === undefined ? {} : { is_hot: input.is_hot }),
+        ...(input.billing_contact_id === undefined ? {} : { billing_contact_id: input.billing_contact_id }),
+        ...(input.owner_id === undefined ? {} : { owner_id: input.owner_id }),
+        // Company-Fields v1.1 — un-gated additive (present-key-only; null clears).
+        ...(input.status === undefined ? {} : { status: input.status }),
+        ...(input.description === undefined ? {} : { description: input.description }),
+        ...(input.industry === undefined ? {} : { industry: input.industry }),
+        ...(input.country === undefined ? {} : { country: input.country }),
+        ...(input.employee_count_band === undefined ? {} : { employee_count_band: input.employee_count_band }),
+        ...(input.annual_revenue_band === undefined ? {} : { annual_revenue_band: input.annual_revenue_band }),
+        ...(input.founded_year === undefined ? {} : { founded_year: input.founded_year }),
+        ...(input.ownership_type === undefined ? {} : { ownership_type: input.ownership_type }),
+        ...(input.registration_number === undefined ? {} : { registration_number: input.registration_number }),
+        ...(input.source === undefined ? {} : { source: input.source }),
+        ...(input.client_tier === undefined ? {} : { client_tier: input.client_tier }),
+        ...(input.supplier_status === undefined ? {} : { supplier_status: input.supplier_status }),
+        ...(input.exclusivity === undefined ? {} : { exclusivity: input.exclusivity }),
+        ...(input.tags === undefined ? {} : { tags: input.tags }),
+        ...(input.general_email === undefined ? {} : { general_email: input.general_email }),
+        // Company-Fields v1.1 — gated commercial (absent after strip for
+        // non-holders → not set → existing value preserved).
+        ...(input.fee_model === undefined ? {} : { fee_model: input.fee_model }),
+        ...(input.default_contract_markup_pct === undefined ? {} : { default_contract_markup_pct: input.default_contract_markup_pct }),
+        ...(input.default_perm_fee_pct === undefined ? {} : { default_perm_fee_pct: input.default_perm_fee_pct }),
+        ...(input.payment_terms === undefined ? {} : { payment_terms: input.payment_terms }),
+        ...(input.credit_status === undefined ? {} : { credit_status: input.credit_status }),
+        ...(input.default_currency === undefined ? {} : { default_currency: input.default_currency }),
       },
     });
     return projectView(row as CompanyRow);

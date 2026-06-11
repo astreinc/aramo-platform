@@ -7,7 +7,9 @@ import {
 import type { AuthContextType } from '@aramo/auth';
 import {
   COMPENSATION_FIELD_KEYS,
+  COMPANY_COMMERCIAL_FIELD_KEYS,
   omitMaskedCompensationFields,
+  omitMaskedCommercialFields,
 } from '@aramo/field-masking';
 import type { Request } from 'express';
 import type { Observable } from 'rxjs';
@@ -82,6 +84,15 @@ function walkAndMask(value: unknown, scopes: readonly string[]): unknown {
   const isCompBearing = COMPENSATION_FIELD_KEYS.some((k) => k in obj);
   if (isCompBearing) {
     return omitMaskedCompensationFields(obj, scopes);
+  }
+
+  // Company-Fields v1.1 — the same shape-driven mask for company commercial
+  // fields, gated by company:read_commercial. Disjoint from comp-bearing
+  // objects in practice (CompanyView never carries pay_rate_* etc.), so a
+  // parallel branch is correct; same omit-by-DELETE contract.
+  const isCommercialBearing = COMPANY_COMMERCIAL_FIELD_KEYS.some((k) => k in obj);
+  if (isCommercialBearing) {
+    return omitMaskedCommercialFields(obj, scopes);
   }
 
   // Recurse into properties — list shapes / nested compounds.

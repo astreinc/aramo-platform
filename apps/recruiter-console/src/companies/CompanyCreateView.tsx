@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { InlineAlert, PageHeader } from '@aramo/fe-foundation';
+import {
+  InlineAlert,
+  PageHeader,
+  hasScope,
+  useSession,
+} from '@aramo/fe-foundation';
 
 import { CompanyForm } from './CompanyForm';
 import { createCompany } from './companies-api';
@@ -13,6 +18,10 @@ import type { CompanyView, CreateCompanyRequest } from './types';
 
 export function CompanyCreateView() {
   const navigate = useNavigate();
+  const sessionState = useSession();
+  const canSeeCommercial =
+    sessionState.status === 'authenticated' &&
+    hasScope(sessionState.session, 'company:read_commercial');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -53,6 +62,7 @@ export function CompanyCreateView() {
         onCancel={onCancel}
         submitting={submitting}
         submitError={submitError}
+        canSeeCommercial={canSeeCommercial}
       />
     </section>
   );

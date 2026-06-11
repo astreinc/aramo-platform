@@ -28,10 +28,61 @@ export interface CompanyView {
   readonly entered_by_id: string | null;
   readonly created_at: string;
   readonly updated_at: string;
+
+  // Company-Fields v1.1 — un-gated additive fields.
+  readonly status: string;
+  readonly description: string | null;
+  readonly industry: string | null;
+  readonly country: string | null;
+  readonly employee_count_band: string | null;
+  readonly annual_revenue_band: string | null;
+  readonly founded_year: number | null;
+  readonly ownership_type: string | null;
+  readonly registration_number: string | null;
+  readonly source: string | null;
+  readonly client_tier: string | null;
+  readonly supplier_status: string | null;
+  readonly exclusivity: boolean;
+  readonly tags: readonly string[];
+  readonly general_email: string | null;
+  readonly last_activity_at: string | null;
+  readonly next_action_at: string | null;
+
+  // Company-Fields v1.1 — GATED commercial fields. The apps/api field-masking
+  // interceptor OMITS these keys (absent from JSON, not null) for actors
+  // lacking company:read_commercial — hence optional here.
+  readonly fee_model?: string | null;
+  readonly default_contract_markup_pct?: string | null;
+  readonly default_perm_fee_pct?: string | null;
+  readonly payment_terms?: string | null;
+  readonly credit_status?: string | null;
+  readonly default_currency?: string | null;
 }
 
 export interface CompanyListResponse {
   readonly items: readonly CompanyView[];
+}
+
+// Company-Fields v1.1 — hand-mirrored from
+// libs/company/src/lib/dto/company-department.view.ts. The CompanyDepartment
+// model + CRUD sub-routes already existed; this PR surfaces them in the form
+// (FE-only — no schema change).
+export interface CompanyDepartmentView {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly site_id: string | null;
+  readonly company_id: string;
+  readonly name: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+export interface CompanyDepartmentListResponse {
+  readonly items: readonly CompanyDepartmentView[];
+}
+
+export interface CreateCompanyDepartmentRequest {
+  readonly name: string;
 }
 
 // Hand-mirrored from libs/contact/src/lib/dto/contact.view.ts. Source-
@@ -97,6 +148,32 @@ export interface CreateCompanyRequest {
   readonly key_technologies?: string;
   readonly notes?: string;
   readonly is_hot?: boolean;
+
+  // Company-Fields v1.1 — un-gated additive fields.
+  readonly status?: string;
+  readonly description?: string;
+  readonly industry?: string;
+  readonly country?: string;
+  readonly employee_count_band?: string;
+  readonly annual_revenue_band?: string;
+  readonly founded_year?: number;
+  readonly ownership_type?: string;
+  readonly registration_number?: string;
+  readonly source?: string;
+  readonly client_tier?: string;
+  readonly supplier_status?: string;
+  readonly exclusivity?: boolean;
+  readonly tags?: readonly string[];
+  readonly general_email?: string;
+
+  // Company-Fields v1.1 — gated commercial (sent only by holders; stripped
+  // server-side for non-holders).
+  readonly fee_model?: string;
+  readonly default_contract_markup_pct?: string;
+  readonly default_perm_fee_pct?: string;
+  readonly payment_terms?: string;
+  readonly credit_status?: string;
+  readonly default_currency?: string;
 }
 
 // PATCH semantics: omit=unchanged; null=clear. Same shape as R4's
@@ -117,4 +194,29 @@ export interface UpdateCompanyRequest {
   readonly notes?: string | null;
   readonly is_hot?: boolean;
   readonly billing_contact_id?: string | null;
+
+  // Company-Fields v1.1 — un-gated additive (omit=unchanged, null=clear).
+  readonly status?: string;
+  readonly description?: string | null;
+  readonly industry?: string | null;
+  readonly country?: string | null;
+  readonly employee_count_band?: string | null;
+  readonly annual_revenue_band?: string | null;
+  readonly founded_year?: number | null;
+  readonly ownership_type?: string | null;
+  readonly registration_number?: string | null;
+  readonly source?: string | null;
+  readonly client_tier?: string | null;
+  readonly supplier_status?: string | null;
+  readonly exclusivity?: boolean;
+  readonly tags?: readonly string[];
+  readonly general_email?: string | null;
+
+  // Company-Fields v1.1 — gated commercial (stripped server-side for non-holders).
+  readonly fee_model?: string | null;
+  readonly default_contract_markup_pct?: string | null;
+  readonly default_perm_fee_pct?: string | null;
+  readonly payment_terms?: string | null;
+  readonly credit_status?: string | null;
+  readonly default_currency?: string | null;
 }

@@ -1,9 +1,12 @@
 import { apiClient } from '@aramo/fe-foundation';
 
 import type {
+  CompanyDepartmentListResponse,
+  CompanyDepartmentView,
   CompanyListResponse,
   CompanyView,
   ContactListResponse,
+  CreateCompanyDepartmentRequest,
   CreateCompanyRequest,
   UpdateCompanyRequest,
 } from './types';
@@ -57,5 +60,35 @@ export async function updateCompany(
   return apiClient.patch<CompanyView>(
     `/v1/companies/${encodeURIComponent(id)}`,
     body,
+  );
+}
+
+// Company-Fields v1.1 — the CompanyDepartment CRUD sub-routes (already built
+// on the BE; surfaced in the EDIT form here). list (company:read) / create
+// (company:create) / delete (company:delete) under /v1/companies/:id/departments.
+export async function listCompanyDepartments(
+  companyId: string,
+): Promise<CompanyDepartmentListResponse> {
+  return apiClient.get<CompanyDepartmentListResponse>(
+    `/v1/companies/${encodeURIComponent(companyId)}/departments`,
+  );
+}
+
+export async function createCompanyDepartment(
+  companyId: string,
+  body: CreateCompanyDepartmentRequest,
+): Promise<CompanyDepartmentView> {
+  return apiClient.post<CompanyDepartmentView>(
+    `/v1/companies/${encodeURIComponent(companyId)}/departments`,
+    body,
+  );
+}
+
+export async function deleteCompanyDepartment(
+  companyId: string,
+  departmentId: string,
+): Promise<void> {
+  return apiClient.delete<void>(
+    `/v1/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}`,
   );
 }

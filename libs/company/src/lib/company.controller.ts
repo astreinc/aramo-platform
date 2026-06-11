@@ -144,6 +144,8 @@ export class CompanyController {
       tenant_id: authContext.tenant_id,
       entered_by_id: authContext.sub,
       input: body,
+      // Company-Fields v1.1 — commercial fields stripped for non-holders.
+      scopes: authContext.scopes,
     });
   }
 
@@ -162,6 +164,8 @@ export class CompanyController {
       id,
       input: body,
       requestId,
+      // Company-Fields v1.1 — commercial fields stripped for non-holders.
+      scopes: authContext.scopes,
     });
   }
 

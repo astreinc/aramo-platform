@@ -206,6 +206,11 @@ export const SEED_IDS = {
     // operational roles; range 0x81c+, append-don't-renumber).
     'task:read': '01900000-0000-7000-8000-0000000000a0',
     'task:write': '01900000-0000-7000-8000-0000000000a1',
+    // Company-Fields v1.1 — the Company COMMERCIAL field-gate scope. Next
+    // free id after the 0xa1 task range: 0xa2. Granted via
+    // COMMERCIAL_SEED_BUNDLES (tenant_admin + tenant_owner + account_manager;
+    // RoleScope range 0x830+, append-don't-renumber).
+    'company:read_commercial': '01900000-0000-7000-8000-0000000000a2',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1201,6 +1206,34 @@ const TASK_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Company-Fields v1.1 — company:read_commercial grant bundle. The agency-
+// economics tier ONLY (Amendment v1.1 F3): tenant_admin + tenant_owner +
+// account_manager. NOT base recruiter, NOT the delivery tier
+// (recruiting_manager / lead_recruiter / delivery_manager) — margin
+// visibility there would be scope creep (the seed.spec grant-table proof
+// asserts the 3 present + those absent).
+const COMMERCIAL_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_admin', ['company:read_commercial']],
+  ['tenant_owner', ['company:read_commercial']],
+  ['account_manager', ['company:read_commercial']],
+];
+
+// Deterministic RoleScope row ids for the 3 commercial grants. Disjoint
+// range 0x830+ (the next clear range after Tasks' 0x81c..0x82d; all prior
+// ranges untouched — append-don't-renumber).
+const COMMERCIAL_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x830;
+  for (const [role, scopes] of COMMERCIAL_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -1415,6 +1448,14 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['contact:search'], 'contact:search', 'Quick-search contacts by name (GET /v1/contacts?q=). Trigram (ILIKE-contains) match over first_name/last_name ANDed with the D4b contact visibility predicate. Granted to the 9 contact:read holders.');
   await upsertScope(prisma, SEED_IDS.scopes['task:read'], 'task:read', 'Read tasks (GET /v1/tasks my-tasks + by-entity, GET /v1/tasks/:id). Every read ANDs the linked-entity visibility (a task on a non-visible owner is absent). Granted to the 9 operational roles.');
   await upsertScope(prisma, SEED_IDS.scopes['task:write'], 'task:write', 'Create / update / delete tasks (POST + PATCH + DELETE /v1/tasks). Create asserts the owner entity is visible (404 if not); the assignee must be an active within-tenant user. Granted to the 9 operational roles.');
+  // Company-Fields v1.1 — the Company COMMERCIAL field-gate scope. Read:
+  // apps/api field-masking interceptor omits the 6 commercial fields
+  // (fee_model / markup / perm-fee / payment_terms / credit_status /
+  // currency) for non-holders. Write: the company repository strips those
+  // fields for non-holders (never persisted; an existing value is never
+  // nulled). ONE scope governs read AND write. Granted to tenant_admin +
+  // tenant_owner + account_manager.
+  await upsertScope(prisma, SEED_IDS.scopes['company:read_commercial'], 'company:read_commercial', 'View + edit the Company COMMERCIAL fields (fee_model, default_contract_markup_pct, default_perm_fee_pct, payment_terms, credit_status, default_currency). Field-gate (not a route gate): non-holders see the company but with the commercial fields omitted, and any commercial field they submit on save is stripped. Granted to the agency-economics tier (tenant_admin + tenant_owner + account_manager).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -1547,6 +1588,26 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
       const rsId = TASK_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`Tasks-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // 7h. Company-Fields v1.1 — company:read_commercial RoleScope assignments —
+  // 3 rows (tenant_admin + tenant_owner + account_manager) per
+  // COMMERCIAL_SEED_BUNDLES. UUID range 0x830+ (append-don't-renumber). Base
+  // recruiter + the delivery tier are deliberately NOT granted (F3).
+  for (const [roleKey, scopeKeys] of COMMERCIAL_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = COMMERCIAL_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`Commercial-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({
