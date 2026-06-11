@@ -50,21 +50,49 @@ export function AddressTypeahead({
   // one (last-write-wins by request order).
   const requestSeq = useRef(0);
 
+  // Address-Autocomplete v1.1 — Google Autocomplete SESSION TOKEN. One UUID is
+  // generated lazily when a session begins (first ≥3-char query), threaded
+  // through every autocomplete call AND the matching details call, then CLEARED
+  // on selection (details resolved) or abandon (field cleared) so the next
+  // input opens a NEW session. This makes Google bill one session per lookup
+  // instead of per keystroke.
+  const sessionTokenRef = useRef<string | null>(null);
+  // When a selection programmatically rewrites the query to the chosen
+  // description, the [query] effect must NOT fire a fresh (billed) autocomplete
+  // or open a new session for that text.
+  const suppressNextSearchRef = useRef(false);
+
+  function ensureSessionToken(): string {
+    if (sessionTokenRef.current === null) {
+      sessionTokenRef.current = crypto.randomUUID();
+    }
+    return sessionTokenRef.current;
+  }
+
   // Debounced autocomplete. Below the min length we clear + close without a
   // call (saves the paid request and matches the BE's min-3 guard).
   useEffect(() => {
+    if (suppressNextSearchRef.current) {
+      // This query change came from a selection, not the user — skip the
+      // search and the session it would open.
+      suppressNextSearchRef.current = false;
+      return;
+    }
     const q = query.trim();
     if (q.length < MIN_QUERY_LENGTH) {
+      // Field cleared / abandoned → rotate: the next session gets a new token.
+      sessionTokenRef.current = null;
       setSuggestions([]);
       setLoading(false);
       setOpen(false);
       return;
     }
+    const token = ensureSessionToken();
     const seq = ++requestSeq.current;
     setLoading(true);
     setUnavailable(false);
     const timer = setTimeout(() => {
-      autocompleteAddress(q)
+      autocompleteAddress(q, token)
         .then((res) => {
           if (seq !== requestSeq.current) return; // stale
           setSuggestions(res.suggestions);
@@ -85,21 +113,31 @@ export function AddressTypeahead({
   }, [query]);
 
   async function choose(suggestion: AddressSuggestion): Promise<void> {
+    // Close the session with the SAME token that opened it (the autocomplete
+    // calls used it). undefined only if somehow no search ran first.
+    const token = sessionTokenRef.current ?? undefined;
     setOpen(false);
+    suppressNextSearchRef.current = true;
     setQuery(suggestion.description);
     setResolving(true);
     try {
-      const res = await getAddressDetails(suggestion.place_id);
+      const res = await getAddressDetails(suggestion.place_id, token);
       if (res.details !== null) {
         onSelectAddress(res.details);
       } else {
-        // Provider couldn't resolve details — leave the fields for manual entry.
+        // Provider couldn't resolve details — surface the manual-entry notice
+        // (re-open the popover; v1.0 relied on a spurious re-search to do this,
+        // which the session-token suppression intentionally removed).
         setUnavailable(true);
+        setOpen(true);
       }
     } catch {
       setUnavailable(true);
+      setOpen(true);
     } finally {
       setResolving(false);
+      // Session closed — the next typed query opens a fresh one.
+      sessionTokenRef.current = null;
     }
   }
 

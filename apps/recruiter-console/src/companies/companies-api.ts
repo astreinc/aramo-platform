@@ -100,10 +100,16 @@ export async function deleteCompanyDepartment(
 // two routes (gated by company:create, same as company create). Both are
 // NEVER-BLOCK on the server: a disabled feature or a provider failure returns
 // an empty payload (200), so the caller falls back to manual address entry.
+// Address-Autocomplete v1.1 — the OPTIONAL sessionToken threads autocomplete→
+// details for one lookup so Google bills a single session. Omitted → unchanged.
 export async function autocompleteAddress(
   query: string,
+  sessionToken?: string,
 ): Promise<AddressAutocompleteResponse> {
   const params = new URLSearchParams({ query });
+  if (sessionToken !== undefined && sessionToken !== '') {
+    params.set('session_token', sessionToken);
+  }
   return apiClient.get<AddressAutocompleteResponse>(
     `/v1/address-lookup/autocomplete?${params.toString()}`,
   );
@@ -111,8 +117,12 @@ export async function autocompleteAddress(
 
 export async function getAddressDetails(
   placeId: string,
+  sessionToken?: string,
 ): Promise<AddressDetailsResponse> {
   const params = new URLSearchParams({ place_id: placeId });
+  if (sessionToken !== undefined && sessionToken !== '') {
+    params.set('session_token', sessionToken);
+  }
   return apiClient.get<AddressDetailsResponse>(
     `/v1/address-lookup/details?${params.toString()}`,
   );

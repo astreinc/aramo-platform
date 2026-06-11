@@ -19,6 +19,9 @@ import type { AddressDetailsDto } from './dto/address-details.dto.js';
 const MIN_QUERY_LENGTH = 3;
 const MAX_QUERY_LENGTH = 200;
 const MAX_PLACE_ID_LENGTH = 512;
+// Address-Autocomplete v1.1 — a Google session token is a UUID (36 chars); cap
+// generously. OPTIONAL: absent → the lookup behaves exactly as v1.0.
+const MAX_SESSION_TOKEN_LENGTH = 128;
 
 // AddressLookupController — backend proxy for provider address autocomplete
 // (Address-Autocomplete v1.0).
@@ -51,6 +54,7 @@ export class AddressLookupController {
   @RequireSiteMatch()
   async autocomplete(
     @Query('query') query: string | undefined,
+    @Query('session_token') sessionToken: string | undefined,
     @RequestId() requestId: string,
   ): Promise<{ suggestions: AddressSuggestionDto[] }> {
     const q = (query ?? '').trim();
@@ -70,8 +74,9 @@ export class AddressLookupController {
         { requestId, details: { reason: 'query_too_long', max_length: MAX_QUERY_LENGTH } },
       );
     }
+    const token = this.validateSessionToken(sessionToken, requestId);
     try {
-      const suggestions = await this.addressLookup.autocomplete(q);
+      const suggestions = await this.addressLookup.autocomplete(q, token);
       return { suggestions };
     } catch (err) {
       // NEVER-BLOCK: provider failure → empty-200. Log a short reason only —
@@ -89,6 +94,7 @@ export class AddressLookupController {
   @RequireSiteMatch()
   async details(
     @Query('place_id') placeId: string | undefined,
+    @Query('session_token') sessionToken: string | undefined,
     @RequestId() requestId: string,
   ): Promise<{ details: AddressDetailsDto | null }> {
     const id = (placeId ?? '').trim();
@@ -108,8 +114,9 @@ export class AddressLookupController {
         { requestId, details: { reason: 'place_id_too_long', max_length: MAX_PLACE_ID_LENGTH } },
       );
     }
+    const token = this.validateSessionToken(sessionToken, requestId);
     try {
-      const details = await this.addressLookup.details(id);
+      const details = await this.addressLookup.details(id, token);
       return { details };
     } catch (err) {
       // NEVER-BLOCK: provider failure → null details (200). The FE leaves the
@@ -119,6 +126,27 @@ export class AddressLookupController {
       );
       return { details: null };
     }
+  }
+
+  // Address-Autocomplete v1.1 — OPTIONAL session token. Absent/blank → undefined
+  // (the lookup runs exactly as v1.0). Present-but-over-cap → VALIDATION_ERROR
+  // (malformed caller input, consistent with the query/place_id guards). The
+  // token is request-only — never logged here, never echoed in a response.
+  private validateSessionToken(
+    raw: string | undefined,
+    requestId: string,
+  ): string | undefined {
+    const token = (raw ?? '').trim();
+    if (token.length === 0) return undefined;
+    if (token.length > MAX_SESSION_TOKEN_LENGTH) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'session_token is too long',
+        400,
+        { requestId, details: { reason: 'session_token_too_long', max_length: MAX_SESSION_TOKEN_LENGTH } },
+      );
+    }
+    return token;
   }
 
   // Short, payload-free reason for the warn line.

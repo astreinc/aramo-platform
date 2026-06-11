@@ -134,6 +134,46 @@ describe('GoogleAddressLookupProvider (mocked fetch)', () => {
       'GOOGLE_PLACES_API_KEY is not configured',
     );
   });
+
+  // --- Address-Autocomplete v1.1 — session token threading -----------------
+
+  it('puts a present sessionToken in the autocomplete POST body', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ suggestions: [] }));
+    const provider = new GoogleAddressLookupProvider();
+    await provider.autocomplete('1600 amph', 'sess-abc');
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body as string) as { input: string; sessionToken?: string };
+    expect(body.sessionToken).toBe('sess-abc');
+    expect(body.input).toBe('1600 amph');
+  });
+
+  it('OMITS sessionToken from the autocomplete body when absent (non-breaking)', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ suggestions: [] }));
+    const provider = new GoogleAddressLookupProvider();
+    await provider.autocomplete('1600 amph');
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect('sessionToken' in body).toBe(false);
+  });
+
+  it('puts a present sessionToken on the details query string; omits when absent', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ addressComponents: [] }));
+    const provider = new GoogleAddressLookupProvider();
+    await provider.details('gpid-1', 'sess-abc');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('sessionToken=sess-abc');
+    await provider.details('gpid-1');
+    expect(String(fetchMock.mock.calls[1][0])).not.toContain('sessionToken');
+  });
+
+  it('never leaks the sessionToken (nor the key) in a thrown error', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'denied' }, false, 403));
+    const provider = new GoogleAddressLookupProvider();
+    const msg = await provider
+      .autocomplete('boom', 'sess-secret-xyz')
+      .catch((e: Error) => e.message);
+    expect(msg).not.toContain('sess-secret-xyz');
+    expect(msg).not.toContain(TEST_KEY);
+  });
 });
 
 describe('AddressLookupService — enablement + provider selection', () => {

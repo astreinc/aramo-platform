@@ -19,12 +19,22 @@ export interface AddressLookupProvider {
    * Resolve typeahead predictions for a partial address query. The `signal`
    * carries the caller's timeout (AbortController) — implementations pass it
    * to fetch so a slow provider is abandoned, not awaited indefinitely.
+   *
+   * `sessionToken` (Address-Autocomplete v1.1) — OPTIONAL Google Autocomplete
+   * session token. When present, the same token threads autocomplete→details
+   * for one lookup so Google bills a single session instead of per-keystroke.
+   * Absent → unchanged behavior (non-breaking).
    */
   autocomplete(
     query: string,
+    sessionToken?: string,
     signal?: AbortSignal,
   ): Promise<AddressSuggestionDto[]>;
 
   /** Resolve the structured address fields for a previously-returned place. */
-  details(placeId: string, signal?: AbortSignal): Promise<AddressDetailsDto>;
+  details(
+    placeId: string,
+    sessionToken?: string,
+    signal?: AbortSignal,
+  ): Promise<AddressDetailsDto>;
 }

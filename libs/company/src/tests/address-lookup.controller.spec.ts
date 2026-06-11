@@ -33,29 +33,29 @@ describe('AddressLookupController — validation', () => {
   const controller = new AddressLookupController(new AddressLookupService());
 
   it('rejects a <3-char query with VALIDATION_ERROR (400)', async () => {
-    await expect(controller.autocomplete('ab', REQ_ID)).rejects.toMatchObject({
+    await expect(controller.autocomplete('ab', undefined, REQ_ID)).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
       statusCode: 400,
     });
   });
 
   it('rejects a blank/missing query with VALIDATION_ERROR', async () => {
-    await expect(controller.autocomplete(undefined, REQ_ID)).rejects.toBeInstanceOf(AramoError);
-    await expect(controller.autocomplete('   ', REQ_ID)).rejects.toMatchObject({
+    await expect(controller.autocomplete(undefined, undefined, REQ_ID)).rejects.toBeInstanceOf(AramoError);
+    await expect(controller.autocomplete('   ', undefined, REQ_ID)).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
   });
 
   it('rejects an over-long query', async () => {
     const long = 'a'.repeat(201);
-    await expect(controller.autocomplete(long, REQ_ID)).rejects.toMatchObject({
+    await expect(controller.autocomplete(long, undefined, REQ_ID)).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
       context: { details: { reason: 'query_too_long' } },
     });
   });
 
   it('rejects a blank place_id on /details', async () => {
-    await expect(controller.details('  ', REQ_ID)).rejects.toMatchObject({
+    await expect(controller.details('  ', undefined, REQ_ID)).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
       context: { details: { reason: 'place_id_required' } },
     });
@@ -74,7 +74,7 @@ describe('AddressLookupController — happy path (pinned mock provider)', () => 
 
   it('returns suggestions for a valid query', async () => {
     const controller = new AddressLookupController(new AddressLookupService());
-    const out = await controller.autocomplete('1600 mountain view', REQ_ID);
+    const out = await controller.autocomplete('1600 mountain view', undefined, REQ_ID);
     expect(out.suggestions.length).toBeGreaterThan(0);
     const first: AddressSuggestionDto = out.suggestions[0];
     expect(first.place_id).toBe('mock-place-googleplex');
@@ -82,7 +82,7 @@ describe('AddressLookupController — happy path (pinned mock provider)', () => 
 
   it('resolves details for a place_id', async () => {
     const controller = new AddressLookupController(new AddressLookupService());
-    const out = await controller.details('mock-place-googleplex', REQ_ID);
+    const out = await controller.details('mock-place-googleplex', undefined, REQ_ID);
     const details = out.details as AddressDetailsDto;
     expect(details.city).toBe('Mountain View');
     expect(details.country).toBe('US');
@@ -92,14 +92,60 @@ describe('AddressLookupController — happy path (pinned mock provider)', () => 
 describe('AddressLookupController — NEVER-BLOCK (provider failure → empty 200)', () => {
   it('autocomplete returns empty suggestions instead of a 5xx', async () => {
     const controller = new AddressLookupController(throwingService());
-    const out = await controller.autocomplete('valid query here', REQ_ID);
+    const out = await controller.autocomplete('valid query here', undefined, REQ_ID);
     expect(out).toEqual({ suggestions: [] });
   });
 
   it('details returns null instead of a 5xx', async () => {
     const controller = new AddressLookupController(throwingService());
-    const out = await controller.details('some-place-id', REQ_ID);
+    const out = await controller.details('some-place-id', undefined, REQ_ID);
     expect(out).toEqual({ details: null });
+  });
+});
+
+describe('AddressLookupController — session token (v1.1)', () => {
+  function capturingService(captured: {
+    auto?: string | undefined;
+    details?: string | undefined;
+  }): AddressLookupService {
+    return {
+      isEnabled: () => true,
+      autocomplete: async (_q: string, token?: string) => {
+        captured.auto = token;
+        return [];
+      },
+      details: async (_id: string, token?: string) => {
+        captured.details = token;
+        return null;
+      },
+    } as unknown as AddressLookupService;
+  }
+
+  it('threads a present session_token to the service on BOTH routes', async () => {
+    const captured: { auto?: string; details?: string } = {};
+    const controller = new AddressLookupController(capturingService(captured));
+    await controller.autocomplete('1600 amphitheatre', 'tok-123', REQ_ID);
+    await controller.details('place-1', 'tok-123', REQ_ID);
+    expect(captured.auto).toBe('tok-123');
+    expect(captured.details).toBe('tok-123');
+  });
+
+  it('treats a missing token as undefined (non-breaking)', async () => {
+    const captured: { auto?: string } = {};
+    const controller = new AddressLookupController(capturingService(captured));
+    await controller.autocomplete('1600 amphitheatre', undefined, REQ_ID);
+    expect(captured.auto).toBeUndefined();
+  });
+
+  it('rejects an over-long session_token with VALIDATION_ERROR', async () => {
+    const controller = new AddressLookupController(new AddressLookupService());
+    const longToken = 'a'.repeat(129);
+    await expect(
+      controller.autocomplete('valid query', longToken, REQ_ID),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'session_token_too_long' } },
+    });
   });
 });
 

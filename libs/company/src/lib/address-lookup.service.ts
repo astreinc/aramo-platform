@@ -39,17 +39,19 @@ export class AddressLookupService {
 
   async autocomplete(
     query: string,
+    sessionToken?: string,
     signal?: AbortSignal,
   ): Promise<AddressSuggestionDto[]> {
     if (!this.isEnabled()) return [];
-    return this.provider().autocomplete(query, signal);
+    return this.provider().autocomplete(query, sessionToken, signal);
   }
 
   async details(
     placeId: string,
+    sessionToken?: string,
     signal?: AbortSignal,
   ): Promise<AddressDetailsDto | null> {
     if (!this.isEnabled()) return null;
-    return this.provider().details(placeId, signal);
+    return this.provider().details(placeId, sessionToken, signal);
   }
 }

@@ -70,7 +70,39 @@ describe('AddressTypeahead', () => {
     fireEvent.change(screen.getByTestId('ta'), { target: { value: '1600 amph' } });
     fireEvent.click(await screen.findByTestId('ta-option-gpid-1'));
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(GOOGLEPLEX));
-    expect(detailsSpy).toHaveBeenCalledWith('gpid-1');
+    expect(detailsSpy).toHaveBeenCalledWith('gpid-1', expect.any(String));
+  });
+
+  it('threads ONE session token through autocomplete→details, then a NEW token after selection', async () => {
+    const autoSpy = vi.spyOn(api, 'autocompleteAddress').mockResolvedValue({
+      suggestions: [
+        { place_id: 'gpid-1', description: 'A place', primary_text: 'A place', secondary_text: '' },
+      ],
+    });
+    const detailsSpy = vi
+      .spyOn(api, 'getAddressDetails')
+      .mockResolvedValue({ details: GOOGLEPLEX });
+    const onSelect = vi.fn();
+    render(<AddressTypeahead onSelectAddress={onSelect} testId="ta" />);
+
+    // Lookup #1: type → autocomplete → select → details.
+    fireEvent.change(screen.getByTestId('ta'), { target: { value: '1600 amph' } });
+    fireEvent.click(await screen.findByTestId('ta-option-gpid-1'));
+    await waitFor(() => expect(onSelect).toHaveBeenCalled());
+
+    const autoToken1 = autoSpy.mock.calls[0][1];
+    const detailsToken1 = detailsSpy.mock.calls[0][1];
+    expect(typeof autoToken1).toBe('string');
+    expect(autoToken1).not.toBe('');
+    // SAME token threads autocomplete→details for one lookup.
+    expect(detailsToken1).toBe(autoToken1);
+
+    // Lookup #2 begins after selection → a NEW token.
+    fireEvent.change(screen.getByTestId('ta'), { target: { value: '500 oak street' } });
+    await waitFor(() => expect(autoSpy.mock.calls.length).toBeGreaterThanOrEqual(2));
+    const autoToken2 = autoSpy.mock.calls[autoSpy.mock.calls.length - 1][1];
+    expect(typeof autoToken2).toBe('string');
+    expect(autoToken2).not.toBe(autoToken1);
   });
 
   it('NEVER-BLOCK: a provider autocomplete failure shows a manual-entry notice and does not throw', async () => {

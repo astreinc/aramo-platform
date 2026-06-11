@@ -19,7 +19,13 @@ export class MockAddressLookupProvider implements AddressLookupProvider {
 
   private static readonly GOOGLEPLEX_PLACE_ID = 'mock-place-googleplex';
 
-  async autocomplete(query: string): Promise<AddressSuggestionDto[]> {
+  // Address-Autocomplete v1.1 — the mock IGNORES the session token (tests stay
+  // key-free + network-free); the signature matches the port so a token-passing
+  // caller works unchanged.
+  async autocomplete(
+    query: string,
+    _sessionToken?: string,
+  ): Promise<AddressSuggestionDto[]> {
     const q = query.trim();
     if (q.toLowerCase().includes('mountain view')) {
       return [
@@ -41,7 +47,10 @@ export class MockAddressLookupProvider implements AddressLookupProvider {
     ];
   }
 
-  async details(placeId: string): Promise<AddressDetailsDto> {
+  async details(
+    placeId: string,
+    _sessionToken?: string,
+  ): Promise<AddressDetailsDto> {
     if (placeId === MockAddressLookupProvider.GOOGLEPLEX_PLACE_ID) {
       return {
         place_id: placeId,

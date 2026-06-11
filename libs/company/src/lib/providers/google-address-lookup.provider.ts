@@ -65,9 +65,18 @@ export class GoogleAddressLookupProvider implements AddressLookupProvider {
 
   async autocomplete(
     query: string,
+    sessionToken?: string,
     signal?: AbortSignal,
   ): Promise<AddressSuggestionDto[]> {
     const key = this.apiKey();
+    // Address-Autocomplete v1.1 — thread the session token into the request
+    // body when present so this autocomplete + the matching details call bill
+    // as ONE Google session. Absent → unchanged single-request behavior. The
+    // token is request-only: never logged, never returned.
+    const body: { input: string; sessionToken?: string } = { input: query };
+    if (sessionToken !== undefined && sessionToken.length > 0) {
+      body.sessionToken = sessionToken;
+    }
     const res = await this.fetchWithTimeout(
       AUTOCOMPLETE_URL,
       {
@@ -76,7 +85,7 @@ export class GoogleAddressLookupProvider implements AddressLookupProvider {
           'Content-Type': 'application/json',
           'X-Goog-Api-Key': key,
         },
-        body: JSON.stringify({ input: query }),
+        body: JSON.stringify(body),
       },
       signal,
     );
@@ -91,9 +100,19 @@ export class GoogleAddressLookupProvider implements AddressLookupProvider {
       .filter((s): s is AddressSuggestionDto => s !== null);
   }
 
-  async details(placeId: string, signal?: AbortSignal): Promise<AddressDetailsDto> {
+  async details(
+    placeId: string,
+    sessionToken?: string,
+    signal?: AbortSignal,
+  ): Promise<AddressDetailsDto> {
     const key = this.apiKey();
-    const url = `${DETAILS_BASE_URL}${encodeURIComponent(placeId)}`;
+    // Session token (v1.1) rides as a query param on details — it closes the
+    // session opened by autocomplete (one billed session per lookup). Absent →
+    // unchanged. Token is request-only: never logged, never returned.
+    let url = `${DETAILS_BASE_URL}${encodeURIComponent(placeId)}`;
+    if (sessionToken !== undefined && sessionToken.length > 0) {
+      url = `${url}?${new URLSearchParams({ sessionToken }).toString()}`;
+    }
     const res = await this.fetchWithTimeout(
       url,
       {
