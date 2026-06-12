@@ -1336,12 +1336,26 @@ export const REQ_GATING_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly s
   ['recruiting_manager', ['compensation:view:bill', 'requisition:profile:generate', 'requisition:profile:edit']],
   ['lead_recruiter', ['compensation:view:bill', 'requisition:profile:generate', 'requisition:profile:edit']],
   ['delivery_manager', ['requisition:edit:status', 'compensation:view:bill', 'requisition:view:financials']],
+  // PR-A1 grant amend (Lead-authorized, pre-push) — ADD requisition:edit:status
+  // to the 3 roles that ALREADY hold requisition:edit (recruiting_manager /
+  // lead_recruiter / account_manager). EXPLICIT, not new power: they could
+  // already edit status via the full-edit path. The status-only restrict-to-
+  // subset gate is UNCHANGED — it only restricts a holder of edit:status
+  // WITHOUT requisition:edit (= delivery_manager only); these 3 hold BOTH, so
+  // the restrict branch never applies and delivery_manager remains the ONLY
+  // status-only role. Appended as SEPARATE tuples so the existing 0x839..0x847
+  // ids do not renumber (these take 0x848..0x84a); the write loop upserts by
+  // (role, scope), so a role appearing twice is harmless.
+  ['recruiting_manager', ['requisition:edit:status']],
+  ['lead_recruiter', ['requisition:edit:status']],
+  ['account_manager', ['requisition:edit:status']],
 ];
 
-// Deterministic RoleScope row ids for the 15 PR-A1 grants. Disjoint range
+// Deterministic RoleScope row ids for the 18 PR-A1 grants. Disjoint range
 // 0x839+ (the next clear id after Financials' 0x833..0x838; all prior ranges
-// untouched — append-don't-renumber). 15 rows: TA 2 + TO 2 + AM 2 + RM 3 +
-// LR 3 + DM 3 → 0x839..0x847.
+// untouched — append-don't-renumber). 18 rows: TA 2 + TO 2 + AM 2 + RM 3 +
+// LR 3 + DM 3 (0x839..0x847) + the edit:status grant amend RM/LR/AM
+// (0x848..0x84a).
 const REQ_GATING_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0x839;

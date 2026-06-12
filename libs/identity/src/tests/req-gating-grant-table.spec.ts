@@ -98,6 +98,10 @@ describe('PR-A1 grant-table — recruiting_manager / lead_recruiter (+ view:bill
       expect(s.has('requisition:profile:generate')).toBe(true);
       expect(s.has('requisition:profile:edit')).toBe(true);
     });
+    it(`${role} GAINS requisition:edit:status explicitly (grant amend; alongside requisition:edit)`, () => {
+      expect(s.has('requisition:edit:status')).toBe(true);
+      expect(s.has('requisition:edit')).toBe(true); // full editor — restrict branch never applies
+    });
     it(`${role} does NOT gain financials (matrix: bill yes, financials no)`, () => {
       expect(s.has('requisition:view:financials')).toBe(false);
       expect(s.has('requisition:edit:financials')).toBe(false);
@@ -150,6 +154,19 @@ describe('PR-A1 grant-table — account_manager (UNCHANGED + profile)', () => {
     expect(s.has('requisition:profile:generate')).toBe(true);
     expect(s.has('requisition:profile:edit')).toBe(true);
   });
+  it('GAINS requisition:edit:status explicitly (grant amend; alongside requisition:edit)', () => {
+    expect(s.has('requisition:edit:status')).toBe(true);
+    expect(s.has('requisition:edit')).toBe(true);
+  });
+});
+
+describe('PR-A1 grant-table — delivery_manager is the ONLY status-only role (gate isolation)', () => {
+  it('exactly one role holds requisition:edit:status WITHOUT requisition:edit, and it is delivery_manager', () => {
+    const statusOnly = holders('requisition:edit:status').filter(
+      (r) => !effectiveScopes(r).has('requisition:edit'),
+    );
+    expect(statusOnly).toEqual(['delivery_manager']);
+  });
 });
 
 describe('PR-A1 grant-table — tenant_admin / tenant_owner (full)', () => {
@@ -167,8 +184,14 @@ describe('PR-A1 grant-table — tenant_admin / tenant_owner (full)', () => {
 });
 
 describe('PR-A1 grant-table — scope holder-sets (exact)', () => {
-  it('requisition:edit:status → exactly {delivery_manager}', () => {
-    expect(holders('requisition:edit:status')).toEqual(['delivery_manager']);
+  it('requisition:edit:status → {delivery_manager, recruiting_manager, lead_recruiter, account_manager} (grant amend)', () => {
+    // PR-A1 grant amend: the 3 full-editor roles (RM/LR/AM) explicitly hold
+    // edit:status alongside requisition:edit. delivery_manager remains the
+    // only role holding edit:status WITHOUT requisition:edit (the status-only
+    // tier the restrict-to-subset gate applies to).
+    expect(holders('requisition:edit:status')).toEqual(
+      ['account_manager', 'delivery_manager', 'lead_recruiter', 'recruiting_manager'].sort(),
+    );
   });
   it('requisition:profile:generate → exactly the 5-role mgmt tier', () => {
     expect(holders('requisition:profile:generate')).toEqual(
