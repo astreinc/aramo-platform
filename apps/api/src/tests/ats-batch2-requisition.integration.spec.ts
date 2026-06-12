@@ -832,8 +832,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         },
       );
       expect(patchRes.status).toBe(403);
-      const body = (await patchRes.json()) as { details?: { reason?: string } };
-      expect(body.details?.reason).toBe('status_only_edit_field_violation');
+      const body = (await patchRes.json()) as { error?: { details?: { reason?: string } } };
+      expect(body.error?.details?.reason).toBe('status_only_edit_field_violation');
     });
 
     it('STATUS-ONLY: full editor (tenant_admin) PATCH {status} → 200 (unaffected by the status gate)', async () => {
@@ -898,8 +898,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         },
       );
       expect(patchRes.status).toBe(403);
-      const body = (await patchRes.json()) as { details?: { reason?: string } };
-      expect(body.details?.reason).toBe('requisition_edit_scope_missing');
+      const body = (await patchRes.json()) as { error?: { details?: { reason?: string } } };
+      expect(body.error?.details?.reason).toBe('requisition_edit_scope_missing');
     });
 
     it('Read surface gone: GET /v1/requisitions and detail GET responses have no rate_max/salary keys', async () => {
