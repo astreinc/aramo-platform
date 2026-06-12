@@ -217,7 +217,7 @@ describe('AuthController.logout (idempotent)', () => {
 });
 
 describe('AuthController.callback (orchestrator-result mapping)', () => {
-  it('on success: sets access + refresh cookies, clears pkce_state, returns 204', async () => {
+  it('on success: sets access + refresh cookies, clears pkce_state, redirects 302 to the app', async () => {
     const sessionOrch = {
       handleCallback: vi.fn().mockResolvedValue({
         kind: 'success',
@@ -242,7 +242,11 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
     );
     // 3 cookie operations: access, refresh, clear pkce
     expect(res.cookie).toHaveBeenCalledTimes(3);
-    expect(res.status).toHaveBeenCalledWith(204);
+    // The hosted-UI callback is a top-level browser redirect, so success
+    // returns a 302 back into the app (not a bodyless 204). Default target
+    // is http://localhost:4201/ unless AUTH_POST_LOGIN_REDIRECT is set.
+    expect(res.redirect).toHaveBeenCalledWith(302, expect.any(String));
+    expect(res.status).not.toHaveBeenCalledWith(204);
   });
 
   it('on tenant_selection_required: throws 409 TENANT_SELECTION_REQUIRED with tenants in details', async () => {

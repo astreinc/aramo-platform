@@ -14,7 +14,7 @@ describe('Company-Fields v1.1 — company:read_commercial catalog parity', () =>
     ).toHaveLength(1);
   });
 
-  it('SEED_SCOPE_KEYS is 75 (73 + 2 Job-Module requisition:*:financials)', () => {
-    expect(SEED_SCOPE_KEYS).toHaveLength(75);
+  it('SEED_SCOPE_KEYS is 78 (75 + 3 PR-A1 requisition-gating: edit:status + profile:generate + profile:edit)', () => {
+    expect(SEED_SCOPE_KEYS).toHaveLength(78);
   });
 });

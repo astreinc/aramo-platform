@@ -76,6 +76,13 @@ const REQUISITION_JOB_MODULE_FIELDS = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql',
 );
+// PR-A1 Requisition-Gating Rework — DROPs the legacy rate_max/salary columns.
+// Must apply AFTER the init migration that created them (and after the comp
+// fields migration) so the column-existence proof below reflects the drop.
+const REQUISITION_DROP_LEGACY_COMP = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260612120000_drop_legacy_requisition_comp/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-ats-batch2-requisition-spec';
@@ -90,13 +97,24 @@ const RECRUITER_A = '00000000-0000-7000-8000-000000000bb1';
 const RECRUITER_B = '00000000-0000-7000-8000-000000000bb2';
 const TENANT_ADMIN = '00000000-0000-7000-8000-000000000aa1';
 
-// Recruiter scopes — read (assigned-only), create, edit. NO delete,
-// NO read:all (the visibility filter keys off the absence of :read:all).
+// Recruiter scopes — read (assigned-only) + create. PR-A1 Requisition-Gating
+// Rework: recruiter is now READ-ONLY on requisitions — requisition:edit
+// REMOVED (a recruiter PATCH is rejected 403 by the in-service status-edit
+// gate). NO delete, NO read:all (the visibility filter keys off the absence
+// of :read:all).
 const RECRUITER_SCOPES = [
   'requisition:read',
   'requisition:create',
-  'requisition:edit',
 ];
+
+// PR-A1 — the status-only edit tier (delivery_manager): read (assigned-only)
+// + requisition:edit:status, but NOT requisition:edit. May PATCH only the
+// status field; any other field → 403 (the restrict-to-subset gate).
+const STATUS_ONLY_SCOPES = [
+  'requisition:read',
+  'requisition:edit:status',
+];
+const STATUS_ONLY_ACTOR = '00000000-0000-7000-8000-000000000dd1';
 
 // tenant_admin — full set incl. :read:all + :delete + :assign
 // (HK-IDENT-SCOPES: requisition:assign is the proper assign-route gate).
@@ -134,6 +152,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let recruiterAJwt_Ats_WrongSite: string;
     let unscopedJwt_Ats_SiteA: string;
     let tenantAdminJwt_Ats_SiteA: string;
+    let statusOnlyJwt_Ats_SiteA: string;
 
     async function signJwt(
       privateKey: SignKey,
@@ -162,7 +181,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new Client({ connectionString: url });
       await setupClient.connect();
 
-      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS]) {
+      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 
@@ -199,6 +218,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_ATS,
         site_id: SITE_A,
         scopes: RECRUITER_SCOPES,
+      });
+      statusOnlyJwt_Ats_SiteA = await signJwt(privateKey, {
+        sub: STATUS_ONLY_ACTOR,
+        tenant_id: TENANT_ATS,
+        site_id: SITE_A,
+        scopes: STATUS_ONLY_SCOPES,
       });
       recruiterAJwt_NotAts_SiteA = await signJwt(privateKey, {
         sub: RECRUITER_A,
@@ -695,28 +720,32 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // -------------------------------------------------------------------------
-    // E) D-AUTHZ-COMP-WRITE-2 — close the D5 write-path circumvention via
-    //    the legacy rate_max/salary pair (Amendment v1.1 Ruling 2).
+    // E) PR-A1 Requisition-Gating Rework — legacy comp DROP + status-only gate.
     //
-    //    THE CLOSURE MECHANISM is silent-drop-at-repo, NOT 400-rejection:
-    //    the request DTOs are plain TS interfaces (no class-validator
-    //    metadata) and ValidationPipe runs forbidNonWhitelisted:false, so
-    //    a body with {"salary":"..."} succeeds at the HTTP layer. The
-    //    leak closes because repo.create / repo.update no longer read
-    //    input.salary / input.rate_max — the Prisma `data` object omits
-    //    the keys, the persisted row's columns stay NULL. The proof
-    //    therefore asserts on PERSISTENCE (a direct SQL read), not on
-    //    a 4xx status.
+    //    LEGACY DROP: the rate_max/salary columns are removed by the
+    //    20260612120000_drop_legacy_requisition_comp migration (applied in
+    //    setup). The columns were already write-blocked + read-stripped since
+    //    D-AUTHZ-COMP-WRITE-2; the drop is the cleanup. The proofs assert the
+    //    columns no longer EXIST (information_schema) and that a create still
+    //    succeeds when a body carries the dropped keys (plain TS-interface
+    //    DTOs ignore unknown keys; the repo never reads them).
     //
-    //    The recruiter A JWT (RECRUITER_SCOPES above: read+create+edit;
-    //    NO compensation:edit:pay) is the exact actor the defect record
-    //    names — the previously-leaking write must now drop on the floor.
-    //    The structured-comp gate (D-AUTHZ-COMP-WRITE-1) is unchanged;
-    //    its unit spec (libs/requisition/src/tests/compensation-edit-
-    //    gate.spec.ts) covers (v).
+    //    STATUS-ONLY GATE (the inverted restrict-to-subset gate): a holder of
+    //    requisition:edit:status WITHOUT requisition:edit may PATCH only the
+    //    status field; any other field → 403. A full editor is unaffected; a
+    //    read-only recruiter (no edit, no edit:status) is rejected 403.
     // -------------------------------------------------------------------------
 
-    it('D5 write-path closed (POST): recruiter without comp:edit:pay POSTing {salary} → 201, persisted row.salary IS NULL', async () => {
+    it('LEGACY DROP: the rate_max/salary columns no longer exist on requisition."Requisition"', async () => {
+      const cols = await setupClient.query(
+        `SELECT column_name FROM information_schema.columns
+           WHERE table_schema = 'requisition' AND table_name = 'Requisition'
+             AND column_name IN ('rate_max', 'salary')`,
+      );
+      expect(cols.rows.length).toBe(0);
+    });
+
+    it('LEGACY DROP: recruiter create with dropped keys {salary, rate_max} → 201 (keys ignored, columns gone)', async () => {
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`,
         {
@@ -726,32 +755,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            title: 'D-AUTHZ-COMP-WRITE-2 POST closure probe',
+            title: 'PR-A1 legacy-drop POST probe',
             company_id: COMPANY_ID,
             site_id: SITE_A,
-            // The previously-leaking write — would have persisted pre-fix
-            // (no gate covered this field, the DTO accepted it). Post-fix
-            // the repo no longer reads input.salary; the column stays NULL.
+            // The now-dropped keys — the plain-interface DTO + the repo
+            // ignore them; create still succeeds (no column to write).
             salary: '150000',
             rate_max: '85/hr',
           }),
         },
       );
       expect(res.status).toBe(201);
-      const created = (await res.json()) as { id: string };
-
-      // Persistence proof — read the columns directly from Postgres.
-      const row = await setupClient.query(
-        'SELECT rate_max, salary FROM requisition."Requisition" WHERE id = $1::uuid',
-        [created.id],
-      );
-      expect(row.rows.length).toBe(1);
-      expect(row.rows[0].rate_max).toBeNull();
-      expect(row.rows[0].salary).toBeNull();
     });
 
-    it('D5 write-path closed (PATCH): recruiter PATCHing {rate_max} → 200, persisted row stays NULL', async () => {
-      // Admin creates the req so the PATCH target exists.
+    it('STATUS-ONLY: status-only actor PATCH {status} → 200; persisted status updated', async () => {
       const createRes = await fetch(
         `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`,
         {
@@ -761,7 +778,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            title: 'D-AUTHZ-COMP-WRITE-2 PATCH closure target',
+            title: 'PR-A1 status-only PATCH target',
             company_id: COMPANY_ID,
             site_id: SITE_A,
           }),
@@ -769,21 +786,106 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       const reqId = ((await createRes.json()) as { id: string }).id;
 
-      // Admin assigns recruiter A so the visibility + edit-scope paths line up.
-      const assignRes = await fetch(
-        `http://127.0.0.1:${port}/v1/requisitions/${reqId}/assignments?site_id=${SITE_A}`,
+      const patchRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions/${reqId}?site_id=${SITE_A}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${statusOnlyJwt_Ats_SiteA}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ status: 'closed' }),
+        },
+      );
+      expect(patchRes.status).toBe(200);
+      const body = (await patchRes.json()) as { status: string };
+      expect(body.status).toBe('closed');
+    });
+
+    it('STATUS-ONLY: status-only actor PATCH a non-status field {title} → 403 (status_only_edit_field_violation)', async () => {
+      const createRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`,
         {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ user_id: RECRUITER_A }),
+          body: JSON.stringify({
+            title: 'PR-A1 status-only forbidden-field target',
+            company_id: COMPANY_ID,
+            site_id: SITE_A,
+          }),
         },
       );
-      expect(assignRes.status).toBe(201);
+      const reqId = ((await createRes.json()) as { id: string }).id;
 
-      // Recruiter A PATCH with rate_max+salary in the body.
+      const patchRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions/${reqId}?site_id=${SITE_A}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${statusOnlyJwt_Ats_SiteA}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ title: 'recruiter-renamed' }),
+        },
+      );
+      expect(patchRes.status).toBe(403);
+      const body = (await patchRes.json()) as { error?: { details?: { reason?: string } } };
+      expect(body.error?.details?.reason).toBe('status_only_edit_field_violation');
+    });
+
+    it('STATUS-ONLY: full editor (tenant_admin) PATCH {status} → 200 (unaffected by the status gate)', async () => {
+      const createRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: 'PR-A1 full-editor status target',
+            company_id: COMPANY_ID,
+            site_id: SITE_A,
+          }),
+        },
+      );
+      const reqId = ((await createRes.json()) as { id: string }).id;
+
+      const patchRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions/${reqId}?site_id=${SITE_A}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ status: 'on_hold' }),
+        },
+      );
+      expect(patchRes.status).toBe(200);
+    });
+
+    it('RECRUITER READ-ONLY: recruiter (no edit, no edit:status) PATCH {status} → 403 (requisition_edit_scope_missing)', async () => {
+      const createRes = await fetch(
+        `http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: 'PR-A1 recruiter read-only target',
+            company_id: COMPANY_ID,
+            site_id: SITE_A,
+          }),
+        },
+      );
+      const reqId = ((await createRes.json()) as { id: string }).id;
+
       const patchRes = await fetch(
         `http://127.0.0.1:${port}/v1/requisitions/${reqId}?site_id=${SITE_A}`,
         {
@@ -792,27 +894,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             Authorization: `Bearer ${recruiterAJwt_Ats_SiteA}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            rate_max: '85/hr',
-            salary: '150000',
-            // a non-comp field that DOES still patch — sanity that the
-            // request itself is not rejected, the legacy keys silently drop.
-            notes: 'sanity touch',
-          }),
+          body: JSON.stringify({ status: 'closed' }),
         },
       );
-      expect(patchRes.status).toBe(200);
-
-      // Persistence proof — legacy columns stay NULL; the notes field
-      // confirms the rest of the PATCH applied.
-      const row = await setupClient.query(
-        'SELECT rate_max, salary, notes FROM requisition."Requisition" WHERE id = $1::uuid',
-        [reqId],
-      );
-      expect(row.rows.length).toBe(1);
-      expect(row.rows[0].rate_max).toBeNull();
-      expect(row.rows[0].salary).toBeNull();
-      expect(row.rows[0].notes).toBe('sanity touch');
+      expect(patchRes.status).toBe(403);
+      const body = (await patchRes.json()) as { error?: { details?: { reason?: string } } };
+      expect(body.error?.details?.reason).toBe('requisition_edit_scope_missing');
     });
 
     it('Read surface gone: GET /v1/requisitions and detail GET responses have no rate_max/salary keys', async () => {

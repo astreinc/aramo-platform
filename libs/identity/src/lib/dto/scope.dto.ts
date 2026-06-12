@@ -188,6 +188,22 @@ export const SEED_SCOPE_KEYS = [
   // company:read_commercial; NOT base recruiter, NOT the delivery tier.
   'requisition:view:financials',        // tenant_admin + tenant_owner + account_manager (read-mask)
   'requisition:edit:financials',        // tenant_admin + tenant_owner + account_manager (write-gate)
+  // PR-A1 Requisition-Gating Rework — 3 requisition-gating scopes (consolidates
+  // the 7-role gating matrix; Directive v1.0 as amended by v1.1). Allocated
+  // from 0xa5 (next free after requisition:edit:financials 0xa4).
+  //   - edit:status is the NET-NEW status-only edit tier (INVERTED gate:
+  //     restrict-to-subset). A holder of requisition:edit:status WITHOUT
+  //     requisition:edit may PATCH only the `status` field; any other field
+  //     → 403. Granted to delivery_manager ONLY (full editors use
+  //     requisition:edit, which covers status as before).
+  //   - profile:generate gates the AI JD+GoldenProfile draft/confirm
+  //     endpoints (re-gated off requisition:edit per #226); profile:edit
+  //     gates editing the generated GoldenProfile. Both granted to the
+  //     5-role management tier (TA + TO + AM + recruiting_manager +
+  //     lead_recruiter); base recruiter does NOT hold them.
+  'requisition:edit:status',            // delivery_manager only (status-only edit tier; restrict-to-subset gate)
+  'requisition:profile:generate',       // TA + TO + AM + recruiting_manager + lead_recruiter (AI JD/profile draft+confirm)
+  'requisition:profile:edit',           // TA + TO + AM + recruiting_manager + lead_recruiter (edit the generated GoldenProfile)
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

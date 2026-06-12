@@ -216,6 +216,14 @@ export const SEED_IDS = {
     // FINANCIALS_SEED_BUNDLES (agency tier; mirrors company:read_commercial).
     'requisition:view:financials': '01900000-0000-7000-8000-0000000000a3',
     'requisition:edit:financials': '01900000-0000-7000-8000-0000000000a4',
+    // PR-A1 Requisition-Gating Rework — 3 new requisition-gating scopes.
+    // Next free ids after the 0xa4 financials range (append-don't-renumber):
+    // 0xa5 / 0xa6 / 0xa7. edit:status granted to delivery_manager;
+    // profile:generate + profile:edit granted to the 5-role mgmt tier via
+    // REQ_GATING_SEED_BUNDLES (RoleScope range 0x839+, append-don't-renumber).
+    'requisition:edit:status': '01900000-0000-7000-8000-0000000000a5',
+    'requisition:profile:generate': '01900000-0000-7000-8000-0000000000a6',
+    'requisition:profile:edit': '01900000-0000-7000-8000-0000000000a7',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -450,7 +458,7 @@ export const SEED_SERVICE_ACCOUNT_DESCRIPTION =
   'System actor for seed/migration audit events';
 
 // Per-role scope assignments (directive §6 + §9 test 17, locked).
-const ROLE_SCOPE_ASSIGNMENTS = {
+export const ROLE_SCOPE_ASSIGNMENTS = {
   tenant_admin: [
     'consent:read',
     'consent:write',
@@ -508,7 +516,16 @@ const ROLE_SCOPE_ASSIGNMENTS = {
     'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity',
     'calendar:event-create', 'calendar:event-edit',
     'activity:read', 'examination:read',
-    'requisition:create', 'requisition:edit',
+    // PR-A1 Requisition-Gating Rework — recruiter is now READ-ONLY on
+    // requisitions: requisition:edit REMOVED (the recruiter:requisition:edit
+    // hardcoded RoleScope id 0x139 is freed). Recruiter KEEPS requisition:read
+    // + requisition:create (create is untouched by the directive). Combined
+    // with the D5 delta below (compensation:edit:pay removed; compensation:
+    // view:pay kept; NO compensation:view:bill), the recruiter sees pay but
+    // not bill and cannot PATCH (the PATCH path's in-service status-edit-gate
+    // rejects 403 — recruiter holds neither requisition:edit nor
+    // requisition:edit:status).
+    'requisition:create',
     // HK-IDENT-SCOPES — recruiter gets 5 of the 6 deferred scopes;
     // NOT requisition:assign (tenant_admin only — assignment is an admin act).
     'attachment:read', 'attachment:create', 'attachment:delete',
@@ -607,7 +624,10 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   'recruiter:activity:read': SEED_IDS.role_scopes.recruiter_activity_read,
   'recruiter:examination:read': SEED_IDS.role_scopes.recruiter_examination_read,
   'recruiter:requisition:create': SEED_IDS.role_scopes.recruiter_requisition_create,
-  'recruiter:requisition:edit': SEED_IDS.role_scopes.recruiter_requisition_edit,
+  // PR-A1 Requisition-Gating Rework: recruiter:requisition:edit RETIRED
+  // (recruiter is now read-only on requisitions). RoleScope id 0x139
+  // (SEED_IDS.role_scopes.recruiter_requisition_edit) is freed — the entry
+  // is removed here so the seed no longer creates the grant on a fresh DB.
   // AUTHZ-1b: viewer:* PR-A1a-2 entries removed (role retired).
   // HK-IDENT-SCOPES — 11 new role_scope rows (6 tenant_admin + 5 recruiter).
   'tenant_admin:requisition:assign': SEED_IDS.role_scopes.tenant_admin_requisition_assign,
@@ -670,7 +690,7 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
 //     compliance:*) DO NOT EXIST yet — gap-and-noted to a future
 //     Onboarding/Operations DDR. The role lands with its current-
 //     capability bundle so invitations and assignments can reference it.
-const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+export const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   // tenant_owner — 47 scopes (full tenant_admin set incl. AUTHZ-D4a's 4 new
   // scopes; position-only distinction from tenant_admin).
   ['tenant_owner', [
@@ -938,7 +958,19 @@ export const D5_COMPENSATION_BUNDLES: ReadonlyArray<readonly [string, readonly s
   // recruiter / recruiting_manager / lead_recruiter — candidate-economics
   // side. pay + salary. NO spread scopes (the invariant holds).
   // D-AUTHZ-COMP-WRITE-1: + edit:pay (the candidate-economics authors).
-  ['recruiter', ['compensation:view:pay', 'compensation:edit:pay']],
+  // PR-A1 Requisition-Gating Rework: recruiter is now READ-ONLY —
+  // compensation:edit:pay REMOVED (recruiter keeps compensation:view:pay
+  // so the read field-mask is UNCHANGED: recruiter still sees pay/salary,
+  // still NO bill). This is a REMOVAL from the recruiter D5 entry only — no
+  // new D5 row is created, so the positional 0x500 id range stays
+  // collision-free on re-seed (the recruiter:edit:pay row is simply not
+  // re-created on a fresh DB; an existing deployment's row is dropped by
+  // the PO's authz-rework re-seed, per the directive carve-out).
+  // recruiting_manager / lead_recruiter ADDITIONALLY gain compensation:
+  // view:bill via REQ_GATING_SEED_BUNDLES (kept OUT of this bundle to
+  // preserve the 0x500 append-don't-renumber range; the d5-non-invertibility
+  // proof walks D5 ∪ REQ_GATING_SEED_BUNDLES).
+  ['recruiter', ['compensation:view:pay']],
   ['recruiting_manager', ['compensation:view:pay', 'compensation:edit:pay']],
   ['lead_recruiter', ['compensation:view:pay', 'compensation:edit:pay']],
   // back_office — operational pay visibility (onboarding / payroll-facing).
@@ -997,7 +1029,14 @@ export const D5_COMPENSATION_BUNDLES: ReadonlyArray<readonly [string, readonly s
 // above. Disjoint range starting at 0x500 (AUTHZ-1's 0x400+ range +
 // AUTHZ-D4a's 0x303+ range stay untouched — no shift). The (role, scope)
 // iteration order pins the assignment, so a given pair always produces
-// the same UUID on every seed run. Total rows: 6+6+4+1+1+1+1+4+2 = 26.
+// the same UUID on every seed run.
+// Total rows (post D-AUTHZ-COMP-WRITE-1 edit scopes + Settings S4
+// auditor_with_financials): TA 8 + TO 8 + AM 5 + recruiter 1 + RM 2 +
+// LR 2 + back_office 2 + DM 4 + finance 2 + auditor_with_financials 6 = 40.
+// PR-A1 Requisition-Gating Rework dropped recruiter 2→1 (compensation:edit:pay
+// removed) — a REMOVAL only, no new D5 row, so the 0x500 range is unshifted
+// on re-seed (the new comp grant — RM/LR/DM compensation:view:bill — lives in
+// REQ_GATING_SEED_BUNDLES at 0x839+, NOT here).
 const D5_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0x500;
@@ -1246,7 +1285,7 @@ const COMMERCIAL_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // seed.spec grant-table proof asserts the 3 present + base/delivery
 // absent). Each role gets BOTH the view (read-mask) and edit (write-gate)
 // financial scope.
-const FINANCIALS_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+export const FINANCIALS_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_admin', ['requisition:view:financials', 'requisition:edit:financials']],
   ['tenant_owner', ['requisition:view:financials', 'requisition:edit:financials']],
   ['account_manager', ['requisition:view:financials', 'requisition:edit:financials']],
@@ -1259,6 +1298,68 @@ const FINANCIALS_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0x833;
   for (const [role, scopes] of FINANCIALS_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
+// PR-A1 Requisition-Gating Rework — the consolidated grant DELTA bundle.
+// Carries every NET-NEW (role, scope) grant of the rework in ONE additive
+// bundle with a disjoint RoleScope id range (0x839+, append-don't-renumber —
+// the prior ranges, incl. D5's 0x500 and Financials' 0x833, stay untouched).
+// Keeping the additions HERE (rather than editing D5 / Financials inline)
+// preserves every existing positional id, so a prod re-seed creates only the
+// genuinely-new rows below and never collides on an id already held by a
+// different (role, scope).
+//
+// The matrix (Directive v1.0 §2 as amended by v1.1, Option C for DM):
+//   - profile:generate + profile:edit → the 5-role management tier
+//     (TA + TO + AM + recruiting_manager + lead_recruiter). Base recruiter
+//     does NOT hold them (it lost requisition:edit and gains nothing here).
+//   - recruiting_manager / lead_recruiter ADD compensation:view:bill (they
+//     already hold view:pay + edit:pay via D5; view:bill is NOT a spread
+//     scope, so the D5 non-invertibility invariant still holds — proven in
+//     d5-non-invertibility.spec by walking D5 ∪ this bundle).
+//   - delivery_manager (status-only editor): requisition:edit:status (the
+//     net-new restrict-to-subset scope) + compensation:view:bill +
+//     requisition:view:financials. DM does NOT get compensation:view:pay
+//     (Amendment v1.1: pay + DM's existing spread scopes would break the D5
+//     invariant) and does NOT get requisition:edit / :edit:financials.
+export const REQ_GATING_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_admin', ['requisition:profile:generate', 'requisition:profile:edit']],
+  ['tenant_owner', ['requisition:profile:generate', 'requisition:profile:edit']],
+  ['account_manager', ['requisition:profile:generate', 'requisition:profile:edit']],
+  ['recruiting_manager', ['compensation:view:bill', 'requisition:profile:generate', 'requisition:profile:edit']],
+  ['lead_recruiter', ['compensation:view:bill', 'requisition:profile:generate', 'requisition:profile:edit']],
+  ['delivery_manager', ['requisition:edit:status', 'compensation:view:bill', 'requisition:view:financials']],
+  // PR-A1 grant amend (Lead-authorized, pre-push) — ADD requisition:edit:status
+  // to the 3 roles that ALREADY hold requisition:edit (recruiting_manager /
+  // lead_recruiter / account_manager). EXPLICIT, not new power: they could
+  // already edit status via the full-edit path. The status-only restrict-to-
+  // subset gate is UNCHANGED — it only restricts a holder of edit:status
+  // WITHOUT requisition:edit (= delivery_manager only); these 3 hold BOTH, so
+  // the restrict branch never applies and delivery_manager remains the ONLY
+  // status-only role. Appended as SEPARATE tuples so the existing 0x839..0x847
+  // ids do not renumber (these take 0x848..0x84a); the write loop upserts by
+  // (role, scope), so a role appearing twice is harmless.
+  ['recruiting_manager', ['requisition:edit:status']],
+  ['lead_recruiter', ['requisition:edit:status']],
+  ['account_manager', ['requisition:edit:status']],
+];
+
+// Deterministic RoleScope row ids for the 18 PR-A1 grants. Disjoint range
+// 0x839+ (the next clear id after Financials' 0x833..0x838; all prior ranges
+// untouched — append-don't-renumber). 18 rows: TA 2 + TO 2 + AM 2 + RM 3 +
+// LR 3 + DM 3 (0x839..0x847) + the edit:status grant amend RM/LR/AM
+// (0x848..0x84a).
+const REQ_GATING_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x839;
+  for (const [role, scopes] of REQ_GATING_SEED_BUNDLES) {
     for (const scope of scopes) {
       map[`${role}:${scope}`] =
         `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
@@ -1495,6 +1596,11 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['requisition:view:financials'], 'requisition:view:financials', 'View the Requisition FINANCIAL-PLANNING fields (target_margin_percent, markup_percent_target, rate_card_id, min/max_bill_rate, min/max_pay_rate). Read field-mask via libs/field-masking: non-holders see the requisition with these fields omitted from the JSON. A DISTINCT surface from the 13 compensation actuals (kept out of the D5 non-invertibility family). Granted to the agency-economics tier (tenant_admin + tenant_owner + account_manager).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:edit:financials'], 'requisition:edit:financials', 'Write the Requisition FINANCIAL-PLANNING fields. Write-gate enforced IN-SERVICE at the requisition repository (create / update / createForImport) BEFORE the Prisma write: a caller writing any financial field without this scope is rejected 403, and a null-clear counts as a write. Granted to the agency-economics tier (tenant_admin + tenant_owner + account_manager).');
 
+  // PR-A1 Requisition-Gating Rework — 3 new requisition-gating scopes.
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:edit:status'], 'requisition:edit:status', 'Edit ONLY the status field of a requisition (the status-only edit tier). INVERTED restrict-to-subset gate enforced IN-SERVICE at the requisition repository PATCH path: a holder of requisition:edit:status WITHOUT requisition:edit may PATCH only the status field; any other field in the request is rejected 403. A holder of requisition:edit is unaffected (edits status as before). Granted to delivery_manager.');
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:profile:generate'], 'requisition:profile:generate', 'Generate the AI JD + GoldenProfile for a requisition (the draft + confirm endpoints; re-gated off requisition:edit per PR-A1). Granted to the 5-role management tier (tenant_admin + tenant_owner + account_manager + recruiting_manager + lead_recruiter); base recruiter does NOT hold it.');
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:profile:edit'], 'requisition:profile:edit', 'Edit the generated GoldenProfile content for a requisition. Granted to the 5-role management tier (tenant_admin + tenant_owner + account_manager + recruiting_manager + lead_recruiter).');
+
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
     const role_id = roleIdForKey(roleKey);
@@ -1666,6 +1772,33 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
       const rsId = FINANCIALS_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`Financials-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // 7j. PR-A1 Requisition-Gating Rework — the consolidated grant DELTA
+  // (15 rows) per REQ_GATING_SEED_BUNDLES. UUID range 0x839+
+  // (append-don't-renumber — every prior range, incl. D5's 0x500 and
+  // Financials' 0x833, is untouched). Carries: profile:generate +
+  // profile:edit for the 5-role mgmt tier; compensation:view:bill for
+  // recruiting_manager / lead_recruiter / delivery_manager; and the net-new
+  // requisition:edit:status + requisition:view:financials for
+  // delivery_manager (the status-only editor; Option C — NO compensation:
+  // view:pay). The recruiter REMOVALS (requisition:edit, compensation:
+  // edit:pay) are handled by omission upstream (ROLE_SCOPE_ASSIGNMENTS +
+  // D5_COMPENSATION_BUNDLES), not here.
+  for (const [roleKey, scopeKeys] of REQ_GATING_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = REQ_GATING_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`PR-A1 Req-Gating-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

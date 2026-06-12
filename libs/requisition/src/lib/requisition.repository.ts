@@ -6,6 +6,7 @@ import { Prisma } from '../../prisma/generated/client/client.js';
 import { assertCompensationEditScopes } from './compensation-edit-gate.js';
 import { computeDerivedViews } from './compensation-views.js';
 import { assertFinancialEditScopes } from './field-group-edit-gate.js';
+import { assertStatusOnlyEditScope } from './status-edit-gate.js';
 import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
 import type { RatePeriod } from './dto/rate-period.js';
 import type { RequisitionCompensationModel } from './dto/requisition-compensation-model.js';
@@ -461,6 +462,21 @@ export class RequisitionRepository {
     scopes: readonly string[];
     requestId: string;
   }): Promise<RequisitionView> {
+    // PR-A1 Requisition-Gating Rework — the status-only edit gate fires
+    // FIRST (BEFORE the comp/financial floors and BEFORE the existence
+    // read). The PATCH route no longer carries a route-level
+    // @RequireScopes('requisition:edit') guard (RolesGuard is all-or-
+    // nothing AND, so it cannot express "edit OR edit:status"); this
+    // in-service gate is the authoritative PATCH authorization point:
+    //   - requisition:edit holder → unaffected (full edit).
+    //   - requisition:edit:status holder (no :edit) → status field ONLY;
+    //     any other field → 403.
+    //   - neither → 403 (no edit capability).
+    assertStatusOnlyEditScope({
+      input: args.input as unknown as Record<string, unknown>,
+      scopes: args.scopes,
+      requestId: args.requestId,
+    });
     // D-AUTHZ-COMP-WRITE-1 — fire the WRITE-side floor BEFORE the
     // tenant-existence read so a 403 on a comp-field write does not
     // leak existence-in-tenant information through a 404-vs-403 timing

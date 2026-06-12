@@ -14,8 +14,28 @@ import {
 } from '@aramo/field-masking';
 import { describe, expect, it } from 'vitest';
 
-import { D5_COMPENSATION_BUNDLES } from '../../prisma/seed.js';
+import { D5_COMPENSATION_BUNDLES, REQ_GATING_SEED_BUNDLES } from '../../prisma/seed.js';
 import { SEED_ROLE_KEYS } from '../lib/dto/index.js';
+
+// PR-A1 Requisition-Gating Rework — the comp grants now span TWO seed
+// bundles: the D5 base (D5_COMPENSATION_BUNDLES) plus the PR-A1 additions
+// (compensation:view:bill for recruiting_manager / lead_recruiter /
+// delivery_manager) carried in REQ_GATING_SEED_BUNDLES (kept there to
+// preserve D5's 0x500 append-don't-renumber id range). The EFFECTIVE comp
+// scope set a role holds is the union — every proof below walks that union
+// so the non-invertibility invariant + per-role view-set reflect the real
+// seeded grants, not just the D5 slice.
+const COMP_SCOPE_PREFIX = 'compensation:';
+function effectiveCompScopes(role: string): string[] {
+  const out = new Set<string>();
+  for (const [k, scopes] of D5_COMPENSATION_BUNDLES) {
+    if (k === role) for (const s of scopes) out.add(s);
+  }
+  for (const [k, scopes] of REQ_GATING_SEED_BUNDLES) {
+    if (k === role) for (const s of scopes) if (s.startsWith(COMP_SCOPE_PREFIX)) out.add(s);
+  }
+  return [...out];
+}
 
 // AUTHZ-D5 — seeded-bundle non-invertibility + per-role view-set proof.
 //
@@ -43,11 +63,14 @@ const SEE_ALL_ROLES = new Set([
 ]);
 
 describe('AUTHZ-D5 — THE ENFORCED INVARIANT (no role holds view:pay + any spread)', () => {
-  for (const [roleKey, scopes] of D5_COMPENSATION_BUNDLES) {
+  for (const [roleKey] of D5_COMPENSATION_BUNDLES) {
     const seeAll = SEE_ALL_ROLES.has(roleKey);
-    it(`bundle for "${roleKey}"${seeAll ? ' (see-all exemption)' : ''} is non-invertible`, () => {
+    it(`bundle for "${roleKey}"${seeAll ? ' (see-all exemption)' : ''} is non-invertible (D5 ∪ PR-A1)`, () => {
+      // PR-A1 — walk the EFFECTIVE union so the bill grants added to
+      // RM/LR/DM are included (view:bill is not a spread scope; the
+      // invariant — no view:pay/edit:pay alongside a spread — still holds).
       expect(() =>
-        assertNonInvertibleBundle(roleKey, scopes, { seeAll }),
+        assertNonInvertibleBundle(roleKey, effectiveCompScopes(roleKey), { seeAll }),
       ).not.toThrow();
     });
   }
@@ -78,9 +101,9 @@ describe('AUTHZ-D5 — THE ENFORCED INVARIANT (no role holds view:pay + any spre
   });
 
   it('the operational tiers (NOT see-all) never hold view:pay alongside a spread scope', () => {
-    for (const [role, scopes] of D5_COMPENSATION_BUNDLES) {
+    for (const [role] of D5_COMPENSATION_BUNDLES) {
       if (SEE_ALL_ROLES.has(role)) continue;
-      const set = new Set(scopes);
+      const set = new Set(effectiveCompScopes(role));
       if (!set.has(COMPENSATION_VIEW_PAY)) continue;
       // The invariant: view:pay holders see NO spread scope.
       expect(set.has(COMPENSATION_VIEW_SPREAD_AMOUNT), `${role}: pay + spread:amount`).toBe(false);
@@ -95,9 +118,9 @@ describe('AUTHZ-D5 — THE ENFORCED INVARIANT (no role holds view:pay + any spre
   // spread VIEW scope: a user that could WRITE a known pay value AND
   // READ a spread view could derive the bill via spread arithmetic.
   it('operational tiers never hold edit:pay alongside any spread VIEW scope', () => {
-    for (const [role, scopes] of D5_COMPENSATION_BUNDLES) {
+    for (const [role] of D5_COMPENSATION_BUNDLES) {
       if (SEE_ALL_ROLES.has(role)) continue;
-      const set = new Set(scopes);
+      const set = new Set(effectiveCompScopes(role));
       if (!set.has(COMPENSATION_EDIT_PAY)) continue;
       for (const spread of COMPENSATION_SPREAD_SCOPES) {
         expect(
@@ -116,9 +139,9 @@ describe('AUTHZ-D5 — THE ENFORCED INVARIANT (no role holds view:pay + any spre
   // workflow.
   it('read-only / review / audit roles hold ZERO compensation:edit:* scopes', () => {
     const readOnlyRoles = new Set(['delivery_manager', 'finance', 'auditor_with_financials']);
-    for (const [role, scopes] of D5_COMPENSATION_BUNDLES) {
+    for (const [role] of D5_COMPENSATION_BUNDLES) {
       if (!readOnlyRoles.has(role)) continue;
-      const set = new Set(scopes);
+      const set = new Set(effectiveCompScopes(role));
       for (const editScope of COMPENSATION_EDIT_SCOPES) {
         expect(
           set.has(editScope),
@@ -132,10 +155,13 @@ describe('AUTHZ-D5 — THE ENFORCED INVARIANT (no role holds view:pay + any spre
   // ALSO holds edit:X (except the read-only/review/audit roles above).
   // The writeable surface mirrors what the role authors.
   it('roles that AUTHOR comp data hold edit:X paired with view:X (mirror property)', () => {
+    // PR-A1 Requisition-Gating Rework — recruiter is REMOVED from the author
+    // set: it is now read-only on compensation (holds compensation:view:pay
+    // but NOT compensation:edit:pay), so the view:X→edit:X mirror property no
+    // longer applies to it. The remaining authors keep view:pay + edit:pay.
     const authorRoles = new Set([
       'tenant_admin',
       'tenant_owner',
-      'recruiter',
       'recruiting_manager',
       'lead_recruiter',
       'back_office',
@@ -185,8 +211,8 @@ const FULL_VIEW: Record<string, unknown> = {
 };
 
 function scopesFor(role: string): readonly string[] {
-  const entry = D5_COMPENSATION_BUNDLES.find(([k]) => k === role);
-  return entry ? entry[1] : [];
+  // PR-A1 — the EFFECTIVE comp scope set (D5 ∪ REQ_GATING bill grants).
+  return effectiveCompScopes(role);
 }
 
 function maskedKeys(role: string): Set<string> {
@@ -225,12 +251,28 @@ describe('AUTHZ-D5 — per-role view-set matches the LOCKED matrix', () => {
     ]);
   });
 
-  it('recruiting_manager = recruiter (P-only, AUTHZ-1b operational mirror)', () => {
-    expect([...maskedKeys('recruiting_manager')].sort()).toEqual([...maskedKeys('recruiter')].sort());
+  // PR-A1 Requisition-Gating Rework — recruiting_manager / lead_recruiter
+  // now ADD compensation:view:bill (the matrix delta): they see pay/salary
+  // (view:pay) PLUS bill_rate + placement_fee (view:bill). NO spread scopes
+  // (the invariant holds — view:bill is not a spread scope). They diverge
+  // from base recruiter (which stays pay/salary-only, read-only).
+  it('recruiting_manager sees pay/salary + bill + placement fee (PR-A1 view:bill delta)', () => {
+    expect([...maskedKeys('recruiting_manager')].sort()).toEqual([
+      'bill_rate_amount',
+      'bill_rate_currency',
+      'bill_rate_period',
+      'pay_rate_amount',
+      'pay_rate_currency',
+      'pay_rate_period',
+      'placement_fee_amount',
+      'placement_fee_percent',
+      'salary_amount',
+      'salary_currency',
+    ]);
   });
 
-  it('lead_recruiter = recruiter (per the AUTHZ-1b "Recruiter verbatim" precedent)', () => {
-    expect([...maskedKeys('lead_recruiter')].sort()).toEqual([...maskedKeys('recruiter')].sort());
+  it('lead_recruiter = recruiting_manager (both gain view:bill; pay + bill, no spread)', () => {
+    expect([...maskedKeys('lead_recruiter')].sort()).toEqual([...maskedKeys('recruiting_manager')].sort());
   });
 
   it('back_office sees pay/salary (payroll-facing)', () => {
@@ -263,15 +305,22 @@ describe('AUTHZ-D5 — per-role view-set matches the LOCKED matrix', () => {
     expect(keys.has('margin_amount')).toBe(false);
   });
 
-  it('delivery_manager sees revenue + every spread/margin view; NO pay, NO fee', () => {
+  // PR-A1 Requisition-Gating Rework — delivery_manager ADDS
+  // compensation:view:bill (Option C): it now sees bill_rate + placement_fee
+  // (view:bill) ON TOP OF its existing revenue + every spread/margin view.
+  // It STILL does NOT see pay/salary (NO compensation:view:pay — the D5
+  // invariant: pay + DM's spread scopes would reconstruct bill).
+  it('delivery_manager sees bill + fee + revenue + every spread/margin view; NO pay (PR-A1 view:bill delta)', () => {
     const keys = maskedKeys('delivery_manager');
     expect(keys.has('bill_rate_amount')).toBe(true);
+    expect(keys.has('placement_fee_amount')).toBe(true); // PR-A1: view:bill now grants fee
+    expect(keys.has('placement_fee_percent')).toBe(true);
     expect(keys.has('margin_amount')).toBe(true);
     expect(keys.has('markup_percent')).toBe(true);
     expect(keys.has('margin_percent')).toBe(true);
+    // The invariant holds — DM never sees talent pay.
     expect(keys.has('pay_rate_amount')).toBe(false);
     expect(keys.has('salary_amount')).toBe(false);
-    expect(keys.has('placement_fee_amount')).toBe(false);
   });
 
   // Every catalog role NOT in D5_COMPENSATION_BUNDLES gets zero comp
