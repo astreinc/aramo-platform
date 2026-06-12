@@ -111,6 +111,13 @@ const REQUISITION_IMPORT_BACK_REF = resolve(
 const REQUISITION_COMPENSATION_FIELDS = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql',
+);
+// Job-Module — enterprise + financial + golden_profile_id columns. The
+// repository's RETURNING projection includes them; absent in DB → 500 on
+// every requisition write/read (the documented migration-harness gap:
+// per-spec MIGRATIONS lists are hardcoded, not auto-discovered).
+const REQUISITION_JOB_MODULE_FIELDS = resolve(
+  ROOT,
   'libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql',
 );
 const TALENT_RECORD_IMPORT_BACK_REF = resolve(
@@ -211,7 +218,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         CONTACT_IMPORT_BACK_REF,
         REQUISITION_INIT,
         REQUISITION_IMPORT_BACK_REF,
-        REQUISITION_COMPENSATION_FIELDS,
+        REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS,
         TALENT_RECORD_INIT,
         TALENT_RECORD_LINK_ADD,
         TALENT_RECORD_IMPORT_BACK_REF,
