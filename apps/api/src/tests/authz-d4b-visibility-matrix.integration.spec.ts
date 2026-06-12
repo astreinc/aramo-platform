@@ -99,6 +99,7 @@ const REQUISITION_IMPORT_BACK_REF = resolve(
 const REQUISITION_COMPENSATION_FIELDS = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql',
+  'libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql',
 );
 
 const ISSUER = 'Aramo Core Auth';
