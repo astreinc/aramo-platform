@@ -217,36 +217,76 @@ describe('AuthController.logout (idempotent)', () => {
 });
 
 describe('AuthController.callback (orchestrator-result mapping)', () => {
-  it('on success: sets access + refresh cookies, clears pkce_state, redirects 302 to the app', async () => {
-    const sessionOrch = {
-      handleCallback: vi.fn().mockResolvedValue({
-        kind: 'success',
-        accessJwt: 'a.b.c',
-        refreshTokenPlaintext: 'rt-plain',
-      }),
-    } as unknown as SessionOrchestratorService;
-    const ctl = makeController({ sessionOrch });
-    const res = makeRes();
-    const req = {
-      cookies: { aramo_pkce_state: 'cipher' },
-      requestId: 'r',
-    } as never;
-    await ctl.callback(
-      'recruiter',
-      'code',
-      'state',
-      undefined,
-      undefined,
-      req,
-      res as never,
-    );
-    // 3 cookie operations: access, refresh, clear pkce
-    expect(res.cookie).toHaveBeenCalledTimes(3);
-    // The hosted-UI callback is a top-level browser redirect, so success
-    // returns a 302 back into the app (not a bodyless 204). Default target
-    // is http://localhost:4201/ unless AUTH_POST_LOGIN_REDIRECT is set.
-    expect(res.redirect).toHaveBeenCalledWith(302, expect.any(String));
-    expect(res.status).not.toHaveBeenCalledWith(204);
+  it('on success: sets cookies, clears pkce_state, redirects 302 to the CONFIGURED target', async () => {
+    // The redirect target is per-environment config (the frontend origin for
+    // THIS env), NOT a hardcoded literal. Set it and assert the 302 uses the
+    // exact configured value.
+    const CONFIGURED = 'https://app.staging.example.test/';
+    const prev = process.env['AUTH_POST_LOGIN_REDIRECT'];
+    process.env['AUTH_POST_LOGIN_REDIRECT'] = CONFIGURED;
+    try {
+      const sessionOrch = {
+        handleCallback: vi.fn().mockResolvedValue({
+          kind: 'success',
+          accessJwt: 'a.b.c',
+          refreshTokenPlaintext: 'rt-plain',
+        }),
+      } as unknown as SessionOrchestratorService;
+      const ctl = makeController({ sessionOrch });
+      const res = makeRes();
+      const req = {
+        cookies: { aramo_pkce_state: 'cipher' },
+        requestId: 'r',
+      } as never;
+      await ctl.callback(
+        'recruiter',
+        'code',
+        'state',
+        undefined,
+        undefined,
+        req,
+        res as never,
+      );
+      // 3 cookie operations: access, refresh, clear pkce
+      expect(res.cookie).toHaveBeenCalledTimes(3);
+      // 302 to the CONFIGURED target — not a hardcoded localhost literal.
+      expect(res.redirect).toHaveBeenCalledWith(302, CONFIGURED);
+      expect(res.status).not.toHaveBeenCalledWith(204);
+    } finally {
+      if (prev === undefined) delete process.env['AUTH_POST_LOGIN_REDIRECT'];
+      else process.env['AUTH_POST_LOGIN_REDIRECT'] = prev;
+    }
+  });
+
+  it('on success WITHOUT AUTH_POST_LOGIN_REDIRECT configured: throws 500 (no hardcoded fallback)', async () => {
+    const prev = process.env['AUTH_POST_LOGIN_REDIRECT'];
+    delete process.env['AUTH_POST_LOGIN_REDIRECT'];
+    try {
+      const sessionOrch = {
+        handleCallback: vi.fn().mockResolvedValue({
+          kind: 'success',
+          accessJwt: 'a.b.c',
+          refreshTokenPlaintext: 'rt-plain',
+        }),
+      } as unknown as SessionOrchestratorService;
+      const ctl = makeController({ sessionOrch });
+      const res = makeRes();
+      const req = {
+        cookies: { aramo_pkce_state: 'cipher' },
+        requestId: 'r',
+      } as never;
+      await expect(
+        ctl.callback('recruiter', 'code', 'state', undefined, undefined, req, res as never),
+      ).rejects.toMatchObject({
+        code: 'INTERNAL_ERROR',
+        context: { details: { reason: 'post_login_redirect_missing' } },
+      });
+      // No silent localhost fallback redirect.
+      expect(res.redirect).not.toHaveBeenCalled();
+    } finally {
+      if (prev === undefined) delete process.env['AUTH_POST_LOGIN_REDIRECT'];
+      else process.env['AUTH_POST_LOGIN_REDIRECT'] = prev;
+    }
   });
 
   it('on tenant_selection_required: throws 409 TENANT_SELECTION_REQUIRED with tenants in details', async () => {

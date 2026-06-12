@@ -210,8 +210,23 @@ export class AuthController {
       // are set, redirect the browser back into the app. The cookie-set
       // and token-exchange logic above is unchanged; only the success
       // response shape (204 → 302) differs.
-      const postLogin =
-        process.env['AUTH_POST_LOGIN_REDIRECT'] ?? 'http://localhost:4201/';
+      //
+      // The redirect target is PER-ENVIRONMENT config (the frontend origin
+      // for THIS environment): local/dev → the local FE origin (same-origin
+      // vite proxy); staging/prod → the deployed FE URL (a DIFFERENT origin
+      // from the API). It is read from AUTH_POST_LOGIN_REDIRECT and throws
+      // when unset — NO hardcoded localhost fallback (which would silently
+      // strand deployed users on a dev URL). Mirrors the throw-if-missing
+      // posture of AUTH_COGNITO_REDIRECT_URI above and the cognito-verifier.
+      const postLogin = process.env['AUTH_POST_LOGIN_REDIRECT'];
+      if (postLogin === undefined || postLogin.length === 0) {
+        throw new AramoError(
+          'INTERNAL_ERROR',
+          'Post-login redirect not configured',
+          500,
+          { requestId, details: { reason: 'post_login_redirect_missing' } },
+        );
+      }
       res.redirect(302, postLogin);
       return;
     }
