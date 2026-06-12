@@ -204,7 +204,15 @@ export class AuthController {
     if (result.kind === 'success') {
       setAccessCookie(res, result.accessJwt);
       setRefreshCookie(res, result.refreshTokenPlaintext);
-      res.status(204).end();
+      // The hosted-UI callback is a TOP-LEVEL browser redirect (Cognito
+      // 302s the browser to this endpoint), so a bodyless 204 would leave
+      // the browser stranded on a blank page. After the session cookies
+      // are set, redirect the browser back into the app. The cookie-set
+      // and token-exchange logic above is unchanged; only the success
+      // response shape (204 → 302) differs.
+      const postLogin =
+        process.env['AUTH_POST_LOGIN_REDIRECT'] ?? 'http://localhost:4201/';
+      res.redirect(302, postLogin);
       return;
     }
     if (result.kind === 'tenant_selection_required') {
