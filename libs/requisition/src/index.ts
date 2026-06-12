@@ -9,6 +9,8 @@ export {
   isRequisitionStatus,
   type RequisitionStatus,
   type RequisitionView,
+  emptyRequisitionProfileView,
+  type RequisitionProfileView,
   type CreateRequisitionRequestDto,
   type UpdateRequisitionRequestDto,
   type RequisitionAssignmentView,

@@ -10,6 +10,7 @@ import type {
   ConfirmProfileRequest,
   DraftProfileRequest,
   DraftProfileResponse,
+  RequisitionProfileView,
 } from './golden-profile';
 
 // Visibility is applied at the BE (D4b lazy resolver). The recruiter
@@ -61,6 +62,19 @@ export async function updateRequisition(
   return apiClient.patch<RequisitionView>(
     `/v1/requisitions/${encodeURIComponent(id)}`,
     body,
+  );
+}
+
+// PR-A2 P3 — the first-class profile READ (GET /v1/requisitions/:id/profile,
+// requisition:read-gated). Returns the un-nested GoldenProfile content + the
+// has_profile flag. A profile-less requisition returns the empty-shaped view
+// (has_profile false) — never a 404 — so the workbench renders cleanly for a
+// req that has no profile yet.
+export async function getRequisitionProfile(
+  requisitionId: string,
+): Promise<RequisitionProfileView> {
+  return apiClient.get<RequisitionProfileView>(
+    `/v1/requisitions/${encodeURIComponent(requisitionId)}/profile`,
   );
 }
 

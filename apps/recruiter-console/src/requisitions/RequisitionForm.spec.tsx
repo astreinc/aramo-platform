@@ -13,9 +13,8 @@ import type { CompanyView, ContactView } from '../companies/types';
 import { RequisitionForm } from './RequisitionForm';
 import type { RequisitionStatus, RequisitionView } from './types';
 
-// EDIT mode mounts GenerateProfileDialog, which uses useToast() — so the
-// tree needs a ToastProvider (the app root provides it in production).
-// Wrapping all renders keeps create-mode tests unaffected.
+// PR-A2 P4 — the form is create-only now; the ToastProvider wrapper is kept
+// (harmless) for parity with the app root, which always provides it.
 function render(ui: ReactElement) {
   return rawRender(<ToastProvider>{ui}</ToastProvider>);
 }
@@ -215,7 +214,6 @@ describe('RequisitionForm — CREATE', () => {
     });
     render(
       <RequisitionForm
-        mode="create"
         session={makeSession(['requisition:create'])}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -244,7 +242,6 @@ describe('RequisitionForm — CREATE', () => {
     });
     render(
       <RequisitionForm
-        mode="create"
         session={makeSession(['requisition:create'])}
         onSuccess={onSuccess}
         onCancel={vi.fn()}
@@ -289,7 +286,6 @@ describe('RequisitionForm — CREATE', () => {
     });
     render(
       <RequisitionForm
-        mode="create"
         session={makeSession(['requisition:create', 'compensation:view:pay'])}
         onSuccess={onSuccess}
         onCancel={vi.fn()}
@@ -326,209 +322,11 @@ describe('RequisitionForm — CREATE', () => {
   });
 });
 
-describe('RequisitionForm — EDIT (PATCH semantics + D5 safety)', () => {
-  it('pre-fills from initial; omits unchanged fields from PATCH', async () => {
-    const onSuccess = vi.fn();
-    const initial = makeReq({ title: 'Senior Engineer', notes: 'hello' });
-    const calls = installFetch((req) => {
-      if (req.url.includes('/v1/companies') && req.method === 'GET') {
-        return { status: 200, body: { items: COMPANIES } };
-      }
-      if (req.url.includes('/v1/contacts') && req.method === 'GET') {
-        return { status: 200, body: { items: CONTACTS_CO1 } };
-      }
-      if (req.url.includes('/v1/requisitions/req-1') && req.method === 'PATCH') {
-        return { status: 200, body: makeReq() };
-      }
-      return { status: 404, body: {} };
-    });
-    render(
-      <RequisitionForm
-        mode="edit"
-        session={makeSession(['requisition:edit'])}
-        initial={initial}
-        onSuccess={onSuccess}
-        onCancel={vi.fn()}
-      />,
-    );
-    // Pre-filled.
-    const title = await screen.findByLabelText('Title') as HTMLInputElement;
-    expect(title.value).toBe('Senior Engineer');
-    expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('hello');
-    // Submit without changes.
-    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
-    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
-    const patchBody = calls.find((c) => c.method === 'PATCH')?.body as Record<
-      string,
-      unknown
-    >;
-    // No changes → empty body.
-    expect(Object.keys(patchBody)).toHaveLength(0);
-  });
-
-  it('sends explicit null when a nullable field is cleared (description / notes / etc.)', async () => {
-    const onSuccess = vi.fn();
-    const initial = makeReq({ notes: 'hello' });
-    const calls = installFetch((req) => {
-      if (req.url.includes('/v1/companies') && req.method === 'GET') {
-        return { status: 200, body: { items: COMPANIES } };
-      }
-      if (req.url.includes('/v1/contacts')) {
-        return { status: 200, body: { items: [] } };
-      }
-      if (req.method === 'PATCH') {
-        return { status: 200, body: makeReq() };
-      }
-      return { status: 404, body: {} };
-    });
-    render(
-      <RequisitionForm
-        mode="edit"
-        session={makeSession(['requisition:edit'])}
-        initial={initial}
-        onSuccess={onSuccess}
-        onCancel={vi.fn()}
-      />,
-    );
-    fireEvent.change(await screen.findByLabelText('Notes'), { target: { value: '' } });
-    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
-    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
-    const body = calls.find((c) => c.method === 'PATCH')?.body as Record<string, unknown>;
-    expect(body).toEqual({ notes: null });
-  });
-
-  // LOAD-BEARING D5 SAFETY TEST (ruling 1 — Frame B; no-blanking).
-  it('a recruiter WITHOUT compensation:view:pay editing a req does NOT include comp fields in the PATCH body (no blanking)', async () => {
-    const onSuccess = vi.fn();
-    // The initial req HAS comp data in the DB but the read masked it
-    // (the recruiter never received it). The view-shape thus has nulls
-    // for comp fields. We add an extra change to title so the PATCH
-    // body is non-empty and we can assert the comp keys are absent.
-    const initial = makeReq({
-      // BE-masked: comp fields stripped to null in the response shape.
-      pay_rate_amount: null,
-      salary_amount: null,
-    });
-    const calls = installFetch((req) => {
-      if (req.url.includes('/v1/companies') && req.method === 'GET') {
-        return { status: 200, body: { items: COMPANIES } };
-      }
-      if (req.url.includes('/v1/contacts')) {
-        return { status: 200, body: { items: [] } };
-      }
-      if (req.method === 'PATCH') {
-        return { status: 200, body: makeReq() };
-      }
-      return { status: 404, body: {} };
-    });
-    render(
-      <RequisitionForm
-        mode="edit"
-        session={makeSession(['requisition:edit'])} // NO compensation:view:* scope
-        initial={initial}
-        onSuccess={onSuccess}
-        onCancel={vi.fn()}
-      />,
-    );
-    // Compensation section is hidden entirely.
-    await waitFor(() => {
-      expect(screen.queryByText('Compensation')).toBeNull();
-    });
-    // Change the title so PATCH body is non-empty.
-    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Updated' } });
-    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
-    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
-    const body = calls.find((c) => c.method === 'PATCH')?.body as Record<string, unknown>;
-    expect(body.title).toBe('Updated');
-    // NO compensation fields in the body — ruling 1 omit-not-null.
-    expect(body).not.toHaveProperty('compensation_model');
-    expect(body).not.toHaveProperty('pay_rate_amount');
-    expect(body).not.toHaveProperty('pay_rate_currency');
-    expect(body).not.toHaveProperty('pay_rate_period');
-    expect(body).not.toHaveProperty('bill_rate_amount');
-    expect(body).not.toHaveProperty('bill_rate_currency');
-    expect(body).not.toHaveProperty('bill_rate_period');
-    expect(body).not.toHaveProperty('placement_fee_amount');
-    expect(body).not.toHaveProperty('placement_fee_percent');
-    expect(body).not.toHaveProperty('salary_amount');
-    expect(body).not.toHaveProperty('salary_currency');
-  });
-
-  it('changing the discriminator CONTRACT→PERMANENT omits the off-branch CONTRACT fields (no auto-clear)', async () => {
-    const onSuccess = vi.fn();
-    const initial = makeReq({
-      compensation_model: 'CONTRACT',
-      pay_rate_amount: '60.00',
-      pay_rate_currency: 'USD',
-    });
-    const calls = installFetch((req) => {
-      if (req.url.includes('/v1/companies') && req.method === 'GET') {
-        return { status: 200, body: { items: COMPANIES } };
-      }
-      if (req.url.includes('/v1/contacts')) {
-        return { status: 200, body: { items: [] } };
-      }
-      if (req.method === 'PATCH') {
-        return { status: 200, body: makeReq() };
-      }
-      return { status: 404, body: {} };
-    });
-    render(
-      <RequisitionForm
-        mode="edit"
-        session={makeSession(['requisition:edit', 'compensation:view:pay'])}
-        initial={initial}
-        onSuccess={onSuccess}
-        onCancel={vi.fn()}
-      />,
-    );
-    await screen.findByLabelText('Title');
-    // Flip discriminator to PERMANENT.
-    fireEvent.click(screen.getByLabelText('Permanent'));
-    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
-    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
-    const body = calls.find((c) => c.method === 'PATCH')?.body as Record<string, unknown>;
-    // Discriminator changed.
-    expect(body.compensation_model).toBe('PERMANENT');
-    // CONTRACT-side fields NOT in the body — ruling 2 (no auto-clear);
-    // they remain in the DB at their pre-existing values.
-    expect(body).not.toHaveProperty('pay_rate_amount');
-    expect(body).not.toHaveProperty('pay_rate_currency');
-    expect(body).not.toHaveProperty('bill_rate_amount');
-  });
-
-  it('clearing the discriminator (Not specified) sends compensation_model: null', async () => {
-    const onSuccess = vi.fn();
-    const initial = makeReq({ compensation_model: 'CONTRACT' });
-    const calls = installFetch((req) => {
-      if (req.url.includes('/v1/companies') && req.method === 'GET') {
-        return { status: 200, body: { items: COMPANIES } };
-      }
-      if (req.url.includes('/v1/contacts')) {
-        return { status: 200, body: { items: [] } };
-      }
-      if (req.method === 'PATCH') {
-        return { status: 200, body: makeReq() };
-      }
-      return { status: 404, body: {} };
-    });
-    render(
-      <RequisitionForm
-        mode="edit"
-        session={makeSession(['requisition:edit', 'compensation:view:pay'])}
-        initial={initial}
-        onSuccess={onSuccess}
-        onCancel={vi.fn()}
-      />,
-    );
-    await screen.findByLabelText('Title');
-    fireEvent.click(screen.getByLabelText('Not specified'));
-    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
-    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
-    const body = calls.find((c) => c.method === 'PATCH')?.body as Record<string, unknown>;
-    expect(body.compensation_model).toBeNull();
-  });
-});
+// PR-A2 P4 — the EDIT-mode describe block (PATCH semantics + the D5
+// no-blanking PATCH safety + the discriminator-flip cases) was REMOVED with
+// the form's edit-mode. Editing is now INLINE in the cockpit, and the
+// per-field PATCH + the backend-is-truth gate are proven there
+// (RequisitionDetailView.cockpit.spec.tsx). The form is create-only.
 
 describe('RequisitionForm — submit errors', () => {
   it('surfaces a friendly message when the BE returns 400 VALIDATION_ERROR with a field', async () => {
@@ -555,7 +353,6 @@ describe('RequisitionForm — submit errors', () => {
     });
     render(
       <RequisitionForm
-        mode="create"
         session={makeSession(['requisition:create', 'compensation:view:pay'])}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -590,7 +387,6 @@ describe('RequisitionForm — submit errors', () => {
     });
     render(
       <RequisitionForm
-        mode="create"
         session={makeSession(['requisition:create'])}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -621,7 +417,6 @@ describe('RequisitionForm — pickers', () => {
     });
     render(
       <RequisitionForm
-        mode="create"
         session={makeSession(['requisition:create'])}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -644,7 +439,6 @@ describe('RequisitionForm — pickers', () => {
     });
     render(
       <RequisitionForm
-        mode="create"
         session={makeSession(['requisition:create'])}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -664,7 +458,6 @@ describe('RequisitionForm — cancel', () => {
     installFetch(() => ({ status: 200, body: { items: [] } }));
     render(
       <RequisitionForm
-        mode="create"
         session={makeSession(['requisition:create'])}
         onSuccess={vi.fn()}
         onCancel={onCancel}
@@ -692,7 +485,6 @@ describe('RequisitionForm — enterprise fields (Job-Module, UN-gated)', () => {
     });
     render(
       <RequisitionForm
-        mode="create"
         session={makeSession(['requisition:create'])}
         onSuccess={onSuccess}
         onCancel={vi.fn()}
@@ -751,7 +543,6 @@ describe('RequisitionForm — financial planning (gated)', () => {
     });
     render(
       <RequisitionForm
-        mode="create"
         session={makeSession(['requisition:create'])} // no financials scope
         onSuccess={onSuccess}
         onCancel={vi.fn()}
@@ -788,7 +579,6 @@ describe('RequisitionForm — financial planning (gated)', () => {
     });
     render(
       <RequisitionForm
-        mode="create"
         session={makeSession(['requisition:create', 'requisition:view:financials'])}
         onSuccess={onSuccess}
         onCancel={vi.fn()}
@@ -819,49 +609,7 @@ describe('RequisitionForm — financial planning (gated)', () => {
   });
 });
 
-describe('RequisitionForm — AI profile surface + linked-profile indicator', () => {
-  const EDIT_FETCH = (req: MockedRequest) => {
-    if (req.url.includes('/v1/companies') && req.method === 'GET') {
-      return { status: 200, body: { items: COMPANIES } };
-    }
-    if (req.url.includes('/v1/contacts')) {
-      return { status: 200, body: { items: [] } };
-    }
-    return { status: 404, body: {} };
-  };
-
-  it('renders "Generate profile from brief" + a linked-profile indicator in EDIT mode', async () => {
-    installFetch(EDIT_FETCH);
-    const initial = makeReq({ golden_profile_id: 'gp-123' });
-    render(
-      <RequisitionForm
-        mode="edit"
-        session={makeSession(['requisition:edit'])}
-        initial={initial}
-        onSuccess={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    );
-    await screen.findByLabelText('Title');
-    expect(
-      screen.getByRole('button', { name: /generate profile from brief/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByText('gp-123')).toBeInTheDocument();
-  });
-
-  it('does NOT render the AI surface in CREATE mode (no persisted req id)', async () => {
-    installFetch(EDIT_FETCH);
-    render(
-      <RequisitionForm
-        mode="create"
-        session={makeSession(['requisition:create'])}
-        onSuccess={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    );
-    await screen.findByLabelText('Title');
-    expect(
-      screen.queryByRole('button', { name: /generate profile from brief/i }),
-    ).toBeNull();
-  });
-});
+// PR-A2 P4 — the in-form "AI profile surface" describe block was REMOVED.
+// The GoldenProfile workbench moved to the cockpit's persistent
+// ProfileWorkbenchPanel (proven in ProfileWorkbenchPanel.spec.tsx); the
+// transient GenerateProfileDialog was retired.

@@ -22,7 +22,6 @@ import {
   FinancialPlanningSection,
   canViewFinancials,
 } from './FinancialPlanningSection';
-import { GenerateProfileDialog } from './GenerateProfileDialog';
 import {
   ENTERPRISE_BOOLEAN_KEYS,
   ENTERPRISE_NUMBER_KEYS,
@@ -33,11 +32,8 @@ import {
   type EnterpriseFormState,
   type FinancialFormState,
 } from './enterprise-fields';
-import { createRequisition, updateRequisition } from './requisitions-api';
-import {
-  createErrorMessage,
-  updateErrorMessage,
-} from './error-messages';
+import { createRequisition } from './requisitions-api';
+import { createErrorMessage } from './error-messages';
 import {
   visibleWritableCompensationFields,
   type CompensationFieldKey,
@@ -48,19 +44,20 @@ import {
   type CreateRequisitionRequest,
   type RequisitionStatus,
   type RequisitionView,
-  type UpdateRequisitionRequest,
 } from './types';
 
-// R4 — the shared CREATE/EDIT composite. The thin route wrappers
-// (RequisitionCreateView / RequisitionEditView) handle params + the
-// pre-fetch + the success navigation; this component owns the form
-// state + submit logic + the D5-defensive PATCH/CREATE construction.
+// R4 — the requisition CREATE form. The thin route wrapper
+// (RequisitionCreateView) handles the session + the success navigation;
+// this component owns the form state + the D5-defensive CREATE construction.
+//
+// PR-A2 P4 — EDIT MODE RETIRED. Editing a requisition is now INLINE in the
+// cockpit (RequisitionDetailView), so the form is create-only: the PATCH
+// path (buildPatchBody), the pre-fill (stateFromInitial), and the in-form
+// GenerateProfileDialog were removed. The component stays SHARED in spirit
+// (the D5-defensive CREATE-body construction is unchanged) — only the edit
+// affordance moved. CREATE remains fully functional (the §4 P5 proof).
 //
 // SUBMIT SAFETY (ruling 1 — D5 Frame B):
-// - The PATCH body OMITS compensation fields the actor cannot see
-//   (visibleWritableCompensationFields filters by scope). Omit-not-null
-//   is load-bearing: a recruiter without compensation:view:pay editing
-//   a req must NOT blank pay data via PATCH.
 // - The CREATE body sends compensation only when (a) the discriminator
 //   is set AND (b) the field is visible to the actor AND (c) the field
 //   is ON the chosen branch (ruling 2 Option A — off-branch hidden +
@@ -131,61 +128,6 @@ function emptyState(): FormState {
   };
 }
 
-function stateFromInitial(initial: RequisitionView): FormState {
-  return {
-    title: initial.title,
-    company_id: initial.company_id,
-    contact_id: initial.contact_id ?? '',
-    status: initial.status,
-    description: initial.description ?? '',
-    notes: initial.notes ?? '',
-    is_hot: initial.is_hot,
-    openings: initial.openings,
-    start_date: initial.start_date ?? '',
-    city: initial.city ?? '',
-    state: initial.state ?? '',
-    compensation_model: initial.compensation_model === null
-      ? ''
-      : (initial.compensation_model as CompensationModel | ''),
-    pay_rate_amount: initial.pay_rate_amount ?? '',
-    pay_rate_currency: initial.pay_rate_currency ?? '',
-    pay_rate_period: ((initial.pay_rate_period ?? '') as FormState['pay_rate_period']),
-    bill_rate_amount: initial.bill_rate_amount ?? '',
-    bill_rate_currency: initial.bill_rate_currency ?? '',
-    bill_rate_period: ((initial.bill_rate_period ?? '') as FormState['bill_rate_period']),
-    placement_fee_percent: initial.placement_fee_percent ?? '',
-    placement_fee_amount: initial.placement_fee_amount ?? '',
-    salary_amount: initial.salary_amount ?? '',
-    salary_currency: initial.salary_currency ?? '',
-    // Enterprise fields (additive, UN-gated).
-    job_type: (initial.job_type ?? '') as FormState['job_type'],
-    labor_category: initial.labor_category ?? '',
-    role_family: (initial.role_family ?? '') as FormState['role_family'],
-    seniority_level: (initial.seniority_level ?? '') as FormState['seniority_level'],
-    headcount_reason: (initial.headcount_reason ?? '') as FormState['headcount_reason'],
-    work_arrangement: (initial.work_arrangement ?? '') as FormState['work_arrangement'],
-    travel_percent: initial.travel_percent === null ? '' : String(initial.travel_percent),
-    relocation_offered: initial.relocation_offered ?? false,
-    work_authorization: (initial.work_authorization ?? '') as FormState['work_authorization'],
-    end_date: initial.end_date ?? '',
-    duration_value: initial.duration_value === null ? '' : String(initial.duration_value),
-    duration_unit: (initial.duration_unit ?? '') as FormState['duration_unit'],
-    extension_possible: initial.extension_possible ?? false,
-    hours_per_week: initial.hours_per_week === null ? '' : String(initial.hours_per_week),
-    source_system: (initial.source_system ?? '') as FormState['source_system'],
-    external_req_id: initial.external_req_id ?? '',
-    imported_at: initial.imported_at ?? '',
-    // Financial-planning fields (gated; BE-masked → null when invisible).
-    target_margin_percent: initial.target_margin_percent ?? '',
-    markup_percent_target: initial.markup_percent_target ?? '',
-    rate_card_id: initial.rate_card_id ?? '',
-    min_bill_rate: initial.min_bill_rate ?? '',
-    max_bill_rate: initial.max_bill_rate ?? '',
-    min_pay_rate: initial.min_pay_rate ?? '',
-    max_pay_rate: initial.max_pay_rate ?? '',
-  };
-}
-
 function buildCreateBody(
   state: FormState,
   visibleComp: ReadonlySet<CompensationFieldKey>,
@@ -241,105 +183,18 @@ function buildCreateBody(
   return body as unknown as CreateRequisitionRequest;
 }
 
-function buildPatchBody(
-  state: FormState,
-  initial: RequisitionView,
-  visibleComp: ReadonlySet<CompensationFieldKey>,
-  financialsVisible: boolean,
-): UpdateRequisitionRequest {
-  const body: Record<string, unknown> = {};
-  if (state.title !== initial.title) body['title'] = state.title.trim();
-  if (state.status !== initial.status) body['status'] = state.status;
-  if (state.is_hot !== initial.is_hot) body['is_hot'] = state.is_hot;
-  if (state.openings !== initial.openings) body['openings'] = state.openings;
-
-  // Nullable strings: empty input → null (explicit clear); else send if changed.
-  const initialAsRecord = initial as unknown as Record<string, unknown>;
-  for (const k of ['contact_id', 'description', 'notes', 'start_date', 'city', 'state'] as const) {
-    const initVal = initialAsRecord[k] ?? '';
-    const cur = state[k] as string;
-    if (cur !== initVal) {
-      body[k] = cur === '' ? null : cur;
-    }
-  }
-
-  // Compensation — ONLY on-branch + visible fields. The discriminator
-  // itself is also gated on having any view scope.
-  if (visibleComp.size > 0) {
-    const initialModel = initial.compensation_model ?? '';
-    if (state.compensation_model !== initialModel) {
-      body['compensation_model'] =
-        state.compensation_model === '' ? null : state.compensation_model;
-    }
-    for (const k of onBranchKeys(state.compensation_model)) {
-      if (!visibleComp.has(k)) continue;
-      const initVal = initialAsRecord[k] ?? '';
-      const cur = state[k] as string;
-      if (cur !== initVal) {
-        body[k] = cur === '' ? null : cur;
-      }
-    }
-  }
-
-  // Enterprise fields — UN-gated. Nullable strings/selects: '' → null
-  // (explicit clear) when changed. Numbers: '' → null; else Number().
-  // Booleans: always defined on the view (default false); send if changed.
-  for (const k of ENTERPRISE_STRING_KEYS) {
-    const initVal = (initialAsRecord[k] ?? '') as string;
-    const cur = state[k] as string;
-    if (cur !== initVal) {
-      body[k] = cur === '' ? null : cur;
-    }
-  }
-  for (const k of ENTERPRISE_NUMBER_KEYS) {
-    const rawInit = initialAsRecord[k];
-    const initVal = rawInit === null || rawInit === undefined ? '' : String(rawInit);
-    const cur = state[k] as string;
-    if (cur !== initVal) {
-      body[k] = cur === '' ? null : Number(cur);
-    }
-  }
-  for (const k of ENTERPRISE_BOOLEAN_KEYS) {
-    const initVal = (initialAsRecord[k] ?? false) as boolean;
-    const cur = state[k] as boolean;
-    if (cur !== initVal) {
-      body[k] = cur;
-    }
-  }
-
-  // Financial-planning fields — ONLY when the section is visible. Same
-  // D5-defensive omit-not-null rule as compensation: a non-holder editing
-  // a req must NEVER blank financial data they cannot see.
-  if (financialsVisible) {
-    for (const k of FINANCIAL_STRING_KEYS) {
-      const initVal = (initialAsRecord[k] ?? '') as string;
-      const cur = state[k] as string;
-      if (cur !== initVal) {
-        body[k] = cur === '' ? null : cur;
-      }
-    }
-  }
-  return body as unknown as UpdateRequisitionRequest;
-}
-
 interface RequisitionFormProps {
-  readonly mode: 'create' | 'edit';
   readonly session: Session;
-  readonly initial?: RequisitionView;
   readonly onSuccess: (req: RequisitionView) => void;
   readonly onCancel: () => void;
 }
 
 export function RequisitionForm({
-  mode,
   session,
-  initial,
   onSuccess,
   onCancel,
 }: RequisitionFormProps) {
-  const [state, setState] = useState<FormState>(() =>
-    initial !== undefined ? stateFromInitial(initial) : emptyState(),
-  );
+  const [state, setState] = useState<FormState>(() => emptyState());
   const [companies, setCompanies] = useState<readonly CompanyView[]>([]);
   const [companiesLoading, setCompaniesLoading] = useState(true);
   const [companiesTruncated, setCompaniesTruncated] = useState(false);
@@ -441,22 +296,11 @@ export function RequisitionForm({
     setSubmitting(true);
     setSubmitError(null);
     try {
-      if (mode === 'create') {
-        const body = buildCreateBody(state, visibleComp, financialsVisible);
-        const created = await createRequisition(body);
-        onSuccess(created);
-      } else {
-        if (initial === undefined) {
-          throw new Error('EDIT mode requires `initial`.');
-        }
-        const body = buildPatchBody(state, initial, visibleComp, financialsVisible);
-        const updated = await updateRequisition(initial.id, body);
-        onSuccess(updated);
-      }
+      const body = buildCreateBody(state, visibleComp, financialsVisible);
+      const created = await createRequisition(body);
+      onSuccess(created);
     } catch (err) {
-      setSubmitError(
-        mode === 'create' ? createErrorMessage(err) : updateErrorMessage(err),
-      );
+      setSubmitError(createErrorMessage(err));
       setSubmitting(false);
     }
   }
@@ -612,26 +456,9 @@ export function RequisitionForm({
         disabled={submitting}
       />
 
-      {/* AI golden-profile surface. The draft/confirm endpoints are keyed
-          to a persisted requisition id, so the Generate action + the
-          read-only "Linked profile" indicator show only in EDIT mode
-          (after create). Manual entry of the form remains unaffected. */}
-      {mode === 'edit' && initial !== undefined ? (
-        <fieldset className="req-form__profile" disabled={submitting}>
-          <legend>Profile</legend>
-          {initial.golden_profile_id !== null ? (
-            <p className="req-form__linked-profile">
-              Linked profile: <code>{initial.golden_profile_id}</code>
-            </p>
-          ) : (
-            <p className="req-form__linked-profile">No profile linked yet.</p>
-          )}
-          <GenerateProfileDialog
-            requisitionId={initial.id}
-            onConfirmed={onSuccess}
-          />
-        </fieldset>
-      ) : null}
+      {/* PR-A2 P4 — the in-form AI profile surface is RETIRED. The
+          GoldenProfile workbench now lives in the cockpit (the persistent
+          ProfileWorkbenchPanel), reachable after the req is created. */}
 
       {submitError !== null ? (
         <InlineAlert variant="error">{submitError}</InlineAlert>
@@ -639,11 +466,7 @@ export function RequisitionForm({
 
       <div className="req-form__actions">
         <Button type="submit" variant="primary" disabled={!canSubmit}>
-          {submitting
-            ? 'Saving…'
-            : mode === 'create'
-              ? 'Create requisition'
-              : 'Save changes'}
+          {submitting ? 'Saving…' : 'Create requisition'}
         </Button>
         <Button type="button" variant="secondary" onClick={onCancel} disabled={submitting}>
           Cancel

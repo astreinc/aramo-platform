@@ -5,6 +5,7 @@ import { AramoError, type VisibilityContextShape } from '@aramo/common';
 import { AiDraftService } from '@aramo/ai-draft';
 import {
   JobDomainRepository,
+  goldenProfileContentFromStorage,
   goldenProfileContentToStorage,
   type GoldenProfileContent,
 } from '@aramo/job-domain';
@@ -13,6 +14,10 @@ import type {
   ConfirmProfileResponseDto,
   DraftProfileResponseDto,
 } from './dto/profile-generation.dto.js';
+import {
+  emptyRequisitionProfileView,
+  type RequisitionProfileView,
+} from './dto/requisition-profile.view.js';
 import type { RequisitionView } from './dto/requisition.view.js';
 import {
   buildProfilePrompt,
@@ -46,6 +51,66 @@ export class RequisitionProfileService {
     private readonly requisitionRepository: RequisitionRepository,
     private readonly jobDomainRepository: JobDomainRepository,
   ) {}
+
+  // GET /v1/requisitions/:id/profile — PR-A2 P3 the first-class profile
+  // read (A1 deferred it). Visibility-scoped (same 404 contract as GET-by-id:
+  // a req invisible to the actor → 404, NEVER the profile of a req they
+  // cannot see). RESHAPE-ON-READ: un-nests jd_text + the structured profile
+  // from the GoldenProfile.skills Json blob via goldenProfileContentFromStorage
+  // — NO schema change (R3). A requisition with no confirmed profile yet
+  // returns the profile-less shape (has_profile === false), NOT a 404/500.
+  async readProfile(args: {
+    tenant_id: string;
+    requisition_id: string;
+    visibility: VisibilityContextShape;
+    requestId: string;
+  }): Promise<RequisitionProfileView> {
+    const view = await this.requisitionRepository.findByIdForActor({
+      tenant_id: args.tenant_id,
+      id: args.requisition_id,
+      visibility: args.visibility,
+    });
+    if (view === null) {
+      throw new AramoError('NOT_FOUND', 'Requisition not found (or not visible to actor)', 404, {
+        requestId: args.requestId,
+        details: { id: args.requisition_id },
+      });
+    }
+
+    // No profile confirmed yet → the profile-less shape (not an error).
+    if (view.golden_profile_id === null) {
+      return emptyRequisitionProfileView(args.requisition_id);
+    }
+
+    const row = await this.jobDomainRepository.findGoldenProfileById(
+      view.golden_profile_id,
+    );
+    if (row === null) {
+      // Defensive: the seam points at a row that has vanished. Surface the
+      // profile-less shape (still honest: has_profile false) rather than 500.
+      return emptyRequisitionProfileView(args.requisition_id);
+    }
+
+    const content = goldenProfileContentFromStorage({
+      skills: row.skills,
+      experience: row.experience,
+      constraints: row.constraints,
+    });
+    return {
+      requisition_id: args.requisition_id,
+      golden_profile_id: view.golden_profile_id,
+      has_profile: true,
+      jd_text: content.jd_text,
+      role_family: content.role_family ?? null,
+      seniority_level: content.seniority_level ?? null,
+      generated_by: content.generated_by,
+      required_skills: content.required_skills,
+      preferred_skills: content.preferred_skills,
+      critical_skills: content.critical_skills,
+      experience: content.experience,
+      constraints: content.constraints,
+    };
+  }
 
   // POST /v1/requisitions/:id/profile/draft — runs the LLM, persists the
   // ai-draft audit events (in libs/ai-draft), returns the draft. NO

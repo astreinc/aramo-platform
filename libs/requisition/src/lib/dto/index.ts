@@ -15,6 +15,10 @@ export {
 } from './requisition-compensation-model.js';
 export { isIso4217Currency } from './iso-4217-currency.js';
 export type { RequisitionView } from './requisition.view.js';
+export {
+  emptyRequisitionProfileView,
+  type RequisitionProfileView,
+} from './requisition-profile.view.js';
 export type { CreateRequisitionRequestDto } from './create-requisition-request.dto.js';
 export type { UpdateRequisitionRequestDto } from './update-requisition-request.dto.js';
 export type { RequisitionAssignmentView } from './requisition-assignment.view.js';
