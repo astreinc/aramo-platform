@@ -17,6 +17,22 @@ import {
   emptyCompensationFormState,
   type CompensationFormState,
 } from './CompensationSection';
+import { EnterpriseFieldsSection } from './EnterpriseFieldsSection';
+import {
+  FinancialPlanningSection,
+  canViewFinancials,
+} from './FinancialPlanningSection';
+import { GenerateProfileDialog } from './GenerateProfileDialog';
+import {
+  ENTERPRISE_BOOLEAN_KEYS,
+  ENTERPRISE_NUMBER_KEYS,
+  ENTERPRISE_STRING_KEYS,
+  FINANCIAL_STRING_KEYS,
+  emptyEnterpriseFormState,
+  emptyFinancialFormState,
+  type EnterpriseFormState,
+  type FinancialFormState,
+} from './enterprise-fields';
 import { createRequisition, updateRequisition } from './requisitions-api';
 import {
   createErrorMessage,
@@ -90,7 +106,11 @@ interface BasicsFormState {
   state: string;
 }
 
-interface FormState extends BasicsFormState, CompensationFormState {}
+interface FormState
+  extends BasicsFormState,
+    CompensationFormState,
+    EnterpriseFormState,
+    FinancialFormState {}
 
 function emptyState(): FormState {
   return {
@@ -106,6 +126,8 @@ function emptyState(): FormState {
     city: '',
     state: '',
     ...emptyCompensationFormState(),
+    ...emptyEnterpriseFormState(),
+    ...emptyFinancialFormState(),
   };
 }
 
@@ -135,12 +157,39 @@ function stateFromInitial(initial: RequisitionView): FormState {
     placement_fee_amount: initial.placement_fee_amount ?? '',
     salary_amount: initial.salary_amount ?? '',
     salary_currency: initial.salary_currency ?? '',
+    // Enterprise fields (additive, UN-gated).
+    job_type: (initial.job_type ?? '') as FormState['job_type'],
+    labor_category: initial.labor_category ?? '',
+    role_family: (initial.role_family ?? '') as FormState['role_family'],
+    seniority_level: (initial.seniority_level ?? '') as FormState['seniority_level'],
+    headcount_reason: (initial.headcount_reason ?? '') as FormState['headcount_reason'],
+    work_arrangement: (initial.work_arrangement ?? '') as FormState['work_arrangement'],
+    travel_percent: initial.travel_percent === null ? '' : String(initial.travel_percent),
+    relocation_offered: initial.relocation_offered ?? false,
+    work_authorization: (initial.work_authorization ?? '') as FormState['work_authorization'],
+    end_date: initial.end_date ?? '',
+    duration_value: initial.duration_value === null ? '' : String(initial.duration_value),
+    duration_unit: (initial.duration_unit ?? '') as FormState['duration_unit'],
+    extension_possible: initial.extension_possible ?? false,
+    hours_per_week: initial.hours_per_week === null ? '' : String(initial.hours_per_week),
+    source_system: (initial.source_system ?? '') as FormState['source_system'],
+    external_req_id: initial.external_req_id ?? '',
+    imported_at: initial.imported_at ?? '',
+    // Financial-planning fields (gated; BE-masked → null when invisible).
+    target_margin_percent: initial.target_margin_percent ?? '',
+    markup_percent_target: initial.markup_percent_target ?? '',
+    rate_card_id: initial.rate_card_id ?? '',
+    min_bill_rate: initial.min_bill_rate ?? '',
+    max_bill_rate: initial.max_bill_rate ?? '',
+    min_pay_rate: initial.min_pay_rate ?? '',
+    max_pay_rate: initial.max_pay_rate ?? '',
   };
 }
 
 function buildCreateBody(
   state: FormState,
   visibleComp: ReadonlySet<CompensationFieldKey>,
+  financialsVisible: boolean,
 ): CreateRequisitionRequest {
   // Build as a mutable bag, cast at return. The DTO types are `readonly`
   // for callers; internal construction keeps the bag mutable.
@@ -166,6 +215,29 @@ function buildCreateBody(
       if (val !== '') body[k] = val;
     }
   }
+
+  // Enterprise fields — UN-gated, omit-empty. Strings/selects '' → omit;
+  // numbers '' → omit (else Number()); booleans → send only when true.
+  for (const k of ENTERPRISE_STRING_KEYS) {
+    const val = state[k];
+    if (val !== '') body[k] = val;
+  }
+  for (const k of ENTERPRISE_NUMBER_KEYS) {
+    const val = state[k];
+    if (val !== '') body[k] = Number(val);
+  }
+  for (const k of ENTERPRISE_BOOLEAN_KEYS) {
+    if (state[k]) body[k] = true;
+  }
+
+  // Financial-planning fields — ONLY when the section is visible (the D5-
+  // defensive omission mirror: a non-holder never authors these).
+  if (financialsVisible) {
+    for (const k of FINANCIAL_STRING_KEYS) {
+      const val = state[k];
+      if (val !== '') body[k] = val;
+    }
+  }
   return body as unknown as CreateRequisitionRequest;
 }
 
@@ -173,6 +245,7 @@ function buildPatchBody(
   state: FormState,
   initial: RequisitionView,
   visibleComp: ReadonlySet<CompensationFieldKey>,
+  financialsVisible: boolean,
 ): UpdateRequisitionRequest {
   const body: Record<string, unknown> = {};
   if (state.title !== initial.title) body['title'] = state.title.trim();
@@ -201,6 +274,45 @@ function buildPatchBody(
     for (const k of onBranchKeys(state.compensation_model)) {
       if (!visibleComp.has(k)) continue;
       const initVal = initialAsRecord[k] ?? '';
+      const cur = state[k] as string;
+      if (cur !== initVal) {
+        body[k] = cur === '' ? null : cur;
+      }
+    }
+  }
+
+  // Enterprise fields — UN-gated. Nullable strings/selects: '' → null
+  // (explicit clear) when changed. Numbers: '' → null; else Number().
+  // Booleans: always defined on the view (default false); send if changed.
+  for (const k of ENTERPRISE_STRING_KEYS) {
+    const initVal = (initialAsRecord[k] ?? '') as string;
+    const cur = state[k] as string;
+    if (cur !== initVal) {
+      body[k] = cur === '' ? null : cur;
+    }
+  }
+  for (const k of ENTERPRISE_NUMBER_KEYS) {
+    const rawInit = initialAsRecord[k];
+    const initVal = rawInit === null || rawInit === undefined ? '' : String(rawInit);
+    const cur = state[k] as string;
+    if (cur !== initVal) {
+      body[k] = cur === '' ? null : Number(cur);
+    }
+  }
+  for (const k of ENTERPRISE_BOOLEAN_KEYS) {
+    const initVal = (initialAsRecord[k] ?? false) as boolean;
+    const cur = state[k] as boolean;
+    if (cur !== initVal) {
+      body[k] = cur;
+    }
+  }
+
+  // Financial-planning fields — ONLY when the section is visible. Same
+  // D5-defensive omit-not-null rule as compensation: a non-holder editing
+  // a req must NEVER blank financial data they cannot see.
+  if (financialsVisible) {
+    for (const k of FINANCIAL_STRING_KEYS) {
+      const initVal = (initialAsRecord[k] ?? '') as string;
       const cur = state[k] as string;
       if (cur !== initVal) {
         body[k] = cur === '' ? null : cur;
@@ -237,6 +349,13 @@ export function RequisitionForm({
 
   const visibleComp = useMemo(
     () => visibleWritableCompensationFields(session.scopes),
+    [session.scopes],
+  );
+
+  // The financial-planning gate — single source of truth used for BOTH
+  // the section render AND the submit-omission (no two-place drift).
+  const financialsVisible = useMemo(
+    () => canViewFinancials(session.scopes),
     [session.scopes],
   );
 
@@ -323,14 +442,14 @@ export function RequisitionForm({
     setSubmitError(null);
     try {
       if (mode === 'create') {
-        const body = buildCreateBody(state, visibleComp);
+        const body = buildCreateBody(state, visibleComp, financialsVisible);
         const created = await createRequisition(body);
         onSuccess(created);
       } else {
         if (initial === undefined) {
           throw new Error('EDIT mode requires `initial`.');
         }
-        const body = buildPatchBody(state, initial, visibleComp);
+        const body = buildPatchBody(state, initial, visibleComp, financialsVisible);
         const updated = await updateRequisition(initial.id, body);
         onSuccess(updated);
       }
@@ -473,12 +592,46 @@ export function RequisitionForm({
         </FormField>
       </fieldset>
 
+      <EnterpriseFieldsSection
+        value={state}
+        onChange={(ent) => setState((s) => ({ ...s, ...ent }))}
+        disabled={submitting}
+      />
+
       <CompensationSection
         value={state}
         onChange={(comp) => setState((s) => ({ ...s, ...comp }))}
         scopes={session.scopes}
         disabled={submitting}
       />
+
+      <FinancialPlanningSection
+        value={state}
+        onChange={(fin) => setState((s) => ({ ...s, ...fin }))}
+        scopes={session.scopes}
+        disabled={submitting}
+      />
+
+      {/* AI golden-profile surface. The draft/confirm endpoints are keyed
+          to a persisted requisition id, so the Generate action + the
+          read-only "Linked profile" indicator show only in EDIT mode
+          (after create). Manual entry of the form remains unaffected. */}
+      {mode === 'edit' && initial !== undefined ? (
+        <fieldset className="req-form__profile" disabled={submitting}>
+          <legend>Profile</legend>
+          {initial.golden_profile_id !== null ? (
+            <p className="req-form__linked-profile">
+              Linked profile: <code>{initial.golden_profile_id}</code>
+            </p>
+          ) : (
+            <p className="req-form__linked-profile">No profile linked yet.</p>
+          )}
+          <GenerateProfileDialog
+            requisitionId={initial.id}
+            onConfirmed={onSuccess}
+          />
+        </fieldset>
+      ) : null}
 
       {submitError !== null ? (
         <InlineAlert variant="error">{submitError}</InlineAlert>

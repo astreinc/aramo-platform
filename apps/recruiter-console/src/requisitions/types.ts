@@ -72,6 +72,40 @@ export interface RequisitionView {
   readonly margin_amount: string | null;
   readonly markup_percent: string | null;
   readonly margin_percent: string | null;
+
+  // --- Job-Module enterprise fields (additive, UN-gated). ---
+  readonly job_type: string | null;
+  readonly labor_category: string | null;
+  readonly role_family: string | null;
+  readonly seniority_level: string | null;
+  readonly headcount_reason: string | null;
+  readonly work_arrangement: string | null;
+  readonly travel_percent: number | null;
+  readonly relocation_offered: boolean | null;
+  readonly work_authorization: string | null;
+  readonly end_date: string | null;
+  readonly duration_value: number | null;
+  readonly duration_unit: string | null;
+  readonly extension_possible: boolean | null;
+  readonly hours_per_week: number | null;
+  readonly source_system: string | null;
+  readonly external_req_id: string | null;
+  readonly imported_at: string | null;
+
+  // --- Gated financial-planning fields (requisition:view:financials).
+  // BE-masked when the actor lacks the scope — present here so the type
+  // stays honest and a future un-mask is type-safe. ---
+  readonly target_margin_percent: string | null;
+  readonly markup_percent_target: string | null;
+  readonly rate_card_id: string | null;
+  readonly min_bill_rate: string | null;
+  readonly max_bill_rate: string | null;
+  readonly min_pay_rate: string | null;
+  readonly max_pay_rate: string | null;
+
+  // --- AI golden-profile link (read-only on the form; set by the
+  // profile/confirm flow). ---
+  readonly golden_profile_id: string | null;
 }
 
 export interface RequisitionListResponse {
@@ -140,6 +174,36 @@ export interface CreateRequisitionRequest {
   readonly placement_fee_amount?: string;
   readonly salary_amount?: string;
   readonly salary_currency?: string;
+
+  // --- Job-Module enterprise fields (additive, UN-gated). ---
+  readonly job_type?: string;
+  readonly labor_category?: string;
+  readonly role_family?: string;
+  readonly seniority_level?: string;
+  readonly headcount_reason?: string;
+  readonly work_arrangement?: string;
+  readonly travel_percent?: number;
+  readonly relocation_offered?: boolean;
+  readonly work_authorization?: string;
+  readonly end_date?: string;
+  readonly duration_value?: number;
+  readonly duration_unit?: string;
+  readonly extension_possible?: boolean;
+  readonly hours_per_week?: number;
+  readonly source_system?: string;
+  readonly external_req_id?: string;
+  readonly imported_at?: string;
+
+  // --- Gated financial-planning fields (requisition:view:financials).
+  // The form OMITS these unless the financial section is visible (the D5-
+  // defensive omission mirror — a non-holder never submits them). ---
+  readonly target_margin_percent?: string;
+  readonly markup_percent_target?: string;
+  readonly rate_card_id?: string;
+  readonly min_bill_rate?: string;
+  readonly max_bill_rate?: string;
+  readonly min_pay_rate?: string;
+  readonly max_pay_rate?: string;
 }
 
 // Hand-mirrored from libs/requisition/src/lib/dto/update-requisition-
@@ -182,4 +246,34 @@ export interface UpdateRequisitionRequest {
   readonly placement_fee_amount?: string | null;
   readonly salary_amount?: string | null;
   readonly salary_currency?: string | null;
+
+  // --- Job-Module enterprise fields (additive, UN-gated). Nullable on
+  // PATCH: empty input → null (explicit clear); else send if changed. ---
+  readonly job_type?: string | null;
+  readonly labor_category?: string | null;
+  readonly role_family?: string | null;
+  readonly seniority_level?: string | null;
+  readonly headcount_reason?: string | null;
+  readonly work_arrangement?: string | null;
+  readonly travel_percent?: number | null;
+  readonly relocation_offered?: boolean | null;
+  readonly work_authorization?: string | null;
+  readonly end_date?: string | null;
+  readonly duration_value?: number | null;
+  readonly duration_unit?: string | null;
+  readonly extension_possible?: boolean | null;
+  readonly hours_per_week?: number | null;
+  readonly source_system?: string | null;
+  readonly external_req_id?: string | null;
+  readonly imported_at?: string | null;
+
+  // --- Gated financial-planning fields (requisition:view:financials).
+  // Threaded ONLY when the section is visible (D5-defensive omission). ---
+  readonly target_margin_percent?: string | null;
+  readonly markup_percent_target?: string | null;
+  readonly rate_card_id?: string | null;
+  readonly min_bill_rate?: string | null;
+  readonly max_bill_rate?: string | null;
+  readonly min_pay_rate?: string | null;
+  readonly max_pay_rate?: string | null;
 }

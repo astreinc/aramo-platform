@@ -5,6 +5,7 @@ import { Prisma } from '../../prisma/generated/client/client.js';
 
 import { assertCompensationEditScopes } from './compensation-edit-gate.js';
 import { computeDerivedViews } from './compensation-views.js';
+import { assertFinancialEditScopes } from './field-group-edit-gate.js';
 import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
 import type { RatePeriod } from './dto/rate-period.js';
 import type { RequisitionCompensationModel } from './dto/requisition-compensation-model.js';
@@ -108,6 +109,44 @@ function buildCompensationCreateData(
   };
 }
 
+// Job-Module §1 Part 1 — translate the create DTO's enterprise + gated
+// financial fields into the Prisma create data payload. All nullable /
+// defaulted (additive contract). Date strings → Date; decimal strings
+// pass through (Prisma coerces). The financial group is write-gated
+// upstream by assertFinancialEditScopes (presence-keyed) BEFORE this runs.
+function buildEnterpriseCreateData(
+  input: CreateRequisitionRequestDto,
+): Record<string, unknown> {
+  return {
+    // Enterprise role-content (un-gated).
+    job_type: input.job_type ?? null,
+    labor_category: input.labor_category ?? null,
+    role_family: input.role_family ?? null,
+    seniority_level: input.seniority_level ?? null,
+    headcount_reason: input.headcount_reason ?? null,
+    work_arrangement: input.work_arrangement ?? null,
+    travel_percent: input.travel_percent ?? null,
+    relocation_offered: input.relocation_offered ?? false,
+    work_authorization: input.work_authorization ?? null,
+    end_date: input.end_date === undefined || input.end_date === null ? null : new Date(input.end_date),
+    duration_value: input.duration_value ?? null,
+    duration_unit: input.duration_unit ?? null,
+    extension_possible: input.extension_possible ?? false,
+    hours_per_week: input.hours_per_week ?? null,
+    source_system: input.source_system ?? null,
+    external_req_id: input.external_req_id ?? null,
+    imported_at: input.imported_at === undefined || input.imported_at === null ? null : new Date(input.imported_at),
+    // Gated financial-planning (🔒 — write-gated upstream).
+    target_margin_percent: input.target_margin_percent ?? null,
+    markup_percent_target: input.markup_percent_target ?? null,
+    rate_card_id: input.rate_card_id ?? null,
+    min_bill_rate: input.min_bill_rate ?? null,
+    max_bill_rate: input.max_bill_rate ?? null,
+    min_pay_rate: input.min_pay_rate ?? null,
+    max_pay_rate: input.max_pay_rate ?? null,
+  };
+}
+
 interface RequisitionRow {
   id: string;
   tenant_id: string;
@@ -147,6 +186,34 @@ interface RequisitionRow {
   placement_fee_amount: Prisma.Decimal | null;
   salary_amount: Prisma.Decimal | null;
   salary_currency: string | null;
+  // Job-Module §1 Part 1 — enterprise fields.
+  job_type: string | null;
+  labor_category: string | null;
+  role_family: string | null;
+  seniority_level: string | null;
+  headcount_reason: string | null;
+  work_arrangement: string | null;
+  travel_percent: number | null;
+  relocation_offered: boolean;
+  work_authorization: string | null;
+  end_date: Date | null;
+  duration_value: number | null;
+  duration_unit: string | null;
+  extension_possible: boolean;
+  hours_per_week: number | null;
+  source_system: string | null;
+  external_req_id: string | null;
+  imported_at: Date | null;
+  // Job-Module §1 Part 1 — gated financial-planning (Decimal money/percent).
+  target_margin_percent: Prisma.Decimal | null;
+  markup_percent_target: Prisma.Decimal | null;
+  rate_card_id: string | null;
+  min_bill_rate: Prisma.Decimal | null;
+  max_bill_rate: Prisma.Decimal | null;
+  min_pay_rate: Prisma.Decimal | null;
+  max_pay_rate: Prisma.Decimal | null;
+  // Job-Module LB-2 — the seam.
+  golden_profile_id: string | null;
 }
 
 // Serialize a Decimal money field to a fixed-2 decimal string. Null
@@ -207,6 +274,35 @@ function projectView(row: RequisitionRow): RequisitionView {
     margin_amount: derived.margin_amount,
     markup_percent: derived.markup_percent,
     margin_percent: derived.margin_percent,
+    // Job-Module §1 Part 1 — enterprise fields.
+    job_type: row.job_type,
+    labor_category: row.labor_category,
+    role_family: row.role_family,
+    seniority_level: row.seniority_level,
+    headcount_reason: row.headcount_reason,
+    work_arrangement: row.work_arrangement,
+    travel_percent: row.travel_percent,
+    relocation_offered: row.relocation_offered,
+    work_authorization: row.work_authorization,
+    end_date: row.end_date === null ? null : row.end_date.toISOString(),
+    duration_value: row.duration_value,
+    duration_unit: row.duration_unit,
+    extension_possible: row.extension_possible,
+    hours_per_week: row.hours_per_week,
+    source_system: row.source_system,
+    external_req_id: row.external_req_id,
+    imported_at: row.imported_at === null ? null : row.imported_at.toISOString(),
+    // Job-Module §1 Part 1 — gated financial-planning (Decimal → fixed-2
+    // string; the interceptor omits these for non-financials-scope actors).
+    target_margin_percent: decimalToFixed2(row.target_margin_percent),
+    markup_percent_target: decimalToFixed2(row.markup_percent_target),
+    rate_card_id: row.rate_card_id,
+    min_bill_rate: decimalToFixed2(row.min_bill_rate),
+    max_bill_rate: decimalToFixed2(row.max_bill_rate),
+    min_pay_rate: decimalToFixed2(row.min_pay_rate),
+    max_pay_rate: decimalToFixed2(row.max_pay_rate),
+    // Job-Module LB-2 — the seam (read-only).
+    golden_profile_id: row.golden_profile_id,
   };
 }
 
@@ -241,6 +337,14 @@ export class RequisitionRepository {
       scopes: args.scopes,
       requestId: args.requestId,
     });
+    // Job-Module (LB-4) — the financial-planning write-gate (sibling to the
+    // comp gate; own scope requisition:edit:financials). Presence-keyed,
+    // 403-before-persist. No-op when the input carries no financial field.
+    assertFinancialEditScopes({
+      input: input as unknown as Record<string, unknown>,
+      scopes: args.scopes,
+      requestId: args.requestId,
+    });
     const row = await this.prisma.requisition.create({
       data: {
         tenant_id,
@@ -264,6 +368,7 @@ export class RequisitionRepository {
         owner_id: input.owner_id ?? entered_by_id,
         entered_by_id,
         ...buildCompensationCreateData(input),
+        ...buildEnterpriseCreateData(input),
       },
     });
     return projectView(row as RequisitionRow);
@@ -296,6 +401,11 @@ export class RequisitionRepository {
       scopes: args.scopes,
       requestId: args.requestId,
     });
+    assertFinancialEditScopes({
+      input: input as unknown as Record<string, unknown>,
+      scopes: args.scopes,
+      requestId: args.requestId,
+    });
     const row = await this.prisma.requisition.create({
       data: {
         tenant_id,
@@ -320,6 +430,7 @@ export class RequisitionRepository {
         entered_by_id,
         import_batch_id,
         ...buildCompensationCreateData(input),
+        ...buildEnterpriseCreateData(input),
       },
     });
     return projectView(row as RequisitionRow);
@@ -358,6 +469,11 @@ export class RequisitionRepository {
     // the input.K !== undefined check captures both set and clear).
     assertCompensationEditScopes({
       input: args.input,
+      scopes: args.scopes,
+      requestId: args.requestId,
+    });
+    assertFinancialEditScopes({
+      input: args.input as unknown as Record<string, unknown>,
       scopes: args.scopes,
       requestId: args.requestId,
     });
@@ -405,10 +521,66 @@ export class RequisitionRepository {
     if (i.placement_fee_amount !== undefined) data['placement_fee_amount'] = i.placement_fee_amount;
     if (i.salary_amount !== undefined) data['salary_amount'] = i.salary_amount;
     if (i.salary_currency !== undefined) data['salary_currency'] = i.salary_currency;
+    // Job-Module §1 Part 1 — enterprise fields (same PATCH semantics:
+    // undefined → unchanged; null → cleared; value → set).
+    if (i.job_type !== undefined) data['job_type'] = i.job_type;
+    if (i.labor_category !== undefined) data['labor_category'] = i.labor_category;
+    if (i.role_family !== undefined) data['role_family'] = i.role_family;
+    if (i.seniority_level !== undefined) data['seniority_level'] = i.seniority_level;
+    if (i.headcount_reason !== undefined) data['headcount_reason'] = i.headcount_reason;
+    if (i.work_arrangement !== undefined) data['work_arrangement'] = i.work_arrangement;
+    if (i.travel_percent !== undefined) data['travel_percent'] = i.travel_percent;
+    if (i.relocation_offered !== undefined) data['relocation_offered'] = i.relocation_offered;
+    if (i.work_authorization !== undefined) data['work_authorization'] = i.work_authorization;
+    if (i.end_date !== undefined) data['end_date'] = i.end_date === null ? null : new Date(i.end_date);
+    if (i.duration_value !== undefined) data['duration_value'] = i.duration_value;
+    if (i.duration_unit !== undefined) data['duration_unit'] = i.duration_unit;
+    if (i.extension_possible !== undefined) data['extension_possible'] = i.extension_possible;
+    if (i.hours_per_week !== undefined) data['hours_per_week'] = i.hours_per_week;
+    if (i.source_system !== undefined) data['source_system'] = i.source_system;
+    if (i.external_req_id !== undefined) data['external_req_id'] = i.external_req_id;
+    if (i.imported_at !== undefined) data['imported_at'] = i.imported_at === null ? null : new Date(i.imported_at);
+    // Job-Module §1 Part 1 — gated financial-planning (write-gated above).
+    if (i.target_margin_percent !== undefined) data['target_margin_percent'] = i.target_margin_percent;
+    if (i.markup_percent_target !== undefined) data['markup_percent_target'] = i.markup_percent_target;
+    if (i.rate_card_id !== undefined) data['rate_card_id'] = i.rate_card_id;
+    if (i.min_bill_rate !== undefined) data['min_bill_rate'] = i.min_bill_rate;
+    if (i.max_bill_rate !== undefined) data['max_bill_rate'] = i.max_bill_rate;
+    if (i.min_pay_rate !== undefined) data['min_pay_rate'] = i.min_pay_rate;
+    if (i.max_pay_rate !== undefined) data['max_pay_rate'] = i.max_pay_rate;
 
     const row = await this.prisma.requisition.update({
       where: { id: args.id },
       data,
+    });
+    return projectView(row as RequisitionRow);
+  }
+
+  // Job-Module LB-2 — stamp the GoldenProfile seam onto the requisition.
+  // Tenant-scoped; returns the projected view (golden_profile_id now set).
+  // Idempotent at the call site: re-stamping the same id is a harmless
+  // overwrite (the confirm flow updates the existing GoldenProfile rather
+  // than minting a duplicate — see the AI profile service). Throws 404 if
+  // the row is not in tenant.
+  async stampGoldenProfileId(args: {
+    tenant_id: string;
+    id: string;
+    golden_profile_id: string;
+    requestId: string;
+  }): Promise<RequisitionView> {
+    const existing = await this.prisma.requisition.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+      select: { id: true },
+    });
+    if (existing === null) {
+      throw new AramoError('NOT_FOUND', 'Requisition not found in tenant', 404, {
+        requestId: args.requestId,
+        details: { id: args.id },
+      });
+    }
+    const row = await this.prisma.requisition.update({
+      where: { id: args.id },
+      data: { golden_profile_id: args.golden_profile_id },
     });
     return projectView(row as RequisitionRow);
   }

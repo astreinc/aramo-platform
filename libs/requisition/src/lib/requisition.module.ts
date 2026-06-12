@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
+import { AiDraftModule } from '@aramo/ai-draft';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
+import { JobDomainModule } from '@aramo/job-domain';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { RequisitionAssignmentRepository } from './requisition-assignment.repository.js';
 import { RequisitionController } from './requisition.controller.js';
+import { RequisitionProfileService } from './requisition-profile.service.js';
 import { RequisitionRepository } from './requisition.repository.js';
 
 // RequisitionModule — PR-A3 Gate 5 ATS Batch 2.
@@ -22,12 +25,23 @@ import { RequisitionRepository } from './requisition.repository.js';
 // integrity for company_id is the create-caller's responsibility for now;
 // later batches may add tenant-scoped validation if needed).
 @Module({
-  imports: [AuthModule, AuthorizationModule, EntitlementModule],
+  // Job-Module LB-3 — AiDraftModule (the 2nd declared ai-draft consumer,
+  // ADR-0015 v1.2) + JobDomainModule (the seam mint: Job + GoldenProfile).
+  // Both are leaf/terminal w.r.t. requisition (no back-edge to requisition);
+  // lint:nx-boundaries stays green (the dep graph is acyclic).
+  imports: [
+    AuthModule,
+    AuthorizationModule,
+    EntitlementModule,
+    AiDraftModule,
+    JobDomainModule,
+  ],
   controllers: [RequisitionController],
   providers: [
     PrismaService,
     RequisitionRepository,
     RequisitionAssignmentRepository,
+    RequisitionProfileService,
   ],
   exports: [RequisitionRepository, RequisitionAssignmentRepository],
 })

@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Session } from '@aramo/fe-foundation';
+import { ToastProvider, type Session } from '@aramo/fe-foundation';
 
 import { RequisitionEditView } from './RequisitionEditView';
 
@@ -64,6 +64,31 @@ describe('RequisitionEditView', () => {
             margin_amount: null,
             markup_percent: null,
             margin_percent: null,
+            job_type: null,
+            labor_category: null,
+            role_family: null,
+            seniority_level: null,
+            headcount_reason: null,
+            work_arrangement: null,
+            travel_percent: null,
+            relocation_offered: null,
+            work_authorization: null,
+            end_date: null,
+            duration_value: null,
+            duration_unit: null,
+            extension_possible: null,
+            hours_per_week: null,
+            source_system: null,
+            external_req_id: null,
+            imported_at: null,
+            target_margin_percent: null,
+            markup_percent_target: null,
+            rate_card_id: null,
+            min_bill_rate: null,
+            max_bill_rate: null,
+            min_pay_rate: null,
+            max_pay_rate: null,
+            golden_profile_id: null,
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
@@ -83,18 +108,20 @@ describe('RequisitionEditView', () => {
       return new Response('{}', { status: 404 });
     });
     render(
-      <MemoryRouter initialEntries={['/requisitions/req-42/edit']}>
-        <Routes>
-          <Route
-            path="/requisitions/:reqId/edit"
-            element={
-              <RequisitionEditView
-                sessionOverride={makeSession(['requisition:edit'])}
-              />
-            }
-          />
-        </Routes>
-      </MemoryRouter>,
+      <ToastProvider>
+        <MemoryRouter initialEntries={['/requisitions/req-42/edit']}>
+          <Routes>
+            <Route
+              path="/requisitions/:reqId/edit"
+              element={
+                <RequisitionEditView
+                  sessionOverride={makeSession(['requisition:edit'])}
+                />
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>,
     );
     await waitFor(() => {
       expect(screen.getByText('Edit: Senior Engineer')).toBeInTheDocument();

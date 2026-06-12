@@ -126,6 +126,33 @@ export class JobDomainRepository {
     return (row as GoldenProfileRow | null) ?? null;
   }
 
+  // Job-Module LB-2 — idempotent re-generation: update an existing
+  // GoldenProfile's content in place (re-confirming a brief overwrites the
+  // captured content, never mints a duplicate). Tenant-scoped via the
+  // updateMany predicate so a cross-tenant id is a no-op (count 0). The
+  // content columns only (skills / experience / constraints / critical_
+  // skills); id / tenant_id / job_id are immutable.
+  async updateGoldenProfile(input: {
+    id: string;
+    tenant_id: string;
+    skills: unknown;
+    experience: unknown;
+    constraints: unknown;
+    critical_skills: readonly string[];
+  }): Promise<GoldenProfileRow | null> {
+    const result = await this.prisma.goldenProfile.updateMany({
+      where: { id: input.id, tenant_id: input.tenant_id },
+      data: {
+        skills: input.skills as never,
+        experience: input.experience as never,
+        constraints: input.constraints as never,
+        critical_skills: [...input.critical_skills],
+      },
+    });
+    if (result.count === 0) return null;
+    return this.findGoldenProfileById(input.id);
+  }
+
   // ---- Requisition ----------------------------------------------------
 
   async createRequisition(input: CreateRequisitionInput): Promise<RequisitionRow> {

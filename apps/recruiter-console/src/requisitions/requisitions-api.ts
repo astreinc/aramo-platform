@@ -6,6 +6,11 @@ import type {
   RequisitionView,
   UpdateRequisitionRequest,
 } from './types';
+import type {
+  ConfirmProfileRequest,
+  DraftProfileRequest,
+  DraftProfileResponse,
+} from './golden-profile';
 
 // Visibility is applied at the BE (D4b lazy resolver). The recruiter
 // sees only assigned-or-client-visible reqs; invisible → 404. R1 calls
@@ -55,6 +60,36 @@ export async function updateRequisition(
 ): Promise<RequisitionView> {
   return apiClient.patch<RequisitionView>(
     `/v1/requisitions/${encodeURIComponent(id)}`,
+    body,
+  );
+}
+
+// Job-Module — the AI "Generate profile from brief" flow (draft → confirm).
+//
+// draftRequisitionProfile asks the BE to draft a golden profile + JD text
+// from the recruiter's free-text brief. The response is NOT persisted as
+// the live profile — it is a draft the recruiter reviews/edits, then
+// confirms. The AI is assistive: confirm accepts a hand-edited profile,
+// and a fully-manual profile is equally valid (generated_by: 'manual').
+export async function draftRequisitionProfile(
+  requisitionId: string,
+  body: DraftProfileRequest,
+): Promise<DraftProfileResponse> {
+  return apiClient.post<DraftProfileResponse>(
+    `/v1/requisitions/${encodeURIComponent(requisitionId)}/profile/draft`,
+    body,
+  );
+}
+
+// confirmRequisitionProfile persists the (possibly hand-edited) profile +
+// JD text against the requisition. Returns the updated RequisitionView,
+// now carrying golden_profile_id (the "Profile linked" indicator).
+export async function confirmRequisitionProfile(
+  requisitionId: string,
+  body: ConfirmProfileRequest,
+): Promise<RequisitionView> {
+  return apiClient.post<RequisitionView>(
+    `/v1/requisitions/${encodeURIComponent(requisitionId)}/profile/confirm`,
     body,
   );
 }

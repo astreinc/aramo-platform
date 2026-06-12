@@ -497,6 +497,40 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     });
 
+    // Job-Module (LB-4) — §4 LOAD-BEARING grant-table proof. BOTH financial
+    // scopes (requisition:view:financials + requisition:edit:financials) are
+    // granted to EXACTLY the agency-economics tier and to NO other role —
+    // base recruiter + the delivery tier are asserted ABSENT (the moat: no
+    // financial-planning visibility creep). Mirrors the company:read_
+    // commercial grant-table above.
+    for (const scopeKey of ['requisition:view:financials', 'requisition:edit:financials']) {
+      it(`Job-Module — grant-table: ${scopeKey} → {tenant_admin, tenant_owner, account_manager} only`, async () => {
+        const rows = await prisma.roleScope.findMany({
+          where: { scope: { key: scopeKey } },
+          include: { role: { select: { key: true } } },
+        });
+        const grantedRoles = rows.map((r) => r.role.key).sort();
+        expect(grantedRoles).toEqual([
+          'account_manager',
+          'tenant_admin',
+          'tenant_owner',
+        ]);
+        for (const role of [
+          'recruiter',
+          'recruiting_manager',
+          'lead_recruiter',
+          'delivery_manager',
+          'sourcer',
+          'back_office',
+          'finance',
+          'auditor',
+          'candidate',
+        ]) {
+          expect(grantedRoles).not.toContain(role);
+        }
+      });
+    }
+
     // Company-Fields v1.1 — §4 gate 5 (backward-compat) is proven elsewhere:
     // the migration's `ADD COLUMN ... NOT NULL DEFAULT` clauses backfill
     // existing rows (status='active', exclusivity=false, tags='{}') at the DB

@@ -8,8 +8,10 @@ import type { AuthContextType } from '@aramo/auth';
 import {
   COMPENSATION_FIELD_KEYS,
   COMPANY_COMMERCIAL_FIELD_KEYS,
+  REQUISITION_FINANCIAL_FIELD_KEYS,
   omitMaskedCompensationFields,
   omitMaskedCommercialFields,
+  omitMaskedFinancialFields,
 } from '@aramo/field-masking';
 import type { Request } from 'express';
 import type { Observable } from 'rxjs';
@@ -81,9 +83,23 @@ function walkAndMask(value: unknown, scopes: readonly string[]): unknown {
   const obj = value as Record<string, unknown>;
 
   // Is this a comp-bearing object? Check for any comp field key.
+  //
+  // Job-Module — the requisition financial-planning fields live on the SAME
+  // RequisitionView as the compensation fields, gated by their own scope
+  // (requisition:view:financials). Apply BOTH omits on a comp-bearing view:
+  // each deletes its own field set, so they compose (a partial-scope actor
+  // can be shown comp but masked financials, or vice versa). The financials
+  // branch below also catches any financials-bearing view that carries no
+  // comp field key. Both omits return a shallow clone, so chaining is safe.
   const isCompBearing = COMPENSATION_FIELD_KEYS.some((k) => k in obj);
-  if (isCompBearing) {
-    return omitMaskedCompensationFields(obj, scopes);
+  const isFinancialsBearing = REQUISITION_FINANCIAL_FIELD_KEYS.some(
+    (k) => k in obj,
+  );
+  if (isCompBearing || isFinancialsBearing) {
+    let masked = obj;
+    if (isCompBearing) masked = omitMaskedCompensationFields(masked, scopes);
+    if (isFinancialsBearing) masked = omitMaskedFinancialFields(masked, scopes);
+    return masked;
   }
 
   // Company-Fields v1.1 — the same shape-driven mask for company commercial

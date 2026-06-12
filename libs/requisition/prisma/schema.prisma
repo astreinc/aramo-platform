@@ -167,6 +167,63 @@ model Requisition {
   city       String?
   state      String?
 
+  // ---- Job-Module enterprise field expansion (additive) ---------------
+  // Job-Module Directive v1.0 §1 Part 1. All optional/defaulted; String-
+  // not-enum for closed vocabularies (convention R7 — avoids migration
+  // churn as the vocab evolves; the FE renders dropdowns over the closed
+  // sets). UN-GATED (role content, no agency economics).
+
+  // Job classification.
+  job_type         String? // contract | contract_to_hire | contract_to_perm | direct_perm
+  labor_category   String?
+  role_family      String? // aligns to matching's role_family input (ROLE_FAMILIES)
+  seniority_level  String? // junior | mid | senior | lead | principal
+  headcount_reason String? // new | replacement
+
+  // Work arrangement.
+  work_arrangement   String? // onsite | hybrid | remote
+  travel_percent     Int?
+  relocation_offered Boolean @default(false)
+  work_authorization String? // constraint (us_citizen | gc | h1b_ok | any)
+
+  // Duration / schedule.
+  end_date          DateTime? @db.Timestamptz
+  duration_value    Int?
+  duration_unit     String? // weeks | months
+  extension_possible Boolean  @default(false)
+  hours_per_week    Int?
+
+  // Source / VMS-readiness (thin stub — NOT the full VMS spec section;
+  // the source_system stub is the input to a future VMS ingestion PR).
+  source_system  String? // manual | fieldglass | beeline | oracle | coupa | email | api
+  external_req_id String?
+  imported_at    DateTime? @db.Timestamptz
+
+  // ---- Gated financial additions (🔒 requisition:*:financials) --------
+  // Job-Module Directive v1.0 §1 Part 1 + LB-4. A DISTINCT financial-
+  // planning surface (targets / ranges / rate-card ref) — NOT the 13
+  // compensation actuals (those keep their compensation:* gating). Masked
+  // on read by requisition:view:financials and write-gated by
+  // requisition:edit:financials (libs/field-masking financials map +
+  // the requisition financial-edit-gate). Kept OUT of the D5 comp
+  // non-invertibility family by design (own scope, own field set).
+  target_margin_percent Decimal? @db.Decimal(5, 2)
+  markup_percent_target Decimal? @db.Decimal(5, 2)
+  rate_card_id          String?  @db.Uuid // stub ref — no rate-card entity yet (§8 carry)
+  min_bill_rate         Decimal? @db.Decimal(12, 2)
+  max_bill_rate         Decimal? @db.Decimal(12, 2)
+  min_pay_rate          Decimal? @db.Decimal(12, 2)
+  max_pay_rate          Decimal? @db.Decimal(12, 2)
+
+  // ---- The seam (Job-Module LB-2 / R3, Amendment v1.1) ----------------
+  // Cross-schema UUID-only reference (no FK, §7.3) to job_domain.
+  // GoldenProfile. NULL until an explicit Generate-profile/confirm action
+  // mints the profile and stamps it here. The ATS Requisition is the
+  // AUTHORITATIVE seam owner (Amendment v1.1 — capture-only spine; the
+  // live matching read path is a SEPARATE consumption PR and is NOT
+  // touched here).
+  golden_profile_id String? @db.Uuid
+
   // Provenance — the recruiter who originally entered the req. This is
   // INFORMATIONAL ONLY; per Ruling 1 the visibility filter keys on the
   // RequisitionAssignment join (multi-recruiter), NOT on this column.
@@ -193,6 +250,8 @@ model Requisition {
   @@index([tenant_id, site_id])
   @@index([tenant_id, is_hot])
   @@index([tenant_id, import_batch_id])
+  @@index([tenant_id, job_type])
+  @@index([tenant_id, source_system])
 
   @@schema("requisition")
 }
