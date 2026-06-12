@@ -211,6 +211,11 @@ export const SEED_IDS = {
     // COMMERCIAL_SEED_BUNDLES (tenant_admin + tenant_owner + account_manager;
     // RoleScope range 0x830+, append-don't-renumber).
     'company:read_commercial': '01900000-0000-7000-8000-0000000000a2',
+    // Job-Module (LB-4) — 2 requisition:*:financials scopes. Next clear
+    // hex after 0xa2 (append-don't-renumber). Granted via
+    // FINANCIALS_SEED_BUNDLES (agency tier; mirrors company:read_commercial).
+    'requisition:view:financials': '01900000-0000-7000-8000-0000000000a3',
+    'requisition:edit:financials': '01900000-0000-7000-8000-0000000000a4',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1234,6 +1239,35 @@ const COMMERCIAL_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Job-Module (LB-4) — requisition:*:financials grant bundle. The SAME
+// agency-economics tier as company:read_commercial (tenant_admin +
+// tenant_owner + account_manager). NOT base recruiter, NOT the delivery
+// tier — financial-planning visibility there would be scope creep (the
+// seed.spec grant-table proof asserts the 3 present + base/delivery
+// absent). Each role gets BOTH the view (read-mask) and edit (write-gate)
+// financial scope.
+const FINANCIALS_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_admin', ['requisition:view:financials', 'requisition:edit:financials']],
+  ['tenant_owner', ['requisition:view:financials', 'requisition:edit:financials']],
+  ['account_manager', ['requisition:view:financials', 'requisition:edit:financials']],
+];
+
+// Deterministic RoleScope row ids for the 6 financials grants. Disjoint
+// range 0x833+ (the next clear range after Commercial's 0x830..0x832; all
+// prior ranges untouched — append-don't-renumber).
+const FINANCIALS_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x833;
+  for (const [role, scopes] of FINANCIALS_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -1457,6 +1491,10 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   // tenant_owner + account_manager.
   await upsertScope(prisma, SEED_IDS.scopes['company:read_commercial'], 'company:read_commercial', 'View + edit the Company COMMERCIAL fields (fee_model, default_contract_markup_pct, default_perm_fee_pct, payment_terms, credit_status, default_currency). Field-gate (not a route gate): non-holders see the company but with the commercial fields omitted, and any commercial field they submit on save is stripped. Granted to the agency-economics tier (tenant_admin + tenant_owner + account_manager).');
 
+  // Job-Module (LB-4) — the requisition financial-planning field-gate scopes.
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:view:financials'], 'requisition:view:financials', 'View the Requisition FINANCIAL-PLANNING fields (target_margin_percent, markup_percent_target, rate_card_id, min/max_bill_rate, min/max_pay_rate). Read field-mask via libs/field-masking: non-holders see the requisition with these fields omitted from the JSON. A DISTINCT surface from the 13 compensation actuals (kept out of the D5 non-invertibility family). Granted to the agency-economics tier (tenant_admin + tenant_owner + account_manager).');
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:edit:financials'], 'requisition:edit:financials', 'Write the Requisition FINANCIAL-PLANNING fields. Write-gate enforced IN-SERVICE at the requisition repository (create / update / createForImport) BEFORE the Prisma write: a caller writing any financial field without this scope is rejected 403, and a null-clear counts as a write. Granted to the agency-economics tier (tenant_admin + tenant_owner + account_manager).');
+
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
     const role_id = roleIdForKey(roleKey);
@@ -1608,6 +1646,26 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
       const rsId = COMMERCIAL_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`Commercial-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // 7i. Job-Module (LB-4) — requisition:*:financials RoleScope assignments —
+  // 6 rows (tenant_admin + tenant_owner + account_manager, each × view+edit)
+  // per FINANCIALS_SEED_BUNDLES. UUID range 0x833+ (append-don't-renumber).
+  // Base recruiter + the delivery tier are deliberately NOT granted.
+  for (const [roleKey, scopeKeys] of FINANCIALS_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = FINANCIALS_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`Financials-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

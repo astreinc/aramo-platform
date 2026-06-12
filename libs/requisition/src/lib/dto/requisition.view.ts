@@ -62,4 +62,39 @@ export interface RequisitionView {
   margin_amount: string | null;
   markup_percent: string | null;
   margin_percent: string | null;
+
+  // ---- Job-Module enterprise fields (§1 Part 1, additive) -------------
+  job_type: string | null;
+  labor_category: string | null;
+  role_family: string | null;
+  seniority_level: string | null;
+  headcount_reason: string | null;
+  work_arrangement: string | null;
+  travel_percent: number | null;
+  relocation_offered: boolean;
+  work_authorization: string | null;
+  end_date: string | null;
+  duration_value: number | null;
+  duration_unit: string | null;
+  extension_possible: boolean;
+  hours_per_week: number | null;
+  source_system: string | null;
+  external_req_id: string | null;
+  imported_at: string | null;
+
+  // ---- Gated financial-planning fields (🔒 requisition:view:financials) -
+  // Masked on read by the field-masking financials map (LB-4) when the
+  // actor lacks requisition:view:financials — omitted from the JSON, NOT
+  // null (the absent-from-JSON contract, mirroring compensation masking).
+  target_margin_percent: string | null;
+  markup_percent_target: string | null;
+  rate_card_id: string | null;
+  min_bill_rate: string | null;
+  max_bill_rate: string | null;
+  min_pay_rate: string | null;
+  max_pay_rate: string | null;
+
+  // ---- The seam (LB-2 / R3) — read-only; stamped by the mint, never
+  // settable via create/update. NULL until a profile is generated+confirmed.
+  golden_profile_id: string | null;
 }

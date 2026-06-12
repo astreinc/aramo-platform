@@ -25,10 +25,17 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { validateCompensationInput } from './compensation-validation.js';
 import type { AssignRequisitionRequestDto } from './dto/assign-requisition-request.dto.js';
 import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
+import type {
+  ConfirmProfileRequestDto,
+  ConfirmProfileResponseDto,
+  DraftProfileRequestDto,
+  DraftProfileResponseDto,
+} from './dto/profile-generation.dto.js';
 import type { RequisitionAssignmentView } from './dto/requisition-assignment.view.js';
 import type { RequisitionView } from './dto/requisition.view.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
 import { RequisitionAssignmentRepository } from './requisition-assignment.repository.js';
+import { RequisitionProfileService } from './requisition-profile.service.js';
 import { RequisitionRepository } from './requisition.repository.js';
 
 // RequisitionController — PR-A3 Gate 5 ATS Batch 2.
@@ -60,6 +67,7 @@ export class RequisitionController {
   constructor(
     private readonly requisitionRepository: RequisitionRepository,
     private readonly assignmentRepository: RequisitionAssignmentRepository,
+    private readonly profileService: RequisitionProfileService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -192,6 +200,64 @@ export class RequisitionController {
     await this.requisitionRepository.delete({
       tenant_id: authContext.tenant_id,
       id,
+      requestId,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // AI JD + GoldenProfile generation (Job-Module LB-3 / ADR-0015 v1.2)
+  // -------------------------------------------------------------------------
+  //
+  // The draft → confirm human-in-the-loop split (mirrors the engagement
+  // draft/send pattern). DRAFT runs the LLM (G4 allowlisted prompt) + returns the
+  // generated JD + structured GoldenProfile WITHOUT committing anything.
+  // CONFIRM persists the recruiter-reviewed final via the seam mint
+  // (creates Job + GoldenProfile, stamps golden_profile_id). Both gate on
+  // requisition:edit (no new scope — generation is an edit affordance);
+  // NO consent gate (G3 — no external recipient). Visibility-scoped: a req
+  // invisible to the actor → 404.
+
+  @Post(':id/profile/draft')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('requisition:edit')
+  @RequireSiteMatch()
+  async draftProfile(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Body() body: DraftProfileRequestDto,
+    @RequestId() requestId: string,
+    @Req() req: Request,
+  ): Promise<DraftProfileResponseDto> {
+    const visibility = await req.resolveVisibility!();
+    return this.profileService.draftProfile({
+      tenant_id: authContext.tenant_id,
+      requisition_id: id,
+      brief: body.brief,
+      ...(body.max_tokens !== undefined ? { max_tokens: body.max_tokens } : {}),
+      visibility,
+      requestId,
+    });
+  }
+
+  @Post(':id/profile/confirm')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('requisition:edit')
+  @RequireSiteMatch()
+  async confirmProfile(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Body() body: ConfirmProfileRequestDto,
+    @RequestId() requestId: string,
+    @Req() req: Request,
+  ): Promise<ConfirmProfileResponseDto> {
+    const visibility = await req.resolveVisibility!();
+    return this.profileService.confirmProfile({
+      tenant_id: authContext.tenant_id,
+      requisition_id: id,
+      ...(body.draft_event_id !== undefined ? { draft_event_id: body.draft_event_id } : {}),
+      jd_text: body.jd_text,
+      golden_profile: body.golden_profile,
+      visibility,
       requestId,
     });
   }

@@ -57,3 +57,14 @@ export {
   omitMaskedCommercialFields,
 } from './lib/commercial-field-map.js';
 export type { CompanyCommercialFieldKey } from './lib/commercial-field-map.js';
+
+// The promoted generic omit helper (rule-of-three; all three maps delegate).
+export { omitFieldsByScopeMap } from './lib/omit-by-scope.js';
+
+// Job-Module — the requisition financials mask (third consumer).
+export {
+  REQUISITION_VIEW_FINANCIALS,
+  REQUISITION_FINANCIAL_FIELD_KEYS,
+  omitMaskedFinancialFields,
+} from './lib/financials-field-map.js';
+export type { RequisitionFinancialFieldKey } from './lib/financials-field-map.js';

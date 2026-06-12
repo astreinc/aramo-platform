@@ -1,11 +1,24 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render as rawRender,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Session } from '@aramo/fe-foundation';
+import { ToastProvider, type Session } from '@aramo/fe-foundation';
 
 import type { CompanyView, ContactView } from '../companies/types';
 
 import { RequisitionForm } from './RequisitionForm';
 import type { RequisitionStatus, RequisitionView } from './types';
+
+// EDIT mode mounts GenerateProfileDialog, which uses useToast() — so the
+// tree needs a ToastProvider (the app root provides it in production).
+// Wrapping all renders keeps create-mode tests unaffected.
+function render(ui: ReactElement) {
+  return rawRender(<ToastProvider>{ui}</ToastProvider>);
+}
 
 function makeSession(scopes: string[]): Session {
   return {
@@ -117,6 +130,31 @@ function makeReq(
     margin_amount: null,
     markup_percent: null,
     margin_percent: null,
+    job_type: null,
+    labor_category: null,
+    role_family: null,
+    seniority_level: null,
+    headcount_reason: null,
+    work_arrangement: null,
+    travel_percent: null,
+    relocation_offered: null,
+    work_authorization: null,
+    end_date: null,
+    duration_value: null,
+    duration_unit: null,
+    extension_possible: null,
+    hours_per_week: null,
+    source_system: null,
+    external_req_id: null,
+    imported_at: null,
+    target_margin_percent: null,
+    markup_percent_target: null,
+    rate_card_id: null,
+    min_bill_rate: null,
+    max_bill_rate: null,
+    min_pay_rate: null,
+    max_pay_rate: null,
+    golden_profile_id: null,
     ...overrides,
   };
 }
@@ -634,5 +672,196 @@ describe('RequisitionForm — cancel', () => {
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
     expect(onCancel).toHaveBeenCalled();
+  });
+});
+
+describe('RequisitionForm — enterprise fields (Job-Module, UN-gated)', () => {
+  it('threads enterprise fields (select / number / boolean) into the CREATE body', async () => {
+    const onSuccess = vi.fn();
+    const calls = installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      if (req.url.includes('/v1/contacts')) {
+        return { status: 200, body: { items: [] } };
+      }
+      if (req.url === '/v1/requisitions' && req.method === 'POST') {
+        return { status: 201, body: makeReq() };
+      }
+      return { status: 404, body: {} };
+    });
+    render(
+      <RequisitionForm
+        mode="create"
+        session={makeSession(['requisition:create'])}
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('company-picker')).not.toBeDisabled();
+    });
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Ent Role' } });
+    fireEvent.click(screen.getByTestId('company-picker'));
+    fireEvent.click(await screen.findByTestId('company-picker-option-co-1'));
+    // Closed vocab via native select.
+    fireEvent.change(screen.getByLabelText('Job type'), {
+      target: { value: 'contract_to_hire' },
+    });
+    fireEvent.change(screen.getByLabelText('Role family'), {
+      target: { value: 'backend_engineer' },
+    });
+    // Number field.
+    fireEvent.change(screen.getByLabelText('Travel percent'), { target: { value: '25' } });
+    // Boolean switch.
+    fireEvent.click(screen.getByLabelText('Relocation offered'));
+    // Text field.
+    fireEvent.change(screen.getByLabelText('External req ID'), {
+      target: { value: 'EXT-9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /create requisition/i }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const body = calls.find((c) => c.method === 'POST')?.body as Record<string, unknown>;
+    expect(body).toMatchObject({
+      job_type: 'contract_to_hire',
+      role_family: 'backend_engineer',
+      travel_percent: 25,
+      relocation_offered: true,
+      external_req_id: 'EXT-9',
+    });
+    // Unset selects/numbers/booleans are omitted.
+    expect(body).not.toHaveProperty('seniority_level');
+    expect(body).not.toHaveProperty('duration_value');
+    expect(body).not.toHaveProperty('extension_possible');
+  });
+});
+
+describe('RequisitionForm — financial planning (gated)', () => {
+  it('HIDES the financial section + omits its fields when the actor lacks requisition:view:financials', async () => {
+    const onSuccess = vi.fn();
+    const calls = installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      if (req.url.includes('/v1/contacts')) {
+        return { status: 200, body: { items: [] } };
+      }
+      if (req.method === 'POST') return { status: 201, body: makeReq() };
+      return { status: 404, body: {} };
+    });
+    render(
+      <RequisitionForm
+        mode="create"
+        session={makeSession(['requisition:create'])} // no financials scope
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('company-picker')).not.toBeDisabled();
+    });
+    // Section is hidden.
+    expect(screen.queryByText(/Financial planning/i)).toBeNull();
+    expect(screen.queryByLabelText('Target margin percent')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'X' } });
+    fireEvent.click(screen.getByTestId('company-picker'));
+    fireEvent.click(await screen.findByTestId('company-picker-option-co-1'));
+    fireEvent.click(screen.getByRole('button', { name: /create requisition/i }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const body = calls.find((c) => c.method === 'POST')?.body as Record<string, unknown>;
+    expect(body).not.toHaveProperty('target_margin_percent');
+    expect(body).not.toHaveProperty('min_bill_rate');
+    expect(body).not.toHaveProperty('rate_card_id');
+  });
+
+  it('RENDERS the financial section + threads its fields when the actor holds requisition:view:financials', async () => {
+    const onSuccess = vi.fn();
+    const calls = installFetch((req) => {
+      if (req.url.includes('/v1/companies') && req.method === 'GET') {
+        return { status: 200, body: { items: COMPANIES } };
+      }
+      if (req.url.includes('/v1/contacts')) {
+        return { status: 200, body: { items: [] } };
+      }
+      if (req.method === 'POST') return { status: 201, body: makeReq() };
+      return { status: 404, body: {} };
+    });
+    render(
+      <RequisitionForm
+        mode="create"
+        session={makeSession(['requisition:create', 'requisition:view:financials'])}
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('company-picker')).not.toBeDisabled();
+    });
+    expect(screen.getByLabelText('Target margin percent')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'X' } });
+    fireEvent.click(screen.getByTestId('company-picker'));
+    fireEvent.click(await screen.findByTestId('company-picker-option-co-1'));
+    fireEvent.change(screen.getByLabelText('Target margin percent'), {
+      target: { value: '32.5' },
+    });
+    fireEvent.change(screen.getByLabelText('Min bill rate'), {
+      target: { value: '90.00' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /create requisition/i }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const body = calls.find((c) => c.method === 'POST')?.body as Record<string, unknown>;
+    expect(body).toMatchObject({
+      target_margin_percent: '32.5',
+      min_bill_rate: '90.00',
+    });
+    // Untouched financial fields omitted.
+    expect(body).not.toHaveProperty('max_pay_rate');
+  });
+});
+
+describe('RequisitionForm — AI profile surface + linked-profile indicator', () => {
+  const EDIT_FETCH = (req: MockedRequest) => {
+    if (req.url.includes('/v1/companies') && req.method === 'GET') {
+      return { status: 200, body: { items: COMPANIES } };
+    }
+    if (req.url.includes('/v1/contacts')) {
+      return { status: 200, body: { items: [] } };
+    }
+    return { status: 404, body: {} };
+  };
+
+  it('renders "Generate profile from brief" + a linked-profile indicator in EDIT mode', async () => {
+    installFetch(EDIT_FETCH);
+    const initial = makeReq({ golden_profile_id: 'gp-123' });
+    render(
+      <RequisitionForm
+        mode="edit"
+        session={makeSession(['requisition:edit'])}
+        initial={initial}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    await screen.findByLabelText('Title');
+    expect(
+      screen.getByRole('button', { name: /generate profile from brief/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('gp-123')).toBeInTheDocument();
+  });
+
+  it('does NOT render the AI surface in CREATE mode (no persisted req id)', async () => {
+    installFetch(EDIT_FETCH);
+    render(
+      <RequisitionForm
+        mode="create"
+        session={makeSession(['requisition:create'])}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    await screen.findByLabelText('Title');
+    expect(
+      screen.queryByRole('button', { name: /generate profile from brief/i }),
+    ).toBeNull();
   });
 });

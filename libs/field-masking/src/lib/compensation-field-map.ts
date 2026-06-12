@@ -8,6 +8,7 @@ import {
   COMPENSATION_VIEW_SPREAD_AMOUNT,
   COMPENSATION_VIEW_SPREAD_PERCENT,
 } from './compensation-scope.js';
+import { omitFieldsByScopeMap } from './omit-by-scope.js';
 
 // AUTHZ-D5 — scope→field-set map + omit-by-scope.
 //
@@ -117,14 +118,7 @@ export function omitMaskedCompensationFields<T extends Record<string, unknown>>(
   view: T,
   scopes: Iterable<string>,
 ): T {
-  const visible = visibleCompensationFields(scopes);
-  const out: Record<string, unknown> = { ...view };
-  for (const field of COMPENSATION_FIELD_KEYS) {
-    if (!visible.has(field) && field in out) {
-      delete out[field];
-    }
-  }
-  return out as T;
+  return omitFieldsByScopeMap(view, scopes, SCOPE_TO_FIELDS);
 }
 
 // THE ENFORCED INVARIANT (the load-bearing §4 gate 1). Asserts that the

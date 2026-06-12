@@ -1,7 +1,6 @@
-import { AramoError } from '@aramo/common';
-
 import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
+import { assertScopedFieldGroupsPresent } from './field-group-edit-gate.js';
 
 // D-AUTHZ-COMP-WRITE-1 — the compensation write-side scope gate.
 //
@@ -71,37 +70,23 @@ type CompensationWritableInput =
   | CreateRequisitionRequestDto
   | UpdateRequisitionRequestDto;
 
-// Ruling 4: null-as-clear requires the edit scope — a clear IS a
-// mutation. Ruling 5: compensation_model (a CONTRACT/PERMANENT label)
-// is NOT gated — it's a discriminator, not a $ value.
-//
-// PRESENCE-IN-INPUT keying (load-bearing): the gate keys on what the
-// CALLER supplied (`input.K !== undefined`), NOT on what
-// buildCompensationCreateData writes (which null-defaults every comp
-// column — would over-block every CREATE for callers without both
-// edit scopes; reading the helper's output instead of the input was
-// the §1(c) trap the directive flagged).
-function presentWriteFields(
-  input: CompensationWritableInput,
-  keys: readonly string[],
-): string[] {
-  // Both DTOs declare every comp field as a typed optional; reading them
-  // by string key returns the value or `undefined`. Treat the input
-  // structurally — the only thing that matters is whether the caller
-  // supplied the key (set or null).
-  const record = input as unknown as Record<string, unknown>;
-  return keys.filter((k) => record[k] !== undefined);
-}
-
 // THE GATE — the load-bearing 403-before-persist. Called from
 // RequisitionRepository.create / update / createForImport BEFORE the
 // Prisma write. Throws INSUFFICIENT_PERMISSIONS (HTTP 403; ruling 6 —
 // reuse, not a new code) with structured details so the recruiter UI
 // can render an actionable rejection.
 //
+// Job-Module (LB-4) — now DELEGATES to the promoted
+// assertScopedFieldGroupsPresent (the rule-of-three primitive shared with
+// the requisition financial gate). The external behavior is UNCHANGED:
+// same message, same reason ('compensation_edit_scope_missing'), same
+// details shape (missing_scopes + attempted_fields), same presence-keying.
+// Ruling 4 (null-as-clear is a write) + ruling 5 (compensation_model not
+// gated) are preserved — the helper keys on presence-in-input and only
+// the pay/bill field groups are passed.
+//
 // No-ops when the input carries zero compensation write-fields (the
-// title-only / non-compensation PATCH stays a happy 200 — the gate is
-// field-group-specific, NOT a blanket compensation block).
+// title-only / non-compensation PATCH stays a happy 200).
 //
 // Order: AFTER validateCompensationInput (structural 400 stays first),
 // BEFORE prisma.requisition.{create,update}.
@@ -110,36 +95,15 @@ export function assertCompensationEditScopes(args: {
   scopes: readonly string[];
   requestId: string;
 }): void {
-  const writingPay = presentWriteFields(args.input, COMPENSATION_PAY_WRITE_KEYS);
-  const writingBill = presentWriteFields(args.input, COMPENSATION_BILL_WRITE_KEYS);
-  if (writingPay.length === 0 && writingBill.length === 0) return;
-
-  const scopeSet = new Set(args.scopes);
-  const missingScopes: string[] = [];
-  const attemptedFields: string[] = [];
-
-  if (writingPay.length > 0 && !scopeSet.has(COMPENSATION_EDIT_PAY)) {
-    missingScopes.push(COMPENSATION_EDIT_PAY);
-    attemptedFields.push(...writingPay);
-  }
-  if (writingBill.length > 0 && !scopeSet.has(COMPENSATION_EDIT_BILL)) {
-    missingScopes.push(COMPENSATION_EDIT_BILL);
-    attemptedFields.push(...writingBill);
-  }
-
-  if (missingScopes.length === 0) return;
-
-  throw new AramoError(
-    'INSUFFICIENT_PERMISSIONS',
-    'Required compensation:edit scope(s) not granted',
-    403,
-    {
-      requestId: args.requestId,
-      details: {
-        reason: 'compensation_edit_scope_missing',
-        missing_scopes: missingScopes,
-        attempted_fields: attemptedFields,
-      },
-    },
-  );
+  assertScopedFieldGroupsPresent({
+    input: args.input as unknown as Record<string, unknown>,
+    scopes: args.scopes,
+    requestId: args.requestId,
+    groups: [
+      { scope: COMPENSATION_EDIT_PAY, fields: COMPENSATION_PAY_WRITE_KEYS },
+      { scope: COMPENSATION_EDIT_BILL, fields: COMPENSATION_BILL_WRITE_KEYS },
+    ],
+    message: 'Required compensation:edit scope(s) not granted',
+    reason: 'compensation_edit_scope_missing',
+  });
 }

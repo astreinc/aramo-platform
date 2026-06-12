@@ -174,6 +174,20 @@ export const SEED_SCOPE_KEYS = [
   // recruiter surface). Granted to the 9 activity:create operational roles.
   'task:read',                          // 9 operational roles
   'task:write',                         // 9 operational roles
+  // Job-Module (LB-4) — 2 requisition:*:financials scopes (the 3rd
+  // consumer of the field-masking + edit-gate pattern; rule-of-three
+  // discharged by promoting omitFieldsByScopeMap). A DISTINCT financial-
+  // PLANNING surface (target_margin_percent / markup_percent_target /
+  // rate_card_id / min|max_bill_rate / min|max_pay_rate) — NOT the 13
+  // compensation actuals, so kept OUT of the D5 non-invertibility family
+  // (own scope, own field set). view:financials masks the read DTO via
+  // libs/field-masking financials-field-map; edit:financials write-gates
+  // at the requisition repository (create / update / createForImport)
+  // BEFORE the Prisma write. Granted to the agency-economics tier
+  // (tenant_admin + tenant_owner + account_manager) — MIRRORS
+  // company:read_commercial; NOT base recruiter, NOT the delivery tier.
+  'requisition:view:financials',        // tenant_admin + tenant_owner + account_manager (read-mask)
+  'requisition:edit:financials',        // tenant_admin + tenant_owner + account_manager (write-gate)
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

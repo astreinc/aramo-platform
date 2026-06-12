@@ -18,6 +18,8 @@
 // Terminal-lib discipline preserved: no entity lib imports this; the apps/api
 // interceptor calls it, exactly as for compensation.
 
+import { omitFieldsByScopeMap } from './omit-by-scope.js';
+
 export const COMPANY_READ_COMMERCIAL = 'company:read_commercial' as const;
 
 // The 6 gated commercial fields on CompanyView (Company-Fields v1.1 §1 File 1).
@@ -42,11 +44,7 @@ export function omitMaskedCommercialFields<T extends Record<string, unknown>>(
   view: T,
   scopes: Iterable<string>,
 ): T {
-  const held = new Set(scopes);
-  if (held.has(COMPANY_READ_COMMERCIAL)) return view;
-  const out: Record<string, unknown> = { ...view };
-  for (const field of COMPANY_COMMERCIAL_FIELD_KEYS) {
-    if (field in out) delete out[field];
-  }
-  return out as T;
+  return omitFieldsByScopeMap(view, scopes, {
+    [COMPANY_READ_COMMERCIAL]: COMPANY_COMMERCIAL_FIELD_KEYS,
+  });
 }

@@ -48,4 +48,37 @@ export interface CreateRequisitionRequestDto {
   placement_fee_amount?: string;
   salary_amount?: string;
   salary_currency?: string;
+
+  // ---- Job-Module enterprise fields (§1 Part 1, additive, UN-gated) ----
+  // String-not-enum closed vocabularies (R7). Numeric fields are numbers;
+  // booleans default false at the repository when omitted.
+  job_type?: string;
+  labor_category?: string;
+  role_family?: string;
+  seniority_level?: string;
+  headcount_reason?: string;
+  work_arrangement?: string;
+  travel_percent?: number;
+  relocation_offered?: boolean;
+  work_authorization?: string;
+  end_date?: string;
+  duration_value?: number;
+  duration_unit?: string;
+  extension_possible?: boolean;
+  hours_per_week?: number;
+  source_system?: string;
+  external_req_id?: string;
+  imported_at?: string;
+
+  // ---- Gated financial-planning fields (🔒 requisition:edit:financials) -
+  // LB-4: write-gated by the financial edit-gate at the repository
+  // boundary. Decimal money/percent fields are decimal strings (Decimal-
+  // safe wire format, like the comp fields). NOT the compensation family.
+  target_margin_percent?: string;
+  markup_percent_target?: string;
+  rate_card_id?: string;
+  min_bill_rate?: string;
+  max_bill_rate?: string;
+  min_pay_rate?: string;
+  max_pay_rate?: string;
 }
