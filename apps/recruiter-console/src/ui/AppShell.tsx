@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { NavLink as RouterNavLink } from 'react-router-dom';
 
 import { IconChevronRight, IconLogo, IconSearch } from './icons';
 
@@ -70,19 +71,26 @@ interface RailNavItemProps {
   readonly icon?: ReactNode;
   readonly label: string;
   readonly count?: number;
+  /** React-router target. When set, renders a real <NavLink> (the a11y path). */
+  readonly to?: string;
+  /** Match `to` exactly (use for the index/"My desk" link). */
+  readonly end?: boolean;
+  /** Static-active override for non-router usage (e.g. the gallery). */
   readonly active?: boolean;
-  /** Provided by the surface (e.g. a router NavLink renderer). */
   readonly onActivate?: () => void;
   readonly href?: string;
 }
 
-// A single rail entry. Render-agnostic: a surface can drive `active`/`onActivate`
-// from the router; the gallery uses it statically. When `href` is given it's
-// an <a>, otherwise a <button>.
+// A single rail entry. Preferred form passes `to` → a react-router <NavLink>
+// (a real focusable anchor; aria-current="page" is set automatically when
+// active, which the rc CSS keys on). The `active`/`href`/`onActivate` forms
+// remain for non-router/static usage (the gallery).
 export function RailNavItem({
   icon,
   label,
   count,
+  to,
+  end,
   active = false,
   onActivate,
   href,
@@ -94,6 +102,13 @@ export function RailNavItem({
       {count != null ? <span className="rc-nav__count num">{count}</span> : null}
     </>
   );
+  if (to != null) {
+    return (
+      <RouterNavLink to={to} end={end} className="rc-nav__item">
+        {inner}
+      </RouterNavLink>
+    );
+  }
   const aria = active ? ('page' as const) : undefined;
   if (href != null) {
     return (
