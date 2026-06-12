@@ -18,7 +18,6 @@ import { IndexRoute } from './dashboard/IndexRoute';
 import { LoginPage } from './routes/LoginPage';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
-import { RequisitionEditView } from './requisitions/RequisitionEditView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
 import { SearchView } from './search/SearchView';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
@@ -128,6 +127,10 @@ export function App() {
                         </RouteGuard>
                       }
                     />
+                    {/* PR-A2 P4 — the /requisitions/:reqId/edit route is
+                        RETIRED. Editing is now inline in the cockpit
+                        (RequisitionDetailView); the form's edit-mode +
+                        RequisitionEditView + GenerateProfileDialog are gone. */}
                     <Route
                       path="requisitions/:reqId"
                       element={
@@ -136,17 +139,6 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <RequisitionDetailView />
-                        </RouteGuard>
-                      }
-                    />
-                    <Route
-                      path="requisitions/:reqId/edit"
-                      element={
-                        <RouteGuard
-                          requireScope="requisition:edit"
-                          sessionStateOverride={state}
-                        >
-                          <RequisitionEditView />
                         </RouteGuard>
                       }
                     />

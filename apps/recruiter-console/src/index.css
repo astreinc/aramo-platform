@@ -79,3 +79,211 @@ button {
 .tabs__panel {
   outline: none;
 }
+
+/* PR-A2 — the requisition COCKPIT (dense, sectioned). Consumer-layer only;
+ * fe-foundation is frozen. Token-based throughout. */
+.req-cockpit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.req-cockpit__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.req-cockpit__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+  margin: 0;
+}
+
+.req-cockpit__meta dt {
+  color: var(--c-text-muted);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+}
+
+.req-cockpit__meta dd {
+  margin: 0;
+  font-weight: var(--fw-medium);
+}
+
+.req-cockpit__section-title {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-16);
+  font-weight: var(--fw-semibold);
+}
+
+/* Two-column dense grid of inline-editable field rows. */
+.req-cockpit__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--sp-2) var(--sp-5);
+}
+
+/* --- the inline-edit primitive --- */
+.inline-edit,
+.inline-chips {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-1) 0;
+  min-width: 0;
+}
+
+.inline-edit__label,
+.inline-chips .inline-edit__label {
+  color: var(--c-text-muted);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+}
+
+.inline-edit__value {
+  font-weight: var(--fw-medium);
+  word-break: break-word;
+}
+
+.inline-edit__value--readonly {
+  color: var(--c-text);
+}
+
+.inline-edit__display {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  padding: var(--sp-1) var(--sp-2);
+  margin: calc(-1 * var(--sp-1)) calc(-1 * var(--sp-2));
+  text-align: left;
+  cursor: text;
+  color: inherit;
+  font: inherit;
+}
+
+.inline-edit__display:hover {
+  border-color: var(--c-border);
+  background: var(--c-surface-2);
+}
+
+.inline-edit__pencil {
+  color: var(--c-text-subtle);
+  opacity: 0;
+  font-size: var(--fs-12);
+}
+
+.inline-edit__display:hover .inline-edit__pencil {
+  opacity: 1;
+}
+
+.inline-edit__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.inline-edit__editor input,
+.inline-edit__editor select,
+.inline-edit__editor textarea {
+  width: 100%;
+  font: inherit;
+}
+
+.inline-edit__status {
+  color: var(--c-text-subtle);
+  font-size: var(--fs-12);
+}
+
+/* chips */
+.inline-chips__list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+.inline-chips__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  background: var(--c-accent-soft);
+  color: var(--c-text);
+  border-radius: var(--r-sm);
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-12);
+}
+
+.inline-chips__remove {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--c-text-muted);
+  padding: 0;
+  line-height: 1;
+}
+
+.inline-chips__actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.inline-edit__save,
+.inline-edit__cancel {
+  appearance: none;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  padding: var(--sp-1) var(--sp-2);
+  cursor: pointer;
+  font: inherit;
+}
+
+/* --- the profile workbench --- */
+.req-profile__header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.req-profile__title {
+  margin: 0;
+  font-size: var(--fs-16);
+  font-weight: var(--fw-semibold);
+}
+
+.req-profile__provenance {
+  font-size: var(--fs-12);
+  color: var(--c-text-muted);
+  background: var(--c-surface-2);
+  border-radius: var(--r-sm);
+  padding: 0 var(--sp-2);
+}
+
+.req-profile__header .tc-button {
+  margin-left: auto;
+}
+
+.req-profile__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.req-profile__generate {
+  margin-top: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.req-profile__actions {
+  display: flex;
+  gap: var(--sp-2);
+}

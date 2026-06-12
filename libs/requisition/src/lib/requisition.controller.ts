@@ -32,6 +32,7 @@ import type {
   DraftProfileResponseDto,
 } from './dto/profile-generation.dto.js';
 import type { RequisitionAssignmentView } from './dto/requisition-assignment.view.js';
+import type { RequisitionProfileView } from './dto/requisition-profile.view.js';
 import type { RequisitionView } from './dto/requisition.view.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
 import { RequisitionAssignmentRepository } from './requisition-assignment.repository.js';
@@ -232,6 +233,32 @@ export class RequisitionController {
   // base recruiter — now read-only on requisitions — does NOT generate, while
   // the 5-role management tier does). Both endpoints require
   // requisition:profile:generate.
+
+  // PR-A2 P3 — the first-class profile READ (A1 deferred it). Gated on
+  // requisition:read (NOT profile:generate): reading the profile is a broad
+  // affordance — anyone who can read the requisition sees its profile. The
+  // generate/edit affordances stay on the 5-role tier (profile:generate /
+  // profile:edit) enforced at the FE workbench + the write endpoints below.
+  // Visibility-scoped in-service (404 on an invisible req); the profile-less
+  // requisition returns the empty-shaped DTO, never a 404/500.
+  @Get(':id/profile')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('requisition:read')
+  @RequireSiteMatch()
+  async getProfile(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+    @Req() req: Request,
+  ): Promise<RequisitionProfileView> {
+    const visibility = await req.resolveVisibility!();
+    return this.profileService.readProfile({
+      tenant_id: authContext.tenant_id,
+      requisition_id: id,
+      visibility,
+      requestId,
+    });
+  }
 
   @Post(':id/profile/draft')
   @HttpCode(HttpStatus.OK)

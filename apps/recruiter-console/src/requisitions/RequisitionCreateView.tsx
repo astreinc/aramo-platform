@@ -47,7 +47,6 @@ export function RequisitionCreateView({ sessionOverride }: RequisitionCreateView
         them. Fields you can't see are not sent on save.
       </p>
       <RequisitionForm
-        mode="create"
         session={session}
         onSuccess={onSuccess}
         onCancel={onCancel}
