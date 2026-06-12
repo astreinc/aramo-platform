@@ -113,13 +113,14 @@ model Requisition {
   // Job-order metadata.
   type        String?
   duration    String?
-  // Legacy free-text comp fields. Compensation-Field Modeling v1.1 §6
-  // — COEXIST + deprecated; the structured successors live below
-  // (pay_rate_amount/bill_rate_amount supersede rate_max; salary_amount
-  // supersedes salary). A later cleanup PR drops these after the
-  // frontend migration window closes.
-  rate_max    String?
-  salary      String?
+  // PR-A1 Requisition-Gating Rework — the legacy free-text comp fields
+  // (rate_max / salary) are DROPPED. They were write-blocked + read-stripped
+  // since D-AUTHZ-COMP-WRITE-1 (the columns have been inert: every write path
+  // ignores them and they never appear in RequisitionView), and a zero-rows
+  // check (rate_max IS NOT NULL OR salary IS NOT NULL = 0 across all tenants)
+  // confirmed no live data before the drop. The structured successors are the
+  // canonical surface: pay_rate_amount / bill_rate_amount supersede rate_max;
+  // salary_amount / salary_currency supersede salary.
   description String?
   notes       String?
   is_hot      Boolean @default(false)
@@ -151,8 +152,8 @@ model Requisition {
   // §2.3 — PERMANENT-side fields. placement_fee_percent and
   // placement_fee_amount MAY BOTH be set (one fee model vs the other,
   // or a hybrid) — the application doesn't constrain. salary_amount /
-  // salary_currency is the structured successor to the legacy `salary`
-  // free-text field (§6).
+  // salary_currency is the structured successor to the dropped `salary`
+  // free-text field (PR-A1 legacy drop).
   placement_fee_percent Decimal? @db.Decimal(5, 2)
   placement_fee_amount  Decimal? @db.Decimal(12, 2)
   salary_amount         Decimal? @db.Decimal(12, 2)

@@ -497,35 +497,40 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     });
 
-    // Job-Module (LB-4) — §4 LOAD-BEARING grant-table proof. BOTH financial
-    // scopes (requisition:view:financials + requisition:edit:financials) are
-    // granted to EXACTLY the agency-economics tier and to NO other role —
-    // base recruiter + the delivery tier are asserted ABSENT (the moat: no
-    // financial-planning visibility creep). Mirrors the company:read_
-    // commercial grant-table above.
-    for (const scopeKey of ['requisition:view:financials', 'requisition:edit:financials']) {
-      it(`Job-Module — grant-table: ${scopeKey} → {tenant_admin, tenant_owner, account_manager} only`, async () => {
+    // Job-Module (LB-4) + PR-A1 — §4 LOAD-BEARING grant-table proof.
+    // requisition:edit:financials stays the agency-economics tier only
+    // ({TA, TO, AM}). PR-A1 Requisition-Gating Rework (Option C) adds
+    // delivery_manager to requisition:view:financials (DM sees the financial
+    // fields — consistent with seeing bill/margin — but does NOT edit them).
+    // The per-scope expected holder-set differs for view vs edit.
+    for (const { scopeKey, expected } of [
+      {
+        scopeKey: 'requisition:view:financials',
+        expected: ['account_manager', 'delivery_manager', 'tenant_admin', 'tenant_owner'],
+      },
+      {
+        scopeKey: 'requisition:edit:financials',
+        expected: ['account_manager', 'tenant_admin', 'tenant_owner'],
+      },
+    ]) {
+      it(`Job-Module/PR-A1 — grant-table: ${scopeKey} → {${expected.join(', ')}}`, async () => {
         const rows = await prisma.roleScope.findMany({
           where: { scope: { key: scopeKey } },
           include: { role: { select: { key: true } } },
         });
         const grantedRoles = rows.map((r) => r.role.key).sort();
-        expect(grantedRoles).toEqual([
-          'account_manager',
-          'tenant_admin',
-          'tenant_owner',
-        ]);
-        for (const role of [
+        expect(grantedRoles).toEqual([...expected].sort());
+        const forbidden = [
           'recruiter',
           'recruiting_manager',
           'lead_recruiter',
-          'delivery_manager',
           'sourcer',
           'back_office',
           'finance',
           'auditor',
           'candidate',
-        ]) {
+        ].filter((r) => !expected.includes(r));
+        for (const role of forbidden) {
           expect(grantedRoles).not.toContain(role);
         }
       });
@@ -739,7 +744,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Test 17 — scope catalog correctness
     // -----------------------------------------------------------------
 
-    it('test 17 — scope catalog correctness: 12-role staffing catalog per AUTHZ-1b + AUTHZ-D4a (tenant_admin 47, recruiter 31, candidate 4, tenant_owner 47, account_manager 35, sourcer 14, finance 6, auditor 5, recruiting_manager 33, delivery_manager 12, lead_recruiter 31, back_office 12)', async () => {
+    it('test 17 — scope catalog correctness: 12-role staffing catalog per AUTHZ-1b + AUTHZ-D4a (tenant_admin 47, recruiter 30 [PR-A1: -requisition:edit], candidate 4, tenant_owner 47, account_manager 35, sourcer 14, finance 6, auditor 5, recruiting_manager 33, delivery_manager 12, lead_recruiter 31, back_office 12)', async () => {
       // tenant_admin scope set (47 post AUTHZ-D4a; 43 + 4 team-model scopes)
       const adminScopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
@@ -828,8 +833,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
+        // PR-A1 Requisition-Gating Rework — recruiter is READ-ONLY on
+        // requisitions: requisition:edit REMOVED (kept requisition:create +
+        // requisition:read). (Pre-existing staleness HK-INTEGRATION-SPEC-COMP-
+        // STALE: the D5/reporting/engagement/search/task scopes recruiter also
+        // holds are not enumerated here; this exact list is skip-gated.)
         'requisition:create',
-        'requisition:edit',
         'requisition:read',
         'submittal:approve',
         'submittal:create',
@@ -860,6 +869,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'org:manage',
         'team:manage',
         'company:read:all',
+        // PR-A1 Requisition-Gating Rework — recruiter is read-only on
+        // requisitions + compensation: NO requisition:edit, NO
+        // compensation:edit:pay, NO compensation:view:bill (sees pay, not
+        // bill), and NO status-only/profile affordances.
+        'requisition:edit',
+        'compensation:edit:pay',
+        'compensation:view:bill',
+        'requisition:edit:status',
+        'requisition:profile:generate',
+        'requisition:profile:edit',
       ];
       for (const forbidden of FORBIDDEN_FOR_RECRUITER) {
         expect(

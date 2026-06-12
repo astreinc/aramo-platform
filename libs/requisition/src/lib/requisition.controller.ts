@@ -168,9 +168,19 @@ export class RequisitionController {
     });
   }
 
+  // PR-A1 Requisition-Gating Rework — the PATCH route carries NO route-level
+  // @RequireScopes guard. RolesGuard is all-or-nothing AND, so it cannot
+  // express the "requisition:edit OR requisition:edit:status" disjunction the
+  // status-only tier requires. Authorization is enforced IN-SERVICE by the
+  // status-only edit gate at RequisitionRepository.update (mirrors the
+  // comp/financial edit-gate's safe-by-construction repository-boundary
+  // pattern): a full editor (requisition:edit) edits everything; a
+  // status-only holder (requisition:edit:status, no :edit) may write only
+  // the status field; a caller with neither is rejected 403. @RequireSiteMatch
+  // + the class-level JwtAuthGuard/EntitlementGuard('ats')/RolesGuard chain
+  // are unchanged.
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('requisition:edit')
   @RequireSiteMatch()
   async update(
     @AuthContext() authContext: AuthContextType,
@@ -212,14 +222,20 @@ export class RequisitionController {
   // draft/send pattern). DRAFT runs the LLM (G4 allowlisted prompt) + returns the
   // generated JD + structured GoldenProfile WITHOUT committing anything.
   // CONFIRM persists the recruiter-reviewed final via the seam mint
-  // (creates Job + GoldenProfile, stamps golden_profile_id). Both gate on
-  // requisition:edit (no new scope — generation is an edit affordance);
-  // NO consent gate (G3 — no external recipient). Visibility-scoped: a req
-  // invisible to the actor → 404.
+  // (creates Job + GoldenProfile, stamps golden_profile_id). NO consent gate
+  // (G3 — no external recipient). Visibility-scoped: a req invisible to the
+  // actor → 404.
+  //
+  // PR-A1 Requisition-Gating Rework — RE-GATED off requisition:edit onto the
+  // dedicated requisition:profile:generate scope (#226 originally treated
+  // generation as a requisition:edit affordance; the rework separates it so
+  // base recruiter — now read-only on requisitions — does NOT generate, while
+  // the 5-role management tier does). Both endpoints require
+  // requisition:profile:generate.
 
   @Post(':id/profile/draft')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('requisition:edit')
+  @RequireScopes('requisition:profile:generate')
   @RequireSiteMatch()
   async draftProfile(
     @AuthContext() authContext: AuthContextType,
@@ -241,7 +257,7 @@ export class RequisitionController {
 
   @Post(':id/profile/confirm')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('requisition:edit')
+  @RequireScopes('requisition:profile:generate')
   @RequireSiteMatch()
   async confirmProfile(
     @AuthContext() authContext: AuthContextType,
