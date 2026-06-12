@@ -1,0 +1,974 @@
+/* Aramo Recruiter Console — Confident Blue component styles (Phase 1).
+ *
+ * App-layer presentational grammar for the new design-system components.
+ * Class prefix `rc-` keeps these distinct from the frozen `.tc-*` classes
+ * and the existing feature CSS (`.kanban`, `.req-*`, `.tabs`). Token-based
+ * throughout (theme.css is the single source of color/type/space). The
+ * frozen lib is untouched.
+ *
+ * The one place this file restyles a frozen component is `.tc-table` (the
+ * `DataTable` density pass) — an app-layer override, not a lib edit.
+ */
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─────────────── AppShell / Rail / TopBar ─────────────── */
+
+.rc-app {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+.rc-rail {
+  background: var(--rail);
+  color: var(--rail-text);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.rc-rail__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 22px;
+}
+.rc-rail__mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--brand-accent);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  flex: none;
+}
+.rc-rail__mark svg {
+  width: 18px;
+  height: 18px;
+}
+.rc-rail__name {
+  color: var(--rail-strong);
+  font-weight: 600;
+  font-size: 1.12rem;
+  letter-spacing: -0.01em;
+}
+.rc-rail__name small {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--rail-text);
+  opacity: 0.75;
+  margin-top: -1px;
+}
+
+.rc-nav {
+  display: flex;
+  flex-direction: column;
+}
+.rc-nav__label {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--rail-text);
+  opacity: 0.55;
+  padding: 14px 10px 6px;
+}
+.rc-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  color: var(--rail-text);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 1px;
+  background: transparent;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.rc-nav__item svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  opacity: 0.85;
+}
+.rc-nav__item:hover {
+  background: var(--rail-hover);
+  color: var(--rail-strong);
+}
+.rc-nav__item[aria-current='page'] {
+  background: var(--brand);
+  color: var(--rail-strong);
+}
+.rc-nav__item[aria-current='page'] svg {
+  opacity: 1;
+}
+.rc-nav__count {
+  margin-left: auto;
+  font-size: 0.72rem;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 1px 7px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.rc-rail__foot {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.rc-rail__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+}
+.rc-rail__user-av {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--rail-av-bg);
+  color: var(--rail-av-text);
+  display: grid;
+  place-items: center;
+  font-size: 0.74rem;
+  font-weight: 600;
+  flex: none;
+}
+.rc-rail__who {
+  font-size: 0.82rem;
+  color: var(--rail-strong);
+  font-weight: 500;
+  line-height: 1.2;
+}
+.rc-rail__who small {
+  display: block;
+  color: var(--rail-text);
+  font-size: 0.7rem;
+  font-weight: 400;
+}
+
+.rc-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.rc-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: rgba(244, 246, 250, 0.86);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 11px 26px;
+}
+.rc-content {
+  padding: 24px 26px 48px;
+  width: 100%;
+  max-width: 1320px;
+}
+
+.rc-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.86rem;
+  color: var(--muted);
+  min-width: 0;
+}
+.rc-crumbs a:hover {
+  color: var(--ink);
+}
+.rc-crumbs svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.5;
+  flex: none;
+}
+.rc-crumbs__here {
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rc-cmdk {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  padding: 7px 12px;
+  width: 280px;
+  color: var(--faint);
+  font-size: 0.84rem;
+  cursor: text;
+  transition: border-color 0.12s;
+}
+.rc-cmdk:hover {
+  border-color: var(--brand-accent);
+}
+.rc-cmdk svg {
+  width: 15px;
+  height: 15px;
+}
+.rc-cmdk kbd {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  background: var(--canvas);
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--muted);
+}
+
+.rc-iconbtn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  position: relative;
+  cursor: pointer;
+}
+.rc-iconbtn:hover {
+  color: var(--ink);
+}
+.rc-iconbtn svg {
+  width: 18px;
+  height: 18px;
+}
+.rc-iconbtn__dot {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--hot);
+  border: 1.5px solid var(--surface);
+}
+
+/* ─────────────── Card / CardHead ─────────────── */
+
+.rc-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev);
+  overflow: hidden;
+}
+.rc-card--pad {
+  padding: 16px 18px;
+}
+.rc-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.rc-card__head h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+.rc-card__head-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.rc-card__head-more {
+  font-size: 0.82rem;
+  color: var(--brand-strong);
+  font-weight: 600;
+}
+
+/* ─────────────── Pills: Status / Stage ─────────────── */
+
+.rc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 20px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.rc-pill svg {
+  width: 12px;
+  height: 12px;
+}
+.rc-pill__dot::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+}
+.rc-pill--neutral {
+  background: #eef0f2;
+  color: #54605b;
+}
+.rc-pill--brand {
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+}
+.rc-pill--info {
+  background: var(--info-tint);
+  color: var(--info);
+}
+.rc-pill--ok {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+.rc-pill--warn {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+.rc-pill--danger {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+.rc-pill--hot {
+  background: var(--hot-tint);
+  color: var(--hot);
+}
+
+/* Stage pill — same chip grammar, slightly tighter for table cells */
+.rc-stagepill {
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+/* ─────────────── Tag + overflow ─────────────── */
+
+.rc-tags {
+  display: inline-flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.rc-tag {
+  font-size: 0.72rem;
+  font-weight: 500;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+/* ─────────────── Avatar ─────────────── */
+
+.rc-av {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-weight: 600;
+  color: #fff;
+  flex: none;
+  font-size: 0.78rem;
+}
+.rc-av--sm {
+  width: 24px;
+  height: 24px;
+  font-size: 0.64rem;
+}
+.rc-av--md {
+  width: 34px;
+  height: 34px;
+  font-size: 0.78rem;
+}
+.rc-av--lg {
+  width: 46px;
+  height: 46px;
+  font-size: 1rem;
+}
+.rc-ent {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.rc-ent__nm {
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rc-ent__nm svg {
+  width: 13px;
+  height: 13px;
+  color: var(--hot);
+}
+.rc-ent__rl {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+/* ─────────────── MetricCard ─────────────── */
+
+.rc-metric {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 15px 17px;
+  box-shadow: var(--elev);
+}
+.rc-metric__k {
+  font-size: 0.74rem;
+  color: var(--muted);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.rc-metric__k svg {
+  width: 15px;
+  height: 15px;
+  color: var(--faint);
+}
+.rc-metric__n {
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-top: 7px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.rc-metric__hint {
+  font-size: 0.76rem;
+  font-weight: 600;
+  margin-top: 6px;
+  color: var(--faint);
+}
+
+/* ─────────────── ActionItem ─────────────── */
+
+.rc-action {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.rc-action:last-child {
+  border-bottom: 0;
+}
+.rc-action:hover {
+  background: var(--surface-2);
+}
+.rc-action__ic {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.rc-action__ic svg {
+  width: 17px;
+  height: 17px;
+}
+.rc-action__ic--reply {
+  background: var(--info-tint);
+  color: var(--info);
+}
+.rc-action__ic--due {
+  background: var(--hot-tint);
+  color: var(--hot);
+}
+.rc-action__ic--overdue {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+.rc-action__ic--task {
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+}
+.rc-action__body {
+  min-width: 0;
+  flex: 1;
+}
+.rc-action__t {
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.rc-action__c {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.rc-action__c b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.rc-action__when {
+  font-size: 0.76rem;
+  color: var(--faint);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* ─────────────── Stepper (engagement state) ─────────────── */
+
+.rc-stepper {
+  position: relative;
+  padding-left: 6px;
+}
+.rc-step {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 5px 0;
+  position: relative;
+}
+.rc-step__d {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--line-2);
+  background: var(--surface);
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.rc-step__d svg {
+  width: 9px;
+  height: 9px;
+  color: #fff;
+}
+.rc-step--done .rc-step__d {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.rc-step--cur .rc-step__d {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+}
+.rc-step--cur .rc-step__d::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand);
+}
+.rc-step__lb {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+.rc-step--done .rc-step__lb {
+  color: var(--ink);
+}
+.rc-step--cur .rc-step__lb {
+  color: var(--brand-strong);
+  font-weight: 600;
+}
+.rc-step::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 18px;
+  height: 14px;
+  width: 1px;
+  background: var(--line-2);
+}
+.rc-step:last-child::before {
+  display: none;
+}
+
+/* ─────────────── ProgressMini ─────────────── */
+
+.rc-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.rc-progress__bar {
+  width: 54px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line-2);
+  overflow: hidden;
+}
+.rc-progress__bar i {
+  display: block;
+  height: 100%;
+  background: var(--brand-accent);
+}
+.rc-progress__count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─────────────── ConstraintChip ─────────────── */
+
+.rc-constraint {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 0.85rem;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.rc-constraint__ico {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.rc-constraint__ico svg {
+  width: 12px;
+  height: 12px;
+  color: #fff;
+}
+.rc-constraint--pass .rc-constraint__ico {
+  background: var(--ok);
+}
+.rc-constraint--partial .rc-constraint__ico {
+  background: var(--warn);
+}
+.rc-constraint--fail .rc-constraint__ico {
+  background: var(--danger);
+}
+.rc-constraint__lab {
+  color: var(--muted);
+}
+.rc-constraint__val {
+  margin-left: auto;
+  font-weight: 600;
+}
+.rc-constraint--pass .rc-constraint__val {
+  color: var(--ok);
+}
+.rc-constraint--partial .rc-constraint__val {
+  color: var(--warn);
+}
+.rc-constraint--fail .rc-constraint__val {
+  color: var(--danger);
+}
+
+/* ─────────────── AttestCheckbox ─────────────── */
+
+.rc-attest {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  padding: 11px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  margin-bottom: 9px;
+  cursor: pointer;
+  transition: 0.12s;
+}
+.rc-attest:hover {
+  background: var(--surface-2);
+}
+.rc-attest--checked {
+  border-color: var(--brand-accent);
+  background: var(--brand-tint);
+}
+.rc-attest__box {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--line-2);
+  border-radius: 5px;
+  flex: none;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: var(--surface);
+}
+.rc-attest__box:checked {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.rc-attest__box:checked::after {
+  content: '';
+  width: 11px;
+  height: 6px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+.rc-attest__tx {
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+/* ─────────────── Toolbar / FilterChip / ScopedSearch ─────────────── */
+
+.rc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.rc-chip {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  padding: 6px 12px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.rc-chip svg {
+  width: 13px;
+  height: 13px;
+}
+.rc-chip--on {
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+  border-color: transparent;
+}
+.rc-scopedsearch {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  padding: 6px 11px;
+  color: var(--faint);
+  font-size: 0.83rem;
+  min-width: 230px;
+}
+.rc-scopedsearch svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ─────────────── ActivityFeed ─────────────── */
+
+.rc-feed {
+  position: relative;
+  padding-left: 18px;
+}
+.rc-feed__ev {
+  position: relative;
+  padding: 0 0 15px;
+}
+.rc-feed__ev:last-child {
+  padding-bottom: 0;
+}
+.rc-feed__ev::before {
+  content: '';
+  position: absolute;
+  left: -13px;
+  top: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand-accent);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
+.rc-feed__ev::after {
+  content: '';
+  position: absolute;
+  left: -9.5px;
+  top: 13px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--line-2);
+}
+.rc-feed__ev:last-child::after {
+  display: none;
+}
+.rc-feed__t {
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.rc-feed__t b {
+  font-weight: 600;
+}
+.rc-feed__when {
+  font-size: 0.74rem;
+  color: var(--faint);
+  margin-top: 2px;
+}
+
+/* ─────────────── ReservedSeam (ghosted Core seam — R10) ─────────────── */
+
+.rc-seam {
+  border: 1.5px dashed var(--line-2);
+  background: repeating-linear-gradient(
+    135deg,
+    transparent,
+    transparent 8px,
+    rgba(31, 78, 140, 0.018) 8px,
+    rgba(31, 78, 140, 0.018) 16px
+  );
+  border-radius: var(--r-lg);
+  padding: 16px 17px;
+}
+.rc-seam__title {
+  color: var(--brand-strong);
+  opacity: 0.8;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 600;
+  margin: 0 0 11px;
+}
+.rc-seam__ghost {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  opacity: 0.55;
+}
+.rc-seam__ic {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.rc-seam__ic svg {
+  width: 17px;
+  height: 17px;
+}
+.rc-seam__ghost p {
+  font-size: 0.84rem;
+  color: var(--muted);
+  line-height: 1.35;
+  margin: 0;
+}
+.rc-seam__tag {
+  margin-top: 11px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--brand-strong);
+  background: var(--brand-tint);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 20px;
+}
+.rc-seam__tag svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* ─────────────── DataTable (frozen Table — density pass) ───────────────
+ * The directive prefers the frozen Table themed. These rules tune its
+ * mockup density (compact rows, hairline rules, clickable rows). App-layer
+ * override only — libs/fe-foundation is untouched. */
+
+.rc-tablewrap .tc-table-wrap,
+.rc-tablewrap.tc-table-wrap {
+  box-shadow: var(--elev);
+}
+.rc-tablewrap .tc-table thead th {
+  font-size: 0.68rem;
+  letter-spacing: 0.07em;
+  color: var(--faint);
+  background: var(--surface);
+  padding: 9px 18px;
+}
+.rc-tablewrap .tc-table tbody td {
+  padding: 13px 18px;
+  font-size: 0.88rem;
+}
+.rc-tablewrap .tc-table tbody tr.rc-row--clickable {
+  cursor: pointer;
+}
+.rc-tablewrap .tc-table tbody tr.rc-row--clickable:hover {
+  background: var(--surface-2);
+}
+
+/* ─────────────── Layout helpers used by the gallery / surfaces ─────────────── */
+
+.rc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+.rc-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 22px;
+  align-items: start;
+}
+@media (max-width: 1080px) {
+  .rc-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .rc-grid2 {
+    grid-template-columns: 1fr;
+  }
+  .rc-app {
+    grid-template-columns: 64px 1fr;
+  }
+  .rc-rail {
+    padding: 18px 8px;
+  }
+  .rc-rail__name,
+  .rc-nav__label span,
+  .rc-nav__item span:not(.rc-nav__count),
+  .rc-nav__count,
+  .rc-rail__who {
+    display: none;
+  }
+  .rc-nav__item {
+    justify-content: center;
+  }
+  .rc-rail__brand {
+    justify-content: center;
+  }
+}

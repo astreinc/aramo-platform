@@ -26,6 +26,7 @@ import { TalentCreateView } from './talent/TalentCreateView';
 import { TalentDetailView } from './talent/TalentDetailView';
 import { TalentEditView } from './talent/TalentEditView';
 import { TalentListView } from './talent/TalentListView';
+import { UiGallery } from './ui/UiGallery';
 
 // The recruiter nav. R1 shipped Requisitions; R2 adds Talent + Companies
 // (the read-first breadth); R-home prepends Dashboard FIRST (the home
@@ -78,6 +79,11 @@ export function App() {
     <ToastProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {/* Phase 1 design-system showcase (Storybook substitute). DEV-only:
+            excluded from production builds; no session/data required. */}
+        {import.meta.env.DEV ? (
+          <Route path="/ui-gallery" element={<UiGallery />} />
+        ) : null}
         <Route
           path="/*"
           element={
