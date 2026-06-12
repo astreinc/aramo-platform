@@ -50,8 +50,22 @@ export interface ApiClientOptions {
   baseUrl?: string;
 }
 
+// Re-mint path for the silent access-token refresh. Mirrors the `recruiter`
+// consumer of the other auth paths in auth/session.ts (LOGIN_PATH /
+// SESSION_PATH / LOGOUT_PATH) — all consoles route through the auth-service
+// `recruiter` consumer. Inlined here (not imported from session.ts) to avoid
+// a client.ts ↔ session.ts import cycle.
+const REFRESH_PATH = '/auth/recruiter/refresh';
+
 export class ApiClient {
   private readonly baseUrl: string;
+  // Single-flight refresh. When the short-lived (15-min) access cookie
+  // expires, the FIRST 401 triggers one POST /refresh; any other in-flight
+  // requests that 401 concurrently AWAIT the same refresh instead of each
+  // POSTing. This is load-bearing, not just an optimization: the refresh
+  // endpoint ROTATES the refresh token, so a second concurrent refresh would
+  // spend an already-rotated token and log the user out.
+  private refreshInFlight: Promise<boolean> | null = null;
 
   constructor(options: ApiClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? '';
@@ -92,12 +106,31 @@ export class ApiClient {
     method: string,
     path: string,
     init?: RequestInit,
+    alreadyRetried = false,
   ): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...init,
       method,
       credentials: 'include',
     });
+
+    // Refresh-on-401: the access cookie lives 15 min; the refresh cookie
+    // lives 30 days. When a call 401s because the access token expired,
+    // transparently POST /refresh (re-mints both cookies) and retry the
+    // original request ONCE. If refresh fails (refresh token gone too →
+    // genuinely unauthenticated), the 401 falls through and is surfaced;
+    // the session bootstrap / RouteGuard then route the user to login.
+    // Guard: never recurse on the refresh endpoint itself, retry at most once.
+    if (
+      response.status === 401 &&
+      !alreadyRetried &&
+      path !== REFRESH_PATH
+    ) {
+      const refreshed = await this.refreshAccess();
+      if (refreshed) {
+        return this.request<T>(method, path, init, true);
+      }
+    }
 
     if (!response.ok) {
       // Best-effort JSON parse: a malformed/empty body must not mask the
@@ -124,6 +157,29 @@ export class ApiClient {
     }
 
     return (await response.json()) as T;
+  }
+
+  // Single-flight access-token refresh. Returns true iff /refresh succeeded
+  // (new access + refresh cookies were set). Concurrent callers share the
+  // one in-flight promise; the slot clears when it settles so a later
+  // expiry can refresh again.
+  private refreshAccess(): Promise<boolean> {
+    if (this.refreshInFlight === null) {
+      this.refreshInFlight = (async () => {
+        try {
+          const res = await fetch(`${this.baseUrl}${REFRESH_PATH}`, {
+            method: 'POST',
+            credentials: 'include',
+          });
+          return res.ok;
+        } catch {
+          return false;
+        }
+      })().finally(() => {
+        this.refreshInFlight = null;
+      });
+    }
+    return this.refreshInFlight;
   }
 }
 
