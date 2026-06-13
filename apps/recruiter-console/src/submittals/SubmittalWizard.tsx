@@ -1,6 +1,9 @@
+import { Button, Card, InlineAlert } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button, Card, InlineAlert, PageHeader } from '@aramo/fe-foundation';
+
+import { getRequisition } from '../requisitions/requisitions-api';
+import { getTalent } from '../talent/talent-api';
 
 import { AdvanceStep } from './AdvanceStep';
 import { ConfirmStep } from './ConfirmStep';
@@ -73,6 +76,11 @@ export function SubmittalWizard() {
   const [submittal, setSubmittal] =
     useState<TalentSubmittalRecordView | null>(null);
   const [revokeOpen, setRevokeOpen] = useState(false);
+  // The gate header context — resolved names (the records carry ids only;
+  // gap #8, never a raw UUID). Best-effort: a 403/404 leaves them undefined
+  // and the gate falls back to neutral copy.
+  const [talentName, setTalentName] = useState<string | undefined>(undefined);
+  const [reqTitle, setReqTitle] = useState<string | undefined>(undefined);
 
   // One idempotency key PER action. We keep a small registry so a retry
   // of the SAME logical action reuses its key (silent-replay), while a
@@ -135,25 +143,37 @@ export function SubmittalWizard() {
     };
   }, [talentId, requisitionId]);
 
+  // Resolve the gate header names (independent of the lifecycle lookup).
+  useEffect(() => {
+    if (talentId === '' || requisitionId === '') return;
+    let cancelled = false;
+    void Promise.allSettled([
+      getTalent(talentId),
+      getRequisition(requisitionId),
+    ]).then(([tRes, rRes]) => {
+      if (cancelled) return;
+      if (tRes.status === 'fulfilled') {
+        const name = `${tRes.value.first_name} ${tRes.value.last_name}`.trim();
+        setTalentName(name === '' ? undefined : name);
+      }
+      if (rRes.status === 'fulfilled') setReqTitle(rRes.value.title);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [talentId, requisitionId]);
+
   if (loadState.kind === 'loading') {
-    return <PageHeader title="Submittal wizard" description="Loading…" />;
+    return <p className="rc-muted-line">Loading submittal…</p>;
   }
   if (loadState.kind === 'error') {
-    return (
-      <>
-        <PageHeader title="Submittal wizard" />
-        <InlineAlert variant="error">{loadState.message}</InlineAlert>
-      </>
-    );
+    return <InlineAlert variant="error">{loadState.message}</InlineAlert>;
   }
   if (loadState.kind === 'no-examination') {
     return (
-      <>
-        <PageHeader title="Submittal wizard" />
-        <Card title="Cannot start a submittal">
-          <InlineAlert variant="error">{loadState.message}</InlineAlert>
-        </Card>
-      </>
+      <Card title="Cannot start a submittal">
+        <InlineAlert variant="error">{loadState.message}</InlineAlert>
+      </Card>
     );
   }
 
@@ -163,10 +183,6 @@ export function SubmittalWizard() {
 
   return (
     <>
-      <PageHeader
-        title="Submittal wizard"
-        description={`Talent ${talentId.slice(0, 8)}… · Requisition ${requisitionId.slice(0, 8)}…`}
-      />
       <Stepper currentState={currentState} />
 
       {/* Revoked terminal state — surfaced inline (NOT a step). */}
@@ -201,6 +217,8 @@ export function SubmittalWizard() {
           submittal={submittal}
           idempotencyKey={keys.confirm}
           onConfirmed={(s) => setSubmittal(s)}
+          talentName={talentName}
+          requisitionTitle={reqTitle}
         />
       )}
 

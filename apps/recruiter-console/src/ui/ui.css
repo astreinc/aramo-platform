@@ -105,6 +105,98 @@
   text-decoration: underline;
 }
 
+/* ─────────────── Submittal gate (2G) ─────────────── */
+
+.rc-gate {
+  max-width: 600px;
+  margin: 8px auto 0;
+}
+.rc-gate-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 6px;
+}
+.rc-gate-head__ic {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.rc-gate-head__ic svg {
+  width: 21px;
+  height: 21px;
+}
+.rc-gate-head__h {
+  font-size: 1.32rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 0;
+}
+.rc-gate-head__s {
+  font-size: 0.86rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.rc-gate-head__s b {
+  color: var(--brand-strong);
+}
+.rc-gate-block {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.rc-gate-block:last-of-type {
+  border-bottom: 0;
+}
+.rc-gate-block__h {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+.rc-gate-doc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.86rem;
+  padding: 7px 0;
+}
+.rc-gate-doc svg {
+  width: 18px;
+  height: 18px;
+  color: var(--brand-accent);
+  flex: none;
+}
+.rc-gatefoot {
+  padding: 15px 18px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--line);
+}
+.rc-gatefoot__imm {
+  font-size: 0.78rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: auto;
+}
+.rc-gatefoot__imm svg {
+  width: 15px;
+  height: 15px;
+  color: var(--faint);
+  flex: none;
+}
+
 /* ─────────────── Engagement composer (2F) ─────────────── */
 
 .rc-ehead {
