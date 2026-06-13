@@ -263,7 +263,7 @@ export function UiGallery() {
               I confirm the rate, availability, and authorization details have been validated.
             </AttestCheckbox>
             <AttestCheckbox checked={attest[2]} onChange={(v) => setAttest([attest[0], attest[1], v])}>
-              I confirm this talent is ready for submission to the client.
+              I confirm this talent is ready for submittal to the client.
             </AttestCheckbox>
             <Button variant="primary" disabled={!allChecked}>
               Submit to client

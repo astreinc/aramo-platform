@@ -47,7 +47,7 @@ import {
 // detail mockup: header (title + Hot/status pills + company link + REQ code),
 // a meta strip, and tabs (Pipeline / Details / Activity / Tasks). The Pipeline
 // tab is the signature surface: a funnel RIBBON (the 11-state → 6-bucket
-// aggregation) + the candidate table (StagePill + the legal Move-to menu) +
+// aggregation) + the talent table (StagePill + the legal Move-to menu) +
 // an at-a-glance sidecard + the RESERVED Match-insight seam (R10 — no scores).
 //
 // The Details tab keeps the PR-A2 inline-edit cockpit (masking-by-absence +

@@ -34,7 +34,7 @@ function mockConfirm(captured: { body?: unknown }) {
 
 const ATT_1 = /communicated directly with this talent/i;
 const ATT_2 = /rate, availability, and authorization details/i;
-const ATT_3 = /ready for submission to the client/i;
+const ATT_3 = /ready for submittal to the client/i;
 
 describe('ConfirmStep (submittal attestation gate)', () => {
   afterEach(() => vi.restoreAllMocks());

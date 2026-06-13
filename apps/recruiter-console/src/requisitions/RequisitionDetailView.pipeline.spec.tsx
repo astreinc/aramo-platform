@@ -8,7 +8,7 @@ import { BreadcrumbProvider, useBreadcrumbEntity } from '../shell/breadcrumb';
 import { RequisitionDetailView } from './RequisitionDetailView';
 
 // 2D — the re-skinned header / meta strip / Pipeline tab (funnel ribbon +
-// candidate table) + breadcrumb publication. The cockpit (Details tab) is
+// talent table) + breadcrumb publication. The cockpit (Details tab) is
 // proven in RequisitionDetailView.cockpit.spec.tsx.
 
 const SESSION: Session = {
@@ -135,7 +135,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     // pill both read "Submitted", so assert at least one).
     expect(screen.getAllByText('Submitted').length).toBeGreaterThan(0);
     expect(screen.getByText('Interview')).toBeInTheDocument();
-    // Candidate rows resolved + linked.
+    // Talent rows resolved + linked.
     await waitFor(() =>
       expect(
         screen.getByRole('link', { name: 'Marcus Adeyemi' }),

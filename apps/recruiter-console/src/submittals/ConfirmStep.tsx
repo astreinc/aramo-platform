@@ -32,8 +32,8 @@ interface ConfirmStepProps {
 //    package + examination are pinned to this submittal). CARRY: discrete
 //    résumé-version + references-count.
 //
-// The three attestation strings are LOCKED copy (canonical vocab per F2 —
-// "talent", not "candidate").
+// The three attestation strings are LOCKED copy, reconciled to canonical
+// vocab per F2 (talent; "submittal", not the legacy nouns).
 export function ConfirmStep({
   submittal,
   idempotencyKey,
@@ -125,7 +125,7 @@ export function ConfirmStep({
             have been validated.
           </AttestCheckbox>
           <AttestCheckbox checked={risk} onChange={setRisk}>
-            I confirm this talent is ready for submission to the client.
+            I confirm this talent is ready for submittal to the client.
           </AttestCheckbox>
           {error !== null ? (
             <InlineAlert variant="error">{error}</InlineAlert>

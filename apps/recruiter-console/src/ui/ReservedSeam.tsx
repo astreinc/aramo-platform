@@ -12,7 +12,7 @@ interface ReservedSeamProps {
 
 // A ghosted, dashed placeholder for a future Core integration. THIS IS THE
 // R10 GUARDRAIL SURFACE: the "Match insight" panel is a RESERVED SEAM ONLY —
-// no scores, no tiers, no ranking. It states that evidence-ranked candidates
+// no scores, no tiers, no ranking. It states that evidence-ranked talent
 // integrate with Core later, and renders nothing computable.
 export function ReservedSeam({
   title = 'Match insight',

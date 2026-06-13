@@ -23,7 +23,7 @@ import { listTalent } from './talent-api';
 import { listErrorMessage } from './error-messages';
 import type { TalentRecordView } from './types';
 
-// Talent LIST (2E) — re-skinned to the Confident Blue "Candidates" mockup,
+// Talent LIST (2E) — re-skinned to the Confident Blue talent-list mockup,
 // but HONEST to the substrate:
 //   - POOL-OPEN (R2 ruling): the BE returns the tenant+site talent pool, NOT a
 //     personal working set. The mockup copy "your working set" would be

@@ -9,7 +9,7 @@ describe('AttestCheckbox', () => {
     const onChange = vi.fn();
     render(
       <AttestCheckbox checked={false} onChange={onChange}>
-        I confirm this talent is ready for submission.
+        I confirm this talent is ready for submittal.
       </AttestCheckbox>,
     );
     fireEvent.click(screen.getByRole('checkbox'));
