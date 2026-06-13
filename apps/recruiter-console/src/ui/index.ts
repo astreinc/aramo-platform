@@ -44,6 +44,7 @@ export {
 // ── New: surface + content atoms ──
 export { Card, CardHead } from './Card';
 export { Avatar, EntityCell, initialsOf, type AvatarSize } from './Avatar';
+export { TitleCell } from './TitleCell';
 export {
   StatusPill,
   StagePill,

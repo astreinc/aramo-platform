@@ -21,7 +21,8 @@
   color: inherit;
   text-decoration: none;
 }
-.rc-row--clickable:hover .rc-link-strong .rc-ent__nm {
+.rc-row--clickable:hover .rc-link-strong .rc-ent__nm,
+.rc-row--clickable:hover .rc-link-strong .rc-jt__name {
   color: var(--brand-strong);
 }
 .rc-link-strong:focus-visible {
@@ -70,6 +71,9 @@
 }
 .rc-metrics--spaced {
   margin: 20px 0;
+}
+.rc-mt-16 {
+  margin-top: 16px;
 }
 .rc-stack {
   display: flex;
@@ -516,6 +520,25 @@
   color: var(--hot);
 }
 .rc-ent__rl {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+/* Avatar-less title cell (requisitions / jobs) */
+.rc-jt__name {
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rc-jt__name svg {
+  width: 13px;
+  height: 13px;
+  color: var(--hot);
+}
+.rc-jt__co {
   font-size: 0.78rem;
   color: var(--muted);
   margin-top: 1px;

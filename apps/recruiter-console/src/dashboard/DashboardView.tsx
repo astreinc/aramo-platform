@@ -17,10 +17,10 @@ import {
   Card,
   CardHead,
   DataTable,
-  EntityCell,
   Icons,
   MetricCard,
   StatusPill,
+  TitleCell,
   type ActivityFeedItem,
   type PillTone,
   type TableColumn,
@@ -148,7 +148,7 @@ export function DashboardView() {
       header: 'Requisition',
       render: (r) => (
         <Link to={`/requisitions/${r.id}`} className="rc-link-strong">
-          <EntityCell
+          <TitleCell
             name={r.title}
             subtitle={companySubtitle(r, companyNames)}
             hot={r.is_hot}
