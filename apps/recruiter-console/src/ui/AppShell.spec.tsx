@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -53,12 +54,14 @@ describe('Rail', () => {
 describe('Breadcrumb', () => {
   it('marks the final crumb as the current page', () => {
     render(
-      <Breadcrumb
-        items={[
-          { label: 'Requisitions', href: '/requisitions' },
-          { label: 'Senior Rust Engineer' },
-        ]}
-      />,
+      <MemoryRouter>
+        <Breadcrumb
+          items={[
+            { label: 'Requisitions', href: '/requisitions' },
+            { label: 'Senior Rust Engineer' },
+          ]}
+        />
+      </MemoryRouter>,
     );
     const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(nav).toBeInTheDocument();

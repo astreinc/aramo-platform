@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { NavLink as RouterNavLink } from 'react-router-dom';
+import { Link as RouterLink, NavLink as RouterNavLink } from 'react-router-dom';
 
 import { IconChevronRight, IconLogo, IconSearch } from './icons';
 
@@ -192,7 +192,7 @@ export function Breadcrumb({ items }: BreadcrumbProps) {
                 {it.label}
               </span>
             ) : (
-              <a href={it.href}>{it.label}</a>
+              <RouterLink to={it.href}>{it.label}</RouterLink>
             )}
           </span>
         );

@@ -30,6 +30,8 @@ import {
   IconTasks,
 } from '../ui/icons';
 
+import { BreadcrumbProvider, useBreadcrumbEntity } from './breadcrumb';
+
 // RecruiterShell — Phase 2A. The app-layer chrome that REPLACES the frozen
 // fe-foundation Shell (non-consumption, Lead-approved). Composes AppShell +
 // Rail + TopBar: scope-gated nav rendered as real react-router NavLinks (the
@@ -98,16 +100,29 @@ interface RecruiterShellProps {
   readonly onLogoutComplete?: () => void;
 }
 
-export function RecruiterShell({
+// Provider wraps the shell so a routed detail view's useEntityCrumb() update
+// flows up to the TopBar breadcrumb (2D ruling).
+export function RecruiterShell(props: RecruiterShellProps) {
+  return (
+    <BreadcrumbProvider>
+      <RecruiterShellInner {...props} />
+    </BreadcrumbProvider>
+  );
+}
+
+function RecruiterShellInner({
   session,
   children,
   onLogoutComplete,
 }: RecruiterShellProps) {
   const location = useLocation();
   const segment = location.pathname.split('/')[1] ?? '';
-  const crumbs: readonly BreadcrumbItem[] = [
-    { label: SECTION_LABEL[segment] ?? 'Aramo' },
-  ];
+  const entity = useBreadcrumbEntity();
+  const section = SECTION_LABEL[segment] ?? 'Aramo';
+  const crumbs: readonly BreadcrumbItem[] =
+    entity !== null
+      ? [{ label: section, href: `/${segment}` }, { label: entity }]
+      : [{ label: section }];
 
   const handleLogout = async () => {
     try {

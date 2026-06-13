@@ -17,9 +17,6 @@ import { RequisitionDetailView } from './RequisitionDetailView';
 // truth). The heavy child surfaces (kanban / activity / tasks / profile
 // workbench) are stubbed — each is proven in its own spec.
 
-vi.mock('../pipeline/Kanban', () => ({
-  Kanban: () => <div data-testid="kanban" />,
-}));
 vi.mock('../activity/ActivityTimeline', () => ({
   ActivityTimeline: () => <div data-testid="activity" />,
 }));
@@ -31,10 +28,20 @@ vi.mock('../task/TasksPanel', () => ({
 }));
 vi.mock('../pipeline/pipeline-api', () => ({
   listPipelinesForRequisition: () => Promise.resolve({ items: [] }),
+  getTalentRecord: () =>
+    Promise.resolve({ id: 't', first_name: 'A', last_name: 'B' }),
+  transitionPipeline: () => Promise.resolve(),
 }));
 vi.mock('./ProfileWorkbenchPanel', () => ({
   ProfileWorkbenchPanel: () => <div data-testid="profile-panel" />,
 }));
+
+// The cockpit (inline-edit sections + workbench) lives in the Details tab
+// (Pipeline is the default). Open it before asserting on cockpit fields.
+async function openDetails() {
+  await screen.findByRole('heading', { name: /Senior Engineer/ });
+  fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+}
 
 function render(ui: ReactElement) {
   return rawRender(<ToastProvider>{ui}</ToastProvider>);
@@ -163,9 +170,7 @@ describe('RequisitionDetailView cockpit — headline UX reachable', () => {
       return { status: 404, body: {} };
     });
     mount(makeSession(['requisition:read', 'requisition:edit']));
-    expect(
-      await screen.findByRole('heading', { name: 'Senior Engineer' }),
-    ).toBeInTheDocument();
+    await openDetails();
     expect(screen.getByText('Identity')).toBeInTheDocument();
     expect(screen.getByTestId('profile-panel')).toBeInTheDocument();
   });
@@ -175,7 +180,7 @@ describe('RequisitionDetailView cockpit — per-field affordance', () => {
   it('full editor sees an EDIT affordance on an OPEN field (Title)', async () => {
     installFetch(() => ({ status: 200, body: baseView() }));
     mount(makeSession(['requisition:read', 'requisition:edit']));
-    await screen.findByRole('heading', { name: 'Senior Engineer' });
+    await openDetails();
     expect(
       screen.getByRole('button', { name: /edit title/i }),
     ).toBeInTheDocument();
@@ -184,7 +189,7 @@ describe('RequisitionDetailView cockpit — per-field affordance', () => {
   it('recruiter (read-only) sees NO edit affordance on OPEN fields', async () => {
     installFetch(() => ({ status: 200, body: baseView() }));
     mount(makeSession(['requisition:read']));
-    await screen.findByRole('heading', { name: 'Senior Engineer' });
+    await openDetails();
     expect(screen.queryByRole('button', { name: /edit title/i })).toBeNull();
     // The value is still shown (read-only).
     expect(screen.getByTestId('cockpit-field-title')).toHaveTextContent(
@@ -195,7 +200,7 @@ describe('RequisitionDetailView cockpit — per-field affordance', () => {
   it('compensation section is ABSENT when the payload omits comp fields (masking by absence)', async () => {
     installFetch(() => ({ status: 200, body: baseView() }));
     mount(makeSession(['requisition:read', 'requisition:edit']));
-    await screen.findByRole('heading', { name: 'Senior Engineer' });
+    await openDetails();
     expect(screen.queryByText('Compensation')).toBeNull();
     expect(screen.queryByTestId('cockpit-field-pay_rate_amount')).toBeNull();
   });
@@ -211,7 +216,7 @@ describe('RequisitionDetailView cockpit — per-field affordance', () => {
       }),
     }));
     mount(makeSession(['requisition:read', 'compensation:edit:pay']));
-    await screen.findByRole('heading', { name: 'Senior Engineer' });
+    await openDetails();
     expect(screen.getByText('Compensation')).toBeInTheDocument();
     // Pay field editable.
     expect(
@@ -234,7 +239,7 @@ describe('RequisitionDetailView cockpit — backend is truth', () => {
       return { status: 200, body: baseView() };
     });
     mount(makeSession(['requisition:read', 'requisition:edit']));
-    await screen.findByRole('heading', { name: 'Senior Engineer' });
+    await openDetails();
     fireEvent.click(screen.getByRole('button', { name: /edit title/i }));
     const input = screen.getByLabelText('Title');
     fireEvent.change(input, { target: { value: 'Forced change' } });
