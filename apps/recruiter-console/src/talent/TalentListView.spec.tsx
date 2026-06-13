@@ -1,5 +1,5 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -53,10 +53,6 @@ function makeTalent(
 }
 
 function mockFetch(items: readonly TalentRecordView[], status = 200) {
-  // R5 — the view now also calls useSession (for the talent:create
-  // gate); both fetches share this mock. Use mockImplementation so each
-  // call gets a fresh Response (Response bodies are read-once). Same
-  // pattern as R4's RequisitionsListView spec.
   vi.spyOn(globalThis, 'fetch').mockImplementation(
     async () =>
       new Response(JSON.stringify({ items }), {
@@ -77,52 +73,87 @@ function mockFetchError(status: number) {
 }
 
 describe('TalentListView', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+  afterEach(() => vi.restoreAllMocks());
 
-  it('frames the list as the tenant POOL — not a personal list', async () => {
+  it('frames the list as the tenant POOL — honest about the shared pool', async () => {
     mockFetch([]);
     renderInRouter(<TalentListView />);
-    // Header carries the pool framing.
-    await waitFor(() =>
-      expect(screen.getByText('Talent')).toBeInTheDocument(),
-    );
-    expect(
-      screen.getByText(/tenant talent pool/i),
-    ).toBeInTheDocument();
-    // Empty-state is honest about the shared pool.
+    await waitFor(() => expect(screen.getByText('Talent')).toBeInTheDocument());
+    expect(screen.getByText(/tenant talent pool/i)).toBeInTheDocument();
     expect(
       screen.getByText(/no talent yet in this tenant pool/i),
     ).toBeInTheDocument();
-    // Crucially: NO personal-ownership framing.
-    expect(screen.queryByText(/my talent/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/your talent/i)).not.toBeInTheDocument();
+    // Default filter is the full pool, not a personal default.
+    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
-  it('renders the columns from the talent-record fields', async () => {
+  it('enforces the refusal layer in the footer (no open-web search / no bulk export)', async () => {
+    mockFetch([]);
+    renderInRouter(<TalentListView />);
+    await waitFor(() => expect(screen.getByText('Talent')).toBeInTheDocument());
+    expect(
+      screen.getByText(/open-web talent search or bulk export/i),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the backed columns: name, skill chips, location, stated rate', async () => {
     mockFetch([
       makeTalent('tal-1', 'Ada', 'Lovelace', {
-        email1: 'ada@example.com',
-        phone_cell: '555-0100',
-        current_employer: 'Analytical Engines Ltd',
-        key_skills: 'Bernoulli numbers, mechanical computing',
+        city: 'London',
+        state: 'UK',
+        current_pay: '$120/hr',
+        key_skills: 'Rust, Distributed Systems, AWS, Kafka',
         is_hot: true,
-        can_relocate: true,
       }),
     ]);
     renderInRouter(<TalentListView />);
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
-    expect(screen.getByText('ada@example.com')).toBeInTheDocument();
-    expect(screen.getByText('555-0100')).toBeInTheDocument();
-    expect(screen.getByText('Analytical Engines Ltd')).toBeInTheDocument();
-    expect(
-      screen.getByText(/Bernoulli numbers, mechanical computing/),
-    ).toBeInTheDocument();
-    // Hot + Relocate render as "Yes" when true.
-    expect(screen.getAllByText('Yes').length).toBeGreaterThanOrEqual(2);
+    // Skills split into chips with a +N overflow (4 skills, max 3).
+    expect(screen.getByText('Rust')).toBeInTheDocument();
+    expect(screen.getByText('+1')).toBeInTheDocument();
+    expect(screen.getByText('London, UK')).toBeInTheDocument();
+    expect(screen.getByText('$120/hr')).toBeInTheDocument();
+  });
+
+  it('the name cell links to /talent/:id (a11y nav path)', async () => {
+    mockFetch([makeTalent('tal-42', 'Ada', 'Lovelace')]);
+    renderInRouter(<TalentListView />);
+    await waitFor(() =>
+      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('link', { name: 'Ada Lovelace' })).toHaveAttribute(
+      'href',
+      '/talent/tal-42',
+    );
+  });
+
+  it('"My talent" filters to records the actor owns (additive over the open pool)', async () => {
+    mockFetch([
+      makeTalent('t1', 'Mine', 'One', { owner_id: 'u1' }),
+      makeTalent('t2', 'Other', 'Two', { owner_id: 'u2' }),
+    ]);
+    renderInRouter(
+      <TalentListView
+        sessionOverride={{
+          sub: 'u1',
+          consumer_type: 'recruiter',
+          tenant_id: 't',
+          scopes: ['talent:read'],
+          iat: 0,
+          exp: 0,
+        }}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText('Mine One')).toBeInTheDocument());
+    expect(screen.getByText('Other Two')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'My talent' }));
+    expect(screen.getByText('Mine One')).toBeInTheDocument();
+    expect(screen.queryByText('Other Two')).not.toBeInTheDocument();
   });
 
   it('surfaces a permission message when the BE returns 403', async () => {
@@ -142,13 +173,9 @@ describe('TalentListView', () => {
     mockFetch(items);
     renderInRouter(<TalentListView />);
     await waitFor(() =>
-      expect(
-        screen.getByTestId('talent-cap-banner'),
-      ).toBeInTheDocument(),
+      expect(screen.getByTestId('talent-cap-banner')).toBeInTheDocument(),
     );
-    expect(
-      screen.getByText(/showing first 50 talent records/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/showing the first 50/i)).toBeInTheDocument();
   });
 
   it('does NOT show the cap banner when the list is under the cap', async () => {
@@ -157,25 +184,10 @@ describe('TalentListView', () => {
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
-    expect(
-      screen.queryByTestId('talent-cap-banner'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId('talent-cap-banner')).not.toBeInTheDocument();
   });
 
-  // R3 — the primary-name cell links to /talent/:id (ruling 5: column-
-  // content change, Table frozen).
-  it('the name cell links to the talent detail at /talent/:id', async () => {
-    mockFetch([makeTalent('tal-42', 'Ada', 'Lovelace')]);
-    renderInRouter(<TalentListView />);
-    await waitFor(() =>
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
-    );
-    const link = screen.getByRole('link', { name: 'Ada Lovelace' });
-    expect(link).toHaveAttribute('href', '/talent/tal-42');
-  });
-
-  // R5 — the "+ New talent" CTA is gated by the talent:create scope.
-  it('hides "+ New talent" when talent:create is not held', async () => {
+  it('hides "New talent" without talent:create', async () => {
     mockFetch([makeTalent('tal-1', 'Ada', 'Lovelace')]);
     renderInRouter(
       <TalentListView
@@ -192,10 +204,10 @@ describe('TalentListView', () => {
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
-    expect(screen.queryByRole('link', { name: /\+ new talent/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /new talent/i })).toBeNull();
   });
 
-  it('shows "+ New talent" linking to /talent/new when talent:create is held', async () => {
+  it('shows "New talent" linking to /talent/new when scoped', async () => {
     mockFetch([makeTalent('tal-1', 'Ada', 'Lovelace')]);
     renderInRouter(
       <TalentListView
@@ -212,7 +224,9 @@ describe('TalentListView', () => {
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
-    const link = screen.getByRole('link', { name: /\+ new talent/i });
-    expect(link).toHaveAttribute('href', '/talent/new');
+    expect(screen.getByRole('link', { name: /new talent/i })).toHaveAttribute(
+      'href',
+      '/talent/new',
+    );
   });
 });
