@@ -105,6 +105,112 @@
   text-decoration: underline;
 }
 
+/* ─────────────── Engagement composer (2F) ─────────────── */
+
+.rc-ehead {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+.rc-ehead__h {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+}
+.rc-ehead__ctx {
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin-top: 2px;
+}
+.rc-ehead__ctx b {
+  color: var(--brand-strong);
+  font-weight: 600;
+}
+.rc-egrid {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 22px;
+  align-items: start;
+  margin-top: 20px;
+}
+@media (max-width: 1000px) {
+  .rc-egrid {
+    grid-template-columns: 1fr;
+  }
+}
+.rc-thread {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.rc-msg {
+  display: flex;
+  gap: 11px;
+  max-width: 85%;
+}
+.rc-msg__who {
+  font-size: 0.76rem;
+  color: var(--faint);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+.rc-msg__bub {
+  border-radius: 12px;
+  padding: 11px 14px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.rc-msg--them .rc-msg__bub {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.rc-msg--me {
+  flex-direction: row-reverse;
+  margin-left: auto;
+}
+.rc-msg--me .rc-msg__bub {
+  background: var(--brand-tint);
+  border: 1px solid #d4e4f5;
+}
+.rc-msg--me .rc-msg__who {
+  text-align: right;
+}
+.rc-draftnote {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--brand-tint);
+  border: 1px solid #d4e4f5;
+  border-radius: var(--r-md);
+  padding: 9px 12px;
+  font-size: 0.82rem;
+  color: var(--brand-strong);
+  margin-bottom: 12px;
+}
+.rc-draftnote svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.rc-sendnote {
+  font-size: 0.78rem;
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+.rc-sendnote svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
 /* ─────────────── Detail surfaces (header / meta / pipeline) ─────────────── */
 
 .rc-dhead {

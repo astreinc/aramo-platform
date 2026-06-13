@@ -1,17 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
 import {
-  Card,
   InlineAlert,
-  PageHeader,
   hasScope,
   useSession,
   type Session,
 } from '@aramo/fe-foundation';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 
 import { getRequisition } from '../requisitions/requisitions-api';
 import { getTalent } from '../talent/talent-api';
 import type { TalentRecordView } from '../talent/types';
+import {
+  Avatar,
+  Card,
+  CardHead,
+  Stepper,
+  StatusPill,
+  type PillTone,
+} from '../ui';
 
 import { EngagementTransitionControl } from './EngagementTransitionControl';
 import { EventLog } from './EventLog';
@@ -37,24 +43,63 @@ import {
   type EngagementEventView,
   type EngagementState,
   type EngagementView,
+  type OutreachSentPayload,
   type RecordConversationRequest,
   type RecordResponseRequest,
 } from './types';
 
-// The engagement-detail view (§2) — hosts on the sectioned pattern (header
-// + sectioned panels), NOT the wizard. The header context (talent name +
-// requisition title) is resolved via the §7 N+1 fetches (EngagementView is
-// IDs-only). Sections: the Loops 1-5 transition control (§3), the event log
-// (§4), the response + conversation loggers (§5) — each scope-gated (§8). A
-// read-only actor (engagement:read, no :write) sees the state + event log
-// but no controls.
+// Engagement composer (2F) — re-skinned to the Confident Blue mockup: a header
+// (talent + state pill + "Engaging for <req>"), a message THREAD built from the
+// event log (outreach_sent = me, response_received = them), the draft→preview→
+// send OutreachComposer under the R8/R12 note ("you send every message"), and
+// the right-column engagement-state STEPPER. All wired controls (transition,
+// response, conversation, event log) are PRESERVED — only the layout changed.
 //
-// PR-1 shipped everything except the draft→preview→send composer (§6).
-// PR-2 (this change) adds that composer as an ADDITIVE section gated on
-// engagement:outreach + the engaged-state gate (computed from the mirror).
+// Refusal layer (G3 / R8 / R12): AI drafts, the recruiter sends; there is NO
+// auto-send (the composer's only delivery path is review→send, unchanged). The
+// "to confirm" facts panel from the mockup needs structured engagement fields
+// the API does not expose → omitted (CARRY).
+
+// The linear happy-path ladder the Stepper renders (mockup omits 'evaluated').
+const STEPPER_LABELS = [
+  'Surfaced',
+  'Engaged',
+  'Awaiting response',
+  'Responded',
+  'In conversation',
+  'Ready for submittal',
+  'Submitted',
+];
+
+const STATE_STEP: Record<EngagementState, number> = {
+  surfaced: 0,
+  evaluated: 0,
+  engaged: 1,
+  maybe: 1,
+  passed: 1,
+  awaiting_response: 2,
+  responded: 3,
+  in_conversation: 4,
+  not_interested: 4,
+  ready_for_submittal: 5,
+  submitted: 6,
+};
+
+const STATE_TONE: Record<EngagementState, PillTone> = {
+  surfaced: 'neutral',
+  evaluated: 'neutral',
+  engaged: 'brand',
+  maybe: 'warn',
+  passed: 'danger',
+  awaiting_response: 'brand',
+  responded: 'ok',
+  in_conversation: 'info',
+  not_interested: 'danger',
+  ready_for_submittal: 'info',
+  submitted: 'ok',
+};
 
 interface EngagementDetailViewProps {
-  // Test seam mirroring TalentDetailView's sessionOverride.
   readonly sessionOverride?: Session;
 }
 
@@ -90,9 +135,6 @@ export function EngagementDetailView({
         const eng = await getEngagement(engagementId);
         if (cancelled) return;
         setEngagement(eng);
-        // §7 N+1 — events feed the log + the response picker; talent +
-        // requisition resolve the IDs-only header. allSettled so a context
-        // failure degrades to the id rather than breaking the page.
         const [evRes, tRes, rRes] = await Promise.allSettled([
           listEngagementEvents(engagementId),
           getTalent(eng.talent_id),
@@ -118,12 +160,6 @@ export function EngagementDetailView({
     };
   }, [engagementId, reloadCounter]);
 
-  // Amendment v1.1 / RULING 1 — the idempotency-key lifecycle. The keys
-  // (and the client event_id) are useMemo'd keyed on the CURRENT engagement
-  // state: stable across a retry of ONE operation (a network retry replays
-  // safely), RE-MINTED once the state advances (the next operation from the
-  // new state is genuinely new). NOT a single mint-once-per-mount registry
-  // (that fits R6's fixed wizard steps, not engagement's open-ended moves).
   const currentState: EngagementState | null = engagement?.state ?? null;
   const keys = useMemo(
     () => ({
@@ -142,11 +178,10 @@ export function EngagementDetailView({
       <InlineAlert variant="error">Missing engagement id in URL.</InlineAlert>
     );
   }
-  if (loading) return <p>Loading engagement…</p>;
+  if (loading) return <p className="rc-muted-line">Loading engagement…</p>;
   if (error !== null) {
     return (
       <section>
-        <PageHeader title="Engagement" />
         <InlineAlert variant="error">{error}</InlineAlert>
       </section>
     );
@@ -158,6 +193,7 @@ export function EngagementDetailView({
   const outreachSentEvents = events.filter(
     (e) => e.event_type === 'outreach_sent',
   );
+  const thread = buildThread(events);
 
   const handleTransition = async (to: EngagementState) => {
     try {
@@ -192,56 +228,196 @@ export function EngagementDetailView({
 
   return (
     <section>
-      <PageHeader
-        title={headerTalent}
-        description={`${ENGAGEMENT_STATE_LABELS[engagement.state]} · ${headerReq}`}
-      />
-      <p className="engagement-detail__toolbar">
-        <Link to={`/talent/${engagement.talent_id}`}>← Back to talent</Link>
+      <div className="rc-ehead">
+        <Avatar name={headerTalent} size="lg" />
+        <div>
+          <h1 className="rc-ehead__h">
+            <span>{headerTalent}</span>
+            <StatusPill tone={STATE_TONE[engagement.state]}>
+              {ENGAGEMENT_STATE_LABELS[engagement.state]}
+            </StatusPill>
+          </h1>
+          <div className="rc-ehead__ctx">
+            Engaging for <b>{headerReq}</b>
+          </div>
+        </div>
+      </div>
+      <p className="rc-mt-16">
+        <Link
+          to={`/talent/${engagement.talent_id}`}
+          className="rc-link-action"
+        >
+          ← Back to talent
+        </Link>
       </p>
 
-      {canWrite ? (
-        <Card>
-          <h2>Move engagement</h2>
-          <EngagementTransitionControl
-            from={engagement.state}
-            onSubmit={handleTransition}
-          />
-        </Card>
-      ) : null}
+      <div className="rc-egrid">
+        <div className="rc-stack">
+          {thread.length > 0 ? (
+            <Card flush>
+              <CardHead title="Conversation" />
+              <div className="rc-thread">
+                {thread.map((m) => (
+                  <div
+                    key={m.id}
+                    className={`rc-msg ${m.me ? 'rc-msg--me' : 'rc-msg--them'}`}
+                  >
+                    <div>
+                      <div className="rc-msg__who">{m.who}</div>
+                      <div className="rc-msg__bub">{m.text}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ) : null}
 
-      {canOutreach ? (
-        <Card>
-          <h2>Outreach</h2>
-          <OutreachComposer
-            engagementId={engagement.id}
-            state={engagement.state}
-            onSent={reload}
-          />
-        </Card>
-      ) : null}
+          {canOutreach ? (
+            <Card>
+              <CardHead title="Outreach" />
+              <div className="rc-draftnote">
+                <SparkleIcon />
+                <span>
+                  <b>Drafted by Aramo</b> — review and edit before sending.
+                </span>
+              </div>
+              <OutreachComposer
+                engagementId={engagement.id}
+                state={engagement.state}
+                onSent={reload}
+              />
+              <p className="rc-sendnote">
+                <InfoIcon />
+                You send every message. Aramo drafts — it never sends on your
+                behalf.
+              </p>
+            </Card>
+          ) : null}
 
-      <Card>
-        <h2>Event log</h2>
-        <EventLog events={events} />
-      </Card>
+          {canWrite ? (
+            <Card>
+              <CardHead title="Move engagement" />
+              <EngagementTransitionControl
+                from={engagement.state}
+                onSubmit={handleTransition}
+              />
+            </Card>
+          ) : null}
 
-      {canWrite ? (
-        <Card>
-          <h2>Record a response</h2>
-          <ResponseLogger
-            outreachSentEvents={outreachSentEvents}
-            onSubmit={handleResponse}
-          />
-        </Card>
-      ) : null}
+          {canWrite ? (
+            <Card>
+              <CardHead title="Record a response" />
+              <ResponseLogger
+                outreachSentEvents={outreachSentEvents}
+                onSubmit={handleResponse}
+              />
+            </Card>
+          ) : null}
 
-      {canWrite ? (
-        <Card>
-          <h2>Record a conversation</h2>
-          <ConversationLogger onSubmit={handleConversation} />
-        </Card>
-      ) : null}
+          {canWrite ? (
+            <Card>
+              <CardHead title="Record a conversation" />
+              <ConversationLogger onSubmit={handleConversation} />
+            </Card>
+          ) : null}
+
+          <Card>
+            <CardHead title="Event log" />
+            <EventLog events={events} />
+          </Card>
+        </div>
+
+        <aside>
+          <div className="rc-sidecard">
+            <h3 className="rc-sidecard__h">Engagement state</h3>
+            <Stepper
+              steps={STEPPER_LABELS}
+              currentIndex={STATE_STEP[engagement.state]}
+            />
+          </div>
+        </aside>
+      </div>
     </section>
+  );
+}
+
+interface ThreadMessage {
+  readonly id: string;
+  readonly me: boolean;
+  readonly who: string;
+  readonly text: string;
+}
+
+// Build the conversation thread from the event log: a sent outreach is a "me"
+// bubble carrying the final_text; a recorded response is a "them" bubble. The
+// inbound message BODY is not persisted (only the response event), so a
+// response renders as an acknowledgement line (CARRY: inbound message text).
+function buildThread(
+  events: readonly EngagementEventView[],
+): readonly ThreadMessage[] {
+  const out: ThreadMessage[] = [];
+  for (const e of events) {
+    if (e.event_type === 'outreach_sent') {
+      const p = e.event_payload as OutreachSentPayload;
+      out.push({
+        id: e.id,
+        me: true,
+        who: `You · ${formatWhen(e.created_at)}`,
+        text: p.final_text,
+      });
+    } else if (e.event_type === 'response_received') {
+      out.push({
+        id: e.id,
+        me: false,
+        who: `Talent · ${formatWhen(e.created_at)}`,
+        text: 'Replied to your message.',
+      });
+    }
+  }
+  return out;
+}
+
+function formatWhen(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function SparkleIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3v3M12 18v3M5 12H2M22 12h-3M6 6l-2-2M20 20l-2-2M6 18l-2 2M20 4l-2 2" />
+      <circle cx="12" cy="12" r="3.2" />
+    </svg>
+  );
+}
+
+function InfoIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" />
+      <path d="M12 8v5M12 16h.01" />
+    </svg>
   );
 }

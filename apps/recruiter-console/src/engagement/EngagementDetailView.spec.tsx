@@ -132,8 +132,10 @@ describe('EngagementDetailView', () => {
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
-    // State label + requisition title in the header description.
-    expect(screen.getByText(/Engaged · Senior Engineer/)).toBeInTheDocument();
+    // State pill + "Engaging for <requisition title>" in the header.
+    expect(screen.getByText(/Engaging for/)).toBeInTheDocument();
+    expect(screen.getByText('Senior Engineer')).toBeInTheDocument();
+    expect(screen.getAllByText('Engaged').length).toBeGreaterThan(0);
   });
 
   it('a read-only actor sees the event log but no controls (scope-gating)', async () => {
@@ -173,9 +175,11 @@ describe('EngagementDetailView', () => {
     expect(screen.getByRole('heading', { name: 'Move engagement' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Record a response' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Record a conversation' })).toBeInTheDocument();
-    // Event-type labels + the outreach text (editable trail) render.
+    // Event-type labels + the outreach text (editable trail) render. The sent
+    // text appears in BOTH the conversation thread (a "me" bubble) and the
+    // event log, so assert at least one.
     expect(screen.getByText('Outreach sent')).toBeInTheDocument();
-    expect(screen.getByText('Hi there sent')).toBeInTheDocument();
+    expect(screen.getAllByText('Hi there sent').length).toBeGreaterThan(0);
     expect(screen.getByText('Response received')).toBeInTheDocument();
     // state_transition summary.
     expect(screen.getByText('Engaged → Awaiting response')).toBeInTheDocument();
