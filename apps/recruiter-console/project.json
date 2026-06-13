@@ -36,6 +36,12 @@
       "options": {
         "lintFilePatterns": ["apps/recruiter-console/src/**/*.{ts,tsx}"]
       }
+    },
+    "e2e": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx playwright test --config apps/recruiter-console/playwright.config.ts"
+      }
     }
   }
 }
