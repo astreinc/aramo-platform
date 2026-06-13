@@ -33,6 +33,63 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ─────────────── Shared view primitives (surfaces) ─────────────── */
+
+.rc-viewhead {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.rc-viewhead__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+.rc-h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.rc-sub {
+  color: var(--muted);
+  font-size: 0.92rem;
+  margin: 3px 0 0;
+}
+.rc-muted-line {
+  color: var(--muted);
+}
+.rc-empty {
+  padding: 16px 18px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  margin: 0;
+}
+.rc-metrics--spaced {
+  margin: 20px 0;
+}
+.rc-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.rc-feed-wrap {
+  padding: 15px 18px;
+}
+.rc-link-action {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--brand-strong);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.rc-link-action:hover {
+  text-decoration: underline;
+}
+
 /* ─────────────── AppShell / Rail / TopBar ─────────────── */
 
 .rc-app {

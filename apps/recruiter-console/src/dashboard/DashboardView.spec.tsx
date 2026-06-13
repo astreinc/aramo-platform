@@ -17,43 +17,10 @@ function makeDashboard(
       calendar_events: 8,
       activities: 90,
     },
-    requisition_rollup: {
-      total: 6,
-      by_status: [
-        { status: 'active', count: 4 },
-        { status: 'on_hold', count: 1 },
-        { status: 'closed', count: 1 },
-      ],
-    },
-    pipeline_rollup: {
-      total: 15,
-      by_status: [
-        { status: 'contacted', count: 5 },
-        { status: 'qualifying', count: 4 },
-        { status: 'submitted', count: 3 },
-        { status: 'placed', count: 3 },
-      ],
-    },
-    placement: {
-      placed_pipelines: 3,
-      includes_core_submittal_placements: false,
-    },
-    upcoming_events: [
-      {
-        id: 'evt-1',
-        tenant_id: 't',
-        site_id: null,
-        owner_id: 'u-1',
-        type: 'meeting',
-        title: 'Sync with Acme',
-        description: null,
-        starts_at: '2026-06-10T15:00:00Z',
-        ends_at: null,
-        all_day: false,
-        created_at: '2026-06-09T10:00:00Z',
-        updated_at: '2026-06-09T10:00:00Z',
-      },
-    ],
+    requisition_rollup: { total: 6, by_status: [] },
+    pipeline_rollup: { total: 15, by_status: [] },
+    placement: { placed_pipelines: 3, includes_core_submittal_placements: false },
+    upcoming_events: [],
     recent_activity: [
       {
         id: 'act-1',
@@ -64,37 +31,96 @@ function makeDashboard(
         subject_id: 'req-1',
         notes: 'Checked in with the hiring manager.',
         created_by_id: 'u-1',
-        created_at: '2026-06-09T09:00:00Z',
+        created_at: '2026-06-11T09:00:00Z',
       },
     ],
     ...overrides,
   };
 }
 
-function mockFetchOk(body: unknown) {
-  // R5 — per-call fresh Response (Response bodies are read-once);
-  // mockImplementation NOT mockResolvedValue. Both the session probe
-  // and the dashboard call share this mock.
-  vi.spyOn(globalThis, 'fetch').mockImplementation(
-    async () =>
-      new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-  );
+const REQS = {
+  items: [
+    {
+      id: 'req-1',
+      title: 'Senior Rust Engineer',
+      company_id: 'co-1',
+      external_req_id: 'REQ-2041',
+      status: 'active',
+      is_hot: true,
+      openings: 3,
+      openings_available: 2,
+      created_at: '2026-05-30T09:00:00Z',
+    },
+    {
+      id: 'req-2',
+      title: 'Data Platform Lead',
+      company_id: 'co-2',
+      external_req_id: 'REQ-2038',
+      status: 'closed',
+      is_hot: false,
+      openings: 1,
+      openings_available: 0,
+      created_at: '2026-06-01T09:00:00Z',
+    },
+  ],
+};
+
+const TASKS = {
+  items: [
+    {
+      id: 'task-1',
+      title: 'Send references to D. Okafor',
+      description: null,
+      due_date: '2020-01-01T00:00:00Z', // past → overdue
+      status: 'open',
+      assignee_id: 'me',
+      created_by_user_id: 'u-1',
+      owner_type: 'requisition',
+      owner_id: 'req-1',
+      created_at: '2026-06-10T09:00:00Z',
+      updated_at: '2026-06-10T09:00:00Z',
+    },
+  ],
+};
+
+const COMPANIES = {
+  items: [
+    { id: 'co-1', name: 'Northwind Robotics' },
+    { id: 'co-2', name: 'Cobalt Health' },
+  ],
+};
+
+function urlOf(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
 }
 
-function mockFetchError(status: number) {
-  vi.spyOn(globalThis, 'fetch').mockImplementation(
-    async () =>
-      new Response(JSON.stringify({ message: 'failure' }), {
+function mockRoutes(opts: {
+  dashboard?: unknown;
+  dashboardStatus?: number;
+  reqs?: unknown;
+  tasks?: unknown;
+  companies?: unknown;
+} = {}) {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = urlOf(input);
+    const json = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
         status,
         headers: { 'Content-Type': 'application/json' },
-      }),
-  );
+      });
+    if (url.includes('/v1/dashboard')) {
+      return json(opts.dashboard ?? makeDashboard(), opts.dashboardStatus ?? 200);
+    }
+    if (url.includes('/v1/requisitions')) return json(opts.reqs ?? REQS);
+    if (url.includes('/v1/tasks')) return json(opts.tasks ?? TASKS);
+    if (url.includes('/v1/companies')) return json(opts.companies ?? COMPANIES);
+    return json({ message: 'not found' }, 404);
+  });
 }
 
-function renderInRouter() {
+function renderDesk() {
   return render(
     <MemoryRouter>
       <DashboardView />
@@ -102,124 +128,109 @@ function renderInRouter() {
   );
 }
 
-describe('DashboardView', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
+describe('DashboardView (My desk)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('renders the backed metric cards (no deltas/goals — gap #6)', async () => {
+    mockRoutes();
+    const { container } = renderDesk();
+    await waitFor(() => expect(screen.getByText('Open reqs')).toBeInTheDocument());
+    // Open reqs = 1 (req-2 is closed); Talent 56; In pipeline 15; Placements 3.
+    expect(screen.getByText('Talent')).toBeInTheDocument();
+    expect(screen.getByText('56')).toBeInTheDocument();
+    expect(screen.getByText('In pipeline')).toBeInTheDocument();
+    expect(screen.getByText('15')).toBeInTheDocument();
+    expect(screen.getByText('Placements')).toBeInTheDocument();
+    expect(screen.getByText('1 hot')).toBeInTheDocument();
+    // No fabricated delta windows.
+    expect(container.textContent).not.toMatch(/this week|MTD|\+\d/);
   });
 
-  it('renders the 6 tenant_counts as stat cards', async () => {
-    mockFetchOk(makeDashboard());
-    renderInRouter();
-    // R5-corrected — wait on a POST-FETCH signal (a stat number) FIRST,
-    // then assert the always-present chrome.
-    await waitFor(() => {
-      // Talent records count.
-      expect(screen.getByText('56')).toBeInTheDocument();
-    });
-    expect(
-      screen.getByRole('heading', { name: 'Dashboard' }),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Companies')).toBeInTheDocument();
-    expect(screen.getByText('Contacts')).toBeInTheDocument();
-    expect(screen.getByText('Talent records')).toBeInTheDocument();
-    expect(screen.getByText('Saved lists')).toBeInTheDocument();
-    expect(screen.getByText('Calendar events')).toBeInTheDocument();
-    expect(screen.getByText('Activities')).toBeInTheDocument();
-  });
-
-  it('renders the requisition + pipeline rollups by status', async () => {
-    mockFetchOk(makeDashboard());
-    renderInRouter();
-    await waitFor(() => {
-      expect(screen.getByText('Requisitions')).toBeInTheDocument();
-    });
-    // Total counts visible (the requisitions rollup total is 6).
-    const sixes = screen.getAllByText('6');
-    expect(sixes.length).toBeGreaterThan(0);
-    // Status labels rendered.
-    expect(screen.getByText('Active')).toBeInTheDocument();
-    expect(screen.getByText('On hold')).toBeInTheDocument();
-    expect(screen.getByText('Closed')).toBeInTheDocument();
-    // Pipeline statuses rendered.
-    expect(screen.getByText('Contacted')).toBeInTheDocument();
-    expect(screen.getByText('Qualifying')).toBeInTheDocument();
-    expect(screen.getByText('Submitted')).toBeInTheDocument();
-    expect(screen.getByText('Placed')).toBeInTheDocument();
-  });
-
-  it('Ruling A — renders the placed count but NOT the includes_core_submittal_placements boolean', async () => {
-    mockFetchOk(makeDashboard());
-    const { container } = renderInRouter();
-    await waitFor(() => {
-      expect(screen.getByText('Placements')).toBeInTheDocument();
-    });
-    // The placed count is rendered (value 3 appears for the StatCard).
-    // The literal-false boolean key is NOT rendered anywhere.
-    expect(container.textContent).not.toContain(
-      'includes_core_submittal_placements',
+  it('lists only OPEN reqs in the table, with the company name resolved (gap #8)', async () => {
+    mockRoutes();
+    renderDesk();
+    await waitFor(() =>
+      expect(screen.getByText('Senior Rust Engineer')).toBeInTheDocument(),
     );
-    expect(container.textContent).not.toContain('excludes Core');
-    expect(container.textContent).not.toContain('Core submittal');
+    // company_id resolved to a name — never a raw UUID.
+    expect(screen.getByText(/Northwind Robotics · REQ-2041/)).toBeInTheDocument();
+    // The closed req is filtered out of "my open reqs".
+    expect(screen.queryByText('Data Platform Lead')).not.toBeInTheDocument();
+    // The req title is a real link to the detail route.
+    expect(screen.getByRole('link', { name: /Senior Rust Engineer/ })).toHaveAttribute(
+      'href',
+      '/requisitions/req-1',
+    );
   });
 
-  it('renders upcoming events from the response', async () => {
-    mockFetchOk(makeDashboard());
-    renderInRouter();
-    await waitFor(() => {
-      expect(screen.getByText('Sync with Acme')).toBeInTheDocument();
-    });
-    // Event type label.
-    expect(screen.getByText('Meeting')).toBeInTheDocument();
+  it('aggregates my open tasks into "Needs you today" (overdue marked)', async () => {
+    mockRoutes();
+    renderDesk();
+    await waitFor(() =>
+      expect(screen.getByText('Send references to D. Okafor')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('Overdue')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open' })).toHaveAttribute(
+      'href',
+      '/requisitions/req-1',
+    );
   });
 
-  it('renders recent activity from the response', async () => {
-    mockFetchOk(makeDashboard());
-    renderInRouter();
-    await waitFor(() => {
+  it('renders the recent-activity feed', async () => {
+    mockRoutes();
+    renderDesk();
+    await waitFor(() =>
       expect(
         screen.getByText('Checked in with the hiring manager.'),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText('Note')).toBeInTheDocument();
+      ).toBeInTheDocument(),
+    );
   });
 
-  it('empty upcoming + recent lists surface foundation Table empty messages', async () => {
-    mockFetchOk(
-      makeDashboard({
-        upcoming_events: [],
-        recent_activity: [],
-      }),
-    );
-    renderInRouter();
-    await waitFor(() => {
-      // The first stat card value confirms post-fetch render before
-      // we look for the empty-message strings.
-      expect(screen.getByText('Companies')).toBeInTheDocument();
+  it('shows honest empty states when there is nothing to do', async () => {
+    mockRoutes({
+      reqs: { items: [] },
+      tasks: { items: [] },
+      dashboard: makeDashboard({ recent_activity: [] }),
     });
-    expect(screen.getByText('No upcoming events.')).toBeInTheDocument();
+    renderDesk();
+    await waitFor(() =>
+      expect(screen.getByText('Nothing needs you right now.')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('No open requisitions in your view.')).toBeInTheDocument();
     expect(screen.getByText('No recent activity.')).toBeInTheDocument();
   });
 
-  it('surfaces a server error via InlineAlert', async () => {
-    mockFetchError(500);
-    renderInRouter();
-    await waitFor(() => {
-      expect(
-        screen.getByText(/dashboard service is temporarily unavailable/i),
-      ).toBeInTheDocument();
+  it('degrades gracefully when tasks/companies 403 (only dashboard is the spine)', async () => {
+    // tasks + companies reject (403); dashboard + reqs succeed.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = urlOf(input);
+      const json = (b: unknown, s = 200) =>
+        new Response(JSON.stringify(b), {
+          status: s,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      if (url.includes('/v1/dashboard')) return json(makeDashboard());
+      if (url.includes('/v1/requisitions')) return json(REQS);
+      if (url.includes('/v1/tasks')) return json({ message: 'forbidden' }, 403);
+      if (url.includes('/v1/companies')) return json({ message: 'forbidden' }, 403);
+      return json({}, 404);
     });
+    renderDesk();
+    await waitFor(() =>
+      expect(screen.getByText('Senior Rust Engineer')).toBeInTheDocument(),
+    );
+    // No company name (unresolved) but never a UUID, and the page is coherent.
+    expect(screen.getByText('Nothing needs you right now.')).toBeInTheDocument();
+    expect(screen.queryByText(/co-1/)).not.toBeInTheDocument();
   });
 
-  it('does NOT render any client-side limitation banner (visibility is server-side)', async () => {
-    mockFetchOk(makeDashboard());
-    const { container } = renderInRouter();
-    await waitFor(() => {
-      expect(screen.getByText('Companies')).toBeInTheDocument();
-    });
-    // No "some items may not be shown" / "limited view" banner. The
-    // rollup numbers ARE the visibility-scoped truth (R2 posture).
-    expect(container.textContent).not.toMatch(/some.*not be shown/i);
-    expect(container.textContent).not.toMatch(/limited view/i);
-    expect(container.textContent).not.toMatch(/your view is restricted/i);
+  it('surfaces a server error when the dashboard call fails', async () => {
+    mockRoutes({ dashboardStatus: 500, dashboard: { message: 'boom' } });
+    renderDesk();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/dashboard service is temporarily unavailable/i),
+      ).toBeInTheDocument(),
+    );
   });
 });
