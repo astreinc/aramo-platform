@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -136,12 +136,17 @@ describe('DashboardView (My desk)', () => {
     const { container } = renderDesk();
     await waitFor(() => expect(screen.getByText('Open reqs')).toBeInTheDocument());
     // Open reqs = 1 (req-2 is closed); Talent 56; In pipeline 15; Placements 3.
-    expect(screen.getByText('Talent')).toBeInTheDocument();
-    expect(screen.getByText('56')).toBeInTheDocument();
-    expect(screen.getByText('In pipeline')).toBeInTheDocument();
-    expect(screen.getByText('15')).toBeInTheDocument();
+    // Scope each value to its metric card — a bare getByText('15') would collide
+    // with a date-dependent "days open" cell in the my-open-reqs table.
+    const metric = (label: string) => {
+      const card = screen.getByText(label).closest('.rc-metric');
+      if (card === null) throw new Error(`no metric card for ${label}`);
+      return within(card as HTMLElement);
+    };
+    expect(metric('Talent').getByText('56')).toBeInTheDocument();
+    expect(metric('In pipeline').getByText('15')).toBeInTheDocument();
+    expect(metric('Open reqs').getByText('1 hot')).toBeInTheDocument();
     expect(screen.getByText('Placements')).toBeInTheDocument();
-    expect(screen.getByText('1 hot')).toBeInTheDocument();
     // No fabricated delta windows.
     expect(container.textContent).not.toMatch(/this week|MTD|\+\d/);
   });

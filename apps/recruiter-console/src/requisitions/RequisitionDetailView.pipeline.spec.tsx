@@ -39,8 +39,15 @@ const REQ = {
   work_arrangement: 'remote',
   created_at: '2026-05-29T00:00:00Z',
   updated_at: '2026-06-01T00:00:00Z',
-  recruiter_id: null,
+  recruiter_id: 'usr-rec',
   owner_id: null,
+};
+
+const ROSTER = {
+  items: [
+    { user_id: 'usr-rec', email: 'rec@x.test', display_name: 'Priya Recruiter', is_active: true },
+    { user_id: 'usr-own', email: 'own@x.test', display_name: 'Tom Owner', is_active: true },
+  ],
 };
 
 const PIPELINES = {
@@ -51,8 +58,8 @@ const PIPELINES = {
 };
 
 const TALENTS: Record<string, unknown> = {
-  'tal-1': { id: 'tal-1', first_name: 'Marcus', last_name: 'Adeyemi' },
-  'tal-2': { id: 'tal-2', first_name: 'Sofia', last_name: 'Ramos' },
+  'tal-1': { id: 'tal-1', first_name: 'Marcus', last_name: 'Adeyemi', current_pay: '$74/hr', owner_id: 'usr-own', is_hot: true },
+  'tal-2': { id: 'tal-2', first_name: 'Sofia', last_name: 'Ramos', current_pay: '$76/hr', owner_id: 'usr-own', is_hot: false },
 };
 
 function urlOf(input: RequestInfo | URL): string {
@@ -72,6 +79,7 @@ function mockApi() {
     if (url.includes('/v1/requisitions/req-1')) return json(REQ);
     if (url.includes('/v1/pipelines')) return json(PIPELINES);
     if (url.includes('/v1/companies/co-1')) return json({ id: 'co-1', name: 'Northwind Robotics' });
+    if (url.includes('/v1/tenant/users')) return json(ROSTER);
     const talentMatch = url.match(/\/v1\/talent-records\/(tal-\d)/);
     const talentId = talentMatch?.[1];
     if (talentId !== undefined) return json(TALENTS[talentId]);
@@ -125,6 +133,22 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     expect(screen.getByText('1 of 3')).toBeInTheDocument();
     // Comp masked-by-absence → no Max rate cell.
     expect(screen.queryByText('Max rate')).toBeNull();
+  });
+
+  it('parity: Recruiter meta cell + Rate(stated)/Owner columns + pipeline toolbar (no rating stars)', async () => {
+    mockApi();
+    mountDetail();
+    await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
+    // Recruiter name resolved via the roster (gap #8).
+    await waitFor(() => expect(screen.getByText('Priya Recruiter')).toBeInTheDocument());
+    // Stated rate (freetext, gap #3) + owner name in the talent table.
+    expect(screen.getByText('$74/hr')).toBeInTheDocument();
+    expect(screen.getAllByText('Tom Owner').length).toBeGreaterThan(0);
+    // The pipeline toolbar.
+    expect(screen.getByRole('button', { name: 'All stages' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Active only' })).toBeInTheDocument();
+    // R10 — no rating/stars column.
+    expect(screen.queryByText(/rating/i)).not.toBeInTheDocument();
   });
 
   it('Pipeline tab: funnel ribbon counts + talent table with stage pills + talent links', async () => {

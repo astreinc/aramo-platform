@@ -9,24 +9,25 @@ import { getCompany } from '../companies/companies-api';
 import { getContact } from '../contacts/contacts-api';
 import { MoveToMenu } from '../pipeline/MoveToMenu';
 import {
-  getTalentRecord,
   listPipelinesForRequisition,
   transitionPipeline,
 } from '../pipeline/pipeline-api';
-import type {
-  PipelineStatus,
-  PipelineView,
-  TalentRecordSummary,
-} from '../pipeline/types';
+import type { PipelineStatus, PipelineView } from '../pipeline/types';
 import { useEntityCrumb } from '../shell/breadcrumb';
+import { probeTenantUsers } from '../task/task-api';
+import { getTalent } from '../talent/talent-api';
+import type { TalentRecordView } from '../talent/types';
 import { TasksPanel } from '../task/TasksPanel';
 import {
   Card,
   DataTable,
   EntityCell,
+  FilterChip,
   ReservedSeam,
+  ScopedSearch,
   StatusPill,
   StagePill,
+  Toolbar,
   funnelCounts,
   type PillTone,
   type TableColumn,
@@ -105,6 +106,13 @@ const SUBMITTED_PLUS: readonly PipelineStatus[] = [
   'placed',
 ];
 
+// Terminal (closed) stages — hidden by the "Active only" pipeline filter.
+const TERMINAL_STATUSES: readonly PipelineStatus[] = [
+  'placed',
+  'not_in_consideration',
+  'client_declined',
+];
+
 interface RequisitionDetailViewProps {
   readonly sessionOverride?: Session;
 }
@@ -115,7 +123,8 @@ export function RequisitionDetailView({
   const { reqId } = useParams<{ reqId: string }>();
   const [req, setReq] = useState<RequisitionView | null>(null);
   const [pipelines, setPipelines] = useState<readonly PipelineView[]>([]);
-  const [talents, setTalents] = useState<Record<string, TalentRecordSummary>>({});
+  const [talents, setTalents] = useState<Record<string, TalentRecordView>>({});
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [companyName, setCompanyName] = useState<string | null>(null);
   const [contactName, setContactName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -147,13 +156,15 @@ export function RequisitionDetailView({
         const ids = Array.from(
           new Set(pipelineRes.items.map((p) => p.talent_record_id)),
         );
-        const [coRes, contactRes, talentResults] = await Promise.allSettled([
-          getCompany(reqRes.company_id),
-          reqRes.contact_id !== null
-            ? getContact(reqRes.contact_id)
-            : Promise.reject(new Error('no contact')),
-          Promise.allSettled(ids.map((id) => getTalentRecord(id))),
-        ]);
+        const [coRes, contactRes, talentResults, rosterRes] =
+          await Promise.allSettled([
+            getCompany(reqRes.company_id),
+            reqRes.contact_id !== null
+              ? getContact(reqRes.contact_id)
+              : Promise.reject(new Error('no contact')),
+            Promise.allSettled(ids.map((id) => getTalent(id))),
+            probeTenantUsers(),
+          ]);
         if (cancelled) return;
         if (coRes.status === 'fulfilled') setCompanyName(coRes.value.name);
         if (contactRes.status === 'fulfilled') {
@@ -162,12 +173,21 @@ export function RequisitionDetailView({
           );
         }
         if (talentResults.status === 'fulfilled') {
-          const map: Record<string, TalentRecordSummary> = {};
+          const map: Record<string, TalentRecordView> = {};
           talentResults.value.forEach((r, i) => {
             const id = ids[i];
             if (id !== undefined && r.status === 'fulfilled') map[id] = r.value;
           });
           setTalents(map);
+        }
+        // Roster resolves recruiter + owner ids → names (gap #8). ADMIN-gated;
+        // a non-admin recruiter 403s → graceful (names fall back to "—").
+        if (rosterRes.status === 'fulfilled' && rosterRes.value.available) {
+          const names: Record<string, string> = {};
+          for (const u of rosterRes.value.items) {
+            names[u.user_id] = u.display_name ?? u.email;
+          }
+          setUserNames(names);
         }
       })
       .catch((err) => {
@@ -228,6 +248,7 @@ export function RequisitionDetailView({
           req={req}
           pipelines={pipelines}
           talents={talents}
+          userNames={userNames}
           onTransition={handleTransition}
         />
       ),
@@ -303,7 +324,14 @@ export function RequisitionDetailView({
         </div>
       </div>
 
-      <MetaStrip req={req} contactName={contactName} present={present} />
+      <MetaStrip
+        req={req}
+        contactName={contactName}
+        recruiterName={
+          req.recruiter_id !== null ? (userNames[req.recruiter_id] ?? null) : null
+        }
+        present={present}
+      />
 
       <div className="rc-mt-16">
         <Tabs items={tabs} ariaLabel="Requisition sections" initialId="pipeline" />
@@ -317,10 +345,12 @@ export function RequisitionDetailView({
 function MetaStrip({
   req,
   contactName,
+  recruiterName,
   present,
 }: {
   readonly req: RequisitionView;
   readonly contactName: string | null;
+  readonly recruiterName: string | null;
   readonly present: (key: string) => boolean;
 }) {
   const place = [req.city, req.state].filter(Boolean).join(', ');
@@ -348,6 +378,12 @@ function MetaStrip({
           {filled} of {req.openings}
         </div>
       </div>
+      {recruiterName !== null ? (
+        <div className="rc-meta__cell">
+          <div className="rc-meta__k">Recruiter</div>
+          <div className="rc-meta__v">{recruiterName}</div>
+        </div>
+      ) : null}
       <div className="rc-meta__cell">
         <div className="rc-meta__k">Opened</div>
         <div className="rc-meta__v">{daysAgo(req.created_at)}</div>
@@ -368,21 +404,36 @@ function PipelinePanel({
   req,
   pipelines,
   talents,
+  userNames,
   onTransition,
 }: {
   readonly req: RequisitionView;
   readonly pipelines: readonly PipelineView[];
-  readonly talents: Record<string, TalentRecordSummary>;
+  readonly talents: Record<string, TalentRecordView>;
+  readonly userNames: Record<string, string>;
   readonly onTransition: (
     id: string,
     to: PipelineStatus,
     note: string | undefined,
   ) => Promise<void>;
 }) {
+  const [activeOnly, setActiveOnly] = useState(false);
+  const [query, setQuery] = useState('');
+
   const cells = funnelCounts(pipelines.map((p) => p.status));
   const submitted = pipelines.filter((p) =>
     SUBMITTED_PLUS.includes(p.status),
   ).length;
+
+  const rows = pipelines.filter((p) => {
+    if (activeOnly && TERMINAL_STATUSES.includes(p.status)) return false;
+    if (query.trim() !== '') {
+      const t = talents[p.talent_record_id];
+      const name = t ? `${t.first_name} ${t.last_name}` : '';
+      if (!name.toLowerCase().includes(query.trim().toLowerCase())) return false;
+    }
+    return true;
+  });
 
   const columns: ReadonlyArray<TableColumn<PipelineView>> = [
     {
@@ -396,12 +447,27 @@ function PipelinePanel({
             to={`/talent/${p.talent_record_id}`}
             className="rc-link-strong"
           >
-            <EntityCell name={name} />
+            <EntityCell name={name} hot={t?.is_hot ?? false} />
           </Link>
         );
       },
     },
     { key: 'stage', header: 'Stage', render: (p) => <StagePill status={p.status} /> },
+    {
+      // Talent-STATED rate freetext (gap #3) — NOT a structured per-pipeline
+      // rate, and NO rating column (R10 — no scores/stars).
+      key: 'rate',
+      header: 'Rate',
+      render: (p) => talents[p.talent_record_id]?.current_pay ?? '—',
+    },
+    {
+      key: 'owner',
+      header: 'Owner',
+      render: (p) => {
+        const ownerId = talents[p.talent_record_id]?.owner_id ?? null;
+        return ownerId !== null ? (userNames[ownerId] ?? '—') : '—';
+      },
+    },
     {
       key: 'move',
       header: '',
@@ -439,9 +505,22 @@ function PipelinePanel({
           </div>
         </div>
         <Card flush className="rc-mt-16">
+          <Toolbar>
+            <FilterChip active={!activeOnly} onClick={() => setActiveOnly(false)}>
+              All stages
+            </FilterChip>
+            <FilterChip active={activeOnly} onClick={() => setActiveOnly(true)}>
+              Active only
+            </FilterChip>
+            <ScopedSearch
+              placeholder="In this pipeline"
+              value={query}
+              onChange={setQuery}
+            />
+          </Toolbar>
           <DataTable<PipelineView>
             columns={columns}
-            rows={pipelines}
+            rows={rows}
             rowKey={(p) => p.id}
             emptyMessage="No talent in this pipeline yet."
           />
