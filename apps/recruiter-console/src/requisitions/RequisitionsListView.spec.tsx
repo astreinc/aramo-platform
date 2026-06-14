@@ -196,6 +196,54 @@ describe('RequisitionsListView', () => {
     expect(screen.queryByRole('link', { name: /new requisition/i })).toBeNull();
   });
 
+  it('parity: Pipeline/Submitted counts (one /v1/pipelines call, grouped) + Recruiter name (roster)', async () => {
+    const REQ = makeReq('req-r', 'Platform Engineer', 'active', {
+      recruiter_id: 'usr-1',
+    });
+    const PIPELINES = [
+      { id: 'p1', requisition_id: 'req-r', status: 'no_contact' },
+      { id: 'p2', requisition_id: 'req-r', status: 'submitted' },
+      { id: 'p3', requisition_id: 'req-r', status: 'interviewing' },
+      { id: 'p4', requisition_id: 'req-r', status: 'placed' },
+    ];
+    const ROSTER = {
+      items: [
+        {
+          user_id: 'usr-1',
+          email: 'p@x.test',
+          display_name: 'Priya Recruiter',
+          is_active: true,
+        },
+      ],
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      const body = url.includes('/v1/pipelines')
+        ? { items: PIPELINES }
+        : url.includes('/v1/tenant/users')
+          ? ROSTER
+          : url.includes('/v1/companies')
+            ? { items: [{ id: 'co-1', name: 'Northwind' }] }
+            : { items: [REQ] };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Platform Engineer')).toBeInTheDocument(),
+    );
+    // Recruiter resolved via the roster.
+    await waitFor(() =>
+      expect(screen.getByText('Priya Recruiter')).toBeInTheDocument(),
+    );
+    // active = 4 minus the placed (terminal) = 3; submitted+ = submitted +
+    // interviewing + placed = 3.
+    const cells = screen.getAllByText('3');
+    expect(cells.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('shows "New requisition" linking to /requisitions/new when scoped', async () => {
     mockFetch([OPEN]);
     renderList({

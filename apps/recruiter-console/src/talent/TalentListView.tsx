@@ -8,6 +8,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { probeTenantUsers } from '../task/task-api';
 import {
   Card,
   DataTable,
@@ -31,9 +32,11 @@ import type { TalentRecordView } from './types';
 //   - Refusal layer (G3/R7): footer states consented-pool, NO open-web talent
 //     search, NO bulk export — the directive's required affordance copy.
 //
-// Gap dispositions (DDR §11): the mockup's Stage / Owner / Last-activity columns
-// need per-talent pipeline + roster + activity lookups NOT in the list response
-// → omitted (CARRY). Title/role subtitle: no field → omitted (gap #2). Rate is
+// Gap dispositions (DDR §11): Owner is backed by the admin-gated roster probe
+// (owner_id → name; graceful 403 → '—'). The mockup's Stage / Status /
+// Last-activity columns need per-talent pipeline/activity lookups NOT in the
+// list response (and there is no talent-record status field) → omitted (CARRY,
+// no fabrication). Title/role subtitle: no field → omitted (gap #2). Rate is
 // the talent-STATED freetext (current_pay/desired_pay; gap #3). Skills are the
 // key_skills freetext split on commas into chips (gap #9). No fabricated fields.
 
@@ -69,6 +72,7 @@ interface TalentListViewProps {
 
 export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const [items, setItems] = useState<readonly TalentRecordView[]>([]);
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<FilterMode>('all');
@@ -86,17 +90,24 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
 
   useEffect(() => {
     let cancelled = false;
-    listTalent()
-      .then((res) => {
+    void Promise.allSettled([listTalent(), probeTenantUsers()]).then(
+      ([talentRes, rosterRes]) => {
         if (cancelled) return;
-        setItems(res.items);
+        if (talentRes.status === 'fulfilled') {
+          setItems(talentRes.value.items);
+        } else {
+          setError(listErrorMessage(talentRes.reason));
+        }
+        if (rosterRes.status === 'fulfilled' && rosterRes.value.available) {
+          const names: Record<string, string> = {};
+          for (const u of rosterRes.value.items) {
+            names[u.user_id] = u.display_name ?? u.email;
+          }
+          setUserNames(names);
+        }
         setLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(listErrorMessage(err));
-        setLoading(false);
-      });
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -134,6 +145,12 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     },
     { key: 'location', header: 'Location', render: (t) => locationOf(t) },
     { key: 'rate', header: 'Rate (stated)', render: (t) => statedRate(t) },
+    {
+      key: 'owner',
+      header: 'Owner',
+      render: (t) =>
+        t.owner_id !== null ? (userNames[t.owner_id] ?? '—') : '—',
+    },
   ];
 
   return (

@@ -16,6 +16,15 @@ export async function listPipelinesForRequisition(
   );
 }
 
+// Unfiltered list — returns EVERY pipeline across the actor's visible
+// requisitions in one call (libs/pipeline/src/lib/pipeline.controller.ts:54-74:
+// no requisition/talent filter → listForActor over visible_requisition_ids).
+// The Requisitions list groups this by requisition_id for per-req
+// Pipeline/Submitted counts — one call, not N+1.
+export async function listAllPipelines(): Promise<PipelineListResponse> {
+  return apiClient.get<PipelineListResponse>('/v1/pipelines');
+}
+
 // R3 — the talent DETAIL Pipelines tab. The Gate-5 KEY confirmation:
 // /v1/pipelines accepts a talent_record_id filter (libs/pipeline/src/
 // lib/pipeline.controller.ts:54-74, line 61). Fully supported.

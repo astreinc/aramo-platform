@@ -9,6 +9,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { listCompanies } from '../companies/companies-api';
+import { listAllPipelines } from '../pipeline/pipeline-api';
+import { CLOSED_STATUSES, type PipelineStatus } from '../pipeline/types';
+import { probeTenantUsers } from '../task/task-api';
 import {
   Card,
   DataTable,
@@ -17,6 +20,7 @@ import {
   StatusPill,
   TitleCell,
   Toolbar,
+  funnelBucket,
   type PillTone,
   type TableColumn,
 } from '../ui';
@@ -29,16 +33,27 @@ import {
   type RequisitionView,
 } from './types';
 
+// Per-req pipeline rollup: active count (= not a terminal stage) + submitted
+// count (= reached the Submitted funnel bucket or beyond). Derived from a
+// single unfiltered /v1/pipelines call, grouped by requisition_id.
+interface ReqPipelineCount {
+  readonly active: number;
+  readonly submitted: number;
+}
+const TERMINAL = new Set<PipelineStatus>(CLOSED_STATUSES);
+const SUBMITTED_PLUS = new Set(['submitted', 'interview', 'offer', 'placed']);
+
 // Requisitions LIST (2C) — re-skinned to the Confident Blue mockup. The
 // recruiter's visible reqs (D4b server-side; invisible→404 on detail).
 // Active-filtered by default with chips (All / Only mine / Only hot), a
 // "Show closed" toggle, and a client-side scoped search. The approved
 // DataTable carries an in-cell <Link> (a11y nav) + mouse-only row-click.
 //
-// Gap dispositions (DDR §11): per-req Pipeline/Submitted counts are NOT in
-// the list response → omitted (CARRY). Recruiter-name needs a non-admin
-// roster → omitted (CARRY). company_id resolved to a name (gap #8) — never
-// a UUID. No fabricated fields.
+// Gap dispositions (DDR §11): per-req Pipeline/Submitted counts are backed by
+// a single unfiltered /v1/pipelines call grouped by requisition_id (no N+1).
+// Recruiter-name is resolved via the admin-gated roster probe (graceful 403 →
+// '—'). company_id resolved to a name (gap #8) — never a UUID. No fabricated
+// fields.
 
 const STATUS_LABEL: Record<RequisitionStatus, string> = {
   active: 'Active',
@@ -69,6 +84,10 @@ export function RequisitionsListView({
 }: RequisitionsListViewProps = {}) {
   const [items, setItems] = useState<readonly RequisitionView[]>([]);
   const [companyNames, setCompanyNames] = useState<Record<string, string>>({});
+  const [pipelineCounts, setPipelineCounts] = useState<
+    Record<string, ReqPipelineCount>
+  >({});
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
@@ -87,22 +106,44 @@ export function RequisitionsListView({
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.allSettled([listRequisitions(), listCompanies()]).then(
-      ([reqRes, coRes]) => {
-        if (cancelled) return;
-        if (reqRes.status === 'fulfilled') {
-          setItems(reqRes.value.items);
-        } else {
-          setError(listErrorMessage(reqRes.reason));
+    void Promise.allSettled([
+      listRequisitions(),
+      listCompanies(),
+      listAllPipelines(),
+      probeTenantUsers(),
+    ]).then(([reqRes, coRes, pipeRes, rosterRes]) => {
+      if (cancelled) return;
+      if (reqRes.status === 'fulfilled') {
+        setItems(reqRes.value.items);
+      } else {
+        setError(listErrorMessage(reqRes.reason));
+      }
+      if (coRes.status === 'fulfilled') {
+        const map: Record<string, string> = {};
+        for (const c of coRes.value.items) map[c.id] = c.name;
+        setCompanyNames(map);
+      }
+      if (pipeRes.status === 'fulfilled') {
+        const byReq: Record<string, ReqPipelineCount> = {};
+        for (const p of pipeRes.value.items) {
+          const cur = byReq[p.requisition_id] ?? { active: 0, submitted: 0 };
+          byReq[p.requisition_id] = {
+            active: cur.active + (TERMINAL.has(p.status) ? 0 : 1),
+            submitted:
+              cur.submitted + (SUBMITTED_PLUS.has(funnelBucket(p.status)) ? 1 : 0),
+          };
         }
-        if (coRes.status === 'fulfilled') {
-          const map: Record<string, string> = {};
-          for (const c of coRes.value.items) map[c.id] = c.name;
-          setCompanyNames(map);
+        setPipelineCounts(byReq);
+      }
+      if (rosterRes.status === 'fulfilled' && rosterRes.value.available) {
+        const names: Record<string, string> = {};
+        for (const u of rosterRes.value.items) {
+          names[u.user_id] = u.display_name ?? u.email;
         }
-        setLoading(false);
-      },
-    );
+        setUserNames(names);
+      }
+      setLoading(false);
+    });
     return () => {
       cancelled = true;
     };
@@ -145,6 +186,20 @@ export function RequisitionsListView({
     { key: 'type', header: 'Type', render: (r) => r.type ?? '—' },
     { key: 'location', header: 'Location', render: (r) => locationOf(r) },
     {
+      key: 'pipeline',
+      header: 'Pipeline',
+      align: 'right',
+      render: (r) => <span className="num">{pipelineCounts[r.id]?.active ?? 0}</span>,
+    },
+    {
+      key: 'submitted',
+      header: 'Submitted',
+      align: 'right',
+      render: (r) => (
+        <span className="num">{pipelineCounts[r.id]?.submitted ?? 0}</span>
+      ),
+    },
+    {
       key: 'openings',
       header: 'Openings',
       align: 'right',
@@ -153,6 +208,12 @@ export function RequisitionsListView({
           {r.openings - r.openings_available}/{r.openings}
         </span>
       ),
+    },
+    {
+      key: 'recruiter',
+      header: 'Recruiter',
+      render: (r) =>
+        r.recruiter_id !== null ? (userNames[r.recruiter_id] ?? '—') : '—',
     },
     {
       key: 'status',

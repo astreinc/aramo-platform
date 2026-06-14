@@ -120,6 +120,37 @@ describe('TalentListView', () => {
     expect(screen.getByText('$120/hr')).toBeInTheDocument();
   });
 
+  it('parity: resolves the Owner column via the roster probe (graceful)', async () => {
+    const TALENT = makeTalent('tal-1', 'Ada', 'Lovelace', { owner_id: 'u-own' });
+    const ROSTER = {
+      items: [
+        {
+          user_id: 'u-own',
+          email: 'o@x.test',
+          display_name: 'Tom Owner',
+          is_active: true,
+        },
+      ],
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      const body = url.includes('/v1/tenant/users')
+        ? ROSTER
+        : { items: [TALENT] };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    renderInRouter(<TalentListView />);
+    await waitFor(() =>
+      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(screen.getByText('Tom Owner')).toBeInTheDocument(),
+    );
+  });
+
   it('the name cell links to /talent/:id (a11y nav path)', async () => {
     mockFetch([makeTalent('tal-42', 'Ada', 'Lovelace')]);
     renderInRouter(<TalentListView />);
