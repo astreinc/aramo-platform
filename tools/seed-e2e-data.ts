@@ -31,6 +31,7 @@ import { TalentRecordRepository } from '@aramo/talent-record';
 import {
   RequisitionRepository,
   RequisitionAssignmentRepository,
+  RequisitionPrismaService,
 } from '@aramo/requisition';
 import { PipelineRepository } from '@aramo/pipeline';
 import { ActivityRepository } from '@aramo/activity';
@@ -90,19 +91,22 @@ async function main(): Promise<void> {
     const talent = app.get(TalentRecordRepository);
     const requisition = app.get(RequisitionRepository);
     const assignment = app.get(RequisitionAssignmentRepository);
+    const reqPrisma = app.get(RequisitionPrismaService);
     const pipeline = app.get(PipelineRepository);
     const activity = app.get(ActivityRepository);
     const task = app.get(TaskRepository);
     const engagement = app.get(EngagementRepository);
 
     const ports: SeedPorts = {
-      // Idempotency: a read-only probe for a tagged requisition. VALIDATE: the
-      // exact list/find method on the live build (read-only — not a write).
+      // Idempotency: a READ-ONLY probe for a tagged requisition (a read, not a
+      // write — within the "no raw INSERTs" rule). Bound to the live
+      // RequisitionPrismaService.
       hasTaggedRequisition: async (tenantId, prefix) => {
-        const list = await (requisition as unknown as {
-          findAllForTenant?: (t: string) => Promise<Array<{ external_req_id: string | null }>>;
-        }).findAllForTenant?.(tenantId);
-        return (list ?? []).some((r) => (r.external_req_id ?? '').startsWith(prefix));
+        const row = await reqPrisma.requisition.findFirst({
+          where: { tenant_id: tenantId, external_req_id: { startsWith: prefix } },
+          select: { id: true },
+        });
+        return row !== null;
       },
       createCompany: async ({ tenantId, enteredById, name }) =>
         requireId(await company.create({ tenant_id: tenantId, entered_by_id: enteredById, input: { name }, scopes: [] })),
@@ -147,21 +151,35 @@ async function main(): Promise<void> {
         })),
       createPipeline: async ({ tenantId, talentRecordId, requisitionId }) =>
         requireId(await pipeline.create({ tenant_id: tenantId, input: { talent_record_id: talentRecordId, requisition_id: requisitionId } })),
-      // VALIDATE: the transition method name/signature on the live build.
-      transitionPipeline: async ({ pipelineId, toStatus }) => {
-        await (pipeline as unknown as {
-          transition: (a: { pipeline_id: string; to_status: string }) => Promise<unknown>;
-        }).transition({ pipeline_id: pipelineId, to_status: toStatus });
+      // Bound to the live transition signature: { tenant_id, id, to_status,
+      // changed_by_id, requestId }.
+      transitionPipeline: async ({ tenantId, pipelineId, toStatus, changedById }) => {
+        await pipeline.transition({
+          tenant_id: tenantId,
+          id: pipelineId,
+          to_status: toStatus as never,
+          changed_by_id: changedById,
+          requestId: randomUUID(),
+        });
       },
       createTask: async ({ tenantId, createdByUserId, assigneeId, title, ownerType, ownerId }) =>
         requireId(await task.create({ tenant_id: tenantId, created_by_user_id: createdByUserId, input: { title, owner_type: ownerType, owner_id: ownerId, assignee_id: assigneeId } })),
       createActivity: async ({ tenantId, createdById, subjectType, subjectId, notes }) =>
         requireId(await activity.create({ tenant_id: tenantId, created_by_id: createdById, input: { type: 'note', subject_type: subjectType, subject_id: subjectId, notes } })),
-      // VALIDATE: createEngagement arg shape on the live build (examination_id null).
-      createEngagement: async ({ tenantId, talentId, requisitionId }) =>
-        requireId(await (engagement as unknown as {
-          createEngagement: (a: { tenant_id: string; talent_id: string; requisition_id: string; examination_id: null }) => Promise<{ id: string }>;
-        }).createEngagement({ tenant_id: tenantId, talent_id: talentId, requisition_id: requisitionId, examination_id: null })),
+      // Bound to the live CreateEngagementInput: caller supplies id + event_id
+      // (UUIDs); examination_id null (no Core dependency). Returns
+      // CreateEngagementResult { engagement, event }.
+      createEngagement: async ({ tenantId, talentId, requisitionId }) => {
+        const res = await engagement.createEngagement({
+          id: randomUUID(),
+          event_id: randomUUID(),
+          tenant_id: tenantId,
+          talent_id: talentId,
+          requisition_id: requisitionId,
+          examination_id: null,
+        });
+        return requireId(res.engagement);
+      },
     };
 
     const report = await seed(ports, { tenantId: cli.tenant, recruiterUserId: cli.recruiterUserId, tag: cli.tag }, buildSeedPlan(cli.tag));

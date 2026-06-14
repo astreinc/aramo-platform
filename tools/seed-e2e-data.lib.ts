@@ -159,7 +159,7 @@ export interface SeedPorts {
   // Pipelines ALWAYS start at no_contact (hard-coded in the repo); a stage is
   // reached by walking the legal state machine via real transitions.
   createPipeline(args: { tenantId: string; talentRecordId: string; requisitionId: string }): Promise<{ id: string }>;
-  transitionPipeline(args: { pipelineId: string; toStatus: string }): Promise<void>;
+  transitionPipeline(args: { tenantId: string; pipelineId: string; toStatus: string; changedById: string }): Promise<void>;
   createTask(args: { tenantId: string; createdByUserId: string; assigneeId: string; title: string; ownerType: 'requisition' | 'talent_record'; ownerId: string }): Promise<{ id: string }>;
   createActivity(args: { tenantId: string; createdById: string; subjectType: 'requisition'; subjectId: string; notes: string }): Promise<{ id: string }>;
   createEngagement(args: { tenantId: string; talentId: string; requisitionId: string }): Promise<{ id: string }>;
@@ -238,7 +238,12 @@ export async function seed(
     });
     // Walk no_contact → target through the LEGAL transition path.
     for (const step of legalPathTo(p.status)) {
-      await ports.transitionPipeline({ pipelineId: id, toStatus: step });
+      await ports.transitionPipeline({
+        tenantId: ctx.tenantId,
+        pipelineId: id,
+        toStatus: step,
+        changedById: ctx.recruiterUserId,
+      });
     }
     pipelineIds.push(id);
   }
