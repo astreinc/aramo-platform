@@ -175,6 +175,8 @@ export interface SeedReport {
   readonly pipeline_ids: readonly string[];
   readonly task_ids: readonly string[];
   readonly engagement_ids: readonly string[];
+  /** Set when the engagement step was skipped (its precondition wasn't met). */
+  readonly engagement_skipped?: string;
 }
 
 // Orchestrate the plan in dependency order. Idempotent: if a tagged requisition
@@ -266,11 +268,21 @@ export async function seed(
   await ports.createActivity({ tenantId: ctx.tenantId, createdById: ctx.recruiterUserId, subjectType: 'requisition', subjectId: required(reqId, 'rq-1'), notes: `${ctx.tag} Kickoff call with the hiring manager` });
   await ports.createActivity({ tenantId: ctx.tenantId, createdById: ctx.recruiterUserId, subjectType: 'requisition', subjectId: required(reqId, 'rq-1'), notes: `${ctx.tag} Shared the intake brief` });
 
-  const engagement = await ports.createEngagement({
-    tenantId: ctx.tenantId,
-    talentId: required(talentId, plan.engagementTalentKey),
-    requisitionId: required(reqId, plan.engagementRequisitionKey),
-  });
+  // Engagement is BEST-EFFORT: it requires a Core Talent OVERLAY
+  // (findOverlayByTenant), which the ATS TalentRecord seed does not create.
+  // A missing overlay must NOT fail the whole (core-complete) seed — skip + report.
+  let engagementIds: string[] = [];
+  let engagementSkipped: string | undefined;
+  try {
+    const engagement = await ports.createEngagement({
+      tenantId: ctx.tenantId,
+      talentId: required(talentId, plan.engagementTalentKey),
+      requisitionId: required(reqId, plan.engagementRequisitionKey),
+    });
+    engagementIds = [engagement.id];
+  } catch (err) {
+    engagementSkipped = err instanceof Error ? err.message : String(err);
+  }
 
   return {
     status: 'seeded',
@@ -281,7 +293,8 @@ export async function seed(
     talent_ids: [...talentId.values()],
     pipeline_ids: pipelineIds,
     task_ids: taskIds,
-    engagement_ids: [engagement.id],
+    engagement_ids: engagementIds,
+    ...(engagementSkipped !== undefined ? { engagement_skipped: engagementSkipped } : {}),
   };
 }
 

@@ -38,7 +38,10 @@ import { ActivityRepository } from '@aramo/activity';
 import { TaskRepository } from '@aramo/task';
 import { EngagementRepository } from '@aramo/engagement';
 
-import { AppModule } from '../apps/api/src/app.module.js';
+// Boot the COMPILED AppModule (the exact graph the running API uses) so the
+// repos resolve to the same dist wiring as @aramo/* (node_modules symlinks →
+// dist/libs). Avoids jiti compiling all of apps/api source.
+import { AppModule } from '../dist/apps/api/src/app.module.js';
 
 import {
   assertNonProd,
@@ -196,7 +199,11 @@ async function main(): Promise<void> {
     console.log(`        talent       = ${report.talent_ids.join(', ')}`);
     console.log(`        pipelines    = ${report.pipeline_ids.join(', ')}`);
     console.log(`        tasks        = ${report.task_ids.join(', ')}`);
-    console.log(`        engagements  = ${report.engagement_ids.join(', ')}`);
+    if (report.engagement_skipped !== undefined) {
+      console.log(`        engagements  = (skipped: ${report.engagement_skipped})`);
+    } else {
+      console.log(`        engagements  = ${report.engagement_ids.join(', ')}`);
+    }
   } finally {
     await app.close();
   }

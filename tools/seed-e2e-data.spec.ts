@@ -91,6 +91,18 @@ describe('seed orchestration', () => {
     expect(report.talent_ids.length).toBeGreaterThanOrEqual(8);
   });
 
+  it('engagement is best-effort — a missing Core overlay skips it, not fails the seed', async () => {
+    const ports = fakePorts({
+      createEngagement: vi.fn().mockRejectedValue(new Error('Talent not visible in tenant')),
+    });
+    const report = await seed(ports, CTX, buildSeedPlan('E2E '));
+    expect(report.status).toBe('seeded');
+    expect(report.engagement_ids).toEqual([]);
+    expect(report.engagement_skipped).toMatch(/not visible/);
+    // The core entities still seeded.
+    expect(report.requisition_ids.length).toBeGreaterThanOrEqual(3);
+  });
+
   it('legalPathTo walks the real state machine (no illegal jumps)', () => {
     expect(legalPathTo('no_contact')).toEqual([]);
     expect(legalPathTo('qualifying')).toEqual(['contacted', 'talent_responded', 'qualifying']);
