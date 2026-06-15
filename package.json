@@ -86,7 +86,7 @@
     "@pact-foundation/pact": "~16.5.0",
     "@playwright/test": "~1.60.0",
     "@redocly/cli": "~2.31.5",
-    "@testcontainers/localstack": "~12.0.1",
+    "@testcontainers/localstack": "~12.0.2",
     "@testcontainers/postgresql": "~12.0.1",
     "@testcontainers/redis": "~12.0.1",
     "@testing-library/jest-dom": "~6.9.1",
