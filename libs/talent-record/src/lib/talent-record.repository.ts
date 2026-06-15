@@ -507,19 +507,20 @@ export class TalentRecordRepository {
     };
   }
 
-  // Full filtered id set (no pagination) — apps/api's cross-schema path runs the
-  // Seg-3 batch accessors over this, bounded by the materialize guard (it asks
-  // for at most `limit`+1 ids to detect "over the guard").
-  async findFilteredIds(
+  // Full filtered key set (no pagination) — apps/api's cross-schema path runs
+  // the Seg-3 batch accessors over this, bounded by the materialize guard (it
+  // asks for at most `limit`+1 rows to detect "over the guard"). Returns id
+  // (for activity/pipeline accessors) + core_talent_id (consent is Core-keyed).
+  async findFilteredKeys(
     query: TalentSearchQuery,
     limit: number,
-  ): Promise<string[]> {
+  ): Promise<Array<{ id: string; core_talent_id: string | null }>> {
     const rows = await this.prisma.talentRecord.findMany({
       where: buildSearchWhere(query),
-      select: { id: true },
+      select: { id: true, core_talent_id: true },
       take: limit + 1,
     });
-    return rows.map((r) => r.id);
+    return rows;
   }
 
   private async computeNativeFacets(

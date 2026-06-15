@@ -5,7 +5,10 @@ import {
   type NestInterceptor,
 } from '@nestjs/common';
 import type { AuthContextType } from '@aramo/auth';
-import type { TalentRecordView } from '@aramo/talent-record';
+import type {
+  TalentRecordView,
+  TalentSearchQuery,
+} from '@aramo/talent-record';
 import type { Request } from 'express';
 import { from, of, type Observable } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
@@ -27,6 +30,10 @@ import { TalentRecordEnrichmentService } from './talent-record-enrichment.servic
 type EnrichRequest = Request & {
   authContext?: AuthContextType;
   resolveVisibleRequisitionIds?: () => Promise<ReadonlySet<string> | null>;
+  // Segment 4b — stashed by the lib controller's paged branch so this layer
+  // (the only one that may read activity/consent/pipeline) can compose the
+  // FULL-SET cross-schema facet counts onto the paged response.
+  talentSearchQuery?: TalentSearchQuery;
 };
 
 @Injectable()
@@ -52,14 +59,26 @@ export class TalentRecordEnrichmentInterceptor implements NestInterceptor {
         }
         const items = (value as { items: TalentRecordView[] }).items;
         const resolve = req.resolveVisibleRequisitionIds;
+        const searchQuery = req.talentSearchQuery;
         return from(
           (async () => {
             const visible = resolve ? await resolve() : null;
-            const enriched = await this.composer.enrich(items, {
+            const ctx = {
               tenant_id: authContext.tenant_id,
               visible_requisition_ids: visible,
-            });
-            return { ...(value as object), items: enriched };
+            };
+            // Enrich the loaded page AND (paged branch only) compute the
+            // FULL-SET cross-schema facet counts, concurrently.
+            const [enriched, crossFacets] = await Promise.all([
+              this.composer.enrich(items, ctx),
+              searchQuery
+                ? this.composer.crossFacets(searchQuery, ctx)
+                : Promise.resolve(undefined),
+            ]);
+            const next = { ...(value as object), items: enriched };
+            return crossFacets
+              ? { ...next, cross_facets: crossFacets }
+              : next;
           })(),
         );
       }),

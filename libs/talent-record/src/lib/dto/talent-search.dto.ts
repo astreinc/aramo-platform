@@ -59,4 +59,8 @@ export interface TalentSearchPage {
   readonly items: readonly TalentRecordView[];
   readonly next_cursor: string | null;
   readonly facets: NativeFacets;
+  // Segment 4b — cross-schema facet counts (recency / consent / stage),
+  // full-set + guarded. Optional: absent when the cross-facets port isn't
+  // bound (e.g. the lib's own unit tests). See talent-cross-facets.port.ts.
+  readonly cross_facets?: import('./talent-cross-facets.port.js').CrossFacets;
 }

@@ -9,8 +9,10 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { v7 as uuidv7 } from 'uuid';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
@@ -37,6 +39,7 @@ import type { TalentLinkView } from './dto/talent-link.view.js';
 import type { TalentRecordView } from './dto/talent-record.view.js';
 import type {
   TalentSearchPage,
+  TalentSearchQuery,
   TalentSortKey,
 } from './dto/talent-search.dto.js';
 import type { UpdateTalentRecordRequestDto } from './dto/update-talent-record-request.dto.js';
@@ -131,6 +134,7 @@ export class TalentRecordController {
     @Query('skills') skills: string | undefined,
     @Query('skill_match') skillMatch: string | undefined,
     @Query('location') location: string | undefined,
+    @Req() req: Request & { talentSearchQuery?: TalentSearchQuery },
     @RequestId() requestId: string,
   ): Promise<{ items: TalentRecordView[] } | TalentSearchPage> {
     const searchTerm = q?.trim() ? q.trim() : undefined;
@@ -163,7 +167,7 @@ export class TalentRecordController {
     // a superset ({ items, next_cursor, facets }) so the pre-Seg-4 FE (which
     // reads only `items`) keeps working unchanged.
     if (paged === 'true') {
-      return this.repo.searchPaged({
+      const query: TalentSearchQuery = {
         tenant_id: authContext.tenant_id,
         site_id: siteIdFromQuery,
         q: searchTerm,
@@ -179,7 +183,14 @@ export class TalentRecordController {
         dir: dir === 'asc' ? 'asc' : 'desc',
         cursor,
         page_size: pageSize !== undefined ? Number(pageSize) : undefined,
-      });
+      };
+      // Segment 4b — stash the parsed query on the request so the apps/api
+      // enrichment interceptor (the only layer allowed to read activity /
+      // consent / pipeline) can compute the full-set cross-schema facet counts.
+      // The lib stays single-schema: it hands off a plain object, imports none
+      // of the cross-schema modules.
+      req.talentSearchQuery = query;
+      return this.repo.searchPaged(query);
     }
 
     // PR-1 / no-search path — UNCHANGED (backward-compat by construction).

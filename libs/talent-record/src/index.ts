@@ -14,6 +14,8 @@ export type {
   NativeFacets,
   NativeFacetBucket,
 } from './lib/dto/talent-search.dto.js';
+// Segment 4b — cross-schema facet-counts result shape (composed in apps/api).
+export type { CrossFacets } from './lib/dto/talent-cross-facets.port.js';
 
 // Search PR-2 — résumé full-text surfaces.
 export { ResumeTextService } from './lib/resume-text/resume-text.service.js';
