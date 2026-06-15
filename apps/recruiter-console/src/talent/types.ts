@@ -7,6 +7,8 @@
 // pattern is not applied here (rule of three — that pattern is for
 // mirrored logic, not flat fields).
 
+import type { AvailabilityStatus, EngagementType } from './stated-fields';
+
 export interface TalentRecordView {
   readonly id: string;
   readonly tenant_id: string;
@@ -28,6 +30,11 @@ export interface TalentRecordView {
   readonly current_employer: string | null;
   readonly current_pay: string | null;
   readonly desired_pay: string | null;
+  // Talent-stated categorical fields (stated-fields amendment). Closed
+  // vocabularies; null = not stated (availability null collapses to the UI
+  // "Unknown" bucket alongside the explicit 'unknown' member).
+  readonly availability_status: AvailabilityStatus | null;
+  readonly engagement_type: EngagementType | null;
   readonly date_available: string | null;
   readonly can_relocate: boolean;
   readonly is_hot: boolean;

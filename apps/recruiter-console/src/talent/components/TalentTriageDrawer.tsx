@@ -18,6 +18,8 @@ import {
   locationOf,
   skillsOf,
   statedRate,
+  AVAILABILITY_LABELS,
+  ENGAGEMENT_LABELS,
 } from '../talent-workspace';
 import type { TalentRecordView } from '../types';
 
@@ -221,6 +223,22 @@ export function TalentTriageDrawer({
             <span className="rc-kv__v num">{statedRate(talent)}</span>
           </div>
           <div className="rc-kv">
+            <span className="rc-kv__k">Availability</span>
+            <span className="rc-kv__v">
+              {talent.availability_status === null
+                ? '—'
+                : AVAILABILITY_LABELS[talent.availability_status]}
+            </span>
+          </div>
+          <div className="rc-kv">
+            <span className="rc-kv__k">Engagement</span>
+            <span className="rc-kv__v">
+              {talent.engagement_type === null
+                ? '—'
+                : ENGAGEMENT_LABELS[talent.engagement_type]}
+            </span>
+          </div>
+          <div className="rc-kv">
             <span className="rc-kv__k">Source</span>
             <span className="rc-kv__v">{talent.source ?? '—'}</span>
           </div>
@@ -233,8 +251,7 @@ export function TalentTriageDrawer({
             <span className="rc-kv__v">{inNetworkSince(talent.created_at)}</span>
           </div>
           <p className="rc-drawer__note">
-            Work authorization &amp; engagement type aren’t modelled on the talent
-            record yet (carry).
+            Work authorization isn’t modelled on the talent record yet (carry).
           </p>
         </section>
 

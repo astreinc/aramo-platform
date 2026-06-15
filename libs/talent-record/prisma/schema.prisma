@@ -86,6 +86,15 @@ model TalentRecord {
   web_site           String?
   best_time_to_call  String?
 
+  // Talent-STATED categorical fields — Talent Record Spec Amendment
+  // (stated-fields) v1.0. String + closed vocabulary (§5; see dto/stated-fields.ts),
+  // NOT Prisma enums. availability_status: {available_now|open_to_offers|
+  // not_looking|unknown} (null ≠ unknown at the data layer). engagement_type:
+  // {contract_to_hire|contract|direct_hire} (null = not stated). Stated, never
+  // inferred (R10). Btree-indexed for Segment-4 server-side faceting.
+  availability_status String?
+  engagement_type     String?
+
   // Provenance (UUID-only logical refs to identity.User).
   owner_id      String? @db.Uuid
   entered_by_id String? @db.Uuid
@@ -134,6 +143,9 @@ model TalentRecord {
   @@index([tenant_id, is_hot])
   @@index([tenant_id, core_talent_id])
   @@index([tenant_id, import_batch_id])
+  // Segment-4 server-side faceting (stated-fields amendment §5).
+  @@index([tenant_id, availability_status])
+  @@index([tenant_id, engagement_type])
 
   @@schema("talent_record")
 }

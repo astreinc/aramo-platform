@@ -1,8 +1,10 @@
 import { Icons } from '../../ui';
-import type {
-  DerivedFacets,
-  FacetState,
-  SkillMatch,
+import {
+  AVAILABILITY_LABELS,
+  ENGAGEMENT_LABELS,
+  type DerivedFacets,
+  type FacetState,
+  type SkillMatch,
 } from '../talent-workspace';
 
 // FacetRail — the left filter sidebar for the Talent workspace. Feature-local
@@ -23,11 +25,11 @@ interface FacetRailProps {
   readonly onToggleSource: (source: string) => void;
   readonly onToggleHot: () => void;
   readonly onLocation: (v: string) => void;
+  readonly onToggleAvailability: (value: string) => void;
+  readonly onToggleEngagement: (value: string) => void;
   readonly onReset: () => void;
   readonly isLead: boolean;
 }
-
-const STUB_NOTE = 'Connects to the talent record / taxonomy later.';
 
 export function FacetRail({
   derived,
@@ -38,6 +40,8 @@ export function FacetRail({
   onToggleSource,
   onToggleHot,
   onLocation,
+  onToggleAvailability,
+  onToggleEngagement,
   onReset,
   isLead,
 }: FacetRailProps) {
@@ -175,14 +179,68 @@ export function FacetRail({
         </div>
       </details>
 
+      {/* Availability — BACKED (talent-stated; Unknown bucket = null + 'unknown') */}
+      <details className="rc-facet" open>
+        <summary>
+          Availability
+          {facets.availability.length > 0 ? (
+            <span className="rc-facet__badge">{facets.availability.length}</span>
+          ) : null}
+          <Icons.IconChevronDown className="rc-facet__chev" />
+        </summary>
+        <div className="rc-facet__body">
+          {derived.availability.length === 0 ? (
+            <p className="rc-facet__note">No availability stated in the loaded set.</p>
+          ) : (
+            derived.availability.map((a) => (
+              <label key={a.value} className="rc-fopt">
+                <input
+                  type="checkbox"
+                  checked={facets.availability.includes(a.value)}
+                  onChange={() => onToggleAvailability(a.value)}
+                />
+                {AVAILABILITY_LABELS[a.value as keyof typeof AVAILABILITY_LABELS] ?? a.value}
+                <span className="rc-fopt__ct num">{a.count}</span>
+              </label>
+            ))
+          )}
+        </div>
+      </details>
+
+      {/* Engagement type — BACKED (talent-stated; null = not stated) */}
+      <details className="rc-facet">
+        <summary>
+          Engagement type
+          {facets.engagementTypes.length > 0 ? (
+            <span className="rc-facet__badge">{facets.engagementTypes.length}</span>
+          ) : null}
+          <Icons.IconChevronDown className="rc-facet__chev" />
+        </summary>
+        <div className="rc-facet__body">
+          {derived.engagement.length === 0 ? (
+            <p className="rc-facet__note">No engagement type stated in the loaded set.</p>
+          ) : (
+            derived.engagement.map((e) => (
+              <label key={e.value} className="rc-fopt">
+                <input
+                  type="checkbox"
+                  checked={facets.engagementTypes.includes(e.value)}
+                  onChange={() => onToggleEngagement(e.value)}
+                />
+                {ENGAGEMENT_LABELS[e.value as keyof typeof ENGAGEMENT_LABELS] ?? e.value}
+                <span className="rc-fopt__ct num">{e.count}</span>
+              </label>
+            ))
+          )}
+        </div>
+      </details>
+
       {/* STUB facets — fields absent on the talent record (honest disabled) */}
-      <StubFacet label="Status & stage" note="Stage is per-pipeline, not a talent attribute (carry)." />
-      <StubFacet label="Availability" note={STUB_NOTE} />
+      <StubFacet label="Status & stage" note="Stage is per-pipeline; wired in Segment 3." />
       <StubFacet
         label="Rate (talent-stated)"
         note="Rate is what the talent stated. Aramo never infers pay or orders results by it. (Free text — no range filter.)"
       />
-      <StubFacet label="Engagement type" note={STUB_NOTE} />
       <StubFacet label="Last activity" note="Needs a bulk last-activity read (carry — per-talent N+1 today)." />
       <StubFacet label="Consent" note="Per-talent consent is an N+1 read keyed to a Core id (carry)." />
 

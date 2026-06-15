@@ -159,11 +159,13 @@ export class TalentRecordController {
   async create(
     @AuthContext() authContext: AuthContextType,
     @Body() body: CreateTalentRecordRequestDto,
+    @RequestId() requestId: string,
   ): Promise<TalentRecordView> {
     return this.repo.create({
       tenant_id: authContext.tenant_id,
       entered_by_id: authContext.sub,
       input: body,
+      requestId,
     });
   }
 

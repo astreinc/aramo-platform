@@ -12,6 +12,16 @@
 
 import type { TalentRecordView } from './types';
 
+// Re-export the stated-field vocab so consumers have one workspace import.
+export {
+  AVAILABILITY_STATUS_VALUES,
+  ENGAGEMENT_TYPE_VALUES,
+  AVAILABILITY_LABELS,
+  ENGAGEMENT_LABELS,
+  type AvailabilityStatus,
+  type EngagementType,
+} from './stated-fields';
+
 export type ScopeMode = 'mine' | 'team' | 'all';
 
 // ── Token search ────────────────────────────────────────────────────────────
@@ -84,6 +94,10 @@ export interface FacetState {
   readonly sources: readonly string[];
   readonly hotOnly: boolean;
   readonly location: string;
+  // Talent-stated facets (stated-fields amendment). availability holds the
+  // selected buckets (the 'unknown' bucket matches both null AND 'unknown').
+  readonly availability: readonly string[];
+  readonly engagementTypes: readonly string[];
 }
 
 export const EMPTY_FACETS: FacetState = {
@@ -92,7 +106,15 @@ export const EMPTY_FACETS: FacetState = {
   sources: [],
   hotOnly: false,
   location: '',
+  availability: [],
+  engagementTypes: [],
 };
+
+// The "Unknown" availability bucket matches BOTH null (never captured) and the
+// explicit 'unknown' stated value (§4.1) — null collapses to 'unknown' here.
+export function effectiveAvailability(t: TalentRecordView): string {
+  return t.availability_status ?? 'unknown';
+}
 
 // ── Helpers over the (free-text) talent fields ──────────────────────────────
 export function fullName(t: TalentRecordView): string {
@@ -135,6 +157,8 @@ export interface DerivedFacets {
   readonly skills: readonly FacetCount[];
   readonly sources: readonly FacetCount[];
   readonly hot: number;
+  readonly availability: readonly FacetCount[];
+  readonly engagement: readonly FacetCount[];
 }
 
 export function deriveFacets(
@@ -142,13 +166,23 @@ export function deriveFacets(
 ): DerivedFacets {
   const skills: string[] = [];
   const sources: string[] = [];
+  const availability: string[] = [];
+  const engagement: string[] = [];
   let hot = 0;
   for (const t of talent) {
     for (const s of skillsOf(t)) skills.push(s);
     if (t.source !== null && t.source.trim() !== '') sources.push(t.source);
     if (t.is_hot) hot += 1;
+    availability.push(effectiveAvailability(t)); // null collapses to 'unknown'
+    if (t.engagement_type !== null) engagement.push(t.engagement_type);
   }
-  return { skills: tally(skills), sources: tally(sources), hot };
+  return {
+    skills: tally(skills),
+    sources: tally(sources),
+    hot,
+    availability: tally(availability),
+    engagement: tally(engagement),
+  };
 }
 
 // ── Filtering ───────────────────────────────────────────────────────────────
@@ -207,6 +241,14 @@ export function applyFilters(
     }
     if (facets.location.trim() !== '') {
       if (!locationOf(t).toLowerCase().includes(facets.location.trim().toLowerCase()))
+        return false;
+    }
+    if (facets.availability.length > 0) {
+      if (!facets.availability.includes(effectiveAvailability(t))) return false;
+    }
+    if (facets.engagementTypes.length > 0) {
+      // null engagement (not stated) drops out when filtering by a type.
+      if (t.engagement_type === null || !facets.engagementTypes.includes(t.engagement_type))
         return false;
     }
     if (skillNeedles.length > 0) {

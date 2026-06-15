@@ -42,6 +42,8 @@ function makeTalent(overrides: Partial<TalentRecordView> = {}): TalentRecordView
     current_employer: 'Analytical Engines Ltd',
     current_pay: null,
     desired_pay: null,
+    availability_status: null,
+    engagement_type: null,
     date_available: null,
     can_relocate: true,
     is_hot: false,

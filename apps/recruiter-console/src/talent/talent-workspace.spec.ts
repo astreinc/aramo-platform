@@ -39,6 +39,8 @@ function t(
     current_employer: null,
     current_pay: null,
     desired_pay: null,
+    availability_status: null,
+    engagement_type: null,
     date_available: null,
     can_relocate: false,
     is_hot: false,
@@ -126,6 +128,41 @@ describe('applyFilters', () => {
     expect(tok.map((x) => x.id)).toEqual(['2']);
     const stub = applyFilters(POOL, { ...ctx, facets: base(), query: { tokens: [{ key: 'status', value: 'active', supported: false }], free: '' } });
     expect(stub.length).toBe(3); // unsupported = no-op
+  });
+});
+
+describe('stated-field facets (availability / engagement)', () => {
+  const ctx = { scope: 'all' as const, sessionSub: 'me', ownerNames: {} };
+  const POOL2: TalentRecordView[] = [
+    t('1', 'A', 'A', { availability_status: 'available_now', engagement_type: 'contract' }),
+    t('2', 'B', 'B', { availability_status: 'unknown', engagement_type: 'direct_hire' }),
+    t('3', 'C', 'C', { availability_status: null, engagement_type: null }), // null avail → Unknown bucket
+  ];
+
+  it('derives availability (null collapses into the unknown bucket) + engagement counts', () => {
+    const d = deriveFacets(POOL2);
+    expect(d.availability.find((x) => x.value === 'available_now')?.count).toBe(1);
+    expect(d.availability.find((x) => x.value === 'unknown')?.count).toBe(2); // explicit + null
+    expect(d.engagement.find((x) => x.value === 'contract')?.count).toBe(1);
+    expect(d.engagement.length).toBe(2); // null engagement not counted
+  });
+
+  it('availability "unknown" filter matches BOTH null and explicit unknown', () => {
+    const r = applyFilters(POOL2, {
+      ...ctx,
+      facets: base({ availability: ['unknown'] }),
+      query: noQuery,
+    });
+    expect(r.map((x) => x.id).sort()).toEqual(['2', '3']);
+  });
+
+  it('engagement filter excludes not-stated (null) rows', () => {
+    const r = applyFilters(POOL2, {
+      ...ctx,
+      facets: base({ engagementTypes: ['contract'] }),
+      query: noQuery,
+    });
+    expect(r.map((x) => x.id)).toEqual(['1']);
   });
 });
 

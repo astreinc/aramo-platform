@@ -14,7 +14,7 @@ import { addTalentToPipeline } from '../pipeline/pipeline-api';
 import { listRequisitions } from '../requisitions/requisitions-api';
 import type { RequisitionView } from '../requisitions/types';
 import { probeTenantUsers } from '../task/task-api';
-import { Avatar, Card, Icons, Tag } from '../ui';
+import { Avatar, Card, Icons, StatusPill, Tag, type PillTone } from '../ui';
 
 import { BulkBar } from './components/BulkBar';
 import { FacetRail } from './components/FacetRail';
@@ -33,6 +33,8 @@ import {
   skillsOf,
   sortTalent,
   statedRate,
+  AVAILABILITY_LABELS,
+  ENGAGEMENT_LABELS,
   type FacetState,
   type ScopeMode,
   type SearchToken,
@@ -61,6 +63,14 @@ import type { TalentRecordView } from './types';
 const DEFAULT_LIST_CAP = 50;
 type Density = 'comfortable' | 'compact';
 
+// Availability pill tones (a talent-stated status, never an inferred ordering; R10-clean).
+const AVAILABILITY_TONE: Record<string, PillTone> = {
+  available_now: 'ok',
+  open_to_offers: 'info',
+  not_looking: 'neutral',
+  unknown: 'neutral',
+};
+
 interface TalentListViewProps {
   readonly sessionOverride?: Session;
 }
@@ -85,6 +95,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const [density, setDensity] = useState<Density>('comfortable');
   const [cols, setCols] = useState({
     skills: true,
+    availability: true,
     location: true,
     rate: true,
     consent: true,
@@ -278,11 +289,32 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
       label: facets.location,
       clear: () => setFacets((f) => ({ ...f, location: '' })),
     });
+  for (const a of facets.availability)
+    chips.push({
+      k: 'Availability',
+      label: AVAILABILITY_LABELS[a as keyof typeof AVAILABILITY_LABELS] ?? a,
+      clear: () =>
+        setFacets((f) => ({
+          ...f,
+          availability: f.availability.filter((x) => x !== a),
+        })),
+    });
+  for (const e of facets.engagementTypes)
+    chips.push({
+      k: 'Engagement',
+      label: ENGAGEMENT_LABELS[e as keyof typeof ENGAGEMENT_LABELS] ?? e,
+      clear: () =>
+        setFacets((f) => ({
+          ...f,
+          engagementTypes: f.engagementTypes.filter((x) => x !== e),
+        })),
+    });
 
   const drawerTalent = drawerIndex !== null ? (filtered[drawerIndex] ?? null) : null;
   const colCount =
     3 + // select + talent + actions
     (cols.skills ? 1 : 0) +
+    (cols.availability ? 1 : 0) +
     (cols.location ? 1 : 0) +
     (cols.rate ? 1 : 0) +
     (cols.consent ? 1 : 0) +
@@ -425,6 +457,22 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
           }
           onToggleHot={() => setFacets((f) => ({ ...f, hotOnly: !f.hotOnly }))}
           onLocation={(v) => setFacets((f) => ({ ...f, location: v }))}
+          onToggleAvailability={(v) =>
+            setFacets((f) => ({
+              ...f,
+              availability: f.availability.includes(v)
+                ? f.availability.filter((x) => x !== v)
+                : [...f.availability, v],
+            }))
+          }
+          onToggleEngagement={(v) =>
+            setFacets((f) => ({
+              ...f,
+              engagementTypes: f.engagementTypes.includes(v)
+                ? f.engagementTypes.filter((x) => x !== v)
+                : [...f.engagementTypes, v],
+            }))
+          }
           onReset={resetAll}
           isLead={isLead}
         />
@@ -443,6 +491,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                   {(
                     [
                       ['skills', 'Skills'],
+                      ['availability', 'Availability'],
                       ['location', 'Location'],
                       ['rate', 'Rate'],
                       ['consent', 'Consent'],
@@ -504,6 +553,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                       </button>
                     </th>
                     {cols.skills ? <th scope="col">Skills</th> : null}
+                    {cols.availability ? <th scope="col">Availability</th> : null}
                     {cols.location ? (
                       <th scope="col">
                         <button type="button" className="rc-th-sort" onClick={() => toggleSort('location')}>
@@ -587,6 +637,20 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                                 </span>
                               ) : null}
                             </span>
+                          </td>
+                        ) : null}
+                        {cols.availability ? (
+                          <td>
+                            {t.availability_status === null ? (
+                              <span className="rc-consent-stub">—</span>
+                            ) : (
+                              <StatusPill
+                                tone={AVAILABILITY_TONE[t.availability_status] ?? 'neutral'}
+                                dot
+                              >
+                                {AVAILABILITY_LABELS[t.availability_status]}
+                              </StatusPill>
+                            )}
                           </td>
                         ) : null}
                         {cols.location ? <td>{locationOf(t)}</td> : null}

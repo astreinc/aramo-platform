@@ -10,6 +10,11 @@
 // has been associated with a Core Talent identity). The PATCH update
 // surface deliberately excludes this field so the link can only be
 // set via the dedicated /link routes (which run the in-tenant gate).
+import type {
+  AvailabilityStatus,
+  EngagementType,
+} from './stated-fields.js';
+
 export interface TalentRecordView {
   id: string;
   tenant_id: string;
@@ -37,6 +42,11 @@ export interface TalentRecordView {
   notes: string | null;
   web_site: string | null;
   best_time_to_call: string | null;
+  // Talent-stated categorical fields (stated-fields amendment §4). Closed
+  // vocabularies; null = not captured (availability also has an explicit
+  // 'unknown' member — distinct from null at the data layer).
+  availability_status: AvailabilityStatus | null;
+  engagement_type: EngagementType | null;
   owner_id: string | null;
   entered_by_id: string | null;
   core_talent_id: string | null;

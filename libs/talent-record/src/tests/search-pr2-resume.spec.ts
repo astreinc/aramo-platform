@@ -179,6 +179,8 @@ describe('PR-2 proof #2/#3/#4 — résumé content-search SQL (repo)', () => {
         current_employer: null,
         current_pay: null,
         desired_pay: null,
+        availability_status: null,
+        engagement_type: null,
         date_available: null,
         can_relocate: false,
         is_hot: false,

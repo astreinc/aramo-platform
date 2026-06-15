@@ -2,9 +2,43 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 
 import type { CreateTalentRecordRequestDto } from './dto/create-talent-record-request.dto.js';
+import {
+  isAvailabilityStatus,
+  isEngagementType,
+  type AvailabilityStatus,
+  type EngagementType,
+} from './dto/stated-fields.js';
 import type { TalentRecordView } from './dto/talent-record.view.js';
 import type { UpdateTalentRecordRequestDto } from './dto/update-talent-record-request.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
+
+// Closed-vocabulary guard (stated-fields amendment §4/§5). The talent-record
+// DTOs are interfaces (no class-validator), so the @IsIn intent is enforced
+// here at the write boundary: a provided-but-out-of-vocabulary value is a 400.
+// undefined (not supplied) and null (cleared) both pass.
+function assertStatedFields(
+  input: {
+    availability_status?: string | null;
+    engagement_type?: string | null;
+  },
+  requestId: string,
+): void {
+  if (
+    input.availability_status != null &&
+    !isAvailabilityStatus(input.availability_status)
+  ) {
+    throw new AramoError('VALIDATION_ERROR', 'Invalid availability_status', 400, {
+      requestId,
+      details: { field: 'availability_status' },
+    });
+  }
+  if (input.engagement_type != null && !isEngagementType(input.engagement_type)) {
+    throw new AramoError('VALIDATION_ERROR', 'Invalid engagement_type', 400, {
+      requestId,
+      details: { field: 'engagement_type' },
+    });
+  }
+}
 
 // TalentRecordRepository — write + read surface for TalentRecord.
 // Reference CRUD (no metering, no event log, no state machine).
@@ -43,6 +77,8 @@ interface TalentRecordRow {
   notes: string | null;
   web_site: string | null;
   best_time_to_call: string | null;
+  availability_status: AvailabilityStatus | null;
+  engagement_type: EngagementType | null;
   owner_id: string | null;
   entered_by_id: string | null;
   // PR-A5b-2 — the Core-Talent link (nullable; null for unlinked).
@@ -80,6 +116,8 @@ function projectView(row: TalentRecordRow): TalentRecordView {
     notes: row.notes,
     web_site: row.web_site,
     best_time_to_call: row.best_time_to_call,
+    availability_status: row.availability_status,
+    engagement_type: row.engagement_type,
     owner_id: row.owner_id,
     entered_by_id: row.entered_by_id,
     core_talent_id: row.core_talent_id,
@@ -130,6 +168,8 @@ function projectSearchRow(row: RawSearchRow): TalentRecordView {
     notes: row.notes,
     web_site: row.web_site,
     best_time_to_call: row.best_time_to_call,
+    availability_status: row.availability_status,
+    engagement_type: row.engagement_type,
     owner_id: row.owner_id,
     entered_by_id: row.entered_by_id,
     core_talent_id: row.core_talent_id,
@@ -149,8 +189,10 @@ export class TalentRecordRepository {
     tenant_id: string;
     entered_by_id: string;
     input: CreateTalentRecordRequestDto;
+    requestId?: string;
   }): Promise<TalentRecordView> {
     const { tenant_id, entered_by_id, input } = args;
+    assertStatedFields(input, args.requestId ?? '');
     const row = await this.prisma.talentRecord.create({
       data: {
         tenant_id,
@@ -181,6 +223,8 @@ export class TalentRecordRepository {
         notes: input.notes ?? null,
         web_site: input.web_site ?? null,
         best_time_to_call: input.best_time_to_call ?? null,
+        availability_status: input.availability_status ?? null,
+        engagement_type: input.engagement_type ?? null,
         owner_id: input.owner_id ?? entered_by_id,
         entered_by_id,
       },
@@ -396,6 +440,7 @@ export class TalentRecordRepository {
       );
     }
     const i = args.input;
+    assertStatedFields(i, args.requestId);
     const data: Record<string, unknown> = {};
     if (i.first_name !== undefined) data['first_name'] = i.first_name;
     if (i.last_name !== undefined) data['last_name'] = i.last_name;
@@ -420,6 +465,8 @@ export class TalentRecordRepository {
     if (i.notes !== undefined) data['notes'] = i.notes;
     if (i.web_site !== undefined) data['web_site'] = i.web_site;
     if (i.best_time_to_call !== undefined) data['best_time_to_call'] = i.best_time_to_call;
+    if (i.availability_status !== undefined) data['availability_status'] = i.availability_status;
+    if (i.engagement_type !== undefined) data['engagement_type'] = i.engagement_type;
     if (i.owner_id !== undefined) data['owner_id'] = i.owner_id;
 
     const row = await this.prisma.talentRecord.update({

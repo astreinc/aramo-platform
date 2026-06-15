@@ -43,6 +43,8 @@ function makeTalent(
     current_employer: null,
     current_pay: null,
     desired_pay: null,
+    availability_status: null,
+    engagement_type: null,
     date_available: null,
     can_relocate: false,
     is_hot: false,
@@ -216,6 +218,23 @@ describe('TalentListView (faceted workspace)', () => {
     const drawer = await screen.findByRole('dialog', { name: /ada lovelace — triage/i });
     expect(within(drawer).getByText('Key facts')).toBeInTheDocument();
     expect(within(drawer).getByText('Match insight')).toBeInTheDocument();
+  });
+
+  it('renders the Availability pill + the Availability facet narrows the set', async () => {
+    mockRoutes({
+      talent: [
+        makeTalent('1', 'Ada', 'Lovelace', { availability_status: 'available_now' }),
+        makeTalent('2', 'Bob', 'Khan', { availability_status: 'not_looking' }),
+      ],
+    });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    // stated-status pill in the Availability column (also a facet label → ≥1)
+    expect(screen.getAllByText('Available now').length).toBeGreaterThan(0);
+    // facet checkbox (label carries a count) narrows to the matching row
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Available now/ }));
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+    expect(screen.queryByText('Bob Khan')).not.toBeInTheDocument();
   });
 
   it('column-customize toggles a column off (Rate hidden via the Columns menu)', async () => {

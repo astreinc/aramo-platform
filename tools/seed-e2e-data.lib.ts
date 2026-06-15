@@ -63,6 +63,19 @@ export interface TalentSpec {
   readonly state: string;
   readonly key_skills: string;
   readonly current_pay: string;
+  // Talent-stated fields (stated-fields amendment). Closed vocabularies;
+  // null exercises the "not stated" path (Unknown bucket for availability).
+  readonly availability_status:
+    | 'available_now'
+    | 'open_to_offers'
+    | 'not_looking'
+    | 'unknown'
+    | null;
+  readonly engagement_type:
+    | 'contract_to_hire'
+    | 'contract'
+    | 'direct_hire'
+    | null;
 }
 export interface PipelineSpec {
   readonly talentKey: string;
@@ -111,6 +124,17 @@ export function buildSeedPlan(tag: string): SeedPlan {
     'Kubernetes, Terraform, observability', 'TypeScript, React, Node',
     'Java, Kafka, Cassandra', 'Scala, Flink, dbt', 'C++, embedded, RTOS',
   ];
+  // Cycle the stated-field vocabularies (incl. the null "not stated" path) so
+  // every Availability bucket — Available now / Open to offers / Not looking /
+  // Unknown(null+unknown) — and every Engagement type populates for the walk.
+  const AVAIL: TalentSpec['availability_status'][] = [
+    'available_now', 'open_to_offers', 'not_looking', 'unknown',
+    'available_now', 'open_to_offers', null, 'not_looking',
+  ];
+  const ENGAGE: TalentSpec['engagement_type'][] = [
+    'contract_to_hire', 'contract', 'direct_hire', 'contract_to_hire',
+    'contract', null, 'direct_hire', 'contract',
+  ];
   const talent: TalentSpec[] = FIRST.map((first, i) => ({
     key: `tl-${i + 1}`,
     first_name: first,
@@ -119,6 +143,8 @@ export function buildSeedPlan(tag: string): SeedPlan {
     state: ['CO', 'MA', 'TX', 'US', 'IL', 'WA', 'US', 'CO'][i] ?? 'US',
     key_skills: SKILLS[i] ?? 'Go, Postgres',
     current_pay: `$${70 + i * 2}/hr`,
+    availability_status: AVAIL[i] ?? null,
+    engagement_type: ENGAGE[i] ?? null,
   }));
   // Pipeline on rq-1 spanning every funnel bucket (Sourced→…→Placed + a
   // terminal) so the ribbon counts and the stage column populate.

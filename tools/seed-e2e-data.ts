@@ -149,6 +149,8 @@ async function main(): Promise<void> {
             state: spec.state,
             key_skills: spec.key_skills,
             current_pay: spec.current_pay,
+            availability_status: spec.availability_status ?? undefined,
+            engagement_type: spec.engagement_type ?? undefined,
             owner_id: ownerId,
           },
         })),

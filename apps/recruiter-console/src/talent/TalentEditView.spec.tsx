@@ -53,6 +53,8 @@ function makeTalent() {
     current_employer: 'Analytical Engines',
     current_pay: null,
     desired_pay: null,
+    availability_status: null,
+    engagement_type: null,
     date_available: null,
     can_relocate: false,
     is_hot: false,
