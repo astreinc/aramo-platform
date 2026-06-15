@@ -10,6 +10,7 @@ import { useLocation } from 'react-router-dom';
 
 import {
   AppShell,
+  ShellBrand,
   Breadcrumb,
   CmdKSearch,
   NotificationButton,
@@ -150,7 +151,6 @@ function RecruiterShellInner({
 
   const rail = (
     <Rail
-      brand="Aramo · Recruiter"
       user={
         <>
           <RailUser initials={role.charAt(0)} name={role} />
@@ -160,7 +160,7 @@ function RecruiterShellInner({
             onClick={handleLogout}
           >
             <IconLogout />
-            Log out
+            <span>Log out</span>
           </button>
         </>
       }
@@ -173,6 +173,7 @@ function RecruiterShellInner({
 
   const topBar = (
     <TopBar>
+      <ShellBrand brand="Aramo · Recruiter" brandSub="Talent Intelligence" to="/" />
       <Breadcrumb items={crumbs} />
       <CmdKSearch />
       <NotificationButton />

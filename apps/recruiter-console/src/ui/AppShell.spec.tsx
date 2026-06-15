@@ -10,6 +10,7 @@ import {
   Rail,
   RailNavItem,
   RailUser,
+  ShellBrand,
   TopBar,
 } from './AppShell';
 
@@ -94,5 +95,36 @@ describe('AppShell', () => {
     );
     expect(screen.getByText('content')).toBeInTheDocument();
     expect(screen.getByText('bar')).toBeInTheDocument();
+  });
+
+  it('collapses / expands the rail via the edge toggle (aria-expanded + class + persistence)', () => {
+    window.localStorage.removeItem('rc-rail-collapsed');
+    const { container } = render(
+      <AppShell rail={<Rail>{null}</Rail>} topBar={<TopBar>bar</TopBar>}>
+        <p>content</p>
+      </AppShell>,
+    );
+    const toggle = screen.getByRole('button', { name: 'Collapse navigation' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(container.querySelector('.rc-app--rail-collapsed')).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(
+      screen.getByRole('button', { name: 'Expand navigation' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(container.querySelector('.rc-app--rail-collapsed')).not.toBeNull();
+    expect(window.localStorage.getItem('rc-rail-collapsed')).toBe('1');
+  });
+
+  it('ShellBrand renders the logo as a home link', () => {
+    render(
+      <MemoryRouter>
+        <ShellBrand brand="Aramo · Recruiter" to="/" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Aramo · Recruiter')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /Aramo · Recruiter — home/ }),
+    ).toHaveAttribute('href', '/');
   });
 });

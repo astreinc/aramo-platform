@@ -1533,6 +1533,121 @@
   }
 }
 
+/* ── Collapsible rail (user toggle) + brand-in-topbar ── */
+.rc-app {
+  transition: grid-template-columns 0.18s ease;
+}
+.rc-app--rail-collapsed {
+  grid-template-columns: 64px 1fr;
+}
+.rc-app--rail-collapsed .rc-rail {
+  padding: 18px 8px;
+}
+.rc-app--rail-collapsed .rc-nav__label,
+.rc-app--rail-collapsed .rc-nav__item span:not(.rc-nav__count),
+.rc-app--rail-collapsed .rc-nav__count,
+.rc-app--rail-collapsed .rc-rail__who,
+.rc-app--rail-collapsed .rc-rail__logout span {
+  display: none;
+}
+.rc-app--rail-collapsed .rc-nav__item,
+.rc-app--rail-collapsed .rc-rail__user,
+.rc-app--rail-collapsed .rc-rail__logout {
+  justify-content: center;
+}
+
+/* the edge toggle */
+.rc-rail-toggle {
+  position: fixed;
+  top: 16px;
+  left: 221px; /* rail width (232) − 11 (half the 22px control) */
+  z-index: 6;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  color: var(--brand);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(20, 30, 50, 0.15);
+  transition: left 0.18s ease, color 0.12s, border-color 0.12s;
+}
+.rc-rail-toggle svg {
+  width: 13px;
+  height: 13px;
+}
+.rc-rail-toggle:hover {
+  border-color: var(--brand-accent);
+  color: var(--brand-strong);
+}
+.rc-app--rail-collapsed .rc-rail-toggle {
+  left: 53px; /* 64 − 11 */
+}
+@media (max-width: 1080px) {
+  /* the responsive auto-collapse owns the small-screen rail; hide the toggle */
+  .rc-rail-toggle {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rc-app,
+  .rc-rail-toggle {
+    transition: none;
+  }
+}
+
+/* brand hosted in the top bar */
+.rc-topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-decoration: none;
+  padding-right: 14px;
+  margin-right: 2px;
+  border-right: 1px solid var(--line-2);
+  flex: none;
+}
+.rc-topbar__mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--brand-accent);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  flex: none;
+}
+.rc-topbar__mark svg {
+  width: 16px;
+  height: 16px;
+}
+.rc-topbar__name {
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+.rc-topbar__name small {
+  display: block;
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.85;
+}
+.rc-topbar__brand:hover .rc-topbar__name {
+  color: var(--brand-strong);
+}
+@media (max-width: 720px) {
+  .rc-topbar__name {
+    display: none;
+  }
+}
+
 /* ============================================================================
    Talent workspace (faceted) — Confident Blue. Feature surface for the Talent
    page rebuild. All colours via the theme.css token layer (no net-new tokens).

@@ -44,6 +44,14 @@ describe('RecruiterShell', () => {
     expect(screen.queryByRole('link', { name: 'Tasks' })).not.toBeInTheDocument();
   });
 
+  it('hosts the Aramo brand in the top bar as a home link', () => {
+    renderShell(makeSession(['talent:read']));
+    expect(
+      screen.getByRole('link', { name: /Aramo · Recruiter — home/ }),
+    ).toHaveAttribute('href', '/');
+    expect(screen.getByText('Talent Intelligence')).toBeInTheDocument();
+  });
+
   it('shows the full nav when all scopes are held', () => {
     renderShell(
       makeSession([

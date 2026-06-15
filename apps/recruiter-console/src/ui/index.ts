@@ -30,6 +30,7 @@ export { DataTable, type TableColumn } from './DataTable';
 // ── New: chrome ──
 export {
   AppShell,
+  ShellBrand,
   Rail,
   RailNavItem,
   RailNavLabel,
