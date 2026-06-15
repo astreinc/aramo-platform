@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -52,143 +58,179 @@ function makeTalent(
   };
 }
 
-function mockFetch(items: readonly TalentRecordView[], status = 200) {
-  vi.spyOn(globalThis, 'fetch').mockImplementation(
-    async () =>
-      new Response(JSON.stringify({ items }), {
-        status,
+// URL-routed fetch mock. talent-records → `talent`; tenant/users → roster (or
+// status); everything else (pipelines/activities/requisitions) → empty/200.
+function mockRoutes(opts: {
+  talent?: readonly TalentRecordView[];
+  talentStatus?: number;
+  roster?: unknown;
+  rosterStatus?: number;
+} = {}) {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = typeof input === 'string' ? input : (input as Request).url;
+    const json = (b: unknown, s = 200) =>
+      new Response(JSON.stringify(b), {
+        status: s,
         headers: { 'Content-Type': 'application/json' },
-      }),
-  );
+      });
+    if (url.includes('/v1/tenant/users'))
+      return json(opts.roster ?? { items: [] }, opts.rosterStatus ?? 200);
+    if (url.includes('/v1/talent-records'))
+      return json({ items: opts.talent ?? [] }, opts.talentStatus ?? 200);
+    return json({ items: [] });
+  });
 }
 
-function mockFetchError(status: number) {
-  vi.spyOn(globalThis, 'fetch').mockImplementation(
-    async () =>
-      new Response(JSON.stringify({ message: 'forbidden' }), {
-        status,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-  );
-}
+const SESSION = {
+  sub: 'u1',
+  consumer_type: 'recruiter' as const,
+  tenant_id: 't',
+  scopes: ['talent:read'],
+  iat: 0,
+  exp: 0,
+};
 
-describe('TalentListView', () => {
+describe('TalentListView (faceted workspace)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('frames the list as the tenant POOL — honest about the shared pool', async () => {
-    mockFetch([]);
+  it('keeps the consented-pool framing + the R7/G3 refusal footer (Talent vocab)', async () => {
+    mockRoutes({ talent: [] });
     renderInRouter(<TalentListView />);
     await waitFor(() => expect(screen.getByText('Talent')).toBeInTheDocument());
-    expect(screen.getByText(/tenant talent pool/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/no talent yet in this tenant pool/i),
-    ).toBeInTheDocument();
-    // Default filter is the full pool, not a personal default.
-    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-  });
-
-  it('enforces the refusal layer in the footer (no open-web search / no bulk export)', async () => {
-    mockFetch([]);
-    renderInRouter(<TalentListView />);
-    await waitFor(() => expect(screen.getByText('Talent')).toBeInTheDocument());
+    expect(screen.getByText(/your consented working set/i)).toBeInTheDocument();
     expect(
       screen.getByText(/open-web talent search or bulk export/i),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(/no talent yet in this tenant pool/i),
+    ).toBeInTheDocument();
   });
 
-  it('renders the backed columns: name, skill chips, location, stated rate', async () => {
-    mockFetch([
-      makeTalent('tal-1', 'Ada', 'Lovelace', {
-        city: 'London',
-        state: 'UK',
-        current_pay: '$120/hr',
-        key_skills: 'Rust, Distributed Systems, AWS, Kafka',
-        is_hot: true,
-      }),
-    ]);
-    renderInRouter(<TalentListView />);
-    await waitFor(() =>
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
-    );
-    // Skills split into chips with a +N overflow (4 skills, max 3).
-    expect(screen.getByText('Rust')).toBeInTheDocument();
-    expect(screen.getByText('+1')).toBeInTheDocument();
-    expect(screen.getByText('London, UK')).toBeInTheDocument();
-    expect(screen.getByText('$120/hr')).toBeInTheDocument();
-  });
-
-  it('parity: resolves the Owner column via the roster probe (graceful)', async () => {
-    const TALENT = makeTalent('tal-1', 'Ada', 'Lovelace', { owner_id: 'u-own' });
-    const ROSTER = {
-      items: [
-        {
-          user_id: 'u-own',
-          email: 'o@x.test',
-          display_name: 'Tom Owner',
-          is_active: true,
-        },
+  it('renders the backed columns: name link, skill chips +overflow, location, rate', async () => {
+    mockRoutes({
+      talent: [
+        makeTalent('tal-1', 'Ada', 'Lovelace', {
+          city: 'London',
+          state: 'UK',
+          current_pay: '$120/hr',
+          key_skills: 'Rust, Distributed Systems, AWS, Kafka',
+          is_hot: true,
+        }),
       ],
-    };
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : (input as Request).url;
-      const body = url.includes('/v1/tenant/users')
-        ? ROSTER
-        : { items: [TALENT] };
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
     });
     renderInRouter(<TalentListView />);
     await waitFor(() =>
       expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
     );
+    expect(screen.getAllByText('Rust').length).toBeGreaterThan(0); // chip + facet
+    expect(screen.getByText('+1')).toBeInTheDocument(); // 4 skills, show 3
+    expect(screen.getByText('London, UK')).toBeInTheDocument();
+    expect(screen.getByText('$120/hr')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Ada Lovelace/ })).toHaveAttribute(
+      'href',
+      '/talent/tal-1',
+    );
+  });
+
+  it('resolves the Owner column via the roster probe', async () => {
+    mockRoutes({
+      talent: [makeTalent('tal-1', 'Ada', 'Lovelace', { owner_id: 'u-own' })],
+      roster: {
+        items: [
+          { user_id: 'u-own', email: 'o@x.test', display_name: 'Tom Owner', is_active: true },
+        ],
+      },
+    });
+    renderInRouter(<TalentListView />);
     await waitFor(() =>
       expect(screen.getByText('Tom Owner')).toBeInTheDocument(),
     );
   });
 
-  it('the name cell links to /talent/:id (a11y nav path)', async () => {
-    mockFetch([makeTalent('tal-42', 'Ada', 'Lovelace')]);
+  it('the "N of M" count + a skill facet narrows the loaded set', async () => {
+    mockRoutes({
+      talent: [
+        makeTalent('1', 'Ada', 'Lovelace', { key_skills: 'Rust' }),
+        makeTalent('2', 'Bob', 'Khan', { key_skills: 'Go' }),
+      ],
+    });
     renderInRouter(<TalentListView />);
-    await waitFor(() =>
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
-    );
-    expect(screen.getByRole('link', { name: 'Ada Lovelace' })).toHaveAttribute(
-      'href',
-      '/talent/tal-42',
-    );
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.getByText(/of 2 talent/i)).toBeInTheDocument();
+    // tick the Rust skill facet (label carries a count)
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Rust/ }));
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+    expect(screen.queryByText('Bob Khan')).not.toBeInTheDocument();
   });
 
-  it('"My talent" filters to records the actor owns (additive over the open pool)', async () => {
-    mockFetch([
-      makeTalent('t1', 'Mine', 'One', { owner_id: 'u1' }),
-      makeTalent('t2', 'Other', 'Two', { owner_id: 'u2' }),
-    ]);
-    renderInRouter(
-      <TalentListView
-        sessionOverride={{
-          sub: 'u1',
-          consumer_type: 'recruiter',
-          tenant_id: 't',
-          scopes: ['talent:read'],
-          iat: 0,
-          exp: 0,
-        }}
-      />,
-    );
+  it('token search: skill: token filters; status: token is flagged, non-filtering', async () => {
+    mockRoutes({
+      talent: [
+        makeTalent('1', 'Ada', 'Lovelace', { key_skills: 'Rust' }),
+        makeTalent('2', 'Bob', 'Khan', { key_skills: 'Go' }),
+      ],
+    });
+    renderInRouter(<TalentListView />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    const box = screen.getByRole('textbox', { name: /search talent/i });
+    fireEvent.change(box, { target: { value: 'skill:Rust' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+    expect(screen.queryByText('Bob Khan')).not.toBeInTheDocument();
+    // a status: token stays as a flagged chip and does not filter
+    fireEvent.change(box, { target: { value: 'status:active' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(screen.getByText(/·ignored/)).toBeInTheDocument();
+  });
+
+  it('"My talent" scope tab filters to actor-owned rows', async () => {
+    mockRoutes({
+      talent: [
+        makeTalent('1', 'Mine', 'One', { owner_id: 'u1' }),
+        makeTalent('2', 'Other', 'Two', { owner_id: 'u2' }),
+      ],
+    });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
     await waitFor(() => expect(screen.getByText('Mine One')).toBeInTheDocument());
-    expect(screen.getByText('Other Two')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'My talent' }));
+    const scope = screen.getByRole('group', { name: 'Scope' });
+    fireEvent.click(within(scope).getByRole('button', { name: 'My talent' }));
     expect(screen.getByText('Mine One')).toBeInTheDocument();
     expect(screen.queryByText('Other Two')).not.toBeInTheDocument();
   });
 
+  it('selecting a row reveals the bulk bar with the Export moat disabled', async () => {
+    mockRoutes({ talent: [makeTalent('1', 'Ada', 'Lovelace')] });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: /select ada lovelace/i }));
+    expect(screen.getByRole('region', { name: 'Bulk actions' })).toBeInTheDocument();
+    expect(screen.getByText(/export off — consent-protected/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add to req/i })).toBeInTheDocument();
+  });
+
+  it('clicking a row opens the triage drawer (non-modal) with key facts', async () => {
+    mockRoutes({ talent: [makeTalent('1', 'Ada', 'Lovelace', { source: 'Referral' })] });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /preview ada lovelace/i }));
+    const drawer = await screen.findByRole('dialog', { name: /ada lovelace — triage/i });
+    expect(within(drawer).getByText('Key facts')).toBeInTheDocument();
+    expect(within(drawer).getByText('Match insight')).toBeInTheDocument();
+  });
+
+  it('discloses the truncation when the BE default cap is hit', async () => {
+    const items = Array.from({ length: 50 }, (_, i) =>
+      makeTalent(`tal-${i}`, `First${i}`, `Last${i}`),
+    );
+    mockRoutes({ talent: items });
+    renderInRouter(<TalentListView />);
+    await waitFor(() =>
+      expect(screen.getByTestId('talent-cap-banner')).toBeInTheDocument(),
+    );
+  });
+
   it('surfaces a permission message when the BE returns 403', async () => {
-    mockFetchError(403);
+    mockRoutes({ talent: [], talentStatus: 403 });
     renderInRouter(<TalentListView />);
     await waitFor(() =>
       expect(
@@ -197,65 +239,21 @@ describe('TalentListView', () => {
     );
   });
 
-  it('discloses the truncation when the BE default cap is hit', async () => {
-    const items = Array.from({ length: 50 }, (_, i) =>
-      makeTalent(`tal-${i}`, `First${i}`, `Last${i}`),
-    );
-    mockFetch(items);
-    renderInRouter(<TalentListView />);
-    await waitFor(() =>
-      expect(screen.getByTestId('talent-cap-banner')).toBeInTheDocument(),
-    );
-    expect(screen.getByText(/showing the first 50/i)).toBeInTheDocument();
-  });
+  it('hides "Add talent" without talent:create and shows it (→ /talent/new) when scoped', async () => {
+    mockRoutes({ talent: [makeTalent('1', 'Ada', 'Lovelace')] });
+    const { unmount } = renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.queryByRole('link', { name: /add talent/i })).toBeNull();
+    unmount();
 
-  it('does NOT show the cap banner when the list is under the cap', async () => {
-    mockFetch([makeTalent('tal-1', 'Ada', 'Lovelace')]);
-    renderInRouter(<TalentListView />);
-    await waitFor(() =>
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
-    );
-    expect(screen.queryByTestId('talent-cap-banner')).not.toBeInTheDocument();
-  });
-
-  it('hides "New talent" without talent:create', async () => {
-    mockFetch([makeTalent('tal-1', 'Ada', 'Lovelace')]);
+    mockRoutes({ talent: [makeTalent('1', 'Ada', 'Lovelace')] });
     renderInRouter(
       <TalentListView
-        sessionOverride={{
-          sub: 'u1',
-          consumer_type: 'recruiter',
-          tenant_id: 't',
-          scopes: ['talent:read'],
-          iat: 0,
-          exp: 0,
-        }}
+        sessionOverride={{ ...SESSION, scopes: ['talent:read', 'talent:create'] }}
       />,
     );
-    await waitFor(() =>
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
-    );
-    expect(screen.queryByRole('link', { name: /new talent/i })).toBeNull();
-  });
-
-  it('shows "New talent" linking to /talent/new when scoped', async () => {
-    mockFetch([makeTalent('tal-1', 'Ada', 'Lovelace')]);
-    renderInRouter(
-      <TalentListView
-        sessionOverride={{
-          sub: 'u1',
-          consumer_type: 'recruiter',
-          tenant_id: 't',
-          scopes: ['talent:read', 'talent:create'],
-          iat: 0,
-          exp: 0,
-        }}
-      />,
-    );
-    await waitFor(() =>
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
-    );
-    expect(screen.getByRole('link', { name: /new talent/i })).toHaveAttribute(
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: /add talent/i })).toHaveAttribute(
       'href',
       '/talent/new',
     );

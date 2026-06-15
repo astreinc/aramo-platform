@@ -165,3 +165,164 @@ export function IconFlame(props: IconProps) {
     </svg>
   );
 }
+
+// ── Faceted-workspace glyphs (Talent page) ──
+export function IconX(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
+export function IconChevronDown(props: IconProps) {
+  return (
+    <svg {...base} strokeWidth={2.4} {...props}>
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+export function IconChevronLeft(props: IconProps) {
+  return (
+    <svg {...base} strokeWidth={2.4} {...props}>
+      <path d="M15 6l-6 6 6 6" />
+    </svg>
+  );
+}
+
+export function IconFilter(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 6h16M7 12h10M10 18h4" />
+    </svg>
+  );
+}
+
+export function IconSort(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3" />
+    </svg>
+  );
+}
+
+export function IconColumns(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16M15 4v16" />
+    </svg>
+  );
+}
+
+export function IconDensity(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  );
+}
+
+export function IconDots(props: IconProps) {
+  return (
+    <svg {...base} fill="currentColor" stroke="none" {...props}>
+      <circle cx="5" cy="12" r="1.7" />
+      <circle cx="12" cy="12" r="1.7" />
+      <circle cx="19" cy="12" r="1.7" />
+    </svg>
+  );
+}
+
+export function IconPlus(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function IconBookmark(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M6 4h12v16l-6-4-6 4z" />
+    </svg>
+  );
+}
+
+export function IconBriefcase(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3" y="7" width="18" height="13" rx="2" />
+      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18" />
+    </svg>
+  );
+}
+
+export function IconShield(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+export function IconList(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
+    </svg>
+  );
+}
+
+export function IconTag(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3 12l9-9h7v7l-9 9z" />
+      <circle cx="15.5" cy="8.5" r="1.3" />
+    </svg>
+  );
+}
+
+export function IconUserPlus(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M18 8v6M15 11h6" />
+    </svg>
+  );
+}
+
+export function IconMessage(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 5h16v11H8l-4 3z" />
+    </svg>
+  );
+}
+
+export function IconOpen(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M14 4h6v6M20 4l-9 9M18 13v6H5V6h6" />
+    </svg>
+  );
+}
+
+export function IconBolt(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M13 3L5 13h6l-1 8 8-10h-6z" />
+    </svg>
+  );
+}
+
+export function IconBan(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M6 6l12 12" />
+    </svg>
+  );
+}

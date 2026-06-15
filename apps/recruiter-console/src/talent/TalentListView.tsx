@@ -1,5 +1,7 @@
 import {
+  ApiError,
   Button,
+  Dialog,
   InlineAlert,
   hasScope,
   useSession,
@@ -8,63 +10,56 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { addTalentToPipeline } from '../pipeline/pipeline-api';
+import { listRequisitions } from '../requisitions/requisitions-api';
+import type { RequisitionView } from '../requisitions/types';
 import { probeTenantUsers } from '../task/task-api';
-import {
-  Card,
-  DataTable,
-  EntityCell,
-  FilterChip,
-  ScopedSearch,
-  TagList,
-  Toolbar,
-  type TableColumn,
-} from '../ui';
+import { Avatar, Card, Icons, Tag } from '../ui';
 
-import { listTalent } from './talent-api';
-import { listErrorMessage } from './error-messages';
+import { BulkBar } from './components/BulkBar';
+import { FacetRail } from './components/FacetRail';
+import { TalentTriageDrawer } from './components/TalentTriageDrawer';
+import { TokenSearch } from './components/TokenSearch';
+import { listTalent, updateTalent } from './talent-api';
+import { listErrorMessage, updateErrorMessage } from './error-messages';
+import {
+  EMPTY_FACETS,
+  SAVED_VIEWS,
+  applyFilters,
+  deriveFacets,
+  fullName,
+  locationOf,
+  parseQuery,
+  skillsOf,
+  sortTalent,
+  statedRate,
+  type FacetState,
+  type ScopeMode,
+  type SearchToken,
+  type SortDir,
+  type SortKey,
+} from './talent-workspace';
 import type { TalentRecordView } from './types';
 
-// Talent LIST (2E) — re-skinned to the Confident Blue talent-list mockup,
-// but HONEST to the substrate:
-//   - POOL-OPEN (R2 ruling): the BE returns the tenant+site talent pool, NOT a
-//     personal working set. The mockup copy "your working set" would be
-//     dishonest → kept as "Tenant talent pool". (Deviation noted in the report.)
-//   - Refusal layer (G3/R7): footer states consented-pool, NO open-web talent
-//     search, NO bulk export — the directive's required affordance copy.
+// Talent workspace (faceted) — the enterprise rebuild of the Talent list to the
+// approved prototype's interaction contract, wired to REAL data where the
+// substrate supports it and HONESTLY STUBBED (disabled + carry note) where it
+// does not. Canonical vocab "Talent" (the prototype's page title is a vocab
+// violation per DDR §9 / CI Tier-2; reconciled to Talent). Preserved
+// load-bearing behavior: POOL-OPEN
+// framing, the R7/G3 refusal footer, the cap banner, the admin-gated Owner
+// probe, scope-gated "New talent", and the 403 message.
 //
-// Gap dispositions (DDR §11): Owner is backed by the admin-gated roster probe
-// (owner_id → name; graceful 403 → '—'). The mockup's Stage / Status /
-// Last-activity columns need per-talent pipeline/activity lookups NOT in the
-// list response (and there is no talent-record status field) → omitted (CARRY,
-// no fabrication). Title/role subtitle: no field → omitted (gap #2). Rate is
-// the talent-STATED freetext (current_pay/desired_pay; gap #3). Skills are the
-// key_skills freetext split on commas into chips (gap #9). No fabricated fields.
+// Backable: rows (GET /v1/talent-records, capped 50), Owner (roster probe),
+// Skills/Source/Hot/Location facets + token search (CLIENT-SIDE over the loaded
+// page — counts are "within loaded"), Add-to-req (pipeline:add), Assign-to-me
+// (talent:edit), drawer pipeline/activity reads, full-profile route.
+// Stubbed (flagged): status/availability/rate-range/engagement/last-activity/
+// consent facets+columns, saved smart-lists + Save-view, "My team" scope,
+// Add-to-list/Tag/Start-engagement bulk actions, Export (permanent moat).
 
 const DEFAULT_LIST_CAP = 50;
-
-type FilterMode = 'all' | 'mine';
-
-function fullName(t: TalentRecordView): string {
-  const name = `${t.first_name} ${t.last_name}`.trim();
-  return name === '' ? '—' : name;
-}
-
-function statedRate(t: TalentRecordView): string {
-  return t.current_pay ?? t.desired_pay ?? '—';
-}
-
-function locationOf(t: TalentRecordView): string {
-  const place = [t.city, t.state].filter(Boolean).join(', ');
-  return place === '' ? '—' : place;
-}
-
-function skillsOf(t: TalentRecordView): readonly string[] {
-  if (t.key_skills === null) return [];
-  return t.key_skills
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
+type Density = 'comfortable' | 'compact';
 
 interface TalentListViewProps {
   readonly sessionOverride?: Session;
@@ -75,18 +70,39 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<FilterMode>('all');
-  const [query, setQuery] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const [scope, setScope] = useState<ScopeMode>('all');
+  const [activeView, setActiveView] = useState('all');
+  const [facets, setFacets] = useState<FacetState>(EMPTY_FACETS);
+  const [tokens, setTokens] = useState<readonly SearchToken[]>([]);
+  const [draft, setDraft] = useState('');
+
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [drawerIndex, setDrawerIndex] = useState<number | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [density, setDensity] = useState<Density>('comfortable');
+  const [busy, setBusy] = useState(false);
+  const [reqDialogOpen, setReqDialogOpen] = useState(false);
 
   const sessionState = useSession();
   const session: Session | null =
     sessionOverride ??
     (sessionState.status === 'authenticated' ? sessionState.session : null);
+  const myId = session?.sub ?? null;
   const canCreate =
     session !== null &&
     Array.isArray(session.scopes) &&
     hasScope(session, 'talent:create');
-  const myId = session?.sub ?? null;
+  const canEdit =
+    session !== null &&
+    Array.isArray(session.scopes) &&
+    hasScope(session, 'talent:edit');
+  const isLead =
+    session !== null &&
+    Array.isArray(session.scopes) &&
+    hasScope(session, 'org:manage');
 
   useEffect(() => {
     let cancelled = false;
@@ -113,45 +129,150 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     };
   }, []);
 
+  const derived = useMemo(() => deriveFacets(items), [items]);
+
+  const query = useMemo(() => {
+    const inDraft = parseQuery(draft);
+    return { tokens: [...tokens, ...inDraft.tokens], free: inDraft.free };
+  }, [tokens, draft]);
+
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return items.filter((t) => {
-      if (mode === 'mine' && t.owner_id !== myId) return false;
-      if (q !== '') {
-        const hay =
-          `${fullName(t)} ${t.key_skills ?? ''} ${locationOf(t)}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
+    const base = applyFilters(items, {
+      facets,
+      query,
+      scope,
+      sessionSub: myId,
+      ownerNames: userNames,
     });
-  }, [items, mode, query, myId]);
+    return sortTalent(base, sortKey, sortDir);
+  }, [items, facets, query, scope, myId, userNames, sortKey, sortDir]);
 
   const truncated = items.length >= DEFAULT_LIST_CAP;
 
-  const columns: ReadonlyArray<TableColumn<TalentRecordView>> = [
-    {
-      key: 'name',
-      header: 'Talent',
-      render: (t) => (
-        <Link to={`/talent/${t.id}`} className="rc-link-strong">
-          <EntityCell name={fullName(t)} hot={t.is_hot} />
-        </Link>
-      ),
-    },
-    {
-      key: 'skills',
-      header: 'Skills',
-      render: (t) => <TagList tags={skillsOf(t)} max={3} />,
-    },
-    { key: 'location', header: 'Location', render: (t) => locationOf(t) },
-    { key: 'rate', header: 'Rate (stated)', render: (t) => statedRate(t) },
-    {
-      key: 'owner',
-      header: 'Owner',
-      render: (t) =>
-        t.owner_id !== null ? (userNames[t.owner_id] ?? '—') : '—',
-    },
-  ];
+  // ── interaction helpers ──
+  const resetAll = () => {
+    setFacets(EMPTY_FACETS);
+    setScope('all');
+    setActiveView('all');
+    setTokens([]);
+    setDraft('');
+  };
+  const pickView = (key: string, backable: boolean) => {
+    if (!backable) return;
+    setActiveView(key);
+    if (key === 'all') resetAll();
+    else if (key === 'mine') setScope('mine');
+    else if (key === 'hot') setFacets((f) => ({ ...f, hotOnly: true }));
+  };
+  const commitTokens = () => {
+    const p = parseQuery(draft);
+    if (p.tokens.length > 0) {
+      setTokens((t) => [...t, ...p.tokens]);
+      setDraft(p.free);
+    }
+  };
+  const toggleSel = (id: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  // ── mutations ──
+  const selectedTalent = filtered.filter((t) => selected.has(t.id));
+  const assignToMe = async () => {
+    if (myId === null || selectedTalent.length === 0) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      await Promise.all(
+        selectedTalent.map((t) => updateTalent(t.id, { owner_id: myId })),
+      );
+      setItems((prev) =>
+        prev.map((t) =>
+          selected.has(t.id) ? { ...t, owner_id: myId } : t,
+        ),
+      );
+      setNotice(`Assigned ${selectedTalent.length} to you.`);
+      setSelected(new Set());
+    } catch (err) {
+      setNotice(updateErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addSelectedToReq = async (req: RequisitionView) => {
+    const drawerTarget =
+      drawerIndex !== null ? filtered[drawerIndex] : undefined;
+    const targets = drawerTarget !== undefined ? [drawerTarget] : selectedTalent;
+    setBusy(true);
+    setNotice(null);
+    let ok = 0;
+    let skipped = 0;
+    for (const t of targets) {
+      try {
+        await addTalentToPipeline(t.id, req.id);
+        ok += 1;
+      } catch (err) {
+        // already-in-pipeline / conflict is benign; count + continue
+        if (err instanceof ApiError && (err.status === 409 || err.status === 422)) {
+          skipped += 1;
+        } else {
+          setNotice('Add to req failed — please try again.');
+          setBusy(false);
+          return;
+        }
+      }
+    }
+    setBusy(false);
+    setReqDialogOpen(false);
+    setNotice(
+      `Added ${ok} to ${req.title}${skipped > 0 ? ` (${skipped} already in pipeline)` : ''}.`,
+    );
+    if (drawerIndex === null) setSelected(new Set());
+  };
+
+  // ── active filter chips ──
+  const chips: { k: string; label: string; clear: () => void }[] = [];
+  if (scope === 'mine')
+    chips.push({ k: 'Scope', label: 'My talent', clear: () => setScope('all') });
+  for (const s of facets.skills)
+    chips.push({
+      k: 'Skill',
+      label: s,
+      clear: () =>
+        setFacets((f) => ({ ...f, skills: f.skills.filter((x) => x !== s) })),
+    });
+  for (const s of facets.sources)
+    chips.push({
+      k: 'Source',
+      label: s,
+      clear: () =>
+        setFacets((f) => ({ ...f, sources: f.sources.filter((x) => x !== s) })),
+    });
+  if (facets.hotOnly)
+    chips.push({
+      k: 'Hot',
+      label: 'Hot only',
+      clear: () => setFacets((f) => ({ ...f, hotOnly: false })),
+    });
+  if (facets.location.trim() !== '')
+    chips.push({
+      k: 'Location',
+      label: facets.location,
+      clear: () => setFacets((f) => ({ ...f, location: '' })),
+    });
+
+  const drawerTalent = drawerIndex !== null ? (filtered[drawerIndex] ?? null) : null;
 
   return (
     <section>
@@ -159,20 +280,115 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
         <div>
           <h1 className="rc-h1">Talent</h1>
           <p className="rc-sub">
-            Tenant talent pool · {truncated ? `first ${DEFAULT_LIST_CAP}` : items.length} visible
+            <Icons.IconShield className="rc-sub__icon" aria-hidden="true" />
+            Your consented working set — {items.length} talent you have permission
+            to work. Sourcing is a separate, consent-governed flow.
           </p>
         </div>
-        {canCreate ? (
-          <div className="rc-viewhead__actions">
+        <div className="rc-viewhead__actions">
+          <button type="button" className="rc-ghostbtn" disabled title="Column customization is a follow-up.">
+            <Icons.IconColumns /> Columns
+          </button>
+          <button
+            type="button"
+            className="rc-ghostbtn"
+            onClick={() => toggleSort('name')}
+          >
+            <Icons.IconSort /> Sort
+          </button>
+          {canCreate ? (
             <Link to="/talent/new">
-              <Button variant="primary">New talent</Button>
+              <Button variant="primary">
+                <Icons.IconPlus /> Add talent
+              </Button>
             </Link>
-          </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* scope tabs — page-level (no shared-topbar scope tabs; "My team" is a stub) */}
+      <div className="rc-scopetabs" role="group" aria-label="Scope">
+        <button
+          type="button"
+          className={scope === 'mine' ? 'on' : ''}
+          aria-pressed={scope === 'mine'}
+          onClick={() => setScope('mine')}
+        >
+          My talent
+        </button>
+        <button type="button" disabled title="No team tier is modelled yet (carry).">
+          My team
+        </button>
+        <button
+          type="button"
+          className={scope === 'all' ? 'on' : ''}
+          aria-pressed={scope === 'all'}
+          onClick={() => setScope('all')}
+        >
+          All
+        </button>
+      </div>
+
+      {/* views bar */}
+      <div className="rc-views" role="group" aria-label="Saved views">
+        <span className="rc-views__lbl">Views</span>
+        {SAVED_VIEWS.map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            className={`rc-view${activeView === v.key && v.backable ? ' on' : ''}${v.backable ? '' : ' rc-view--stub'}`}
+            disabled={!v.backable}
+            aria-pressed={activeView === v.key && v.backable}
+            title={v.backable ? undefined : v.note}
+            onClick={() => pickView(v.key, v.backable)}
+          >
+            {v.label}
+            {!v.backable ? <span className="rc-view__soon">soon</span> : null}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="rc-view rc-view--stub"
+          disabled
+          title="Saved views need a backend saved-view API (carry)."
+        >
+          <Icons.IconBookmark /> Save current view
+        </button>
+      </div>
+
+      <TokenSearch
+        tokens={tokens}
+        draft={draft}
+        onDraftChange={setDraft}
+        onCommit={commitTokens}
+        onRemove={(i) => setTokens((t) => t.filter((_, idx) => idx !== i))}
+      />
+
+      <div className="rc-activebar">
+        <span className="rc-activebar__count num">
+          {filtered.length} <small>of {items.length} talent</small>
+        </span>
+        {chips.length > 0 ? <span className="rc-activebar__sep" /> : null}
+        {chips.map((c, i) => (
+          <span key={`${c.k}-${c.label}-${i}`} className="rc-fchip">
+            <span className="rc-fchip__k">{c.k}</span> {c.label}
+            <button type="button" aria-label={`Remove ${c.k} ${c.label}`} onClick={c.clear}>
+              <Icons.IconX />
+            </button>
+          </span>
+        ))}
+        {chips.length > 0 ? (
+          <button type="button" className="rc-activebar__clear" onClick={resetAll}>
+            Clear all
+          </button>
         ) : null}
       </div>
 
-      {error !== null ? (
-        <InlineAlert variant="error">{error}</InlineAlert>
+      {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
+      {notice !== null ? (
+        <p role="status" className="rc-notice">
+          {notice}
+        </p>
       ) : null}
       {truncated ? (
         <p role="status" data-testid="talent-cap-banner" className="rc-sub rc-mt-16">
@@ -181,40 +397,309 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
         </p>
       ) : null}
 
-      <Card flush className="rc-mt-16">
-        <Toolbar>
-          <FilterChip active={mode === 'all'} onClick={() => setMode('all')}>
-            All
-          </FilterChip>
-          <FilterChip active={mode === 'mine'} onClick={() => setMode('mine')}>
-            My talent
-          </FilterChip>
-          <ScopedSearch
-            placeholder="Search your talent"
-            value={query}
-            onChange={setQuery}
-          />
-        </Toolbar>
-        {loading ? (
-          <p className="rc-empty">Loading talent…</p>
-        ) : (
-          <DataTable<TalentRecordView>
-            columns={columns}
-            rows={filtered}
-            rowKey={(t) => t.id}
-            emptyMessage={
-              items.length === 0
-                ? 'No talent yet in this tenant pool.'
-                : 'No talent matches these filters.'
-            }
-          />
-        )}
-        <p className="rc-footnote">
-          Talent shown is your tenant’s consented pool. Aramo doesn’t support
-          open-web talent search or bulk export — sourcing is a separate,
-          consent-governed flow.
-        </p>
-      </Card>
+      <div className="rc-work rc-mt-16">
+        <FacetRail
+          derived={derived}
+          facets={facets}
+          loadedCount={items.length}
+          onToggleSkill={(s) =>
+            setFacets((f) => ({
+              ...f,
+              skills: f.skills.includes(s)
+                ? f.skills.filter((x) => x !== s)
+                : [...f.skills, s],
+            }))
+          }
+          onSkillMatch={(m) => setFacets((f) => ({ ...f, skillMatch: m }))}
+          onToggleSource={(s) =>
+            setFacets((f) => ({
+              ...f,
+              sources: f.sources.includes(s)
+                ? f.sources.filter((x) => x !== s)
+                : [...f.sources, s],
+            }))
+          }
+          onToggleHot={() => setFacets((f) => ({ ...f, hotOnly: !f.hotOnly }))}
+          onLocation={(v) => setFacets((f) => ({ ...f, location: v }))}
+          onReset={resetAll}
+          isLead={isLead}
+        />
+
+        <Card flush>
+          <div className="rc-rtools">
+            <span className="rc-rtools__note">
+              {selected.size > 0 ? `${selected.size} selected` : `${filtered.length} talent`}
+            </span>
+            <div className="rc-rtools__right">
+              <button
+                type="button"
+                className="rc-mini"
+                onClick={() =>
+                  setDensity((d) => (d === 'comfortable' ? 'compact' : 'comfortable'))
+                }
+              >
+                <Icons.IconDensity /> {density === 'comfortable' ? 'Comfortable' : 'Compact'}
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <p className="rc-empty">Loading talent…</p>
+          ) : (
+            <div className="rc-tablewrap">
+              <table className={`rc-table rc-table--${density}`}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 34 }}>
+                      <input
+                        type="checkbox"
+                        aria-label="Select all"
+                        checked={filtered.length > 0 && selected.size >= filtered.length}
+                        onChange={(e) =>
+                          setSelected(
+                            e.target.checked
+                              ? new Set(filtered.map((t) => t.id))
+                              : new Set(),
+                          )
+                        }
+                      />
+                    </th>
+                    <th scope="col">
+                      <button type="button" className="rc-th-sort" onClick={() => toggleSort('name')}>
+                        Talent {sortKey === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                      </button>
+                    </th>
+                    <th scope="col">Skills</th>
+                    <th scope="col">Location</th>
+                    <th scope="col">
+                      <button type="button" className="rc-th-sort" onClick={() => toggleSort('rate')}>
+                        Rate {sortKey === 'rate' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                      </button>
+                    </th>
+                    <th scope="col">Consent</th>
+                    <th scope="col">Owner</th>
+                    <th scope="col" aria-label="Row actions" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length === 0 ? (
+                    <tr>
+                      <td className="rc-table__empty" colSpan={8}>
+                        {items.length === 0
+                          ? 'No talent yet in this tenant pool.'
+                          : 'No talent matches these filters.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    filtered.map((t, i) => (
+                      <tr
+                        key={t.id}
+                        className={`rc-row--clickable${selected.has(t.id) ? ' rc-row--sel' : ''}${drawerIndex === i ? ' rc-row--active' : ''}`}
+                        onClick={(e) => {
+                          if (e.target instanceof Element && e.target.closest('a,button,input,label'))
+                            return;
+                          setDrawerIndex(i);
+                        }}
+                      >
+                        <td>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${fullName(t)}`}
+                            checked={selected.has(t.id)}
+                            onChange={() => toggleSel(t.id)}
+                          />
+                        </td>
+                        <td>
+                          <Link to={`/talent/${t.id}`} className="rc-link-strong">
+                            <span className="rc-ent">
+                              <Avatar name={fullName(t)} size="sm" />
+                              <span>
+                                <span className="rc-ent__nm">
+                                  {fullName(t)}
+                                  {t.is_hot ? (
+                                    <Icons.IconFlame className="rc-ent__flame" />
+                                  ) : null}
+                                </span>
+                                {t.current_employer ? (
+                                  <span className="rc-ent__rl">{t.current_employer}</span>
+                                ) : null}
+                              </span>
+                            </span>
+                          </Link>
+                        </td>
+                        <td>
+                          <span className="rc-tags">
+                            {skillsOf(t).slice(0, 3).map((s) => (
+                              <Tag key={s}>{s}</Tag>
+                            ))}
+                            {skillsOf(t).length > 3 ? (
+                              <span className="rc-tag rc-tag--more">
+                                +{skillsOf(t).length - 3}
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
+                        <td>{locationOf(t)}</td>
+                        <td className="num">{statedRate(t)}</td>
+                        <td>
+                          <span
+                            className="rc-consent-stub"
+                            title="Per-talent consent state is a carry (N+1, Core-keyed)."
+                          >
+                            —
+                          </span>
+                        </td>
+                        <td>{t.owner_id ? (userNames[t.owner_id] ?? '—') : '—'}</td>
+                        <td>
+                          <div className="rc-rowq">
+                            <button
+                              type="button"
+                              title="Preview"
+                              aria-label={`Preview ${fullName(t)}`}
+                              onClick={() => setDrawerIndex(i)}
+                            >
+                              <Icons.IconOpen />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <p className="rc-footnote">
+            Talent shown is your tenant’s consented pool. Aramo doesn’t support
+            open-web talent search or bulk export — sourcing is a separate,
+            consent-governed flow.
+          </p>
+        </Card>
+      </div>
+
+      <BulkBar
+        count={selected.size}
+        busy={busy}
+        canAssign={canEdit}
+        onAddToReq={() => setReqDialogOpen(true)}
+        onAssignToMe={assignToMe}
+        onClear={() => setSelected(new Set())}
+      />
+
+      <TalentTriageDrawer
+        talent={drawerTalent}
+        index={drawerIndex ?? 0}
+        total={filtered.length}
+        ownerNames={userNames}
+        onClose={() => setDrawerIndex(null)}
+        onPrev={() => setDrawerIndex((i) => (i === null ? null : Math.max(0, i - 1)))}
+        onNext={() =>
+          setDrawerIndex((i) =>
+            i === null ? null : Math.min(filtered.length - 1, i + 1),
+          )
+        }
+        onAddToReq={() => setReqDialogOpen(true)}
+      />
+
+      <AddToReqDialog
+        open={reqDialogOpen}
+        onClose={() => setReqDialogOpen(false)}
+        onPick={addSelectedToReq}
+        count={drawerIndex !== null ? 1 : selectedTalent.length}
+        busy={busy}
+      />
     </section>
+  );
+}
+
+// ── Add-to-req picker (real reqs via listRequisitions; pipeline:add per talent) ──
+function AddToReqDialog({
+  open,
+  onClose,
+  onPick,
+  count,
+  busy,
+}: {
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly onPick: (req: RequisitionView) => void;
+  readonly count: number;
+  readonly busy: boolean;
+}) {
+  const [reqs, setReqs] = useState<readonly RequisitionView[]>([]);
+  const [reqId, setReqId] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    void listRequisitions()
+      .then((r) => {
+        if (cancelled) return;
+        setReqs(r.items.filter((x) => x.status === 'active'));
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const chosen = reqs.find((r) => r.id === reqId) ?? null;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title="Add to requisition"
+      description={`Add ${count} talent to a requisition's pipeline.`}
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            disabled={chosen === null || busy}
+            onClick={() => {
+              if (chosen !== null) onPick(chosen);
+            }}
+          >
+            Add to pipeline
+          </Button>
+        </>
+      }
+    >
+      {loading ? (
+        <p className="rc-empty">Loading requisitions…</p>
+      ) : reqs.length === 0 ? (
+        <p className="rc-empty">No active requisitions visible to you.</p>
+      ) : (
+        <label className="rc-field">
+          <span className="rc-field__label">Requisition</span>
+          <select
+            className="rc-select"
+            value={reqId}
+            onChange={(e) => setReqId(e.target.value)}
+          >
+            <option value="">Select a requisition…</option>
+            {reqs.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.title}
+                {r.external_req_id ? ` · ${r.external_req_id}` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </Dialog>
   );
 }

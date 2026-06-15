@@ -56,3 +56,6 @@ pact/pacts/
 apps/recruiter-console/e2e/.auth/
 apps/recruiter-console/test-results/
 apps/recruiter-console/playwright-report/
+
+# Uncommitted recon/report scratch (non-product)
+scratch/

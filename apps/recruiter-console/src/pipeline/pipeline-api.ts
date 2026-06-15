@@ -36,6 +36,20 @@ export async function listPipelinesForTalent(
   );
 }
 
+// Add a talent to a requisition's pipeline (pipeline:add). POST /v1/pipelines
+// creates the row at the hard-coded initial status (no_contact) — the body
+// carries only the link (libs/pipeline create-pipeline-request.dto.ts). Used by
+// the Talent workspace "Add to req" row/bulk action.
+export async function addTalentToPipeline(
+  talentRecordId: string,
+  requisitionId: string,
+): Promise<PipelineView> {
+  return apiClient.post<PipelineView>('/v1/pipelines', {
+    talent_record_id: talentRecordId,
+    requisition_id: requisitionId,
+  });
+}
+
 export async function getPipelineHistory(
   pipelineId: string,
 ): Promise<PipelineHistoryResponse> {
