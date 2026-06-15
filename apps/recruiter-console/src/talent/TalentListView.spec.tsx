@@ -237,6 +237,30 @@ describe('TalentListView (faceted workspace)', () => {
     expect(screen.queryByText('Bob Khan')).not.toBeInTheDocument();
   });
 
+  it('renders the enriched Consent pill + Stage pill from the composed fields', async () => {
+    mockRoutes({
+      talent: [
+        makeTalent('1', 'Ada', 'Lovelace', {
+          consent_summary: 'contactable',
+          current_stage: { stage: 'interviewing', requisition_id: 'req-1' },
+          last_activity_at: '2026-06-14T09:00:00.000Z',
+        }),
+        makeTalent('2', 'Bob', 'Khan', { consent_summary: 'do_not_contact' }),
+      ],
+    });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    // consent pills (also facet labels → ≥1)
+    expect(screen.getAllByText('Contactable').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Do-not-contact').length).toBeGreaterThan(0);
+    // stage pill from current_stage (also a facet label → ≥1)
+    expect(screen.getAllByText('Interviewing').length).toBeGreaterThan(0);
+    // Consent facet narrows
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Do-not-contact/ }));
+    expect(screen.getByText('Bob Khan')).toBeInTheDocument();
+    expect(screen.queryByText('Ada Lovelace')).not.toBeInTheDocument();
+  });
+
   it('column-customize toggles a column off (Rate hidden via the Columns menu)', async () => {
     mockRoutes({
       talent: [makeTalent('1', 'Ada', 'Lovelace', { current_pay: '$120/hr' })],

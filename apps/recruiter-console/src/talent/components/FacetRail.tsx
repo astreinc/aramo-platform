@@ -2,8 +2,12 @@ import { Icons } from '../../ui';
 import {
   AVAILABILITY_LABELS,
   ENGAGEMENT_LABELS,
+  CONSENT_LABELS,
+  STAGE_LABELS,
+  RECENCY_OPTIONS,
   type DerivedFacets,
   type FacetState,
+  type Recency,
   type SkillMatch,
 } from '../talent-workspace';
 
@@ -27,6 +31,9 @@ interface FacetRailProps {
   readonly onLocation: (v: string) => void;
   readonly onToggleAvailability: (value: string) => void;
   readonly onToggleEngagement: (value: string) => void;
+  readonly onToggleConsent: (value: string) => void;
+  readonly onToggleStage: (value: string) => void;
+  readonly onRecency: (value: Recency) => void;
   readonly onReset: () => void;
   readonly isLead: boolean;
 }
@@ -42,6 +49,9 @@ export function FacetRail({
   onLocation,
   onToggleAvailability,
   onToggleEngagement,
+  onToggleConsent,
+  onToggleStage,
+  onRecency,
   onReset,
   isLead,
 }: FacetRailProps) {
@@ -235,14 +245,93 @@ export function FacetRail({
         </div>
       </details>
 
+      {/* Status & stage — BACKED (current_stage; active funnel) */}
+      <details className="rc-facet">
+        <summary>
+          Status &amp; stage
+          {facets.stages.length > 0 ? (
+            <span className="rc-facet__badge">{facets.stages.length}</span>
+          ) : null}
+          <Icons.IconChevronDown className="rc-facet__chev" />
+        </summary>
+        <div className="rc-facet__body">
+          {derived.stage.length === 0 ? (
+            <p className="rc-facet__note">No active pipeline stages in the loaded set.</p>
+          ) : (
+            derived.stage.map((s) => (
+              <label key={s.value} className="rc-fopt">
+                <input
+                  type="checkbox"
+                  checked={facets.stages.includes(s.value)}
+                  onChange={() => onToggleStage(s.value)}
+                />
+                {STAGE_LABELS[s.value as keyof typeof STAGE_LABELS] ?? s.value}
+                <span className="rc-fopt__ct num">{s.count}</span>
+              </label>
+            ))
+          )}
+        </div>
+      </details>
+
+      {/* Last activity — BACKED (recency over last_activity_at; single-select) */}
+      <details className="rc-facet">
+        <summary>
+          Last activity
+          {facets.recency !== '' ? <span className="rc-facet__badge">1</span> : null}
+          <Icons.IconChevronDown className="rc-facet__chev" />
+        </summary>
+        <div className="rc-facet__body">
+          {RECENCY_OPTIONS.map((o) => (
+            <label key={o.key} className="rc-fopt">
+              <input
+                type="radio"
+                name="recency"
+                checked={facets.recency === o.key}
+                onChange={() => onRecency(facets.recency === o.key ? '' : o.key)}
+                onClick={() => {
+                  if (facets.recency === o.key) onRecency(''); // click selected = clear
+                }}
+              />
+              {o.label}
+              <span className="rc-fopt__ct num">{derived.recency[o.key]}</span>
+            </label>
+          ))}
+        </div>
+      </details>
+
+      {/* Consent — BACKED (3-value contact-consent summary) */}
+      <details className="rc-facet" open>
+        <summary>
+          Consent
+          {facets.consentSummaries.length > 0 ? (
+            <span className="rc-facet__badge">{facets.consentSummaries.length}</span>
+          ) : null}
+          <Icons.IconChevronDown className="rc-facet__chev" />
+        </summary>
+        <div className="rc-facet__body">
+          {derived.consent.length === 0 ? (
+            <p className="rc-facet__note">No consent summary in the loaded set.</p>
+          ) : (
+            derived.consent.map((c) => (
+              <label key={c.value} className="rc-fopt">
+                <input
+                  type="checkbox"
+                  checked={facets.consentSummaries.includes(c.value)}
+                  onChange={() => onToggleConsent(c.value)}
+                />
+                {CONSENT_LABELS[c.value] ?? c.value}
+                <span className="rc-fopt__ct num">{c.count}</span>
+              </label>
+            ))
+          )}
+        </div>
+      </details>
+
       {/* STUB facets — fields absent on the talent record (honest disabled) */}
-      <StubFacet label="Status & stage" note="Stage is per-pipeline; wired in Segment 3." />
       <StubFacet
         label="Rate (talent-stated)"
         note="Rate is what the talent stated. Aramo never infers pay or orders results by it. (Free text — no range filter.)"
       />
-      <StubFacet label="Last activity" note="Needs a bulk last-activity read (carry — per-talent N+1 today)." />
-      <StubFacet label="Consent" note="Per-talent consent is an N+1 read keyed to a Core id (carry)." />
 
       {isLead ? (
         <div className="rc-facets__lead">

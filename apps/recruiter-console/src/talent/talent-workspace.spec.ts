@@ -166,6 +166,60 @@ describe('stated-field facets (availability / engagement)', () => {
   });
 });
 
+describe('Segment 3 enrichment facets (consent / stage / recency / sort)', () => {
+  const ctx = { scope: 'all' as const, sessionSub: 'me', ownerNames: {} };
+  const iso = (daysAgo: number) =>
+    new Date(Date.now() - daysAgo * 86_400_000).toISOString();
+  const POOL3: TalentRecordView[] = [
+    t('1', 'A', 'A', {
+      consent_summary: 'contactable',
+      current_stage: { stage: 'interviewing', requisition_id: 'r1' },
+      last_activity_at: iso(0),
+    }),
+    t('2', 'B', 'B', {
+      consent_summary: 'do_not_contact',
+      current_stage: { stage: 'submitted', requisition_id: 'r2' },
+      last_activity_at: iso(40),
+    }),
+    t('3', 'C', 'C', {
+      consent_summary: 'contactable',
+      current_stage: null, // none
+      last_activity_at: null, // no activity → stale
+    }),
+  ];
+
+  it('derives consent + stage + recency-bucket counts', () => {
+    const d = deriveFacets(POOL3);
+    expect(d.consent.find((x) => x.value === 'contactable')?.count).toBe(2);
+    expect(d.stage.find((x) => x.value === 'interviewing')?.count).toBe(1);
+    expect(d.stage.length).toBe(2); // null stage not counted
+    expect(d.recency.today).toBe(1);
+    expect(d.recency.stale).toBe(1); // only the no-activity row (40d-ago is < 90d)
+  });
+
+  it('filters by consent, by stage, and excludes none/null appropriately', () => {
+    expect(
+      applyFilters(POOL3, { ...ctx, facets: base({ consentSummaries: ['do_not_contact'] }), query: noQuery }).map((x) => x.id),
+    ).toEqual(['2']);
+    expect(
+      applyFilters(POOL3, { ...ctx, facets: base({ stages: ['interviewing'] }), query: noQuery }).map((x) => x.id),
+    ).toEqual(['1']);
+  });
+
+  it('recency "today" keeps only fresh rows; "stale" keeps 90d+ and no-activity', () => {
+    expect(
+      applyFilters(POOL3, { ...ctx, facets: base({ recency: 'today' }), query: noQuery }).map((x) => x.id),
+    ).toEqual(['1']);
+    expect(
+      applyFilters(POOL3, { ...ctx, facets: base({ recency: 'stale' }), query: noQuery }).map((x) => x.id),
+    ).toEqual(['3']);
+  });
+
+  it('sorts by last_activity; no-activity sorts last', () => {
+    expect(sortTalent(POOL3, 'last_activity', 'desc').map((x) => x.id)).toEqual(['1', '2', '3']);
+  });
+});
+
 describe('applyView', () => {
   it('mine / hot views; all falls back to the pool', () => {
     expect(applyView('mine', POOL, 'me').map((x) => x.id)).toEqual(['1']);

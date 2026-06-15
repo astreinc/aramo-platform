@@ -103,6 +103,9 @@ import { STALE_CONSENT_QUEUE_NAME } from './stale-consent.queue.constants.js';
     IdempotencyService,
     OutboxPublisherRepository,
     SourceConsentService,
+    // Segment 3 — read-only batch consent summary for the talent-records list
+    // enrichment (apps/api composer). Read accessor only; no write path.
+    ConsentRepository,
   ],
 })
 export class ConsentModule {}

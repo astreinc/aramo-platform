@@ -10,7 +10,56 @@
 // loaded page and counts are "within the loaded set" — never fabricated. Facets
 // that need absent fields are declared STUB and rendered disabled by the view.
 
+import {
+  ACTIVE_FLOW_COLUMNS,
+  PIPELINE_STATUS_LABELS,
+  type PipelineStatus,
+} from '../pipeline/types';
+
 import type { TalentRecordView } from './types';
+
+// ── Segment 3 enrichment vocab (composed fields) ─────────────────────────────
+// consent_summary mirrors libs/consent ConsentSummary (3 values; BE-typed on
+// the wire). stage uses the pipeline funnel labels. recency buckets are FE
+// presentational over last_activity_at.
+export const CONSENT_SUMMARY_VALUES = [
+  'contactable',
+  'expiring_lt_30d',
+  'do_not_contact',
+] as const;
+export const CONSENT_LABELS: Record<string, string> = {
+  contactable: 'Contactable',
+  expiring_lt_30d: 'Expiring < 30d',
+  do_not_contact: 'Do-not-contact',
+};
+export const STAGE_FACET_VALUES: readonly PipelineStatus[] = ACTIVE_FLOW_COLUMNS;
+export const STAGE_LABELS = PIPELINE_STATUS_LABELS;
+
+export type Recency = '' | 'today' | '7d' | '30d' | 'stale';
+export const RECENCY_OPTIONS: readonly { key: Recency; label: string }[] = [
+  { key: 'today', label: 'Today' },
+  { key: '7d', label: 'Last 7 days' },
+  { key: '30d', label: 'Last 30 days' },
+  { key: 'stale', label: 'No activity 90 days+' },
+];
+
+export function daysSinceActivity(t: TalentRecordView): number | null {
+  const iso = t.last_activity_at;
+  if (iso === undefined || iso === null) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  return Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
+}
+
+function matchesRecency(t: TalentRecordView, recency: Recency): boolean {
+  if (recency === '') return true;
+  const d = daysSinceActivity(t);
+  if (recency === 'stale') return d === null || d >= 90; // no activity counts as stale
+  if (d === null) return false;
+  if (recency === 'today') return d === 0;
+  if (recency === '7d') return d <= 7;
+  return d <= 30; // '30d'
+}
 
 // Re-export the stated-field vocab so consumers have one workspace import.
 export {
@@ -98,6 +147,10 @@ export interface FacetState {
   // selected buckets (the 'unknown' bucket matches both null AND 'unknown').
   readonly availability: readonly string[];
   readonly engagementTypes: readonly string[];
+  // Segment 3 enrichment facets (now real per-row).
+  readonly consentSummaries: readonly string[];
+  readonly stages: readonly string[];
+  readonly recency: Recency;
 }
 
 export const EMPTY_FACETS: FacetState = {
@@ -108,6 +161,9 @@ export const EMPTY_FACETS: FacetState = {
   location: '',
   availability: [],
   engagementTypes: [],
+  consentSummaries: [],
+  stages: [],
+  recency: '',
 };
 
 // The "Unknown" availability bucket matches BOTH null (never captured) and the
@@ -159,6 +215,9 @@ export interface DerivedFacets {
   readonly hot: number;
   readonly availability: readonly FacetCount[];
   readonly engagement: readonly FacetCount[];
+  readonly consent: readonly FacetCount[];
+  readonly stage: readonly FacetCount[];
+  readonly recency: Readonly<Record<Recency, number>>;
 }
 
 export function deriveFacets(
@@ -168,6 +227,15 @@ export function deriveFacets(
   const sources: string[] = [];
   const availability: string[] = [];
   const engagement: string[] = [];
+  const consent: string[] = [];
+  const stage: string[] = [];
+  const recency: Record<Recency, number> = {
+    '': 0,
+    today: 0,
+    '7d': 0,
+    '30d': 0,
+    stale: 0,
+  };
   let hot = 0;
   for (const t of talent) {
     for (const s of skillsOf(t)) skills.push(s);
@@ -175,6 +243,15 @@ export function deriveFacets(
     if (t.is_hot) hot += 1;
     availability.push(effectiveAvailability(t)); // null collapses to 'unknown'
     if (t.engagement_type !== null) engagement.push(t.engagement_type);
+    if (t.consent_summary !== undefined && t.consent_summary !== null) {
+      consent.push(t.consent_summary);
+    }
+    if (t.current_stage != null) stage.push(t.current_stage.stage);
+    // recency bucket counts (a talent counts toward each window it satisfies).
+    if (matchesRecency(t, 'today')) recency.today += 1;
+    if (matchesRecency(t, '7d')) recency['7d'] += 1;
+    if (matchesRecency(t, '30d')) recency['30d'] += 1;
+    if (matchesRecency(t, 'stale')) recency.stale += 1;
   }
   return {
     skills: tally(skills),
@@ -182,6 +259,9 @@ export function deriveFacets(
     hot,
     availability: tally(availability),
     engagement: tally(engagement),
+    consent: tally(consent),
+    stage: tally(stage),
+    recency,
   };
 }
 
@@ -251,6 +331,19 @@ export function applyFilters(
       if (t.engagement_type === null || !facets.engagementTypes.includes(t.engagement_type))
         return false;
     }
+    if (facets.consentSummaries.length > 0) {
+      if (
+        t.consent_summary === undefined ||
+        t.consent_summary === null ||
+        !facets.consentSummaries.includes(t.consent_summary)
+      )
+        return false;
+    }
+    if (facets.stages.length > 0) {
+      if (t.current_stage == null || !facets.stages.includes(t.current_stage.stage))
+        return false;
+    }
+    if (!matchesRecency(t, facets.recency)) return false;
     if (skillNeedles.length > 0) {
       const have = skillsOf(t).map((s) => s.toLowerCase());
       const test = (needle: string) => have.some((h) => h.includes(needle));
@@ -316,7 +409,7 @@ export function applyView(
 }
 
 // ── Sort ────────────────────────────────────────────────────────────────────
-export type SortKey = 'name' | 'rate' | 'location' | 'owner';
+export type SortKey = 'name' | 'rate' | 'location' | 'owner' | 'last_activity';
 export type SortDir = 'asc' | 'desc';
 
 export function sortTalent(
@@ -344,6 +437,15 @@ export function sortTalent(
         if (ao === null) return 1;
         if (bo === null) return -1;
         return sign * ao.localeCompare(bo);
+      }
+      case 'last_activity': {
+        // ISO strings compare chronologically; no-activity always sorts last.
+        const al = a.last_activity_at ?? null;
+        const bl = b.last_activity_at ?? null;
+        if (al === null && bl === null) return 0;
+        if (al === null) return 1;
+        if (bl === null) return -1;
+        return sign * al.localeCompare(bl);
       }
     }
   });

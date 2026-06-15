@@ -14,7 +14,8 @@ import { addTalentToPipeline } from '../pipeline/pipeline-api';
 import { listRequisitions } from '../requisitions/requisitions-api';
 import type { RequisitionView } from '../requisitions/types';
 import { probeTenantUsers } from '../task/task-api';
-import { Avatar, Card, Icons, StatusPill, Tag, type PillTone } from '../ui';
+import { Avatar, Card, Icons, StagePill, StatusPill, Tag, type PillTone } from '../ui';
+import type { PipelineStatus } from '../pipeline/types';
 
 import { BulkBar } from './components/BulkBar';
 import { FacetRail } from './components/FacetRail';
@@ -35,6 +36,9 @@ import {
   statedRate,
   AVAILABILITY_LABELS,
   ENGAGEMENT_LABELS,
+  CONSENT_LABELS,
+  STAGE_LABELS,
+  RECENCY_OPTIONS,
   type FacetState,
   type ScopeMode,
   type SearchToken,
@@ -71,6 +75,25 @@ const AVAILABILITY_TONE: Record<string, PillTone> = {
   unknown: 'neutral',
 };
 
+// Consent summary tones (the contact-consent moat — a stated permission state).
+const CONSENT_TONE: Record<string, PillTone> = {
+  contactable: 'ok',
+  expiring_lt_30d: 'warn',
+  do_not_contact: 'danger',
+};
+
+function relativeActivity(iso: string | null | undefined): string {
+  if (iso === null || iso === undefined) return '—';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '—';
+  const days = Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days}d ago`;
+  const w = Math.floor(days / 7);
+  return w < 5 ? `${w}w ago` : `${Math.floor(days / 30)}mo ago`;
+}
+
 interface TalentListViewProps {
   readonly sessionOverride?: Session;
 }
@@ -95,10 +118,12 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const [density, setDensity] = useState<Density>('comfortable');
   const [cols, setCols] = useState({
     skills: true,
+    stage: true,
     availability: true,
     location: true,
     rate: true,
     consent: true,
+    lastActivity: true,
     owner: true,
   });
   const [busy, setBusy] = useState(false);
@@ -309,15 +334,42 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
           engagementTypes: f.engagementTypes.filter((x) => x !== e),
         })),
     });
+  for (const c of facets.consentSummaries)
+    chips.push({
+      k: 'Consent',
+      label: CONSENT_LABELS[c] ?? c,
+      clear: () =>
+        setFacets((f) => ({
+          ...f,
+          consentSummaries: f.consentSummaries.filter((x) => x !== c),
+        })),
+    });
+  for (const s of facets.stages)
+    chips.push({
+      k: 'Stage',
+      label: STAGE_LABELS[s as keyof typeof STAGE_LABELS] ?? s,
+      clear: () =>
+        setFacets((f) => ({ ...f, stages: f.stages.filter((x) => x !== s) })),
+    });
+  if (facets.recency !== '')
+    chips.push({
+      k: 'Activity',
+      label:
+        RECENCY_OPTIONS.find((o) => o.key === facets.recency)?.label ??
+        facets.recency,
+      clear: () => setFacets((f) => ({ ...f, recency: '' })),
+    });
 
   const drawerTalent = drawerIndex !== null ? (filtered[drawerIndex] ?? null) : null;
   const colCount =
     3 + // select + talent + actions
     (cols.skills ? 1 : 0) +
+    (cols.stage ? 1 : 0) +
     (cols.availability ? 1 : 0) +
     (cols.location ? 1 : 0) +
     (cols.rate ? 1 : 0) +
     (cols.consent ? 1 : 0) +
+    (cols.lastActivity ? 1 : 0) +
     (cols.owner ? 1 : 0);
 
   return (
@@ -473,6 +525,23 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                 : [...f.engagementTypes, v],
             }))
           }
+          onToggleConsent={(v) =>
+            setFacets((f) => ({
+              ...f,
+              consentSummaries: f.consentSummaries.includes(v)
+                ? f.consentSummaries.filter((x) => x !== v)
+                : [...f.consentSummaries, v],
+            }))
+          }
+          onToggleStage={(v) =>
+            setFacets((f) => ({
+              ...f,
+              stages: f.stages.includes(v)
+                ? f.stages.filter((x) => x !== v)
+                : [...f.stages, v],
+            }))
+          }
+          onRecency={(v) => setFacets((f) => ({ ...f, recency: v }))}
           onReset={resetAll}
           isLead={isLead}
         />
@@ -491,10 +560,12 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                   {(
                     [
                       ['skills', 'Skills'],
+                      ['stage', 'Stage'],
                       ['availability', 'Availability'],
                       ['location', 'Location'],
                       ['rate', 'Rate'],
                       ['consent', 'Consent'],
+                      ['lastActivity', 'Last activity'],
                       ['owner', 'Owner'],
                     ] as const
                   ).map(([key, label]) => (
@@ -553,6 +624,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                       </button>
                     </th>
                     {cols.skills ? <th scope="col">Skills</th> : null}
+                    {cols.stage ? <th scope="col">Stage</th> : null}
                     {cols.availability ? <th scope="col">Availability</th> : null}
                     {cols.location ? (
                       <th scope="col">
@@ -569,6 +641,13 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                       </th>
                     ) : null}
                     {cols.consent ? <th scope="col">Consent</th> : null}
+                    {cols.lastActivity ? (
+                      <th scope="col">
+                        <button type="button" className="rc-th-sort" onClick={() => toggleSort('last_activity')}>
+                          Last activity {sortKey === 'last_activity' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                        </button>
+                      </th>
+                    ) : null}
                     {cols.owner ? (
                       <th scope="col">
                         <button type="button" className="rc-th-sort" onClick={() => toggleSort('owner')}>
@@ -639,6 +718,17 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                             </span>
                           </td>
                         ) : null}
+                        {cols.stage ? (
+                          <td>
+                            {t.current_stage == null ? (
+                              <span className="rc-consent-stub">—</span>
+                            ) : (
+                              <span title={`Req ${t.current_stage.requisition_id}`}>
+                                <StagePill status={t.current_stage.stage as PipelineStatus} />
+                              </span>
+                            )}
+                          </td>
+                        ) : null}
                         {cols.availability ? (
                           <td>
                             {t.availability_status === null ? (
@@ -657,13 +747,17 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                         {cols.rate ? <td className="num">{statedRate(t)}</td> : null}
                         {cols.consent ? (
                           <td>
-                            <span
-                              className="rc-consent-stub"
-                              title="Per-talent consent state is a carry (N+1, Core-keyed) — wired in Segment 3."
-                            >
-                              —
-                            </span>
+                            {t.consent_summary === undefined || t.consent_summary === null ? (
+                              <span className="rc-consent-stub">—</span>
+                            ) : (
+                              <StatusPill tone={CONSENT_TONE[t.consent_summary] ?? 'neutral'}>
+                                {CONSENT_LABELS[t.consent_summary] ?? t.consent_summary}
+                              </StatusPill>
+                            )}
                           </td>
+                        ) : null}
+                        {cols.lastActivity ? (
+                          <td className="lastcell">{relativeActivity(t.last_activity_at)}</td>
                         ) : null}
                         {cols.owner ? (
                           <td>{t.owner_id ? (userNames[t.owner_id] ?? '—') : '—'}</td>

@@ -122,6 +122,36 @@ export class ActivityRepository {
     });
   }
 
+  // Segment 3 — BATCH read for the talent-records list enrichment (the
+  // last_activity_at read-model). Set-based over the page's id set (one
+  // groupBy query, never per-row). talent_record activities are pool-open
+  // (the §5 boundary), so this is tenant-wide — no visibility filter.
+  // Returns talent_record_id → most-recent activity timestamp (ISO); ids with
+  // no activity are simply absent from the map.
+  async findLastActivityForTalentIds(args: {
+    tenant_id: string;
+    talent_record_ids: readonly string[];
+  }): Promise<Map<string, string>> {
+    if (args.talent_record_ids.length === 0) return new Map();
+    const rows = await this.prisma.activity.groupBy({
+      by: ['subject_id'],
+      where: {
+        tenant_id: args.tenant_id,
+        subject_type: 'talent_record',
+        subject_id: { in: [...args.talent_record_ids] },
+      },
+      _max: { created_at: true },
+    });
+    const out = new Map<string, string>();
+    for (const r of rows) {
+      const ts = r._max.created_at;
+      if (r.subject_id !== null && ts !== null) {
+        out.set(r.subject_id, ts.toISOString());
+      }
+    }
+    return out;
+  }
+
   // AUTHZ-D4b — visibility-scoped read paths.
   //
   // Activity is the POLYMORPHIC entity — subject_type discriminates the

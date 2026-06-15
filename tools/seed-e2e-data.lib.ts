@@ -187,7 +187,7 @@ export interface SeedPorts {
   createPipeline(args: { tenantId: string; talentRecordId: string; requisitionId: string }): Promise<{ id: string }>;
   transitionPipeline(args: { tenantId: string; pipelineId: string; toStatus: string; changedById: string }): Promise<void>;
   createTask(args: { tenantId: string; createdByUserId: string; assigneeId: string; title: string; ownerType: 'requisition' | 'talent_record'; ownerId: string }): Promise<{ id: string }>;
-  createActivity(args: { tenantId: string; createdById: string; subjectType: 'requisition'; subjectId: string; notes: string }): Promise<{ id: string }>;
+  createActivity(args: { tenantId: string; createdById: string; subjectType: 'requisition' | 'talent_record'; subjectId: string; notes: string }): Promise<{ id: string }>;
   createEngagement(args: { tenantId: string; talentId: string; requisitionId: string }): Promise<{ id: string }>;
 }
 
@@ -293,6 +293,12 @@ export async function seed(
   // A couple of req-level activity notes so My Desk + the Activity tab populate.
   await ports.createActivity({ tenantId: ctx.tenantId, createdById: ctx.recruiterUserId, subjectType: 'requisition', subjectId: required(reqId, 'rq-1'), notes: `${ctx.tag} Kickoff call with the hiring manager` });
   await ports.createActivity({ tenantId: ctx.tenantId, createdById: ctx.recruiterUserId, subjectType: 'requisition', subjectId: required(reqId, 'rq-1'), notes: `${ctx.tag} Shared the intake brief` });
+
+  // Talent-level activity notes so the Segment-3 last_activity_at enrichment +
+  // the Last-activity column/facet populate (subject_type='talent_record').
+  for (const key of ['tl-1', 'tl-2', 'tl-4'] as const) {
+    await ports.createActivity({ tenantId: ctx.tenantId, createdById: ctx.recruiterUserId, subjectType: 'talent_record', subjectId: required(talentId, key), notes: `${ctx.tag} Logged a screening note` });
+  }
 
   // Engagement is BEST-EFFORT: it requires a Core Talent OVERLAY
   // (findOverlayByTenant), which the ATS TalentRecord seed does not create.

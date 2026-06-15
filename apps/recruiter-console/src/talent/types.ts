@@ -35,6 +35,15 @@ export interface TalentRecordView {
   // "Unknown" bucket alongside the explicit 'unknown' member).
   readonly availability_status: AvailabilityStatus | null;
   readonly engagement_type: EngagementType | null;
+  // Segment 3 — list-response enrichment (COMPOSED in apps/api, optional).
+  // last_activity_at: ISO timestamp of the most-recent activity, or null.
+  // consent_summary: the 3-value contact-consent summary (libs/consent
+  //   ConsentSummary); do_not_contact when unlinked/no grant.
+  // current_stage: most-advanced ACTIVE pipeline stage (+ which req), or null
+  //   ("none" — in no active pipeline).
+  readonly last_activity_at?: string | null;
+  readonly consent_summary?: 'contactable' | 'expiring_lt_30d' | 'do_not_contact' | null;
+  readonly current_stage?: { stage: string; requisition_id: string } | null;
   readonly date_available: string | null;
   readonly can_relocate: boolean;
   readonly is_hot: boolean;

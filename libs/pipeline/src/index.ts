@@ -1,6 +1,9 @@
 export { PipelineModule } from './lib/pipeline.module.js';
 export { PipelineController } from './lib/pipeline.controller.js';
-export { PipelineRepository } from './lib/pipeline.repository.js';
+export {
+  PipelineRepository,
+  type CurrentStage,
+} from './lib/pipeline.repository.js';
 export { PrismaService as PipelinePrismaService } from './lib/prisma/prisma.service.js';
 
 export {

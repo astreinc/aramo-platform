@@ -42,6 +42,8 @@ import { TaskModule, TASK_ASSIGNEE_VALIDATOR } from '@aramo/task';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { CompensationFieldMaskInterceptor } from './interceptors/compensation-field-mask.interceptor.js';
+import { TalentRecordEnrichmentInterceptor } from './talent-enrichment/talent-record-enrichment.interceptor.js';
+import { TalentRecordEnrichmentService } from './talent-enrichment/talent-record-enrichment.service.js';
 // Settings S4 — live AUDIT_FINANCIALS_GATE adapter (reads via
 // TenantSettingService; bridges libs/identity's port to libs/settings'
 // service without coupling either lib).
@@ -286,6 +288,17 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     {
       provide: APP_INTERCEPTOR,
       useClass: CompensationFieldMaskInterceptor,
+    },
+    // Segment 3 — the talent-records list read-composer. The composer service
+    // is a provider (injects the three read-only batch accessors); the
+    // interceptor (global, route-guarded) enriches GET /v1/talent-records
+    // responses with last_activity_at / consent_summary / current_stage.
+    // Registered AFTER VisibilityInterceptor so resolveVisibleRequisitionIds
+    // is set when the response is shaped.
+    TalentRecordEnrichmentService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TalentRecordEnrichmentInterceptor,
     },
     // Settings S3a — override the TENANT_COGNITO_PORT default binding
     // (libs/identity's StubTenantCognitoAdapter, which throws on call)

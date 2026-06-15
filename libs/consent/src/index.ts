@@ -1,7 +1,10 @@
 export { ConsentModule } from './lib/consent.module.js';
 export { ConsentController } from './lib/consent.controller.js';
 export { ConsentService } from './lib/consent.service.js';
-export { ConsentRepository } from './lib/consent.repository.js';
+export {
+  ConsentRepository,
+  type ConsentSummary,
+} from './lib/consent.repository.js';
 export { StaleConsentRepository } from './lib/stale-consent.repository.js';
 export type {
   StaleContactingGrant,
