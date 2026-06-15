@@ -10,7 +10,7 @@ import { Link } from 'react-router-dom';
 
 import { listCompanies } from '../companies/companies-api';
 import { listAllPipelines } from '../pipeline/pipeline-api';
-import { CLOSED_STATUSES, type PipelineStatus } from '../pipeline/types';
+import { rollupByRequisition, type ReqPipelineCount } from '../pipeline/rollup';
 import { probeTenantUsers } from '../task/task-api';
 import {
   Card,
@@ -20,7 +20,6 @@ import {
   StatusPill,
   TitleCell,
   Toolbar,
-  funnelBucket,
   type PillTone,
   type TableColumn,
 } from '../ui';
@@ -32,16 +31,6 @@ import {
   type RequisitionStatus,
   type RequisitionView,
 } from './types';
-
-// Per-req pipeline rollup: active count (= not a terminal stage) + submitted
-// count (= reached the Submitted funnel bucket or beyond). Derived from a
-// single unfiltered /v1/pipelines call, grouped by requisition_id.
-interface ReqPipelineCount {
-  readonly active: number;
-  readonly submitted: number;
-}
-const TERMINAL = new Set<PipelineStatus>(CLOSED_STATUSES);
-const SUBMITTED_PLUS = new Set(['submitted', 'interview', 'offer', 'placed']);
 
 // Requisitions LIST (2C) — re-skinned to the Confident Blue mockup. The
 // recruiter's visible reqs (D4b server-side; invisible→404 on detail).
@@ -124,16 +113,7 @@ export function RequisitionsListView({
         setCompanyNames(map);
       }
       if (pipeRes.status === 'fulfilled') {
-        const byReq: Record<string, ReqPipelineCount> = {};
-        for (const p of pipeRes.value.items) {
-          const cur = byReq[p.requisition_id] ?? { active: 0, submitted: 0 };
-          byReq[p.requisition_id] = {
-            active: cur.active + (TERMINAL.has(p.status) ? 0 : 1),
-            submitted:
-              cur.submitted + (SUBMITTED_PLUS.has(funnelBucket(p.status)) ? 1 : 0),
-          };
-        }
-        setPipelineCounts(byReq);
+        setPipelineCounts(rollupByRequisition(pipeRes.value.items));
       }
       if (rosterRes.status === 'fulfilled' && rosterRes.value.available) {
         const names: Record<string, string> = {};

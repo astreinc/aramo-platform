@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { listCompanies } from '../companies/companies-api';
+import { listAllPipelines } from '../pipeline/pipeline-api';
+import { rollupByRequisition, type ReqPipelineCount } from '../pipeline/rollup';
 import { listRequisitions } from '../requisitions/requisitions-api';
 import {
   isClosedStatus,
@@ -44,8 +46,9 @@ import {
 //
 // Gap dispositions held (DDR §11): metric cards carry NO deltas/goals and NO
 // unmodelled windows (no "+8 this week", no Submittals·wk, no Placements·MTD).
-// Per-req pipeline/submitted counts are not in the list response → omitted
-// (CARRY). "Needs you today" aggregates the backed source (my open tasks);
+// Per-req Pipeline/Submitted counts are backed by a single unfiltered
+// /v1/pipelines call grouped by requisition_id (shared rollupByRequisition;
+// no N+1). "Needs you today" aggregates the backed source (my open tasks);
 // responded-engagements / overdue-follow-ups have no list endpoint → CARRY.
 // The four fetches degrade independently (allSettled): a 403 on tasks/companies
 // leaves the page coherent; only a dashboard failure is the page error.
@@ -99,6 +102,9 @@ export function DashboardView() {
   const [reqs, setReqs] = useState<readonly RequisitionView[]>([]);
   const [companyNames, setCompanyNames] = useState<Record<string, string>>({});
   const [tasks, setTasks] = useState<readonly TaskView[]>([]);
+  const [pipelineCounts, setPipelineCounts] = useState<
+    Record<string, ReqPipelineCount>
+  >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,7 +117,8 @@ export function DashboardView() {
       listRequisitions(),
       listMyTasks('open'),
       listCompanies(),
-    ]).then(([dashRes, reqRes, taskRes, coRes]) => {
+      listAllPipelines(),
+    ]).then(([dashRes, reqRes, taskRes, coRes, pipeRes]) => {
       if (cancelled) return;
       if (dashRes.status === 'fulfilled') {
         setDash(dashRes.value);
@@ -124,6 +131,9 @@ export function DashboardView() {
         const map: Record<string, string> = {};
         for (const c of coRes.value.items) map[c.id] = c.name;
         setCompanyNames(map);
+      }
+      if (pipeRes.status === 'fulfilled') {
+        setPipelineCounts(rollupByRequisition(pipeRes.value.items));
       }
       setLoading(false);
     });
@@ -157,13 +167,17 @@ export function DashboardView() {
       ),
     },
     {
-      key: 'openings',
-      header: 'Openings',
+      key: 'pipeline',
+      header: 'Pipeline',
+      align: 'right',
+      render: (r) => <span className="num">{pipelineCounts[r.id]?.active ?? 0}</span>,
+    },
+    {
+      key: 'submitted',
+      header: 'Submitted',
       align: 'right',
       render: (r) => (
-        <span className="num">
-          {r.openings - r.openings_available}/{r.openings}
-        </span>
+        <span className="num">{pipelineCounts[r.id]?.submitted ?? 0}</span>
       ),
     },
     {

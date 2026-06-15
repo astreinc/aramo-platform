@@ -90,6 +90,14 @@ const COMPANIES = {
   ],
 };
 
+const PIPELINES = {
+  items: [
+    { id: 'p1', requisition_id: 'req-1', status: 'no_contact' },
+    { id: 'p2', requisition_id: 'req-1', status: 'submitted' },
+    { id: 'p3', requisition_id: 'req-1', status: 'interviewing' },
+  ],
+};
+
 function urlOf(input: RequestInfo | URL): string {
   if (typeof input === 'string') return input;
   if (input instanceof URL) return input.href;
@@ -102,6 +110,7 @@ function mockRoutes(opts: {
   reqs?: unknown;
   tasks?: unknown;
   companies?: unknown;
+  pipelines?: unknown;
 } = {}) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = urlOf(input);
@@ -113,6 +122,7 @@ function mockRoutes(opts: {
     if (url.includes('/v1/dashboard')) {
       return json(opts.dashboard ?? makeDashboard(), opts.dashboardStatus ?? 200);
     }
+    if (url.includes('/v1/pipelines')) return json(opts.pipelines ?? PIPELINES);
     if (url.includes('/v1/requisitions')) return json(opts.reqs ?? REQS);
     if (url.includes('/v1/tasks')) return json(opts.tasks ?? TASKS);
     if (url.includes('/v1/companies')) return json(opts.companies ?? COMPANIES);
@@ -166,6 +176,25 @@ describe('DashboardView (My desk)', () => {
       'href',
       '/requisitions/req-1',
     );
+  });
+
+  it('parity: my-open-reqs table shows Pipeline/Submitted counts (one /v1/pipelines call)', async () => {
+    mockRoutes();
+    const { container } = renderDesk();
+    await waitFor(() =>
+      expect(screen.getByText('Senior Rust Engineer')).toBeInTheDocument(),
+    );
+    // The header columns replaced Openings with Pipeline + Submitted.
+    expect(screen.getByText('Pipeline')).toBeInTheDocument();
+    expect(screen.getByText('Submitted')).toBeInTheDocument();
+    // req-1 rollup: active = 3 (no terminal), submitted+ = 2 (submitted +
+    // interviewing). Scope to the req row to avoid colliding with the metrics.
+    const row = screen.getByRole('link', { name: /Senior Rust Engineer/ })
+      .closest('tr') as HTMLElement;
+    expect(within(row).getByText('3')).toBeInTheDocument();
+    expect(within(row).getByText('2')).toBeInTheDocument();
+    // No fabricated delta windows leaked in.
+    expect(container.textContent).not.toMatch(/this week|MTD|\+\d/);
   });
 
   it('aggregates my open tasks into "Needs you today" (overdue marked)', async () => {
