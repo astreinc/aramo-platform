@@ -85,7 +85,7 @@
     "@nx/workspace": "~22.7.0",
     "@pact-foundation/pact": "~16.5.0",
     "@playwright/test": "~1.60.0",
-    "@redocly/cli": "~2.31.5",
+    "@redocly/cli": "~2.32.2",
     "@testcontainers/localstack": "~12.0.1",
     "@testcontainers/postgresql": "~12.0.1",
     "@testcontainers/redis": "~12.0.1",
