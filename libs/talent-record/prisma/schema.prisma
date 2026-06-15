@@ -146,6 +146,12 @@ model TalentRecord {
   // Segment-4 server-side faceting (stated-fields amendment §5).
   @@index([tenant_id, availability_status])
   @@index([tenant_id, engagement_type])
+  // Segment-4 keyset cursor sort orders (sort key + id tiebreak). The
+  // key_skills pg_trgm GIN is hand-authored in the migration (Prisma can't
+  // express gin_trgm_ops).
+  @@index([tenant_id, created_at, id])
+  @@index([tenant_id, owner_id, id])
+  @@index([tenant_id, city, state, id])
 
   @@schema("talent_record")
 }

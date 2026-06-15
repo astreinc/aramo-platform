@@ -4,6 +4,17 @@ export { TalentRecordRepository } from './lib/talent-record.repository.js';
 export { TalentLinkService } from './lib/talent-link.service.js';
 export { PrismaService as TalentRecordPrismaService } from './lib/prisma/prisma.service.js';
 
+// Segment 4 — server-side faceted-search contract.
+export type {
+  TalentSearchQuery,
+  TalentSearchPage,
+  TalentSortKey,
+  SortDir,
+  SkillMatch,
+  NativeFacets,
+  NativeFacetBucket,
+} from './lib/dto/talent-search.dto.js';
+
 // Search PR-2 — résumé full-text surfaces.
 export { ResumeTextService } from './lib/resume-text/resume-text.service.js';
 export type {

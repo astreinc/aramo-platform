@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ActivityRepository } from './activity.repository.js';
-import type { PrismaService } from './prisma/prisma.service.js';
+import { ActivityRepository } from '../lib/activity.repository.js';
+import type { PrismaService } from '../lib/prisma/prisma.service.js';
 
 describe('ActivityRepository.findLastActivityForTalentIds', () => {
   it('returns talent_record_id → most-recent activity ISO timestamp (one groupBy)', async () => {

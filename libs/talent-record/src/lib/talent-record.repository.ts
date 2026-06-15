@@ -9,6 +9,14 @@ import {
   type EngagementType,
 } from './dto/stated-fields.js';
 import type { TalentRecordView } from './dto/talent-record.view.js';
+import type {
+  NativeFacetBucket,
+  NativeFacets,
+  TalentSearchPage,
+  TalentSearchQuery,
+  TalentSortKey,
+  SortDir,
+} from './dto/talent-search.dto.js';
 import type { UpdateTalentRecordRequestDto } from './dto/update-talent-record-request.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
@@ -179,6 +187,130 @@ function projectSearchRow(row: RawSearchRow): TalentRecordView {
   };
 }
 
+// ── Segment 4 — server-side search helpers (single-schema) ──
+
+// Opaque keyset cursor = the last row id (base64url). Keyset correctness comes
+// from the deterministic orderBy (sort col(s) + id tiebreak) + Prisma's
+// cursor:{id}/skip:1.
+function encodeCursor(id: string): string {
+  return Buffer.from(id, 'utf8').toString('base64url');
+}
+function decodeCursor(cursor: string): string {
+  return Buffer.from(cursor, 'base64url').toString('utf8');
+}
+
+// Each sort ends with `id` so the keyset is total-ordered (no skips/dupes).
+function buildOrderBy(
+  sort: TalentSortKey,
+  dir: SortDir,
+): Array<Record<string, SortDir>> {
+  switch (sort) {
+    case 'name':
+      return [{ last_name: dir }, { first_name: dir }, { id: dir }];
+    case 'owner':
+      return [{ owner_id: dir }, { id: dir }];
+    case 'location':
+      return [{ city: dir }, { state: dir }, { id: dir }];
+    case 'availability':
+      return [{ availability_status: dir }, { id: dir }];
+    case 'engagement':
+      return [{ engagement_type: dir }, { id: dir }];
+    case 'hot':
+      return [{ is_hot: dir }, { id: dir }];
+    case 'created_at':
+    default:
+      return [{ created_at: dir }, { id: dir }];
+  }
+}
+
+// Build the single-schema Prisma WHERE from the search query. Pure native
+// columns; the `id_allowlist` is how presets / My-team narrow (resolve-then-
+// filter — the ids are resolved cross-schema in apps/api and passed in here).
+function buildSearchWhere(q: TalentSearchQuery): Record<string, unknown> {
+  const where: Record<string, unknown> = { tenant_id: q.tenant_id };
+  const and: Array<Record<string, unknown>> = [];
+  if (q.site_id !== undefined) where['site_id'] = q.site_id;
+  if (q.is_hot !== undefined) where['is_hot'] = q.is_hot;
+  if (q.engagement_type && q.engagement_type.length > 0) {
+    where['engagement_type'] = { in: [...q.engagement_type] };
+  }
+  if (q.source && q.source.length > 0) {
+    where['source'] = { in: [...q.source] };
+  }
+  if (q.owner_id && q.owner_id.length > 0) {
+    where['owner_id'] = { in: [...q.owner_id] };
+  }
+  if (q.id_allowlist != null) {
+    where['id'] = { in: [...q.id_allowlist] };
+  }
+  // availability "unknown" bucket matches BOTH null and the explicit 'unknown'.
+  if (q.availability_status && q.availability_status.length > 0) {
+    const vals = [...q.availability_status];
+    if (vals.includes('unknown')) {
+      and.push({
+        OR: [{ availability_status: { in: vals } }, { availability_status: null }],
+      });
+    } else {
+      where['availability_status'] = { in: vals };
+    }
+  }
+  if (q.q !== undefined && q.q.trim() !== '') {
+    and.push({
+      OR: [
+        { first_name: { contains: q.q, mode: 'insensitive' } },
+        { last_name: { contains: q.q, mode: 'insensitive' } },
+      ],
+    });
+  }
+  if (q.location !== undefined && q.location.trim() !== '') {
+    and.push({
+      OR: [
+        { city: { contains: q.location, mode: 'insensitive' } },
+        { state: { contains: q.location, mode: 'insensitive' } },
+      ],
+    });
+  }
+  const skills = (q.skills ?? []).filter((s) => s.trim() !== '');
+  if (skills.length > 0) {
+    const clauses = skills.map((s) => ({
+      key_skills: { contains: s, mode: 'insensitive' },
+    }));
+    and.push(q.skill_match === 'all' ? { AND: clauses } : { OR: clauses });
+  }
+  if (and.length > 0) where['AND'] = and;
+  return where;
+}
+
+interface GroupRow {
+  readonly _count: { readonly _all: number };
+  readonly [k: string]: unknown;
+}
+function toBuckets(
+  rows: readonly GroupRow[],
+  key: string,
+  opts: { nullAs?: string; dropNullOrEmpty?: boolean } = {},
+): NativeFacetBucket[] {
+  const tally = new Map<string, number>();
+  for (const r of rows) {
+    const raw = r[key];
+    let value: string;
+    if (
+      raw === null ||
+      raw === undefined ||
+      (typeof raw === 'string' && raw.trim() === '')
+    ) {
+      if (opts.dropNullOrEmpty === true) continue;
+      value = opts.nullAs ?? 'unknown';
+    } else {
+      value = String(raw);
+    }
+    tally.set(value, (tally.get(value) ?? 0) + r._count._all);
+  }
+  return [...tally.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+}
+
 @Injectable()
 export class TalentRecordRepository {
   private readonly logger = new Logger(TalentRecordRepository.name);
@@ -340,6 +472,87 @@ export class TalentRecordRepository {
       take: limit,
     });
     return (rows as TalentRecordRow[]).map(projectView);
+  }
+
+  // ── Segment 4 — native server-side faceted search + keyset pagination ──
+  // Single-schema: filter / sort / cursor / full-set facet COUNTS run against
+  // TalentRecord columns ONLY. No cross-schema read here (apps/api composes the
+  // last_activity / consent / stage work over the id set this returns).
+  async searchPaged(query: TalentSearchQuery): Promise<TalentSearchPage> {
+    const pageSize = Math.min(query.page_size ?? 50, 200);
+    const dir: SortDir = query.dir ?? 'desc';
+    const where = buildSearchWhere(query);
+    const orderBy = buildOrderBy(query.sort ?? 'created_at', dir);
+
+    const rows = await this.prisma.talentRecord.findMany({
+      where,
+      orderBy,
+      take: pageSize + 1, // +1 to detect a next page
+      ...(query.cursor != null && query.cursor !== ''
+        ? { cursor: { id: decodeCursor(query.cursor) }, skip: 1 }
+        : {}),
+    });
+
+    const hasMore = rows.length > pageSize;
+    const pageRows = hasMore ? rows.slice(0, pageSize) : rows;
+    const last = pageRows[pageRows.length - 1];
+    const next_cursor =
+      hasMore && last !== undefined ? encodeCursor(last.id) : null;
+
+    const facets = await this.computeNativeFacets(where);
+    return {
+      items: (pageRows as TalentRecordRow[]).map(projectView),
+      next_cursor,
+      facets,
+    };
+  }
+
+  // Full filtered id set (no pagination) — apps/api's cross-schema path runs the
+  // Seg-3 batch accessors over this, bounded by the materialize guard (it asks
+  // for at most `limit`+1 ids to detect "over the guard").
+  async findFilteredIds(
+    query: TalentSearchQuery,
+    limit: number,
+  ): Promise<string[]> {
+    const rows = await this.prisma.talentRecord.findMany({
+      where: buildSearchWhere(query),
+      select: { id: true },
+      take: limit + 1,
+    });
+    return rows.map((r) => r.id);
+  }
+
+  private async computeNativeFacets(
+    where: Record<string, unknown>,
+  ): Promise<NativeFacets> {
+    const [avail, eng, src, hot] = await Promise.all([
+      this.prisma.talentRecord.groupBy({
+        by: ['availability_status'],
+        where,
+        _count: { _all: true },
+      }),
+      this.prisma.talentRecord.groupBy({
+        by: ['engagement_type'],
+        where,
+        _count: { _all: true },
+      }),
+      this.prisma.talentRecord.groupBy({
+        by: ['source'],
+        where,
+        _count: { _all: true },
+      }),
+      this.prisma.talentRecord.count({ where: { ...where, is_hot: true } }),
+    ]);
+    return {
+      availability: toBuckets(avail as GroupRow[], 'availability_status', {
+        nullAs: 'unknown',
+      }),
+      engagement: toBuckets(eng as GroupRow[], 'engagement_type', {
+        dropNullOrEmpty: true,
+      }),
+      source: toBuckets(src as GroupRow[], 'source', { dropNullOrEmpty: true }),
+      hot,
+    };
   }
 
   // Search PR-2 — résumé full-text content-search (GET /v1/talent-records

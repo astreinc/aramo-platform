@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ConsentRepository } from './consent.repository.js';
-import type { PrismaService } from './prisma/prisma.service.js';
+import { ConsentRepository } from '../lib/consent.repository.js';
+import type { PrismaService } from '../lib/prisma/prisma.service.js';
 
 function repoWith(events: unknown[]): ConsentRepository {
   return new ConsentRepository({

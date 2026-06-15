@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { PipelineRepository } from './pipeline.repository.js';
-import type { PrismaService } from './prisma/prisma.service.js';
+import { PipelineRepository } from '../lib/pipeline.repository.js';
+import type { PrismaService } from '../lib/prisma/prisma.service.js';
 
 function repoWith(findMany: ReturnType<typeof vi.fn>): PipelineRepository {
   return new PipelineRepository({
