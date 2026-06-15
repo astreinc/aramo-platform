@@ -1754,3 +1754,25 @@
 .rc-drawer__feed li:last-child { padding-bottom: 0; }
 .rc-drawer__feed-t { display: block; font-size: .82rem; line-height: 1.4; }
 .rc-drawer__feed-w { font-size: .72rem; color: var(--faint); }
+
+/* Talent workspace — Segment 1 additions: content-shift, column menu, utils */
+.rc-mt-8 { margin-top: 8px; }
+.rc-fopt--disabled { opacity: .5; cursor: not-allowed; }
+
+/* drawer-open content shift (non-modal): push the page left of the fixed drawer
+   on wide viewports; on narrow the drawer overlays (no shift). */
+.rc-talent { transition: padding-right .2s ease; }
+@media (min-width: 1181px) { .rc-talent--drawer { padding-right: 404px; } }
+@media (prefers-reduced-motion: reduce) { .rc-talent { transition: none; } }
+
+/* column-customize dropdown (results toolbar) */
+.rc-colmenu { position: relative; }
+.rc-colmenu > summary { list-style: none; cursor: pointer; }
+.rc-colmenu > summary::-webkit-details-marker { display: none; }
+.rc-colmenu__body {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 12;
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-md);
+  box-shadow: var(--sh-2); padding: 8px 12px; min-width: 168px;
+}
+.rc-colmenu__body .rc-fopt { font-size: .82rem; }
+.rc-th-sort[aria-sort="ascending"], .rc-th-sort[aria-sort="descending"] { color: var(--brand-strong); }

@@ -218,6 +218,18 @@ describe('TalentListView (faceted workspace)', () => {
     expect(within(drawer).getByText('Match insight')).toBeInTheDocument();
   });
 
+  it('column-customize toggles a column off (Rate hidden via the Columns menu)', async () => {
+    mockRoutes({
+      talent: [makeTalent('1', 'Ada', 'Lovelace', { current_pay: '$120/hr' })],
+    });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.getByText('$120/hr')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Columns')); // open the <details> menu
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Rate' }));
+    expect(screen.queryByText('$120/hr')).not.toBeInTheDocument();
+  });
+
   it('discloses the truncation when the BE default cap is hit', async () => {
     const items = Array.from({ length: 50 }, (_, i) =>
       makeTalent(`tal-${i}`, `First${i}`, `Last${i}`),

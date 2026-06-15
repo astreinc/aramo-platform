@@ -136,7 +136,8 @@ export function FacetRail({
         </div>
       </details>
 
-      {/* Location — BACKED (free text over city/state; radius/ZIP are stubs) */}
+      {/* Location — text over city/state is BACKED; radius + remote-friendly are
+          rendered-as-drawn but disabled (no geo / no remote field — carry). */}
       <details className="rc-facet">
         <summary>
           Location
@@ -151,8 +152,25 @@ export function FacetRail({
             onChange={(e) => onLocation(e.target.value)}
             aria-label="Filter by location"
           />
+          <select
+            className="rc-facet__input rc-mt-8"
+            disabled
+            aria-label="Search radius (not available yet)"
+            title="Radius search needs geocoding — not modelled yet (carry)."
+            defaultValue="exact"
+          >
+            <option value="25">Within 25 mi</option>
+            <option value="50">Within 50 mi</option>
+            <option value="100">Within 100 mi</option>
+            <option value="exact">Exact</option>
+          </select>
+          <label className="rc-fopt rc-fopt--disabled" title="No remote field on the talent record yet (carry).">
+            <input type="checkbox" disabled />
+            Include remote-friendly
+          </label>
           <p className="rc-facet__note">
-            Radius / ZIP search is not modelled yet — matches city &amp; state text.
+            Text matches city &amp; state. Radius &amp; remote-friendly need geo /
+            a remote field — carry.
           </p>
         </div>
       </details>
@@ -162,7 +180,7 @@ export function FacetRail({
       <StubFacet label="Availability" note={STUB_NOTE} />
       <StubFacet
         label="Rate (talent-stated)"
-        note="Rate is what the talent stated. Aramo does not infer or order by pay. (Free text — no range filter.)"
+        note="Rate is what the talent stated. Aramo never infers pay or orders results by it. (Free text — no range filter.)"
       />
       <StubFacet label="Engagement type" note={STUB_NOTE} />
       <StubFacet label="Last activity" note="Needs a bulk last-activity read (carry — per-talent N+1 today)." />

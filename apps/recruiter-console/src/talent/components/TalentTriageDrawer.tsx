@@ -25,7 +25,7 @@ import type { TalentRecordView } from '../types';
 // (the list stays visible so the recruiter can page prev/next through results).
 // Identity + key facts come from the already-loaded row (no refetch); pipeline
 // and activity are live reads. The "Match insight" seam is a Core placeholder —
-// evidence and tier, not a number (R9/R10 moat) — and is deliberately unwired.
+// the evidence behind a recommendation, never a number (R9/R10 moat) — unwired.
 
 interface DrawerProps {
   readonly talent: TalentRecordView | null;
@@ -68,7 +68,11 @@ export function TalentTriageDrawer({
   const [pipelines, setPipelines] = useState<readonly PipelineView[]>([]);
   const [activities, setActivities] = useState<readonly ActivityView[]>([]);
   const [loading, setLoading] = useState(false);
+  const [pipeError, setPipeError] = useState(false);
+  const [actError, setActError] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
 
   const talentId = talent?.id ?? null;
 
@@ -76,6 +80,8 @@ export function TalentTriageDrawer({
     if (talentId === null) return;
     let cancelled = false;
     setLoading(true);
+    setPipeError(false);
+    setActError(false);
     setPipelines([]);
     setActivities([]);
     void Promise.allSettled([
@@ -84,7 +90,9 @@ export function TalentTriageDrawer({
     ]).then(([p, a]) => {
       if (cancelled) return;
       if (p.status === 'fulfilled') setPipelines(p.value.items);
+      else setPipeError(true);
       if (a.status === 'fulfilled') setActivities(a.value.items);
+      else setActError(true);
       setLoading(false);
     });
     return () => {
@@ -92,14 +100,43 @@ export function TalentTriageDrawer({
     };
   }, [talentId]);
 
-  // a11y: move focus into the drawer on open; Esc closes.
+  // a11y: capture the trigger, move focus into the drawer on open, restore on
+  // close; Esc closes; Tab is trapped within the drawer (dialog semantics).
   useEffect(() => {
-    if (talentId !== null) headingRef.current?.focus();
+    if (talentId === null) return;
+    restoreRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    headingRef.current?.focus();
+    const toRestore = restoreRef.current;
+    return () => toRestore?.focus();
   }, [talentId]);
+
   useEffect(() => {
     if (talentId === null) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const root = asideRef.current;
+      if (root === null) return;
+      const focusable = root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (first === undefined || last === undefined) return;
+      const active = document.activeElement;
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -110,6 +147,7 @@ export function TalentTriageDrawer({
 
   return (
     <aside
+      ref={asideRef}
       className="rc-drawer rc-drawer--open"
       role="dialog"
       aria-modal="false"
@@ -217,6 +255,8 @@ export function TalentTriageDrawer({
           <h4>In pipeline</h4>
           {loading ? (
             <p className="rc-drawer__empty">Loading…</p>
+          ) : pipeError ? (
+            <p className="rc-drawer__empty">Couldn’t load pipelines.</p>
           ) : pipelines.length === 0 ? (
             <p className="rc-drawer__empty">Not in any pipeline.</p>
           ) : (
@@ -233,6 +273,8 @@ export function TalentTriageDrawer({
           <h4>Recent activity</h4>
           {loading ? (
             <p className="rc-drawer__empty">Loading…</p>
+          ) : actError ? (
+            <p className="rc-drawer__empty">Couldn’t load activity.</p>
           ) : activities.length === 0 ? (
             <p className="rc-drawer__empty">No recent activity.</p>
           ) : (
@@ -251,8 +293,8 @@ export function TalentTriageDrawer({
 
         <section className="rc-drawer__sec">
           <ReservedSeam title="Match insight" tag="Integrates with Core later">
-            When Aramo Core is connected, its reasoning for this talent — evidence
-            and tier, not a number — appears here.
+            When Aramo Core is connected, its reasoning for this talent — the
+            evidence behind a recommendation, never a number — appears here.
           </ReservedSeam>
         </section>
       </div>

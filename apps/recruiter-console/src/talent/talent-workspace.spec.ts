@@ -142,4 +142,11 @@ describe('sortTalent', () => {
     expect(sortTalent(POOL, 'name', 'asc').map((x) => x.first_name)).toEqual(['Ada', 'Bob', 'Cy']);
     expect(sortTalent(POOL, 'name', 'desc').map((x) => x.first_name)).toEqual(['Cy', 'Bob', 'Ada']);
   });
+  it('sorts by location and by resolved owner name', () => {
+    // Austin, Austin, Seattle → asc puts Austin rows first
+    expect(sortTalent(POOL, 'location', 'asc').map((x) => x.id)).toEqual(['1', '3', '2']);
+    // owner: id 1 → "Priya", id 2 → "Tom", id 3 → unowned (sorts last asc)
+    const names = { me: 'Priya', other: 'Tom' };
+    expect(sortTalent(POOL, 'owner', 'asc', names).map((x) => x.id)).toEqual(['1', '2', '3']);
+  });
 });

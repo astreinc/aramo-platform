@@ -83,6 +83,13 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [density, setDensity] = useState<Density>('comfortable');
+  const [cols, setCols] = useState({
+    skills: true,
+    location: true,
+    rate: true,
+    consent: true,
+    owner: true,
+  });
   const [busy, setBusy] = useState(false);
   const [reqDialogOpen, setReqDialogOpen] = useState(false);
 
@@ -144,7 +151,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
       sessionSub: myId,
       ownerNames: userNames,
     });
-    return sortTalent(base, sortKey, sortDir);
+    return sortTalent(base, sortKey, sortDir, userNames);
   }, [items, facets, query, scope, myId, userNames, sortKey, sortDir]);
 
   const truncated = items.length >= DEFAULT_LIST_CAP;
@@ -273,9 +280,16 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     });
 
   const drawerTalent = drawerIndex !== null ? (filtered[drawerIndex] ?? null) : null;
+  const colCount =
+    3 + // select + talent + actions
+    (cols.skills ? 1 : 0) +
+    (cols.location ? 1 : 0) +
+    (cols.rate ? 1 : 0) +
+    (cols.consent ? 1 : 0) +
+    (cols.owner ? 1 : 0);
 
   return (
-    <section>
+    <section className={drawerTalent !== null ? 'rc-talent rc-talent--drawer' : 'rc-talent'}>
       <div className="rc-viewhead">
         <div>
           <h1 className="rc-h1">Talent</h1>
@@ -286,16 +300,6 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
           </p>
         </div>
         <div className="rc-viewhead__actions">
-          <button type="button" className="rc-ghostbtn" disabled title="Column customization is a follow-up.">
-            <Icons.IconColumns /> Columns
-          </button>
-          <button
-            type="button"
-            className="rc-ghostbtn"
-            onClick={() => toggleSort('name')}
-          >
-            <Icons.IconSort /> Sort
-          </button>
           {canCreate ? (
             <Link to="/talent/new">
               <Button variant="primary">
@@ -431,6 +435,31 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
               {selected.size > 0 ? `${selected.size} selected` : `${filtered.length} talent`}
             </span>
             <div className="rc-rtools__right">
+              <details className="rc-colmenu">
+                <summary className="rc-mini">
+                  <Icons.IconColumns /> Columns
+                </summary>
+                <div className="rc-colmenu__body">
+                  {(
+                    [
+                      ['skills', 'Skills'],
+                      ['location', 'Location'],
+                      ['rate', 'Rate'],
+                      ['consent', 'Consent'],
+                      ['owner', 'Owner'],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="rc-fopt">
+                      <input
+                        type="checkbox"
+                        checked={cols[key]}
+                        onChange={() => setCols((c) => ({ ...c, [key]: !c[key] }))}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </details>
               <button
                 type="button"
                 className="rc-mini"
@@ -465,26 +494,45 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                       />
                     </th>
                     <th scope="col">
-                      <button type="button" className="rc-th-sort" onClick={() => toggleSort('name')}>
+                      <button
+                        type="button"
+                        className="rc-th-sort"
+                        aria-sort={sortKey === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                        onClick={() => toggleSort('name')}
+                      >
                         Talent {sortKey === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
                       </button>
                     </th>
-                    <th scope="col">Skills</th>
-                    <th scope="col">Location</th>
-                    <th scope="col">
-                      <button type="button" className="rc-th-sort" onClick={() => toggleSort('rate')}>
-                        Rate {sortKey === 'rate' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-                      </button>
-                    </th>
-                    <th scope="col">Consent</th>
-                    <th scope="col">Owner</th>
+                    {cols.skills ? <th scope="col">Skills</th> : null}
+                    {cols.location ? (
+                      <th scope="col">
+                        <button type="button" className="rc-th-sort" onClick={() => toggleSort('location')}>
+                          Location {sortKey === 'location' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                        </button>
+                      </th>
+                    ) : null}
+                    {cols.rate ? (
+                      <th scope="col">
+                        <button type="button" className="rc-th-sort" onClick={() => toggleSort('rate')}>
+                          Rate {sortKey === 'rate' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                        </button>
+                      </th>
+                    ) : null}
+                    {cols.consent ? <th scope="col">Consent</th> : null}
+                    {cols.owner ? (
+                      <th scope="col">
+                        <button type="button" className="rc-th-sort" onClick={() => toggleSort('owner')}>
+                          Owner {sortKey === 'owner' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                        </button>
+                      </th>
+                    ) : null}
                     <th scope="col" aria-label="Row actions" />
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.length === 0 ? (
                     <tr>
-                      <td className="rc-table__empty" colSpan={8}>
+                      <td className="rc-table__empty" colSpan={colCount}>
                         {items.length === 0
                           ? 'No talent yet in this tenant pool.'
                           : 'No talent matches these filters.'}
@@ -527,29 +575,35 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                             </span>
                           </Link>
                         </td>
-                        <td>
-                          <span className="rc-tags">
-                            {skillsOf(t).slice(0, 3).map((s) => (
-                              <Tag key={s}>{s}</Tag>
-                            ))}
-                            {skillsOf(t).length > 3 ? (
-                              <span className="rc-tag rc-tag--more">
-                                +{skillsOf(t).length - 3}
-                              </span>
-                            ) : null}
-                          </span>
-                        </td>
-                        <td>{locationOf(t)}</td>
-                        <td className="num">{statedRate(t)}</td>
-                        <td>
-                          <span
-                            className="rc-consent-stub"
-                            title="Per-talent consent state is a carry (N+1, Core-keyed)."
-                          >
-                            —
-                          </span>
-                        </td>
-                        <td>{t.owner_id ? (userNames[t.owner_id] ?? '—') : '—'}</td>
+                        {cols.skills ? (
+                          <td>
+                            <span className="rc-tags">
+                              {skillsOf(t).slice(0, 3).map((s) => (
+                                <Tag key={s}>{s}</Tag>
+                              ))}
+                              {skillsOf(t).length > 3 ? (
+                                <span className="rc-tag rc-tag--more">
+                                  +{skillsOf(t).length - 3}
+                                </span>
+                              ) : null}
+                            </span>
+                          </td>
+                        ) : null}
+                        {cols.location ? <td>{locationOf(t)}</td> : null}
+                        {cols.rate ? <td className="num">{statedRate(t)}</td> : null}
+                        {cols.consent ? (
+                          <td>
+                            <span
+                              className="rc-consent-stub"
+                              title="Per-talent consent state is a carry (N+1, Core-keyed) — wired in Segment 3."
+                            >
+                              —
+                            </span>
+                          </td>
+                        ) : null}
+                        {cols.owner ? (
+                          <td>{t.owner_id ? (userNames[t.owner_id] ?? '—') : '—'}</td>
+                        ) : null}
                         <td>
                           <div className="rc-rowq">
                             <button
@@ -630,11 +684,13 @@ function AddToReqDialog({
   const [reqs, setReqs] = useState<readonly RequisitionView[]>([]);
   const [reqId, setReqId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadErr, setLoadErr] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setLoading(true);
+    setLoadErr(false);
     void listRequisitions()
       .then((r) => {
         if (cancelled) return;
@@ -643,6 +699,7 @@ function AddToReqDialog({
       })
       .catch(() => {
         if (cancelled) return;
+        setLoadErr(true);
         setLoading(false);
       });
     return () => {
@@ -680,6 +737,8 @@ function AddToReqDialog({
     >
       {loading ? (
         <p className="rc-empty">Loading requisitions…</p>
+      ) : loadErr ? (
+        <p className="rc-empty">Couldn’t load requisitions. Please try again.</p>
       ) : reqs.length === 0 ? (
         <p className="rc-empty">No active requisitions visible to you.</p>
       ) : (

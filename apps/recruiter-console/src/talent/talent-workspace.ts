@@ -274,17 +274,35 @@ export function applyView(
 }
 
 // ── Sort ────────────────────────────────────────────────────────────────────
-export type SortKey = 'name' | 'rate';
+export type SortKey = 'name' | 'rate' | 'location' | 'owner';
 export type SortDir = 'asc' | 'desc';
 
 export function sortTalent(
   talent: readonly TalentRecordView[],
   key: SortKey,
   dir: SortDir,
+  ownerNames: Record<string, string> = {},
 ): readonly TalentRecordView[] {
   const sign = dir === 'asc' ? 1 : -1;
+  const ownerOf = (t: TalentRecordView): string | null =>
+    t.owner_id ? (ownerNames[t.owner_id] ?? '') : null;
   return [...talent].sort((a, b) => {
-    if (key === 'name') return sign * fullName(a).localeCompare(fullName(b));
-    return sign * statedRate(a).localeCompare(statedRate(b));
+    switch (key) {
+      case 'name':
+        return sign * fullName(a).localeCompare(fullName(b));
+      case 'rate':
+        return sign * statedRate(a).localeCompare(statedRate(b));
+      case 'location':
+        return sign * locationOf(a).localeCompare(locationOf(b));
+      case 'owner': {
+        const ao = ownerOf(a);
+        const bo = ownerOf(b);
+        // Unowned always sorts last, regardless of direction.
+        if (ao === null && bo === null) return 0;
+        if (ao === null) return 1;
+        if (bo === null) return -1;
+        return sign * ao.localeCompare(bo);
+      }
+    }
   });
 }
