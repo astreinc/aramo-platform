@@ -79,6 +79,27 @@ export function isPipelineStatus(value: unknown): value is PipelineStatus {
   );
 }
 
+// Segment 3 — the ACTIVE funnel, in funnel order. Excludes `no_status`
+// (import-legacy, not a real stage) and the three terminal states (placed,
+// not_in_consideration, client_declined). This ordering is the single source
+// of "most-advanced ACTIVE stage" for the talent-records current_stage
+// read-model — apps/api asks pipeline; it never re-derives this ordering.
+export const ACTIVE_FLOW_STAGES: readonly PipelineStatus[] = [
+  'no_contact',
+  'contacted',
+  'talent_responded',
+  'qualifying',
+  'submitted',
+  'interviewing',
+  'offered',
+];
+
+// Funnel ordinal of an ACTIVE stage (higher = more advanced); -1 if the status
+// is not an active-flow stage (no_status / terminal).
+export function activeStageOrdinal(status: PipelineStatus): number {
+  return ACTIVE_FLOW_STAGES.indexOf(status);
+}
+
 // LEGAL_TRANSITIONS — the proposed transition map (Ruling 1; Lead
 // reviews this design at Gate 6).
 //

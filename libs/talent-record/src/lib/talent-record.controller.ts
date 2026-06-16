@@ -9,8 +9,10 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { v7 as uuidv7 } from 'uuid';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
@@ -35,9 +37,37 @@ import { LinkTalentRecordRequestDto } from './dto/link-talent-record-request.dto
 import type { ResumeUploadUrlRequestDto } from './dto/resume-upload-url-request.dto.js';
 import type { TalentLinkView } from './dto/talent-link.view.js';
 import type { TalentRecordView } from './dto/talent-record.view.js';
+import type {
+  TalentSearchPage,
+  TalentSearchQuery,
+  TalentSortKey,
+} from './dto/talent-search.dto.js';
 import type { UpdateTalentRecordRequestDto } from './dto/update-talent-record-request.dto.js';
 import { TalentLinkService } from './talent-link.service.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
+
+const SORT_KEYS: readonly TalentSortKey[] = [
+  'name',
+  'created_at',
+  'owner',
+  'location',
+  'availability',
+  'engagement',
+  'hot',
+];
+function parseSort(value: string | undefined): TalentSortKey {
+  return value !== undefined && (SORT_KEYS as readonly string[]).includes(value)
+    ? (value as TalentSortKey)
+    : 'created_at';
+}
+function splitCsv(value: string | undefined): string[] | undefined {
+  if (value === undefined || value.trim() === '') return undefined;
+  const parts = value
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s !== '');
+  return parts.length > 0 ? parts : undefined;
+}
 
 // TalentRecordController — PR-A4 Gate 5 ATS Batch 3.
 //
@@ -91,8 +121,31 @@ export class TalentRecordController {
     @Query('site_id') siteIdFromQuery: string | undefined,
     @Query('q') q: string | undefined,
     @Query('resume_q') resumeQ: string | undefined,
+    @Query('paged') paged: string | undefined,
+    @Query('sort') sort: string | undefined,
+    @Query('dir') dir: string | undefined,
+    @Query('cursor') cursor: string | undefined,
+    @Query('page_size') pageSize: string | undefined,
+    @Query('availability') availability: string | undefined,
+    @Query('engagement') engagement: string | undefined,
+    @Query('source') source: string | undefined,
+    @Query('hot') hot: string | undefined,
+    @Query('owner') owner: string | undefined,
+    @Query('skills') skills: string | undefined,
+    @Query('skill_match') skillMatch: string | undefined,
+    @Query('location') location: string | undefined,
+    @Req()
+    req: Request & {
+      talentSearchQuery?: TalentSearchQuery;
+      // Segment 4c — set by the apps/api TalentPresetInterceptor (PRE-handler):
+      // a cross-schema preset's resolved talent-id allowlist, and the "My team"
+      // scope's resolved owner-id set. Both are single-schema inputs here — the
+      // lib never reads activity/pipeline/tasks/teams itself.
+      talentPresetAllowlist?: readonly string[];
+      talentScopeOwnerIds?: readonly string[];
+    },
     @RequestId() requestId: string,
-  ): Promise<{ items: TalentRecordView[] }> {
+  ): Promise<{ items: TalentRecordView[] } | TalentSearchPage> {
     const searchTerm = q?.trim() ? q.trim() : undefined;
     const resumeTerm = resumeQ?.trim() ? resumeQ.trim() : undefined;
     if (
@@ -117,6 +170,42 @@ export class TalentRecordController {
         q: searchTerm,
       });
       return { items };
+    }
+
+    // Segment 4 — opt-in server-side faceted + keyset-paginated path. Returns
+    // a superset ({ items, next_cursor, facets }) so the pre-Seg-4 FE (which
+    // reads only `items`) keeps working unchanged.
+    if (paged === 'true') {
+      const query: TalentSearchQuery = {
+        tenant_id: authContext.tenant_id,
+        site_id: siteIdFromQuery,
+        q: searchTerm,
+        skills: splitCsv(skills),
+        skill_match: skillMatch === 'all' ? 'all' : 'any',
+        availability_status: splitCsv(availability),
+        engagement_type: splitCsv(engagement),
+        source: splitCsv(source),
+        is_hot: hot === 'true' ? true : undefined,
+        // Segment 4c — "My team" scope resolved upstream takes precedence over
+        // the native owner param (the owner-is-me / all tabs use the param).
+        owner_id: req.talentScopeOwnerIds ?? splitCsv(owner),
+        location,
+        // Segment 4c — a cross-schema preset's resolved allowlist (resolve-then-
+        // filter). Empty array ⇒ preset matched nothing ⇒ zero results (distinct
+        // from undefined = no preset). buildSearchWhere ANDs it with the natives.
+        id_allowlist: req.talentPresetAllowlist,
+        sort: parseSort(sort),
+        dir: dir === 'asc' ? 'asc' : 'desc',
+        cursor,
+        page_size: pageSize !== undefined ? Number(pageSize) : undefined,
+      };
+      // Segment 4b — stash the parsed query on the request so the apps/api
+      // enrichment interceptor (the only layer allowed to read activity /
+      // consent / pipeline) can compute the full-set cross-schema facet counts.
+      // The lib stays single-schema: it hands off a plain object, imports none
+      // of the cross-schema modules.
+      req.talentSearchQuery = query;
+      return this.repo.searchPaged(query);
     }
 
     // PR-1 / no-search path — UNCHANGED (backward-compat by construction).
@@ -159,11 +248,13 @@ export class TalentRecordController {
   async create(
     @AuthContext() authContext: AuthContextType,
     @Body() body: CreateTalentRecordRequestDto,
+    @RequestId() requestId: string,
   ): Promise<TalentRecordView> {
     return this.repo.create({
       tenant_id: authContext.tenant_id,
       entered_by_id: authContext.sub,
       input: body,
+      requestId,
     });
   }
 

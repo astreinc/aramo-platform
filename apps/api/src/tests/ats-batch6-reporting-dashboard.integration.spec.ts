@@ -137,6 +137,12 @@ const TALENT_RECORD_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
 );
+// Segment 2 — the talent-stated availability_status + engagement_type columns
+// (Prisma create RETURNING projects them; the test DB must carry them).
+const TALENT_RECORD_STATED_FIELDS = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260615000000_talent_stated_fields/migration.sql',
+);
 
 // === CORE / ENGAGEMENT / SUBMITTAL MIGRATIONS — DELIBERATELY OMITTED ===
 //
@@ -247,6 +253,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_INIT,
         TALENT_RECORD_LINK_ADD,
         TALENT_RECORD_IMPORT_BACK_REF,
+        TALENT_RECORD_STATED_FIELDS,
         ACTIVITY_INIT,
         PIPELINE_INIT,
         CALENDAR_INIT,

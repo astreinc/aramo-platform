@@ -80,6 +80,8 @@ TIER2_EXCLUDES=(
   "**/prisma/generated/**"            # PR-1: per-module Prisma generated client output
   "playwright-report"                 # PR-1: Playwright HTML report output
   "test-results"                      # PR-1: Playwright test output
+  "scratch"                           # Non-product scratch dir (uncommitted recon/reports)
+  "**/design-reference/**"            # Verbatim design mockups intentionally keep pre-canon vocab
   "doc/01-locked-baselines.md"        # PR-1: references locked program docs by title
   "doc/02-claude-code-discipline.md"  # PR-1: Rule 5 vocabulary table uses anti-terms in "Not" column
   "doc/03-refusal-layer.md"           # PR-1: refusal anti-patterns use forbidden vocabulary
@@ -416,6 +418,11 @@ COMMON_GLOBS=(
   --glob '!playwright-report'
   --glob '!test-results'
   --glob '!.git'
+  # Non-product scratch dir (uncommitted recon/report artifacts) — never source.
+  --glob '!scratch'
+  # Verbatim design-reference mockups intentionally preserve their original
+  # (pre-canon) vocabulary; they are references, not product source.
+  --glob '!**/design-reference/**'
 )
 
 # -----------------------------------------------------------------------------

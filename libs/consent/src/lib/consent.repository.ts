@@ -150,6 +150,14 @@ const STALENESS_WINDOW_MONTHS = 12;
 // PR-2 precedent #6: transaction boundary lives in the repository.
 // PR-2 precedent #4: no update method — the immutable ledger is enforced
 // here (no method exposed) AND in the database (BEFORE UPDATE trigger).
+// Segment 3 — the 3-value contact-consent summary surfaced to the talent-records
+// list enrichment. Only these three values cross the boundary (no raw consent
+// internals): contactable | expiring_lt_30d | do_not_contact.
+export type ConsentSummary =
+  | 'contactable'
+  | 'expiring_lt_30d'
+  | 'do_not_contact';
+
 @Injectable()
 export class ConsentRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -908,6 +916,89 @@ export class ConsentRepository {
         is_anonymized: false,
       };
     });
+  }
+
+  // Segment 3 — BATCH contact-consent summary for the talent-records list
+  // enrichment. Set-based over the page's Core talent_id set (ONE query), never
+  // per-row. Surfaces ONLY the 3-value summary for the `contacting` scope (no
+  // raw consent internals leak). Mirrors deriveScopeStateForReadEndpoint's
+  // latest-per-source status derivation. Mapping: granted & not near expiry →
+  // contactable; granted & expires within 30 days → expiring_lt_30d;
+  // revoked / expired / no_grant → do_not_contact. talent_ids with NO contacting
+  // events are absent from the map (the caller defaults to do_not_contact — no
+  // grant means no permission).
+  async findContactingConsentSummaryForTalentIds(args: {
+    tenant_id: string;
+    talent_ids: readonly string[];
+  }): Promise<Map<string, ConsentSummary>> {
+    const out = new Map<string, ConsentSummary>();
+    if (args.talent_ids.length === 0) return out;
+    const events = await this.prisma.talentConsentEvent.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        talent_id: { in: [...args.talent_ids] },
+        scope: 'contacting',
+      },
+      select: {
+        talent_id: true,
+        action: true,
+        captured_method: true,
+        occurred_at: true,
+        expires_at: true,
+      },
+    });
+    type Ev = (typeof events)[number];
+    const byTalent = new Map<string, Ev[]>();
+    for (const e of events) {
+      const arr = byTalent.get(e.talent_id) ?? [];
+      arr.push(e);
+      byTalent.set(e.talent_id, arr);
+    }
+    const horizon = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    for (const [talentId, evs] of byTalent) {
+      // latest event per captured_method (mirrors the read-endpoint resolver).
+      const latestPerSource = new Map<string, Ev>();
+      for (const ev of evs) {
+        const prior = latestPerSource.get(ev.captured_method);
+        if (
+          prior === undefined ||
+          ev.occurred_at.getTime() > prior.occurred_at.getTime()
+        ) {
+          latestPerSource.set(ev.captured_method, ev);
+        }
+      }
+      let anyRevoked = false;
+      let anyExpired = false;
+      let anyGranted = false;
+      for (const ev of latestPerSource.values()) {
+        if (ev.action === 'revoked') anyRevoked = true;
+        else if (ev.action === 'expired') anyExpired = true;
+        else if (ev.action === 'granted') anyGranted = true;
+      }
+      if (anyRevoked || anyExpired || !anyGranted) {
+        out.set(talentId, 'do_not_contact');
+        continue;
+      }
+      // granted — classify by the latest grant's expiry window.
+      let latestGrantAt = -Infinity;
+      let latestGrantExpiry: Date | null = null;
+      for (const ev of evs) {
+        if (
+          ev.action === 'granted' &&
+          ev.occurred_at.getTime() > latestGrantAt
+        ) {
+          latestGrantAt = ev.occurred_at.getTime();
+          latestGrantExpiry = ev.expires_at;
+        }
+      }
+      out.set(
+        talentId,
+        latestGrantExpiry !== null && latestGrantExpiry <= horizon
+          ? 'expiring_lt_30d'
+          : 'contactable',
+      );
+    }
+    return out;
   }
 }
 

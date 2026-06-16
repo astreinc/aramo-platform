@@ -16,6 +16,15 @@ export async function listPipelinesForRequisition(
   );
 }
 
+// Unfiltered list — returns EVERY pipeline across the actor's visible
+// requisitions in one call (libs/pipeline/src/lib/pipeline.controller.ts:54-74:
+// no requisition/talent filter → listForActor over visible_requisition_ids).
+// The Requisitions list groups this by requisition_id for per-req
+// Pipeline/Submitted counts — one call, not N+1.
+export async function listAllPipelines(): Promise<PipelineListResponse> {
+  return apiClient.get<PipelineListResponse>('/v1/pipelines');
+}
+
 // R3 — the talent DETAIL Pipelines tab. The Gate-5 KEY confirmation:
 // /v1/pipelines accepts a talent_record_id filter (libs/pipeline/src/
 // lib/pipeline.controller.ts:54-74, line 61). Fully supported.
@@ -25,6 +34,20 @@ export async function listPipelinesForTalent(
   return apiClient.get<PipelineListResponse>(
     `/v1/pipelines?talent_record_id=${encodeURIComponent(talentId)}`,
   );
+}
+
+// Add a talent to a requisition's pipeline (pipeline:add). POST /v1/pipelines
+// creates the row at the hard-coded initial status (no_contact) — the body
+// carries only the link (libs/pipeline create-pipeline-request.dto.ts). Used by
+// the Talent workspace "Add to req" row/bulk action.
+export async function addTalentToPipeline(
+  talentRecordId: string,
+  requisitionId: string,
+): Promise<PipelineView> {
+  return apiClient.post<PipelineView>('/v1/pipelines', {
+    talent_record_id: talentRecordId,
+    requisition_id: requisitionId,
+  });
 }
 
 export async function getPipelineHistory(

@@ -1,0 +1,101 @@
+/* Aramo Recruiter Console — Confident Blue theme layer (Phase 1).
+ *
+ * THE FREEZE STRATEGY (Lead-approved, G1):
+ *   1. Re-map fe-foundation's OWN custom properties (--c-*, --font-*, --r-*,
+ *      --sh-*) to Confident Blue at the app root. The frozen Button / Card /
+ *      Table / Dialog / Combobox / FormField reference these vars, so they
+ *      inherit the brand with ZERO edits to libs/fe-foundation.
+ *   2. Declare the new Confident Blue NAMESPACE (--brand / --rail / --canvas /
+ *      --ink / --line / semantics …) used by the new app-layer presentational
+ *      components (AppShell, pills, stepper, …) that the frozen primitives
+ *      cannot express.
+ *
+ * Load order (main.tsx): the fe-foundation barrel imports its tokens.css
+ * during the App import; this file is imported AFTER, so these :root rules
+ * win on equal specificity. `git diff` under libs/fe-foundation is empty.
+ *
+ * COLOR is LOCKED to the Confident Blue values from the Lead directive; the
+ * green prototypes are superseded. Layout/grammar come from the mockups.
+ */
+
+:root {
+  /* ── 1. fe-foundation token re-map (themes the frozen primitives) ── */
+
+  /* Neutral spine → cool confident-blue greys */
+  --c-bg: #f4f6fa; /* canvas */
+  --c-surface: #ffffff;
+  --c-surface-2: #fafbfc;
+  --c-border: #e5e9ed; /* line */
+  --c-border-strong: #d5dbe1; /* line-2 */
+  --c-text: #1b2730; /* ink */
+  --c-text-muted: #5c6770; /* muted */
+  --c-text-subtle: #93a0a8; /* faint */
+
+  /* Accent → Confident Blue brand */
+  --c-accent: #1f4e8c;
+  --c-accent-hover: #163a6b;
+  --c-accent-active: #122a47;
+  --c-accent-soft: #e7f0fa; /* brand-tint */
+  --c-accent-fg: #ffffff;
+
+  /* States (semantics held close to the locked palette) */
+  --c-danger: #a8412f;
+  --c-danger-soft: #f7e9e6;
+  --c-danger-border: #e9ccc4;
+  --c-success: #1f7a4d;
+  --c-success-soft: #e6f2ea;
+  --c-success-border: #c5e2cf;
+  --c-focus-ring: #2e73c9; /* brand-accent */
+
+  /* Type — Hanken Grotesk (UI) + IBM Plex Mono (IDs/codes/timestamps) */
+  --font-sans: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* Radii → mockup grammar (6 / 9 / 13) */
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 13px;
+
+  /* Elevation → single confident-blue ink shadow (calm grammar) */
+  --sh-1: 0 1px 2px rgba(20, 35, 48, 0.05), 0 4px 16px rgba(20, 35, 48, 0.04);
+  --sh-2: 0 1px 2px rgba(20, 35, 48, 0.06), 0 6px 20px rgba(20, 35, 48, 0.06);
+  --sh-3: 0 8px 28px rgba(20, 35, 48, 0.12), 0 2px 6px rgba(20, 35, 48, 0.06);
+
+  /* ── 2. New Confident Blue namespace (app-layer components) ── */
+  --brand: #1f4e8c;
+  --brand-strong: #163a6b;
+  --brand-accent: #2e73c9;
+  --brand-tint: #e7f0fa;
+
+  --rail: #122a47;
+  --rail-hover: #1e3c5e;
+  --rail-text: #a7bbd4;
+  --rail-strong: #ffffff;
+  --rail-av-bg: #244a74;
+  --rail-av-text: #cfe0f4;
+
+  --canvas: #f4f6fa;
+  --ink: #1b2730;
+  --muted: #5c6770;
+  --faint: #93a0a8;
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
+  --line: #e5e9ed;
+  --line-2: #d5dbe1;
+
+  --ok: #1f7a4d;
+  --ok-tint: #e6f2ea;
+  --info: #2c6fb3;
+  --info-tint: #e9f1f9;
+  --warn: #946011;
+  --warn-tint: #faefd8;
+  --danger: #a8412f;
+  --danger-tint: #f7e9e6;
+  --hot: #c0410c;
+  --hot-tint: #fbeadf;
+
+  --elev: 0 1px 2px rgba(20, 35, 48, 0.05), 0 4px 16px rgba(20, 35, 48, 0.04);
+
+  /* Tabular numerals on numeric/ID columns */
+  --tnum: 'tnum' 1;
+}

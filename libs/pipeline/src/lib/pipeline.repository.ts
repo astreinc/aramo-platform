@@ -8,9 +8,19 @@ import type { PipelineStatusHistoryView } from './dto/pipeline-status-history.vi
 import type { CreatePipelineRequestDto } from './dto/create-pipeline-request.dto.js';
 import {
   canTransition,
+  ACTIVE_FLOW_STAGES,
+  activeStageOrdinal,
   type PipelineStatus,
 } from './pipeline-state.js';
 import { PrismaService } from './prisma/prisma.service.js';
+
+// Segment 3 — the current-stage read-model shape (most-advanced ACTIVE
+// membership + which req). `null` from the accessor = the talent is in no
+// active pipeline ("none" at the response layer).
+export interface CurrentStage {
+  readonly stage: PipelineStatus;
+  readonly requisition_id: string;
+}
 
 // PipelineRepository — write + read surface for Pipeline + the ENFORCED
 // state machine transition (PR-A5a Gate 5; PR-A5b-1 extends the placement
@@ -450,6 +460,88 @@ export class PipelineRepository {
       take: limit,
     });
     return (rows as PipelineRow[]).map(projectView);
+  }
+
+  // Segment 3 — BATCH current-stage read for the talent-records list
+  // enrichment. Set-based over the page's talent_record_id set (ONE query),
+  // never per-row. Visibility honored: only pipelines on the actor's visible
+  // requisitions are considered (`visible_requisition_ids = null` ⇒ see-all).
+  // Derivation OWNED HERE (pipeline owns the funnel ordering): per talent, the
+  // most-advanced ACTIVE membership by funnel ordinal; deterministic tie-break
+  // (lowest requisition_id). Talents with no active membership are absent from
+  // the map ("none" at the response layer).
+  async findCurrentStageForTalentIds(args: {
+    tenant_id: string;
+    talent_record_ids: readonly string[];
+    visible_requisition_ids: ReadonlySet<string> | null;
+  }): Promise<Map<string, CurrentStage>> {
+    if (args.talent_record_ids.length === 0) return new Map();
+    const where: Record<string, unknown> = {
+      tenant_id: args.tenant_id,
+      talent_record_id: { in: [...args.talent_record_ids] },
+      status: { in: [...ACTIVE_FLOW_STAGES] },
+    };
+    if (args.visible_requisition_ids !== null) {
+      where['requisition_id'] = {
+        in: Array.from(args.visible_requisition_ids),
+      };
+    }
+    const rows = await this.prisma.pipeline.findMany({
+      where,
+      select: { talent_record_id: true, requisition_id: true, status: true },
+    });
+    const best = new Map<string, CurrentStage & { ord: number }>();
+    for (const r of rows) {
+      const stage = r.status as PipelineStatus;
+      const ord = activeStageOrdinal(stage);
+      if (ord < 0) continue; // belt-and-suspenders (query already filters)
+      const cur = best.get(r.talent_record_id);
+      const moreAdvanced = cur === undefined || ord > cur.ord;
+      const tieBreak =
+        cur !== undefined &&
+        ord === cur.ord &&
+        r.requisition_id < cur.requisition_id;
+      if (moreAdvanced || tieBreak) {
+        best.set(r.talent_record_id, {
+          stage,
+          requisition_id: r.requisition_id,
+          ord,
+        });
+      }
+    }
+    const out = new Map<string, CurrentStage>();
+    for (const [id, v] of best) {
+      out.set(id, { stage: v.stage, requisition_id: v.requisition_id });
+    }
+    return out;
+  }
+
+  // Segment 4c — preset resolution ("Submitted · this week"). Returns the
+  // DISTINCT talent_record ids that transitioned INTO `submitted` at/after
+  // `since`, tenant-wide. PipelineStatusHistory carries the transition; the
+  // talent id comes through the INTRA-schema relation to Pipeline (both live
+  // in the pipeline schema — never a cross-schema join). Bounded by `limit`:
+  // distinct pipelines, take limit+1, then dedup to talent ids (a talent with
+  // two submitted pipelines folds to one).
+  async findTalentIdsSubmittedSince(args: {
+    tenant_id: string;
+    since: Date;
+    limit: number;
+  }): Promise<string[]> {
+    const rows = await this.prisma.pipelineStatusHistory.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        status_to: 'submitted',
+        changed_at: { gte: args.since },
+      },
+      select: { pipeline: { select: { talent_record_id: true } } },
+      distinct: ['pipeline_id'],
+      take: args.limit + 1,
+      orderBy: { changed_at: 'desc' },
+    });
+    const ids = new Set<string>();
+    for (const r of rows) ids.add(r.pipeline.talent_record_id);
+    return [...ids];
   }
 
   /**

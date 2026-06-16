@@ -1,84 +1,109 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ConfirmStep } from './ConfirmStep';
 import type { TalentSubmittalRecordView } from './types';
 
-const baseSubmittal: TalentSubmittalRecordView = {
-  id: '99990000-0000-7000-8000-000000000001',
-  tenant_id: '11111111-1111-7111-8111-111111111111',
-  talent_id: 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb',
-  job_id: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc',
-  evidence_package_id: '99990000-0000-7000-8000-000000000002',
-  pinned_examination_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+const SUBMITTAL: TalentSubmittalRecordView = {
+  id: 'sub-1',
+  tenant_id: 't',
+  talent_id: 'tal-1',
+  job_id: 'job-1',
+  evidence_package_id: 'ep-1',
+  pinned_examination_id: 'ex-1',
   state: 'created',
-  created_by: '00000000-0000-7000-8000-000000000bb1',
+  created_by: 'u',
   justification: null,
   failed_criterion_acknowledgments: null,
-  created_at: '2026-05-23T12:00:00Z',
+  created_at: 'x',
   confirmed_at: null,
   revoked_at: null,
   revoked_by: null,
   revocation_justification: null,
 };
 
-describe('ConfirmStep', () => {
-  it('attestations START UNCHECKED (the recruiter must affirmatively check each)', () => {
-    render(
-      <ConfirmStep
-        submittal={baseSubmittal}
-        idempotencyKey="0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f00"
-        onConfirmed={vi.fn()}
-      />,
+function mockConfirm(captured: { body?: unknown }) {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+    if (init?.body != null) captured.body = JSON.parse(String(init.body));
+    return new Response(
+      JSON.stringify({ submittal: { ...SUBMITTAL, state: 'handoff_draft' } }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
     );
-    const checkboxes = screen.getAllByRole('checkbox');
+  });
+}
+
+const ATT_1 = /communicated directly with this talent/i;
+const ATT_2 = /rate, availability, and authorization details/i;
+const ATT_3 = /ready for submittal to the client/i;
+
+describe('ConfirmStep (submittal attestation gate)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('renders the three locked attestations in canonical talent vocab, start unchecked', () => {
+    render(
+      <ConfirmStep submittal={SUBMITTAL} idempotencyKey="k" onConfirmed={vi.fn()} talentName="Aisha Khan" requisitionTitle="Senior Rust Engineer" />,
+    );
+    expect(screen.getByText('Submit Aisha Khan to client')).toBeInTheDocument();
+    const checkboxes = [ATT_1, ATT_2, ATT_3].map((re) =>
+      screen.getByRole('checkbox', { name: re }),
+    );
     expect(checkboxes).toHaveLength(3);
-    checkboxes.forEach((cb) => {
-      expect(cb).not.toBeChecked();
+    checkboxes.forEach((cb) => expect(cb).not.toBeChecked());
+  });
+
+  it('drops system constraint chips for a reserved Core seam (gap #4 / R10)', () => {
+    render(
+      <ConfirmStep submittal={SUBMITTAL} idempotencyKey="k" onConfirmed={vi.fn()} />,
+    );
+    const seam = screen.getByRole('region', { name: 'Constraint compliance' });
+    expect(seam.textContent).toContain('Aramo Core');
+    // No pass/partial/fail computed verdict rendered.
+    expect(screen.queryByText(/within max|partial|fail/i)).toBeNull();
+  });
+
+  it('keeps Submit DISABLED until all three attestations are checked, and unchecking re-disables', () => {
+    render(
+      <ConfirmStep submittal={SUBMITTAL} idempotencyKey="k" onConfirmed={vi.fn()} />,
+    );
+    const submit = screen.getByRole('button', { name: 'Submit to client' });
+    expect(submit).toBeDisabled();
+    fireEvent.click(screen.getByRole('checkbox', { name: ATT_1 }));
+    fireEvent.click(screen.getByRole('checkbox', { name: ATT_2 }));
+    expect(submit).toBeDisabled();
+    fireEvent.click(screen.getByRole('checkbox', { name: ATT_3 }));
+    expect(submit).toBeEnabled();
+    // The literal-true invariant: unchecking any one re-disables.
+    fireEvent.click(screen.getByRole('checkbox', { name: ATT_2 }));
+    expect(submit).toBeDisabled();
+  });
+
+  it('confirms with all three attestations literal-true and advances the submittal', async () => {
+    const captured: { body?: unknown } = {};
+    mockConfirm(captured);
+    const onConfirmed = vi.fn();
+    render(
+      <ConfirmStep submittal={SUBMITTAL} idempotencyKey="k" onConfirmed={onConfirmed} />,
+    );
+    [ATT_1, ATT_2, ATT_3].forEach((re) =>
+      fireEvent.click(screen.getByRole('checkbox', { name: re })),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Submit to client' }));
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalledOnce());
+    expect(captured.body).toEqual({
+      attestations: {
+        talent_evidence_reviewed: true,
+        constraints_reviewed: true,
+        submittal_risk_acknowledged: true,
+      },
     });
   });
 
-  it('Confirm button is disabled until ALL THREE are checked', () => {
+  it('shows the immutable-on-submit notice', () => {
     render(
-      <ConfirmStep
-        submittal={baseSubmittal}
-        idempotencyKey="0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f00"
-        onConfirmed={vi.fn()}
-      />,
+      <ConfirmStep submittal={SUBMITTAL} idempotencyKey="k" onConfirmed={vi.fn()} />,
     );
-    const btn = screen.getByRole('button', { name: /Confirm submittal/ });
-    expect(btn).toBeDisabled();
-
-    const checkboxes = screen.getAllByRole('checkbox');
-    const cb1 = checkboxes[0];
-    const cb2 = checkboxes[1];
-    const cb3 = checkboxes[2];
-    if (cb1 === undefined || cb2 === undefined || cb3 === undefined) {
-      throw new Error('expected three checkboxes');
-    }
-    fireEvent.click(cb1);
-    expect(btn).toBeDisabled();
-    fireEvent.click(cb2);
-    expect(btn).toBeDisabled();
-    fireEvent.click(cb3);
-    expect(btn).toBeEnabled();
-  });
-
-  it('unchecking any one re-disables Confirm (the literal-true invariant)', () => {
-    render(
-      <ConfirmStep
-        submittal={baseSubmittal}
-        idempotencyKey="0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f00"
-        onConfirmed={vi.fn()}
-      />,
-    );
-    const btn = screen.getByRole('button', { name: /Confirm submittal/ });
-    const checkboxes = screen.getAllByRole('checkbox');
-    checkboxes.forEach((cb) => fireEvent.click(cb));
-    expect(btn).toBeEnabled();
-    const middle = checkboxes[1];
-    if (middle === undefined) throw new Error('expected three checkboxes');
-    fireEvent.click(middle);
-    expect(btn).toBeDisabled();
+    expect(
+      screen.getByText(/once submitted, the package is locked/i),
+    ).toBeInTheDocument();
   });
 });

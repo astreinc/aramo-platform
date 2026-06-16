@@ -1,174 +1,863 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
+  ApiError,
+  Button,
+  Dialog,
   InlineAlert,
-  PageHeader,
-  Table,
   hasScope,
   useSession,
   type Session,
-  type TableColumn,
 } from '@aramo/fe-foundation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 
-import { listTalent } from './talent-api';
-import { listErrorMessage } from './error-messages';
-import type { TalentRecordView } from './types';
+import { addTalentToPipeline } from '../pipeline/pipeline-api';
+import { listRequisitions } from '../requisitions/requisitions-api';
+import type { RequisitionView } from '../requisitions/types';
+import { probeTenantUsers } from '../task/task-api';
+import { Avatar, Card, Icons, StagePill, StatusPill, Tag, type PillTone } from '../ui';
+import type { PipelineStatus } from '../pipeline/types';
 
-// R2 — the Talent LIST. POOL-OPEN framing (ruling 1): the BE returns
-// the tenant + site talent pool with NO assignment filter; a recruiter
-// sees the SHARED pool, not a personal list. The header / empty-state
-// copy reflects that honestly.
-//
-// Large-table treatment (ruling 5): the BE caps at 50 default; when the
-// list hits the cap the view surfaces an honest truncation disclosure.
-// Cursor pagination is a backend-first carry.
-//
-// R3 — the primary-name cell renders a <Link> to /talent/:id. Ruling 5:
-// row-nav is a column-content change (not a Table rowHref prop) so the
-// frozen foundation Table stays untouched. Explicit focusable affordance.
+import { BulkBar } from './components/BulkBar';
+import { FacetRail } from './components/FacetRail';
+import { TalentTriageDrawer } from './components/TalentTriageDrawer';
+import { TokenSearch } from './components/TokenSearch';
+import { searchTalent, updateTalent } from './talent-api';
+import { listErrorMessage, updateErrorMessage } from './error-messages';
+import {
+  EMPTY_FACETS,
+  PRESETS,
+  buildTalentQuery,
+  deriveSkillCounts,
+  fullName,
+  locationOf,
+  parseQuery,
+  skillsOf,
+  statedRate,
+  AVAILABILITY_LABELS,
+  CONSENT_LABELS,
+  type FacetState,
+  type PresetKey,
+  type ScopeMode,
+  type SearchToken,
+  type SortDir,
+  type SortKey,
+} from './talent-workspace';
+import type { CrossFacets, NativeFacets, TalentRecordView } from './types';
 
-// Mirrors the BE default cap (libs/talent-record/src/lib/talent-record
-// .repository.ts list()). When the list length equals the cap, we
-// disclose the truncation honestly; the actual upper bound may be
-// greater (BE max=200) but the LIST defaults to 50.
-const DEFAULT_LIST_CAP = 50;
+// Talent workspace (faceted) — SEGMENT 4d: the filter/facet/sort/pagination are
+// SERVER-SIDE (?paged=true). The view sends the BE query (4a native filters +
+// keyset cursor · 4c presets/scope), renders the full-set facet counts (4a/4b)
+// and the cross-schema guard message, and pages via next_cursor (load-more,
+// append). Preserved load-bearing behavior: POOL-OPEN framing, the R7/G3 refusal
+// footer, the admin-gated Owner probe, scope-gated "New talent", the 403 message.
+// Canonical vocab "Talent".
 
-function fullName(t: TalentRecordView): string {
-  const first = t.first_name.trim();
-  const last = t.last_name.trim();
-  if (first === '' && last === '') return '—';
-  return `${first} ${last}`.trim();
+type Density = 'comfortable' | 'compact';
+
+// Availability pill tones (a talent-stated status, never an inferred ordering; R10-clean).
+const AVAILABILITY_TONE: Record<string, PillTone> = {
+  available_now: 'ok',
+  open_to_offers: 'info',
+  not_looking: 'neutral',
+  unknown: 'neutral',
+};
+
+// Consent summary tones (the contact-consent moat — a stated permission state).
+const CONSENT_TONE: Record<string, PillTone> = {
+  contactable: 'ok',
+  expiring_lt_30d: 'warn',
+  do_not_contact: 'danger',
+};
+
+function relativeActivity(iso: string | null | undefined): string {
+  if (iso === null || iso === undefined) return '—';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '—';
+  const days = Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days}d ago`;
+  const w = Math.floor(days / 7);
+  return w < 5 ? `${w}w ago` : `${Math.floor(days / 30)}mo ago`;
 }
-
-function firstNonNullPhone(t: TalentRecordView): string {
-  return t.phone_cell ?? t.phone_home ?? t.phone_work ?? '—';
-}
-
-function display(value: string | null): string {
-  return value === null || value === '' ? '—' : value;
-}
-
-function truncate(value: string | null, max: number): string {
-  if (value === null || value === '') return '—';
-  return value.length > max ? `${value.slice(0, max)}…` : value;
-}
-
-const columns: ReadonlyArray<TableColumn<TalentRecordView>> = [
-  {
-    key: 'name',
-    header: 'Name',
-    render: (t) => <Link to={`/talent/${t.id}`}>{fullName(t)}</Link>,
-  },
-  {
-    key: 'email',
-    header: 'Email',
-    render: (t) => display(t.email1),
-  },
-  {
-    key: 'phone',
-    header: 'Phone',
-    render: (t) => firstNonNullPhone(t),
-  },
-  {
-    key: 'current_employer',
-    header: 'Current employer',
-    render: (t) => display(t.current_employer),
-  },
-  {
-    key: 'key_skills',
-    header: 'Key skills',
-    render: (t) => (
-      <span title={t.key_skills ?? undefined}>{truncate(t.key_skills, 60)}</span>
-    ),
-  },
-  {
-    key: 'is_hot',
-    header: 'Hot',
-    width: '80px',
-    render: (t) => (t.is_hot ? 'Yes' : ''),
-  },
-  {
-    key: 'can_relocate',
-    header: 'Relocate',
-    width: '100px',
-    render: (t) => (t.can_relocate ? 'Yes' : ''),
-  },
-];
 
 interface TalentListViewProps {
-  // R5 test seam — pass a fixed session so the "+ New" gate is
-  // exercisable in tests without mounting the real session hook.
   readonly sessionOverride?: Session;
 }
 
 export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const [items, setItems] = useState<readonly TalentRecordView[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [serverFacets, setServerFacets] = useState<NativeFacets | null>(null);
+  const [crossFacets, setCrossFacets] = useState<CrossFacets | null>(null);
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [appendNote, setAppendNote] = useState<string | null>(null);
+
+  const [scope, setScope] = useState<ScopeMode>('all');
+  const [preset, setPreset] = useState<PresetKey | null>(null);
+  const [facets, setFacets] = useState<FacetState>(EMPTY_FACETS);
+  const [tokens, setTokens] = useState<readonly SearchToken[]>([]);
+  const [draft, setDraft] = useState('');
+
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [drawerIndex, setDrawerIndex] = useState<number | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [density, setDensity] = useState<Density>('comfortable');
+  const [cols, setCols] = useState({
+    skills: true,
+    stage: true,
+    availability: true,
+    location: true,
+    rate: true,
+    consent: true,
+    lastActivity: true,
+    owner: true,
+  });
+  const [busy, setBusy] = useState(false);
+  const [reqDialogOpen, setReqDialogOpen] = useState(false);
+  const loadMoreRef = useRef<HTMLButtonElement | null>(null);
+
   const sessionState = useSession();
   const session: Session | null =
     sessionOverride ??
     (sessionState.status === 'authenticated' ? sessionState.session : null);
-  // Defensive (R4 LIST precedent): in tests the session fetch may
-  // return a non-Session shape; guard so a malformed session can't
-  // crash render.
+  const myId = session?.sub ?? null;
   const canCreate =
-    session !== null &&
-    Array.isArray(session.scopes) &&
-    hasScope(session, 'talent:create');
+    session !== null && Array.isArray(session.scopes) && hasScope(session, 'talent:create');
+  const canEdit =
+    session !== null && Array.isArray(session.scopes) && hasScope(session, 'talent:edit');
+  const isLead =
+    session !== null && Array.isArray(session.scopes) && hasScope(session, 'org:manage');
 
+  // Roster probe (Owner column resolution) — one-shot, independent of search.
   useEffect(() => {
     let cancelled = false;
-    listTalent()
-      .then((res) => {
-        if (cancelled) return;
-        setItems(res.items);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(listErrorMessage(err));
-        setLoading(false);
-      });
+    void probeTenantUsers().then((res) => {
+      if (cancelled || !res.available) return;
+      const names: Record<string, string> = {};
+      for (const u of res.items) names[u.user_id] = u.display_name ?? u.email;
+      setUserNames(names);
+    });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const truncated = items.length >= DEFAULT_LIST_CAP;
+  const parsed = useMemo(() => {
+    const inDraft = parseQuery(draft);
+    return { tokens: [...tokens, ...inDraft.tokens], free: inDraft.free };
+  }, [tokens, draft]);
+
+  // The fetch closure depends on every filter input, so the search effect below
+  // re-runs (debounced) whenever the query changes.
+  const fetchPage = useCallback(
+    async (cursor: string | null, append: boolean) => {
+      const params = buildTalentQuery({
+        facets,
+        query: parsed,
+        scope,
+        preset,
+        sort: sortKey,
+        dir: sortDir,
+        cursor,
+        sessionSub: myId,
+      });
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      try {
+        const res = await searchTalent(params);
+        setItems((prev) => (append ? [...prev, ...res.items] : [...res.items]));
+        setNextCursor(res.next_cursor);
+        setServerFacets(res.facets);
+        setCrossFacets(res.cross_facets ?? null);
+        setError(null);
+        if (append) setAppendNote(`Loaded ${res.items.length} more talent.`);
+      } catch (err) {
+        if (!append) {
+          setItems([]);
+          setServerFacets(null);
+          setCrossFacets(null);
+        }
+        setError(listErrorMessage(err));
+      } finally {
+        if (append) setLoadingMore(false);
+        else setLoading(false);
+      }
+    },
+    [facets, parsed, scope, preset, sortKey, sortDir, myId],
+  );
+
+  // Debounced refetch on any query change. Resets the page + selection.
+  useEffect(() => {
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      if (cancelled) return;
+      setSelected(new Set());
+      setDrawerIndex(null);
+      setAppendNote(null);
+      void fetchPage(null, false);
+    }, 180);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [fetchPage]);
+
+  const skillCounts = useMemo(() => deriveSkillCounts(items), [items]);
+
+  // a11y — after a load-more append settles, keep focus on the Load-more button
+  // if more pages remain (so keyboard users don't lose their place); when the
+  // last page lands the button unmounts and the aria-live note announces it.
+  useEffect(() => {
+    if (appendNote !== null && !loadingMore && nextCursor !== null) {
+      loadMoreRef.current?.focus();
+    }
+  }, [appendNote, loadingMore, nextCursor]);
+
+  // ── interaction helpers ──
+  const resetAll = () => {
+    setFacets(EMPTY_FACETS);
+    setScope('all');
+    setPreset(null);
+    setTokens([]);
+    setDraft('');
+  };
+  const pickPreset = (key: PresetKey) => {
+    // Mutually exclusive; click the active preset to clear it.
+    setPreset((cur) => (cur === key ? null : key));
+  };
+  const pickScope = (next: ScopeMode) => setScope(next);
+  const commitTokens = () => {
+    const p = parseQuery(draft);
+    if (p.tokens.length > 0) {
+      setTokens((t) => [...t, ...p.tokens]);
+      setDraft(p.free);
+    }
+  };
+  const toggleSel = (id: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+  const loadMore = () => {
+    if (nextCursor !== null) void fetchPage(nextCursor, true);
+  };
+
+  // ── mutations ──
+  const selectedTalent = items.filter((t) => selected.has(t.id));
+  const assignToMe = async () => {
+    if (myId === null || selectedTalent.length === 0) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      await Promise.all(selectedTalent.map((t) => updateTalent(t.id, { owner_id: myId })));
+      setItems((prev) =>
+        prev.map((t) => (selected.has(t.id) ? { ...t, owner_id: myId } : t)),
+      );
+      setNotice(`Assigned ${selectedTalent.length} to you.`);
+      setSelected(new Set());
+    } catch (err) {
+      setNotice(updateErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addSelectedToReq = async (req: RequisitionView) => {
+    const drawerTarget = drawerIndex !== null ? items[drawerIndex] : undefined;
+    const targets = drawerTarget !== undefined ? [drawerTarget] : selectedTalent;
+    setBusy(true);
+    setNotice(null);
+    let ok = 0;
+    let skipped = 0;
+    for (const t of targets) {
+      try {
+        await addTalentToPipeline(t.id, req.id);
+        ok += 1;
+      } catch (err) {
+        if (err instanceof ApiError && (err.status === 409 || err.status === 422)) {
+          skipped += 1;
+        } else {
+          setNotice('Add to req failed — please try again.');
+          setBusy(false);
+          return;
+        }
+      }
+    }
+    setBusy(false);
+    setReqDialogOpen(false);
+    setNotice(
+      `Added ${ok} to ${req.title}${skipped > 0 ? ` (${skipped} already in pipeline)` : ''}.`,
+    );
+    if (drawerIndex === null) setSelected(new Set());
+  };
+
+  // ── active filter chips ──
+  const chips: { k: string; label: string; clear: () => void }[] = [];
+  if (scope === 'mine')
+    chips.push({ k: 'Scope', label: 'My talent', clear: () => setScope('all') });
+  if (scope === 'team')
+    chips.push({ k: 'Scope', label: 'My team', clear: () => setScope('all') });
+  if (preset !== null)
+    chips.push({
+      k: 'View',
+      label: PRESETS.find((p) => p.key === preset)?.label ?? preset,
+      clear: () => setPreset(null),
+    });
+  for (const s of facets.skills)
+    chips.push({
+      k: 'Skill',
+      label: s,
+      clear: () => setFacets((f) => ({ ...f, skills: f.skills.filter((x) => x !== s) })),
+    });
+  for (const s of facets.sources)
+    chips.push({
+      k: 'Source',
+      label: s,
+      clear: () => setFacets((f) => ({ ...f, sources: f.sources.filter((x) => x !== s) })),
+    });
+  if (facets.hotOnly)
+    chips.push({ k: 'Hot', label: 'Hot only', clear: () => setFacets((f) => ({ ...f, hotOnly: false })) });
+  if (facets.location.trim() !== '')
+    chips.push({ k: 'Location', label: facets.location, clear: () => setFacets((f) => ({ ...f, location: '' })) });
+  for (const a of facets.availability)
+    chips.push({
+      k: 'Availability',
+      label: AVAILABILITY_LABELS[a as keyof typeof AVAILABILITY_LABELS] ?? a,
+      clear: () => setFacets((f) => ({ ...f, availability: f.availability.filter((x) => x !== a) })),
+    });
+  for (const e of facets.engagementTypes)
+    chips.push({
+      k: 'Engagement',
+      label: e,
+      clear: () => setFacets((f) => ({ ...f, engagementTypes: f.engagementTypes.filter((x) => x !== e) })),
+    });
+
+  const hasActiveQuery =
+    chips.length > 0 || parsed.tokens.length > 0 || parsed.free.trim() !== '';
+
+  const drawerTalent = drawerIndex !== null ? (items[drawerIndex] ?? null) : null;
+  const colCount =
+    3 +
+    (cols.skills ? 1 : 0) +
+    (cols.stage ? 1 : 0) +
+    (cols.availability ? 1 : 0) +
+    (cols.location ? 1 : 0) +
+    (cols.rate ? 1 : 0) +
+    (cols.consent ? 1 : 0) +
+    (cols.lastActivity ? 1 : 0) +
+    (cols.owner ? 1 : 0);
 
   return (
-    <section>
-      <PageHeader
-        title="Talent"
-        description="Tenant talent pool — visible to all recruiters in your site."
+    <section className={drawerTalent !== null ? 'rc-talent rc-talent--drawer' : 'rc-talent'}>
+      <div className="rc-viewhead">
+        <div>
+          <h1 className="rc-h1">Talent</h1>
+          <p className="rc-sub">
+            <Icons.IconShield className="rc-sub__icon" aria-hidden="true" />
+            Your consented working set — talent you have permission to work.
+            Sourcing is a separate, consent-governed flow.
+          </p>
+        </div>
+        <div className="rc-viewhead__actions">
+          {canCreate ? (
+            <Link to="/talent/new">
+              <Button variant="primary">
+                <Icons.IconPlus /> Add talent
+              </Button>
+            </Link>
+          ) : null}
+        </div>
+      </div>
+
+      {/* scope tabs — three-way, mutually exclusive (My team = ?scope=my_team) */}
+      <div className="rc-scopetabs" role="group" aria-label="Scope">
+        <button
+          type="button"
+          className={scope === 'mine' ? 'on' : ''}
+          aria-pressed={scope === 'mine'}
+          onClick={() => pickScope('mine')}
+        >
+          My talent
+        </button>
+        <button
+          type="button"
+          className={scope === 'team' ? 'on' : ''}
+          aria-pressed={scope === 'team'}
+          onClick={() => pickScope('team')}
+        >
+          My team
+        </button>
+        <button
+          type="button"
+          className={scope === 'all' ? 'on' : ''}
+          aria-pressed={scope === 'all'}
+          onClick={() => pickScope('all')}
+        >
+          All
+        </button>
+      </div>
+
+      {/* views bar — presets (Available now native; the other three cross-schema) */}
+      <div className="rc-views" role="group" aria-label="Views">
+        <span className="rc-views__lbl">Views</span>
+        {PRESETS.map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            className={`rc-view${preset === v.key ? ' on' : ''}`}
+            aria-pressed={preset === v.key}
+            onClick={() => pickPreset(v.key)}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      <TokenSearch
+        tokens={tokens}
+        draft={draft}
+        onDraftChange={setDraft}
+        onCommit={commitTokens}
+        onRemove={(i) => setTokens((t) => t.filter((_, idx) => idx !== i))}
       />
-      {canCreate ? (
-        <p className="talent-list__toolbar">
-          <Link to="/talent/new" className="talent-list__new-link">
-            + New talent
-          </Link>
+
+      <div className="rc-activebar">
+        <span className="rc-activebar__count num">
+          {items.length} <small>talent{nextCursor !== null ? '+' : ''}</small>
+        </span>
+        {chips.length > 0 ? <span className="rc-activebar__sep" /> : null}
+        {chips.map((c, i) => (
+          <span key={`${c.k}-${c.label}-${i}`} className="rc-fchip">
+            <span className="rc-fchip__k">{c.k}</span> {c.label}
+            <button type="button" aria-label={`Remove ${c.k} ${c.label}`} onClick={c.clear}>
+              <Icons.IconX />
+            </button>
+          </span>
+        ))}
+        {chips.length > 0 ? (
+          <button type="button" className="rc-activebar__clear" onClick={resetAll}>
+            Clear all
+          </button>
+        ) : null}
+      </div>
+
+      {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
+      {notice !== null ? (
+        <p role="status" className="rc-notice">
+          {notice}
         </p>
       ) : null}
-      {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
-      {loading ? (
-        <p>Loading talent…</p>
-      ) : (
-        <>
-          {truncated ? (
-            <p role="status" data-testid="talent-cap-banner">
-              Showing first {DEFAULT_LIST_CAP} talent records. More may exist
-              beyond this page; cursor pagination is on the roadmap.
-            </p>
-          ) : null}
-          <Table<TalentRecordView>
-            columns={columns}
-            rows={items}
-            rowKey={(t) => t.id}
-            emptyMessage="No talent yet in this tenant pool."
-          />
-        </>
-      )}
+      <p role="status" className="rc-visually-hidden">
+        {appendNote ?? ''}
+      </p>
+
+      <div className="rc-work rc-mt-16">
+        <FacetRail
+          facets={facets}
+          skillCounts={skillCounts}
+          serverFacets={serverFacets}
+          crossFacets={crossFacets}
+          loadedCount={items.length}
+          onToggleSkill={(s) =>
+            setFacets((f) => ({
+              ...f,
+              skills: f.skills.includes(s) ? f.skills.filter((x) => x !== s) : [...f.skills, s],
+            }))
+          }
+          onSkillMatch={(m) => setFacets((f) => ({ ...f, skillMatch: m }))}
+          onToggleSource={(s) =>
+            setFacets((f) => ({
+              ...f,
+              sources: f.sources.includes(s) ? f.sources.filter((x) => x !== s) : [...f.sources, s],
+            }))
+          }
+          onToggleHot={() => setFacets((f) => ({ ...f, hotOnly: !f.hotOnly }))}
+          onLocation={(v) => setFacets((f) => ({ ...f, location: v }))}
+          onToggleAvailability={(v) =>
+            setFacets((f) => ({
+              ...f,
+              availability: f.availability.includes(v)
+                ? f.availability.filter((x) => x !== v)
+                : [...f.availability, v],
+            }))
+          }
+          onToggleEngagement={(v) =>
+            setFacets((f) => ({
+              ...f,
+              engagementTypes: f.engagementTypes.includes(v)
+                ? f.engagementTypes.filter((x) => x !== v)
+                : [...f.engagementTypes, v],
+            }))
+          }
+          onReset={resetAll}
+          isLead={isLead}
+        />
+
+        <Card flush>
+          <div className="rc-rtools">
+            <span className="rc-rtools__note">
+              {selected.size > 0 ? `${selected.size} selected` : `${items.length} talent`}
+            </span>
+            <div className="rc-rtools__right">
+              <details className="rc-colmenu">
+                <summary className="rc-mini">
+                  <Icons.IconColumns /> Columns
+                </summary>
+                <div className="rc-colmenu__body">
+                  {(
+                    [
+                      ['skills', 'Skills'],
+                      ['stage', 'Stage'],
+                      ['availability', 'Availability'],
+                      ['location', 'Location'],
+                      ['rate', 'Rate'],
+                      ['consent', 'Consent'],
+                      ['lastActivity', 'Last activity'],
+                      ['owner', 'Owner'],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="rc-fopt">
+                      <input
+                        type="checkbox"
+                        checked={cols[key]}
+                        onChange={() => setCols((c) => ({ ...c, [key]: !c[key] }))}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </details>
+              <button
+                type="button"
+                className="rc-mini"
+                onClick={() => setDensity((d) => (d === 'comfortable' ? 'compact' : 'comfortable'))}
+              >
+                <Icons.IconDensity /> {density === 'comfortable' ? 'Comfortable' : 'Compact'}
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <p className="rc-empty">Loading talent…</p>
+          ) : (
+            <div className="rc-tablewrap">
+              <table className={`rc-table rc-table--${density}`}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 34 }}>
+                      <input
+                        type="checkbox"
+                        aria-label="Select all"
+                        checked={items.length > 0 && selected.size >= items.length}
+                        onChange={(e) =>
+                          setSelected(e.target.checked ? new Set(items.map((t) => t.id)) : new Set())
+                        }
+                      />
+                    </th>
+                    <th scope="col">
+                      <button
+                        type="button"
+                        className="rc-th-sort"
+                        aria-sort={sortKey === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                        onClick={() => toggleSort('name')}
+                      >
+                        Talent {sortKey === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                      </button>
+                    </th>
+                    {cols.skills ? <th scope="col">Skills</th> : null}
+                    {cols.stage ? <th scope="col">Stage</th> : null}
+                    {cols.availability ? <th scope="col">Availability</th> : null}
+                    {cols.location ? (
+                      <th scope="col">
+                        <button
+                          type="button"
+                          className="rc-th-sort"
+                          aria-sort={sortKey === 'location' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                          onClick={() => toggleSort('location')}
+                        >
+                          Location {sortKey === 'location' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                        </button>
+                      </th>
+                    ) : null}
+                    {cols.rate ? <th scope="col">Rate</th> : null}
+                    {cols.consent ? <th scope="col">Consent</th> : null}
+                    {cols.lastActivity ? <th scope="col">Last activity</th> : null}
+                    {cols.owner ? <th scope="col">Owner</th> : null}
+                    <th scope="col" aria-label="Row actions" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.length === 0 ? (
+                    <tr>
+                      <td className="rc-table__empty" colSpan={colCount}>
+                        {hasActiveQuery
+                          ? 'No talent matches these filters.'
+                          : 'No talent yet in this tenant pool.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    items.map((t, i) => (
+                      <tr
+                        key={t.id}
+                        className={`rc-row--clickable${selected.has(t.id) ? ' rc-row--sel' : ''}${drawerIndex === i ? ' rc-row--active' : ''}`}
+                        onClick={(e) => {
+                          if (e.target instanceof Element && e.target.closest('a,button,input,label')) return;
+                          setDrawerIndex(i);
+                        }}
+                      >
+                        <td>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${fullName(t)}`}
+                            checked={selected.has(t.id)}
+                            onChange={() => toggleSel(t.id)}
+                          />
+                        </td>
+                        <td>
+                          <Link to={`/talent/${t.id}`} className="rc-link-strong">
+                            <span className="rc-ent">
+                              <Avatar name={fullName(t)} size="sm" />
+                              <span>
+                                <span className="rc-ent__nm">
+                                  {fullName(t)}
+                                  {t.is_hot ? <Icons.IconFlame className="rc-ent__flame" /> : null}
+                                </span>
+                                {t.current_employer ? (
+                                  <span className="rc-ent__rl">{t.current_employer}</span>
+                                ) : null}
+                              </span>
+                            </span>
+                          </Link>
+                        </td>
+                        {cols.skills ? (
+                          <td>
+                            <span className="rc-tags">
+                              {skillsOf(t).slice(0, 3).map((s) => (
+                                <Tag key={s}>{s}</Tag>
+                              ))}
+                              {skillsOf(t).length > 3 ? (
+                                <span className="rc-tag rc-tag--more">+{skillsOf(t).length - 3}</span>
+                              ) : null}
+                            </span>
+                          </td>
+                        ) : null}
+                        {cols.stage ? (
+                          <td>
+                            {t.current_stage == null ? (
+                              <span className="rc-consent-stub">—</span>
+                            ) : (
+                              <span title={`Req ${t.current_stage.requisition_id}`}>
+                                <StagePill status={t.current_stage.stage as PipelineStatus} />
+                              </span>
+                            )}
+                          </td>
+                        ) : null}
+                        {cols.availability ? (
+                          <td>
+                            {t.availability_status === null ? (
+                              <span className="rc-consent-stub">—</span>
+                            ) : (
+                              <StatusPill tone={AVAILABILITY_TONE[t.availability_status] ?? 'neutral'} dot>
+                                {AVAILABILITY_LABELS[t.availability_status]}
+                              </StatusPill>
+                            )}
+                          </td>
+                        ) : null}
+                        {cols.location ? <td>{locationOf(t)}</td> : null}
+                        {cols.rate ? <td className="num">{statedRate(t)}</td> : null}
+                        {cols.consent ? (
+                          <td>
+                            {t.consent_summary === undefined || t.consent_summary === null ? (
+                              <span className="rc-consent-stub">—</span>
+                            ) : (
+                              <StatusPill tone={CONSENT_TONE[t.consent_summary] ?? 'neutral'}>
+                                {CONSENT_LABELS[t.consent_summary] ?? t.consent_summary}
+                              </StatusPill>
+                            )}
+                          </td>
+                        ) : null}
+                        {cols.lastActivity ? (
+                          <td className="lastcell">{relativeActivity(t.last_activity_at)}</td>
+                        ) : null}
+                        {cols.owner ? (
+                          <td>{t.owner_id ? (userNames[t.owner_id] ?? '—') : '—'}</td>
+                        ) : null}
+                        <td>
+                          <div className="rc-rowq">
+                            <button
+                              type="button"
+                              title="Preview"
+                              aria-label={`Preview ${fullName(t)}`}
+                              onClick={() => setDrawerIndex(i)}
+                            >
+                              <Icons.IconOpen />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+
+              {nextCursor !== null ? (
+                <div className="rc-loadmore">
+                  <button
+                    ref={loadMoreRef}
+                    type="button"
+                    className="tc-button tc-button--ghost"
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? 'Loading…' : 'Load more talent'}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          <p className="rc-footnote">
+            Talent shown is your tenant’s consented pool. Aramo doesn’t support
+            open-web talent search or bulk export — sourcing is a separate,
+            consent-governed flow.
+          </p>
+        </Card>
+      </div>
+
+      <BulkBar
+        count={selected.size}
+        busy={busy}
+        canAssign={canEdit}
+        onAddToReq={() => setReqDialogOpen(true)}
+        onAssignToMe={assignToMe}
+        onClear={() => setSelected(new Set())}
+      />
+
+      <TalentTriageDrawer
+        talent={drawerTalent}
+        index={drawerIndex ?? 0}
+        total={items.length}
+        ownerNames={userNames}
+        onClose={() => setDrawerIndex(null)}
+        onPrev={() => setDrawerIndex((i) => (i === null ? null : Math.max(0, i - 1)))}
+        onNext={() => setDrawerIndex((i) => (i === null ? null : Math.min(items.length - 1, i + 1)))}
+        onAddToReq={() => setReqDialogOpen(true)}
+      />
+
+      <AddToReqDialog
+        open={reqDialogOpen}
+        onClose={() => setReqDialogOpen(false)}
+        onPick={addSelectedToReq}
+        count={drawerIndex !== null ? 1 : selectedTalent.length}
+        busy={busy}
+      />
     </section>
+  );
+}
+
+// ── Add-to-req picker (real reqs via listRequisitions; pipeline:add per talent) ──
+function AddToReqDialog({
+  open,
+  onClose,
+  onPick,
+  count,
+  busy,
+}: {
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly onPick: (req: RequisitionView) => void;
+  readonly count: number;
+  readonly busy: boolean;
+}) {
+  const [reqs, setReqs] = useState<readonly RequisitionView[]>([]);
+  const [reqId, setReqId] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [loadErr, setLoadErr] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    setLoadErr(false);
+    void listRequisitions()
+      .then((r) => {
+        if (cancelled) return;
+        setReqs(r.items.filter((x) => x.status === 'active'));
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoadErr(true);
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const chosen = reqs.find((r) => r.id === reqId) ?? null;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title="Add to requisition"
+      description={`Add ${count} talent to a requisition's pipeline.`}
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            disabled={chosen === null || busy}
+            onClick={() => {
+              if (chosen !== null) onPick(chosen);
+            }}
+          >
+            Add to pipeline
+          </Button>
+        </>
+      }
+    >
+      {loading ? (
+        <p className="rc-empty">Loading requisitions…</p>
+      ) : loadErr ? (
+        <p className="rc-empty">Couldn’t load requisitions. Please try again.</p>
+      ) : reqs.length === 0 ? (
+        <p className="rc-empty">No active requisitions visible to you.</p>
+      ) : (
+        <label className="rc-field">
+          <span className="rc-field__label">Requisition</span>
+          <select className="rc-select" value={reqId} onChange={(e) => setReqId(e.target.value)}>
+            <option value="">Select a requisition…</option>
+            {reqs.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.title}
+                {r.external_req_id ? ` · ${r.external_req_id}` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </Dialog>
   );
 }

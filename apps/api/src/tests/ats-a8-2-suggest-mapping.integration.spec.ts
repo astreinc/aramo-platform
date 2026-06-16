@@ -108,6 +108,12 @@ const TALENT_RECORD_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
 );
+// Segment 2 — the talent-stated availability_status + engagement_type columns
+// (Prisma create RETURNING projects them; the test DB must carry them).
+const TALENT_RECORD_STATED_FIELDS = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260615000000_talent_stated_fields/migration.sql',
+);
 
 const MIGRATIONS = [
   ENTITLEMENT_INIT,
@@ -125,6 +131,7 @@ const MIGRATIONS = [
   REQUISITION_IMPORT_BACK_REF,
   REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS,
   TALENT_RECORD_IMPORT_BACK_REF,
+  TALENT_RECORD_STATED_FIELDS,
 ];
 
 const ISSUER = 'Aramo Core Auth';

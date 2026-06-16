@@ -1,231 +1,338 @@
+import { InlineAlert } from '@aramo/fe-foundation';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+
+import { listCompanies } from '../companies/companies-api';
+import { listAllPipelines } from '../pipeline/pipeline-api';
+import { rollupByRequisition, type ReqPipelineCount } from '../pipeline/rollup';
+import { listRequisitions } from '../requisitions/requisitions-api';
 import {
+  isClosedStatus,
+  type RequisitionStatus,
+  type RequisitionView,
+} from '../requisitions/types';
+import { listMyTasks } from '../task/task-api';
+import type { TaskOwnerType, TaskView } from '../task/types';
+import {
+  ActionItem,
+  ActivityFeed,
   Card,
-  InlineAlert,
-  PageHeader,
-  Table,
+  CardHead,
+  DataTable,
+  Icons,
+  MetricCard,
+  StatusPill,
+  TitleCell,
+  type ActivityFeedItem,
+  type PillTone,
   type TableColumn,
-} from '@aramo/fe-foundation';
+} from '../ui';
 
-import { PIPELINE_STATUS_LABELS } from '../pipeline/types';
-
-import { RollupList } from './components/RollupList';
-import { StatCard } from './components/StatCard';
 import { getDashboard } from './dashboard-api';
 import { dashboardErrorMessage } from './error-messages';
 import {
   ACTIVITY_TYPE_LABELS,
-  CALENDAR_EVENT_TYPE_LABELS,
   REQUISITION_STATUS_LABELS,
-  type ActivityView,
-  type CalendarEventView,
   type DashboardView as DashboardViewModel,
 } from './types';
 
-// DashboardView — the recruiter-home landing surface. Consumes the
-// single-payload GET /v1/dashboard (the ATS-internal composition the
-// Reporting-Scope-Seed unblocked). Renders the 6 sections per the
-// directive's Ruling A (placement.includes_core_submittal_placements is
-// NOT rendered — informational T5 seam, not UX) and Ruling B (render
-// the lists as-arrived; server caps at 10 — confirmed at Gate-5).
+// My Desk (2B) — the recruiter-home landing. Re-skinned to the Confident
+// Blue "My desk" mockup, wired to REAL data with NO fabricated fields:
+//   - GET /v1/dashboard      → talent count, pipeline total, placements,
+//                              recent-activity feed (visibility-scoped server-side)
+//   - GET /v1/requisitions   → "my open reqs" table + derived open/hot counts
+//   - GET /v1/tasks?me       → "needs you today" action list (gap #7 aggregation)
+//   - GET /v1/companies      → company-id → name resolution (gap #8; never a UUID)
 //
-// Visibility is server-side: recruiter sees own-assigned rollups;
-// requisition:read:all holders see tenant-wide. The FE renders what it
-// gets — NO client-side filtering, NO limitation banner. The rollup
-// numbers ARE the visibility-scoped truth (R2 Companies LIST posture).
+// Gap dispositions held (DDR §11): metric cards carry NO deltas/goals and NO
+// unmodelled windows (no "+8 this week", no Submittals·wk, no Placements·MTD).
+// Per-req Pipeline/Submitted counts are backed by a single unfiltered
+// /v1/pipelines call grouped by requisition_id (shared rollupByRequisition;
+// no N+1). "Needs you today" aggregates the backed source (my open tasks);
+// responded-engagements / overdue-follow-ups have no list endpoint → CARRY.
+// The four fetches degrade independently (allSettled): a 403 on tasks/companies
+// leaves the page coherent; only a dashboard failure is the page error.
 
-const calendarColumns: ReadonlyArray<TableColumn<CalendarEventView>> = [
-  {
-    key: 'starts_at',
-    header: 'When',
-    render: (row) => formatDateTime(row.starts_at),
-    width: '14rem',
-  },
-  {
-    key: 'type',
-    header: 'Type',
-    render: (row) => CALENDAR_EVENT_TYPE_LABELS[row.type],
-    width: '8rem',
-  },
-  {
-    key: 'title',
-    header: 'Title',
-    render: (row) => row.title,
-  },
-];
+const STATUS_TONE: Record<RequisitionStatus, PillTone> = {
+  active: 'ok',
+  lead: 'neutral',
+  on_hold: 'warn',
+  full: 'brand',
+  closed: 'neutral',
+  canceled: 'danger',
+};
 
-const activityColumns: ReadonlyArray<TableColumn<ActivityView>> = [
-  {
-    key: 'created_at',
-    header: 'When',
-    render: (row) => formatDateTime(row.created_at),
-    width: '14rem',
-  },
-  {
-    key: 'type',
-    header: 'Type',
-    render: (row) => ACTIVITY_TYPE_LABELS[row.type] ?? row.type,
-    width: '12rem',
-  },
-  {
-    key: 'notes',
-    header: 'Notes',
-    render: (row) => row.notes ?? '—',
-  },
-];
+const OWNER_ROUTE: Record<TaskOwnerType, string | null> = {
+  requisition: '/requisitions',
+  talent_record: '/talent',
+  company: '/companies',
+  contact: null, // no recruiter contact-detail route yet (carried)
+};
 
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+const OWNER_LABEL: Record<TaskOwnerType, string> = {
+  requisition: 'Requisition',
+  talent_record: 'Talent',
+  company: 'Company',
+  contact: 'Contact',
+};
+
+function daysSince(iso: string): number {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return 0;
+  return Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
+}
+
+function relativeTime(iso: string): string {
+  const days = daysSince(iso);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  return weeks < 5 ? `${weeks}w ago` : `${Math.floor(days / 30)}mo ago`;
+}
+
+function isOverdue(due: string | null): boolean {
+  if (due === null) return false;
+  const d = new Date(due).getTime();
+  return !Number.isNaN(d) && d < Date.now();
 }
 
 export function DashboardView() {
-  const [data, setData] = useState<DashboardViewModel | null>(null);
+  const [dash, setDash] = useState<DashboardViewModel | null>(null);
+  const [reqs, setReqs] = useState<readonly RequisitionView[]>([]);
+  const [companyNames, setCompanyNames] = useState<Record<string, string>>({});
+  const [tasks, setTasks] = useState<readonly TaskView[]>([]);
+  const [pipelineCounts, setPipelineCounts] = useState<
+    Record<string, ReqPipelineCount>
+  >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    getDashboard()
-      .then((res) => {
-        if (cancelled) return;
-        setData(res);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(dashboardErrorMessage(err));
-        setLoading(false);
-      });
+    setError(null);
+    void Promise.allSettled([
+      getDashboard(),
+      listRequisitions(),
+      listMyTasks('open'),
+      listCompanies(),
+      listAllPipelines(),
+    ]).then(([dashRes, reqRes, taskRes, coRes, pipeRes]) => {
+      if (cancelled) return;
+      if (dashRes.status === 'fulfilled') {
+        setDash(dashRes.value);
+      } else {
+        setError(dashboardErrorMessage(dashRes.reason));
+      }
+      if (reqRes.status === 'fulfilled') setReqs(reqRes.value.items);
+      if (taskRes.status === 'fulfilled') setTasks(taskRes.value.items);
+      if (coRes.status === 'fulfilled') {
+        const map: Record<string, string> = {};
+        for (const c of coRes.value.items) map[c.id] = c.name;
+        setCompanyNames(map);
+      }
+      if (pipeRes.status === 'fulfilled') {
+        setPipelineCounts(rollupByRequisition(pipeRes.value.items));
+      }
+      setLoading(false);
+    });
     return () => {
       cancelled = true;
     };
   }, []);
 
+  if (loading) {
+    return <p className="rc-muted-line">Loading your desk…</p>;
+  }
+  if (error !== null) {
+    return <InlineAlert variant="error">{error}</InlineAlert>;
+  }
+
+  const openReqs = reqs.filter((r) => !isClosedStatus(r.status));
+  const hotCount = openReqs.filter((r) => r.is_hot).length;
+
+  const reqColumns: ReadonlyArray<TableColumn<RequisitionView>> = [
+    {
+      key: 'title',
+      header: 'Requisition',
+      render: (r) => (
+        <Link to={`/requisitions/${r.id}`} className="rc-link-strong">
+          <TitleCell
+            name={r.title}
+            subtitle={companySubtitle(r, companyNames)}
+            hot={r.is_hot}
+          />
+        </Link>
+      ),
+    },
+    {
+      key: 'pipeline',
+      header: 'Pipeline',
+      align: 'right',
+      render: (r) => <span className="num">{pipelineCounts[r.id]?.active ?? 0}</span>,
+    },
+    {
+      key: 'submitted',
+      header: 'Submitted',
+      align: 'right',
+      render: (r) => (
+        <span className="num">{pipelineCounts[r.id]?.submitted ?? 0}</span>
+      ),
+    },
+    {
+      key: 'days',
+      header: 'Days open',
+      align: 'right',
+      render: (r) => <span className="num">{daysSince(r.created_at)}</span>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (r) =>
+        r.is_hot ? (
+          <StatusPill tone="hot">Hot</StatusPill>
+        ) : (
+          <StatusPill tone={STATUS_TONE[r.status]} dot>
+            {REQUISITION_STATUS_LABELS[r.status]}
+          </StatusPill>
+        ),
+    },
+  ];
+
+  const activityItems: readonly ActivityFeedItem[] = (
+    dash?.recent_activity ?? []
+  ).map((a) => ({
+    id: a.id,
+    text: a.notes ?? ACTIVITY_TYPE_LABELS[a.type] ?? a.type,
+    when: relativeTime(a.created_at),
+  }));
+
   return (
     <section>
-      <PageHeader
-        title="Dashboard"
-        description="A snapshot of what you can see today."
-      />
-      {loading && <p>Loading dashboard…</p>}
-      {error !== null && <InlineAlert variant="error">{error}</InlineAlert>}
-      {data !== null && (
-        <>
-          <h2 style={{ marginTop: '1.5rem', fontSize: '1rem' }}>
-            Tenant activity
-          </h2>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(10rem, 1fr))',
-              gap: '0.75rem',
-              marginTop: '0.5rem',
-            }}
-          >
-            <StatCard label="Companies" value={data.tenant_counts.companies} />
-            <StatCard label="Contacts" value={data.tenant_counts.contacts} />
-            <StatCard
-              label="Talent records"
-              value={data.tenant_counts.talent_records}
-            />
-            <StatCard
-              label="Saved lists"
-              value={data.tenant_counts.saved_lists}
-            />
-            <StatCard
-              label="Calendar events"
-              value={data.tenant_counts.calendar_events}
-            />
-            <StatCard label="Activities" value={data.tenant_counts.activities} />
-          </div>
+      <div className="rc-viewhead">
+        <h1 className="rc-h1">My desk</h1>
+        <p className="rc-sub">{deskSummary(tasks.length, hotCount)}</p>
+      </div>
 
-          <h2 style={{ marginTop: '1.5rem', fontSize: '1rem' }}>Your work</h2>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns:
-                'repeat(auto-fit, minmax(16rem, 1fr))',
-              gap: '0.75rem',
-              marginTop: '0.5rem',
-            }}
-          >
-            <Card
-              title="Requisitions"
-              description="Your visible requisitions by status."
-            >
-              <RollupList
-                total={data.requisition_rollup.total}
-                items={data.requisition_rollup.by_status.map((b) => ({
-                  key: b.status,
-                  label: REQUISITION_STATUS_LABELS[b.status],
-                  count: b.count,
-                }))}
-                emptyMessage="No requisitions in your view yet."
-              />
-            </Card>
-            <Card
-              title="Pipelines"
-              description="Talent in your visible requisitions, by stage."
-            >
-              <RollupList
-                total={data.pipeline_rollup.total}
-                items={data.pipeline_rollup.by_status.map((b) => ({
-                  key: b.status,
-                  label: PIPELINE_STATUS_LABELS[b.status],
-                  count: b.count,
-                }))}
-                emptyMessage="No pipeline activity in your view yet."
-              />
-            </Card>
-            {/* Ruling A — render placed_pipelines ALONE. The dto carries
-                placement.includes_core_submittal_placements:false as a
-                T5 seam annotation (informational only per the dto
-                docstring); it is NOT rendered as UX (no asterisk, no
-                "excludes Core" footnote — the seam belongs in the DDR,
-                not the recruiter's UI). */}
-            <StatCard
-              label="Placements"
-              value={data.placement.placed_pipelines}
-              hint="Pipelines in placed status, in your view."
-            />
-          </div>
+      <div className="rc-metrics rc-metrics--spaced">
+        <MetricCard
+          icon={<Icons.IconRequisitions />}
+          label="Open reqs"
+          value={openReqs.length}
+          hint={hotCount > 0 ? `${hotCount} hot` : undefined}
+        />
+        <MetricCard
+          icon={<Icons.IconTalent />}
+          label="Talent"
+          value={dash?.tenant_counts.talent_records ?? 0}
+        />
+        <MetricCard
+          icon={<Icons.IconActivity />}
+          label="In pipeline"
+          value={dash?.pipeline_rollup.total ?? 0}
+        />
+        <MetricCard
+          icon={<Icons.IconTasks />}
+          label="Placements"
+          value={dash?.placement.placed_pipelines ?? 0}
+          hint="in your view"
+        />
+      </div>
 
-          <h2 style={{ marginTop: '1.5rem', fontSize: '1rem' }}>
-            Upcoming events
-          </h2>
-          <Card>
-            <Table<CalendarEventView>
-              caption="Your upcoming calendar events"
-              columns={calendarColumns}
-              rows={data.upcoming_events}
-              rowKey={(row) => row.id}
-              emptyMessage="No upcoming events."
-            />
+      <div className="rc-grid2">
+        <div className="rc-stack">
+          <Card flush>
+            <CardHead title="Needs you today" />
+            {tasks.length === 0 ? (
+              <p className="rc-empty">Nothing needs you right now.</p>
+            ) : (
+              tasks.map((t) => (
+                <ActionItem
+                  key={t.id}
+                  kind={isOverdue(t.due_date) ? 'overdue' : 'task'}
+                  title={t.title}
+                  context={OWNER_LABEL[t.owner_type]}
+                  time={t.due_date !== null ? formatDue(t.due_date) : undefined}
+                  action={taskAction(t)}
+                />
+              ))
+            )}
           </Card>
 
-          <h2 style={{ marginTop: '1.5rem', fontSize: '1rem' }}>
-            Recent activity
-          </h2>
-          <Card>
-            <Table<ActivityView>
-              caption="Recent activity in your view"
-              columns={activityColumns}
-              rows={data.recent_activity}
-              rowKey={(row) => row.id}
-              emptyMessage="No recent activity."
+          <Card flush>
+            <CardHead
+              title="My open reqs"
+              actions={
+                <Link to="/requisitions" className="rc-card__head-more">
+                  All requisitions
+                </Link>
+              }
+            />
+            <DataTable<RequisitionView>
+              columns={reqColumns}
+              rows={openReqs}
+              rowKey={(r) => r.id}
+              emptyMessage="No open requisitions in your view."
             />
           </Card>
-        </>
-      )}
+        </div>
+
+        <aside>
+          <Card>
+            <CardHead title="Activity" />
+            {activityItems.length === 0 ? (
+              <p className="rc-empty">No recent activity.</p>
+            ) : (
+              <div className="rc-feed-wrap">
+                <ActivityFeed items={activityItems} />
+              </div>
+            )}
+          </Card>
+        </aside>
+      </div>
     </section>
+  );
+}
+
+// --- presentational helpers ---
+
+function companySubtitle(
+  r: RequisitionView,
+  names: Record<string, string>,
+): string {
+  const company = names[r.company_id];
+  const code = r.external_req_id;
+  if (company != null && code != null) return `${company} · ${code}`;
+  if (company != null) return company;
+  if (code != null) return code;
+  return '';
+}
+
+function deskSummary(openTasks: number, hot: number): string {
+  const parts: string[] = [
+    openTasks === 1 ? '1 open task' : `${openTasks} open tasks`,
+  ];
+  if (hot > 0) {
+    parts.push(hot === 1 ? '1 hot requisition' : `${hot} hot requisitions`);
+  }
+  return parts.join(' · ');
+}
+
+function formatDue(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return isOverdue(iso)
+    ? 'Overdue'
+    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function taskAction(t: TaskView) {
+  const base = OWNER_ROUTE[t.owner_type];
+  if (base === null) return undefined;
+  return (
+    <Link to={`${base}/${t.owner_id}`} className="rc-link-action">
+      Open
+    </Link>
   );
 }

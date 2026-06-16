@@ -1,5 +1,7 @@
 // CreateTalentRecordRequestDto — POST /v1/talent-records payload.
 // tenant_id derived from AuthContext.tenant_id (never the body).
+import type { AvailabilityStatus, EngagementType } from './stated-fields.js';
+
 export interface CreateTalentRecordRequestDto {
   first_name: string;
   last_name: string;
@@ -25,5 +27,10 @@ export interface CreateTalentRecordRequestDto {
   notes?: string;
   web_site?: string;
   best_time_to_call?: string;
+  // Talent-stated categorical fields (stated-fields amendment §4). Validated
+  // against the closed vocabulary by the repository guard (interface DTO — the
+  // @IsIn intent honored via the module's manual-guard idiom).
+  availability_status?: AvailabilityStatus;
+  engagement_type?: EngagementType;
   owner_id?: string;
 }

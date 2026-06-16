@@ -11,6 +11,7 @@ import type {
   ResumeUploadUrlRequest,
   TalentRecordListResponse,
   TalentRecordView,
+  TalentSearchPage,
   UpdateTalentRecordRequest,
 } from './types';
 
@@ -22,6 +23,20 @@ import type {
 
 export async function listTalent(): Promise<TalentRecordListResponse> {
   return apiClient.get<TalentRecordListResponse>('/v1/talent-records');
+}
+
+// Segment 4d — the SERVER-SIDE faceted + keyset-paginated path (?paged=true).
+// Filters, sort, presets (?preset=), the My-team scope (?scope=my_team) and the
+// keyset cursor are all resolved on the BE (4a native / 4b cross-facet counts /
+// 4c preset+scope resolution). The caller builds the param string via
+// buildTalentQuery (talent-workspace). Returns the { items, next_cursor, facets,
+// cross_facets } superset; the pre-Seg-4 `items`-only readers still work.
+export async function searchTalent(
+  params: URLSearchParams,
+): Promise<TalentSearchPage> {
+  return apiClient.get<TalentSearchPage>(
+    `/v1/talent-records?${params.toString()}`,
+  );
 }
 
 // R3 — the talent DETAIL endpoint (the Identity tab + the dependency

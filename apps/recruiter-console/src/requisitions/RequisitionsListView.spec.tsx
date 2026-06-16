@@ -9,6 +9,7 @@ function makeReq(
   id: string,
   title: string,
   status: RequisitionStatus,
+  extra: Partial<RequisitionView> = {},
 ): RequisitionView {
   return {
     id,
@@ -75,6 +76,7 @@ function makeReq(
     min_pay_rate: null,
     max_pay_rate: null,
     golden_profile_id: null,
+    ...extra,
   };
 }
 
@@ -82,11 +84,11 @@ const OPEN = makeReq('req-open', 'Senior Engineer', 'active');
 const HOLD = makeReq('req-hold', 'Mid Engineer', 'on_hold');
 const CLOSED = makeReq('req-closed', 'Junior Engineer', 'closed');
 const FILLED = makeReq('req-filled', 'Architect', 'full');
+const HOT = makeReq('req-hot', 'Hot Role', 'active', { is_hot: true });
 
 function mockFetch(items: readonly RequisitionView[]) {
-  // R4 — the view now also calls useSession (for the requisition:create
-  // gate); both fetches share this mock. Use mockImplementation so each
-  // call gets a fresh Response (Response bodies are read-once).
+  // The view also calls useSession + listCompanies; all share this mock
+  // (mockImplementation → a fresh read-once Response per call).
   vi.spyOn(globalThis, 'fetch').mockImplementation(
     async () =>
       new Response(JSON.stringify({ items }), {
@@ -96,18 +98,20 @@ function mockFetch(items: readonly RequisitionView[]) {
   );
 }
 
+function renderList(props = {}) {
+  return render(
+    <MemoryRouter>
+      <RequisitionsListView {...props} />
+    </MemoryRouter>,
+  );
+}
+
 describe('RequisitionsListView', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+  afterEach(() => vi.restoreAllMocks());
 
   it('renders only active (non-closed) requisitions by default', async () => {
     mockFetch([OPEN, HOLD, CLOSED, FILLED]);
-    render(
-      <MemoryRouter>
-        <RequisitionsListView />
-      </MemoryRouter>,
-    );
+    renderList();
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
@@ -116,81 +120,147 @@ describe('RequisitionsListView', () => {
     expect(screen.queryByText('Architect')).not.toBeInTheDocument();
   });
 
-  it('reveals closed and filled requisitions when "Show closed" toggles on', async () => {
-    mockFetch([OPEN, CLOSED, FILLED]);
-    render(
-      <MemoryRouter>
-        <RequisitionsListView />
-      </MemoryRouter>,
+  it('the row title is a real link to the detail route', async () => {
+    mockFetch([OPEN]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
+    expect(screen.getByRole('link', { name: /Senior Engineer/ })).toHaveAttribute(
+      'href',
+      '/requisitions/req-open',
+    );
+  });
+
+  it('reveals closed + filled requisitions when "Show closed" is toggled on', async () => {
+    mockFetch([OPEN, CLOSED, FILLED]);
+    renderList();
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
     expect(screen.queryByText('Junior Engineer')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('switch'));
-
+    fireEvent.click(screen.getByRole('button', { name: 'Show closed' }));
     expect(screen.getByText('Junior Engineer')).toBeInTheDocument();
     expect(screen.getByText('Architect')).toBeInTheDocument();
   });
 
-  it('renders the empty-state copy when no active requisitions exist', async () => {
+  it('"Only hot" filters to hot requisitions', async () => {
+    mockFetch([OPEN, HOT]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Only hot' }));
+    expect(screen.getByText('Hot Role')).toBeInTheDocument();
+    expect(screen.queryByText('Senior Engineer')).not.toBeInTheDocument();
+  });
+
+  it('the scoped search filters by title', async () => {
+    mockFetch([OPEN, HOLD]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search requisitions' }), {
+      target: { value: 'mid' },
+    });
+    expect(screen.getByText('Mid Engineer')).toBeInTheDocument();
+    expect(screen.queryByText('Senior Engineer')).not.toBeInTheDocument();
+  });
+
+  it('renders an empty-state row when no requisitions match', async () => {
     mockFetch([CLOSED, FILLED]);
-    render(
-      <MemoryRouter>
-        <RequisitionsListView />
-      </MemoryRouter>,
-    );
+    renderList();
     await waitFor(() =>
-      expect(screen.getByText(/no open requisitions/i)).toBeInTheDocument(),
+      expect(
+        screen.getByText('No requisitions match these filters.'),
+      ).toBeInTheDocument(),
     );
   });
 
-  // R4 — the "+ New requisition" CTA is gated by the requisition:create
-  // scope. Hidden for read-only recruiters; visible (and links to
-  // /requisitions/new) when the scope is held.
-  it('hides "+ New requisition" when requisition:create is not held', async () => {
+  it('hides "New requisition" without requisition:create', async () => {
     mockFetch([OPEN]);
-    render(
-      <MemoryRouter>
-        <RequisitionsListView
-          sessionOverride={{
-            sub: 'u1',
-            consumer_type: 'recruiter',
-            tenant_id: 't',
-            scopes: ['requisition:read'],
-            iat: 0,
-            exp: 0,
-          }}
-        />
-      </MemoryRouter>,
-    );
+    renderList({
+      sessionOverride: {
+        sub: 'u1',
+        consumer_type: 'recruiter',
+        tenant_id: 't',
+        scopes: ['requisition:read'],
+        iat: 0,
+        exp: 0,
+      },
+    });
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    expect(screen.queryByRole('link', { name: /\+ new requisition/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /new requisition/i })).toBeNull();
   });
 
-  it('shows "+ New requisition" linking to /requisitions/new when requisition:create is held', async () => {
-    mockFetch([OPEN]);
-    render(
-      <MemoryRouter>
-        <RequisitionsListView
-          sessionOverride={{
-            sub: 'u1',
-            consumer_type: 'recruiter',
-            tenant_id: 't',
-            scopes: ['requisition:read', 'requisition:create'],
-            iat: 0,
-            exp: 0,
-          }}
-        />
-      </MemoryRouter>,
+  it('parity: Pipeline/Submitted counts (one /v1/pipelines call, grouped) + Recruiter name (roster)', async () => {
+    const REQ = makeReq('req-r', 'Platform Engineer', 'active', {
+      recruiter_id: 'usr-1',
+    });
+    const PIPELINES = [
+      { id: 'p1', requisition_id: 'req-r', status: 'no_contact' },
+      { id: 'p2', requisition_id: 'req-r', status: 'submitted' },
+      { id: 'p3', requisition_id: 'req-r', status: 'interviewing' },
+      { id: 'p4', requisition_id: 'req-r', status: 'placed' },
+    ];
+    const ROSTER = {
+      items: [
+        {
+          user_id: 'usr-1',
+          email: 'p@x.test',
+          display_name: 'Priya Recruiter',
+          is_active: true,
+        },
+      ],
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      const body = url.includes('/v1/pipelines')
+        ? { items: PIPELINES }
+        : url.includes('/v1/tenant/users')
+          ? ROSTER
+          : url.includes('/v1/companies')
+            ? { items: [{ id: 'co-1', name: 'Northwind' }] }
+            : { items: [REQ] };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Platform Engineer')).toBeInTheDocument(),
     );
+    // Recruiter resolved via the roster.
+    await waitFor(() =>
+      expect(screen.getByText('Priya Recruiter')).toBeInTheDocument(),
+    );
+    // active = 4 minus the placed (terminal) = 3; submitted+ = submitted +
+    // interviewing + placed = 3.
+    const cells = screen.getAllByText('3');
+    expect(cells.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('shows "New requisition" linking to /requisitions/new when scoped', async () => {
+    mockFetch([OPEN]);
+    renderList({
+      sessionOverride: {
+        sub: 'u1',
+        consumer_type: 'recruiter',
+        tenant_id: 't',
+        scopes: ['requisition:read', 'requisition:create'],
+        iat: 0,
+        exp: 0,
+      },
+    });
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    const link = screen.getByRole('link', { name: /\+ new requisition/i });
-    expect(link).toHaveAttribute('href', '/requisitions/new');
+    expect(
+      screen.getByRole('link', { name: /new requisition/i }),
+    ).toHaveAttribute('href', '/requisitions/new');
   });
 });

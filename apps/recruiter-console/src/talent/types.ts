@@ -7,6 +7,8 @@
 // pattern is not applied here (rule of three — that pattern is for
 // mirrored logic, not flat fields).
 
+import type { AvailabilityStatus, EngagementType } from './stated-fields';
+
 export interface TalentRecordView {
   readonly id: string;
   readonly tenant_id: string;
@@ -28,6 +30,20 @@ export interface TalentRecordView {
   readonly current_employer: string | null;
   readonly current_pay: string | null;
   readonly desired_pay: string | null;
+  // Talent-stated categorical fields (stated-fields amendment). Closed
+  // vocabularies; null = not stated (availability null collapses to the UI
+  // "Unknown" bucket alongside the explicit 'unknown' member).
+  readonly availability_status: AvailabilityStatus | null;
+  readonly engagement_type: EngagementType | null;
+  // Segment 3 — list-response enrichment (COMPOSED in apps/api, optional).
+  // last_activity_at: ISO timestamp of the most-recent activity, or null.
+  // consent_summary: the 3-value contact-consent summary (libs/consent
+  //   ConsentSummary); do_not_contact when unlinked/no grant.
+  // current_stage: most-advanced ACTIVE pipeline stage (+ which req), or null
+  //   ("none" — in no active pipeline).
+  readonly last_activity_at?: string | null;
+  readonly consent_summary?: 'contactable' | 'expiring_lt_30d' | 'do_not_contact' | null;
+  readonly current_stage?: { stage: string; requisition_id: string } | null;
   readonly date_available: string | null;
   readonly can_relocate: boolean;
   readonly is_hot: boolean;
@@ -48,6 +64,44 @@ export interface TalentRecordView {
 
 export interface TalentRecordListResponse {
   readonly items: readonly TalentRecordView[];
+}
+
+// ── Segment 4 — the server-side faceted + keyset-paginated response ──────────
+// Hand-mirrored from libs/talent-record dto/talent-search.dto.ts (NativeFacets)
+// + dto/talent-cross-facets.port.ts (CrossFacets). Flat shapes — no drift spec
+// (rule of three; mirror-of-logic only). The ?paged=true superset of the LIST.
+export interface FacetBucket {
+  readonly value: string;
+  readonly count: number;
+}
+
+// 4a — full-set counts for the NATIVE (single-schema) facets the UI renders.
+// Skills counts are deliberately NOT here (still within-loaded until Skills
+// Taxonomy); location/owner are filters without a count list.
+export interface NativeFacets {
+  readonly availability: readonly FacetBucket[];
+  readonly engagement: readonly FacetBucket[];
+  readonly source: readonly FacetBucket[];
+  readonly hot: number;
+}
+
+// 4b — full-set counts for the CROSS-SCHEMA facets (composed in apps/api),
+// bounded by the materialize guard. over_guard ⇒ counts not computed (the UI
+// shows the "narrow your filters" message in their place).
+export interface CrossFacets {
+  readonly over_guard: boolean;
+  readonly matched: number;
+  readonly guard: number;
+  readonly recency: Readonly<Record<string, number>>;
+  readonly consent: readonly FacetBucket[];
+  readonly stage: readonly FacetBucket[];
+}
+
+export interface TalentSearchPage {
+  readonly items: readonly TalentRecordView[];
+  readonly next_cursor: string | null;
+  readonly facets: NativeFacets;
+  readonly cross_facets?: CrossFacets;
 }
 
 // Hand-mirrored from libs/attachment/src/lib/dto/attachment.view.ts.

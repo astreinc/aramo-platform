@@ -58,7 +58,9 @@ function mockSessionAndDashboard(
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       );
     }
-    return new Response('{}', {
+    // My desk also fetches requisitions / tasks / companies; give them
+    // valid empty-list shapes so the dispatcher's child renders cleanly.
+    return new Response('{"items":[]}', {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -85,7 +87,7 @@ describe('IndexRoute', () => {
     );
     await waitFor(() => {
       expect(
-        screen.getByRole('heading', { name: 'Dashboard' }),
+        screen.getByRole('heading', { name: 'My desk' }),
       ).toBeInTheDocument();
     });
     expect(screen.queryByText('REQUISITIONS_FALLBACK')).not.toBeInTheDocument();
@@ -111,7 +113,7 @@ describe('IndexRoute', () => {
     // UX for an actor whose next-best route is /requisitions).
     expect(screen.queryByText(/forbidden/i)).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('heading', { name: 'Dashboard' }),
+      screen.queryByRole('heading', { name: 'My desk' }),
     ).not.toBeInTheDocument();
   });
 });

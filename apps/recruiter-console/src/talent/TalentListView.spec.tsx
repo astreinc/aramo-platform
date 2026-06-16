@@ -1,5 +1,11 @@
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import type { ReactElement } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -37,6 +43,8 @@ function makeTalent(
     current_employer: null,
     current_pay: null,
     desired_pay: null,
+    availability_status: null,
+    engagement_type: null,
     date_available: null,
     can_relocate: false,
     is_hot: false,
@@ -52,167 +60,428 @@ function makeTalent(
   };
 }
 
-function mockFetch(items: readonly TalentRecordView[], status = 200) {
-  // R5 — the view now also calls useSession (for the talent:create
-  // gate); both fetches share this mock. Use mockImplementation so each
-  // call gets a fresh Response (Response bodies are read-once). Same
-  // pattern as R4's RequisitionsListView spec.
-  vi.spyOn(globalThis, 'fetch').mockImplementation(
-    async () =>
-      new Response(JSON.stringify({ items }), {
-        status,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-  );
+const ME = 'u1';
+
+// ── A PARAM-AWARE fake server. The Talent list is now SERVER-SIDE: facets,
+// scope, presets and the cursor are all query params, so the mock parses them
+// and narrows the fixture (and computes the facet counts). The behavioral tests
+// therefore assert the FE sends the right params AND renders the server's
+// narrowed response — the real 4a–4c contract, in miniature.
+function effAvail(t: TalentRecordView): string {
+  return t.availability_status ?? 'unknown';
+}
+function fullName(t: TalentRecordView): string {
+  return `${t.first_name} ${t.last_name}`.trim();
+}
+function skillsOf(t: TalentRecordView): string[] {
+  return (t.key_skills ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+function locOf(t: TalentRecordView): string {
+  return [t.city, t.state].filter(Boolean).join(', ');
 }
 
-function mockFetchError(status: number) {
-  vi.spyOn(globalThis, 'fetch').mockImplementation(
-    async () =>
-      new Response(JSON.stringify({ message: 'forbidden' }), {
-        status,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-  );
+function applyServerFilters(
+  pool: readonly TalentRecordView[],
+  qp: URLSearchParams,
+  presetIds?: Record<string, readonly string[]>,
+): TalentRecordView[] {
+  let out = [...pool];
+  const q = qp.get('q');
+  if (q) {
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    out = out.filter((t) => words.every((w) => fullName(t).toLowerCase().includes(w)));
+  }
+  const skills = qp.get('skills');
+  if (skills) {
+    const needles = skills.toLowerCase().split(',');
+    const mode = qp.get('skill_match') ?? 'any';
+    out = out.filter((t) => {
+      const have = skillsOf(t).map((s) => s.toLowerCase());
+      const test = (n: string) => have.some((h) => h.includes(n));
+      return mode === 'all' ? needles.every(test) : needles.some(test);
+    });
+  }
+  const avail = qp.get('availability');
+  if (avail) {
+    const set = new Set(avail.split(','));
+    out = out.filter((t) => set.has(effAvail(t)));
+  }
+  const eng = qp.get('engagement');
+  if (eng) {
+    const set = new Set(eng.split(','));
+    out = out.filter((t) => t.engagement_type !== null && set.has(t.engagement_type));
+  }
+  const src = qp.get('source');
+  if (src) {
+    const set = new Set(src.split(','));
+    out = out.filter((t) => t.source !== null && set.has(t.source));
+  }
+  if (qp.get('hot') === 'true') out = out.filter((t) => t.is_hot);
+  const loc = qp.get('location');
+  if (loc) out = out.filter((t) => locOf(t).toLowerCase().includes(loc.toLowerCase()));
+  const owner = qp.get('owner');
+  if (owner) out = out.filter((t) => t.owner_id === owner);
+  // scope=my_team — simulate 4c with ZERO teams: resolves to owner = [me].
+  if (qp.get('scope') === 'my_team') out = out.filter((t) => t.owner_id === ME);
+  const preset = qp.get('preset');
+  if (preset) {
+    const allow = new Set(presetIds?.[preset] ?? []);
+    out = out.filter((t) => allow.has(t.id));
+  }
+  return out;
 }
 
-describe('TalentListView', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
+function computeFacets(pool: readonly TalentRecordView[]) {
+  const tally = (vals: string[]) => {
+    const m = new Map<string, number>();
+    for (const v of vals) m.set(v, (m.get(v) ?? 0) + 1);
+    return [...m.entries()].map(([value, count]) => ({ value, count }));
+  };
+  return {
+    availability: tally(pool.map(effAvail)),
+    engagement: tally(pool.map((t) => t.engagement_type).filter((x): x is string => x !== null)),
+    source: tally(pool.map((t) => t.source).filter((x): x is string => x !== null)),
+    hot: pool.filter((t) => t.is_hot).length,
+  };
+}
+
+function computeCross(pool: readonly TalentRecordView[], overGuard?: boolean) {
+  if (overGuard) {
+    return { over_guard: true, matched: 9999, guard: 5000, recency: {}, consent: [], stage: [] };
+  }
+  const consent = new Map<string, number>();
+  const stage = new Map<string, number>();
+  for (const t of pool) {
+    const c = t.consent_summary ?? 'do_not_contact';
+    consent.set(c, (consent.get(c) ?? 0) + 1);
+    const s = t.current_stage?.stage ?? 'none';
+    stage.set(s, (stage.get(s) ?? 0) + 1);
+  }
+  const buckets = (m: Map<string, number>) =>
+    [...m.entries()].map(([value, count]) => ({ value, count }));
+  return {
+    over_guard: false,
+    matched: pool.length,
+    guard: 5000,
+    recency: { today: 0, '7d': 0, '30d': 0, stale: pool.length },
+    consent: buckets(consent),
+    stage: buckets(stage),
+  };
+}
+
+function mockServer(
+  opts: {
+    talent?: readonly TalentRecordView[];
+    talentStatus?: number;
+    roster?: unknown;
+    rosterStatus?: number;
+    presetIds?: Record<string, readonly string[]>;
+    overGuard?: boolean;
+    secondPage?: readonly TalentRecordView[];
+  } = {},
+) {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = typeof input === 'string' ? input : (input as Request).url;
+    const json = (b: unknown, s = 200) =>
+      new Response(JSON.stringify(b), {
+        status: s,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    if (url.includes('/v1/tenant/users'))
+      return json(opts.roster ?? { items: [] }, opts.rosterStatus ?? 200);
+    if (url.includes('/v1/talent-records')) {
+      if (opts.talentStatus && opts.talentStatus !== 200)
+        return json({ message: 'denied' }, opts.talentStatus);
+      const qp = new URL(url, 'http://x').searchParams;
+      const cursor = qp.get('cursor');
+      if (cursor === 'c1' && opts.secondPage)
+        return json({ items: opts.secondPage, next_cursor: null, facets: computeFacets([]) });
+      const pool = applyServerFilters(opts.talent ?? [], qp, opts.presetIds);
+      const next = opts.secondPage && cursor === null ? 'c1' : null;
+      return json({
+        items: pool,
+        next_cursor: next,
+        facets: computeFacets(pool),
+        cross_facets: computeCross(pool, opts.overGuard),
+      });
+    }
+    return json({ items: [] });
+  });
+}
+
+const SESSION = {
+  sub: ME,
+  consumer_type: 'recruiter' as const,
+  tenant_id: 't',
+  scopes: ['talent:read'],
+  iat: 0,
+  exp: 0,
+};
+
+describe('TalentListView (server-side faceted workspace — Segment 4d)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('keeps the consented-pool framing + the R7/G3 refusal footer (Talent vocab)', async () => {
+    mockServer({ talent: [] });
+    renderInRouter(<TalentListView />);
+    await waitFor(() => expect(screen.getByText('Talent')).toBeInTheDocument());
+    expect(screen.getByText(/your consented working set/i)).toBeInTheDocument();
+    expect(screen.getByText(/open-web talent search or bulk export/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText(/no talent yet in this tenant pool/i)).toBeInTheDocument(),
+    );
   });
 
-  it('frames the list as the tenant POOL — not a personal list', async () => {
-    mockFetch([]);
+  it('renders the backed columns: name link, skill chips +overflow, location, rate', async () => {
+    mockServer({
+      talent: [
+        makeTalent('tal-1', 'Ada', 'Lovelace', {
+          city: 'London',
+          state: 'UK',
+          current_pay: '$120/hr',
+          key_skills: 'Rust, Distributed Systems, AWS, Kafka',
+          is_hot: true,
+        }),
+      ],
+    });
     renderInRouter(<TalentListView />);
-    // Header carries the pool framing.
-    await waitFor(() =>
-      expect(screen.getByText('Talent')).toBeInTheDocument(),
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.getAllByText('Rust').length).toBeGreaterThan(0);
+    expect(screen.getByText('+1')).toBeInTheDocument();
+    expect(screen.getByText('London, UK')).toBeInTheDocument();
+    expect(screen.getByText('$120/hr')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Ada Lovelace/ })).toHaveAttribute(
+      'href',
+      '/talent/tal-1',
     );
-    expect(
-      screen.getByText(/tenant talent pool/i),
-    ).toBeInTheDocument();
-    // Empty-state is honest about the shared pool.
-    expect(
-      screen.getByText(/no talent yet in this tenant pool/i),
-    ).toBeInTheDocument();
-    // Crucially: NO personal-ownership framing.
-    expect(screen.queryByText(/my talent/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/your talent/i)).not.toBeInTheDocument();
   });
 
-  it('renders the columns from the talent-record fields', async () => {
-    mockFetch([
-      makeTalent('tal-1', 'Ada', 'Lovelace', {
-        email1: 'ada@example.com',
-        phone_cell: '555-0100',
-        current_employer: 'Analytical Engines Ltd',
-        key_skills: 'Bernoulli numbers, mechanical computing',
-        is_hot: true,
-        can_relocate: true,
-      }),
-    ]);
+  it('resolves the Owner column via the roster probe', async () => {
+    mockServer({
+      talent: [makeTalent('tal-1', 'Ada', 'Lovelace', { owner_id: 'u-own' })],
+      roster: {
+        items: [
+          { user_id: 'u-own', email: 'o@x.test', display_name: 'Tom Owner', is_active: true },
+        ],
+      },
+    });
     renderInRouter(<TalentListView />);
-    await waitFor(() =>
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
-    );
-    expect(screen.getByText('ada@example.com')).toBeInTheDocument();
-    expect(screen.getByText('555-0100')).toBeInTheDocument();
-    expect(screen.getByText('Analytical Engines Ltd')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Tom Owner')).toBeInTheDocument());
+  });
+
+  it('a skill facet sends ?skills= and renders the server-narrowed set', async () => {
+    mockServer({
+      talent: [
+        makeTalent('1', 'Ada', 'Lovelace', { key_skills: 'Rust' }),
+        makeTalent('2', 'Bob', 'Khan', { key_skills: 'Go' }),
+      ],
+    });
+    renderInRouter(<TalentListView />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.getByText(/2 talent/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Rust/ }));
+    await waitFor(() => expect(screen.queryByText('Bob Khan')).not.toBeInTheDocument());
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+  });
+
+  it('token search: skill: token filters server-side; status: token is flagged, non-filtering', async () => {
+    mockServer({
+      talent: [
+        makeTalent('1', 'Ada', 'Lovelace', { key_skills: 'Rust' }),
+        makeTalent('2', 'Bob', 'Khan', { key_skills: 'Go' }),
+      ],
+    });
+    renderInRouter(<TalentListView />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    const box = screen.getByRole('textbox', { name: /search talent/i });
+    fireEvent.change(box, { target: { value: 'skill:Rust' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(screen.queryByText('Bob Khan')).not.toBeInTheDocument());
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+    // a status: token stays a flagged chip and does NOT narrow (both rows back)
+    fireEvent.click(screen.getByRole('button', { name: /remove skill:rust/i }));
+    fireEvent.change(box, { target: { value: 'status:active' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(screen.getByText('Bob Khan')).toBeInTheDocument());
+    expect(screen.getByText(/·ignored/)).toBeInTheDocument();
+  });
+
+  it('"My talent" scope sends ?owner=<me> and shows actor-owned rows only', async () => {
+    mockServer({
+      talent: [
+        makeTalent('1', 'Mine', 'One', { owner_id: ME }),
+        makeTalent('2', 'Other', 'Two', { owner_id: 'u2' }),
+      ],
+    });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Mine One')).toBeInTheDocument());
+    const scope = screen.getByRole('group', { name: 'Scope' });
+    fireEvent.click(within(scope).getByRole('button', { name: 'My talent' }));
+    await waitFor(() => expect(screen.queryByText('Other Two')).not.toBeInTheDocument());
+    expect(screen.getByText('Mine One')).toBeInTheDocument();
+  });
+
+  it('"My team" with ZERO teams sees ONLY own owned talent (scope=my_team → owner=[me])', async () => {
+    mockServer({
+      talent: [
+        makeTalent('1', 'Mine', 'One', { owner_id: ME }),
+        makeTalent('2', 'Teammate', 'Two', { owner_id: 'u2' }),
+        makeTalent('3', 'Stranger', 'Three', { owner_id: 'u3' }),
+      ],
+    });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Mine One')).toBeInTheDocument());
+    const scope = screen.getByRole('group', { name: 'Scope' });
+    fireEvent.click(within(scope).getByRole('button', { name: 'My team' }));
+    // zero-teams resolution = owner [me]: own talent only, NOT everyone.
+    await waitFor(() => expect(screen.queryByText('Teammate Two')).not.toBeInTheDocument());
+    expect(screen.queryByText('Stranger Three')).not.toBeInTheDocument();
+    expect(screen.getByText('Mine One')).toBeInTheDocument();
     expect(
-      screen.getByText(/Bernoulli numbers, mechanical computing/),
+      within(scope).getByRole('button', { name: 'My team' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('a cross-schema preset sends ?preset= and narrows to the resolved allowlist', async () => {
+    mockServer({
+      talent: [makeTalent('1', 'Ada', 'Lovelace'), makeTalent('2', 'Bob', 'Khan')],
+      presetIds: { in_touch_6mo: ['1'] },
+    });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Bob Khan')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'In touch < 6 mo' }));
+    await waitFor(() => expect(screen.queryByText('Bob Khan')).not.toBeInTheDocument());
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'In touch < 6 mo' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('a preset whose allowlist is EMPTY renders the zero-results state', async () => {
+    mockServer({
+      talent: [makeTalent('1', 'Ada', 'Lovelace')],
+      presetIds: { needs_follow_up: [] },
+    });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Needs follow-up' }));
+    await waitFor(() =>
+      expect(screen.getByText(/no talent matches these filters/i)).toBeInTheDocument(),
+    );
+  });
+
+  it('renders the over_guard message in place of the cross-schema facet counts', async () => {
+    mockServer({ talent: [makeTalent('1', 'Ada', 'Lovelace')], overGuard: true });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(
+      screen.getByText(/narrow your filters, then these counts return/i),
     ).toBeInTheDocument();
-    // Hot + Relocate render as "Yes" when true.
-    expect(screen.getAllByText('Yes').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('load-more appends the next keyset page and drops the button at the end', async () => {
+    mockServer({
+      talent: [makeTalent('1', 'Ada', 'Lovelace')],
+      secondPage: [makeTalent('2', 'Bob', 'Khan')],
+    });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    const more = screen.getByRole('button', { name: /load more talent/i });
+    fireEvent.click(more);
+    await waitFor(() => expect(screen.getByText('Bob Khan')).toBeInTheDocument());
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(); // appended, not replaced
+    expect(screen.queryByRole('button', { name: /load more talent/i })).toBeNull();
+  });
+
+  it('selecting a row reveals the bulk bar with the Export moat disabled', async () => {
+    mockServer({ talent: [makeTalent('1', 'Ada', 'Lovelace')] });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: /select ada lovelace/i }));
+    expect(screen.getByRole('region', { name: 'Bulk actions' })).toBeInTheDocument();
+    expect(screen.getByText(/export off — consent-protected/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add to req/i })).toBeInTheDocument();
+  });
+
+  it('clicking a row opens the triage drawer (non-modal) with key facts', async () => {
+    mockServer({ talent: [makeTalent('1', 'Ada', 'Lovelace', { source: 'Referral' })] });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /preview ada lovelace/i }));
+    const drawer = await screen.findByRole('dialog', { name: /ada lovelace — triage/i });
+    expect(within(drawer).getByText('Key facts')).toBeInTheDocument();
+  });
+
+  it('the Availability pill renders + the Availability facet sends ?availability=', async () => {
+    mockServer({
+      talent: [
+        makeTalent('1', 'Ada', 'Lovelace', { availability_status: 'available_now' }),
+        makeTalent('2', 'Bob', 'Khan', { availability_status: 'not_looking' }),
+      ],
+    });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.getAllByText('Available now').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Available now/ }));
+    await waitFor(() => expect(screen.queryByText('Bob Khan')).not.toBeInTheDocument());
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+  });
+
+  it('renders the enriched Consent + Stage pills from the composed fields', async () => {
+    mockServer({
+      talent: [
+        makeTalent('1', 'Ada', 'Lovelace', {
+          consent_summary: 'contactable',
+          current_stage: { stage: 'interviewing', requisition_id: 'req-1' },
+          last_activity_at: '2026-06-14T09:00:00.000Z',
+        }),
+      ],
+    });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.getAllByText('Contactable').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Interviewing').length).toBeGreaterThan(0);
+  });
+
+  it('column-customize toggles a column off (Rate hidden via the Columns menu)', async () => {
+    mockServer({ talent: [makeTalent('1', 'Ada', 'Lovelace', { current_pay: '$120/hr' })] });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.getByText('$120/hr')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Columns'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Rate' }));
+    expect(screen.queryByText('$120/hr')).not.toBeInTheDocument();
   });
 
   it('surfaces a permission message when the BE returns 403', async () => {
-    mockFetchError(403);
+    mockServer({ talentStatus: 403 });
     renderInRouter(<TalentListView />);
     await waitFor(() =>
-      expect(
-        screen.getByText(/do not have permission to view talent/i),
-      ).toBeInTheDocument(),
+      expect(screen.getByText(/do not have permission to view talent/i)).toBeInTheDocument(),
     );
   });
 
-  it('discloses the truncation when the BE default cap is hit', async () => {
-    const items = Array.from({ length: 50 }, (_, i) =>
-      makeTalent(`tal-${i}`, `First${i}`, `Last${i}`),
-    );
-    mockFetch(items);
-    renderInRouter(<TalentListView />);
-    await waitFor(() =>
-      expect(
-        screen.getByTestId('talent-cap-banner'),
-      ).toBeInTheDocument(),
-    );
-    expect(
-      screen.getByText(/showing first 50 talent records/i),
-    ).toBeInTheDocument();
-  });
+  it('hides "Add talent" without talent:create and shows it (→ /talent/new) when scoped', async () => {
+    mockServer({ talent: [makeTalent('1', 'Ada', 'Lovelace')] });
+    const { unmount } = renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.queryByRole('link', { name: /add talent/i })).toBeNull();
+    unmount();
 
-  it('does NOT show the cap banner when the list is under the cap', async () => {
-    mockFetch([makeTalent('tal-1', 'Ada', 'Lovelace')]);
-    renderInRouter(<TalentListView />);
-    await waitFor(() =>
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
-    );
-    expect(
-      screen.queryByTestId('talent-cap-banner'),
-    ).not.toBeInTheDocument();
-  });
-
-  // R3 — the primary-name cell links to /talent/:id (ruling 5: column-
-  // content change, Table frozen).
-  it('the name cell links to the talent detail at /talent/:id', async () => {
-    mockFetch([makeTalent('tal-42', 'Ada', 'Lovelace')]);
-    renderInRouter(<TalentListView />);
-    await waitFor(() =>
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
-    );
-    const link = screen.getByRole('link', { name: 'Ada Lovelace' });
-    expect(link).toHaveAttribute('href', '/talent/tal-42');
-  });
-
-  // R5 — the "+ New talent" CTA is gated by the talent:create scope.
-  it('hides "+ New talent" when talent:create is not held', async () => {
-    mockFetch([makeTalent('tal-1', 'Ada', 'Lovelace')]);
+    mockServer({ talent: [makeTalent('1', 'Ada', 'Lovelace')] });
     renderInRouter(
       <TalentListView
-        sessionOverride={{
-          sub: 'u1',
-          consumer_type: 'recruiter',
-          tenant_id: 't',
-          scopes: ['talent:read'],
-          iat: 0,
-          exp: 0,
-        }}
+        sessionOverride={{ ...SESSION, scopes: ['talent:read', 'talent:create'] }}
       />,
     );
-    await waitFor(() =>
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: /add talent/i })).toHaveAttribute(
+      'href',
+      '/talent/new',
     );
-    expect(screen.queryByRole('link', { name: /\+ new talent/i })).toBeNull();
-  });
-
-  it('shows "+ New talent" linking to /talent/new when talent:create is held', async () => {
-    mockFetch([makeTalent('tal-1', 'Ada', 'Lovelace')]);
-    renderInRouter(
-      <TalentListView
-        sessionOverride={{
-          sub: 'u1',
-          consumer_type: 'recruiter',
-          tenant_id: 't',
-          scopes: ['talent:read', 'talent:create'],
-          iat: 0,
-          exp: 0,
-        }}
-      />,
-    );
-    await waitFor(() =>
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
-    );
-    const link = screen.getByRole('link', { name: /\+ new talent/i });
-    expect(link).toHaveAttribute('href', '/talent/new');
   });
 });
