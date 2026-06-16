@@ -39,6 +39,7 @@ export interface CreateCompanyRequestDto {
   client_tier?: string; // a|b|c
   supplier_status?: string; // preferred|approved|exclusive|open
   exclusivity?: boolean;
+  off_limits?: boolean; // do-not-source flag (default false)
   tags?: string[];
   general_email?: string;
 

@@ -51,6 +51,7 @@ function make(overrides: Partial<CompanyView> = {}): CompanyView {
     client_tier: null,
     supplier_status: null,
     exclusivity: false,
+    off_limits: false,
     tags: [],
     general_email: null,
     last_activity_at: null,
@@ -162,9 +163,9 @@ describe('facets + text', () => {
       true,
     );
     expect(
-      passesFacets(make({ url: 'x.com' }), { ...EMPTY_FACETS, flags: ['website'] }),
+      passesFacets(make({ off_limits: true }), { ...EMPTY_FACETS, flags: ['off_limits'] }),
     ).toBe(true);
-    expect(passesFacets(make({ url: null }), { ...EMPTY_FACETS, flags: ['website'] })).toBe(
+    expect(passesFacets(make({ off_limits: false }), { ...EMPTY_FACETS, flags: ['off_limits'] })).toBe(
       false,
     );
   });

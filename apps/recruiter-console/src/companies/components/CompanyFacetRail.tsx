@@ -26,7 +26,7 @@ const FLAG_OPTIONS: readonly { value: FacetFlag; label: string }[] = [
   { value: 'hot', label: 'Hot only' },
   { value: 'quiet', label: 'Quiet 30d+' },
   { value: 'exclusive', label: 'Exclusive' },
-  { value: 'website', label: 'Has website' },
+  { value: 'off_limits', label: 'Off-limits' },
 ];
 
 interface CompanyFacetRailProps {
@@ -59,8 +59,8 @@ export function CompanyFacetRail({
         return countWhere(companies, (c) => isQuiet(c));
       case 'exclusive':
         return countWhere(companies, (c) => c.exclusivity);
-      case 'website':
-        return countWhere(companies, (c) => c.url !== null && c.url.trim() !== '');
+      case 'off_limits':
+        return countWhere(companies, (c) => c.off_limits);
     }
   };
 

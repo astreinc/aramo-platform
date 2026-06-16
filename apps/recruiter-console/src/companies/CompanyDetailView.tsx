@@ -288,6 +288,16 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
         </div>
       </div>
 
+      {company.off_limits ? (
+        <div className="rc-offlimits" role="note">
+          <Icons.IconShield />
+          <span>
+            <strong>Off-limits.</strong> This client&rsquo;s own employees are
+            excluded from sourcing working sets.
+          </span>
+        </div>
+      ) : null}
+
       <div className="rc-metrics rc-metrics--spaced">
         <MetricCard
           label="Open reqs"

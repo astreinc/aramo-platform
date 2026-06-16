@@ -57,6 +57,7 @@ interface CompanyRow {
   client_tier: string | null;
   supplier_status: string | null;
   exclusivity: boolean;
+  off_limits: boolean;
   tags: string[];
   general_email: string | null;
   last_activity_at: Date | null;
@@ -110,6 +111,7 @@ function projectView(row: CompanyRow): CompanyView {
     client_tier: row.client_tier,
     supplier_status: row.supplier_status,
     exclusivity: row.exclusivity,
+    off_limits: row.off_limits,
     tags: row.tags,
     general_email: row.general_email,
     last_activity_at:
@@ -203,6 +205,7 @@ function additiveCreateData(input: CreateCompanyRequestDto) {
     address_provider: input.address_provider ?? null,
     ...(input.status === undefined ? {} : { status: input.status }),
     ...(input.exclusivity === undefined ? {} : { exclusivity: input.exclusivity }),
+    ...(input.off_limits === undefined ? {} : { off_limits: input.off_limits }),
     ...(input.tags === undefined ? {} : { tags: input.tags }),
     ...(input.default_currency === undefined
       ? {}
@@ -461,6 +464,7 @@ export class CompanyRepository {
         ...(input.client_tier === undefined ? {} : { client_tier: input.client_tier }),
         ...(input.supplier_status === undefined ? {} : { supplier_status: input.supplier_status }),
         ...(input.exclusivity === undefined ? {} : { exclusivity: input.exclusivity }),
+        ...(input.off_limits === undefined ? {} : { off_limits: input.off_limits }),
         ...(input.tags === undefined ? {} : { tags: input.tags }),
         ...(input.general_email === undefined ? {} : { general_email: input.general_email }),
         // Address-Autocomplete v1.0 — provider place reference (present-key-only;

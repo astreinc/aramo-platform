@@ -55,6 +55,7 @@ function makeCompany(overrides: Partial<CompanyView> = {}): CompanyView {
     client_tier: 'a',
     supplier_status: null,
     exclusivity: false,
+    off_limits: false,
     tags: [],
     general_email: null,
     last_activity_at: null,

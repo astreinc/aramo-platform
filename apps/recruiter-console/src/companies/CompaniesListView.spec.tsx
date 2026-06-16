@@ -62,6 +62,7 @@ function makeCompany(
     client_tier: null,
     supplier_status: null,
     exclusivity: false,
+    off_limits: false,
     tags: [],
     general_email: null,
     last_activity_at: null,

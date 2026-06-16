@@ -132,7 +132,7 @@ export function inSegment(
 }
 
 // ── Facets (left rail; AND across groups, OR within a group). ──
-export type FacetFlag = 'hot' | 'quiet' | 'exclusive' | 'website';
+export type FacetFlag = 'hot' | 'quiet' | 'exclusive' | 'off_limits';
 export interface FacetState {
   readonly relationship: readonly string[]; // status values
   readonly tier: readonly string[]; // a|b|c
@@ -154,8 +154,8 @@ function flagHolds(c: CompanyView, flag: FacetFlag, now: number): boolean {
       return isQuiet(c, now);
     case 'exclusive':
       return c.exclusivity;
-    case 'website':
-      return c.url !== null && c.url.trim() !== '';
+    case 'off_limits':
+      return c.off_limits;
   }
 }
 

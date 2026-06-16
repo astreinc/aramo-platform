@@ -2083,6 +2083,16 @@
 /* utility */
 .rc-mb-8 { margin-bottom: 8px; }
 
+/* off-limits banner (account hub) */
+.rc-offlimits {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin-top: 16px; padding: 11px 14px;
+  background: var(--warn-tint); border: 1px solid var(--warn-tint);
+  border-left: 3px solid var(--warn); border-radius: var(--r-md);
+  font-size: 0.86rem; color: var(--ink);
+}
+.rc-offlimits svg { width: 18px; height: 18px; color: var(--warn); flex: none; margin-top: 1px; }
+
 /* Cards view (list) */
 .rc-cocards {
   display: grid;

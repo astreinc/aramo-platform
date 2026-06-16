@@ -53,7 +53,7 @@ const FLAG_LABELS: Record<FacetFlag, string> = {
   hot: 'Hot',
   quiet: 'Quiet 30d+',
   exclusive: 'Exclusive',
-  website: 'Has website',
+  off_limits: 'Off-limits',
 };
 
 type ViewMode = 'table' | 'cards';

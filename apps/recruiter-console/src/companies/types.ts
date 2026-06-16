@@ -43,6 +43,7 @@ export interface CompanyView {
   readonly client_tier: string | null;
   readonly supplier_status: string | null;
   readonly exclusivity: boolean;
+  readonly off_limits: boolean;
   readonly tags: readonly string[];
   readonly general_email: string | null;
   readonly last_activity_at: string | null;
@@ -167,6 +168,7 @@ export interface CreateCompanyRequest {
   readonly client_tier?: string;
   readonly supplier_status?: string;
   readonly exclusivity?: boolean;
+  readonly off_limits?: boolean;
   readonly tags?: readonly string[];
   readonly general_email?: string;
 
@@ -222,6 +224,7 @@ export interface UpdateCompanyRequest {
   readonly client_tier?: string | null;
   readonly supplier_status?: string | null;
   readonly exclusivity?: boolean;
+  readonly off_limits?: boolean;
   readonly tags?: readonly string[];
   readonly general_email?: string | null;
 
