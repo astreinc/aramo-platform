@@ -7,7 +7,15 @@ import {
   useSession,
   type Session,
 } from '@aramo/fe-foundation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { Link } from 'react-router-dom';
 
 import { addTalentToPipeline } from '../pipeline/pipeline-api';
@@ -25,7 +33,8 @@ import { searchTalent, updateTalent } from './talent-api';
 import { listErrorMessage, updateErrorMessage } from './error-messages';
 import {
   EMPTY_FACETS,
-  PRESETS,
+  VIEWS,
+  CROSS_SCHEMA_VIEWS,
   buildTalentQuery,
   deriveSkillCounts,
   fullName,
@@ -36,7 +45,7 @@ import {
   AVAILABILITY_LABELS,
   CONSENT_LABELS,
   type FacetState,
-  type PresetKey,
+  type ViewKey,
   type ScopeMode,
   type SearchToken,
   type SortDir,
@@ -53,6 +62,98 @@ import type { CrossFacets, NativeFacets, TalentRecordView } from './types';
 // Canonical vocab "Talent".
 
 type Density = 'comfortable' | 'compact';
+
+interface ColsState {
+  readonly skills: boolean;
+  readonly stage: boolean;
+  readonly availability: boolean;
+  readonly location: boolean;
+  readonly rate: boolean;
+  readonly consent: boolean;
+  readonly lastActivity: boolean;
+  readonly owner: boolean;
+}
+const COLUMN_OPTIONS: readonly [keyof ColsState, string][] = [
+  ['skills', 'Skills'],
+  ['stage', 'Stage'],
+  ['availability', 'Availability'],
+  ['location', 'Location'],
+  ['rate', 'Rate'],
+  ['consent', 'Consent'],
+  ['lastActivity', 'Last activity'],
+  ['owner', 'Owner'],
+];
+// Sort is NATIVE-columns only (server buildOrderBy) — no rate/last-activity (R10
+// / cross-schema). The header Sort menu drives the same sortKey/sortDir as the
+// clickable column headers.
+const SORT_OPTIONS: readonly [SortKey, string][] = [
+  ['name', 'Name'],
+  ['location', 'Location'],
+];
+
+// Header dropdown — Columns toggles (mockup .btn trigger).
+function ColumnsMenu({
+  cols,
+  setCols,
+}: {
+  readonly cols: ColsState;
+  readonly setCols: Dispatch<SetStateAction<ColsState>>;
+}) {
+  return (
+    <details className="rc-hmenu">
+      <summary className="rc-hbtn">
+        <Icons.IconColumns /> Columns
+      </summary>
+      <div className="rc-hmenu__body">
+        {COLUMN_OPTIONS.map(([key, label]) => (
+          <label key={key} className="rc-fopt">
+            <input
+              type="checkbox"
+              checked={cols[key]}
+              onChange={() => setCols((c) => ({ ...c, [key]: !c[key] }))}
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+// Header dropdown — Sort by a native column + toggle direction.
+function SortMenu({
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  readonly sortKey: SortKey;
+  readonly sortDir: SortDir;
+  readonly onSort: (key: SortKey) => void;
+}) {
+  return (
+    <details className="rc-hmenu">
+      <summary className="rc-hbtn">
+        <Icons.IconSort /> Sort
+      </summary>
+      <div className="rc-hmenu__body">
+        {SORT_OPTIONS.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            className="rc-sortopt"
+            aria-pressed={sortKey === key}
+            onClick={() => onSort(key)}
+          >
+            {label}
+            <span className="rc-sortopt__dir">
+              {sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+            </span>
+          </button>
+        ))}
+      </div>
+    </details>
+  );
+}
 
 // Availability pill tones (a talent-stated status, never an inferred ordering; R10-clean).
 const AVAILABILITY_TONE: Record<string, PillTone> = {
@@ -98,7 +199,10 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const [appendNote, setAppendNote] = useState<string | null>(null);
 
   const [scope, setScope] = useState<ScopeMode>('all');
-  const [preset, setPreset] = useState<PresetKey | null>(null);
+  const [activeView, setActiveView] = useState<ViewKey>('all');
+  const [viewCounts, setViewCounts] = useState<Partial<Record<ViewKey, string>>>(
+    {},
+  );
   const [facets, setFacets] = useState<FacetState>(EMPTY_FACETS);
   const [tokens, setTokens] = useState<readonly SearchToken[]>([]);
   const [draft, setDraft] = useState('');
@@ -108,7 +212,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [density, setDensity] = useState<Density>('comfortable');
-  const [cols, setCols] = useState({
+  const [cols, setCols] = useState<ColsState>({
     skills: true,
     stage: true,
     availability: true,
@@ -161,7 +265,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
         facets,
         query: parsed,
         scope,
-        preset,
+        view: activeView,
         sort: sortKey,
         dir: sortDir,
         cursor,
@@ -189,7 +293,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
         else setLoading(false);
       }
     },
-    [facets, parsed, scope, preset, sortKey, sortDir, myId],
+    [facets, parsed, scope, activeView, sortKey, sortDir, myId],
   );
 
   // Debounced refetch on any query change. Resets the page + selection.
@@ -208,6 +312,61 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     };
   }, [fetchPage]);
 
+  // Real, full-set VIEW COUNTS — the size of each Views pill within the current
+  // scope, independent of the ad-hoc search/facets. Native views (All /
+  // Available now / My hot list) come from ONE scope-only probe's facets +
+  // cross_facets.matched; the three cross-schema views each take a tiny
+  // page_size=1 probe and read cross_facets.matched (the 4b/4c machinery). Over
+  // the materialize guard we render "N+". Refires only when the scope changes.
+  useEffect(() => {
+    let cancelled = false;
+    const probe = (view: ViewKey) =>
+      buildTalentQuery({
+        facets: EMPTY_FACETS,
+        query: { tokens: [], free: '' },
+        scope,
+        view,
+        sort: 'name',
+        dir: 'asc',
+        cursor: null,
+        sessionSub: myId,
+        pageSize: 1,
+      });
+    const matched = (cf: CrossFacets | undefined): string | undefined => {
+      if (cf === undefined) return undefined;
+      return cf.over_guard ? `${cf.guard}+` : String(cf.matched);
+    };
+    void (async () => {
+      const [base, inTouch, needs, submitted] = await Promise.all([
+        searchTalent(probe('all')).catch(() => null),
+        searchTalent(probe('in_touch_6mo')).catch(() => null),
+        searchTalent(probe('needs_follow_up')).catch(() => null),
+        searchTalent(probe('submitted_this_week')).catch(() => null),
+      ]);
+      if (cancelled) return;
+      const next: Partial<Record<ViewKey, string>> = {};
+      if (base !== null) {
+        const all = matched(base.cross_facets);
+        if (all !== undefined) next.all = all;
+        next.available_now = String(
+          base.facets.availability.find((b) => b.value === 'available_now')
+            ?.count ?? 0,
+        );
+        next.my_hot_list = String(base.facets.hot);
+      }
+      const it = inTouch && matched(inTouch.cross_facets);
+      if (it) next.in_touch_6mo = it;
+      const nd = needs && matched(needs.cross_facets);
+      if (nd) next.needs_follow_up = nd;
+      const sb = submitted && matched(submitted.cross_facets);
+      if (sb) next.submitted_this_week = sb;
+      setViewCounts(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [scope, myId]);
+
   const skillCounts = useMemo(() => deriveSkillCounts(items), [items]);
 
   // a11y — after a load-more append settles, keep focus on the Load-more button
@@ -223,14 +382,11 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const resetAll = () => {
     setFacets(EMPTY_FACETS);
     setScope('all');
-    setPreset(null);
+    setActiveView('all');
     setTokens([]);
     setDraft('');
   };
-  const pickPreset = (key: PresetKey) => {
-    // Mutually exclusive; click the active preset to clear it.
-    setPreset((cur) => (cur === key ? null : key));
-  };
+  const pickView = (key: ViewKey) => setActiveView(key); // one active; 'all' clears
   const pickScope = (next: ScopeMode) => setScope(next);
   const commitTokens = () => {
     const p = parseQuery(draft);
@@ -312,11 +468,11 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     chips.push({ k: 'Scope', label: 'My talent', clear: () => setScope('all') });
   if (scope === 'team')
     chips.push({ k: 'Scope', label: 'My team', clear: () => setScope('all') });
-  if (preset !== null)
+  if (activeView !== 'all')
     chips.push({
       k: 'View',
-      label: PRESETS.find((p) => p.key === preset)?.label ?? preset,
-      clear: () => setPreset(null),
+      label: VIEWS.find((v) => v.key === activeView)?.label ?? activeView,
+      clear: () => setActiveView('all'),
     });
   for (const s of facets.skills)
     chips.push({
@@ -366,7 +522,37 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     <section className={drawerTalent !== null ? 'rc-talent rc-talent--drawer' : 'rc-talent'}>
       <div className="rc-viewhead">
         <div>
-          <h1 className="rc-h1">Talent</h1>
+          {/* title row — scope sits INLINE right after the H1 (the logo now owns
+              the top bar), with Columns/Sort/Add at the right end of the row. */}
+          <div className="rc-titlerow">
+            <h1 className="rc-h1">Talent</h1>
+            <div className="rc-scopetabs" role="group" aria-label="Scope">
+              <button
+                type="button"
+                className={scope === 'mine' ? 'on' : ''}
+                aria-pressed={scope === 'mine'}
+                onClick={() => pickScope('mine')}
+              >
+                My talent
+              </button>
+              <button
+                type="button"
+                className={scope === 'team' ? 'on' : ''}
+                aria-pressed={scope === 'team'}
+                onClick={() => pickScope('team')}
+              >
+                My team
+              </button>
+              <button
+                type="button"
+                className={scope === 'all' ? 'on' : ''}
+                aria-pressed={scope === 'all'}
+                onClick={() => pickScope('all')}
+              >
+                All
+              </button>
+            </div>
+          </div>
           <p className="rc-sub">
             <Icons.IconShield className="rc-sub__icon" aria-hidden="true" />
             Your consented working set — talent you have permission to work.
@@ -374,58 +560,41 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
           </p>
         </div>
         <div className="rc-viewhead__actions">
+          <ColumnsMenu cols={cols} setCols={setCols} />
+          <SortMenu sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
           {canCreate ? (
-            <Link to="/talent/new">
-              <Button variant="primary">
-                <Icons.IconPlus /> Add talent
-              </Button>
+            <Link to="/talent/new" className="rc-hbtn rc-hbtn--primary">
+              <Icons.IconPlus /> Add talent
             </Link>
           ) : null}
         </div>
       </div>
 
-      {/* scope tabs — three-way, mutually exclusive (My team = ?scope=my_team) */}
-      <div className="rc-scopetabs" role="group" aria-label="Scope">
-        <button
-          type="button"
-          className={scope === 'mine' ? 'on' : ''}
-          aria-pressed={scope === 'mine'}
-          onClick={() => pickScope('mine')}
-        >
-          My talent
-        </button>
-        <button
-          type="button"
-          className={scope === 'team' ? 'on' : ''}
-          aria-pressed={scope === 'team'}
-          onClick={() => pickScope('team')}
-        >
-          My team
-        </button>
-        <button
-          type="button"
-          className={scope === 'all' ? 'on' : ''}
-          aria-pressed={scope === 'all'}
-          onClick={() => pickScope('all')}
-        >
-          All
-        </button>
-      </div>
-
-      {/* views bar — presets (Available now native; the other three cross-schema) */}
+      {/* views bar — one active at a time, with real full-set counts (4b/4c). */}
       <div className="rc-views" role="group" aria-label="Views">
         <span className="rc-views__lbl">Views</span>
-        {PRESETS.map((v) => (
+        {VIEWS.map((v) => (
           <button
             key={v.key}
             type="button"
-            className={`rc-view${preset === v.key ? ' on' : ''}`}
-            aria-pressed={preset === v.key}
-            onClick={() => pickPreset(v.key)}
+            className={`rc-view${activeView === v.key ? ' on' : ''}`}
+            aria-pressed={activeView === v.key}
+            onClick={() => pickView(v.key)}
           >
             {v.label}
+            {viewCounts[v.key] !== undefined ? (
+              <span className="rc-view__ct num">{viewCounts[v.key]}</span>
+            ) : null}
           </button>
         ))}
+        <button
+          type="button"
+          className="rc-view rc-view--save"
+          disabled
+          title="Saved views need a backend saved-view API (carry)."
+        >
+          <Icons.IconBookmark /> Save current view
+        </button>
       </div>
 
       <TokenSearch
@@ -438,7 +607,12 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
 
       <div className="rc-activebar">
         <span className="rc-activebar__count num">
-          {items.length} <small>talent{nextCursor !== null ? '+' : ''}</small>
+          {items.length}
+          {viewCounts.all !== undefined ? (
+            <small> of {viewCounts.all} talent</small>
+          ) : (
+            <small> talent{nextCursor !== null ? '+' : ''}</small>
+          )}
         </span>
         {chips.length > 0 ? <span className="rc-activebar__sep" /> : null}
         {chips.map((c, i) => (
@@ -514,34 +688,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
               {selected.size > 0 ? `${selected.size} selected` : `${items.length} talent`}
             </span>
             <div className="rc-rtools__right">
-              <details className="rc-colmenu">
-                <summary className="rc-mini">
-                  <Icons.IconColumns /> Columns
-                </summary>
-                <div className="rc-colmenu__body">
-                  {(
-                    [
-                      ['skills', 'Skills'],
-                      ['stage', 'Stage'],
-                      ['availability', 'Availability'],
-                      ['location', 'Location'],
-                      ['rate', 'Rate'],
-                      ['consent', 'Consent'],
-                      ['lastActivity', 'Last activity'],
-                      ['owner', 'Owner'],
-                    ] as const
-                  ).map(([key, label]) => (
-                    <label key={key} className="rc-fopt">
-                      <input
-                        type="checkbox"
-                        checked={cols[key]}
-                        onChange={() => setCols((c) => ({ ...c, [key]: !c[key] }))}
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </details>
+              {/* Columns + Sort now live in the page header (.rc-viewhead__actions). */}
               <button
                 type="button"
                 className="rc-mini"

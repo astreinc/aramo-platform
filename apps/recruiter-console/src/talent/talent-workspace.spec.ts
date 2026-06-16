@@ -62,7 +62,7 @@ const baseInput = (o: Partial<TalentQueryInput> = {}): TalentQueryInput => ({
   facets: facets(),
   query: noQuery,
   scope: 'all',
-  preset: null,
+  view: 'all',
   sort: 'name',
   dir: 'asc',
   cursor: null,
@@ -169,22 +169,35 @@ describe('buildTalentQuery — UI state → ?paged=true server query', () => {
     expect(all.get('scope')).toBeNull();
   });
 
-  it('Available-now preset is NATIVE — folds into availability, sends NO preset param', () => {
-    const p = buildTalentQuery(baseInput({ preset: 'available_now' }));
+  it('Available-now view is NATIVE — folds into availability, sends NO preset param', () => {
+    const p = buildTalentQuery(baseInput({ view: 'available_now' }));
     expect(p.get('availability')).toBe('available_now');
     expect(p.get('preset')).toBeNull();
   });
 
-  it('cross-schema presets send the preset param', () => {
-    expect(buildTalentQuery(baseInput({ preset: 'in_touch_6mo' })).get('preset')).toBe(
+  it('My-hot-list view is NATIVE — sends hot=true, NO preset param', () => {
+    const p = buildTalentQuery(baseInput({ view: 'my_hot_list' }));
+    expect(p.get('hot')).toBe('true');
+    expect(p.get('preset')).toBeNull();
+  });
+
+  it('cross-schema views send the preset param', () => {
+    expect(buildTalentQuery(baseInput({ view: 'in_touch_6mo' })).get('preset')).toBe(
       'in_touch_6mo',
     );
     expect(
-      buildTalentQuery(baseInput({ preset: 'submitted_this_week' })).get('preset'),
+      buildTalentQuery(baseInput({ view: 'submitted_this_week' })).get('preset'),
     ).toBe('submitted_this_week');
     expect(
-      buildTalentQuery(baseInput({ preset: 'needs_follow_up' })).get('preset'),
+      buildTalentQuery(baseInput({ view: 'needs_follow_up' })).get('preset'),
     ).toBe('needs_follow_up');
+  });
+
+  it("the 'all' view adds neither availability nor a preset param", () => {
+    const p = buildTalentQuery(baseInput({ view: 'all' }));
+    expect(p.get('preset')).toBeNull();
+    expect(p.get('availability')).toBeNull();
+    expect(p.get('hot')).toBeNull();
   });
 
   it('passes the keyset cursor + page_size when present', () => {

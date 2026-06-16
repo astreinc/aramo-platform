@@ -1666,8 +1666,10 @@
 .rc-ghostbtn:disabled { opacity: .5; cursor: not-allowed; }
 
 /* scope tabs (page-level segmented control) */
+/* title row — H1 with the scope segmented control inline right after it. */
+.rc-titlerow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .rc-scopetabs {
-  display: inline-flex; gap: 2px; padding: 2px; margin: 4px 0 14px;
+  display: inline-flex; gap: 2px; padding: 2px; margin: 0;
   background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-md);
 }
 .rc-scopetabs button {
@@ -1677,8 +1679,44 @@
 .rc-scopetabs button.on { background: var(--brand); color: #fff; }
 .rc-scopetabs button:disabled { opacity: .45; cursor: not-allowed; }
 
-/* views bar */
-.rc-views { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+/* header action buttons (Columns / Sort / Add talent) — mockup .btn. */
+.rc-hbtn {
+  display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px;
+  border-radius: var(--r-md); font-size: .84rem; font-weight: 600;
+  border: 1px solid var(--line-2); background: var(--surface); color: var(--ink);
+  text-decoration: none; cursor: pointer; transition: .12s; white-space: nowrap;
+}
+.rc-hbtn svg { width: 15px; height: 15px; }
+.rc-hbtn:hover { background: var(--surface-2); }
+/* "Add talent" is the page's primary write action — kept visually primary
+   (a deliberate deviation from the mockup's equal-weight .btn; Columns/Sort
+   stay secondary). Action hierarchy over pixel-fidelity for the main CTA. */
+.rc-hbtn--primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+.rc-hbtn--primary:hover { background: var(--brand-strong); }
+/* header dropdown (Columns / Sort) */
+.rc-hmenu { position: relative; }
+.rc-hmenu > summary { list-style: none; cursor: pointer; }
+.rc-hmenu > summary::-webkit-details-marker { display: none; }
+.rc-hmenu__body {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 12;
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-md);
+  box-shadow: var(--sh-2); padding: 8px 10px; min-width: 176px; display: grid; gap: 2px;
+}
+.rc-hmenu__body .rc-fopt { font-size: .82rem; }
+.rc-sortopt {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  border: none; background: none; font-size: .82rem; font-weight: 600; color: var(--ink);
+  padding: 6px 8px; border-radius: 7px; cursor: pointer; text-align: left;
+}
+.rc-sortopt:hover { background: var(--surface-2); }
+.rc-sortopt[aria-pressed="true"] { color: var(--brand-strong); }
+.rc-sortopt__dir { color: var(--brand-accent); }
+
+/* views bar — mockup .savedbar (a delimited band under the header). */
+.rc-views {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 12px 0 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line);
+}
 .rc-views__lbl {
   font-size: .66rem; text-transform: uppercase; letter-spacing: .1em;
   color: var(--faint); font-weight: 600;
@@ -1692,6 +1730,11 @@
 .rc-view svg { width: 13px; height: 13px; }
 .rc-view:hover:not(:disabled) { border-color: var(--brand-accent); color: var(--ink); }
 .rc-view.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.rc-view__ct { font-size: .72rem; color: var(--faint); font-variant-numeric: tabular-nums; }
+.rc-view.on .rc-view__ct { color: #cfe0f4; }
+/* Save current view — dashed affordance (no backend yet → disabled stub). */
+.rc-view--save { color: var(--brand-strong); border-style: dashed; background: transparent; }
+.rc-view--save:disabled { opacity: .65; cursor: not-allowed; }
 .rc-view--stub { opacity: .6; cursor: not-allowed; border-style: dashed; }
 .rc-view__soon {
   font-size: .6rem; text-transform: uppercase; letter-spacing: .06em;

@@ -281,7 +281,8 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
     });
     renderInRouter(<TalentListView />);
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
-    expect(screen.getByText(/2 talent/)).toBeInTheDocument();
+    // activebar "X of Y talent" — Y is the full-set 'All' view count (probe).
+    await waitFor(() => expect(screen.getByText(/of 2 talent/)).toBeInTheDocument());
     fireEvent.click(screen.getByRole('checkbox', { name: /^Rust/ }));
     await waitFor(() => expect(screen.queryByText('Bob Khan')).not.toBeInTheDocument());
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
@@ -352,10 +353,11 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
     });
     renderInRouter(<TalentListView sessionOverride={SESSION} />);
     await waitFor(() => expect(screen.getByText('Bob Khan')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'In touch < 6 mo' }));
+    fireEvent.click(screen.getByRole('button', { name: /^In touch < 6 mo/ }));
     await waitFor(() => expect(screen.queryByText('Bob Khan')).not.toBeInTheDocument());
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'In touch < 6 mo' })).toHaveAttribute(
+    // the view pill (not the active-filter chip's Remove button) is pressed
+    expect(screen.getByRole('button', { name: /^In touch < 6 mo/ })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
@@ -368,7 +370,7 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
     });
     renderInRouter(<TalentListView sessionOverride={SESSION} />);
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Needs follow-up' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Needs follow-up/ }));
     await waitFor(() =>
       expect(screen.getByText(/no talent matches these filters/i)).toBeInTheDocument(),
     );
@@ -381,6 +383,11 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
     expect(
       screen.getByText(/narrow your filters, then these counts return/i),
     ).toBeInTheDocument();
+    // over-guard view-count probes show an HONEST indeterminate badge ("5000+"),
+    // never a silent full scan or a wrong number — the guard is respected.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^All\s*5000\+/ })).toBeInTheDocument(),
+    );
   });
 
   it('load-more appends the next keyset page and drops the button at the end', async () => {
@@ -483,5 +490,27 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
       'href',
       '/talent/new',
     );
+  });
+
+  it('renders full-set view counts, a My-hot-list view (hot=true), and a disabled Save-view stub', async () => {
+    mockServer({
+      talent: [
+        makeTalent('1', 'Ada', 'Lovelace', { is_hot: true }),
+        makeTalent('2', 'Bob', 'Khan'),
+      ],
+    });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    // counts come from the scope-only probes: All = 2, My hot list = facets.hot = 1
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^All\s*2$/ })).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: /My hot list\s*1/ })).toBeInTheDocument();
+    // Save current view is present per the mockup but disabled (no backend yet)
+    expect(screen.getByRole('button', { name: /save current view/i })).toBeDisabled();
+    // selecting My hot list narrows server-side via hot=true
+    fireEvent.click(screen.getByRole('button', { name: /My hot list/ }));
+    await waitFor(() => expect(screen.queryByText('Bob Khan')).not.toBeInTheDocument());
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
   });
 });
