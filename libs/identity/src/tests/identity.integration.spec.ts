@@ -1206,6 +1206,68 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // -----------------------------------------------------------------
+    // Test 19b — linkExternalIdentity: link a sub to a PRE-EXISTING user,
+    // idempotent on the unique key, and the login resolve-by-sub path then
+    // finds the user (the AUTH-HARD / M7 primitive).
+    // -----------------------------------------------------------------
+
+    it('test 19b — linkExternalIdentity attaches a sub to an existing user, idempotently', async () => {
+      const repo = new IdentityRepository(prisma);
+      const userId = '01900000-0000-7000-8000-0000000000d2';
+      await prisma.user.create({
+        data: {
+          id: userId,
+          email: 'link-test-user@aramo.dev',
+          display_name: 'link test',
+          is_active: true,
+        },
+      });
+
+      const provider = 'cognito';
+      const sub = 'link-cognito-sub-19b';
+
+      // No pre-existing link.
+      expect(
+        await repo.findExternalIdentity({ provider, provider_subject: sub }),
+      ).toBeNull();
+
+      const created = await repo.linkExternalIdentity({
+        provider,
+        provider_subject: sub,
+        user_id: userId,
+        email_snapshot: 'link-test-user@aramo.dev',
+      });
+      expect(created).toMatchObject({
+        provider,
+        provider_subject: sub,
+        user_id: userId,
+        email_snapshot: 'link-test-user@aramo.dev',
+      });
+
+      // Re-run is a no-op on the unique key — same row id, exactly one row,
+      // and the existing user_id/email_snapshot are NOT rewritten.
+      const again = await repo.linkExternalIdentity({
+        provider,
+        provider_subject: sub,
+        user_id: userId,
+        email_snapshot: 'ignored-on-noop@aramo.dev',
+      });
+      expect(again.id).toBe(created.id);
+      expect(again.email_snapshot).toBe('link-test-user@aramo.dev');
+      const count = await prisma.externalIdentity.count({
+        where: { provider, provider_subject: sub },
+      });
+      expect(count).toBe(1);
+
+      // The login resolve-by-sub path now hydrates the linked user.
+      const resolved = await repo.findUserByExternalIdentity({
+        provider,
+        provider_subject: sub,
+      });
+      expect(resolved?.id).toBe(userId);
+    });
+
+    // -----------------------------------------------------------------
     // Audit-writer guardrails (closed-set enforcement)
     // -----------------------------------------------------------------
 

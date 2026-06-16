@@ -64,6 +64,40 @@ export class IdentityRepository {
     return toExternalIdentityDto(row);
   }
 
+  // AUTH-HARD / M7 primitive — link an external IdP identity (e.g. Cognito) to
+  // a PRE-EXISTING identity.User. Distinct from
+  // createUserWithExternalIdentityAndMembership (which CREATES the User in one
+  // tx): this attaches a (provider, provider_subject) pair to a user that was
+  // already provisioned by some other path (invitation seed, federated-login
+  // reconcile). Idempotent upsert on the [provider, provider_subject] unique
+  // key — a re-run with the same pair is a no-op that returns the existing row
+  // unchanged (the user_id/email_snapshot are NOT rewritten). The id is
+  // generated app-side (uuid v7) to match the existing create site.
+  async linkExternalIdentity(args: {
+    provider: string;
+    provider_subject: string;
+    user_id: string;
+    email_snapshot: string | null;
+  }): Promise<ExternalIdentityDto> {
+    const row = await this.prisma.externalIdentity.upsert({
+      where: {
+        provider_provider_subject: {
+          provider: args.provider,
+          provider_subject: args.provider_subject,
+        },
+      },
+      update: {},
+      create: {
+        id: uuidv7(),
+        provider: args.provider,
+        provider_subject: args.provider_subject,
+        user_id: args.user_id,
+        email_snapshot: args.email_snapshot,
+      },
+    });
+    return toExternalIdentityDto(row);
+  }
+
   async findUserByEmail(email: string): Promise<UserDto | null> {
     const row = await this.prisma.user.findUnique({ where: { email } });
     return row === null ? null : toUserDto(row);
