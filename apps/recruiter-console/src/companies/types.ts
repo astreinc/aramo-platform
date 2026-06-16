@@ -204,6 +204,9 @@ export interface UpdateCompanyRequest {
   readonly notes?: string | null;
   readonly is_hot?: boolean;
   readonly billing_contact_id?: string | null;
+  // Owner reassignment — the BE update DTO accepts owner_id (the R6' mirror
+  // omitted it). Used by the list "Assign to me" bulk action (company:edit).
+  readonly owner_id?: string | null;
 
   // Company-Fields v1.1 — un-gated additive (omit=unchanged, null=clear).
   readonly status?: string;
