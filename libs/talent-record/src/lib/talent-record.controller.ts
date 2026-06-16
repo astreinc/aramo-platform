@@ -134,7 +134,16 @@ export class TalentRecordController {
     @Query('skills') skills: string | undefined,
     @Query('skill_match') skillMatch: string | undefined,
     @Query('location') location: string | undefined,
-    @Req() req: Request & { talentSearchQuery?: TalentSearchQuery },
+    @Req()
+    req: Request & {
+      talentSearchQuery?: TalentSearchQuery;
+      // Segment 4c — set by the apps/api TalentPresetInterceptor (PRE-handler):
+      // a cross-schema preset's resolved talent-id allowlist, and the "My team"
+      // scope's resolved owner-id set. Both are single-schema inputs here — the
+      // lib never reads activity/pipeline/tasks/teams itself.
+      talentPresetAllowlist?: readonly string[];
+      talentScopeOwnerIds?: readonly string[];
+    },
     @RequestId() requestId: string,
   ): Promise<{ items: TalentRecordView[] } | TalentSearchPage> {
     const searchTerm = q?.trim() ? q.trim() : undefined;
@@ -177,8 +186,14 @@ export class TalentRecordController {
         engagement_type: splitCsv(engagement),
         source: splitCsv(source),
         is_hot: hot === 'true' ? true : undefined,
-        owner_id: splitCsv(owner),
+        // Segment 4c — "My team" scope resolved upstream takes precedence over
+        // the native owner param (the owner-is-me / all tabs use the param).
+        owner_id: req.talentScopeOwnerIds ?? splitCsv(owner),
         location,
+        // Segment 4c — a cross-schema preset's resolved allowlist (resolve-then-
+        // filter). Empty array ⇒ preset matched nothing ⇒ zero results (distinct
+        // from undefined = no preset). buildSearchWhere ANDs it with the natives.
+        id_allowlist: req.talentPresetAllowlist,
         sort: parseSort(sort),
         dir: dir === 'asc' ? 'asc' : 'desc',
         cursor,

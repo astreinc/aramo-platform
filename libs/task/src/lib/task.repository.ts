@@ -193,6 +193,37 @@ export class TaskRepository {
     });
     return (rows as TaskRow[]).map(projectView);
   }
+
+  // Segment 4c — preset resolution ("Needs follow-up"). Returns the DISTINCT
+  // talent_record ids (owner_type='talent_record') that have an OPEN task
+  // ASSIGNED to `assignee_id` (the assignee — NOT the creator) whose due_date
+  // is today or earlier (overdue OR due-today, where `as_of` is end-of-today).
+  // Resolve-then-filter: hands back the talent ids only; the talent-record lib
+  // narrows by them — no reach from talent-record into the task schema. Bounded
+  // by `limit` (distinct owner_id, take limit+1) for the 4b guard. The
+  // (tenant_id, assignee_id, due_date) index serves the selective predicate;
+  // the binary status is a residual filter.
+  async findTalentIdsWithDueOrOverdueTasksForAssignee(args: {
+    tenant_id: string;
+    assignee_id: string;
+    as_of: Date;
+    limit: number;
+  }): Promise<string[]> {
+    const rows = await this.prisma.task.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        assignee_id: args.assignee_id,
+        owner_type: 'talent_record',
+        status: 'open',
+        due_date: { not: null, lte: args.as_of },
+      },
+      select: { owner_id: true },
+      distinct: ['owner_id'],
+      take: args.limit + 1,
+      orderBy: { due_date: 'asc' },
+    });
+    return rows.map((r) => r.owner_id);
+  }
 }
 
 // Build the Task polymorphic visibility OR (query-layer per DDR D6). Returns

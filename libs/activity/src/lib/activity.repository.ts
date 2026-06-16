@@ -152,6 +152,35 @@ export class ActivityRepository {
     return out;
   }
 
+  // Segment 4c — preset resolution ("In touch <6mo"). Returns the DISTINCT
+  // talent_record ids with ANY activity at/after `since`, tenant-wide
+  // (talent_record activity is pool-open — the §5 boundary). Bounded by
+  // `limit`: at most limit+1 distinct ids so apps/api can detect "over the
+  // 4b materialize guard" without resolving an unbounded list. The recency
+  // range leads on the (tenant_id, created_at) index; subject_type is a
+  // residual filter.
+  async findTalentIdsWithActivitySince(args: {
+    tenant_id: string;
+    since: Date;
+    limit: number;
+  }): Promise<string[]> {
+    const rows = await this.prisma.activity.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        subject_type: 'talent_record',
+        subject_id: { not: null },
+        created_at: { gte: args.since },
+      },
+      select: { subject_id: true },
+      distinct: ['subject_id'],
+      take: args.limit + 1,
+      orderBy: { created_at: 'desc' },
+    });
+    return rows
+      .map((r) => r.subject_id)
+      .filter((x): x is string => x !== null);
+  }
+
   // AUTHZ-D4b — visibility-scoped read paths.
   //
   // Activity is the POLYMORPHIC entity — subject_type discriminates the

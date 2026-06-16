@@ -44,6 +44,8 @@ import { TenantSettingsController } from './controllers/tenant-settings.controll
 import { CompensationFieldMaskInterceptor } from './interceptors/compensation-field-mask.interceptor.js';
 import { TalentRecordEnrichmentInterceptor } from './talent-enrichment/talent-record-enrichment.interceptor.js';
 import { TalentRecordEnrichmentService } from './talent-enrichment/talent-record-enrichment.service.js';
+import { TalentPresetInterceptor } from './talent-enrichment/talent-preset.interceptor.js';
+import { TalentPresetResolverService } from './talent-enrichment/talent-preset-resolver.service.js';
 // Settings S4 — live AUDIT_FINANCIALS_GATE adapter (reads via
 // TenantSettingService; bridges libs/identity's port to libs/settings'
 // service without coupling either lib).
@@ -299,6 +301,17 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     {
       provide: APP_INTERCEPTOR,
       useClass: TalentRecordEnrichmentInterceptor,
+    },
+    // Segment 4c — Views presets + "My team" scope. The resolver injects the
+    // four read-only cross-schema accessors (activity / pipeline / tasks /
+    // teams); the interceptor (global, PRE-handler, route-guarded to the paged
+    // talent-records list) resolves the preset/scope id sets and stashes them on
+    // the request so the lib controller folds them into the native query via the
+    // 4a id_allowlist / owner_id hooks. The lib stays single-schema.
+    TalentPresetResolverService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TalentPresetInterceptor,
     },
     // Settings S3a — override the TENANT_COGNITO_PORT default binding
     // (libs/identity's StubTenantCognitoAdapter, which throws on call)

@@ -516,6 +516,34 @@ export class PipelineRepository {
     return out;
   }
 
+  // Segment 4c — preset resolution ("Submitted · this week"). Returns the
+  // DISTINCT talent_record ids that transitioned INTO `submitted` at/after
+  // `since`, tenant-wide. PipelineStatusHistory carries the transition; the
+  // talent id comes through the INTRA-schema relation to Pipeline (both live
+  // in the pipeline schema — never a cross-schema join). Bounded by `limit`:
+  // distinct pipelines, take limit+1, then dedup to talent ids (a talent with
+  // two submitted pipelines folds to one).
+  async findTalentIdsSubmittedSince(args: {
+    tenant_id: string;
+    since: Date;
+    limit: number;
+  }): Promise<string[]> {
+    const rows = await this.prisma.pipelineStatusHistory.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        status_to: 'submitted',
+        changed_at: { gte: args.since },
+      },
+      select: { pipeline: { select: { talent_record_id: true } } },
+      distinct: ['pipeline_id'],
+      take: args.limit + 1,
+      orderBy: { changed_at: 'desc' },
+    });
+    const ids = new Set<string>();
+    for (const r of rows) ids.add(r.pipeline.talent_record_id);
+    return [...ids];
+  }
+
   /**
    * List pipelines. Optionally filter by requisition_id or talent_record_id
    * (the dominant recruiter-UI queries: "all talents on this req" and
