@@ -166,6 +166,15 @@ export function IconFlame(props: IconProps) {
   );
 }
 
+export function IconPencil(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 20h4L18 10l-4-4L4 16z" />
+      <path d="M13.5 6.5l4 4" />
+    </svg>
+  );
+}
+
 // ── Faceted-workspace glyphs (Talent page) ──
 export function IconX(props: IconProps) {
   return (

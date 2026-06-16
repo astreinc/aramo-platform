@@ -56,6 +56,7 @@ export {
   type ConstraintState,
 } from './pills';
 export { MetricCard } from './MetricCard';
+export { HotToggle } from './HotToggle';
 export { ActionItem, type ActionKind } from './ActionItem';
 export { Stepper } from './Stepper';
 export { ProgressMini } from './ProgressMini';

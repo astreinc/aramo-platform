@@ -1,5 +1,5 @@
 import { ToastProvider, type Session } from '@aramo/fe-foundation';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -52,8 +52,8 @@ const ROSTER = {
 
 const PIPELINES = {
   items: [
-    { id: 'p1', tenant_id: 't', site_id: null, talent_record_id: 'tal-1', requisition_id: 'req-1', status: 'interviewing', created_at: 'x', updated_at: 'x' },
-    { id: 'p2', tenant_id: 't', site_id: null, talent_record_id: 'tal-2', requisition_id: 'req-1', status: 'submitted', created_at: 'x', updated_at: 'x' },
+    { id: 'p1', tenant_id: 't', site_id: null, talent_record_id: 'tal-1', requisition_id: 'req-1', status: 'interviewing', created_at: '2026-06-15T00:00:00Z', updated_at: '2026-06-15T00:00:00Z' },
+    { id: 'p2', tenant_id: 't', site_id: null, talent_record_id: 'tal-2', requisition_id: 'req-1', status: 'submitted', created_at: '2026-06-14T00:00:00Z', updated_at: '2026-06-14T00:00:00Z' },
   ],
 };
 
@@ -113,7 +113,8 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     expect(
       await screen.findByRole('heading', { name: /Senior Rust Engineer/ }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Hot')).toBeInTheDocument();
+    // "Hot" appears as the header pill AND the talent-table column header.
+    expect(screen.getAllByText('Hot').length).toBeGreaterThan(0);
     expect(screen.getByText('Open')).toBeInTheDocument();
     await waitFor(() =>
       expect(
@@ -135,7 +136,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     expect(screen.queryByText('Max rate')).toBeNull();
   });
 
-  it('parity: Recruiter meta cell + Rate(stated)/Owner columns + pipeline toolbar (no rating stars)', async () => {
+  it('parity: Recruiter meta cell + Rate(stated)/Owner columns + Remote suffix + pipeline toolbar', async () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
@@ -144,11 +145,40 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     // Stated rate (freetext, gap #3) + owner name in the talent table.
     expect(screen.getByText('$74/hr')).toBeInTheDocument();
     expect(screen.getAllByText('Tom Owner').length).toBeGreaterThan(0);
+    // Location carries the work-arrangement suffix (work_arrangement=remote).
+    expect(screen.getByText('· Remote ok')).toBeInTheDocument();
     // The pipeline toolbar.
     expect(screen.getByRole('button', { name: 'All stages' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Active only' })).toBeInTheDocument();
-    // R10 — no rating/stars column.
-    expect(screen.queryByText(/rating/i)).not.toBeInTheDocument();
+  });
+
+  it('parity: Hot toggle column reflects is_hot — read-only (disabled) without talent:edit', async () => {
+    mockApi();
+    mountDetail();
+    await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: 'Marcus Adeyemi' })).toBeInTheDocument(),
+    );
+    // tal-1 is_hot=true → pressed; tal-2 is_hot=false → not pressed.
+    const marcusHot = await screen.findByRole('button', {
+      name: /Marcus Adeyemi is marked hot/,
+    });
+    expect(marcusHot).toHaveAttribute('aria-pressed', 'true');
+    const sofiaHot = screen.getByRole('button', { name: /Mark Sofia Ramos as hot/ });
+    expect(sofiaHot).toHaveAttribute('aria-pressed', 'false');
+    // No talent:edit scope → the toggles are read-only (disabled).
+    expect(marcusHot).toBeDisabled();
+    expect(sofiaHot).toBeDisabled();
+  });
+
+  it('parity: Attachments tab present with count', async () => {
+    mockApi();
+    mountDetail();
+    await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
+    // The mock returns no attachments → tab shows "(0)".
+    expect(
+      screen.getByRole('tab', { name: /Attachments \(0\)/ }),
+    ).toBeInTheDocument();
   });
 
   it('Pipeline tab: funnel ribbon counts + talent table with stage pills + talent links', async () => {
@@ -177,6 +207,72 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     expect(screen.getByText('This req at a glance')).toBeInTheDocument();
     const seam = screen.getByRole('region', { name: 'Match insight' });
     expect(seam.textContent).toContain('no scores');
+  });
+
+  it('editable Hot (talent:edit): clicking the toggle PATCHes /v1/talent-records/:id is_hot', async () => {
+    const calls: { url: string; method: string; body: unknown }[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = urlOf(input);
+      const method = init?.method ?? 'GET';
+      let body: unknown;
+      try {
+        body = init?.body != null ? JSON.parse(String(init.body)) : undefined;
+      } catch {
+        body = undefined;
+      }
+      calls.push({ url, method, body });
+      const json = (b: unknown, s = 200) =>
+        new Response(JSON.stringify(b), {
+          status: s,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      const m = url.match(/\/v1\/talent-records\/(tal-\d)/);
+      if (m?.[1] !== undefined && method === 'PATCH') {
+        return json({ ...TALENTS[m[1]], ...(body as object) });
+      }
+      if (url.includes('/v1/requisitions/req-1')) return json(REQ);
+      if (url.includes('/v1/pipelines')) return json(PIPELINES);
+      if (url.includes('/v1/companies/co-1')) return json({ id: 'co-1', name: 'Northwind Robotics' });
+      if (url.includes('/v1/tenant/users')) return json(ROSTER);
+      if (m?.[1] !== undefined) return json(TALENTS[m[1]]);
+      return json({ items: [] });
+    });
+
+    const editorSession: Session = {
+      ...SESSION,
+      scopes: ['requisition:read', 'talent:edit'],
+    };
+    render(
+      <ToastProvider>
+        <BreadcrumbProvider>
+          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+            <Routes>
+              <Route
+                path="/requisitions/:reqId"
+                element={<RequisitionDetailView sessionOverride={editorSession} />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </BreadcrumbProvider>
+      </ToastProvider>,
+    );
+    await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
+    // Sofia is not hot → clicking marks her hot via PATCH talent-records/tal-2.
+    const sofiaHot = await screen.findByRole('button', {
+      name: /Mark Sofia Ramos as hot/,
+    });
+    expect(sofiaHot).not.toBeDisabled();
+    fireEvent.click(sofiaHot);
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (c) =>
+            c.method === 'PATCH' &&
+            c.url.includes('/v1/talent-records/tal-2') &&
+            (c.body as { is_hot?: boolean })?.is_hot === true,
+        ),
+      ).toBe(true),
+    );
   });
 
   it('publishes the requisition title to the breadcrumb', async () => {

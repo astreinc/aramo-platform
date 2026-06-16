@@ -1,5 +1,7 @@
 import { apiClient } from '@aramo/fe-foundation';
 
+import type { AttachmentListResponse } from '../talent/types';
+
 import type {
   CreateRequisitionRequest,
   RequisitionListResponse,
@@ -37,6 +39,22 @@ export async function listRequisitions(
 
 export async function getRequisition(id: string): Promise<RequisitionView> {
   return apiClient.get<RequisitionView>(`/v1/requisitions/${id}`);
+}
+
+// Requisition attachments (the detail Attachments tab). GET /v1/attachments
+// filtered by owner_type='requisition' — the same endpoint the talent
+// Attachments tab uses (owner_type='talent'). Read-only list; graceful on
+// 403/empty.
+export async function listRequisitionAttachments(
+  requisitionId: string,
+): Promise<AttachmentListResponse> {
+  const params = new URLSearchParams({
+    owner_type: 'requisition',
+    owner_id: requisitionId,
+  });
+  return apiClient.get<AttachmentListResponse>(
+    `/v1/attachments?${params.toString()}`,
+  );
 }
 
 // R4 — mutate-side: CREATE (POST) + EDIT (PATCH).

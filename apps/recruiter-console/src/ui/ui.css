@@ -939,6 +939,106 @@
   margin-top: 1px;
 }
 
+/* ─────────────── Talent picker (Add talent dialog) ─────────────── */
+
+.rc-pick {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.rc-pick li {
+  border-bottom: 1px solid var(--line);
+}
+.rc-pick li:last-child {
+  border-bottom: 0;
+}
+.rc-pick__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 9px 12px;
+  cursor: pointer;
+  color: var(--ink);
+}
+.rc-pick__row:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.rc-pick__row:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.rc-pick__row svg {
+  width: 16px;
+  height: 16px;
+  color: var(--brand-accent);
+  margin-left: auto;
+  flex: none;
+}
+.rc-pick__nm {
+  font-weight: 600;
+}
+.rc-pick__sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+.rc-pick__busy {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* ─────────────── HotToggle (row-level is_hot triage mark) ───────────────
+ * A NON-ordinal preference flag, not an ordinal ranking (R10-clean). Outline flame
+ * = not hot; filled hot-tone flame = hot. A real button (keyboard + focus). */
+
+.rc-hot {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--line-2);
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.rc-hot svg {
+  width: 16px;
+  height: 16px;
+}
+.rc-hot:hover:not(:disabled) {
+  background: var(--canvas);
+  color: var(--hot);
+}
+.rc-hot--on {
+  color: var(--hot);
+}
+/* Read-only (no edit scope): keep the state legible — do NOT fade the flame. */
+.rc-hot:disabled {
+  cursor: default;
+}
+.rc-hot--on:disabled {
+  color: var(--hot);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rc-hot {
+    transition: none;
+  }
+}
+
 /* ─────────────── MetricCard ─────────────── */
 
 .rc-metric {
@@ -1943,3 +2043,46 @@
 }
 .rc-colmenu__body .rc-fopt { font-size: .82rem; }
 .rc-th-sort[aria-sort="ascending"], .rc-th-sort[aria-sort="descending"] { color: var(--brand-strong); }
+
+/* ============================================================================
+   Requisition DETAIL (job page) — the 2-col work grid + table cell atoms.
+   The Talent workspace globally re-points `.rc-work` to a left facet rail
+   (248px 1fr); the detail page needs the OPPOSITE (main 1fr + right sidebar),
+   so it carries its own higher-specificity modifier. Defined last so it wins.
+   ============================================================================ */
+.rc-work.rc-work--detail {
+  grid-template-columns: 1fr 312px;
+}
+@media (max-width: 1080px) {
+  .rc-work.rc-work--detail { grid-template-columns: 1fr; }
+}
+
+/* table cell atoms (Rate / Last activity / Owner) */
+.rc-table td .rate { font-weight: 600; }
+.rc-table td .last { color: var(--muted); font-size: 0.82rem; }
+.rc-table td .last .mono { font-size: 0.78rem; }
+.rc-table td .owner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* header action buttons already styled via .rc-hbtn (Talent page). The detail
+   header reuses them verbatim (Edit + Add talent). */
+
+/* attachments list (detail Attachments tab) */
+.rc-filelist { list-style: none; margin: 0; padding: 0; }
+.rc-filelist__row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+}
+.rc-filelist__row:last-child { border-bottom: 0; }
+.rc-filelist__row svg { width: 17px; height: 17px; color: var(--brand-accent); flex: none; }
+.rc-filelist__nm { font-weight: 600; }
+.rc-filelist__meta { margin-left: auto; color: var(--faint); font-size: 0.78rem; }
