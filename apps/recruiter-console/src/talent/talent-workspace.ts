@@ -169,26 +169,33 @@ export function deriveSkillCounts(
     .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 }
 
-// ── Views presets ────────────────────────────────────────────────────────────
-// Available now is NATIVE (an availability filter — 4c left it native); the
-// other three are the cross-schema presets resolved server-side (4c).
-export type PresetKey =
+// ── Views ─────────────────────────────────────────────────────────────────────
+// The Views bar (one active at a time). 'all' = no view filter. 'available_now'
+// and 'my_hot_list' are NATIVE (availability / is_hot); the other three are the
+// cross-schema presets resolved server-side (4c). Each maps to query params in
+// buildTalentQuery — there is no separate "preset" param concept above this.
+export type ViewKey =
+  | 'all'
   | 'available_now'
   | 'in_touch_6mo'
-  | 'submitted_this_week'
-  | 'needs_follow_up';
+  | 'needs_follow_up'
+  | 'my_hot_list'
+  | 'submitted_this_week';
 
-export const PRESETS: readonly { key: PresetKey; label: string }[] = [
+export const VIEWS: readonly { key: ViewKey; label: string }[] = [
+  { key: 'all', label: 'All' },
   { key: 'available_now', label: 'Available now' },
   { key: 'in_touch_6mo', label: 'In touch < 6 mo' },
-  { key: 'submitted_this_week', label: 'Submitted · this week' },
   { key: 'needs_follow_up', label: 'Needs follow-up' },
+  { key: 'my_hot_list', label: 'My hot list' },
+  { key: 'submitted_this_week', label: 'Submitted · this week' },
 ];
 
-const CROSS_SCHEMA_PRESETS: readonly PresetKey[] = [
+// Views resolved server-side via the ?preset= cross-schema path (4c).
+export const CROSS_SCHEMA_VIEWS: readonly ViewKey[] = [
   'in_touch_6mo',
-  'submitted_this_week',
   'needs_follow_up',
+  'submitted_this_week',
 ];
 
 // ── Sort — NATIVE columns only (4a buildOrderBy). NO rate (free-text, never an
@@ -201,7 +208,7 @@ export interface TalentQueryInput {
   readonly facets: FacetState;
   readonly query: ParsedQuery;
   readonly scope: ScopeMode;
-  readonly preset: PresetKey | null;
+  readonly view: ViewKey;
   readonly sort: SortKey;
   readonly dir: SortDir;
   readonly cursor: string | null;
@@ -234,9 +241,9 @@ export function buildTalentQuery(i: TalentQueryInput): URLSearchParams {
     p.set('skill_match', i.facets.skillMatch);
   }
 
-  // availability — the Available-now preset is a native availability shortcut.
+  // availability — the Available-now view is a native availability shortcut.
   const availability = [...i.facets.availability];
-  if (i.preset === 'available_now' && !availability.includes('available_now')) {
+  if (i.view === 'available_now' && !availability.includes('available_now')) {
     availability.push('available_now');
   }
   if (availability.length > 0) p.set('availability', availability.join(','));
@@ -244,7 +251,8 @@ export function buildTalentQuery(i: TalentQueryInput): URLSearchParams {
   if (i.facets.engagementTypes.length > 0)
     p.set('engagement', i.facets.engagementTypes.join(','));
   if (i.facets.sources.length > 0) p.set('source', i.facets.sources.join(','));
-  if (i.facets.hotOnly) p.set('hot', 'true');
+  // hot — the My-hot-list view is a native is_hot shortcut.
+  if (i.facets.hotOnly || i.view === 'my_hot_list') p.set('hot', 'true');
 
   // location ← facet text + loc: token (server: city/state ILIKE).
   const locTok = i.query.tokens.find((t) => t.supported && t.key === 'loc');
@@ -255,10 +263,8 @@ export function buildTalentQuery(i: TalentQueryInput): URLSearchParams {
   if (i.scope === 'mine' && i.sessionSub !== null) p.set('owner', i.sessionSub);
   else if (i.scope === 'team') p.set('scope', 'my_team');
 
-  // cross-schema preset (available_now already folded into availability).
-  if (i.preset !== null && CROSS_SCHEMA_PRESETS.includes(i.preset)) {
-    p.set('preset', i.preset);
-  }
+  // cross-schema views resolve via ?preset= (native views already folded in).
+  if (CROSS_SCHEMA_VIEWS.includes(i.view)) p.set('preset', i.view);
 
   p.set('sort', i.sort);
   p.set('dir', i.dir);
