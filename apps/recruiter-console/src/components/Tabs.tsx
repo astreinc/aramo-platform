@@ -29,16 +29,32 @@ interface TabsProps {
   readonly items: readonly TabItem[];
   readonly ariaLabel: string;
   readonly initialId?: string;
+  /** Controlled selection — when provided, the parent owns the active tab
+   * (e.g. a header "Edit" action that jumps to a specific tab). Omit for the
+   * default uncontrolled behavior. */
+  readonly selectedId?: string;
+  readonly onSelectedChange?: (id: string) => void;
 }
 
-export function Tabs({ items, ariaLabel, initialId }: TabsProps) {
+export function Tabs({
+  items,
+  ariaLabel,
+  initialId,
+  selectedId,
+  onSelectedChange,
+}: TabsProps) {
   const reactId = useId();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const initial =
     initialId !== undefined && items.some((t) => t.id === initialId)
       ? initialId
       : items[0]?.id ?? '';
-  const [selected, setSelected] = useState(initial);
+  const [internalSelected, setInternalSelected] = useState(initial);
+  const selected = selectedId ?? internalSelected;
+  const setSelected = (id: string) => {
+    setInternalSelected(id);
+    onSelectedChange?.(id);
+  };
 
   if (items.length === 0) {
     return null;

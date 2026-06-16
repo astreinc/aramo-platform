@@ -17,7 +17,11 @@
 //
 // Refusals enforced structurally:
 //   - R10 — NO portal-forbidden numeric/ordinal fields. Pipeline carries
-//     a status label only; no portal-forbidden ranking columns.
+//     a status label only; no portal-forbidden ranking columns. (A manual
+//     per-talent rating was considered and REJECTED — see ADR-0019: Aramo
+//     deliberately does not let recruiters rate or ordinally sort talent.
+//     Row-level triage is the non-ordinal is_hot flag; qualitative read is
+//     the activity feed.)
 //   - R12 — locked vocabulary. The OpenCATS-derived anti-token does NOT
 //     appear; the equivalent status is `talent_responded`.
 //
