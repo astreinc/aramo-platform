@@ -1,65 +1,36 @@
-// Talent workspace — the pure filter/facet/token model behind the faceted
-// Talent page. Kept framework-free so it is unit-tested in isolation
-// (talent-workspace.spec.ts) and the view stays a thin renderer.
+// Talent workspace — the pure model behind the faceted Talent page. Kept
+// framework-free so it is unit-tested in isolation (talent-workspace.spec.ts)
+// and the view stays a thin renderer.
 //
-// SUBSTRATE REALITY (audited; see the page's gap report): the backend talent
-// list (GET /v1/talent-records) takes only `q`/`resume_q` and returns a capped
-// (≤50) page with NO server-side facets/sort/pagination, and TalentRecordView
-// has NO status / availability / numeric-rate / tags / engagement-type /
-// last-activity fields. So every facet/token here operates CLIENT-SIDE over the
-// loaded page and counts are "within the loaded set" — never fabricated. Facets
-// that need absent fields are declared STUB and rendered disabled by the view.
+// SEGMENT 4d — the filter / facet / sort / pagination model is now SERVER-SIDE.
+// buildTalentQuery() turns the UI state into the ?paged=true query string the BE
+// resolves (4a native filters/sort/keyset cursor · 4b full-set cross-facet
+// counts · 4c presets + My-team scope). The only thing still computed CLIENT-
+// SIDE is the Skills facet COUNT (within the loaded page) — skills FILTER is
+// full-set on the server, but skills COUNTS wait for Skills Taxonomy. Every
+// other facet count comes from the server response.
 
-import {
-  ACTIVE_FLOW_COLUMNS,
-  PIPELINE_STATUS_LABELS,
-  type PipelineStatus,
-} from '../pipeline/types';
+import { PIPELINE_STATUS_LABELS } from '../pipeline/types';
 
 import type { TalentRecordView } from './types';
 
-// ── Segment 3 enrichment vocab (composed fields) ─────────────────────────────
-// consent_summary mirrors libs/consent ConsentSummary (3 values; BE-typed on
-// the wire). stage uses the pipeline funnel labels. recency buckets are FE
-// presentational over last_activity_at.
-export const CONSENT_SUMMARY_VALUES = [
-  'contactable',
-  'expiring_lt_30d',
-  'do_not_contact',
-] as const;
+// ── Enrichment vocab (composed fields; labels for the cross-facet displays) ──
 export const CONSENT_LABELS: Record<string, string> = {
   contactable: 'Contactable',
   expiring_lt_30d: 'Expiring < 30d',
   do_not_contact: 'Do-not-contact',
 };
-export const STAGE_FACET_VALUES: readonly PipelineStatus[] = ACTIVE_FLOW_COLUMNS;
 export const STAGE_LABELS = PIPELINE_STATUS_LABELS;
 
+// Recency buckets mirror the BE cross_facets.recency keys (4b).
 export type Recency = '' | 'today' | '7d' | '30d' | 'stale';
-export const RECENCY_OPTIONS: readonly { key: Recency; label: string }[] = [
-  { key: 'today', label: 'Today' },
-  { key: '7d', label: 'Last 7 days' },
-  { key: '30d', label: 'Last 30 days' },
-  { key: 'stale', label: 'No activity 90 days+' },
-];
-
-export function daysSinceActivity(t: TalentRecordView): number | null {
-  const iso = t.last_activity_at;
-  if (iso === undefined || iso === null) return null;
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return null;
-  return Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
-}
-
-function matchesRecency(t: TalentRecordView, recency: Recency): boolean {
-  if (recency === '') return true;
-  const d = daysSinceActivity(t);
-  if (recency === 'stale') return d === null || d >= 90; // no activity counts as stale
-  if (d === null) return false;
-  if (recency === 'today') return d === 0;
-  if (recency === '7d') return d <= 7;
-  return d <= 30; // '30d'
-}
+export const RECENCY_OPTIONS: readonly { key: Exclude<Recency, ''>; label: string }[] =
+  [
+    { key: 'today', label: 'Today' },
+    { key: '7d', label: 'Last 7 days' },
+    { key: '30d', label: 'Last 30 days' },
+    { key: 'stale', label: 'No activity 90 days+' },
+  ];
 
 // Re-export the stated-field vocab so consumers have one workspace import.
 export {
@@ -71,22 +42,20 @@ export {
   type EngagementType,
 } from './stated-fields';
 
+// 'mine' → owner-is-me (native owner param) · 'team' → ?scope=my_team (4c) ·
+// 'all' → no owner filter. The trio is mutually exclusive.
 export type ScopeMode = 'mine' | 'team' | 'all';
 
 // ── Token search ────────────────────────────────────────────────────────────
-// Grammar: `key:value` tokens + free text. Backable keys filter client-side
-// over the loaded page; unsupported keys are surfaced as flagged chips (kept
-// visible so the recruiter sees they were ignored — never silently dropped).
-export type TokenKey = 'skill' | 'loc' | 'owner' | 'name';
-export const SUPPORTED_TOKEN_KEYS: readonly TokenKey[] = [
-  'skill',
-  'loc',
-  'owner',
-  'name',
-];
-// Recognized in the prototype grammar but NOT backable (no field server- or
-// client-side): kept as flagged, non-filtering chips.
-export const UNSUPPORTED_TOKEN_KEYS = ['status', 'intouch'] as const;
+// Grammar: `key:value` tokens + free text. Supported keys map to SERVER params
+// (name→q, skill→skills, loc→location); unsupported keys surface as flagged,
+// non-filtering chips (kept visible so nothing is silently dropped).
+export type TokenKey = 'skill' | 'loc' | 'name';
+export const SUPPORTED_TOKEN_KEYS: readonly TokenKey[] = ['skill', 'loc', 'name'];
+// Recognized in the prototype grammar but NOT backable as a server filter:
+// kept as flagged, non-filtering chips. `owner:` joins these — the scope tabs
+// (owner-is-me / My team) are the backed owner filter, not a name match.
+export const UNSUPPORTED_TOKEN_KEYS = ['status', 'intouch', 'owner'] as const;
 
 export interface SearchToken {
   readonly key: TokenKey | (typeof UNSUPPORTED_TOKEN_KEYS)[number];
@@ -119,9 +88,7 @@ export function parseQuery(input: string): ParsedQuery {
     }
     if ((SUPPORTED_TOKEN_KEYS as readonly string[]).includes(rawKey)) {
       tokens.push({ key: rawKey as TokenKey, value, supported: true });
-    } else if (
-      (UNSUPPORTED_TOKEN_KEYS as readonly string[]).includes(rawKey)
-    ) {
+    } else if ((UNSUPPORTED_TOKEN_KEYS as readonly string[]).includes(rawKey)) {
       tokens.push({
         key: rawKey as (typeof UNSUPPORTED_TOKEN_KEYS)[number],
         value,
@@ -134,7 +101,7 @@ export function parseQuery(input: string): ParsedQuery {
   return { tokens, free: free.join(' ') };
 }
 
-// ── Facet state ───────────────────────────────────────────────────────────
+// ── Facet state — only the SERVER-FILTERABLE (native) facets live here ───────
 export type SkillMatch = 'any' | 'all';
 
 export interface FacetState {
@@ -143,14 +110,8 @@ export interface FacetState {
   readonly sources: readonly string[];
   readonly hotOnly: boolean;
   readonly location: string;
-  // Talent-stated facets (stated-fields amendment). availability holds the
-  // selected buckets (the 'unknown' bucket matches both null AND 'unknown').
   readonly availability: readonly string[];
   readonly engagementTypes: readonly string[];
-  // Segment 3 enrichment facets (now real per-row).
-  readonly consentSummaries: readonly string[];
-  readonly stages: readonly string[];
-  readonly recency: Recency;
 }
 
 export const EMPTY_FACETS: FacetState = {
@@ -161,18 +122,9 @@ export const EMPTY_FACETS: FacetState = {
   location: '',
   availability: [],
   engagementTypes: [],
-  consentSummaries: [],
-  stages: [],
-  recency: '',
 };
 
-// The "Unknown" availability bucket matches BOTH null (never captured) and the
-// explicit 'unknown' stated value (§4.1) — null collapses to 'unknown' here.
-export function effectiveAvailability(t: TalentRecordView): string {
-  return t.availability_status ?? 'unknown';
-}
-
-// ── Helpers over the (free-text) talent fields ──────────────────────────────
+// ── Render helpers over the (free-text) talent fields ────────────────────────
 export function fullName(t: TalentRecordView): string {
   const n = `${t.first_name} ${t.last_name}`.trim();
   return n === '' ? '—' : n;
@@ -195,258 +147,122 @@ export function statedRate(t: TalentRecordView): string {
   return t.current_pay ?? t.desired_pay ?? '—';
 }
 
-// ── Facet counts — derived from the LOADED page only (honest) ────────────────
+// The "Unknown" availability bucket = null (never captured) OR the explicit
+// 'unknown' stated value — null collapses to 'unknown' for display.
+export function effectiveAvailability(t: TalentRecordView): string {
+  return t.availability_status ?? 'unknown';
+}
+
+// ── Skills facet count — the ONE remaining within-loaded count ───────────────
 export interface FacetCount {
   readonly value: string;
   readonly count: number;
 }
 
-function tally(values: readonly string[]): FacetCount[] {
+export function deriveSkillCounts(
+  talent: readonly TalentRecordView[],
+): FacetCount[] {
   const m = new Map<string, number>();
-  for (const v of values) m.set(v, (m.get(v) ?? 0) + 1);
+  for (const t of talent) for (const s of skillsOf(t)) m.set(s, (m.get(s) ?? 0) + 1);
   return [...m.entries()]
     .map(([value, count]) => ({ value, count }))
     .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 }
 
-export interface DerivedFacets {
-  readonly skills: readonly FacetCount[];
-  readonly sources: readonly FacetCount[];
-  readonly hot: number;
-  readonly availability: readonly FacetCount[];
-  readonly engagement: readonly FacetCount[];
-  readonly consent: readonly FacetCount[];
-  readonly stage: readonly FacetCount[];
-  readonly recency: Readonly<Record<Recency, number>>;
-}
+// ── Views presets ────────────────────────────────────────────────────────────
+// Available now is NATIVE (an availability filter — 4c left it native); the
+// other three are the cross-schema presets resolved server-side (4c).
+export type PresetKey =
+  | 'available_now'
+  | 'in_touch_6mo'
+  | 'submitted_this_week'
+  | 'needs_follow_up';
 
-export function deriveFacets(
-  talent: readonly TalentRecordView[],
-): DerivedFacets {
-  const skills: string[] = [];
-  const sources: string[] = [];
-  const availability: string[] = [];
-  const engagement: string[] = [];
-  const consent: string[] = [];
-  const stage: string[] = [];
-  const recency: Record<Recency, number> = {
-    '': 0,
-    today: 0,
-    '7d': 0,
-    '30d': 0,
-    stale: 0,
-  };
-  let hot = 0;
-  for (const t of talent) {
-    for (const s of skillsOf(t)) skills.push(s);
-    if (t.source !== null && t.source.trim() !== '') sources.push(t.source);
-    if (t.is_hot) hot += 1;
-    availability.push(effectiveAvailability(t)); // null collapses to 'unknown'
-    if (t.engagement_type !== null) engagement.push(t.engagement_type);
-    if (t.consent_summary !== undefined && t.consent_summary !== null) {
-      consent.push(t.consent_summary);
-    }
-    if (t.current_stage != null) stage.push(t.current_stage.stage);
-    // recency bucket counts (a talent counts toward each window it satisfies).
-    if (matchesRecency(t, 'today')) recency.today += 1;
-    if (matchesRecency(t, '7d')) recency['7d'] += 1;
-    if (matchesRecency(t, '30d')) recency['30d'] += 1;
-    if (matchesRecency(t, 'stale')) recency.stale += 1;
-  }
-  return {
-    skills: tally(skills),
-    sources: tally(sources),
-    hot,
-    availability: tally(availability),
-    engagement: tally(engagement),
-    consent: tally(consent),
-    stage: tally(stage),
-    recency,
-  };
-}
+export const PRESETS: readonly { key: PresetKey; label: string }[] = [
+  { key: 'available_now', label: 'Available now' },
+  { key: 'in_touch_6mo', label: 'In touch < 6 mo' },
+  { key: 'submitted_this_week', label: 'Submitted · this week' },
+  { key: 'needs_follow_up', label: 'Needs follow-up' },
+];
 
-// ── Filtering ───────────────────────────────────────────────────────────────
-export interface FilterInput {
+const CROSS_SCHEMA_PRESETS: readonly PresetKey[] = [
+  'in_touch_6mo',
+  'submitted_this_week',
+  'needs_follow_up',
+];
+
+// ── Sort — NATIVE columns only (4a buildOrderBy). NO rate (free-text, never an
+// ordering — R10) and NO last_activity (cross-schema sort, not BE-backed). ────
+export type SortKey = 'name' | 'location';
+export type SortDir = 'asc' | 'desc';
+
+// ── The server query builder ─────────────────────────────────────────────────
+export interface TalentQueryInput {
   readonly facets: FacetState;
   readonly query: ParsedQuery;
   readonly scope: ScopeMode;
+  readonly preset: PresetKey | null;
+  readonly sort: SortKey;
+  readonly dir: SortDir;
+  readonly cursor: string | null;
   readonly sessionSub: string | null;
-  /** owner_id → display name, for `owner:` token matching. */
-  readonly ownerNames: Record<string, string>;
+  readonly pageSize?: number;
 }
 
-function matchesQuery(
-  t: TalentRecordView,
-  q: ParsedQuery,
-  ownerNames: Record<string, string>,
-): boolean {
-  for (const tok of q.tokens) {
-    if (!tok.supported) continue; // flagged, non-filtering
-    const v = tok.value.toLowerCase();
-    if (tok.key === 'skill') {
-      if (!skillsOf(t).some((s) => s.toLowerCase().includes(v))) return false;
-    } else if (tok.key === 'loc') {
-      if (!locationOf(t).toLowerCase().includes(v)) return false;
-    } else if (tok.key === 'owner') {
-      const ownerName = t.owner_id ? (ownerNames[t.owner_id] ?? '') : '';
-      const ownerMatch =
-        v === 'me'
-          ? false // resolved by scope, not here
-          : ownerName.toLowerCase().includes(v);
-      if (!ownerMatch) return false;
-    } else if (tok.key === 'name') {
-      if (!fullName(t).toLowerCase().includes(v)) return false;
-    }
+export function buildTalentQuery(i: TalentQueryInput): URLSearchParams {
+  const p = new URLSearchParams();
+  p.set('paged', 'true');
+
+  // q ← name: tokens + free text (server: first/last ILIKE).
+  const qterms = [
+    ...i.query.tokens
+      .filter((t) => t.supported && t.key === 'name')
+      .map((t) => t.value),
+    i.query.free.trim(),
+  ].filter((s) => s !== '');
+  if (qterms.length > 0) p.set('q', qterms.join(' '));
+
+  // skills ← facet skills + skill: tokens (server: key_skills contains, any/all).
+  const skills = [
+    ...i.facets.skills,
+    ...i.query.tokens
+      .filter((t) => t.supported && t.key === 'skill')
+      .map((t) => t.value),
+  ];
+  if (skills.length > 0) {
+    p.set('skills', skills.join(','));
+    p.set('skill_match', i.facets.skillMatch);
   }
-  if (q.free.trim() !== '') {
-    const hay =
-      `${fullName(t)} ${t.key_skills ?? ''} ${locationOf(t)}`.toLowerCase();
-    if (!hay.includes(q.free.trim().toLowerCase())) return false;
+
+  // availability — the Available-now preset is a native availability shortcut.
+  const availability = [...i.facets.availability];
+  if (i.preset === 'available_now' && !availability.includes('available_now')) {
+    availability.push('available_now');
   }
-  return true;
-}
+  if (availability.length > 0) p.set('availability', availability.join(','));
 
-export function applyFilters(
-  talent: readonly TalentRecordView[],
-  input: FilterInput,
-): readonly TalentRecordView[] {
-  const { facets, query, scope, sessionSub, ownerNames } = input;
-  const skillNeedles = facets.skills.map((s) => s.toLowerCase());
-  return talent.filter((t) => {
-    // scope tabs — 'team' is a STUB (no team tier); treated as 'all'.
-    if (scope === 'mine' && t.owner_id !== sessionSub) return false;
-    if (facets.hotOnly && !t.is_hot) return false;
-    if (facets.sources.length > 0) {
-      if (t.source === null || !facets.sources.includes(t.source)) return false;
-    }
-    if (facets.location.trim() !== '') {
-      if (!locationOf(t).toLowerCase().includes(facets.location.trim().toLowerCase()))
-        return false;
-    }
-    if (facets.availability.length > 0) {
-      if (!facets.availability.includes(effectiveAvailability(t))) return false;
-    }
-    if (facets.engagementTypes.length > 0) {
-      // null engagement (not stated) drops out when filtering by a type.
-      if (t.engagement_type === null || !facets.engagementTypes.includes(t.engagement_type))
-        return false;
-    }
-    if (facets.consentSummaries.length > 0) {
-      if (
-        t.consent_summary === undefined ||
-        t.consent_summary === null ||
-        !facets.consentSummaries.includes(t.consent_summary)
-      )
-        return false;
-    }
-    if (facets.stages.length > 0) {
-      if (t.current_stage == null || !facets.stages.includes(t.current_stage.stage))
-        return false;
-    }
-    if (!matchesRecency(t, facets.recency)) return false;
-    if (skillNeedles.length > 0) {
-      const have = skillsOf(t).map((s) => s.toLowerCase());
-      const test = (needle: string) => have.some((h) => h.includes(needle));
-      if (facets.skillMatch === 'all') {
-        if (!skillNeedles.every(test)) return false;
-      } else if (!skillNeedles.some(test)) return false;
-    }
-    if (!matchesQuery(t, query, ownerNames)) return false;
-    return true;
-  });
-}
+  if (i.facets.engagementTypes.length > 0)
+    p.set('engagement', i.facets.engagementTypes.join(','));
+  if (i.facets.sources.length > 0) p.set('source', i.facets.sources.join(','));
+  if (i.facets.hotOnly) p.set('hot', 'true');
 
-// ── Saved views (smart-lists) ───────────────────────────────────────────────
-// Only views expressible over the loaded page + real fields are BACKABLE; the
-// prototype's recency/pipeline views need absent fields (last-activity,
-// availability, per-talent stage) → STUB (disabled + "connects later" note).
-export interface SavedView {
-  readonly key: string;
-  readonly label: string;
-  readonly backable: boolean;
-  /** carry note shown on disabled (stub) views */
-  readonly note?: string;
-}
+  // location ← facet text + loc: token (server: city/state ILIKE).
+  const locTok = i.query.tokens.find((t) => t.supported && t.key === 'loc');
+  const location = i.facets.location.trim() || (locTok?.value ?? '');
+  if (location !== '') p.set('location', location);
 
-export const SAVED_VIEWS: readonly SavedView[] = [
-  { key: 'all', label: 'All', backable: true },
-  { key: 'mine', label: 'My talent', backable: true },
-  { key: 'hot', label: 'Hot list', backable: true },
-  {
-    key: 'available',
-    label: 'Available now',
-    backable: false,
-    note: 'Needs an availability field on the talent record (carry).',
-  },
-  {
-    key: 'intouch',
-    label: 'In touch < 6 mo',
-    backable: false,
-    note: 'Needs a bulk last-activity read (carry — currently per-talent N+1).',
-  },
-  {
-    key: 'followup',
-    label: 'Needs follow-up',
-    backable: false,
-    note: 'Needs a bulk last-activity read (carry).',
-  },
-  {
-    key: 'submitted',
-    label: 'Submitted · this week',
-    backable: false,
-    note: 'Needs a submitted-this-week pipeline rollup (carry).',
-  },
-];
+  // scope → owner-is-me (native owner param) or ?scope=my_team (4c).
+  if (i.scope === 'mine' && i.sessionSub !== null) p.set('owner', i.sessionSub);
+  else if (i.scope === 'team') p.set('scope', 'my_team');
 
-export function applyView(
-  key: string,
-  talent: readonly TalentRecordView[],
-  sessionSub: string | null,
-): readonly TalentRecordView[] {
-  if (key === 'mine') return talent.filter((t) => t.owner_id === sessionSub);
-  if (key === 'hot') return talent.filter((t) => t.is_hot);
-  return talent; // 'all' and any non-backable view fall back to the full pool
-}
+  // cross-schema preset (available_now already folded into availability).
+  if (i.preset !== null && CROSS_SCHEMA_PRESETS.includes(i.preset)) {
+    p.set('preset', i.preset);
+  }
 
-// ── Sort ────────────────────────────────────────────────────────────────────
-export type SortKey = 'name' | 'rate' | 'location' | 'owner' | 'last_activity';
-export type SortDir = 'asc' | 'desc';
-
-export function sortTalent(
-  talent: readonly TalentRecordView[],
-  key: SortKey,
-  dir: SortDir,
-  ownerNames: Record<string, string> = {},
-): readonly TalentRecordView[] {
-  const sign = dir === 'asc' ? 1 : -1;
-  const ownerOf = (t: TalentRecordView): string | null =>
-    t.owner_id ? (ownerNames[t.owner_id] ?? '') : null;
-  return [...talent].sort((a, b) => {
-    switch (key) {
-      case 'name':
-        return sign * fullName(a).localeCompare(fullName(b));
-      case 'rate':
-        return sign * statedRate(a).localeCompare(statedRate(b));
-      case 'location':
-        return sign * locationOf(a).localeCompare(locationOf(b));
-      case 'owner': {
-        const ao = ownerOf(a);
-        const bo = ownerOf(b);
-        // Unowned always sorts last, regardless of direction.
-        if (ao === null && bo === null) return 0;
-        if (ao === null) return 1;
-        if (bo === null) return -1;
-        return sign * ao.localeCompare(bo);
-      }
-      case 'last_activity': {
-        // ISO strings compare chronologically; no-activity always sorts last.
-        const al = a.last_activity_at ?? null;
-        const bl = b.last_activity_at ?? null;
-        if (al === null && bl === null) return 0;
-        if (al === null) return 1;
-        if (bl === null) return -1;
-        return sign * al.localeCompare(bl);
-      }
-    }
-  });
+  p.set('sort', i.sort);
+  p.set('dir', i.dir);
+  if (i.cursor !== null) p.set('cursor', i.cursor);
+  if (i.pageSize !== undefined) p.set('page_size', String(i.pageSize));
+  return p;
 }

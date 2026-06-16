@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EMPTY_FACETS,
-  applyFilters,
-  applyView,
-  deriveFacets,
+  buildTalentQuery,
+  deriveSkillCounts,
   parseQuery,
   skillsOf,
-  sortTalent,
   type FacetState,
+  type ParsedQuery,
+  type TalentQueryInput,
 } from './talent-workspace';
 import type { TalentRecordView } from './types';
 
@@ -56,26 +56,32 @@ function t(
   };
 }
 
-const POOL: TalentRecordView[] = [
-  t('1', 'Ada', 'Lovelace', { key_skills: 'Rust, Go', city: 'Austin', state: 'TX', source: 'Referral', is_hot: true, owner_id: 'me' }),
-  t('2', 'Bob', 'Khan', { key_skills: 'Rust, AWS', city: 'Seattle', state: 'WA', source: 'Import', owner_id: 'other' }),
-  t('3', 'Cy', 'Park', { key_skills: 'Go', city: 'Austin', state: 'TX', source: 'Referral' }),
-];
-
-const base = (o: Partial<FacetState> = {}): FacetState => ({ ...EMPTY_FACETS, ...o });
-const noQuery = { tokens: [], free: '' };
+const facets = (o: Partial<FacetState> = {}): FacetState => ({ ...EMPTY_FACETS, ...o });
+const noQuery: ParsedQuery = { tokens: [], free: '' };
+const baseInput = (o: Partial<TalentQueryInput> = {}): TalentQueryInput => ({
+  facets: facets(),
+  query: noQuery,
+  scope: 'all',
+  preset: null,
+  sort: 'name',
+  dir: 'asc',
+  cursor: null,
+  sessionSub: 'me',
+  ...o,
+});
 
 describe('parseQuery', () => {
-  it('splits supported tokens from free text', () => {
-    const p = parseQuery('skill:Rust loc:austin senior eng');
+  it('splits supported tokens (name/skill/loc) from free text', () => {
+    const p = parseQuery('skill:Rust loc:austin name:ada senior eng');
     expect(p.tokens).toEqual([
       { key: 'skill', value: 'Rust', supported: true },
       { key: 'loc', value: 'austin', supported: true },
+      { key: 'name', value: 'ada', supported: true },
     ]);
     expect(p.free).toBe('senior eng');
   });
-  it('marks unknown grammar keys (status:/intouch:) as unsupported, non-filtering', () => {
-    const p = parseQuery('status:active intouch:6mo');
+  it('marks unknown/unbackable keys (status:/intouch:/owner:) as unsupported', () => {
+    const p = parseQuery('status:active intouch:6mo owner:tom');
     expect(p.tokens.every((x) => !x.supported)).toBe(true);
   });
   it('treats a bare colon-less word as free text', () => {
@@ -93,151 +99,97 @@ describe('skillsOf', () => {
   });
 });
 
-describe('deriveFacets', () => {
-  it('counts skills/sources/hot within the loaded set only', () => {
-    const d = deriveFacets(POOL);
-    expect(d.skills.find((s) => s.value === 'Rust')?.count).toBe(2);
-    expect(d.skills.find((s) => s.value === 'Go')?.count).toBe(2);
-    expect(d.sources.find((s) => s.value === 'Referral')?.count).toBe(2);
-    expect(d.hot).toBe(1);
+describe('deriveSkillCounts (within-loaded — the one remaining client count)', () => {
+  it('tallies skills across the loaded set, most-frequent first', () => {
+    const counts = deriveSkillCounts([
+      t('1', 'A', 'A', { key_skills: 'Rust, Go' }),
+      t('2', 'B', 'B', { key_skills: 'Rust, AWS' }),
+      t('3', 'C', 'C', { key_skills: 'Go' }),
+    ]);
+    expect(counts.find((s) => s.value === 'Rust')?.count).toBe(2);
+    expect(counts.find((s) => s.value === 'Go')?.count).toBe(2);
+    expect(counts.find((s) => s.value === 'AWS')?.count).toBe(1);
   });
 });
 
-describe('applyFilters', () => {
-  const ctx = { scope: 'all' as const, sessionSub: 'me', ownerNames: {} };
-
-  it('match-any skill OR, match-all skill AND', () => {
-    const any = applyFilters(POOL, { ...ctx, facets: base({ skills: ['Rust', 'Go'], skillMatch: 'any' }), query: noQuery });
-    expect(any.map((x) => x.id).sort()).toEqual(['1', '2', '3']);
-    const all = applyFilters(POOL, { ...ctx, facets: base({ skills: ['Rust', 'Go'], skillMatch: 'all' }), query: noQuery });
-    expect(all.map((x) => x.id)).toEqual(['1']);
+describe('buildTalentQuery — UI state → ?paged=true server query', () => {
+  it('always sends paged=true + sort/dir', () => {
+    const p = buildTalentQuery(baseInput());
+    expect(p.get('paged')).toBe('true');
+    expect(p.get('sort')).toBe('name');
+    expect(p.get('dir')).toBe('asc');
   });
 
-  it('hot-only + source + location facets', () => {
-    expect(applyFilters(POOL, { ...ctx, facets: base({ hotOnly: true }), query: noQuery }).map((x) => x.id)).toEqual(['1']);
-    expect(applyFilters(POOL, { ...ctx, facets: base({ sources: ['Import'] }), query: noQuery }).map((x) => x.id)).toEqual(['2']);
-    expect(applyFilters(POOL, { ...ctx, facets: base({ location: 'austin' }), query: noQuery }).map((x) => x.id).sort()).toEqual(['1', '3']);
+  it('maps name: tokens + free text into q', () => {
+    const p = buildTalentQuery(
+      baseInput({
+        query: { tokens: [{ key: 'name', value: 'ada', supported: true }], free: 'senior' },
+      }),
+    );
+    expect(p.get('q')).toBe('ada senior');
   });
 
-  it('scope=mine filters to the actor-owned rows', () => {
-    expect(applyFilters(POOL, { ...ctx, scope: 'mine', facets: base(), query: noQuery }).map((x) => x.id)).toEqual(['1']);
+  it('maps the skills facet + skill: tokens into skills + skill_match', () => {
+    const p = buildTalentQuery(
+      baseInput({
+        facets: facets({ skills: ['Rust'], skillMatch: 'all' }),
+        query: { tokens: [{ key: 'skill', value: 'Go', supported: true }], free: '' },
+      }),
+    );
+    expect(p.get('skills')).toBe('Rust,Go');
+    expect(p.get('skill_match')).toBe('all');
   });
 
-  it('token skill: filters; unsupported token does NOT filter', () => {
-    const tok = applyFilters(POOL, { ...ctx, facets: base(), query: { tokens: [{ key: 'skill', value: 'aws', supported: true }], free: '' } });
-    expect(tok.map((x) => x.id)).toEqual(['2']);
-    const stub = applyFilters(POOL, { ...ctx, facets: base(), query: { tokens: [{ key: 'status', value: 'active', supported: false }], free: '' } });
-    expect(stub.length).toBe(3); // unsupported = no-op
-  });
-});
-
-describe('stated-field facets (availability / engagement)', () => {
-  const ctx = { scope: 'all' as const, sessionSub: 'me', ownerNames: {} };
-  const POOL2: TalentRecordView[] = [
-    t('1', 'A', 'A', { availability_status: 'available_now', engagement_type: 'contract' }),
-    t('2', 'B', 'B', { availability_status: 'unknown', engagement_type: 'direct_hire' }),
-    t('3', 'C', 'C', { availability_status: null, engagement_type: null }), // null avail → Unknown bucket
-  ];
-
-  it('derives availability (null collapses into the unknown bucket) + engagement counts', () => {
-    const d = deriveFacets(POOL2);
-    expect(d.availability.find((x) => x.value === 'available_now')?.count).toBe(1);
-    expect(d.availability.find((x) => x.value === 'unknown')?.count).toBe(2); // explicit + null
-    expect(d.engagement.find((x) => x.value === 'contract')?.count).toBe(1);
-    expect(d.engagement.length).toBe(2); // null engagement not counted
+  it('maps availability / engagement / source / hot / location', () => {
+    const p = buildTalentQuery(
+      baseInput({
+        facets: facets({
+          availability: ['available_now'],
+          engagementTypes: ['contract'],
+          sources: ['Referral'],
+          hotOnly: true,
+          location: 'Austin',
+        }),
+      }),
+    );
+    expect(p.get('availability')).toBe('available_now');
+    expect(p.get('engagement')).toBe('contract');
+    expect(p.get('source')).toBe('Referral');
+    expect(p.get('hot')).toBe('true');
+    expect(p.get('location')).toBe('Austin');
   });
 
-  it('availability "unknown" filter matches BOTH null and explicit unknown', () => {
-    const r = applyFilters(POOL2, {
-      ...ctx,
-      facets: base({ availability: ['unknown'] }),
-      query: noQuery,
-    });
-    expect(r.map((x) => x.id).sort()).toEqual(['2', '3']);
+  it('scope=mine → owner=<me>; scope=team → scope=my_team; scope=all → neither', () => {
+    expect(buildTalentQuery(baseInput({ scope: 'mine' })).get('owner')).toBe('me');
+    const team = buildTalentQuery(baseInput({ scope: 'team' }));
+    expect(team.get('scope')).toBe('my_team');
+    expect(team.get('owner')).toBeNull();
+    const all = buildTalentQuery(baseInput({ scope: 'all' }));
+    expect(all.get('owner')).toBeNull();
+    expect(all.get('scope')).toBeNull();
   });
 
-  it('engagement filter excludes not-stated (null) rows', () => {
-    const r = applyFilters(POOL2, {
-      ...ctx,
-      facets: base({ engagementTypes: ['contract'] }),
-      query: noQuery,
-    });
-    expect(r.map((x) => x.id)).toEqual(['1']);
-  });
-});
-
-describe('Segment 3 enrichment facets (consent / stage / recency / sort)', () => {
-  const ctx = { scope: 'all' as const, sessionSub: 'me', ownerNames: {} };
-  const iso = (daysAgo: number) =>
-    new Date(Date.now() - daysAgo * 86_400_000).toISOString();
-  const POOL3: TalentRecordView[] = [
-    t('1', 'A', 'A', {
-      consent_summary: 'contactable',
-      current_stage: { stage: 'interviewing', requisition_id: 'r1' },
-      last_activity_at: iso(0),
-    }),
-    t('2', 'B', 'B', {
-      consent_summary: 'do_not_contact',
-      current_stage: { stage: 'submitted', requisition_id: 'r2' },
-      last_activity_at: iso(40),
-    }),
-    t('3', 'C', 'C', {
-      consent_summary: 'contactable',
-      current_stage: null, // none
-      last_activity_at: null, // no activity → stale
-    }),
-  ];
-
-  it('derives consent + stage + recency-bucket counts', () => {
-    const d = deriveFacets(POOL3);
-    expect(d.consent.find((x) => x.value === 'contactable')?.count).toBe(2);
-    expect(d.stage.find((x) => x.value === 'interviewing')?.count).toBe(1);
-    expect(d.stage.length).toBe(2); // null stage not counted
-    expect(d.recency.today).toBe(1);
-    expect(d.recency.stale).toBe(1); // only the no-activity row (40d-ago is < 90d)
+  it('Available-now preset is NATIVE — folds into availability, sends NO preset param', () => {
+    const p = buildTalentQuery(baseInput({ preset: 'available_now' }));
+    expect(p.get('availability')).toBe('available_now');
+    expect(p.get('preset')).toBeNull();
   });
 
-  it('filters by consent, by stage, and excludes none/null appropriately', () => {
+  it('cross-schema presets send the preset param', () => {
+    expect(buildTalentQuery(baseInput({ preset: 'in_touch_6mo' })).get('preset')).toBe(
+      'in_touch_6mo',
+    );
     expect(
-      applyFilters(POOL3, { ...ctx, facets: base({ consentSummaries: ['do_not_contact'] }), query: noQuery }).map((x) => x.id),
-    ).toEqual(['2']);
+      buildTalentQuery(baseInput({ preset: 'submitted_this_week' })).get('preset'),
+    ).toBe('submitted_this_week');
     expect(
-      applyFilters(POOL3, { ...ctx, facets: base({ stages: ['interviewing'] }), query: noQuery }).map((x) => x.id),
-    ).toEqual(['1']);
+      buildTalentQuery(baseInput({ preset: 'needs_follow_up' })).get('preset'),
+    ).toBe('needs_follow_up');
   });
 
-  it('recency "today" keeps only fresh rows; "stale" keeps 90d+ and no-activity', () => {
-    expect(
-      applyFilters(POOL3, { ...ctx, facets: base({ recency: 'today' }), query: noQuery }).map((x) => x.id),
-    ).toEqual(['1']);
-    expect(
-      applyFilters(POOL3, { ...ctx, facets: base({ recency: 'stale' }), query: noQuery }).map((x) => x.id),
-    ).toEqual(['3']);
-  });
-
-  it('sorts by last_activity; no-activity sorts last', () => {
-    expect(sortTalent(POOL3, 'last_activity', 'desc').map((x) => x.id)).toEqual(['1', '2', '3']);
-  });
-});
-
-describe('applyView', () => {
-  it('mine / hot views; all falls back to the pool', () => {
-    expect(applyView('mine', POOL, 'me').map((x) => x.id)).toEqual(['1']);
-    expect(applyView('hot', POOL, 'me').map((x) => x.id)).toEqual(['1']);
-    expect(applyView('all', POOL, 'me').length).toBe(3);
-  });
-});
-
-describe('sortTalent', () => {
-  it('sorts by name asc/desc', () => {
-    expect(sortTalent(POOL, 'name', 'asc').map((x) => x.first_name)).toEqual(['Ada', 'Bob', 'Cy']);
-    expect(sortTalent(POOL, 'name', 'desc').map((x) => x.first_name)).toEqual(['Cy', 'Bob', 'Ada']);
-  });
-  it('sorts by location and by resolved owner name', () => {
-    // Austin, Austin, Seattle → asc puts Austin rows first
-    expect(sortTalent(POOL, 'location', 'asc').map((x) => x.id)).toEqual(['1', '3', '2']);
-    // owner: id 1 → "Priya", id 2 → "Tom", id 3 → unowned (sorts last asc)
-    const names = { me: 'Priya', other: 'Tom' };
-    expect(sortTalent(POOL, 'owner', 'asc', names).map((x) => x.id)).toEqual(['1', '2', '3']);
+  it('passes the keyset cursor + page_size when present', () => {
+    const p = buildTalentQuery(baseInput({ cursor: 'abc', pageSize: 25 }));
+    expect(p.get('cursor')).toBe('abc');
+    expect(p.get('page_size')).toBe('25');
   });
 });

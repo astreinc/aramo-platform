@@ -1778,6 +1778,15 @@
 .rc-fopt { display: flex; align-items: center; gap: 9px; padding: 5px 0; font-size: .83rem; color: var(--ink); cursor: pointer; }
 .rc-fopt input { width: 15px; height: 15px; accent-color: var(--brand); flex: none; }
 .rc-fopt__ct { margin-left: auto; font-size: .74rem; color: var(--faint); }
+/* Segment 4d — read-only cross-schema count rows (no checkbox; full-set). */
+.rc-fopt--readonly { cursor: default; padding-left: 24px; color: var(--muted); }
+.rc-facet__sub { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); margin: 9px 0 2px; }
+/* Segment 4d — the over_guard "narrow your filters" message (honest, not empty). */
+.rc-facet__guard { font-size: .76rem; color: var(--ink); line-height: 1.45; background: var(--canvas); border: 1px solid var(--line-2); border-radius: 7px; padding: 9px 11px; }
+/* Segment 4d — keyset load-more affordance. */
+.rc-loadmore { display: flex; justify-content: center; padding: 16px 0 4px; }
+/* a11y — visually-hidden live region for the load-more announcement. */
+.rc-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .rc-seg { display: inline-flex; background: var(--canvas); border: 1px solid var(--line-2); border-radius: 7px; padding: 2px; gap: 2px; margin: 4px 0 8px; }
 .rc-seg button { border: none; background: none; font-size: .72rem; font-weight: 700; color: var(--muted); padding: 3px 10px; border-radius: 5px; }
 .rc-seg button.on { background: var(--surface); color: var(--brand-strong); box-shadow: var(--sh-1); }

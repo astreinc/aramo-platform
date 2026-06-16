@@ -1,28 +1,39 @@
 import { Icons } from '../../ui';
+import type {
+  CrossFacets,
+  FacetBucket,
+  NativeFacets,
+} from '../types';
 import {
   AVAILABILITY_LABELS,
   ENGAGEMENT_LABELS,
   CONSENT_LABELS,
   STAGE_LABELS,
   RECENCY_OPTIONS,
-  type DerivedFacets,
+  type FacetCount,
   type FacetState,
-  type Recency,
   type SkillMatch,
 } from '../talent-workspace';
 
-// FacetRail — the left filter sidebar for the Talent workspace. Feature-local
-// (first use; promote to ui/ on the third faceted surface per rule-of-three).
+// FacetRail — the left filter sidebar. SEGMENT 4d: facet COUNTS are now full-set
+// from the server (4a native: availability/engagement/source/hot · 4b cross-
+// schema: recency/consent/stage) — the "within loaded" qualifier is gone from
+// all of them. The ONE exception is Skills: its FILTER is full-set on the server
+// but its COUNTS are still within the loaded page (full counts arrive with
+// Skills Taxonomy), so the Skills note keeps the honest qualifier.
 //
-// BACKABLE facets (client-side over the loaded page; counts are "within loaded",
-// never fabricated): Skills (key_skills, match any/all), Source, Location (free
-// text over city/state), Hot. STUB facets render disabled with a one-line carry
-// note — the talent record has no status / availability / numeric-rate /
-// engagement-type / last-activity / per-row consent fields (audited).
+// The native facets (skills/source/hot/location/availability/engagement) are
+// interactive server filters. The cross-schema facets (recency/consent/stage)
+// are read-only full-set count displays — they have no native filter param, so
+// recency filtering is via the Views presets, not a checkbox here. When the BE
+// signals over_guard, the cross-schema counts are replaced by the honest
+// "narrow your filters" message (never a silent empty state).
 
 interface FacetRailProps {
-  readonly derived: DerivedFacets;
   readonly facets: FacetState;
+  readonly skillCounts: readonly FacetCount[];
+  readonly serverFacets: NativeFacets | null;
+  readonly crossFacets: CrossFacets | null;
   readonly loadedCount: number;
   readonly onToggleSkill: (skill: string) => void;
   readonly onSkillMatch: (m: SkillMatch) => void;
@@ -31,16 +42,28 @@ interface FacetRailProps {
   readonly onLocation: (v: string) => void;
   readonly onToggleAvailability: (value: string) => void;
   readonly onToggleEngagement: (value: string) => void;
-  readonly onToggleConsent: (value: string) => void;
-  readonly onToggleStage: (value: string) => void;
-  readonly onRecency: (value: Recency) => void;
   readonly onReset: () => void;
   readonly isLead: boolean;
 }
 
+// Render the server buckets plus any selected value that has dropped out of the
+// current result set (shown with count 0 so it stays unselectable-from).
+function bucketsWithSelected(
+  buckets: readonly FacetBucket[],
+  selected: readonly string[],
+): FacetBucket[] {
+  const out = [...buckets];
+  const present = new Set(buckets.map((b) => b.value));
+  for (const v of selected)
+    if (!present.has(v)) out.push({ value: v, count: 0 });
+  return out;
+}
+
 export function FacetRail({
-  derived,
   facets,
+  skillCounts,
+  serverFacets,
+  crossFacets,
   loadedCount,
   onToggleSkill,
   onSkillMatch,
@@ -49,12 +72,19 @@ export function FacetRail({
   onLocation,
   onToggleAvailability,
   onToggleEngagement,
-  onToggleConsent,
-  onToggleStage,
-  onRecency,
   onReset,
   isLead,
 }: FacetRailProps) {
+  const availability = bucketsWithSelected(
+    serverFacets?.availability ?? [],
+    facets.availability,
+  );
+  const engagement = bucketsWithSelected(
+    serverFacets?.engagement ?? [],
+    facets.engagementTypes,
+  );
+  const sources = bucketsWithSelected(serverFacets?.source ?? [], facets.sources);
+
   return (
     <aside className="rc-facets" aria-label="Filters">
       <div className="rc-facets__hd">
@@ -64,7 +94,7 @@ export function FacetRail({
         </button>
       </div>
 
-      {/* Skills — BACKED (key_skills, counts within loaded set) */}
+      {/* Skills — server FILTER, within-loaded COUNTS (Skills Taxonomy carry) */}
       <details className="rc-facet" open>
         <summary>
           Skills
@@ -92,10 +122,10 @@ export function FacetRail({
               Match all
             </button>
           </div>
-          {derived.skills.length === 0 ? (
+          {skillCounts.length === 0 ? (
             <p className="rc-facet__note">No skills in the loaded set.</p>
           ) : (
-            derived.skills.slice(0, 12).map((s) => (
+            skillCounts.slice(0, 12).map((s) => (
               <label key={s.value} className="rc-fopt">
                 <input
                   type="checkbox"
@@ -107,10 +137,14 @@ export function FacetRail({
               </label>
             ))
           )}
+          <p className="rc-facet__note">
+            Skill counts are within the {loadedCount} loaded talent (the filter
+            itself is full-set). Full counts arrive with Skills Taxonomy.
+          </p>
         </div>
       </details>
 
-      {/* Hot — BACKED (is_hot) */}
+      {/* Hot — server FILTER + full-set COUNT */}
       <details className="rc-facet" open>
         <summary>
           Hot
@@ -120,22 +154,22 @@ export function FacetRail({
           <label className="rc-fopt">
             <input type="checkbox" checked={facets.hotOnly} onChange={onToggleHot} />
             Hot talent only
-            <span className="rc-fopt__ct num">{derived.hot}</span>
+            <span className="rc-fopt__ct num">{serverFacets?.hot ?? 0}</span>
           </label>
         </div>
       </details>
 
-      {/* Source — BACKED (source field) */}
+      {/* Source — server FILTER + full-set COUNT */}
       <details className="rc-facet" open>
         <summary>
           Source
           <Icons.IconChevronDown className="rc-facet__chev" />
         </summary>
         <div className="rc-facet__body">
-          {derived.sources.length === 0 ? (
-            <p className="rc-facet__note">No source recorded in the loaded set.</p>
+          {sources.length === 0 ? (
+            <p className="rc-facet__note">No source recorded.</p>
           ) : (
-            derived.sources.map((s) => (
+            sources.map((s) => (
               <label key={s.value} className="rc-fopt">
                 <input
                   type="checkbox"
@@ -150,8 +184,7 @@ export function FacetRail({
         </div>
       </details>
 
-      {/* Location — text over city/state is BACKED; radius + remote-friendly are
-          rendered-as-drawn but disabled (no geo / no remote field — carry). */}
+      {/* Location — server FILTER (city/state ILIKE); free text has no count */}
       <details className="rc-facet">
         <summary>
           Location
@@ -166,30 +199,11 @@ export function FacetRail({
             onChange={(e) => onLocation(e.target.value)}
             aria-label="Filter by location"
           />
-          <select
-            className="rc-facet__input rc-mt-8"
-            disabled
-            aria-label="Search radius (not available yet)"
-            title="Radius search needs geocoding — not modelled yet (carry)."
-            defaultValue="exact"
-          >
-            <option value="25">Within 25 mi</option>
-            <option value="50">Within 50 mi</option>
-            <option value="100">Within 100 mi</option>
-            <option value="exact">Exact</option>
-          </select>
-          <label className="rc-fopt rc-fopt--disabled" title="No remote field on the talent record yet (carry).">
-            <input type="checkbox" disabled />
-            Include remote-friendly
-          </label>
-          <p className="rc-facet__note">
-            Text matches city &amp; state. Radius &amp; remote-friendly need geo /
-            a remote field — carry.
-          </p>
+          <p className="rc-facet__note">Matches city &amp; state, full-set.</p>
         </div>
       </details>
 
-      {/* Availability — BACKED (talent-stated; Unknown bucket = null + 'unknown') */}
+      {/* Availability — server FILTER + full-set COUNT (Unknown = null+'unknown') */}
       <details className="rc-facet" open>
         <summary>
           Availability
@@ -199,17 +213,18 @@ export function FacetRail({
           <Icons.IconChevronDown className="rc-facet__chev" />
         </summary>
         <div className="rc-facet__body">
-          {derived.availability.length === 0 ? (
-            <p className="rc-facet__note">No availability stated in the loaded set.</p>
+          {availability.length === 0 ? (
+            <p className="rc-facet__note">No availability stated.</p>
           ) : (
-            derived.availability.map((a) => (
+            availability.map((a) => (
               <label key={a.value} className="rc-fopt">
                 <input
                   type="checkbox"
                   checked={facets.availability.includes(a.value)}
                   onChange={() => onToggleAvailability(a.value)}
                 />
-                {AVAILABILITY_LABELS[a.value as keyof typeof AVAILABILITY_LABELS] ?? a.value}
+                {AVAILABILITY_LABELS[a.value as keyof typeof AVAILABILITY_LABELS] ??
+                  a.value}
                 <span className="rc-fopt__ct num">{a.count}</span>
               </label>
             ))
@@ -217,7 +232,7 @@ export function FacetRail({
         </div>
       </details>
 
-      {/* Engagement type — BACKED (talent-stated; null = not stated) */}
+      {/* Engagement type — server FILTER + full-set COUNT */}
       <details className="rc-facet">
         <summary>
           Engagement type
@@ -227,17 +242,18 @@ export function FacetRail({
           <Icons.IconChevronDown className="rc-facet__chev" />
         </summary>
         <div className="rc-facet__body">
-          {derived.engagement.length === 0 ? (
-            <p className="rc-facet__note">No engagement type stated in the loaded set.</p>
+          {engagement.length === 0 ? (
+            <p className="rc-facet__note">No engagement type stated.</p>
           ) : (
-            derived.engagement.map((e) => (
+            engagement.map((e) => (
               <label key={e.value} className="rc-fopt">
                 <input
                   type="checkbox"
                   checked={facets.engagementTypes.includes(e.value)}
                   onChange={() => onToggleEngagement(e.value)}
                 />
-                {ENGAGEMENT_LABELS[e.value as keyof typeof ENGAGEMENT_LABELS] ?? e.value}
+                {ENGAGEMENT_LABELS[e.value as keyof typeof ENGAGEMENT_LABELS] ??
+                  e.value}
                 <span className="rc-fopt__ct num">{e.count}</span>
               </label>
             ))
@@ -245,89 +261,11 @@ export function FacetRail({
         </div>
       </details>
 
-      {/* Status & stage — BACKED (current_stage; active funnel) */}
-      <details className="rc-facet">
-        <summary>
-          Status &amp; stage
-          {facets.stages.length > 0 ? (
-            <span className="rc-facet__badge">{facets.stages.length}</span>
-          ) : null}
-          <Icons.IconChevronDown className="rc-facet__chev" />
-        </summary>
-        <div className="rc-facet__body">
-          {derived.stage.length === 0 ? (
-            <p className="rc-facet__note">No active pipeline stages in the loaded set.</p>
-          ) : (
-            derived.stage.map((s) => (
-              <label key={s.value} className="rc-fopt">
-                <input
-                  type="checkbox"
-                  checked={facets.stages.includes(s.value)}
-                  onChange={() => onToggleStage(s.value)}
-                />
-                {STAGE_LABELS[s.value as keyof typeof STAGE_LABELS] ?? s.value}
-                <span className="rc-fopt__ct num">{s.count}</span>
-              </label>
-            ))
-          )}
-        </div>
-      </details>
+      {/* Cross-schema facets — full-set COUNTS (read-only; recency filtering is
+          via the Views presets). over_guard ⇒ the honest narrow message. */}
+      <CrossFacetSection crossFacets={crossFacets} />
 
-      {/* Last activity — BACKED (recency over last_activity_at; single-select) */}
-      <details className="rc-facet">
-        <summary>
-          Last activity
-          {facets.recency !== '' ? <span className="rc-facet__badge">1</span> : null}
-          <Icons.IconChevronDown className="rc-facet__chev" />
-        </summary>
-        <div className="rc-facet__body">
-          {RECENCY_OPTIONS.map((o) => (
-            <label key={o.key} className="rc-fopt">
-              <input
-                type="radio"
-                name="recency"
-                checked={facets.recency === o.key}
-                onChange={() => onRecency(facets.recency === o.key ? '' : o.key)}
-                onClick={() => {
-                  if (facets.recency === o.key) onRecency(''); // click selected = clear
-                }}
-              />
-              {o.label}
-              <span className="rc-fopt__ct num">{derived.recency[o.key]}</span>
-            </label>
-          ))}
-        </div>
-      </details>
-
-      {/* Consent — BACKED (3-value contact-consent summary) */}
-      <details className="rc-facet" open>
-        <summary>
-          Consent
-          {facets.consentSummaries.length > 0 ? (
-            <span className="rc-facet__badge">{facets.consentSummaries.length}</span>
-          ) : null}
-          <Icons.IconChevronDown className="rc-facet__chev" />
-        </summary>
-        <div className="rc-facet__body">
-          {derived.consent.length === 0 ? (
-            <p className="rc-facet__note">No consent summary in the loaded set.</p>
-          ) : (
-            derived.consent.map((c) => (
-              <label key={c.value} className="rc-fopt">
-                <input
-                  type="checkbox"
-                  checked={facets.consentSummaries.includes(c.value)}
-                  onChange={() => onToggleConsent(c.value)}
-                />
-                {CONSENT_LABELS[c.value] ?? c.value}
-                <span className="rc-fopt__ct num">{c.count}</span>
-              </label>
-            ))
-          )}
-        </div>
-      </details>
-
-      {/* STUB facets — fields absent on the talent record (honest disabled) */}
+      {/* STUB — Rate is talent-stated free text; never an ordering (R10). */}
       <StubFacet
         label="Rate (talent-stated)"
         note="Rate is what the talent stated. Aramo never infers pay or orders results by it. (Free text — no range filter.)"
@@ -342,12 +280,80 @@ export function FacetRail({
           />
         </div>
       ) : null}
-
-      <p className="rc-facet__loadednote">
-        Facet counts are within the {loadedCount} loaded talent. Server-side
-        faceted search is a backend carry.
-      </p>
     </aside>
+  );
+}
+
+function CrossFacetSection({
+  crossFacets,
+}: {
+  readonly crossFacets: CrossFacets | null;
+}) {
+  const guardMessage =
+    'Too many talent to count by last activity, consent or stage across the ' +
+    'full set. Narrow your filters, then these counts return.';
+
+  const recency =
+    crossFacets === null
+      ? []
+      : RECENCY_OPTIONS.map((o) => ({
+          value: o.key,
+          label: o.label,
+          count: crossFacets.recency[o.key] ?? 0,
+        }));
+
+  return (
+    <details className="rc-facet" open>
+      <summary>
+        Activity, consent &amp; stage
+        <Icons.IconChevronDown className="rc-facet__chev" />
+      </summary>
+      <div className="rc-facet__body">
+        {crossFacets !== null && crossFacets.over_guard ? (
+          <p className="rc-facet__guard" role="status">
+            {guardMessage}
+          </p>
+        ) : (
+          <>
+            <p className="rc-facet__sub">Last activity</p>
+            {recency.map((r) => (
+              <div key={r.value} className="rc-fopt rc-fopt--readonly">
+                {r.label}
+                <span className="rc-fopt__ct num">{r.count}</span>
+              </div>
+            ))}
+            <p className="rc-facet__sub">Consent</p>
+            {(crossFacets?.consent ?? []).length === 0 ? (
+              <p className="rc-facet__note">No consent summary.</p>
+            ) : (
+              (crossFacets?.consent ?? []).map((c) => (
+                <div key={c.value} className="rc-fopt rc-fopt--readonly">
+                  {CONSENT_LABELS[c.value] ?? c.value}
+                  <span className="rc-fopt__ct num">{c.count}</span>
+                </div>
+              ))
+            )}
+            <p className="rc-facet__sub">Pipeline stage</p>
+            {(crossFacets?.stage ?? []).filter((s) => s.value !== 'none').length ===
+            0 ? (
+              <p className="rc-facet__note">No active pipeline stages.</p>
+            ) : (
+              (crossFacets?.stage ?? [])
+                .filter((s) => s.value !== 'none')
+                .map((s) => (
+                  <div key={s.value} className="rc-fopt rc-fopt--readonly">
+                    {STAGE_LABELS[s.value as keyof typeof STAGE_LABELS] ?? s.value}
+                    <span className="rc-fopt__ct num">{s.count}</span>
+                  </div>
+                ))
+            )}
+            <p className="rc-facet__note">
+              Full-set counts. Filter by recency with the Views presets above.
+            </p>
+          </>
+        )}
+      </div>
+    </details>
   );
 }
 

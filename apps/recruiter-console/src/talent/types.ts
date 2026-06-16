@@ -66,6 +66,44 @@ export interface TalentRecordListResponse {
   readonly items: readonly TalentRecordView[];
 }
 
+// ── Segment 4 — the server-side faceted + keyset-paginated response ──────────
+// Hand-mirrored from libs/talent-record dto/talent-search.dto.ts (NativeFacets)
+// + dto/talent-cross-facets.port.ts (CrossFacets). Flat shapes — no drift spec
+// (rule of three; mirror-of-logic only). The ?paged=true superset of the LIST.
+export interface FacetBucket {
+  readonly value: string;
+  readonly count: number;
+}
+
+// 4a — full-set counts for the NATIVE (single-schema) facets the UI renders.
+// Skills counts are deliberately NOT here (still within-loaded until Skills
+// Taxonomy); location/owner are filters without a count list.
+export interface NativeFacets {
+  readonly availability: readonly FacetBucket[];
+  readonly engagement: readonly FacetBucket[];
+  readonly source: readonly FacetBucket[];
+  readonly hot: number;
+}
+
+// 4b — full-set counts for the CROSS-SCHEMA facets (composed in apps/api),
+// bounded by the materialize guard. over_guard ⇒ counts not computed (the UI
+// shows the "narrow your filters" message in their place).
+export interface CrossFacets {
+  readonly over_guard: boolean;
+  readonly matched: number;
+  readonly guard: number;
+  readonly recency: Readonly<Record<string, number>>;
+  readonly consent: readonly FacetBucket[];
+  readonly stage: readonly FacetBucket[];
+}
+
+export interface TalentSearchPage {
+  readonly items: readonly TalentRecordView[];
+  readonly next_cursor: string | null;
+  readonly facets: NativeFacets;
+  readonly cross_facets?: CrossFacets;
+}
+
 // Hand-mirrored from libs/attachment/src/lib/dto/attachment.view.ts.
 // Source-annotated. R3 hand-mirrors instead of importing @aramo/attachment
 // (a forbidden domain edge). Flat field list — no drift spec (rule of
