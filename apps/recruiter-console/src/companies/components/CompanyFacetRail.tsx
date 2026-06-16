@@ -1,19 +1,16 @@
 import { Icons } from '../../ui';
-import type { CompanyView } from '../types';
 import {
   RELATIONSHIP_LABELS,
   TIER_LABELS,
-  countWhere,
-  isQuiet,
+  type CompanyFacets,
   type FacetFlag,
   type FacetState,
 } from '../company-workspace';
 
-// CompanyFacetRail — the left filter sidebar for the companies workspace
-// (mirrors the talent FacetRail grammar: rc-facet / rc-fopt). All COUNTS are
-// client-side over the scoped (pre-facet) loaded set — honest given the 50-cap
-// banner. Groups: Relationship · Tier · Industry · Flags. No health/risk group
-// (not a backend field).
+// CompanyFacetRail — the left filter sidebar (mirrors the talent FacetRail
+// grammar: rc-facet / rc-fopt). Phase 2: COUNTS are SERVER-COMPUTED over the
+// base (scope) set — stable as selections toggle. Groups: Relationship · Tier ·
+// Flags · Industry. No health group (omitted).
 
 const RELATIONSHIP_ORDER: readonly string[] = [
   'active',
@@ -30,10 +27,9 @@ const FLAG_OPTIONS: readonly { value: FacetFlag; label: string }[] = [
 ];
 
 interface CompanyFacetRailProps {
-  /** The scoped (My/All) set BEFORE facets — the basis for option counts. */
-  readonly companies: readonly CompanyView[];
-  readonly industries: readonly string[];
-  readonly facets: FacetState;
+  /** Server-computed facet counts over the scoped base set (null while loading). */
+  readonly facets: CompanyFacets | null;
+  readonly selected: FacetState;
   readonly onToggleRelationship: (value: string) => void;
   readonly onToggleTier: (value: string) => void;
   readonly onToggleIndustry: (value: string) => void;
@@ -42,25 +38,30 @@ interface CompanyFacetRailProps {
 }
 
 export function CompanyFacetRail({
-  companies,
-  industries,
   facets,
+  selected,
   onToggleRelationship,
   onToggleTier,
   onToggleIndustry,
   onToggleFlag,
   onReset,
 }: CompanyFacetRailProps) {
+  const bucketCount = (
+    buckets: readonly { value: string; count: number }[] | undefined,
+    value: string,
+  ): number => buckets?.find((b) => b.value === value)?.count ?? 0;
+
   const flagCount = (flag: FacetFlag): number => {
+    if (facets === null) return 0;
     switch (flag) {
       case 'hot':
-        return countWhere(companies, (c) => c.is_hot);
+        return facets.hot;
       case 'quiet':
-        return countWhere(companies, (c) => isQuiet(c));
+        return facets.quiet;
       case 'exclusive':
-        return countWhere(companies, (c) => c.exclusivity);
+        return facets.exclusivity;
       case 'off_limits':
-        return countWhere(companies, (c) => c.off_limits);
+        return facets.off_limits;
     }
   };
 
@@ -76,20 +77,20 @@ export function CompanyFacetRail({
       <details className="rc-facet" open>
         <summary>
           Relationship
-          {facets.relationship.length > 0 ? (
-            <span className="rc-facet__badge">{facets.relationship.length}</span>
+          {selected.relationship.length > 0 ? (
+            <span className="rc-facet__badge">{selected.relationship.length}</span>
           ) : null}
           <Icons.IconChevronDown className="rc-facet__chev" />
         </summary>
         <div className="rc-facet__body">
           {RELATIONSHIP_ORDER.map((value) => {
-            const count = countWhere(companies, (c) => c.status === value);
-            if (count === 0 && !facets.relationship.includes(value)) return null;
+            const count = bucketCount(facets?.relationship, value);
+            if (count === 0 && !selected.relationship.includes(value)) return null;
             return (
               <label key={value} className="rc-fopt">
                 <input
                   type="checkbox"
-                  checked={facets.relationship.includes(value)}
+                  checked={selected.relationship.includes(value)}
                   onChange={() => onToggleRelationship(value)}
                 />
                 {RELATIONSHIP_LABELS[value] ?? value}
@@ -103,20 +104,20 @@ export function CompanyFacetRail({
       <details className="rc-facet" open>
         <summary>
           Tier
-          {facets.tier.length > 0 ? (
-            <span className="rc-facet__badge">{facets.tier.length}</span>
+          {selected.tier.length > 0 ? (
+            <span className="rc-facet__badge">{selected.tier.length}</span>
           ) : null}
           <Icons.IconChevronDown className="rc-facet__chev" />
         </summary>
         <div className="rc-facet__body">
           {TIER_ORDER.map((value) => {
-            const count = countWhere(companies, (c) => c.client_tier === value);
-            if (count === 0 && !facets.tier.includes(value)) return null;
+            const count = bucketCount(facets?.tier, value);
+            if (count === 0 && !selected.tier.includes(value)) return null;
             return (
               <label key={value} className="rc-fopt">
                 <input
                   type="checkbox"
-                  checked={facets.tier.includes(value)}
+                  checked={selected.tier.includes(value)}
                   onChange={() => onToggleTier(value)}
                 />
                 {TIER_LABELS[value] ?? value}
@@ -124,9 +125,7 @@ export function CompanyFacetRail({
               </label>
             );
           })}
-          {TIER_ORDER.every(
-            (v) => countWhere(companies, (c) => c.client_tier === v) === 0,
-          ) ? (
+          {facets !== null && facets.tier.length === 0 ? (
             <p className="rc-facet__note">No tiers set on these accounts.</p>
           ) : null}
         </div>
@@ -135,8 +134,8 @@ export function CompanyFacetRail({
       <details className="rc-facet" open>
         <summary>
           Flags
-          {facets.flags.length > 0 ? (
-            <span className="rc-facet__badge">{facets.flags.length}</span>
+          {selected.flags.length > 0 ? (
+            <span className="rc-facet__badge">{selected.flags.length}</span>
           ) : null}
           <Icons.IconChevronDown className="rc-facet__chev" />
         </summary>
@@ -145,7 +144,7 @@ export function CompanyFacetRail({
             <label key={f.value} className="rc-fopt">
               <input
                 type="checkbox"
-                checked={facets.flags.includes(f.value)}
+                checked={selected.flags.includes(f.value)}
                 onChange={() => onToggleFlag(f.value)}
               />
               {f.label}
@@ -158,26 +157,24 @@ export function CompanyFacetRail({
       <details className="rc-facet">
         <summary>
           Industry
-          {facets.industry.length > 0 ? (
-            <span className="rc-facet__badge">{facets.industry.length}</span>
+          {selected.industry.length > 0 ? (
+            <span className="rc-facet__badge">{selected.industry.length}</span>
           ) : null}
           <Icons.IconChevronDown className="rc-facet__chev" />
         </summary>
         <div className="rc-facet__body">
-          {industries.length === 0 ? (
+          {facets === null || facets.industry.length === 0 ? (
             <p className="rc-facet__note">No industry recorded.</p>
           ) : (
-            industries.map((value) => (
-              <label key={value} className="rc-fopt">
+            facets.industry.map((b) => (
+              <label key={b.value} className="rc-fopt">
                 <input
                   type="checkbox"
-                  checked={facets.industry.includes(value)}
-                  onChange={() => onToggleIndustry(value)}
+                  checked={selected.industry.includes(b.value)}
+                  onChange={() => onToggleIndustry(b.value)}
                 />
-                {value}
-                <span className="rc-fopt__ct num">
-                  {countWhere(companies, (c) => c.industry === value)}
-                </span>
+                {b.value}
+                <span className="rc-fopt__ct num">{b.count}</span>
               </label>
             ))
           )}
@@ -185,8 +182,7 @@ export function CompanyFacetRail({
       </details>
 
       <p className="rc-facet__loadednote">
-        Counts are within the loaded accounts (the list is capped at 50). Cursor
-        pagination and server-side facets are on the roadmap.
+        Counts are server-computed across your visible accounts.
       </p>
     </aside>
   );

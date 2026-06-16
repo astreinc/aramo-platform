@@ -1,5 +1,6 @@
 import { apiClient } from '@aramo/fe-foundation';
 
+import type { CompanySearchPage } from './company-workspace';
 import type {
   AddressAutocompleteResponse,
   AddressDetailsResponse,
@@ -24,6 +25,15 @@ import type {
 
 export async function listCompanies(): Promise<CompanyListResponse> {
   return apiClient.get<CompanyListResponse>('/v1/companies');
+}
+
+// Phase 2 — the server-side faceted page (GET /v1/companies?paged=true). Same
+// route + gate as the list (company:read). Returns {items, next_cursor, facets,
+// total}; the workspace builds `params` via buildCompanyQuery().
+export async function searchCompanies(
+  params: URLSearchParams,
+): Promise<CompanySearchPage> {
+  return apiClient.get<CompanySearchPage>(`/v1/companies?${params.toString()}`);
 }
 
 // R3 — the company DETAIL endpoint. Same D4b visibility semantics as

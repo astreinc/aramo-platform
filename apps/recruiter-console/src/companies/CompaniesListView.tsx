@@ -4,7 +4,7 @@ import {
   useSession,
   type Session,
 } from '@aramo/fe-foundation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { probeTenantUsers } from '../task/task-api';
@@ -13,7 +13,7 @@ import { Avatar, Card, Icons, StatusPill, Tag } from '../ui';
 import { CompanyBulkBar } from './components/CompanyBulkBar';
 import { CompanyDrawer } from './components/CompanyDrawer';
 import { CompanyFacetRail } from './components/CompanyFacetRail';
-import { listCompanies, updateCompany } from './companies-api';
+import { searchCompanies, updateCompany } from './companies-api';
 import { listErrorMessage } from './error-messages';
 import type { CompanyView } from './types';
 import {
@@ -22,33 +22,28 @@ import {
   RELATIONSHIP_TONES,
   SEGMENTS,
   TIER_LABELS,
-  countWhere,
-  deriveIndustries,
-  inScope,
-  inSegment,
+  buildCompanyQuery,
   lastContactLabel,
   locationOf,
   matchesText,
-  passesFacets,
   relationshipLabel,
+  segmentCountFrom,
   tierLabel,
+  type CompanyFacets,
   type FacetFlag,
   type FacetState,
   type ScopeMode,
   type SegmentKey,
 } from './company-workspace';
 
-// Companies workspace — rebuilt to the locked Confident-Blue mockup. A faceted
-// account workspace (segments-with-counts · My/All scope · facet rail · active
-// chips · Table↔Cards · preview drawer · bulk bar), mirroring the Talent list.
-//
-// FE-only. GET /v1/companies is D4b-visibility-resolved and NON-PAGED (capped
-// 50), so segments / facets / counts / filtering are all CLIENT-SIDE over the
-// loaded set — honestly bounded by the cap banner. Every value binds to a real
-// CompanyView field (status→relationship, client_tier→tier, is_hot, industry,
-// owner_id, last_activity_at); no fabricated health/revenue/fill-rate.
+// Companies workspace — Phase 2: SERVER-SIDE pagination + facets. The list now
+// pages via a keyset cursor (?paged=true) and renders server-computed facet +
+// segment counts (no 50-cap). Scope (My/All), segments, and the facet rail are
+// server query params; the in-list text box filters the LOADED page client-side
+// (so it never needs company:search). Selection / drawer / bulk operate on the
+// loaded page. Every value binds to a real CompanyView field.
 
-const DEFAULT_LIST_CAP = 50;
+const PAGE_SIZE = 50;
 const FLAG_LABELS: Record<FacetFlag, string> = {
   hot: 'Hot',
   quiet: 'Quiet 30d+',
@@ -59,20 +54,22 @@ const FLAG_LABELS: Record<FacetFlag, string> = {
 type ViewMode = 'table' | 'cards';
 
 interface CompaniesListViewProps {
-  // Test seam — pass a fixed session so the "+ New company" / bulk gates are
-  // exercisable without mounting the real session hook (R4 precedent).
   readonly sessionOverride?: Session;
 }
 
 export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = {}) {
   const [items, setItems] = useState<readonly CompanyView[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [facets, setFacets] = useState<CompanyFacets | null>(null);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userNames, setUserNames] = useState<Record<string, string>>({});
 
   const [scope, setScope] = useState<ScopeMode>('all');
   const [segment, setSegment] = useState<SegmentKey>('all');
-  const [facets, setFacets] = useState<FacetState>(EMPTY_FACETS);
+  const [facetState, setFacetState] = useState<FacetState>(EMPTY_FACETS);
   const [query, setQuery] = useState('');
   const [vmode, setVmode] = useState<ViewMode>('table');
 
@@ -80,6 +77,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
   const [drawerIndex, setDrawerIndex] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const loadMoreRef = useRef<HTMLButtonElement | null>(null);
 
   const sessionState = useSession();
   const session: Session | null =
@@ -95,24 +93,6 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
     Array.isArray(session.scopes) &&
     hasScope(session, 'company:edit');
 
-  useEffect(() => {
-    let cancelled = false;
-    listCompanies()
-      .then((res) => {
-        if (cancelled) return;
-        setItems(res.items);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(listErrorMessage(err));
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // Owner-name resolution — one-shot admin-gated probe (graceful 403 fallback).
   useEffect(() => {
     let cancelled = false;
@@ -127,31 +107,62 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
     };
   }, []);
 
-  const scoped = useMemo(
-    () => items.filter((c) => inScope(c, scope, myId)),
-    [items, scope, myId],
-  );
-  const industries = useMemo(() => deriveIndustries(scoped), [scoped]);
-  const visible = useMemo(
-    () =>
-      scoped.filter(
-        (c) =>
-          inSegment(c, segment) && passesFacets(c, facets) && matchesText(c, query),
-      ),
-    [scoped, segment, facets, query],
+  const fetchPage = useCallback(
+    async (cursor: string | null, append: boolean) => {
+      const params = buildCompanyQuery({
+        scope,
+        segment,
+        facets: facetState,
+        cursor,
+        pageSize: PAGE_SIZE,
+      });
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      try {
+        const res = await searchCompanies(params);
+        setItems((prev) => (append ? [...prev, ...res.items] : [...res.items]));
+        setNextCursor(res.next_cursor);
+        setFacets(res.facets);
+        setTotal(res.total);
+        setError(null);
+      } catch (err) {
+        if (!append) {
+          setItems([]);
+          setFacets(null);
+          setTotal(0);
+        }
+        setError(listErrorMessage(err));
+      } finally {
+        if (append) setLoadingMore(false);
+        else setLoading(false);
+      }
+    },
+    [scope, segment, facetState],
   );
 
-  // Selection + drawer index must stay valid against the current visible set.
+  // Debounced refetch on any server-filter change; resets page + selection.
   useEffect(() => {
-    setSelected(new Set());
-    setDrawerIndex(null);
-  }, [scope, segment, facets, query]);
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      if (cancelled) return;
+      setSelected(new Set());
+      setDrawerIndex(null);
+      void fetchPage(null, false);
+    }, 150);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [fetchPage]);
 
-  const segmentCount = (key: SegmentKey): number =>
-    countWhere(scoped, (c) => inSegment(c, key));
+  // The text box filters the LOADED page (client-side; no ?q=).
+  const visible = useMemo(
+    () => items.filter((c) => matchesText(c, query)),
+    [items, query],
+  );
 
   const toggleStr = (key: 'relationship' | 'tier' | 'industry', value: string) =>
-    setFacets((f) => {
+    setFacetState((f) => {
       const arr = f[key];
       return {
         ...f,
@@ -161,7 +172,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
       };
     });
   const toggleFlag = (value: FacetFlag) =>
-    setFacets((f) => ({
+    setFacetState((f) => ({
       ...f,
       flags: f.flags.includes(value)
         ? f.flags.filter((x) => x !== value)
@@ -169,7 +180,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
     }));
 
   const resetAll = () => {
-    setFacets(EMPTY_FACETS);
+    setFacetState(EMPTY_FACETS);
     setScope('all');
     setSegment('all');
     setQuery('');
@@ -182,6 +193,10 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
       else next.add(id);
       return next;
     });
+
+  const loadMore = () => {
+    if (nextCursor !== null) void fetchPage(nextCursor, true);
+  };
 
   const assignToMe = async () => {
     if (myId === null || selected.size === 0) return;
@@ -212,33 +227,24 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
       label: SEGMENTS.find((s) => s.key === segment)?.label ?? segment,
       clear: () => setSegment('all'),
     });
-  for (const r of facets.relationship)
+  for (const r of facetState.relationship)
     chips.push({
       k: 'Relationship',
       label: RELATIONSHIP_LABELS[r] ?? r,
       clear: () => toggleStr('relationship', r),
     });
-  for (const t of facets.tier)
+  for (const t of facetState.tier)
     chips.push({
       k: 'Tier',
       label: TIER_LABELS[t] ?? t,
       clear: () => toggleStr('tier', t),
     });
-  for (const i of facets.industry)
-    chips.push({
-      k: 'Industry',
-      label: i,
-      clear: () => toggleStr('industry', i),
-    });
-  for (const f of facets.flags)
-    chips.push({
-      k: 'Flag',
-      label: FLAG_LABELS[f],
-      clear: () => toggleFlag(f),
-    });
+  for (const i of facetState.industry)
+    chips.push({ k: 'Industry', label: i, clear: () => toggleStr('industry', i) });
+  for (const f of facetState.flags)
+    chips.push({ k: 'Flag', label: FLAG_LABELS[f], clear: () => toggleFlag(f) });
 
   const hasActiveQuery = chips.length > 0 || query.trim() !== '';
-  const truncated = items.length >= DEFAULT_LIST_CAP;
   const drawerCompany = drawerIndex !== null ? (visible[drawerIndex] ?? null) : null;
   const ownerName = (c: CompanyView): string =>
     c.owner_id ? (userNames[c.owner_id] ?? '—') : '—';
@@ -303,21 +309,26 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
         </div>
       </div>
 
-      {/* segments bar — one active at a time, with real (scoped) counts. */}
+      {/* segments bar — one active at a time, with server-derived counts. */}
       <div className="rc-views" role="group" aria-label="Views">
         <span className="rc-views__lbl">Views</span>
-        {SEGMENTS.map((s) => (
-          <button
-            key={s.key}
-            type="button"
-            className={`rc-view${segment === s.key ? ' on' : ''}`}
-            aria-pressed={segment === s.key}
-            onClick={() => setSegment(s.key)}
-          >
-            {s.label}
-            <span className="rc-view__ct num">{segmentCount(s.key)}</span>
-          </button>
-        ))}
+        {SEGMENTS.map((s) => {
+          const count = segmentCountFrom(facets, total, s.key);
+          return (
+            <button
+              key={s.key}
+              type="button"
+              className={`rc-view${segment === s.key ? ' on' : ''}`}
+              aria-pressed={segment === s.key}
+              onClick={() => setSegment(s.key)}
+            >
+              {s.label}
+              {count !== null ? (
+                <span className="rc-view__ct num">{count}</span>
+              ) : null}
+            </button>
+          );
+        })}
       </div>
 
       <div className="rc-tokenbox">
@@ -335,7 +346,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
       <div className="rc-activebar">
         <span className="rc-activebar__count num">
           {visible.length}
-          <small> of {scoped.length} companies</small>
+          <small> of {total} companies</small>
         </span>
         {chips.length > 0 ? <span className="rc-activebar__sep" /> : null}
         {chips.map((c, i) => (
@@ -363,18 +374,11 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
           {notice}
         </p>
       ) : null}
-      {truncated ? (
-        <p role="status" data-testid="companies-cap-banner" className="rc-facet__note">
-          Showing the first {DEFAULT_LIST_CAP} companies. More may exist beyond
-          this page; cursor pagination is on the roadmap.
-        </p>
-      ) : null}
 
       <div className="rc-work rc-mt-16">
         <CompanyFacetRail
-          companies={scoped}
-          industries={industries}
           facets={facets}
+          selected={facetState}
           onToggleRelationship={(v) => toggleStr('relationship', v)}
           onToggleTier={(v) => toggleStr('tier', v)}
           onToggleIndustry={(v) => toggleStr('industry', v)}
@@ -475,9 +479,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
                                     <Icons.IconFlame className="rc-ent__flame" />
                                   ) : null}
                                 </span>
-                                <span className="rc-ent__rl">
-                                  {locationOf(c)}
-                                </span>
+                                <span className="rc-ent__rl">{locationOf(c)}</span>
                               </span>
                             </span>
                           </Link>
@@ -517,6 +519,20 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
                   })}
                 </tbody>
               </table>
+
+              {nextCursor !== null && query.trim() === '' ? (
+                <div className="rc-loadmore">
+                  <button
+                    ref={loadMoreRef}
+                    type="button"
+                    className="tc-button tc-button--ghost"
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? 'Loading…' : 'Load more companies'}
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
 

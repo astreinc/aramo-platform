@@ -23,6 +23,12 @@ import {
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import type { CompanyView } from './dto/company.view.js';
+import type {
+  CompanySearchPage,
+  CompanySearchQuery,
+  CompanySortKey,
+  SortDir,
+} from './dto/company-search.dto.js';
 import type { CreateCompanyRequestDto } from './dto/create-company-request.dto.js';
 import type { UpdateCompanyRequestDto } from './dto/update-company-request.dto.js';
 import type { CompanyDepartmentView } from './dto/company-department.view.js';
@@ -80,9 +86,12 @@ export class CompanyController {
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
     @Query('q') q: string | undefined,
+    @Query('paged') paged: string | undefined,
+    @Query('scope') scope: string | undefined,
+    @Query() qp: Record<string, string | undefined>,
     @RequestId() requestId: string,
     @Req() req: Request,
-  ): Promise<{ items: CompanyView[] }> {
+  ): Promise<{ items: CompanyView[] } | CompanySearchPage> {
     const searchTerm = q?.trim() ? q.trim() : undefined;
     if (searchTerm !== undefined && !authContext.scopes.includes('company:search')) {
       throw new AramoError(
@@ -93,6 +102,43 @@ export class CompanyController {
       );
     }
     const visibility = await req.resolveVisibility!();
+
+    // Phase 2 — server-side faceted page. Same route + gate (company:read; ?q=
+    // still adds company:search above); ?paged=true switches the projection.
+    if (paged === 'true') {
+      const csv = (v: string | undefined): string[] | undefined => {
+        if (v === undefined || v.trim() === '') return undefined;
+        const parts = v.split(',').map((s) => s.trim()).filter((s) => s !== '');
+        return parts.length > 0 ? parts : undefined;
+      };
+      const status = csv(qp['status']);
+      const clientTier = csv(qp['client_tier']);
+      const industry = csv(qp['industry']);
+      const pageSize = qp['page_size'] ? Number(qp['page_size']) : undefined;
+      const query: CompanySearchQuery = {
+        tenant_id: authContext.tenant_id,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+        ...(searchTerm === undefined ? {} : { q: searchTerm }),
+        // scope=mine narrows to the actor's own accounts (owner derived
+        // server-side from the JWT — never trusted from the client).
+        ...(scope === 'mine' ? { owner_id: authContext.sub } : {}),
+        ...(status === undefined ? {} : { status }),
+        ...(clientTier === undefined ? {} : { client_tier: clientTier }),
+        ...(industry === undefined ? {} : { industry }),
+        ...(qp['is_hot'] === 'true' ? { is_hot: true } : {}),
+        ...(qp['off_limits'] === 'true' ? { off_limits: true } : {}),
+        ...(qp['exclusivity'] === 'true' ? { exclusivity: true } : {}),
+        ...(qp['quiet'] === 'true' ? { quiet: true } : {}),
+        ...(qp['sort'] ? { sort: qp['sort'] as CompanySortKey } : {}),
+        ...(qp['dir'] ? { dir: qp['dir'] as SortDir } : {}),
+        ...(qp['cursor'] ? { cursor: qp['cursor'] } : {}),
+        ...(pageSize !== undefined && Number.isFinite(pageSize)
+          ? { page_size: pageSize }
+          : {}),
+      };
+      return this.companyRepository.searchPaged(query, visibility);
+    }
+
     const items = await this.companyRepository.listForActor({
       tenant_id: authContext.tenant_id,
       visibility,

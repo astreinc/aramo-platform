@@ -5,6 +5,15 @@ import type { CompanyView } from './dto/company.view.js';
 import { stripUnscopedCommercialFields } from './commercial-write-strip.js';
 import type { CreateCompanyRequestDto } from './dto/create-company-request.dto.js';
 import type { UpdateCompanyRequestDto } from './dto/update-company-request.dto.js';
+import {
+  QUIET_DAYS,
+  type CompanyFacetBucket,
+  type CompanyFacets,
+  type CompanySearchPage,
+  type CompanySearchQuery,
+  type CompanySortKey,
+  type SortDir,
+} from './dto/company-search.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // Decimal columns (default_contract_markup_pct / default_perm_fee_pct) come
@@ -213,6 +222,107 @@ function additiveCreateData(input: CreateCompanyRequestDto) {
   };
 }
 
+// ── Phase 2 — server-side faceted search helpers (single-schema) ──
+
+// Opaque keyset cursor = the last row id (base64url). Correctness comes from the
+// deterministic orderBy (sort col(s) + id tiebreak) + Prisma cursor/skip.
+function encodeCursor(id: string): string {
+  return Buffer.from(id, 'utf8').toString('base64url');
+}
+function decodeCursor(cursor: string): string {
+  return Buffer.from(cursor, 'base64url').toString('utf8');
+}
+
+// Each sort ends with `id` so the keyset is total-ordered (no skips/dupes).
+function buildCompanyOrderBy(
+  sort: CompanySortKey,
+  dir: SortDir,
+): Array<Record<string, SortDir>> {
+  switch (sort) {
+    case 'name':
+      return [{ name: dir }, { id: dir }];
+    case 'last_activity':
+      return [{ last_activity_at: dir }, { id: dir }];
+    case 'created_at':
+      return [{ created_at: dir }, { id: dir }];
+  }
+}
+
+// The BASE where — tenant + site + name-search + owner scope + D4b visibility.
+// Facet counts and `total` are computed over THIS (selection-independent).
+function buildBaseWhere(
+  q: CompanySearchQuery,
+  visibility: VisibilityContextShape,
+): Record<string, unknown> {
+  const where: Record<string, unknown> = { tenant_id: q.tenant_id };
+  if (q.site_id !== undefined) where['site_id'] = q.site_id;
+  if (q.q !== undefined && q.q !== '')
+    where['name'] = { contains: q.q, mode: 'insensitive' };
+  if (q.owner_id !== undefined) where['owner_id'] = q.owner_id;
+  if (!visibility.see_all_company) {
+    const visible = visibility.visible_client_ids;
+    if (visible !== null) where['id'] = { in: Array.from(visible) };
+  }
+  return where;
+}
+
+function quietCutoff(): Date {
+  return new Date(Date.now() - QUIET_DAYS * 86_400_000);
+}
+
+// The selection where = base + the relationship/tier/industry/flag/quiet picks.
+function buildSelectionWhere(
+  base: Record<string, unknown>,
+  q: CompanySearchQuery,
+): Record<string, unknown> {
+  const where: Record<string, unknown> = { ...base };
+  if (q.status !== undefined && q.status.length > 0)
+    where['status'] = { in: [...q.status] };
+  if (q.client_tier !== undefined && q.client_tier.length > 0)
+    where['client_tier'] = { in: [...q.client_tier] };
+  if (q.industry !== undefined && q.industry.length > 0)
+    where['industry'] = { in: [...q.industry] };
+  if (q.is_hot === true) where['is_hot'] = true;
+  if (q.off_limits === true) where['off_limits'] = true;
+  if (q.exclusivity === true) where['exclusivity'] = true;
+  if (q.quiet === true) {
+    where['OR'] = [
+      { last_activity_at: null },
+      { last_activity_at: { lt: quietCutoff() } },
+    ];
+  }
+  return where;
+}
+
+interface CompanyGroupRow {
+  readonly _count: { readonly _all: number };
+  readonly [key: string]: unknown;
+}
+
+function toCompanyBuckets(
+  rows: readonly CompanyGroupRow[],
+  key: string,
+  opts: { dropNullOrEmpty?: boolean } = {},
+): CompanyFacetBucket[] {
+  const tally = new Map<string, number>();
+  for (const r of rows) {
+    const raw = r[key];
+    if (
+      raw === null ||
+      raw === undefined ||
+      (typeof raw === 'string' && raw.trim() === '')
+    ) {
+      if (opts.dropNullOrEmpty === true) continue;
+      continue;
+    }
+    const value = String(raw);
+    tally.set(value, (tally.get(value) ?? 0) + r._count._all);
+  }
+  return [...tally.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+}
+
 @Injectable()
 export class CompanyRepository {
   private readonly logger = new Logger(CompanyRepository.name);
@@ -391,6 +501,97 @@ export class CompanyRepository {
       take: limit,
     });
     return (rows as CompanyRow[]).map(projectView);
+  }
+
+  // Phase 2 — native server-side faceted search + keyset pagination. The page
+  // `items` are narrowed by the full selection set; the `facets` + `total` are
+  // computed over the BASE where (scope + q) so the facet rail and segment
+  // badges stay stable as filters toggle. D4b visibility applied in buildBaseWhere.
+  async searchPaged(
+    query: CompanySearchQuery,
+    visibility: VisibilityContextShape,
+  ): Promise<CompanySearchPage> {
+    const pageSize = Math.min(query.page_size ?? 50, 200);
+    const dir: SortDir = query.dir ?? 'desc';
+    const baseWhere = buildBaseWhere(query, visibility);
+    const itemWhere = buildSelectionWhere(baseWhere, query);
+    const orderBy = buildCompanyOrderBy(query.sort ?? 'created_at', dir);
+
+    const [rows, facets, total] = await Promise.all([
+      this.prisma.company.findMany({
+        where: itemWhere,
+        orderBy,
+        take: pageSize + 1,
+        ...(query.cursor != null && query.cursor !== ''
+          ? { cursor: { id: decodeCursor(query.cursor) }, skip: 1 }
+          : {}),
+      }),
+      this.computeFacets(baseWhere),
+      this.prisma.company.count({ where: baseWhere }),
+    ]);
+
+    const hasMore = rows.length > pageSize;
+    const pageRows = hasMore ? rows.slice(0, pageSize) : rows;
+    const last = pageRows[pageRows.length - 1];
+    const next_cursor =
+      hasMore && last !== undefined ? encodeCursor(last.id) : null;
+
+    return {
+      items: (pageRows as CompanyRow[]).map(projectView),
+      next_cursor,
+      facets,
+      total,
+    };
+  }
+
+  private async computeFacets(
+    baseWhere: Record<string, unknown>,
+  ): Promise<CompanyFacets> {
+    const [statusG, tierG, industryG, hot, offLimits, exclusivity, quiet] =
+      await Promise.all([
+        this.prisma.company.groupBy({
+          by: ['status'],
+          where: baseWhere,
+          _count: { _all: true },
+        }),
+        this.prisma.company.groupBy({
+          by: ['client_tier'],
+          where: baseWhere,
+          _count: { _all: true },
+        }),
+        this.prisma.company.groupBy({
+          by: ['industry'],
+          where: baseWhere,
+          _count: { _all: true },
+        }),
+        this.prisma.company.count({ where: { ...baseWhere, is_hot: true } }),
+        this.prisma.company.count({ where: { ...baseWhere, off_limits: true } }),
+        this.prisma.company.count({
+          where: { ...baseWhere, exclusivity: true },
+        }),
+        this.prisma.company.count({
+          where: {
+            ...baseWhere,
+            OR: [
+              { last_activity_at: null },
+              { last_activity_at: { lt: quietCutoff() } },
+            ],
+          },
+        }),
+      ]);
+    return {
+      relationship: toCompanyBuckets(statusG as CompanyGroupRow[], 'status'),
+      tier: toCompanyBuckets(tierG as CompanyGroupRow[], 'client_tier', {
+        dropNullOrEmpty: true,
+      }),
+      industry: toCompanyBuckets(industryG as CompanyGroupRow[], 'industry', {
+        dropNullOrEmpty: true,
+      }),
+      hot,
+      off_limits: offLimits,
+      exclusivity,
+      quiet,
+    };
   }
 
   // PR-A7 — tenant-scoped count for the reporting aggregator.

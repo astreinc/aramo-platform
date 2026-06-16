@@ -219,3 +219,81 @@ export function countWhere(
   for (const c of companies) if (pred(c)) n += 1;
   return n;
 }
+
+// ── Phase 2 — server-side paged contract (hand-mirrored from
+// libs/company/src/lib/dto/company-search.dto.ts; flat shapes — no drift spec). ──
+export interface CompanyFacetBucket {
+  readonly value: string;
+  readonly count: number;
+}
+export interface CompanyFacets {
+  readonly relationship: readonly CompanyFacetBucket[]; // status
+  readonly tier: readonly CompanyFacetBucket[]; // client_tier
+  readonly industry: readonly CompanyFacetBucket[];
+  readonly hot: number;
+  readonly off_limits: number;
+  readonly exclusivity: number;
+  readonly quiet: number;
+}
+export interface CompanySearchPage {
+  readonly items: readonly CompanyView[];
+  readonly next_cursor: string | null;
+  readonly facets: CompanyFacets;
+  readonly total: number;
+}
+
+// Translate the workspace state (scope + one segment + facet selections) into the
+// server query params. The in-list TEXT box stays client-side (it filters the
+// loaded page; it does NOT send ?q=, so the surface never needs company:search).
+export interface BuildQueryInput {
+  readonly scope: ScopeMode;
+  readonly segment: SegmentKey;
+  readonly facets: FacetState;
+  readonly cursor?: string | null;
+  readonly pageSize?: number;
+}
+export function buildCompanyQuery(i: BuildQueryInput): URLSearchParams {
+  const p = new URLSearchParams();
+  p.set('paged', 'true');
+  if (i.scope === 'mine') p.set('scope', 'mine');
+  // relationship = facet selection ∪ the prospects segment.
+  const status = new Set(i.facets.relationship);
+  if (i.segment === 'prospects') status.add('prospect');
+  if (status.size > 0) p.set('status', [...status].join(','));
+  // tier = facet selection ∪ the key-accounts segment.
+  const tier = new Set(i.facets.tier);
+  if (i.segment === 'key') tier.add('a');
+  if (tier.size > 0) p.set('client_tier', [...tier].join(','));
+  if (i.facets.industry.length > 0)
+    p.set('industry', i.facets.industry.join(','));
+  if (i.facets.flags.includes('hot') || i.segment === 'hot')
+    p.set('is_hot', 'true');
+  if (i.facets.flags.includes('quiet') || i.segment === 'quiet')
+    p.set('quiet', 'true');
+  if (i.facets.flags.includes('off_limits')) p.set('off_limits', 'true');
+  if (i.facets.flags.includes('exclusive')) p.set('exclusivity', 'true');
+  if (i.cursor != null && i.cursor !== '') p.set('cursor', i.cursor);
+  if (i.pageSize !== undefined) p.set('page_size', String(i.pageSize));
+  return p;
+}
+
+// Segment count badges, derived from the server facets (stable; base-where).
+export function segmentCountFrom(
+  facets: CompanyFacets | null,
+  total: number,
+  key: SegmentKey,
+): number | null {
+  if (facets === null) return key === 'all' ? total : null;
+  switch (key) {
+    case 'all':
+      return total;
+    case 'key':
+      return facets.tier.find((b) => b.value === 'a')?.count ?? 0;
+    case 'prospects':
+      return facets.relationship.find((b) => b.value === 'prospect')?.count ?? 0;
+    case 'quiet':
+      return facets.quiet;
+    case 'hot':
+      return facets.hot;
+  }
+}
