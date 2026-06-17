@@ -128,10 +128,13 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
       else setLoading(true);
       try {
         const res = await searchCompanies(params);
-        setItems((prev) => (append ? [...prev, ...res.items] : [...res.items]));
-        setNextCursor(res.next_cursor);
-        setFacets(res.facets);
-        setTotal(res.total);
+        const pageItems = res.items ?? [];
+        setItems((prev) => (append ? [...prev, ...pageItems] : [...pageItems]));
+        // Tolerate a non-paged response shape ({items} only): no cursor, no
+        // server facets, total falls back to the loaded count.
+        setNextCursor(res.next_cursor ?? null);
+        setFacets(res.facets ?? null);
+        setTotal(res.total ?? pageItems.length);
         setError(null);
       } catch (err) {
         if (!append) {

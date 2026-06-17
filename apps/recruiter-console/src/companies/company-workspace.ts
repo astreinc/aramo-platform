@@ -342,11 +342,15 @@ export function accountBriefing(
 
 // Segment count badges, derived from the server facets (stable; base-where).
 export function segmentCountFrom(
-  facets: CompanyFacets | null,
+  facets: CompanyFacets | null | undefined,
   total: number,
   key: SegmentKey,
 ): number | null {
-  if (facets === null) return key === 'all' ? total : null;
+  // Tolerate a missing facets payload (e.g. an older API that returns only
+  // {items}) — never throw in render; just drop the count badge.
+  if (facets === null || facets === undefined) {
+    return key === 'all' ? total : null;
+  }
   switch (key) {
     case 'all':
       return total;

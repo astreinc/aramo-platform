@@ -225,6 +225,29 @@ describe('CompaniesListView (server-paged)', () => {
     );
   });
 
+  it('renders (no blank/crash) when the API returns the legacy {items}-only shape', async () => {
+    // Regression: a non-paged response has no facets/total/next_cursor. The
+    // segment badges must NOT throw on undefined facets (was a blank page).
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      if (url.includes('/v1/tenant/users') || url.includes('/v1/reports/')) {
+        return new Response(JSON.stringify({ items: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      // legacy companies list — ONLY { items } (no facets/total/next_cursor)
+      return new Response(
+        JSON.stringify({ items: [makeCompany('co-1', 'Legacy Co')] }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    });
+    renderInRouter(<CompaniesListView />);
+    await waitFor(() => expect(screen.getByText('Legacy Co')).toBeInTheDocument());
+    // segments still render (badge counts simply absent), no crash
+    expect(screen.getByRole('button', { name: /all accounts/i })).toBeInTheDocument();
+  });
+
   it('shows the "N of M" count from the server total', async () => {
     installFetch([
       makeCompany('co-1', 'A Co'),
