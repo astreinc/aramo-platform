@@ -58,6 +58,9 @@ const COMPANY_FIELD_EXPANSION = resolve(
 const COMPANY_ADDRESS_PLACE_REF = resolve(
   ROOT,
   'libs/company/prisma/migrations/20260611120000_add_company_address_place_ref/migration.sql',
+);
+const COMPANY_OFF_LIMITS = resolve(
+  ROOT,
   'libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql',
 );
 const CONTACT_INIT = resolve(
@@ -122,6 +125,7 @@ const MIGRATIONS = [
   COMPANY_INIT,
   COMPANY_FIELD_EXPANSION,
   COMPANY_ADDRESS_PLACE_REF,
+  COMPANY_OFF_LIMITS,
   CONTACT_INIT,
   REQUISITION_INIT,
   TALENT_RECORD_INIT,
