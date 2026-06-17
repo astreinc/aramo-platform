@@ -76,6 +76,13 @@ function installFetch(all: readonly CompanyView[], status = 200) {
         status: 200, headers: { 'Content-Type': 'application/json' },
       });
     }
+    if (url.includes('/v1/reports/company-metrics')) {
+      // Phase 3 — metrics are best-effort; an empty set leaves the Open reqs /
+      // Active columns at "—" (the list assertions don't depend on the numbers).
+      return new Response(JSON.stringify({ items: [] }), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    }
     const u = new URL(url, 'http://x');
     const scope = u.searchParams.get('scope');
     const base = all.filter((c) => (scope === 'mine' ? c.owner_id === 'u1' : true));
@@ -122,10 +129,11 @@ describe('CompaniesListView (server-paged)', () => {
     renderInRouter(<CompaniesListView />);
     await waitFor(() => expect(screen.getByText('Acme Corp')).toBeInTheDocument());
     const table = screen.getByRole('table');
-    expect(within(table).getByText('San Francisco, CA')).toBeInTheDocument();
-    expect(within(table).getByText('Robotics')).toBeInTheDocument();
+    // industry · tier · location now render as one company-cell subtitle node.
+    expect(within(table).getByText(/Robotics/)).toBeInTheDocument();
+    expect(within(table).getByText(/Key account/)).toBeInTheDocument();
+    expect(within(table).getByText(/San Francisco, CA/)).toBeInTheDocument();
     expect(within(table).getByText('Client')).toBeInTheDocument();
-    expect(within(table).getByText('Key account')).toBeInTheDocument();
   });
 
   it('surfaces a permission message when the BE returns 403', async () => {

@@ -277,6 +277,54 @@ export function buildCompanyQuery(i: BuildQueryInput): URLSearchParams {
   return p;
 }
 
+// ── Phase 3 — per-company metrics (hand-mirrored from
+// libs/reporting/src/lib/dto/report.view.ts CompanyMetricsView). ──
+export interface CompanyMetrics {
+  readonly company_id: string;
+  readonly open_reqs: number;
+  readonly active_placements: number;
+  readonly submitted: number;
+  readonly openings: number;
+  readonly filled: number;
+  readonly fill_rate: number | null; // percent 0-100, null when no openings
+}
+export interface CompanyMetricsResponse {
+  readonly items: readonly CompanyMetrics[];
+}
+
+// Rule-based account briefing — a deterministic summary built from REAL fields +
+// metrics. NOT AI, not an ordinal rating (R10/ADR-0019 clean): it only restates
+// counts and last-contact, and suggests a transparent next move. Aramo Core adds
+// richer reasoning later via the ReservedSeam beneath it.
+export function accountBriefing(
+  c: CompanyView,
+  metrics: CompanyMetrics | null,
+  now: number = Date.now(),
+): string {
+  const rel = relationshipLabel(c.status);
+  const last = lastContactLabel(c, now);
+  if (metrics === null) {
+    return `${c.name} is a ${rel.toLowerCase()} account. Last contact ${last}.`;
+  }
+  const bits: string[] = [];
+  bits.push(
+    `${metrics.open_reqs} open req${metrics.open_reqs === 1 ? '' : 's'}`,
+  );
+  if (metrics.submitted > 0)
+    bits.push(`${metrics.submitted} submitted in pipeline`);
+  if (metrics.active_placements > 0)
+    bits.push(
+      `${metrics.active_placements} active placement${metrics.active_placements === 1 ? '' : 's'}`,
+    );
+  const head = `${c.name} has ${bits.join(', ')}.`;
+  const tail = isQuiet(c, now)
+    ? ` Last contact ${last} — suggested: a check-in to keep momentum.`
+    : metrics.submitted > 0
+      ? ` Suggested: chase the pending submittals.`
+      : ` Last contact ${last}.`;
+  return head + tail;
+}
+
 // Segment count badges, derived from the server facets (stable; base-where).
 export function segmentCountFrom(
   facets: CompanyFacets | null,

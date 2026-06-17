@@ -2083,6 +2083,27 @@
 /* utility */
 .rc-mb-8 { margin-bottom: 8px; }
 
+/* 6-up KPI strip (account hub) */
+.rc-metrics--6 { grid-template-columns: repeat(6, 1fr); }
+@media (max-width: 1080px) { .rc-metrics--6 { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 640px) { .rc-metrics--6 { grid-template-columns: repeat(2, 1fr); } }
+
+/* rule-based briefing (deterministic; sits above the ReservedSeam) */
+.rc-brief {
+  display: flex; gap: 12px; align-items: flex-start;
+  margin: 16px 0 12px; padding: 14px 16px;
+  background: linear-gradient(180deg, var(--surface), var(--surface-2));
+  border: 1px solid var(--line); border-left: 3px solid var(--brand-accent);
+  border-radius: var(--r-lg); box-shadow: var(--elev);
+}
+.rc-brief__ic {
+  width: 30px; height: 30px; border-radius: 8px; flex: none;
+  background: var(--brand-tint); color: var(--brand-strong);
+  display: grid; place-items: center;
+}
+.rc-brief__ic svg { width: 17px; height: 17px; }
+.rc-brief__text { margin: 0; font-size: 0.9rem; line-height: 1.5; color: var(--ink); }
+
 /* off-limits banner (account hub) */
 .rc-offlimits {
   display: flex; align-items: flex-start; gap: 10px;

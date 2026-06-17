@@ -10,6 +10,7 @@ import { SavedListRepository } from '@aramo/saved-list';
 import { TalentRecordRepository } from '@aramo/talent-record';
 
 import type {
+  CompanyMetricsView,
   DashboardView,
   PipelineStageRollupView,
   PlacementCountReportView,
@@ -190,6 +191,91 @@ export class ReportingService {
       placed_pipelines,
       includes_core_submittal_placements: false,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Per-company metrics — open reqs / placements / submitted / fill-rate for a
+  // set of companies (companies list columns + drawer + account-hub KPI strip).
+  // Cross-schema id-list compose: visible reqs (in the requested companies) →
+  // pipeline counts grouped by requisition → folded up to the company.
+  // -------------------------------------------------------------------------
+  async getCompanyMetrics(
+    actor: ActorContext,
+    companyIds: readonly string[],
+  ): Promise<CompanyMetricsView[]> {
+    const wanted = [...new Set(companyIds)];
+    if (wanted.length === 0) return [];
+    const wantedSet = new Set(wanted);
+
+    // Visible reqs (the D4b/A3 predicate inside listForActor), narrowed to the
+    // requested companies. A generous limit covers a page of companies.
+    const reqs = await this.requisitionRepository.listForActor({
+      tenant_id: actor.tenant_id,
+      visibility: actor.visibility,
+      ...(actor.site_id === undefined ? {} : { site_id: actor.site_id }),
+      limit: 1000,
+    });
+    const inScope = reqs.filter((r) => wantedSet.has(r.company_id));
+
+    const reqToCompany = new Map<string, string>();
+    const agg = new Map<
+      string,
+      { open_reqs: number; openings: number; filled: number }
+    >();
+    for (const r of inScope) {
+      reqToCompany.set(r.id, r.company_id);
+      const e = agg.get(r.company_id) ?? {
+        open_reqs: 0,
+        openings: 0,
+        filled: 0,
+      };
+      if (r.status === 'active' || r.status === 'on_hold') e.open_reqs += 1;
+      e.openings += r.openings;
+      e.filled += Math.max(0, r.openings - r.openings_available);
+      agg.set(r.company_id, e);
+    }
+
+    const reqIds = inScope.map((r) => r.id);
+    const [placedByReq, submittedByReq] = await Promise.all([
+      this.pipelineRepository.countByRequisition({
+        tenant_id: actor.tenant_id,
+        requisition_ids: reqIds,
+        statuses: ['placed'],
+      }),
+      this.pipelineRepository.countByRequisition({
+        tenant_id: actor.tenant_id,
+        requisition_ids: reqIds,
+        statuses: ['submitted', 'interviewing', 'offered'],
+      }),
+    ]);
+    const foldByCompany = (
+      rows: ReadonlyArray<{ requisition_id: string; count: number }>,
+    ): Map<string, number> => {
+      const m = new Map<string, number>();
+      for (const { requisition_id, count } of rows) {
+        const co = reqToCompany.get(requisition_id);
+        if (co !== undefined) m.set(co, (m.get(co) ?? 0) + count);
+      }
+      return m;
+    };
+    const placedPer = foldByCompany(placedByReq);
+    const submittedPer = foldByCompany(submittedByReq);
+
+    // Emit a row for EVERY requested company (zeros when it has no visible reqs).
+    return wanted.map((company_id) => {
+      const e = agg.get(company_id);
+      const openings = e?.openings ?? 0;
+      const filled = e?.filled ?? 0;
+      return {
+        company_id,
+        open_reqs: e?.open_reqs ?? 0,
+        active_placements: placedPer.get(company_id) ?? 0,
+        submitted: submittedPer.get(company_id) ?? 0,
+        openings,
+        filled,
+        fill_rate: openings > 0 ? Math.round((filled / openings) * 100) : null,
+      };
+    });
   }
 
   // -------------------------------------------------------------------------

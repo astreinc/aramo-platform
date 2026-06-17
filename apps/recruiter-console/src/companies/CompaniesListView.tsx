@@ -13,7 +13,11 @@ import { Avatar, Card, Icons, StatusPill, Tag } from '../ui';
 import { CompanyBulkBar } from './components/CompanyBulkBar';
 import { CompanyDrawer } from './components/CompanyDrawer';
 import { CompanyFacetRail } from './components/CompanyFacetRail';
-import { searchCompanies, updateCompany } from './companies-api';
+import {
+  getCompanyMetrics,
+  searchCompanies,
+  updateCompany,
+} from './companies-api';
 import { listErrorMessage } from './error-messages';
 import type { CompanyView } from './types';
 import {
@@ -30,6 +34,7 @@ import {
   segmentCountFrom,
   tierLabel,
   type CompanyFacets,
+  type CompanyMetrics,
   type FacetFlag,
   type FacetState,
   type ScopeMode,
@@ -66,6 +71,9 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userNames, setUserNames] = useState<Record<string, string>>({});
+  const [metricsById, setMetricsById] = useState<Record<string, CompanyMetrics>>(
+    {},
+  );
 
   const [scope, setScope] = useState<ScopeMode>('all');
   const [segment, setSegment] = useState<SegmentKey>('all');
@@ -154,6 +162,35 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
       clearTimeout(handle);
     };
   }, [fetchPage]);
+
+  // Per-company metrics for the loaded page — best-effort (report:read; degrades
+  // to "—" on 403). `requestedMetrics` records every id we've already asked for
+  // (success, miss, OR error) so we never refetch — without it, ids the server
+  // returns no row for (or a 403) would loop forever.
+  const requestedMetrics = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const missing = items
+      .map((c) => c.id)
+      .filter((id) => !requestedMetrics.current.has(id));
+    if (missing.length === 0) return;
+    for (const id of missing) requestedMetrics.current.add(id);
+    let cancelled = false;
+    void getCompanyMetrics(missing)
+      .then((res) => {
+        if (cancelled) return;
+        setMetricsById((prev) => {
+          const next = { ...prev };
+          for (const m of res.items) next[m.company_id] = m;
+          return next;
+        });
+      })
+      .catch(() => {
+        /* no report:read → metrics stay absent; columns show — */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
 
   // The text box filters the LOADED page (client-side; no ?q=).
   const visible = useMemo(
@@ -409,7 +446,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
                 <CompanyCard
                   key={c.id}
                   company={c}
-                  ownerName={ownerName(c)}
+                  metrics={metricsById[c.id] ?? null}
                   onOpen={() => setDrawerIndex(i)}
                 />
               ))}
@@ -437,8 +474,8 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
                     </th>
                     <th scope="col">Company</th>
                     <th scope="col">Relationship</th>
-                    <th scope="col">Tier</th>
-                    <th scope="col">Industry</th>
+                    <th scope="col">Open reqs</th>
+                    <th scope="col">Active</th>
                     <th scope="col">Owner</th>
                     <th scope="col">Last contact</th>
                     <th scope="col" aria-label="Row actions" />
@@ -447,6 +484,10 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
                 <tbody>
                   {visible.map((c, i) => {
                     const tier = tierLabel(c.client_tier);
+                    const subtitle = [c.industry, tier, locationOf(c)]
+                      .filter((s) => s !== null && s !== '' && s !== '—')
+                      .join(' · ');
+                    const m = metricsById[c.id];
                     return (
                       <tr
                         key={c.id}
@@ -479,7 +520,9 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
                                     <Icons.IconFlame className="rc-ent__flame" />
                                   ) : null}
                                 </span>
-                                <span className="rc-ent__rl">{locationOf(c)}</span>
+                                <span className="rc-ent__rl">
+                                  {subtitle === '' ? '—' : subtitle}
+                                </span>
                               </span>
                             </span>
                           </Link>
@@ -492,14 +535,20 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
                             {relationshipLabel(c.status)}
                           </StatusPill>
                         </td>
-                        <td>
-                          {tier !== null ? (
-                            <Tag>{tier}</Tag>
+                        <td className="num">
+                          {m !== undefined ? (
+                            m.open_reqs
                           ) : (
                             <span className="rc-consent-stub">—</span>
                           )}
                         </td>
-                        <td>{c.industry ?? <span className="rc-consent-stub">—</span>}</td>
+                        <td className="num">
+                          {m !== undefined ? (
+                            m.active_placements
+                          ) : (
+                            <span className="rc-consent-stub">—</span>
+                          )}
+                        </td>
                         <td>{ownerName(c)}</td>
                         <td className="lastcell">{lastContactLabel(c)}</td>
                         <td>
@@ -553,6 +602,7 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
 
       <CompanyDrawer
         company={drawerCompany}
+        metrics={drawerCompany !== null ? (metricsById[drawerCompany.id] ?? null) : null}
         index={drawerIndex ?? 0}
         total={visible.length}
         ownerNames={userNames}
@@ -573,11 +623,11 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
 // ── Card (Cards view mode) — same data as the row, no fabricated stats. ──
 function CompanyCard({
   company,
-  ownerName,
+  metrics,
   onOpen,
 }: {
   readonly company: CompanyView;
-  readonly ownerName: string;
+  readonly metrics: CompanyMetrics | null;
   readonly onOpen: () => void;
 }) {
   const tier = tierLabel(company.client_tier);
@@ -601,8 +651,12 @@ function CompanyCard({
       </div>
       <div className="rc-cocard__foot">
         <span className="rc-cocard__stat">
-          <small>Owner</small>
-          {ownerName}
+          <small>Open reqs</small>
+          {metrics !== null ? metrics.open_reqs : '—'}
+        </span>
+        <span className="rc-cocard__stat">
+          <small>Active</small>
+          {metrics !== null ? metrics.active_placements : '—'}
         </span>
         <span className="rc-cocard__stat">
           <small>Last contact</small>

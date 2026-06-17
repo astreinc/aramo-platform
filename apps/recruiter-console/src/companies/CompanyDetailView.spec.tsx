@@ -173,6 +173,36 @@ describe('CompanyDetailView (account hub)', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders real per-company metrics in the KPI strip + rule-based briefing', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany({ annual_revenue_band: '$10M–$50M' }),
+      '/v1/reports/company-metrics': {
+        items: [
+          {
+            company_id: 'co-1',
+            open_reqs: 2,
+            active_placements: 3,
+            submitted: 4,
+            openings: 5,
+            filled: 2,
+            fill_rate: 40,
+          },
+        ],
+      },
+    });
+    renderAt('/companies/co-1', makeSession(['company:read', 'report:read']));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
+    );
+    // KPI numbers + firmographic revenue band (not an invented QTD figure)
+    await waitFor(() => expect(screen.getByText('40%')).toBeInTheDocument());
+    // revenue band appears in the KPI strip + Overview "Key facts"
+    expect(screen.getAllByText('$10M–$50M').length).toBeGreaterThan(0);
+    // rule-based briefing restates the real counts (no AI, no ordinal rating)
+    expect(screen.getByText(/2 open reqs/i)).toBeInTheDocument();
+    expect(screen.getByText(/4 submitted in pipeline/i)).toBeInTheDocument();
+  });
+
   it('hides scope-gated tabs when their scopes are absent', async () => {
     installFetch({ '/v1/companies/co-1': makeCompany() });
     renderAt('/companies/co-1', makeSession(['company:read']));

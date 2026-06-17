@@ -25,7 +25,11 @@ import {
   Tag,
 } from '../ui';
 
-import { getCompany, listContactsForCompany } from './companies-api';
+import {
+  getCompany,
+  getOneCompanyMetrics,
+  listContactsForCompany,
+} from './companies-api';
 import {
   contactsErrorMessage,
   detailErrorMessage,
@@ -34,10 +38,12 @@ import {
 import type { CompanyView, ContactView } from './types';
 import {
   RELATIONSHIP_TONES,
+  accountBriefing,
   lastContactLabel,
   locationOf,
   relationshipLabel,
   tierLabel,
+  type CompanyMetrics,
 } from './company-workspace';
 
 // Company DETAIL — rebuilt to the locked Confident-Blue "account hub" mockup.
@@ -84,6 +90,7 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
   const [reqs, setReqs] = useState<readonly RequisitionView[]>([]);
   const [activities, setActivities] = useState<readonly ActivityView[]>([]);
   const [ownerName, setOwnerName] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<CompanyMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contactsError, setContactsError] = useState<string | null>(null);
@@ -107,19 +114,22 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
         if (cancelled) return;
         setCompany(co);
         setLoading(false);
-        const [contactRes, reqRes, actRes, rosterRes] = await Promise.allSettled([
-          canReadContacts
-            ? listContactsForCompany(companyId)
-            : Promise.reject(new Error('no contact scope')),
-          canReadReqs
-            ? listRequisitions({ company_id: companyId })
-            : Promise.reject(new Error('no req scope')),
-          canReadActivity
-            ? listActivities('company', companyId)
-            : Promise.reject(new Error('no activity scope')),
-          probeTenantUsers(),
-        ]);
+        const [contactRes, reqRes, actRes, rosterRes, metricsRes] =
+          await Promise.allSettled([
+            canReadContacts
+              ? listContactsForCompany(companyId)
+              : Promise.reject(new Error('no contact scope')),
+            canReadReqs
+              ? listRequisitions({ company_id: companyId })
+              : Promise.reject(new Error('no req scope')),
+            canReadActivity
+              ? listActivities('company', companyId)
+              : Promise.reject(new Error('no activity scope')),
+            probeTenantUsers(),
+            getOneCompanyMetrics(companyId),
+          ]);
         if (cancelled) return;
+        if (metricsRes.status === 'fulfilled') setMetrics(metricsRes.value);
         if (contactRes.status === 'fulfilled') setContacts(contactRes.value.items);
         else if (canReadContacts)
           setContactsError(contactsErrorMessage(contactRes.reason));
@@ -298,32 +308,56 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
         </div>
       ) : null}
 
-      <div className="rc-metrics rc-metrics--spaced">
+      <div className="rc-metrics rc-metrics--spaced rc-metrics--6">
         <MetricCard
           label="Open reqs"
-          value={canReadReqs ? reqs.length : '—'}
+          value={metrics !== null ? metrics.open_reqs : canReadReqs ? reqs.length : '—'}
           icon={<Icons.IconRequisitions />}
-          hint={canReadReqs ? 'across the account' : 'requisition:read needed'}
         />
         <MetricCard
-          label="Contacts"
-          value={canReadContacts ? contacts.length : '—'}
+          label="Active placements"
+          value={metrics !== null ? metrics.active_placements : '—'}
           icon={<Icons.IconContacts />}
         />
-        <MetricCard label="Tier" value={tier ?? '—'} icon={<Icons.IconBookmark />} />
+        <MetricCard
+          label="Submitted"
+          value={metrics !== null ? metrics.submitted : '—'}
+          icon={<Icons.IconList />}
+        />
+        <MetricCard
+          label="Fill rate"
+          value={
+            metrics !== null && metrics.fill_rate !== null
+              ? `${metrics.fill_rate}%`
+              : '—'
+          }
+          icon={<Icons.IconBookmark />}
+        />
         <MetricCard
           label="Last contact"
           value={lastContactLabel(company)}
           icon={<Icons.IconClock />}
         />
+        <MetricCard
+          label="Revenue band"
+          value={display(company.annual_revenue_band)}
+          icon={<Icons.IconCompanies />}
+          hint="firmographic"
+        />
       </div>
 
-      <ReservedSeam
-        title="Account briefing"
-        tag="Integrates with Core later"
-      >
-        When Aramo Core is connected, its account briefing — the evidence behind a
-        suggested next move, never a fabricated metric — appears here.
+      {/* Rule-based briefing — deterministic, from real fields + metrics (no AI,
+          no ordinal rating; R10/ADR-0019 clean). The ReservedSeam beneath
+          reserves the richer Core reasoning. */}
+      <div className="rc-brief">
+        <div className="rc-brief__ic" aria-hidden="true">
+          <Icons.IconBolt />
+        </div>
+        <p className="rc-brief__text">{accountBriefing(company, metrics)}</p>
+      </div>
+      <ReservedSeam title="Account briefing" tag="Integrates with Core later">
+        When Aramo Core is connected, its richer account reasoning — the evidence
+        behind a suggested next move, never a fabricated metric — appears here.
       </ReservedSeam>
 
       <div className="rc-mt-16">

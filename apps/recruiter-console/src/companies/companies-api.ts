@@ -1,6 +1,10 @@
 import { apiClient } from '@aramo/fe-foundation';
 
-import type { CompanySearchPage } from './company-workspace';
+import type {
+  CompanyMetrics,
+  CompanyMetricsResponse,
+  CompanySearchPage,
+} from './company-workspace';
 import type {
   AddressAutocompleteResponse,
   AddressDetailsResponse,
@@ -34,6 +38,26 @@ export async function searchCompanies(
   params: URLSearchParams,
 ): Promise<CompanySearchPage> {
   return apiClient.get<CompanySearchPage>(`/v1/companies?${params.toString()}`);
+}
+
+// Phase 3 — per-company metrics (open reqs / placements / submitted / fill-rate)
+// via GET /v1/reports/company-metrics?company_ids=… (report:read). Best-effort:
+// callers catch and degrade to "—" when the actor lacks report:read.
+export async function getCompanyMetrics(
+  companyIds: readonly string[],
+): Promise<CompanyMetricsResponse> {
+  if (companyIds.length === 0) return { items: [] };
+  const params = new URLSearchParams({ company_ids: companyIds.join(',') });
+  return apiClient.get<CompanyMetricsResponse>(
+    `/v1/reports/company-metrics?${params.toString()}`,
+  );
+}
+
+export async function getOneCompanyMetrics(
+  companyId: string,
+): Promise<CompanyMetrics | null> {
+  const res = await getCompanyMetrics([companyId]);
+  return res.items[0] ?? null;
 }
 
 // R3 — the company DETAIL endpoint. Same D4b visibility semantics as

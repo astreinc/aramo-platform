@@ -10,6 +10,7 @@ import {
   locationOf,
   relationshipLabel,
   tierLabel,
+  type CompanyMetrics,
 } from '../company-workspace';
 
 // CompanyDrawer — right slide-in account preview (mirrors TalentTriageDrawer).
@@ -20,6 +21,7 @@ import {
 
 interface CompanyDrawerProps {
   readonly company: CompanyView | null;
+  readonly metrics: CompanyMetrics | null;
   readonly index: number;
   readonly total: number;
   readonly ownerNames: Record<string, string>;
@@ -35,6 +37,7 @@ function primaryContactName(c: ContactView): string {
 
 export function CompanyDrawer({
   company,
+  metrics,
   index,
   total,
   ownerNames,
@@ -194,6 +197,32 @@ export function CompanyDrawer({
 
         <section className="rc-drawer__sec">
           <h4>At a glance</h4>
+          <div className="rc-kv">
+            <span className="rc-kv__k">Open reqs</span>
+            <span className="rc-kv__v num">
+              {metrics !== null ? metrics.open_reqs : '—'}
+            </span>
+          </div>
+          <div className="rc-kv">
+            <span className="rc-kv__k">Active placements</span>
+            <span className="rc-kv__v num">
+              {metrics !== null ? metrics.active_placements : '—'}
+            </span>
+          </div>
+          <div className="rc-kv">
+            <span className="rc-kv__k">Submitted</span>
+            <span className="rc-kv__v num">
+              {metrics !== null ? metrics.submitted : '—'}
+            </span>
+          </div>
+          <div className="rc-kv">
+            <span className="rc-kv__k">Fill rate</span>
+            <span className="rc-kv__v num">
+              {metrics !== null && metrics.fill_rate !== null
+                ? `${metrics.fill_rate}%`
+                : '—'}
+            </span>
+          </div>
           <div className="rc-kv">
             <span className="rc-kv__k">Relationship</span>
             <span className="rc-kv__v">{relationshipLabel(company.status)}</span>

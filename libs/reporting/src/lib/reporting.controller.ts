@@ -17,6 +17,7 @@ import {
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import type {
+  CompanyMetricsReportView,
   PipelineStageRollupView,
   PlacementCountReportView,
   RequisitionStatusRollupView,
@@ -103,6 +104,38 @@ export class ReportingController {
       visibility,
       ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
     });
+  }
+
+  // Per-company metrics — open reqs / placements / submitted / fill-rate for the
+  // company ids in ?company_ids=a,b,c (visibility-scoped). Powers the companies
+  // list columns + drawer + account-hub KPI strip. report:read (same gate as the
+  // other rollups). Empty / missing ids → empty items.
+  @Get('company-metrics')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  @RequireSiteMatch()
+  async companyMetrics(
+    @AuthContext() authContext: AuthContextType,
+    @Query('company_ids') companyIdsCsv: string | undefined,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<CompanyMetricsReportView> {
+    const companyIds =
+      companyIdsCsv === undefined || companyIdsCsv.trim() === ''
+        ? []
+        : companyIdsCsv.split(',').map((s) => s.trim()).filter((s) => s !== '');
+    const visibility = await req.resolveVisibility!();
+    const items = await this.reportingService.getCompanyMetrics(
+      {
+        tenant_id: authContext.tenant_id,
+        user_id: authContext.sub,
+        scopes: authContext.scopes,
+        visibility,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+      },
+      companyIds,
+    );
+    return { items };
   }
 
   // Note: returns the ATS-INTERNAL placed-pipeline count. The Core

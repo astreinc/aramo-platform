@@ -630,6 +630,33 @@ export class PipelineRepository {
     }));
   }
 
+  // Per-company metrics — group pipeline counts by requisition_id for a status
+  // set, so the reporting service can fold them up to the company via the
+  // req→company map (cross-schema id-list pattern; pipeline.requisition_id is a
+  // logical ref). Empty id list short-circuits (groupBy on IN [] is wasteful).
+  async countByRequisition(args: {
+    tenant_id: string;
+    requisition_ids: readonly string[];
+    statuses: readonly PipelineStatus[];
+  }): Promise<Array<{ requisition_id: string; count: number }>> {
+    if (args.requisition_ids.length === 0 || args.statuses.length === 0) {
+      return [];
+    }
+    const rows = await this.prisma.pipeline.groupBy({
+      by: ['requisition_id'],
+      where: {
+        tenant_id: args.tenant_id,
+        requisition_id: { in: [...args.requisition_ids] },
+        status: { in: [...args.statuses] },
+      },
+      _count: { _all: true },
+    });
+    return rows.map((r) => ({
+      requisition_id: r.requisition_id as string,
+      count: r._count._all,
+    }));
+  }
+
   async listHistory(args: {
     tenant_id: string;
     pipeline_id: string;
