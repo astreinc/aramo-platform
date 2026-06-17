@@ -68,3 +68,17 @@ module "resume_bucket" {
   retention_days_extended = var.resume_bucket_retention_days_extended
   tags                    = local.common_tags
 }
+
+# The app principal binding (the piece the readiness track owed): attaches the
+# résumé-bucket least-privilege policy to the IAM user the API authenticates
+# as. Scoped to PUT/GET/Tagging on THIS bucket + its KMS key only — no
+# wildcard, no other-bucket access. Access keys are generated out-of-band into
+# the secret store (see module README); migrate to an instance/task role when
+# a compute platform lands.
+module "api_principal" {
+  source = "../../modules/iam-app-principal"
+
+  name                      = "aramo-${var.environment}-api"
+  resume_bucket_policy_json = module.resume_bucket.app_iam_policy_json
+  tags                      = local.common_tags
+}
