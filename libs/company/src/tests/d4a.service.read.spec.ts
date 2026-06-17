@@ -198,3 +198,44 @@ describe('D4aCompanyService.listClientsForTeam — Cat-5 (§7.3 rule preserved)'
     expect(args.tenant_id).not.toBe(OTHER_TENANT_ID);
   });
 });
+
+// Phase 4 — the recruiter-readable account team (company:read at the route).
+describe('D4aCompanyService.getTeamForCompany', () => {
+  it('returns owner + assigned member ids (tenant-scoped existence precheck)', async () => {
+    const { service, companyRepo, assignments } = makeService();
+    companyRepo.findById.mockResolvedValue({ id: COMPANY_ID, owner_id: 'u-owner' });
+    assignments.findByCompany.mockResolvedValue([
+      { user_id: 'u-owner' },
+      { user_id: 'u-mate' },
+    ]);
+
+    const team = await service.getTeamForCompany({
+      tenant_id: TENANT_ID,
+      company_id: COMPANY_ID,
+      request_id: 'rq-team-1',
+    });
+
+    expect(team).toEqual({
+      owner_id: 'u-owner',
+      member_user_ids: ['u-owner', 'u-mate'],
+    });
+    expect(companyRepo.findById).toHaveBeenCalledWith({
+      tenant_id: TENANT_ID,
+      id: COMPANY_ID,
+    });
+  });
+
+  it('cross-tenant / absent company → 404 (no assignment read)', async () => {
+    const { service, companyRepo, assignments } = makeService();
+    companyRepo.findById.mockResolvedValue(null);
+
+    await expect(
+      service.getTeamForCompany({
+        tenant_id: TENANT_ID,
+        company_id: COMPANY_ID,
+        request_id: 'rq-team-2',
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    expect(assignments.findByCompany).not.toHaveBeenCalled();
+  });
+});

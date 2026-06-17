@@ -15,6 +15,7 @@ import { isClosedStatus, type RequisitionView } from '../requisitions/types';
 import { useEntityCrumb } from '../shell/breadcrumb';
 import { probeTenantUsers } from '../task/task-api';
 import { TasksPanel } from '../task/TasksPanel';
+import { getTalent } from '../talent/talent-api';
 import {
   Avatar,
   Card,
@@ -27,6 +28,8 @@ import {
 
 import {
   getCompany,
+  getCompanyPlacements,
+  getCompanyTeam,
   getOneCompanyMetrics,
   listContactsForCompany,
 } from './companies-api';
@@ -44,6 +47,8 @@ import {
   relationshipLabel,
   tierLabel,
   type CompanyMetrics,
+  type CompanyPlacement,
+  type CompanyTeam,
 } from './company-workspace';
 
 // Company DETAIL — rebuilt to the locked Confident-Blue "account hub" mockup.
@@ -89,7 +94,9 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
   const [contacts, setContacts] = useState<readonly ContactView[]>([]);
   const [reqs, setReqs] = useState<readonly RequisitionView[]>([]);
   const [activities, setActivities] = useState<readonly ActivityView[]>([]);
-  const [ownerName, setOwnerName] = useState<string | null>(null);
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
+  const [team, setTeam] = useState<CompanyTeam | null>(null);
+  const [placements, setPlacements] = useState<readonly CompanyPlacement[]>([]);
   const [metrics, setMetrics] = useState<CompanyMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -114,22 +121,36 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
         if (cancelled) return;
         setCompany(co);
         setLoading(false);
-        const [contactRes, reqRes, actRes, rosterRes, metricsRes] =
-          await Promise.allSettled([
-            canReadContacts
-              ? listContactsForCompany(companyId)
-              : Promise.reject(new Error('no contact scope')),
-            canReadReqs
-              ? listRequisitions({ company_id: companyId })
-              : Promise.reject(new Error('no req scope')),
-            canReadActivity
-              ? listActivities('company', companyId)
-              : Promise.reject(new Error('no activity scope')),
-            probeTenantUsers(),
-            getOneCompanyMetrics(companyId),
-          ]);
+        const [
+          contactRes,
+          reqRes,
+          actRes,
+          rosterRes,
+          metricsRes,
+          teamRes,
+          placementsRes,
+        ] = await Promise.allSettled([
+          canReadContacts
+            ? listContactsForCompany(companyId)
+            : Promise.reject(new Error('no contact scope')),
+          canReadReqs
+            ? listRequisitions({ company_id: companyId })
+            : Promise.reject(new Error('no req scope')),
+          canReadActivity
+            ? listActivities('company', companyId)
+            : Promise.reject(new Error('no activity scope')),
+          probeTenantUsers(),
+          getOneCompanyMetrics(companyId),
+          getCompanyTeam(companyId),
+          canReadReqs
+            ? getCompanyPlacements(companyId)
+            : Promise.reject(new Error('no req scope')),
+        ]);
         if (cancelled) return;
         if (metricsRes.status === 'fulfilled') setMetrics(metricsRes.value);
+        if (teamRes.status === 'fulfilled') setTeam(teamRes.value);
+        if (placementsRes.status === 'fulfilled')
+          setPlacements(placementsRes.value.items);
         if (contactRes.status === 'fulfilled') setContacts(contactRes.value.items);
         else if (canReadContacts)
           setContactsError(contactsErrorMessage(contactRes.reason));
@@ -137,13 +158,11 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
           setReqs(reqRes.value.items.filter((r) => !isClosedStatus(r.status)));
         else if (canReadReqs) setReqsError(reqsErrorMessage(reqRes.reason));
         if (actRes.status === 'fulfilled') setActivities(actRes.value.items);
-        if (
-          rosterRes.status === 'fulfilled' &&
-          rosterRes.value.available &&
-          co.owner_id !== null
-        ) {
-          const u = rosterRes.value.items.find((x) => x.user_id === co.owner_id);
-          if (u !== undefined) setOwnerName(u.display_name ?? u.email);
+        if (rosterRes.status === 'fulfilled' && rosterRes.value.available) {
+          const names: Record<string, string> = {};
+          for (const u of rosterRes.value.items)
+            names[u.user_id] = u.display_name ?? u.email;
+          setUserNames(names);
         }
       })
       .catch((err) => {
@@ -180,6 +199,8 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
   const canEditContact = hasScope(session, 'contact:edit');
   const tier = tierLabel(company.client_tier);
   const since = clientSince(company);
+  const ownerName =
+    company.owner_id !== null ? (userNames[company.owner_id] ?? null) : null;
 
   const tabs: TabItem[] = [
     {
@@ -190,6 +211,8 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
           company={company}
           contacts={contacts}
           ownerName={ownerName}
+          team={team}
+          userNames={userNames}
           canEditContact={canEditContact}
         />
       ),
@@ -215,6 +238,11 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
       id: 'jobs',
       label: `Jobs (${reqs.length})`,
       content: <JobsPanel reqs={reqs} error={reqsError} />,
+    });
+    tabs.push({
+      id: 'placements',
+      label: `Placements (${placements.length})`,
+      content: <PlacementsPanel placements={placements} />,
     });
   }
   if (canReadActivity) {
@@ -376,11 +404,15 @@ function OverviewPanel({
   company,
   contacts,
   ownerName,
+  team,
+  userNames,
   canEditContact,
 }: {
   readonly company: CompanyView;
   readonly contacts: readonly ContactView[];
   readonly ownerName: string | null;
+  readonly team: CompanyTeam | null;
+  readonly userNames: Record<string, string>;
   readonly canEditContact: boolean;
 }) {
   const about = company.description ?? company.notes;
@@ -455,14 +487,29 @@ function OverviewPanel({
 
       <div className="rc-stack">
         <Card>
-          <h3 className="rc-section-h">Account owner</h3>
-          <div className="rc-tmrow rc-mt-8">
-            <Avatar name={ownerName ?? 'Unassigned'} size="md" />
-            <div>
-              <div className="rc-tmrow__nm">{ownerName ?? 'Unassigned'}</div>
-              <div className="rc-tmrow__rl">Account owner</div>
-            </div>
-          </div>
+          <h3 className="rc-section-h">Account team</h3>
+          <ul className="rc-detail-list rc-mt-8">
+            <li className="rc-tmrow">
+              <Avatar name={ownerName ?? 'Unassigned'} size="md" />
+              <div>
+                <div className="rc-tmrow__nm">{ownerName ?? 'Unassigned'}</div>
+                <div className="rc-tmrow__rl">Account owner</div>
+              </div>
+            </li>
+            {(team?.member_user_ids ?? [])
+              .filter((uid) => uid !== company.owner_id)
+              .map((uid) => (
+                <li key={uid} className="rc-tmrow">
+                  <Avatar name={userNames[uid] ?? 'Team member'} size="sm" />
+                  <div>
+                    <div className="rc-tmrow__nm">
+                      {userNames[uid] ?? 'Team member'}
+                    </div>
+                    <div className="rc-tmrow__rl">Assigned</div>
+                  </div>
+                </li>
+              ))}
+          </ul>
         </Card>
 
         <Card>
@@ -650,6 +697,72 @@ function ActivityPanel({
                 </div>
               </li>
             ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ── Placements (placed pipelines at the company's reqs) ──
+function PlacementsPanel({
+  placements,
+}: {
+  readonly placements: readonly CompanyPlacement[];
+}) {
+  const [names, setNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const ids = [...new Set(placements.map((p) => p.talent_record_id))];
+    if (ids.length === 0) return;
+    let cancelled = false;
+    void Promise.allSettled(ids.map((id) => getTalent(id))).then((rs) => {
+      if (cancelled) return;
+      const m: Record<string, string> = {};
+      rs.forEach((r, i) => {
+        const id = ids[i];
+        if (id !== undefined && r.status === 'fulfilled') {
+          m[id] = `${r.value.first_name} ${r.value.last_name}`.trim();
+        }
+      });
+      setNames(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [placements]);
+
+  return (
+    <div className="rc-mt-16">
+      <Card flush>
+        <div className="rc-card__head">
+          <h2>Placements</h2>
+        </div>
+        {placements.length === 0 ? (
+          <p className="rc-empty">No active placements at this company yet.</p>
+        ) : (
+          <ul className="rc-detail-list rc-detail-list--flush">
+            {placements.map((p) => {
+              const name = names[p.talent_record_id] ?? 'Talent';
+              return (
+                <li key={p.pipeline_id} className="rc-tmrow rc-tmrow--row">
+                  <Avatar name={name} size="sm" />
+                  <div className="rc-tmrow__body">
+                    <div className="rc-tmrow__nm">
+                      <Link
+                        to={`/talent/${p.talent_record_id}`}
+                        className="rc-link-strong"
+                      >
+                        {name}
+                      </Link>
+                    </div>
+                    <div className="rc-tmrow__rl">{p.requisition_title}</div>
+                  </div>
+                  <StatusPill tone="ok" dot>
+                    Placed
+                  </StatusPill>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>

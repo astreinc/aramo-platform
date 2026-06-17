@@ -3,7 +3,9 @@ import { apiClient } from '@aramo/fe-foundation';
 import type {
   CompanyMetrics,
   CompanyMetricsResponse,
+  CompanyPlacementsResponse,
   CompanySearchPage,
+  CompanyTeam,
 } from './company-workspace';
 import type {
   AddressAutocompleteResponse,
@@ -58,6 +60,23 @@ export async function getOneCompanyMetrics(
 ): Promise<CompanyMetrics | null> {
   const res = await getCompanyMetrics([companyId]);
   return res.items[0] ?? null;
+}
+
+// Phase 4 — the recruiter-readable account team (company:read) + the placed
+// pipelines at the company's reqs (report:read). Both best-effort.
+export async function getCompanyTeam(companyId: string): Promise<CompanyTeam> {
+  return apiClient.get<CompanyTeam>(
+    `/v1/companies/${encodeURIComponent(companyId)}/team`,
+  );
+}
+
+export async function getCompanyPlacements(
+  companyId: string,
+): Promise<CompanyPlacementsResponse> {
+  const params = new URLSearchParams({ company_id: companyId });
+  return apiClient.get<CompanyPlacementsResponse>(
+    `/v1/reports/company-placements?${params.toString()}`,
+  );
 }
 
 // R3 — the company DETAIL endpoint. Same D4b visibility semantics as

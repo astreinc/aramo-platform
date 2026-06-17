@@ -110,9 +110,12 @@ function makeReq(
 type FetchMap = Record<string, unknown | { status: number; body: unknown }>;
 
 function installFetch(map: FetchMap) {
+  // Match the MOST SPECIFIC (longest) pattern first so e.g.
+  // '/v1/companies/co-1/team' wins over the '/v1/companies/co-1' prefix.
+  const entries = Object.entries(map).sort((a, b) => b[0].length - a[0].length);
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : (input as Request).url;
-    for (const [pattern, value] of Object.entries(map)) {
+    for (const [pattern, value] of entries) {
       if (url.includes(pattern)) {
         const isWrapped =
           typeof value === 'object' &&
@@ -201,6 +204,55 @@ describe('CompanyDetailView (account hub)', () => {
     // rule-based briefing restates the real counts (no AI, no ordinal rating)
     expect(screen.getByText(/2 open reqs/i)).toBeInTheDocument();
     expect(screen.getByText(/4 submitted in pipeline/i)).toBeInTheDocument();
+  });
+
+  it('renders the account team (owner + assigned members) on Overview', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany({ owner_id: 'u-owner' }),
+      '/v1/companies/co-1/team': {
+        owner_id: 'u-owner',
+        member_user_ids: ['u-owner', 'u-mate'],
+      },
+      '/v1/tenant/users': {
+        items: [
+          { user_id: 'u-owner', display_name: 'Olive Owner', email: 'o@x', is_active: true },
+          { user_id: 'u-mate', display_name: 'Manny Mate', email: 'm@x', is_active: true },
+        ],
+      },
+    });
+    renderAt('/companies/co-1', makeSession(['company:read']));
+    await waitFor(() => expect(screen.getByText('Account team')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Olive Owner')).toBeInTheDocument());
+    // the assigned member (deduped from the owner) resolves its name
+    expect(screen.getByText('Manny Mate')).toBeInTheDocument();
+  });
+
+  it('Placements tab lists placed talent at the company (report+req scopes)', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany(),
+      '/v1/requisitions': { items: [] },
+      '/v1/reports/company-placements': {
+        items: [
+          {
+            pipeline_id: 'pl-1',
+            talent_record_id: 'tr-1',
+            requisition_id: 'r-1',
+            requisition_title: 'Senior Rust Engineer',
+          },
+        ],
+      },
+      '/v1/talent-records/tr-1': { first_name: 'Nisha', last_name: 'Patel' },
+    });
+    renderAt(
+      '/companies/co-1',
+      makeSession(['company:read', 'requisition:read', 'report:read']),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Placements/ })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: /Placements/ }));
+    await waitFor(() => expect(screen.getByText('Nisha Patel')).toBeInTheDocument());
+    expect(screen.getByText('Senior Rust Engineer')).toBeInTheDocument();
   });
 
   it('hides scope-gated tabs when their scopes are absent', async () => {

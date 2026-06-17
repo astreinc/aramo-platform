@@ -11,6 +11,7 @@ import { TalentRecordRepository } from '@aramo/talent-record';
 
 import type {
   CompanyMetricsView,
+  CompanyPlacementView,
   DashboardView,
   PipelineStageRollupView,
   PlacementCountReportView,
@@ -276,6 +277,34 @@ export class ReportingService {
         fill_rate: openings > 0 ? Math.round((filled / openings) * 100) : null,
       };
     });
+  }
+
+  // Per-company placements — the placed pipelines at a company's visible reqs
+  // (account-hub Placements tab). Cross-schema id-list compose; visibility-scoped.
+  async getCompanyPlacements(
+    actor: ActorContext,
+    companyId: string,
+  ): Promise<CompanyPlacementView[]> {
+    const reqs = await this.requisitionRepository.listForActor({
+      tenant_id: actor.tenant_id,
+      visibility: actor.visibility,
+      ...(actor.site_id === undefined ? {} : { site_id: actor.site_id }),
+      limit: 1000,
+    });
+    const inScope = reqs.filter((r) => r.company_id === companyId);
+    if (inScope.length === 0) return [];
+    const titleByReq = new Map(inScope.map((r) => [r.id, r.title]));
+    const placed = await this.pipelineRepository.listByRequisitionsAndStatus({
+      tenant_id: actor.tenant_id,
+      requisition_ids: inScope.map((r) => r.id),
+      statuses: ['placed'],
+    });
+    return placed.map((p) => ({
+      pipeline_id: p.id,
+      talent_record_id: p.talent_record_id,
+      requisition_id: p.requisition_id,
+      requisition_title: titleByReq.get(p.requisition_id) ?? 'Requisition',
+    }));
   }
 
   // -------------------------------------------------------------------------

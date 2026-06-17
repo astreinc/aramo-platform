@@ -80,6 +80,20 @@ export interface CompanyMetricsReportView {
   items: CompanyMetricsView[];
 }
 
+// CompanyPlacementView — a placed pipeline at one of the company's reqs (the
+// account-hub Placements tab). ATS-internal (placed pipeline), NOT a Core
+// submittal placement. Talent display name is resolved client-side.
+export interface CompanyPlacementView {
+  pipeline_id: string;
+  talent_record_id: string;
+  requisition_id: string;
+  requisition_title: string;
+}
+
+export interface CompanyPlacementsReportView {
+  items: CompanyPlacementView[];
+}
+
 // DashboardView — the composition payload for GET /v1/dashboard.
 // Bundles the ATS-internal metrics into a single response so a
 // recruiter UI doesn't have to N-round-trip on load.

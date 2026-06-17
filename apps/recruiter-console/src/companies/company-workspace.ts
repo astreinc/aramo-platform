@@ -292,6 +292,21 @@ export interface CompanyMetricsResponse {
   readonly items: readonly CompanyMetrics[];
 }
 
+// ── Phase 4 — account team + placements (hand-mirrored from the BE views). ──
+export interface CompanyTeam {
+  readonly owner_id: string | null;
+  readonly member_user_ids: readonly string[];
+}
+export interface CompanyPlacement {
+  readonly pipeline_id: string;
+  readonly talent_record_id: string;
+  readonly requisition_id: string;
+  readonly requisition_title: string;
+}
+export interface CompanyPlacementsResponse {
+  readonly items: readonly CompanyPlacement[];
+}
+
 // Rule-based account briefing — a deterministic summary built from REAL fields +
 // metrics. NOT AI, not an ordinal rating (R10/ADR-0019 clean): it only restates
 // counts and last-contact, and suggests a transparent next move. Aramo Core adds

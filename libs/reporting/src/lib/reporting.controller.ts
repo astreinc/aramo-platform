@@ -18,6 +18,7 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import type {
   CompanyMetricsReportView,
+  CompanyPlacementsReportView,
   PipelineStageRollupView,
   PlacementCountReportView,
   RequisitionStatusRollupView,
@@ -134,6 +135,35 @@ export class ReportingController {
         ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
       },
       companyIds,
+    );
+    return { items };
+  }
+
+  // Per-company placements — placed pipelines at a company's visible reqs
+  // (account-hub Placements tab). report:read; visibility-scoped.
+  @Get('company-placements')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  @RequireSiteMatch()
+  async companyPlacements(
+    @AuthContext() authContext: AuthContextType,
+    @Query('company_id') companyId: string | undefined,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<CompanyPlacementsReportView> {
+    if (companyId === undefined || companyId.trim() === '') {
+      return { items: [] };
+    }
+    const visibility = await req.resolveVisibility!();
+    const items = await this.reportingService.getCompanyPlacements(
+      {
+        tenant_id: authContext.tenant_id,
+        user_id: authContext.sub,
+        scopes: authContext.scopes,
+        visibility,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+      },
+      companyId.trim(),
     );
     return { items };
   }

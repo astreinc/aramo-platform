@@ -14,6 +14,7 @@ function makeService(opts: {
   reqs: ReadonlyArray<Record<string, unknown>>;
   placed: ReadonlyArray<{ requisition_id: string; count: number }>;
   submitted: ReadonlyArray<{ requisition_id: string; count: number }>;
+  placedRows?: ReadonlyArray<Record<string, unknown>>;
 }) {
   const requisitionRepository = {
     listForActor: vi.fn().mockResolvedValue(opts.reqs),
@@ -22,6 +23,7 @@ function makeService(opts: {
     countByRequisition: vi.fn(async (args: { statuses: readonly string[] }) =>
       args.statuses.includes('placed') ? opts.placed : opts.submitted,
     ),
+    listByRequisitionsAndStatus: vi.fn(async () => opts.placedRows ?? []),
   };
   const stub = {} as never;
   const svc = new ReportingService(
@@ -102,5 +104,40 @@ describe('ReportingService.getCompanyMetrics', () => {
     const res = await svc.getCompanyMetrics(actor, []);
     expect(res).toEqual([]);
     expect(requisitionRepository.listForActor).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReportingService.getCompanyPlacements', () => {
+  it('lists placed pipelines at the company reqs with the req title joined', async () => {
+    const { svc } = makeService({
+      reqs: [
+        { id: 'r-a1', company_id: 'co-A', status: 'active', title: 'Rust Eng', openings: 1, openings_available: 0 },
+        { id: 'r-z1', company_id: 'co-Z', status: 'active', title: 'Other', openings: 1, openings_available: 1 },
+      ],
+      placed: [],
+      submitted: [],
+      placedRows: [
+        { id: 'pl-1', talent_record_id: 'tr-1', requisition_id: 'r-a1', status: 'placed' },
+      ],
+    });
+    const res = await svc.getCompanyPlacements(actor, 'co-A');
+    expect(res).toEqual([
+      {
+        pipeline_id: 'pl-1',
+        talent_record_id: 'tr-1',
+        requisition_id: 'r-a1',
+        requisition_title: 'Rust Eng',
+      },
+    ]);
+  });
+
+  it('returns [] when the company has no visible reqs', async () => {
+    const { svc } = makeService({
+      reqs: [{ id: 'r-z1', company_id: 'co-Z', status: 'active', title: 'X', openings: 1, openings_available: 1 }],
+      placed: [],
+      submitted: [],
+      placedRows: [],
+    });
+    expect(await svc.getCompanyPlacements(actor, 'co-A')).toEqual([]);
   });
 });
