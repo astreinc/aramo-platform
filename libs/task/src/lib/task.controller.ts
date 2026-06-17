@@ -25,7 +25,13 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import type { CreateTaskRequestDto } from './dto/create-task-request.dto.js';
 import { isTaskOwnerType, type TaskOwnerType } from './dto/task-owner-type.js';
-import { isTaskStatus, type TaskStatus } from './dto/task-status.js';
+import { isTaskPriority, type TaskPriority } from './dto/task-priority.js';
+import {
+  isTaskStatus,
+  TASK_ACTIVE_STATUS_VALUES,
+  type TaskStatus,
+} from './dto/task-status.js';
+import { isTaskType, type TaskType } from './dto/task-type.js';
 import type { TaskView } from './dto/task.view.js';
 import type { UpdateTaskRequestDto } from './dto/update-task-request.dto.js';
 import {
@@ -35,6 +41,7 @@ import {
 import {
   isOwnerVisible,
   TaskRepository,
+  type TaskListFilters,
   type TaskVisibilityInputs,
 } from './task.repository.js';
 
@@ -64,9 +71,12 @@ export class TaskController {
   // GET /v1/tasks
   //   - ?owner_type&owner_id → by-entity (tasks on an entity; default all
   //     statuses).
-  //   - else                 → my-tasks (assignee = actor; default open),
-  //     due-date-sorted.
-  // ?status=open|done|all narrows (all = no filter).
+  //   - else                 → my-tasks (assignee = actor), due-date-sorted.
+  // Filters (all optional, all closed-set-guarded):
+  //   ?status = a single lifecycle value | 'active' (open/in_progress/waiting)
+  //             | 'all'. my-tasks defaults to 'active'; by-entity to 'all'.
+  //   ?type     = a single TaskType.
+  //   ?priority = a single TaskPriority.
   @Get()
   @HttpCode(HttpStatus.OK)
   @RequireScopes('task:read')
@@ -76,11 +86,14 @@ export class TaskController {
     @Query('owner_type') ownerType: string | undefined,
     @Query('owner_id') ownerId: string | undefined,
     @Query('status') statusQuery: string | undefined,
+    @Query('type') typeQuery: string | undefined,
+    @Query('priority') priorityQuery: string | undefined,
     @RequestId() requestId: string,
     @Req() req: Request,
   ): Promise<{ items: TaskView[] }> {
     const vis = await this.resolveVis(req);
-    const statusFilter = this.parseStatus(statusQuery, requestId);
+    const type = this.parseType(typeQuery, requestId);
+    const priority = this.parsePriority(priorityQuery, requestId);
 
     if (ownerType !== undefined || ownerId !== undefined) {
       if (ownerType === undefined || ownerId === undefined) {
@@ -103,18 +116,17 @@ export class TaskController {
         tenant_id: authContext.tenant_id,
         owner_type: ownerType as TaskOwnerType,
         owner_id: ownerId,
-        ...(statusFilter === undefined ? {} : { status: statusFilter }),
+        filters: this.buildFilters(statusQuery, 'all', type, priority, requestId),
         vis,
       });
       return { items };
     }
 
-    // my-tasks — default status 'open' when the caller doesn't specify.
-    const myStatus = statusQuery === undefined ? 'open' : statusFilter;
+    // my-tasks — default to the ACTIVE set when the caller doesn't specify.
     const items = await this.repo.listForAssignee({
       tenant_id: authContext.tenant_id,
       assignee_id: authContext.sub,
-      ...(myStatus === undefined ? {} : { status: myStatus }),
+      filters: this.buildFilters(statusQuery, 'active', type, priority, requestId),
       vis,
     });
     return { items };
@@ -177,6 +189,7 @@ export class TaskController {
         details: { field: 'owner_id' },
       });
     }
+    this.assertTypePriority(body.type, body.priority, requestId);
 
     // Create-time link-target assert (the engagement precedent) — 404 if the
     // owner entity is not visible to the actor (non-leak; never confirms the
@@ -224,6 +237,13 @@ export class TaskController {
         { requestId, details: { field: 'status' } },
       );
     }
+    // type/priority — closed-set-guarded (400). null is allowed (clears the
+    // nullable field); a non-null out-of-vocab value is rejected.
+    this.assertTypePriority(
+      body.type === null ? undefined : body.type,
+      body.priority === null ? undefined : body.priority,
+      requestId,
+    );
     // The task's owner must remain visible to mutate (404 otherwise). owner is
     // immutable (R6) — the DTO carries no owner fields by construction.
     const vis = await this.resolveVis(req);
@@ -287,20 +307,94 @@ export class TaskController {
     return { visibility, visible_requisition_ids, visible_contact_ids };
   }
 
-  private parseStatus(
+  // Resolve the {statuses,type,priority} filter triple. `defaultStatus` selects
+  // the fallback when ?status is omitted ('active' for my-tasks, 'all' for
+  // by-entity). 'all' → no status filter; 'active' → the non-terminal set; a
+  // single value → [that]. Out-of-vocab status → 422 (keeps parity with the
+  // existing owner_type/status validation surface).
+  private buildFilters(
     statusQuery: string | undefined,
+    defaultStatus: 'active' | 'all',
+    type: TaskType | undefined,
+    priority: TaskPriority | undefined,
     requestId: string,
-  ): TaskStatus | undefined {
-    if (statusQuery === undefined || statusQuery === 'all') return undefined;
-    if (!isTaskStatus(statusQuery)) {
+  ): TaskListFilters {
+    const effective = statusQuery ?? defaultStatus;
+    let statuses: readonly TaskStatus[] | undefined;
+    if (effective === 'all') {
+      statuses = undefined;
+    } else if (effective === 'active') {
+      statuses = TASK_ACTIVE_STATUS_VALUES;
+    } else if (isTaskStatus(effective)) {
+      statuses = [effective];
+    } else {
       throw new AramoError(
         'VALIDATION_ERROR',
-        `Invalid status filter '${statusQuery}' (expected open|done|all)`,
+        `Invalid status filter '${effective}' (expected a lifecycle value, 'active', or 'all')`,
         422,
-        { requestId, details: { status: statusQuery } },
+        { requestId, details: { status: effective } },
       );
     }
-    return statusQuery;
+    return {
+      ...(statuses === undefined ? {} : { statuses }),
+      ...(type === undefined ? {} : { type }),
+      ...(priority === undefined ? {} : { priority }),
+    };
+  }
+
+  // Body closed-set guard for type + priority (create + update) — 400 +
+  // details.field per the amendment. Undefined skips (PATCH-omitted / absent).
+  private assertTypePriority(
+    type: unknown,
+    priority: unknown,
+    requestId: string,
+  ): void {
+    if (type !== undefined && !isTaskType(type)) {
+      throw new AramoError('VALIDATION_ERROR', `Invalid type '${String(type)}'`, 400, {
+        requestId,
+        details: { field: 'type' },
+      });
+    }
+    if (priority !== undefined && !isTaskPriority(priority)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `Invalid priority '${String(priority)}'`,
+        400,
+        { requestId, details: { field: 'priority' } },
+      );
+    }
+  }
+
+  // Closed-set guards for the type/priority filter params — 400 + details.field
+  // per the Workspace-Fields amendment.
+  private parseType(
+    typeQuery: string | undefined,
+    requestId: string,
+  ): TaskType | undefined {
+    if (typeQuery === undefined) return undefined;
+    if (!isTaskType(typeQuery)) {
+      throw new AramoError('VALIDATION_ERROR', `Invalid type '${typeQuery}'`, 400, {
+        requestId,
+        details: { field: 'type' },
+      });
+    }
+    return typeQuery;
+  }
+
+  private parsePriority(
+    priorityQuery: string | undefined,
+    requestId: string,
+  ): TaskPriority | undefined {
+    if (priorityQuery === undefined) return undefined;
+    if (!isTaskPriority(priorityQuery)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `Invalid priority '${priorityQuery}'`,
+        400,
+        { requestId, details: { field: 'priority' } },
+      );
+    }
+    return priorityQuery;
   }
 
   private async assertAssignee(

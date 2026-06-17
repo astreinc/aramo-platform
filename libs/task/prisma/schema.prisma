@@ -30,11 +30,18 @@ datasource db {
   schemas  = ["task"]
 }
 
-// TaskStatus — the binary to-do lifecycle (Ruling R2: open/done; in_progress
-// is a follow-on if recruiters ask). String-backed closed set.
+// TaskStatus — the to-do lifecycle. EXPANDED at the Workspace-Fields amendment
+// (v1.0 LOCKED) from the original binary {open,done} to the 5-value lifecycle.
+// ACTIVE = open/in_progress/waiting; TERMINAL = done/cancelled. The migration
+// maps existing open→open, done→done (no data loss). Remains a Prisma enum
+// (the existing status representation; only type/priority/source are plain
+// String + guard).
 enum TaskStatus {
   open
+  in_progress
+  waiting
   done
+  cancelled
 
   @@schema("task")
 }
@@ -53,6 +60,18 @@ model Task {
   description String?
   due_date    DateTime?  @db.Timestamptz
   status      TaskStatus @default(open)
+
+  // Workspace fields (amendment v1.0 LOCKED) — plain String + app-layer
+  // closed-set guard (NO Prisma enum; the Talent stated-fields precedent).
+  //   - type     ∈ {call,email,follow_up,interview,screen,consent,admin}
+  //              (nullable — an untyped task is valid).
+  //   - priority ∈ {high,med,low} (nullable). R10-safe: an ordinal on a TASK,
+  //              not on a person.
+  //   - source   ∈ {manual,auto}, default 'manual'. 'auto' is RESERVED — never
+  //              written until the eventing substrate lands (the disabled seam).
+  type     String?
+  priority String?
+  source   String  @default("manual")
 
   // Assignee — a within-tenant identity.User (validated at the app layer
   // against the GET /v1/tenant/users roster; cross-tenant rejected). Nullable
@@ -74,6 +93,12 @@ model Task {
   // lookup (owner). Both lead with tenant_id.
   @@index([tenant_id, assignee_id, due_date])
   @@index([tenant_id, owner_type, owner_id])
+
+  // Workspace-field filter indexes (amendment §5) — btree on the filtered
+  // closed-set columns, tenant-led.
+  @@index([tenant_id, status])
+  @@index([tenant_id, type])
+  @@index([tenant_id, priority])
 
   @@schema("task")
 }

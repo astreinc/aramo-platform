@@ -47,6 +47,9 @@ function task(over: Partial<TaskView> = {}): TaskView {
     description: null,
     due_date: '2026-06-12T00:00:00.000Z',
     status: 'open',
+    type: null,
+    priority: null,
+    source: 'manual',
     assignee_id: null,
     created_by_user_id: 'u1',
     owner_type: 'talent_record',
@@ -56,6 +59,8 @@ function task(over: Partial<TaskView> = {}): TaskView {
     ...over,
   };
 }
+
+const NOW = new Date('2026-06-17T12:00:00Z');
 
 afterEach(() => vi.clearAllMocks());
 
@@ -102,17 +107,65 @@ describe('error-messages — the 422 assignee surface (Ruling 5)', () => {
 // ---------------------------------------------------------------------------
 // PROOF #1 — /tasks (MyTasksView) lists my-tasks (assignee=me).
 // ---------------------------------------------------------------------------
-describe('MyTasksView — my-tasks (Ruling 1)', () => {
-  it('fetches listMyTasks (default open) and renders rows', async () => {
-    vi.mocked(listMyTasks).mockResolvedValue({ items: [task({ title: 'Follow up' })] });
-    vi.mocked(probeTenantUsers).mockResolvedValue({ available: false, items: [] });
-    render(
+describe('MyTasksView — the rebuilt workspace page', () => {
+  function renderPage(scopes: readonly string[] = ['task:read', 'task:write']) {
+    return render(
       <MemoryRouter>
-        <MyTasksView sessionOverride={session(['task:read', 'task:write'])} />
+        <MyTasksView sessionOverride={session(scopes)} nowOverride={NOW} />
       </MemoryRouter>,
     );
-    await waitFor(() => expect(screen.getByText('Follow up')).toBeInTheDocument());
-    expect(vi.mocked(listMyTasks)).toHaveBeenCalledWith('open');
+  }
+
+  it('fetches the FULL set (status=all) and renders grouped rows + summary', async () => {
+    vi.mocked(listMyTasks).mockResolvedValue({
+      items: [
+        task({ id: 'a', title: 'Chase Vantage', due_date: '2026-06-15T00:00:00.000Z', type: 'follow_up', priority: 'high' }),
+        task({ id: 'b', title: 'Screen backend', due_date: '2026-06-18T00:00:00.000Z', type: 'screen', priority: 'med' }),
+      ],
+    });
+    vi.mocked(probeTenantUsers).mockResolvedValue({ available: false, items: [] });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Chase Vantage')).toBeInTheDocument());
+    expect(vi.mocked(listMyTasks)).toHaveBeenCalledWith('all');
+    // summary strip present; quick-add is a disabled seam (no fake ownerless create)
+    expect(screen.getByTestId('summary-overdue')).toBeInTheDocument();
+    expect(screen.getByTestId('quickadd-seam')).toBeInTheDocument();
+  });
+
+  it('switches to the Board view (by status)', async () => {
+    vi.mocked(listMyTasks).mockResolvedValue({ items: [task({ title: 'Card A', status: 'in_progress' })] });
+    vi.mocked(probeTenantUsers).mockResolvedValue({ available: false, items: [] });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Card A')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('view-board'));
+    expect(screen.getByTestId('tasks-board')).toBeInTheDocument();
+    expect(screen.getByTestId('board-card')).toBeInTheDocument();
+  });
+
+  it('selecting rows shows the bulk bar; Complete PATCHes each to done', async () => {
+    vi.mocked(listMyTasks).mockResolvedValue({
+      items: [task({ id: 'x', title: 'X' }), task({ id: 'y', title: 'Y' })],
+    });
+    vi.mocked(probeTenantUsers).mockResolvedValue({ available: false, items: [] });
+    vi.mocked(updateTask).mockResolvedValue(task());
+    renderPage();
+    await waitFor(() => expect(screen.getByText('X')).toBeInTheDocument());
+    const selects = screen.getAllByTestId('task-select');
+    fireEvent.click(selects[0]!);
+    fireEvent.click(selects[1]!);
+    expect(screen.getByTestId('bulk-complete')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('bulk-complete'));
+    await waitFor(() => expect(vi.mocked(updateTask)).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(updateTask)).toHaveBeenCalledWith('x', { status: 'done' });
+    expect(vi.mocked(updateTask)).toHaveBeenCalledWith('y', { status: 'done' });
+  });
+
+  it('read-only actor (task:read only) → no row controls, no bulk select', async () => {
+    vi.mocked(listMyTasks).mockResolvedValue({ items: [task({ title: 'RO' })] });
+    renderPage(['task:read']);
+    await waitFor(() => expect(screen.getByText('RO')).toBeInTheDocument());
+    expect(screen.queryByTestId('task-select')).toBeNull();
+    expect(screen.queryByTestId('task-toggle')).toBeNull();
   });
 });
 

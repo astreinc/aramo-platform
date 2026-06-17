@@ -1,8 +1,10 @@
+import { TYPE_LABELS } from './task-vocab';
 import type { TaskView } from './types';
 
-// Tasks FE — presentational task list (shared by the per-entity TasksPanel
-// and the /tasks MyTasksView). Per-row controls render ONLY when canWrite
-// (task:write) — a read-only actor sees tasks, no controls (Ruling 4).
+// Tasks FE — presentational task list for the per-entity TasksPanel (the /tasks
+// workspace has its own rich row). Per-row controls render ONLY when canWrite
+// (task:write) — a read-only actor sees tasks, no controls (Ruling 4). Shows
+// the workspace fields (type label + priority dot) when present.
 
 interface TaskListProps {
   readonly items: readonly TaskView[];
@@ -34,9 +36,19 @@ export function TaskList({
       {items.map((t) => (
         <li key={t.id} className="task-list__row" data-testid="task-row">
           <span className={`task-list__status task-list__status--${t.status}`}>
-            {t.status === 'done' ? '✓' : '○'}
+            {t.status === 'done' || t.status === 'cancelled' ? '✓' : '○'}
           </span>
+          {t.priority !== null ? (
+            <span
+              className={`rc-pdot rc-pdot--${t.priority}`}
+              title={`Priority: ${t.priority}`}
+              aria-label={`Priority ${t.priority}`}
+            />
+          ) : null}
           <span className="task-list__title">{t.title}</span>
+          {t.type !== null ? (
+            <span className="task-list__type"> · {TYPE_LABELS[t.type]}</span>
+          ) : null}
           <span className="task-list__due"> · {dueLabel(t.due_date)}</span>
           {t.assignee_id !== null ? (
             <span className="task-list__assignee"> · assigned</span>
