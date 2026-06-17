@@ -261,6 +261,16 @@ TIER2_EXCLUDES=(
   "libs/identity/prisma/seed.ts"
   "libs/identity/src/tests/seed.spec.ts"
   "libs/identity/src/tests/identity.integration.spec.ts"
+  # HK-A-vocab-debris: auditor/extract file legitimately quotes anti-vocabulary; governance-referenced, tracked for discoverability
+  "doc/ARAMO-CHARTER-EXTRACT.md"
+  # HK-A-vocab-debris: auditor/extract file legitimately quotes anti-vocabulary; governance-referenced, tracked for discoverability
+  "doc/_audit/ARAMO-SOURCING-SERVICE-ADR-DRAFT.md"
+  # HK-A-vocab-debris: auditor/extract file legitimately quotes anti-vocabulary; governance-referenced, tracked for discoverability
+  "doc/_audit/charter-code-drift.md"
+  # HK-A-vocab-debris: auditor/extract file legitimately quotes anti-vocabulary; governance-referenced, tracked for discoverability
+  "doc/_audit/charter-refusal-audit.md"
+  # HK-A-vocab-debris: auditor/extract file legitimately quotes anti-vocabulary; governance-referenced, tracked for discoverability
+  "doc/_audit/three-way-drift-check.md"
 )
 
 # =============================================================================
