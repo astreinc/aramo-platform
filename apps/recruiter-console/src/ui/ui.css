@@ -2464,6 +2464,20 @@
 .rc-dropzone__meta span { display: inline-flex; align-items: center; gap: 6px; }
 .rc-dropzone__meta svg { width: 13px; height: 13px; color: var(--ok); }
 .rc-dropwrap__manual { text-align: center; margin-top: 16px; font-size: 0.82rem; color: var(--muted); }
+/* Mockup parity: the manual-entry link is a borderless text link in the
+   medium brand blue (the native <button> chrome is reset — .rc-link-action
+   alone doesn't strip border/background — matches .manual-link button in the
+   prototype). */
+.rc-dropwrap__manual .rc-link-action {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--brand);
+  font-size: 0.82rem;
+}
+.rc-dropwrap__manual .rc-link-action:hover { color: var(--brand-strong); text-decoration: underline; }
+.rc-dropwrap__manual .rc-link-action:disabled { cursor: not-allowed; opacity: 0.55; }
 
 /* ── Parsing card ── */
 .rc-parsing {
