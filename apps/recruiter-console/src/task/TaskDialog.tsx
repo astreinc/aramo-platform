@@ -9,7 +9,17 @@ import {
 
 import { createTask, updateTask, type RosterState } from './task-api';
 import { isAssigneeError, taskMutateErrorMessage } from './error-messages';
-import type { TaskOwnerType, TaskStatus, TaskView } from './types';
+import { PRIORITY_LABELS, STATUS_LABELS, TYPE_LABELS } from './task-vocab';
+import {
+  TASK_PRIORITY_VALUES,
+  TASK_STATUS_VALUES,
+  TASK_TYPE_VALUES,
+  type TaskOwnerType,
+  type TaskPriority,
+  type TaskStatus,
+  type TaskType,
+  type TaskView,
+} from './types';
 
 // Tasks FE — the create/edit Dialog (Ruling 3). title + description? +
 // due_date (local date input) + status (local open/done toggle, edit only) +
@@ -48,6 +58,8 @@ export function TaskDialog({
     initial?.due_date != null ? initial.due_date.slice(0, 10) : '',
   );
   const [status, setStatus] = useState<TaskStatus>(initial?.status ?? 'open');
+  const [type, setType] = useState<TaskType | ''>(initial?.type ?? '');
+  const [priority, setPriority] = useState<TaskPriority | ''>(initial?.priority ?? '');
   const [assigneeId, setAssigneeId] = useState<string | null>(
     initial?.assignee_id ?? null,
   );
@@ -79,6 +91,8 @@ export function TaskDialog({
           ...(description.trim() === '' ? {} : { description: description.trim() }),
           ...(dueDate === '' ? {} : { due_date: dueDate }),
           ...(assigneeId === null ? {} : { assignee_id: assigneeId }),
+          ...(type === '' ? {} : { type }),
+          ...(priority === '' ? {} : { priority }),
         });
       } else {
         saved = await updateTask(initial!.id, {
@@ -87,6 +101,8 @@ export function TaskDialog({
           due_date: dueDate === '' ? null : dueDate,
           status,
           assignee_id: assigneeId,
+          type: type === '' ? null : type,
+          priority: priority === '' ? null : priority,
         });
       }
       onSaved(saved);
@@ -142,17 +158,47 @@ export function TaskDialog({
           onChange={(e) => setDueDate(e.target.value)}
         />
       </FormField>
+      <FormField label="Type">
+        <select
+          aria-label="Type"
+          value={type}
+          onChange={(e) => setType(e.target.value as TaskType | '')}
+        >
+          <option value="">No type</option>
+          {TASK_TYPE_VALUES.map((t) => (
+            <option key={t} value={t}>
+              {TYPE_LABELS[t]}
+            </option>
+          ))}
+        </select>
+      </FormField>
+      <FormField label="Priority">
+        <select
+          aria-label="Priority"
+          value={priority}
+          onChange={(e) => setPriority(e.target.value as TaskPriority | '')}
+        >
+          <option value="">No priority</option>
+          {TASK_PRIORITY_VALUES.map((p) => (
+            <option key={p} value={p}>
+              {PRIORITY_LABELS[p]}
+            </option>
+          ))}
+        </select>
+      </FormField>
       {mode === 'edit' ? (
         <FormField label="Status">
-          <label>
-            <input
-              type="checkbox"
-              aria-label="Done"
-              checked={status === 'done'}
-              onChange={(e) => setStatus(e.target.checked ? 'done' : 'open')}
-            />{' '}
-            Done
-          </label>
+          <select
+            aria-label="Status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value as TaskStatus)}
+          >
+            {TASK_STATUS_VALUES.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
         </FormField>
       ) : null}
       <FormField label="Assignee">

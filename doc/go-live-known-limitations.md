@@ -179,3 +179,67 @@ trust implication. Reviewed at each go-live gate.
 - **Close criteria (fast-follow):** add a simple verified-email/profile-URL
   duplicate-surfacing read and wire it into the rail (surface-only; never
   silent-merge).
+
+---
+
+## Tasks
+
+### Team / manager "pod oversight" scope: deferred (no team tier on this surface)
+- **Date:** 2026-06-17 · **Branch:** `feat/tasks-mockup-parity`
+- **Present:** the rebuilt Tasks workspace is **assignee-scoped** — it lists the
+  authenticated principal's own tasks (`assignee_id = me`, server-side via
+  GET /v1/tasks). The mockup's "Viewing as" persona selector and its per-persona
+  fabricated data are **removed entirely** (role differentiation is server-side
+  from the principal, not a client toggle).
+- **NOT present:** a **Lead/manager "pod/team oversight" view** — there is no
+  team-tier read that lets a lead see their pod's tasks. The Tasks backend
+  resolves visibility from the linked entity, not from a team membership, and no
+  team-scoped task read exists.
+- **Risk:** low — an absent affordance, not an unenforced guardrail. Each
+  principal sees exactly the tasks assigned to them; nothing is over-shown.
+- **Close criteria:** expose a team-scoped task read (the AUTHZ-D4a team-model
+  substrate exists) + an oversight scope, then add a "My team" pivot.
+
+### Auto-generated tasks (`source='auto'`): reserved seam (eventing deferred)
+- **Date:** 2026-06-17 · **Branch:** `feat/tasks-mockup-parity`
+- **Present:** the Task model carries `source ∈ {manual, auto}` (default
+  `manual`); the workspace renders a disabled **"Auto-generated tasks — coming
+  with Aramo Core"** reserved seam.
+- **NOT present:** any workflow→task auto-generation. `source='auto'` is RESERVED
+  and **never written** by any v1 write path — generating tasks from workflow
+  events (e.g. a stalled submittal) needs the eventing substrate, which is
+  deferred. Go-live is **manual tasks only**; no fabricated auto-tasks are shown.
+- **Risk:** low — the seam is disabled and disclosed; no fake auto-task data.
+- **Close criteria:** land the eventing substrate, then a workflow→task
+  generator that writes `source='auto'` tasks; light up the affordance.
+
+### /tasks-origin task creation (quick-add): reserved seam (owner-picker carry)
+- **Date:** 2026-06-17 · **Branch:** `feat/tasks-mockup-parity`
+- **Present:** the workspace's quick-add bar renders for parity (with the real
+  Type/Priority closed-set selects) as a **disabled reserved seam**, routing
+  creation to a record's Tasks tab. Real task create/edit — now including
+  **type, priority, and the expanded status lifecycle** — is wired on the
+  per-entity (talent / requisition / company / contact) Tasks tabs.
+- **NOT present:** creating a task **from the /tasks page** itself. A Task is
+  polymorphic on a **required owner** (`owner_type` + `owner_id`, NOT NULL); an
+  owner-less task is not backed, and the directive's backed-surface list does not
+  include /tasks-origin creation. Faking an owner-less create is explicitly not
+  done. (Carries the pre-existing owner-picker-create deferral.)
+- **Risk:** low — the seam is disabled and disclosed; creation works from the
+  backed owner-context path.
+- **Close criteria:** add an owner-picker (entity type + entity search across the
+  four targets) to a /tasks "New task" dialog, then enable the quick-add.
+
+### Bulk "Reassign": deferred (no assignable-users roster + assign scope)
+- **Date:** 2026-06-17 · **Branch:** `feat/tasks-mockup-parity`
+- **Present:** the bulk action bar ships **Complete** (status→done), **Reschedule**
+  (due→tomorrow) and **Snooze** (due +1 day) — all backed via PATCH /v1/tasks/:id.
+  Per-task reassignment remains available via the edit dialog's assignee picker
+  (when the admin-gated roster is readable; graceful fallback otherwise).
+- **NOT present:** **bulk Reassign** — rendered DISABLED with its reason. It needs
+  a recruiter-accessible assignable-users roster + an assign scope (the roster is
+  currently `tenant:admin`-gated; the per-task picker already falls back to
+  "unassigned" for non-admins).
+- **Risk:** low — disabled affordance, not faked.
+- **Close criteria:** expose a recruiter-accessible assignable-users endpoint +
+  an assign scope, then wire bulk reassign.
