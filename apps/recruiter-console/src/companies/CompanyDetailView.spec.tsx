@@ -201,9 +201,9 @@ describe('CompanyDetailView (account hub)', () => {
     await waitFor(() => expect(screen.getByText('40%')).toBeInTheDocument());
     // revenue band appears in the KPI strip + Overview "Key facts"
     expect(screen.getAllByText('$10M–$50M').length).toBeGreaterThan(0);
-    // rule-based briefing restates the real counts (no AI, no ordinal rating)
+    // briefing restates the real counts only (facts; no evaluative verdict)
     expect(screen.getByText(/2 open reqs/i)).toBeInTheDocument();
-    expect(screen.getByText(/4 submitted in pipeline/i)).toBeInTheDocument();
+    expect(screen.getByText(/4 submitted/i)).toBeInTheDocument();
   });
 
   it('renders the account team (owner + assigned members) on Overview', async () => {

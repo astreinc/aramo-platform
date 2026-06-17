@@ -307,37 +307,28 @@ export interface CompanyPlacementsResponse {
   readonly items: readonly CompanyPlacement[];
 }
 
-// Rule-based account briefing — a deterministic summary built from REAL fields +
-// metrics. NOT AI, not an ordinal rating (R10/ADR-0019 clean): it only restates
-// counts and last-contact, and suggests a transparent next move. Aramo Core adds
-// richer reasoning later via the ReservedSeam beneath it.
+// Account briefing — a deterministic restatement of REAL facts only (counts +
+// fill-rate + last-contact recency). It carries NO evaluative verdict on the
+// account: no health/at-risk/high-value/tier/quality judgement, and no
+// "suggested next move" — those would be an inferred judgment surface the
+// product does not own (R10; the rating disposition is DDR §11). Aramo Core
+// supplies any richer reasoning later, via the ReservedSeam beneath it.
 export function accountBriefing(
   c: CompanyView,
   metrics: CompanyMetrics | null,
   now: number = Date.now(),
 ): string {
-  const rel = relationshipLabel(c.status);
   const last = lastContactLabel(c, now);
   if (metrics === null) {
-    return `${c.name} is a ${rel.toLowerCase()} account. Last contact ${last}.`;
+    return `${c.name} — last contact ${last}.`;
   }
-  const bits: string[] = [];
-  bits.push(
+  const parts: string[] = [
     `${metrics.open_reqs} open req${metrics.open_reqs === 1 ? '' : 's'}`,
-  );
-  if (metrics.submitted > 0)
-    bits.push(`${metrics.submitted} submitted in pipeline`);
-  if (metrics.active_placements > 0)
-    bits.push(
-      `${metrics.active_placements} active placement${metrics.active_placements === 1 ? '' : 's'}`,
-    );
-  const head = `${c.name} has ${bits.join(', ')}.`;
-  const tail = isQuiet(c, now)
-    ? ` Last contact ${last} — suggested: a check-in to keep momentum.`
-    : metrics.submitted > 0
-      ? ` Suggested: chase the pending submittals.`
-      : ` Last contact ${last}.`;
-  return head + tail;
+    `${metrics.submitted} submitted`,
+    `${metrics.active_placements} active placement${metrics.active_placements === 1 ? '' : 's'}`,
+  ];
+  if (metrics.fill_rate !== null) parts.push(`${metrics.fill_rate}% fill rate`);
+  return `${c.name}: ${parts.join(' · ')}. Last contact ${last}.`;
 }
 
 // Segment count badges, derived from the server facets (stable; base-where).

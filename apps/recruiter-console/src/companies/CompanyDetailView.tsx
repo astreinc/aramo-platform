@@ -374,9 +374,10 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
         />
       </div>
 
-      {/* Rule-based briefing — deterministic, from real fields + metrics (no AI,
-          no ordinal rating; R10/ADR-0019 clean). The ReservedSeam beneath
-          reserves the richer Core reasoning. */}
+      {/* Account briefing — deterministic, facts only (counts / fill-rate /
+          last-contact). No evaluative verdict on the account (no health/tier/
+          quality judgement — R10; rating disposition DDR §11). The ReservedSeam
+          beneath reserves the richer Core reasoning. */}
       <div className="rc-brief">
         <div className="rc-brief__ic" aria-hidden="true">
           <Icons.IconBolt />
