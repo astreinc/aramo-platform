@@ -84,6 +84,7 @@ interface ExpandedFormState {
   client_tier: string;
   supplier_status: string;
   exclusivity: boolean;
+  off_limits: boolean;
   tags: string; // comma-separated input; split on submit
   general_email: string;
 }
@@ -190,6 +191,7 @@ const EMPTY_EXPANDED: ExpandedFormState = {
   client_tier: '',
   supplier_status: '',
   exclusivity: false,
+  off_limits: false,
   tags: '',
   general_email: '',
 };
@@ -258,6 +260,7 @@ function stateFromInitial(initial: CompanyView): FormState {
     client_tier: initial.client_tier ?? '',
     supplier_status: initial.supplier_status ?? '',
     exclusivity: initial.exclusivity,
+    off_limits: initial.off_limits,
     tags: initial.tags.join(', '),
     general_email: initial.general_email ?? '',
     // Commercial — absent from the view (omitted by the interceptor) for
@@ -326,6 +329,7 @@ function buildCreateBody(
   }
   if (state.is_hot) body['is_hot'] = true;
   if (state.exclusivity) body['exclusivity'] = true;
+  if (state.off_limits) body['off_limits'] = true;
   if (state.founded_year.trim() !== '') {
     const n = Number.parseInt(state.founded_year, 10);
     if (Number.isFinite(n)) body['founded_year'] = n;
@@ -370,6 +374,9 @@ function buildPatchBody(
   if (state.is_hot !== initial.is_hot) body['is_hot'] = state.is_hot;
   if (state.exclusivity !== initial.exclusivity) {
     body['exclusivity'] = state.exclusivity;
+  }
+  if (state.off_limits !== initial.off_limits) {
+    body['off_limits'] = state.off_limits;
   }
 
   const initialAsRecord = initial as unknown as Record<string, unknown>;
@@ -759,6 +766,12 @@ export function CompanyForm(props: CompanyFormProps) {
           </FormField>
           <FormField label="Exclusivity">
             <Switch checked={state.exclusivity} onCheckedChange={(c) => set('exclusivity', c)} aria-label="Exclusivity" />
+          </FormField>
+          <FormField
+            label="Off-limits"
+            helper="This client's own employees are excluded from sourcing."
+          >
+            <Switch checked={state.off_limits} onCheckedChange={(c) => set('off_limits', c)} aria-label="Off-limits" />
           </FormField>
         </fieldset>
       </details>

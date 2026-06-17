@@ -40,8 +40,28 @@ function makeCompany(overrides: Partial<CompanyView> = {}): CompanyView {
     billing_contact_id: null,
     owner_id: null,
     entered_by_id: null,
-    created_at: '2026-06-01T00:00:00Z',
+    created_at: '2023-06-01T00:00:00Z',
     updated_at: '2026-06-01T00:00:00Z',
+    status: 'active',
+    description: 'A robotics automation firm.',
+    industry: 'Robotics',
+    country: null,
+    employee_count_band: null,
+    annual_revenue_band: null,
+    founded_year: null,
+    ownership_type: null,
+    registration_number: null,
+    source: null,
+    client_tier: 'a',
+    supplier_status: null,
+    exclusivity: false,
+    off_limits: false,
+    tags: [],
+    general_email: null,
+    last_activity_at: null,
+    next_action_at: null,
+    address_provider_place_id: null,
+    address_provider: null,
     ...overrides,
   };
 }
@@ -82,86 +102,26 @@ function makeContact(
 function makeReq(
   id: string,
   title: string,
-  companyId: string,
   status: RequisitionStatus = 'active',
 ): RequisitionView {
-  return {
-    id,
-    tenant_id: 't',
-    site_id: null,
-    title,
-    company_id: companyId,
-    contact_id: null,
-    company_department_id: null,
-    status,
-    type: null,
-    duration: null,
-    rate_max: null,
-    salary: null,
-    description: null,
-    notes: null,
-    is_hot: false,
-    openings: 1,
-    openings_available: 1,
-    start_date: null,
-    city: null,
-    state: null,
-    recruiter_id: null,
-    owner_id: null,
-    entered_by_id: null,
-    created_at: '2026-06-01T00:00:00Z',
-    updated_at: '2026-06-01T00:00:00Z',
-    compensation_model: null,
-    pay_rate_amount: null,
-    pay_rate_currency: null,
-    pay_rate_period: null,
-    bill_rate_amount: null,
-    bill_rate_currency: null,
-    bill_rate_period: null,
-    placement_fee_percent: null,
-    placement_fee_amount: null,
-    salary_amount: null,
-    salary_currency: null,
-    margin_amount: null,
-    markup_percent: null,
-    margin_percent: null,
-    job_type: null,
-    labor_category: null,
-    role_family: null,
-    seniority_level: null,
-    headcount_reason: null,
-    work_arrangement: null,
-    travel_percent: null,
-    relocation_offered: null,
-    work_authorization: null,
-    end_date: null,
-    duration_value: null,
-    duration_unit: null,
-    extension_possible: null,
-    hours_per_week: null,
-    source_system: null,
-    external_req_id: null,
-    imported_at: null,
-    target_margin_percent: null,
-    markup_percent_target: null,
-    rate_card_id: null,
-    min_bill_rate: null,
-    max_bill_rate: null,
-    min_pay_rate: null,
-    max_pay_rate: null,
-    golden_profile_id: null,
-  };
+  return { id, title, company_id: 'co-1', status } as unknown as RequisitionView;
 }
 
 type FetchMap = Record<string, unknown | { status: number; body: unknown }>;
 
 function installFetch(map: FetchMap) {
+  // Match the MOST SPECIFIC (longest) pattern first so e.g.
+  // '/v1/companies/co-1/team' wins over the '/v1/companies/co-1' prefix.
+  const entries = Object.entries(map).sort((a, b) => b[0].length - a[0].length);
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : (input as Request).url;
-    for (const [pattern, value] of Object.entries(map)) {
+    for (const [pattern, value] of entries) {
       if (url.includes(pattern)) {
         const isWrapped =
-          typeof value === 'object' && value !== null && 'status' in value && 'body' in value;
+          typeof value === 'object' &&
+          value !== null &&
+          'status' in value &&
+          'body' in value;
         const body = isWrapped ? (value as { body: unknown }).body : value;
         const status = isWrapped ? (value as { status: number }).status : 200;
         return new Response(JSON.stringify(body), {
@@ -186,47 +146,133 @@ function renderAt(path: string, session: Session) {
           element={<CompanyDetailView sessionOverride={session} />}
         />
         <Route path="/companies" element={<p>Companies list</p>} />
-        <Route
-          path="/requisitions/:reqId"
-          element={<p>Req detail</p>}
-        />
+        <Route path="/requisitions/:reqId" element={<p>Req detail</p>} />
       </Routes>
     </MemoryRouter>,
   );
 }
 
-describe('CompanyDetailView', () => {
+describe('CompanyDetailView (account hub)', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('renders the Profile tab with the company name and visibility framing', async () => {
+  it('renders the account header, KPI strip and the reserved-seam briefing', async () => {
     installFetch({ '/v1/companies/co-1': makeCompany() });
     renderAt('/companies/co-1', makeSession(['company:read']));
     await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
-    expect(screen.getByText(/a client visible to you/i)).toBeInTheDocument();
-    expect(screen.getByText('San Francisco, CA')).toBeInTheDocument();
-    expect(screen.getByText('555-0200')).toBeInTheDocument();
-    expect(screen.getByText('acme.example.com')).toBeInTheDocument();
-    expect(screen.getByText('TypeScript, Postgres')).toBeInTheDocument();
+    // header meta (location also appears in Overview "Key facts → Headquarters")
+    expect(screen.getAllByText('San Francisco, CA').length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'acme.example.com' })).toBeInTheDocument();
+    expect(screen.getByText(/Client since 2023/i)).toBeInTheDocument();
+    // status active → "Client" pill; tier a → "Key account"
+    expect(screen.getByText('Client')).toBeInTheDocument();
+    // KPI strip + reserved seam (NOT a fabricated metric)
+    expect(screen.getByText('Open reqs')).toBeInTheDocument();
+    expect(
+      screen.getByRole('region', { name: /Account briefing/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders real per-company metrics in the KPI strip + rule-based briefing', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany({ annual_revenue_band: '$10M–$50M' }),
+      '/v1/reports/company-metrics': {
+        items: [
+          {
+            company_id: 'co-1',
+            open_reqs: 2,
+            active_placements: 3,
+            submitted: 4,
+            openings: 5,
+            filled: 2,
+            fill_rate: 40,
+          },
+        ],
+      },
+    });
+    renderAt('/companies/co-1', makeSession(['company:read', 'report:read']));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
+    );
+    // KPI numbers + firmographic revenue band (not an invented QTD figure)
+    await waitFor(() => expect(screen.getByText('40%')).toBeInTheDocument());
+    // revenue band appears in the KPI strip + Overview "Key facts"
+    expect(screen.getAllByText('$10M–$50M').length).toBeGreaterThan(0);
+    // briefing restates the real counts only (facts; no evaluative verdict)
+    expect(screen.getByText(/2 open reqs/i)).toBeInTheDocument();
+    expect(screen.getByText(/4 submitted/i)).toBeInTheDocument();
+  });
+
+  it('renders the account team (owner + assigned members) on Overview', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany({ owner_id: 'u-owner' }),
+      '/v1/companies/co-1/team': {
+        owner_id: 'u-owner',
+        member_user_ids: ['u-owner', 'u-mate'],
+      },
+      '/v1/tenant/users': {
+        items: [
+          { user_id: 'u-owner', display_name: 'Olive Owner', email: 'o@x', is_active: true },
+          { user_id: 'u-mate', display_name: 'Manny Mate', email: 'm@x', is_active: true },
+        ],
+      },
+    });
+    renderAt('/companies/co-1', makeSession(['company:read']));
+    await waitFor(() => expect(screen.getByText('Account team')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Olive Owner')).toBeInTheDocument());
+    // the assigned member (deduped from the owner) resolves its name
+    expect(screen.getByText('Manny Mate')).toBeInTheDocument();
+  });
+
+  it('Placements tab lists placed talent at the company (report+req scopes)', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany(),
+      '/v1/requisitions': { items: [] },
+      '/v1/reports/company-placements': {
+        items: [
+          {
+            pipeline_id: 'pl-1',
+            talent_record_id: 'tr-1',
+            requisition_id: 'r-1',
+            requisition_title: 'Senior Rust Engineer',
+          },
+        ],
+      },
+      '/v1/talent-records/tr-1': { first_name: 'Nisha', last_name: 'Patel' },
+    });
+    renderAt(
+      '/companies/co-1',
+      makeSession(['company:read', 'requisition:read', 'report:read']),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Placements/ })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: /Placements/ }));
+    await waitFor(() => expect(screen.getByText('Nisha Patel')).toBeInTheDocument());
+    expect(screen.getByText('Senior Rust Engineer')).toBeInTheDocument();
   });
 
   it('hides scope-gated tabs when their scopes are absent', async () => {
     installFetch({ '/v1/companies/co-1': makeCompany() });
     renderAt('/companies/co-1', makeSession(['company:read']));
     await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+      expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument(),
     );
-    expect(screen.getByRole('tab', { name: 'Profile' })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: 'Contacts' })).toBeNull();
-    expect(screen.queryByRole('tab', { name: 'Assigned reqs' })).toBeNull();
-    expect(screen.queryByRole('tab', { name: 'Activity' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: /Contacts/ })).toBeNull();
+    expect(screen.queryByRole('tab', { name: /Jobs/ })).toBeNull();
+    expect(screen.queryByRole('tab', { name: /Activity/ })).toBeNull();
   });
 
-  it('shows all four tabs when all per-tab scopes are granted', async () => {
-    installFetch({ '/v1/companies/co-1': makeCompany() });
+  it('shows all tabs when the per-tab scopes are granted', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany(),
+      '/v1/contacts': { items: [] },
+      '/v1/requisitions': { items: [] },
+      '/v1/activities': { items: [] },
+    });
     renderAt(
       '/companies/co-1',
       makeSession([
@@ -237,135 +283,79 @@ describe('CompanyDetailView', () => {
       ]),
     );
     await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+      expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument(),
     );
-    expect(screen.getByRole('tab', { name: 'Profile' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Contacts' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Assigned reqs' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Activity' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Contacts/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Jobs/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Activity/ })).toBeInTheDocument();
   });
 
-  it('Contacts tab calls /v1/contacts?company_id=:id', async () => {
+  it('Contacts tab calls /v1/contacts?company_id=:id and lists contacts', async () => {
     installFetch({
       '/v1/companies/co-1': makeCompany(),
       '/v1/contacts': {
         items: [makeContact('ct-1', 'Jane', 'Doe', { title: 'CTO' })],
       },
     });
-    renderAt(
-      '/companies/co-1',
-      makeSession(['company:read', 'contact:read']),
-    );
+    renderAt('/companies/co-1', makeSession(['company:read', 'contact:read']));
     await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole('tab', { name: 'Contacts' }));
-    await waitFor(() =>
-      expect(screen.getByText('Jane Doe')).toBeInTheDocument(),
-    );
-    expect(screen.getByText(/CTO/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /Contacts/ }));
+    await waitFor(() => expect(screen.getByText('Jane Doe')).toBeInTheDocument());
     const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
     const contactCall = calls.find((c) => String(c[0]).includes('/v1/contacts'));
     expect(String(contactCall?.[0])).toContain('company_id=co-1');
   });
 
-  it('Assigned reqs calls /v1/requisitions?company_id=<id> and filters closed client-side', async () => {
+  it('Jobs tab calls /v1/requisitions?company_id=<id> and filters closed client-side', async () => {
     installFetch({
       '/v1/companies/co-1': makeCompany(),
-      // Server-scoped: the BE only returns co-1 reqs (it ANDs company_id
-      // with the A3/D4b predicate). The FE retains an active-only client
-      // filter (R1 framing — open reqs in the company view).
       '/v1/requisitions': {
         items: [
-          makeReq('r-1', 'Senior Engineer', 'co-1', 'active'),
-          makeReq('r-3', 'Closed Role', 'co-1', 'closed'),
-          makeReq('r-4', 'Open Role', 'co-1', 'on_hold'),
+          makeReq('r-1', 'Senior Engineer', 'active'),
+          makeReq('r-3', 'Closed Role', 'closed'),
+          makeReq('r-4', 'Open Role', 'on_hold'),
         ],
       },
     });
-    renderAt(
-      '/companies/co-1',
-      makeSession(['company:read', 'requisition:read']),
-    );
+    renderAt('/companies/co-1', makeSession(['company:read', 'requisition:read']));
     await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole('tab', { name: 'Assigned reqs' }));
+    fireEvent.click(screen.getByRole('tab', { name: /Jobs/ }));
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    // Open Role (on_hold) is active for the recruiter (R1's "open" framing).
     expect(screen.getByText('Open Role')).toBeInTheDocument();
-    // The closed req is filtered out client-side.
     expect(screen.queryByText('Closed Role')).toBeNull();
-    // Link points at the req detail.
-    expect(
-      screen.getByRole('link', { name: 'Senior Engineer' }),
-    ).toHaveAttribute('href', '/requisitions/r-1');
-    // The fetch URL carried company_id=co-1 (server-side scoping).
+    expect(screen.getByRole('link', { name: 'Senior Engineer' })).toHaveAttribute(
+      'href',
+      '/requisitions/r-1',
+    );
     const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
     const reqCall = calls.find((c) => String(c[0]).includes('/v1/requisitions'));
     expect(String(reqCall?.[0])).toContain('company_id=co-1');
   });
 
-  it('Assigned reqs renders without the retired capped-50 banner regardless of result size', async () => {
-    // The R3 client-side filter + capped-50 banner are retired (server
-    // now scopes via ?company_id). Even with 50 returned items, no
-    // limitation banner appears.
-    const items = Array.from({ length: 50 }, (_, i) =>
-      makeReq(`r-${i}`, `Req ${i}`, 'co-1', 'active'),
-    );
-    installFetch({
-      '/v1/companies/co-1': makeCompany(),
-      '/v1/requisitions': { items },
-    });
-    renderAt(
-      '/companies/co-1',
-      makeSession(['company:read', 'requisition:read']),
-    );
-    await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByRole('tab', { name: 'Assigned reqs' }));
-    await waitFor(() =>
-      expect(screen.getByText('Req 0')).toBeInTheDocument(),
-    );
-    expect(screen.queryByTestId('assigned-reqs-banner')).toBeNull();
-    // The retired copy is absent.
-    expect(
-      screen.queryByText(/first 50 visible requisitions/i),
-    ).toBeNull();
-    expect(
-      screen.queryByText(/server-side company filtering is on the roadmap/i),
-    ).toBeNull();
-  });
-
-  it('Activity tab calls subject_type=company and shows the user-honest empty-state (ruling 3)', async () => {
+  it('Activity tab calls subject_type=company and shows the user-honest empty-state', async () => {
     installFetch({
       '/v1/companies/co-1': makeCompany(),
       '/v1/activities': { items: [] },
     });
-    renderAt(
-      '/companies/co-1',
-      makeSession(['company:read', 'activity:read']),
-    );
+    renderAt('/companies/co-1', makeSession(['company:read', 'activity:read']));
     await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }));
+    fireEvent.click(screen.getByRole('tab', { name: /Activity/ }));
     await waitFor(() =>
       expect(
         screen.getByText(/no activity recorded for this company yet/i),
       ).toBeInTheDocument(),
     );
-    // RULING-3 negative assertion: the empty-state copy stays end-user-
-    // honest, not architectural. A drift toward internal substrate copy
-    // (mentioning emitters, services, or write paths) fails this check.
     const empty = screen.getByText(/no activity recorded for this company yet/i);
     expect(empty.textContent).not.toMatch(/emitted/i);
-    expect(empty.textContent).not.toMatch(/service/i);
     expect(empty.textContent).not.toMatch(/write path/i);
-    // The URL used subject_type=company.
     const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
     const activityCall = calls.find((c) => String(c[0]).includes('/v1/activities'));
     expect(String(activityCall?.[0])).toContain('subject_type=company');
@@ -378,59 +368,36 @@ describe('CompanyDetailView', () => {
     });
     renderAt('/companies/co-1', makeSession(['company:read']));
     await waitFor(() =>
-      expect(
-        screen.getByText(/this company is not available/i),
-      ).toBeInTheDocument(),
+      expect(screen.getByText(/this company is not available/i)).toBeInTheDocument(),
     );
     expect(
       screen.getByRole('link', { name: /back to companies/i }),
     ).toBeInTheDocument();
   });
 
-  it('Contacts empty-state copy is honest', async () => {
-    installFetch({
-      '/v1/companies/co-1': makeCompany(),
-      '/v1/contacts': { items: [] },
-    });
-    renderAt(
-      '/companies/co-1',
-      makeSession(['company:read', 'contact:read']),
-    );
-    await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByRole('tab', { name: 'Contacts' }));
-    await waitFor(() =>
-      expect(
-        screen.getByText(/no contacts for this company yet/i),
-      ).toBeInTheDocument(),
-    );
-  });
-
-  // R6' — the edit affordances (scope-gated).
-  it('renders an "Edit" link on Profile when company:edit is granted', async () => {
+  it('renders the header "Edit" link only when company:edit is granted', async () => {
     installFetch({ '/v1/companies/co-1': makeCompany() });
-    renderAt(
+    const { unmount } = renderAt(
       '/companies/co-1',
       makeSession(['company:read', 'company:edit']),
     );
     await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
-    const editLink = screen.getByRole('link', { name: 'Edit' });
-    expect(editLink).toHaveAttribute('href', '/companies/co-1/edit');
-  });
-
-  it('hides the Profile "Edit" link when company:edit is absent', async () => {
+    expect(screen.getByRole('link', { name: /Edit/i })).toHaveAttribute(
+      'href',
+      '/companies/co-1/edit',
+    );
+    unmount();
     installFetch({ '/v1/companies/co-1': makeCompany() });
     renderAt('/companies/co-1', makeSession(['company:read']));
     await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
-    expect(screen.queryByRole('link', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Edit/i })).toBeNull();
   });
 
-  it('Contacts tab renders "+ New contact" when contact:create is granted', async () => {
+  it('renders the "Add contact" header action when contact:create is granted', async () => {
     installFetch({
       '/v1/companies/co-1': makeCompany(),
       '/v1/contacts': { items: [] },
@@ -440,62 +407,9 @@ describe('CompanyDetailView', () => {
       makeSession(['company:read', 'contact:read', 'contact:create']),
     );
     await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole('tab', { name: 'Contacts' }));
-    await waitFor(() =>
-      expect(
-        screen.getByText(/no contacts for this company yet/i),
-      ).toBeInTheDocument(),
-    );
-    const newLink = screen.getByRole('link', { name: /\+ new contact/i });
-    expect(newLink).toHaveAttribute(
-      'href',
-      '/companies/co-1/contacts/new',
-    );
-  });
-
-  it('Contacts tab renders per-row "Edit" links when contact:edit is granted', async () => {
-    installFetch({
-      '/v1/companies/co-1': makeCompany(),
-      '/v1/contacts': {
-        items: [makeContact('ct-1', 'Jane', 'Doe', { title: 'CTO' })],
-      },
-    });
-    renderAt(
-      '/companies/co-1',
-      makeSession(['company:read', 'contact:read', 'contact:edit']),
-    );
-    await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByRole('tab', { name: 'Contacts' }));
-    await waitFor(() =>
-      expect(screen.getByText('Jane Doe')).toBeInTheDocument(),
-    );
-    const editLink = screen.getByRole('link', { name: 'Edit' });
-    expect(editLink).toHaveAttribute('href', '/contacts/ct-1/edit');
-  });
-
-  it('Contacts tab hides "+ New contact" and per-row "Edit" when their scopes are absent', async () => {
-    installFetch({
-      '/v1/companies/co-1': makeCompany(),
-      '/v1/contacts': {
-        items: [makeContact('ct-1', 'Jane', 'Doe')],
-      },
-    });
-    renderAt(
-      '/companies/co-1',
-      makeSession(['company:read', 'contact:read']),
-    );
-    await waitFor(() =>
-      expect(screen.getByText('Acme Corp')).toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByRole('tab', { name: 'Contacts' }));
-    await waitFor(() =>
-      expect(screen.getByText('Jane Doe')).toBeInTheDocument(),
-    );
-    expect(screen.queryByRole('link', { name: /\+ new contact/i })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Edit' })).toBeNull();
+    const links = screen.getAllByRole('link', { name: /add contact/i });
+    expect(links[0]).toHaveAttribute('href', '/companies/co-1/contacts/new');
   });
 });

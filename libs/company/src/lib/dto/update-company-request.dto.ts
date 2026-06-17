@@ -35,6 +35,7 @@ export interface UpdateCompanyRequestDto {
   client_tier?: string | null;
   supplier_status?: string | null;
   exclusivity?: boolean;
+  off_limits?: boolean;
   tags?: string[];
   general_email?: string | null;
 

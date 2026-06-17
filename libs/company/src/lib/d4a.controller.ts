@@ -60,6 +60,24 @@ export class D4aCompanyController {
     return { items };
   }
 
+  // Phase 4 — the recruiter-readable account team (company:read). Returns the
+  // account owner + assigned-member user ids so the account hub can render the
+  // team card without the company:assign mechanism scope. Cross-tenant → 404.
+  @Get('companies/:companyId/team')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('company:read')
+  async getCompanyTeam(
+    @AuthContext() authContext: AuthContextType,
+    @Param('companyId') companyId: string,
+    @RequestId() requestId: string,
+  ): Promise<{ owner_id: string | null; member_user_ids: string[] }> {
+    return this.d4a.getTeamForCompany({
+      tenant_id: authContext.tenant_id,
+      company_id: companyId,
+      request_id: requestId,
+    });
+  }
+
   @Post('companies/:companyId/assignments')
   @HttpCode(HttpStatus.CREATED)
   @RequireScopes('company:assign')

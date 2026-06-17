@@ -1,6 +1,13 @@
 import { apiClient } from '@aramo/fe-foundation';
 
 import type {
+  CompanyMetrics,
+  CompanyMetricsResponse,
+  CompanyPlacementsResponse,
+  CompanySearchPage,
+  CompanyTeam,
+} from './company-workspace';
+import type {
   AddressAutocompleteResponse,
   AddressDetailsResponse,
   CompanyDepartmentListResponse,
@@ -24,6 +31,52 @@ import type {
 
 export async function listCompanies(): Promise<CompanyListResponse> {
   return apiClient.get<CompanyListResponse>('/v1/companies');
+}
+
+// Phase 2 — the server-side faceted page (GET /v1/companies?paged=true). Same
+// route + gate as the list (company:read). Returns {items, next_cursor, facets,
+// total}; the workspace builds `params` via buildCompanyQuery().
+export async function searchCompanies(
+  params: URLSearchParams,
+): Promise<CompanySearchPage> {
+  return apiClient.get<CompanySearchPage>(`/v1/companies?${params.toString()}`);
+}
+
+// Phase 3 — per-company metrics (open reqs / placements / submitted / fill-rate)
+// via GET /v1/reports/company-metrics?company_ids=… (report:read). Best-effort:
+// callers catch and degrade to "—" when the actor lacks report:read.
+export async function getCompanyMetrics(
+  companyIds: readonly string[],
+): Promise<CompanyMetricsResponse> {
+  if (companyIds.length === 0) return { items: [] };
+  const params = new URLSearchParams({ company_ids: companyIds.join(',') });
+  return apiClient.get<CompanyMetricsResponse>(
+    `/v1/reports/company-metrics?${params.toString()}`,
+  );
+}
+
+export async function getOneCompanyMetrics(
+  companyId: string,
+): Promise<CompanyMetrics | null> {
+  const res = await getCompanyMetrics([companyId]);
+  return res.items[0] ?? null;
+}
+
+// Phase 4 — the recruiter-readable account team (company:read) + the placed
+// pipelines at the company's reqs (report:read). Both best-effort.
+export async function getCompanyTeam(companyId: string): Promise<CompanyTeam> {
+  return apiClient.get<CompanyTeam>(
+    `/v1/companies/${encodeURIComponent(companyId)}/team`,
+  );
+}
+
+export async function getCompanyPlacements(
+  companyId: string,
+): Promise<CompanyPlacementsResponse> {
+  const params = new URLSearchParams({ company_id: companyId });
+  return apiClient.get<CompanyPlacementsResponse>(
+    `/v1/reports/company-placements?${params.toString()}`,
+  );
 }
 
 // R3 — the company DETAIL endpoint. Same D4b visibility semantics as

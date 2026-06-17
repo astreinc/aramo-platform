@@ -211,6 +211,37 @@ export class D4aCompanyService {
     });
   }
 
+  // Phase 4 — the recruiter-readable account team. company:read-gated (vs the
+  // company:assign-gated listAssignmentsForCompany), so a recruiter can SEE the
+  // owner + assigned members on the account hub without holding the assignment
+  // mechanism scope. Returns the account owner + the assigned user ids (the FE
+  // resolves names best-effort via the admin-gated roster probe). Cross-tenant
+  // :companyId → 404 (tenant-scoped precheck, existence-non-leak).
+  async getTeamForCompany(args: {
+    tenant_id: string;
+    company_id: string;
+    request_id: string;
+  }): Promise<{ owner_id: string | null; member_user_ids: string[] }> {
+    const company = await this.companyRepo.findById({
+      tenant_id: args.tenant_id,
+      id: args.company_id,
+    });
+    if (company === null) {
+      throw new AramoError('NOT_FOUND', 'Company not found in tenant', 404, {
+        requestId: args.request_id,
+        details: { company_id: args.company_id },
+      });
+    }
+    const rows = await this.assignments.findByCompany({
+      tenant_id: args.tenant_id,
+      company_id: args.company_id,
+    });
+    return {
+      owner_id: company.owner_id,
+      member_user_ids: rows.map((r) => r.user_id),
+    };
+  }
+
   // Settings S5-BE2 — list a team's client ownerships.
   //
   // READING A: scope-gated tenant-wide. The team:manage holder lists

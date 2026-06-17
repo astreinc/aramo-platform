@@ -93,6 +93,10 @@ model Company {
   client_tier     String?  // a|b|c
   supplier_status String?  // preferred|approved|exclusive|open
   exclusivity     Boolean  @default(false)
+  // Off-limits — the do-not-source flag: this client's own employees are
+  // excluded from sourcing working sets. Distinct from `exclusivity` (a
+  // supplier-relationship term). UN-GATED operational flag.
+  off_limits      Boolean  @default(false)
   tags            String[] @default([])
   // Contact completion.
   general_email String?

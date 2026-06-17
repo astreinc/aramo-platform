@@ -40,6 +40,7 @@ export interface CompanyView {
   client_tier: string | null;
   supplier_status: string | null;
   exclusivity: boolean;
+  off_limits: boolean;
   tags: string[];
   general_email: string | null;
   last_activity_at: string | null;

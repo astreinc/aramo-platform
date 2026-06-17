@@ -83,6 +83,10 @@ const COMPANY_ADDRESS_PLACE_REF = resolve(
   ROOT,
   'libs/company/prisma/migrations/20260611120000_add_company_address_place_ref/migration.sql',
 );
+const COMPANY_OFF_LIMITS = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql',
+);
 const COMPANY_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/company/prisma/migrations/20260603140100_add_import_batch_id_to_company/migration.sql',
@@ -195,6 +199,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         COMPANY_INIT,
         COMPANY_FIELD_EXPANSION,
         COMPANY_ADDRESS_PLACE_REF,
+        COMPANY_OFF_LIMITS,
         COMPANY_IMPORT_BACK_REF,
         COMPANY_D4A,
       ]) {

@@ -58,6 +58,42 @@ export interface PlacementCountReportView {
   includes_core_submittal_placements: false;
 }
 
+// CompanyMetricsView — per-company ATS operational rollup for the companies
+// surface (list columns / drawer / account-hub KPI strip). Composed across
+// company→requisition→pipeline via the cross-schema id-list pattern, scoped by
+// the actor's visibility. `active_placements` is the placed-pipeline count (the
+// A5b-1 terminal state — NOT a Core submittal placement). `fill_rate` is
+// requisition-derived (filled / openings), null when the company has no
+// openings. NO revenue here (no billing ledger; the FE shows the firmographic
+// annual_revenue_band instead).
+export interface CompanyMetricsView {
+  company_id: string;
+  open_reqs: number; // status active|on_hold
+  active_placements: number; // pipeline placed
+  submitted: number; // pipeline submitted|interviewing|offered
+  openings: number; // sum of req openings
+  filled: number; // sum of (openings - openings_available)
+  fill_rate: number | null; // percent 0-100, null when openings === 0
+}
+
+export interface CompanyMetricsReportView {
+  items: CompanyMetricsView[];
+}
+
+// CompanyPlacementView — a placed pipeline at one of the company's reqs (the
+// account-hub Placements tab). ATS-internal (placed pipeline), NOT a Core
+// submittal placement. Talent display name is resolved client-side.
+export interface CompanyPlacementView {
+  pipeline_id: string;
+  talent_record_id: string;
+  requisition_id: string;
+  requisition_title: string;
+}
+
+export interface CompanyPlacementsReportView {
+  items: CompanyPlacementView[];
+}
+
 // DashboardView — the composition payload for GET /v1/dashboard.
 // Bundles the ATS-internal metrics into a single response so a
 // recruiter UI doesn't have to N-round-trip on load.

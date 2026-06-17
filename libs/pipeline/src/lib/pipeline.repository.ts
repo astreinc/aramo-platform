@@ -630,6 +630,75 @@ export class PipelineRepository {
     }));
   }
 
+  // Per-company metrics — group pipeline counts by requisition_id for a status
+  // set, so the reporting service can fold them up to the company via the
+  // req→company map (cross-schema id-list pattern; pipeline.requisition_id is a
+  // logical ref). Empty id list short-circuits (groupBy on IN [] is wasteful).
+  async countByRequisition(args: {
+    tenant_id: string;
+    requisition_ids: readonly string[];
+    statuses: readonly PipelineStatus[];
+  }): Promise<Array<{ requisition_id: string; count: number }>> {
+    if (args.requisition_ids.length === 0 || args.statuses.length === 0) {
+      return [];
+    }
+    const rows = await this.prisma.pipeline.groupBy({
+      by: ['requisition_id'],
+      where: {
+        tenant_id: args.tenant_id,
+        requisition_id: { in: [...args.requisition_ids] },
+        status: { in: [...args.statuses] },
+      },
+      _count: { _all: true },
+    });
+    return rows.map((r) => ({
+      requisition_id: r.requisition_id as string,
+      count: r._count._all,
+    }));
+  }
+
+  // Per-company placements — list pipeline rows in a status set for a set of
+  // requisitions (reporting folds them to the company). Returns the minimal
+  // projection the placements surface needs. Empty id list short-circuits.
+  async listByRequisitionsAndStatus(args: {
+    tenant_id: string;
+    requisition_ids: readonly string[];
+    statuses: readonly PipelineStatus[];
+    limit?: number;
+  }): Promise<
+    Array<{
+      id: string;
+      talent_record_id: string;
+      requisition_id: string;
+      status: PipelineStatus;
+    }>
+  > {
+    if (args.requisition_ids.length === 0 || args.statuses.length === 0) {
+      return [];
+    }
+    const rows = await this.prisma.pipeline.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        requisition_id: { in: [...args.requisition_ids] },
+        status: { in: [...args.statuses] },
+      },
+      select: {
+        id: true,
+        talent_record_id: true,
+        requisition_id: true,
+        status: true,
+      },
+      orderBy: { updated_at: 'desc' },
+      take: Math.min(args.limit ?? 100, 500),
+    });
+    return rows.map((r) => ({
+      id: r.id as string,
+      talent_record_id: r.talent_record_id as string,
+      requisition_id: r.requisition_id as string,
+      status: r.status as PipelineStatus,
+    }));
+  }
+
   async listHistory(args: {
     tenant_id: string;
     pipeline_id: string;
