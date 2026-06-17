@@ -227,22 +227,126 @@ describe('Tasks proof — assignee validation (R5)', () => {
 // PROOF — list routing (my-tasks default open; by-entity).
 // ---------------------------------------------------------------------------
 describe('Tasks proof — list routing', () => {
-  it('no owner filter → my-tasks (assignee=actor, default status open)', async () => {
+  it('no owner filter → my-tasks (assignee=actor, default ACTIVE status-set)', async () => {
     const { ctl, repo } = makeController();
-    await ctl.list(makeAuth(['task:read']), undefined, undefined, undefined, 'rq-1', makeReq(scopedVis()));
+    await ctl.list(
+      makeAuth(['task:read']),
+      undefined, undefined, undefined, undefined, undefined,
+      'rq-1', makeReq(scopedVis()),
+    );
     expect(repo.listForAssignee).toHaveBeenCalledWith(
-      expect.objectContaining({ tenant_id: TENANT, assignee_id: ACTOR, status: 'open' }),
+      expect.objectContaining({
+        tenant_id: TENANT,
+        assignee_id: ACTOR,
+        filters: { statuses: ['open', 'in_progress', 'waiting'] },
+      }),
     );
     expect(repo.listForOwner).not.toHaveBeenCalled();
   });
 
-  it('owner_type+owner_id → by-entity list', async () => {
+  it('?status=all → my-tasks with no status filter', async () => {
     const { ctl, repo } = makeController();
-    await ctl.list(makeAuth(['task:read']), 'company', 'co-1', 'all', 'rq-1', makeReq(scopedVis()));
+    await ctl.list(
+      makeAuth(['task:read']),
+      undefined, undefined, 'all', undefined, undefined,
+      'rq-1', makeReq(scopedVis()),
+    );
+    expect(repo.listForAssignee).toHaveBeenCalledWith(
+      expect.objectContaining({ filters: {} }),
+    );
+  });
+
+  it('?type + ?priority → passed through as filters (closed-set)', async () => {
+    const { ctl, repo } = makeController();
+    await ctl.list(
+      makeAuth(['task:read']),
+      undefined, undefined, 'all', 'call', 'high',
+      'rq-1', makeReq(scopedVis()),
+    );
+    expect(repo.listForAssignee).toHaveBeenCalledWith(
+      expect.objectContaining({ filters: { type: 'call', priority: 'high' } }),
+    );
+  });
+
+  it('owner_type+owner_id → by-entity list (default all)', async () => {
+    const { ctl, repo } = makeController();
+    await ctl.list(
+      makeAuth(['task:read']),
+      'company', 'co-1', 'all', undefined, undefined,
+      'rq-1', makeReq(scopedVis()),
+    );
     expect(repo.listForOwner).toHaveBeenCalledWith(
       expect.objectContaining({ owner_type: 'company', owner_id: 'co-1' }),
     );
     expect(repo.listForAssignee).not.toHaveBeenCalled();
+  });
+
+  it('?type=bogus → 400 VALIDATION_ERROR details.field=type', async () => {
+    const { ctl } = makeController();
+    await expect(
+      ctl.list(
+        makeAuth(['task:read']),
+        undefined, undefined, undefined, 'bogus', undefined,
+        'rq-1', makeReq(scopedVis()),
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PROOF — workspace-field closed-set guards (amendment v1.0): create/update
+// reject out-of-vocab type/priority with 400 + details.field.
+// ---------------------------------------------------------------------------
+describe('Tasks proof — type/priority closed-set guard (amendment)', () => {
+  it('create with a bad type → 400, repo.create not called', async () => {
+    const { ctl, repo } = makeController();
+    await expect(
+      ctl.create(
+        makeAuth(['task:write']),
+        { title: 'X', owner_type: 'talent_record', owner_id: 'tal-1', type: 'phone' as never },
+        'rq-1',
+        makeReq(scopedVis()),
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('create with a bad priority → 400', async () => {
+    const { ctl } = makeController();
+    await expect(
+      ctl.create(
+        makeAuth(['task:write']),
+        { title: 'X', owner_type: 'talent_record', owner_id: 'tal-1', priority: 'urgent' as never },
+        'rq-1',
+        makeReq(scopedVis()),
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+  });
+
+  it('create with valid type+priority → repo.create receives them', async () => {
+    const { ctl, repo } = makeController();
+    await ctl.create(
+      makeAuth(['task:write']),
+      { title: 'X', owner_type: 'talent_record', owner_id: 'tal-1', type: 'consent', priority: 'med' },
+      'rq-1',
+      makeReq(scopedVis()),
+    );
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({ type: 'consent', priority: 'med' }),
+      }),
+    );
+  });
+
+  it('update to an expanded status (in_progress) is accepted; bad type → 400', async () => {
+    const { ctl, repo } = makeController();
+    await ctl.update(makeAuth(['task:write']), 't1', { status: 'in_progress' }, 'rq-1', makeReq(scopedVis()));
+    expect(repo.update).toHaveBeenCalledWith(
+      expect.objectContaining({ input: expect.objectContaining({ status: 'in_progress' }) }),
+    );
+    await expect(
+      ctl.update(makeAuth(['task:write']), 't1', { type: 'nope' as never }, 'rq-1', makeReq(scopedVis())),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
   });
 });
 

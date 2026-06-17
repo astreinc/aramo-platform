@@ -3,7 +3,10 @@ import type { VisibilityContextShape } from '@aramo/common';
 
 import type { CreateTaskRequestDto } from './dto/create-task-request.dto.js';
 import type { TaskOwnerType } from './dto/task-owner-type.js';
+import type { TaskPriority } from './dto/task-priority.js';
+import type { TaskSource } from './dto/task-source.js';
 import type { TaskStatus } from './dto/task-status.js';
+import type { TaskType } from './dto/task-type.js';
 import type { TaskView } from './dto/task.view.js';
 import type { UpdateTaskRequestDto } from './dto/update-task-request.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -30,6 +33,9 @@ interface TaskRow {
   description: string | null;
   due_date: Date | null;
   status: TaskStatus;
+  type: string | null;
+  priority: string | null;
+  source: string;
   assignee_id: string | null;
   created_by_user_id: string;
   owner_type: string;
@@ -46,6 +52,9 @@ function projectView(row: TaskRow): TaskView {
     description: row.description,
     due_date: row.due_date === null ? null : row.due_date.toISOString(),
     status: row.status,
+    type: row.type as TaskType | null,
+    priority: row.priority as TaskPriority | null,
+    source: row.source as TaskSource,
     assignee_id: row.assignee_id,
     created_by_user_id: row.created_by_user_id,
     owner_type: row.owner_type as TaskOwnerType,
@@ -53,6 +62,25 @@ function projectView(row: TaskRow): TaskView {
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
+}
+
+// Optional view-filters shared by the my-tasks + by-entity lists (the Tasks
+// workspace filters). status uses an IN-set ('active' / 'all' resolved by the
+// controller); type/priority are single closed-set values.
+export interface TaskListFilters {
+  statuses?: readonly TaskStatus[];
+  type?: TaskType;
+  priority?: TaskPriority;
+}
+
+function buildFilterWhere(f: TaskListFilters): Record<string, unknown> {
+  const where: Record<string, unknown> = {};
+  if (f.statuses !== undefined && f.statuses.length > 0) {
+    where['status'] = { in: [...f.statuses] };
+  }
+  if (f.type !== undefined) where['type'] = f.type;
+  if (f.priority !== undefined) where['priority'] = f.priority;
+  return where;
 }
 
 export interface TaskVisibilityInputs {
@@ -81,6 +109,10 @@ export class TaskRepository {
           args.input.due_date === undefined
             ? null
             : new Date(args.input.due_date),
+        type: args.input.type ?? null,
+        priority: args.input.priority ?? null,
+        // source defaults to 'manual' (the schema default) — 'auto' is reserved
+        // and never written by a v1 write path.
         assignee_id: args.input.assignee_id ?? null,
         created_by_user_id: args.created_by_user_id,
         owner_type: args.input.owner_type,
@@ -116,6 +148,8 @@ export class TaskRepository {
       data['due_date'] = i.due_date === null ? null : new Date(i.due_date);
     }
     if (i.status !== undefined) data['status'] = i.status;
+    if (i.type !== undefined) data['type'] = i.type;
+    if (i.priority !== undefined) data['priority'] = i.priority;
     if (i.assignee_id !== undefined) data['assignee_id'] = i.assignee_id;
     const row = await this.prisma.task.update({
       where: { id: args.id },
@@ -149,15 +183,15 @@ export class TaskRepository {
   async listForAssignee(args: {
     tenant_id: string;
     assignee_id: string;
-    status?: TaskStatus;
+    filters?: TaskListFilters;
     vis: TaskVisibilityInputs;
     limit?: number;
   }): Promise<TaskView[]> {
-    const limit = Math.min(args.limit ?? 50, 200);
+    const limit = Math.min(args.limit ?? 200, 500);
     const where: Record<string, unknown> = {
       tenant_id: args.tenant_id,
       assignee_id: args.assignee_id,
-      ...(args.status === undefined ? {} : { status: args.status }),
+      ...buildFilterWhere(args.filters ?? {}),
       ...buildTaskVisibilityWhere(args.vis),
     };
     const rows = await this.prisma.task.findMany({
@@ -174,16 +208,16 @@ export class TaskRepository {
     tenant_id: string;
     owner_type: TaskOwnerType;
     owner_id: string;
-    status?: TaskStatus;
+    filters?: TaskListFilters;
     vis: TaskVisibilityInputs;
     limit?: number;
   }): Promise<TaskView[]> {
-    const limit = Math.min(args.limit ?? 50, 200);
+    const limit = Math.min(args.limit ?? 200, 500);
     const where: Record<string, unknown> = {
       tenant_id: args.tenant_id,
       owner_type: args.owner_type,
       owner_id: args.owner_id,
-      ...(args.status === undefined ? {} : { status: args.status }),
+      ...buildFilterWhere(args.filters ?? {}),
       ...buildTaskVisibilityWhere(args.vis),
     };
     const rows = await this.prisma.task.findMany({

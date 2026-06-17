@@ -11,11 +11,15 @@ import type {
   UpdateTaskRequest,
 } from './types';
 
-// Tasks FE — the consumer of the Tasks backend (PR d9af697). The list
-// endpoints AND the linked-entity visibility server-side (the 4-resolver
-// backend); the FE renders what arrives — NO client-side filtering.
+// Tasks FE — the consumer of the Tasks backend. The list endpoints AND the
+// linked-entity visibility server-side (the 4-resolver backend). The Tasks
+// workspace fetches the assignee's full set once (status='all') and computes
+// its views/groups/summary/filters CLIENT-SIDE (the mockup's model) — the data
+// is real; only the view arithmetic is local. The BE additionally supports
+// server-side ?status/?type/?priority filters (the indexed columns).
 
-// GET /v1/tasks (my-tasks — assignee=actor, due-sorted, default status open).
+// GET /v1/tasks (my-tasks — assignee=actor, due-sorted; my-tasks defaults to
+// the ACTIVE status set, 'all' returns every lifecycle state).
 // `assignee_id=me` is the backend's self-list default; we pass it explicitly.
 export async function listMyTasks(
   status?: TaskStatus | 'all',
