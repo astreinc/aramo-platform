@@ -97,6 +97,37 @@ trust implication. Reviewed at each go-live gate.
   rows + tag/delete S3 objects), and build the ADR-0007 anonymization state
   machine. Until then, RTBF is a runbook-driven operator procedure.
 
+### Staging résumé bucket: app IAM principal bound; live real-PII on apply
+- **Date:** 2026-06-17 · **Branch:** `feat/staging-resume-bucket-iam`
+- **Present (authored, pending manual apply):** the `s3-resume-bucket` module
+  (private bucket + dedicated SSE-KMS CMK + versioning + scoped CORS +
+  lifecycle/orphan-sweep) was already defined; this branch adds the missing
+  **app-principal binding** (`iam-app-principal` module) — a least-privilege
+  IAM **user** with the bucket's emitted policy attached (PutObject / GetObject
+  / PutObjectTagging on the bucket + KMS GenerateDataKey / Decrypt on its CMK
+  ONLY — no `ListBucket`, no `DeleteObject`, no wildcard). CORS allows the real
+  staging origin (`https://staging.aramo.app`).
+- **On apply, this bucket holds real résumé PII** — the **RTBF obligation is in
+  force**: the manual-erasure runbook
+  [doc/runbooks/talent-rtbf-erasure.md](runbooks/talent-rtbf-erasure.md) is the
+  only path to honor a verified erasure (the app principal deliberately has **no
+  `DeleteObject`** — deletion is an operator action with elevated creds), and
+  because the bucket is **versioned**, erasure must delete **all object
+  versions**, exactly as the runbook specifies.
+- **NOT done in this PR (deliberate):** the `terraform apply` is **manual and
+  HALT-gated** — it requires real AWS creds (S3 + IAM + KMS write) in the apply
+  shell, which were absent here (`InvalidClientTokenId`), so apply was not run.
+  Access keys for the IAM user are generated **out-of-band into the secret
+  store** (never committed/Terraform-state) per the module README. Encryption-
+  at-rest (SSE-KMS) and lifecycle/orphan-sweep are part of the existing module
+  and active once applied.
+- **Risk:** none until applied; on apply, standard live-PII posture applies
+  (RTBF runbook is the operator control).
+- **Close criteria:** run the gated apply with real creds, generate + store the
+  principal's access key, verify the end-to-end round-trip (presign → browser
+  PUT → object lands → parse → create+attach), and migrate the principal from
+  an IAM user to an instance/task role when a compute platform lands in IaC.
+
 ### Consent capture: UI captured at create, grant deferred (Core-keying)
 - **Date:** 2026-06-17 · **Branch:** `feat/add-talent-rebuild-resume-s3`
 - **Present:** the Add-Talent flow captures the real 5-scope consent model
