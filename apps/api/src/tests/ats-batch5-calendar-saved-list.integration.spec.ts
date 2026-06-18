@@ -107,6 +107,10 @@ const CONTACT_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260603140100_add_import_batch_id_to_contact/migration.sql',
 );
+const CONTACT_LIST_SURFACE_FIELDS = resolve(
+  ROOT,
+  'libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql',
+);
 const REQUISITION_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql',
@@ -227,6 +231,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         COMPANY_IMPORT_BACK_REF,
         CONTACT_INIT,
         CONTACT_IMPORT_BACK_REF,
+        CONTACT_LIST_SURFACE_FIELDS,
         REQUISITION_INIT,
         REQUISITION_IMPORT_BACK_REF,
         REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS,

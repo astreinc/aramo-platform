@@ -6,7 +6,9 @@ import { CompanyCreateView } from './companies/CompanyCreateView';
 import { CompanyDetailView } from './companies/CompanyDetailView';
 import { CompanyEditView } from './companies/CompanyEditView';
 import { ContactCreateView } from './contacts/ContactCreateView';
+import { ContactDetailView } from './contacts/ContactDetailView';
 import { ContactEditView } from './contacts/ContactEditView';
+import { ContactsListView } from './contacts/ContactsListView';
 import { EngagementDetailView } from './engagement/EngagementDetailView';
 import { IndexRoute } from './dashboard/IndexRoute';
 import { LoginPage } from './routes/LoginPage';
@@ -207,6 +209,28 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <CompanyEditView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="contacts"
+                      element={
+                        <RouteGuard
+                          requireScope="contact:read"
+                          sessionStateOverride={state}
+                        >
+                          <ContactsListView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="contacts/:contactId"
+                      element={
+                        <RouteGuard
+                          requireScope="contact:read"
+                          sessionStateOverride={state}
+                        >
+                          <ContactDetailView />
                         </RouteGuard>
                       }
                     />

@@ -116,6 +116,14 @@ export interface ContactView {
   readonly entered_by_id: string | null;
   readonly created_at: string;
   readonly updated_at: string;
+  // Contact-spec amendment v1.0 — list/detail surface fields (hand-mirrored
+  // from libs/contact/src/lib/dto/contact.view.ts). relationship_role /
+  // preference are closed-vocab; last_activity_at + company_name are read-time
+  // enrichment (company_name resolved cross-schema on paged/detail reads).
+  readonly relationship_role: string | null;
+  readonly preference: string | null;
+  readonly last_activity_at: string | null;
+  readonly company_name: string | null;
 }
 
 export interface ContactListResponse {

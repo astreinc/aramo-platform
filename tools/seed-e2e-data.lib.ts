@@ -41,6 +41,14 @@ export interface ContactSpec {
   readonly first_name: string;
   readonly last_name: string;
   readonly email: string;
+  // Contact-spec amendment v1.0 — seed the list/detail surface so facets +
+  // recency populate. relationship_role / preference are closed-vocab; phone is
+  // needed for the cold-call queue; last_activity_days_ago seeds recency
+  // (resolved to an absolute last_activity_at by the live adapter).
+  readonly relationship_role?: string;
+  readonly preference?: string;
+  readonly phone_work?: string;
+  readonly last_activity_days_ago?: number;
 }
 export interface RequisitionSpec {
   readonly key: string;
@@ -109,8 +117,8 @@ export function buildSeedPlan(tag: string): SeedPlan {
     { key: 'co-b', name: `${tag} Cobalt Health Systems` },
   ];
   const contacts: ContactSpec[] = [
-    { key: 'ct-a', companyKey: 'co-a', first_name: 'Dana', last_name: 'Okonkwo', email: `${tag.toLowerCase().trim()}.dana@example.test` },
-    { key: 'ct-b', companyKey: 'co-b', first_name: 'Reed', last_name: 'Halloran', email: `${tag.toLowerCase().trim()}.reed@example.test` },
+    { key: 'ct-a', companyKey: 'co-a', first_name: 'Dana', last_name: 'Okonkwo', email: `${tag.toLowerCase().trim()}.dana@example.test`, relationship_role: 'decision_maker', preference: 'contactable', phone_work: '+1 (512) 555-0142', last_activity_days_ago: 1 },
+    { key: 'ct-b', companyKey: 'co-b', first_name: 'Reed', last_name: 'Halloran', email: `${tag.toLowerCase().trim()}.reed@example.test`, relationship_role: 'hiring_manager', preference: 'limited', phone_work: '+1 (617) 555-0119', last_activity_days_ago: 20 },
   ];
   const requisitions: RequisitionSpec[] = [
     { key: 'rq-1', title: `${tag} Backend Platform Engineer`, companyKey: 'co-a', contactKey: 'ct-a', external_req_id: `${tag}REQ-9001`, type: 'Contract-to-hire', city: 'Denver', state: 'CO', work_arrangement: 'remote', openings: 3, is_hot: true },
@@ -178,7 +186,7 @@ export interface SeedPorts {
   // Idempotency probe — has a tagged requisition already been seeded?
   hasTaggedRequisition(tenantId: string, externalReqIdPrefix: string): Promise<boolean>;
   createCompany(args: { tenantId: string; enteredById: string; name: string }): Promise<{ id: string }>;
-  createContact(args: { tenantId: string; enteredById: string; companyId: string; first_name: string; last_name: string; email: string }): Promise<{ id: string }>;
+  createContact(args: { tenantId: string; enteredById: string; companyId: string; first_name: string; last_name: string; email: string; relationship_role?: string; preference?: string; phone_work?: string; last_activity_days_ago?: number }): Promise<{ id: string }>;
   createRequisition(args: { tenantId: string; enteredById: string; recruiterUserId: string; spec: RequisitionSpec; companyId: string; contactId: string }): Promise<{ id: string }>;
   assignRequisition(args: { tenantId: string; requisitionId: string; userId: string }): Promise<void>;
   createTalent(args: { tenantId: string; enteredById: string; ownerId: string; spec: TalentSpec }): Promise<{ id: string }>;
@@ -231,6 +239,10 @@ export async function seed(
       first_name: ct.first_name,
       last_name: ct.last_name,
       email: ct.email,
+      ...(ct.relationship_role === undefined ? {} : { relationship_role: ct.relationship_role }),
+      ...(ct.preference === undefined ? {} : { preference: ct.preference }),
+      ...(ct.phone_work === undefined ? {} : { phone_work: ct.phone_work }),
+      ...(ct.last_activity_days_ago === undefined ? {} : { last_activity_days_ago: ct.last_activity_days_ago }),
     });
     contactId.set(ct.key, id);
   }

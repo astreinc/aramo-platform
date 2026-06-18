@@ -23,6 +23,7 @@ import {
 } from '../ui';
 import {
   IconCompanies,
+  IconContacts,
   IconDesk,
   IconLogout,
   IconRequisitions,
@@ -41,8 +42,8 @@ import { BreadcrumbProvider, useBreadcrumbEntity } from './breadcrumb';
 // Shell — same POST /logout best-effort → redirect-to-login contract).
 //
 // Nav reconciled to canonical vocab (F2) and to routes that actually exist.
-// "Contacts" and "Activity" from the mockup have no list/route yet → carried
-// (see the 2A report / DDR §12), not faked as broken links.
+// "Contacts" now has a full list/detail surface (Contacts page) and is wired.
+// "Activity" from the mockup still has no standalone route → carried.
 
 interface NavItem {
   readonly to: string;
@@ -58,6 +59,7 @@ const PRIMARY_NAV: readonly NavItem[] = [
   { to: '/requisitions', label: 'Requisitions', icon: <IconRequisitions />, scope: 'requisition:read' },
   { to: '/talent', label: 'Talent', icon: <IconTalent />, scope: 'talent:read' },
   { to: '/companies', label: 'Companies', icon: <IconCompanies />, scope: 'company:read' },
+  { to: '/contacts', label: 'Contacts', icon: <IconContacts />, scope: 'contact:read' },
   // Search is always-visible (any-of-4 search scopes; the view gates per
   // section) — mirrors the existing R-NAV ruling.
   { to: '/search', label: 'Search', icon: <IconSearch /> },

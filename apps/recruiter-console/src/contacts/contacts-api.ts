@@ -2,6 +2,7 @@ import { apiClient } from '@aramo/fe-foundation';
 
 import type { ContactView } from '../companies/types';
 
+import type { ContactSearchPage } from './contact-workspace';
 import type {
   CreateContactRequest,
   UpdateContactRequest,
@@ -22,6 +23,17 @@ export async function getContact(id: string): Promise<ContactView> {
   return apiClient.get<ContactView>(
     `/v1/contacts/${encodeURIComponent(id)}`,
   );
+}
+
+// Contact-spec amendment v1.0 — the server-side faceted page (GET /v1/contacts?
+// paged=true). Same route + gate as the list (contact:read). Returns {items,
+// next_cursor, facets, total}; the workspace builds `params` via
+// buildContactQuery(). "My contacts" (scope=mine) is enforced SERVER-SIDE via an
+// owner_id predicate derived from the JWT — never a client filter.
+export async function searchContacts(
+  params: URLSearchParams,
+): Promise<ContactSearchPage> {
+  return apiClient.get<ContactSearchPage>(`/v1/contacts?${params.toString()}`);
 }
 
 export async function createContact(

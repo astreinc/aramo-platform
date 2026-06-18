@@ -454,6 +454,26 @@ export class CompanyRepository {
     return (rows as CompanyRow[]).map(projectView);
   }
 
+  // Batch name resolution for cross-schema enrichment (e.g. the contact list
+  // surfaces each contact's company display name from contact.company_id). One
+  // set-based query over the id set, tenant-scoped — never per-row. Returns
+  // company_id → name; ids not resolvable in-tenant are simply absent.
+  async findNamesByIds(args: {
+    tenant_id: string;
+    ids: readonly string[];
+  }): Promise<Map<string, string>> {
+    if (args.ids.length === 0) return new Map();
+    const rows = await this.prisma.company.findMany({
+      where: { tenant_id: args.tenant_id, id: { in: [...args.ids] } },
+      select: { id: true, name: true },
+    });
+    const out = new Map<string, string>();
+    for (const r of rows as Array<{ id: string; name: string }>) {
+      out.set(r.id, r.name);
+    }
+    return out;
+  }
+
   // AUTHZ-D4b — visibility-scoped read paths. The cascade applies
   // `id IN visibility.visible_client_ids` (or unrestricted when
   // see_all_company). All queries are query-layer (DDR D6).

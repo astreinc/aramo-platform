@@ -97,6 +97,10 @@ const CONTACT_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260603140100_add_import_batch_id_to_contact/migration.sql',
 );
+const CONTACT_LIST_SURFACE_FIELDS = resolve(
+  ROOT,
+  'libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-ats-batch1-gating-spec';
@@ -190,6 +194,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         CONTACT_INIT,
         COMPANY_IMPORT_BACK_REF,
         CONTACT_IMPORT_BACK_REF,
+        CONTACT_LIST_SURFACE_FIELDS,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }

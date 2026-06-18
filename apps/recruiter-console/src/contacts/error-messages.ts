@@ -13,6 +13,15 @@ function fieldFromError(error: ApiError): string | undefined {
   return det?.field;
 }
 
+export function listErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 403) {
+      return 'You do not have permission to view contacts.';
+    }
+  }
+  return 'Contacts could not be loaded.';
+}
+
 export function detailErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 403) {

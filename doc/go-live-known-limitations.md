@@ -243,3 +243,90 @@ trust implication. Reviewed at each go-live gate.
 - **Risk:** low — disabled affordance, not faked.
 - **Close criteria:** expose a recruiter-accessible assignable-users endpoint +
   an assign scope, then wire bulk reassign.
+
+---
+
+## Contacts
+
+The Contacts page (list + detail) is a backend build (Contact-spec amendment
+v1.0 added `relationship_role`, `preference`, `last_activity_at`) plus a wired
+FE rebuild. The list pages server-side (`?paged=true` keyset + facets + total);
+"My contacts" is a SERVER-ENFORCED `owner_id` predicate (the corrected pattern,
+not a client filter). The following are deliberate gaps.
+
+### "Team" scope tab: deferred (no team-of-contacts signal)
+- **Date:** 2026-06-18 · **Branch:** `feat/contacts-mockup-parity`
+- **Present:** the scope control ships **My contacts / All** — both real (My =
+  server `owner_id` predicate; All = tenant-scoped within D4b visibility).
+- **NOT present:** the mockup's **Team** scope. Only `owner_id` is modelled on a
+  contact; there is no team-of-contacts signal to back a "Team" view. Rendered
+  by omission (no faked broken tab), consistent with the Companies page.
+- **Risk:** low — no fabricated scope.
+- **Close criteria:** a team→contact visibility signal (e.g. via the D4a team
+  models), then a Team scope that resolves it server-side.
+
+### Bulk "Add to list": deferred (saved-list scope carry)
+- **Date:** 2026-06-18 · **Branch:** `feat/contacts-mockup-parity`
+- **Present:** the bulk bar ships **Assign to me** (PATCH /v1/contacts/:id
+  `{ owner_id }`, `contact:edit`). "Add to list" is rendered **DISABLED** with its
+  reason; export is a permanent disabled note (consent moat).
+- **NOT present:** saved-list membership — recruiters hold no saved-list scope.
+- **Risk:** low — disabled affordance, not faked.
+- **Close criteria:** grant a recruiter saved-list scope + a list-membership
+  write path, then enable "Add to list".
+
+### Owner picker beyond "Assign to me": deferred (assignable-users carry)
+- **Date:** 2026-06-18 · **Branch:** `feat/contacts-mockup-parity`
+- **Present:** the ONE backed reassignment is **Assign to me** (owner ← acting
+  recruiter). Owner names render via the admin-gated tenant-users probe (graceful
+  403 fallback to "—").
+- **NOT present:** assigning to **another** user (no recruiter-accessible
+  assignable-users roster + assign scope — the recurring carry).
+- **Risk:** low.
+- **Close criteria:** the recruiter-accessible assignable-users endpoint + assign
+  scope (shared with the Tasks/Companies carry), then an owner picker.
+
+### Cold-call list: BUILT REAL (not a seam)
+- **Date:** 2026-06-18 · **Branch:** `feat/contacts-mockup-parity`
+- **Present:** the **Cold-call list** mode is a REAL server filter+sort —
+  contactable (`preference != do_not_contact`, null = contactable) AND a non-empty
+  work phone, ordered by `last_activity_at` ascending (never-contacted first). The
+  amendment added `last_activity_at` precisely so this is not a seam. Do-not-contact
+  records are excluded server-side.
+- **NOT present:** any sourcing/sequence AUTOMATION — it is a CRM queue (sort over
+  existing data), not a dialer or sequence engine.
+- **Risk:** low.
+
+### `contact.last_activity_at`: read-model column, write-back deferred
+- **Date:** 2026-06-18 · **Branch:** `feat/contacts-mockup-parity`
+- **Present:** `last_activity_at` is a denormalized recency column (SAME pattern as
+  `company.last_activity_at`), seeded so the cold-call queue + "going quiet 14d+"
+  facet demonstrate, and used as a REAL server sort/filter.
+- **NOT present:** an automatic write-back — logging a contact activity does NOT
+  yet update `last_activity_at` (mirrors Company; "wired later"). Runtime contacts
+  without seeded recency read as "No contact" (sorted first in the cold-call queue).
+- **Risk:** low — honest null display; no fabricated recency.
+- **Close criteria:** wire the activity-enrichment path (groupBy over
+  `subject_type='contact'`, like the talent `findLastActivityForTalentIds`) to
+  maintain the column on activity writes.
+
+### Per-contact "open reqs" / "Hiring for": omitted (cross-schema edge deferred)
+- **Date:** 2026-06-18 · **Branch:** `feat/contacts-mockup-parity`
+- **Present:** the detail surfaces real fields only (role, company, communication,
+  recency, account team).
+- **NOT present:** the mockup's per-contact open-req count + "Hiring for" list.
+  Resolving requisitions-by-contact would add a new `contact → requisition`
+  cross-schema read edge (contact currently imports only `@aramo/company`); out of
+  scope to avoid edge churn. NOT faked.
+- **Risk:** low — no fabricated req counts.
+- **Close criteria:** a requisitions-by-contact read (own edge or composed in
+  apps/api), then surface the count + list.
+
+### Mockup affordances with no backing field: omitted
+- **Date:** 2026-06-18 · **Branch:** `feat/contacts-mockup-parity`
+- **Omitted (no Contact field):** the **"Primary contact"** flag and the
+  **Department** facet — neither is a backend column; rendered by omission, not
+  faked. Talent-pipeline **stage pills** from the mockup are CUT (a contact is
+  not in a talent pipeline). The list **row→detail navigation** replaces the
+  mockup's preview drawer (the drawer is a non-essential parity gap, deferred).
+- **Risk:** low.

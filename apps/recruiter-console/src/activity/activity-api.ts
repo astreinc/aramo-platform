@@ -12,7 +12,7 @@ import type {
 // CreateNoteRequest stays narrower (R1's typed FE union) — only the
 // read signature widens.
 export async function listActivities(
-  subjectType: 'requisition' | 'pipeline' | 'talent_record' | 'company',
+  subjectType: 'requisition' | 'pipeline' | 'talent_record' | 'company' | 'contact',
   subjectId: string,
 ): Promise<ActivityListResponse> {
   const params = new URLSearchParams({
