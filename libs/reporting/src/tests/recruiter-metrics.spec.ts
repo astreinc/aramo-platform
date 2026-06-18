@@ -16,6 +16,7 @@ function makeService(opts: {
     status_to: string;
     changed_at: Date;
   }>;
+  settingRow?: { value: unknown } | null;
 }) {
   const requisitionRepository = {
     listForActor: vi.fn().mockResolvedValue(opts.reqs),
@@ -27,6 +28,9 @@ function makeService(opts: {
         opts.transitions.filter((t) => args.statuses_to.includes(t.status_to)),
     ),
   };
+  const tenantSettingRepository = {
+    findOne: vi.fn().mockResolvedValue(opts.settingRow ?? null),
+  };
   const stub = {} as never;
   const svc = new ReportingService(
     stub, // company
@@ -37,8 +41,9 @@ function makeService(opts: {
     stub, // activity
     requisitionRepository as never,
     pipelineRepository as never,
+    tenantSettingRepository as never,
   );
-  return { svc, requisitionRepository, pipelineRepository };
+  return { svc, requisitionRepository, pipelineRepository, tenantSettingRepository };
 }
 
 const actor = {
@@ -114,5 +119,39 @@ describe('ReportingService.getRecruiterMetrics', () => {
     expect(byKey['avg_time_to_submit'].value).toBeNull();
     expect(byKey['submittals_weekly'].value).toBe(0);
     expect(byKey['submittals_weekly'].goal).toBeNull();
+  });
+});
+
+describe('ReportingService.getRecruiterGoals', () => {
+  const base = { reqs: [], pipelines: [], transitions: [] };
+
+  it('falls back to the registry default when no tenant override is set', async () => {
+    const { svc } = makeService({ ...base, settingRow: null });
+    const goals = await svc.getRecruiterGoals(TENANT, 'u-1');
+    // The KNOWN_SETTINGS['metrics.goals'] default ships real targets.
+    expect(goals.submittals_weekly).toBe(10);
+    expect(goals.placements_monthly).toBe(3);
+    // avg-time has no count target.
+    expect(goals.avg_time_to_submit).toBeUndefined();
+  });
+
+  it('uses a valid tenant override and drops keys the FE does not know', async () => {
+    const { svc } = makeService({
+      ...base,
+      settingRow: { value: { submittals_weekly: 15, bogus_key: 99 } },
+    });
+    const goals = await svc.getRecruiterGoals(TENANT, 'u-1');
+    expect(goals.submittals_weekly).toBe(15); // override applied
+    expect('bogus_key' in goals).toBe(false); // unknown key dropped
+    expect(goals.placements_monthly).toBeUndefined(); // not in this override
+  });
+
+  it('rejects a malformed override (a non-positive value) and uses the default', async () => {
+    const { svc } = makeService({
+      ...base,
+      settingRow: { value: { submittals_weekly: 0 } }, // invalid (≤ 0)
+    });
+    const goals = await svc.getRecruiterGoals(TENANT, 'u-1');
+    expect(goals.submittals_weekly).toBe(10); // registry default
   });
 });

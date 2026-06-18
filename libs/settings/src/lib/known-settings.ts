@@ -131,6 +131,23 @@ export function isBoolean(value: unknown): value is boolean {
   return typeof value === 'boolean';
 }
 
+// metrics.goals — the tenant-default KPI targets for the My Desk goal-progress
+// bars. A flat map of metric-key → positive target (e.g. submittals/week). The
+// keys are validated loosely here (libs/settings is a leaf — it must not import
+// @aramo/reporting's RecruiterMetricKey union, which would form a cycle); the
+// reporting service picks out the keys it knows. Every value must be a finite
+// positive number.
+export type MetricGoalMap = Record<string, number>;
+
+export function isMetricGoalMap(value: unknown): value is MetricGoalMap {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  return Object.values(value as Record<string, unknown>).every(
+    (n) => typeof n === 'number' && Number.isFinite(n) && n > 0,
+  );
+}
+
 // The closed-set registry. S2 lights up the first key; S3+ register
 // additional keys here with NO migration (the pattern-B win).
 //
@@ -146,6 +163,20 @@ export const KNOWN_SETTINGS = {
     key: 'audit.financials_enabled',
     default: false,
     validate: isBoolean,
+  },
+  // Tenant-default KPI targets (My Desk goal-progress bars). The out-of-box
+  // default ships real targets so the bars render for every tenant; a tenant
+  // overrides via the existing S2 PUT /v1/tenant/settings/:key path (no new
+  // endpoint, no migration — the pattern-B win). avg_time_to_submit has no
+  // count-target (a ceiling, not an accumulation — the FE omits its pace bar).
+  'metrics.goals': {
+    key: 'metrics.goals',
+    default: {
+      submittals_weekly: 10,
+      interviews_weekly: 6,
+      placements_monthly: 3,
+    } as MetricGoalMap,
+    validate: isMetricGoalMap,
   },
 } as const satisfies Record<string, SettingDefinition<unknown>>;
 

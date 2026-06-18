@@ -35,6 +35,7 @@ function makeService(opts: {
     stub, // activity
     requisitionRepository as never,
     pipelineRepository as never,
+    stub, // tenantSettingRepository (unused by company-metrics)
   );
   return { svc, requisitionRepository, pipelineRepository };
 }

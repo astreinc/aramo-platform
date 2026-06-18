@@ -7,6 +7,11 @@ import { ContactRepository } from '@aramo/contact';
 import { PipelineRepository } from '@aramo/pipeline';
 import { RequisitionRepository } from '@aramo/requisition';
 import { SavedListRepository } from '@aramo/saved-list';
+import {
+  KNOWN_SETTINGS,
+  TenantSettingRepository,
+  isMetricGoalMap,
+} from '@aramo/settings';
 import { TalentRecordRepository } from '@aramo/talent-record';
 
 import type {
@@ -79,6 +84,15 @@ interface ActorContext {
   // the requisition / pipeline scoping.
   visibility: VisibilityContextShape;
 }
+
+// The four desk KPI keys (used to pick the known goals out of the loose
+// settings map). Mirrors RecruiterMetricKey.
+const RECRUITER_METRIC_KEYS: readonly RecruiterMetricKey[] = [
+  'submittals_weekly',
+  'interviews_weekly',
+  'placements_monthly',
+  'avg_time_to_submit',
+];
 
 // --- recruiter-metrics windowing (pure helpers; `now` is injected so the
 // service stays deterministic under test) ---
@@ -196,6 +210,7 @@ export class ReportingService {
     private readonly activityRepository: ActivityRepository,
     private readonly requisitionRepository: RequisitionRepository,
     private readonly pipelineRepository: PipelineRepository,
+    private readonly tenantSettingRepository: TenantSettingRepository,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -412,14 +427,32 @@ export class ReportingService {
     }));
   }
 
-  // The tenant-default goal/target per metric (My Desk goal-progress bars).
-  // Increment 2 reads these from the MetricGoal store; until then there are no
-  // configured goals (the FE renders the cards without a goal bar — honest).
+  // The tenant goal/target per metric (My Desk goal-progress bars). Reads the
+  // `metrics.goals` tenant setting, falling back to its registry default so the
+  // bars render for every tenant out-of-box; a tenant overrides via the S2
+  // PUT /v1/tenant/settings path (no migration — the settings pattern-B win).
+  // Only the keys the FE knows are returned; the value is validated.
   async getRecruiterGoals(
-    _tenantId: string,
+    tenantId: string,
     _userId: string,
   ): Promise<Partial<Record<RecruiterMetricKey, number>>> {
-    return {};
+    const KEY = 'metrics.goals' as const;
+    let raw: unknown = KNOWN_SETTINGS[KEY].default;
+    try {
+      const row = await this.tenantSettingRepository.findOne(tenantId, KEY);
+      if (row !== null && isMetricGoalMap(row.value)) raw = row.value;
+    } catch (err) {
+      // A settings read failure must not 500 the whole KPI strip — fall back to
+      // the registry default (the FE still renders honest goals).
+      this.logger.warn(`metrics.goals read failed; using default: ${String(err)}`);
+    }
+    if (!isMetricGoalMap(raw)) return {};
+    const out: Partial<Record<RecruiterMetricKey, number>> = {};
+    for (const key of RECRUITER_METRIC_KEYS) {
+      const v = raw[key];
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) out[key] = v;
+    }
+    return out;
   }
 
   // Per-recruiter operational KPIs (My Desk header). Principal-scoped: every

@@ -8,12 +8,14 @@ export {
   isKnownSettingKey,
   isCompensationDisplayDefault,
   isBoolean,
+  isMetricGoalMap,
 } from './lib/known-settings.js';
 export type {
   KnownSettingKey,
   SettingDefinition,
   SettingValueOf,
   CompensationDisplayDefault,
+  MetricGoalMap,
 } from './lib/known-settings.js';
 
 export type { TenantSettingsView } from './lib/dto/tenant-settings.view.js';
