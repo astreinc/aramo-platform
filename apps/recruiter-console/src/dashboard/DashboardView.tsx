@@ -20,6 +20,7 @@ import {
   CardHead,
   DataTable,
   Icons,
+  KpiCard,
   MetricCard,
   StatusPill,
   TitleCell,
@@ -32,8 +33,9 @@ import {
   type TableColumn,
 } from '../ui';
 
-import { getDashboard } from './dashboard-api';
+import { getDashboard, getRecruiterMetrics } from './dashboard-api';
 import { dashboardErrorMessage } from './error-messages';
+import { KPI_ORDER, toKpiDisplay } from './kpi';
 import {
   ACTIVITY_TYPE_LABELS,
   CALENDAR_EVENT_TYPE_LABELS,
@@ -41,6 +43,7 @@ import {
   type CalendarEventView,
   type DashboardView as DashboardViewModel,
   type PipelineRollupItem,
+  type RecruiterMetricView,
 } from './types';
 
 // My Desk — the recruiter-console home, rebuilt to the enterprise mockup.
@@ -192,6 +195,9 @@ export function DashboardView({ session }: DashboardViewProps) {
   const [pipelineCounts, setPipelineCounts] = useState<
     Record<string, ReqPipelineCount>
   >({});
+  const [metrics, setMetrics] = useState<readonly RecruiterMetricView[] | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -205,7 +211,8 @@ export function DashboardView({ session }: DashboardViewProps) {
       listMyTasks('open'),
       listCompanies(),
       listAllPipelines(),
-    ]).then(([dashRes, reqRes, taskRes, coRes, pipeRes]) => {
+      getRecruiterMetrics(),
+    ]).then(([dashRes, reqRes, taskRes, coRes, pipeRes, metricRes]) => {
       if (cancelled) return;
       if (dashRes.status === 'fulfilled') {
         setDash(dashRes.value);
@@ -222,6 +229,9 @@ export function DashboardView({ session }: DashboardViewProps) {
       if (pipeRes.status === 'fulfilled') {
         setPipelineCounts(rollupByRequisition(pipeRes.value.items));
       }
+      // Metrics degrade independently — a 403/500 here leaves the rest of the
+      // desk coherent (the KPI strip falls back to the backed plain counts).
+      if (metricRes.status === 'fulfilled') setMetrics(metricRes.value.items);
       setLoading(false);
     });
     return () => {
@@ -349,6 +359,16 @@ export function DashboardView({ session }: DashboardViewProps) {
     when: relativeTime(a.created_at),
   }));
 
+  // KPI strip — the 4 mockup cards from REAL per-recruiter metrics (ordered).
+  // When the metrics call is unavailable, fall back to the backed plain counts.
+  const kpiByKey = new Map((metrics ?? []).map((m) => [m.key, m]));
+  const kpiDisplays =
+    metrics !== null
+      ? KPI_ORDER.map((k) => kpiByKey.get(k))
+          .filter((m): m is RecruiterMetricView => m !== undefined)
+          .map(toKpiDisplay)
+      : [];
+
   return (
     <section>
       <div className="rc-viewhead">
@@ -375,30 +395,48 @@ export function DashboardView({ session }: DashboardViewProps) {
         )}
       </div>
 
-      <div className="rc-metrics rc-metrics--spaced">
-        <MetricCard
-          icon={<Icons.IconRequisitions />}
-          label="Open reqs"
-          value={openReqs.length}
-          hint={hotCount > 0 ? `${hotCount} hot` : undefined}
-        />
-        <MetricCard
-          icon={<Icons.IconTalent />}
-          label="Talent"
-          value={dash?.tenant_counts.talent_records ?? 0}
-        />
-        <MetricCard
-          icon={<Icons.IconActivity />}
-          label="In pipeline"
-          value={pipelineTotal}
-        />
-        <MetricCard
-          icon={<Icons.IconTasks />}
-          label="Placements"
-          value={dash?.placement.placed_pipelines ?? 0}
-          hint="in your view"
-        />
-      </div>
+      {kpiDisplays.length > 0 ? (
+        <div className="rc-metrics rc-metrics--spaced">
+          {kpiDisplays.map((k) => (
+            <KpiCard
+              key={k.key}
+              label={k.label}
+              value={k.value}
+              unit={k.unit}
+              delta={k.delta}
+              series={k.series}
+              seriesTone={k.seriesTone}
+              pace={k.pace}
+            />
+          ))}
+        </div>
+      ) : (
+        // Fallback — backed plain counts when /recruiter-metrics is unavailable.
+        <div className="rc-metrics rc-metrics--spaced">
+          <MetricCard
+            icon={<Icons.IconRequisitions />}
+            label="Open reqs"
+            value={openReqs.length}
+            hint={hotCount > 0 ? `${hotCount} hot` : undefined}
+          />
+          <MetricCard
+            icon={<Icons.IconTalent />}
+            label="Talent"
+            value={dash?.tenant_counts.talent_records ?? 0}
+          />
+          <MetricCard
+            icon={<Icons.IconActivity />}
+            label="In pipeline"
+            value={pipelineTotal}
+          />
+          <MetricCard
+            icon={<Icons.IconTasks />}
+            label="Placements"
+            value={dash?.placement.placed_pipelines ?? 0}
+            hint="in your view"
+          />
+        </div>
+      )}
 
       <div className="rc-grid2">
         <div className="rc-stack">

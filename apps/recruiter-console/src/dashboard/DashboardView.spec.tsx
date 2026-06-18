@@ -141,6 +141,7 @@ function mockRoutes(opts: {
   tasks?: unknown;
   companies?: unknown;
   pipelines?: unknown;
+  metrics?: unknown;
 } = {}) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = urlOf(input);
@@ -149,6 +150,11 @@ function mockRoutes(opts: {
         status,
         headers: { 'Content-Type': 'application/json' },
       });
+    if (url.includes('/v1/reports/recruiter-metrics')) {
+      // Default: 404 → the KPI strip falls back to the backed plain counts.
+      if (opts.metrics === undefined) return json({ message: 'no metrics' }, 404);
+      return json(opts.metrics);
+    }
     if (url.includes('/v1/dashboard')) {
       return json(opts.dashboard ?? makeDashboard(), opts.dashboardStatus ?? 200);
     }
@@ -159,6 +165,43 @@ function mockRoutes(opts: {
     return json({ message: 'not found' }, 404);
   });
 }
+
+const METRICS = {
+  items: [
+    {
+      key: 'submittals_weekly',
+      value: 7,
+      previous: 5,
+      series: [3, 5, 4, 6, 5, 7, 6, 7],
+      goal: 10,
+      period: 'week',
+    },
+    {
+      key: 'interviews_weekly',
+      value: 4,
+      previous: 3,
+      series: [2, 3, 2, 4, 3, 4, 3, 4],
+      goal: null,
+      period: 'week',
+    },
+    {
+      key: 'placements_monthly',
+      value: 2,
+      previous: 2,
+      series: [0, 1, 1, 2, 1, 2],
+      goal: 3,
+      period: 'month',
+    },
+    {
+      key: 'avg_time_to_submit',
+      value: 1.8,
+      previous: 2.2,
+      series: [2.6, 2.3, 2.1, 2, 1.9, 1.8, 1.9, 1.8],
+      goal: null,
+      period: 'week',
+    },
+  ],
+};
 
 function renderDesk() {
   return render(
@@ -171,8 +214,8 @@ function renderDesk() {
 describe('DashboardView (My desk)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders the backed metric cards (no deltas/goals — gap #6)', async () => {
-    mockRoutes();
+  it('falls back to the backed plain counts when /recruiter-metrics is unavailable', async () => {
+    mockRoutes(); // no metrics → 404 → fallback strip
     const { container } = renderDesk();
     await waitFor(() => expect(screen.getByText('Open reqs')).toBeInTheDocument());
     // Open reqs = 1 (req-2 is closed); Talent 56; In pipeline 15; Placements 3.
@@ -416,5 +459,40 @@ describe('DashboardView (My desk)', () => {
     );
     // The consent badge is shown.
     expect(screen.getByText('Consent')).toBeInTheDocument();
+  });
+
+  it('renders the REAL KPI cards (value/delta/sparkline/goal) from /recruiter-metrics', async () => {
+    mockRoutes({ metrics: METRICS });
+    const { container } = renderDesk();
+    await waitFor(() =>
+      expect(screen.getByText('Submittals · wk')).toBeInTheDocument(),
+    );
+    // The four mockup KPIs, by their real labels.
+    expect(screen.getByText('Interviews set')).toBeInTheDocument();
+    expect(screen.getByText('Placements · MTD')).toBeInTheDocument();
+    expect(screen.getByText('Avg time-to-submit')).toBeInTheDocument();
+
+    // Submittals: value 7, delta +2 vs last wk (7−5), goal-pace bar present.
+    const kpi = (label: string) =>
+      within(screen.getByText(label).closest('.rc-kpi') as HTMLElement);
+    expect(kpi('Submittals · wk').getByText('7')).toBeInTheDocument();
+    expect(kpi('Submittals · wk').getByText(/\+2 vs last wk/)).toBeInTheDocument();
+    expect(
+      kpi('Submittals · wk').getByText(/70% of weekly goal \(10\)/),
+    ).toBeInTheDocument();
+
+    // Avg-time-to-submit fell 2.2→1.8 → an IMPROVEMENT (up tone), "0.4d faster".
+    expect(kpi('Avg time-to-submit').getByText('1.8')).toBeInTheDocument();
+    expect(
+      kpi('Avg time-to-submit').getByText(/0\.4d faster/),
+    ).toBeInTheDocument();
+
+    // Placements MTD: no change (2 vs 2) → flat, "2 of 3 goal" pace.
+    expect(kpi('Placements · MTD').getByText(/2 of 3 goal/)).toBeInTheDocument();
+
+    // Real sparklines are drawn (one per card with ≥2 points).
+    expect(container.querySelectorAll('.rc-spark').length).toBe(4);
+    // The fallback plain cards are NOT shown.
+    expect(screen.queryByText('Open reqs')).not.toBeInTheDocument();
   });
 });

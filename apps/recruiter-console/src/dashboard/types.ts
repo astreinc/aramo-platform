@@ -136,3 +136,27 @@ export interface DashboardView {
   readonly upcoming_events: readonly CalendarEventView[];
   readonly recent_activity: readonly ActivityView[];
 }
+
+// RecruiterMetricView — hand-mirror of libs/reporting RecruiterMetricView. The
+// principal-scoped KPI cards (Submittals·wk / Interviews set / Placements·MTD /
+// Avg-time-to-submit). value/previous/series/goal are REAL (history-derived);
+// the FE only projects them. `goal` is null until a tenant target is configured
+// (the goal-progress bar simply doesn't render — honest, no fabricated line).
+export type RecruiterMetricKey =
+  | 'submittals_weekly'
+  | 'interviews_weekly'
+  | 'placements_monthly'
+  | 'avg_time_to_submit';
+
+export interface RecruiterMetricView {
+  readonly key: RecruiterMetricKey;
+  readonly value: number | null;
+  readonly previous: number | null;
+  readonly series: readonly number[];
+  readonly goal: number | null;
+  readonly period: 'week' | 'month';
+}
+
+export interface RecruiterMetricsReportView {
+  readonly items: readonly RecruiterMetricView[];
+}

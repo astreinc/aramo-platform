@@ -56,6 +56,8 @@ export {
   type ConstraintState,
 } from './pills';
 export { MetricCard } from './MetricCard';
+export { KpiCard, type KpiDelta, type KpiPace } from './KpiCard';
+export { Sparkline, type SparkTone } from './Sparkline';
 export { HotToggle } from './HotToggle';
 export {
   ActionItem,
