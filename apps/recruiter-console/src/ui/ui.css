@@ -659,7 +659,11 @@
 .rc-content {
   padding: 24px 26px 48px;
   width: 100%;
-  max-width: 1320px;
+  /* Full-bleed: fill the viewport at any resolution (mockup parity — the
+     list/board/jobs/tasks pages span the full canvas). Pages that should stay
+     narrow center themselves via their own max-width + margin auto
+     (.rc-dropwrap, .rc-success, the manual edit-grid, the submittal .rc-gate),
+     so removing the global cap doesn't stretch them. */
 }
 
 .rc-crumbs {
