@@ -143,15 +143,73 @@ describe('RequisitionsListView', () => {
     expect(screen.getByText('Architect')).toBeInTheDocument();
   });
 
-  it('"Only hot" filters to hot requisitions', async () => {
+  it('"Hot" filters to hot requisitions', async () => {
     mockFetch([OPEN, HOT]);
     renderList();
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Only hot' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hot' }));
     expect(screen.getByText('Hot Role')).toBeInTheDocument();
     expect(screen.queryByText('Senior Engineer')).not.toBeInTheDocument();
+  });
+
+  it('default "My reqs" shows the whole visible payload for a non-read:all principal (server already scoped it)', async () => {
+    // No read:all → isMine is true for every visible row → "My reqs" == "All".
+    mockFetch([OPEN, HOLD]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole('button', { name: 'My reqs' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    // Both visible (active) reqs render — not blanked by the owner-field test.
+    expect(screen.getByText('Mid Engineer')).toBeInTheDocument();
+  });
+
+  it('"My reqs" narrows to owned/recruited rows for a read:all principal', async () => {
+    const MINE = makeReq('req-mine', 'My Req', 'active', { owner_id: 'u1' });
+    const THEIRS = makeReq('req-theirs', 'Their Req', 'active', {
+      owner_id: 'u2',
+    });
+    mockFetch([MINE, THEIRS]);
+    renderList({
+      sessionOverride: {
+        sub: 'u1',
+        consumer_type: 'recruiter',
+        tenant_id: 't',
+        scopes: ['requisition:read', 'requisition:read:all'],
+        iat: 0,
+        exp: 0,
+      },
+    });
+    // Default My reqs + read:all → only the owned row.
+    await waitFor(() => expect(screen.getByText('My Req')).toBeInTheDocument());
+    expect(screen.queryByText('Their Req')).not.toBeInTheDocument();
+    // "All" reveals the tenant-wide row.
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+    expect(screen.getByText('Their Req')).toBeInTheDocument();
+  });
+
+  it('"Needs sourcing" filters to active reqs with an empty pipeline', async () => {
+    // OPEN has no pipeline rows in the mock → active count 0 → needs sourcing.
+    mockFetch([OPEN]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Needs sourcing' }));
+    expect(screen.getByText('Senior Engineer')).toBeInTheDocument();
+  });
+
+  it('"Matches — coming with Aramo Core" chip is rendered DISABLED (no count, R10 seam)', async () => {
+    mockFetch([OPEN]);
+    renderList();
+    const chip = await screen.findByRole('button', {
+      name: /Matches — coming with Aramo Core/,
+    });
+    expect(chip).toBeDisabled();
   });
 
   it('the scoped search filters by title', async () => {

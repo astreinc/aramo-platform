@@ -1371,6 +1371,11 @@
   color: var(--brand-strong);
   border-color: transparent;
 }
+/* Reserved/coming-soon filter (e.g. the Matches seam) — visible but inert. */
+.rc-chip--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .rc-scopedsearch {
   margin-left: auto;
   display: flex;

@@ -78,7 +78,7 @@ const STATUS_TONE: Record<RequisitionStatus, PillTone> = {
   canceled: 'danger',
 };
 
-type FilterMode = 'all' | 'mine' | 'hot';
+type FilterMode = 'mine' | 'all' | 'hot' | 'needs_sourcing' | 'aging';
 type SortKey = 'focus' | 'aging' | 'pipeline' | 'new';
 
 // A requisition is "aging" (needs-attention) when it has been open a while
@@ -104,7 +104,10 @@ export function RequisitionsListView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
-  const [mode, setMode] = useState<FilterMode>('all');
+  // Default to "My reqs" — the recruiter-centric lens (mockup parity). NOTE
+  // this is a CLIENT-SIDE narrowing of the already-visibility-scoped payload,
+  // not a server-side owned-query — see the isMine docstring below.
+  const [mode, setMode] = useState<FilterMode>('mine');
   const [client, setClient] = useState('');
   const [statusFilter, setStatusFilter] = useState<RequisitionStatus | ''>('');
   const [sort, setSort] = useState<SortKey>('focus');
@@ -119,6 +122,12 @@ export function RequisitionsListView({
     Array.isArray(session.scopes) &&
     hasScope(session, 'requisition:create');
   const myId = session?.sub ?? null;
+  // A requisition:read:all holder (admin/lead) receives the FULL tenant set
+  // server-side; everyone else already receives only their assigned reqs.
+  const hasReadAll =
+    session !== null &&
+    Array.isArray(session.scopes) &&
+    hasScope(session, 'requisition:read:all');
 
   useEffect(() => {
     let cancelled = false;
@@ -156,9 +165,38 @@ export function RequisitionsListView({
     };
   }, []);
 
-  const isMine = (r: RequisitionView): boolean =>
-    (r.recruiter_id !== null && r.recruiter_id === myId) ||
-    (r.owner_id !== null && r.owner_id === myId);
+  // "My reqs" — CLIENT-SIDE, persona-aware. GET /v1/requisitions has NO
+  // owner/mine param (only site_id/company_id/q); breadth is server-enforced
+  // by scope (requisition.repository.listForActor): a read:all holder gets the
+  // full tenant set, everyone else ALREADY gets only assignments.user_id==sub.
+  // So:
+  //   - non-read:all (plain recruiter): the whole payload is already theirs →
+  //     "My reqs" == "All" (return true). Filtering by the owner/recruiter
+  //     FIELD here would WRONGLY hide reqs they're assigned-to-but-not-owner-of
+  //     (and could blank the default view), so we don't.
+  //   - read:all holder (admin/lead): the payload is tenant-wide → narrow to
+  //     where they are the recruiter/owner field.
+  // This is NOT a leak (the payload is already visibility-scoped) but it is
+  // also NOT a true server-side owned/assigned query — a ?scope=mine BE param
+  // is a CARRY (would let "My reqs" mean owned-OR-assigned precisely, and
+  // enable correct pagination). Reported as the My-reqs scoping finding.
+  const isMine = (r: RequisitionView): boolean => {
+    if (!hasReadAll) return true;
+    return (
+      (r.recruiter_id !== null && r.recruiter_id === myId) ||
+      (r.owner_id !== null && r.owner_id === myId)
+    );
+  };
+
+  // "Aging" and "Needs sourcing" are derived from the already-loaded set —
+  // no new call, no fabricated signal. Aging = open a while with nothing
+  // submitted; Needs sourcing = active req with an empty pipeline.
+  const isAging = (r: RequisitionView): boolean =>
+    !isClosedStatus(r.status) &&
+    daysOpen(r) >= AGING_DAYS &&
+    (pipelineCounts[r.id]?.submitted ?? 0) === 0;
+  const needsSourcing = (r: RequisitionView): boolean =>
+    !isClosedStatus(r.status) && (pipelineCounts[r.id]?.active ?? 0) === 0;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -166,6 +204,8 @@ export function RequisitionsListView({
       if (!showClosed && isClosedStatus(r.status)) return false;
       if (mode === 'hot' && !r.is_hot) return false;
       if (mode === 'mine' && !isMine(r)) return false;
+      if (mode === 'aging' && !isAging(r)) return false;
+      if (mode === 'needs_sourcing' && !needsSourcing(r)) return false;
       if (client !== '' && r.company_id !== client) return false;
       if (statusFilter !== '' && r.status !== statusFilter) return false;
       if (q !== '') {
@@ -240,7 +280,8 @@ export function RequisitionsListView({
           <div className="rc-focus__body">
             <h2 className="rc-focus__h">
               {focusItems.length} requisition
-              {focusItems.length === 1 ? '' : 's'} need attention
+              {focusItems.length === 1 ? '' : 's'}{' '}
+              {focusItems.length === 1 ? 'needs' : 'need'} attention
             </h2>
             <div className="rc-focus__row">
               {focusItems.map((r) => (
@@ -265,15 +306,33 @@ export function RequisitionsListView({
 
       <Card flush className="rc-mt-16">
         <Toolbar>
+          <FilterChip active={mode === 'mine'} onClick={() => setMode('mine')}>
+            My reqs
+          </FilterChip>
           <FilterChip active={mode === 'all'} onClick={() => setMode('all')}>
             All
           </FilterChip>
-          <FilterChip active={mode === 'mine'} onClick={() => setMode('mine')}>
-            Only mine
-          </FilterChip>
           <FilterChip active={mode === 'hot'} onClick={() => setMode('hot')}>
-            Only hot
+            Hot
           </FilterChip>
+          {/* RESERVED SEAM — no Core match engine exists pre-Core, so this
+              filter is DISABLED. No count is fabricated (R10): tiers/verdicts
+              are a Core output. Enables when /v1/jobs/:id/matches is live. */}
+          <FilterChip disabled title="Matching arrives with Aramo Core">
+            Matches — coming with Aramo Core
+          </FilterChip>
+          <FilterChip
+            active={mode === 'needs_sourcing'}
+            onClick={() => setMode('needs_sourcing')}
+          >
+            Needs sourcing
+          </FilterChip>
+          <FilterChip active={mode === 'aging'} onClick={() => setMode('aging')}>
+            Aging
+          </FilterChip>
+          {/* Intentional divergence from the mockup: "Show closed" stays an
+              explicit chip (the mockup folds closed into the status dropdown —
+              not worth the churn). */}
           <FilterChip
             active={showClosed}
             onClick={() => setShowClosed((s) => !s)}
@@ -339,7 +398,7 @@ export function RequisitionsListView({
         ) : (
           <>
             <div className="rc-listmeta">
-              {readyCount} requisition{readyCount === 1 ? '' : 's'}
+              {readyCount} req{readyCount === 1 ? '' : 's'}
               {capped ? (
                 <span>
                   · showing your {LIST_CAP} most recent (pagination coming)
