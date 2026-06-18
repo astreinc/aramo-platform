@@ -1,9 +1,39 @@
+import type { Session } from '@aramo/fe-foundation';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DashboardView } from './DashboardView';
 import type { DashboardView as DashboardViewModel } from './types';
+
+const SESSION: Session = {
+  sub: 'u-1',
+  consumer_type: 'recruiter',
+  tenant_id: 't',
+  scopes: ['dashboard:read', 'task:read'],
+  iat: 0,
+  exp: 0,
+};
+
+// A calendar event today at 14:00, owned by the principal — for the agenda.
+function eventToday() {
+  const d = new Date();
+  d.setHours(14, 0, 0, 0);
+  return {
+    id: 'cal-1',
+    tenant_id: 't',
+    site_id: null,
+    owner_id: 'u-1',
+    type: 'interview' as const,
+    title: 'Panel — Sofia Reyes',
+    description: null,
+    starts_at: d.toISOString(),
+    ends_at: null,
+    all_day: false,
+    created_at: d.toISOString(),
+    updated_at: d.toISOString(),
+  };
+}
 
 function makeDashboard(
   overrides: Partial<DashboardViewModel> = {},
@@ -133,7 +163,7 @@ function mockRoutes(opts: {
 function renderDesk() {
   return render(
     <MemoryRouter>
-      <DashboardView />
+      <DashboardView session={SESSION} />
     </MemoryRouter>,
   );
 }
@@ -184,9 +214,11 @@ describe('DashboardView (My desk)', () => {
     await waitFor(() =>
       expect(screen.getByText('Senior Rust Engineer')).toBeInTheDocument(),
     );
-    // The header columns replaced Openings with Pipeline + Submitted.
-    expect(screen.getByText('Pipeline')).toBeInTheDocument();
-    expect(screen.getByText('Submitted')).toBeInTheDocument();
+    // The header columns replaced Openings with Pipeline + Submitted. Scope to
+    // the reqs card — "Submitted" is also a funnel-bucket label on the desk.
+    const reqCard = screen.getByText('My open reqs').closest('.rc-card') as HTMLElement;
+    expect(within(reqCard).getByText('Pipeline')).toBeInTheDocument();
+    expect(within(reqCard).getByText('Submitted')).toBeInTheDocument();
     // req-1 rollup: active = 3 (no terminal), submitted+ = 2 (submitted +
     // interviewing). Scope to the req row to avoid colliding with the metrics.
     const row = screen.getByRole('link', { name: /Senior Rust Engineer/ })
@@ -266,5 +298,123 @@ describe('DashboardView (My desk)', () => {
         screen.getByText(/dashboard service is temporarily unavailable/i),
       ).toBeInTheDocument(),
     );
+  });
+
+  it('shows a FACTS-ONLY briefing (real counts, no verdict/AI/focus)', async () => {
+    mockRoutes();
+    const { container } = renderDesk();
+    await waitFor(() => expect(screen.getByText('Open reqs')).toBeInTheDocument());
+    // 1 overdue task (due 2020) + 1 hot req (req-1) — deterministic counts.
+    expect(screen.getByText('task overdue')).toBeInTheDocument();
+    expect(screen.getByText('hot requisition')).toBeInTheDocument();
+    // No prescriptive/AI framing survived the charter §3 removals.
+    expect(container.textContent).not.toMatch(
+      /AI-assisted|Suggested focus|Viewing as/i,
+    );
+  });
+
+  it('renders "My active pipeline" funnel from the backed rollup', async () => {
+    mockRoutes({
+      dashboard: makeDashboard({
+        pipeline_rollup: {
+          total: 4,
+          by_status: [
+            { status: 'no_contact', count: 2 },
+            { status: 'submitted', count: 1 },
+            { status: 'placed', count: 1 },
+          ],
+        },
+      }),
+    });
+    renderDesk();
+    await waitFor(() =>
+      expect(screen.getByText('My active pipeline')).toBeInTheDocument(),
+    );
+    // Sourced bucket = no_contact (2); Placed = 1. Scope to the funnel card.
+    const card = screen
+      .getByText('My active pipeline')
+      .closest('.rc-card') as HTMLElement;
+    const stage = (label: string) =>
+      within(card).getByText(label).closest('.rc-fstage') as HTMLElement;
+    expect(within(stage('Sourced')).getByText('2')).toBeInTheDocument();
+    expect(within(stage('Placed')).getByText('1')).toBeInTheDocument();
+  });
+
+  it('lists only TODAY’s agenda items owned by the principal', async () => {
+    mockRoutes({
+      dashboard: makeDashboard({ upcoming_events: [eventToday()] }),
+    });
+    renderDesk();
+    await waitFor(() =>
+      expect(screen.getByText('Panel — Sofia Reyes')).toBeInTheDocument(),
+    );
+  });
+
+  it('hides agenda items owned by another user (my desk only)', async () => {
+    const other = { ...eventToday(), id: 'cal-2', owner_id: 'someone-else' };
+    mockRoutes({ dashboard: makeDashboard({ upcoming_events: [other] }) });
+    renderDesk();
+    await waitFor(() =>
+      expect(screen.getByText('Nothing scheduled today.')).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('Panel — Sofia Reyes')).not.toBeInTheDocument();
+  });
+
+  it('priority-sorts the queue and gives a consent task a Refresh action', async () => {
+    mockRoutes({
+      tasks: {
+        items: [
+          {
+            id: 'low-1',
+            title: 'Low priority admin',
+            description: null,
+            due_date: null,
+            status: 'open',
+            type: 'admin',
+            priority: 'low',
+            source: 'manual',
+            assignee_id: 'me',
+            created_by_user_id: 'u-1',
+            owner_type: 'requisition',
+            owner_id: 'req-9',
+            created_at: '2026-06-10T09:00:00Z',
+            updated_at: '2026-06-10T09:00:00Z',
+          },
+          {
+            id: 'high-1',
+            title: 'Refresh consent for D. Okafor',
+            description: null,
+            due_date: null,
+            status: 'open',
+            type: 'consent',
+            priority: 'high',
+            source: 'manual',
+            assignee_id: 'me',
+            created_by_user_id: 'u-1',
+            owner_type: 'talent_record',
+            owner_id: 'tal-1',
+            created_at: '2026-06-10T09:00:00Z',
+            updated_at: '2026-06-10T09:00:00Z',
+          },
+        ],
+      },
+    });
+    const { container } = renderDesk();
+    await waitFor(() =>
+      expect(
+        screen.getByText('Refresh consent for D. Okafor'),
+      ).toBeInTheDocument(),
+    );
+    // High priority sorts above low.
+    const rows = container.querySelectorAll('.rc-action');
+    expect(rows[0]).toHaveTextContent('Refresh consent for D. Okafor');
+    expect(rows[1]).toHaveTextContent('Low priority admin');
+    // Consent task → "Refresh" action linking to the talent owner.
+    expect(screen.getByRole('link', { name: 'Refresh' })).toHaveAttribute(
+      'href',
+      '/talent/tal-1',
+    );
+    // The consent badge is shown.
+    expect(screen.getByText('Consent')).toBeInTheDocument();
   });
 });

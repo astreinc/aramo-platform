@@ -57,7 +57,11 @@ export {
 } from './pills';
 export { MetricCard } from './MetricCard';
 export { HotToggle } from './HotToggle';
-export { ActionItem, type ActionKind } from './ActionItem';
+export {
+  ActionItem,
+  type ActionKind,
+  type ActionPriority,
+} from './ActionItem';
 export { Stepper } from './Stepper';
 export { ProgressMini } from './ProgressMini';
 export { AttestCheckbox } from './AttestCheckbox';

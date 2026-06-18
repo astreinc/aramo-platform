@@ -1131,6 +1131,10 @@
   font-size: 0.9rem;
   font-weight: 600;
   line-height: 1.3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .rc-action__c {
   font-size: 0.8rem;
@@ -1146,6 +1150,144 @@
   color: var(--faint);
   margin-left: auto;
   white-space: nowrap;
+}
+.rc-action__ic--followup {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+.rc-action__ic--interview {
+  background: var(--info-tint);
+  color: var(--info);
+}
+.rc-action__ic--consent {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+/* Priority ordinal label (Now/Soon/Later) — the BE task.priority field, not a
+   computed verdict. Inline by the action title. */
+.rc-pri {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 20px;
+  flex: none;
+}
+.rc-pri--high {
+  background: var(--hot-tint);
+  color: var(--hot);
+}
+.rc-pri--med {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+.rc-pri--low {
+  background: var(--info-tint);
+  color: var(--info);
+}
+
+/* ─────────────── Desk briefing (facts-only rollup) ───────────────
+ * A DETERMINISTIC facts band: real counts from the principal's tasks /
+ * pipeline / reqs. No verdict, no "AI-assisted" framing, no suggested-focus
+ * (charter §3 / §7.2 — those were removed). Just the numbers. */
+
+.rc-brief {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--brand-accent);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev);
+  padding: 13px 16px;
+}
+.rc-brief__ic {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.rc-brief__ic svg {
+  width: 17px;
+  height: 17px;
+}
+.rc-brief__facts {
+  display: flex;
+  align-items: center;
+  gap: 8px 18px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.rc-fact {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+.rc-fact b {
+  color: var(--ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.rc-brief__none {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+/* ─────────────── Agenda (today timeline) ─────────────── */
+
+.rc-agenda {
+  padding: 6px 4px 8px;
+}
+.rc-agenda__row {
+  display: flex;
+  gap: 12px;
+  padding: 9px 12px;
+}
+.rc-agenda__time {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--brand-strong);
+  width: 58px;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.rc-agenda__body {
+  flex: 1;
+  min-width: 0;
+  border-left: 2px solid var(--line);
+  padding-left: 13px;
+  position: relative;
+}
+.rc-agenda__body::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand-accent);
+  border: 2px solid var(--surface);
+}
+.rc-agenda__t {
+  font-size: 0.88rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.rc-agenda__s {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 1px;
 }
 
 /* ─────────────── Stepper (engagement state) ─────────────── */
