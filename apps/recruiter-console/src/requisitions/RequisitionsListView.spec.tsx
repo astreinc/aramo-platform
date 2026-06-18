@@ -22,8 +22,6 @@ function makeReq(
     status,
     type: null,
     duration: null,
-    rate_max: null,
-    salary: null,
     description: null,
     notes: null,
     is_hot: false,
@@ -87,8 +85,8 @@ const FILLED = makeReq('req-filled', 'Architect', 'full');
 const HOT = makeReq('req-hot', 'Hot Role', 'active', { is_hot: true });
 
 function mockFetch(items: readonly RequisitionView[]) {
-  // The view also calls useSession + listCompanies; all share this mock
-  // (mockImplementation → a fresh read-once Response per call).
+  // The view also calls useSession + listCompanies + /v1/pipelines + roster;
+  // all share this mock (mockImplementation → a fresh read-once Response).
   vi.spyOn(globalThis, 'fetch').mockImplementation(
     async () =>
       new Response(JSON.stringify({ items }), {
@@ -126,10 +124,11 @@ describe('RequisitionsListView', () => {
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    expect(screen.getByRole('link', { name: /Senior Engineer/ })).toHaveAttribute(
-      'href',
-      '/requisitions/req-open',
-    );
+    // The title link (the chevron is a second, descriptively-labelled link to
+    // the same detail — selecting by the exact title name targets the title).
+    expect(
+      screen.getByRole('link', { name: 'Senior Engineer' }),
+    ).toHaveAttribute('href', '/requisitions/req-open');
   });
 
   it('reveals closed + filled requisitions when "Show closed" is toggled on', async () => {
@@ -161,14 +160,15 @@ describe('RequisitionsListView', () => {
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search requisitions' }), {
-      target: { value: 'mid' },
-    });
+    fireEvent.change(
+      screen.getByRole('searchbox', { name: 'Search requisitions' }),
+      { target: { value: 'mid' } },
+    );
     expect(screen.getByText('Mid Engineer')).toBeInTheDocument();
     expect(screen.queryByText('Senior Engineer')).not.toBeInTheDocument();
   });
 
-  it('renders an empty-state row when no requisitions match', async () => {
+  it('renders an empty-state when no requisitions match', async () => {
     mockFetch([CLOSED, FILLED]);
     renderList();
     await waitFor(() =>
@@ -193,7 +193,29 @@ describe('RequisitionsListView', () => {
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    expect(screen.queryByRole('link', { name: /new requisition/i })).toBeNull();
+    expect(
+      screen.queryByRole('link', { name: /new requisition/i }),
+    ).toBeNull();
+  });
+
+  it('shows "New requisition" linking to /requisitions/new when scoped', async () => {
+    mockFetch([OPEN]);
+    renderList({
+      sessionOverride: {
+        sub: 'u1',
+        consumer_type: 'recruiter',
+        tenant_id: 't',
+        scopes: ['requisition:read', 'requisition:create'],
+        iat: 0,
+        exp: 0,
+      },
+    });
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole('link', { name: /new requisition/i }),
+    ).toHaveAttribute('href', '/requisitions/new');
   });
 
   it('parity: Pipeline/Submitted counts (one /v1/pipelines call, grouped) + Recruiter name (roster)', async () => {
@@ -244,23 +266,35 @@ describe('RequisitionsListView', () => {
     expect(cells.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('shows "New requisition" linking to /requisitions/new when scoped', async () => {
+  it('shows "Unassigned" in the owner cell and offers no reassign action', async () => {
+    // OPEN has recruiter_id + owner_id null.
     mockFetch([OPEN]);
-    renderList({
-      sessionOverride: {
-        sub: 'u1',
-        consumer_type: 'recruiter',
-        tenant_id: 't',
-        scopes: ['requisition:read', 'requisition:create'],
-        iat: 0,
-        exp: 0,
-      },
-    });
+    renderList();
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    expect(
-      screen.getByRole('link', { name: /new requisition/i }),
-    ).toHaveAttribute('href', '/requisitions/new');
+    expect(screen.getByText('Unassigned')).toBeInTheDocument();
+    // Reassignment is deferred — no assign control on the surface.
+    expect(screen.queryByRole('button', { name: /assign/i })).toBeNull();
+  });
+
+  it('renders the AI-matching seam DISABLED with the fixed coming-soon label', async () => {
+    mockFetch([OPEN]);
+    renderList();
+    const pill = await screen.findByRole('button', { name: /AI matching/i });
+    expect(pill).toBeDisabled();
+    // Pinning the exact label proves the reserved seam surfaces no ordinal
+    // verdict vocabulary (no tiers/verdicts) — it is a non-functional seam.
+    expect(pill).toHaveTextContent('AI matching — coming with Aramo Core');
+  });
+
+  it('surfaces a needs-attention banner for hot requisitions', async () => {
+    mockFetch([HOT]);
+    renderList();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/requisition.*need.*attention/i),
+      ).toBeInTheDocument(),
+    );
   });
 });
