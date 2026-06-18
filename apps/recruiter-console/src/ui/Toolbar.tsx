@@ -16,16 +16,29 @@ interface FilterChipProps {
   readonly active?: boolean;
   readonly onClick?: () => void;
   readonly icon?: ReactNode;
+  /** Render as a non-interactive, greyed chip (e.g. a reserved/coming-soon
+   * filter). Disabled chips are never `active` and fire no onClick. */
+  readonly disabled?: boolean;
+  readonly title?: string;
   readonly children: ReactNode;
 }
 
-export function FilterChip({ active = false, onClick, icon, children }: FilterChipProps) {
+export function FilterChip({
+  active = false,
+  onClick,
+  icon,
+  disabled = false,
+  title,
+  children,
+}: FilterChipProps) {
   return (
     <button
       type="button"
-      className={`rc-chip${active ? ' rc-chip--on' : ''}`}
-      aria-pressed={active}
-      onClick={onClick}
+      className={`rc-chip${active && !disabled ? ' rc-chip--on' : ''}${disabled ? ' rc-chip--disabled' : ''}`}
+      aria-pressed={disabled ? undefined : active}
+      disabled={disabled}
+      {...(title !== undefined ? { title } : {})}
+      onClick={disabled ? undefined : onClick}
     >
       {icon}
       {children}
