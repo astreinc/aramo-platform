@@ -20,15 +20,10 @@ import { listCompanies, listContactsForCompany } from '../companies/companies-ap
 import type { CompanyView, ContactView } from '../companies/types';
 
 import {
-  CompensationSection,
   emptyCompensationFormState,
   type CompensationFormState,
 } from './CompensationSection';
-import { EnterpriseFieldsSection } from './EnterpriseFieldsSection';
-import {
-  FinancialPlanningSection,
-  canViewFinancials,
-} from './FinancialPlanningSection';
+import { canViewFinancials } from './FinancialPlanningSection';
 import {
   ENTERPRISE_BOOLEAN_KEYS,
   ENTERPRISE_NUMBER_KEYS,
@@ -39,7 +34,10 @@ import {
   JOB_TYPE_VALUES,
   ROLE_FAMILY_VALUES,
   SENIORITY_LEVEL_VALUES,
+  HEADCOUNT_REASON_VALUES,
+  SOURCE_SYSTEM_VALUES,
   DURATION_UNIT_VALUES,
+  enterpriseLabel,
   emptyEnterpriseFormState,
   emptyFinancialFormState,
   type EnterpriseFormState,
@@ -63,6 +61,7 @@ import {
   type ReqProvenanceMap,
 } from './req-provenance';
 import {
+  RATE_PERIOD_VALUES,
   RATE_TYPE_VALUES,
   REQUISITION_STATUS_VALUES,
   type CompensationModel,
@@ -111,6 +110,15 @@ function onBranchKeys(model: CompensationModel | ''): readonly CompensationField
   if (model === 'PERMANENT') return PERMANENT_BRANCH_KEYS;
   return [];
 }
+
+// Friendly period suffixes for the bill-rate unit select (mockup "/hr", "/yr").
+const RATE_PERIOD_LABELS: Readonly<Record<string, string>> = {
+  HOURLY: '/hr',
+  DAILY: '/day',
+  WEEKLY: '/wk',
+  MONTHLY: '/mo',
+  ANNUAL: '/yr',
+};
 
 interface BasicsFormState {
   title: string;
@@ -341,6 +349,24 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
 
   function onCompanyChange(companyId: string): void {
     setState((s) => ({ ...s, company_id: companyId, contact_id: '' }));
+  }
+
+  // Bill rate (CONTRACT comp) — entering an amount sets the discriminator so
+  // buildCreateBody sends it; provenance flips 'ai' → 'edited' on edit.
+  function setBillRate(v: string): void {
+    setState((s) => ({
+      ...s,
+      bill_rate_amount: v,
+      compensation_model: v.trim() !== '' ? 'CONTRACT' : s.compensation_model,
+    }));
+    setProvenance((p) => {
+      const next = provenanceAfterEdit(p['bill_rate_amount'] as ReqProvenance | undefined);
+      if (next === p['bill_rate_amount']) return p;
+      const u = { ...p };
+      if (next === undefined) delete u['bill_rate_amount'];
+      else u['bill_rate_amount'] = next;
+      return u;
+    });
   }
 
   // ── The AI intake lane ──────────────────────────────────────────────────
@@ -618,7 +644,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
               <InlineAlert variant="error">{profileWarning}</InlineAlert>
             ) : null}
 
-            {/* Role & client */}
+            {/* ── 1. Role & client ── */}
             <Card>
               <CardHead
                 title={
@@ -679,6 +705,15 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                     </span>
                   ) : null}
                 </div>
+                <EnumSelect
+                  label="Requisition type"
+                  value={state.job_type}
+                  values={JOB_TYPE_VALUES}
+                  labelFn={enterpriseLabel}
+                  prov={provenance['job_type']}
+                  disabled={submitting}
+                  onChange={(v) => setField('job_type', v as EnterpriseFormState['job_type'])}
+                />
                 <NumberField
                   label="Openings"
                   prov={provenance['openings']}
@@ -707,20 +742,13 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
               </div>
             </Card>
 
-            {/* Classification / work arrangement / duration / source */}
-            <EnterpriseFieldsSection
-              value={state}
-              onChange={(ent) => setState((s) => ({ ...s, ...ent }))}
-              disabled={submitting}
-            />
-
-            {/* Location */}
+            {/* ── 2. Location & work arrangement ── */}
             <Card>
               <CardHead
                 title={
                   <>
                     <Icons.IconPin className="rc-card__hic" />
-                    Location
+                    Location &amp; work arrangement
                   </>
                 }
               />
@@ -737,6 +765,53 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                   value={state.state}
                   onChange={(v) => setField('state', v)}
                 />
+                <EnumSelect
+                  label="Work arrangement"
+                  value={state.work_arrangement}
+                  values={WORK_ARRANGEMENT_VALUES}
+                  labelFn={enterpriseLabel}
+                  prov={provenance['work_arrangement']}
+                  disabled={submitting}
+                  onChange={(v) =>
+                    setField('work_arrangement', v as EnterpriseFormState['work_arrangement'])
+                  }
+                />
+                <div className="rc-ifield">
+                  <label className="rc-ifield__lb">
+                    <span>Contract duration</span>
+                    <ReqProvenanceChip prov={provenance['duration_value']} />
+                  </label>
+                  <div className="rc-inpgrp">
+                    <input
+                      className={`rc-input${provenance['duration_value'] === 'ai' ? ' rc-input--prov' : ''}`}
+                      type="number"
+                      min={0}
+                      value={state.duration_value}
+                      aria-label="Contract duration value"
+                      placeholder="e.g. 12"
+                      disabled={submitting}
+                      onChange={(ev) =>
+                        setField('duration_value', ev.target.value as EnterpriseFormState['duration_value'])
+                      }
+                    />
+                    <select
+                      className="rc-input"
+                      value={state.duration_unit}
+                      aria-label="Contract duration unit"
+                      disabled={submitting}
+                      onChange={(ev) =>
+                        setField('duration_unit', ev.target.value as EnterpriseFormState['duration_unit'])
+                      }
+                    >
+                      <option value="">unit…</option>
+                      {DURATION_UNIT_VALUES.map((u) => (
+                        <option key={u} value={u}>
+                          {enterpriseLabel(u)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
                 <Field
                   label="Start date"
                   type="date"
@@ -746,30 +821,59 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
               </div>
             </Card>
 
-            {/* Commercials — bill/pay (D5-gated) + rate type + subcontractors */}
-            <CompensationSection
-              value={state}
-              onChange={(comp) => setState((s) => ({ ...s, ...comp }))}
-              scopes={scopes}
-              disabled={submitting}
-            />
+            {/* ── 3. Commercials (bill rate D5-gated + rate type + subk) ── */}
             <Card>
               <CardHead
                 title={
                   <>
                     <Icons.IconTag className="rc-card__hic" />
-                    Rate type &amp; subcontractors
+                    Commercials
                   </>
                 }
               />
               <div className="rc-fgrid">
+                {visibleComp.has('bill_rate_amount') ? (
+                  <div className="rc-ifield">
+                    <label className="rc-ifield__lb">
+                      <span>Bill rate (max)</span>
+                      <ReqProvenanceChip prov={provenance['bill_rate_amount']} />
+                    </label>
+                    <div className="rc-inpgrp">
+                      <input
+                        className={`rc-input${provenance['bill_rate_amount'] === 'ai' ? ' rc-input--prov' : ''}`}
+                        type="text"
+                        inputMode="decimal"
+                        value={state.bill_rate_amount}
+                        aria-label="Bill rate (max)"
+                        placeholder="85"
+                        disabled={submitting}
+                        onChange={(ev) => setBillRate(ev.target.value)}
+                      />
+                      <select
+                        className="rc-input"
+                        value={state.bill_rate_period}
+                        aria-label="Bill rate period"
+                        disabled={submitting}
+                        onChange={(ev) =>
+                          setField('bill_rate_period', ev.target.value as FormState['bill_rate_period'])
+                        }
+                      >
+                        {RATE_PERIOD_VALUES.map((p) => (
+                          <option key={p} value={p}>
+                            {RATE_PERIOD_LABELS[p]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="rc-ifield">
                   <label className="rc-ifield__lb">
                     <span>Rate type</span>
                     <ReqProvenanceChip prov={provenance['rate_type']} />
                   </label>
                   <select
-                    className="rc-input"
+                    className={`rc-input${provenance['rate_type'] === 'ai' ? ' rc-input--prov' : ''}`}
                     value={state.rate_type}
                     aria-label="Rate type"
                     disabled={submitting}
@@ -803,16 +907,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
               </p>
             </Card>
 
-            {financialsVisible ? (
-              <FinancialPlanningSection
-                value={state}
-                onChange={(fin) => setState((s) => ({ ...s, ...fin }))}
-                scopes={scopes}
-                disabled={submitting}
-              />
-            ) : null}
-
-            {/* Job description */}
+            {/* ── 4. Job description (the AI's primary output — tall) ── */}
             <Card>
               <CardHead
                 title={
@@ -826,8 +921,8 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
               <div className="rc-fgrid">
                 <div className="rc-ifield rc-ifield--full">
                   <textarea
-                    className="rc-input"
-                    rows={aiUsed ? 9 : 5}
+                    className={`rc-input rc-jd${provenance['description'] === 'ai' ? ' rc-input--prov' : ''}`}
+                    rows={aiUsed ? 20 : 14}
                     value={state.description}
                     aria-label="Job description"
                     placeholder="Describe the role…"
@@ -838,8 +933,7 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
               </div>
             </Card>
 
-            {/* Skills — requirement skills (must / nice). Persist via the
-                GoldenProfile (requirements, not a person-verdict). */}
+            {/* ── 5. Requirement skills (persist via the GoldenProfile) ── */}
             <Card>
               <CardHead
                 title={
@@ -875,6 +969,195 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                   and arrives with Aramo Core.
                 </p>
               </div>
+            </Card>
+
+            {/* ── 6. Work authorization (sensitive) ── */}
+            <Card>
+              <CardHead
+                title={
+                  <>
+                    <Icons.IconShield className="rc-card__hic" />
+                    Work authorization
+                    <span className="rc-card__sens">sensitive</span>
+                  </>
+                }
+              />
+              <div className="rc-fgrid">
+                <EnumSelect
+                  label="Authorization required"
+                  full
+                  value={state.work_authorization}
+                  values={WORK_AUTHORIZATION_VALUES}
+                  labelFn={enterpriseLabel}
+                  prov={provenance['work_authorization']}
+                  disabled={submitting}
+                  onChange={(v) =>
+                    setField('work_authorization', v as EnterpriseFormState['work_authorization'])
+                  }
+                />
+              </div>
+            </Card>
+
+            {/* ── 7. Hiring-manager notes ── */}
+            <Card>
+              <CardHead
+                title={
+                  <>
+                    <Icons.IconMessage className="rc-card__hic" />
+                    Hiring-manager notes
+                  </>
+                }
+              />
+              <div className="rc-fgrid">
+                <div className="rc-ifield rc-ifield--full">
+                  <textarea
+                    className="rc-input"
+                    rows={3}
+                    value={state.notes}
+                    aria-label="Hiring-manager notes"
+                    placeholder="Context from the hiring manager…"
+                    disabled={submitting}
+                    onChange={(ev) => setField('notes', ev.target.value)}
+                  />
+                </div>
+              </div>
+            </Card>
+
+            {/* ── 8. Additional fields (non-mockup real fields, collapsed) ── */}
+            <Card>
+              <details className="rc-addl" open={aiUsed}>
+                <summary className="rc-addl__summary">
+                  <Icons.IconColumns className="rc-card__hic" />
+                  Additional fields
+                  <span className="rc-addl__hint">classification · schedule · source — optional</span>
+                </summary>
+                <div className="rc-addl__body">
+                  <div className="rc-fgrid">
+                    <Field
+                      label="Labor category"
+                      value={state.labor_category}
+                      onChange={(v) => setField('labor_category', v)}
+                    />
+                    <EnumSelect
+                      label="Role family"
+                      value={state.role_family}
+                      values={ROLE_FAMILY_VALUES}
+                      labelFn={enterpriseLabel}
+                      prov={provenance['role_family']}
+                      disabled={submitting}
+                      onChange={(v) =>
+                        setField('role_family', v as EnterpriseFormState['role_family'])
+                      }
+                    />
+                    <EnumSelect
+                      label="Seniority level"
+                      value={state.seniority_level}
+                      values={SENIORITY_LEVEL_VALUES}
+                      labelFn={enterpriseLabel}
+                      prov={provenance['seniority_level']}
+                      disabled={submitting}
+                      onChange={(v) =>
+                        setField('seniority_level', v as EnterpriseFormState['seniority_level'])
+                      }
+                    />
+                    <EnumSelect
+                      label="Headcount reason"
+                      value={state.headcount_reason}
+                      values={HEADCOUNT_REASON_VALUES}
+                      labelFn={enterpriseLabel}
+                      disabled={submitting}
+                      onChange={(v) =>
+                        setField('headcount_reason', v as EnterpriseFormState['headcount_reason'])
+                      }
+                    />
+                    <NumStrField
+                      label="Travel percent"
+                      value={state.travel_percent}
+                      onChange={(v) => setField('travel_percent', v as EnterpriseFormState['travel_percent'])}
+                    />
+                    <div className="rc-ifield">
+                      <label className="rc-ifield__lb"><span>Relocation offered</span></label>
+                      <label className="rc-switchrow">
+                        <Switch
+                          checked={state.relocation_offered}
+                          onCheckedChange={(c) => setField('relocation_offered', c)}
+                          aria-label="Relocation offered"
+                        />
+                        <span>Yes</span>
+                      </label>
+                    </div>
+                    <NumStrField
+                      label="Hours per week"
+                      value={state.hours_per_week}
+                      onChange={(v) => setField('hours_per_week', v as EnterpriseFormState['hours_per_week'])}
+                    />
+                    <Field
+                      label="End date"
+                      type="date"
+                      value={state.end_date}
+                      onChange={(v) => setField('end_date', v as EnterpriseFormState['end_date'])}
+                    />
+                    <div className="rc-ifield">
+                      <label className="rc-ifield__lb"><span>Extension possible</span></label>
+                      <label className="rc-switchrow">
+                        <Switch
+                          checked={state.extension_possible}
+                          onCheckedChange={(c) => setField('extension_possible', c)}
+                          aria-label="Extension possible"
+                        />
+                        <span>Yes</span>
+                      </label>
+                    </div>
+                    <EnumSelect
+                      label="Source system"
+                      value={state.source_system}
+                      values={SOURCE_SYSTEM_VALUES}
+                      labelFn={enterpriseLabel}
+                      disabled={submitting}
+                      onChange={(v) =>
+                        setField('source_system', v as EnterpriseFormState['source_system'])
+                      }
+                    />
+                    <Field
+                      label="External req ID"
+                      value={state.external_req_id}
+                      onChange={(v) => setField('external_req_id', v)}
+                    />
+                    <Field
+                      label="Imported at"
+                      type="date"
+                      value={state.imported_at}
+                      onChange={(v) => setField('imported_at', v)}
+                    />
+                  </div>
+
+                  {financialsVisible ? (
+                    <div className="rc-addl__fin">
+                      <div className="rc-addl__finh">
+                        <Icons.IconShield />
+                        Financial planning
+                        <span className="rc-card__sens">restricted</span>
+                      </div>
+                      <div className="rc-fgrid">
+                        <NumStrField label="Target margin %" value={state.target_margin_percent}
+                          onChange={(v) => setField('target_margin_percent', v)} />
+                        <NumStrField label="Markup % target" value={state.markup_percent_target}
+                          onChange={(v) => setField('markup_percent_target', v)} />
+                        <Field label="Rate card ID" value={state.rate_card_id}
+                          onChange={(v) => setField('rate_card_id', v)} />
+                        <NumStrField label="Min bill rate" value={state.min_bill_rate}
+                          onChange={(v) => setField('min_bill_rate', v)} />
+                        <NumStrField label="Max bill rate" value={state.max_bill_rate}
+                          onChange={(v) => setField('max_bill_rate', v)} />
+                        <NumStrField label="Min pay rate" value={state.min_pay_rate}
+                          onChange={(v) => setField('min_pay_rate', v)} />
+                        <NumStrField label="Max pay rate" value={state.max_pay_rate}
+                          onChange={(v) => setField('max_pay_rate', v)} />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </details>
             </Card>
           </div>
 
@@ -1146,6 +1429,79 @@ function SelectField({
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+// A closed-vocabulary select (mockup-styled, provenance-aware). Renders a
+// "Select…" placeholder + friendly labels via labelFn (enterpriseLabel).
+function EnumSelect({
+  label,
+  value,
+  values,
+  onChange,
+  prov,
+  disabled,
+  labelFn,
+  full,
+}: {
+  readonly label: string;
+  readonly value: string;
+  readonly values: readonly string[];
+  readonly onChange: (v: string) => void;
+  readonly prov?: ReqProvenance;
+  readonly disabled?: boolean;
+  readonly labelFn?: (v: string) => string;
+  readonly full?: boolean;
+}) {
+  return (
+    <div className={`rc-ifield${full ? ' rc-ifield--full' : ''}`}>
+      <label className="rc-ifield__lb">
+        <span>{label}</span>
+        <ReqProvenanceChip prov={prov} />
+      </label>
+      <select
+        className={`rc-input${prov === 'ai' ? ' rc-input--prov' : ''}`}
+        value={value}
+        aria-label={label}
+        disabled={disabled}
+        onChange={(ev) => onChange(ev.target.value)}
+      >
+        <option value="">Select…</option>
+        {values.map((v) => (
+          <option key={v} value={v}>
+            {labelFn ? labelFn(v) : v}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// A numeric field whose form value is a string (the enterprise/financial
+// idiom: '' → omitted at submit).
+function NumStrField({
+  label,
+  value,
+  onChange,
+}: {
+  readonly label: string;
+  readonly value: string;
+  readonly onChange: (v: string) => void;
+}) {
+  return (
+    <div className="rc-ifield">
+      <label className="rc-ifield__lb">
+        <span>{label}</span>
+      </label>
+      <input
+        className="rc-input"
+        type="text"
+        inputMode="decimal"
+        value={value}
+        aria-label={label}
+        onChange={(ev) => onChange(ev.target.value)}
+      />
     </div>
   );
 }

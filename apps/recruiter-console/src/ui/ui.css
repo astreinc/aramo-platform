@@ -2910,3 +2910,44 @@ select.rc-input { appearance: none; padding-right: 28px; }
 .rc-skilladd .rc-input { flex: 1; }
 .rc-btn--sm { height: 30px; padding: 0 11px; font-size: .78rem; }
 .rc-success__note { font-size: .82rem; color: var(--muted); }
+
+/* Inline input+unit group (bill rate /hr·/yr, duration value+unit) */
+.rc-inpgrp { display: flex; }
+.rc-inpgrp .rc-input:first-child {
+  border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none; flex: 1; min-width: 0;
+}
+.rc-inpgrp .rc-input:last-child {
+  border-top-left-radius: 0; border-bottom-left-radius: 0; width: auto;
+  background: var(--surface-2, #f6f8fb); font-weight: 600; flex: none;
+}
+
+/* Tall JD textarea — the AI's primary output */
+.rc-jd { min-height: 280px; line-height: 1.6; resize: vertical; }
+
+/* "sensitive" / "restricted" pill on a card head */
+.rc-card__sens {
+  margin-left: 8px; font-size: .62rem; font-weight: 700; letter-spacing: .03em;
+  text-transform: uppercase; color: var(--warn, #946011);
+  background: var(--warn-tint, #faefd8); border-radius: 20px; padding: 2px 8px;
+}
+
+/* Additional fields — collapsed card, mockup card language */
+.rc-addl { width: 100%; }
+.rc-addl__summary {
+  display: flex; align-items: center; gap: 9px; cursor: pointer; list-style: none;
+  padding: 13px 16px; font-weight: 700; font-size: .9rem;
+}
+.rc-addl__summary::-webkit-details-marker { display: none; }
+.rc-addl__summary::after {
+  content: "▸"; margin-left: auto; color: var(--muted); font-size: .85rem; transition: transform .15s;
+}
+.rc-addl[open] .rc-addl__summary::after { transform: rotate(90deg); }
+.rc-addl__summary:hover { background: var(--surface-2, #f6f8fb); }
+.rc-addl__hint { font-weight: 500; font-size: .74rem; color: var(--faint, var(--muted)); }
+.rc-addl__body { padding: 4px 16px 16px; border-top: 1px solid var(--line); }
+.rc-addl__fin { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line-2, var(--line)); }
+.rc-addl__finh {
+  display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: .82rem;
+  color: var(--warn, #946011); margin-bottom: 10px;
+}
+.rc-addl__finh svg { width: 15px; height: 15px; }
