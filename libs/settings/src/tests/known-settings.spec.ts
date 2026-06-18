@@ -14,15 +14,17 @@ import {
 // Settings S4 adds the SECOND entry: `audit.financials_enabled` (boolean,
 // default false) — the GATE toggle for the auditor_with_financials grant.
 
-describe('KNOWN_SETTINGS — the closed-set registry (S4: 2 keys)', () => {
-  it('ships exactly the 2 known-keys (S2 + S4)', () => {
+describe('KNOWN_SETTINGS — the closed-set registry (3 keys)', () => {
+  it('ships exactly the 3 known-keys (S2 + S4 + metrics.goals)', () => {
     expect([...Object.keys(KNOWN_SETTINGS)].sort()).toEqual([
       'audit.financials_enabled',
       'compensation.display_default',
+      'metrics.goals',
     ]);
     expect([...KNOWN_SETTING_KEYS].sort()).toEqual([
       'audit.financials_enabled',
       'compensation.display_default',
+      'metrics.goals',
     ]);
   });
 

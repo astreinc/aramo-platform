@@ -21,6 +21,7 @@ import type {
   CompanyPlacementsReportView,
   PipelineStageRollupView,
   PlacementCountReportView,
+  RecruiterMetricsReportView,
   RequisitionStatusRollupView,
   TenantCountsReportView,
 } from './dto/report.view.js';
@@ -135,6 +136,37 @@ export class ReportingController {
         ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
       },
       companyIds,
+    );
+    return { items };
+  }
+
+  // Per-recruiter operational KPIs (My Desk header) — Submittals·wk /
+  // Interviews set / Placements·MTD / Avg-time-to-submit, each with the prior-
+  // period value (delta) + a recent series (sparkline) + the tenant-default
+  // goal. Principal-scoped (the A3/D4b predicate inside the service). report:read.
+  @Get('recruiter-metrics')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('report:read')
+  @RequireSiteMatch()
+  async recruiterMetrics(
+    @AuthContext() authContext: AuthContextType,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @Req() req: Request,
+  ): Promise<RecruiterMetricsReportView> {
+    const visibility = await req.resolveVisibility!();
+    const goals = await this.reportingService.getRecruiterGoals(
+      authContext.tenant_id,
+      authContext.sub,
+    );
+    const items = await this.reportingService.getRecruiterMetrics(
+      {
+        tenant_id: authContext.tenant_id,
+        user_id: authContext.sub,
+        scopes: authContext.scopes,
+        visibility,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+      },
+      { goals },
     );
     return { items };
   }

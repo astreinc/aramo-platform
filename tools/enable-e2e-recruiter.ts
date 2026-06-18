@@ -130,13 +130,24 @@ async function main(): Promise<void> {
       {
         title: `${TASK_TAG}Send references to the client`,
         owner_id: REQ_IDS[0],
-        // past due → surfaces as "Overdue" in "needs you today"
+        // past due → surfaces as "Overdue" in "Needs you"
         due_date: '2026-06-10T09:00:00.000Z',
+        type: 'follow_up',
+        priority: 'high', // → "Now" priority pill + follow-up icon
       },
       {
-        title: `${TASK_TAG}Follow up after screen`,
+        title: `${TASK_TAG}Prep screen — shortlist`,
         owner_id: REQ_IDS[1],
         due_date: '2026-06-20T09:00:00.000Z',
+        type: 'screen',
+        priority: 'med', // → "Soon" pill + interview icon
+      },
+      {
+        title: `${TASK_TAG}Refresh contact consent`,
+        owner_id: REQ_IDS[0],
+        due_date: '2026-06-21T09:00:00.000Z',
+        type: 'consent',
+        priority: 'med', // → consent badge + "Refresh" action
       },
     ] as const;
 
@@ -162,6 +173,8 @@ async function main(): Promise<void> {
           owner_id: t.owner_id,
           assignee_id: recruiterUserId,
           due_date: t.due_date,
+          type: t.type,
+          priority: t.priority,
         },
       });
       createdTaskIds.push(created.id);

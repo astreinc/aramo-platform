@@ -1,9 +1,39 @@
+import type { Session } from '@aramo/fe-foundation';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DashboardView } from './DashboardView';
 import type { DashboardView as DashboardViewModel } from './types';
+
+const SESSION: Session = {
+  sub: 'u-1',
+  consumer_type: 'recruiter',
+  tenant_id: 't',
+  scopes: ['dashboard:read', 'task:read'],
+  iat: 0,
+  exp: 0,
+};
+
+// A calendar event today at 14:00, owned by the principal — for the agenda.
+function eventToday() {
+  const d = new Date();
+  d.setHours(14, 0, 0, 0);
+  return {
+    id: 'cal-1',
+    tenant_id: 't',
+    site_id: null,
+    owner_id: 'u-1',
+    type: 'interview' as const,
+    title: 'Panel — Sofia Reyes',
+    description: null,
+    starts_at: d.toISOString(),
+    ends_at: null,
+    all_day: false,
+    created_at: d.toISOString(),
+    updated_at: d.toISOString(),
+  };
+}
 
 function makeDashboard(
   overrides: Partial<DashboardViewModel> = {},
@@ -111,6 +141,7 @@ function mockRoutes(opts: {
   tasks?: unknown;
   companies?: unknown;
   pipelines?: unknown;
+  metrics?: unknown;
 } = {}) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = urlOf(input);
@@ -119,6 +150,11 @@ function mockRoutes(opts: {
         status,
         headers: { 'Content-Type': 'application/json' },
       });
+    if (url.includes('/v1/reports/recruiter-metrics')) {
+      // Default: 404 → the KPI strip falls back to the backed plain counts.
+      if (opts.metrics === undefined) return json({ message: 'no metrics' }, 404);
+      return json(opts.metrics);
+    }
     if (url.includes('/v1/dashboard')) {
       return json(opts.dashboard ?? makeDashboard(), opts.dashboardStatus ?? 200);
     }
@@ -130,10 +166,47 @@ function mockRoutes(opts: {
   });
 }
 
+const METRICS = {
+  items: [
+    {
+      key: 'submittals_weekly',
+      value: 7,
+      previous: 5,
+      series: [3, 5, 4, 6, 5, 7, 6, 7],
+      goal: 10,
+      period: 'week',
+    },
+    {
+      key: 'interviews_weekly',
+      value: 4,
+      previous: 3,
+      series: [2, 3, 2, 4, 3, 4, 3, 4],
+      goal: null,
+      period: 'week',
+    },
+    {
+      key: 'placements_monthly',
+      value: 2,
+      previous: 2,
+      series: [0, 1, 1, 2, 1, 2],
+      goal: 3,
+      period: 'month',
+    },
+    {
+      key: 'avg_time_to_submit',
+      value: 1.8,
+      previous: 2.2,
+      series: [2.6, 2.3, 2.1, 2, 1.9, 1.8, 1.9, 1.8],
+      goal: null,
+      period: 'week',
+    },
+  ],
+};
+
 function renderDesk() {
   return render(
     <MemoryRouter>
-      <DashboardView />
+      <DashboardView session={SESSION} />
     </MemoryRouter>,
   );
 }
@@ -141,8 +214,8 @@ function renderDesk() {
 describe('DashboardView (My desk)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders the backed metric cards (no deltas/goals — gap #6)', async () => {
-    mockRoutes();
+  it('falls back to the backed plain counts when /recruiter-metrics is unavailable', async () => {
+    mockRoutes(); // no metrics → 404 → fallback strip
     const { container } = renderDesk();
     await waitFor(() => expect(screen.getByText('Open reqs')).toBeInTheDocument());
     // Open reqs = 1 (req-2 is closed); Talent 56; In pipeline 15; Placements 3.
@@ -184,9 +257,11 @@ describe('DashboardView (My desk)', () => {
     await waitFor(() =>
       expect(screen.getByText('Senior Rust Engineer')).toBeInTheDocument(),
     );
-    // The header columns replaced Openings with Pipeline + Submitted.
-    expect(screen.getByText('Pipeline')).toBeInTheDocument();
-    expect(screen.getByText('Submitted')).toBeInTheDocument();
+    // The header columns replaced Openings with Pipeline + Submitted. Scope to
+    // the reqs card — "Submitted" is also a funnel-bucket label on the desk.
+    const reqCard = screen.getByText('My open reqs').closest('.rc-card') as HTMLElement;
+    expect(within(reqCard).getByText('Pipeline')).toBeInTheDocument();
+    expect(within(reqCard).getByText('Submitted')).toBeInTheDocument();
     // req-1 rollup: active = 3 (no terminal), submitted+ = 2 (submitted +
     // interviewing). Scope to the req row to avoid colliding with the metrics.
     const row = screen.getByRole('link', { name: /Senior Rust Engineer/ })
@@ -266,5 +341,158 @@ describe('DashboardView (My desk)', () => {
         screen.getByText(/dashboard service is temporarily unavailable/i),
       ).toBeInTheDocument(),
     );
+  });
+
+  it('shows a FACTS-ONLY briefing (real counts, no verdict/AI/focus)', async () => {
+    mockRoutes();
+    const { container } = renderDesk();
+    await waitFor(() => expect(screen.getByText('Open reqs')).toBeInTheDocument());
+    // 1 overdue task (due 2020) + 1 hot req (req-1) — deterministic counts.
+    expect(screen.getByText('task overdue')).toBeInTheDocument();
+    expect(screen.getByText('hot requisition')).toBeInTheDocument();
+    // No prescriptive/AI framing survived the charter §3 removals.
+    expect(container.textContent).not.toMatch(
+      /AI-assisted|Suggested focus|Viewing as/i,
+    );
+  });
+
+  it('renders "My active pipeline" funnel from the backed rollup', async () => {
+    mockRoutes({
+      dashboard: makeDashboard({
+        pipeline_rollup: {
+          total: 4,
+          by_status: [
+            { status: 'no_contact', count: 2 },
+            { status: 'submitted', count: 1 },
+            { status: 'placed', count: 1 },
+          ],
+        },
+      }),
+    });
+    renderDesk();
+    await waitFor(() =>
+      expect(screen.getByText('My active pipeline')).toBeInTheDocument(),
+    );
+    // Sourced bucket = no_contact (2); Placed = 1. Scope to the funnel card.
+    const card = screen
+      .getByText('My active pipeline')
+      .closest('.rc-card') as HTMLElement;
+    const stage = (label: string) =>
+      within(card).getByText(label).closest('.rc-fstage') as HTMLElement;
+    expect(within(stage('Sourced')).getByText('2')).toBeInTheDocument();
+    expect(within(stage('Placed')).getByText('1')).toBeInTheDocument();
+  });
+
+  it('lists only TODAY’s agenda items owned by the principal', async () => {
+    mockRoutes({
+      dashboard: makeDashboard({ upcoming_events: [eventToday()] }),
+    });
+    renderDesk();
+    await waitFor(() =>
+      expect(screen.getByText('Panel — Sofia Reyes')).toBeInTheDocument(),
+    );
+  });
+
+  it('hides agenda items owned by another user (my desk only)', async () => {
+    const other = { ...eventToday(), id: 'cal-2', owner_id: 'someone-else' };
+    mockRoutes({ dashboard: makeDashboard({ upcoming_events: [other] }) });
+    renderDesk();
+    await waitFor(() =>
+      expect(screen.getByText('Nothing scheduled today.')).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('Panel — Sofia Reyes')).not.toBeInTheDocument();
+  });
+
+  it('priority-sorts the queue and gives a consent task a Refresh action', async () => {
+    mockRoutes({
+      tasks: {
+        items: [
+          {
+            id: 'low-1',
+            title: 'Low priority admin',
+            description: null,
+            due_date: null,
+            status: 'open',
+            type: 'admin',
+            priority: 'low',
+            source: 'manual',
+            assignee_id: 'me',
+            created_by_user_id: 'u-1',
+            owner_type: 'requisition',
+            owner_id: 'req-9',
+            created_at: '2026-06-10T09:00:00Z',
+            updated_at: '2026-06-10T09:00:00Z',
+          },
+          {
+            id: 'high-1',
+            title: 'Refresh consent for D. Okafor',
+            description: null,
+            due_date: null,
+            status: 'open',
+            type: 'consent',
+            priority: 'high',
+            source: 'manual',
+            assignee_id: 'me',
+            created_by_user_id: 'u-1',
+            owner_type: 'talent_record',
+            owner_id: 'tal-1',
+            created_at: '2026-06-10T09:00:00Z',
+            updated_at: '2026-06-10T09:00:00Z',
+          },
+        ],
+      },
+    });
+    const { container } = renderDesk();
+    await waitFor(() =>
+      expect(
+        screen.getByText('Refresh consent for D. Okafor'),
+      ).toBeInTheDocument(),
+    );
+    // High priority sorts above low.
+    const rows = container.querySelectorAll('.rc-action');
+    expect(rows[0]).toHaveTextContent('Refresh consent for D. Okafor');
+    expect(rows[1]).toHaveTextContent('Low priority admin');
+    // Consent task → "Refresh" action linking to the talent owner.
+    expect(screen.getByRole('link', { name: 'Refresh' })).toHaveAttribute(
+      'href',
+      '/talent/tal-1',
+    );
+    // The consent badge is shown.
+    expect(screen.getByText('Consent')).toBeInTheDocument();
+  });
+
+  it('renders the REAL KPI cards (value/delta/sparkline/goal) from /recruiter-metrics', async () => {
+    mockRoutes({ metrics: METRICS });
+    const { container } = renderDesk();
+    await waitFor(() =>
+      expect(screen.getByText('Submittals · wk')).toBeInTheDocument(),
+    );
+    // The four mockup KPIs, by their real labels.
+    expect(screen.getByText('Interviews set')).toBeInTheDocument();
+    expect(screen.getByText('Placements · MTD')).toBeInTheDocument();
+    expect(screen.getByText('Avg time-to-submit')).toBeInTheDocument();
+
+    // Submittals: value 7, delta +2 vs last wk (7−5), goal-pace bar present.
+    const kpi = (label: string) =>
+      within(screen.getByText(label).closest('.rc-kpi') as HTMLElement);
+    expect(kpi('Submittals · wk').getByText('7')).toBeInTheDocument();
+    expect(kpi('Submittals · wk').getByText(/\+2 vs last wk/)).toBeInTheDocument();
+    expect(
+      kpi('Submittals · wk').getByText(/70% of weekly goal \(10\)/),
+    ).toBeInTheDocument();
+
+    // Avg-time-to-submit fell 2.2→1.8 → an IMPROVEMENT (up tone), "0.4d faster".
+    expect(kpi('Avg time-to-submit').getByText('1.8')).toBeInTheDocument();
+    expect(
+      kpi('Avg time-to-submit').getByText(/0\.4d faster/),
+    ).toBeInTheDocument();
+
+    // Placements MTD: no change (2 vs 2) → flat, "2 of 3 goal" pace.
+    expect(kpi('Placements · MTD').getByText(/2 of 3 goal/)).toBeInTheDocument();
+
+    // Real sparklines are drawn (one per card with ≥2 points).
+    expect(container.querySelectorAll('.rc-spark').length).toBe(4);
+    // The fallback plain cards are NOT shown.
+    expect(screen.queryByText('Open reqs')).not.toBeInTheDocument();
   });
 });

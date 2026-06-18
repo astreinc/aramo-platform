@@ -7,6 +7,11 @@ import { ContactRepository } from '@aramo/contact';
 import { PipelineRepository } from '@aramo/pipeline';
 import { RequisitionRepository } from '@aramo/requisition';
 import { SavedListRepository } from '@aramo/saved-list';
+import {
+  KNOWN_SETTINGS,
+  TenantSettingRepository,
+  isMetricGoalMap,
+} from '@aramo/settings';
 import { TalentRecordRepository } from '@aramo/talent-record';
 
 import type {
@@ -15,6 +20,8 @@ import type {
   DashboardView,
   PipelineStageRollupView,
   PlacementCountReportView,
+  RecruiterMetricKey,
+  RecruiterMetricView,
   RequisitionStatusRollupView,
   TenantCountsReportView,
 } from './dto/report.view.js';
@@ -78,6 +85,118 @@ interface ActorContext {
   visibility: VisibilityContextShape;
 }
 
+// The four desk KPI keys (used to pick the known goals out of the loose
+// settings map). Mirrors RecruiterMetricKey.
+const RECRUITER_METRIC_KEYS: readonly RecruiterMetricKey[] = [
+  'submittals_weekly',
+  'interviews_weekly',
+  'placements_monthly',
+  'avg_time_to_submit',
+];
+
+// --- recruiter-metrics windowing (pure helpers; `now` is injected so the
+// service stays deterministic under test) ---
+const DAY_MS = 86_400_000;
+const SERIES_WEEKS = 8;
+const SERIES_MONTHS = 6;
+
+interface TransitionRow {
+  readonly pipeline_id: string;
+  readonly changed_at: Date;
+}
+
+function daysAgo(now: Date, n: number): Date {
+  return new Date(now.getTime() - n * DAY_MS);
+}
+function startOfMonthUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+}
+function addMonthsUTC(base: Date, n: number): Date {
+  return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + n, 1));
+}
+function round1(x: number): number {
+  return Math.round(x * 10) / 10;
+}
+// Half-open [from, to) count.
+function countIn(rows: readonly TransitionRow[], from: Date, to: Date): number {
+  const f = from.getTime();
+  const t = to.getTime();
+  let n = 0;
+  for (const r of rows) {
+    const c = r.changed_at.getTime();
+    if (c >= f && c < t) n += 1;
+  }
+  return n;
+}
+
+function weeklyCountMetric(
+  rows: readonly TransitionRow[],
+  now: Date,
+  goal: number | undefined,
+): Omit<RecruiterMetricView, 'key' | 'period'> {
+  const nowPlus = new Date(now.getTime() + 1);
+  const value = countIn(rows, daysAgo(now, 7), nowPlus);
+  const previous = countIn(rows, daysAgo(now, 14), daysAgo(now, 7));
+  const series: number[] = [];
+  for (let i = SERIES_WEEKS - 1; i >= 0; i -= 1) {
+    const end = i === 0 ? nowPlus : daysAgo(now, i * 7);
+    series.push(countIn(rows, daysAgo(now, (i + 1) * 7), end));
+  }
+  return { value, previous, series, goal: goal ?? null };
+}
+
+function monthlyCountMetric(
+  rows: readonly TransitionRow[],
+  now: Date,
+  goal: number | undefined,
+): Omit<RecruiterMetricView, 'key' | 'period'> {
+  const nowPlus = new Date(now.getTime() + 1);
+  const somNow = startOfMonthUTC(now);
+  const value = countIn(rows, somNow, nowPlus);
+  const somPrev = addMonthsUTC(now, -1);
+  const elapsed = now.getTime() - somNow.getTime();
+  const previous = countIn(rows, somPrev, new Date(somPrev.getTime() + elapsed));
+  const series: number[] = [];
+  for (let i = SERIES_MONTHS - 1; i >= 0; i -= 1) {
+    const start = addMonthsUTC(now, -i);
+    const end = i === 0 ? nowPlus : addMonthsUTC(now, -(i - 1));
+    series.push(countIn(rows, start, end));
+  }
+  return { value, previous, series, goal: goal ?? null };
+}
+
+function weeklyAvgDaysMetric(
+  submitted: ReadonlyArray<TransitionRow>,
+  createdById: ReadonlyMap<string, Date>,
+  now: Date,
+  goal: number | undefined,
+): Omit<RecruiterMetricView, 'key' | 'period'> {
+  const avgIn = (from: Date, to: Date): number | null => {
+    const f = from.getTime();
+    const t = to.getTime();
+    const durs: number[] = [];
+    for (const r of submitted) {
+      const c = r.changed_at.getTime();
+      if (c < f || c >= t) continue;
+      const created = createdById.get(r.pipeline_id);
+      if (created === undefined) continue;
+      const days = (c - created.getTime()) / DAY_MS;
+      if (days >= 0) durs.push(days);
+    }
+    if (durs.length === 0) return null;
+    return round1(durs.reduce((a, b) => a + b, 0) / durs.length);
+  };
+  const nowPlus = new Date(now.getTime() + 1);
+  const value = avgIn(daysAgo(now, 7), nowPlus);
+  const previous = avgIn(daysAgo(now, 14), daysAgo(now, 7));
+  const series: number[] = [];
+  for (let i = SERIES_WEEKS - 1; i >= 0; i -= 1) {
+    const end = i === 0 ? nowPlus : daysAgo(now, i * 7);
+    series.push(avgIn(daysAgo(now, (i + 1) * 7), end) ?? 0);
+  }
+  return { value, previous, series, goal: goal ?? null };
+}
+
 @Injectable()
 export class ReportingService {
   private readonly logger = new Logger(ReportingService.name);
@@ -91,6 +210,7 @@ export class ReportingService {
     private readonly activityRepository: ActivityRepository,
     private readonly requisitionRepository: RequisitionRepository,
     private readonly pipelineRepository: PipelineRepository,
+    private readonly tenantSettingRepository: TenantSettingRepository,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -305,6 +425,107 @@ export class ReportingService {
       requisition_id: p.requisition_id,
       requisition_title: titleByReq.get(p.requisition_id) ?? 'Requisition',
     }));
+  }
+
+  // The tenant goal/target per metric (My Desk goal-progress bars). Reads the
+  // `metrics.goals` tenant setting, falling back to its registry default so the
+  // bars render for every tenant out-of-box; a tenant overrides via the S2
+  // PUT /v1/tenant/settings path (no migration — the settings pattern-B win).
+  // Only the keys the FE knows are returned; the value is validated.
+  async getRecruiterGoals(
+    tenantId: string,
+    _userId: string,
+  ): Promise<Partial<Record<RecruiterMetricKey, number>>> {
+    const KEY = 'metrics.goals' as const;
+    let raw: unknown = KNOWN_SETTINGS[KEY].default;
+    try {
+      const row = await this.tenantSettingRepository.findOne(tenantId, KEY);
+      if (row !== null && isMetricGoalMap(row.value)) raw = row.value;
+    } catch (err) {
+      // A settings read failure must not 500 the whole KPI strip — fall back to
+      // the registry default (the FE still renders honest goals).
+      this.logger.warn(`metrics.goals read failed; using default: ${String(err)}`);
+    }
+    if (!isMetricGoalMap(raw)) return {};
+    const out: Partial<Record<RecruiterMetricKey, number>> = {};
+    for (const key of RECRUITER_METRIC_KEYS) {
+      const v = raw[key];
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) out[key] = v;
+    }
+    return out;
+  }
+
+  // Per-recruiter operational KPIs (My Desk header). Principal-scoped: every
+  // metric is computed over the caller's VISIBLE requisitions (the A3/D4b
+  // predicate inside listForActor), from pipeline status-history transitions.
+  // `now` and `goals` are injected (controller passes the wall clock + the
+  // tenant-default targets) so the windowing stays deterministic under test.
+  async getRecruiterMetrics(
+    actor: ActorContext,
+    opts?: {
+      now?: Date;
+      goals?: Partial<Record<RecruiterMetricKey, number>>;
+    },
+  ): Promise<RecruiterMetricView[]> {
+    const now = opts?.now ?? new Date();
+    const goals = opts?.goals ?? {};
+
+    const reqs = await this.requisitionRepository.listForActor({
+      tenant_id: actor.tenant_id,
+      visibility: actor.visibility,
+      ...(actor.site_id === undefined ? {} : { site_id: actor.site_id }),
+      limit: 1000,
+    });
+    const reqIds = reqs.map((r) => r.id);
+
+    const pipelines = await this.pipelineRepository.listForRequisitions({
+      tenant_id: actor.tenant_id,
+      requisition_ids: reqIds,
+    });
+    const createdById = new Map<string, Date>(
+      pipelines.map((p) => [p.id, p.created_at]),
+    );
+
+    // One windowed history read covering the longest series we render.
+    const transitions = await this.pipelineRepository.listTransitionsInto({
+      tenant_id: actor.tenant_id,
+      pipeline_ids: pipelines.map((p) => p.id),
+      statuses_to: ['submitted', 'interviewing', 'placed'],
+      since: addMonthsUTC(now, -SERIES_MONTHS),
+    });
+    const submitted = transitions.filter((t) => t.status_to === 'submitted');
+    const interviewing = transitions.filter(
+      (t) => t.status_to === 'interviewing',
+    );
+    const placed = transitions.filter((t) => t.status_to === 'placed');
+
+    return [
+      {
+        key: 'submittals_weekly',
+        period: 'week',
+        ...weeklyCountMetric(submitted, now, goals.submittals_weekly),
+      },
+      {
+        key: 'interviews_weekly',
+        period: 'week',
+        ...weeklyCountMetric(interviewing, now, goals.interviews_weekly),
+      },
+      {
+        key: 'placements_monthly',
+        period: 'month',
+        ...monthlyCountMetric(placed, now, goals.placements_monthly),
+      },
+      {
+        key: 'avg_time_to_submit',
+        period: 'week',
+        ...weeklyAvgDaysMetric(
+          submitted,
+          createdById,
+          now,
+          goals.avg_time_to_submit,
+        ),
+      },
+    ];
   }
 
   // -------------------------------------------------------------------------

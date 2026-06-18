@@ -94,6 +94,45 @@ export interface CompanyPlacementsReportView {
   items: CompanyPlacementView[];
 }
 
+// RecruiterMetricsView — the principal-scoped operational KPIs for the My Desk
+// header (GET /v1/reports/recruiter-metrics). Each metric is computed over the
+// caller's VISIBLE requisitions (the same A3/D4b assignment predicate the other
+// rollups use — "my" desk), from pipeline status-history transitions:
+//   - submittals_weekly   : entered `submitted`   in the last 7 days
+//   - interviews_weekly   : entered `interviewing` in the last 7 days
+//   - placements_monthly  : entered `placed`       this calendar month
+//   - avg_time_to_submit  : mean days from pipeline-create → `submitted`,
+//                           over the submittals in the last 7 days
+// All values are REAL (history-derived). `previous` is the immediately-prior
+// comparable period (the trend delta). `series` is the recent per-period
+// sequence (oldest→newest) for the sparkline. `goal` is the tenant-default
+// target for the metric (null when none configured). NO Core / submittal /
+// examination read — the seam-exclusion holds (history is an ATS schema).
+export type RecruiterMetricKey =
+  | 'submittals_weekly'
+  | 'interviews_weekly'
+  | 'placements_monthly'
+  | 'avg_time_to_submit';
+
+export interface RecruiterMetricView {
+  key: RecruiterMetricKey;
+  // Current-period value. Counts are integers; avg_time_to_submit is days
+  // (1 decimal). null only for avg_time_to_submit when the window is empty.
+  value: number | null;
+  // Prior comparable period (for the delta); null when not computable.
+  previous: number | null;
+  // Per-period series oldest→newest for the sparkline.
+  series: number[];
+  // Tenant-default target for the period; null when no goal is configured.
+  goal: number | null;
+  // Period unit (honest "· wk" / "· MTD" labels; no fabricated window).
+  period: 'week' | 'month';
+}
+
+export interface RecruiterMetricsReportView {
+  items: RecruiterMetricView[];
+}
+
 // DashboardView — the composition payload for GET /v1/dashboard.
 // Bundles the ATS-internal metrics into a single response so a
 // recruiter UI doesn't have to N-round-trip on load.

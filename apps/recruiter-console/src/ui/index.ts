@@ -56,8 +56,14 @@ export {
   type ConstraintState,
 } from './pills';
 export { MetricCard } from './MetricCard';
+export { KpiCard, type KpiDelta, type KpiPace } from './KpiCard';
+export { Sparkline, type SparkTone } from './Sparkline';
 export { HotToggle } from './HotToggle';
-export { ActionItem, type ActionKind } from './ActionItem';
+export {
+  ActionItem,
+  type ActionKind,
+  type ActionPriority,
+} from './ActionItem';
 export { Stepper } from './Stepper';
 export { ProgressMini } from './ProgressMini';
 export { AttestCheckbox } from './AttestCheckbox';

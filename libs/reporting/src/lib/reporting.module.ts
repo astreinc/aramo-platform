@@ -9,6 +9,7 @@ import { EntitlementModule } from '@aramo/entitlement';
 import { PipelineModule } from '@aramo/pipeline';
 import { RequisitionModule } from '@aramo/requisition';
 import { SavedListModule } from '@aramo/saved-list';
+import { SettingsModule } from '@aramo/settings';
 import { TalentRecordModule } from '@aramo/talent-record';
 
 import { DashboardController } from './dashboard.controller.js';
@@ -41,6 +42,10 @@ import { ReportingService } from './reporting.service.js';
 // submittal migration to the test container — the routes still serve
 // every metric, because none touches a Core table).
 //
+// SettingsModule is tenant-CONFIG (the settings schema), NOT Core — the
+// recruiter-metrics route reads the tenant-default KPI goals from it. The
+// Core seam-exclusion is unchanged (no engagement/submittal/examination).
+//
 // All 8 entity-module edges are FORWARD (reporting → entity); no
 // entity module imports @aramo/reporting → no cycle.
 @Module({
@@ -55,6 +60,7 @@ import { ReportingService } from './reporting.service.js';
     PipelineModule,
     RequisitionModule,
     SavedListModule,
+    SettingsModule,
     TalentRecordModule,
   ],
   controllers: [ReportingController, DashboardController],

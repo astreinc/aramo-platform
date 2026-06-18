@@ -731,4 +731,60 @@ export class PipelineRepository {
     });
     return rows.map((r) => r.id);
   }
+
+  // Recruiter-metrics — the pipelines (id + created_at) on a requisition set,
+  // so the reporting service can window their status-history transitions and
+  // compute time-to-submit. Cross-schema id-list pattern (the history rows key
+  // on pipeline_id, not requisition_id). Empty id list short-circuits.
+  async listForRequisitions(args: {
+    tenant_id: string;
+    requisition_ids: readonly string[];
+    limit?: number;
+  }): Promise<Array<{ id: string; requisition_id: string; created_at: Date }>> {
+    if (args.requisition_ids.length === 0) return [];
+    const rows = await this.prisma.pipeline.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        requisition_id: { in: Array.from(args.requisition_ids) },
+      },
+      select: { id: true, requisition_id: true, created_at: true },
+      take: Math.min(args.limit ?? 5000, 10000),
+    });
+    return rows.map((r) => ({
+      id: r.id as string,
+      requisition_id: r.requisition_id as string,
+      created_at: r.created_at as Date,
+    }));
+  }
+
+  // Recruiter-metrics — status-history transitions INTO a status set since a
+  // cutoff, for a pipeline set (windowed). The dominant metrics read: "entered
+  // submitted / interviewing / placed" over a recent window. The reporting
+  // service buckets these in JS for the per-period counts + sparkline series.
+  async listTransitionsInto(args: {
+    tenant_id: string;
+    pipeline_ids: readonly string[];
+    statuses_to: readonly PipelineStatus[];
+    since: Date;
+  }): Promise<
+    Array<{ pipeline_id: string; status_to: PipelineStatus; changed_at: Date }>
+  > {
+    if (args.pipeline_ids.length === 0 || args.statuses_to.length === 0) {
+      return [];
+    }
+    const rows = await this.prisma.pipelineStatusHistory.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        pipeline_id: { in: Array.from(args.pipeline_ids) },
+        status_to: { in: Array.from(args.statuses_to) },
+        changed_at: { gte: args.since },
+      },
+      select: { pipeline_id: true, status_to: true, changed_at: true },
+    });
+    return rows.map((r) => ({
+      pipeline_id: r.pipeline_id as string,
+      status_to: r.status_to as PipelineStatus,
+      changed_at: r.changed_at as Date,
+    }));
+  }
 }
