@@ -98,6 +98,46 @@ export interface ConfirmProfileRequest {
   readonly golden_profile: GoldenProfileContent;
 }
 
+// --- New Requisition AI intake (charter §7.3) — the PRE-CREATION draft. ---
+// Hand-mirrored from libs/requisition .../dto/intake-generation.dto.ts. A
+// single intake box (a pasted client email OR a few hiring-manager lines) is
+// sent to the AI, which extracts stated requisition facts + drafts a JD +
+// required / nice-to-have requirement skills. Everything lands in EDITABLE
+// fields tagged 'ai' — the recruiter reviews, edits and commits. The AI never
+// saves.
+
+export interface IntakeExtractedFields {
+  readonly title?: string;
+  readonly company_name?: string;
+  readonly hiring_manager?: string;
+  readonly job_type?: string;
+  readonly seniority_level?: string;
+  readonly role_family?: string;
+  readonly openings?: number;
+  readonly city?: string;
+  readonly state?: string;
+  readonly work_arrangement?: string;
+  readonly work_authorization?: string;
+  readonly bill_rate?: string;
+  readonly rate_type?: string;
+  readonly allow_subcontractors?: boolean;
+  readonly duration_value?: number;
+  readonly duration_unit?: string;
+  readonly start_date?: string;
+}
+
+export interface IntakeDraftRequest {
+  readonly intake_text: string;
+}
+
+export interface IntakeDraftResponse {
+  readonly fields: IntakeExtractedFields;
+  readonly jd_text: string;
+  readonly required_skills: { name: string }[];
+  readonly nice_to_have_skills: { name: string }[];
+  readonly ai_draft_audit_record_id: string;
+}
+
 // --- Small helpers for the comma/line skill-list editing UI. ---
 
 // Parse a comma-or-newline list of skill names into {name, min_years?}

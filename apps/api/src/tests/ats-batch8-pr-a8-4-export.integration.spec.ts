@@ -149,6 +149,12 @@ const REQUISITION_JOB_MODULE_FIELDS = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql',
 );
+// New Requisition (Requisition Record Spec Amendment v1.0) — rate_type +
+// allow_subcontractors + run_match_on_create. Additive; applied last.
+const REQUISITION_RATE_TYPE_SUBK = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260618120000_add_rate_type_subk_runmatch/migration.sql',
+);
 const TALENT_RECORD_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
@@ -296,7 +302,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         CONTACT_LIST_SURFACE_FIELDS,
         REQUISITION_INIT,
         REQUISITION_IMPORT_BACK_REF,
-        REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS,
+        REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_RATE_TYPE_SUBK,
         TALENT_RECORD_INIT,
         TALENT_RECORD_LINK_ADD,
         TALENT_RECORD_IMPORT_BACK_REF,

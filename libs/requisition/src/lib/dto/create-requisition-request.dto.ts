@@ -70,6 +70,14 @@ export interface CreateRequisitionRequestDto {
   external_req_id?: string;
   imported_at?: string;
 
+  // ---- Requisition Record Spec Amendment v1.0 (additive, UN-gated) -----
+  // rate_type is guarded against the closed allowlist (C2C|W2|1099|Any) at
+  // the controller boundary. run_match_on_create is the stored run-match
+  // INTENT flag (reserves matching; triggers nothing at create).
+  rate_type?: string;
+  allow_subcontractors?: boolean;
+  run_match_on_create?: boolean;
+
   // ---- Gated financial-planning fields (🔒 requisition:edit:financials) -
   // LB-4: write-gated by the financial edit-gate at the repository
   // boundary. Decimal money/percent fields are decimal strings (Decimal-

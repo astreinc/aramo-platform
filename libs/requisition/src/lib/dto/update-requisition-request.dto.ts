@@ -61,6 +61,11 @@ export interface UpdateRequisitionRequestDto {
   external_req_id?: string | null;
   imported_at?: string | null;
 
+  // ---- Requisition Record Spec Amendment v1.0 (additive, UN-gated) -----
+  rate_type?: string | null;
+  allow_subcontractors?: boolean;
+  run_match_on_create?: boolean;
+
   // ---- Gated financial-planning fields (🔒 requisition:edit:financials) -
   target_margin_percent?: string | null;
   markup_percent_target?: string | null;

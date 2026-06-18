@@ -76,6 +76,12 @@ const REQUISITION_JOB_MODULE_FIELDS = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql',
 );
+// New Requisition (Requisition Record Spec Amendment v1.0) — rate_type +
+// allow_subcontractors + run_match_on_create. Additive; applied last.
+const REQUISITION_RATE_TYPE_SUBK = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260618120000_add_rate_type_subk_runmatch/migration.sql',
+);
 // PR-A1 Requisition-Gating Rework — DROPs the legacy rate_max/salary columns.
 // Must apply AFTER the init migration that created them (and after the comp
 // fields migration) so the column-existence proof below reflects the drop.
@@ -181,7 +187,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new Client({ connectionString: url });
       await setupClient.connect();
 
-      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP]) {
+      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 

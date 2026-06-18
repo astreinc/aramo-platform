@@ -8,6 +8,7 @@ import { JobDomainModule } from '@aramo/job-domain';
 import { PrismaService } from './prisma/prisma.service.js';
 import { RequisitionAssignmentRepository } from './requisition-assignment.repository.js';
 import { RequisitionController } from './requisition.controller.js';
+import { RequisitionIntakeService } from './requisition-intake.service.js';
 import { RequisitionProfileService } from './requisition-profile.service.js';
 import { RequisitionRepository } from './requisition.repository.js';
 
@@ -42,6 +43,7 @@ import { RequisitionRepository } from './requisition.repository.js';
     RequisitionRepository,
     RequisitionAssignmentRepository,
     RequisitionProfileService,
+    RequisitionIntakeService,
   ],
   exports: [RequisitionRepository, RequisitionAssignmentRepository],
 })

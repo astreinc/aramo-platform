@@ -22,9 +22,16 @@ import {
 } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
-import { validateCompensationInput } from './compensation-validation.js';
+import {
+  validateCompensationInput,
+  validateRateType,
+} from './compensation-validation.js';
 import type { AssignRequisitionRequestDto } from './dto/assign-requisition-request.dto.js';
 import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
+import type {
+  IntakeDraftRequestDto,
+  IntakeDraftResponseDto,
+} from './dto/intake-generation.dto.js';
 import type {
   ConfirmProfileRequestDto,
   ConfirmProfileResponseDto,
@@ -36,6 +43,7 @@ import type { RequisitionProfileView } from './dto/requisition-profile.view.js';
 import type { RequisitionView } from './dto/requisition.view.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
 import { RequisitionAssignmentRepository } from './requisition-assignment.repository.js';
+import { RequisitionIntakeService } from './requisition-intake.service.js';
 import { RequisitionProfileService } from './requisition-profile.service.js';
 import { RequisitionRepository } from './requisition.repository.js';
 
@@ -69,6 +77,7 @@ export class RequisitionController {
     private readonly requisitionRepository: RequisitionRepository,
     private readonly assignmentRepository: RequisitionAssignmentRepository,
     private readonly profileService: RequisitionProfileService,
+    private readonly intakeService: RequisitionIntakeService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -156,6 +165,8 @@ export class RequisitionController {
     // model + Decimal-string shape). Throws AramoError VALIDATION_ERROR
     // (400) on miss — never reaches the repository layer.
     validateCompensationInput(body, requestId);
+    // Requisition Record Spec Amendment v1.0 — rate_type closed-set guard.
+    validateRateType(body, requestId);
     // D-AUTHZ-COMP-WRITE-1 — the WRITE-side floor lives at the
     // repository (the deepest layer all 3 write paths traverse); the
     // controller threads the AuthContext.scopes through. The gate
@@ -165,6 +176,35 @@ export class RequisitionController {
       entered_by_id: authContext.sub,
       input: body,
       scopes: authContext.scopes,
+      requestId,
+    });
+  }
+
+  // New Requisition AI intake (charter §7.3, Lead ruling Tab 1) — the
+  // PRE-CREATION generation lane. A single intake box (a pasted client email
+  // OR a few hiring-manager lines) → the LLM extracts stated requisition
+  // facts + drafts a JD + must/nice requirement skills, returned for the
+  // recruiter to review/edit/commit via the normal create flow. The AI never
+  // saves (R8/R12); this route mutates nothing. Gated on requisition:create
+  // (same as create — any req-creator can use the lane). Declared as a STATIC
+  // route ('intake' is one segment; it never collides with ':id/...').
+  //
+  // 2nd declared libs/ai-draft consumer (same lib as the profile draft;
+  // ADR-0015 v1.2 — no new amendment). HONEST FAILURE: a provider outage
+  // surfaces AI_PROVIDER_UNAVAILABLE (502) — never a fabricated draft.
+  @Post('intake')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('requisition:create')
+  @RequireSiteMatch()
+  async intake(
+    @AuthContext() authContext: AuthContextType,
+    @Body() body: IntakeDraftRequestDto,
+    @RequestId() requestId: string,
+  ): Promise<IntakeDraftResponseDto> {
+    return this.intakeService.draftFromIntake({
+      tenant_id: authContext.tenant_id,
+      intake_text: body.intake_text,
+      ...(body.max_tokens !== undefined ? { max_tokens: body.max_tokens } : {}),
       requestId,
     });
   }
@@ -190,6 +230,7 @@ export class RequisitionController {
     @RequestId() requestId: string,
   ): Promise<RequisitionView> {
     validateCompensationInput(body, requestId);
+    validateRateType(body, requestId);
     return this.requisitionRepository.update({
       tenant_id: authContext.tenant_id,
       id,
