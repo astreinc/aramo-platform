@@ -12,6 +12,8 @@ import type {
   ConfirmProfileRequest,
   DraftProfileRequest,
   DraftProfileResponse,
+  IntakeDraftRequest,
+  IntakeDraftResponse,
   RequisitionProfileView,
 } from './golden-profile';
 
@@ -71,6 +73,19 @@ export async function createRequisition(
   body: CreateRequisitionRequest,
 ): Promise<RequisitionView> {
   return apiClient.post<RequisitionView>('/v1/requisitions', body);
+}
+
+// New Requisition AI intake (charter §7.3) — the PRE-CREATION generation
+// lane. POST /v1/requisitions/intake takes the intake text (a pasted client
+// email OR a few hiring-manager lines) and returns the extracted fields + a
+// drafted JD + must/nice requirement skills, for the recruiter to review,
+// edit and commit via createRequisition. Mutates nothing server-side. An AI
+// provider outage surfaces as an ApiError (AI_PROVIDER_UNAVAILABLE) — the
+// caller renders an honest failure state; the draft is never fabricated.
+export async function draftRequisitionFromIntake(
+  body: IntakeDraftRequest,
+): Promise<IntakeDraftResponse> {
+  return apiClient.post<IntakeDraftResponse>('/v1/requisitions/intake', body);
 }
 
 export async function updateRequisition(

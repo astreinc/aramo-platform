@@ -15,4 +15,10 @@ export {
   type UpdateRequisitionRequestDto,
   type RequisitionAssignmentView,
   type AssignRequisitionRequestDto,
+  RATE_TYPE_VALUES,
+  isRateType,
+  type RateType,
+  type IntakeDraftRequestDto,
+  type IntakeDraftResponseDto,
+  type IntakeExtractedFields,
 } from './lib/dto/index.js';

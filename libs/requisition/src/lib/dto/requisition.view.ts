@@ -82,6 +82,11 @@ export interface RequisitionView {
   external_req_id: string | null;
   imported_at: string | null;
 
+  // ---- Requisition Record Spec Amendment v1.0 (additive, UN-gated) -----
+  rate_type: string | null;
+  allow_subcontractors: boolean;
+  run_match_on_create: boolean;
+
   // ---- Gated financial-planning fields (🔒 requisition:view:financials) -
   // Masked on read by the field-masking financials map (LB-4) when the
   // actor lacks requisition:view:financials — omitted from the JSON, NOT

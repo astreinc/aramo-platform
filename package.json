@@ -28,6 +28,7 @@
     "prisma:validate-identity": "prisma validate --schema libs/identity/prisma/schema.prisma",
     "prisma:validate-auth-storage": "prisma validate --schema libs/auth-storage/prisma/schema.prisma",
     "prisma:seed-identity": "node --import jiti/register libs/identity/prisma/seed.ts",
+    "db:sync:local": "bash tools/db-sync-local.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "openapi:validate": "swagger-cli validate openapi/common.yaml && swagger-cli validate openapi/ats.yaml && swagger-cli validate openapi/portal.yaml && swagger-cli validate openapi/ingestion.yaml && swagger-cli validate openapi/auth.yaml",

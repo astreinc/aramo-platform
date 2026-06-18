@@ -67,6 +67,39 @@ trust implication. Reviewed at each go-live gate.
 - **Close criteria:** add a `?paged=true` cursor + facet path to
   GET /v1/requisitions and wire server-side pagination/facets in the list.
 
+### New Requisition — AI intake lane: dark until the per-env Anthropic secret is provisioned
+- **Date:** 2026-06-18 · **Branch:** `feat/new-requisition-mockup-parity`
+- **Present:** the New Requisition "Draft with AI" lane (POST /v1/requisitions/
+  intake) is fully built + correct — it reuses the governed `libs/ai-draft`
+  substrate (`claude-sonnet-4-6`, audit, PII-redaction). On a provider/key
+  failure it fails **honestly**: the endpoint remaps to `AI_PROVIDER_UNAVAILABLE`
+  (502) / `AI_RATE_LIMITED` (429) and the FE shows "AI drafting is unavailable —
+  enter the requisition manually." The **manual lane always works**.
+- **NOT present (DEPLOY STEP — per-env, out-of-band):** the Anthropic API key is
+  resolved ONLY from **AWS Secrets Manager** at `aramo/${ARAMO_ENV}/anthropic-api-key`
+  (no env fallback — ADR-0015 Decision 4). The secret must be **provisioned per
+  environment** before the AI lane works — exactly like the Cognito / S3 IAM
+  out-of-band creds (see "Staging résumé bucket" below). Verified absent for
+  `ARAMO_ENV=local` (and account-wide) at authoring: `describe-secret` →
+  `ResourceNotFoundException`, so every draft returns `AI_PROVIDER_UNAVAILABLE`
+  until it is created. The AI lane is **DARK-BY-CONFIG, not broken** — the code is
+  correct and fails honestly. A live draft (the one pre-merge check CI cannot
+  cover, since CI has no LLM provider) must be confirmed once the secret is
+  provisioned.
+- **Provisioning (per env — staging + prod each need their own):**
+  `infrastructure/bootstrap/create-anthropic-secret.sh --env <staging|prod> --api-key sk-ant-…`
+  then restart the API (the key caches for process lifetime). Runbook:
+  [doc/runbooks/bootstrap-anthropic-secret.md](runbooks/bootstrap-anthropic-secret.md).
+- **Risk:** none to integrity (no fabricated drafts; honest failure + working
+  manual lane). The only effect of the missing secret is the AI lane being
+  unavailable until provisioned.
+- **Close criteria:** create `aramo/staging/anthropic-api-key` (and the prod
+  equivalent) in Secrets Manager during the staging/prod deploy, **ensure the
+  Anthropic account has an active credit balance** (a valid key with no credits
+  returns a 400 "credit balance too low" — now surfaced honestly as
+  `AI_PROVIDER_UNAVAILABLE`, never as a user-input error), restart the API, and
+  confirm a live draft populates the editable fields.
+
 ---
 
 ## Talent

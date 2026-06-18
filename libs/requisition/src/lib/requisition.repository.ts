@@ -137,6 +137,12 @@ function buildEnterpriseCreateData(
     source_system: input.source_system ?? null,
     external_req_id: input.external_req_id ?? null,
     imported_at: input.imported_at === undefined || input.imported_at === null ? null : new Date(input.imported_at),
+    // Requisition Record Spec Amendment v1.0 — commercial classification +
+    // the run-match intent flag (un-gated; additive). run_match_on_create is
+    // a stored flag ONLY — it reserves matching, triggers nothing at create.
+    rate_type: input.rate_type ?? null,
+    allow_subcontractors: input.allow_subcontractors ?? false,
+    run_match_on_create: input.run_match_on_create ?? false,
     // Gated financial-planning (🔒 — write-gated upstream).
     target_margin_percent: input.target_margin_percent ?? null,
     markup_percent_target: input.markup_percent_target ?? null,
@@ -205,6 +211,10 @@ interface RequisitionRow {
   source_system: string | null;
   external_req_id: string | null;
   imported_at: Date | null;
+  // Requisition Record Spec Amendment v1.0 — commercial classification + flag.
+  rate_type: string | null;
+  allow_subcontractors: boolean;
+  run_match_on_create: boolean;
   // Job-Module §1 Part 1 — gated financial-planning (Decimal money/percent).
   target_margin_percent: Prisma.Decimal | null;
   markup_percent_target: Prisma.Decimal | null;
@@ -293,6 +303,10 @@ function projectView(row: RequisitionRow): RequisitionView {
     source_system: row.source_system,
     external_req_id: row.external_req_id,
     imported_at: row.imported_at === null ? null : row.imported_at.toISOString(),
+    // Requisition Record Spec Amendment v1.0 — commercial classification + flag.
+    rate_type: row.rate_type,
+    allow_subcontractors: row.allow_subcontractors,
+    run_match_on_create: row.run_match_on_create,
     // Job-Module §1 Part 1 — gated financial-planning (Decimal → fixed-2
     // string; the interceptor omits these for non-financials-scope actors).
     target_margin_percent: decimalToFixed2(row.target_margin_percent),
@@ -556,6 +570,10 @@ export class RequisitionRepository {
     if (i.source_system !== undefined) data['source_system'] = i.source_system;
     if (i.external_req_id !== undefined) data['external_req_id'] = i.external_req_id;
     if (i.imported_at !== undefined) data['imported_at'] = i.imported_at === null ? null : new Date(i.imported_at);
+    // Requisition Record Spec Amendment v1.0 — same PATCH semantics.
+    if (i.rate_type !== undefined) data['rate_type'] = i.rate_type;
+    if (i.allow_subcontractors !== undefined) data['allow_subcontractors'] = i.allow_subcontractors;
+    if (i.run_match_on_create !== undefined) data['run_match_on_create'] = i.run_match_on_create;
     // Job-Module §1 Part 1 — gated financial-planning (write-gated above).
     if (i.target_margin_percent !== undefined) data['target_margin_percent'] = i.target_margin_percent;
     if (i.markup_percent_target !== undefined) data['markup_percent_target'] = i.markup_percent_target;

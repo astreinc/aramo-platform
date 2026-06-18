@@ -112,6 +112,12 @@ const REQUISITION_JOB_MODULE_FIELDS = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql',
 );
+// New Requisition (Requisition Record Spec Amendment v1.0) — rate_type +
+// allow_subcontractors + run_match_on_create. Additive; applied last.
+const REQUISITION_RATE_TYPE_SUBK = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260618120000_add_rate_type_subk_runmatch/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-authz-d4b-spec';
@@ -431,7 +437,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         COMPANY_D4A,
         REQUISITION_INIT,
         REQUISITION_IMPORT_BACK_REF,
-        REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS,
+        REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_RATE_TYPE_SUBK,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }

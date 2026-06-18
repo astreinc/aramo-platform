@@ -103,10 +103,21 @@ export interface RequisitionView {
   readonly min_pay_rate: string | null;
   readonly max_pay_rate: string | null;
 
+  // --- Requisition Record Spec Amendment v1.0 (additive, UN-gated). ---
+  readonly rate_type: string | null;
+  readonly allow_subcontractors: boolean;
+  readonly run_match_on_create: boolean;
+
   // --- AI golden-profile link (read-only on the form; set by the
   // profile/confirm flow). ---
   readonly golden_profile_id: string | null;
 }
+
+// Hand-mirrored from libs/requisition/src/lib/dto/rate-type.ts (RATE_TYPE_
+// VALUES). A drift-guard spec asserts this matches the BE allowlist 1:1 —
+// the worker-classification closed set (String-not-enum on the BE).
+export const RATE_TYPE_VALUES = ['C2C', 'W2', '1099', 'Any'] as const;
+export type RateType = (typeof RATE_TYPE_VALUES)[number];
 
 export interface RequisitionListResponse {
   readonly items: readonly RequisitionView[];
@@ -194,6 +205,11 @@ export interface CreateRequisitionRequest {
   readonly external_req_id?: string;
   readonly imported_at?: string;
 
+  // --- Requisition Record Spec Amendment v1.0 (additive, UN-gated). ---
+  readonly rate_type?: string;
+  readonly allow_subcontractors?: boolean;
+  readonly run_match_on_create?: boolean;
+
   // --- Gated financial-planning fields (requisition:view:financials).
   // The form OMITS these unless the financial section is visible (the D5-
   // defensive omission mirror — a non-holder never submits them). ---
@@ -266,6 +282,11 @@ export interface UpdateRequisitionRequest {
   readonly source_system?: string | null;
   readonly external_req_id?: string | null;
   readonly imported_at?: string | null;
+
+  // --- Requisition Record Spec Amendment v1.0 (additive, UN-gated). ---
+  readonly rate_type?: string | null;
+  readonly allow_subcontractors?: boolean;
+  readonly run_match_on_create?: boolean;
 
   // --- Gated financial-planning fields (requisition:view:financials).
   // Threaded ONLY when the section is visible (D5-defensive omission). ---

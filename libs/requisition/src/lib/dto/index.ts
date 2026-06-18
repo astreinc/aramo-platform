@@ -14,7 +14,13 @@ export {
   type RequisitionCompensationModel,
 } from './requisition-compensation-model.js';
 export { isIso4217Currency } from './iso-4217-currency.js';
+export { RATE_TYPE_VALUES, isRateType, type RateType } from './rate-type.js';
 export type { RequisitionView } from './requisition.view.js';
+export type {
+  IntakeDraftRequestDto,
+  IntakeDraftResponseDto,
+  IntakeExtractedFields,
+} from './intake-generation.dto.js';
 export {
   emptyRequisitionProfileView,
   type RequisitionProfileView,

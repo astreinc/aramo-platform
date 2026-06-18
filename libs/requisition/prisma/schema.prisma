@@ -200,6 +200,25 @@ model Requisition {
   external_req_id String?
   imported_at    DateTime? @db.Timestamptz
 
+  // ---- Requisition Record Spec Amendment v1.0 (New Requisition page) ----
+  // Two req-level commercial classification facts + the run-match intent
+  // flag. String-not-enum closed vocab (rate_type) per convention R7;
+  // guarded at the controller boundary against the closed allowlist
+  // (dto/rate-type.ts), NOT a Prisma enum. UN-GATED commercial facts (a
+  // worker-classification + a subcontractor-allowed flag are not agency
+  // economics — they are stated job-order facts; R10-safe, NOT in the
+  // compensation/financial gating families).
+  rate_type            String? // C2C | W2 | 1099 | Any (closed allowlist)
+  allow_subcontractors Boolean @default(false)
+
+  // run_match_on_create — the recruiter's INTENT to run matching when the
+  // requisition is created (the New Requisition rail toggle / "Create & run
+  // match"). A stored flag ONLY: it reserves the intent for the matching
+  // capability to consume when it ships (evidence-not-ranking, R10). It
+  // triggers NOTHING at create — no matching is run, nothing is scored, no
+  // person is assessed. Default false.
+  run_match_on_create Boolean @default(false)
+
   // ---- Gated financial additions (🔒 requisition:*:financials) --------
   // Job-Module Directive v1.0 §1 Part 1 + LB-4. A DISTINCT financial-
   // planning surface (targets / ranges / rate-card ref) — NOT the 13

@@ -2,6 +2,7 @@ import { AramoError } from '@aramo/common';
 
 import { isIso4217Currency } from './dto/iso-4217-currency.js';
 import { isRatePeriod } from './dto/rate-period.js';
+import { isRateType } from './dto/rate-type.js';
 import { isRequisitionCompensationModel } from './dto/requisition-compensation-model.js';
 
 // Compensation-Field Modeling v1.1 — controller-boundary validation.
@@ -104,4 +105,25 @@ export function validateCompensationInput(
   checkDecimal(requestId, 'placement_fee_amount', input.placement_fee_amount);
   checkDecimal(requestId, 'salary_amount', input.salary_amount);
   checkCurrency(requestId, 'salary_currency', input.salary_currency);
+}
+
+// Requisition Record Spec Amendment v1.0 — the rate_type closed-set guard
+// (C2C|W2|1099|Any), mirroring the currency/period boundary discipline. The
+// boolean fields (allow_subcontractors, run_match_on_create) need no closed-
+// set guard (any JSON boolean is valid; non-booleans are caught upstream).
+export interface RateTypeValidatable {
+  rate_type?: string | null;
+}
+
+export function validateRateType(
+  input: RateTypeValidatable,
+  requestId: string,
+): void {
+  if (
+    input.rate_type !== undefined &&
+    input.rate_type !== null &&
+    !isRateType(input.rate_type)
+  ) {
+    reject(requestId, 'rate_type', 'must be one of C2C|W2|1099|Any');
+  }
 }
