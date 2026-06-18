@@ -87,11 +87,6 @@ describe('TenantSettingService.getAll — S2 view materialization', () => {
     expect(view).toEqual({
       'compensation.display_default': 'both',
       'audit.financials_enabled': false,
-      'metrics.goals': {
-        submittals_weekly: 10,
-        interviews_weekly: 6,
-        placements_monthly: 3,
-      },
     });
   });
 
@@ -108,11 +103,6 @@ describe('TenantSettingService.getAll — S2 view materialization', () => {
     expect(view).toEqual({
       'compensation.display_default': 'spread',
       'audit.financials_enabled': false,
-      'metrics.goals': {
-        submittals_weekly: 10,
-        interviews_weekly: 6,
-        placements_monthly: 3,
-      },
     });
   });
 
@@ -130,11 +120,6 @@ describe('TenantSettingService.getAll — S2 view materialization', () => {
     expect(view).toEqual({
       'compensation.display_default': 'markup',
       'audit.financials_enabled': false,
-      'metrics.goals': {
-        submittals_weekly: 10,
-        interviews_weekly: 6,
-        placements_monthly: 3,
-      },
     });
   });
 });

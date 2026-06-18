@@ -45,6 +45,11 @@ export interface SettingDefinition<T> {
   readonly key: string;
   readonly default: T;
   readonly validate: (value: unknown) => value is T;
+  // INTERNAL keys are valid + writable (the S2 PUT validates against them) but
+  // are EXCLUDED from the tenant-admin materialized view (getAll / GET
+  // /v1/tenant/settings). Used for config a non-admin surface owns — e.g. the
+  // recruiter-metrics goals — that should not appear in the tenant settings UI.
+  readonly internal?: boolean;
 }
 
 // `compensation.display_default` — the FIRST registered key (S2).
@@ -177,6 +182,9 @@ export const KNOWN_SETTINGS = {
       placements_monthly: 3,
     } as MetricGoalMap,
     validate: isMetricGoalMap,
+    // Recruiter-metrics config — NOT a tenant-admin setting. Excluded from the
+    // settings materialized view (the recruiter desk reads it directly).
+    internal: true,
   },
 } as const satisfies Record<string, SettingDefinition<unknown>>;
 

@@ -19,6 +19,7 @@
       "@aramo/pipeline": ["../../dist/libs/pipeline/src/index.d.ts"],
       "@aramo/requisition": ["../../dist/libs/requisition/src/index.d.ts"],
       "@aramo/saved-list": ["../../dist/libs/saved-list/src/index.d.ts"],
+      "@aramo/settings": ["../../dist/libs/settings/src/index.d.ts"],
       "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"]
     }
   },

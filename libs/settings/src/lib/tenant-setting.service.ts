@@ -6,6 +6,7 @@ import {
   KNOWN_SETTINGS,
   KNOWN_SETTING_KEYS,
   type KnownSettingKey,
+  type SettingDefinition,
   type SettingValueOf,
 } from './known-settings.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -86,6 +87,11 @@ export class TenantSettingService {
 
     const view: Record<string, unknown> = {};
     for (const key of KNOWN_SETTING_KEYS) {
+      // INTERNAL keys (e.g. metrics.goals) are valid + writable but are not part
+      // of the tenant-admin settings surface — the recruiter desk reads them
+      // directly, so they're excluded from this materialized view.
+      if ((KNOWN_SETTINGS[key] as SettingDefinition<unknown>).internal === true)
+        continue;
       if (rowMap.has(key)) {
         view[key] = rowMap.get(key);
       } else {
