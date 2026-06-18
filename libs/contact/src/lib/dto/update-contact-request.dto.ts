@@ -19,4 +19,8 @@ export interface UpdateContactRequestDto {
   left_company?: boolean;
   reports_to_id?: string | null;
   owner_id?: string | null;
+  // Contact-spec amendment v1.0 — closed-vocab (validated app-layer via
+  // assertContactVocab). PATCH semantics: omit=unchanged, null=clear.
+  relationship_role?: string | null;
+  preference?: string | null;
 }

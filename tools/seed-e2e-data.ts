@@ -26,7 +26,7 @@ import { NestFactory } from '@nestjs/core';
 import {
   CompanyRepository,
 } from '@aramo/company';
-import { ContactRepository } from '@aramo/contact';
+import { ContactRepository, ContactPrismaService } from '@aramo/contact';
 import { TalentRecordRepository } from '@aramo/talent-record';
 import {
   RequisitionRepository,
@@ -91,6 +91,7 @@ async function main(): Promise<void> {
   try {
     const company = app.get(CompanyRepository);
     const contact = app.get(ContactRepository);
+    const contactPrisma = app.get(ContactPrismaService);
     const talent = app.get(TalentRecordRepository);
     const requisition = app.get(RequisitionRepository);
     const assignment = app.get(RequisitionAssignmentRepository);
@@ -113,8 +114,24 @@ async function main(): Promise<void> {
       },
       createCompany: async ({ tenantId, enteredById, name }) =>
         requireId(await company.create({ tenant_id: tenantId, entered_by_id: enteredById, input: { name }, scopes: [] })),
-      createContact: async ({ tenantId, enteredById, companyId, first_name, last_name, email }) =>
-        requireId(await contact.create({ tenant_id: tenantId, entered_by_id: enteredById, input: { company_id: companyId, first_name, last_name, email } })),
+      createContact: async ({ tenantId, enteredById, companyId, first_name, last_name, email, relationship_role, preference, phone_work, last_activity_days_ago }) => {
+        const created = requireId(await contact.create({
+          tenant_id: tenantId,
+          entered_by_id: enteredById,
+          requestId: randomUUID(),
+          input: { company_id: companyId, first_name, last_name, email, relationship_role, preference, phone_work },
+        }));
+        // last_activity_at is a denormalized read-model column (no create-DTO
+        // field; populated by the activity-enrichment path). Seed recency
+        // directly so the cold-call queue + quiet facet demonstrate.
+        if (last_activity_days_ago !== undefined) {
+          await contactPrisma.contact.update({
+            where: { id: created.id },
+            data: { last_activity_at: new Date(Date.now() - last_activity_days_ago * 86_400_000) },
+          });
+        }
+        return created;
+      },
       createRequisition: async ({ tenantId, enteredById, recruiterUserId, spec, companyId, contactId }) =>
         requireId(await requisition.create({
           tenant_id: tenantId,

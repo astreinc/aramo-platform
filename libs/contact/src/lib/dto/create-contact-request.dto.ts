@@ -23,4 +23,8 @@ export interface CreateContactRequestDto {
   notes?: string;
   reports_to_id?: string;
   owner_id?: string;
+  // Contact-spec amendment v1.0 — closed-vocab (validated app-layer via
+  // assertContactVocab; see contact-vocab.ts). Optional; omitted = unclassified.
+  relationship_role?: string;
+  preference?: string;
 }

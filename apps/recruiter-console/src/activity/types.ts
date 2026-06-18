@@ -12,8 +12,13 @@ export type ActivityType = (typeof ACTIVITY_TYPE_VALUES)[number];
 
 // Q7 ruling — locked typed FE union over the BE DTO's free-string
 // subject_type. The recruiter-console can't send a typo (the BE DTO is
-// a follow-up tightening). The three values are the R1 convention.
-export type ActivitySubjectType = 'requisition' | 'pipeline' | 'talent_record';
+// a follow-up tightening). 'contact' added for the Contacts detail
+// activity timeline (note logged against a contact).
+export type ActivitySubjectType =
+  | 'requisition'
+  | 'pipeline'
+  | 'talent_record'
+  | 'contact';
 
 // Q6 finding (verified at Gate 6 from libs/pipeline/src/lib/pipeline.
 // repository.ts:319-327): the auto pipeline_status_change activity emits

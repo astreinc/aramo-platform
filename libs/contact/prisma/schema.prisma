@@ -62,6 +62,27 @@ model Contact {
   notes        String?
   left_company Boolean @default(false)
 
+  // Contact-spec amendment v1.0 (LOCKED) — list/detail surface fields.
+  // String + application-layer @IsIn closed vocab (NO Prisma enum, per the
+  // platform's String+@IsIn convention). All nullable (unclassified).
+  //
+  // relationship_role — the contact's categorical FUNCTION in the account
+  //   (decision_maker | hiring_manager | champion | influencer | gatekeeper |
+  //   billing_contact). R10-safe: a categorical role, NEVER an ordinal/quality
+  //   rating of the person. Null = unclassified.
+  relationship_role String? // @IsIn enforced in the DTO layer
+  // preference — contact contactability (contactable | limited | do_not_contact).
+  //   On the Contact ROW — NOT the consent ledger (contact contactability is a
+  //   CRM preference, distinct from the talent-consent moat). Null displays as
+  //   contactable but stores null (no fabricated grant). MUST be honored by any
+  //   contact affordance (call / email / sequence), not merely displayed.
+  preference String? // @IsIn enforced in the DTO layer
+  // last_activity_at — denormalized recency rollup, SAME shape + read-model
+  //   convention as company.last_activity_at (populated by activity-enrichment;
+  //   nullable now). Drives the cold-call queue ordering + the "going quiet"
+  //   facet as a REAL server filter/sort.
+  last_activity_at DateTime? @db.Timestamptz
+
   // Intra-tenant self-reference (UUID-only — Prisma can model this with
   // an explicit relation, but since the column is nullable and the
   // intra-table self-loop adds no semantic value at this batch, we keep
@@ -88,6 +109,11 @@ model Contact {
   @@index([tenant_id, site_id])
   @@index([tenant_id, is_hot])
   @@index([tenant_id, import_batch_id])
+  // Contact-spec amendment v1.0 — facet-filtered + recency-sorted fields.
+  @@index([tenant_id, relationship_role])
+  @@index([tenant_id, preference])
+  @@index([tenant_id, owner_id])
+  @@index([tenant_id, last_activity_at])
 
   @@schema("contact")
 }

@@ -26,4 +26,13 @@ export interface ContactView {
   entered_by_id: string | null;
   created_at: string;
   updated_at: string;
+  // Contact-spec amendment v1.0 — list/detail surface fields.
+  relationship_role: string | null;
+  preference: string | null;
+  last_activity_at: string | null;
+  // Read-time enrichment — the contact's company display name, resolved via
+  // the cross-schema company_id FK (UUID-only) through CompanyRepository.
+  // Populated on the paged list + detail reads; null when the company row is
+  // not resolvable in-tenant. NOT a stored column.
+  company_name: string | null;
 }

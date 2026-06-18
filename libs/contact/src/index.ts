@@ -7,4 +7,18 @@ export type {
   ContactView,
   CreateContactRequestDto,
   UpdateContactRequestDto,
+  ContactSortKey,
+  SortDir,
+  ContactFacetBucket,
+  ContactFacets,
+  ContactSearchQuery,
+  ContactSearchPage,
+  RelationshipRole,
+  ContactPreference,
+} from './lib/dto/index.js';
+export {
+  QUIET_DAYS,
+  RELATIONSHIP_ROLE_VALUES,
+  PREFERENCE_VALUES,
+  assertContactVocab,
 } from './lib/dto/index.js';

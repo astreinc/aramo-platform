@@ -50,6 +50,9 @@ export interface CreateContactRequest {
   readonly is_hot?: boolean;
   readonly notes?: string;
   readonly reports_to_id?: string;
+  // Contact-spec amendment v1.0 — closed-vocab (BE validates @IsIn).
+  readonly relationship_role?: string;
+  readonly preference?: string;
 }
 
 // PATCH semantics: omit=unchanged; null=clear. first_name/last_name
@@ -74,4 +77,9 @@ export interface UpdateContactRequest {
   readonly notes?: string | null;
   readonly left_company?: boolean;
   readonly reports_to_id?: string | null;
+  // owner_id — enables the list's bulk "Assign to me" (reassign the owner to
+  // the acting recruiter). Contact-spec amendment v1.0 closed-vocab fields too.
+  readonly owner_id?: string | null;
+  readonly relationship_role?: string | null;
+  readonly preference?: string | null;
 }

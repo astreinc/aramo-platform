@@ -25,6 +25,12 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import type { ContactView } from './dto/contact.view.js';
 import type { CreateContactRequestDto } from './dto/create-contact-request.dto.js';
 import type { UpdateContactRequestDto } from './dto/update-contact-request.dto.js';
+import type {
+  ContactSearchPage,
+  ContactSearchQuery,
+  ContactSortKey,
+  SortDir,
+} from './dto/contact-search.dto.js';
 import { ContactRepository } from './contact.repository.js';
 
 // ContactController — PR-A2 Gate 5 ATS Batch 1. Mirrors CompanyController
@@ -49,9 +55,12 @@ export class ContactController {
     @Query('company_id') companyId: string | undefined,
     @Query('site_id') siteIdFromQuery: string | undefined,
     @Query('q') q: string | undefined,
+    @Query('paged') paged: string | undefined,
+    @Query('scope') scope: string | undefined,
+    @Query() qp: Record<string, string | undefined>,
     @RequestId() requestId: string,
     @Req() req: Request,
-  ): Promise<{ items: ContactView[] }> {
+  ): Promise<{ items: ContactView[] } | ContactSearchPage> {
     const searchTerm = q?.trim() ? q.trim() : undefined;
     if (searchTerm !== undefined && !authContext.scopes.includes('contact:search')) {
       throw new AramoError(
@@ -62,6 +71,45 @@ export class ContactController {
       );
     }
     const visibility = await req.resolveVisibility!();
+
+    // Contact-spec amendment v1.0 — server-side faceted page. Same route + gate
+    // (contact:read; ?q= still adds contact:search above); ?paged=true switches
+    // the projection. scope=mine narrows to the actor's OWN contacts via an
+    // owner_id predicate derived SERVER-SIDE from the JWT — never trusted from
+    // the client (the corrected pattern — NOT a client filter over an all-
+    // contacts payload).
+    if (paged === 'true') {
+      const csv = (v: string | undefined): string[] | undefined => {
+        if (v === undefined || v.trim() === '') return undefined;
+        const parts = v.split(',').map((s) => s.trim()).filter((s) => s !== '');
+        return parts.length > 0 ? parts : undefined;
+      };
+      const relationshipRole = csv(qp['relationship_role']);
+      const preference = csv(qp['preference']);
+      const companyIds = csv(qp['company_id']);
+      const pageSize = qp['page_size'] ? Number(qp['page_size']) : undefined;
+      const query: ContactSearchQuery = {
+        tenant_id: authContext.tenant_id,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+        ...(searchTerm === undefined ? {} : { q: searchTerm }),
+        ...(scope === 'mine' ? { owner_id: authContext.sub } : {}),
+        ...(relationshipRole === undefined ? {} : { relationship_role: relationshipRole }),
+        ...(preference === undefined ? {} : { preference }),
+        ...(companyIds === undefined ? {} : { company_id: companyIds }),
+        ...(qp['is_hot'] === 'true' ? { is_hot: true } : {}),
+        ...(qp['quiet'] === 'true' ? { quiet: true } : {}),
+        ...(qp['former'] === 'true' ? { former: true } : {}),
+        ...(qp['cold_callable'] === 'true' ? { cold_callable: true } : {}),
+        ...(qp['sort'] ? { sort: qp['sort'] as ContactSortKey } : {}),
+        ...(qp['dir'] ? { dir: qp['dir'] as SortDir } : {}),
+        ...(qp['cursor'] ? { cursor: qp['cursor'] } : {}),
+        ...(pageSize !== undefined && Number.isFinite(pageSize)
+          ? { page_size: pageSize }
+          : {}),
+      };
+      return this.contactRepository.searchPaged(query, visibility);
+    }
+
     const items = await this.contactRepository.listForActor({
       tenant_id: authContext.tenant_id,
       visibility,
