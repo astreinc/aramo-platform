@@ -73,7 +73,7 @@ describe('RequisitionIntakeService.draftFromIntake', () => {
     expect(arg.prompt).toContain('Senior backend engineer');
   });
 
-  it('propagates a provider failure — NEVER fabricates a draft', async () => {
+  it('remaps a provider outage to AI_PROVIDER_UNAVAILABLE — never fabricates a draft', async () => {
     const gen = vi.fn().mockRejectedValue(
       new AramoError('INTERNAL_ERROR', 'provider down', 502, {
         requestId: 'r1',
@@ -89,6 +89,54 @@ describe('RequisitionIntakeService.draftFromIntake', () => {
         intake_text: 'Senior backend engineer.',
         requestId: 'r1',
       }),
-    ).rejects.toMatchObject({ statusCode: 502 });
+    ).rejects.toMatchObject({ code: 'AI_PROVIDER_UNAVAILABLE', statusCode: 502 });
+  });
+
+  it('remaps a missing-key (secret-cache) failure to AI_PROVIDER_UNAVAILABLE', async () => {
+    // The out-of-band key (AWS Secrets Manager) not being resolvable surfaces
+    // as an INTERNAL_ERROR from the secret cache — it still means the AI lane
+    // is unavailable, so the recruiter gets the honest "use manual" state.
+    const gen = vi.fn().mockRejectedValue(
+      new AramoError('INTERNAL_ERROR', 'secret missing', 500, {
+        requestId: 'r1',
+        details: { kind: 'secret_not_found' },
+      }),
+    );
+    const svc = new RequisitionIntakeService(
+      fakeAiDraft(gen as unknown as AiDraftService['generateDraft']),
+    );
+    await expect(
+      svc.draftFromIntake({ tenant_id: TENANT, intake_text: 'x', requestId: 'r1' }),
+    ).rejects.toMatchObject({ code: 'AI_PROVIDER_UNAVAILABLE', statusCode: 502 });
+  });
+
+  it('remaps a provider rate-limit to AI_RATE_LIMITED (429)', async () => {
+    const gen = vi.fn().mockRejectedValue(
+      new AramoError('INTERNAL_ERROR', 'slow down', 429, {
+        requestId: 'r1',
+        details: { kind: 'provider_rate_limited' },
+      }),
+    );
+    const svc = new RequisitionIntakeService(
+      fakeAiDraft(gen as unknown as AiDraftService['generateDraft']),
+    );
+    await expect(
+      svc.draftFromIntake({ tenant_id: TENANT, intake_text: 'x', requestId: 'r1' }),
+    ).rejects.toMatchObject({ code: 'AI_RATE_LIMITED', statusCode: 429 });
+  });
+
+  it('passes a provider input-shape VALIDATION_ERROR through unchanged', async () => {
+    const gen = vi.fn().mockRejectedValue(
+      new AramoError('VALIDATION_ERROR', 'bad shape', 400, {
+        requestId: 'r1',
+        details: { kind: 'provider_input_invalid' },
+      }),
+    );
+    const svc = new RequisitionIntakeService(
+      fakeAiDraft(gen as unknown as AiDraftService['generateDraft']),
+    );
+    await expect(
+      svc.draftFromIntake({ tenant_id: TENANT, intake_text: 'x', requestId: 'r1' }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
   });
 });

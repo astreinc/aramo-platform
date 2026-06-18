@@ -22,10 +22,13 @@ import {
 // model/key/audit/PII-redaction/no-raw-logging are all inside ai-draft).
 //
 // HONEST FAILURE (Lead ruling): there is NO fake/mock draft fallback. If the
-// provider binding is unavailable the generateDraft call throws (the api
-// error filter remaps it to AI_PROVIDER_UNAVAILABLE 502 / AI_RATE_LIMITED
-// 429) and the FE renders an honest failure state — we never fabricate a
-// draft.
+// AI provider is unavailable — the provider call fails OR its API key cannot
+// be resolved (the key lives out-of-band in AWS Secrets Manager, like the
+// Cognito/S3 creds) — this service REMAPS the raw INTERNAL_ERROR to the
+// honest AI_PROVIDER_UNAVAILABLE (502) / AI_RATE_LIMITED (429) codes (the
+// inline remap the engagement draft endpoint established — there is no global
+// filter that does it). The FE then renders an honest "AI drafting
+// unavailable — enter it manually" state; we never fabricate a draft.
 
 const DEFAULT_MAX_TOKENS = 1536;
 
@@ -64,14 +67,26 @@ export class RequisitionIntakeService {
 
     const { prompt, system_message } = buildIntakePrompt(text);
 
-    // No fake fallback — a provider failure propagates (AI_PROVIDER_UNAVAILABLE).
-    const result = await this.aiDraftService.generateDraft({
-      tenant_id: args.tenant_id,
-      prompt,
-      max_tokens: args.max_tokens ?? DEFAULT_MAX_TOKENS,
-      system_message,
-      requestId: args.requestId,
-    });
+    // No fake fallback — a provider/key failure is remapped to an honest
+    // AI_* code (mirrors the engagement draft endpoint's remap). Anything the
+    // ai-draft substrate raises on the failure path is an INTERNAL_ERROR
+    // (provider transport / auth / vendor-internal, OR the secret-cache's
+    // key-resolution failure: env_missing / secret_not_found / aws_*) — all
+    // mean the AI lane cannot draft → AI_PROVIDER_UNAVAILABLE. A rate-limit
+    // is the one distinct case → AI_RATE_LIMITED. A VALIDATION_ERROR (the
+    // provider rejecting the request shape) passes through unchanged.
+    let result: Awaited<ReturnType<typeof this.aiDraftService.generateDraft>>;
+    try {
+      result = await this.aiDraftService.generateDraft({
+        tenant_id: args.tenant_id,
+        prompt,
+        max_tokens: args.max_tokens ?? DEFAULT_MAX_TOKENS,
+        system_message,
+        requestId: args.requestId,
+      });
+    } catch (err) {
+      throw this.remapProviderError(err, args.requestId);
+    }
 
     const parsed = parseIntakeCompletion(result.completion);
     return {
@@ -81,5 +96,30 @@ export class RequisitionIntakeService {
       nice_to_have_skills: parsed.nice_to_have_skills,
       ai_draft_audit_record_id: result.audit_record_id,
     };
+  }
+
+  // Remap the ai-draft substrate's raw error to an honest, FE-facing AI_*
+  // code (the engagement draft endpoint's inline-remap precedent — there is
+  // no global filter). A rate-limit is distinct; everything else on
+  // the INTERNAL_ERROR failure path (provider down/auth/vendor + the secret-
+  // cache's key-resolution failure) reads as the AI lane being unavailable.
+  // A VALIDATION_ERROR (provider rejecting the request shape) passes through.
+  private remapProviderError(err: unknown, requestId: string): unknown {
+    if (err instanceof AramoError && err.code === 'INTERNAL_ERROR') {
+      const kind = (err.context.details?.['kind'] as string | undefined) ?? null;
+      if (kind === 'provider_rate_limited') {
+        return new AramoError('AI_RATE_LIMITED', 'AI provider rate-limited', 429, {
+          requestId,
+          details: { kind },
+        });
+      }
+      return new AramoError(
+        'AI_PROVIDER_UNAVAILABLE',
+        'AI drafting is unavailable',
+        502,
+        { requestId, details: { kind: kind ?? 'unknown' } },
+      );
+    }
+    return err;
   }
 }

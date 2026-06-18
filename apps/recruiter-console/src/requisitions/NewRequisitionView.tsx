@@ -55,7 +55,7 @@ import {
   confirmRequisitionProfile,
   draftRequisitionFromIntake,
 } from './requisitions-api';
-import { createErrorMessage } from './error-messages';
+import { createErrorMessage, intakeErrorMessage } from './error-messages';
 import {
   ReqProvenanceChip,
   provenanceAfterEdit,
@@ -358,10 +358,10 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
       setAiUsed(true);
       setPhase('form');
     } catch (err) {
-      // Honest failure — never fabricate a draft. Offer manual entry.
-      setIntakeError(
-        `${createErrorMessage(err)} You can enter the requisition manually instead.`,
-      );
+      // Honest failure — never fabricate a draft. The intake message is
+      // draft-specific (an AI outage is NOT a create failure) and steers to
+      // the always-available manual lane.
+      setIntakeError(intakeErrorMessage(err));
       setPhase('intake');
     }
   }

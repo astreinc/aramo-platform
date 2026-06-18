@@ -164,9 +164,11 @@ describe('NewRequisitionView (New Requisition — mockup parity)', () => {
       target: { value: 'Need a backend engineer.' },
     });
     fireEvent.click(screen.getByRole('button', { name: /draft with ai/i }));
-    // Falls back to the intake lane with a manual-entry path — no draft is shown.
+    // Honest failure state — an AI outage is surfaced as "AI drafting is
+    // unavailable" (NOT a fabricated draft, NOT a misleading create error),
+    // steering to the always-available manual lane.
     expect(
-      await screen.findByText(/enter the requisition manually instead/i),
+      await screen.findByText(/ai drafting is unavailable/i),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText('Job title')).not.toBeInTheDocument();
   });
