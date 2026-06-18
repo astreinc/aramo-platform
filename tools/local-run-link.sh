@@ -16,9 +16,14 @@
 # Usage:
 #   nx run-many -t build -p api auth-service     # produce dist/
 #   bash tools/local-run-link.sh                 # create the runtime links
+#   npm run db:sync:local                        # apply any NEW migrations to the dev DB
 #   set -a && source .env && set +a
 #   PORT=3001 node dist/apps/auth-service/src/main.js
 #   PORT=3000 node dist/apps/api/src/main.js
+#
+# After ANY schema change (a new prisma migration), run `npm run db:sync:local`
+# to apply it to the local dev DB — see doc/runbooks/local-db-sync.md. That is
+# the durable replacement for hand-applying migration SQL.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
