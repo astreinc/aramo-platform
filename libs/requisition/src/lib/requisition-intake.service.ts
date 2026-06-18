@@ -100,25 +100,41 @@ export class RequisitionIntakeService {
 
   // Remap the ai-draft substrate's raw error to an honest, FE-facing AI_*
   // code (the engagement draft endpoint's inline-remap precedent — there is
-  // no global filter). A rate-limit is distinct; everything else on
-  // the INTERNAL_ERROR failure path (provider down/auth/vendor + the secret-
-  // cache's key-resolution failure) reads as the AI lane being unavailable.
-  // A VALIDATION_ERROR (provider rejecting the request shape) passes through.
+  // no global filter). This method only ever sees a generateDraft() failure
+  // (the recruiter-input validation — empty / over-length — throws BEFORE the
+  // try-block), so EVERY error here is provider-side:
+  //   - provider_rate_limited → AI_RATE_LIMITED (429).
+  //   - INTERNAL_ERROR (provider transport/auth/vendor + the secret-cache's
+  //     key-resolution failure) → AI_PROVIDER_UNAVAILABLE (502).
+  //   - VALIDATION_ERROR with kind 'provider_input_invalid' → ALSO
+  //     AI_PROVIDER_UNAVAILABLE. Anthropic returns account/billing problems
+  //     (e.g. "credit balance too low") + model-access denials as a 400
+  //     invalid_request_error, which the provider adapter maps to
+  //     VALIDATION_ERROR. Surfacing that to the recruiter as a 400 would
+  //     mis-blame THEIR text ("try a shorter note") — but the input was
+  //     already validated upstream, so this is the AI lane being unavailable,
+  //     not bad input. (A genuine VALIDATION_ERROR from the recruiter's input
+  //     is thrown earlier and never reaches here.)
   private remapProviderError(err: unknown, requestId: string): unknown {
-    if (err instanceof AramoError && err.code === 'INTERNAL_ERROR') {
+    if (err instanceof AramoError) {
       const kind = (err.context.details?.['kind'] as string | undefined) ?? null;
-      if (kind === 'provider_rate_limited') {
+      if (err.code === 'INTERNAL_ERROR' && kind === 'provider_rate_limited') {
         return new AramoError('AI_RATE_LIMITED', 'AI provider rate-limited', 429, {
           requestId,
           details: { kind },
         });
       }
-      return new AramoError(
-        'AI_PROVIDER_UNAVAILABLE',
-        'AI drafting is unavailable',
-        502,
-        { requestId, details: { kind: kind ?? 'unknown' } },
-      );
+      if (
+        err.code === 'INTERNAL_ERROR' ||
+        (err.code === 'VALIDATION_ERROR' && kind === 'provider_input_invalid')
+      ) {
+        return new AramoError(
+          'AI_PROVIDER_UNAVAILABLE',
+          'AI drafting is unavailable',
+          502,
+          { requestId, details: { kind: kind ?? 'unknown' } },
+        );
+      }
     }
     return err;
   }

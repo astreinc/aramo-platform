@@ -94,8 +94,11 @@ trust implication. Reviewed at each go-live gate.
   manual lane). The only effect of the missing secret is the AI lane being
   unavailable until provisioned.
 - **Close criteria:** create `aramo/staging/anthropic-api-key` (and the prod
-  equivalent) in Secrets Manager during the staging/prod deploy, restart the API,
-  and confirm a live draft populates the editable fields.
+  equivalent) in Secrets Manager during the staging/prod deploy, **ensure the
+  Anthropic account has an active credit balance** (a valid key with no credits
+  returns a 400 "credit balance too low" — now surfaced honestly as
+  `AI_PROVIDER_UNAVAILABLE`, never as a user-input error), restart the API, and
+  confirm a live draft populates the editable fields.
 
 ---
 

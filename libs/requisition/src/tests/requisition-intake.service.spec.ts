@@ -125,9 +125,15 @@ describe('RequisitionIntakeService.draftFromIntake', () => {
     ).rejects.toMatchObject({ code: 'AI_RATE_LIMITED', statusCode: 429 });
   });
 
-  it('passes a provider input-shape VALIDATION_ERROR through unchanged', async () => {
+  it('remaps a provider request-rejection (e.g. credit exhausted) to AI_PROVIDER_UNAVAILABLE', async () => {
+    // Anthropic returns "credit balance too low" / model-access denials as a
+    // 400 invalid_request_error → the provider adapter maps that to a
+    // VALIDATION_ERROR(provider_input_invalid). The recruiter's input was
+    // already validated upstream, so this is the AI lane being unavailable —
+    // NOT bad input. It must read as AI_PROVIDER_UNAVAILABLE, never "fix your
+    // text".
     const gen = vi.fn().mockRejectedValue(
-      new AramoError('VALIDATION_ERROR', 'bad shape', 400, {
+      new AramoError('VALIDATION_ERROR', 'credit balance too low', 400, {
         requestId: 'r1',
         details: { kind: 'provider_input_invalid' },
       }),
@@ -137,6 +143,24 @@ describe('RequisitionIntakeService.draftFromIntake', () => {
     );
     await expect(
       svc.draftFromIntake({ tenant_id: TENANT, intake_text: 'x', requestId: 'r1' }),
+    ).rejects.toMatchObject({ code: 'AI_PROVIDER_UNAVAILABLE', statusCode: 502 });
+  });
+
+  it('still rejects the recruiter input BEFORE the provider (size guard ≠ provider error)', async () => {
+    // The over-length guard throws VALIDATION_ERROR(field=intake_text) BEFORE
+    // generateDraft — it must NOT be remapped to an AI_* code (the recruiter
+    // CAN fix this one by shortening the note).
+    const gen = vi.fn();
+    const svc = new RequisitionIntakeService(
+      fakeAiDraft(gen as unknown as AiDraftService['generateDraft']),
+    );
+    await expect(
+      svc.draftFromIntake({
+        tenant_id: TENANT,
+        intake_text: 'x'.repeat(INTAKE_TEXT_MAX_CHARS + 1),
+        requestId: 'r1',
+      }),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    expect(gen).not.toHaveBeenCalled();
   });
 });
