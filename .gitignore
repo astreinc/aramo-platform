@@ -53,9 +53,9 @@ pact/pacts/
 # Note: *.tfvars.example files ARE committed (per §4.6).
 
 # Recruiter-console live e2e (real session artifacts + Playwright output — never commit)
-apps/recruiter-console/e2e/.auth/
-apps/recruiter-console/test-results/
-apps/recruiter-console/playwright-report/
+apps/ats-web/e2e/.auth/
+apps/ats-web/test-results/
+apps/ats-web/playwright-report/
 
 # Uncommitted recon/report scratch (non-product)
 scratch/

@@ -2,7 +2,7 @@
 
 - **Status:** **REJECTED** (PO-confirmed Lead ruling, 2026-06-16) — NOT ratified, NOT merged.
 - **Date:** 2026-06-16
-- **Context PR:** Requisition job-page rebuild to locked-mockup parity (recruiter-console)
+- **Context PR:** Requisition job-page rebuild to locked-mockup parity (ats-web)
 
 ## Rejection (PO-confirmed Lead ruling)
 
@@ -36,7 +36,7 @@ discoverable; it is **not** a ratified ADR.
 
 ## Context
 
-The locked recruiter-console mockup (the "Confident Blue" job-detail prototype)
+The locked ats-web mockup (the "Confident Blue" job-detail prototype)
 shows a per-talent **Rating** column (1–5 stars) on the requisition pipeline
 table. Reproducing the mockup at full parity requires a backing field. The
 Pipeline schema previously refused any such column, citing **R10**:

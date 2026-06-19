@@ -1,0 +1,59 @@
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
+
+const root = resolve(fileURLToPath(import.meta.url), '..');
+
+export default defineConfig({
+  root,
+  plugins: [react()],
+  // PL-93 trio leg 3 (Q3 ruling, Recruiter R0): mirrors tenant-console
+  // — the same alias covers vite build AND vitest runtime since this
+  // config hosts both.
+  resolve: {
+    alias: {
+      '@aramo/fe-foundation': resolve(root, '../../libs/fe-foundation/src/index.ts'),
+    },
+  },
+  server: {
+    port: 4201,
+    host: '127.0.0.1',
+    // Local-dev same-origin routing (Path B). The FE uses relative paths
+    // with an empty base URL, so /auth and /v1 would otherwise hit the
+    // Vite dev server (4201) and 404. Proxying them to the backends keeps
+    // everything on the 4201 origin — no CORS, and HttpOnly cookies bind
+    // to the FE origin. Cognito's hosted-UI callback also lands here
+    // (/auth/recruiter/callback → auth-service) so the post-login 302
+    // returns the browser to the FE origin coherently.
+    proxy: {
+      '/auth': {
+        target: 'http://localhost:3001', // auth-service
+        changeOrigin: true,
+        secure: false,
+      },
+      '/v1': {
+        target: 'http://localhost:3000', // apps/api
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
+  preview: {
+    port: 4301,
+    host: '127.0.0.1',
+  },
+  build: {
+    outDir: '../../dist/apps/ats-web',
+    emptyOutDir: true,
+    sourcemap: true,
+  },
+  test: {
+    globals: false,
+    environment: 'jsdom',
+    setupFiles: ['./src/test-setup.ts'],
+    include: ['src/**/*.spec.ts', 'src/**/*.spec.tsx'],
+    css: false,
+  },
+});
