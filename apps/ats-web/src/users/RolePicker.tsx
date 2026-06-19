@@ -66,7 +66,7 @@ export function RolePicker({
 }: RolePickerProps) {
   return (
     <div
-      className="tc-role-picker"
+      className="rc-role-picker"
       role="group"
       aria-label="Assignable tenant roles"
     >
@@ -77,7 +77,7 @@ export function RolePicker({
         return (
           <label
             key={entry.key}
-            className="tc-role-picker__row"
+            className="rc-role-picker__row"
             htmlFor={inputId}
             data-disabled={deco.disabled ? 'true' : 'false'}
             data-role-key={entry.key}
@@ -85,7 +85,7 @@ export function RolePicker({
             <input
               id={inputId}
               type="checkbox"
-              className="tc-role-picker__check"
+              className="rc-role-picker__check"
               checked={checked}
               disabled={deco.disabled}
               aria-describedby={
@@ -93,15 +93,15 @@ export function RolePicker({
               }
               onChange={(ev) => onToggle(entry.key, ev.target.checked)}
             />
-            <span className="tc-role-picker__labels">
-              <span className="tc-role-picker__label">{entry.label}</span>
-              <span className="tc-role-picker__helper">
+            <span className="rc-role-picker__labels">
+              <span className="rc-role-picker__label">{entry.label}</span>
+              <span className="rc-role-picker__helper">
                 {entry.description}
               </span>
               {deco.helper !== undefined && (
                 <span
                   id={`${inputId}-helper`}
-                  className="tc-role-picker__helper"
+                  className="rc-role-picker__helper"
                 >
                   {deco.helper}
                 </span>

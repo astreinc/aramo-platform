@@ -190,7 +190,7 @@ export function RoleAssignEditor({
         </InlineAlert>
       )}
       <FormField
-        label={<div className="tc-label">Roles</div>}
+        label="Roles"
         helper="Select all roles this user should hold."
       >
         <RolePicker
@@ -202,17 +202,17 @@ export function RoleAssignEditor({
       </FormField>
       {dirty && (
         <div
-          className="tc-diff"
+          className="rc-diff"
           role="status"
           aria-label="Pending changes"
           data-testid="role-assign-diff"
         >
-          <span className="tc-diff__label">Adding</span>
-          <span className="tc-diff__value">
+          <span className="rc-diff__label">Adding</span>
+          <span className="rc-diff__value">
             {adds.length === 0 ? '—' : adds.map(labelFor).join(', ')}
           </span>
-          <span className="tc-diff__label">Removing</span>
-          <span className="tc-diff__value">
+          <span className="rc-diff__label">Removing</span>
+          <span className="rc-diff__value">
             {removes.length === 0 ? '—' : removes.map(labelFor).join(', ')}
           </span>
         </div>

@@ -343,9 +343,9 @@ TIER2_EXCLUDES=(
   # 2 — hand-mirror + smoke spec). Same file-scoped exclusion pattern as
   # the five sibling libs/identity entries above. Paired with the matching
   # eslint.config.mjs TIER2_EXCLUDES entries.
-  "apps/tenant-console/src/users/types.ts"
-  "apps/tenant-console/src/users/types.spec.ts"
-  "apps/tenant-console/src/users/RolePicker.spec.tsx"
+  "apps/ats-web/src/users/types.ts"
+  "apps/ats-web/src/users/types.spec.ts"
+  "apps/ats-web/src/users/RolePicker.spec.tsx"
   # PR-A4 Gate 5: ATS Batch 3 R10-enforcement integration spec. Per the
   # M0R-2 Amendment v1.1 §4.5 / PR-A2 R10-spec precedent: refusal-
   # enforcement specs legitimately enumerate the forbidden Match-Class
