@@ -1,4 +1,4 @@
-// Consent history panel — PR-9 §4.1 / §4.3.
+// Consent history panel — PR-9 §4.1 / §4.3 (restyled to Confident Blue).
 //
 // Displays GET /v1/consent/history/:talent_id event ledger verbatim,
 // with opaque-cursor pagination (PR-9 §4.3):
@@ -12,11 +12,25 @@
 //   - No "consent history summary" widening (R5 mitigation)
 //   - is_anonymized:true ⇒ neutral anonymized state (PR-9 §4.4)
 
-import { useEffect, useState } from 'react';
 import { ApiError } from '@aramo/fe-foundation';
+import { useEffect, useState } from 'react';
+
+import {
+  Button,
+  Card,
+  CardHead,
+  DataTable,
+  StatusPill,
+  type PillTone,
+  type TableColumn,
+} from '../ui';
 
 import { getTalentConsentHistory } from './consent-api';
-import type { ConsentHistoryEvent, ConsentHistoryResponse } from './types';
+import type {
+  ConsentDecisionAction,
+  ConsentHistoryEvent,
+  ConsentHistoryResponse,
+} from './types';
 
 interface ConsentHistoryPanelProps {
   talentId: string;
@@ -32,6 +46,32 @@ type LoadState =
       fetchingMore: boolean;
     }
   | { status: 'error'; statusCode: number | null };
+
+const ACTION_TONE: Record<ConsentDecisionAction, PillTone> = {
+  granted: 'ok',
+  revoked: 'danger',
+  expired: 'warn',
+};
+
+const EVENT_COLUMNS: ReadonlyArray<TableColumn<ConsentHistoryEvent>> = [
+  {
+    key: 'event_id',
+    header: 'Event',
+    render: (e) => (
+      <span data-testid={`consent-history-event-${e.event_id}`}>
+        {e.event_id}
+      </span>
+    ),
+  },
+  { key: 'scope', header: 'Scope', render: (e) => e.scope },
+  {
+    key: 'action',
+    header: 'Action',
+    render: (e) => <StatusPill tone={ACTION_TONE[e.action]}>{e.action}</StatusPill>,
+  },
+  { key: 'created_at', header: 'Created at', render: (e) => e.created_at },
+  { key: 'expires_at', header: 'Expires at', render: (e) => e.expires_at ?? '—' },
+];
 
 export function ConsentHistoryPanel({ talentId }: ConsentHistoryPanelProps) {
   const [state, setState] = useState<LoadState>({ status: 'loading' });
@@ -86,88 +126,74 @@ export function ConsentHistoryPanel({ talentId }: ConsentHistoryPanelProps) {
 
   if (state.status === 'loading') {
     return (
-      <section
-        className="aramo-consent-history"
-        data-testid="consent-history-panel"
-      >
-        <h2>Consent history</h2>
-        <p>Loading consent history…</p>
+      <section data-testid="consent-history-panel">
+        <Card>
+          <CardHead title="Consent history" />
+          <p className="rc-muted-line rc-mt-8">Loading consent history…</p>
+        </Card>
       </section>
     );
   }
 
   if (state.status === 'error') {
     return (
-      <section
-        className="aramo-consent-history"
-        data-testid="consent-history-panel"
-      >
-        <h2>Consent history</h2>
-        <p>Consent history could not be loaded for talent {talentId}.</p>
+      <section data-testid="consent-history-panel">
+        <Card>
+          <CardHead title="Consent history" />
+          <p className="rc-muted-line rc-mt-8">
+            Consent history could not be loaded for talent {talentId}.
+          </p>
+        </Card>
       </section>
     );
   }
 
   if (state.isAnonymized) {
     return (
-      <section
-        className="aramo-consent-history"
-        data-testid="consent-history-panel"
-      >
-        <h2>Consent history</h2>
-        <p data-testid="consent-history-anonymized">
-          This talent record has been anonymized.
-        </p>
+      <section data-testid="consent-history-panel">
+        <Card>
+          <CardHead title="Consent history" />
+          <p
+            className="rc-muted-line rc-mt-8"
+            data-testid="consent-history-anonymized"
+          >
+            This talent record has been anonymized.
+          </p>
+        </Card>
       </section>
     );
   }
 
   return (
-    <section
-      className="aramo-consent-history"
-      data-testid="consent-history-panel"
-    >
-      <h2>Consent history</h2>
-      {state.events.length === 0 ? (
-        <p data-testid="consent-history-empty">No consent events recorded.</p>
-      ) : (
-        <table className="aramo-consent-history__events">
-          <thead>
-            <tr>
-              <th>Event</th>
-              <th>Scope</th>
-              <th>Action</th>
-              <th>Created at</th>
-              <th>Expires at</th>
-            </tr>
-          </thead>
-          <tbody>
-            {state.events.map((event) => (
-              <tr
-                key={event.event_id}
-                data-testid={`consent-history-event-${event.event_id}`}
-              >
-                <td>{event.event_id}</td>
-                <td>{event.scope}</td>
-                <td>{event.action}</td>
-                <td>{event.created_at}</td>
-                <td>{event.expires_at ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {state.nextCursor !== null ? (
-        <button
-          type="button"
-          className="aramo-consent-history__load-more"
-          data-testid="consent-history-load-more"
-          onClick={handleLoadMore}
-          disabled={state.fetchingMore}
-        >
-          {state.fetchingMore ? 'Loading…' : 'Load more'}
-        </button>
-      ) : null}
+    <section data-testid="consent-history-panel">
+      <Card>
+        <CardHead title="Consent history" />
+        <div className="rc-mt-8">
+          <DataTable
+            columns={EVENT_COLUMNS}
+            rows={state.events}
+            rowKey={(e) => e.event_id}
+            emptyMessage={
+              <span data-testid="consent-history-empty">
+                No consent events recorded.
+              </span>
+            }
+          />
+        </div>
+        {state.nextCursor !== null ? (
+          <div className="rc-mt-8">
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="consent-history-load-more"
+              onClick={handleLoadMore}
+              disabled={state.fetchingMore}
+            >
+              {state.fetchingMore ? 'Loading…' : 'Load more'}
+            </Button>
+          </div>
+        ) : null}
+      </Card>
     </section>
   );
 }
