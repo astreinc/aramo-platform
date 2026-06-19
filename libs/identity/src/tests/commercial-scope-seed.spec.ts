@@ -14,7 +14,7 @@ describe('Company-Fields v1.1 — company:read_commercial catalog parity', () =>
     ).toHaveLength(1);
   });
 
-  it('SEED_SCOPE_KEYS is 80 (78 + 2 Settings-D1 import/export read scopes)', () => {
-    expect(SEED_SCOPE_KEYS).toHaveLength(80);
+  it('SEED_SCOPE_KEYS is 81 (80 + 1 Settings-D2 audit:read scope)', () => {
+    expect(SEED_SCOPE_KEYS).toHaveLength(81);
   });
 });

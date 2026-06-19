@@ -4,6 +4,8 @@ import { AuthorizationModule } from '@aramo/authorization';
 import { CommonModule, createAramoLogger } from '@aramo/common';
 import { EntitlementModule } from '@aramo/entitlement';
 
+import { AuditController } from './audit/audit.controller.js';
+import { AuditQueryService } from './audit/audit-query.service.js';
 import { IdentityAuditRepository } from './audit/identity-audit.repository.js';
 import { IdentityAuditService } from './audit/identity-audit.service.js';
 import { D4aController } from './d4a.controller.js';
@@ -61,6 +63,10 @@ import {
   imports: [AuthModule, AuthorizationModule, CommonModule, EntitlementModule],
   controllers: [
     D4aController,
+    // Settings Rebuild Directive 2 — the tenant audit-log read surface
+    // (GET /v1/tenant/audit-events, audit:read). Lives here because it
+    // reads the IdentityAuditEvent model owned by this lib.
+    AuditController,
     // Settings S3a — tenant-tier user lifecycle endpoints (invite +
     // disable). Lives here (parallel to D4aController) per the Settings
     // charter §4.2 "user-management home = libs/identity"; the Cognito
@@ -75,6 +81,7 @@ import {
     RoleRepository,
     IdentityAuditRepository,
     IdentityAuditService,
+    AuditQueryService,
     IdentityService,
     TenantService,
     RoleService,

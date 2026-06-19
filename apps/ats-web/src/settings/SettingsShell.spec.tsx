@@ -10,7 +10,6 @@ import { TenantProfileSection } from './sections/TenantProfileSection';
 import { BranchesSection } from './sections/BranchesSection';
 import {
   ApplySection,
-  AuditSection,
   BillingSection,
   EmailSection,
   FieldsSection,
@@ -79,7 +78,6 @@ function renderAt(path: string, session: Session) {
                       element={<IntegrationsSection />}
                     />
                     <Route path="settings/billing" element={<BillingSection />} />
-                    <Route path="settings/audit" element={<AuditSection />} />
                   </Route>
                 </Routes>
               </AdminGate>
@@ -151,7 +149,7 @@ describe('Honest seams — no dead knobs', () => {
       ['settings/fields', () => undefined],
       ['settings/integrations', () => undefined],
       ['settings/billing', () => undefined],
-      ['settings/audit', () => undefined],
+      // 'settings/audit' is now LIVE (Directive 2) — covered by AuditLogView.spec.
     ];
     for (const [path] of cases) {
       const { unmount } = renderAt(

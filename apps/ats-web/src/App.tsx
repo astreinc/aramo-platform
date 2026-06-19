@@ -31,7 +31,6 @@ import { ImportSection } from './settings/sections/ImportSection';
 import { ComplianceSection } from './settings/sections/ComplianceSection';
 import {
   ApplySection,
-  AuditSection,
   BillingSection,
   EmailSection,
   FieldsSection,
@@ -41,6 +40,7 @@ import {
   RolesSection,
   SecuritySection,
 } from './settings/sections/SeamSections';
+import { AuditSection } from './settings/audit/AuditSection';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
 import { MyTasksView } from './task/MyTasksView';
 import { TalentCreateView } from './talent/TalentCreateView';

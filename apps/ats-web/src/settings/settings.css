@@ -399,3 +399,48 @@
   color: var(--muted);
   padding: 6px 0;
 }
+
+/* ── Audit log (Directive 2) ── */
+.rc-audit-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+.rc-audit-filters .rc-ifield {
+  gap: 4px;
+}
+.rc-audit-filters .rc-ifield > span {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.rc-audit-filters__actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.rc-audit-event {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.rc-audit-event__label {
+  font-weight: 600;
+}
+.rc-audit-detail {
+  color: var(--muted);
+}
+.rc-audit-subject {
+  font-size: 0.78rem;
+  color: var(--faint);
+}
+.rc-audit-more {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0;
+}
