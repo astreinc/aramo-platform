@@ -7,6 +7,7 @@ import { CompaniesListView } from './companies/CompaniesListView';
 import { CompanyCreateView } from './companies/CompanyCreateView';
 import { CompanyDetailView } from './companies/CompanyDetailView';
 import { CompanyEditView } from './companies/CompanyEditView';
+import { ConsentView } from './consent/ConsentView';
 import { ContactCreateView } from './contacts/ContactCreateView';
 import { ContactDetailView } from './contacts/ContactDetailView';
 import { ContactEditView } from './contacts/ContactEditView';
@@ -258,16 +259,24 @@ export function App() {
                         </RouteGuard>
                       }
                     />
-                    {/* Admin-gated section (FE Consolidation Phase 1). The
-                        single `tenant:admin:*` family guard for the subtree;
-                        empty placeholder this PR — the real admin modules port
-                        in here in Phase 2+. A non-admin reaching this route
-                        in-UI gets ForbiddenState (server is the real gate). */}
+                    {/* Admin-gated section. AdminGate is the single
+                        `tenant:admin:*` family guard for the whole subtree (a
+                        non-admin reaching any /admin route in-UI gets
+                        ForbiddenState; the server is the real gate). The nested
+                        Routes host the ported admin modules — consent is the
+                        first (FE Consolidation Directive 2); more port in
+                        subsequent directives. */}
                     <Route
                       path="admin/*"
                       element={
                         <AdminGate session={state.session}>
-                          <AdminSection />
+                          <Routes>
+                            <Route index element={<AdminSection />} />
+                            <Route
+                              path="consent/:talentId"
+                              element={<ConsentView />}
+                            />
+                          </Routes>
                         </AdminGate>
                       }
                     />

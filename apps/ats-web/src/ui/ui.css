@@ -3188,3 +3188,7 @@ select.rc-input { appearance: none; padding-right: 28px; }
   color: var(--warn, #946011); margin-bottom: 10px;
 }
 .rc-addl__finh svg { width: 15px; height: 15px; }
+
+/* Admin landing — consent talent-id lookup (FE Consolidation Directive 2). */
+.rc-admin-lookup { display: flex; align-items: center; gap: 10px; max-width: 460px; }
+.rc-admin-lookup .rc-input { flex: 1; min-width: 0; }

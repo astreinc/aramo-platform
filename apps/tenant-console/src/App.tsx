@@ -10,7 +10,6 @@ import { Route, Routes } from 'react-router-dom';
 import { CompanyAssignmentsView } from './assignments/CompanyAssignmentsView';
 import { RequisitionAssignmentsView } from './assignments/RequisitionAssignmentsView';
 import { TeamClientsView } from './assignments/TeamClientsView';
-import { ConsentView } from './consent/ConsentView';
 import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { LandingPage } from './routes/LandingPage';
 import { LoginPage } from './routes/LoginPage';
@@ -52,10 +51,12 @@ export function App() {
                       index
                       element={<LandingPage session={state.session} />}
                     />
-                    <Route
-                      path="consent/:talentId"
-                      element={<ConsentView />}
-                    />
+                    {/* Consent surface ported to ats-web /admin/consent
+                        (FE Consolidation Directive 2). Removed here — the
+                        module was cleanly decoupled (apiClient + ApiError
+                        only) and direct-URL-only (never in tenant-console
+                        nav). tenant-console is not yet retired; remaining
+                        admin modules port in subsequent directives. */}
                     <Route
                       path="settings"
                       element={
