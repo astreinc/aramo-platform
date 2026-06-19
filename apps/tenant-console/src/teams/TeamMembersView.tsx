@@ -226,14 +226,9 @@ export function TeamMembersView({
         <Link to="/teams" className="tc-helper" data-testid="back-to-teams">
           ← Back to teams
         </Link>
-        {/* Settings S5c-3 — sibling sub-route to the team-clients editor. */}
-        <Link
-          to={`/teams/${teamId}/clients`}
-          className="tc-link"
-          data-testid="manage-clients-link"
-        >
-          Manage clients →
-        </Link>
+        {/* The team-clients editor ported to ats-web /admin (FE Consolidation
+            Directive 4); this link is de-wired here and re-homed to the ats-web
+            admin route when the teams module ports. */}
       </div>
       {state.status === 'loading' && (
         <p className="tc-helper">Loading members…</p>

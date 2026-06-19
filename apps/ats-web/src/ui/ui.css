@@ -3196,3 +3196,8 @@ select.rc-input { appearance: none; padding-right: 28px; }
 /* Form footer — button + status-marker row (FE Consolidation Directive 3,
  * reusable by the remaining form ports). */
 .rc-formfoot { display: flex; align-items: center; gap: 10px; margin-top: 18px; }
+
+/* Assignment editors — secondary cell line + inline row actions (FE
+ * Consolidation Directive 4; reusable by the remaining people-list ports). */
+.rc-cell-sub { color: var(--muted); font-size: 0.82rem; }
+.rc-rowactions { display: inline-flex; align-items: center; gap: 6px; }

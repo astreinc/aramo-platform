@@ -3,6 +3,9 @@ import { Route, Routes } from 'react-router-dom';
 
 import { AdminGate } from './admin/AdminGate';
 import { AdminSection } from './admin/AdminSection';
+import { CompanyAssignmentsView } from './assignments/CompanyAssignmentsView';
+import { RequisitionAssignmentsView } from './assignments/RequisitionAssignmentsView';
+import { TeamClientsView } from './assignments/TeamClientsView';
 import { CompaniesListView } from './companies/CompaniesListView';
 import { CompanyCreateView } from './companies/CompanyCreateView';
 import { CompanyDetailView } from './companies/CompanyDetailView';
@@ -277,6 +280,18 @@ export function App() {
                             <Route
                               path="consent/:talentId"
                               element={<ConsentView />}
+                            />
+                            <Route
+                              path="companies/:companyId/assignments"
+                              element={<CompanyAssignmentsView />}
+                            />
+                            <Route
+                              path="requisitions/:requisitionId/assignments"
+                              element={<RequisitionAssignmentsView />}
+                            />
+                            <Route
+                              path="teams/:teamId/clients"
+                              element={<TeamClientsView />}
                             />
                           </Routes>
                         </AdminGate>

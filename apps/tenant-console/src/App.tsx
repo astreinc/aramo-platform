@@ -7,9 +7,6 @@ import {
 } from '@aramo/fe-foundation';
 import { Route, Routes } from 'react-router-dom';
 
-import { CompanyAssignmentsView } from './assignments/CompanyAssignmentsView';
-import { RequisitionAssignmentsView } from './assignments/RequisitionAssignmentsView';
-import { TeamClientsView } from './assignments/TeamClientsView';
 import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { LandingPage } from './routes/LandingPage';
 import { LoginPage } from './routes/LoginPage';
@@ -101,39 +98,14 @@ export function App() {
                         </RouteGuard>
                       }
                     />
-                    <Route
-                      path="teams/:teamId/clients"
-                      element={
-                        <RouteGuard
-                          requireScope="team:manage"
-                          sessionStateOverride={state}
-                        >
-                          <TeamClientsView />
-                        </RouteGuard>
-                      }
-                    />
-                    <Route
-                      path="companies/:companyId/assignments"
-                      element={
-                        <RouteGuard
-                          requireScope="company:assign"
-                          sessionStateOverride={state}
-                        >
-                          <CompanyAssignmentsView />
-                        </RouteGuard>
-                      }
-                    />
-                    <Route
-                      path="requisitions/:requisitionId/assignments"
-                      element={
-                        <RouteGuard
-                          requireScope="requisition:assign"
-                          sessionStateOverride={state}
-                        >
-                          <RequisitionAssignmentsView />
-                        </RouteGuard>
-                      }
-                    />
+                    {/* Assignments (company / requisition / team-clients
+                        editors) ported to ats-web /admin (FE Consolidation
+                        Directive 4). Routes removed here; the "Manage clients"
+                        link in TeamMembersView is de-wired to match. NOT
+                        cleanly decoupled on removal — tenant-console's teams
+                        module deep-linked TeamClientsView — so the teams port
+                        will re-home that link to the ats-web admin route.
+                        tenant-console not yet retired. */}
                   </Routes>
                 </Shell>
               ) : null}
