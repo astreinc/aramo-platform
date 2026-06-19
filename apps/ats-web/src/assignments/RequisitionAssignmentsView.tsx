@@ -1,18 +1,17 @@
+import { ApiError, Combobox, type ComboboxItem, useToast } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { ApiError } from '@aramo/fe-foundation';
-import { Button } from '@aramo/fe-foundation';
-import { Combobox, type ComboboxItem } from '@aramo/fe-foundation';
-import { FormField } from '@aramo/fe-foundation';
-import { InlineAlert } from '@aramo/fe-foundation';
-import { PageHeader } from '@aramo/fe-foundation';
-import { useToast } from '@aramo/fe-foundation';
 
-import type { TenantUserView } from '../users/types';
 import {
-  probeUserRoster,
-  type UserRosterState,
-} from '../users/users-api';
+  Button,
+  Card,
+  CardHead,
+  DataTable,
+  FormField,
+  InlineAlert,
+  PageHeader,
+  type TableColumn,
+} from '../ui';
 
 import {
   assignUserToRequisition,
@@ -25,14 +24,13 @@ import {
   messageForUnassignRequisition,
   type ErrorMessage,
 } from './error-messages';
+import { probeUserRoster, type TenantUserView, type UserRosterState } from './roster';
 import type { RequisitionAssignmentView } from './types';
 
-// Settings S5c-3 — Requisition-assign editor at /requisitions/
-// :requisitionId/assignments (PL-94 §2 ruling 4: deep-link only — no
-// Requisitions list in tenant-admin nav; recruiter-app territory).
-//
-// Mirrors CompanyAssignmentsView's structure (user-picker over the
-// roster); the parent is a requisition instead of a company.
+// Requisition-assign editor at /admin/requisitions/:requisitionId/assignments
+// (ported to ats-web, FE Consolidation Directive 4; restyled to Confident
+// Blue). Mirrors CompanyAssignmentsView (user-picker over the roster); the
+// parent is a requisition. Deep-link only.
 
 interface Props {
   requisitionIdOverride?: string;
@@ -197,141 +195,151 @@ export function RequisitionAssignmentsView({
     ((roster.state === 'ready' && pickerValue !== null) ||
       (roster.state !== 'ready' && uuidInput.trim().length > 0));
 
+  const columns: ReadonlyArray<TableColumn<RequisitionAssignmentView>> = [
+    {
+      key: 'user',
+      header: 'User',
+      render: (r) => {
+        const u = rosterById.get(r.user_id);
+        const name = u?.display_name ?? u?.email ?? r.user_id;
+        const email = u?.email;
+        return (
+          <span data-testid={`req-assignment-row-${r.user_id}`}>
+            <span>{name}</span>
+            {email !== undefined && email !== name && (
+              <span className="rc-cell-sub"> · {email}</span>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'assigned',
+      header: 'Assigned',
+      render: (r) => new Date(r.assigned_at).toLocaleDateString(),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (r) => {
+        const isPending = pendingRemoval?.userId === r.user_id;
+        if (isPending) {
+          return (
+            <span className="rc-rowactions">
+              <span className="rc-cell-sub">Unassign?</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onConfirmRemove}
+                disabled={pendingRemoval?.stage === 'removing'}
+                data-testid={`confirm-unassign-req-${r.user_id}`}
+              >
+                {pendingRemoval?.stage === 'removing' ? 'Unassigning…' : 'Confirm'}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPendingRemoval(null)}
+                disabled={pendingRemoval?.stage === 'removing'}
+              >
+                Cancel
+              </Button>
+            </span>
+          );
+        }
+        return (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setPendingRemoval({ userId: r.user_id, stage: 'confirm' })}
+            data-testid={`unassign-req-${r.user_id}`}
+          >
+            Unassign
+          </Button>
+        );
+      },
+    },
+  ];
+
   return (
-    <section>
+    <section className="rc-stack">
       <PageHeader
         title="Requisition assignments"
         description="Users assigned to this requisition."
       />
       {state.status === 'loading' && (
-        <p className="tc-helper">Loading assignments…</p>
+        <p className="rc-muted-line">Loading assignments…</p>
       )}
       {state.status === 'error' && (
         <InlineAlert variant="error">{state.message}</InlineAlert>
       )}
       {state.status === 'ready' && (
         <>
-          <div className="tc-add-member">
-            {roster.state === 'ready' ? (
-              <div className="tc-add-member__picker">
-                <Combobox
-                  items={comboboxItems}
-                  value={pickerValue}
-                  onSelect={(item) => setPickerValue(item.value)}
-                  placeholder="Select a user to assign…"
-                  emptyMessage="No remaining users."
-                  ariaLabel="Assign a user to this requisition"
-                  disabled={adding}
-                  testId="assign-req-user-combobox"
-                />
-              </div>
-            ) : (
-              <FormField
-                label={<label htmlFor="assign-req-user-uuid">User ID</label>}
-                helper="Roster unavailable to your role — paste the UUID."
-              >
-                <input
-                  id="assign-req-user-uuid"
-                  type="text"
-                  className="tc-input"
-                  value={uuidInput}
-                  disabled={adding}
-                  onChange={(ev) => setUuidInput(ev.target.value)}
-                  data-testid="assign-req-user-uuid-input"
-                />
-              </FormField>
-            )}
-            <Button
-              onClick={onAdd}
-              disabled={!canAdd}
-              data-testid="assign-req-user-submit"
-            >
-              {adding ? 'Assigning…' : 'Assign user'}
-            </Button>
-          </div>
-          {addError !== null && (
-            <InlineAlert variant="error">
-              <strong>{addError.title}</strong>
-              {addError.detail !== undefined && (
-                <>
-                  <br />
-                  {addError.detail}
-                </>
-              )}
-            </InlineAlert>
-          )}
-          {state.rows.length === 0 ? (
-            <div className="tc-tree-empty">
-              <p className="tc-helper">No users assigned to this requisition yet.</p>
-            </div>
-          ) : (
-            <ul
-              className="tc-member-list"
-              aria-label="Requisition-assigned users"
-            >
-              {state.rows.map((r) => {
-                const u = rosterById.get(r.user_id);
-                const name = u?.display_name ?? u?.email ?? r.user_id;
-                const email = u?.email;
-                const assigned = new Date(r.assigned_at).toLocaleDateString();
-                const isPending = pendingRemoval?.userId === r.user_id;
-                return (
-                  <li
-                    key={r.id}
-                    className="tc-member-list__row"
-                    data-testid={`req-assignment-row-${r.user_id}`}
+          <Card>
+            <CardHead title="Assign a user" />
+            <div className="rc-formfoot">
+              {roster.state === 'ready' ? (
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Combobox
+                    items={comboboxItems}
+                    value={pickerValue}
+                    onSelect={(item) => setPickerValue(item.value)}
+                    placeholder="Select a user to assign…"
+                    emptyMessage="No remaining users."
+                    ariaLabel="Assign a user to this requisition"
+                    disabled={adding}
+                    testId="assign-req-user-combobox"
+                  />
+                </div>
+              ) : (
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <FormField
+                    label={<label htmlFor="assign-req-user-uuid">User ID</label>}
+                    helper="Roster unavailable to your role — paste the UUID."
                   >
-                    <div>
-                      <div className="tc-member-list__name">{name}</div>
-                      {email !== undefined && email !== name && (
-                        <div className="tc-member-list__email">{email}</div>
-                      )}
-                    </div>
-                    <span className="tc-member-list__added">
-                      Assigned {assigned}
-                    </span>
-                    <div className="tc-member-list__actions">
-                      {isPending ? (
-                        <>
-                          <span className="tc-helper">Unassign?</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={onConfirmRemove}
-                            disabled={pendingRemoval?.stage === 'removing'}
-                            data-testid={`confirm-unassign-req-${r.user_id}`}
-                          >
-                            {pendingRemoval?.stage === 'removing'
-                              ? 'Unassigning…'
-                              : 'Confirm'}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setPendingRemoval(null)}
-                            disabled={pendingRemoval?.stage === 'removing'}
-                          >
-                            Cancel
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            setPendingRemoval({ userId: r.user_id, stage: 'confirm' })
-                          }
-                          data-testid={`unassign-req-${r.user_id}`}
-                        >
-                          Unassign
-                        </Button>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+                    <input
+                      id="assign-req-user-uuid"
+                      type="text"
+                      className="rc-input"
+                      value={uuidInput}
+                      disabled={adding}
+                      onChange={(ev) => setUuidInput(ev.target.value)}
+                      data-testid="assign-req-user-uuid-input"
+                    />
+                  </FormField>
+                </div>
+              )}
+              <Button
+                onClick={onAdd}
+                disabled={!canAdd}
+                data-testid="assign-req-user-submit"
+              >
+                {adding ? 'Assigning…' : 'Assign user'}
+              </Button>
+            </div>
+            {addError !== null && (
+              <div className="rc-mt-8">
+                <InlineAlert variant="error">
+                  <strong>{addError.title}</strong>
+                  {addError.detail !== undefined && (
+                    <>
+                      <br />
+                      {addError.detail}
+                    </>
+                  )}
+                </InlineAlert>
+              </div>
+            )}
+          </Card>
+          <Card flush>
+            <DataTable
+              columns={columns}
+              rows={state.rows}
+              rowKey={(r) => r.id}
+              emptyMessage="No users assigned to this requisition yet."
+            />
+          </Card>
         </>
       )}
     </section>

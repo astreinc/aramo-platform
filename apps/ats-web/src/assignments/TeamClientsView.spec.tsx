@@ -4,9 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@aramo/fe-foundation';
 import { ToastProvider } from '@aramo/fe-foundation';
 
-import type { CompanyListState } from '../companies/companies-api';
-
 import { TeamClientsView } from './TeamClientsView';
+import type { CompanyListState } from './roster';
 import type { TeamClientOwnershipRow } from './types';
 
 const rows: TeamClientOwnershipRow[] = [

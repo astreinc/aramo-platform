@@ -4,9 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@aramo/fe-foundation';
 import { ToastProvider } from '@aramo/fe-foundation';
 
-import type { UserRosterState } from '../users/users-api';
-
 import { CompanyAssignmentsView } from './CompanyAssignmentsView';
+import type { UserRosterState } from './roster';
 import type { UserClientAssignmentRow } from './types';
 
 const rows: UserClientAssignmentRow[] = [
