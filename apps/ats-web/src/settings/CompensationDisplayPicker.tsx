@@ -1,10 +1,7 @@
+import { ApiError, useToast } from '@aramo/fe-foundation';
 import { useState } from 'react';
-import { ApiError } from '@aramo/fe-foundation';
-import { Button } from '@aramo/fe-foundation';
-import { Card } from '@aramo/fe-foundation';
-import { InlineAlert } from '@aramo/fe-foundation';
-import { RadioGroup } from '@aramo/fe-foundation';
-import { useToast } from '@aramo/fe-foundation';
+
+import { Button, Card, CardHead, InlineAlert, RadioGroup } from '../ui';
 
 import { setTenantSetting } from './settings-api';
 import type { CompensationDisplayDefault } from './types';
@@ -47,30 +44,36 @@ export function CompensationDisplayPicker({ initialValue, saveFn }: Props) {
   };
 
   return (
-    <Card
-      title="Compensation display"
-      description="Default view for granted compensation fields. Display-only — does not change who can see what."
-      footer={
-        <>
-          <Button onClick={onSave} disabled={!dirty || saving}>
-            {saving ? 'Saving…' : 'Save changes'}
-          </Button>
-          {!dirty && (
-            <span className="tc-helper" data-testid="comp-saved-marker">
-              Saved
-            </span>
-          )}
-        </>
-      }
-    >
-      {error !== null && <InlineAlert variant="error">{error}</InlineAlert>}
-      <RadioGroup
-        name="compensation.display_default"
-        value={value}
-        options={OPTIONS}
-        onValueChange={(next) => setValue(next)}
-        disabled={saving}
-      />
+    <Card>
+      <CardHead title="Compensation display" />
+      <p className="rc-muted-line rc-mt-8">
+        Default view for granted compensation fields. Display-only — does not
+        change who can see what.
+      </p>
+      {error !== null && (
+        <div className="rc-mt-8">
+          <InlineAlert variant="error">{error}</InlineAlert>
+        </div>
+      )}
+      <div className="rc-mt-8">
+        <RadioGroup
+          name="compensation.display_default"
+          value={value}
+          options={OPTIONS}
+          onValueChange={(next) => setValue(next)}
+          disabled={saving}
+        />
+      </div>
+      <div className="rc-formfoot">
+        <Button onClick={onSave} disabled={!dirty || saving}>
+          {saving ? 'Saving…' : 'Save changes'}
+        </Button>
+        {!dirty && (
+          <span className="rc-muted-line" data-testid="comp-saved-marker">
+            Saved
+          </span>
+        )}
+      </div>
     </Card>
   );
 }

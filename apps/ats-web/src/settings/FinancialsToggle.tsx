@@ -1,10 +1,7 @@
+import { ApiError, useToast } from '@aramo/fe-foundation';
 import { useState } from 'react';
-import { ApiError } from '@aramo/fe-foundation';
-import { Card } from '@aramo/fe-foundation';
-import { FormField } from '@aramo/fe-foundation';
-import { InlineAlert } from '@aramo/fe-foundation';
-import { Switch } from '@aramo/fe-foundation';
-import { useToast } from '@aramo/fe-foundation';
+
+import { Card, CardHead, FormField, InlineAlert, Switch } from '../ui';
 
 import { setTenantSetting } from './settings-api';
 
@@ -42,30 +39,35 @@ export function FinancialsToggle({ initialValue, saveFn }: Props) {
   };
 
   return (
-    <Card
-      title="Financial-auditor grant"
-      description={
-        'When enabled, tenant admins may grant the "Auditor with Financials" role, ' +
-        'which includes see-all compensation visibility.'
-      }
-    >
-      {error !== null && <InlineAlert variant="error">{error}</InlineAlert>}
-      <FormField
-        inline
-        label={
-          <label htmlFor="audit-financials-toggle">
-            Enable financial-auditor grant
-          </label>
-        }
-      >
-        <Switch
-          id="audit-financials-toggle"
-          checked={enabled}
-          onCheckedChange={onChange}
-          disabled={saving}
-          aria-label="Enable financial-auditor grant"
-        />
-      </FormField>
+    <Card>
+      <CardHead title="Financial-auditor grant" />
+      <p className="rc-muted-line rc-mt-8">
+        {'When enabled, tenant admins may grant the "Auditor with Financials" role, ' +
+          'which includes see-all compensation visibility.'}
+      </p>
+      {error !== null && (
+        <div className="rc-mt-8">
+          <InlineAlert variant="error">{error}</InlineAlert>
+        </div>
+      )}
+      <div className="rc-mt-8">
+        <FormField
+          inline
+          label={
+            <label htmlFor="audit-financials-toggle">
+              Enable financial-auditor grant
+            </label>
+          }
+        >
+          <Switch
+            id="audit-financials-toggle"
+            checked={enabled}
+            onCheckedChange={onChange}
+            disabled={saving}
+            aria-label="Enable financial-auditor grant"
+          />
+        </FormField>
+      </div>
     </Card>
   );
 }

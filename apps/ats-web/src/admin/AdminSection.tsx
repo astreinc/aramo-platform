@@ -1,6 +1,6 @@
 import { PageHeader } from '@aramo/fe-foundation';
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { Button, Card, CardHead } from '../ui';
 
@@ -8,14 +8,13 @@ import { Button, Card, CardHead } from '../ui';
 // behind <AdminGate> (the `tenant:admin:*` family gate), so by the time this
 // mounts the principal is admin-scoped.
 //
-// As admin modules port in (one directive each), they surface here. Consent is
-// the first (Directive 2). Consent has no discovery/list surface yet — it is a
-// per-talent route reached by direct URL (PR-9 §4.2) — so the affordance is a
-// talent-id lookup that routes to /admin/consent/:talentId. The remaining
-// modules are listed as not-yet-ported.
+// As admin modules port in (one directive each), they surface here. Settings
+// (Directive 3) is a self-contained route → a direct link. Consent (Directive
+// 2) has no discovery/list surface yet — it is a per-talent route reached by
+// direct URL (PR-9 §4.2) — so its affordance is a talent-id lookup. The
+// remaining modules are listed as not-yet-ported.
 
 const PENDING_MODULES = [
-  'Settings',
   'Users',
   'Organisation',
   'Teams',
@@ -39,6 +38,22 @@ export function AdminSection() {
         title="Administration"
         description="Tenant administration tools."
       />
+
+      <Card>
+        <CardHead title="Tenant settings" />
+        <p className="rc-muted-line rc-mt-8">
+          Compensation display default and the financial-auditor grant toggle.
+        </p>
+        <div className="rc-formfoot">
+          <Link
+            to="/admin/settings"
+            className="rc-link-action"
+            data-testid="admin-settings-link"
+          >
+            Open settings
+          </Link>
+        </div>
+      </Card>
 
       <Card>
         <CardHead title="Consent visibility" />

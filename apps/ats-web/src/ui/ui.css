@@ -3192,3 +3192,7 @@ select.rc-input { appearance: none; padding-right: 28px; }
 /* Admin landing — consent talent-id lookup (FE Consolidation Directive 2). */
 .rc-admin-lookup { display: flex; align-items: center; gap: 10px; max-width: 460px; }
 .rc-admin-lookup .rc-input { flex: 1; min-width: 0; }
+
+/* Form footer — button + status-marker row (FE Consolidation Directive 3,
+ * reusable by the remaining form ports). */
+.rc-formfoot { display: flex; align-items: center; gap: 10px; margin-top: 18px; }

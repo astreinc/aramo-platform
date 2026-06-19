@@ -13,7 +13,6 @@ import { TeamClientsView } from './assignments/TeamClientsView';
 import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { LandingPage } from './routes/LandingPage';
 import { LoginPage } from './routes/LoginPage';
-import { SettingsView } from './settings/SettingsView';
 import { TeamMembersView } from './teams/TeamMembersView';
 import { TeamsListView } from './teams/TeamsListView';
 import { UsersListView } from './users/UsersListView';
@@ -26,7 +25,6 @@ const TENANT_CONSOLE_NAV: readonly ShellNavItem[] = [
   { to: '/users', label: 'Users', requireScope: 'tenant:admin:user-manage' },
   { to: '/org', label: 'Organisation', requireScope: 'org:manage' },
   { to: '/teams', label: 'Teams', requireScope: 'team:manage' },
-  { to: '/settings', label: 'Settings', requireScope: 'tenant:admin:settings' },
 ];
 
 export function App() {
@@ -55,19 +53,10 @@ export function App() {
                         (FE Consolidation Directive 2). Removed here — the
                         module was cleanly decoupled (apiClient + ApiError
                         only) and direct-URL-only (never in tenant-console
-                        nav). tenant-console is not yet retired; remaining
-                        admin modules port in subsequent directives. */}
-                    <Route
-                      path="settings"
-                      element={
-                        <RouteGuard
-                          requireScope="tenant:admin:settings"
-                          sessionStateOverride={state}
-                        >
-                          <SettingsView />
-                        </RouteGuard>
-                      }
-                    />
+                        nav). Settings likewise ported to ats-web /admin/settings
+                        (Directive 3) — route + nav item removed here.
+                        tenant-console is not yet retired; remaining admin
+                        modules port in subsequent directives. */}
                     <Route
                       path="users"
                       element={
