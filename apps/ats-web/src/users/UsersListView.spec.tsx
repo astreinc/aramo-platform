@@ -74,9 +74,9 @@ describe('UsersListView', () => {
     await waitFor(() =>
       expect(screen.getByText('Disabled Person')).toBeInTheDocument(),
     );
-    const mutedRows = container.querySelectorAll(
-      'tr[data-muted="true"]',
-    );
+    // DataTable (the ats-web Confident-Blue table) marks a muted row with the
+    // `rc-table__row--muted` class (the frozen Table used a data-muted attr).
+    const mutedRows = container.querySelectorAll('tr.rc-table__row--muted');
     expect(mutedRows.length).toBe(1);
   });
 

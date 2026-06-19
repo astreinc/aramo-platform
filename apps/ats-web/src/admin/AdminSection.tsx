@@ -8,13 +8,10 @@ import { Button, Card, CardHead } from '../ui';
 // behind <AdminGate> (the `tenant:admin:*` family gate), so by the time this
 // mounts the principal is admin-scoped.
 //
-// As admin modules port in (one directive each), they surface here. Settings
-// (Directive 3) is a self-contained route → a direct link. Consent (Directive
-// 2) and the assignment editors (Directive 4) are per-record routes reached by
-// direct URL — they have no discovery/list surface yet — so their affordance is
-// an ID lookup. The remaining modules are listed as not-yet-ported.
-
-const PENDING_MODULES = ['Users'] as const;
+// All six admin modules now surface here (FE Consolidation complete). Self-
+// contained routes (users / settings / org / teams) are direct links; consent +
+// the assignment editors are per-record routes reached by direct URL (no
+// discovery/list surface yet) — so their affordance is an ID lookup.
 
 // A per-record deep-link affordance: an ID input + button that navigates to the
 // record's editor. Used wherever a ported admin surface has no discovery/list
@@ -67,6 +64,22 @@ export function AdminSection() {
         title="Administration"
         description="Tenant administration tools."
       />
+
+      <Card>
+        <CardHead title="Users" />
+        <p className="rc-muted-line rc-mt-8">
+          Invite users, edit their roles, and disable access across the tenant.
+        </p>
+        <div className="rc-formfoot">
+          <Link
+            to="/admin/users"
+            className="rc-link-action"
+            data-testid="admin-users-link"
+          >
+            Open users
+          </Link>
+        </div>
+      </Card>
 
       <Card>
         <CardHead title="Tenant settings" />
@@ -163,19 +176,6 @@ export function AdminSection() {
           buttonTestId="admin-team-clients-open"
           toPath={(id) => `/admin/teams/${id}/clients`}
         />
-      </Card>
-
-      <Card>
-        <CardHead title="More admin modules" />
-        <p className="rc-muted-line rc-mt-8">
-          The following modules are being consolidated into this console and
-          will appear here as each is ported:
-        </p>
-        <ul className="rc-mt-8">
-          {PENDING_MODULES.map((m) => (
-            <li key={m}>{m}</li>
-          ))}
-        </ul>
       </Card>
     </section>
   );

@@ -128,7 +128,7 @@ export function DisableConfirmDialog({
         <input
           id="disable-reason"
           type="text"
-          className="tc-input"
+          className="rc-input"
           value={reason}
           disabled={saving}
           onChange={(ev) => setReason(ev.target.value)}

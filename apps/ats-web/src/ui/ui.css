@@ -3227,3 +3227,25 @@ select.rc-input { appearance: none; padding-right: 28px; }
 .rc-tree__label { font-weight: 600; color: var(--ink, var(--c-text)); }
 .rc-tree__email { color: var(--muted, var(--c-text-muted)); font-size: 0.82rem; }
 .rc-tree-empty { padding: 24px; text-align: center; }
+
+/* Users — role picker (checkbox list) + role-assign diff block (FE
+ * Consolidation Directive 5, PR3). Logic preserved verbatim from S5b; these
+ * are the Confident-Blue visual styles for the ported markup. */
+.rc-role-picker { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; }
+.rc-role-picker__row {
+  display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px;
+  border-radius: var(--r-sm, 6px); cursor: pointer;
+}
+.rc-role-picker__row:hover { background: var(--surface-2, var(--c-surface-2)); }
+.rc-role-picker__row[data-disabled='true'] { opacity: 0.55; cursor: not-allowed; }
+.rc-role-picker__check { margin-top: 3px; }
+.rc-role-picker__labels { display: flex; flex-direction: column; gap: 1px; }
+.rc-role-picker__label { font-weight: 600; color: var(--ink, var(--c-text)); }
+.rc-role-picker__helper { color: var(--muted, var(--c-text-muted)); font-size: 0.82rem; }
+.rc-diff {
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
+  margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md, 9px);
+  background: var(--surface-2, var(--c-surface-2));
+}
+.rc-diff__label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted, var(--c-text-muted)); }
+.rc-diff__value { color: var(--ink, var(--c-text)); }

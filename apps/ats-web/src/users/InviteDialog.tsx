@@ -149,7 +149,7 @@ export function InviteDialog({
           <input
             id="invite-email"
             type="email"
-            className="tc-input"
+            className="rc-input"
             autoComplete="off"
             required
             value={email}
@@ -164,7 +164,7 @@ export function InviteDialog({
           <input
             id="invite-display-name"
             type="text"
-            className="tc-input"
+            className="rc-input"
             autoComplete="off"
             value={displayName}
             disabled={saving}
@@ -172,7 +172,7 @@ export function InviteDialog({
           />
         </FormField>
         <FormField
-          label={<div className="tc-label">Roles</div>}
+          label="Roles"
           helper="Select one or more roles to grant on invite."
         >
           <RolePicker

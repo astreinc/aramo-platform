@@ -33,6 +33,7 @@ import { RecruiterShell } from './shell/RecruiterShell';
 import { TalentListView } from './talent/TalentListView';
 import { TeamMembersView } from './teams/TeamMembersView';
 import { TeamsListView } from './teams/TeamsListView';
+import { UsersListView } from './users/UsersListView';
 import { ShellPreview } from './ui/ShellPreview';
 import { UiGallery } from './ui/UiGallery';
 
@@ -280,6 +281,7 @@ export function App() {
                           <Routes>
                             <Route index element={<AdminSection />} />
                             <Route path="settings" element={<SettingsView />} />
+                            <Route path="users" element={<UsersListView />} />
                             <Route path="org" element={<OrgHierarchyView />} />
                             <Route
                               path="consent/:talentId"

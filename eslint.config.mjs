@@ -261,12 +261,13 @@ export default [
       // the talent record. The mirror lives in the FE because the GET
       // roles-catalog endpoint is a deferred follow-up (PL-94 §2 ruling
       // 2 — hand-mirror + smoke spec). File-scoped to the three FE files
-      // where the role key appears; the ESLint `candidate` rule still
-      // applies to every other tenant-console file. Paired with the
+      // where the role key appears (ported to ats-web, FE Consolidation
+      // Directive 5); the ESLint `candidate` rule still applies to every
+      // other file. Paired with the
       // matching scripts/verify-vocabulary.sh TIER2_EXCLUDES entries.
-      'apps/tenant-console/src/users/types.ts',
-      'apps/tenant-console/src/users/types.spec.ts',
-      'apps/tenant-console/src/users/RolePicker.spec.tsx',
+      'apps/ats-web/src/users/types.ts',
+      'apps/ats-web/src/users/types.spec.ts',
+      'apps/ats-web/src/users/RolePicker.spec.tsx',
       // PR-A8-2: the import-seam INBOUND-vocabulary synonym table. The
       // talent_record identity-field synonym sets accept "candidate" /
       // "applicant" as inbound CSV-header aliases (every OpenCATS /

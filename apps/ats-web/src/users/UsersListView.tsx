@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Button } from '@aramo/fe-foundation';
-import { InlineAlert } from '@aramo/fe-foundation';
-import { PageHeader } from '@aramo/fe-foundation';
-import { Table, type TableColumn } from '@aramo/fe-foundation';
+
+import {
+  Button,
+  Card,
+  DataTable,
+  InlineAlert,
+  PageHeader,
+  StatusPill,
+  Tag,
+  type TableColumn,
+} from '../ui';
 
 import { DisableConfirmDialog } from './DisableConfirmDialog';
 import { InviteDialog } from './InviteDialog';
@@ -14,18 +21,15 @@ import {
   type FinancialsToggleState,
 } from './users-api';
 
-// Settings S5b — UsersListView.
-//
-// The roster + the three actions (Invite / Disable / Edit roles).
-// Composes on the S5a foundation (PageHeader + InlineAlert + the new
-// Table) and orchestrates the three Dialogs. The financials toggle
-// probe (ruling 4) runs in parallel with the user-list fetch; it is
-// passed into the two role-bearing Dialogs so the picker can reflect
-// the S4 gate proactively.
+// UsersListView at /admin/users (ported to ats-web, FE Consolidation Directive
+// 5 PR3; restyled to Confident Blue). The roster + the three actions (Invite /
+// Disable / Edit roles). The financials-toggle probe (ruling 4) runs in
+// parallel with the user-list fetch and is passed into the two role-bearing
+// Dialogs so the picker reflects the S4 gate proactively. The D5 role-bundle
+// logic + the S4 gate are preserved verbatim from S5b (RoleAssignEditor +
+// RolePicker + error-messages) — only the chrome is restyled.
 
 interface Props {
-  // Test seams — let the tests inject fetchers and avoid touching
-  // global fetch when they only care about render shape.
   fetchUsersFn?: () => Promise<{ items: readonly TenantUserView[] }>;
   probeFinancialsFn?: () => Promise<FinancialsToggleState>;
 }
@@ -36,45 +40,29 @@ type LoadState =
   | { status: 'error'; message: string };
 
 function StatusBadge({ user }: { user: TenantUserView }) {
-  if (user.is_active) {
-    return (
-      <span
-        className="tc-badge tc-badge--active"
-        data-testid={`user-status-${user.user_id}`}
-      >
-        Active
-      </span>
-    );
-  }
   return (
-    <span
-      className="tc-badge tc-badge--disabled"
-      data-testid={`user-status-${user.user_id}`}
-    >
-      Disabled
+    <span data-testid={`user-status-${user.user_id}`}>
+      <StatusPill tone={user.is_active ? 'ok' : 'neutral'}>
+        {user.is_active ? 'Active' : 'Disabled'}
+      </StatusPill>
     </span>
   );
 }
 
 function RoleChips({ role_keys }: { role_keys: readonly string[] }) {
   if (role_keys.length === 0) {
-    return <span className="tc-helper">—</span>;
+    return <span className="rc-muted-line">—</span>;
   }
   return (
-    <>
+    <span className="rc-tags">
       {role_keys.map((key) => (
-        <span key={key} className="tc-badge tc-badge--role">
-          {findRoleEntry(key)?.label ?? key}
-        </span>
+        <Tag key={key}>{findRoleEntry(key)?.label ?? key}</Tag>
       ))}
-    </>
+    </span>
   );
 }
 
-export function UsersListView({
-  fetchUsersFn,
-  probeFinancialsFn,
-}: Props = {}) {
+export function UsersListView({ fetchUsersFn, probeFinancialsFn }: Props = {}) {
   const fetchUsers = fetchUsersFn ?? fetchTenantUsers;
   const probe = probeFinancialsFn ?? probeFinancialsToggle;
 
@@ -118,8 +106,6 @@ export function UsersListView({
         setFinancialsToggle(next);
       })
       .catch(() => {
-        // A non-403 probe failure: fall back to 'unknown' silently. The
-        // BE rejection is the floor — the picker still works.
         if (cancelled) return;
         setFinancialsToggle({ state: 'unknown' });
       });
@@ -135,7 +121,7 @@ export function UsersListView({
       render: (u) => (
         <>
           <div>{u.display_name ?? '—'}</div>
-          <div className="tc-helper">{u.email}</div>
+          <div className="rc-cell-sub">{u.email}</div>
         </>
       ),
     },
@@ -152,11 +138,11 @@ export function UsersListView({
     },
     {
       key: 'actions',
-      header: 'Actions',
+      header: '',
       width: '220px',
       align: 'right',
       render: (u) => (
-        <>
+        <span className="rc-rowactions">
           <Button
             variant="ghost"
             size="sm"
@@ -174,44 +160,43 @@ export function UsersListView({
           >
             Disable
           </Button>
-        </>
+        </span>
       ),
     },
   ];
 
   return (
-    <section>
+    <section className="rc-stack">
       <PageHeader
         title="Users"
         description="Invite, edit roles, and disable users in your tenant."
       />
-      <div className="tc-page-actions">
-        <span className="tc-helper">
+      <div className="rc-formfoot">
+        <span className="rc-muted-line">
           {state.status === 'ready'
             ? `${state.users.length} user${state.users.length === 1 ? '' : 's'}`
             : ''}
         </span>
-        <Button
-          onClick={() => setInviteOpen(true)}
-          data-testid="open-invite"
-        >
+        <Button onClick={() => setInviteOpen(true)} data-testid="open-invite">
           Invite user
         </Button>
       </div>
       {state.status === 'loading' && (
-        <p className="tc-helper">Loading users…</p>
+        <p className="rc-muted-line">Loading users…</p>
       )}
       {state.status === 'error' && (
         <InlineAlert variant="error">{state.message}</InlineAlert>
       )}
       {state.status === 'ready' && (
-        <Table<TenantUserView>
-          columns={columns}
-          rows={state.users}
-          rowKey={(u) => u.user_id}
-          rowMuted={(u) => !u.is_active}
-          emptyMessage="No users yet. Invite one to get started."
-        />
+        <Card flush>
+          <DataTable<TenantUserView>
+            columns={columns}
+            rows={state.users}
+            rowKey={(u) => u.user_id}
+            rowMuted={(u) => !u.is_active}
+            emptyMessage="No users yet. Invite one to get started."
+          />
+        </Card>
       )}
       <InviteDialog
         open={inviteOpen}
