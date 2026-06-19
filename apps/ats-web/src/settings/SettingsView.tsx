@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
-import { InlineAlert } from '@aramo/fe-foundation';
-import { PageHeader } from '@aramo/fe-foundation';
+
+import { InlineAlert, PageHeader } from '../ui';
 
 import { CompensationDisplayPicker } from './CompensationDisplayPicker';
 import { FinancialsToggle } from './FinancialsToggle';
 import { fetchTenantSettings } from './settings-api';
 import type { TenantSettingsView } from './types';
+
+// Settings admin surface — ported to ats-web /admin/settings (FE Consolidation
+// Directive 3; restyled to Confident Blue). Backend contract UNCHANGED:
+// GET /v1/tenant/settings (tenant:admin:settings) returns only the operator-
+// facing keys — the internal metrics.goals key is filtered server-side and is
+// not part of TenantSettingsView, so it can never reach this UI.
 
 interface Props {
   // Test seam — lets the test inject a fetch fn so the view renders the
@@ -41,13 +47,10 @@ export function SettingsView({ fetchFn }: Props = {}) {
   }, [fetcher]);
 
   return (
-    <section>
-      <PageHeader
-        title="Settings"
-        description="Tenant-wide configuration"
-      />
+    <section className="rc-stack">
+      <PageHeader title="Settings" description="Tenant-wide configuration" />
       {state.status === 'loading' && (
-        <p className="tc-helper">Loading settings…</p>
+        <p className="rc-muted-line">Loading settings…</p>
       )}
       {state.status === 'error' && (
         <InlineAlert variant="error">{state.message}</InlineAlert>

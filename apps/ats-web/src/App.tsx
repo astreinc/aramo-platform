@@ -19,6 +19,7 @@ import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
 import { SearchView } from './search/SearchView';
+import { SettingsView } from './settings/SettingsView';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
 import { MyTasksView } from './task/MyTasksView';
 import { TalentCreateView } from './talent/TalentCreateView';
@@ -272,6 +273,7 @@ export function App() {
                         <AdminGate session={state.session}>
                           <Routes>
                             <Route index element={<AdminSection />} />
+                            <Route path="settings" element={<SettingsView />} />
                             <Route
                               path="consent/:talentId"
                               element={<ConsentView />}
