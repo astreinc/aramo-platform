@@ -224,6 +224,15 @@ export const SEED_IDS = {
     'requisition:edit:status': '01900000-0000-7000-8000-0000000000a5',
     'requisition:profile:generate': '01900000-0000-7000-8000-0000000000a6',
     'requisition:profile:edit': '01900000-0000-7000-8000-0000000000a7',
+    // Settings Rebuild D1 — the 2 read scopes that unlock the settings
+    // Import + Export LIVE sections. Both were referenced by their
+    // controllers (libs/import, libs/export) but NEVER seeded — every JWT
+    // 403'd on /v1/imports and /v1/exports (the substrate-audit gap-and-
+    // note: HK-IMPORT-SCOPES + export:read). Next free ids after the 0xa7
+    // req-gating range (append-don't-renumber): 0xa8 / 0xa9. Granted via
+    // IMPORT_EXPORT_SEED_BUNDLES (RoleScope range 0x900+).
+    'import:read': '01900000-0000-7000-8000-0000000000a8',
+    'export:read': '01900000-0000-7000-8000-0000000000a9',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1369,6 +1378,50 @@ const REQ_GATING_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Settings Rebuild D1 — Import/Export read-scope bundle. Closes the
+// substrate-audit gap-and-note (import:read + export:read referenced by
+// their controllers but never seeded → the settings Import + Export LIVE
+// sections would 403 for every JWT). Two tiers, mirroring the controllers'
+// documented tiering:
+//   - import:read → the 8-role OPERATIONAL tier (recruiter+; identical set
+//     to REPORTING_SEED_BUNDLES). Every recruiter can audit imports in
+//     their tenant (the import history is not sensitive; RequireSiteMatch
+//     + visibility still govern WHAT each row shows).
+//   - export:read → tenant_admin + tenant_owner ONLY. The settings Export
+//     surface is admin-gated; the A3/D4b predicate governs WHAT each role
+//     exports. (The export controller documents recruiter+ AND tenant_admin
+//     as eligible; this D1 grant seeds only the admin tier the settings
+//     surface needs — a later increment may widen it.)
+// 10 RoleScope rows: import:read × 8 + export:read × 2.
+export const IMPORT_EXPORT_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_owner', ['import:read', 'export:read']],
+  ['tenant_admin', ['import:read', 'export:read']],
+  ['account_manager', ['import:read']],
+  ['recruiting_manager', ['import:read']],
+  ['recruiter', ['import:read']],
+  ['lead_recruiter', ['import:read']],
+  ['back_office', ['import:read']],
+  ['delivery_manager', ['import:read']],
+];
+
+// Deterministic RoleScope row ids for the 10 Import/Export grants. Disjoint
+// range 0x900+ (the next clear range after REQ_GATING's 0x839..0x84a; all
+// prior ranges untouched — append-don't-renumber). The (role, scope)
+// iteration order pins the assignment, so a given pair always produces the
+// same UUID on every seed run. DO NOT REORDER without bumping the offset.
+const IMPORT_EXPORT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x900;
+  for (const [role, scopes] of IMPORT_EXPORT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -1601,6 +1654,12 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['requisition:profile:generate'], 'requisition:profile:generate', 'Generate the AI JD + GoldenProfile for a requisition (the draft + confirm endpoints; re-gated off requisition:edit per PR-A1). Granted to the 5-role management tier (tenant_admin + tenant_owner + account_manager + recruiting_manager + lead_recruiter); base recruiter does NOT hold it.');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:profile:edit'], 'requisition:profile:edit', 'Edit the generated GoldenProfile content for a requisition. Granted to the 5-role management tier (tenant_admin + tenant_owner + account_manager + recruiting_manager + lead_recruiter).');
 
+  // Settings Rebuild D1 — the 2 read scopes behind the settings Import +
+  // Export LIVE sections. NO scope.created audit events (mirrors the
+  // Reporting / Engagement / Search / Task scope-seed precedent).
+  await upsertScope(prisma, SEED_IDS.scopes['import:read'], 'import:read', 'Read the CSV bulk-import history + per-batch failures (GET /v1/imports, GET /v1/imports/:id, GET /v1/imports/:id/failures). Read-only audit of imports; the write/revert surface gates on import:create / import:delete (unseeded — a later increment). Granted to the operational tier (recruiter+: tenant_admin + tenant_owner + account_manager + recruiting_manager + recruiter + lead_recruiter + back_office + delivery_manager). RequireSiteMatch + the actor visibility still govern WHAT each row shows.');
+  await upsertScope(prisma, SEED_IDS.scopes['export:read'], 'export:read', 'Export the 5 R10-bounded ATS entities as CSV (GET /v1/exports/:entity_type). The A3/D4b visibility predicate at the service layer governs WHAT each role exports; R10 keeps the column set ATS-only (no Core-judgment field). Granted to tenant_admin + tenant_owner (the settings Export surface is admin-gated).');
+
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
     const role_id = roleIdForKey(roleKey);
@@ -1799,6 +1858,24 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
       const rsId = REQ_GATING_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`PR-A1 Req-Gating-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Settings Rebuild D1 — Import/Export read-scope grants (10 rows;
+  // import:read × 8 operational + export:read × 2 admin). Range 0x900+.
+  for (const [roleKey, scopeKeys] of IMPORT_EXPORT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = IMPORT_EXPORT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`Settings-D1 Import/Export-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

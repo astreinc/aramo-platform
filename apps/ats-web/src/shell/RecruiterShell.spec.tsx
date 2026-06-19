@@ -55,12 +55,12 @@ describe('RecruiterShell', () => {
 
   it('shows the admin nav section only to a tenant:admin-scoped principal', () => {
     renderShell(makeSession(['talent:read', 'tenant:admin:settings']));
-    expect(screen.getByRole('link', { name: 'Admin' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
   });
 
   it('hides the admin nav from a non-admin (recruiter-only) principal', () => {
     renderShell(makeSession(['requisition:read', 'talent:read', 'company:read', 'task:read']));
-    expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
   });
 
   it('shows the full nav when all scopes are held', () => {

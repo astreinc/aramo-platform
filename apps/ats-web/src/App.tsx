@@ -1,5 +1,5 @@
 import { RouteGuard, ToastProvider, useSession } from '@aramo/fe-foundation';
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AdminGate } from './admin/AdminGate';
 import { AdminSection } from './admin/AdminSection';
@@ -24,6 +24,22 @@ import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
 import { SearchView } from './search/SearchView';
 import { SettingsView } from './settings/SettingsView';
+import { SettingsShell } from './settings/SettingsShell';
+import { TenantProfileSection } from './settings/sections/TenantProfileSection';
+import { BranchesSection } from './settings/sections/BranchesSection';
+import { ImportSection } from './settings/sections/ImportSection';
+import { ComplianceSection } from './settings/sections/ComplianceSection';
+import {
+  ApplySection,
+  AuditSection,
+  BillingSection,
+  EmailSection,
+  FieldsSection,
+  LocalizationSection,
+  PortalSection,
+  RolesSection,
+  SecuritySection,
+} from './settings/sections/SeamSections';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
 import { MyTasksView } from './task/MyTasksView';
 import { TalentCreateView } from './talent/TalentCreateView';
@@ -270,40 +286,114 @@ export function App() {
                     {/* Admin-gated section. AdminGate is the single
                         `tenant:admin:*` family guard for the whole subtree (a
                         non-admin reaching any /admin route in-UI gets
-                        ForbiddenState; the server is the real gate). The nested
-                        Routes host the ported admin modules — consent is the
-                        first (FE Consolidation Directive 2); more port in
-                        subsequent directives. */}
+                        ForbiddenState; the server is the real gate).
+                        Settings Rebuild Directive 1: the whole subtree now
+                        renders inside <SettingsShell> — the six-group settings
+                        rail (consolidation pattern) + <Outlet/>. The built
+                        modules (Users / Teams / Org) are re-homed as live
+                        sections at their existing paths; the new section routes
+                        host the live Import/Export/Defaults surfaces + the
+                        honest seams. The per-record deep links (consent +
+                        assignment editors) stay as separate surfaces reached
+                        from the residual admin-tools landing (/admin/tools). */}
                     <Route
                       path="admin/*"
                       element={
                         <AdminGate session={state.session}>
                           <Routes>
-                            <Route index element={<AdminSection />} />
-                            <Route path="settings" element={<SettingsView />} />
-                            <Route path="users" element={<UsersListView />} />
-                            <Route path="org" element={<OrgHierarchyView />} />
-                            <Route
-                              path="consent/:talentId"
-                              element={<ConsentView />}
-                            />
-                            <Route
-                              path="companies/:companyId/assignments"
-                              element={<CompanyAssignmentsView />}
-                            />
-                            <Route
-                              path="requisitions/:requisitionId/assignments"
-                              element={<RequisitionAssignmentsView />}
-                            />
-                            <Route path="teams" element={<TeamsListView />} />
-                            <Route
-                              path="teams/:teamId"
-                              element={<TeamMembersView />}
-                            />
-                            <Route
-                              path="teams/:teamId/clients"
-                              element={<TeamClientsView />}
-                            />
+                            <Route element={<SettingsShell />}>
+                              <Route
+                                index
+                                element={
+                                  <Navigate to="/admin/settings/profile" replace />
+                                }
+                              />
+                              {/* Re-homed live modules (render in-shell at
+                                  their existing, test-covered paths). */}
+                              <Route path="users" element={<UsersListView />} />
+                              <Route path="org" element={<OrgHierarchyView />} />
+                              <Route path="teams" element={<TeamsListView />} />
+                              <Route
+                                path="teams/:teamId"
+                                element={<TeamMembersView />}
+                              />
+                              <Route
+                                path="teams/:teamId/clients"
+                                element={<TeamClientsView />}
+                              />
+                              {/* Existing Defaults route preserved (back-compat
+                                  + its route test). */}
+                              <Route path="settings" element={<SettingsView />} />
+                              {/* The settings sections. */}
+                              <Route
+                                path="settings/profile"
+                                element={<TenantProfileSection />}
+                              />
+                              <Route
+                                path="settings/branches"
+                                element={<BranchesSection />}
+                              />
+                              <Route
+                                path="settings/localization"
+                                element={<LocalizationSection />}
+                              />
+                              <Route
+                                path="settings/roles"
+                                element={<RolesSection />}
+                              />
+                              <Route
+                                path="settings/security"
+                                element={<SecuritySection />}
+                              />
+                              <Route
+                                path="settings/portal"
+                                element={<PortalSection />}
+                              />
+                              <Route
+                                path="settings/apply"
+                                element={<ApplySection />}
+                              />
+                              <Route
+                                path="settings/email"
+                                element={<EmailSection />}
+                              />
+                              <Route
+                                path="settings/import"
+                                element={<ImportSection />}
+                              />
+                              <Route
+                                path="settings/compliance"
+                                element={<ComplianceSection />}
+                              />
+                              <Route
+                                path="settings/fields"
+                                element={<FieldsSection />}
+                              />
+                              <Route
+                                path="settings/billing"
+                                element={<BillingSection />}
+                              />
+                              <Route
+                                path="settings/audit"
+                                element={<AuditSection />}
+                              />
+                              {/* Residual admin-tools (Lead ruling C): consent +
+                                  assignment-discovery lookups stay reachable. */}
+                              <Route path="tools" element={<AdminSection />} />
+                              {/* Per-record deep links (unchanged contracts). */}
+                              <Route
+                                path="consent/:talentId"
+                                element={<ConsentView />}
+                              />
+                              <Route
+                                path="companies/:companyId/assignments"
+                                element={<CompanyAssignmentsView />}
+                              />
+                              <Route
+                                path="requisitions/:requisitionId/assignments"
+                                element={<RequisitionAssignmentsView />}
+                              />
+                            </Route>
                           </Routes>
                         </AdminGate>
                       }
