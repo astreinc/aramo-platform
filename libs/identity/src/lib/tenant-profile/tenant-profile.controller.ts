@@ -23,10 +23,12 @@ import type { TenantProfileView } from './tenant-profile.view.js';
 // TenantSettingsController + TenantUserManagementController + AuditController):
 //   @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 //   @RequireCapability('core')                  — class-level (tenant axis)
-//   @RequireScopes('tenant:admin:settings')     — route-level. REUSES the
-//     existing settings scope (the directive's reuse option) — tenant profile
-//     is a tenant-config surface like the settings registry; no new scope, so
-//     a normal reviewed merge (no RoleScope reconcile).
+//   @RequireScopes('tenant:admin:profile')     — route-level. DEDICATED scope
+//     (Lead ruling): tenant profile is org-legal-identity (legal name, tax/
+//     registration IDs), a distinct capability from app config — kept separable
+//     from tenant:admin:settings forever (no future migration) and giving the
+//     D2 audit log a clean per-scope authorization story. Seeded to
+//     tenant_admin + tenant_owner (same tier; functionally identical today).
 //
 // IMPLICIT-TENANT PATTERN: tenant_id derives ONLY from authContext.tenant_id —
 // no URL/body tenant override. A tenant_admin in tenant A can never read or
@@ -47,7 +49,7 @@ export class TenantProfileController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('tenant:admin:settings')
+  @RequireScopes('tenant:admin:profile')
   async getProfile(
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
@@ -57,7 +59,7 @@ export class TenantProfileController {
 
   @Patch()
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('tenant:admin:settings')
+  @RequireScopes('tenant:admin:profile')
   async updateProfile(
     @AuthContext() authContext: AuthContextType,
     @Body() body: Record<string, unknown>,

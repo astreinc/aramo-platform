@@ -193,8 +193,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // it into this focused authz scope-seed would balloon the manually-
       // reviewed authz surface.
       expect(scopes.map((s) => s.key)).toEqual([
-        // Settings-D2 reconciliation — full scope catalog (incl. 3 platform:*): 81 scopes
-        // (verbatim testcontainer truth; +audit:read; reconciles to roleScope.count=445).
+        // Settings-D3 reconciliation — full scope catalog (incl. 3 platform:*): 82 scopes
+        // (verbatim testcontainer truth; +tenant:admin:profile; reconciles to roleScope.count=447).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -274,6 +274,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'task:read',
         'task:write',
         'team:manage',
+        'tenant:admin:profile',
         'tenant:admin:settings',
         'tenant:admin:user-manage',
       ]);
@@ -338,7 +339,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   433 → 443 = +10 Settings-D1.
       //   443 → 445 = +2 Settings-D2 (audit:read × tenant_admin + tenant_owner;
       //   AUDIT_READ_SEED_BUNDLES @ 0x910).
-      expect(roleScopes).toBe(445);
+      //   445 → 447 = +2 Settings-D3 (tenant:admin:profile × tenant_admin +
+      //   tenant_owner; PROFILE_ADMIN_SEED_BUNDLES @ 0x920). Verified against
+      //   the testcontainer: ONLY those two roles gained the dedicated scope.
+      expect(roleScopes).toBe(447);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -425,13 +429,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // D-AUTHZ corrected to 59; Reporting-Scope-Seed advances to 61;
       // R7 BE-prereq advances to 64.
       //
-      // POST-R7 DRIFT (authoritative testcontainer count = 78): the non-
+      // POST-R7 DRIFT (authoritative testcontainer count = 79): the non-
       // platform scope CATALOG grew past 64 without this assertion being
       // updated — Search +3, Task +2, Company-Fields +1, Job-Module +2,
-      // Req-Gating +3, Settings-D1 +2 (import:read + export:read), then
-      // Settings-D2 +1 (audit:read) = 78. (Distinct from SEED_SCOPE_KEYS=81,
-      // which counts the 3 platform:* scopes this query excludes.)
-      expect(tenantScopes.length).toBe(78);
+      // Req-Gating +3, Settings-D1 +2 (import:read + export:read),
+      // Settings-D2 +1 (audit:read), then Settings-D3 +1 (tenant:admin:profile)
+      // = 79. (Distinct from SEED_SCOPE_KEYS=82, which counts the 3 platform:*
+      // scopes this query excludes.)
+      expect(tenantScopes.length).toBe(79);
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -633,8 +638,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // (recruiter+ includes tenant_admin). 37 + 6 = 43.
       // AUTHZ-D4a: tenant_admin gains the 4 team-model scopes. 43 + 4 = 47.
       expect(sorted).toEqual([
-        // Settings-D2 reconciliation — tenant_admin resolved scope set: 73 scopes
-        // (verbatim testcontainer truth; +audit:read; reconciles to roleScope.count=445).
+        // Settings-D3 reconciliation — tenant_admin resolved scope set: 74 scopes
+        // (verbatim testcontainer truth; +tenant:admin:profile; reconciles to roleScope.count=447).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -706,6 +711,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'task:read',
         'task:write',
         'team:manage',
+        'tenant:admin:profile',
         'tenant:admin:settings',
         'tenant:admin:user-manage',
       ]);
@@ -858,8 +864,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: SEED_IDS.tenant,
       });
       expect([...adminScopes].sort()).toEqual([
-        // Settings-D2 reconciliation — tenant_admin scope set: 73 scopes
-        // (verbatim testcontainer truth; +audit:read; reconciles to roleScope.count=445).
+        // Settings-D3 reconciliation — tenant_admin scope set: 74 scopes
+        // (verbatim testcontainer truth; +tenant:admin:profile; reconciles to roleScope.count=447).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -931,6 +937,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'task:read',
         'task:write',
         'team:manage',
+        'tenant:admin:profile',
         'tenant:admin:settings',
         'tenant:admin:user-manage',
       ]);
@@ -1071,8 +1078,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // tenant_owner — 47 scopes (post-AUTHZ-D4a; 43 + 4 team-model scopes).
       // Owner = Admin scope set incl. the AUTHZ-D4a top-tier additions.
       await expectRoleScopes('tenant_owner', [
-        // Settings-D2 reconciliation — tenant_owner = tenant_admin set: 73 scopes
-        // (verbatim testcontainer truth; +audit:read; reconciles to roleScope.count=445).
+        // Settings-D3 reconciliation — tenant_owner = tenant_admin set: 74 scopes
+        // (verbatim testcontainer truth; +tenant:admin:profile; reconciles to roleScope.count=447).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -1144,6 +1151,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'task:read',
         'task:write',
         'team:manage',
+        'tenant:admin:profile',
         'tenant:admin:settings',
         'tenant:admin:user-manage',
       ]);

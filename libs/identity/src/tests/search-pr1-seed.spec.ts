@@ -12,7 +12,7 @@ import { SCOPE_KEY_FORMAT, SEED_SCOPE_KEYS } from '../lib/dto/index.js';
 // ARAMO_RUN_INTEGRATION=1 gated): 362 → 390.
 
 describe('Search PR-1 — scope catalog parity', () => {
-  it('SEED_SCOPE_KEYS has 81 keys (80 + 1 Settings-D2 audit:read)', () => {
+  it('SEED_SCOPE_KEYS has 82 keys (81 + 1 Settings-D3 tenant:admin:profile)', () => {
     // Search PR-1 took 67→70 (company/requisition/contact :search); the Tasks
     // backend appended task:read + task:write (70→72); Company-Fields v1.1
     // appended company:read_commercial (72→73); the Job-Module appended
@@ -20,8 +20,9 @@ describe('Search PR-1 — scope catalog parity', () => {
     // PR-A1 Requisition-Gating Rework appended requisition:edit:status +
     // requisition:profile:generate + requisition:profile:edit (75→78); the
     // Settings Rebuild D1 appended import:read + export:read (78→80); the
-    // Settings Rebuild D2 appended audit:read (80→81).
-    expect(SEED_SCOPE_KEYS).toHaveLength(81);
+    // Settings Rebuild D2 appended audit:read (80→81); the Settings Rebuild D3
+    // appended tenant:admin:profile (81→82).
+    expect(SEED_SCOPE_KEYS).toHaveLength(82);
   });
 
   it('the 3 NEW per-entity search scopes are in the catalog', () => {

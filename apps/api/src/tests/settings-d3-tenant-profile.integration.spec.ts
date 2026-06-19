@@ -23,7 +23,7 @@ import { AppModule } from '../app.module.js';
 
 // Settings Rebuild Directive 3 — GET/PATCH /v1/tenant/profile endpoint proof.
 //
-// Application-boundary proofs: the tenant:admin:settings scope-gate (200/403/
+// Application-boundary proofs: the tenant:admin:profile scope-gate (200/403/
 // 401), tenant-scoping (no cross-tenant read or write), GET/PATCH round-trip,
 // validation (400 not 500), and the identity.tenant_profile.updated audit emit
 // (no-op-no-audit). Migrations: entitlement (core read) + identity init +
@@ -158,9 +158,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
 
-      adminAJwt = await signJwt(privateKey, { sub: ADMIN_A, tenant_id: TENANT_A, scopes: ['tenant:admin:settings'] });
+      adminAJwt = await signJwt(privateKey, { sub: ADMIN_A, tenant_id: TENANT_A, scopes: ['tenant:admin:profile'] });
       recruiterAJwt = await signJwt(privateKey, { sub: RECRUITER_A, tenant_id: TENANT_A, scopes: ['requisition:read'] });
-      adminBJwt = await signJwt(privateKey, { sub: ADMIN_B, tenant_id: TENANT_B, scopes: ['tenant:admin:settings'] });
+      adminBJwt = await signJwt(privateKey, { sub: ADMIN_B, tenant_id: TENANT_B, scopes: ['tenant:admin:profile'] });
 
       module = await Test.createTestingModule({ imports: [AppModule] }).compile();
       app = module.createNestApplication();
@@ -186,7 +186,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const res = await fetch(`http://127.0.0.1:${port}/v1/tenant/profile`);
       expect(res.status).toBe(401);
     });
-    it('403 — principal lacking tenant:admin:settings', async () => {
+    it('403 — principal lacking tenant:admin:profile', async () => {
       const { status } = await req('GET', recruiterAJwt);
       expect(status).toBe(403);
     });

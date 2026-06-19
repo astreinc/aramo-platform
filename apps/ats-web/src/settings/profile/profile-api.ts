@@ -3,7 +3,9 @@
 //   GET   /v1/tenant/profile  -> TenantProfileView
 //   PATCH /v1/tenant/profile  (partial) -> TenantProfileView
 //
-// Gates on tenant:admin:settings (reused — same scope as the registry).
+// Gates on tenant:admin:profile (the dedicated tenant-profile admin scope —
+// distinct from tenant:admin:settings; the FE AdminGate covers it via the
+// tenant:admin:* family, so no FE scope reference changes).
 
 import { apiClient } from '@aramo/fe-foundation';
 
