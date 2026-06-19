@@ -209,6 +209,8 @@ export const SEED_SCOPE_KEYS = [
   // referenced by their controllers but never in this catalog).
   'import:read',                        // recruiter+ operational tier (read CSV-import history + failures)
   'export:read',                        // tenant_admin + tenant_owner (CSV export of the 5 R10-bounded ATS entities)
+  // Settings Rebuild D2 — the audit-log read scope (GET /v1/tenant/audit-events).
+  'audit:read',                         // tenant_admin + tenant_owner (admin/compliance read of the audit trail)
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

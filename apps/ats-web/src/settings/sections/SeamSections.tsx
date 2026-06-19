@@ -3,7 +3,6 @@ import {
   IconCard,
   IconForm,
   IconGlobe,
-  IconHistory,
   IconLock,
   IconMail,
   IconPlug,
@@ -162,29 +161,8 @@ export function BillingSection() {
   );
 }
 
-export function AuditSection() {
-  return (
-    <SettingsSection
-      title="Audit log"
-      description="Every administrative and security event — a real read surface is being built next."
-    >
-      <SettingsSeam
-        icon={<IconHistory />}
-        title="Administrative & security trail"
-        tag="Next release"
-        vision={[
-          'A paginated, filterable read of the existing event trail (actor / event type / date / entity).',
-          'Surfaces role changes, setting updates, invites/disables, team/edge/assignment events, sessions.',
-          'Scope-gated on a dedicated audit:read scope.',
-        ]}
-      >
-        A real write trail already exists — events emit across identity, settings and the team model
-        — but there is no queryable read endpoint yet. The audit-log read surface is the first
-        follow-on enterprise PR; seamed here so the surface is complete.
-      </SettingsSeam>
-    </SettingsSection>
-  );
-}
+// Settings Rebuild D2 — the Audit log seam was REPLACED by the real section
+// (settings/audit/AuditSection.tsx). It is no longer a seam.
 
 export function IntegrationsSection() {
   return (

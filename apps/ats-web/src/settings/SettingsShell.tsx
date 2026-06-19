@@ -221,13 +221,13 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
         badge: SOON,
       },
       {
+        // Settings Rebuild D2 — Audit log is now LIVE (real read surface).
         key: 'audit',
         label: 'Audit log',
         icon: <IconHistory />,
         to: '/admin/settings/audit',
         match: '/admin/settings/audit',
-        status: 'soon',
-        badge: SOON,
+        status: 'live',
       },
     ],
   },

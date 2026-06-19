@@ -170,6 +170,70 @@ export class IdentityAuditRepository {
     });
     return { id };
   }
+
+  // Settings Rebuild Directive 2 — the audit READ surface.
+  //
+  // Tenant-scoped keyset read over IdentityAuditEvent, most-recent-first
+  // ((created_at DESC, id DESC) — the composite key on the tenant index).
+  // tenant_id is ALWAYS pinned by the caller from the JWT (never the request
+  // body/URL) — cross-tenant reads are structurally impossible. Filters
+  // (actor / event_type / date-range / subject) compose with AND. Returns
+  // `limit + 1` rows so the service can detect a next page without a count.
+  async findByTenant(params: FindByTenantParams): Promise<AuditEventRow[]> {
+    const { tenant_id, limit, cursor, filters } = params;
+    const where: Record<string, unknown> = { tenant_id };
+    if (filters?.actor_id !== undefined) where['actor_id'] = filters.actor_id;
+    if (filters?.event_type !== undefined) where['event_type'] = filters.event_type;
+    if (filters?.subject_id !== undefined) where['subject_id'] = filters.subject_id;
+    if (filters?.from !== undefined || filters?.to !== undefined) {
+      where['created_at'] = {
+        ...(filters?.from !== undefined ? { gte: filters.from } : {}),
+        ...(filters?.to !== undefined ? { lte: filters.to } : {}),
+      };
+    }
+    if (cursor !== undefined) {
+      // Keyset: strictly "older than" the cursor in (created_at DESC, id DESC).
+      where['OR'] = [
+        { created_at: { lt: cursor.created_at } },
+        {
+          AND: [
+            { created_at: cursor.created_at },
+            { id: { lt: cursor.event_id } },
+          ],
+        },
+      ];
+    }
+    const rows = await this.prisma.identityAuditEvent.findMany({
+      where,
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+    return rows as AuditEventRow[];
+  }
+}
+
+export interface FindByTenantParams {
+  readonly tenant_id: string;
+  readonly limit: number;
+  readonly cursor?: { readonly created_at: Date; readonly event_id: string };
+  readonly filters?: {
+    readonly actor_id?: string;
+    readonly event_type?: EventType;
+    readonly subject_id?: string;
+    readonly from?: Date;
+    readonly to?: Date;
+  };
+}
+
+export interface AuditEventRow {
+  readonly id: string;
+  readonly tenant_id: string | null;
+  readonly actor_id: string | null;
+  readonly actor_type: ActorType;
+  readonly event_type: EventType;
+  readonly subject_id: string;
+  readonly event_payload: Record<string, unknown>;
+  readonly created_at: Date;
 }
 
 function assertActorType(value: string, requestId: string): asserts value is ActorType {
