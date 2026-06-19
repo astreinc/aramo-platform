@@ -174,6 +174,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // staleness pattern, since correcting it now would mix
       // pre-existing comp-scope staleness into a focused reporting
       // seed). Filed as carry HK-INTEGRATION-SPEC-COMP-STALE.
+      //
+      // Settings-D1 follows the same precedent: the COUNT assertions in
+      // this file (roleScope.count → 443, the non-platform scope catalog
+      // → 77) are updated to the authoritative testcontainer values; the
+      // sorted-list catalog/role-set arrays in this test (and tests 14,
+      // 17, AUTHZ-1) remain the HK-INTEGRATION-SPEC-COMP-STALE carry. The
+      // real catalog now ALSO contains 'export:read' + 'import:read'
+      // (and ~19 other scopes from Task/Commercial/Financials/Req-Gating/
+      // Engagement/Search). Full reconciliation of the ~13 stale arrays is
+      // deferred to a dedicated HK-INTEGRATION-SPEC-COMP-STALE PR — folding
+      // it into this focused authz scope-seed would balloon the manually-
+      // reviewed authz surface.
       expect(scopes.map((s) => s.key)).toEqual([
         'activity:create',
         'activity:read',
@@ -285,7 +297,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   company:search  — TA/TO/AM/RM/recruiter/LR/BO/DM/sourcer        (9)
       //   requisition:search — the 9 above + finance                      (10)
       //   contact:search  — same 9 as company:search                      (9)
-      expect(roleScopes).toBe(390);
+      //
+      // POST-SEARCH DRIFT (the 390 above was the last count this assertion
+      // tracked; subsequent seed PRs grew RoleScope but — because the sorted
+      // scope-CATALOG list assertion higher up (~L177) went stale at the same
+      // time and aborts test 10 before this line — the count was never re-
+      // validated and stayed 390). Authoritative count from the seeded
+      // testcontainer (this PR's measurement): 433 pre-Settings-D1, +10 from
+      // the Settings-D1 import/export grants (import:read × 8 operational +
+      // export:read × 2 admin; IMPORT_EXPORT_SEED_BUNDLES @ 0x900) = 443.
+      //   390 → 433 = +43 pre-existing drift (TASK +18, COMMERCIAL +3,
+      //   FINANCIALS +6, REQ_GATING +16, etc. — the HK-INTEGRATION-SPEC-
+      //   COMP-STALE carry; the sorted-list assertions remain that carry).
+      //   433 → 443 = +10 Settings-D1.
+      expect(roleScopes).toBe(443);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -368,7 +393,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // "51" was stale (D5 view scopes were not added when D5 landed);
       // D-AUTHZ corrected to 59; Reporting-Scope-Seed advances to 61;
       // R7 BE-prereq advances to 64.
-      expect(tenantScopes.length).toBe(64);
+      //
+      // POST-R7 DRIFT (authoritative testcontainer count = 77): the non-
+      // platform scope CATALOG grew past 64 without this assertion being
+      // updated — Search +3, Task +2, Company-Fields +1, Job-Module +2,
+      // Req-Gating +3, then Settings-D1 +2 (import:read + export:read) = 77.
+      // (Distinct from SEED_SCOPE_KEYS=80, which counts the 3 platform:*
+      // scopes this query excludes.)
+      expect(tenantScopes.length).toBe(77);
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -408,6 +440,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           expect(rs.scope.key.startsWith('platform:')).toBe(false);
         }
       }
+    });
+
+    // Settings Rebuild D1 — THE LIVE-REACHABILITY PROOF (count-free, so it
+    // never inherits the HK-INTEGRATION-SPEC-COMP-STALE sorted-list rot).
+    // Closes the chain that makes the settings Import + Export sections LIVE:
+    //   seed grants tenant_admin {import:read, export:read}  ── proven here ──▶
+    //   a real admin login mints a JWT from these resolved scopes ──▶
+    //   GET /v1/imports + /v1/exports/:entity return 200 (not 403)
+    //     ── proven by apps/api ats-batch7 + ats-batch8 integration specs.
+    it('Settings-D1 — seeded tenant_admin RESOLVES import:read + export:read (live-reachability)', async () => {
+      const adminScopes = await roleSvc.getScopesByUserAndTenant({
+        user_id: SEED_IDS.user_admin,
+        tenant_id: SEED_IDS.tenant,
+      });
+      expect(adminScopes).toContain('import:read');
+      expect(adminScopes).toContain('export:read');
     });
 
     // -----------------------------------------------------------------

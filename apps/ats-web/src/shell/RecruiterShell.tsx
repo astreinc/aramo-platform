@@ -76,8 +76,13 @@ const WORK_NAV: readonly NavItem[] = [
 // items here are NOT per-item scope-gated — the section's family gate covers
 // them. Empty placeholder destination this PR (the real admin modules + their
 // own nav entries port in Phase 2+).
+// Settings Rebuild Directive 1 — the admin surface is now the enterprise
+// Settings shell (the PO calls it the heart of the ATS). The single rail entry
+// lands on /admin (which redirects into the settings rail); the section rail
+// lives inside SettingsShell. `end` is dropped so the item stays highlighted
+// across the /admin/* subtree.
 const ADMIN_NAV: readonly NavItem[] = [
-  { to: '/admin', end: true, label: 'Admin', icon: <IconShield /> },
+  { to: '/admin', label: 'Settings', icon: <IconShield /> },
 ];
 
 // First-path-segment → section label, for the breadcrumb. Entity-level crumbs
@@ -92,7 +97,7 @@ const SECTION_LABEL: Record<string, string> = {
   engagements: 'Engagement',
   search: 'Search',
   tasks: 'Tasks',
-  admin: 'Administration',
+  admin: 'Settings',
 };
 
 function HUMAN_CONSUMER(type: Session['consumer_type']): string {

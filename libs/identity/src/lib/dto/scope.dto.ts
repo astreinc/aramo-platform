@@ -204,6 +204,11 @@ export const SEED_SCOPE_KEYS = [
   'requisition:edit:status',            // delivery_manager only (status-only edit tier; restrict-to-subset gate)
   'requisition:profile:generate',       // TA + TO + AM + recruiting_manager + lead_recruiter (AI JD/profile draft+confirm)
   'requisition:profile:edit',           // TA + TO + AM + recruiting_manager + lead_recruiter (edit the generated GoldenProfile)
+  // Settings Rebuild D1 — the 2 read scopes behind the settings Import +
+  // Export LIVE sections (closes the substrate-audit gap-and-note: both were
+  // referenced by their controllers but never in this catalog).
+  'import:read',                        // recruiter+ operational tier (read CSV-import history + failures)
+  'export:read',                        // tenant_admin + tenant_owner (CSV export of the 5 R10-bounded ATS entities)
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 
