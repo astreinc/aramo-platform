@@ -1,32 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button } from '@aramo/fe-foundation';
-import { InlineAlert } from '@aramo/fe-foundation';
-import { PageHeader } from '@aramo/fe-foundation';
-import { Table, type TableColumn } from '@aramo/fe-foundation';
 
-import type { TenantUserView } from '../users/types';
+import { probeUserRoster, type TenantUserView, type UserRosterState } from '../assignments/roster';
 import {
-  probeUserRoster,
-  type UserRosterState,
-} from '../users/users-api';
+  Button,
+  Card,
+  DataTable,
+  InlineAlert,
+  PageHeader,
+  StatusPill,
+  type TableColumn,
+} from '../ui';
 
 import { CreateTeamDialog } from './CreateTeamDialog';
 import { fetchTeams } from './teams-api';
 import type { TeamRow } from './types';
 
-// Settings S5c-2 — TeamsListView at /teams.
-//
-// PL-94 §2 ruling 3 — sub-route layout: /teams (this view; list +
-// create) + /teams/:teamId (the members editor).
-//
-// PL-94 §2 ruling 4 — member_count OMITTED from the list (no BE
-// support; a follow-up). The list shows name / owner / status /
-// actions.
-//
-// PL-94 §2 ruling 7 — roster-403 fallback. The owner column joins
-// against the roster client-side; on 403 we show the raw user_id
-// instead of the name.
+// TeamsListView at /admin/teams (ported to ats-web, FE Consolidation Directive
+// 5; restyled to Confident Blue). List + create. The owner column joins against
+// the shared roster client-side; on 403 it shows the raw user_id.
 
 interface Props {
   fetchTeamsFn?: () => Promise<{ items: readonly TeamRow[] }>;
@@ -37,15 +29,6 @@ type LoadState =
   | { status: 'loading' }
   | { status: 'ready'; teams: readonly TeamRow[] }
   | { status: 'error'; message: string };
-
-function StatusBadge({ team }: { team: TeamRow }) {
-  if (team.is_active) {
-    return (
-      <span className="tc-badge tc-badge--active">Active</span>
-    );
-  }
-  return <span className="tc-badge tc-badge--disabled">Inactive</span>;
-}
 
 function ownerDisplay(
   team: TeamRow,
@@ -62,10 +45,7 @@ function ownerDisplay(
   };
 }
 
-export function TeamsListView({
-  fetchTeamsFn,
-  probeRosterFn,
-}: Props = {}) {
+export function TeamsListView({ fetchTeamsFn, probeRosterFn }: Props = {}) {
   const fetchTeamsFun = fetchTeamsFn ?? fetchTeams;
   const probeRoster = probeRosterFn ?? probeUserRoster;
 
@@ -124,7 +104,11 @@ export function TeamsListView({
       key: 'name',
       header: 'Name',
       render: (t) => (
-        <Link to={`/teams/${t.id}`} className="tc-link" data-testid={`team-link-${t.id}`}>
+        <Link
+          to={`/admin/teams/${t.id}`}
+          className="rc-link-action"
+          data-testid={`team-link-${t.id}`}
+        >
           {t.name}
         </Link>
       ),
@@ -136,9 +120,9 @@ export function TeamsListView({
         const od = ownerDisplay(t, rosterById);
         return (
           <>
-            <div>{od.primary}</div>
+            <span>{od.primary}</span>
             {od.secondary !== undefined && (
-              <div className="tc-helper">{od.secondary}</div>
+              <span className="rc-cell-sub"> · {od.secondary}</span>
             )}
           </>
         );
@@ -148,15 +132,19 @@ export function TeamsListView({
       key: 'status',
       header: 'Status',
       width: '120px',
-      render: (t) => <StatusBadge team={t} />,
+      render: (t) => (
+        <StatusPill tone={t.is_active ? 'ok' : 'neutral'}>
+          {t.is_active ? 'Active' : 'Inactive'}
+        </StatusPill>
+      ),
     },
     {
       key: 'actions',
-      header: 'Actions',
+      header: '',
       width: '160px',
       align: 'right',
       render: (t) => (
-        <Link to={`/teams/${t.id}`} data-testid={`team-actions-${t.id}`}>
+        <Link to={`/admin/teams/${t.id}`} data-testid={`team-actions-${t.id}`}>
           <Button variant="ghost" size="sm">
             View members
           </Button>
@@ -166,13 +154,13 @@ export function TeamsListView({
   ];
 
   return (
-    <section>
+    <section className="rc-stack">
       <PageHeader
         title="Teams"
         description="Group users into pods. Each team has a single owner (the AM)."
       />
-      <div className="tc-page-actions">
-        <span className="tc-helper">
+      <div className="rc-formfoot">
+        <span className="rc-muted-line">
           {state.status === 'ready'
             ? `${state.teams.length} team${state.teams.length === 1 ? '' : 's'}`
             : ''}
@@ -182,19 +170,21 @@ export function TeamsListView({
         </Button>
       </div>
       {state.status === 'loading' && (
-        <p className="tc-helper">Loading teams…</p>
+        <p className="rc-muted-line">Loading teams…</p>
       )}
       {state.status === 'error' && (
         <InlineAlert variant="error">{state.message}</InlineAlert>
       )}
       {state.status === 'ready' && (
-        <Table<TeamRow>
-          columns={columns}
-          rows={state.teams}
-          rowKey={(t) => t.id}
-          rowMuted={(t) => !t.is_active}
-          emptyMessage="No teams yet. Create one to start grouping users."
-        />
+        <Card flush>
+          <DataTable<TeamRow>
+            columns={columns}
+            rows={state.teams}
+            rowKey={(t) => t.id}
+            rowMuted={(t) => !t.is_active}
+            emptyMessage="No teams yet. Create one to start grouping users."
+          />
+        </Card>
       )}
       <CreateTeamDialog
         open={createOpen}

@@ -1,33 +1,25 @@
-import { useMemo, useState } from 'react';
-import { Button } from '@aramo/fe-foundation';
-import { Combobox, type ComboboxItem } from '@aramo/fe-foundation';
-import { Dialog } from '@aramo/fe-foundation';
-import { FormField } from '@aramo/fe-foundation';
-import { InlineAlert } from '@aramo/fe-foundation';
-import { useToast } from '@aramo/fe-foundation';
-
-import type { UserRosterState } from '../users/users-api';
-
 import {
-  messageForCreateTeamError,
-  type ErrorMessage,
-} from './error-messages';
+  Button,
+  Combobox,
+  type ComboboxItem,
+  Dialog,
+  FormField,
+  InlineAlert,
+  useToast,
+} from '@aramo/fe-foundation';
+import { useMemo, useState } from 'react';
+
+import type { UserRosterState } from '../assignments/roster';
+
+import { messageForCreateTeamError, type ErrorMessage } from './error-messages';
 import { createTeam } from './teams-api';
 import type { CreateTeamResponse } from './types';
 
-// Settings S5c-2 — CreateTeamDialog.
-//
-// PL-94 §2 ruling 5 — the create flow uses the SHARED Combobox for the
-// owner picker (a team has one owner; the picker selects from the
-// roster).
-//
-// PL-94 §2 ruling 7 — picker-source 403 fallback. When the roster
-// probe returned `forbidden`, the owner picker degrades to a raw-UUID
-// input (the S5c-1 AddEdgeDialog precedent — mirrored here).
-//
-// PL-94 §2 ruling 6 — DUPLICATE-NAME on create is REJECTED (not
-// idempotent). The error mapper renders the offending name from
-// `details.name`.
+// CreateTeamDialog (ported to ats-web, FE Consolidation Directive 5). The
+// frozen fe-foundation Dialog + Combobox are consumed as-is (themed to
+// Confident Blue via the token re-map); only the raw inputs are re-classed to
+// rc-input. SHARED Combobox owner picker over the roster; 403 → raw-UUID
+// fallback. Duplicate-NAME on create is REJECTED (not idempotent).
 
 interface CreateTeamDialogProps {
   open: boolean;
@@ -38,9 +30,7 @@ interface CreateTeamDialogProps {
   createFn?: typeof createTeam;
 }
 
-function rosterToItems(
-  roster: UserRosterState,
-): ReadonlyArray<ComboboxItem> {
+function rosterToItems(roster: UserRosterState): ReadonlyArray<ComboboxItem> {
   if (roster.state !== 'ready') return [];
   return [...roster.users]
     .sort((a, b) => {
@@ -152,15 +142,15 @@ export function CreateTeamDialog({
         )}
         {roster.state === 'forbidden' && (
           <InlineAlert variant="error">
-            User roster isn’t available to your role. Paste the owner’s
-            user ID instead — the server validates it on save.
+            User roster isn’t available to your role. Paste the owner’s user ID
+            instead — the server validates it on save.
           </InlineAlert>
         )}
         <FormField label={<label htmlFor="create-team-name">Name</label>}>
           <input
             id="create-team-name"
             type="text"
-            className="tc-input"
+            className="rc-input"
             value={name}
             disabled={saving}
             onChange={(ev) => setName(ev.target.value)}
@@ -169,7 +159,7 @@ export function CreateTeamDialog({
         </FormField>
         {roster.state === 'ready' ? (
           <FormField
-            label={<div className="tc-label">Owner</div>}
+            label="Owner"
             helper="The team’s AM-anchor (one owner per pod)."
           >
             <Combobox
@@ -191,7 +181,7 @@ export function CreateTeamDialog({
             <input
               id="create-team-owner-uuid"
               type="text"
-              className="tc-input"
+              className="rc-input"
               value={owner}
               disabled={saving}
               onChange={(ev) => setOwner(ev.target.value)}

@@ -10,8 +10,6 @@ import { Route, Routes } from 'react-router-dom';
 import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { LandingPage } from './routes/LandingPage';
 import { LoginPage } from './routes/LoginPage';
-import { TeamMembersView } from './teams/TeamMembersView';
-import { TeamsListView } from './teams/TeamsListView';
 import { UsersListView } from './users/UsersListView';
 
 // The tenant-console nav. Each item is rendered by Shell only when the
@@ -21,7 +19,6 @@ import { UsersListView } from './users/UsersListView';
 const TENANT_CONSOLE_NAV: readonly ShellNavItem[] = [
   { to: '/users', label: 'Users', requireScope: 'tenant:admin:user-manage' },
   { to: '/org', label: 'Organisation', requireScope: 'org:manage' },
-  { to: '/teams', label: 'Teams', requireScope: 'team:manage' },
 ];
 
 export function App() {
@@ -76,36 +73,11 @@ export function App() {
                         </RouteGuard>
                       }
                     />
-                    <Route
-                      path="teams"
-                      element={
-                        <RouteGuard
-                          requireScope="team:manage"
-                          sessionStateOverride={state}
-                        >
-                          <TeamsListView />
-                        </RouteGuard>
-                      }
-                    />
-                    <Route
-                      path="teams/:teamId"
-                      element={
-                        <RouteGuard
-                          requireScope="team:manage"
-                          sessionStateOverride={state}
-                        >
-                          <TeamMembersView />
-                        </RouteGuard>
-                      }
-                    />
-                    {/* Assignments (company / requisition / team-clients
-                        editors) ported to ats-web /admin (FE Consolidation
-                        Directive 4). Routes removed here; the "Manage clients"
-                        link in TeamMembersView is de-wired to match. NOT
-                        cleanly decoupled on removal — tenant-console's teams
-                        module deep-linked TeamClientsView — so the teams port
-                        will re-home that link to the ats-web admin route.
-                        tenant-console not yet retired. */}
+                    {/* Teams + assignments ported to ats-web /admin
+                        (FE Consolidation Directives 4–5). Routes + the Teams
+                        nav item removed here; the "Manage clients" link is
+                        re-homed to /admin/teams/:teamId/clients in ats-web.
+                        Remaining: users + org (tenant-console not yet retired). */}
                   </Routes>
                 </Shell>
               ) : null}
