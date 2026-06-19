@@ -78,8 +78,9 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // Settings S2: +1 tenant_setting.updated event (22 -> 23).
   // Settings S3a: +1 tenant_user.disabled event (23 -> 24).
   // Settings S3b: +2 tenant_user.role_assigned + tenant_user.role_removed (24 -> 26).
-  it('EVENT_TYPES contains 26 values (7 prereq + 4 session + 2 invitation + 9 D4a team-model + 1 settings + 3 user-lifecycle) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(26);
+  // Settings D3: +1 tenant_profile.updated (26 -> 27).
+  it('EVENT_TYPES contains 27 values (7 prereq + 4 session + 2 invitation + 9 D4a team-model + 1 settings + 3 user-lifecycle + 1 tenant-profile) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(27);
     const create = vi.fn().mockResolvedValue({ id: 'r' });
     const repo = new IdentityAuditRepository(makePrisma(create));
 
@@ -102,7 +103,8 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // tenant_setting.updated (17 -> 18); Settings S3a adds
   // tenant_user.disabled (18 -> 19); Settings S3b adds tenant_user.
   // role_assigned + tenant_user.role_removed (19 -> 21).
-  it('TENANT_SCOPED_EVENT_TYPES contains all 21 tenant-scoped values', () => {
+  // Settings D3 adds tenant_profile.updated (21 -> 22).
+  it('TENANT_SCOPED_EVENT_TYPES contains all 22 tenant-scoped values', () => {
     const expected = [
       'identity.tenant.created',
       'identity.membership.created',
@@ -129,8 +131,10 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       // Settings S3b — tenant-user role-assign events (per-delta gating).
       'identity.tenant_user.role_assigned',
       'identity.tenant_user.role_removed',
+      // Settings D3 — tenant-profile update event.
+      'identity.tenant_profile.updated',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(21);
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(22);
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

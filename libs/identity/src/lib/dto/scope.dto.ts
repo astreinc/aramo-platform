@@ -211,6 +211,8 @@ export const SEED_SCOPE_KEYS = [
   'export:read',                        // tenant_admin + tenant_owner (CSV export of the 5 R10-bounded ATS entities)
   // Settings Rebuild D2 — the audit-log read scope (GET /v1/tenant/audit-events).
   'audit:read',                         // tenant_admin + tenant_owner (admin/compliance read of the audit trail)
+  // Settings Rebuild D3 — the tenant-profile admin scope (GET/PATCH /v1/tenant/profile).
+  'tenant:admin:profile',               // tenant_admin + tenant_owner (DEDICATED; org legal identity, kept separable from settings)
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

@@ -85,6 +85,12 @@ export const EVENT_TYPES = [
   // invertible union never reaches the audit path.
   'identity.tenant_user.role_assigned',
   'identity.tenant_user.role_removed',
+  // Settings Rebuild D3 — tenant-profile update. Emitted by the
+  // TenantProfileController after a PATCH actually changes ≥1 field (no-op-no-
+  // audit). Tenant-scoped; subject_id is the tenant_id; payload carries the
+  // CHANGED FIELD NAMES only (not values — a profile value like tax_id stays
+  // out of the audit detail). The audit READ surface (Directive 2) now reads it.
+  'identity.tenant_profile.updated',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -127,6 +133,8 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   // tenant_id discipline as disable.
   'identity.tenant_user.role_assigned',
   'identity.tenant_user.role_removed',
+  // Settings Rebuild D3 — tenant-profile update carries the writing tenant's id.
+  'identity.tenant_profile.updated',
 ]);
 
 export interface WriteAuditEventInput {

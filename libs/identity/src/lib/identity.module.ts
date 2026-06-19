@@ -20,6 +20,9 @@ import { TeamRepository } from './team.repository.js';
 import { TeamService } from './team.service.js';
 import { TenantRepository } from './tenant.repository.js';
 import { TenantService } from './tenant.service.js';
+// Settings Rebuild Directive 3 — tenant profile read/write.
+import { TenantProfileController } from './tenant-profile/tenant-profile.controller.js';
+import { TenantProfileService } from './tenant-profile/tenant-profile.service.js';
 // Settings S3a — tenant-user lifecycle (invite + disable).
 import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
 import {
@@ -67,6 +70,10 @@ import {
     // (GET /v1/tenant/audit-events, audit:read). Lives here because it
     // reads the IdentityAuditEvent model owned by this lib.
     AuditController,
+    // Settings Rebuild Directive 3 — tenant profile (GET/PATCH
+    // /v1/tenant/profile, reuses tenant:admin:settings). Reads/writes the
+    // Tenant model owned by this lib.
+    TenantProfileController,
     // Settings S3a — tenant-tier user lifecycle endpoints (invite +
     // disable). Lives here (parallel to D4aController) per the Settings
     // charter §4.2 "user-management home = libs/identity"; the Cognito
@@ -82,6 +89,7 @@ import {
     IdentityAuditRepository,
     IdentityAuditService,
     AuditQueryService,
+    TenantProfileService,
     IdentityService,
     TenantService,
     RoleService,

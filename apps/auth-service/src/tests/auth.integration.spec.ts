@@ -55,6 +55,12 @@ const IDENTITY_SITE_AXIS_MIGRATION = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
 );
+// Settings Rebuild D3 — additive tenant-profile columns (the Prisma client now
+// SELECTs them on every Tenant read, incl. the auth tenant-resolution path).
+const IDENTITY_PROFILE_MIGRATION = resolve(
+  __dirname,
+  '../../../../libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
+);
 const AUTH_STORAGE_MIGRATION = resolve(
   __dirname,
   '../../../../libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
@@ -86,6 +92,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const stmt of [
         ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_SITE_AXIS_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_PROFILE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
       ]) {
         const t = stmt.trim();

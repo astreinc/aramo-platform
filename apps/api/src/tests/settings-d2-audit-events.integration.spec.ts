@@ -40,6 +40,11 @@ const IDENTITY_INIT = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+// Settings Rebuild D3 — additive tenant-profile columns (Prisma SELECTs them).
+const IDENTITY_PROFILE = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-settings-d2-spec';
@@ -168,7 +173,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       db = new Client({ connectionString: url });
       await db.connect();
 
-      for (const p of [ENTITLEMENT_INIT, IDENTITY_INIT]) {
+      for (const p of [ENTITLEMENT_INIT, IDENTITY_INIT, IDENTITY_PROFILE]) {
         await db.query(readFileSync(p, 'utf8'));
       }
       // Both tenants hold `core` (the audit controller's class capability).

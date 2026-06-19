@@ -39,7 +39,12 @@ export type AuditCategory =
   | 'system';
 
 export function categoryOf(eventType: EventType): AuditCategory {
-  if (eventType.startsWith('identity.tenant_setting.')) return 'setting';
+  if (
+    eventType.startsWith('identity.tenant_setting.') ||
+    eventType === 'identity.tenant_profile.updated'
+  ) {
+    return 'setting';
+  }
   if (eventType.startsWith('identity.session.')) return 'session';
   if (
     eventType.startsWith('identity.role.') ||
@@ -115,6 +120,12 @@ export function summarizeDetail(
     case 'identity.tenant_user.disabled': {
       const reason = str(payload['reason']);
       return reason === null ? 'Disabled tenant access' : `Disabled tenant access — ${reason}`;
+    }
+    case 'identity.tenant_profile.updated': {
+      const fields = renderStringList(payload['changed_fields']);
+      return fields === null
+        ? 'Updated the tenant profile'
+        : `Updated tenant profile: ${fields}`;
     }
     case 'identity.invitation.created':
       return 'Invited a user to the tenant';

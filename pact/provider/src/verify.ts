@@ -59,6 +59,13 @@ const IDENTITY_D4A_MIGRATION = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql',
 );
+// Settings Rebuild D3 — additive tenant-profile columns. The pact verifier
+// boots auth-service against this schema; the Prisma client now SELECTs the
+// profile columns on the tenant-resolution read, so the table must carry them.
+const IDENTITY_PROFILE_MIGRATION = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
+);
 const AUTH_STORAGE_MIGRATION = resolve(
   ROOT,
   'libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
@@ -95,6 +102,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       for (const stmt of [
         ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_D4A_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_PROFILE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
       ]) {
         const t = stmt.trim();
