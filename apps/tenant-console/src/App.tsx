@@ -7,7 +7,6 @@ import {
 } from '@aramo/fe-foundation';
 import { Route, Routes } from 'react-router-dom';
 
-import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { LandingPage } from './routes/LandingPage';
 import { LoginPage } from './routes/LoginPage';
 import { UsersListView } from './users/UsersListView';
@@ -18,7 +17,6 @@ import { UsersListView } from './users/UsersListView';
 // repoint so the rendered nav is byte-identical to pre-extraction.
 const TENANT_CONSOLE_NAV: readonly ShellNavItem[] = [
   { to: '/users', label: 'Users', requireScope: 'tenant:admin:user-manage' },
-  { to: '/org', label: 'Organisation', requireScope: 'org:manage' },
 ];
 
 export function App() {
@@ -62,22 +60,10 @@ export function App() {
                         </RouteGuard>
                       }
                     />
-                    <Route
-                      path="org"
-                      element={
-                        <RouteGuard
-                          requireScope="org:manage"
-                          sessionStateOverride={state}
-                        >
-                          <OrgHierarchyView />
-                        </RouteGuard>
-                      }
-                    />
-                    {/* Teams + assignments ported to ats-web /admin
-                        (FE Consolidation Directives 4–5). Routes + the Teams
-                        nav item removed here; the "Manage clients" link is
-                        re-homed to /admin/teams/:teamId/clients in ats-web.
-                        Remaining: users + org (tenant-console not yet retired). */}
+                    {/* Org / teams / assignments / settings / consent all
+                        ported to ats-web /admin (FE Consolidation Directives
+                        2–5). Only users remains here; tenant-console retires in
+                        Directive 5 PR4 once users ports. */}
                   </Routes>
                 </Shell>
               ) : null}

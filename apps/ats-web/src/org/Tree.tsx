@@ -119,35 +119,35 @@ function TreeRow({
       aria-expanded={hasChildren ? expanded : undefined}
       aria-label={ariaLabelFor(node, parentLabel)}
       id={`org-node-${node.key}`}
-      className="tc-tree__item"
+      className="rc-tree__item"
       onKeyDown={onKeyDown}
       tabIndex={0}
       data-testid={`tree-node-${node.key}`}
     >
-      <div className="tc-tree__row">
+      <div className="rc-tree__row">
         {hasChildren ? (
           <button
             type="button"
-            className="tc-tree__toggle"
+            className="rc-tree__toggle"
             aria-label={expanded ? 'Collapse' : 'Expand'}
             onClick={() => setExpanded(!expanded)}
           >
             {expanded ? '▾' : '▸'}
           </button>
         ) : (
-          <span className="tc-tree__toggle tc-tree__toggle--leaf" aria-hidden="true">
+          <span className="rc-tree__toggle rc-tree__toggle--leaf" aria-hidden="true">
             •
           </span>
         )}
-        <span className="tc-tree__label">{me}</span>
+        <span className="rc-tree__label">{me}</span>
         {email !== null && email !== me && (
-          <span className="tc-tree__email">{email}</span>
+          <span className="rc-tree__email">{email}</span>
         )}
         {node.cycle_skipped && (
-          <span className="tc-helper">(already shown above)</span>
+          <span className="rc-muted-line">(already shown above)</span>
         )}
         {node.depth_capped && (
-          <span className="tc-helper">
+          <span className="rc-muted-line">
             (depth limit — showing 10 levels)
           </span>
         )}
@@ -160,7 +160,7 @@ function TreeRow({
         )}
       </div>
       {hasChildren && expanded && (
-        <ul role="group" className="tc-tree__children">
+        <ul role="group" className="rc-tree__children">
           {node.children.map((child, idx) => (
             <TreeRow
               key={child.key}
@@ -182,13 +182,13 @@ function TreeRow({
 export function Tree({ roots, onRemoveEdge, removing = false }: TreeProps) {
   if (roots.length === 0) {
     return (
-      <div className="tc-tree-empty">
-        <p className="tc-helper">No reporting relationships yet. Add one to start building your org hierarchy.</p>
+      <div className="rc-tree-empty">
+        <p className="rc-muted-line">No reporting relationships yet. Add one to start building your org hierarchy.</p>
       </div>
     );
   }
   return (
-    <ul role="tree" className="tc-tree" aria-label="Organisation hierarchy">
+    <ul role="tree" className="rc-tree" aria-label="Organisation hierarchy">
       {roots.map((root, idx) => (
         <TreeRow
           key={root.key}

@@ -164,7 +164,7 @@ export function AddEdgeDialog({
             >
               <select
                 id="add-edge-manager"
-                className="tc-input"
+                className="rc-input"
                 value={manager}
                 disabled={saving}
                 onChange={(ev) => setManager(ev.target.value)}
@@ -183,7 +183,7 @@ export function AddEdgeDialog({
             >
               <select
                 id="add-edge-report"
-                className="tc-input"
+                className="rc-input"
                 value={report}
                 disabled={saving}
                 onChange={(ev) => setReport(ev.target.value)}
@@ -207,7 +207,7 @@ export function AddEdgeDialog({
               <input
                 id="add-edge-manager-uuid"
                 type="text"
-                className="tc-input"
+                className="rc-input"
                 value={manager}
                 disabled={saving}
                 onChange={(ev) => setManager(ev.target.value)}
@@ -221,7 +221,7 @@ export function AddEdgeDialog({
               <input
                 id="add-edge-report-uuid"
                 type="text"
-                className="tc-input"
+                className="rc-input"
                 value={report}
                 disabled={saving}
                 onChange={(ev) => setReport(ev.target.value)}

@@ -21,7 +21,7 @@
 // which children are collapsed under a "Show more…" expander surfaced
 // by the renderer via the `depth_capped` flag.
 
-import type { TenantUserView } from '../users/types';
+import type { TenantUserView } from '../assignments/roster';
 
 import { TREE_DEPTH_SOFT_CAP, type ManagementEdgeRow, type TreeNode } from './types';
 

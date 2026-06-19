@@ -6,7 +6,7 @@
 //   - User-roster row reuses users/types.TenantUserView (same app, no
 //     cross-workspace import — the existing S5b mirror).
 
-import type { TenantUserView } from '../users/types';
+import type { TenantUserView } from '../assignments/roster';
 
 // ─── ManagementEdgeRow (D4a + S5-BE2) ────────────────────────────────
 //
@@ -103,4 +103,4 @@ export type EdgeRejectionReason = 'self_loop' | 'cycle';
 // `UserRosterState` and its probe now live in users/users-api.ts (the
 // shared S5c-1 + S5c-2 + S5c-3 surface). org/edges-api.ts re-exports
 // the type for back-compatible imports from the org/* module.
-export type { UserRosterState } from '../users/users-api';
+export type { UserRosterState } from '../assignments/roster';

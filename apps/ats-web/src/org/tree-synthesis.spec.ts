@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { TenantUserView } from '../users/types';
+import type { TenantUserView } from '../assignments/roster';
 
 import { synthesizeTree } from './tree-synthesis';
 import type { ManagementEdgeRow } from './types';

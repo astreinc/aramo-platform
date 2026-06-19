@@ -1,9 +1,7 @@
+import { ApiError, useToast } from '@aramo/fe-foundation';
 import { useEffect, useState } from 'react';
-import { ApiError } from '@aramo/fe-foundation';
-import { Button } from '@aramo/fe-foundation';
-import { InlineAlert } from '@aramo/fe-foundation';
-import { PageHeader } from '@aramo/fe-foundation';
-import { useToast } from '@aramo/fe-foundation';
+
+import { Button, Card, InlineAlert, PageHeader } from '../ui';
 
 import { AddEdgeDialog } from './AddEdgeDialog';
 import { Tree } from './Tree';
@@ -13,22 +11,14 @@ import {
   probeUserRoster,
 } from './edges-api';
 import { synthesizeTree } from './tree-synthesis';
-import type {
-  ManagementEdgeRow,
-  UserRosterState,
-} from './types';
+import type { ManagementEdgeRow, UserRosterState } from './types';
 
-// Settings S5c-1 — OrgHierarchyView.
-//
-// /org — the org-hierarchy editor. Gated `org:manage` (the route guard
-// in App.tsx); the picker source (`GET /v1/tenant/users`) is gated
-// `tenant:admin:user-manage` — try-read with 403 fallback (PL-94 §2
-// ruling 6).
-//
-// Two parallel fetches on mount: GET /v1/management/edges + the user
-// roster probe. The Tree synthesizes from both; on edges-load failure
-// the view shows an inline error; on user-roster 403 the AddEdge
-// Dialog falls back to raw-UUID inputs.
+// OrgHierarchyView at /admin/org (ported to ats-web, FE Consolidation Directive
+// 5; restyled to Confident Blue — VISUAL ONLY; the hand-built ARIA Tree's
+// roles/keyboard nav are untouched in Tree.tsx). Two parallel fetches on mount:
+// GET /v1/management/edges + the shared user-roster probe. On edges-load
+// failure the view shows an inline error; on user-roster 403 the AddEdge Dialog
+// falls back to raw-UUID inputs.
 
 interface Props {
   fetchEdgesFn?: () => Promise<{ items: readonly ManagementEdgeRow[] }>;
@@ -86,9 +76,6 @@ export function OrgHierarchyView({
         setRoster(next);
       })
       .catch(() => {
-        // A non-403 probe failure: fall back to forbidden silently. The
-        // AddEdge Dialog renders the UUID fallback; users with valid
-        // IDs can still operate. The BE rejection is the floor.
         if (cancelled) return;
         setRoster({ state: 'forbidden' });
       });
@@ -104,17 +91,12 @@ export function OrgHierarchyView({
       toast.show('Edge removed.');
       refresh();
     } catch (err: unknown) {
-      // 404 = idempotent success (the edge is already gone).
       if (err instanceof ApiError && err.status === 404) {
         toast.show('Edge already removed.');
         refresh();
         return;
       }
-      toast.show(
-        err instanceof Error
-          ? err.message
-          : 'Failed to remove edge.',
-      );
+      toast.show(err instanceof Error ? err.message : 'Failed to remove edge.');
     } finally {
       setRemoving(false);
     }
@@ -129,13 +111,13 @@ export function OrgHierarchyView({
       : null;
 
   return (
-    <section>
+    <section className="rc-stack">
       <PageHeader
         title="Organisation hierarchy"
         description="Manage who reports to whom across your tenant."
       />
-      <div className="tc-page-actions">
-        <span className="tc-helper">
+      <div className="rc-formfoot">
+        <span className="rc-muted-line">
           {state.status === 'ready'
             ? `${state.edges.length} edge${state.edges.length === 1 ? '' : 's'}`
             : ''}
@@ -145,17 +127,21 @@ export function OrgHierarchyView({
         </Button>
       </div>
       {state.status === 'loading' && (
-        <p className="tc-helper">Loading hierarchy…</p>
+        <p className="rc-muted-line">Loading hierarchy…</p>
       )}
       {state.status === 'error' && (
         <InlineAlert variant="error">{state.message}</InlineAlert>
       )}
       {state.status === 'ready' && synthResult !== null && (
-        <Tree
-          roots={synthResult.roots}
-          onRemoveEdge={onRemoveEdge}
-          removing={removing}
-        />
+        <Card flush>
+          <div className="rc-treewrap">
+            <Tree
+              roots={synthResult.roots}
+              onRemoveEdge={onRemoveEdge}
+              removing={removing}
+            />
+          </div>
+        </Card>
       )}
       <AddEdgeDialog
         open={addOpen}
