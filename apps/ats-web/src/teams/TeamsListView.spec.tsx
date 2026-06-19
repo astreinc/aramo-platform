@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@aramo/fe-foundation';
 
-import type { UserRosterState } from '../users/users-api';
+import type { UserRosterState } from '../assignments/roster';
 
 import { TeamsListView } from './TeamsListView';
 import type { TeamRow } from './types';
@@ -91,6 +91,6 @@ describe('TeamsListView (S5c-2)', () => {
     renderView();
     await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
     const link = screen.getByTestId('team-link-t1') as HTMLAnchorElement;
-    expect(link.getAttribute('href')).toBe('/teams/t1');
+    expect(link.getAttribute('href')).toBe('/admin/teams/t1');
   });
 });

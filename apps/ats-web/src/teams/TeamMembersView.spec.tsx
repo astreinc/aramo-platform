@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@aramo/fe-foundation';
 import { ToastProvider } from '@aramo/fe-foundation';
 
-import type { UserRosterState } from '../users/users-api';
+import type { UserRosterState } from '../assignments/roster';
 
 import { TeamMembersView } from './TeamMembersView';
 import type { TeamMembershipRow } from './types';

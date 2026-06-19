@@ -30,6 +30,8 @@ import { TalentDetailView } from './talent/TalentDetailView';
 import { TalentEditView } from './talent/TalentEditView';
 import { RecruiterShell } from './shell/RecruiterShell';
 import { TalentListView } from './talent/TalentListView';
+import { TeamMembersView } from './teams/TeamMembersView';
+import { TeamsListView } from './teams/TeamsListView';
 import { ShellPreview } from './ui/ShellPreview';
 import { UiGallery } from './ui/UiGallery';
 
@@ -288,6 +290,11 @@ export function App() {
                             <Route
                               path="requisitions/:requisitionId/assignments"
                               element={<RequisitionAssignmentsView />}
+                            />
+                            <Route path="teams" element={<TeamsListView />} />
+                            <Route
+                              path="teams/:teamId"
+                              element={<TeamMembersView />}
                             />
                             <Route
                               path="teams/:teamId/clients"
