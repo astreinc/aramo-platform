@@ -213,7 +213,13 @@ export function AuditLogView({ fetchFn }: Props = {}) {
 }
 
 function normalize(f: AuditFilters): AuditFilters {
-  const out: AuditFilters = {};
+  const out: {
+    event_type?: string;
+    actor_id?: string;
+    subject_id?: string;
+    from?: string;
+    to?: string;
+  } = {};
   if (f.event_type) out.event_type = f.event_type;
   if (f.actor_id?.trim()) out.actor_id = f.actor_id.trim();
   if (f.subject_id?.trim()) out.subject_id = f.subject_id.trim();
