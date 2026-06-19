@@ -48,6 +48,12 @@ const MIGRATION_PATHS = [
     __dirname,
     '../../prisma/migrations/20260604000000_add_authz_team_models/migration.sql',
   ),
+  // Settings Rebuild D3 — additive tenant-profile columns (the Prisma client
+  // now SELECTs them on every Tenant query, so the table must carry them).
+  resolve(
+    __dirname,
+    '../../prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
+  ),
 ];
 
 const TENANT_KEYSET = '20000000-2222-7222-8222-200000000001';
@@ -1703,6 +1709,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Settings S2: +1 tenant_setting.updated (17 -> 18).
       // Settings S3a: +1 tenant_user.disabled (18 -> 19).
       // Settings S3b: +2 tenant_user.role_assigned + tenant_user.role_removed (19 -> 21).
+      // Settings D3: +1 tenant_profile.updated (21 -> 22).
       expect([...TENANT_SCOPED_EVENT_TYPES].sort()).toEqual([
         'identity.invitation.accepted',
         'identity.invitation.created',
@@ -1719,6 +1726,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.team.membership.added',
         'identity.team.membership.removed',
         'identity.tenant.created',
+        'identity.tenant_profile.updated',
         'identity.tenant_setting.updated',
         'identity.tenant_user.disabled',
         'identity.tenant_user.role_assigned',

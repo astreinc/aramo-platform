@@ -1,23 +1,19 @@
 import { useEffect, useState } from 'react';
 
-import { IconBuilding, IconSliders } from '../../ui/icons';
+import { IconSliders } from '../../ui/icons';
 import { Card } from '../../ui';
 import { CompensationDisplayPicker } from '../CompensationDisplayPicker';
 import { FinancialsToggle } from '../FinancialsToggle';
-import {
-  SettingCardHead,
-  SettingHint,
-  SettingsSeam,
-  SettingsSection,
-} from '../components';
+import { SettingCardHead, SettingHint, SettingsSection } from '../components';
 import { fetchTenantSettings } from '../settings-api';
+import { TenantProfileForm } from '../profile/TenantProfileForm';
 import type { TenantSettingsView } from '../types';
 
-// Settings Rebuild Directive 1 — Tenant profile.
+// Settings Rebuild Directive 1 + 3 — Tenant profile.
 //
-// The Organization + Brand surfaces have only a thin `name`-only Tenant model
-// today (no profile/logo endpoint) — HONEST SEAMS, built fully in PR 3. The
-// Defaults card is LIVE: the two operator-facing registry settings
+// Directive 3 replaced the D1 Organization & branding seam with the real,
+// GET/PATCH-wired <TenantProfileForm> (its own backend + audit trail). The
+// Defaults card stays LIVE: the two operator-facing registry settings
 // (compensation.display_default, audit.financials_enabled) wired to GET/PUT
 // /v1/tenant/settings. The internal metrics.goals key is filtered server-side
 // and never reaches this UI.
@@ -56,23 +52,10 @@ export function TenantProfileSection({ fetchFn }: Props = {}) {
   return (
     <SettingsSection
       title="Tenant profile"
-      description="Your workspace identity and the defaults applied across the ATS. Organization details and branding get a full backend in an upcoming release; the workspace defaults below are live today."
+      description="Your workspace identity, organization details and the defaults applied across the ATS — all live."
     >
-      {/* SEAM — Organization (Tenant model is name-only today) */}
-      <SettingsSeam
-        icon={<IconBuilding />}
-        title="Organization & branding"
-        vision={[
-          'Legal name, registered address, company identifiers and primary domain.',
-          'Workspace logo and accent — applied across the app shell.',
-          'Primary contacts for billing and security notifications.',
-        ]}
-      >
-        A full tenant-profile model (legal name, address, identifiers, logo, contacts) with its own
-        GET/PATCH endpoint and audit trail is on the roadmap. Today the tenant carries only its name,
-        so these fields are shown as a roadmap surface rather than editable controls that persist
-        nothing.
-      </SettingsSeam>
+      {/* LIVE — Organization & branding (Directive 3) */}
+      <TenantProfileForm />
 
       {/* LIVE — Defaults (the 2 registry settings) */}
       <Card flush>

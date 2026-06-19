@@ -444,3 +444,19 @@
   justify-content: center;
   padding: 6px 0;
 }
+
+/* ── Tenant profile form (Directive 3) ── */
+.rc-pf-group {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 14px 0 0;
+  padding: 14px 0 0;
+}
+.rc-pf-group > legend {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--faint);
+  padding: 0;
+}

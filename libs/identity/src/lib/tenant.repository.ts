@@ -60,6 +60,22 @@ export class TenantRepository {
       data: { is_active: false },
     });
   }
+
+  // Settings Rebuild Directive 3 — tenant-profile read/update. tenant_id is
+  // always the caller's own (pinned from the JWT at the controller); there is
+  // no cross-tenant path. Returns null for a missing/unknown tenant.
+  async findProfileById(id: string): Promise<TenantProfileRow | null> {
+    const row = await this.prisma.tenant.findUnique({ where: { id } });
+    return row === null ? null : toProfileRow(row);
+  }
+
+  async updateProfile(
+    id: string,
+    patch: Record<string, string | null>,
+  ): Promise<TenantProfileRow> {
+    const row = await this.prisma.tenant.update({ where: { id }, data: patch });
+    return toProfileRow(row);
+  }
 }
 
 type TenantRow = {
@@ -69,6 +85,66 @@ type TenantRow = {
   created_at: Date;
   updated_at: Date;
 };
+
+export interface TenantProfileRow {
+  id: string;
+  name: string;
+  legal_name: string | null;
+  display_name: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state_province: string | null;
+  postal_code: string | null;
+  country_code: string | null;
+  tax_id: string | null;
+  registration_number: string | null;
+  primary_contact_name: string | null;
+  primary_contact_email: string | null;
+  primary_contact_phone: string | null;
+  logo_url: string | null;
+  updated_at: Date;
+}
+
+function toProfileRow(row: {
+  id: string;
+  name: string;
+  legal_name: string | null;
+  display_name: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state_province: string | null;
+  postal_code: string | null;
+  country_code: string | null;
+  tax_id: string | null;
+  registration_number: string | null;
+  primary_contact_name: string | null;
+  primary_contact_email: string | null;
+  primary_contact_phone: string | null;
+  logo_url: string | null;
+  updated_at: Date;
+}): TenantProfileRow {
+  return {
+    id: row.id,
+    name: row.name,
+    legal_name: row.legal_name,
+    display_name: row.display_name,
+    address_line1: row.address_line1,
+    address_line2: row.address_line2,
+    city: row.city,
+    state_province: row.state_province,
+    postal_code: row.postal_code,
+    country_code: row.country_code,
+    tax_id: row.tax_id,
+    registration_number: row.registration_number,
+    primary_contact_name: row.primary_contact_name,
+    primary_contact_email: row.primary_contact_email,
+    primary_contact_phone: row.primary_contact_phone,
+    logo_url: row.logo_url,
+    updated_at: row.updated_at,
+  };
+}
 
 function toTenantDto(row: TenantRow): TenantDto {
   return {

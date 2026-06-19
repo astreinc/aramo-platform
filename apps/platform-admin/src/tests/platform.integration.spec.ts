@@ -71,6 +71,11 @@ const IDENTITY_D4A_MIGRATION = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql',
 );
+// Settings Rebuild D3 — additive tenant-profile columns (Prisma SELECTs them).
+const IDENTITY_PROFILE_MIGRATION = resolve(
+  __dirname,
+  '../../../../libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
+);
 
 function splitDdl(sql: string): string[] {
   return sql.replace(/--[^\n]*$/gm, '').split(/;\s*\n/);
@@ -348,6 +353,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_SITE_AXIS_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_D4A_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_PROFILE_MIGRATION, 'utf8')),
         ...ENTITLEMENT_DDL_STATEMENTS,
       ]) {
         const t = stmt.trim();

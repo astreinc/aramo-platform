@@ -48,6 +48,25 @@ model Tenant {
   created_at   DateTime @default(now()) @db.Timestamptz
   updated_at   DateTime @updatedAt @db.Timestamptz
 
+  // Settings Rebuild Directive 3 — tenant profile (additive, all nullable so
+  // existing tenants keep their pre-D3 name-only semantics). The canonical
+  // `name` above stays the workspace identifier; `display_name` is the branding
+  // label; the rest is the enterprise tenant-profile shape.
+  legal_name             String?
+  display_name           String?
+  address_line1          String?
+  address_line2          String?
+  city                   String?
+  state_province         String?
+  postal_code            String?
+  country_code           String? // ISO 3166-1 alpha-2
+  tax_id                 String?
+  registration_number    String?
+  primary_contact_name   String?
+  primary_contact_email  String?
+  primary_contact_phone  String?
+  logo_url               String?
+
   memberships  UserTenantMembership[]
   sites        Site[]
 

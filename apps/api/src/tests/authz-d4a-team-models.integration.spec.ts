@@ -67,6 +67,11 @@ const IDENTITY_D4A = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql',
 );
+// Settings Rebuild D3 — additive tenant-profile columns (Prisma SELECTs them).
+const IDENTITY_PROFILE = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
+);
 const ENTITLEMENT_INIT = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
@@ -195,6 +200,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         IDENTITY_INIT,
         IDENTITY_SITE_AXIS,
         IDENTITY_D4A,
+        IDENTITY_PROFILE,
         ENTITLEMENT_INIT,
         COMPANY_INIT,
         COMPANY_FIELD_EXPANSION,
