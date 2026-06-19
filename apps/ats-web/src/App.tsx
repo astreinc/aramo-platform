@@ -18,6 +18,7 @@ import { ContactsListView } from './contacts/ContactsListView';
 import { EngagementDetailView } from './engagement/EngagementDetailView';
 import { IndexRoute } from './dashboard/IndexRoute';
 import { LoginPage } from './routes/LoginPage';
+import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
@@ -279,6 +280,7 @@ export function App() {
                           <Routes>
                             <Route index element={<AdminSection />} />
                             <Route path="settings" element={<SettingsView />} />
+                            <Route path="org" element={<OrgHierarchyView />} />
                             <Route
                               path="consent/:talentId"
                               element={<ConsentView />}

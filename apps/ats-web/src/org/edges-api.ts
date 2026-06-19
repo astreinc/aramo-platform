@@ -17,7 +17,7 @@ import type {
 export {
   probeUserRoster,
   type UserRosterState,
-} from '../users/users-api';
+} from '../assignments/roster';
 
 export const EDGES_PATH = '/v1/management/edges';
 

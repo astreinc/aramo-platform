@@ -3201,3 +3201,29 @@ select.rc-input { appearance: none; padding-right: 28px; }
  * Consolidation Directive 4; reusable by the remaining people-list ports). */
 .rc-cell-sub { color: var(--muted); font-size: 0.82rem; }
 .rc-rowactions { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Org hierarchy tree — Confident-Blue restyle (FE Consolidation Directive 5,
+ * PR2). VISUAL ONLY: the ARIA tree roles + keyboard nav live in Tree.tsx and
+ * are untouched; these rules style the hand-built W3C tree pattern. */
+.rc-treewrap { padding: 8px 6px; }
+.rc-tree, .rc-tree__children { list-style: none; margin: 0; padding: 0; }
+.rc-tree__children { padding-left: 22px; border-left: 1px solid var(--line); margin-left: 10px; }
+.rc-tree__item { outline: none; }
+.rc-tree__item:focus-visible > .rc-tree__row {
+  box-shadow: inset 0 0 0 2px var(--brand-accent, var(--c-focus-ring));
+  border-radius: var(--r-sm, 6px);
+}
+.rc-tree__row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: var(--r-sm, 6px);
+}
+.rc-tree__row:hover { background: var(--surface-2, var(--c-surface-2)); }
+.rc-tree__toggle {
+  appearance: none; border: 0; background: transparent; cursor: pointer;
+  color: var(--muted, var(--c-text-muted)); font-size: 0.8rem; line-height: 1;
+  width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
+}
+.rc-tree__toggle--leaf { cursor: default; color: var(--faint, var(--c-text-subtle)); }
+.rc-tree__label { font-weight: 600; color: var(--ink, var(--c-text)); }
+.rc-tree__email { color: var(--muted, var(--c-text-muted)); font-size: 0.82rem; }
+.rc-tree-empty { padding: 24px; text-align: center; }

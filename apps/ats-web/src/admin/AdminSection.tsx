@@ -14,7 +14,7 @@ import { Button, Card, CardHead } from '../ui';
 // direct URL — they have no discovery/list surface yet — so their affordance is
 // an ID lookup. The remaining modules are listed as not-yet-ported.
 
-const PENDING_MODULES = ['Users', 'Organisation'] as const;
+const PENDING_MODULES = ['Users'] as const;
 
 // A per-record deep-link affordance: an ID input + button that navigates to the
 // record's editor. Used wherever a ported admin surface has no discovery/list
@@ -80,6 +80,22 @@ export function AdminSection() {
             data-testid="admin-settings-link"
           >
             Open settings
+          </Link>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHead title="Organisation" />
+        <p className="rc-muted-line rc-mt-8">
+          Manage the reporting hierarchy (who reports to whom) across the tenant.
+        </p>
+        <div className="rc-formfoot">
+          <Link
+            to="/admin/org"
+            className="rc-link-action"
+            data-testid="admin-org-link"
+          >
+            Open organisation
           </Link>
         </div>
       </Card>
