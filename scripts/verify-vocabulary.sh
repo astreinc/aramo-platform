@@ -363,9 +363,9 @@ TIER2_EXCLUDES=(
   # `Score` (locked artifact name; out of this PR's control). Same
   # structural pattern as the `Aramo-*-LOCKED.docx` glob entry above
   # (locked artifact filenames preserved for fidelity).
-  "apps/recruiter-console/src/submittals/submittals-api.ts"
-  "apps/recruiter-console/src/submittals/SubmittalWizard.tsx"
-  # Recruiter R7 — the engagement FE surface (the recruiter-console consumer
+  "apps/ats-web/src/submittals/submittals-api.ts"
+  "apps/ats-web/src/submittals/SubmittalWizard.tsx"
+  # Recruiter R7 — the engagement FE surface (the ats-web consumer
   # of the engagement backend). `outreach` appears here as the canonical
   # engagement event-type discriminant (`outreach_drafted` / `outreach_sent`),
   # the response-picker source (a response answers a prior `outreach_sent`
@@ -375,18 +375,18 @@ TIER2_EXCLUDES=(
   # `engagement`. Same canonical-vocabulary rationale as the libs/engagement
   # M5 PR-2/PR-6/PR-7 entries above. Lockstep with the matching
   # eslint.config.mjs TIER2_EXCLUDES entries.
-  "apps/recruiter-console/src/engagement/types.ts"
-  "apps/recruiter-console/src/engagement/engagement-api.ts"
-  "apps/recruiter-console/src/engagement/EventLog.tsx"
-  "apps/recruiter-console/src/engagement/ResponseLogger.tsx"
-  "apps/recruiter-console/src/engagement/EngagementDetailView.tsx"
-  "apps/recruiter-console/src/engagement/error-messages.ts"
-  "apps/recruiter-console/src/engagement/EngagementDetailView.spec.tsx"
+  "apps/ats-web/src/engagement/types.ts"
+  "apps/ats-web/src/engagement/engagement-api.ts"
+  "apps/ats-web/src/engagement/EventLog.tsx"
+  "apps/ats-web/src/engagement/ResponseLogger.tsx"
+  "apps/ats-web/src/engagement/EngagementDetailView.tsx"
+  "apps/ats-web/src/engagement/error-messages.ts"
+  "apps/ats-web/src/engagement/EngagementDetailView.spec.tsx"
   # Recruiter R7 PR-2 — the draft→preview→send outreach composer. Same
   # canonical-vocabulary rationale as the PR-1 entries above; lockstep with
   # the matching eslint.config.mjs TIER2_EXCLUDES entries.
-  "apps/recruiter-console/src/engagement/OutreachComposer.tsx"
-  "apps/recruiter-console/src/engagement/OutreachComposer.spec.tsx"
+  "apps/ats-web/src/engagement/OutreachComposer.tsx"
+  "apps/ats-web/src/engagement/OutreachComposer.spec.tsx"
 )
 
 # =============================================================================

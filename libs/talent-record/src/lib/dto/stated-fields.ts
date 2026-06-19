@@ -10,7 +10,7 @@
 // category, never a Portal-forbidden ordinal or inferred output).
 //
 // This module is the canonical source of the two closed vocabularies. The
-// recruiter-console hand-mirrors these arrays (boundary forbids importing the
+// ats-web hand-mirrors these arrays (boundary forbids importing the
 // lib) and a drift spec asserts the mirror stays 1:1.
 
 // §4.1 — vocabulary closure of the existing canonical TalentDeclaredProfile

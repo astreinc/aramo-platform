@@ -301,7 +301,7 @@ export default [
       // surfaces; exclusions applied to both per the PR-A1a precedent).
       'libs/export/src/tests/field-catalog.spec.ts',
       'apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts',
-      // Recruiter R7 — the engagement FE surface (the recruiter-console
+      // Recruiter R7 — the engagement FE surface (the ats-web
       // consumer of the engagement backend). `outreach` appears here as the
       // canonical engagement event-type discriminant (`outreach_drafted` /
       // `outreach_sent`), the response-picker source (a response answers a
@@ -310,20 +310,20 @@ export default [
       // selected outreach") — NOT a misuse of `outreach` as a standalone
       // entity name competing with `engagement`. Same canonical-vocabulary
       // rationale as the libs/engagement M5 PR-2/PR-6/PR-7 entries above;
-      // file-scoped (the rule still applies to every other recruiter-console
+      // file-scoped (the rule still applies to every other ats-web
       // file). Paired in lockstep with the scripts/verify-vocabulary.sh
       // TIER2_EXCLUDES entries.
-      'apps/recruiter-console/src/engagement/types.ts',
+      'apps/ats-web/src/engagement/types.ts',
       // engagement-api.ts carries `outreach` in comments only (the script
       // surface scripts/verify-vocabulary.sh is grep-based and catches
       // comments; ESLint is AST-based and would not flag it) — listed here
       // for lockstep symmetry with the verify-vocabulary.sh exclusion.
-      'apps/recruiter-console/src/engagement/engagement-api.ts',
-      'apps/recruiter-console/src/engagement/EventLog.tsx',
-      'apps/recruiter-console/src/engagement/ResponseLogger.tsx',
-      'apps/recruiter-console/src/engagement/EngagementDetailView.tsx',
-      'apps/recruiter-console/src/engagement/error-messages.ts',
-      'apps/recruiter-console/src/engagement/EngagementDetailView.spec.tsx',
+      'apps/ats-web/src/engagement/engagement-api.ts',
+      'apps/ats-web/src/engagement/EventLog.tsx',
+      'apps/ats-web/src/engagement/ResponseLogger.tsx',
+      'apps/ats-web/src/engagement/EngagementDetailView.tsx',
+      'apps/ats-web/src/engagement/error-messages.ts',
+      'apps/ats-web/src/engagement/EngagementDetailView.spec.tsx',
       // Recruiter R7 PR-2 — the draft→preview→send outreach composer. Same
       // canonical-vocabulary rationale as the PR-1 entries above: `outreach`
       // names the engagement event-type discriminant + the draft/send
@@ -331,8 +331,8 @@ export default [
       // "Outreach prompt"), NOT a misuse of `outreach` as a standalone entity
       // name. Paired in lockstep with the scripts/verify-vocabulary.sh
       // TIER2_EXCLUDES entries.
-      'apps/recruiter-console/src/engagement/OutreachComposer.tsx',
-      'apps/recruiter-console/src/engagement/OutreachComposer.spec.tsx',
+      'apps/ats-web/src/engagement/OutreachComposer.tsx',
+      'apps/ats-web/src/engagement/OutreachComposer.spec.tsx',
     ],
     rules: {
       'no-restricted-syntax': 'off',

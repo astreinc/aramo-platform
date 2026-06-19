@@ -1,6 +1,6 @@
 // libs/fe-foundation — the domain-neutral FE foundation extracted from
 // apps/tenant-console at Recruiter R0. Consumed by tenant-console (the
-// admin-tier console) and recruiter-console (the recruiter-tier console)
+// admin-tier console) and ats-web (the recruiter-tier console)
 // via the @aramo/fe-foundation barrel. The lib carries NO domain knowledge
 // (Radix + react + react-router only — no @aramo/* domain import).
 
