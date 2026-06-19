@@ -11,6 +11,7 @@ import {
   IconHistory,
   IconLock,
   IconMail,
+  IconPlug,
   IconShield,
   IconShieldCheck,
   IconSliders,
@@ -185,6 +186,23 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
         icon: <IconSliders />,
         to: '/admin/settings/fields',
         match: '/admin/settings/fields',
+        status: 'soon',
+        badge: SOON,
+      },
+    ],
+  },
+  {
+    // The mockup's 7th group ("Connect"), omitted from Directive §A's 16-
+    // section enumeration. Added as an honest seam follow-up — there is no
+    // integrations/API-key/webhook substrate today (future milestone).
+    heading: 'Connect',
+    items: [
+      {
+        key: 'integrations',
+        label: 'Integrations',
+        icon: <IconPlug />,
+        to: '/admin/settings/integrations',
+        match: '/admin/settings/integrations',
         status: 'soon',
         badge: SOON,
       },

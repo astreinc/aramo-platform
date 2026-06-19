@@ -35,6 +35,7 @@ import {
   BillingSection,
   EmailSection,
   FieldsSection,
+  IntegrationsSection,
   LocalizationSection,
   PortalSection,
   RolesSection,
@@ -368,6 +369,10 @@ export function App() {
                               <Route
                                 path="settings/fields"
                                 element={<FieldsSection />}
+                              />
+                              <Route
+                                path="settings/integrations"
+                                element={<IntegrationsSection />}
                               />
                               <Route
                                 path="settings/billing"

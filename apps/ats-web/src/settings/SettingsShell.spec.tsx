@@ -14,6 +14,7 @@ import {
   BillingSection,
   EmailSection,
   FieldsSection,
+  IntegrationsSection,
   LocalizationSection,
   PortalSection,
   RolesSection,
@@ -73,6 +74,10 @@ function renderAt(path: string, session: Session) {
                     <Route path="settings/apply" element={<ApplySection />} />
                     <Route path="settings/email" element={<EmailSection />} />
                     <Route path="settings/fields" element={<FieldsSection />} />
+                    <Route
+                      path="settings/integrations"
+                      element={<IntegrationsSection />}
+                    />
                     <Route path="settings/billing" element={<BillingSection />} />
                     <Route path="settings/audit" element={<AuditSection />} />
                   </Route>
@@ -97,6 +102,7 @@ describe('Settings shell + rail', () => {
       'Talent experience',
       'Communication',
       'Data',
+      'Connect',
       'Account',
     ]) {
       expect(within(nav).getByText(heading)).toBeInTheDocument();
@@ -143,6 +149,7 @@ describe('Honest seams — no dead knobs', () => {
       ['settings/security', () => undefined],
       ['settings/email', () => undefined],
       ['settings/fields', () => undefined],
+      ['settings/integrations', () => undefined],
       ['settings/billing', () => undefined],
       ['settings/audit', () => undefined],
     ];

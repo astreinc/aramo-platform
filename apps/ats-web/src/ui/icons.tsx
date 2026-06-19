@@ -518,3 +518,11 @@ export function IconDownload(props: IconProps) {
     </svg>
   );
 }
+
+export function IconPlug(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0z M12 17v5" />
+    </svg>
+  );
+}

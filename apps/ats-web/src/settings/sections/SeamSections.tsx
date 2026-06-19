@@ -6,6 +6,7 @@ import {
   IconHistory,
   IconLock,
   IconMail,
+  IconPlug,
   IconShieldCheck,
   IconSliders,
 } from '../../ui/icons';
@@ -180,6 +181,30 @@ export function AuditSection() {
         A real write trail already exists — events emit across identity, settings and the team model
         — but there is no queryable read endpoint yet. The audit-log read surface is the first
         follow-on enterprise PR; seamed here so the surface is complete.
+      </SettingsSeam>
+    </SettingsSection>
+  );
+}
+
+export function IntegrationsSection() {
+  return (
+    <SettingsSection
+      title="Integrations"
+      description="Connect Aramo to job boards, the VMS platforms that feed requisitions, and the tools your team already uses."
+    >
+      <SettingsSeam
+        icon={<IconPlug />}
+        title="Connected apps & API"
+        vision={[
+          'Job boards — post and sync applicants.',
+          'VMS & intake — receive requisitions and submit talent (SAP Fieldglass, Beeline, VNDLY).',
+          'Calendar & comms — Google Workspace, Microsoft 365, Slack.',
+          'Developer — API keys and webhooks on the Aramo API.',
+        ]}
+      >
+        There is no integrations/connector substrate yet — no job-board sync, VMS intake, or
+        API-key / webhook surface. This is a future-milestone subsystem, surfaced here so the
+        Connect area is complete; nothing is wired.
       </SettingsSeam>
     </SettingsSection>
   );
