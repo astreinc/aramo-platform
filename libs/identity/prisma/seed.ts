@@ -263,6 +263,13 @@ export const SEED_IDS = {
     // ASSIGNABLE_USERS_SEED_BUNDLES (the 9 work-assigning operational roles;
     // RoleScope 0x940+).
     'tenant:user:read:assignable': '01900000-0000-7000-8000-0000000000ad',
+    // §5 Auth-Hardening D4b — the name-resolver directory read scope (GET
+    // /v1/tenant/users/directory). id→display_name for ALL tenant users incl.
+    // inactive (historical integrity); distinct from the active-only assignable
+    // picker scope. Next free id after the 0xad assignable scope (append-don't-
+    // renumber): 0xae. Granted via DIRECTORY_SEED_BUNDLES (the 10 list-view
+    // viewers; RoleScope 0x950+).
+    'tenant:user:read:directory': '01900000-0000-7000-8000-0000000000ae',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1560,6 +1567,42 @@ const ASSIGNABLE_USERS_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => 
   return map;
 })();
 
+// §5 Auth-Hardening D4b — tenant:user:read:directory grant bundle. The 10
+// LIST-VIEW VIEWERS who render authorship/ownership/assignee names: the 9
+// work-assigning roles (= ASSIGNABLE_USERS_SEED_BUNDLES) PLUS finance, which
+// holds requisition:read + talent:read (sees those lists) but is not a
+// work-assigning role (so it is NOT in the assignable picker — that is exactly
+// why the name-resolver is a distinct scope, not a reuse of assignable).
+// auditor/candidate/super_admin do not see the name-rendering lists. 10 × 1 = 10.
+export const DIRECTORY_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_owner', ['tenant:user:read:directory']],
+  ['tenant_admin', ['tenant:user:read:directory']],
+  ['account_manager', ['tenant:user:read:directory']],
+  ['recruiting_manager', ['tenant:user:read:directory']],
+  ['recruiter', ['tenant:user:read:directory']],
+  ['lead_recruiter', ['tenant:user:read:directory']],
+  ['back_office', ['tenant:user:read:directory']],
+  ['delivery_manager', ['tenant:user:read:directory']],
+  ['sourcer', ['tenant:user:read:directory']],
+  ['finance', ['tenant:user:read:directory']],
+];
+
+// Deterministic RoleScope row ids for the 10 directory grants. Disjoint range
+// 0x950+ (the next clear range after ASSIGNABLE_USERS' 0x940..0x948; all prior
+// ranges untouched — append-don't-renumber).
+const DIRECTORY_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x950;
+  for (const [role, scopes] of DIRECTORY_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -1800,6 +1843,7 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['audit:read'], 'audit:read', 'Read the tenant audit log (GET /v1/tenant/audit-events) — the keyset-paginated, filterable read over the IdentityAuditEvent trail (who did what, when). Tenant-scoped (never cross-tenant); detail is redacted of values the viewer\'s scopes don\'t permit. Granted to tenant_admin + tenant_owner (the admin/compliance tier; NOT recruiters). NO scope.created audit event (mirrors the Reporting/Engagement/Search/Task/Settings-D1 scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:profile'], 'tenant:admin:profile', 'Read + edit the tenant profile (GET/PATCH /v1/tenant/profile) — the org legal identity (legal/display name, address, tax/registration IDs, primary contact, logo). DEDICATED scope (Lead ruling): kept distinct from tenant:admin:settings so org-legal-identity and app-config stay separable, and the audit trail (identity.tenant_profile.updated) carries a clean per-scope authorization story. Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:sites'], 'tenant:admin:sites', 'Manage sites/branches (CRUD /v1/tenant/sites) — the org STRUCTURE: sub-tenant branch partitions + the parent/child branch hierarchy. DEDICATED scope (Lead ruling): kept distinct from tenant:admin:settings (config) and tenant:admin:profile (legal identity) so the admin taxonomy stays coherent and sites stay separable later. Emits identity.site.created/updated/deactivated (field names only). Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['tenant:user:read:directory'], 'tenant:user:read:directory', 'Resolve user_id → display_name for ANY tenant user INCLUDING inactive/departed (GET /v1/tenant/users/directory). The name-resolution half of the two-jobs split: distinct from tenant:user:read:assignable (the active-only assignable picker) because authorship/ownership/assignee names in list+detail views must still render for departed users (historical integrity). Minimal {user_id, display_name} ONLY — name lookup, NOT a roster, NOT admin data (no email/status/roles/audit). Batch-capable (?user_ids=). Granted to the 10 list-view viewers (the 9 work-assigning roles + finance, who reads the requisition/talent lists). NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:user:read:assignable'], 'tenant:user:read:assignable', 'Read the MINIMAL assignable-user roster (GET /v1/tenant/users/assignable) — id + display_name of ACTIVE tenant members only, for the assign-a-teammate pickers (task / requisition / pod). The recruiter-tier counterpart to tenant:admin:user-manage: it serves a deliberately narrow roster (least-data), NOT the admin UserView (no email/status/roles/audit). The users analogue of company:read for the company-assign picker. Granted to the 9 work-assigning operational roles (the task:read/:write tier: tenant_owner, tenant_admin, account_manager, recruiting_manager, recruiter, lead_recruiter, back_office, delivery_manager, sourcer). NO scope.created audit event (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
@@ -2090,6 +2134,24 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
       const rsId = ASSIGNABLE_USERS_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`AuthHardening-D4 Assignable-Users-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // §5 Auth-Hardening D4b — tenant:user:read:directory grants (10 rows; the
+  // list-view viewers = the 9 + finance). Range 0x950+.
+  for (const [roleKey, scopeKeys] of DIRECTORY_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = DIRECTORY_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`AuthHardening-D4b Directory-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

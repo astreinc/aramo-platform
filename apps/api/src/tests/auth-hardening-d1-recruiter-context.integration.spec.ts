@@ -62,7 +62,8 @@ import { AppModule } from '../app.module.js';
 //     session is faked here.
 //
 // SCOPE-COUNT NOTE: the directive (D1) said "the 41 recruiter scopes". The
-// live seed truth grew to 42 (Settings-D1's import:read) and now 43 (§5
+// live seed truth grew to 42 (Settings-D1's import:read), 43 (D4's
+// tenant:user:read:assignable), and now 44 (D4b's tenant:user:read:directory) (§5
 // Auth-Hardening D4's tenant:user:read:assignable — the recruiter-tier minimal
 // assignable-roster read). The CANONICAL recruiter bundle is owned + pinned by
 // libs/identity/src/tests/identity.integration.spec.ts ("recruiter bundle: 43
@@ -190,7 +191,7 @@ const TENANT_ADMIN_SCOPES = [
 ];
 
 // The canonical recruiter bundle — mirrors the source-of-truth assertion in
-// libs/identity/src/tests/identity.integration.spec.ts (43 scopes). The
+// libs/identity/src/tests/identity.integration.spec.ts (44 scopes). The
 // provisioned recruiter's DERIVED effective scopes are asserted to equal this
 // (B4); the principal under test is then signed with exactly this set.
 const RECRUITER_BUNDLE = [
@@ -237,8 +238,11 @@ const RECRUITER_BUNDLE = [
   'task:read',
   'task:write',
   // §5 Auth-Hardening D4 — recruiter gains the minimal assignable-roster read
-  // (GET /v1/tenant/users/assignable); NOT the admin user-manage scope.
+  // (GET /v1/tenant/assignable-users); NOT the admin user-manage scope.
   'tenant:user:read:assignable',
+  // §5 Auth-Hardening D4b — recruiter gains the name-resolver read
+  // (GET /v1/tenant/users/directory; id→name incl. inactive for history).
+  'tenant:user:read:directory',
 ].sort();
 
 // The admin scopes a recruiter must NEVER hold (drives the B2 deny + B4

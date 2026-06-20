@@ -9,6 +9,7 @@ import type { UserDto } from './dto/user.dto.js';
 import {
   IdentityRepository,
   type AssignableUserView,
+  type DirectoryUserView,
   type TenantUserView,
 } from './identity.repository.js';
 import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
@@ -115,6 +116,15 @@ export class IdentityService {
     role_keys: readonly string[];
   }): Promise<AssignableUserView[]> {
     return this.identityRepo.listAssignableTenantUsersByIdsAndRoles(args);
+  }
+
+  // §5 Auth-Hardening D4b — the name-resolver directory (id→name for ALL tenant
+  // users incl. inactive; optional batch user_ids).
+  async listTenantUserDirectory(args: {
+    tenant_id: string;
+    user_ids?: readonly string[];
+  }): Promise<DirectoryUserView[]> {
+    return this.identityRepo.listTenantUserDirectory(args);
   }
 
   async getTenantUser(args: {

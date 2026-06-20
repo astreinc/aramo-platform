@@ -216,9 +216,14 @@ export const SEED_SCOPE_KEYS = [
   // Settings Rebuild D4 — the sites/branches admin scope (CRUD /v1/tenant/sites).
   'tenant:admin:sites',                 // tenant_admin + tenant_owner (DEDICATED; org STRUCTURE — sub-tenant branch partitions + hierarchy)
   // §5 Auth-Hardening D4 — the recruiter-tier MINIMAL assignable-roster read
-  // (GET /v1/tenant/users/assignable). The users analogue of company:read for
+  // (GET /v1/tenant/assignable-users). The users analogue of company:read for
   // the assign pickers; NOT the admin tenant:admin:user-manage surface.
   'tenant:user:read:assignable',        // 9 work-assigning operational roles (the task:read/:write tier); minimal roster only (id+display_name)
+  // §5 Auth-Hardening D4b — the recruiter-tier name-RESOLVER read
+  // (GET /v1/tenant/users/directory). The "whose-name-is-this" half: id→name
+  // for ALL tenant users INCL. inactive/departed (historical integrity), so it
+  // is DISTINCT from the active-only assignable picker. Minimal id+display_name.
+  'tenant:user:read:directory',         // 10 list-view viewers (the 9 assignable roles + finance, who reads the req/talent lists); name-resolution only
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

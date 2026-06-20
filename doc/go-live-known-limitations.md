@@ -444,13 +444,15 @@ not a client filter). The following are deliberate gaps.
   the name-resolver slice. Until then those pickers keep the existing admin-
   endpoint probe (a recruiter gets the graceful raw-UUID fallback there — the
   documented interim).
-- **NOT built (Lead-scoped slice):** the recruiter-readable ALL-USERS (incl.
-  **inactive/departed**) `user_id→display_name` lookup. The 7 list/detail
-  name-resolvers + assignment assigned-name display need departed users to still
-  render; that cannot ride the active-only assignable endpoint. Proposed:
-  `GET /v1/tenant/users/directory` (minimal name-only over all tenant users incl.
-  inactive, recruiter read scope). Until it ships, recruiter name-resolution in
-  those list-views is a silent no-op (shows the id / no name).
+- **Name-resolver endpoint — BUILT (§5 D4b):** `GET /v1/tenant/users/directory`
+  resolves `user_id→display_name` for ALL tenant users **incl. inactive/departed**
+  (historical integrity), minimal projection, batch-capable (`?user_ids=`), under
+  the new recruiter-tier `tenant:user:read:directory` scope (the 10 list-view
+  viewers). The endpoint exists; **the FE repoint is what remains** (below).
+- **STILL deferred (the repoint pass, NEXT directive):** the 7 list/detail
+  name-resolvers + the 5 assignment views' assigned-name display still call the
+  admin probe. Until they repoint to the directory endpoint, recruiter
+  name-resolution in those views is a silent no-op (shows the id / no name).
 - **Risk:** low — the named recruiter gap (task assignment) is closed; the
   remainder are disclosed interim affordances, not unenforced guardrails.
 - **Close criteria:** author the name-resolver slice, then repoint the 7 list-

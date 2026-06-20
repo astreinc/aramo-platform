@@ -14,7 +14,7 @@ describe('Company-Fields v1.1 — company:read_commercial catalog parity', () =>
     ).toHaveLength(1);
   });
 
-  it('SEED_SCOPE_KEYS is 84 (83 + 1 §5 Auth-Hardening D4 tenant:user:read:assignable scope)', () => {
-    expect(SEED_SCOPE_KEYS).toHaveLength(84);
+  it('SEED_SCOPE_KEYS is 85 (84 + 1 §5 Auth-Hardening D4b tenant:user:read:directory scope)', () => {
+    expect(SEED_SCOPE_KEYS).toHaveLength(85);
   });
 });
