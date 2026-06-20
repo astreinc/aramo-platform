@@ -7,7 +7,7 @@ import { useToast } from '@aramo/fe-foundation';
 
 import { RolePicker } from './RolePicker';
 import { messageForInviteError, type ErrorMessage } from './error-messages';
-import type { InviteResponse } from './types';
+import type { InviteResponse, TenantRoleCatalogEntry } from './types';
 import {
   inviteTenantUser,
   type FinancialsToggleState,
@@ -32,6 +32,8 @@ interface InviteDialogProps {
   onOpenChange: (open: boolean) => void;
   onInvited: (result: InviteResponse) => void;
   financialsToggle: FinancialsToggleState;
+  // Settings Rebuild D5 — the assignable roles (from the roles-catalog GET).
+  roles: readonly TenantRoleCatalogEntry[];
   // Test seam.
   inviteFn?: typeof inviteTenantUser;
 }
@@ -41,6 +43,7 @@ export function InviteDialog({
   onOpenChange,
   onInvited,
   financialsToggle,
+  roles,
   inviteFn,
 }: InviteDialogProps) {
   const invite = inviteFn ?? inviteTenantUser;
@@ -86,7 +89,12 @@ export function InviteDialog({
       reset();
       onOpenChange(false);
     } catch (err: unknown) {
-      setError(messageForInviteError(err));
+      setError(
+        messageForInviteError(
+          err,
+          (k) => roles.find((r) => r.key === k)?.label ?? k,
+        ),
+      );
     } finally {
       setSaving(false);
     }
@@ -176,6 +184,7 @@ export function InviteDialog({
           helper="Select one or more roles to grant on invite."
         >
           <RolePicker
+            roles={roles}
             selectedKeys={selectedKeys}
             onToggle={onToggleRole}
             disabled={saving}

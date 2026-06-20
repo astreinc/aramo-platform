@@ -7,6 +7,11 @@ import {
   messageForRoleAssignError,
 } from './error-messages';
 
+// Settings Rebuild D5 — the label resolver is now passed in by the caller (the
+// catalog-backed lookup), not a hand-mirror. A simple capitalizer stands in.
+const LABEL = (k: string): string =>
+  k.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
 // Settings S5b — operator-message tests. The load-bearing assertions:
 //
 //   (1) The D5 invertible_role_union message uses the BUNDLE-NAMING
@@ -40,6 +45,7 @@ describe('messageForRoleAssignError — THE D5 REJECTION UX (ruling 3)', () => {
   it('renders the bundle-naming template with role LABELS, not raw keys', () => {
     const msg = messageForRoleAssignError(
       d5Error(['finance', 'recruiter']),
+      LABEL,
     );
     expect(msg.title).toBe('These roles can’t be combined.');
     // The detail names the catalog labels — "Finance + Recruiter", not
@@ -106,7 +112,7 @@ describe('messageForInviteError', () => {
 
   it('delegates an invertible-union invite-time rejection to the D5 template', () => {
     const err = d5Error(['finance', 'recruiter']);
-    const msg = messageForInviteError(err);
+    const msg = messageForInviteError(err, LABEL);
     expect(msg.title).toBe('These roles can’t be combined.');
     expect(msg.detail).toContain('Finance + Recruiter');
   });

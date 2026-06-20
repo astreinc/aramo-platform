@@ -1,12 +1,13 @@
-import { TENANT_ASSIGNABLE_ROLES, type TenantRoleCatalogEntry } from './types';
+import type { TenantRoleCatalogEntry } from './types';
 import type { FinancialsToggleState } from './users-api';
 
 // Settings S5b — the shared role-picker.
 //
-// Used by InviteDialog and RoleAssignEditor. A multi-select checkbox
-// list over the 13 tenant-tier roles from TENANT_ASSIGNABLE_ROLES
-// (the catalog mirror — PL-94 §2 ruling 2 hand-mirror + ruling 5
-// catalog-faithful).
+// Used by InviteDialog and RoleAssignEditor. A multi-select checkbox list over
+// the tenant-tier roles passed in `roles` — Settings Rebuild D5 sources these
+// from the backend roles-catalog GET (the hand-mirror is gone; the seed/DB is
+// the single source). The parent (UsersListView) fetches the catalog and
+// threads it down.
 //
 // Ruling 4 — THE S4 GATE reflected:
 //   `auditor_with_financials` is proactively disabled in the picker
@@ -22,6 +23,9 @@ import type { FinancialsToggleState } from './users-api';
 // payload before calling the API).
 
 interface RolePickerProps {
+  // The tenant-tier assignable roles (from the roles-catalog GET, via the
+  // parent). The picker renders exactly these rows — no hardcoded list.
+  roles: readonly TenantRoleCatalogEntry[];
   selectedKeys: ReadonlySet<string>;
   onToggle: (key: string, nextSelected: boolean) => void;
   disabled?: boolean;
@@ -59,6 +63,7 @@ function decorateRow(
 }
 
 export function RolePicker({
+  roles,
   selectedKeys,
   onToggle,
   disabled = false,
@@ -70,7 +75,7 @@ export function RolePicker({
       role="group"
       aria-label="Assignable tenant roles"
     >
-      {TENANT_ASSIGNABLE_ROLES.map((entry) => {
+      {roles.map((entry) => {
         const checked = selectedKeys.has(entry.key);
         const deco = decorateRow(entry, financialsToggle, disabled);
         const inputId = `role-picker-${entry.key}`;

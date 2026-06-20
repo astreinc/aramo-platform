@@ -6,7 +6,6 @@ import {
   IconLock,
   IconMail,
   IconPlug,
-  IconShieldCheck,
   IconSliders,
 } from '../../ui/icons';
 import { SettingsSeam, SettingsSection } from '../components';
@@ -44,29 +43,8 @@ export function LocalizationSection() {
   );
 }
 
-export function RolesSection() {
-  return (
-    <SettingsSection
-      title="Roles & permissions"
-      description="Every role is a named bundle of scopes. The full scope-matrix surface is being built next."
-    >
-      <SettingsSeam
-        icon={<IconShieldCheck />}
-        title="Role & scope matrix"
-        tag="Next release"
-        vision={[
-          'The full role catalog with each role’s scopes, surfaced as a real read API.',
-          'The scope-per-role matrix — what each of the tenant roles can do, per entity.',
-          'Closes the FE hand-mirror: the catalog comes from the backend, not a mirrored list.',
-        ]}
-      >
-        The 13-role catalog, the 60+ scopes and the role→scope map are all built and enforced on the
-        server today, but they live in the seed with no read API. The matrix surface (and the
-        roles-catalog GET) is the next enterprise PR — seamed here so the surface is complete.
-      </SettingsSeam>
-    </SettingsSection>
-  );
-}
+// Settings Rebuild D5 — the Roles & permissions seam was REPLACED by the real
+// read-only matrix (settings/roles/RolesSection.tsx). It is no longer a seam.
 
 export function SecuritySection() {
   return (

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@aramo/fe-foundation';
 
 import { UsersListView } from './UsersListView';
+import { ROLE_FIXTURE } from './roles.fixture';
 import type { TenantUserView } from './types';
 
 const activeUser: TenantUserView = {
@@ -44,6 +45,7 @@ function renderView(opts?: {
         <UsersListView
           fetchUsersFn={fetchUsersFn}
           probeFinancialsFn={probeFn}
+          rolesFn={async () => ROLE_FIXTURE}
         />
       </ToastProvider>,
     ),

@@ -37,10 +37,10 @@ import {
   IntegrationsSection,
   LocalizationSection,
   PortalSection,
-  RolesSection,
   SecuritySection,
 } from './settings/sections/SeamSections';
 import { AuditSection } from './settings/audit/AuditSection';
+import { RolesSection } from './settings/roles/RolesSection';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
 import { MyTasksView } from './task/MyTasksView';
 import { TalentCreateView } from './talent/TalentCreateView';

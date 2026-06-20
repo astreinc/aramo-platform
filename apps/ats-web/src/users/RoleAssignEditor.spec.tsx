@@ -4,6 +4,7 @@ import { ApiError } from '@aramo/fe-foundation';
 import { ToastProvider } from '@aramo/fe-foundation';
 
 import { RoleAssignEditor } from './RoleAssignEditor';
+import { ROLE_FIXTURE } from './roles.fixture';
 import type { TenantUserView } from './types';
 
 const baseUser: TenantUserView = {
@@ -37,6 +38,7 @@ function renderEditor(opts?: {
         onOpenChange={() => undefined}
         onSaved={onSaved}
         financialsToggle={financialsToggle}
+        roles={ROLE_FIXTURE}
         assignFn={assignFn}
       />
     </ToastProvider>,

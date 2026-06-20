@@ -22,15 +22,17 @@
 
 import { ApiError } from '@aramo/fe-foundation';
 
-import { findRoleEntry } from './types';
+// Settings Rebuild D5 — role labels come from the catalog (passed in by the
+// caller, which holds the fetched roles), not a hand-mirror. `labelOf` falls
+// back to the raw key when the catalog is not loaded / lacks the role.
+export type RoleLabelResolver = (key: string) => string;
+const identityLabel: RoleLabelResolver = (k) => k;
 
-function labelsForRoleKeys(role_keys: readonly string[]): string {
-  // Map each key to its catalog label; fall through to the raw key when
-  // the mirror does not know the role (a brand-new catalog entry the
-  // smoke spec would surface). Joins as "A + B + C".
-  return role_keys
-    .map((k) => findRoleEntry(k)?.label ?? k)
-    .join(' + ');
+function labelsForRoleKeys(
+  role_keys: readonly string[],
+  labelOf: RoleLabelResolver,
+): string {
+  return role_keys.map((k) => labelOf(k)).join(' + ');
 }
 
 export interface ErrorMessage {
@@ -38,7 +40,10 @@ export interface ErrorMessage {
   readonly detail?: string;
 }
 
-export function messageForRoleAssignError(err: unknown): ErrorMessage {
+export function messageForRoleAssignError(
+  err: unknown,
+  labelOf: RoleLabelResolver = identityLabel,
+): ErrorMessage {
   if (!(err instanceof ApiError)) {
     return { title: 'Unexpected error. Please try again.' };
   }
@@ -56,7 +61,7 @@ export function messageForRoleAssignError(err: unknown): ErrorMessage {
           (k): k is string => typeof k === 'string',
         )
       : [];
-    const labels = labelsForRoleKeys(role_keys);
+    const labels = labelsForRoleKeys(role_keys, labelOf);
     return {
       title: 'These roles can’t be combined.',
       detail:
@@ -93,7 +98,10 @@ export function messageForRoleAssignError(err: unknown): ErrorMessage {
   return { title: err.message };
 }
 
-export function messageForInviteError(err: unknown): ErrorMessage {
+export function messageForInviteError(
+  err: unknown,
+  labelOf: RoleLabelResolver = identityLabel,
+): ErrorMessage {
   if (!(err instanceof ApiError)) {
     return { title: 'Unexpected error. Please try again.' };
   }
@@ -121,7 +129,7 @@ export function messageForInviteError(err: unknown): ErrorMessage {
     reason === 'invertible_role_union' ||
     reason === 'financials_audit_not_enabled'
   ) {
-    return messageForRoleAssignError(err);
+    return messageForRoleAssignError(err, labelOf);
   }
   if (err.code === 'COGNITO_PROVISION_FAILED') {
     return {
