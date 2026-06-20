@@ -363,3 +363,65 @@ not a client filter). The following are deliberate gaps.
   not in a talent pipeline). The list **row→detail navigation** replaces the
   mockup's preview drawer (the drawer is a non-essential parity gap, deferred).
 - **Risk:** low.
+
+## Auth
+
+### Cognito-side refresh-token revocation (AdminUserGlobalSignOut): deferred — defense-in-depth
+- **Date:** 2026-06-20 · **Branch:** `feat/auth-hardening-d3-sso-logout`
+- **Present (§5 Auth-Hardening D3):** logout now terminates **both** sessions —
+  (1) the LOCAL app session (`POST /auth/:consumer/logout` clears cookies +
+  revokes Aramo's own refresh token; preserved) and (2) the **Cognito SSO
+  session** (`GET /auth/:consumer/logout` 302-redirects the browser to the
+  Cognito hosted-UI `/logout?client_id=…&logout_uri=<registered>`, which clears
+  Cognito's SSO cookie). Step 2 closes the named **re-entry-without-reauth**
+  hole (shared-machine risk). The return URL is the registered
+  `AUTH_COGNITO_SIGNOUT_REDIRECT` env (throws if unset) — config, never input,
+  so it is open-redirect-safe.
+- **NOT added (deliberate, defense-in-depth only):** Cognito-side
+  **`AdminUserGlobalSignOut`** (server-side invalidation of the user's Cognito
+  refresh tokens). The §A.3 "confirm + add GlobalSignOut" question was resolved
+  by the architecture: **Aramo discards Cognito's access + refresh tokens at the
+  token exchange** and brokers its OWN session (Aramo access JWT + Aramo refresh
+  token). So the Aramo session-resurrection vector is Aramo's own refresh token
+  — **already revoked** by the local logout — and the re-entry hole is the
+  Cognito SSO cookie — **closed by the hosted-UI logout redirect**. A held
+  *Cognito* refresh token cannot directly resurrect an Aramo session (entry
+  requires the full PKCE callback). `AdminUserGlobalSignOut` is therefore
+  **not load-bearing** here.
+- **Risk:** low. Both named vectors are closed. The residual is a captured
+  Cognito refresh token remaining valid *at Cognito* until its own TTL — it
+  grants no Aramo session on its own.
+- **Why deferred (scope):** adding it needs **auth-service's first Cognito-admin
+  SDK surface** (port+adapter, like `TenantCognitoPort`), a new
+  **`user_id → cognito sub` reverse-lookup** (none exists today), **consumer→pool
+  routing** (tenant vs platform pool), and **IAM** (`cognito-idp:AdminUserGlobalSignOut`).
+  That exceeds a redirect+revocation addition (D3 §G HALT trigger).
+- **Close criteria:** build `AdminUserGlobalSignOut` alongside the platform-admin
+  Cognito-admin work (Step-3): add the reverse-lookup + a tenant/platform-pool-
+  routed admin port in auth-service, invoke it (best-effort) from the logout path.
+
+### Cognito "Allowed sign-out URL": per-env config dependency (Step-4 deploy)
+- **Date:** 2026-06-20 · **Branch:** `feat/auth-hardening-d3-sso-logout`
+- **Present:** the logout redirect reads `AUTH_COGNITO_SIGNOUT_REDIRECT` and
+  throws if unset (no hardcoded fallback).
+- **NOT done in this PR (out-of-band, per env):** the Cognito app client must
+  register this URL as an **"Allowed sign-out URL"** (mirrors the redirect URL).
+  Needs registering **locally + staging + prod** pools, or the hosted-UI
+  `/logout` rejects the `logout_uri`.
+- **Risk:** none until deploy; if unregistered, logout's Cognito redirect fails
+  the return hop (the SSO cookie is still cleared by Cognito, but the bounce-back
+  to the app errors).
+- **Close criteria:** register the per-env sign-out URL on each pool's app
+  client and set `AUTH_COGNITO_SIGNOUT_REDIRECT` in each env.
+
+### Literal "can't re-enter without re-auth" browser confirmation: deferred to staging
+- **Date:** 2026-06-20 · **Branch:** `feat/auth-hardening-d3-sso-logout`
+- **Present:** the logout **logic** is fully proven here (Cognito mocked) — local
+  clear preserved, the correct Cognito `/logout` URL built (client_id + the
+  registered `logout_uri`, well-formed, not user-supplied), idempotent, both
+  consumers (recruiter + admin).
+- **NOT proven locally (honest boundary):** the end-to-end *log-out → confirm you
+  cannot re-enter without re-authenticating* check needs **real Cognito** (local
+  has no SSO session to terminate end-to-end). Not faked.
+- **Close criteria:** verify the literal re-entry-blocked behavior in staging
+  against the real Cognito pool.

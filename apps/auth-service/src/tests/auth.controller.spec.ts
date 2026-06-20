@@ -216,6 +216,179 @@ describe('AuthController.logout (idempotent)', () => {
   });
 });
 
+describe('AuthController.logoutRedirect (§5 D3 — Cognito SSO logout)', () => {
+  const DOMAIN = 'aramo.auth.example.test';
+  const CLIENT_ID = 'client-abc';
+  const SIGNOUT = 'https://app.staging.example.test/login';
+
+  function withEnv(
+    env: Record<string, string | undefined>,
+    fn: () => Promise<void>,
+  ): Promise<void> {
+    const keys = Object.keys(env);
+    const prev = keys.map((k) => [k, process.env[k]] as const);
+    for (const k of keys) {
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+    }
+    return fn().finally(() => {
+      for (const [k, v] of prev) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    });
+  }
+
+  it('302-redirects to the Cognito hosted-UI /logout with client_id + the REGISTERED logout_uri', async () => {
+    await withEnv(
+      {
+        AUTH_COGNITO_DOMAIN: DOMAIN,
+        AUTH_COGNITO_CLIENT_ID: CLIENT_ID,
+        AUTH_COGNITO_SIGNOUT_REDIRECT: SIGNOUT,
+      },
+      async () => {
+        const ctl = makeController();
+        const res = makeRes();
+        const req = { cookies: {}, requestId: 'r' } as never;
+
+        await ctl.logoutRedirect('recruiter', req, res as never);
+
+        expect(res.redirect).toHaveBeenCalledTimes(1);
+        const [status, location] = res.redirect.mock.calls[0] as [
+          number,
+          string,
+        ];
+        expect(status).toBe(302);
+        const url = new URL(location);
+        expect(url.origin).toBe(`https://${DOMAIN}`);
+        expect(url.pathname).toBe('/logout');
+        expect(url.searchParams.get('client_id')).toBe(CLIENT_ID);
+        // The return URL is the REGISTERED env value, NOT anything from the
+        // request — the open-redirect guard.
+        expect(url.searchParams.get('logout_uri')).toBe(SIGNOUT);
+      },
+    );
+  });
+
+  it('uses the configured logout_uri even if the request carries one (NOT user-controllable)', async () => {
+    await withEnv(
+      {
+        AUTH_COGNITO_DOMAIN: DOMAIN,
+        AUTH_COGNITO_CLIENT_ID: CLIENT_ID,
+        AUTH_COGNITO_SIGNOUT_REDIRECT: SIGNOUT,
+      },
+      async () => {
+        const ctl = makeController();
+        const res = makeRes();
+        // An attacker-supplied logout_uri in the query must be ignored.
+        const req = {
+          cookies: {},
+          requestId: 'r',
+          query: { logout_uri: 'https://evil.example.test/phish' },
+        } as never;
+
+        await ctl.logoutRedirect('recruiter', req, res as never);
+
+        const location = (res.redirect.mock.calls[0] as [number, string])[1];
+        expect(location).toContain(encodeURIComponent(SIGNOUT));
+        expect(location).not.toContain('evil.example.test');
+      },
+    );
+  });
+
+  it('throws 500 (signout_redirect_missing) when AUTH_COGNITO_SIGNOUT_REDIRECT is unset — no fallback', async () => {
+    await withEnv(
+      {
+        AUTH_COGNITO_DOMAIN: DOMAIN,
+        AUTH_COGNITO_CLIENT_ID: CLIENT_ID,
+        AUTH_COGNITO_SIGNOUT_REDIRECT: undefined,
+      },
+      async () => {
+        const ctl = makeController();
+        const res = makeRes();
+        const req = { cookies: {}, requestId: 'r' } as never;
+
+        await expect(
+          ctl.logoutRedirect('recruiter', req, res as never),
+        ).rejects.toMatchObject({
+          code: 'INTERNAL_ERROR',
+          context: { details: { reason: 'signout_redirect_missing' } },
+        });
+        expect(res.redirect).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  it('throws 500 (cognito_env_missing) when domain/client are unset', async () => {
+    await withEnv(
+      {
+        AUTH_COGNITO_DOMAIN: undefined,
+        AUTH_COGNITO_CLIENT_ID: undefined,
+        AUTH_COGNITO_SIGNOUT_REDIRECT: SIGNOUT,
+      },
+      async () => {
+        const ctl = makeController();
+        const res = makeRes();
+        const req = { cookies: {}, requestId: 'r' } as never;
+
+        await expect(
+          ctl.logoutRedirect('recruiter', req, res as never),
+        ).rejects.toMatchObject({
+          code: 'INTERNAL_ERROR',
+          context: { details: { reason: 'cognito_env_missing' } },
+        });
+        expect(res.redirect).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  it('rejects an invalid consumer with VALIDATION_ERROR (400)', async () => {
+    await withEnv(
+      {
+        AUTH_COGNITO_DOMAIN: DOMAIN,
+        AUTH_COGNITO_CLIENT_ID: CLIENT_ID,
+        AUTH_COGNITO_SIGNOUT_REDIRECT: SIGNOUT,
+      },
+      async () => {
+        const ctl = makeController();
+        const res = makeRes();
+        const req = { cookies: {}, requestId: 'r' } as never;
+
+        await expect(
+          ctl.logoutRedirect('not-a-consumer', req, res as never),
+        ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+      },
+    );
+  });
+
+  it('is a cookie-less idempotent no-op (already-logged-out → still a clean 302)', async () => {
+    await withEnv(
+      {
+        AUTH_COGNITO_DOMAIN: DOMAIN,
+        AUTH_COGNITO_CLIENT_ID: CLIENT_ID,
+        AUTH_COGNITO_SIGNOUT_REDIRECT: SIGNOUT,
+      },
+      async () => {
+        const refreshTokens = {
+          findByHash: vi.fn(),
+          revoke: vi.fn(),
+        } as unknown as RefreshTokenService;
+        const ctl = makeController({ refreshTokens });
+        const res = makeRes();
+        // No cookies at all — an already-logged-out browser.
+        const req = { cookies: {}, requestId: 'r' } as never;
+
+        await ctl.logoutRedirect('recruiter', req, res as never);
+
+        // No token lookup / revocation: the redirect reveals nothing.
+        expect(refreshTokens.findByHash).not.toHaveBeenCalled();
+        expect(res.redirect).toHaveBeenCalledTimes(1);
+        expect(res.cookie).not.toHaveBeenCalled();
+      },
+    );
+  });
+});
+
 describe('AuthController.callback (orchestrator-result mapping)', () => {
   it('on success: sets cookies, clears pkce_state, redirects 302 to the CONFIGURED target', async () => {
     // The redirect target is per-environment config (the frontend origin for

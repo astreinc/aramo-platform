@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 
-import { apiClient } from '../api/client';
 import { hasScope } from '../auth/scopes';
-import { LOGIN_PATH, LOGOUT_PATH, type Session } from '../auth/session';
+import { logout, type Session } from '../auth/session';
 import { Button } from '../components/Button';
 import { NavLink } from '../components/NavLink';
 
@@ -35,16 +34,11 @@ export function Shell({
   navItems,
   onLogoutComplete,
 }: ShellProps) {
-  const handleLogout = async () => {
-    try {
-      await apiClient.post(LOGOUT_PATH);
-    } catch {
-      // R10/R12: do not surface internal error details to the UI; the
-      // user's outcome (redirect to login) is the same on success or
-      // failure.
-    }
-    (onLogoutComplete ?? (() => window.location.assign(LOGIN_PATH)))();
-  };
+  // §5 Auth-Hardening D3: delegate to the shared session logout, which clears
+  // the LOCAL session (POST /logout) then navigates to the Cognito hosted-UI
+  // /logout to terminate the SSO session. R10/R12: no internal detail is
+  // surfaced; the outcome is identical on success or failure.
+  const handleLogout = () => logout(onLogoutComplete);
 
   return (
     <div className="app-shell">

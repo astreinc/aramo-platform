@@ -111,6 +111,26 @@ describe('RecruiterShell', () => {
     await waitFor(() => expect(onLogoutComplete).toHaveBeenCalledOnce());
   });
 
+  // §5 D3 §C/§E — BOTH consumers: the recruiter surface AND the admin surface
+  // ride this one shell + one shared session, so the enhanced (SSO-terminating)
+  // logout must behave identically on an admin route. Same POST /logout local
+  // clear; the completion seam then navigates to the Cognito hosted-UI /logout.
+  it('drives the SAME shared SSO logout from the admin surface (both consumers)', async () => {
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue(undefined);
+    const onLogoutComplete = vi.fn();
+    renderShell(
+      makeSession(['talent:read', 'tenant:admin:settings']),
+      '/admin/settings',
+      onLogoutComplete,
+    );
+    // The admin nav is visible (proves we're on the admin surface)…
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
+    // …and the one logout control still terminates the shared session.
+    fireEvent.click(screen.getByRole('button', { name: /Log out/ }));
+    await waitFor(() => expect(onLogoutComplete).toHaveBeenCalledOnce());
+    expect(post).toHaveBeenCalledWith('/auth/recruiter/logout');
+  });
+
   it('exposes the primary nav landmark and renders children', () => {
     renderShell(makeSession(['requisition:read']));
     expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();

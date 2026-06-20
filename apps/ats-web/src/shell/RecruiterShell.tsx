@@ -1,8 +1,6 @@
 import {
-  apiClient,
   hasScope,
-  LOGIN_PATH,
-  LOGOUT_PATH,
+  logout,
   type Session,
 } from '@aramo/fe-foundation';
 import type { ReactNode } from 'react';
@@ -40,8 +38,10 @@ import { BreadcrumbProvider, useBreadcrumbEntity } from './breadcrumb';
 // fe-foundation Shell (non-consumption, Lead-approved). Composes AppShell +
 // Rail + TopBar: scope-gated nav rendered as real react-router NavLinks (the
 // keyboard/SR navigation path), a route-derived breadcrumb, the visual ⌘K
-// entry + notifications bell, and the LOGOUT control (preserved from the frozen
-// Shell — same POST /logout best-effort → redirect-to-login contract).
+// entry + notifications bell, and the LOGOUT control (the shared session
+// logout — §5 D3: POST /logout local clear, then navigate to the Cognito
+// hosted-UI /logout for SSO session termination; best-effort, same outcome
+// on success/failure).
 //
 // Nav reconciled to canonical vocab (F2) and to routes that actually exist.
 // "Contacts" now has a full list/detail surface (Contacts page) and is wired.
@@ -144,14 +144,12 @@ function RecruiterShellInner({
       ? [{ label: section, href: `/${segment}` }, { label: entity }]
       : [{ label: section }];
 
-  const handleLogout = async () => {
-    try {
-      await apiClient.post(LOGOUT_PATH);
-    } catch {
-      // Same outcome on success/failure; never surface internals (R10/R12).
-    }
-    (onLogoutComplete ?? (() => window.location.assign(LOGIN_PATH)))();
-  };
+  // §5 Auth-Hardening D3: the shared session logout — clears the LOCAL session
+  // (POST /logout) then navigates to the Cognito hosted-UI /logout to terminate
+  // the SSO session. Identical for the recruiter AND admin surfaces (both ride
+  // this one shell + one session). Same outcome on success/failure; never
+  // surface internals (R10/R12).
+  const handleLogout = () => logout(onLogoutComplete);
 
   const renderNav = (items: readonly NavItem[]) =>
     items
