@@ -194,7 +194,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // reviewed authz surface.
       expect(scopes.map((s) => s.key)).toEqual([
         // Settings-D3 reconciliation — full scope catalog (incl. 3 platform:*): 82 scopes
-        // (verbatim testcontainer truth; +tenant:admin:profile; reconciles to roleScope.count=447).
+        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites; reconciles to roleScope.count=449).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -276,6 +276,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'team:manage',
         'tenant:admin:profile',
         'tenant:admin:settings',
+        'tenant:admin:sites',
         'tenant:admin:user-manage',
       ]);
 
@@ -342,7 +343,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   445 → 447 = +2 Settings-D3 (tenant:admin:profile × tenant_admin +
       //   tenant_owner; PROFILE_ADMIN_SEED_BUNDLES @ 0x920). Verified against
       //   the testcontainer: ONLY those two roles gained the dedicated scope.
-      expect(roleScopes).toBe(447);
+      //   447 → 449 = +2 Settings-D4 (tenant:admin:sites × tenant_admin +
+      //   tenant_owner; SITES_ADMIN_SEED_BUNDLES @ 0x930). Verified against the
+      //   testcontainer: ONLY those two roles gained the dedicated scope.
+      expect(roleScopes).toBe(449);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -433,10 +437,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // platform scope CATALOG grew past 64 without this assertion being
       // updated — Search +3, Task +2, Company-Fields +1, Job-Module +2,
       // Req-Gating +3, Settings-D1 +2 (import:read + export:read),
-      // Settings-D2 +1 (audit:read), then Settings-D3 +1 (tenant:admin:profile)
-      // = 79. (Distinct from SEED_SCOPE_KEYS=82, which counts the 3 platform:*
-      // scopes this query excludes.)
-      expect(tenantScopes.length).toBe(79);
+      // Settings-D2 +1 (audit:read), Settings-D3 +1 (tenant:admin:profile),
+      // then Settings-D4 +1 (tenant:admin:sites) = 80. (Distinct from
+      // SEED_SCOPE_KEYS=83, which counts the 3 platform:* scopes this query
+      // excludes.)
+      expect(tenantScopes.length).toBe(80);
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -639,7 +644,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // AUTHZ-D4a: tenant_admin gains the 4 team-model scopes. 43 + 4 = 47.
       expect(sorted).toEqual([
         // Settings-D3 reconciliation — tenant_admin resolved scope set: 74 scopes
-        // (verbatim testcontainer truth; +tenant:admin:profile; reconciles to roleScope.count=447).
+        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites; reconciles to roleScope.count=449).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -713,6 +718,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'team:manage',
         'tenant:admin:profile',
         'tenant:admin:settings',
+        'tenant:admin:sites',
         'tenant:admin:user-manage',
       ]);
     });
@@ -865,7 +871,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect([...adminScopes].sort()).toEqual([
         // Settings-D3 reconciliation — tenant_admin scope set: 74 scopes
-        // (verbatim testcontainer truth; +tenant:admin:profile; reconciles to roleScope.count=447).
+        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites; reconciles to roleScope.count=449).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -939,6 +945,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'team:manage',
         'tenant:admin:profile',
         'tenant:admin:settings',
+        'tenant:admin:sites',
         'tenant:admin:user-manage',
       ]);
 
@@ -1014,6 +1021,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:assign',
         'tenant:admin:user-manage',
         'tenant:admin:settings',
+        'tenant:admin:sites',
         // AUTHZ-D4a — recruiter has NO team-model mechanism scopes
         // and NO see-all (company:read:all stays TA+TO).
         'company:assign',
@@ -1079,7 +1087,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Owner = Admin scope set incl. the AUTHZ-D4a top-tier additions.
       await expectRoleScopes('tenant_owner', [
         // Settings-D3 reconciliation — tenant_owner = tenant_admin set: 74 scopes
-        // (verbatim testcontainer truth; +tenant:admin:profile; reconciles to roleScope.count=447).
+        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites; reconciles to roleScope.count=449).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -1153,6 +1161,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'team:manage',
         'tenant:admin:profile',
         'tenant:admin:settings',
+        'tenant:admin:sites',
         'tenant:admin:user-manage',
       ]);
 
@@ -1718,6 +1727,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Settings S3a: +1 tenant_user.disabled (18 -> 19).
       // Settings S3b: +2 tenant_user.role_assigned + tenant_user.role_removed (19 -> 21).
       // Settings D3: +1 tenant_profile.updated (21 -> 22).
+      // Settings D4: +3 site.created + site.deactivated + site.updated (22 -> 25).
       expect([...TENANT_SCOPED_EVENT_TYPES].sort()).toEqual([
         'identity.invitation.accepted',
         'identity.invitation.created',
@@ -1728,6 +1738,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.session.refreshed',
         'identity.session.reuse_detected',
         'identity.session.revoked',
+        'identity.site.created',
+        'identity.site.deactivated',
+        'identity.site.updated',
         'identity.team.client_ownership.added',
         'identity.team.client_ownership.removed',
         'identity.team.created',

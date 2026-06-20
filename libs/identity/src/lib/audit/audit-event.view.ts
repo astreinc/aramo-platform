@@ -57,7 +57,9 @@ export function categoryOf(eventType: EventType): AuditCategory {
   if (
     eventType.startsWith('identity.team.') ||
     eventType.startsWith('identity.management_edge.') ||
-    eventType.startsWith('identity.user_client_assignment.')
+    eventType.startsWith('identity.user_client_assignment.') ||
+    // Settings Rebuild D4 — sites/branches are org STRUCTURE.
+    eventType.startsWith('identity.site.')
   ) {
     return 'org';
   }
@@ -171,6 +173,16 @@ export function summarizeDetail(
       return 'Assigned a user to a client';
     case 'identity.user_client_assignment.removed':
       return 'Unassigned a user from a client';
+    case 'identity.site.created':
+      return 'Created a branch (site)';
+    case 'identity.site.updated': {
+      const fields = renderStringList(payload['changed_fields']);
+      return fields === null
+        ? 'Updated a branch (site)'
+        : `Updated a branch (site): ${fields}`;
+    }
+    case 'identity.site.deactivated':
+      return 'Deactivated a branch (site)';
     default:
       // Exhaustive over EVENT_TYPES; a future type lands here until summarized.
       return humanizeEventType(eventType);

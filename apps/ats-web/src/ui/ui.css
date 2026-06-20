@@ -104,6 +104,22 @@
 .rc-link-action:hover {
   text-decoration: underline;
 }
+/* Inline action buttons rendered as links (Settings D4 sites row actions). */
+button.rc-link-action {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.rc-link-danger {
+  color: var(--danger, #b42318);
+}
+.rc-row-actions {
+  display: inline-flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: flex-end;
+}
 
 /* ─────────────── Submittal gate (2G) ─────────────── */
 

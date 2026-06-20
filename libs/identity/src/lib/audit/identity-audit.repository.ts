@@ -91,6 +91,15 @@ export const EVENT_TYPES = [
   // CHANGED FIELD NAMES only (not values — a profile value like tax_id stays
   // out of the audit detail). The audit READ surface (Directive 2) now reads it.
   'identity.tenant_profile.updated',
+  // Settings Rebuild D4 — sites/branches CRUD. Emitted by the SitesController
+  // after a create / a PATCH that actually changes ≥1 field / a deactivate
+  // that actually flips is_active (no-op-no-audit, the S2/S3a precedent).
+  // Tenant-scoped; subject_id is the site_id; payload carries the CHANGED
+  // FIELD NAMES (and the site's own name/parent ids), never sensitive values.
+  // The audit READ surface (Directive 2) now reads them.
+  'identity.site.created',
+  'identity.site.updated',
+  'identity.site.deactivated',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -135,6 +144,10 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.tenant_user.role_removed',
   // Settings Rebuild D3 — tenant-profile update carries the writing tenant's id.
   'identity.tenant_profile.updated',
+  // Settings Rebuild D4 — sites/branches CRUD all carry the writing tenant's id.
+  'identity.site.created',
+  'identity.site.updated',
+  'identity.site.deactivated',
 ]);
 
 export interface WriteAuditEventInput {
