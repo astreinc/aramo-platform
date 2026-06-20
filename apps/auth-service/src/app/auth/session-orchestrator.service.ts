@@ -10,7 +10,10 @@ import {
 import { RefreshTokenService } from '@aramo/auth-storage';
 
 import type { TenantSelectionTenantDto } from './dto/tenant-selection-error.dto.js';
-import { CognitoVerifierService } from './cognito-verifier.service.js';
+import {
+  CognitoVerifierService,
+  CognitoVerificationError,
+} from './cognito-verifier.service.js';
 import { JwtIssuerService } from './jwt-issuer.service.js';
 import { PkceService } from './pkce.service.js';
 
@@ -53,6 +56,16 @@ export type CallbackResult =
   | {
       kind: 'tenant_selection_required';
       tenants: TenantSelectionTenantDto[];
+    }
+  // §5 Auth-Hardening D2 P4: user/config-class failures (a rejected IdP
+  // token, an identity that is not provisioned, no active membership) — the
+  // controller maps these to a clean 4xx with details.reason so the first
+  // login is debuggable, NOT a blank 500. Distinct from internal_error,
+  // which stays reserved for genuine server/infra faults (token-exchange,
+  // refresh-token persist, JWT sign, JWKS/network verification failures).
+  | {
+      kind: 'auth_error';
+      reason: string;
     }
   | {
       kind: 'internal_error';
@@ -123,20 +136,63 @@ export class SessionOrchestratorService {
       cognito = await this.cognito.verify(idToken);
     } catch (err) {
       this.logger.warn(`cognito verification failed: ${(err as Error).message}`);
+      // P4: a token-content rejection (email_not_verified, missing claim,
+      // wrong token_use) is a 4xx auth_error; signature / JWKS / network /
+      // iss / aud / exp failures (plain Errors from jose) stay 500.
+      if (err instanceof CognitoVerificationError) {
+        return { kind: 'auth_error', reason: err.reason };
+      }
       return { kind: 'internal_error', reason: 'cognito_verification_failed' };
     }
 
-    const user = await this.identity.resolveUser({
+    // §5 D2: resolve by federated sub; on miss, reconcile-by-verified-email.
+    let user = await this.identity.resolveUser({
       provider: 'cognito',
       provider_subject: cognito.sub,
     });
     if (user === null) {
-      return { kind: 'internal_error', reason: 'user_not_provisioned' };
+      // The federated newcomer / sub-mismatch case. Reconcile by the IdP-
+      // VERIFIED email (cognito.verify already enforced email_verified, fail-
+      // closed) — normalized-exact (lowercase + trim) — to an EXISTING
+      // identity, then LINK the federated sub so a second login resolves by
+      // sub via the normal path. NO open JIT: a non-matching email returns a
+      // clean 403 (P4) and creates nothing.
+      //
+      // SAFETY (§5 D2 §B — the account-takeover guard): linkExternalIdentity
+      // delegates to the repository NO-OP (update: {}), which REFUSES to
+      // re-point an already-linked sub. This call is reached ONLY on a
+      // resolveUser-by-sub MISS, so the (cognito, sub) row is absent and only
+      // the upsert's create branch runs — the link is created, never moved.
+      const normalizedEmail = cognito.email.trim().toLowerCase();
+      const existing = await this.identity.findUserByEmail(normalizedEmail);
+      if (existing === null) {
+        return { kind: 'auth_error', reason: 'user_not_provisioned' };
+      }
+      await this.identity.linkExternalIdentity({
+        user_id: existing.id,
+        provider: 'cognito',
+        provider_subject: cognito.sub,
+        email_snapshot: cognito.email,
+      });
+      // Canonical audit event for sub-linking (global; best-effort — the
+      // wrapper swallows failures). actor = the self-authenticating user.
+      await this.audit.writeGlobalEvent({
+        event_type: 'identity.external_identity.linked',
+        actor_type: 'user',
+        actor_id: existing.id,
+        subject_id: existing.id,
+        payload: {
+          provider: 'cognito',
+          provider_subject: cognito.sub,
+          reason: 'reconcile_by_verified_email',
+        },
+      });
+      user = existing;
     }
 
     const tenants = await this.tenant.getTenantsByUser({ user_id: user.id });
     if (tenants.length === 0) {
-      return { kind: 'internal_error', reason: 'no_active_tenant' };
+      return { kind: 'auth_error', reason: 'no_active_tenant' };
     }
     if (tenants.length > 1) {
       return {

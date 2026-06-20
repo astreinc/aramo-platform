@@ -3,6 +3,7 @@ import { AramoError } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { IdentityAuditService } from './audit/identity-audit.service.js';
+import type { ExternalIdentityDto } from './dto/external-identity.dto.js';
 import type { MembershipDto } from './dto/membership.dto.js';
 import type { UserDto } from './dto/user.dto.js';
 import { IdentityRepository, type TenantUserView } from './identity.repository.js';
@@ -50,6 +51,26 @@ export class IdentityService {
 
   async findUserByEmail(email: string): Promise<UserDto | null> {
     return this.identityRepo.findUserByEmail(email);
+  }
+
+  // §5 Auth-Hardening D2 — the reconcile-by-verified-email spine's link step.
+  // Links a federated sub to an EXISTING User (resolved by verified email).
+  // Delegates to the repository's NO-OP linkExternalIdentity: an idempotent
+  // upsert on the (provider, provider_subject) unique key whose `update: {}`
+  // REFUSES to re-point an already-linked sub (link-if-absent only). Creates
+  // no User and no membership — the User must already exist (the caller
+  // matched it by verified email; open JIT / tenant auto-create is NOT here).
+  // The reconcile fires only on a resolveUser-by-sub MISS, so the (provider,
+  // sub) row is absent and only the upsert's create branch is reached — the
+  // no-op is therefore byte-equivalent on this path AND forecloses account-
+  // takeover by re-point (§5 D2 §B; the recon's load-bearing instruction).
+  async linkExternalIdentity(args: {
+    user_id: string;
+    provider: string;
+    provider_subject: string;
+    email_snapshot: string | null;
+  }): Promise<ExternalIdentityDto> {
+    return this.identityRepo.linkExternalIdentity(args);
   }
 
   async findUserById(user_id: string): Promise<UserDto | null> {
