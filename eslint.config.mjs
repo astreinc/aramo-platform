@@ -183,6 +183,12 @@ export default [
       // entity name. Mirrored in scripts/verify-vocabulary.sh.
       'libs/identity/src/lib/dto/scope.dto.ts',
       'libs/identity/prisma/seed.ts',
+      // §5 Auth-Hardening D1 — recruiter-context integration spec asserts the
+      // recruiter scope BUNDLE, which carries the canonical `engagement:outreach`
+      // scope key (same canonical scope-naming rationale as the identity
+      // scope-catalog entries above; not misuse of `outreach` as an entity
+      // name). Mirrored in scripts/verify-vocabulary.sh.
+      'apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts',
       'libs/engagement/src/index.ts',
       'libs/engagement/src/lib/dto/outreach-send-request.dto.ts',
       'libs/engagement/src/lib/dto/outreach-send-response.dto.ts',
