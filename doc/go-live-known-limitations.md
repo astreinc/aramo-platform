@@ -425,3 +425,33 @@ not a client filter). The following are deliberate gaps.
   has no SSO session to terminate end-to-end). Not faked.
 - **Close criteria:** verify the literal re-entry-blocked behavior in staging
   against the real Cognito pool.
+
+### Recruiter assignable roster: task picker LIVE; 5 pickers + name-resolver deferred (D4)
+- **Date:** 2026-06-20 · **Branch:** `feat/auth-hardening-d4-assignable-users`
+- **Present:** `GET /v1/tenant/assignable-users` (recruiter-scoped
+  `tenant:user:read:assignable`, the 9 work-assigning roles) — a MINIMAL
+  `{user_id, display_name}` roster, active-only, tenant-scoped (cross-tenant
+  impossible), R10-alphabetical. Param-gated: no `company_id` → broad active
+  roster; `company_id=X` → active + mapped-to-client-X (`company.UserClientAssignment`)
+  + req-carrying role (`recruiter`/`lead_recruiter`), for the requisition picker.
+  The **task assignee picker is wired end-to-end** (the most common recruiter
+  gap — assigning tasks — is closed; the admin-gated 403-fallback removed).
+- **NOT wired yet (deferred, Lead-sequenced):** the 5 assignment/org/team
+  pickers — Company/Requisition assignments, AddEdgeDialog, CreateTeamDialog,
+  TeamMembersView. They DUAL-USE the roster (picker Combobox + assigned-user
+  NAME display), so wiring them before the name-resolver source exists would
+  build them twice (interim-degraded, then final). Held for ONE clean pass after
+  the name-resolver slice. Until then those pickers keep the existing admin-
+  endpoint probe (a recruiter gets the graceful raw-UUID fallback there — the
+  documented interim).
+- **NOT built (Lead-scoped slice):** the recruiter-readable ALL-USERS (incl.
+  **inactive/departed**) `user_id→display_name` lookup. The 7 list/detail
+  name-resolvers + assignment assigned-name display need departed users to still
+  render; that cannot ride the active-only assignable endpoint. Proposed:
+  `GET /v1/tenant/users/directory` (minimal name-only over all tenant users incl.
+  inactive, recruiter read scope). Until it ships, recruiter name-resolution in
+  those list-views is a silent no-op (shows the id / no name).
+- **Risk:** low — the named recruiter gap (task assignment) is closed; the
+  remainder are disclosed interim affordances, not unenforced guardrails.
+- **Close criteria:** author the name-resolver slice, then repoint the 7 list-
+  views + the 5 pickers (Combobox → assignable, name → directory) in one pass.
