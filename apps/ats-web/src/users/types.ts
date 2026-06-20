@@ -1,19 +1,13 @@
 // Settings S5b — hand-mirrored types for the tenant user-management surface.
 //
-// Mirror sources (NO @aramo/* import — apps/tenant-console stays a leaf
-// consumer of the HTTP surface; the FE-isolation rule from S5a):
+// Mirror source (NO @aramo/* import — ats-web stays a leaf consumer of the HTTP
+// surface; the FE-isolation rule from S5a):
 //   - TenantUserView: libs/identity/src/lib/identity.repository.ts
-//   - TENANT_ASSIGNABLE_ROLES: libs/identity/prisma/seed.ts
 //
-// Ruling 2 (Gate-5): hand-mirror + a smoke spec is the chosen posture —
-// types.spec.ts enumerates the 13 expected keys so a catalog change
-// fails a test, not silently diverges. A GET-roles-catalog backend
-// endpoint is a possible future follow-up if churn picks up; not now.
-//
-// Ruling 5 (Gate-5): `candidate` IS included. The picker mirrors the
-// catalog. If candidate-in-staff-mgmt looks wrong, that surfaces a
-// catalog-placement question — the FE does not silently filter the
-// catalog.
+// Settings Rebuild D5 CLOSED the role-catalog hand-mirror drift: the role DATA
+// (keys, descriptions, scope bundles) is no longer mirrored here — it is fetched
+// from GET /v1/tenant/roles-catalog (the seed/DB is the single source). Only the
+// TenantRoleCatalogEntry SHAPE remains, populated by users-api.fetchPickerRoles.
 
 // ─── TenantUserView (S5-BE1 + S3a/S3b) ───────────────────────────────
 //
@@ -36,21 +30,18 @@ export interface TenantUserListView {
   readonly items: readonly TenantUserView[];
 }
 
-// ─── The tenant-tier assignable role catalog (the picker's source) ────
+// ─── The tenant-tier assignable role entry (the picker's row shape) ───
 //
-// The 13 keys mirror libs/identity/prisma/seed.ts. `super_admin` is
-// platform-only and intentionally excluded; every other catalog role is
-// assignable from this surface.
+// Settings Rebuild D5: the catalog DATA now comes from the backend
+// roles-catalog GET (the seed/DB is the single source); this interface is
+// just the shape the RolePicker renders, populated by fetchRolesCatalog.
+// `super_admin` (platform) is excluded server-side.
 //
-// Each entry's `label` is the operator-facing role name (R10 vocab);
-// `description` is the one-liner shown under the label in the picker.
-// `helper` is a per-role note surfaced WHEN the role is selectable but
-// has a precondition (Settings S4 gate for auditor_with_financials).
-//
-// `requiresSetting` ties the role to a settings-key precondition. The
-// picker reads that setting to enable/disable the option proactively
-// (ruling 4: try-read + graceful 403 fallback). The BE rejection is the
-// source of truth; this is a courtesy.
+// `label` is the operator-facing role name (R10 vocab); `description` is the
+// one-liner under the label; `helper` is a per-role note. `requiresSetting`
+// ties the role to a settings-key precondition (Settings S4 gate for
+// auditor_with_financials) — the picker proactively disables the option
+// (ruling 4: try-read + graceful 403 fallback); the BE rejection is the floor.
 
 export interface TenantRoleCatalogEntry {
   readonly key: string;
@@ -66,94 +57,10 @@ export interface TenantRoleCatalogEntry {
   };
 }
 
-export const TENANT_ASSIGNABLE_ROLES: readonly TenantRoleCatalogEntry[] =
-  Object.freeze([
-    {
-      key: 'tenant_owner',
-      label: 'Tenant Owner',
-      description: 'Full tenant authority; see-all compensation.',
-    },
-    {
-      key: 'tenant_admin',
-      label: 'Tenant Admin',
-      description: 'Tenant administration; see-all compensation.',
-    },
-    {
-      key: 'delivery_manager',
-      label: 'Delivery Manager',
-      description: 'Manages delivery teams and assignments.',
-    },
-    {
-      key: 'account_manager',
-      label: 'Account Manager',
-      description: 'Owns client accounts; sees bill markup.',
-    },
-    {
-      key: 'recruiting_manager',
-      label: 'Recruiting Manager',
-      description: 'Leads a recruiting team.',
-    },
-    {
-      key: 'lead_recruiter',
-      label: 'Lead Recruiter',
-      description: 'Senior recruiter responsibilities.',
-    },
-    {
-      key: 'sourcer',
-      label: 'Sourcer',
-      description: 'Sources candidates; no compensation visibility.',
-    },
-    {
-      key: 'recruiter',
-      label: 'Recruiter',
-      description: 'Standard recruiter; sees rate spread.',
-    },
-    {
-      key: 'finance',
-      label: 'Finance',
-      description: 'Sees bill markup; not pay rates.',
-    },
-    {
-      key: 'auditor',
-      label: 'Auditor',
-      description: 'Read-only audit access; no compensation visibility.',
-    },
-    {
-      key: 'back_office',
-      label: 'Back Office',
-      description: 'Operations and back-office tasks.',
-    },
-    {
-      key: 'candidate',
-      label: 'Candidate',
-      description: 'Portal-side persona; included per catalog (ruling 5).',
-    },
-    {
-      key: 'auditor_with_financials',
-      label: 'Auditor with Financials',
-      description: 'Audit access including see-all compensation.',
-      helper:
-        'Requires "Financial-auditor grant" enabled in Settings.',
-      requiresSetting: {
-        key: 'audit.financials_enabled',
-        disabledMessage:
-          'Enable "Financial-auditor grant" in Settings before assigning this role.',
-      },
-    },
-  ]);
-
-export const TENANT_ASSIGNABLE_ROLE_KEYS: readonly string[] = Object.freeze(
-  TENANT_ASSIGNABLE_ROLES.map((r) => r.key),
-);
-
-// Lookup helper — undefined for an unknown key (e.g. a future catalog
-// addition the mirror does not yet know about). The smoke spec keeps
-// this set in sync with the seed.
-export function findRoleEntry(
-  key: string,
-): TenantRoleCatalogEntry | undefined {
-  return TENANT_ASSIGNABLE_ROLES.find((r) => r.key === key);
-}
+// The catalog DATA is no longer hand-mirrored here (Settings Rebuild D5 closed
+// the drift): it is fetched from GET /v1/tenant/roles-catalog (the seed/DB is
+// the single source) and mapped to TenantRoleCatalogEntry[] in users-api
+// (fetchRolesCatalog). The RolePicker takes the roles as a prop.
 
 // ─── API payload shapes ──────────────────────────────────────────────
 

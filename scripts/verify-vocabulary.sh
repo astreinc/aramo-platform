@@ -334,17 +334,20 @@ TIER2_EXCLUDES=(
   # principal), NOT entity vocabulary. Same file-scoped exclusion pattern
   # as the four sibling libs/identity entries above.
   "libs/identity/src/tests/d5-non-invertibility.spec.ts"
-  # Settings S5b Ruling 5 (Gate-5): the tenant-console user-management
-  # picker mirrors the role catalog (PL-94 §2 ruling 5 — "include candidate;
-  # the picker mirrors the catalog"). `candidate` here is the JWT role-name
+  # Settings Rebuild D5 (Gate-5): the roles-catalog GET + the read-only matrix +
+  # the RolePicker (now catalog-backed). `candidate` here is the JWT role-name
   # (the PR-A1a Ruling B portal-user principal role identifier), NOT entity
-  # vocabulary for the talent record. The mirror lives in the FE because
-  # the GET roles-catalog endpoint is a deferred follow-up (PL-94 §2 ruling
-  # 2 — hand-mirror + smoke spec). Same file-scoped exclusion pattern as
-  # the five sibling libs/identity entries above. Paired with the matching
-  # eslint.config.mjs TIER2_EXCLUDES entries.
-  "apps/ats-web/src/users/types.ts"
-  "apps/ats-web/src/users/types.spec.ts"
+  # vocabulary for the talent record. D5 CLOSED the FE hand-mirror — the role
+  # DATA now comes from the backend (the seed/DB single source); these files
+  # carry the role-key in the catalog metadata, the test fixtures and the
+  # endpoint proof. (The old S5b hand-mirror entries — users/types.ts,
+  # users/types.spec.ts, users/RolePicker.spec.tsx — no longer hold the token.)
+  # Same file-scoped exclusion pattern as the sibling libs/identity entries
+  # above. Paired with the matching eslint.config.mjs TIER2_EXCLUDES entries.
+  "libs/identity/src/lib/role-catalog/role-catalog.view.ts"
+  "libs/identity/src/tests/role-catalog.spec.ts"
+  "apps/api/src/tests/settings-d5-roles-catalog.integration.spec.ts"
+  "apps/ats-web/src/users/roles.fixture.ts"
   "apps/ats-web/src/users/RolePicker.spec.tsx"
   # PR-A4 Gate 5: ATS Batch 3 R10-enforcement integration spec. Per the
   # M0R-2 Amendment v1.1 §4.5 / PR-A2 R10-spec precedent: refusal-

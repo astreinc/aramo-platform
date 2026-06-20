@@ -2,12 +2,13 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { RolePicker } from './RolePicker';
-import { TENANT_ASSIGNABLE_ROLES } from './types';
+import { ROLE_FIXTURE } from './roles.fixture';
 
 describe('RolePicker — the shared multi-select', () => {
   it('renders all 13 catalog roles', () => {
     const { container } = render(
       <RolePicker
+        roles={ROLE_FIXTURE}
         selectedKeys={new Set()}
         onToggle={() => undefined}
         financialsToggle={{ state: 'unknown' }}
@@ -15,7 +16,7 @@ describe('RolePicker — the shared multi-select', () => {
     );
     // Use the data-role-key attribute for unambiguous lookup — role
     // labels overlap (Recruiter / Lead Recruiter / Recruiting Manager).
-    for (const entry of TENANT_ASSIGNABLE_ROLES) {
+    for (const entry of ROLE_FIXTURE) {
       expect(
         container.querySelector(`[data-role-key="${entry.key}"]`),
       ).not.toBeNull();
@@ -25,6 +26,7 @@ describe('RolePicker — the shared multi-select', () => {
   it('reflects the selectedKeys set as checked checkboxes', () => {
     render(
       <RolePicker
+        roles={ROLE_FIXTURE}
         selectedKeys={new Set(['recruiter', 'finance'])}
         onToggle={() => undefined}
         financialsToggle={{ state: 'unknown' }}
@@ -42,6 +44,7 @@ describe('RolePicker — the shared multi-select', () => {
     const onToggle = vi.fn();
     render(
       <RolePicker
+        roles={ROLE_FIXTURE}
         selectedKeys={new Set()}
         onToggle={onToggle}
         financialsToggle={{ state: 'unknown' }}
@@ -54,6 +57,7 @@ describe('RolePicker — the shared multi-select', () => {
   it('S4 — proactively disables auditor_with_financials when toggle is known-off', () => {
     render(
       <RolePicker
+        roles={ROLE_FIXTURE}
         selectedKeys={new Set()}
         onToggle={() => undefined}
         financialsToggle={{ state: 'known', enabled: false }}
@@ -72,6 +76,7 @@ describe('RolePicker — the shared multi-select', () => {
   it('S4 — leaves auditor_with_financials ENABLED when toggle is known-on', () => {
     render(
       <RolePicker
+        roles={ROLE_FIXTURE}
         selectedKeys={new Set()}
         onToggle={() => undefined}
         financialsToggle={{ state: 'known', enabled: true }}
@@ -89,6 +94,7 @@ describe('RolePicker — the shared multi-select', () => {
     // floor. The picker MUST NOT block the option in this case.
     render(
       <RolePicker
+        roles={ROLE_FIXTURE}
         selectedKeys={new Set()}
         onToggle={() => undefined}
         financialsToggle={{ state: 'unknown' }}
@@ -103,6 +109,7 @@ describe('RolePicker — the shared multi-select', () => {
   it('disables every option when the global disabled prop is true', () => {
     render(
       <RolePicker
+        roles={ROLE_FIXTURE}
         selectedKeys={new Set()}
         onToggle={() => undefined}
         disabled
@@ -116,6 +123,7 @@ describe('RolePicker — the shared multi-select', () => {
   it('candidate IS in the picker (ruling 5 — mirrors the catalog)', () => {
     render(
       <RolePicker
+        roles={ROLE_FIXTURE}
         selectedKeys={new Set()}
         onToggle={() => undefined}
         financialsToggle={{ state: 'unknown' }}

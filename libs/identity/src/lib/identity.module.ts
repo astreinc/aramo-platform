@@ -23,6 +23,9 @@ import { TenantService } from './tenant.service.js';
 // Settings Rebuild Directive 3 — tenant profile read/write.
 import { TenantProfileController } from './tenant-profile/tenant-profile.controller.js';
 import { TenantProfileService } from './tenant-profile/tenant-profile.service.js';
+// Settings Rebuild Directive 5 — roles-catalog read (closes the FE hand-mirror).
+import { RoleCatalogController } from './role-catalog/role-catalog.controller.js';
+import { RoleCatalogService } from './role-catalog/role-catalog.service.js';
 // Settings Rebuild Directive 4 — sites/branches CRUD + hierarchy.
 import { SitesController } from './sites/sites.controller.js';
 import { SitesService } from './sites/sites.service.js';
@@ -82,6 +85,10 @@ import {
     // /v1/tenant/sites, tenant:admin:sites). Reads/writes the Site model
     // owned by this lib.
     SitesController,
+    // Settings Rebuild Directive 5 — roles-catalog read (GET
+    // /v1/tenant/roles-catalog, reuses tenant:admin:user-manage). Closes the
+    // FE hand-mirror drift; the seed/DB is the single source.
+    RoleCatalogController,
     // Settings S3a — tenant-tier user lifecycle endpoints (invite +
     // disable). Lives here (parallel to D4aController) per the Settings
     // charter §4.2 "user-management home = libs/identity"; the Cognito
@@ -98,6 +105,7 @@ import {
     IdentityAuditService,
     AuditQueryService,
     TenantProfileService,
+    RoleCatalogService,
     SitesService,
     SiteRepository,
     IdentityService,

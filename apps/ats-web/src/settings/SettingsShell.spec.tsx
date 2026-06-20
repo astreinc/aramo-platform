@@ -16,7 +16,6 @@ import {
   IntegrationsSection,
   LocalizationSection,
   PortalSection,
-  RolesSection,
   SecuritySection,
 } from './sections/SeamSections';
 
@@ -67,7 +66,6 @@ function renderAt(path: string, session: Session) {
                     />
                     <Route path="settings/branches" element={<BranchesSection />} />
                     <Route path="settings/localization" element={<LocalizationSection />} />
-                    <Route path="settings/roles" element={<RolesSection />} />
                     <Route path="settings/security" element={<SecuritySection />} />
                     <Route path="settings/portal" element={<PortalSection />} />
                     <Route path="settings/apply" element={<ApplySection />} />
@@ -143,7 +141,6 @@ describe('Honest seams — no dead knobs', () => {
   it('every seam section is clearly marked coming-soon / on the roadmap', () => {
     const cases: [string, () => void][] = [
       ['settings/localization', () => undefined],
-      ['settings/roles', () => undefined],
       ['settings/security', () => undefined],
       ['settings/email', () => undefined],
       ['settings/fields', () => undefined],

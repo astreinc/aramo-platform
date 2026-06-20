@@ -4,6 +4,7 @@ import { ApiError } from '@aramo/fe-foundation';
 import { ToastProvider } from '@aramo/fe-foundation';
 
 import { InviteDialog } from './InviteDialog';
+import { ROLE_FIXTURE } from './roles.fixture';
 
 function renderDialog(opts?: {
   inviteFn?: typeof import('./users-api').inviteTenantUser;
@@ -25,6 +26,7 @@ function renderDialog(opts?: {
         onOpenChange={() => undefined}
         onInvited={onInvited}
         financialsToggle={financialsToggle}
+        roles={ROLE_FIXTURE}
         inviteFn={inviteFn}
       />
     </ToastProvider>,

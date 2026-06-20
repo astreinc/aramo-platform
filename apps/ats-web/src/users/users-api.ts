@@ -9,18 +9,42 @@
 
 import { ApiError, apiClient } from '@aramo/fe-foundation';
 
+import { fetchRolesCatalog } from '../settings/roles/roles-catalog-api';
+
 import type {
   AssignRolesRequest,
   AssignRolesResponse,
   DisableResponse,
   InviteRequest,
   InviteResponse,
+  TenantRoleCatalogEntry,
   TenantUserListView,
   TenantUserView,
 } from './types';
 
 export const USERS_PATH = '/v1/tenant/users';
 export const SETTINGS_PATH = '/v1/tenant/settings';
+
+// Settings Rebuild D5 — the RolePicker's role list, sourced from the backend
+// roles-catalog (closes the hand-mirror drift). Maps the catalog view to the
+// picker's row shape.
+export async function fetchPickerRoles(): Promise<readonly TenantRoleCatalogEntry[]> {
+  const roles = await fetchRolesCatalog();
+  return roles.map((r) => ({
+    key: r.key,
+    label: r.display,
+    description: r.description,
+    ...(r.requires_setting
+      ? {
+          helper: r.requires_setting.disabled_message,
+          requiresSetting: {
+            key: r.requires_setting.setting_key,
+            disabledMessage: r.requires_setting.disabled_message,
+          },
+        }
+      : {}),
+  }));
+}
 
 // GET /v1/tenant/users — the roster.
 export async function fetchTenantUsers(): Promise<TenantUserListView> {

@@ -104,13 +104,13 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
         status: 'live',
       },
       {
+        // Settings Rebuild D5 — Roles & permissions is now LIVE (read-only matrix).
         key: 'roles',
         label: 'Roles & permissions',
         icon: <IconShieldCheck />,
         to: '/admin/settings/roles',
         match: '/admin/settings/roles',
-        status: 'soon',
-        badge: SOON,
+        status: 'live',
       },
       {
         key: 'security',

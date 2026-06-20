@@ -14,8 +14,9 @@ import {
 import { DisableConfirmDialog } from './DisableConfirmDialog';
 import { InviteDialog } from './InviteDialog';
 import { RoleAssignEditor } from './RoleAssignEditor';
-import { findRoleEntry, type TenantUserView } from './types';
+import type { TenantRoleCatalogEntry, TenantUserView } from './types';
 import {
+  fetchPickerRoles,
   fetchTenantUsers,
   probeFinancialsToggle,
   type FinancialsToggleState,
@@ -32,6 +33,9 @@ import {
 interface Props {
   fetchUsersFn?: () => Promise<{ items: readonly TenantUserView[] }>;
   probeFinancialsFn?: () => Promise<FinancialsToggleState>;
+  // Settings Rebuild D5 — the roles catalog (drives the RolePicker + the role
+  // labels in the roster). Sourced from GET /v1/tenant/roles-catalog.
+  rolesFn?: () => Promise<readonly TenantRoleCatalogEntry[]>;
 }
 
 type LoadState =
@@ -49,26 +53,38 @@ function StatusBadge({ user }: { user: TenantUserView }) {
   );
 }
 
-function RoleChips({ role_keys }: { role_keys: readonly string[] }) {
+function RoleChips({
+  role_keys,
+  labelOf,
+}: {
+  role_keys: readonly string[];
+  labelOf: (key: string) => string;
+}) {
   if (role_keys.length === 0) {
     return <span className="rc-muted-line">—</span>;
   }
   return (
     <span className="rc-tags">
       {role_keys.map((key) => (
-        <Tag key={key}>{findRoleEntry(key)?.label ?? key}</Tag>
+        <Tag key={key}>{labelOf(key)}</Tag>
       ))}
     </span>
   );
 }
 
-export function UsersListView({ fetchUsersFn, probeFinancialsFn }: Props = {}) {
+export function UsersListView({
+  fetchUsersFn,
+  probeFinancialsFn,
+  rolesFn,
+}: Props = {}) {
   const fetchUsers = fetchUsersFn ?? fetchTenantUsers;
   const probe = probeFinancialsFn ?? probeFinancialsToggle;
+  const loadRoles = rolesFn ?? fetchPickerRoles;
 
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [financialsToggle, setFinancialsToggle] =
     useState<FinancialsToggleState>({ state: 'unknown' });
+  const [roles, setRoles] = useState<readonly TenantRoleCatalogEntry[]>([]);
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [disableTarget, setDisableTarget] = useState<TenantUserView | null>(
@@ -109,10 +125,20 @@ export function UsersListView({ fetchUsersFn, probeFinancialsFn }: Props = {}) {
         if (cancelled) return;
         setFinancialsToggle({ state: 'unknown' });
       });
+    loadRoles()
+      .then((next) => {
+        if (!cancelled) setRoles(next);
+      })
+      .catch(() => {
+        if (!cancelled) setRoles([]);
+      });
     return () => {
       cancelled = true;
     };
-  }, [fetchUsers, probe]);
+  }, [fetchUsers, probe, loadRoles]);
+
+  const roleLabelOf = (key: string): string =>
+    roles.find((r) => r.key === key)?.label ?? key;
 
   const columns: ReadonlyArray<TableColumn<TenantUserView>> = [
     {
@@ -134,7 +160,7 @@ export function UsersListView({ fetchUsersFn, probeFinancialsFn }: Props = {}) {
     {
       key: 'roles',
       header: 'Roles',
-      render: (u) => <RoleChips role_keys={u.role_keys} />,
+      render: (u) => <RoleChips role_keys={u.role_keys} labelOf={roleLabelOf} />,
     },
     {
       key: 'actions',
@@ -203,6 +229,7 @@ export function UsersListView({ fetchUsersFn, probeFinancialsFn }: Props = {}) {
         onOpenChange={setInviteOpen}
         onInvited={() => refresh()}
         financialsToggle={financialsToggle}
+        roles={roles}
       />
       <DisableConfirmDialog
         user={disableTarget}
@@ -218,6 +245,7 @@ export function UsersListView({ fetchUsersFn, probeFinancialsFn }: Props = {}) {
         }}
         onSaved={() => refresh()}
         financialsToggle={financialsToggle}
+        roles={roles}
       />
     </section>
   );

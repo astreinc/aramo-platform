@@ -10,10 +10,10 @@ import {
   messageForRoleAssignError,
   type ErrorMessage,
 } from './error-messages';
-import {
-  findRoleEntry,
-  type AssignRolesResponse,
-  type TenantUserView,
+import type {
+  AssignRolesResponse,
+  TenantRoleCatalogEntry,
+  TenantUserView,
 } from './types';
 import {
   assignTenantUserRoles,
@@ -54,6 +54,8 @@ interface RoleAssignEditorProps {
   onOpenChange: (open: boolean) => void;
   onSaved: (result: AssignRolesResponse) => void;
   financialsToggle: FinancialsToggleState;
+  // Settings Rebuild D5 — the assignable roles (from the roles-catalog GET).
+  roles: readonly TenantRoleCatalogEntry[];
   // Test seam.
   assignFn?: typeof assignTenantUserRoles;
 }
@@ -67,19 +69,18 @@ function setEquals(
   return true;
 }
 
-function labelFor(key: string): string {
-  return findRoleEntry(key)?.label ?? key;
-}
-
 export function RoleAssignEditor({
   user,
   onOpenChange,
   onSaved,
   financialsToggle,
+  roles,
   assignFn,
 }: RoleAssignEditorProps) {
   const assign = assignFn ?? assignTenantUserRoles;
   const toast = useToast();
+  const labelFor = (key: string): string =>
+    roles.find((r) => r.key === key)?.label ?? key;
 
   const initial = useMemo<ReadonlySet<string>>(
     () => new Set(user?.role_keys ?? []),
@@ -136,7 +137,7 @@ export function RoleAssignEditor({
       onSaved(result);
       onOpenChange(false);
     } catch (err: unknown) {
-      setError(messageForRoleAssignError(err));
+      setError(messageForRoleAssignError(err, labelFor));
     } finally {
       setSaving(false);
     }
@@ -194,6 +195,7 @@ export function RoleAssignEditor({
         helper="Select all roles this user should hold."
       >
         <RolePicker
+          roles={roles}
           selectedKeys={selectedKeys}
           onToggle={onToggleRole}
           disabled={saving}
