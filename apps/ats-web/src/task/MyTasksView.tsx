@@ -8,8 +8,9 @@ import {
 } from '@aramo/fe-foundation';
 
 import { ReservedSeam } from '../ui';
+import { fetchAssignableUsers, type AssignableUser } from '../users/users-api';
 
-import { listMyTasks, probeTenantUsers, updateTask, type RosterState } from './task-api';
+import { listMyTasks, updateTask } from './task-api';
 import { taskListErrorMessage, taskMutateErrorMessage } from './error-messages';
 import { TaskDialog } from './TaskDialog';
 import {
@@ -43,7 +44,7 @@ interface MyTasksViewProps {
   readonly nowOverride?: Date;
 }
 
-const EMPTY_ROSTER: RosterState = { available: false, items: [] };
+const EMPTY_ROSTER: readonly AssignableUser[] = [];
 
 // Shift a date (the date part of an ISO string, or `now` when null) by N days,
 // returning a 'YYYY-MM-DD' the BE parses back to a Date.
@@ -72,7 +73,7 @@ export function MyTasksView({ sessionOverride, nowOverride }: MyTasksViewProps) 
   const [items, setItems] = useState<readonly TaskView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [roster, setRoster] = useState<RosterState>(EMPTY_ROSTER);
+  const [roster, setRoster] = useState<readonly AssignableUser[]>(EMPTY_ROSTER);
 
   const [view, setView] = useState<TaskViewMode>('list');
   const [typeFilter, setTypeFilter] = useState<TaskType | null>(null);
@@ -116,7 +117,7 @@ export function MyTasksView({ sessionOverride, nowOverride }: MyTasksViewProps) 
         }
       });
     if (canWrite) {
-      probeTenantUsers()
+      fetchAssignableUsers()
         .then((r) => {
           if (!cancelled) setRoster(r);
         })

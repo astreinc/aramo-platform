@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { InlineAlert } from '@aramo/fe-foundation';
 
+import { fetchAssignableUsers, type AssignableUser } from '../users/users-api';
+
 import {
   deleteTask,
   listTasksForOwner,
-  probeTenantUsers,
   updateTask,
-  type RosterState,
 } from './task-api';
 import { taskListErrorMessage, taskMutateErrorMessage } from './error-messages';
 import { TaskDialog } from './TaskDialog';
@@ -24,13 +24,13 @@ interface TasksPanelProps {
   readonly canWrite: boolean;
 }
 
-const EMPTY_ROSTER: RosterState = { available: false, items: [] };
+const EMPTY_ROSTER: readonly AssignableUser[] = [];
 
 export function TasksPanel({ ownerType, ownerId, canWrite }: TasksPanelProps) {
   const [items, setItems] = useState<readonly TaskView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [roster, setRoster] = useState<RosterState>(EMPTY_ROSTER);
+  const [roster, setRoster] = useState<readonly AssignableUser[]>(EMPTY_ROSTER);
   const [dialog, setDialog] = useState<
     { mode: 'create' } | { mode: 'edit'; task: TaskView } | null
   >(null);
@@ -67,7 +67,7 @@ export function TasksPanel({ ownerType, ownerId, canWrite }: TasksPanelProps) {
     // Probe the roster once (for the assignee Combobox); only needed when the
     // actor can write. Graceful 403 → no picker (handled in the dialog).
     if (canWrite) {
-      probeTenantUsers()
+      fetchAssignableUsers()
         .then((r) => {
           if (!cancelled) setRoster(r);
         })

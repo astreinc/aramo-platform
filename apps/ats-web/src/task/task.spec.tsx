@@ -3,6 +3,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, type Session } from '@aramo/fe-foundation';
 
+import { fetchAssignableUsers } from '../users/users-api';
+
 import { TaskList } from './TaskList';
 import { isAssigneeError, taskMutateErrorMessage } from './error-messages';
 import type { TaskView } from './types';
@@ -10,7 +12,6 @@ import {
   createTask,
   listMyTasks,
   listTasksForOwner,
-  probeTenantUsers,
   updateTask,
 } from './task-api';
 import { TasksPanel } from './TasksPanel';
@@ -26,6 +27,13 @@ vi.mock('./task-api', () => ({
   updateTask: vi.fn(),
   deleteTask: vi.fn(),
   probeTenantUsers: vi.fn(),
+}));
+
+// §5 Auth-Hardening D4 — the task picker now sources the assignee Combobox
+// from the recruiter-scoped assignable endpoint (fetchAssignableUsers), not
+// the admin roster probe.
+vi.mock('../users/users-api', () => ({
+  fetchAssignableUsers: vi.fn(),
 }));
 
 function session(scopes: readonly string[]): Session {
@@ -123,7 +131,7 @@ describe('MyTasksView — the rebuilt workspace page', () => {
         task({ id: 'b', title: 'Screen backend', due_date: '2026-06-18T00:00:00.000Z', type: 'screen', priority: 'med' }),
       ],
     });
-    vi.mocked(probeTenantUsers).mockResolvedValue({ available: false, items: [] });
+    vi.mocked(fetchAssignableUsers).mockResolvedValue([]);
     renderPage();
     await waitFor(() => expect(screen.getByText('Chase Vantage')).toBeInTheDocument());
     expect(vi.mocked(listMyTasks)).toHaveBeenCalledWith('all');
@@ -134,7 +142,7 @@ describe('MyTasksView — the rebuilt workspace page', () => {
 
   it('switches to the Board view (by status)', async () => {
     vi.mocked(listMyTasks).mockResolvedValue({ items: [task({ title: 'Card A', status: 'in_progress' })] });
-    vi.mocked(probeTenantUsers).mockResolvedValue({ available: false, items: [] });
+    vi.mocked(fetchAssignableUsers).mockResolvedValue([]);
     renderPage();
     await waitFor(() => expect(screen.getByText('Card A')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('view-board'));
@@ -146,7 +154,7 @@ describe('MyTasksView — the rebuilt workspace page', () => {
     vi.mocked(listMyTasks).mockResolvedValue({
       items: [task({ id: 'x', title: 'X' }), task({ id: 'y', title: 'Y' })],
     });
-    vi.mocked(probeTenantUsers).mockResolvedValue({ available: false, items: [] });
+    vi.mocked(fetchAssignableUsers).mockResolvedValue([]);
     vi.mocked(updateTask).mockResolvedValue(task());
     renderPage();
     await waitFor(() => expect(screen.getByText('X')).toBeInTheDocument());
@@ -178,7 +186,7 @@ describe('TasksPanel — by-entity (Ruling 2 + render-what-arrives)', () => {
     vi.mocked(listTasksForOwner).mockResolvedValue({
       items: [task({ id: 'a', title: 'A' }), task({ id: 'b', title: 'B' })],
     });
-    vi.mocked(probeTenantUsers).mockResolvedValue({ available: false, items: [] });
+    vi.mocked(fetchAssignableUsers).mockResolvedValue([]);
     render(
       <MemoryRouter>
         <TasksPanel ownerType="requisition" ownerId="req-1" canWrite />
@@ -209,7 +217,7 @@ describe('TasksPanel — by-entity (Ruling 2 + render-what-arrives)', () => {
 // context, assignee?}; the assignee fallback when the roster is admin-gated.
 // ---------------------------------------------------------------------------
 describe('TaskDialog — create (Ruling 3)', () => {
-  it('posts owner_type/owner_id from context + title; roster-unavailable → fallback note', async () => {
+  it('posts owner_type/owner_id from context + title; empty roster still renders the picker (no fallback)', async () => {
     vi.mocked(createTask).mockResolvedValue(task());
     const onSaved = vi.fn();
     render(
@@ -219,12 +227,14 @@ describe('TaskDialog — create (Ruling 3)', () => {
         mode="create"
         ownerType="talent_record"
         ownerId="tal-1"
-        roster={{ available: false, items: [] }}
+        roster={[]}
         onSaved={onSaved}
       />,
     );
-    // Roster admin-gated-away → graceful fallback (no Combobox).
-    expect(screen.getByTestId('task-assignee-fallback')).toBeInTheDocument();
+    // §5 D4: the admin-gated 403-fallback is GONE — the picker always renders
+    // (an empty roster shows the Combobox's empty state, not a fallback note).
+    expect(screen.getByTestId('task-assignee')).toBeInTheDocument();
+    expect(screen.queryByTestId('task-assignee-fallback')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Schedule screen' } });
     fireEvent.click(screen.getByTestId('task-save'));
     await waitFor(() => expect(vi.mocked(createTask)).toHaveBeenCalled());
@@ -249,7 +259,7 @@ describe('TaskDialog — create (Ruling 3)', () => {
         mode="create"
         ownerType="company"
         ownerId="co-1"
-        roster={{ available: true, items: [{ user_id: 'u9', email: 'x@y', display_name: 'X', is_active: true }] }}
+        roster={[{ user_id: 'u9', display_name: 'X' }]}
         onSaved={vi.fn()}
       />,
     );

@@ -7,7 +7,9 @@ import {
   type ComboboxItem,
 } from '@aramo/fe-foundation';
 
-import { createTask, updateTask, type RosterState } from './task-api';
+import type { AssignableUser } from '../users/users-api';
+
+import { createTask, updateTask } from './task-api';
 import { isAssigneeError, taskMutateErrorMessage } from './error-messages';
 import { PRIORITY_LABELS, STATUS_LABELS, TYPE_LABELS } from './task-vocab';
 import {
@@ -38,7 +40,11 @@ interface TaskDialogProps {
   readonly ownerId?: string;
   // Edit target (required for edit).
   readonly initial?: TaskView;
-  readonly roster: RosterState;
+  // §5 Auth-Hardening D4 — the assignable roster (minimal {user_id,
+  // display_name}) from the recruiter-scoped assignable endpoint. Every
+  // work-assigning role holds the read scope, so the picker always has a real
+  // roster — no admin-gated 403-fallback.
+  readonly roster: readonly AssignableUser[];
   readonly onSaved: (task: TaskView) => void;
 }
 
@@ -67,10 +73,9 @@ export function TaskDialog({
   const [error, setError] = useState<string | null>(null);
   const [assigneeError, setAssigneeError] = useState<string | null>(null);
 
-  const rosterItems: ComboboxItem[] = roster.items.map((u) => ({
+  const rosterItems: ComboboxItem[] = roster.map((u) => ({
     value: u.user_id,
-    label: u.display_name ?? u.email,
-    description: u.display_name !== null ? u.email : undefined,
+    label: u.display_name ?? u.user_id,
   }));
 
   async function submit(): Promise<void> {
@@ -202,21 +207,15 @@ export function TaskDialog({
         </FormField>
       ) : null}
       <FormField label="Assignee">
-        {roster.available ? (
-          <Combobox
-            items={rosterItems}
-            value={assigneeId}
-            onSelect={(item) => setAssigneeId(item.value)}
-            placeholder="Assign to a user…"
-            emptyMessage="No active users found."
-            ariaLabel="Assignee"
-            testId="task-assignee"
-          />
-        ) : (
-          <p className="task-dialog__assignee-fallback" data-testid="task-assignee-fallback">
-            Assignee selection needs admin access — this task will be unassigned.
-          </p>
-        )}
+        <Combobox
+          items={rosterItems}
+          value={assigneeId}
+          onSelect={(item) => setAssigneeId(item.value)}
+          placeholder="Assign to a user…"
+          emptyMessage="No assignable users found."
+          ariaLabel="Assignee"
+          testId="task-assignee"
+        />
         {assigneeError !== null ? (
           <InlineAlert variant="error">{assigneeError}</InlineAlert>
         ) : null}
