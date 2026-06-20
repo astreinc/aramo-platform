@@ -6,7 +6,11 @@ import { IdentityAuditService } from './audit/identity-audit.service.js';
 import type { ExternalIdentityDto } from './dto/external-identity.dto.js';
 import type { MembershipDto } from './dto/membership.dto.js';
 import type { UserDto } from './dto/user.dto.js';
-import { IdentityRepository, type TenantUserView } from './identity.repository.js';
+import {
+  IdentityRepository,
+  type AssignableUserView,
+  type TenantUserView,
+} from './identity.repository.js';
 import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
 
 // IdentityService — at AUTHZ-1, this surface was resolve-only (the original
@@ -92,6 +96,25 @@ export class IdentityService {
   // the controller derives tenant_id from authContext.
   async listTenantUsers(tenant_id: string): Promise<TenantUserView[]> {
     return this.identityRepo.listTenantUsers(tenant_id);
+  }
+
+  // §5 Auth-Hardening D4 — the recruiter-scoped minimal assignable roster
+  // (broad: all active tenant members — the non-requisition pickers).
+  async listAssignableTenantUsers(
+    tenant_id: string,
+  ): Promise<AssignableUserView[]> {
+    return this.identityRepo.listAssignableTenantUsers(tenant_id);
+  }
+
+  // §5 Auth-Hardening D4 — the client-filtered assignable roster (the
+  // requisition picker): active + client-mapped (user_ids resolved upstream
+  // from company.UserClientAssignment) + req-carrying role.
+  async listAssignableTenantUsersByIdsAndRoles(args: {
+    tenant_id: string;
+    user_ids: readonly string[];
+    role_keys: readonly string[];
+  }): Promise<AssignableUserView[]> {
+    return this.identityRepo.listAssignableTenantUsersByIdsAndRoles(args);
   }
 
   async getTenantUser(args: {

@@ -61,15 +61,16 @@ import { AppModule } from '../app.module.js';
 //     SSO bypass (the same limitation noted in Settings D1/D3). No browser
 //     session is faked here.
 //
-// SCOPE-COUNT NOTE: the directive says "the 41 recruiter scopes". The live
-// seed truth is 42 (the directive's count predates the Settings-D1 addition
-// of `import:read` to the recruiter bundle). The CANONICAL recruiter bundle
-// is owned + pinned by libs/identity/src/tests/identity.integration.spec.ts
-// ("recruiter bundle: 42 scopes (verbatim testcontainer truth)"); the
-// RECRUITER_BUNDLE constant below mirrors it. The 42nd scope is a legitimate
-// seed grant, not an over-grant — see the close report. B4 here derives the
-// provisioned recruiter's effective scopes from the real membership→role→
-// rolescope→scope join and asserts they equal that bundle.
+// SCOPE-COUNT NOTE: the directive (D1) said "the 41 recruiter scopes". The
+// live seed truth grew to 42 (Settings-D1's import:read) and now 43 (§5
+// Auth-Hardening D4's tenant:user:read:assignable — the recruiter-tier minimal
+// assignable-roster read). The CANONICAL recruiter bundle is owned + pinned by
+// libs/identity/src/tests/identity.integration.spec.ts ("recruiter bundle: 43
+// scopes (verbatim testcontainer truth)"); the RECRUITER_BUNDLE constant below
+// mirrors it. The added scopes are legitimate seed grants, not over-grants —
+// see the close report. B4 here derives the provisioned recruiter's effective
+// scopes from the real membership→role→rolescope→scope join and asserts they
+// equal that bundle.
 
 type SignKey = CryptoKey | KeyObject;
 
@@ -189,7 +190,7 @@ const TENANT_ADMIN_SCOPES = [
 ];
 
 // The canonical recruiter bundle — mirrors the source-of-truth assertion in
-// libs/identity/src/tests/identity.integration.spec.ts (42 scopes). The
+// libs/identity/src/tests/identity.integration.spec.ts (43 scopes). The
 // provisioned recruiter's DERIVED effective scopes are asserted to equal this
 // (B4); the principal under test is then signed with exactly this set.
 const RECRUITER_BUNDLE = [
@@ -235,6 +236,9 @@ const RECRUITER_BUNDLE = [
   'talent:search',
   'task:read',
   'task:write',
+  // §5 Auth-Hardening D4 — recruiter gains the minimal assignable-roster read
+  // (GET /v1/tenant/users/assignable); NOT the admin user-manage scope.
+  'tenant:user:read:assignable',
 ].sort();
 
 // The admin scopes a recruiter must NEVER hold (drives the B2 deny + B4

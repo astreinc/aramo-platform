@@ -24,6 +24,34 @@ import type {
 
 export const USERS_PATH = '/v1/tenant/users';
 export const SETTINGS_PATH = '/v1/tenant/settings';
+export const ASSIGNABLE_USERS_PATH = '/v1/tenant/assignable-users';
+
+// §5 Auth-Hardening D4 — the ONE shared assignable-roster source for the
+// assign-a-teammate pickers. GET /v1/tenant/assignable-users returns the
+// MINIMAL roster ({user_id, display_name}) of ACTIVE members; with a company_id
+// (the requisition picker passes the req's client) it narrows to client-mapped
+// + req-carrying members. Every work-assigning role holds
+// tenant:user:read:assignable, so the picker always resolves a real roster —
+// the old admin-endpoint 403-fallback is gone.
+//
+// SCOPE BOUNDARY: this is the PICKER source ONLY. user_id→name resolution for
+// list/history surfaces (which must render DEPARTED/inactive users) stays on
+// the all-users source until the deferred name-resolver slice ships.
+export interface AssignableUser {
+  readonly user_id: string;
+  readonly display_name: string | null;
+}
+
+export async function fetchAssignableUsers(
+  companyId?: string,
+): Promise<readonly AssignableUser[]> {
+  const path =
+    companyId !== undefined && companyId.length > 0
+      ? `${ASSIGNABLE_USERS_PATH}?company_id=${encodeURIComponent(companyId)}`
+      : ASSIGNABLE_USERS_PATH;
+  const view = await apiClient.get<{ items?: readonly AssignableUser[] }>(path);
+  return view.items ?? [];
+}
 
 // Settings Rebuild D5 — the RolePicker's role list, sourced from the backend
 // roles-catalog (closes the hand-mirror drift). Maps the catalog view to the

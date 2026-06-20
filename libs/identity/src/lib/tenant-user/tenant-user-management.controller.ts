@@ -102,6 +102,14 @@ export class TenantUserManagementController {
     return { items };
   }
 
+  // §5 Auth-Hardening D4 — the recruiter-scoped assignable roster lives at
+  // apps/api (AssignableUsersController, GET /v1/tenant/assignable-users). It
+  // is a CROSS-SCHEMA composition (identity active+role ∩ company client-
+  // mapping) and so cannot live on this libs/identity controller, which must
+  // not import the company schema (Architecture §7.3 / Nx boundary). The
+  // identity half is exposed via IdentityService.listAssignableTenantUsers
+  // (broad) + listAssignableTenantUsersByIdsAndRoles (client-filtered).
+
   // Settings S5-BE1 — GET /v1/tenant/users/:user_id.
   //
   // Tenant-user detail (same row shape as the list, single object). 404

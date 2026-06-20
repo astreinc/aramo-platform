@@ -161,6 +161,71 @@ export class IdentityRepository {
     return rows.map(toTenantUserView);
   }
 
+  // §5 Auth-Hardening D4 — the recruiter-scoped ASSIGNABLE roster (minimal).
+  //
+  // The LEAST-DATA counterpart to listTenantUsers: a deliberately narrow
+  // roster for the assignment pickers (assign a task / requisition / pod to a
+  // teammate). It projects ONLY user_id + display_name — the bare minimum to
+  // pick a teammate. NO email, NO membership status detail, NO roles/scopes,
+  // NO site, NO audit. None of the admin UserView is needed to assign work, so
+  // none is served (and none can leak — this is a distinct, strictly-narrower
+  // projection, NOT a re-gated TenantUserView).
+  //
+  // ACTIVE memberships only (is_active = true — the S3a soft-disable flag): a
+  // disabled user cannot be assigned to, so they are EXCLUDED (not surfaced as
+  // "disabled"). Tenant-scoped (WHERE tenant_id, from authContext — never a
+  // param). Ordered display_name asc then user_id asc — a plain ALPHABETICAL
+  // roster. R10: the order carries NO match/fit/quality verdict on the person.
+  async listAssignableTenantUsers(
+    tenant_id: string,
+  ): Promise<AssignableUserView[]> {
+    const rows = await this.prisma.userTenantMembership.findMany({
+      where: { tenant_id, is_active: true },
+      select: { user_id: true, user: { select: { display_name: true } } },
+      orderBy: [{ user: { display_name: 'asc' } }, { user_id: 'asc' }],
+    });
+    return rows.map((r) => ({
+      user_id: r.user_id,
+      display_name: r.user.display_name,
+    }));
+  }
+
+  // §5 Auth-Hardening D4 — the CLIENT-FILTERED assignable roster (the
+  // requisition-assignment picker). The identity half of the cross-schema
+  // composition: given the set of user_ids mapped to a client (resolved at
+  // apps/api from company.UserClientAssignment — libs/identity must not import
+  // the company schema) and the req-carrying role keys, return the MINIMAL
+  // roster of ACTIVE members in this tenant who are BOTH client-mapped AND
+  // hold a req-carrying role (Recruiter / Recruiter Lead). Same least-data
+  // projection + alphabetical (R10-neutral) order as listAssignableTenantUsers.
+  // Empty user_ids or role_keys → [] (a client with no mapped recruiters
+  // yields an empty picker, not all-tenant).
+  async listAssignableTenantUsersByIdsAndRoles(args: {
+    tenant_id: string;
+    user_ids: readonly string[];
+    role_keys: readonly string[];
+  }): Promise<AssignableUserView[]> {
+    if (args.user_ids.length === 0 || args.role_keys.length === 0) return [];
+    const rows = await this.prisma.userTenantMembership.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        is_active: true,
+        user_id: { in: Array.from(args.user_ids) },
+        role_assignments: {
+          some: {
+            role: { key: { in: Array.from(args.role_keys) }, is_active: true },
+          },
+        },
+      },
+      select: { user_id: true, user: { select: { display_name: true } } },
+      orderBy: [{ user: { display_name: 'asc' } }, { user_id: 'asc' }],
+    });
+    return rows.map((r) => ({
+      user_id: r.user_id,
+      display_name: r.user.display_name,
+    }));
+  }
+
   // Settings S5-BE1 — tenant-user detail. Same shape as a list row, single
   // row. Returns null when no membership for (user_id, tenant_id) — the
   // controller maps null → 404 NOT_FOUND. Per-tenant isolation: a
@@ -522,6 +587,16 @@ export interface TenantUserView {
   deactivated_at: string | null;
   site_id: string | null;
   role_keys: string[];
+}
+
+// §5 Auth-Hardening D4 — the minimal assignable-roster row. DELIBERATELY a
+// strict subset of TenantUserView (user_id + display_name ONLY) so that no
+// admin field — email, status, roles, site, audit — can leak through an
+// assignment picker. A distinct type, not an alias, makes the least-data
+// boundary explicit and compiler-enforced.
+export interface AssignableUserView {
+  user_id: string;
+  display_name: string | null;
 }
 
 type TenantUserRow = {
