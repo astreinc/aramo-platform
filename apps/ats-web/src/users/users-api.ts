@@ -25,18 +25,14 @@ import type {
 export const USERS_PATH = '/v1/tenant/users';
 export const SETTINGS_PATH = '/v1/tenant/settings';
 export const ASSIGNABLE_USERS_PATH = '/v1/tenant/assignable-users';
+export const DIRECTORY_PATH = '/v1/tenant/users/directory';
 
-// §5 Auth-Hardening D4 — the ONE shared assignable-roster source for the
-// assign-a-teammate pickers. GET /v1/tenant/assignable-users returns the
-// MINIMAL roster ({user_id, display_name}) of ACTIVE members; with a company_id
-// (the requisition picker passes the req's client) it narrows to client-mapped
-// + req-carrying members. Every work-assigning role holds
-// tenant:user:read:assignable, so the picker always resolves a real roster —
-// the old admin-endpoint 403-fallback is gone.
-//
-// SCOPE BOUNDARY: this is the PICKER source ONLY. user_id→name resolution for
-// list/history surfaces (which must render DEPARTED/inactive users) stays on
-// the all-users source until the deferred name-resolver slice ships.
+// §5 Auth-Hardening D4 — the ONE shared PICKER source ("who can I assign to?").
+// GET /v1/tenant/assignable-users returns the MINIMAL roster ({user_id,
+// display_name}) of ACTIVE members; with a company_id (the requisition picker
+// passes the req's client) it narrows to client-mapped + req-carrying members.
+// Every work-assigning role holds tenant:user:read:assignable, so the picker
+// always resolves a real roster — no admin-endpoint 403-fallback.
 export interface AssignableUser {
   readonly user_id: string;
   readonly display_name: string | null;
@@ -51,6 +47,52 @@ export async function fetchAssignableUsers(
       : ASSIGNABLE_USERS_PATH;
   const view = await apiClient.get<{ items?: readonly AssignableUser[] }>(path);
   return view.items ?? [];
+}
+
+// §5 Auth-Hardening D4b/4c — the ONE shared NAME-RESOLVER source ("whose name
+// is this?"). GET /v1/tenant/users/directory resolves user_id → display_name
+// for ALL tenant users INCLUDING inactive/departed (historical integrity: a
+// record's author/owner/assignee renders even after they leave). BATCH: pass
+// the visible rows' ids → one call, not per-row. Returns an id→name map
+// (display_name may be null → the caller falls back to the id). An empty id
+// set short-circuits (no call). The directory read scope
+// (tenant:user:read:directory) is held by the list-view tier.
+export interface DirectoryUser {
+  readonly user_id: string;
+  readonly display_name: string | null;
+}
+
+export async function resolveUserNames(
+  userIds?: readonly string[],
+): Promise<Record<string, string>> {
+  let path = DIRECTORY_PATH;
+  if (userIds !== undefined) {
+    // BATCH form: resolve exactly the given ids (a small, known set — e.g. the
+    // assigned users on an assignment view).
+    const unique = [...new Set(userIds.filter((id) => id.length > 0))];
+    if (unique.length === 0) return {};
+    path = `${DIRECTORY_PATH}?user_ids=${encodeURIComponent(unique.join(','))}`;
+  }
+  // No ids → the whole-tenant directory (the one-shot full-map form the
+  // list/detail views use: they resolve names from MULTIPLE, partly-async id
+  // sources — owner + account team + recruiter + pipeline owners — so a single
+  // map keyed by all tenant users, incl. inactive, is the natural fit; one call,
+  // no per-row fetch). Same shape as the prior fetch-all probe, now on the
+  // all-users directory so departed authors/owners still render.
+  //
+  // Best-effort: name resolution NEVER blocks a surface — on any failure the
+  // map is empty and the caller falls back to the id (mirrors the prior probe's
+  // graceful degrade; no unhandled rejection).
+  try {
+    const view = await apiClient.get<{ items?: readonly DirectoryUser[] }>(path);
+    const map: Record<string, string> = {};
+    for (const u of view.items ?? []) {
+      if (u.display_name !== null) map[u.user_id] = u.display_name;
+    }
+    return map;
+  } catch {
+    return {};
+  }
 }
 
 // Settings Rebuild D5 — the RolePicker's role list, sourced from the backend

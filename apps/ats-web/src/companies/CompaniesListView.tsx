@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { probeTenantUsers } from '../task/task-api';
+import { resolveUserNames } from '../users/users-api';
 import { Avatar, Card, Icons, StatusPill, Tag } from '../ui';
 
 import { CompanyBulkBar } from './components/CompanyBulkBar';
@@ -104,11 +104,8 @@ export function CompaniesListView({ sessionOverride }: CompaniesListViewProps = 
   // Owner-name resolution — one-shot admin-gated probe (graceful 403 fallback).
   useEffect(() => {
     let cancelled = false;
-    void probeTenantUsers().then((res) => {
-      if (cancelled || !res.available) return;
-      const names: Record<string, string> = {};
-      for (const u of res.items) names[u.user_id] = u.display_name ?? u.email;
-      setUserNames(names);
+    void resolveUserNames().then((names) => {
+      if (!cancelled) setUserNames(names);
     });
     return () => {
       cancelled = true;

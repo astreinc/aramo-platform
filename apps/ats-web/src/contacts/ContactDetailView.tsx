@@ -15,7 +15,7 @@ import { listActivities, createNote } from '../activity/activity-api';
 import type { ActivityView } from '../activity/types';
 import { getCompanyTeam } from '../companies/companies-api';
 import type { CompanyTeam } from '../companies/company-workspace';
-import { probeTenantUsers } from '../task/task-api';
+import { resolveUserNames } from '../users/users-api';
 import {
   ActivityFeed,
   Avatar,
@@ -91,19 +91,15 @@ export function ContactDetailView({ sessionOverride }: ContactDetailViewProps = 
         setContact(c);
         setLoading(false);
         // Secondary surfaces — all best-effort (allSettled; graceful 403/404).
-        const [teamRes, rosterRes, actRes] = await Promise.allSettled([
+        const [teamRes, namesRes, actRes] = await Promise.allSettled([
           getCompanyTeam(c.company_id),
-          probeTenantUsers(),
+          resolveUserNames(),
           listActivities('contact', c.id),
         ]);
         if (cancelled) return;
         if (teamRes.status === 'fulfilled') setTeam(teamRes.value);
-        if (rosterRes.status === 'fulfilled' && rosterRes.value.available) {
-          const names: Record<string, string> = {};
-          for (const u of rosterRes.value.items)
-            names[u.user_id] = u.display_name ?? u.email;
-          setUserNames(names);
-        }
+        // §5 D4c — owner/team names from the directory (incl. departed).
+        if (namesRes.status === 'fulfilled') setUserNames(namesRes.value);
         if (actRes.status === 'fulfilled') setActivities(actRes.value.items);
       })
       .catch((err) => {

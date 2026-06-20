@@ -16,7 +16,8 @@ import {
 } from '../pipeline/pipeline-api';
 import type { PipelineStatus, PipelineView } from '../pipeline/types';
 import { useEntityCrumb } from '../shell/breadcrumb';
-import { listTasksForOwner, probeTenantUsers } from '../task/task-api';
+import { listTasksForOwner } from '../task/task-api';
+import { resolveUserNames } from '../users/users-api';
 import { getTalent, updateTalent } from '../talent/talent-api';
 import type { AttachmentView, TalentRecordView } from '../talent/types';
 import { TasksPanel } from '../task/TasksPanel';
@@ -196,7 +197,7 @@ export function RequisitionDetailView({
             ? getContact(reqRes.contact_id)
             : Promise.reject(new Error('no contact')),
           Promise.allSettled(ids.map((id) => getTalent(id))),
-          probeTenantUsers(),
+          resolveUserNames(),
           listRequisitionAttachments(reqId),
           listActivities('requisition', reqId),
           Promise.allSettled(pids.map((id) => listActivities('pipeline', id))),
@@ -219,12 +220,9 @@ export function RequisitionDetailView({
           });
           setTalents(map);
         }
-        if (rosterRes.status === 'fulfilled' && rosterRes.value.available) {
-          const names: Record<string, string> = {};
-          for (const u of rosterRes.value.items) {
-            names[u.user_id] = u.display_name ?? u.email;
-          }
-          setUserNames(names);
+        // §5 D4c — recruiter/owner names from the directory (incl. departed).
+        if (rosterRes.status === 'fulfilled') {
+          setUserNames(rosterRes.value);
         }
         if (attachRes.status === 'fulfilled' && Array.isArray(attachRes.value.items)) {
           setAttachments(attachRes.value.items);

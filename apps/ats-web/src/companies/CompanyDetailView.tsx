@@ -13,7 +13,7 @@ import { Tabs, type TabItem } from '../components/Tabs';
 import { listRequisitions } from '../requisitions/requisitions-api';
 import { isClosedStatus, type RequisitionView } from '../requisitions/types';
 import { useEntityCrumb } from '../shell/breadcrumb';
-import { probeTenantUsers } from '../task/task-api';
+import { resolveUserNames } from '../users/users-api';
 import { TasksPanel } from '../task/TasksPanel';
 import { getTalent } from '../talent/talent-api';
 import {
@@ -139,7 +139,7 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
           canReadActivity
             ? listActivities('company', companyId)
             : Promise.reject(new Error('no activity scope')),
-          probeTenantUsers(),
+          resolveUserNames(),
           getOneCompanyMetrics(companyId),
           getCompanyTeam(companyId),
           canReadReqs
@@ -158,11 +158,9 @@ export function CompanyDetailView({ sessionOverride }: CompanyDetailViewProps) {
           setReqs(reqRes.value.items.filter((r) => !isClosedStatus(r.status)));
         else if (canReadReqs) setReqsError(reqsErrorMessage(reqRes.reason));
         if (actRes.status === 'fulfilled') setActivities(actRes.value.items);
-        if (rosterRes.status === 'fulfilled' && rosterRes.value.available) {
-          const names: Record<string, string> = {};
-          for (const u of rosterRes.value.items)
-            names[u.user_id] = u.display_name ?? u.email;
-          setUserNames(names);
+        // §5 D4c — owner/team names from the directory (incl. departed).
+        if (rosterRes.status === 'fulfilled') {
+          setUserNames(rosterRes.value);
         }
       })
       .catch((err) => {

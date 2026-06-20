@@ -11,7 +11,7 @@ import { Link } from 'react-router-dom';
 import { listCompanies } from '../companies/companies-api';
 import { listAllPipelines } from '../pipeline/pipeline-api';
 import { rollupByRequisition, type ReqPipelineCount } from '../pipeline/rollup';
-import { probeTenantUsers } from '../task/task-api';
+import { resolveUserNames } from '../users/users-api';
 import {
   Avatar,
   Card,
@@ -135,8 +135,8 @@ export function RequisitionsListView({
       listRequisitions(),
       listCompanies(),
       listAllPipelines(),
-      probeTenantUsers(),
-    ]).then(([reqRes, coRes, pipeRes, rosterRes]) => {
+      resolveUserNames(),
+    ]).then(([reqRes, coRes, pipeRes, namesRes]) => {
       if (cancelled) return;
       if (reqRes.status === 'fulfilled') {
         setItems(reqRes.value.items);
@@ -151,12 +151,9 @@ export function RequisitionsListView({
       if (pipeRes.status === 'fulfilled') {
         setPipelineCounts(rollupByRequisition(pipeRes.value.items));
       }
-      if (rosterRes.status === 'fulfilled' && rosterRes.value.available) {
-        const names: Record<string, string> = {};
-        for (const u of rosterRes.value.items) {
-          names[u.user_id] = u.display_name ?? u.email;
-        }
-        setUserNames(names);
+      // §5 D4c — recruiter/owner names from the directory (incl. departed).
+      if (namesRes.status === 'fulfilled') {
+        setUserNames(namesRes.value);
       }
       setLoading(false);
     });

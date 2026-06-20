@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { probeTenantUsers } from '../task/task-api';
+import { resolveUserNames } from '../users/users-api';
 import { Avatar, Card, Icons, StatusPill } from '../ui';
 import type { ContactView } from '../companies/types';
 
@@ -87,14 +87,11 @@ export function ContactsListView({ sessionOverride }: ContactsListViewProps = {}
     Array.isArray(session.scopes) &&
     hasScope(session, 'contact:edit');
 
-  // Owner-name resolution — one-shot admin-gated probe (graceful 403 fallback).
+  // §5 D4c — owner-name resolution → the directory (all users incl. departed).
   useEffect(() => {
     let cancelled = false;
-    void probeTenantUsers().then((res) => {
-      if (cancelled || !res.available) return;
-      const names: Record<string, string> = {};
-      for (const u of res.items) names[u.user_id] = u.display_name ?? u.email;
-      setUserNames(names);
+    void resolveUserNames().then((names) => {
+      if (!cancelled) setUserNames(names);
     });
     return () => {
       cancelled = true;
