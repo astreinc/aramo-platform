@@ -41,6 +41,7 @@ import { TaskModule, TASK_ASSIGNEE_VALIDATOR } from '@aramo/task';
 
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
+import { AssignableUsersController } from './controllers/assignable-users.controller.js';
 import { CompensationFieldMaskInterceptor } from './interceptors/compensation-field-mask.interceptor.js';
 import { TalentRecordEnrichmentInterceptor } from './talent-enrichment/talent-record-enrichment.interceptor.js';
 import { TalentRecordEnrichmentService } from './talent-enrichment/talent-record-enrichment.service.js';
@@ -268,6 +269,11 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // repository. Lives here (not in libs/settings) to preserve the
     // leaf-lib invariant on the new lib.
     TenantSettingsController,
+    // §5 Auth-Hardening D4 — the recruiter assignable-roster endpoint. Lives
+    // here (not libs/identity) because it composes identity (active+role) with
+    // the company schema's user↔client mapping — a cross-schema join wired at
+    // the app boundary (CompanyModule + IdentityModule both in this graph).
+    AssignableUsersController,
   ],
   providers: [
     // AUTHZ-D4b Gate 6 — register the VisibilityInterceptor as a global

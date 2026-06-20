@@ -63,6 +63,9 @@ export type {
   InviteResult,
   DisableResult,
 } from './lib/tenant-user/tenant-user-lifecycle.service.js';
+// §5 Auth-Hardening D4 — the minimal assignable-roster row, consumed by
+// apps/api's cross-schema AssignableUsersController.
+export type { AssignableUserView } from './lib/identity.repository.js';
 export {
   TENANT_COGNITO_PORT,
   StubTenantCognitoAdapter,
