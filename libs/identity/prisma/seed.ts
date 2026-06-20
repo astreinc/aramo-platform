@@ -247,6 +247,14 @@ export const SEED_IDS = {
     // 0xaa audit range (append-don't-renumber): 0xab. Granted via
     // PROFILE_ADMIN_SEED_BUNDLES (tenant_admin + tenant_owner; RoleScope 0x920+).
     'tenant:admin:profile': '01900000-0000-7000-8000-0000000000ab',
+    // Settings Rebuild D4 — the sites/branches admin scope. DEDICATED (Lead
+    // ruling): sites/branches are org STRUCTURE — a distinct admin capability
+    // from config (settings) and legal identity (profile), kept separable so
+    // the admin taxonomy stays coherent and the capability is separable later.
+    // Next free id after the 0xab profile scope (append-don't-renumber): 0xac.
+    // Granted via SITES_ADMIN_SEED_BUNDLES (tenant_admin + tenant_owner;
+    // RoleScope 0x930+).
+    'tenant:admin:sites': '01900000-0000-7000-8000-0000000000ac',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1484,6 +1492,30 @@ const PROFILE_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Settings Rebuild D4 — sites/branches admin scope bundle. DEDICATED scope
+// (Lead ruling): tenant:admin:sites → tenant_admin + tenant_owner ONLY (the
+// same admin tier as settings/audit/profile; NOT recruiters). 2 RoleScope rows.
+export const SITES_ADMIN_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_owner', ['tenant:admin:sites']],
+  ['tenant_admin', ['tenant:admin:sites']],
+];
+
+// Deterministic RoleScope row ids for the 2 tenant:admin:sites grants.
+// Disjoint range 0x930+ (the next clear range after PROFILE_ADMIN's
+// 0x920..0x921; all prior ranges untouched — append-don't-renumber).
+const SITES_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x930;
+  for (const [role, scopes] of SITES_ADMIN_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -1723,6 +1755,7 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
   await upsertScope(prisma, SEED_IDS.scopes['export:read'], 'export:read', 'Export the 5 R10-bounded ATS entities as CSV (GET /v1/exports/:entity_type). The A3/D4b visibility predicate at the service layer governs WHAT each role exports; R10 keeps the column set ATS-only (no Core-judgment field). Granted to tenant_admin + tenant_owner (the settings Export surface is admin-gated).');
   await upsertScope(prisma, SEED_IDS.scopes['audit:read'], 'audit:read', 'Read the tenant audit log (GET /v1/tenant/audit-events) — the keyset-paginated, filterable read over the IdentityAuditEvent trail (who did what, when). Tenant-scoped (never cross-tenant); detail is redacted of values the viewer\'s scopes don\'t permit. Granted to tenant_admin + tenant_owner (the admin/compliance tier; NOT recruiters). NO scope.created audit event (mirrors the Reporting/Engagement/Search/Task/Settings-D1 scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:profile'], 'tenant:admin:profile', 'Read + edit the tenant profile (GET/PATCH /v1/tenant/profile) — the org legal identity (legal/display name, address, tax/registration IDs, primary contact, logo). DEDICATED scope (Lead ruling): kept distinct from tenant:admin:settings so org-legal-identity and app-config stay separable, and the audit trail (identity.tenant_profile.updated) carries a clean per-scope authorization story. Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:sites'], 'tenant:admin:sites', 'Manage sites/branches (CRUD /v1/tenant/sites) — the org STRUCTURE: sub-tenant branch partitions + the parent/child branch hierarchy. DEDICATED scope (Lead ruling): kept distinct from tenant:admin:settings (config) and tenant:admin:profile (legal identity) so the admin taxonomy stays coherent and sites stay separable later. Emits identity.site.created/updated/deactivated (field names only). Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -1976,6 +2009,24 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
       const rsId = PROFILE_ADMIN_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`Settings-D3 Profile-Admin-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Settings Rebuild D4 — tenant:admin:sites grants (2 rows; tenant_admin +
+  // tenant_owner). Range 0x930+.
+  for (const [roleKey, scopeKeys] of SITES_ADMIN_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = SITES_ADMIN_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`Settings-D4 Sites-Admin-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

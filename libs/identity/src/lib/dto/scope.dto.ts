@@ -213,6 +213,8 @@ export const SEED_SCOPE_KEYS = [
   'audit:read',                         // tenant_admin + tenant_owner (admin/compliance read of the audit trail)
   // Settings Rebuild D3 — the tenant-profile admin scope (GET/PATCH /v1/tenant/profile).
   'tenant:admin:profile',               // tenant_admin + tenant_owner (DEDICATED; org legal identity, kept separable from settings)
+  // Settings Rebuild D4 — the sites/branches admin scope (CRUD /v1/tenant/sites).
+  'tenant:admin:sites',                 // tenant_admin + tenant_owner (DEDICATED; org STRUCTURE — sub-tenant branch partitions + hierarchy)
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

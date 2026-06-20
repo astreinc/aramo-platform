@@ -1,41 +1,24 @@
 import { Link } from 'react-router-dom';
 
-import { IconBranch } from '../../ui/icons';
 import { Card } from '../../ui';
-import {
-  SettingCardHead,
-  SettingHint,
-  SettingsSeam,
-  SettingsSection,
-} from '../components';
+import { SettingCardHead, SettingHint, SettingsSection } from '../components';
+import { SitesPanel } from '../sites/SitesPanel';
 
-// Settings Rebuild Directive 1 — Branches & teams.
+// Settings Rebuild Directive 1 + 4 — Branches & teams.
 //
-// Teams + org are LIVE (the built modules re-homed here as entry points; the
-// full surfaces render at /admin/teams and /admin/org inside this same shell).
-// Sites/branches CRUD has only a `Site` model with no endpoints yet — an HONEST
-// SEAM (built in PR 4), so the multi-branch model is visible from day one
-// without a control that persists nothing.
+// Branches (sites) are now LIVE (Directive 4 — full CRUD + hierarchy over the
+// Site model, replacing the D1 honest seam). Teams + org are LIVE entry points
+// (the built modules re-homed here; the full surfaces render at /admin/teams
+// and /admin/org inside this same shell).
 
 export function BranchesSection() {
   return (
     <SettingsSection
       title="Branches & teams"
-      description="Aramo is multi-tenant with multi-branch capability. Teams and the reporting hierarchy are live today; branch (site) management is on the roadmap."
+      description="Aramo is multi-tenant with multi-branch capability. Branches (sites), teams, and the reporting hierarchy are all live."
     >
-      {/* SEAM — Sites/branches CRUD (Site model exists, no endpoints) */}
-      <SettingsSeam
-        icon={<IconBranch />}
-        title="Branches (sites)"
-        vision={[
-          'Create and manage branch sites — headquarters, regional offices, distributed pods.',
-          'Scope users, ownership and localization to a branch.',
-          'Per-branch reporting rollup.',
-        ]}
-      >
-        Branch (site) management has a data model but no CRUD surface yet. Until it ships, this is a
-        roadmap surface — teams below already provide the working sub-tenant grouping.
-      </SettingsSeam>
+      {/* LIVE — Branches (sites) CRUD + hierarchy (Directive 4) */}
+      <SitesPanel />
 
       {/* LIVE — Teams */}
       <Card flush>

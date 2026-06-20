@@ -62,6 +62,10 @@ const IDENTITY_PROFILE = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
 );
+const IDENTITY_SITE_HIERARCHY = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260620000000_add_site_hierarchy/migration.sql',
+);
 const ENTITLEMENT_INIT = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
@@ -434,6 +438,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         IDENTITY_SITE_AXIS,
         IDENTITY_D4A,
         IDENTITY_PROFILE,
+        IDENTITY_SITE_HIERARCHY,
         ENTITLEMENT_INIT,
         COMPANY_INIT,
         COMPANY_FIELD_EXPANSION,

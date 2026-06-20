@@ -23,6 +23,10 @@ import { TenantService } from './tenant.service.js';
 // Settings Rebuild Directive 3 — tenant profile read/write.
 import { TenantProfileController } from './tenant-profile/tenant-profile.controller.js';
 import { TenantProfileService } from './tenant-profile/tenant-profile.service.js';
+// Settings Rebuild Directive 4 — sites/branches CRUD + hierarchy.
+import { SitesController } from './sites/sites.controller.js';
+import { SitesService } from './sites/sites.service.js';
+import { SiteRepository } from './sites/site.repository.js';
 // Settings S3a — tenant-user lifecycle (invite + disable).
 import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
 import {
@@ -74,6 +78,10 @@ import {
     // /v1/tenant/profile, reuses tenant:admin:settings). Reads/writes the
     // Tenant model owned by this lib.
     TenantProfileController,
+    // Settings Rebuild Directive 4 — sites/branches CRUD (CRUD
+    // /v1/tenant/sites, tenant:admin:sites). Reads/writes the Site model
+    // owned by this lib.
+    SitesController,
     // Settings S3a — tenant-tier user lifecycle endpoints (invite +
     // disable). Lives here (parallel to D4aController) per the Settings
     // charter §4.2 "user-management home = libs/identity"; the Cognito
@@ -90,6 +98,8 @@ import {
     IdentityAuditService,
     AuditQueryService,
     TenantProfileService,
+    SitesService,
+    SiteRepository,
     IdentityService,
     TenantService,
     RoleService,

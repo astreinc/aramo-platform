@@ -80,19 +80,31 @@ model Tenant {
 // in identity ONLY — no Core (non-identity) schema carries site_id; Core
 // stays tenant_id-only per Ruling 4. Sites are additive: tenants without
 // any rows in this table behave exactly as before A1a.
+//
+// Settings Rebuild Directive 4 — sites/branches CRUD + hierarchy. The
+// self-referential `parent_site_id` (nullable; NULL = a root branch) gives
+// the enterprise branch tree (HQ → region → office). The link is intra-
+// schema and intra-tenant (enforced in the service: a parent must be an
+// active Site in the SAME tenant, no self-parent, no cycles). On a parent
+// hard-delete the FK is SET NULL (children become roots) — but the CRUD
+// delete guard refuses to hard-delete a referenced site in the first place.
 model Site {
-  id           String   @id @db.Uuid
-  tenant_id    String   @db.Uuid
-  name         String
-  is_active    Boolean  @default(true)
-  created_at   DateTime @default(now()) @db.Timestamptz
-  updated_at   DateTime @updatedAt @db.Timestamptz
+  id             String   @id @db.Uuid
+  tenant_id      String   @db.Uuid
+  name           String
+  is_active      Boolean  @default(true)
+  parent_site_id String?  @db.Uuid
+  created_at     DateTime @default(now()) @db.Timestamptz
+  updated_at     DateTime @updatedAt @db.Timestamptz
 
   tenant       Tenant   @relation(fields: [tenant_id], references: [id])
+  parent       Site?    @relation("SiteHierarchy", fields: [parent_site_id], references: [id])
+  children     Site[]   @relation("SiteHierarchy")
   memberships  UserTenantMembership[]
 
   @@unique([tenant_id, name])
   @@index([tenant_id, is_active])
+  @@index([parent_site_id])
   @@schema("identity")
 }
 
