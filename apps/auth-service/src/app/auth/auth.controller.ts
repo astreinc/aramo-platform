@@ -372,6 +372,73 @@ export class AuthController {
     res.status(204).end();
   }
 
+  // §5 Auth-Hardening D3 — GET /auth/{consumer}/logout → 302 to the Cognito
+  // hosted-UI /logout endpoint (Cognito SSO session termination).
+  //
+  // The POST above clears the LOCAL app session (cookies + Aramo refresh-token
+  // revoke). That alone leaves the Cognito SSO session cookie alive, so a
+  // "logged-out" user can be logged straight back in without re-authenticating
+  // (shared-machine re-entry risk). This GET is the browser-navigation piece:
+  // the frontend POSTs to clear locally, then navigates here, and we 302 the
+  // browser to Cognito's hosted-UI /logout — which clears Cognito's SSO cookie
+  // and returns the browser to the REGISTERED post-logout URL. This is the
+  // piece that closes the re-entry-without-reauth hole.
+  //
+  // It mirrors the login redirect's posture: the redirect target is built
+  // SERVER-SIDE from env (the frontend holds no Cognito config), so the
+  // post-logout return URL (logout_uri) is a registered/allowlisted config
+  // value, NEVER user-controllable — a user-supplied logout_uri would be an
+  // open-redirect vuln. AUTH_COGNITO_SIGNOUT_REDIRECT throws when unset, the
+  // same throw-if-missing posture as AUTH_POST_LOGIN_REDIRECT (the sign-out
+  // return URL is config, not input). The endpoint is a pure idempotent
+  // redirect: it reads no cookies and reveals nothing, so logging out an
+  // already-logged-out session is a clean no-op (no enumeration, no leak).
+  //
+  // NOTE (§5 D3 §A.3 readiness carry): Cognito-side refresh-token revocation
+  // (AdminUserGlobalSignOut) is intentionally NOT added here. Aramo discards
+  // Cognito's refresh token at the token exchange and brokers its OWN session
+  // (Aramo access JWT + Aramo refresh token), so the session-resurrection
+  // vector is Aramo's own refresh token — already revoked by the POST above —
+  // and the re-entry hole is the Cognito SSO cookie, closed by this redirect.
+  // GlobalSignOut is defense-in-depth (not load-bearing) and is deferred to a
+  // Step-3 platform-admin build (it would need auth-service's first Cognito-
+  // admin SDK surface + a user_id→sub reverse-lookup + pool routing + IAM).
+  @Get('logout')
+  async logoutRedirect(
+    @Param('consumer') consumer: string,
+    @Req() req: RequestWithCookies,
+    @Res() res: Response,
+  ): Promise<void> {
+    const requestId = req.requestId ?? 'unknown';
+    parseConsumer(consumer, requestId);
+    const domain = process.env['AUTH_COGNITO_DOMAIN'];
+    const clientId = process.env['AUTH_COGNITO_CLIENT_ID'];
+    if (domain === undefined || clientId === undefined) {
+      throw new AramoError(
+        'INTERNAL_ERROR',
+        'Cognito configuration missing',
+        500,
+        { requestId, details: { reason: 'cognito_env_missing' } },
+      );
+    }
+    // The REGISTERED sign-out return URL (config, never input). Throws when
+    // unset — no hardcoded fallback (which would strand deployed users or, if
+    // it were ever derived from the request, open an open-redirect).
+    const signOutRedirect = process.env['AUTH_COGNITO_SIGNOUT_REDIRECT'];
+    if (signOutRedirect === undefined || signOutRedirect.length === 0) {
+      throw new AramoError(
+        'INTERNAL_ERROR',
+        'Post-logout redirect not configured',
+        500,
+        { requestId, details: { reason: 'signout_redirect_missing' } },
+      );
+    }
+    const url = new URL(`https://${domain}/logout`);
+    url.searchParams.set('client_id', clientId);
+    url.searchParams.set('logout_uri', signOutRedirect);
+    res.redirect(302, url.toString());
+  }
+
   // §8.5 — GET /auth/{consumer}/session
   @Get('session')
   async session(

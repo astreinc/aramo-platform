@@ -111,6 +111,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         AUTH_COGNITO_DOMAIN: process.env['AUTH_COGNITO_DOMAIN'],
         AUTH_COGNITO_CLIENT_ID: process.env['AUTH_COGNITO_CLIENT_ID'],
         AUTH_COGNITO_REDIRECT_URI: process.env['AUTH_COGNITO_REDIRECT_URI'],
+        AUTH_COGNITO_SIGNOUT_REDIRECT: process.env['AUTH_COGNITO_SIGNOUT_REDIRECT'],
         AUTH_REFRESH_GRACE_SECONDS: process.env['AUTH_REFRESH_GRACE_SECONDS'],
         AUTH_ALLOW_INSECURE_COOKIES: process.env['AUTH_ALLOW_INSECURE_COOKIES'],
       };
@@ -122,6 +123,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_COGNITO_DOMAIN'] = 'auth.example.com';
       process.env['AUTH_COGNITO_CLIENT_ID'] = 'test-client';
       process.env['AUTH_COGNITO_REDIRECT_URI'] = 'https://app.example/cb';
+      process.env['AUTH_COGNITO_SIGNOUT_REDIRECT'] = 'https://app.example/login';
       process.env['AUTH_REFRESH_GRACE_SECONDS'] = '0';
       process.env['AUTH_ALLOW_INSECURE_COOKIES'] = 'true';
 
@@ -325,6 +327,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(audits.length).toBeGreaterThan(0);
       unstubCognito();
+    });
+
+    // Test 43b — §5 D3: GET /logout 302-redirects to the Cognito hosted-UI
+    // /logout with client_id + the REGISTERED logout_uri (open-redirect-safe).
+    // Cookie-less + idempotent: it reveals nothing and needs no session.
+    it('test 43b — GET /logout redirects 302 to Cognito /logout with registered logout_uri', async () => {
+      const res = await request(app.getHttpServer()).get(
+        '/auth/recruiter/logout',
+      );
+      expect(res.status).toBe(302);
+      const location = res.headers['location'] as string;
+      const url = new URL(location);
+      expect(url.origin).toBe('https://auth.example.com');
+      expect(url.pathname).toBe('/logout');
+      expect(url.searchParams.get('client_id')).toBe('test-client');
+      expect(url.searchParams.get('logout_uri')).toBe(
+        'https://app.example/login',
+      );
     });
 
     // Test 44

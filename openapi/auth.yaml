@@ -267,6 +267,55 @@ paths:
             application/json:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    get:
+      operationId: logoutRedirect
+      tags: [Auth]
+      summary: Redirect to the Cognito hosted-UI /logout (SSO session termination)
+      description: |
+        §5 Auth-Hardening D3. After the local clear (POST above), the
+        frontend navigates here; the browser is 302-redirected to the
+        Cognito hosted-UI `/logout?client_id={clientId}&logout_uri=
+        {registeredSignOutUrl}`, which clears Cognito's SSO session
+        cookie and returns to the REGISTERED post-logout URL. This
+        closes the re-entry-without-reauth hole (the local clear alone
+        leaves the Cognito SSO session alive).
+
+        The `logout_uri` is a registered/allowlisted config value
+        (`AUTH_COGNITO_SIGNOUT_REDIRECT`), NEVER user-controllable —
+        same open-redirect guard as the login redirect. Idempotent and
+        cookie-less: an already-logged-out session is a clean no-op.
+      security: []
+      parameters:
+        - name: consumer
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [recruiter, portal, ingestion]
+      responses:
+        '302':
+          description: Redirect to the Cognito hosted-UI /logout endpoint.
+          headers:
+            Location:
+              schema:
+                type: string
+              description: |
+                Cognito `https://{domain}/logout?client_id=...&logout_uri=
+                {registered}` — the return URL is config, never input.
+        '400':
+          description: Invalid consumer path parameter.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: |
+            Cognito config or registered sign-out URL not configured
+            (cognito_env_missing / signout_redirect_missing).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
 
   /auth/{consumer}/session:
     get:

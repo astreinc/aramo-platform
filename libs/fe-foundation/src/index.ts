@@ -20,6 +20,7 @@ export {
   LOGOUT_PATH,
   SESSION_PATH,
   fetchSession,
+  logout,
   redirectToLogin,
   useSession,
 } from './auth/session';
