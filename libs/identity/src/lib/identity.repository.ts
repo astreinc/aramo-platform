@@ -226,6 +226,41 @@ export class IdentityRepository {
     }));
   }
 
+  // §5 Auth-Hardening D4b — the name-resolver directory. Resolves user_id →
+  // display_name for ANY user with a membership in this tenant, INCLUDING
+  // INACTIVE/DEPARTED ones — the historical-integrity requirement (a record's
+  // author/owner/assignee must still render their name after they leave). This
+  // is the deliberate counterpart to listAssignableTenantUsers, which excludes
+  // inactive by design: here there is NO is_active filter on the membership.
+  //
+  // Pure-identity (UserTenantMembership ⋈ User) — no company schema. Minimal
+  // {user_id, display_name} only (a name lookup, not the admin view: no email/
+  // status/roles/audit). @@unique(user_id, tenant_id) → one row per user, no
+  // dedup. Optional user_ids → the BATCH form (a list view resolving N rows in
+  // one call); absent → the whole tenant directory. Tenant-scoped (WHERE
+  // tenant_id, never a param). Empty user_ids (an explicit empty batch) → [].
+  // R10: alphabetical, no person-verdict.
+  async listTenantUserDirectory(args: {
+    tenant_id: string;
+    user_ids?: readonly string[];
+  }): Promise<DirectoryUserView[]> {
+    if (args.user_ids !== undefined && args.user_ids.length === 0) return [];
+    const rows = await this.prisma.userTenantMembership.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        ...(args.user_ids !== undefined
+          ? { user_id: { in: Array.from(args.user_ids) } }
+          : {}),
+      },
+      select: { user_id: true, user: { select: { display_name: true } } },
+      orderBy: [{ user: { display_name: 'asc' } }, { user_id: 'asc' }],
+    });
+    return rows.map((r) => ({
+      user_id: r.user_id,
+      display_name: r.user.display_name,
+    }));
+  }
+
   // Settings S5-BE1 — tenant-user detail. Same shape as a list row, single
   // row. Returns null when no membership for (user_id, tenant_id) — the
   // controller maps null → 404 NOT_FOUND. Per-tenant isolation: a
@@ -595,6 +630,15 @@ export interface TenantUserView {
 // assignment picker. A distinct type, not an alias, makes the least-data
 // boundary explicit and compiler-enforced.
 export interface AssignableUserView {
+  user_id: string;
+  display_name: string | null;
+}
+
+// §5 Auth-Hardening D4b — the name-resolver row. Same minimal shape as
+// AssignableUserView (user_id + display_name) but a DISTINCT type: the two
+// serve different jobs (assignable = active-only picker; directory = all-users
+// name resolution incl. inactive) and may diverge, so they stay separable.
+export interface DirectoryUserView {
   user_id: string;
   display_name: string | null;
 }

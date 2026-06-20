@@ -66,6 +66,8 @@ export type {
 // §5 Auth-Hardening D4 — the minimal assignable-roster row, consumed by
 // apps/api's cross-schema AssignableUsersController.
 export type { AssignableUserView } from './lib/identity.repository.js';
+// §5 Auth-Hardening D4b — the name-resolver row (directory endpoint).
+export type { DirectoryUserView } from './lib/identity.repository.js';
 export {
   TENANT_COGNITO_PORT,
   StubTenantCognitoAdapter,

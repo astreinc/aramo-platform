@@ -194,7 +194,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // reviewed authz surface.
       expect(scopes.map((s) => s.key)).toEqual([
         // Settings-D3 reconciliation — full scope catalog (incl. 3 platform:*): 82 scopes
-        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites +tenant:user:read:assignable; reconciles to roleScope.count=458).
+        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites +tenant:user:read:assignable +tenant:user:read:directory; reconciles to roleScope.count=468).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -279,6 +279,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'tenant:admin:sites',
         'tenant:admin:user-manage',
         'tenant:user:read:assignable',
+        'tenant:user:read:directory',
       ]);
 
       const roleScopes = await prisma.roleScope.count();
@@ -350,7 +351,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   449 → 458 = +9 §5 Auth-Hardening D4 (tenant:user:read:assignable ×
       //   the 9 work-assigning operational roles; ASSIGNABLE_USERS_SEED_BUNDLES
       //   @ 0x940). The recruiter-tier minimal assignable-roster read.
-      expect(roleScopes).toBe(458);
+      //   458 → 468 = +10 §5 Auth-Hardening D4b (tenant:user:read:directory ×
+      //   the 10 list-view viewers = the 9 + finance; DIRECTORY_SEED_BUNDLES
+      //   @ 0x950). The name-resolver (id→name incl. inactive).
+      expect(roleScopes).toBe(468);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -443,10 +447,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Req-Gating +3, Settings-D1 +2 (import:read + export:read),
       // Settings-D2 +1 (audit:read), Settings-D3 +1 (tenant:admin:profile),
       // then Settings-D4 +1 (tenant:admin:sites) = 80, then §5 Auth-Hardening
-      // D4 +1 (tenant:user:read:assignable) = 81. (Distinct from
-      // SEED_SCOPE_KEYS=84, which counts the 3 platform:* scopes this query
-      // excludes.)
-      expect(tenantScopes.length).toBe(81);
+      // D4 +1 (tenant:user:read:assignable) = 81, then D4b +1
+      // (tenant:user:read:directory) = 82. (Distinct from SEED_SCOPE_KEYS=85,
+      // which counts the 3 platform:* scopes this query excludes.)
+      expect(tenantScopes.length).toBe(82);
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -649,7 +653,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // AUTHZ-D4a: tenant_admin gains the 4 team-model scopes. 43 + 4 = 47.
       expect(sorted).toEqual([
         // Settings-D3 reconciliation — tenant_admin resolved scope set: 74 scopes
-        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites +tenant:user:read:assignable; reconciles to roleScope.count=458).
+        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites +tenant:user:read:assignable +tenant:user:read:directory; reconciles to roleScope.count=468).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -726,6 +730,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'tenant:admin:sites',
         'tenant:admin:user-manage',
         'tenant:user:read:assignable',
+        'tenant:user:read:directory',
       ]);
     });
 
@@ -877,7 +882,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect([...adminScopes].sort()).toEqual([
         // Settings-D3 reconciliation — tenant_admin scope set: 74 scopes
-        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites +tenant:user:read:assignable; reconciles to roleScope.count=458).
+        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites +tenant:user:read:assignable +tenant:user:read:directory; reconciles to roleScope.count=468).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -954,6 +959,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'tenant:admin:sites',
         'tenant:admin:user-manage',
         'tenant:user:read:assignable',
+        'tenant:user:read:directory',
       ]);
 
       // recruiter scope set (31 post HK-IDENT-SCOPES; 26 + 5 — all new
@@ -1015,6 +1021,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // read (GET /v1/tenant/users/assignable). NOT the admin user-manage
         // scope; the recruiter-tier roster read for the assign pickers.
         'tenant:user:read:assignable',
+        'tenant:user:read:directory',
       ].sort());
 
       // Ruling 1 EXPLICIT DIVERGENCE ASSERTIONS — recruiter must NOT
@@ -1098,7 +1105,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Owner = Admin scope set incl. the AUTHZ-D4a top-tier additions.
       await expectRoleScopes('tenant_owner', [
         // Settings-D3 reconciliation — tenant_owner = tenant_admin set: 74 scopes
-        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites +tenant:user:read:assignable; reconciles to roleScope.count=458).
+        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites +tenant:user:read:assignable +tenant:user:read:directory; reconciles to roleScope.count=468).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -1175,6 +1182,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'tenant:admin:sites',
         'tenant:admin:user-manage',
         'tenant:user:read:assignable',
+        'tenant:user:read:directory',
       ]);
 
       // account_manager — 35 scopes (Recruiter's 31 operational set +
@@ -1244,6 +1252,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'team:manage',
         'tenant:admin:user-manage',
         'tenant:user:read:assignable',
+        'tenant:user:read:directory',
       ]);
 
       // sourcer — 14 scopes (intake-focused; NO :delete, NO submittal).
@@ -1272,6 +1281,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'task:read',
         'task:write',
         'tenant:user:read:assignable',
+        'tenant:user:read:directory',
       ]);
 
       // finance — 6 scopes (offer-approval surface; AUTHZ-1b KEY rename
@@ -1291,6 +1301,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:search',
         'submittal:approve',
         'talent:read',
+        // §5 Auth-Hardening D4b — finance reads the requisition/talent lists →
+        // gains the name-resolver scope (NOT assignable; finance doesn't assign).
+        'tenant:user:read:directory',
       ]);
 
       // auditor — 5 scopes (Lead exact set; read-only audit-side surface).
@@ -1364,6 +1377,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'task:write',
         'tenant:admin:user-manage',
         'tenant:user:read:assignable',
+        'tenant:user:read:directory',
       ]);
 
       // delivery_manager — 12 scopes (the fulfillment quality gate:
@@ -1402,6 +1416,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'task:read',
         'task:write',
         'tenant:user:read:assignable',
+        'tenant:user:read:directory',
       ]);
 
       // lead_recruiter — 31 scopes (= Recruiter verbatim). Lead-ness is
@@ -1459,6 +1474,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'task:read',
         'task:write',
         'tenant:user:read:assignable',
+        'tenant:user:read:directory',
       ]);
 
       // back_office — 12 scopes (operational-read + activity entry).
@@ -1492,6 +1508,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'task:read',
         'task:write',
         'tenant:user:read:assignable',
+        'tenant:user:read:directory',
       ]);
     });
 
@@ -1585,6 +1602,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:search',
         'submittal:approve',
         'talent:read',
+        // §5 Auth-Hardening D4b — finance reads the requisition/talent lists →
+        // gains the name-resolver scope (NOT assignable; finance doesn't assign).
+        'tenant:user:read:directory',
       ]);
     });
 

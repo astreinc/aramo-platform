@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
@@ -16,7 +17,10 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import { IdentityAuditService } from '../audit/identity-audit.service.js';
 import { IdentityService } from '../identity.service.js';
-import type { TenantUserView } from '../identity.repository.js';
+import type {
+  DirectoryUserView,
+  TenantUserView,
+} from '../identity.repository.js';
 
 import { TenantUserLifecycleService } from './tenant-user-lifecycle.service.js';
 
@@ -102,13 +106,61 @@ export class TenantUserManagementController {
     return { items };
   }
 
-  // §5 Auth-Hardening D4 — the recruiter-scoped assignable roster lives at
+  // §5 Auth-Hardening D4 — the recruiter-scoped ASSIGNABLE roster lives at
   // apps/api (AssignableUsersController, GET /v1/tenant/assignable-users). It
   // is a CROSS-SCHEMA composition (identity active+role ∩ company client-
   // mapping) and so cannot live on this libs/identity controller, which must
   // not import the company schema (Architecture §7.3 / Nx boundary). The
   // identity half is exposed via IdentityService.listAssignableTenantUsers
   // (broad) + listAssignableTenantUsersByIdsAndRoles (client-filtered).
+
+  // §5 Auth-Hardening D4b — GET /v1/tenant/users/directory (the name-resolver).
+  //
+  // The "whose-name-is-this" half of the two-jobs split: resolve user_id →
+  // display_name for ANY tenant user, INCLUDING inactive/departed ones, so the
+  // 7 list/detail views (+ the 5 assignment views) render authorship/ownership/
+  // assignee names from history — a user who created a record last quarter and
+  // has since left STILL renders their name (historical integrity). The
+  // active-only assignable picker cannot serve this by design.
+  //
+  // PURE-IDENTITY (identity.User only; NO company schema) → unlike the
+  // assignable picker, this lives cleanly here, no apps/api compose.
+  //
+  // DATA: { items: DirectoryUserView[] } — {user_id, display_name} ONLY. A name
+  // lookup, NOT a roster, NOT the admin view (no email/status/roles/audit). The
+  // projection stays minimal even for inactive users: "this id is Jane Smith",
+  // never "Jane Smith, deactivated 2026-03" (deactivation detail is admin data).
+  //
+  // BATCH: ?user_ids=a,b,c resolves just those ids in one call (the list-view
+  // pattern — N rows, one request); absent → the whole tenant directory.
+  //
+  // SCOPE: tenant:user:read:directory — seeded to the 10 list-view viewers (the
+  // 9 work-assigning roles + finance, who reads the requisition/talent lists).
+  // Low-sensitivity reference data; distinct from the assignable picker scope.
+  //
+  // SCOPING: tenant_id from authContext (never a param) — cross-tenant
+  // impossible. ROUTE ORDER: declared BEFORE @Get(':user_id') so the literal
+  // "directory" segment is not captured as a :user_id param.
+  @Get('directory')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('tenant:user:read:directory')
+  async directory(
+    @AuthContext() authContext: AuthContextType,
+    @Query('user_ids') userIds?: string,
+  ): Promise<{ items: DirectoryUserView[] }> {
+    const parsed =
+      userIds === undefined
+        ? undefined
+        : userIds
+            .split(',')
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
+    const items = await this.identity.listTenantUserDirectory({
+      tenant_id: authContext.tenant_id,
+      ...(parsed !== undefined ? { user_ids: parsed } : {}),
+    });
+    return { items };
+  }
 
   // Settings S5-BE1 — GET /v1/tenant/users/:user_id.
   //
