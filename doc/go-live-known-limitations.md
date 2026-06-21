@@ -459,3 +459,25 @@ not a client filter). The following are deliberate gaps.
   remainder are disclosed interim affordances, not unenforced guardrails.
 - **Close criteria:** author the name-resolver slice, then repoint the 7 list-
   views + the 5 pickers (Combobox → assignable, name → directory) in one pass.
+
+### Local mock-IdP browser-e2e: recon complete + favorable, DEFERRED (§5 D5 Part B)
+- **Date:** 2026-06-21 · **Branch:** `feat/auth-hardening-d5-local-run` (recon doc)
+- **Recon (on record, not wasted):** [`doc/auth-local-mock-idp-recon.md`](auth-local-mock-idp-recon.md).
+  A clean local mock-IdP path is **feasible and prod-impossible** — the real auth
+  code runs unchanged against a local OIDC mock, activated purely by env
+  (`AUTH_COGNITO_DOMAIN/ISSUER/CLIENT_ID/REDIRECT_URI`); no code branch, no flag,
+  no bypass (fail-closed). It is **not** the 302-hack class.
+- **DEFERRED (Lead ruling) — value, not risk:** (1) staging (Step 4, imminent)
+  has **real Cognito**, which verifies the D1/D2/D3 deferred login checks at
+  **higher fidelity** than a mock — Part B would only buy earlier, lower-fidelity
+  confirmation of what staging confirms better, very soon. (2) Part B's payoff is
+  faster local iteration *during* §5 dev, but §5 is closing (last increment bar
+  MFA) — the dev-convenience window has largely passed. (3) Even a clean mock-IdP
+  is another auth config branch to maintain + a drift risk (silently diverges if
+  the auth flow changes); fewer auth paths = cleaner posture, and the marginal
+  value doesn't justify the added auth surface.
+- **Risk:** none — nothing built; the D1/D2/D3 literal-login confirmations are
+  verified at staging against real Cognito (their existing deferral).
+- **Close criteria:** build only if **post-go-live** auth iteration makes local
+  browser-e2e worth the added auth surface — the favorable recon is ready to
+  execute (own PR + security review) if/when that value reappears.
