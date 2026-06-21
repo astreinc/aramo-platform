@@ -1,0 +1,63 @@
+# Step-4 Directive 1 — build context for the backend production images.
+#
+# Keep the context lean (the Nx monorepo is large) and — critically — keep
+# secrets/build-output OUT of every image layer. The builder stage runs
+# `npm ci` + `npm run prisma:generate` + `nx build`, so SOURCE, prisma SCHEMAS,
+# nx config and tools/ MUST stay in context; only host-side artifacts and
+# secrets are excluded here.
+
+# --- Never ship secrets (assert: no .env / keys in any layer) ---
+.env
+.env.*
+!.env.example
+
+# --- Host-side install/build artifacts (the image rebuilds these itself) ---
+node_modules
+**/node_modules
+dist
+build
+out-tsc
+tmp
+.nx/cache
+.nx/workspace-data
+
+# Per-module Prisma clients are regenerated INSIDE the builder (WASM engine,
+# deterministic) — never copy the host's generated output into the context.
+**/prisma/generated
+**/.prisma
+
+# --- VCS / CI / editor / OS noise ---
+.git
+.github
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# --- Tests, coverage, e2e + local-dev runtime state (not needed to build/run) ---
+coverage
+**/coverage
+.local-stack
+test-results
+**/test-results
+playwright-report
+**/playwright-report
+playwright/.cache
+**/playwright/.cache
+pact/logs
+pact/pacts
+scratch
+doc/prompts
+
+# --- Infra/docs not consumed by the app build ---
+infrastructure
+openapi
+doc
+*.md
+!README.md
+
+# Don't recurse Docker artifacts into the context
+Dockerfile
+**/Dockerfile
+.dockerignore
+docker-compose*.yml
