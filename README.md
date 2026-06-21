@@ -33,6 +33,20 @@ npm run lint:nx-boundaries
 npm run verify:vocabulary
 ```
 
+## Run the full local stack
+
+One command brings up Postgres + Redis + `auth-service` (:3001) + `api` (:3000) +
+`ats-web` (:4201):
+
+```bash
+cp .env.example .env         # then generate the AUTH_PRIVATE_KEY/PUBLIC_KEY pair (once)
+tools/local-stack.sh up      # → FE http://localhost:4201   (down / status / logs)
+```
+
+See the runbook — [`doc/runbooks/local-run.md`](doc/runbooks/local-run.md): the
+env contract, key generation, `db:sync:local`, the `auth.integration` test-39
+note, and the known `auth.site-axis` testcontainer flake.
+
 ## Repository Layout
 
 ```

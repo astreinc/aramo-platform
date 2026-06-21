@@ -1,0 +1,47 @@
+# §5 Auth-Hardening D5 (3.6) Part A — local infrastructure for the dev stack.
+#
+# Brings up the two backing services the local stack needs (the rest — api,
+# auth-service, ats-web — run via `node dist/...` + `nx serve`, orchestrated by
+# tools/local-stack.sh; see doc/runbooks/local-run.md). Infra-only by design:
+# the apps keep the established build+link run pattern, not container images.
+#
+#   docker compose up -d        # start Postgres + Redis
+#   docker compose ps           # status
+#   docker compose down         # stop (data persists in the named volume)
+#   docker compose down -v      # stop + WIPE the dev DB
+#
+# Credentials/ports match the .env contract: DATABASE_URL points at
+# postgresql://aramo:aramo@localhost:5432/aramo and REDIS_URL at
+# redis://localhost:6379 (see .env.example).
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: aramo-local-postgres
+    environment:
+      POSTGRES_USER: aramo
+      POSTGRES_PASSWORD: aramo
+      POSTGRES_DB: aramo
+    ports:
+      - '5432:5432'
+    volumes:
+      - aramo-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U aramo -d aramo']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7
+    container_name: aramo-local-redis
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  aramo-pgdata:
