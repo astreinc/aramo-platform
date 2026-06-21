@@ -1,0 +1,92 @@
+# Step-4 Directive 1 — containerized-runtime overlay for the D5 local stack.
+#
+# Swaps the `node dist/...` background processes (tools/local-stack.sh) for the
+# production CONTAINER images of the two backends, wired to the SAME Postgres +
+# Redis from docker-compose.yml (same network, same seeded volume). The D5
+# host-process path is untouched and still works — this is an additive overlay.
+#
+# Run it (secrets stay in the SHELL, never in a compose-parsable file — the real
+# .env carries multi-line PEM keys that compose's env_file parser cannot read):
+#
+#   set -a && source .env && set +a                        # load the env contract
+#   docker compose --env-file /dev/null \
+#     -f docker-compose.yml -f docker-compose.images.yml up --build -d
+#
+#   # smoke: both services accept connections + serve a request
+#   curl -i http://localhost:3001/.well-known/jwks.json     # auth-service: 200 JWKS
+#   curl -i http://localhost:3000/v1/tenant/settings        # api: 401 = serving + authz live
+#
+#   docker compose -f docker-compose.yml -f docker-compose.images.yml down
+#
+# `--env-file /dev/null` stops compose parsing the multi-line .env for ${}
+# interpolation. The bare-name entries under `environment:` are PASSED THROUGH
+# by name from the sourced shell environment (taken verbatim — multi-line-safe).
+# DATABASE_URL / REDIS_URL are pinned to the compose service names (the .env
+# values point at localhost, unreachable from inside the container network).
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: aramo/api:local
+    container_name: aramo-api
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      # host localhost → compose-network service names
+      - DATABASE_URL=postgresql://aramo:aramo@postgres:5432/aramo?schema=public
+      - REDIS_URL=redis://redis:6379
+      # pass-through by name from the sourced shell env (multi-line-safe):
+      - AUTH_AUDIENCE
+      - AUTH_PUBLIC_KEY
+      - AUTH_COGNITO_TENANT_USER_POOL_ID
+      - AUTH_COGNITO_ENDPOINT
+      - S3_RESUME_BUCKET
+      - S3_ENDPOINT
+      - ARAMO_ENV
+      - AWS_REGION
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - ADDRESS_AUTOCOMPLETE_ENABLED
+      - ADDRESS_AUTOCOMPLETE_PROVIDER
+      - GOOGLE_PLACES_API_KEY
+      - IMPORT_FAILURE_THRESHOLD_PCT
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: apps/auth-service/Dockerfile
+    image: aramo/auth-service:local
+    container_name: aramo-auth
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://aramo:aramo@postgres:5432/aramo?schema=public
+      # pass-through by name from the sourced shell env (multi-line-safe):
+      - AUTH_AUDIENCE
+      - AUTH_PRIVATE_KEY
+      - AUTH_PUBLIC_KEY
+      - AUTH_PKCE_STATE_KEY
+      - AUTH_COGNITO_DOMAIN
+      - AUTH_COGNITO_CLIENT_ID
+      - AUTH_COGNITO_ISSUER
+      - AUTH_COGNITO_REDIRECT_URI
+      - AUTH_COGNITO_ENDPOINT
+      - AUTH_POST_LOGIN_REDIRECT
+      - AUTH_COGNITO_SIGNOUT_REDIRECT
+      - AUTH_TRUSTED_IDP_NAMES
+      - AUTH_ALLOW_INSECURE_COOKIES
+      - AUTH_REFRESH_GRACE_SECONDS
+    ports:
+      - '3001:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
