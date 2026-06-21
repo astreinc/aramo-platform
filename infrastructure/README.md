@@ -34,8 +34,15 @@ Three environments with separate per-environment directories (NOT
 Terraform workspaces, per ADR-0012):
 
 - `environments/dev/` — local development; rarely deployed; minimal
-  AWS resources.
-- `environments/staging/` — deployed; canary surface.
+  AWS resources. **Data-plane-and-compute-free by design**: dev wires
+  only the CloudWatch log groups (no VPC/RDS/S3/compute). Step-4
+  Directive 2 therefore adds the run layer to **staging + prod only** —
+  there is no data plane in dev for compute to attach to, and bloating
+  dev with a full stack it never had would contradict its "minimal"
+  charter. Not a gap — a deliberate per-env composition difference (the
+  same reason dev has no `rds`/`vpc` today).
+- `environments/staging/` — deployed; canary surface. Mirrors prod (the
+  rehearsal ground for the prod apply).
 - `environments/prod/` — deployed; production.
 
 Per-env state files are keyed in S3 by directory path
@@ -54,6 +61,11 @@ sequenced PRs:
   networking.
 - **M7**: AWS Secrets Manager + key rotation policy (Architecture
   v2.1 §12.2 signing-keys posture).
+- **Step-4 Directive 2** (compute IaC): ECR + ECS/Fargate (api +
+  auth-service) + ALB + least-privilege SG mesh + ElastiCache Redis +
+  Secrets Manager containers + the prod IAM app principal (as ECS task
+  roles, closing the recon's staging/prod gap). Account-independent
+  authoring; apply gated on the account. See `doc/step4-compute-iac.md`.
 
 ## CI integration
 

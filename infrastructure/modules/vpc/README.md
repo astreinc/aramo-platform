@@ -1,12 +1,17 @@
 # vpc
 
-Aramo Terraform module — provisions a minimal VPC + ≥2 DB subnets across
-distinct AZs + a dedicated RDS security group.
+Aramo Terraform module — provisions a VPC with three subnet tiers
+(public / DB / private-app) across distinct AZs, an internet gateway, a
+single NAT gateway, the public + private-app route tables, and a
+dedicated RDS security group.
 
 Second module populated under `infrastructure/modules/` per ADR-0012
 Decision 7 + ADR-0016 Decision 9 (VPC substrate bundled with RDS in
 PR-10a per Lead-Q-PR-10a-B1=(d2) disposition; first M5 AWS data-plane
-PR).
+PR). **Step-4 Directive 2 (compute IaC)** extended it with the
+public + private-app tiers + IGW + NAT + route tables the Fargate run
+layer needs (the original DB tier + RDS SG are unchanged — purely
+additive).
 
 ## Purpose
 
@@ -16,12 +21,20 @@ codifies the Aramo convention for the data-plane network substrate:
 - Caller supplies a /16 VPC CIDR (per ADR-0016 Decision 11: prod
   `10.0.0.0/16`; staging `10.1.0.0/16`).
 - Caller supplies the environment name (used in resource Name tags).
-- DB subnets are auto-derived as /24 carve-outs at offsets 10 + AZ index
-  (`10.0.10.0/24`, `10.0.11.0/24` for prod; `10.1.10.0/24`, `10.1.11.0/24`
-  for staging).
-- A dedicated RDS security group is created; ingress rules left empty at
-  PR-10a (added when application layer wires through per ADR-0016
-  Decision 12 / M5-close OR M6 binding).
+- Three /24 subnet tiers per AZ, auto-derived from the /16:
+  - **public** at offsets `0 + i` (`10.x.0.0/24`, `10.x.1.0/24`) — host the
+    ALB + NAT gateway; `map_public_ip_on_launch = true`.
+  - **DB** at offsets `10 + i` (`10.x.10.0/24`, `10.x.11.0/24`) — RDS
+    (unchanged from PR-10a).
+  - **private-app** at offsets `20 + i` (`10.x.20.0/24`, `10.x.21.0/24`) —
+    Fargate tasks + ElastiCache Redis; egress via NAT only.
+- An internet gateway + a single NAT gateway (modest first-deploy sizing;
+  per-AZ NAT is the scale-later option). Public route table → IGW;
+  private-app route table → NAT.
+- A dedicated RDS security group is created; its ingress rule
+  (service-SG → 5432) is added at the composition layer by the
+  `app-security-groups` module (kept out of this module to avoid a
+  vpc↔compute cycle).
 - Tag overlay layered on top of provider `default_tags`
   (`Project = "Aramo"`, `Environment = var.environment`,
   `ManagedBy = "Terraform"`).
@@ -37,11 +50,14 @@ codifies the Aramo convention for the data-plane network substrate:
 
 ## Outputs
 
-| Name                    | Description                                                                                |
-| ----------------------- | ------------------------------------------------------------------------------------------ |
-| `vpc_id`                | ID of the created VPC.                                                                     |
-| `db_subnet_ids`         | List of DB subnet IDs (≥2 across distinct AZs); pass to RDS module's `subnet_ids` input.   |
-| `rds_security_group_id` | ID of the RDS security group; pass as single-element list to RDS module's SG IDs input.    |
+| Name                     | Description                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| `vpc_id`                 | ID of the created VPC.                                                                            |
+| `vpc_cidr`               | The VPC IPv4 CIDR block.                                                                          |
+| `db_subnet_ids`          | List of DB subnet IDs (≥2 across distinct AZs); pass to RDS module's `subnet_ids` input.          |
+| `public_subnet_ids`      | Public subnet IDs (≥2); pass to the ALB module.                                                   |
+| `private_app_subnet_ids` | Private-app subnet IDs (≥2); pass to the ECS service + ElastiCache modules.                       |
+| `rds_security_group_id`  | ID of the RDS security group; pass as single-element list to RDS module's SG IDs input.           |
 
 ## Usage
 

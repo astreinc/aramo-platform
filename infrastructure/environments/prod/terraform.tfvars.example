@@ -12,3 +12,35 @@ auth_log_retention_days = 90
 resume_bucket_cors_allowed_origins    = ["https://aramo.app"]
 resume_bucket_retention_days_default  = 365
 resume_bucket_retention_days_extended = 2555
+
+# ---------------------------------------------------------------------------
+# Step-4 Directive 2 — compute / run layer.
+# Sizing defaults are modest (compute-variables.tf); bump for prod here.
+# ---------------------------------------------------------------------------
+api_cpu         = 1024
+api_memory      = 2048
+auth_cpu        = 512
+auth_memory     = 1024
+redis_node_type = "cache.t4g.small"
+# api_image_tag  = "<release-git-sha>"   # pin to a digest/SHA for prod
+# auth_image_tag = "<release-git-sha>"
+
+# Plaintext app config (NEVER secrets — secret material lives in Secrets
+# Manager, populated out-of-band). Account/DNS-dependent; illustrative below.
+# api_extra_env = {
+#   AUTH_AUDIENCE                    = "https://aramo.app"
+#   AUTH_COGNITO_TENANT_USER_POOL_ID = "us-east-1_XXXXXXXXX"
+#   ADDRESS_AUTOCOMPLETE_ENABLED     = "true"
+#   ADDRESS_AUTOCOMPLETE_PROVIDER    = "google"
+#   IMPORT_FAILURE_THRESHOLD_PCT     = "10"
+# }
+# auth_extra_env = {
+#   AUTH_AUDIENCE                 = "https://aramo.app"
+#   AUTH_COGNITO_DOMAIN           = "aramo.auth.us-east-1.amazoncognito.com"
+#   AUTH_COGNITO_CLIENT_ID        = "xxxxxxxxxxxxxxxxxxxxxxxxxx"
+#   AUTH_COGNITO_ISSUER           = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX"
+#   AUTH_COGNITO_REDIRECT_URI     = "https://aramo.app/auth/cognito/callback"
+#   AUTH_POST_LOGIN_REDIRECT      = "https://aramo.app/"
+#   AUTH_COGNITO_SIGNOUT_REDIRECT = "https://aramo.app/"
+#   AUTH_TRUSTED_IDP_NAMES        = "Google,Microsoft"
+# }
