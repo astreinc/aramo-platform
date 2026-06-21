@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { probeUserRoster, type TenantUserView, type UserRosterState } from '../assignments/roster';
 import {
   Button,
   Card,
@@ -11,18 +10,24 @@ import {
   StatusPill,
   type TableColumn,
 } from '../ui';
+import {
+  fetchAssignableUsers,
+  resolveUserNames,
+  type AssignableUser,
+} from '../users/users-api';
 
 import { CreateTeamDialog } from './CreateTeamDialog';
 import { fetchTeams } from './teams-api';
 import type { TeamRow } from './types';
 
-// TeamsListView at /admin/teams (ported to ats-web, FE Consolidation Directive
-// 5; restyled to Confident Blue). List + create. The owner column joins against
-// the shared roster client-side; on 403 it shows the raw user_id.
+// TeamsListView at /admin/teams. §5 D4c — owner NAME column resolves via the
+// directory (incl. a departed owner); the create-team owner PICKER uses the
+// assignable endpoint. No 403 fallback (raw user_id only as a pre-load default).
 
 interface Props {
   fetchTeamsFn?: () => Promise<{ items: readonly TeamRow[] }>;
-  probeRosterFn?: () => Promise<UserRosterState>;
+  fetchAssignableFn?: (companyId?: string) => Promise<readonly AssignableUser[]>;
+  resolveNamesFn?: (userIds?: readonly string[]) => Promise<Record<string, string>>;
 }
 
 type LoadState =
@@ -32,25 +37,23 @@ type LoadState =
 
 function ownerDisplay(
   team: TeamRow,
-  rosterById: ReadonlyMap<string, TenantUserView>,
-): { primary: string; secondary?: string } {
-  const owner = rosterById.get(team.owner_user_id);
-  if (owner === undefined) {
-    return { primary: team.owner_user_id };
-  }
-  const display = owner.display_name ?? owner.email;
-  return {
-    primary: display,
-    secondary: owner.display_name !== null ? owner.email : undefined,
-  };
+  names: Record<string, string>,
+): { primary: string } {
+  return { primary: names[team.owner_user_id] ?? team.owner_user_id };
 }
 
-export function TeamsListView({ fetchTeamsFn, probeRosterFn }: Props = {}) {
+export function TeamsListView({
+  fetchTeamsFn,
+  fetchAssignableFn,
+  resolveNamesFn,
+}: Props = {}) {
   const fetchTeamsFun = fetchTeamsFn ?? fetchTeams;
-  const probeRoster = probeRosterFn ?? probeUserRoster;
+  const fetchAssignableFun = fetchAssignableFn ?? fetchAssignableUsers;
+  const resolveNamesFun = resolveNamesFn ?? resolveUserNames;
 
   const [state, setState] = useState<LoadState>({ status: 'loading' });
-  const [roster, setRoster] = useState<UserRosterState>({ state: 'forbidden' });
+  const [pickerUsers, setPickerUsers] = useState<readonly AssignableUser[]>([]);
+  const [names, setNames] = useState<Record<string, string>>({});
   const [createOpen, setCreateOpen] = useState(false);
 
   const refresh = () => {
@@ -77,27 +80,20 @@ export function TeamsListView({ fetchTeamsFn, probeRosterFn }: Props = {}) {
           err instanceof Error ? err.message : 'Failed to load teams.';
         setState({ status: 'error', message });
       });
-    probeRoster()
-      .then((next) => {
-        if (cancelled) return;
-        setRoster(next);
+    void fetchAssignableFun()
+      .then((users) => {
+        if (!cancelled) setPickerUsers(users);
       })
       .catch(() => {
-        if (cancelled) return;
-        setRoster({ state: 'forbidden' });
+        if (!cancelled) setPickerUsers([]);
       });
+    void resolveNamesFun().then((m) => {
+      if (!cancelled) setNames(m);
+    });
     return () => {
       cancelled = true;
     };
-  }, [fetchTeamsFun, probeRoster]);
-
-  const rosterById = useMemo(() => {
-    const m = new Map<string, TenantUserView>();
-    if (roster.state === 'ready') {
-      for (const u of roster.users) m.set(u.user_id, u);
-    }
-    return m;
-  }, [roster]);
+  }, [fetchTeamsFun, fetchAssignableFun, resolveNamesFun]);
 
   const columns: ReadonlyArray<TableColumn<TeamRow>> = [
     {
@@ -117,13 +113,10 @@ export function TeamsListView({ fetchTeamsFn, probeRosterFn }: Props = {}) {
       key: 'owner',
       header: 'Owner',
       render: (t) => {
-        const od = ownerDisplay(t, rosterById);
+        const od = ownerDisplay(t, names);
         return (
           <>
             <span>{od.primary}</span>
-            {od.secondary !== undefined && (
-              <span className="rc-cell-sub"> · {od.secondary}</span>
-            )}
           </>
         );
       },
@@ -189,7 +182,7 @@ export function TeamsListView({ fetchTeamsFn, probeRosterFn }: Props = {}) {
       <CreateTeamDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        roster={roster}
+        users={pickerUsers}
         onCreated={() => refresh()}
       />
     </section>

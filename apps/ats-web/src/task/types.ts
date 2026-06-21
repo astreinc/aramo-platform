@@ -100,18 +100,3 @@ export interface UpdateTaskRequest {
   readonly type?: TaskType | null;
   readonly priority?: TaskPriority | null;
 }
-
-// Minimal hand-mirror of libs/identity TenantUserView — only what the
-// assignee Combobox needs. The roster (GET /v1/tenant/users) is ADMIN-gated
-// (tenant:admin:user-manage); a non-admin task-writer gets a graceful
-// fallback (the S5c probe precedent).
-export interface TenantUserRosterEntry {
-  readonly user_id: string;
-  readonly email: string;
-  readonly display_name: string | null;
-  readonly is_active: boolean;
-}
-
-export interface TenantUserRosterResponse {
-  readonly items: readonly TenantUserRosterEntry[];
-}

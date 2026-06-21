@@ -3,10 +3,15 @@
 // Mirror sources (NO @aramo/* import — apps/tenant-console stays a leaf
 // consumer of the HTTP surface; the FE-isolation rule from S5a/S5b):
 //   - ManagementEdgeRow: libs/identity/src/lib/management-edge.repository.ts
-//   - User-roster row reuses users/types.TenantUserView (same app, no
-//     cross-workspace import — the existing S5b mirror).
+//   - §5 D4c: tree nodes carry the MINIMAL name-resolved row (id + display
+//     name) from the directory — no email/admin fields.
 
-import type { TenantUserView } from '../assignments/roster';
+// §5 Auth-Hardening D4c — the minimal user shape a tree node renders (resolved
+// via the directory, incl. departed managers). NOT the admin TenantUserView.
+export interface OrgUser {
+  readonly user_id: string;
+  readonly display_name: string | null;
+}
 
 // ─── ManagementEdgeRow (D4a + S5-BE2) ────────────────────────────────
 //
@@ -61,7 +66,7 @@ export interface TreeNode {
   // The underlying user — null when the synthesizer cannot find a
   // matching row (e.g. an edge references a user the FE-visible roster
   // does not include; the 403 fallback case).
-  readonly user: TenantUserView | null;
+  readonly user: OrgUser | null;
   // The raw user_id from the edge (or from the roster for a root).
   // Always present, even when `user` is null.
   readonly user_id: string;
@@ -97,10 +102,3 @@ export const TREE_DEPTH_SOFT_CAP = 10;
 // BE (findByPair returns existing row, no audit event) — the FE does
 // NOT treat them as errors (PL-94 §2 ruling 4).
 export type EdgeRejectionReason = 'self_loop' | 'cycle';
-
-// ─── Picker-source probe outcome (Settings S5c-2 ruling 7) ───────────
-//
-// `UserRosterState` and its probe now live in users/users-api.ts (the
-// shared S5c-1 + S5c-2 + S5c-3 surface). org/edges-api.ts re-exports
-// the type for back-compatible imports from the org/* module.
-export type { UserRosterState } from '../assignments/roster';

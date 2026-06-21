@@ -3,36 +3,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@aramo/fe-foundation';
 import { ToastProvider } from '@aramo/fe-foundation';
 
-import type { UserRosterState } from '../assignments/roster';
+import type { AssignableUser } from '../users/users-api';
 
 import { CreateTeamDialog } from './CreateTeamDialog';
 
-const readyRoster: UserRosterState = {
-  state: 'ready',
-  users: [
-    {
-      user_id: 'u-alice',
-      email: 'alice@a.test',
-      display_name: 'Alice',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-    {
-      user_id: 'u-bob',
-      email: 'bob@a.test',
-      display_name: 'Bob',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-  ],
-};
+const readyUsers: readonly AssignableUser[] = [
+  { user_id: 'u-alice', display_name: 'Alice' },
+  { user_id: 'u-bob', display_name: 'Bob' },
+];
 
 function renderDialog(opts?: {
-  roster?: UserRosterState;
+  users?: readonly AssignableUser[];
   createFn?: typeof import('./teams-api').createTeam;
   onCreated?: () => void;
 }) {
@@ -43,7 +24,7 @@ function renderDialog(opts?: {
       <CreateTeamDialog
         open={true}
         onOpenChange={() => undefined}
-        roster={opts?.roster ?? readyRoster}
+        users={opts?.users ?? readyUsers}
         onCreated={onCreated}
         createFn={createFn}
       />
@@ -52,7 +33,7 @@ function renderDialog(opts?: {
 }
 
 describe('CreateTeamDialog (S5c-2)', () => {
-  it('ruling 5: renders name input + Combobox owner picker when roster is ready', () => {
+  it('ruling 5: renders name input + Combobox owner picker', () => {
     renderDialog();
     expect(screen.getByTestId('create-team-name-input')).toBeInTheDocument();
     expect(
@@ -60,27 +41,18 @@ describe('CreateTeamDialog (S5c-2)', () => {
     ).toBeInTheDocument();
   });
 
-  it('ruling 7: 403 fallback renders raw-UUID input for owner + helper copy', () => {
-    renderDialog({ roster: { state: 'forbidden' } });
-    expect(
-      screen.getByTestId('create-team-owner-input').tagName,
-    ).toBe('INPUT');
-    expect(
-      screen.getByText(/User roster isn.t available to your role/i),
-    ).toBeInTheDocument();
-  });
-
   it('Submit disabled until both name and owner present', () => {
-    renderDialog({ roster: { state: 'forbidden' } });
+    renderDialog();
     const submit = screen.getByTestId('create-team-submit') as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
     fireEvent.change(screen.getByTestId('create-team-name-input'), {
       target: { value: 'Alpha' },
     });
     expect(submit.disabled).toBe(true);
-    fireEvent.change(screen.getByTestId('create-team-owner-input'), {
-      target: { value: 'u-bob' },
-    });
+    fireEvent.click(screen.getByTestId('create-team-owner-combobox'));
+    fireEvent.click(
+      screen.getByTestId('create-team-owner-combobox-option-u-bob'),
+    );
     expect(submit.disabled).toBe(false);
   });
 
@@ -92,17 +64,14 @@ describe('CreateTeamDialog (S5c-2)', () => {
       is_active: true,
     }));
     const onCreated = vi.fn();
-    renderDialog({
-      roster: { state: 'forbidden' },
-      createFn,
-      onCreated,
-    });
+    renderDialog({ createFn, onCreated });
     fireEvent.change(screen.getByTestId('create-team-name-input'), {
       target: { value: '  Alpha  ' },
     });
-    fireEvent.change(screen.getByTestId('create-team-owner-input'), {
-      target: { value: 'u-bob' },
-    });
+    fireEvent.click(screen.getByTestId('create-team-owner-combobox'));
+    fireEvent.click(
+      screen.getByTestId('create-team-owner-combobox-option-u-bob'),
+    );
     fireEvent.click(screen.getByTestId('create-team-submit'));
     await waitFor(() => expect(createFn).toHaveBeenCalledTimes(1));
     expect(createFn).toHaveBeenCalledWith({
@@ -121,13 +90,14 @@ describe('CreateTeamDialog (S5c-2)', () => {
         { name: 'Alpha', existing_team_id: 't-existing' },
       );
     });
-    renderDialog({ roster: { state: 'forbidden' }, createFn });
+    renderDialog({ createFn });
     fireEvent.change(screen.getByTestId('create-team-name-input'), {
       target: { value: 'Alpha' },
     });
-    fireEvent.change(screen.getByTestId('create-team-owner-input'), {
-      target: { value: 'u-bob' },
-    });
+    fireEvent.click(screen.getByTestId('create-team-owner-combobox'));
+    fireEvent.click(
+      screen.getByTestId('create-team-owner-combobox-option-u-bob'),
+    );
     fireEvent.click(screen.getByTestId('create-team-submit'));
     await waitFor(() =>
       expect(

@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { TenantUserView } from '../assignments/roster';
-
 import { synthesizeTree } from './tree-synthesis';
-import type { ManagementEdgeRow } from './types';
+import type { ManagementEdgeRow, OrgUser } from './types';
 
 // Settings S5c-1 — tree-synthesis spec.
 //
@@ -17,15 +15,10 @@ import type { ManagementEdgeRow } from './types';
 //       whatever the BE returns (the BE already deduplicates)
 //   (5) the 403 fallback: users=[] still synthesizes from edges only
 
-function makeUser(id: string, name: string): TenantUserView {
+function makeUser(id: string, name: string): OrgUser {
   return {
     user_id: id,
-    email: `${id}@example.test`,
     display_name: name,
-    is_active: true,
-    deactivated_at: null,
-    site_id: null,
-    role_keys: [],
   };
 }
 

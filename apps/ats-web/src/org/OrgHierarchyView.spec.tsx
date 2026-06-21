@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@aramo/fe-foundation';
 import { ToastProvider } from '@aramo/fe-foundation';
 
+import type { AssignableUser } from '../users/users-api';
+
 import { OrgHierarchyView } from './OrgHierarchyView';
-import type { ManagementEdgeRow, UserRosterState } from './types';
+import type { ManagementEdgeRow } from './types';
 
 function makeEdge(
   id: string,
@@ -21,50 +23,42 @@ function makeEdge(
   };
 }
 
-const readyRoster: UserRosterState = {
-  state: 'ready',
-  users: [
-    {
-      user_id: 'u-alice',
-      email: 'alice@b.test',
-      display_name: 'Alice',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-    {
-      user_id: 'u-bob',
-      email: 'bob@b.test',
-      display_name: 'Bob',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-  ],
+const readyAssignable: readonly AssignableUser[] = [
+  { user_id: 'u-alice', display_name: 'Alice' },
+  { user_id: 'u-bob', display_name: 'Bob' },
+];
+
+const readyNames: Record<string, string> = {
+  'u-alice': 'Alice',
+  'u-bob': 'Bob',
 };
 
 function renderView(opts?: {
   edges?: readonly ManagementEdgeRow[];
-  roster?: UserRosterState;
+  assignable?: readonly AssignableUser[];
+  names?: Record<string, string>;
   deleteFn?: (id: string) => Promise<void>;
 }) {
   const fetchEdgesFn = vi.fn(async () => ({ items: opts?.edges ?? [] }));
-  const probeFn = vi.fn(async () => opts?.roster ?? readyRoster);
+  const fetchAssignableFn = vi.fn(
+    async () => opts?.assignable ?? readyAssignable,
+  );
+  const resolveNamesFn = vi.fn(async () => opts?.names ?? readyNames);
   const deleteFn = opts?.deleteFn ?? vi.fn(async () => undefined);
   return {
     ...render(
       <ToastProvider>
         <OrgHierarchyView
           fetchEdgesFn={fetchEdgesFn}
-          probeRosterFn={probeFn}
+          fetchAssignableFn={fetchAssignableFn}
+          resolveNamesFn={resolveNamesFn}
           deleteFn={deleteFn}
         />
       </ToastProvider>,
     ),
     fetchEdgesFn,
-    probeFn,
+    fetchAssignableFn,
+    resolveNamesFn,
     deleteFn,
   };
 }
@@ -72,7 +66,7 @@ function renderView(opts?: {
 describe('OrgHierarchyView (S5c-1)', () => {
   it('renders the page header + the Add edge button', async () => {
     // Empty edges + empty roster -> no synthesized roots -> empty state.
-    renderView({ edges: [], roster: { state: 'forbidden' } });
+    renderView({ edges: [], assignable: [], names: {} });
     expect(screen.getByText('Organisation hierarchy')).toBeInTheDocument();
     expect(screen.getByTestId('open-add-edge')).toBeInTheDocument();
     await waitFor(() =>
@@ -89,7 +83,7 @@ describe('OrgHierarchyView (S5c-1)', () => {
   });
 
   it('opens the AddEdgeDialog when the button is clicked', async () => {
-    renderView({ edges: [], roster: { state: 'forbidden' } });
+    renderView({ edges: [], assignable: [], names: {} });
     await waitFor(() =>
       expect(
         screen.getByText(/no reporting relationships/i),
@@ -130,27 +124,18 @@ describe('OrgHierarchyView (S5c-1)', () => {
     );
   });
 
-  it('PICKER-SOURCE 403 fallback: the AddEdge Dialog renders raw UUID inputs', async () => {
-    renderView({ edges: [], roster: { state: 'forbidden' } });
-    await waitFor(() =>
-      expect(
-        screen.getByText(/no reporting relationships/i),
-      ).toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByTestId('open-add-edge'));
-    expect(screen.getByTestId('add-edge-manager-input')).toBeInTheDocument();
-  });
-
   it('inline-error on edges-fetch failure', async () => {
     const fetchEdgesFn = vi.fn(async () => {
       throw new ApiError(500, 'boom', 'INTERNAL', {});
     });
-    const probeFn = vi.fn(async () => readyRoster);
+    const fetchAssignableFn = vi.fn(async () => readyAssignable);
+    const resolveNamesFn = vi.fn(async () => readyNames);
     render(
       <ToastProvider>
         <OrgHierarchyView
           fetchEdgesFn={fetchEdgesFn}
-          probeRosterFn={probeFn}
+          fetchAssignableFn={fetchAssignableFn}
+          resolveNamesFn={resolveNamesFn}
         />
       </ToastProvider>,
     );

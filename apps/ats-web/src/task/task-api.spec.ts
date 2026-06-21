@@ -5,11 +5,10 @@ import {
   deleteTask,
   listMyTasks,
   listTasksForOwner,
-  probeTenantUsers,
   updateTask,
 } from './task-api';
 
-// Tasks FE — the task endpoint URL construction + the roster probe.
+// Tasks FE — the task endpoint URL construction.
 
 function mockJson(body: unknown, status = 200) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(
@@ -49,27 +48,5 @@ describe('task-api — URL construction', () => {
     await deleteTask('t1');
     expect(spy.mock.calls[2]?.[0]).toBe('/v1/tasks/t1');
     expect((spy.mock.calls[2]?.[1] as RequestInit).method).toBe('DELETE');
-  });
-});
-
-describe('task-api — probeTenantUsers (the S5c graceful-403 precedent)', () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  it('available + active-only when the roster is readable', async () => {
-    mockJson({
-      items: [
-        { user_id: 'u1', email: 'a@x', display_name: 'Ann', is_active: true },
-        { user_id: 'u2', email: 'b@x', display_name: null, is_active: false },
-      ],
-    });
-    const r = await probeTenantUsers();
-    expect(r.available).toBe(true);
-    expect(r.items.map((u) => u.user_id)).toEqual(['u1']); // inactive filtered
-  });
-
-  it('403 (non-admin task-writer) → available:false, no throw', async () => {
-    mockJson({ code: 'INSUFFICIENT_PERMISSIONS' }, 403);
-    const r = await probeTenantUsers();
-    expect(r).toEqual({ available: false, items: [] });
   });
 });

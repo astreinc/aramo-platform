@@ -3,37 +3,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@aramo/fe-foundation';
 import { ToastProvider } from '@aramo/fe-foundation';
 
+import type { AssignableUser } from '../users/users-api';
+
 import { AddEdgeDialog } from './AddEdgeDialog';
-import type { UserRosterState } from './types';
 
-const readyRoster: UserRosterState = {
-  state: 'ready',
-  users: [
-    {
-      user_id: 'u-alice',
-      email: 'alice@b.test',
-      display_name: 'Alice',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-    {
-      user_id: 'u-bob',
-      email: 'bob@b.test',
-      display_name: 'Bob',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-  ],
-};
-
-const forbiddenRoster: UserRosterState = { state: 'forbidden' };
+const readyUsers: readonly AssignableUser[] = [
+  { user_id: 'u-alice', display_name: 'Alice' },
+  { user_id: 'u-bob', display_name: 'Bob' },
+];
 
 function renderDialog(opts?: {
-  roster?: UserRosterState;
+  users?: readonly AssignableUser[];
   addFn?: typeof import('./edges-api').addManagementEdge;
   onAdded?: () => void;
 }) {
@@ -44,7 +24,7 @@ function renderDialog(opts?: {
       <AddEdgeDialog
         open={true}
         onOpenChange={() => undefined}
-        roster={opts?.roster ?? readyRoster}
+        users={opts?.users ?? readyUsers}
         onAdded={onAdded}
         addFn={addFn}
       />
@@ -62,17 +42,6 @@ describe('AddEdgeDialog (S5c-1)', () => {
     expect(screen.getByTestId('add-edge-report-select').tagName).toBe(
       'SELECT',
     );
-  });
-
-  it('PICKER-SOURCE 403 FALLBACK (ruling 6): renders raw UUID inputs + the helper copy', () => {
-    renderDialog({ roster: forbiddenRoster });
-    expect(screen.getByTestId('add-edge-manager-input').tagName).toBe(
-      'INPUT',
-    );
-    expect(screen.getByTestId('add-edge-report-input').tagName).toBe('INPUT');
-    expect(
-      screen.getByText(/User roster isn.t available to your role/i),
-    ).toBeInTheDocument();
   });
 
   it('Save button is disabled until both fields are populated', () => {

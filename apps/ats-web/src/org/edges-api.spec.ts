@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError } from '@aramo/fe-foundation';
 
 import {
   addManagementEdge,
   deleteManagementEdge,
   fetchManagementEdges,
-  probeUserRoster,
 } from './edges-api';
 
 function mockJson(status: number, body: unknown) {
@@ -62,47 +60,5 @@ describe('edges-api — endpoint wiring', () => {
     await deleteManagementEdge('e1');
     expect(fetchSpy.mock.calls[0]?.[0]).toBe('/v1/management/edges/e1');
     expect(fetchSpy.mock.calls[0]?.[1]?.method).toBe('DELETE');
-  });
-});
-
-describe('probeUserRoster — the 403 fallback (ruling 6)', () => {
-  it('returns ready+users on a 200', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      mockJson(200, {
-        items: [
-          {
-            user_id: 'u1',
-            email: 'a@b.test',
-            display_name: 'A',
-            is_active: true,
-            deactivated_at: null,
-            site_id: null,
-            role_keys: ['recruiter'],
-          },
-        ],
-      }),
-    );
-    const out = await probeUserRoster();
-    expect(out.state).toBe('ready');
-    if (out.state === 'ready') {
-      expect(out.users).toHaveLength(1);
-    }
-  });
-
-  it('returns forbidden on a 403 (pure org:manage admin without user-manage scope)', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      mockJson(403, {
-        error: { code: 'FORBIDDEN', message: 'no scope' },
-      }),
-    );
-    const out = await probeUserRoster();
-    expect(out).toEqual({ state: 'forbidden' });
-  });
-
-  it('rethrows on a non-403 error (a 500 is a real failure)', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      mockJson(500, { error: { code: 'INTERNAL', message: 'boom' } }),
-    );
-    await expect(probeUserRoster()).rejects.toBeInstanceOf(ApiError);
   });
 });
