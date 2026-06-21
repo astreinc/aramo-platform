@@ -112,6 +112,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         AUTH_COGNITO_CLIENT_ID: process.env['AUTH_COGNITO_CLIENT_ID'],
         AUTH_COGNITO_REDIRECT_URI: process.env['AUTH_COGNITO_REDIRECT_URI'],
         AUTH_COGNITO_SIGNOUT_REDIRECT: process.env['AUTH_COGNITO_SIGNOUT_REDIRECT'],
+        // §5 D5 (3.6) Part A — capture/restore AUTH_POST_LOGIN_REDIRECT too, so
+        // the callback-success tests (test 39 + the logout/session tests that
+        // drive a callback) are SELF-CONTAINED: they no longer depend on the
+        // ambient env carrying it. This closes the "test-39 green-in-CI /
+        // failing-locally" gap (CI set it ambiently; a local run did not).
+        AUTH_POST_LOGIN_REDIRECT: process.env['AUTH_POST_LOGIN_REDIRECT'],
         AUTH_REFRESH_GRACE_SECONDS: process.env['AUTH_REFRESH_GRACE_SECONDS'],
         AUTH_ALLOW_INSECURE_COOKIES: process.env['AUTH_ALLOW_INSECURE_COOKIES'],
       };
@@ -124,6 +130,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_COGNITO_CLIENT_ID'] = 'test-client';
       process.env['AUTH_COGNITO_REDIRECT_URI'] = 'https://app.example/cb';
       process.env['AUTH_COGNITO_SIGNOUT_REDIRECT'] = 'https://app.example/login';
+      process.env['AUTH_POST_LOGIN_REDIRECT'] = 'https://app.example/';
       process.env['AUTH_REFRESH_GRACE_SECONDS'] = '0';
       process.env['AUTH_ALLOW_INSECURE_COOKIES'] = 'true';
 
@@ -240,7 +247,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const res = await request(app.getHttpServer())
         .get(`/auth/recruiter/callback?code=c&state=${state}`)
         .set('Cookie', pkceCookie);
-      expect(res.status).toBe(204);
+      // §5 D2: callback success is a top-level browser 302 to
+      // AUTH_POST_LOGIN_REDIRECT (was a bodyless 204 pre-D2). The cookies are
+      // set on the redirect response. (Updated from the stale 204 assertion;
+      // beforeAll now sets AUTH_POST_LOGIN_REDIRECT so this no longer 500s
+      // off-CI — §5 D5 Part A.)
+      expect(res.status).toBe(302);
+      expect(res.headers['location']).toBe('https://app.example/');
       const cookies = res.headers['set-cookie'] as unknown as string[];
       expect(cookies.some((c) => c.startsWith('aramo_access_token='))).toBe(true);
       expect(cookies.some((c) => c.startsWith('aramo_refresh_token='))).toBe(true);

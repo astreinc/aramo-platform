@@ -22,6 +22,9 @@ coverage/
 .env.*
 !.env.example
 
+# Local dev stack (tools/local-stack.sh) — pids + app logs
+.local-stack/
+
 # Editor / OS
 .vscode/
 .idea/
