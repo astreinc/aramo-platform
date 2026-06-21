@@ -449,10 +449,12 @@ not a client filter). The following are deliberate gaps.
   (historical integrity), minimal projection, batch-capable (`?user_ids=`), under
   the new recruiter-tier `tenant:user:read:directory` scope (the 10 list-view
   viewers). The endpoint exists; **the FE repoint is what remains** (below).
-- **STILL deferred (the repoint pass, NEXT directive):** the 7 list/detail
-  name-resolvers + the 5 assignment views' assigned-name display still call the
-  admin probe. Until they repoint to the directory endpoint, recruiter
-  name-resolution in those views is a silent no-op (shows the id / no name).
+- **Repoint pass — DONE (§5 D4c, PR #277):** the 7 list/detail name-resolvers +
+  all 5 assignment/org/team pickers now consume the two endpoints (pickers →
+  assignable; names → directory, incl. departed users). The admin-gated probes
+  (`probeTenantUsers`/`probeUserRoster`) are removed. Recruiter name-resolution
+  + assignment pickers work across every surface; no 403-fallback remains. This
+  carry is CLOSED on merge.
 - **Risk:** low — the named recruiter gap (task assignment) is closed; the
   remainder are disclosed interim affordances, not unenforced guardrails.
 - **Close criteria:** author the name-resolver slice, then repoint the 7 list-
