@@ -301,7 +301,14 @@ export class SessionOrchestratorService {
       body: body.toString(),
     });
     if (!res.ok) {
-      throw new Error(`cognito-token-status-${res.status}`);
+      // Include Cognito's OAuth error body (e.g. {"error":"invalid_grant"}) in
+      // the message — it's server-log only (the orchestrator maps this to a
+      // generic 500 for the client) and is the difference between a debuggable
+      // and an opaque token-exchange failure. The body carries no secret.
+      const errBody = await res.text().catch(() => '');
+      throw new Error(
+        `cognito-token-status-${res.status}: ${errBody.slice(0, 300)}`,
+      );
     }
     const json = (await res.json()) as { id_token?: string };
     if (typeof json.id_token !== 'string' || json.id_token.length === 0) {
