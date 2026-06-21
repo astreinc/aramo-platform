@@ -481,3 +481,30 @@ not a client filter). The following are deliberate gaps.
 - **Close criteria:** build only if **post-go-live** auth iteration makes local
   browser-e2e worth the added auth surface — the favorable recon is ready to
   execute (own PR + security review) if/when that value reappears.
+
+### MFA (TOTP, required) — pool policy is a Step-4 deploy item (§5 D6)
+- **Date:** 2026-06-21 · **Branch:** `feat/auth-hardening-d6-mfa`
+- **Policy (decided + documented — [`doc/auth-mfa-recon.md`](auth-mfa-recon.md)):**
+  TOTP **required** for Cognito-**native** users (all roles — admin AND recruiter,
+  ratified), pool-level + hosted-UI enrollment/challenge. Federated (Google/MS)
+  users are **IdP-MFA'd** — Cognito MFA does not apply (not a gap).
+- **App code:** **none** — MFA is enforced in Cognito (proven), not app code. An
+  MFA-completed token is a normal `id_token`; the verifier/orchestrator are
+  unchanged; the hosted-UI handles enrollment+challenge before the auth code is
+  issued, so no not-yet-enrolled state reaches the app. (Recon confirmed zero
+  MFA assumptions in the auth code.)
+- **NOT applied yet (out-of-band, per env — Step-4):** the pool MFA policy. Dev
+  pool observed `MfaConfiguration: "OFF"` at recon. Apply to **staging + prod**
+  (and optionally local for testing):
+  ```sh
+  aws cognito-idp set-user-pool-mfa-config --user-pool-id <POOL> \
+    --mfa-configuration ON --software-token-mfa-configuration Enabled=true --region <REGION>
+  ```
+  (`ON` = required; TOTP enabled; SMS NOT enabled as a factor.) Sits alongside
+  the callback-URL + sign-out-URL per-env Cognito items.
+- **Risk:** none until applied; on apply, native users must enroll TOTP at next
+  hosted-UI login. Federated logins unaffected.
+- **Close criteria:** apply the pool policy at Step-4 and **verify at staging**
+  (real Cognito) — a native user is forced to enroll TOTP + challenged on login;
+  a federated user is IdP-MFA'd, not Cognito-challenged. The TOTP flow is **not**
+  faked locally (same local-Cognito limit as D1/D2/D3).
