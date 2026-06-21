@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@aramo/fe-foundation';
 import { ToastProvider } from '@aramo/fe-foundation';
 
-import type { UserRosterState } from '../assignments/roster';
+import type { AssignableUser } from '../users/users-api';
 
 import { TeamMembersView } from './TeamMembersView';
 import type { TeamMembershipRow } from './types';
@@ -20,49 +20,32 @@ const members: TeamMembershipRow[] = [
   },
 ];
 
-const readyRoster: UserRosterState = {
-  state: 'ready',
-  users: [
-    {
-      user_id: 'u-alice',
-      email: 'alice@a.test',
-      display_name: 'Alice',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-    {
-      user_id: 'u-bob',
-      email: 'bob@a.test',
-      display_name: 'Bob',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-    {
-      user_id: 'u-carol',
-      email: 'carol@a.test',
-      display_name: 'Carol',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-  ],
+const readyAssignable: readonly AssignableUser[] = [
+  { user_id: 'u-alice', display_name: 'Alice' },
+  { user_id: 'u-bob', display_name: 'Bob' },
+  { user_id: 'u-carol', display_name: 'Carol' },
+];
+
+const readyNames: Record<string, string> = {
+  'u-alice': 'Alice',
+  'u-bob': 'Bob',
+  'u-carol': 'Carol',
 };
 
 function renderView(opts?: {
   memberItems?: readonly TeamMembershipRow[];
-  roster?: UserRosterState;
+  assignable?: readonly AssignableUser[];
+  names?: Record<string, string>;
   addMemberFn?: typeof import('./teams-api').addMember;
   removeMemberFn?: typeof import('./teams-api').removeMember;
   fetchMembersFn?: (teamId: string) => Promise<{ items: readonly TeamMembershipRow[] }>;
 }) {
   const fetchMembersFn =
     opts?.fetchMembersFn ?? vi.fn(async () => ({ items: opts?.memberItems ?? members }));
-  const probeRosterFn = vi.fn(async () => opts?.roster ?? readyRoster);
+  const fetchAssignableFn = vi.fn(
+    async () => opts?.assignable ?? readyAssignable,
+  );
+  const resolveNamesFn = vi.fn(async () => opts?.names ?? readyNames);
   const addMemberFn = opts?.addMemberFn ?? vi.fn();
   const removeMemberFn = opts?.removeMemberFn ?? vi.fn();
   return {
@@ -72,7 +55,8 @@ function renderView(opts?: {
           <TeamMembersView
             teamIdOverride="t1"
             fetchMembersFn={fetchMembersFn}
-            probeRosterFn={probeRosterFn}
+            fetchAssignableFn={fetchAssignableFn}
+            resolveNamesFn={resolveNamesFn}
             addMemberFn={addMemberFn}
             removeMemberFn={removeMemberFn}
           />
@@ -171,19 +155,6 @@ describe('TeamMembersView (S5c-2)', () => {
     await waitFor(() => expect(removeMemberFn).toHaveBeenCalled());
     // The list refreshes (the intent is satisfied — the member is gone).
     await waitFor(() => expect(fetchMembersFn).toHaveBeenCalledTimes(2));
-  });
-
-  it('ruling 7: 403 fallback renders raw-UUID input for add-member', async () => {
-    renderView({ roster: { state: 'forbidden' } });
-    // Wait for the members-list to settle (the row keyed on user_id
-    // still renders; the roster-join just falls back to the raw id).
-    await waitFor(() =>
-      expect(screen.getByTestId('member-row-u-alice')).toBeInTheDocument(),
-    );
-    expect(screen.getByTestId('add-member-uuid-input')).toBeInTheDocument();
-    expect(
-      screen.getByText(/Roster unavailable to your role/i),
-    ).toBeInTheDocument();
   });
 
   it('per-tenant isolation: 404 on members fetch surfaces "isn’t in your tenant"', async () => {

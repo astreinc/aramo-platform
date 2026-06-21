@@ -21,13 +21,16 @@
 // which children are collapsed under a "Show more…" expander surfaced
 // by the renderer via the `depth_capped` flag.
 
-import type { TenantUserView } from '../assignments/roster';
-
-import { TREE_DEPTH_SOFT_CAP, type ManagementEdgeRow, type TreeNode } from './types';
+import {
+  TREE_DEPTH_SOFT_CAP,
+  type ManagementEdgeRow,
+  type OrgUser,
+  type TreeNode,
+} from './types';
 
 interface SynthInput {
   readonly edges: readonly ManagementEdgeRow[];
-  readonly users: readonly TenantUserView[];
+  readonly users: readonly OrgUser[];
   // Test seam — override the soft cap. Default is TREE_DEPTH_SOFT_CAP.
   readonly depthCap?: number;
 }
@@ -46,7 +49,7 @@ export interface SynthesisResult {
 export function synthesizeTree(input: SynthInput): SynthesisResult {
   const depthCap = input.depthCap ?? TREE_DEPTH_SOFT_CAP;
 
-  const userById = new Map<string, TenantUserView>();
+  const userById = new Map<string, OrgUser>();
   for (const u of input.users) userById.set(u.user_id, u);
 
   // adjacency: manager_user_id → edges[]

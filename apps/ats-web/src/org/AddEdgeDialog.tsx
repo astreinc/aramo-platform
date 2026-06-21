@@ -5,23 +5,23 @@ import { FormField } from '@aramo/fe-foundation';
 import { InlineAlert } from '@aramo/fe-foundation';
 import { useToast } from '@aramo/fe-foundation';
 
+import type { AssignableUser } from '../users/users-api';
+
 import {
   messageForAddEdgeError,
   type ErrorMessage,
 } from './error-messages';
-import type { AddEdgeResponse, UserRosterState } from './types';
+import type { AddEdgeResponse } from './types';
 import { addManagementEdge } from './edges-api';
 
 // Settings S5c-1 — AddEdgeDialog.
 //
 // PL-94 §2 ruling 1 — PICKER = native <select>. The user roster is
-// bounded; native <select> ships keyboard nav + type-ahead + a11y for
-// free; no new dep. The Combobox stays S5c-2's deliverable.
+// bounded; native <select> ships keyboard nav + type-ahead + a11y for free.
 //
-// PL-94 §2 ruling 6 — PICKER-SOURCE 403 FALLBACK. When the roster
-// probe returned `forbidden`, this Dialog renders raw-UUID text inputs
-// instead of the selects + a one-line helper note. NEVER blocks the
-// editor; the BE bad-UUID rejection is the floor.
+// §5 Auth-Hardening D4c — the picker source is the assignable endpoint (active
+// roster). Every work-assigning role holds the scope, so the picker always
+// loads — the 403→raw-UUID fallback is GONE.
 //
 // PL-94 §2 ruling 4 — DUPLICATE = SILENT SUCCESS. The BE returns the
 // existing edge with no event; the Dialog refreshes the tree and
@@ -31,26 +31,22 @@ import { addManagementEdge } from './edges-api';
 interface AddEdgeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  roster: UserRosterState;
+  users: readonly AssignableUser[];
   onAdded: (result: AddEdgeResponse) => void;
   // Test seam.
   addFn?: typeof addManagementEdge;
 }
 
-function displayFor(u: {
-  user_id: string;
-  display_name: string | null;
-  email: string;
-}): string {
+function displayFor(u: AssignableUser): string {
   return u.display_name !== null && u.display_name.length > 0
-    ? `${u.display_name} (${u.email})`
-    : u.email;
+    ? u.display_name
+    : u.user_id;
 }
 
 export function AddEdgeDialog({
   open,
   onOpenChange,
-  roster,
+  users,
   onAdded,
   addFn,
 }: AddEdgeDialogProps) {
@@ -92,16 +88,10 @@ export function AddEdgeDialog({
   const submittable =
     !saving && manager.trim().length > 0 && report.trim().length > 0;
 
-  // Sort the roster alphabetically when present — names first, falling
-  // back to email. The 403 fallback path renders bare inputs instead.
-  const sortedUsers =
-    roster.state === 'ready'
-      ? [...roster.users].sort((a, b) => {
-          const an = a.display_name ?? a.email;
-          const bn = b.display_name ?? b.email;
-          return an.localeCompare(bn);
-        })
-      : [];
+  // Alphabetical by display name (id fallback).
+  const sortedUsers = [...users].sort((a, b) =>
+    (a.display_name ?? a.user_id).localeCompare(b.display_name ?? b.user_id),
+  );
 
   return (
     <Dialog
@@ -151,85 +141,40 @@ export function AddEdgeDialog({
             )}
           </InlineAlert>
         )}
-        {roster.state === 'forbidden' && (
-          <InlineAlert variant="error">
-            User roster isn’t available to your role. Paste user IDs
-            instead — the server validates them on save.
-          </InlineAlert>
-        )}
-        {roster.state === 'ready' ? (
-          <>
-            <FormField
-              label={<label htmlFor="add-edge-manager">Manager</label>}
-            >
-              <select
-                id="add-edge-manager"
-                className="rc-input"
-                value={manager}
-                disabled={saving}
-                onChange={(ev) => setManager(ev.target.value)}
-                data-testid="add-edge-manager-select"
-              >
-                <option value="">Select a manager…</option>
-                {sortedUsers.map((u) => (
-                  <option key={u.user_id} value={u.user_id}>
-                    {displayFor(u)}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField
-              label={<label htmlFor="add-edge-report">Report</label>}
-            >
-              <select
-                id="add-edge-report"
-                className="rc-input"
-                value={report}
-                disabled={saving}
-                onChange={(ev) => setReport(ev.target.value)}
-                data-testid="add-edge-report-select"
-              >
-                <option value="">Select a report…</option>
-                {sortedUsers.map((u) => (
-                  <option key={u.user_id} value={u.user_id}>
-                    {displayFor(u)}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-          </>
-        ) : (
-          <>
-            <FormField
-              label={<label htmlFor="add-edge-manager-uuid">Manager user ID</label>}
-              helper="UUID from your records."
-            >
-              <input
-                id="add-edge-manager-uuid"
-                type="text"
-                className="rc-input"
-                value={manager}
-                disabled={saving}
-                onChange={(ev) => setManager(ev.target.value)}
-                data-testid="add-edge-manager-input"
-              />
-            </FormField>
-            <FormField
-              label={<label htmlFor="add-edge-report-uuid">Report user ID</label>}
-              helper="UUID from your records."
-            >
-              <input
-                id="add-edge-report-uuid"
-                type="text"
-                className="rc-input"
-                value={report}
-                disabled={saving}
-                onChange={(ev) => setReport(ev.target.value)}
-                data-testid="add-edge-report-input"
-              />
-            </FormField>
-          </>
-        )}
+        <FormField label={<label htmlFor="add-edge-manager">Manager</label>}>
+          <select
+            id="add-edge-manager"
+            className="rc-input"
+            value={manager}
+            disabled={saving}
+            onChange={(ev) => setManager(ev.target.value)}
+            data-testid="add-edge-manager-select"
+          >
+            <option value="">Select a manager…</option>
+            {sortedUsers.map((u) => (
+              <option key={u.user_id} value={u.user_id}>
+                {displayFor(u)}
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label={<label htmlFor="add-edge-report">Report</label>}>
+          <select
+            id="add-edge-report"
+            className="rc-input"
+            value={report}
+            disabled={saving}
+            onChange={(ev) => setReport(ev.target.value)}
+            data-testid="add-edge-report-select"
+          >
+            <option value="">Select a report…</option>
+            {sortedUsers.map((u) => (
+              <option key={u.user_id} value={u.user_id}>
+                {displayFor(u)}
+              </option>
+            ))}
+          </select>
+        </FormField>
       </form>
     </Dialog>
   );

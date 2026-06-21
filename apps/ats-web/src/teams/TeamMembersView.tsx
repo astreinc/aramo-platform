@@ -2,17 +2,20 @@ import { ApiError, Combobox, type ComboboxItem, useToast } from '@aramo/fe-found
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
-import { probeUserRoster, type TenantUserView, type UserRosterState } from '../assignments/roster';
 import {
   Button,
   Card,
   CardHead,
   DataTable,
-  FormField,
   InlineAlert,
   PageHeader,
   type TableColumn,
 } from '../ui';
+import {
+  fetchAssignableUsers,
+  resolveUserNames,
+  type AssignableUser,
+} from '../users/users-api';
 
 import {
   messageForAddMemberError,
@@ -32,7 +35,8 @@ import type { TeamMembershipRow } from './types';
 interface Props {
   teamIdOverride?: string;
   fetchMembersFn?: (teamId: string) => Promise<{ items: readonly TeamMembershipRow[] }>;
-  probeRosterFn?: () => Promise<UserRosterState>;
+  fetchAssignableFn?: (companyId?: string) => Promise<readonly AssignableUser[]>;
+  resolveNamesFn?: (userIds?: readonly string[]) => Promise<Record<string, string>>;
   addMemberFn?: typeof addMember;
   removeMemberFn?: typeof removeMember;
 }
@@ -48,28 +52,22 @@ interface PendingRemoval {
 }
 
 function rosterToItems(
-  roster: UserRosterState,
+  users: readonly AssignableUser[],
   memberUserIds: ReadonlySet<string>,
 ): ReadonlyArray<ComboboxItem> {
-  if (roster.state !== 'ready') return [];
-  return [...roster.users]
+  return [...users]
     .filter((u) => !memberUserIds.has(u.user_id))
-    .sort((a, b) => {
-      const an = a.display_name ?? a.email;
-      const bn = b.display_name ?? b.email;
-      return an.localeCompare(bn);
-    })
-    .map((u) => ({
-      value: u.user_id,
-      label: u.display_name ?? u.email,
-      description: u.display_name !== null ? u.email : undefined,
-    }));
+    .sort((a, b) =>
+      (a.display_name ?? a.user_id).localeCompare(b.display_name ?? b.user_id),
+    )
+    .map((u) => ({ value: u.user_id, label: u.display_name ?? u.user_id }));
 }
 
 export function TeamMembersView({
   teamIdOverride,
   fetchMembersFn,
-  probeRosterFn,
+  fetchAssignableFn,
+  resolveNamesFn,
   addMemberFn,
   removeMemberFn,
 }: Props = {}) {
@@ -77,15 +75,16 @@ export function TeamMembersView({
   const teamId = teamIdOverride ?? params.teamId ?? '';
 
   const fetchMembersFun = fetchMembersFn ?? fetchTeamMembers;
-  const probeRoster = probeRosterFn ?? probeUserRoster;
+  const fetchAssignableFun = fetchAssignableFn ?? fetchAssignableUsers;
+  const resolveNamesFun = resolveNamesFn ?? resolveUserNames;
   const addMemberFun = addMemberFn ?? addMember;
   const removeMemberFun = removeMemberFn ?? removeMember;
   const toast = useToast();
 
   const [state, setState] = useState<LoadState>({ status: 'loading' });
-  const [roster, setRoster] = useState<UserRosterState>({ state: 'forbidden' });
+  const [pickerUsers, setPickerUsers] = useState<readonly AssignableUser[]>([]);
+  const [names, setNames] = useState<Record<string, string>>({});
   const [pickerValue, setPickerValue] = useState<string | null>(null);
-  const [uuidInput, setUuidInput] = useState('');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<ErrorMessage | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
@@ -106,33 +105,27 @@ export function TeamMembersView({
       .then((view) => {
         if (cancelled) return;
         setState({ status: 'ready', members: view.items });
+        // Member NAMES from the directory (incl. departed members).
+        void resolveNamesFun(view.items.map((m) => m.user_id)).then((map) => {
+          if (!cancelled) setNames(map);
+        });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         const msg = messageForFetchTeamMembersError(err);
         setState({ status: 'error', message: msg.title });
       });
-    probeRoster()
-      .then((next) => {
-        if (cancelled) return;
-        setRoster(next);
+    void fetchAssignableFun()
+      .then((users) => {
+        if (!cancelled) setPickerUsers(users);
       })
       .catch(() => {
-        if (cancelled) return;
-        setRoster({ state: 'forbidden' });
+        if (!cancelled) setPickerUsers([]);
       });
     return () => {
       cancelled = true;
     };
-  }, [fetchMembersFun, probeRoster, teamId]);
-
-  const rosterById = useMemo(() => {
-    const m = new Map<string, TenantUserView>();
-    if (roster.state === 'ready') {
-      for (const u of roster.users) m.set(u.user_id, u);
-    }
-    return m;
-  }, [roster]);
+  }, [fetchMembersFun, fetchAssignableFun, resolveNamesFun, teamId]);
 
   const memberUserIds = useMemo(() => {
     const s = new Set<string>();
@@ -143,13 +136,12 @@ export function TeamMembersView({
   }, [state]);
 
   const comboboxItems = useMemo(
-    () => rosterToItems(roster, memberUserIds),
-    [roster, memberUserIds],
+    () => rosterToItems(pickerUsers, memberUserIds),
+    [pickerUsers, memberUserIds],
   );
 
   const onAdd = async () => {
-    const targetUserId =
-      roster.state === 'ready' ? pickerValue : uuidInput.trim();
+    const targetUserId = pickerValue;
     if (targetUserId === null || targetUserId.length === 0) return;
     setAddError(null);
     setAdding(true);
@@ -157,7 +149,6 @@ export function TeamMembersView({
       await addMemberFun({ teamId, body: { user_id: targetUserId } });
       toast.show('Member added.');
       setPickerValue(null);
-      setUuidInput('');
       refresh();
     } catch (err: unknown) {
       setAddError(messageForAddMemberError(err));
@@ -188,25 +179,17 @@ export function TeamMembersView({
     }
   };
 
-  const canAdd =
-    !adding &&
-    ((roster.state === 'ready' && pickerValue !== null) ||
-      (roster.state !== 'ready' && uuidInput.trim().length > 0));
+  const canAdd = !adding && pickerValue !== null;
 
   const columns: ReadonlyArray<TableColumn<TeamMembershipRow>> = [
     {
       key: 'member',
       header: 'Member',
       render: (m) => {
-        const u = rosterById.get(m.user_id);
-        const name = u?.display_name ?? u?.email ?? m.user_id;
-        const email = u?.email;
+        const name = names[m.user_id] ?? m.user_id;
         return (
           <span data-testid={`member-row-${m.user_id}`}>
             <span>{name}</span>
-            {email !== undefined && email !== name && (
-              <span className="rc-cell-sub"> · {email}</span>
-            )}
           </span>
         );
       },
@@ -289,37 +272,18 @@ export function TeamMembersView({
           <Card>
             <CardHead title="Add a member" />
             <div className="rc-formfoot">
-              {roster.state === 'ready' ? (
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <Combobox
-                    items={comboboxItems}
-                    value={pickerValue}
-                    onSelect={(item) => setPickerValue(item.value)}
-                    placeholder="Select a user to add…"
-                    emptyMessage="No remaining users."
-                    ariaLabel="Add team member"
-                    disabled={adding}
-                    testId="add-member-combobox"
-                  />
-                </div>
-              ) : (
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <FormField
-                    label={<label htmlFor="add-member-uuid">User ID</label>}
-                    helper="Roster unavailable to your role — paste the UUID."
-                  >
-                    <input
-                      id="add-member-uuid"
-                      type="text"
-                      className="rc-input"
-                      value={uuidInput}
-                      disabled={adding}
-                      onChange={(ev) => setUuidInput(ev.target.value)}
-                      data-testid="add-member-uuid-input"
-                    />
-                  </FormField>
-                </div>
-              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Combobox
+                  items={comboboxItems}
+                  value={pickerValue}
+                  onSelect={(item) => setPickerValue(item.value)}
+                  placeholder="Select a user to add…"
+                  emptyMessage="No remaining users."
+                  ariaLabel="Add team member"
+                  disabled={adding}
+                  testId="add-member-combobox"
+                />
+              </div>
               <Button
                 onClick={onAdd}
                 disabled={!canAdd}

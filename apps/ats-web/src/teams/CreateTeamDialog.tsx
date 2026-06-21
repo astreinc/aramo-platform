@@ -9,46 +9,40 @@ import {
 } from '@aramo/fe-foundation';
 import { useMemo, useState } from 'react';
 
-import type { UserRosterState } from '../assignments/roster';
+import type { AssignableUser } from '../users/users-api';
 
 import { messageForCreateTeamError, type ErrorMessage } from './error-messages';
 import { createTeam } from './teams-api';
 import type { CreateTeamResponse } from './types';
 
-// CreateTeamDialog (ported to ats-web, FE Consolidation Directive 5). The
-// frozen fe-foundation Dialog + Combobox are consumed as-is (themed to
-// Confident Blue via the token re-map); only the raw inputs are re-classed to
-// rc-input. SHARED Combobox owner picker over the roster; 403 → raw-UUID
-// fallback. Duplicate-NAME on create is REJECTED (not idempotent).
+// CreateTeamDialog (ported to ats-web, FE Consolidation Directive 5).
+// §5 D4c — the owner PICKER sources the assignable endpoint (active roster);
+// the Combobox always renders (no 403→raw-UUID fallback). Duplicate-NAME on
+// create is REJECTED (not idempotent).
 
 interface CreateTeamDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  roster: UserRosterState;
+  users: readonly AssignableUser[];
   onCreated: (result: CreateTeamResponse) => void;
   // Test seam.
   createFn?: typeof createTeam;
 }
 
-function rosterToItems(roster: UserRosterState): ReadonlyArray<ComboboxItem> {
-  if (roster.state !== 'ready') return [];
-  return [...roster.users]
-    .sort((a, b) => {
-      const an = a.display_name ?? a.email;
-      const bn = b.display_name ?? b.email;
-      return an.localeCompare(bn);
-    })
-    .map((u) => ({
-      value: u.user_id,
-      label: u.display_name ?? u.email,
-      description: u.display_name !== null ? u.email : undefined,
-    }));
+function rosterToItems(
+  users: readonly AssignableUser[],
+): ReadonlyArray<ComboboxItem> {
+  return [...users]
+    .sort((a, b) =>
+      (a.display_name ?? a.user_id).localeCompare(b.display_name ?? b.user_id),
+    )
+    .map((u) => ({ value: u.user_id, label: u.display_name ?? u.user_id }));
 }
 
 export function CreateTeamDialog({
   open,
   onOpenChange,
-  roster,
+  users,
   onCreated,
   createFn,
 }: CreateTeamDialogProps) {
@@ -60,7 +54,7 @@ export function CreateTeamDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<ErrorMessage | null>(null);
 
-  const items = useMemo(() => rosterToItems(roster), [roster]);
+  const items = useMemo(() => rosterToItems(users), [users]);
 
   const reset = () => {
     setName('');
@@ -140,12 +134,6 @@ export function CreateTeamDialog({
             )}
           </InlineAlert>
         )}
-        {roster.state === 'forbidden' && (
-          <InlineAlert variant="error">
-            User roster isn’t available to your role. Paste the owner’s user ID
-            instead — the server validates it on save.
-          </InlineAlert>
-        )}
         <FormField label={<label htmlFor="create-team-name">Name</label>}>
           <input
             id="create-team-name"
@@ -157,38 +145,21 @@ export function CreateTeamDialog({
             data-testid="create-team-name-input"
           />
         </FormField>
-        {roster.state === 'ready' ? (
-          <FormField
-            label="Owner"
-            helper="The team’s AM-anchor (one owner per pod)."
-          >
-            <Combobox
-              items={items}
-              value={owner.length > 0 ? owner : null}
-              onSelect={(item) => setOwner(item.value)}
-              placeholder="Select an owner…"
-              emptyMessage="No matching users."
-              ariaLabel="Team owner"
-              disabled={saving}
-              testId="create-team-owner-combobox"
-            />
-          </FormField>
-        ) : (
-          <FormField
-            label={<label htmlFor="create-team-owner-uuid">Owner user ID</label>}
-            helper="UUID from your records."
-          >
-            <input
-              id="create-team-owner-uuid"
-              type="text"
-              className="rc-input"
-              value={owner}
-              disabled={saving}
-              onChange={(ev) => setOwner(ev.target.value)}
-              data-testid="create-team-owner-input"
-            />
-          </FormField>
-        )}
+        <FormField
+          label="Owner"
+          helper="The team’s AM-anchor (one owner per pod)."
+        >
+          <Combobox
+            items={items}
+            value={owner.length > 0 ? owner : null}
+            onSelect={(item) => setOwner(item.value)}
+            placeholder="Select an owner…"
+            emptyMessage="No matching users."
+            ariaLabel="Team owner"
+            disabled={saving}
+            testId="create-team-owner-combobox"
+          />
+        </FormField>
       </form>
     </Dialog>
   );

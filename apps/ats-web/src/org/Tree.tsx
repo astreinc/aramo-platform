@@ -33,15 +33,9 @@ interface TreeProps {
 }
 
 function labelFor(node: TreeNode): string {
-  if (node.user === null) {
-    // 403 fallback: roster not available; render the raw id.
-    return node.user_id;
-  }
-  return node.user.display_name ?? node.user.email;
-}
-
-function emailFor(node: TreeNode): string | null {
-  return node.user?.email ?? null;
+  // §5 D4c: the name comes from the directory; fall back to the raw id when a
+  // referenced user isn't resolvable (incl. before names load).
+  return node.user?.display_name ?? node.user_id;
 }
 
 function ariaLabelFor(node: TreeNode, parentLabel: string | null): string {
@@ -92,7 +86,6 @@ function TreeRow({
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children.length > 0;
   const me = labelFor(node);
-  const email = emailFor(node);
 
   const onKeyDown = (ev: React.KeyboardEvent<HTMLLIElement>) => {
     // Expand/collapse via arrow keys. Inter-node nav is left to the
@@ -140,9 +133,6 @@ function TreeRow({
           </span>
         )}
         <span className="rc-tree__label">{me}</span>
-        {email !== null && email !== me && (
-          <span className="rc-tree__email">{email}</span>
-        )}
         {node.cycle_skipped && (
           <span className="rc-muted-line">(already shown above)</span>
         )}

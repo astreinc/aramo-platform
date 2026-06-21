@@ -7,11 +7,16 @@ import {
   Card,
   CardHead,
   DataTable,
-  FormField,
   InlineAlert,
   PageHeader,
   type TableColumn,
 } from '../ui';
+import { getRequisition } from '../requisitions/requisitions-api';
+import {
+  fetchAssignableUsers,
+  resolveUserNames,
+  type AssignableUser,
+} from '../users/users-api';
 
 import {
   assignUserToRequisition,
@@ -24,18 +29,24 @@ import {
   messageForUnassignRequisition,
   type ErrorMessage,
 } from './error-messages';
-import { probeUserRoster, type TenantUserView, type UserRosterState } from './roster';
 import type { RequisitionAssignmentView } from './types';
 
 // Requisition-assign editor at /admin/requisitions/:requisitionId/assignments
 // (ported to ats-web, FE Consolidation Directive 4; restyled to Confident
-// Blue). Mirrors CompanyAssignmentsView (user-picker over the roster); the
-// parent is a requisition. Deep-link only.
+// Blue). Deep-link only.
+//
+// §5 Auth-Hardening D4c — the two-source split, CLIENT-FILTERED. The PICKER →
+// fetchAssignableUsers(req.company_id): the requisition has a client, so the
+// roster is narrowed to users MAPPED TO THAT CLIENT holding a req-carrying role
+// (we fetch the req to get its company_id). The assigned-user NAME display →
+// resolveUserNames (the directory; incl. departed). The 403→UUID fallback is GONE.
 
 interface Props {
   requisitionIdOverride?: string;
   fetchAssignmentsFn?: (id: string) => Promise<{ items: readonly RequisitionAssignmentView[] }>;
-  probeRosterFn?: () => Promise<UserRosterState>;
+  fetchAssignableFn?: (companyId?: string) => Promise<readonly AssignableUser[]>;
+  resolveNamesFn?: (userIds?: readonly string[]) => Promise<Record<string, string>>;
+  getRequisitionFn?: (id: string) => Promise<{ company_id: string }>;
   assignFn?: typeof assignUserToRequisition;
   unassignFn?: typeof unassignUserFromRequisition;
 }
@@ -51,28 +62,23 @@ interface PendingRemoval {
 }
 
 function rosterToItems(
-  roster: UserRosterState,
+  users: readonly AssignableUser[],
   assignedUserIds: ReadonlySet<string>,
 ): ReadonlyArray<ComboboxItem> {
-  if (roster.state !== 'ready') return [];
-  return [...roster.users]
+  return [...users]
     .filter((u) => !assignedUserIds.has(u.user_id))
-    .sort((a, b) => {
-      const an = a.display_name ?? a.email;
-      const bn = b.display_name ?? b.email;
-      return an.localeCompare(bn);
-    })
-    .map((u) => ({
-      value: u.user_id,
-      label: u.display_name ?? u.email,
-      description: u.display_name !== null ? u.email : undefined,
-    }));
+    .sort((a, b) =>
+      (a.display_name ?? a.user_id).localeCompare(b.display_name ?? b.user_id),
+    )
+    .map((u) => ({ value: u.user_id, label: u.display_name ?? u.user_id }));
 }
 
 export function RequisitionAssignmentsView({
   requisitionIdOverride,
   fetchAssignmentsFn,
-  probeRosterFn,
+  fetchAssignableFn,
+  resolveNamesFn,
+  getRequisitionFn,
   assignFn,
   unassignFn,
 }: Props = {}) {
@@ -80,15 +86,17 @@ export function RequisitionAssignmentsView({
   const requisitionId = requisitionIdOverride ?? params.requisitionId ?? '';
 
   const fetchAssignmentsFun = fetchAssignmentsFn ?? fetchRequisitionAssignments;
-  const probeRoster = probeRosterFn ?? probeUserRoster;
+  const fetchAssignableFun = fetchAssignableFn ?? fetchAssignableUsers;
+  const resolveNamesFun = resolveNamesFn ?? resolveUserNames;
+  const getRequisitionFun = getRequisitionFn ?? getRequisition;
   const assignFun = assignFn ?? assignUserToRequisition;
   const unassignFun = unassignFn ?? unassignUserFromRequisition;
   const toast = useToast();
 
   const [state, setState] = useState<LoadState>({ status: 'loading' });
-  const [roster, setRoster] = useState<UserRosterState>({ state: 'forbidden' });
+  const [pickerUsers, setPickerUsers] = useState<readonly AssignableUser[]>([]);
+  const [names, setNames] = useState<Record<string, string>>({});
   const [pickerValue, setPickerValue] = useState<string | null>(null);
-  const [uuidInput, setUuidInput] = useState('');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<ErrorMessage | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
@@ -109,33 +117,29 @@ export function RequisitionAssignmentsView({
       .then((view) => {
         if (cancelled) return;
         setState({ status: 'ready', rows: view.items });
+        void resolveNamesFun(view.items.map((r) => r.user_id)).then((m) => {
+          if (!cancelled) setNames(m);
+        });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         const msg = messageForFetchRequisitionAssignments(err);
         setState({ status: 'error', message: msg.title });
       });
-    probeRoster()
-      .then((next) => {
-        if (cancelled) return;
-        setRoster(next);
+    // CLIENT-FILTERED roster: fetch the req's company_id, then the assignable
+    // roster narrowed to that client + req-carrying roles.
+    void getRequisitionFun(requisitionId)
+      .then((req) => fetchAssignableFun(req.company_id))
+      .then((users) => {
+        if (!cancelled) setPickerUsers(users);
       })
       .catch(() => {
-        if (cancelled) return;
-        setRoster({ state: 'forbidden' });
+        if (!cancelled) setPickerUsers([]);
       });
     return () => {
       cancelled = true;
     };
-  }, [fetchAssignmentsFun, probeRoster, requisitionId]);
-
-  const rosterById = useMemo(() => {
-    const m = new Map<string, TenantUserView>();
-    if (roster.state === 'ready') {
-      for (const u of roster.users) m.set(u.user_id, u);
-    }
-    return m;
-  }, [roster]);
+  }, [fetchAssignmentsFun, fetchAssignableFun, resolveNamesFun, getRequisitionFun, requisitionId]);
 
   const assignedUserIds = useMemo(() => {
     const s = new Set<string>();
@@ -146,13 +150,12 @@ export function RequisitionAssignmentsView({
   }, [state]);
 
   const comboboxItems = useMemo(
-    () => rosterToItems(roster, assignedUserIds),
-    [roster, assignedUserIds],
+    () => rosterToItems(pickerUsers, assignedUserIds),
+    [pickerUsers, assignedUserIds],
   );
 
   const onAdd = async () => {
-    const targetUserId =
-      roster.state === 'ready' ? pickerValue : uuidInput.trim();
+    const targetUserId = pickerValue;
     if (targetUserId === null || targetUserId.length === 0) return;
     setAddError(null);
     setAdding(true);
@@ -160,7 +163,6 @@ export function RequisitionAssignmentsView({
       await assignFun({ requisitionId, body: { user_id: targetUserId } });
       toast.show('User assigned.');
       setPickerValue(null);
-      setUuidInput('');
       refresh();
     } catch (err: unknown) {
       setAddError(messageForAssignRequisition(err));
@@ -190,25 +192,17 @@ export function RequisitionAssignmentsView({
     }
   };
 
-  const canAdd =
-    !adding &&
-    ((roster.state === 'ready' && pickerValue !== null) ||
-      (roster.state !== 'ready' && uuidInput.trim().length > 0));
+  const canAdd = !adding && pickerValue !== null;
 
   const columns: ReadonlyArray<TableColumn<RequisitionAssignmentView>> = [
     {
       key: 'user',
       header: 'User',
       render: (r) => {
-        const u = rosterById.get(r.user_id);
-        const name = u?.display_name ?? u?.email ?? r.user_id;
-        const email = u?.email;
+        const name = names[r.user_id] ?? r.user_id;
         return (
           <span data-testid={`req-assignment-row-${r.user_id}`}>
             <span>{name}</span>
-            {email !== undefined && email !== name && (
-              <span className="rc-cell-sub"> · {email}</span>
-            )}
           </span>
         );
       },
@@ -279,37 +273,18 @@ export function RequisitionAssignmentsView({
           <Card>
             <CardHead title="Assign a user" />
             <div className="rc-formfoot">
-              {roster.state === 'ready' ? (
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <Combobox
-                    items={comboboxItems}
-                    value={pickerValue}
-                    onSelect={(item) => setPickerValue(item.value)}
-                    placeholder="Select a user to assign…"
-                    emptyMessage="No remaining users."
-                    ariaLabel="Assign a user to this requisition"
-                    disabled={adding}
-                    testId="assign-req-user-combobox"
-                  />
-                </div>
-              ) : (
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <FormField
-                    label={<label htmlFor="assign-req-user-uuid">User ID</label>}
-                    helper="Roster unavailable to your role — paste the UUID."
-                  >
-                    <input
-                      id="assign-req-user-uuid"
-                      type="text"
-                      className="rc-input"
-                      value={uuidInput}
-                      disabled={adding}
-                      onChange={(ev) => setUuidInput(ev.target.value)}
-                      data-testid="assign-req-user-uuid-input"
-                    />
-                  </FormField>
-                </div>
-              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Combobox
+                  items={comboboxItems}
+                  value={pickerValue}
+                  onSelect={(item) => setPickerValue(item.value)}
+                  placeholder="Select a user to assign…"
+                  emptyMessage="No remaining users."
+                  ariaLabel="Assign a user to this requisition"
+                  disabled={adding}
+                  testId="assign-req-user-combobox"
+                />
+              </div>
               <Button
                 onClick={onAdd}
                 disabled={!canAdd}

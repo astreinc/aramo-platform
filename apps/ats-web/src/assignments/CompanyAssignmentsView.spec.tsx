@@ -4,8 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@aramo/fe-foundation';
 import { ToastProvider } from '@aramo/fe-foundation';
 
+import type { AssignableUser } from '../users/users-api';
+
 import { CompanyAssignmentsView } from './CompanyAssignmentsView';
-import type { UserRosterState } from './roster';
 import type { UserClientAssignmentRow } from './types';
 
 const rows: UserClientAssignmentRow[] = [
@@ -19,40 +20,31 @@ const rows: UserClientAssignmentRow[] = [
   },
 ];
 
-const readyRoster: UserRosterState = {
-  state: 'ready',
-  users: [
-    {
-      user_id: 'u-alice',
-      email: 'alice@a.test',
-      display_name: 'Alice',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-    {
-      user_id: 'u-bob',
-      email: 'bob@a.test',
-      display_name: 'Bob',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-  ],
+// §5 D4c — the picker source is the assignable endpoint (broad active roster,
+// {user_id, display_name}); assigned-user names come from the directory.
+const assignableUsers: readonly AssignableUser[] = [
+  { user_id: 'u-alice', display_name: 'Alice' },
+  { user_id: 'u-bob', display_name: 'Bob' },
+];
+const directoryNames: Record<string, string> = {
+  'u-alice': 'Alice',
+  'u-bob': 'Bob',
 };
 
 function renderView(opts?: {
   rowItems?: readonly UserClientAssignmentRow[];
-  roster?: UserRosterState;
+  assignableUsers?: readonly AssignableUser[];
+  names?: Record<string, string>;
   assignFn?: typeof import('./assignments-api').assignUserToCompany;
   unassignFn?: typeof import('./assignments-api').unassignUserFromCompany;
   fetchFn?: (id: string) => Promise<{ items: readonly UserClientAssignmentRow[] }>;
 }) {
   const fetchAssignmentsFn =
     opts?.fetchFn ?? vi.fn(async () => ({ items: opts?.rowItems ?? rows }));
-  const probeRosterFn = vi.fn(async () => opts?.roster ?? readyRoster);
+  const fetchAssignableFn = vi.fn(
+    async () => opts?.assignableUsers ?? assignableUsers,
+  );
+  const resolveNamesFn = vi.fn(async () => opts?.names ?? directoryNames);
   const assignFn = opts?.assignFn ?? vi.fn();
   const unassignFn = opts?.unassignFn ?? vi.fn();
   return {
@@ -62,7 +54,8 @@ function renderView(opts?: {
           <CompanyAssignmentsView
             companyIdOverride="c-acme"
             fetchAssignmentsFn={fetchAssignmentsFn}
-            probeRosterFn={probeRosterFn}
+            fetchAssignableFn={fetchAssignableFn}
+            resolveNamesFn={resolveNamesFn}
             assignFn={assignFn}
             unassignFn={unassignFn}
           />
@@ -70,6 +63,7 @@ function renderView(opts?: {
       </MemoryRouter>,
     ),
     fetchAssignmentsFn,
+    fetchAssignableFn,
     assignFn,
     unassignFn,
   };
@@ -159,17 +153,16 @@ describe('CompanyAssignmentsView (D)', () => {
     await waitFor(() => expect(fetchAssignmentsFn).toHaveBeenCalledTimes(2));
   });
 
-  it('ruling 5: 403 fallback renders raw-UUID input', async () => {
-    renderView({ roster: { state: 'forbidden' } });
-    await waitFor(() =>
-      expect(
-        screen.getByTestId('assignment-row-u-alice'),
-      ).toBeInTheDocument(),
-    );
-    expect(screen.getByTestId('assign-user-uuid-input')).toBeInTheDocument();
+  it('§5 D4c: the picker is always the Combobox — no 403→UUID fallback', async () => {
+    renderView();
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    expect(screen.getByTestId('assign-user-combobox')).toBeInTheDocument();
     expect(
-      screen.getByText(/Roster unavailable to your role/i),
-    ).toBeInTheDocument();
+      screen.queryByTestId('assign-user-uuid-input'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Roster unavailable to your role/i),
+    ).not.toBeInTheDocument();
   });
 
   it('cross-tenant 404 on fetch surfaces "company isn’t in your tenant"', async () => {

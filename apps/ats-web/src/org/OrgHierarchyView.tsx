@@ -2,27 +2,28 @@ import { ApiError, useToast } from '@aramo/fe-foundation';
 import { useEffect, useState } from 'react';
 
 import { Button, Card, InlineAlert, PageHeader } from '../ui';
+import {
+  fetchAssignableUsers,
+  resolveUserNames,
+  type AssignableUser,
+} from '../users/users-api';
 
 import { AddEdgeDialog } from './AddEdgeDialog';
 import { Tree } from './Tree';
-import {
-  deleteManagementEdge,
-  fetchManagementEdges,
-  probeUserRoster,
-} from './edges-api';
+import { deleteManagementEdge, fetchManagementEdges } from './edges-api';
 import { synthesizeTree } from './tree-synthesis';
-import type { ManagementEdgeRow, UserRosterState } from './types';
+import type { ManagementEdgeRow, OrgUser } from './types';
 
 // OrgHierarchyView at /admin/org (ported to ats-web, FE Consolidation Directive
-// 5; restyled to Confident Blue — VISUAL ONLY; the hand-built ARIA Tree's
-// roles/keyboard nav are untouched in Tree.tsx). Two parallel fetches on mount:
-// GET /v1/management/edges + the shared user-roster probe. On edges-load
-// failure the view shows an inline error; on user-roster 403 the AddEdge Dialog
-// falls back to raw-UUID inputs.
+// 5). §5 D4c — the two-source split: the AddEdge PICKER → fetchAssignableUsers
+// (active roster — who you can wire into an edge); the TREE NAMES → the
+// directory (resolveUserNames; incl. departed managers, so the org chart still
+// renders a left employee's name). No 403→UUID fallback.
 
 interface Props {
   fetchEdgesFn?: () => Promise<{ items: readonly ManagementEdgeRow[] }>;
-  probeRosterFn?: () => Promise<UserRosterState>;
+  fetchAssignableFn?: (companyId?: string) => Promise<readonly AssignableUser[]>;
+  resolveNamesFn?: (userIds?: readonly string[]) => Promise<Record<string, string>>;
   deleteFn?: (edgeId: string) => Promise<void>;
 }
 
@@ -33,16 +34,19 @@ type LoadState =
 
 export function OrgHierarchyView({
   fetchEdgesFn,
-  probeRosterFn,
+  fetchAssignableFn,
+  resolveNamesFn,
   deleteFn,
 }: Props = {}) {
   const fetchEdges = fetchEdgesFn ?? fetchManagementEdges;
-  const probeRoster = probeRosterFn ?? probeUserRoster;
+  const fetchAssignableFun = fetchAssignableFn ?? fetchAssignableUsers;
+  const resolveNamesFun = resolveNamesFn ?? resolveUserNames;
   const del = deleteFn ?? deleteManagementEdge;
   const toast = useToast();
 
   const [state, setState] = useState<LoadState>({ status: 'loading' });
-  const [roster, setRoster] = useState<UserRosterState>({ state: 'forbidden' });
+  const [pickerUsers, setPickerUsers] = useState<readonly AssignableUser[]>([]);
+  const [treeUsers, setTreeUsers] = useState<readonly OrgUser[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
 
@@ -70,19 +74,33 @@ export function OrgHierarchyView({
           err instanceof Error ? err.message : 'Failed to load org hierarchy.';
         setState({ status: 'error', message });
       });
-    probeRoster()
-      .then((next) => {
-        if (cancelled) return;
-        setRoster(next);
+    // PICKER source — active roster for the AddEdge selects.
+    void fetchAssignableFun()
+      .then((users) => {
+        if (!cancelled) setPickerUsers(users);
       })
       .catch(() => {
+        if (!cancelled) setPickerUsers([]);
+      });
+    // TREE NAME source — the directory (incl. departed managers). Build the
+    // OrgUser[] the synthesizer needs (labels + lone-user roots) from the map.
+    void resolveNamesFun()
+      .then((map) => {
         if (cancelled) return;
-        setRoster({ state: 'forbidden' });
+        setTreeUsers(
+          Object.entries(map).map(([user_id, display_name]) => ({
+            user_id,
+            display_name,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setTreeUsers([]);
       });
     return () => {
       cancelled = true;
     };
-  }, [fetchEdges, probeRoster]);
+  }, [fetchEdges, fetchAssignableFun, resolveNamesFun]);
 
   const onRemoveEdge = async (edgeId: string) => {
     setRemoving(true);
@@ -104,10 +122,7 @@ export function OrgHierarchyView({
 
   const synthResult =
     state.status === 'ready'
-      ? synthesizeTree({
-          edges: state.edges,
-          users: roster.state === 'ready' ? roster.users : [],
-        })
+      ? synthesizeTree({ edges: state.edges, users: treeUsers })
       : null;
 
   return (
@@ -146,7 +161,7 @@ export function OrgHierarchyView({
       <AddEdgeDialog
         open={addOpen}
         onOpenChange={setAddOpen}
-        roster={roster}
+        users={pickerUsers}
         onAdded={() => refresh()}
       />
     </section>

@@ -21,7 +21,7 @@ import { Link } from 'react-router-dom';
 import { addTalentToPipeline } from '../pipeline/pipeline-api';
 import { listRequisitions } from '../requisitions/requisitions-api';
 import type { RequisitionView } from '../requisitions/types';
-import { probeTenantUsers } from '../task/task-api';
+import { resolveUserNames } from '../users/users-api';
 import { Avatar, Card, Icons, StagePill, StatusPill, Tag, type PillTone } from '../ui';
 import type { PipelineStatus } from '../pipeline/types';
 
@@ -241,11 +241,8 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   // Roster probe (Owner column resolution) — one-shot, independent of search.
   useEffect(() => {
     let cancelled = false;
-    void probeTenantUsers().then((res) => {
-      if (cancelled || !res.available) return;
-      const names: Record<string, string> = {};
-      for (const u of res.items) names[u.user_id] = u.display_name ?? u.email;
-      setUserNames(names);
+    void resolveUserNames().then((names) => {
+      if (!cancelled) setUserNames(names);
     });
     return () => {
       cancelled = true;

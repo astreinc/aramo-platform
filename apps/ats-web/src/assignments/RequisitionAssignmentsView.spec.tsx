@@ -4,8 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@aramo/fe-foundation';
 import { ToastProvider } from '@aramo/fe-foundation';
 
+import type { AssignableUser } from '../users/users-api';
+
 import { RequisitionAssignmentsView } from './RequisitionAssignmentsView';
-import type { UserRosterState } from './roster';
 import type { RequisitionAssignmentView } from './types';
 
 const rows: RequisitionAssignmentView[] = [
@@ -19,40 +20,32 @@ const rows: RequisitionAssignmentView[] = [
   },
 ];
 
-const readyRoster: UserRosterState = {
-  state: 'ready',
-  users: [
-    {
-      user_id: 'u-alice',
-      email: 'alice@a.test',
-      display_name: 'Alice',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-    {
-      user_id: 'u-bob',
-      email: 'bob@a.test',
-      display_name: 'Bob',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-  ],
+// §5 D4c — picker source = the CLIENT-FILTERED assignable endpoint (the view
+// fetches the req's company_id first); assigned-user names = the directory.
+const assignableUsers: readonly AssignableUser[] = [
+  { user_id: 'u-alice', display_name: 'Alice' },
+  { user_id: 'u-bob', display_name: 'Bob' },
+];
+const directoryNames: Record<string, string> = {
+  'u-alice': 'Alice',
+  'u-bob': 'Bob',
 };
 
 function renderView(opts?: {
   rowItems?: readonly RequisitionAssignmentView[];
-  roster?: UserRosterState;
+  assignableUsers?: readonly AssignableUser[];
+  names?: Record<string, string>;
   assignFn?: typeof import('./assignments-api').assignUserToRequisition;
   unassignFn?: typeof import('./assignments-api').unassignUserFromRequisition;
 }) {
   const fetchAssignmentsFn = vi.fn(async () => ({
     items: opts?.rowItems ?? rows,
   }));
-  const probeRosterFn = vi.fn(async () => opts?.roster ?? readyRoster);
+  const getRequisitionFn = vi.fn(async () => ({ company_id: 'c-acme' }));
+  const fetchAssignableFn = vi.fn(
+    async () => opts?.assignableUsers ?? assignableUsers,
+  );
+  const resolveNamesFn = vi.fn(async () => opts?.names ?? directoryNames);
   const assignFn = opts?.assignFn ?? vi.fn();
   const unassignFn = opts?.unassignFn ?? vi.fn();
   return {
@@ -62,7 +55,9 @@ function renderView(opts?: {
           <RequisitionAssignmentsView
             requisitionIdOverride="r-1"
             fetchAssignmentsFn={fetchAssignmentsFn}
-            probeRosterFn={probeRosterFn}
+            fetchAssignableFn={fetchAssignableFn}
+            resolveNamesFn={resolveNamesFn}
+            getRequisitionFn={getRequisitionFn}
             assignFn={assignFn}
             unassignFn={unassignFn}
           />
@@ -70,6 +65,8 @@ function renderView(opts?: {
       </MemoryRouter>,
     ),
     fetchAssignmentsFn,
+    fetchAssignableFn,
+    getRequisitionFn,
     assignFn,
     unassignFn,
   };
@@ -126,15 +123,17 @@ describe('RequisitionAssignmentsView (F)', () => {
     await waitFor(() => expect(fetchAssignmentsFn).toHaveBeenCalledTimes(2));
   });
 
-  it('ruling 5: 403 fallback renders raw-UUID input', async () => {
-    renderView({ roster: { state: 'forbidden' } });
-    await waitFor(() =>
-      expect(
-        screen.getByTestId('req-assignment-row-u-alice'),
-      ).toBeInTheDocument(),
-    );
+  it('§5 D4c: client-filtered Combobox always renders — no 403→UUID fallback', async () => {
+    const { fetchAssignableFn, getRequisitionFn } = renderView();
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    // The req's company_id is fetched and passed to the assignable endpoint.
+    await waitFor(() => expect(getRequisitionFn).toHaveBeenCalledWith('r-1'));
+    expect(fetchAssignableFn).toHaveBeenCalledWith('c-acme');
     expect(
-      screen.getByTestId('assign-req-user-uuid-input'),
+      screen.getByTestId('assign-req-user-combobox'),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('assign-req-user-uuid-input'),
+    ).not.toBeInTheDocument();
   });
 });

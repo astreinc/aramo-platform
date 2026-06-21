@@ -1,8 +1,8 @@
 // Settings S5c-1 — org-hierarchy HTTP client.
 //
-// Wires the 3 D4a edge endpoints (GET / POST / DELETE). The picker-
-// source 403 fallback uses the SHARED probe from users/users-api.ts
-// (extracted at S5c-2 ruling 7 — three S5c surfaces share one probe).
+// Wires the 3 D4a edge endpoints (GET / POST / DELETE). §5 D4c — the AddEdge
+// picker sources fetchAssignableUsers and the tree names resolveUserNames
+// (users/users-api.ts); the old shared roster-probe re-export is retired.
 
 import { apiClient } from '@aramo/fe-foundation';
 
@@ -11,13 +11,6 @@ import type {
   AddEdgeResponse,
   ManagementEdgeListView,
 } from './types';
-
-// Re-exports for the org/* call-sites that have used the local probe
-// since S5c-1. The canonical home is users/users-api.ts post-S5c-2.
-export {
-  probeUserRoster,
-  type UserRosterState,
-} from '../assignments/roster';
 
 export const EDGES_PATH = '/v1/management/edges';
 

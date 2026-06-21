@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '@aramo/fe-foundation';
 
-import type { UserRosterState } from '../assignments/roster';
+import type { AssignableUser } from '../users/users-api';
 
 import { TeamsListView } from './TeamsListView';
 import type { TeamRow } from './types';
@@ -29,33 +29,31 @@ const teams: TeamRow[] = [
   },
 ];
 
-const readyRoster: UserRosterState = {
-  state: 'ready',
-  users: [
-    {
-      user_id: 'u-alice',
-      email: 'alice@a.test',
-      display_name: 'Alice',
-      is_active: true,
-      deactivated_at: null,
-      site_id: null,
-      role_keys: [],
-    },
-  ],
+const readyAssignable: readonly AssignableUser[] = [
+  { user_id: 'u-alice', display_name: 'Alice' },
+];
+
+const readyNames: Record<string, string> = {
+  'u-alice': 'Alice',
 };
 
 function renderView(opts?: {
   teamItems?: readonly TeamRow[];
-  roster?: UserRosterState;
+  assignable?: readonly AssignableUser[];
+  names?: Record<string, string>;
 }) {
   const fetchTeamsFn = vi.fn(async () => ({ items: opts?.teamItems ?? teams }));
-  const probeRosterFn = vi.fn(async () => opts?.roster ?? readyRoster);
+  const fetchAssignableFn = vi.fn(
+    async () => opts?.assignable ?? readyAssignable,
+  );
+  const resolveNamesFn = vi.fn(async () => opts?.names ?? readyNames);
   return render(
     <MemoryRouter>
       <ToastProvider>
         <TeamsListView
           fetchTeamsFn={fetchTeamsFn}
-          probeRosterFn={probeRosterFn}
+          fetchAssignableFn={fetchAssignableFn}
+          resolveNamesFn={resolveNamesFn}
         />
       </ToastProvider>
     </MemoryRouter>,
@@ -67,16 +65,16 @@ describe('TeamsListView (S5c-2)', () => {
     renderView();
     await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
     expect(screen.getByText('Beta')).toBeInTheDocument();
-    // Owner display joined to roster (Alice).
-    expect(screen.getByText('Alice')).toBeInTheDocument();
+    // Owner name resolved via the directory (Alice).
+    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
     // Inactive team has the Inactive badge.
     expect(screen.getByText('Inactive')).toBeInTheDocument();
   });
 
-  it('falls back to raw user_id for owner when the roster join misses (ruling 7)', async () => {
-    renderView({ roster: { state: 'forbidden' } });
+  it('falls back to raw user_id for owner when the name-resolve misses', async () => {
+    renderView({ names: {} });
     await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
-    // Owner column shows the raw user_id when the join is empty.
+    // Owner column shows the raw user_id when the directory map is empty.
     expect(screen.getByText('u-alice')).toBeInTheDocument();
   });
 

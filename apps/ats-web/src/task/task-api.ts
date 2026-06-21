@@ -1,4 +1,4 @@
-import { ApiError, apiClient } from '@aramo/fe-foundation';
+import { apiClient } from '@aramo/fe-foundation';
 
 import type {
   CreateTaskRequest,
@@ -6,8 +6,6 @@ import type {
   TaskOwnerType,
   TaskStatus,
   TaskView,
-  TenantUserRosterEntry,
-  TenantUserRosterResponse,
   UpdateTaskRequest,
 } from './types';
 
@@ -58,28 +56,6 @@ export async function deleteTask(id: string): Promise<void> {
   await apiClient.delete<void>(`/v1/tasks/${id}`);
 }
 
-export interface RosterState {
-  readonly available: boolean;
-  readonly items: readonly TenantUserRosterEntry[];
-}
-
-// Probe the tenant-users roster for the assignee Combobox (the S5c
-// probeUserRoster precedent). GET /v1/tenant/users is ADMIN-gated
-// (tenant:admin:user-manage) — a non-admin task-writer 403s; we fall back
-// gracefully (available=false → the dialog offers no picker, the task is
-// created unassigned). Only ACTIVE members are assignable (the BE rejects
-// inactive with 422 anyway).
-export async function probeTenantUsers(): Promise<RosterState> {
-  try {
-    const res = await apiClient.get<TenantUserRosterResponse>('/v1/tenant/users');
-    return {
-      available: true,
-      items: res.items.filter((u) => u.is_active),
-    };
-  } catch (err) {
-    if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
-      return { available: false, items: [] };
-    }
-    throw err;
-  }
-}
+// §5 Auth-Hardening D4c — the admin-gated probeTenantUsers roster is RETIRED.
+// The task assignee picker sources fetchAssignableUsers (users/users-api); name
+// resolution sources resolveUserNames (the directory). No probe here anymore.
