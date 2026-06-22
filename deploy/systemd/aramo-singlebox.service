@@ -1,0 +1,41 @@
+# Aramo single-box — restart-on-reboot unit (Single-Box Directive 3 §A).
+#
+# Brings the docker-compose.prod.yml stack up on boot and tears it down on
+# stop. Type=oneshot + RemainAfterExit=yes is the canonical systemd pattern for
+# a compose project: ExecStart returns once `up -d` finishes, and systemd keeps
+# the unit "active" so ExecStop runs `down` on shutdown. Per-container survival
+# between dockerd restarts is handled by `restart: unless-stopped` in the
+# compose file; this unit guarantees the PROJECT returns after a full reboot.
+#
+# Install on the box (deploy dir = /opt/aramo; override with ARAMO_DIR below):
+#   sudo cp deploy/systemd/aramo-singlebox.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now aramo-singlebox.service
+# Operate:
+#   systemctl status aramo-singlebox.service     # is it up
+#   journalctl -u aramo-singlebox.service -f     # bring-up logs
+#   sudo systemctl restart aramo-singlebox.service
+# Reboot survival: `sudo reboot`, then after boot `systemctl status …` shows
+# active and `docker ps` shows caddy/api/auth/postgres/redis running.
+
+[Unit]
+Description=Aramo single-box production stack (docker-compose.prod.yml)
+Documentation=file:///opt/aramo/doc/runbooks/singlebox-ops.md
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Deploy dir + env-file location. Adjust if the box uses a different layout.
+Environment=ARAMO_DIR=/opt/aramo
+Environment=ARAMO_ENV_FILE=/opt/aramo/.env
+WorkingDirectory=/opt/aramo
+ExecStart=/opt/aramo/deploy/systemd/singlebox-compose.sh up
+ExecStop=/opt/aramo/deploy/systemd/singlebox-compose.sh down
+# Image pulls / first-boot builds can be slow — don't let systemd time out.
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
