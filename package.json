@@ -84,7 +84,7 @@
     "@nx/js": "~22.7.0",
     "@nx/nest": "~22.7.3",
     "@nx/vite": "~22.7.3",
-    "@nx/workspace": "~22.7.0",
+    "@nx/workspace": "~23.0.0",
     "@pact-foundation/pact": "~16.5.0",
     "@playwright/test": "~1.60.0",
     "@redocly/cli": "~2.31.5",
