@@ -1,0 +1,26 @@
+# Aramo single-box — Postgres backup job (Single-Box Directive 3 §B).
+# Oneshot, fired by aramo-pg-backup.timer. Reads the S3 target + the narrow
+# S3-backup AWS credential from /etc/aramo/backup.conf (chmod 600, root-owned).
+#
+# Install:
+#   sudo install -m 600 /dev/stdin /etc/aramo/backup.conf <<'EOF'
+#   BACKUP_S3_URI=s3://astre-aramo-backups/box/pg
+#   AWS_REGION=us-east-1
+#   AWS_ACCESS_KEY_ID=AKIA…           # the s3:PutObject-only user (§B)
+#   AWS_SECRET_ACCESS_KEY=…
+#   EOF
+#   sudo cp deploy/systemd/aramo-pg-backup.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now aramo-pg-backup.timer
+# Run once by hand:  sudo systemctl start aramo-pg-backup.service
+# Logs:              journalctl -u aramo-pg-backup.service
+
+[Unit]
+Description=Aramo box Postgres backup → S3
+Requires=docker.service
+After=docker.service aramo-singlebox.service
+
+[Service]
+Type=oneshot
+Environment=ARAMO_DIR=/opt/aramo
+EnvironmentFile=-/etc/aramo/backup.conf
+ExecStart=/opt/aramo/deploy/backup/pg-backup.sh

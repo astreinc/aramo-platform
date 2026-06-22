@@ -1,0 +1,11 @@
+{
+  "_comment": "Single-Box Directive 3 §B — S3-side retention as a BUCKET LIFECYCLE rule (not a script delete), so the box's S3 credential stays PutObject-only (s3-backup-iam-policy.json). Expires box Postgres dumps after 30 days. Apply with: aws s3api put-bucket-lifecycle-configuration --bucket astre-aramo-backups --lifecycle-configuration file://deploy/backup/s3-backup-lifecycle.json",
+  "Rules": [
+    {
+      "ID": "expire-aramo-box-pg-dumps",
+      "Filter": { "Prefix": "box/pg/" },
+      "Status": "Enabled",
+      "Expiration": { "Days": 30 }
+    }
+  ]
+}

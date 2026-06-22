@@ -1,0 +1,12 @@
+{
+  "_comment": "Single-Box Directive 3 §B/§E — the ONE legitimate AWS credential on the box. Scoped to PutObject ONLY on the backup prefix; nothing broader. No ListBucket, no DeleteObject (S3-side retention is the bucket lifecycle rule in s3-backup-lifecycle.json, so the box never needs delete). Replace the bucket/prefix to match the real Astreinc backup bucket. Attach to a dedicated IAM user whose access key lives in /etc/aramo/backup.conf (chmod 600).",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AramoBoxBackupPutOnly",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::astre-aramo-backups/box/pg/*"
+    }
+  ]
+}
