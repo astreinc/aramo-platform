@@ -1,0 +1,57 @@
+# Aramo — Single-Box prod front-door (Directive 1).
+#
+# One origin, path-routed: Caddy serves the ats-web static SPA at / and
+# reverse-proxies the API surfaces to the container-internal backends. Because
+# the whole app is same-origin, the FE calls RELATIVE paths (/v1, /auth) — no
+# CORS, no absolute-URL baking, no per-env rebuild (sidesteps the Vite
+# build-time-URL problem entirely; the FE's ApiClient already defaults to an
+# empty base, see libs/fe-foundation/src/api/client.ts).
+#
+# TLS is parameterized by two env vars (set in docker-compose.prod.yml from the
+# real .env; see .env.prod.example) so the SAME Caddyfile runs both locally and
+# on the box:
+#   CADDY_SITE_ADDRESS — the address Caddy answers on.
+#       local : localhost        (no public domain needed)
+#       box   : astre.aramo.ai   (the public domain)
+#   CADDY_TLS          — the `tls` directive argument.
+#       local : internal         (Caddy's local CA — trusted on the laptop)
+#       box   : admin@aramo.ai   (an ACME email → Caddy auto-provisions AND
+#                                 auto-renews a real Let's Encrypt cert)
+#
+# Locally the full stack runs + is testable with NO public domain (Caddy local
+# CA over https://localhost). On the box the same config gets a real cert — the
+# honest box-only boundary per §D (real Let's Encrypt needs the public domain +
+# ACME challenge, verified on the box, not locally).
+
+{$CADDY_SITE_ADDRESS:localhost} {
+	tls {$CADDY_TLS:internal}
+
+	# API + auth surfaces → the container-internal backends (compose service
+	# names). These ports are NEVER published to the host — Caddy is the only
+	# ingress. reverse_proxy forwards the full request path unchanged, so
+	# /v1/... and /auth/... reach the services exactly as the FE sent them.
+	handle /v1/* {
+		reverse_proxy api:3000
+	}
+	handle /auth/* {
+		reverse_proxy auth-service:3001
+	}
+	# The JWKS document (auth-service's only /.well-known route). Matched by
+	# exact path — NOT /.well-known/* — so /.well-known/acme-challenge/* stays
+	# free for Caddy's own Let's Encrypt HTTP-01 challenge on the box.
+	handle /.well-known/jwks.json {
+		reverse_proxy auth-service:3001
+	}
+
+	# Everything else: the ats-web static SPA baked into this image at /srv.
+	# The try_files …/index.html fallback gives client-side routing its SPA
+	# entry point (deep links like /admin/settings resolve to index.html and
+	# the React router takes over).
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	encode gzip zstd
+}

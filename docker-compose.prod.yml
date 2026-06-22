@@ -1,0 +1,166 @@
+# Aramo — Single-Box Directive 1: the runnable PROD stack.
+#
+# The D5 dev stack + a production front-door, composed so it comes up with one
+# command and is provable LOCALLY before the Lightsail box exists. ADDITIVE:
+# this does NOT touch the D1 images/Dockerfiles, the D2 Terraform, or the D5
+# dev compose (docker-compose.yml / docker-compose.images.yml all still work).
+#
+# Services:
+#   caddy          the ONLY service publishing ports (80/443) — TLS + static +
+#                  path routing. Self-contained image with the ats-web SPA baked
+#                  in (deploy/caddy/Dockerfile).
+#   api            apps/api — the D1 image, UNCHANGED (referenced, not rebuilt).
+#   auth-service   apps/auth-service — the D1 image, UNCHANGED.
+#   postgres       persisted named volume (the fresh-start DB survives restarts).
+#   redis          BullMQ (real, not degraded).
+# Postgres + Redis are container-INTERNAL — never published to the host/network.
+#
+# ── Run it (secrets stay in the SHELL, never in a compose-parsable file — the
+#    real .env carries multi-line PEM keys compose's env_file parser can't read;
+#    same proven pattern as docker-compose.images.yml) ────────────────────────
+#
+#   # 0) Build the D1 backend images + this front-door image (first time / on change):
+#   docker build -f apps/api/Dockerfile          -t aramo/api:local          .
+#   docker build -f apps/auth-service/Dockerfile -t aramo/auth-service:local .
+#   docker build -f deploy/caddy/Dockerfile      -t aramo/caddy:local        .
+#
+#   # 1) Load the env contract into the shell, then bring the stack up:
+#   set -a && source .env && set +a
+#   docker compose --env-file /dev/null -f docker-compose.prod.yml up -d
+#
+#   # 2) Smoke THROUGH Caddy (local CA over https; -k trusts the local cert):
+#   curl -ik https://localhost/.well-known/jwks.json   # auth-service → 200 JWKS
+#   curl -ik https://localhost/v1/tenant/settings      # api          → 401 AUTH_REQUIRED
+#   #   open https://localhost                          # ats-web SPA loads
+#
+#   docker compose --env-file /dev/null -f docker-compose.prod.yml down
+#
+# `--env-file /dev/null` stops compose parsing the multi-line .env for ${}
+# interpolation. Bare-name entries under `environment:` are PASSED THROUGH by
+# name from the sourced shell env (verbatim — multi-line-PEM-safe). DATABASE_URL
+# / REDIS_URL are PINNED to the compose service names (the .env values point at
+# localhost, unreachable from inside the container network); the DB credentials
+# are interpolated from the same POSTGRES_* vars that configure the postgres
+# service, so they cannot drift. See .env.prod.example for the full env surface.
+
+services:
+  caddy:
+    build:
+      context: .
+      dockerfile: deploy/caddy/Dockerfile
+    image: aramo/caddy:local
+    container_name: aramo-prod-caddy
+    restart: unless-stopped
+    environment:
+      # TLS/domain parameterization (Caddyfile defaults to localhost/internal
+      # when unset — local just works; the box sets these to astre.aramo.ai +
+      # an ACME email). Bare-name passthrough so the box can override via .env.
+      - CADDY_SITE_ADDRESS
+      - CADDY_TLS
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      # Persist issued certs + ACME state across restarts (on the box this
+      # avoids re-requesting Let's Encrypt certs — and its rate limits — on
+      # every reboot; pairs with the Directive-3 systemd unit).
+      - aramo-prod-caddy-data:/data
+      - aramo-prod-caddy-config:/config
+    depends_on:
+      - api
+      - auth-service
+
+  api:
+    # D1 image, UNCHANGED — referenced, not rebuilt. Override ARAMO_API_IMAGE
+    # to point at the ECR tag (D2) on the box; defaults to the local D1 tag.
+    image: ${ARAMO_API_IMAGE:-aramo/api:local}
+    container_name: aramo-prod-api
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      # host localhost → compose-network service names; creds from POSTGRES_*
+      # (same source as the postgres service → cannot drift).
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:-aramo}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
+      - REDIS_URL=redis://redis:6379
+      # pass-through by name from the sourced shell env (multi-line-safe):
+      - AUTH_AUDIENCE
+      - AUTH_PUBLIC_KEY
+      - AUTH_COGNITO_TENANT_USER_POOL_ID
+      - AUTH_COGNITO_ENDPOINT
+      - S3_RESUME_BUCKET
+      - S3_ENDPOINT
+      - ARAMO_ENV
+      - AWS_REGION
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - ADDRESS_AUTOCOMPLETE_ENABLED
+      - ADDRESS_AUTOCOMPLETE_PROVIDER
+      - GOOGLE_PLACES_API_KEY
+      - IMPORT_FAILURE_THRESHOLD_PCT
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  auth-service:
+    # D1 image, UNCHANGED — referenced, not rebuilt.
+    image: ${ARAMO_AUTH_IMAGE:-aramo/auth-service:local}
+    container_name: aramo-prod-auth
+    restart: unless-stopped
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:-aramo}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
+      # pass-through by name from the sourced shell env (multi-line-safe):
+      - AUTH_AUDIENCE
+      - AUTH_PRIVATE_KEY
+      - AUTH_PUBLIC_KEY
+      - AUTH_PKCE_STATE_KEY
+      - AUTH_COGNITO_DOMAIN
+      - AUTH_COGNITO_CLIENT_ID
+      - AUTH_COGNITO_ISSUER
+      - AUTH_COGNITO_REDIRECT_URI
+      - AUTH_COGNITO_ENDPOINT
+      - AUTH_POST_LOGIN_REDIRECT
+      - AUTH_COGNITO_SIGNOUT_REDIRECT
+      - AUTH_TRUSTED_IDP_NAMES
+      - AUTH_ALLOW_INSECURE_COOKIES
+      - AUTH_REFRESH_GRACE_SECONDS
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17
+    container_name: aramo-prod-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aramo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aramo}
+      POSTGRES_DB: ${POSTGRES_DB:-aramo}
+    # NO ports: container-internal only (never exposed to host/network).
+    volumes:
+      - aramo-prod-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-aramo} -d ${POSTGRES_DB:-aramo}']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7
+    container_name: aramo-prod-redis
+    restart: unless-stopped
+    # NO ports: container-internal only (never exposed to host/network).
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  aramo-prod-pgdata:
+  aramo-prod-caddy-data:
+  aramo-prod-caddy-config:
