@@ -20,6 +20,14 @@ import { AramoError } from '@aramo/common';
 // SecretCacheService is a Nest singleton (default scope), this caches
 // for process lifetime. Rotation is a process restart — automated
 // rotation lands at M7 IaC.
+//
+// Single-Box Directive 2b — ENV FALLBACK (keeps the box AWS-credential-free).
+// On the single box (Lightsail, no instance role) there is no AWS credential to
+// reach Secrets Manager, so the key is supplied like every other secret: in the
+// box .env. Resolution order: prefer a non-empty ANTHROPIC_API_KEY from the
+// environment; otherwise fall back to the Secrets Manager fetch (UNCHANGED —
+// the platform path for go-live #2, where Fargate task roles read it properly).
+// An empty/unset env var falls through (never hard-fails when SM is available).
 
 @Injectable()
 export class SecretCacheService {
@@ -28,6 +36,15 @@ export class SecretCacheService {
 
   async getAnthropicApiKey(): Promise<string> {
     if (this.cachedApiKey !== null) {
+      return this.cachedApiKey;
+    }
+
+    // Env fallback (Directive 2b): prefer a non-empty ANTHROPIC_API_KEY from the
+    // environment so the box needs no AWS credential. Empty/unset → fall through
+    // to the Secrets Manager path below (the platform path, unchanged).
+    const envKey = process.env['ANTHROPIC_API_KEY'];
+    if (envKey !== undefined && envKey.length > 0) {
+      this.cachedApiKey = envKey;
       return this.cachedApiKey;
     }
 
