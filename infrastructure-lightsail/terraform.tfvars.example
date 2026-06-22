@@ -1,0 +1,30 @@
+# Aramo Single-Box Directive 4 — example variables for the Lightsail root.
+# Copy to terraform.tfvars (gitignored) and populate before `terraform apply`.
+#
+# Two values are REQUIRED (no defaults): ssh_public_key and ssh_source_cidr.
+
+# The PUBLIC half of the PO's SSH key. Generate the pair out-of-band:
+#   ssh-keygen -t ed25519 -f astre-aramo-prod
+# then paste the contents of astre-aramo-prod.pub here. The private key never
+# touches Terraform.
+ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... po@laptop"
+
+# SSH (22) is restricted to this CIDR. Use the PO's /32 source IP — NOT
+# 0.0.0.0/0 (a validation rule rejects world-open). 80/443 are world-open.
+ssh_source_cidr = "203.0.113.7/32"
+
+# --- The rest have sensible defaults; override only if needed ----------------
+# aws_region        = "us-east-1"
+# availability_zone = "us-east-1a"
+# instance_name     = "astre-aramo-prod"
+# bundle_id         = "medium_3_0"     # 2 vCPU / 4 GB
+# blueprint_id      = "ubuntu_24_04"   # clean Ubuntu 24.04 LTS
+# app_fqdn          = "astre.aramo.ai"
+# dns_zone_name     = "aramo.ai"
+
+# --- Optional scoped S3-backup IAM (off by default) -------------------------
+# Set true to provision the s3:PutObject-only backup user. The access KEY is
+# generated out-of-band (never in state) — see README §Backup IAM.
+# create_backup_iam_user = true
+# backup_bucket          = "astre-aramo-backups"
+# backup_prefix          = "box/pg"
