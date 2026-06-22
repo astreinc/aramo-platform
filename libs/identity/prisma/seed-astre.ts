@@ -61,10 +61,15 @@ type AstreSeedPrisma = Pick<
 export async function runAstreSeed(
   prisma: PrismaClient,
 ): Promise<{ astre_tenant_id: string; owner_user_id: string }> {
-  // 1. Catalog (+ the established bootstrap fixtures) — reused verbatim,
-  //    idempotent. Seeds the full 85-scope / 14-role / 294-grant catalog and
-  //    the system ServiceAccount that the audit rows below reference as actor.
-  await runIdentitySeed(prisma);
+  // 1. Catalog ONLY — reused verbatim, idempotent. Seeds the full
+  //    85-scope / 14-role / 468-grant catalog, the system ServiceAccount that
+  //    the audit rows below reference as actor, and the `Aramo Platform`
+  //    sentinel tenant. `includeDevFixtures: false` SCRUBS the dev/bootstrap
+  //    fixtures (Aramo Dev Tenant + admin@aramo.dev) so Astre's first prod DB
+  //    is catalog + Astre + owner ONLY — clean from creation, never
+  //    seeded-then-scrubbed (Single-Box Directive 3 §F). The catalog itself is
+  //    byte-identical to the dev path; only the dev fixtures are gated.
+  await runIdentitySeed(prisma, { includeDevFixtures: false });
 
   const db = prisma as AstreSeedPrisma;
 

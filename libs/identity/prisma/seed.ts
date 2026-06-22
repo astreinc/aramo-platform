@@ -1618,19 +1618,46 @@ interface IdentityPrismaClient {
 
 // Seed entrypoint. Returns the system ServiceAccount id (handy for callers
 // that want to verify which actor wrote the audit events).
-export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
+/**
+ * Options for {@link runIdentitySeed}.
+ *
+ * `includeDevFixtures` (default `true`) gates ONLY the dev/bootstrap fixtures —
+ * the `Aramo Dev Tenant`, the `admin@aramo.dev` user, that user's membership /
+ * membership-role / external-identity, and the four audit rows describing those
+ * creations. It does NOT touch the catalog (scopes, roles, RoleScope grants),
+ * the system ServiceAccount, the `Aramo Platform` sentinel tenant, or the
+ * catalog-describing role/scope audit rows — those are seeded unconditionally
+ * and remain byte-identical regardless of this flag.
+ *
+ * Defaulting `true` preserves every existing caller (dev seed, integration
+ * specs) verbatim. The Astre single-box seed passes `false` so the first prod
+ * DB is `catalog + Astre + owner` ONLY — clean from creation, never
+ * seeded-then-scrubbed (Single-Box Directive 3 §F).
+ */
+export interface RunIdentitySeedOptions {
+  includeDevFixtures?: boolean;
+}
+
+export async function runIdentitySeed(
+  prisma: IdentityPrismaClient,
+  options: RunIdentitySeedOptions = {},
+): Promise<{
   service_account_id: string;
 }> {
-  // 1. Tenant (idempotent upsert keyed on stable id).
-  await prisma.tenant.upsert({
-    where: { id: SEED_IDS.tenant },
-    update: {},
-    create: {
-      id: SEED_IDS.tenant,
-      name: SEED_TENANT_NAME,
-      is_active: true,
-    },
-  });
+  const { includeDevFixtures = true } = options;
+
+  // 1. Tenant (idempotent upsert keyed on stable id). DEV-FIXTURE — gated.
+  if (includeDevFixtures) {
+    await prisma.tenant.upsert({
+      where: { id: SEED_IDS.tenant },
+      update: {},
+      create: {
+        id: SEED_IDS.tenant,
+        name: SEED_TENANT_NAME,
+        is_active: true,
+      },
+    });
+  }
 
   // 1b. AUTHZ-2 — sentinel "Aramo Platform" Tenant (Lead ruling 2 B1).
   // The platform JWT's tenant_id claim references this row; the
@@ -1648,17 +1675,19 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
     },
   });
 
-  // 2. User (admin).
-  await prisma.user.upsert({
-    where: { id: SEED_IDS.user_admin },
-    update: {},
-    create: {
-      id: SEED_IDS.user_admin,
-      email: SEED_ADMIN_EMAIL,
-      display_name: SEED_ADMIN_DISPLAY_NAME,
-      is_active: true,
-    },
-  });
+  // 2. User (admin). DEV-FIXTURE — gated.
+  if (includeDevFixtures) {
+    await prisma.user.upsert({
+      where: { id: SEED_IDS.user_admin },
+      update: {},
+      create: {
+        id: SEED_IDS.user_admin,
+        email: SEED_ADMIN_EMAIL,
+        display_name: SEED_ADMIN_DISPLAY_NAME,
+        is_active: true,
+      },
+    });
+  }
 
   // 9. ServiceAccount (system actor for audit events).
   // Created before any audit row so audit rows can reference it as actor_id.
@@ -2162,97 +2191,106 @@ export async function runIdentitySeed(prisma: IdentityPrismaClient): Promise<{
     }
   }
 
-  // 3. Membership.
-  await prisma.userTenantMembership.upsert({
-    where: {
-      user_id_tenant_id: {
+  // 3 + 8 + 4 + the four creation-audit rows below are ALL DEV-FIXTURE —
+  // they describe the admin@aramo.dev user's membership, role, external
+  // identity, and the audit trail of the Aramo-Dev-Tenant/admin creation.
+  // Gated as one block; the catalog-describing role/scope audit rows that
+  // follow are UNCONDITIONAL (catalog) and remain outside this guard.
+  if (includeDevFixtures) {
+    // 3. Membership.
+    await prisma.userTenantMembership.upsert({
+      where: {
+        user_id_tenant_id: {
+          user_id: SEED_IDS.user_admin,
+          tenant_id: SEED_IDS.tenant,
+        },
+      },
+      update: {},
+      create: {
+        id: SEED_IDS.membership_admin,
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
+        is_active: true,
       },
-    },
-    update: {},
-    create: {
-      id: SEED_IDS.membership_admin,
-      user_id: SEED_IDS.user_admin,
-      tenant_id: SEED_IDS.tenant,
-      is_active: true,
-    },
-  });
+    });
 
-  // 8. UserTenantMembershipRole — assign tenant_admin to the seed membership.
-  await prisma.userTenantMembershipRole.upsert({
-    where: {
-      membership_id_role_id: {
+    // 8. UserTenantMembershipRole — assign tenant_admin to the seed membership.
+    await prisma.userTenantMembershipRole.upsert({
+      where: {
+        membership_id_role_id: {
+          membership_id: SEED_IDS.membership_admin,
+          role_id: SEED_IDS.roles.tenant_admin,
+        },
+      },
+      update: {},
+      create: {
+        id: SEED_IDS.membership_role_admin,
         membership_id: SEED_IDS.membership_admin,
         role_id: SEED_IDS.roles.tenant_admin,
       },
-    },
-    update: {},
-    create: {
-      id: SEED_IDS.membership_role_admin,
-      membership_id: SEED_IDS.membership_admin,
-      role_id: SEED_IDS.roles.tenant_admin,
-    },
-  });
+    });
 
-  // 4. ExternalIdentity (cognito provider).
-  await prisma.externalIdentity.upsert({
-    where: {
-      provider_provider_subject: {
+    // 4. ExternalIdentity (cognito provider).
+    await prisma.externalIdentity.upsert({
+      where: {
+        provider_provider_subject: {
+          provider: 'cognito',
+          provider_subject: SEED_COGNITO_SUB,
+        },
+      },
+      update: {},
+      create: {
+        id: SEED_IDS.external_identity_admin,
         provider: 'cognito',
         provider_subject: SEED_COGNITO_SUB,
+        user_id: SEED_IDS.user_admin,
+        email_snapshot: SEED_ADMIN_EMAIL,
       },
-    },
-    update: {},
-    create: {
-      id: SEED_IDS.external_identity_admin,
-      provider: 'cognito',
-      provider_subject: SEED_COGNITO_SUB,
-      user_id: SEED_IDS.user_admin,
-      email_snapshot: SEED_ADMIN_EMAIL,
-    },
-  });
+    });
 
-  // 10. IdentityAuditEvent — one row per creation.
-  // tenant_id assignment follows directive §6 event_type → index-category mapping.
-  // actor_type: 'system'; actor_id: the system ServiceAccount id.
-  await upsertAudit(prisma, {
-    id: SEED_IDS.audit_events.tenant_created,
-    tenant_id: SEED_IDS.tenant, // tenant-scoped event
-    event_type: 'identity.tenant.created',
-    subject_id: SEED_IDS.tenant,
-    payload: { tenant_id: SEED_IDS.tenant, name: SEED_TENANT_NAME },
-  });
-  await upsertAudit(prisma, {
-    id: SEED_IDS.audit_events.user_created,
-    tenant_id: null, // global event
-    event_type: 'identity.user.created',
-    subject_id: SEED_IDS.user_admin,
-    payload: { user_id: SEED_IDS.user_admin, email: SEED_ADMIN_EMAIL },
-  });
-  await upsertAudit(prisma, {
-    id: SEED_IDS.audit_events.membership_created,
-    tenant_id: SEED_IDS.tenant, // tenant-scoped event
-    event_type: 'identity.membership.created',
-    subject_id: SEED_IDS.user_admin,
-    payload: {
-      membership_id: SEED_IDS.membership_admin,
-      user_id: SEED_IDS.user_admin,
-      tenant_id: SEED_IDS.tenant,
-    },
-  });
-  await upsertAudit(prisma, {
-    id: SEED_IDS.audit_events.external_identity_linked,
-    tenant_id: null, // global event
-    event_type: 'identity.external_identity.linked',
-    subject_id: SEED_IDS.user_admin,
-    payload: {
-      external_identity_id: SEED_IDS.external_identity_admin,
-      provider: 'cognito',
-      provider_subject: SEED_COGNITO_SUB,
-      user_id: SEED_IDS.user_admin,
-    },
-  });
+    // 10. IdentityAuditEvent — one row per dev-fixture creation.
+    // tenant_id assignment follows directive §6 event_type → index-category mapping.
+    // actor_type: 'system'; actor_id: the system ServiceAccount id.
+    await upsertAudit(prisma, {
+      id: SEED_IDS.audit_events.tenant_created,
+      tenant_id: SEED_IDS.tenant, // tenant-scoped event
+      event_type: 'identity.tenant.created',
+      subject_id: SEED_IDS.tenant,
+      payload: { tenant_id: SEED_IDS.tenant, name: SEED_TENANT_NAME },
+    });
+    await upsertAudit(prisma, {
+      id: SEED_IDS.audit_events.user_created,
+      tenant_id: null, // global event
+      event_type: 'identity.user.created',
+      subject_id: SEED_IDS.user_admin,
+      payload: { user_id: SEED_IDS.user_admin, email: SEED_ADMIN_EMAIL },
+    });
+    await upsertAudit(prisma, {
+      id: SEED_IDS.audit_events.membership_created,
+      tenant_id: SEED_IDS.tenant, // tenant-scoped event
+      event_type: 'identity.membership.created',
+      subject_id: SEED_IDS.user_admin,
+      payload: {
+        membership_id: SEED_IDS.membership_admin,
+        user_id: SEED_IDS.user_admin,
+        tenant_id: SEED_IDS.tenant,
+      },
+    });
+    await upsertAudit(prisma, {
+      id: SEED_IDS.audit_events.external_identity_linked,
+      tenant_id: null, // global event
+      event_type: 'identity.external_identity.linked',
+      subject_id: SEED_IDS.user_admin,
+      payload: {
+        external_identity_id: SEED_IDS.external_identity_admin,
+        provider: 'cognito',
+        provider_subject: SEED_COGNITO_SUB,
+        user_id: SEED_IDS.user_admin,
+      },
+    });
+  }
+
+  // The catalog-describing audit rows (role/scope creations) — UNCONDITIONAL.
   await upsertAudit(prisma, {
     id: SEED_IDS.audit_events.role_tenant_admin_created,
     tenant_id: null,
