@@ -84,10 +84,22 @@ const IDENTITY_SITE_AXIS_MIGRATION = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
 );
+// AUTHZ-D4a — team-model tables (chronologically between site-axis and the
+// profile/hierarchy migrations; applied so the DB matches the generated client).
+const IDENTITY_TEAM_MODELS_MIGRATION = resolve(
+  __dirname,
+  '../../../../libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql',
+);
 // Settings Rebuild D3 — additive tenant-profile columns (Prisma SELECTs them).
 const IDENTITY_PROFILE_MIGRATION = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
+);
+// Settings Rebuild D4 — Site.parent_site_id self-FK hierarchy (Prisma SELECTs
+// it on every site row, so the seed's site.upsert requires the column).
+const IDENTITY_SITE_HIERARCHY_MIGRATION = resolve(
+  __dirname,
+  '../../../../libs/identity/prisma/migrations/20260620000000_add_site_hierarchy/migration.sql',
 );
 const AUTH_STORAGE_MIGRATION = resolve(
   __dirname,
@@ -127,7 +139,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const stmt of [
         ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_SITE_AXIS_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_TEAM_MODELS_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_PROFILE_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_SITE_HIERARCHY_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
       ]) {
         const t = stmt.trim();
@@ -148,6 +162,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         AUTH_COGNITO_DOMAIN: process.env['AUTH_COGNITO_DOMAIN'],
         AUTH_COGNITO_CLIENT_ID: process.env['AUTH_COGNITO_CLIENT_ID'],
         AUTH_COGNITO_REDIRECT_URI: process.env['AUTH_COGNITO_REDIRECT_URI'],
+        AUTH_POST_LOGIN_REDIRECT: process.env['AUTH_POST_LOGIN_REDIRECT'],
         AUTH_REFRESH_GRACE_SECONDS: process.env['AUTH_REFRESH_GRACE_SECONDS'],
         AUTH_ALLOW_INSECURE_COOKIES: process.env['AUTH_ALLOW_INSECURE_COOKIES'],
       };
@@ -159,6 +174,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_COGNITO_DOMAIN'] = 'auth.example.com';
       process.env['AUTH_COGNITO_CLIENT_ID'] = 'test-client';
       process.env['AUTH_COGNITO_REDIRECT_URI'] = 'https://app.example/cb';
+      // Callback success now 302-redirects the browser to this per-env URL
+      // (cookies set first); throws 500 if unset. See auth.controller §callback.
+      process.env['AUTH_POST_LOGIN_REDIRECT'] = 'https://app.example/home';
       process.env['AUTH_REFRESH_GRACE_SECONDS'] = '0';
       process.env['AUTH_ALLOW_INSECURE_COOKIES'] = 'true';
 
@@ -251,7 +269,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const cbRes = await request(app.getHttpServer())
         .get(`/auth/recruiter/callback?code=c&state=${state}`)
         .set('Cookie', pkceCookie);
-      expect(cbRes.status).toBe(204);
+      // Success is a 302 back into the app (AUTH_POST_LOGIN_REDIRECT) with the
+      // session cookies set on the redirect response (contract: 204 → 302).
+      expect(cbRes.status).toBe(302);
       const cbCookies = cbRes.headers['set-cookie'] as unknown as string[];
       const accessHeader = cbCookies.find((c) =>
         c.startsWith('aramo_access_token='),
@@ -294,9 +314,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(res.body?.error?.code).toBe('INSUFFICIENT_PERMISSIONS');
     });
 
-    // PR-A1a-3 §4 fail-closed: tenant-wide membership → JWT lacks
-    // site_id → @RequireSiteMatch route rejects 403 site_claim_missing.
-    it('PR-A1a-3 §4 — tenant-wide membership issues a null-site token; @RequireSiteMatch rejects (403)', async () => {
+    // Site-Axis Authority Fix: a tenant-wide membership → JWT lacks
+    // site_id → that principal holds authority over EVERY site, so a
+    // @RequireSiteMatch route ACCEPTS it (200), even against a specific
+    // requested site. (Was 403 under the pre-fix missing-claim hard-deny,
+    // which wrongly locked out the broadest-authority principal.) The
+    // issuer omits site_id only for NULL-site memberships, so this admit
+    // path cannot be forged by a site-scoped user.
+    it('Site-Axis Authority Fix — tenant-wide membership issues a null-site token; @RequireSiteMatch ACCEPTS it on any site (200)', async () => {
       const accessToken = await loginAndExtractAccessToken(TENANT_WIDE_COGNITO_SUB);
       const payload = decodeJwt(accessToken);
       expect('site_id' in payload).toBe(false);
@@ -304,8 +329,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const res = await request(app.getHttpServer())
         .get(`/__test/site/${SITE_ID}/echo`)
         .set('Authorization', `Bearer ${accessToken}`);
-      expect(res.status).toBe(403);
-      expect(res.body?.error?.code).toBe('INSUFFICIENT_PERMISSIONS');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ site_id: SITE_ID });
     });
   },
 );

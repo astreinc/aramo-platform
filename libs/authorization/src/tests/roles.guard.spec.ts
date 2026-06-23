@@ -129,19 +129,29 @@ describe('RolesGuard', () => {
     }
   });
 
-  it('rejects a @RequireSiteMatch route when the AuthContext lacks a site_id claim', () => {
+  // A1a fix: an absent site_id claim denotes a TENANT-WIDE principal with
+  // authority over every site — so a @RequireSiteMatch route admits it
+  // (it does NOT reject as a missing claim). The issuer omits the claim
+  // only for NULL-site memberships, so this cannot be forged.
+  it('passes a @RequireSiteMatch route when the AuthContext lacks a site_id claim (tenant-wide principal, no requested site)', () => {
     const guard = new RolesGuard(
       makeReflector({ [REQUIRES_SITE_MATCH_KEY]: true }),
     );
     const ctx = makeContext({ authContext: baseAuth });
-    expect(() => guard.canActivate(ctx)).toThrow(AramoError);
-    try {
-      guard.canActivate(ctx);
-    } catch (err) {
-      const e = err as AramoError;
-      expect(e.code).toBe('INSUFFICIENT_PERMISSIONS');
-      expect(e.context.details).toMatchObject({ reason: 'site_claim_missing' });
-    }
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  // A1a fix: a tenant-wide principal (no site_id claim) is admitted even
+  // when the route names a specific requested site — all-site authority.
+  it('passes a @RequireSiteMatch route when the AuthContext lacks a site_id claim and the route names a requested site (tenant-wide all-site authority)', () => {
+    const guard = new RolesGuard(
+      makeReflector({ [REQUIRES_SITE_MATCH_KEY]: true }),
+    );
+    const ctx = makeContext({
+      authContext: baseAuth,
+      params: { site_id: '01900000-0000-7000-8000-0000000000a2' },
+    });
+    expect(guard.canActivate(ctx)).toBe(true);
   });
 
   it('rejects a @RequireSiteMatch route when claim.site_id does not match the requested site_id (wrong-site)', () => {
