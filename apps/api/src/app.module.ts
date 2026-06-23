@@ -18,11 +18,7 @@ import { ContactModule } from '@aramo/contact';
 import { EngagementModule } from '@aramo/engagement';
 import { EntitlementModule } from '@aramo/entitlement';
 import { ExportModule } from '@aramo/export';
-import {
-  AUDIT_FINANCIALS_GATE,
-  IdentityModule,
-  TENANT_COGNITO_PORT,
-} from '@aramo/identity';
+import { AUDIT_FINANCIALS_GATE, IdentityModule } from '@aramo/identity';
 import { ImportModule } from '@aramo/import';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
@@ -236,7 +232,14 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // wire). IdentityModule was already in the apps/api module graph
     // transitively via CompanyModule; the direct import here makes
     // IdentityAuditService injectable into TenantSettingsController.
-    IdentityModule,
+    //
+    // Auth-Cognito-Binding-Fix v1.0 — apps/api owns the live Cognito
+    // adapter, so it imports via forRoot, binding TenantCognitoAdapter to
+    // TENANT_COGNITO_PORT inside IdentityModule's OWN scope. This is what
+    // actually reaches TenantUserLifecycleService (the sole consumer); the
+    // former AppModule-scoped override (removed below) never did, because
+    // NestJS DI is per-module hierarchical and IdentityModule is not @Global.
+    IdentityModule.forRoot({ cognitoAdapter: TenantCognitoAdapter }),
     // Settings S1 — SettingsModule (NEW LEAF lib, depends only on
     // @aramo/common). Tenant-configuration foundation: the TenantSetting
     // model + the read-through TenantSettingService that powers the
@@ -319,18 +322,15 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
       provide: APP_INTERCEPTOR,
       useClass: TalentPresetInterceptor,
     },
-    // Settings S3a — override the TENANT_COGNITO_PORT default binding
-    // (libs/identity's StubTenantCognitoAdapter, which throws on call)
-    // with the live AWS-SDK-backed TenantCognitoAdapter. Provider order
-    // is last-wins in Nest: AppModule's binding shadows the stub bound
-    // in IdentityModule, so TenantUserLifecycleService receives the
-    // live adapter. Integration tests override at TestingModule level
-    // via overrideProvider(TENANT_COGNITO_PORT).
-    TenantCognitoAdapter,
-    {
-      provide: TENANT_COGNITO_PORT,
-      useExisting: TenantCognitoAdapter,
-    },
+    // Settings S3a — the live AWS-SDK-backed TenantCognitoAdapter is now
+    // bound to TENANT_COGNITO_PORT via IdentityModule.forRoot above (in
+    // IdentityModule's own scope, the only scope the consumer resolves
+    // from). The former AppModule-scoped binding here was ineffective —
+    // per-module hierarchical DI never propagated it to the consumer —
+    // and is removed (Auth-Cognito-Binding-Fix v1.0). Integration tests
+    // still override at the TestingModule level via
+    // overrideProvider(TENANT_COGNITO_PORT).
+    //
     // Settings S4 — override the AUDIT_FINANCIALS_GATE default binding
     // (libs/identity's StubAuditFinancialsGateAdapter, which throws on
     // call) with the live AuditFinancialsGateAdapter that reads via

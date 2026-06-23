@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { DynamicModule, Module, Type } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { CommonModule, createAramoLogger } from '@aramo/common';
@@ -35,6 +35,7 @@ import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
 import {
   StubTenantCognitoAdapter,
   TENANT_COGNITO_PORT,
+  type TenantCognitoPort,
 } from './tenant-user/tenant-cognito.port.js';
 import { TenantUserLifecycleService } from './tenant-user/tenant-user-lifecycle.service.js';
 import { TenantUserManagementController } from './tenant-user/tenant-user-management.controller.js';
@@ -69,6 +70,15 @@ import {
 // auth's foundational consumption of identity TYPES, which the controller
 // guard chain does not invert: the controller IS the tenant-facing surface
 // where guards are first applied to identity-write operations).
+// Options for IdentityModule.forRoot — the composition-root entry point.
+// cognitoAdapter is the live TenantCognitoPort implementation (apps/api's
+// AWS-SDK-backed TenantCognitoAdapter). Required: TypeScript rejects
+// forRoot({}) at compile time, so a real-adapter omission can never
+// silently degrade to the stub.
+export interface IdentityModuleOptions {
+  cognitoAdapter: Type<TenantCognitoPort>;
+}
+
 @Module({
   imports: [AuthModule, AuthorizationModule, CommonModule, EntitlementModule],
   controllers: [
@@ -120,11 +130,21 @@ import {
     // hosts the shared D5 union-non-invertibility check (a thin consumer
     // of @aramo/field-masking's assertNonInvertibleBundle; the field-
     // masking lib remains the single owner of the non-invertibility
-    // math). The TENANT_COGNITO_PORT default binding is the
-    // StubTenantCognitoAdapter (throws on first call); apps/api
-    // OVERRIDES this binding by registering a provider with the same
-    // token mapped to the live AWS-SDK adapter at AppModule wiring.
-    // Tests inject a mock implementation directly.
+    // math). The TENANT_COGNITO_PORT binding HERE is the plain-import
+    // default — StubTenantCognitoAdapter (throws on first call). It is
+    // bound IN-SCOPE so the four non-cognito consumers (auth-service,
+    // platform-admin, company, visibility) that import IdentityModule
+    // plainly can construct TenantUserLifecycleService; if any of them
+    // ever invokes the port it fails LOUD, never fake-succeeds.
+    //
+    // apps/api owns the live AWS-SDK adapter and imports via
+    // IdentityModule.forRoot({ cognitoAdapter }) (see forRoot below),
+    // which appends a same-token provider to THIS module's own scope
+    // (last-wins) so the sole consumer resolves the real adapter. The
+    // earlier defect was an AppModule-scoped override that never reached
+    // IdentityModule's scope (NestJS DI is per-module hierarchical, not
+    // global last-wins; IdentityModule is not @Global). Tests inject a
+    // mock implementation directly via overrideProvider.
     RoleBundleValidator,
     TenantUserLifecycleService,
     {
@@ -166,4 +186,30 @@ import {
     TenantUserLifecycleService,
   ],
 })
-export class IdentityModule {}
+export class IdentityModule {
+  // Two-entry-point dynamic module (Auth-Cognito-Binding-Fix v1.0).
+  //
+  // forRoot is for the composition root that OWNS the real Cognito
+  // adapter — apps/api ONLY. It returns a DynamicModule that NestJS
+  // MERGES with the @Module decorator above: the dynamic provider for
+  // TENANT_COGNITO_PORT is appended to this module's own providers, so
+  // it shadows the StubTenantCognitoAdapter default (last-wins within a
+  // single module's scope) — and crucially binds IN IdentityModule's
+  // scope, which is where TenantUserLifecycleService (a provider of this
+  // module) resolves the token. cognitoAdapter is REQUIRED — omission is
+  // a compile error, never a silent runtime fallback.
+  //
+  // The four non-cognito importers keep the plain `IdentityModule`
+  // import (unchanged) and resolve the in-scope stub default.
+  static forRoot(options: IdentityModuleOptions): DynamicModule {
+    return {
+      module: IdentityModule,
+      providers: [
+        {
+          provide: TENANT_COGNITO_PORT,
+          useClass: options.cognitoAdapter,
+        },
+      ],
+    };
+  }
+}
