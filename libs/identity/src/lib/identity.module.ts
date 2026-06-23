@@ -1,4 +1,9 @@
-import { DynamicModule, Module, Type } from '@nestjs/common';
+import {
+  DynamicModule,
+  Module,
+  Type,
+  type ModuleMetadata,
+} from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { CommonModule, createAramoLogger } from '@aramo/common';
@@ -43,6 +48,7 @@ import { TenantUserManagementController } from './tenant-user/tenant-user-manage
 import {
   AUDIT_FINANCIALS_GATE,
   StubAuditFinancialsGateAdapter,
+  type AuditFinancialsGate,
 } from './tenant-user/audit-financials-gate.port.js';
 
 // Per directive §3 dependency direction: libs/auth/ may consume @aramo/identity
@@ -75,8 +81,27 @@ import {
 // AWS-SDK-backed TenantCognitoAdapter). Required: TypeScript rejects
 // forRoot({}) at compile time, so a real-adapter omission can never
 // silently degrade to the stub.
+//
+// auditFinancialsGate is the live AuditFinancialsGate implementation
+// (apps/api's TenantSettingService-backed AuditFinancialsGateAdapter — the
+// Settings S4 / D5 pay-rate-visibility precondition gate). Required for the
+// same reason: omission is a compile error, never a silent fallback to the
+// throw-on-call stub. (Financials-Gate-Binding-Fix v1.0 — extends the cognito
+// forRoot rather than authoring a second one: one dynamic module, two bound
+// ports, both resolved by the SAME consumer — TenantUserLifecycleService.)
+//
+// imports threads the module(s) that PROVIDE the bound adapters' own
+// dependencies into IdentityModule's dynamic scope. The cognito adapter has a
+// no-arg constructor, but AuditFinancialsGateAdapter injects TenantSettingService
+// (from @aramo/settings), so apps/api passes [SettingsModule] (which exports it)
+// — without it the useClass binding throws UnknownDependenciesException at boot.
+// libs/identity stays LEAF (no @aramo/settings edge): the importer threads the
+// module through as an opaque ModuleMetadata['imports'] entry; libs/identity
+// never names SettingsModule. Optional — dependency-free adapters need no imports.
 export interface IdentityModuleOptions {
   cognitoAdapter: Type<TenantCognitoPort>;
+  auditFinancialsGate: Type<AuditFinancialsGate>;
+  imports?: ModuleMetadata['imports'];
 }
 
 @Module({
@@ -187,27 +212,36 @@ export interface IdentityModuleOptions {
   ],
 })
 export class IdentityModule {
-  // Two-entry-point dynamic module (Auth-Cognito-Binding-Fix v1.0).
+  // Two-entry-point dynamic module (Auth-Cognito-Binding-Fix v1.0; the
+  // AUDIT_FINANCIALS_GATE binding added by Financials-Gate-Binding-Fix v1.0).
   //
-  // forRoot is for the composition root that OWNS the real Cognito
-  // adapter — apps/api ONLY. It returns a DynamicModule that NestJS
-  // MERGES with the @Module decorator above: the dynamic provider for
-  // TENANT_COGNITO_PORT is appended to this module's own providers, so
-  // it shadows the StubTenantCognitoAdapter default (last-wins within a
-  // single module's scope) — and crucially binds IN IdentityModule's
-  // scope, which is where TenantUserLifecycleService (a provider of this
-  // module) resolves the token. cognitoAdapter is REQUIRED — omission is
-  // a compile error, never a silent runtime fallback.
+  // forRoot is for the composition root that OWNS the real adapters —
+  // apps/api ONLY. It returns a DynamicModule that NestJS MERGES with the
+  // @Module decorator above: the dynamic providers for TENANT_COGNITO_PORT
+  // and AUDIT_FINANCIALS_GATE are appended to this module's own providers,
+  // so they shadow the StubTenantCognitoAdapter / StubAuditFinancialsGateAdapter
+  // defaults (last-wins within a single module's scope) — and crucially bind
+  // IN IdentityModule's scope, which is where TenantUserLifecycleService (a
+  // provider of this module) resolves BOTH tokens (adjacent constructor
+  // params). cognitoAdapter and auditFinancialsGate are REQUIRED — omission
+  // is a compile error, never a silent runtime fallback.
   //
-  // The four non-cognito importers keep the plain `IdentityModule`
-  // import (unchanged) and resolve the in-scope stub default.
+  // The four non-cognito importers keep the plain `IdentityModule` import
+  // (unchanged) and resolve the in-scope stub defaults — they construct
+  // TenantUserLifecycleService but never hit the cognito or financials paths,
+  // so the throw-on-call stubs are inert for them (fail-loud if ever reached).
   static forRoot(options: IdentityModuleOptions): DynamicModule {
     return {
       module: IdentityModule,
+      imports: options.imports ?? [],
       providers: [
         {
           provide: TENANT_COGNITO_PORT,
           useClass: options.cognitoAdapter,
+        },
+        {
+          provide: AUDIT_FINANCIALS_GATE,
+          useClass: options.auditFinancialsGate,
         },
       ],
     };
