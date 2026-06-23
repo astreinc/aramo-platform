@@ -19,8 +19,15 @@ import {
 // falls back to the class) and rejects with INSUFFICIENT_PERMISSIONS (403)
 // when:
 //   1. Required scopes are not a subset of AuthContext.scopes.
-//   2. @RequireSiteMatch is present AND (a) the claim site_id is missing,
-//      or (b) the route's requested site_id does not match the claim.
+//   2. @RequireSiteMatch is present, the claim carries a site_id, AND the
+//      route's requested site_id does not match that claim (cross-site).
+//
+// Site-axis model (A1a): an ABSENT/null site_id claim denotes a tenant-wide
+// principal with authority over EVERY site — so it is admitted on any site.
+// The issuer (jwt-issuer.service + findActiveMembershipSite) omits the claim
+// ONLY for NULL-site memberships, so "absent ⇒ all-site" cannot be forged by
+// a site-scoped user (they always carry the claim on a signed token). A
+// PRESENT claim is still confined to its own site — cross-site is denied.
 //
 // All-or-nothing on the scopes (every required scope must be present).
 // Routes that don't decorate scope requirements pass through (the guard
@@ -91,15 +98,16 @@ export class RolesGuard implements CanActivate {
     if (requiresSiteMatch) {
       const claimSite = authContext.site_id;
       const requestedSite = this.resolveRequestedSite(request);
-      if (claimSite === undefined || claimSite === null) {
-        throw new AramoError(
-          'INSUFFICIENT_PERMISSIONS',
-          'Site-scoped route requires site_id claim',
-          403,
-          { requestId, details: { reason: 'site_claim_missing' } },
-        );
-      }
-      if (requestedSite !== undefined && requestedSite !== claimSite) {
+      // Absent/null claim = tenant-wide principal → authorized on any site
+      // (the issuer omits site_id only for NULL-site memberships, so this
+      // cannot be forged by a site-scoped user). Only a PRESENT claim is
+      // confined: it must match the requested site, else cross-site 403.
+      if (
+        claimSite !== undefined &&
+        claimSite !== null &&
+        requestedSite !== undefined &&
+        requestedSite !== claimSite
+      ) {
         throw new AramoError(
           'INSUFFICIENT_PERMISSIONS',
           'Site claim does not match requested site',
