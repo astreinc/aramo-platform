@@ -17,10 +17,33 @@ export interface TaskAssigneeValidator {
   }): Promise<boolean>;
 }
 
-// Test/default stub — accepts any assignee. apps/api overrides with the live
-// identity-backed adapter; specs inject a controllable fake.
+// Accept-any TEST DOUBLE — returns true for every assignee. NOT a
+// prod-reachable default any more (Task-Assignee Binding-Fix v1.0): the
+// former @Module-scoped default binding silently accepted cross-tenant /
+// inactive assignees because AppModule's override never reached
+// TaskController's module scope (per-module hierarchical DI). It survives
+// solely so specs can inject the old accept-any behavior to PROVE the
+// rebind changes behavior. Prod binds the live adapter via
+// TaskModule.forRoot({ assigneeValidator }).
 export class StubTaskAssigneeValidator implements TaskAssigneeValidator {
   async isActiveTenantMember(): Promise<boolean> {
     return true;
+  }
+}
+
+// Fail-CLOSED plain-import default (Task-Assignee Binding-Fix v1.0). Bound in
+// TaskModule's @Module providers so an accidental plain `TaskModule` import
+// (there are none today — apps/api is the sole importer and uses forRoot)
+// fails SAFE rather than open: it throws on first call instead of silently
+// approving any assignee. The cognito StubTenantCognitoAdapter fail-loud
+// precedent — never fake-succeed. The Lead-sanctioned defense-in-depth
+// option; the load-bearing path is forRoot binding the real adapter.
+export class UnboundTaskAssigneeValidator implements TaskAssigneeValidator {
+  async isActiveTenantMember(): Promise<boolean> {
+    throw new Error(
+      'TASK_ASSIGNEE_VALIDATOR is unbound — TaskModule must be imported via ' +
+        'TaskModule.forRoot({ assigneeValidator }). The accept-any stub is a ' +
+        'test double only and is never a prod default.',
+    );
   }
 }

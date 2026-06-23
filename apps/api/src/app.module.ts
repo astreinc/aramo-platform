@@ -33,7 +33,7 @@ import { SettingsModule } from '@aramo/settings';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { SubmittalModule } from '@aramo/submittal';
 import { TalentRecordModule, ResumeReindexModule } from '@aramo/talent-record';
-import { TaskModule, TASK_ASSIGNEE_VALIDATOR } from '@aramo/task';
+import { TaskModule } from '@aramo/task';
 
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
@@ -104,9 +104,26 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     TalentRecordModule,
     AttachmentModule,
     // Tasks backend — the last core recruiter surface (the actionable,
-    // due-dated, assignable to-do). Leaf module; the assignee-validation port
-    // is overridden below with the identity-backed adapter.
-    TaskModule,
+    // due-dated, assignable to-do).
+    //
+    // Task-Assignee Binding-Fix v1.0 — apps/api owns the live
+    // IdentityService-backed adapter, so it imports via forRoot, binding
+    // TaskAssigneeAdapter to TASK_ASSIGNEE_VALIDATOR inside TaskModule's OWN
+    // scope. This is what actually reaches TaskController (the sole consumer);
+    // the former AppModule-scoped override (removed below) never did, because
+    // NestJS DI is per-module hierarchical and TaskModule is not @Global —
+    // so the R5 active-within-tenant assignee check silently accepted ANY
+    // assignee (the accept-any stub, a fail-OPEN authz hole).
+    //
+    // imports: [IdentityModule] threads IdentityService into TaskModule's
+    // dynamic scope so TaskAssigneeAdapter (which injects it) can be
+    // instantiated there. Unlike the no-arg cognito adapter, this adapter has
+    // a Nest dependency; libs/task stays leaf (it never names IdentityModule —
+    // apps/api passes it through as an opaque module ref).
+    TaskModule.forRoot({
+      assigneeValidator: TaskAssigneeAdapter,
+      imports: [IdentityModule],
+    }),
     // Search PR-2 — the résumé re-extract worker. SEPARATE from
     // TalentRecordModule (imported widely) so only apps/api stands up the
     // BullMQ tick worker; AttachmentModule gets ResumeTextService.enqueueReindex
@@ -345,18 +362,15 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
       provide: AUDIT_FINANCIALS_GATE,
       useExisting: AuditFinancialsGateAdapter,
     },
-    // Tasks backend — override the TASK_ASSIGNEE_VALIDATOR default binding
-    // (libs/task's StubTaskAssigneeValidator, accept-any) with the live
-    // IdentityService-backed adapter. Last-wins (the TENANT_COGNITO_PORT /
-    // AUDIT_FINANCIALS_GATE precedent): AppModule's binding shadows the stub
-    // bound in TaskModule, so TaskController validates assignees against the
-    // real within-tenant active-membership read. IdentityModule is imported
-    // above so IdentityService is available for constructor injection here.
-    TaskAssigneeAdapter,
-    {
-      provide: TASK_ASSIGNEE_VALIDATOR,
-      useExisting: TaskAssigneeAdapter,
-    },
+    // Tasks backend — the live IdentityService-backed TaskAssigneeAdapter is
+    // now bound to TASK_ASSIGNEE_VALIDATOR via TaskModule.forRoot above (in
+    // TaskModule's own scope, the only scope TaskController resolves from).
+    // The former AppModule-scoped binding here was ineffective — per-module
+    // hierarchical DI never propagated it to the consumer, so the accept-any
+    // stub stayed live (a fail-OPEN authz hole) — and is removed
+    // (Task-Assignee Binding-Fix v1.0). TaskAssigneeAdapter is instantiated
+    // by forRoot's useClass binding; IdentityModule is threaded into
+    // TaskModule's scope there for IdentityService injection.
   ],
 })
 export class AppModule implements NestModule {
