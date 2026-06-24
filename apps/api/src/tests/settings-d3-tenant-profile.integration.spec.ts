@@ -40,6 +40,10 @@ const IDENTITY_INIT = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+const IDENTITY_INVITATION_MIG = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
+);
 const IDENTITY_PROFILE = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
@@ -131,7 +135,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       db = new Client({ connectionString: url });
       await db.connect();
 
-      for (const p of [ENTITLEMENT_INIT, IDENTITY_INIT, IDENTITY_PROFILE]) {
+      for (const p of [ENTITLEMENT_INIT, IDENTITY_INIT, IDENTITY_INVITATION_MIG, IDENTITY_PROFILE]) {
         await db.query(readFileSync(p, 'utf8'));
       }
       for (const t of [TENANT_A, TENANT_B]) {

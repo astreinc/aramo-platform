@@ -51,6 +51,13 @@ export class TenantCognitoAdapter implements TenantCognitoPort {
     return value;
   }
 
+  // Invite-S2 (Pattern-2): RETAINED for the backlogged native-account invite
+  // path; NOT called by the Pattern-2 federated invite flow (which mints no
+  // Cognito user at invite time — the sub links at first federated login via
+  // the reconcile spine). Kept fully implemented, mirroring adminEnableUser's
+  // "declared, not currently called" posture. The TENANT_COGNITO_PORT binding
+  // (forRoot + the IdentityModule-split fix) STAYS — adminDisableUser /
+  // adminEnableUser still serve the live disable/enable lifecycle ops.
   async adminCreateUser(args: {
     email: string;
     display_name?: string | null;

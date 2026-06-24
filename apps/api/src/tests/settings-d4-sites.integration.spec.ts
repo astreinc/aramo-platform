@@ -42,6 +42,10 @@ const IDENTITY_INIT = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+const IDENTITY_INVITATION_MIG = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
+);
 const IDENTITY_SITE_AXIS = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
@@ -154,6 +158,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const p of [
         ENTITLEMENT_INIT,
         IDENTITY_INIT,
+        IDENTITY_INVITATION_MIG,
         IDENTITY_SITE_AXIS,
         IDENTITY_SITE_HIERARCHY,
       ]) {

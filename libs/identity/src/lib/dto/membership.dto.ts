@@ -8,6 +8,9 @@ export interface MembershipDto {
   tenant_id: string;
   site_id: string | null;
   is_active: boolean;
+  // Invite-S2 — the per-tenant 3-state invite machine
+  // (INVITED | ACCEPTED | ACTIVE). See INVITE_STATUSES guard.
+  invite_status: string;
   joined_at: string;
   deactivated_at: string | null;
   created_at: string;

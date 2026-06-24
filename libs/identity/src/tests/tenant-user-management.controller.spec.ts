@@ -147,7 +147,8 @@ describe('TenantUserManagementController.invite — implicit-tenant pattern', ()
     lifecycle.inviteTenantUser.mockResolvedValue({
       user: { id: USER_ID, email: 'x@y.com' },
       membership_id: 'mem-1',
-      cognito_sub: 'sub-1',
+      invite_status: 'INVITED',
+      invitation_id: 'inv-1',
     } as unknown as InviteResult);
     // Hostile caller smuggles a tenant_id in the body.
     await ctl.invite(
@@ -169,12 +170,13 @@ describe('TenantUserManagementController.invite — implicit-tenant pattern', ()
     expect(args.actor_user_id).toBe(ACTOR_ID);
   });
 
-  it('happy path response shape: {user_id, membership_id, cognito_sub}', async () => {
+  it('happy path response shape: {user_id, membership_id, invite_status, invitation_id} (Invite-S2; cognito_sub dropped)', async () => {
     const { ctl, lifecycle, audit } = makeMocks();
     lifecycle.inviteTenantUser.mockResolvedValue({
       user: { id: USER_ID, email: 'x@y.com' },
       membership_id: 'mem-1',
-      cognito_sub: 'sub-1',
+      invite_status: 'INVITED',
+      invitation_id: 'inv-1',
     } as unknown as InviteResult);
     const result = await ctl.invite(
       makeAuthContext(),
@@ -184,11 +186,11 @@ describe('TenantUserManagementController.invite — implicit-tenant pattern', ()
     expect(result).toEqual({
       user_id: USER_ID,
       membership_id: 'mem-1',
-      cognito_sub: 'sub-1',
+      invite_status: 'INVITED',
+      invitation_id: 'inv-1',
     });
     // Invite path emits NO controller-side audit (the identity-tier
-    // events are emitted inside createUserFromInvitation; no double-
-    // emit here).
+    // events are emitted inside createInvitedUserNoSub; no double-emit here).
     expect(audit.writeEvent).not.toHaveBeenCalled();
   });
 });

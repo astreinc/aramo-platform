@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import type { ExternalIdentityDto } from './dto/external-identity.dto.js';
+import type { InvitationDto } from './dto/invitation.dto.js';
 import type { MembershipDto } from './dto/membership.dto.js';
 import type { UserDto } from './dto/user.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -111,6 +112,20 @@ export class IdentityRepository {
   async findUserById(user_id: string): Promise<UserDto | null> {
     const row = await this.prisma.user.findUnique({ where: { id: user_id } });
     return row === null ? null : toUserDto(row);
+  }
+
+  // Invite-S2 — minimal tenant label read for the invite/acceptance emails.
+  // Returns the workspace `name` + the optional branding `display_name`
+  // (the email greeting prefers display_name and falls back to name, the
+  // same precedence GET /v1/me uses). Returns null for an unknown tenant.
+  async findTenantNameById(
+    tenant_id: string,
+  ): Promise<{ name: string; display_name: string | null } | null> {
+    const row = await this.prisma.tenant.findUnique({
+      where: { id: tenant_id },
+      select: { name: true, display_name: true },
+    });
+    return row === null ? null : { name: row.name, display_name: row.display_name };
   }
 
   async findMembership(args: {
@@ -461,6 +476,151 @@ export class IdentityRepository {
     return { membership_id, membership_role_ids };
   }
 
+  // Invite-S2 (Pattern-2) — the no-sub identity-tx for the federated invite
+  // flow. Mirrors createUserWithExternalIdentityAndMembership MINUS the
+  // ExternalIdentity write: the Cognito sub is NOT minted at invite time
+  // (it is linked at first federated login by the reconcile spine, exactly
+  // as the seed + the seeded Astre owner already do). Single tx:
+  //   User (no ExternalIdentity)
+  //   + UserTenantMembership (invite_status = INVITED)
+  //   + UserTenantMembershipRole[].
+  // The membership_id and role-assignment ids are generated app-side (uuid
+  // v7) so the caller can audit the row ids deterministically.
+  async createUserWithMembership(args: {
+    user_id: string;
+    email: string;
+    display_name: string | null;
+    tenant_id: string;
+    role_ids: readonly string[];
+  }): Promise<{
+    user: UserDto;
+    membership_id: string;
+    membership_role_ids: string[];
+  }> {
+    const membership_id = uuidv7();
+    const membership_role_ids = args.role_ids.map(() => uuidv7());
+
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          id: args.user_id,
+          email: args.email,
+          display_name: args.display_name,
+        },
+      });
+      await tx.userTenantMembership.create({
+        data: {
+          id: membership_id,
+          user_id: args.user_id,
+          tenant_id: args.tenant_id,
+          invite_status: 'INVITED',
+        },
+      });
+      if (args.role_ids.length > 0) {
+        await tx.userTenantMembershipRole.createMany({
+          data: args.role_ids.map((role_id, idx) => ({
+            id: membership_role_ids[idx]!,
+            membership_id,
+            role_id,
+          })),
+        });
+      }
+      return {
+        user: toUserDto(user),
+        membership_id,
+        membership_role_ids,
+      };
+    });
+  }
+
+  // Invite-S2 — persist a fresh Invitation token row. token_hash is the
+  // sha256·base64url of the raw token (never the raw token). The id is
+  // generated app-side (uuid v7) so the caller can return invitation_id in
+  // the invite response. expires_at is computed app-side at issue time.
+  async createInvitation(args: {
+    user_id: string;
+    tenant_id: string;
+    membership_id: string;
+    token_hash: string;
+    expires_at: Date;
+  }): Promise<InvitationDto> {
+    const row = await this.prisma.invitation.create({
+      data: {
+        id: uuidv7(),
+        user_id: args.user_id,
+        tenant_id: args.tenant_id,
+        membership_id: args.membership_id,
+        token_hash: args.token_hash,
+        expires_at: args.expires_at,
+      },
+    });
+    return toInvitationDto(row);
+  }
+
+  // Invite-S2 — single-indexed lookup by the @unique token_hash. Returns null
+  // when no invite matches (the acceptance endpoint maps that to a 4xx, never
+  // a 500). Does NOT enforce expiry/accepted/revoked — that is the lifecycle
+  // service's validation (so it can return distinct reasons).
+  async findInvitationByHash(token_hash: string): Promise<InvitationDto | null> {
+    const row = await this.prisma.invitation.findUnique({
+      where: { token_hash },
+    });
+    return row === null ? null : toInvitationDto(row);
+  }
+
+  // Invite-S2 — ACCEPT transaction. Stamps the invite's accepted_at (single-
+  // use) AND flips the membership INVITED → ACCEPTED, atomically. The
+  // membership update is guarded on invite_status='INVITED' so a concurrent
+  // or repeat accept cannot regress an already-ACTIVE membership; the
+  // invitation accepted_at guard (checked by the caller before this runs) is
+  // the load-bearing single-use gate. accepted_at is passed in so the row and
+  // the audit event agree on the timestamp.
+  async acceptInvitationTx(args: {
+    invitation_id: string;
+    membership_id: string;
+    accepted_at: Date;
+  }): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.invitation.update({
+        where: { id: args.invitation_id },
+        data: { accepted_at: args.accepted_at },
+      });
+      await tx.userTenantMembership.updateMany({
+        where: { id: args.membership_id, invite_status: 'INVITED' },
+        data: { invite_status: 'ACCEPTED' },
+      });
+    });
+  }
+
+  // Invite-S2 — admin revoke of a still-pending invite. Idempotent: a re-
+  // revoke (already revoked) leaves revoked_at unchanged. Returns the row
+  // count touched so the caller can report whether it changed anything.
+  async revokeInvitation(args: {
+    invitation_id: string;
+    revoked_at: Date;
+  }): Promise<{ changed: boolean }> {
+    const res = await this.prisma.invitation.updateMany({
+      where: { id: args.invitation_id, revoked_at: null, accepted_at: null },
+      data: { revoked_at: args.revoked_at },
+    });
+    return { changed: res.count > 0 };
+  }
+
+  // Invite-S2 — the reconcile-spine ACTIVE-hook write. Sets invite_status →
+  // ACTIVE for every membership of the just-linked user that is not already
+  // ACTIVE (idempotent; INVITED or ACCEPTED → ACTIVE). Called ONLY from the
+  // session-orchestrator's by-sub-MISS branch (first federated login, right
+  // after linkExternalIdentity), so it is structurally unreachable for an
+  // already-active user whose login resolves by-sub HIT. Returns the count
+  // flipped so the caller / spec can assert it fired exactly when expected.
+  async activateMembershipsForUser(user_id: string): Promise<{ activated: number }> {
+    const res = await this.prisma.userTenantMembership.updateMany({
+      where: { user_id, invite_status: { not: 'ACTIVE' } },
+      data: { invite_status: 'ACTIVE' },
+    });
+    return { activated: res.count };
+  }
+
   // Settings S3a — soft-disable a tenant membership (identity-first leg
   // of the disable saga). UPDATE-by-natural-key on (user_id, tenant_id);
   // idempotent (re-disable of an already-disabled membership returns
@@ -626,11 +786,38 @@ type MembershipRow = {
   tenant_id: string;
   site_id: string | null;
   is_active: boolean;
+  invite_status: string;
   joined_at: Date;
   deactivated_at: Date | null;
   created_at: Date;
   updated_at: Date;
 };
+
+type InvitationRow = {
+  id: string;
+  user_id: string;
+  tenant_id: string;
+  membership_id: string;
+  expires_at: Date;
+  accepted_at: Date | null;
+  revoked_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+function toInvitationDto(row: InvitationRow): InvitationDto {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    tenant_id: row.tenant_id,
+    membership_id: row.membership_id,
+    expires_at: row.expires_at.toISOString(),
+    accepted_at: row.accepted_at !== null ? row.accepted_at.toISOString() : null,
+    revoked_at: row.revoked_at !== null ? row.revoked_at.toISOString() : null,
+    created_at: row.created_at.toISOString(),
+    updated_at: row.updated_at.toISOString(),
+  };
+}
 
 function toMembershipDto(row: MembershipRow): MembershipDto {
   return {
@@ -639,6 +826,7 @@ function toMembershipDto(row: MembershipRow): MembershipDto {
     tenant_id: row.tenant_id,
     site_id: row.site_id,
     is_active: row.is_active,
+    invite_status: row.invite_status,
     joined_at: row.joined_at.toISOString(),
     deactivated_at:
       row.deactivated_at !== null ? row.deactivated_at.toISOString() : null,
