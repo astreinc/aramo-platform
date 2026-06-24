@@ -18,7 +18,7 @@ import { ContactModule } from '@aramo/contact';
 import { EngagementModule } from '@aramo/engagement';
 import { EntitlementModule } from '@aramo/entitlement';
 import { ExportModule } from '@aramo/export';
-import { AUDIT_FINANCIALS_GATE, IdentityModule } from '@aramo/identity';
+import { IdentityModule } from '@aramo/identity';
 import { ImportModule } from '@aramo/import';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
@@ -256,7 +256,20 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // actually reaches TenantUserLifecycleService (the sole consumer); the
     // former AppModule-scoped override (removed below) never did, because
     // NestJS DI is per-module hierarchical and IdentityModule is not @Global.
-    IdentityModule.forRoot({ cognitoAdapter: TenantCognitoAdapter }),
+    //
+    // Financials-Gate-Binding-Fix v1.0 — the SAME forRoot now also binds the
+    // live AuditFinancialsGateAdapter to AUDIT_FINANCIALS_GATE in-scope (the
+    // adjacent constructor param on the SAME consumer). The former
+    // AppModule-scoped override (removed below) was the identical ineffective
+    // pattern. imports: [SettingsModule] threads TenantSettingService into
+    // IdentityModule's dynamic scope so AuditFinancialsGateAdapter (which
+    // injects it) can be instantiated there; libs/identity stays leaf (it
+    // never names SettingsModule — apps/api passes it through opaquely).
+    IdentityModule.forRoot({
+      cognitoAdapter: TenantCognitoAdapter,
+      auditFinancialsGate: AuditFinancialsGateAdapter,
+      imports: [SettingsModule],
+    }),
     // Settings S1 — SettingsModule (NEW LEAF lib, depends only on
     // @aramo/common). Tenant-configuration foundation: the TenantSetting
     // model + the read-through TenantSettingService that powers the
@@ -348,20 +361,19 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // still override at the TestingModule level via
     // overrideProvider(TENANT_COGNITO_PORT).
     //
-    // Settings S4 — override the AUDIT_FINANCIALS_GATE default binding
-    // (libs/identity's StubAuditFinancialsGateAdapter, which throws on
-    // call) with the live AuditFinancialsGateAdapter that reads via
-    // TenantSettingService. Provider order is last-wins in Nest:
-    // AppModule's binding shadows the stub bound in IdentityModule, so
-    // TenantUserLifecycleService.assignTenantUserRoles receives the
-    // real read path for the GATE precondition. SettingsModule is
-    // already imported above so TenantSettingService is available
-    // for constructor injection here.
-    AuditFinancialsGateAdapter,
-    {
-      provide: AUDIT_FINANCIALS_GATE,
-      useExisting: AuditFinancialsGateAdapter,
-    },
+    // Settings S4 — the live TenantSettingService-backed
+    // AuditFinancialsGateAdapter is now bound to AUDIT_FINANCIALS_GATE via
+    // IdentityModule.forRoot above (in IdentityModule's own scope, the only
+    // scope TenantUserLifecycleService.assignTenantUserRoles resolves the
+    // GATE from). The former AppModule-scoped binding here was ineffective —
+    // per-module hierarchical DI never propagated it to the consumer, so the
+    // throw-on-call stub stayed live (the grant failed CLOSED) — and is
+    // removed (Financials-Gate-Binding-Fix v1.0). The adapter is instantiated
+    // by forRoot's useClass binding; SettingsModule is threaded into
+    // IdentityModule's scope there for TenantSettingService injection.
+    // Integration tests still override at the TestingModule level via
+    // overrideProvider(AUDIT_FINANCIALS_GATE).
+    //
     // Tasks backend — the live IdentityService-backed TaskAssigneeAdapter is
     // now bound to TASK_ASSIGNEE_VALIDATOR via TaskModule.forRoot above (in
     // TaskModule's own scope, the only scope TaskController resolves from).
