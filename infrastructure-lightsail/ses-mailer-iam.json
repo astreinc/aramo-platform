@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SesSendSupportFromOnly",
+      "Effect": "Allow",
+      "Action": ["ses:SendEmail", "ses:SendRawEmail"],
+      "Resource": "arn:aws:ses:us-east-1:472534873684:identity/aramo.ai",
+      "Condition": {
+        "StringEquals": { "ses:FromAddress": "support@aramo.ai" }
+      }
+    }
+  ]
+}
