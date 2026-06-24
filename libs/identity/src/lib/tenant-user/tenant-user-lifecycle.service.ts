@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
+import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
 
 import { IdentityService } from '../identity.service.js';
 import type { UserDto } from '../dto/user.dto.js';
@@ -12,6 +13,11 @@ import {
   AUDIT_FINANCIALS_GATE,
   type AuditFinancialsGate,
 } from './audit-financials-gate.port.js';
+import {
+  buildAcceptUrl,
+  loadInviteLinkConfig,
+  renderInviteEmail,
+} from './invite-emails.js';
 
 // Settings S4 — the narrow role-key whose grant is policy-gated by the
 // tenant's `audit.financials_enabled` KNOWN_SETTING. Exported as a const
@@ -54,7 +60,12 @@ const AUDITOR_WITH_FINANCIALS_ROLE_KEY = 'auditor_with_financials';
 export interface InviteResult {
   user: UserDto;
   membership_id: string;
-  cognito_sub: string;
+  // Invite-S2 — the Pattern-2 response: the 3-state field's initial value
+  // (always INVITED at create) + the issued invitation's id. The dead
+  // cognito_sub is gone (no sub is minted at invite time — it links at first
+  // federated login).
+  invite_status: string;
+  invitation_id: string;
 }
 
 export interface DisableResult {
@@ -92,17 +103,28 @@ export class TenantUserLifecycleService {
     @Inject(TENANT_COGNITO_PORT) private readonly cognito: TenantCognitoPort,
     @Inject(AUDIT_FINANCIALS_GATE)
     private readonly auditFinancialsGate: AuditFinancialsGate,
+    // Invite-S2 — the S1 generic mailer. Injected here for the invite email
+    // (sent at INVITED). MailerModule binds MAILER_PORT in IdentityModule's
+    // scope (a clean static leaf import — no forRoot, no multi-instance risk).
+    @Inject(MAILER_PORT) private readonly mailer: MailerPort,
   ) {}
 
-  // INVITE — 2-leg saga.
-  //   step 0: validate role_keys is non-empty + union-non-invertible.
-  //   step 1: Cognito AdminCreateUser (tenant pool) → returns sub.
-  //   step 2: identity tx (User + ExternalIdentity + Membership +
-  //           MembershipRole[]) via createUserFromInvitation. On failure,
-  //           Cognito-rollback via adminDeleteUser (idempotent).
-  // The audit events (identity.user.created / external_identity.linked /
-  // membership.created / invitation.created) are emitted from inside
-  // createUserFromInvitation — no additional event types for invite.
+  // INVITE — Pattern-2 (no-sub) flow.
+  //   step 0: validate role_keys is non-empty.
+  //   step 1: resolve role-keys → ids.
+  //   step 2: no-sub identity create + token issue via
+  //           createInvitedUserNoSub (the D5 union-non-invertibility gate
+  //           runs INSIDE it, BEFORE any write; no Cognito user is minted).
+  //   step 3: send the invite email (S1 mailer) with the raw token link.
+  // The audit events (identity.user.created / membership.created /
+  // invitation.created) are emitted from inside createInvitedUserNoSub —
+  // NO identity.external_identity.linked (no sub) and no new event types.
+  //
+  // There is NO Cognito leg and therefore NO Cognito-rollback saga: the
+  // federated sub is minted by Cognito at the invitee's FIRST login and
+  // linked by the reconcile spine (which also flips the membership to
+  // ACTIVE). adminCreateUser stays RETAINED in the adapter for the
+  // backlogged native-account path; it is not called here.
   async inviteTenantUser(args: {
     tenant_id: string;
     email: string;
@@ -111,7 +133,7 @@ export class TenantUserLifecycleService {
     actor_user_id: string;
     request_id: string;
   }): Promise<InviteResult> {
-    // Step 0a — role_keys must be non-empty (an invite without a role would
+    // Step 0 — role_keys must be non-empty (an invite without a role would
     // produce a Membership with zero role assignments, leaving the user with
     // no scopes; reject up-front rather than create an inert membership).
     if (args.role_keys.length === 0) {
@@ -126,84 +148,54 @@ export class TenantUserLifecycleService {
       );
     }
 
-    // Step 0b — resolve role keys to ids. resolveRoleIdsByKeys throws
+    // Step 1 — resolve role keys to ids. resolveRoleIdsByKeys throws
     // VALIDATION_ERROR on unknown keys (existing behavior).
     const role_ids = await this.identitySvc.resolveRoleIdsByKeys(
       args.role_keys,
     );
 
-    // D-AUTHZ-PLATFORM-INVITE-1 (Gate-6, in-service ruling): the D5 union-
-    // non-invertibility check that historically lived HERE (BEFORE the
-    // Cognito leg) has been moved INTO IdentityService.createUserFromInvitation
-    // (libs/identity/.../identity.service.ts) so every caller is covered
-    // safe-by-construction. The validator now fires AFTER the Cognito
-    // leg but BEFORE any identity-tx persist or audit emission — the
-    // Cognito-rollback-on-identity-failure path catches the rejection
-    // and compensates. The single-source-of-enforcement property
-    // matters more than the early-rejection optimization for tenant-
-    // tier invites (the Cognito-side-effect cost is per-invite, not
-    // per-validation; and the platform-tier miss that motivated this
-    // ruling proved the prior caller-side contract was fragile).
+    // Step 2 — no-sub identity create + token. The D5 union-non-invertibility
+    // gate fires INSIDE createInvitedUserNoSub (REUSED as-is), BEFORE the DB
+    // write and BEFORE any audit emission — an invertible bundle never
+    // persists. The membership starts in invite_status INVITED.
+    const created = await this.identitySvc.createInvitedUserNoSub({
+      email: args.email,
+      display_name: args.display_name,
+      tenant_id: args.tenant_id,
+      role_keys: args.role_keys,
+      role_ids,
+      actor_user_id: args.actor_user_id,
+      request_id: args.request_id,
+    });
 
-    // Step 1 — Cognito-first.
-    let cognito_sub: string;
+    // Step 3 — send the invite email (S1 mailer). BEST-EFFORT: the user +
+    // token already committed, so a send failure does not roll back the
+    // invite (the admin can resend). It logs LOUD rather than failing the
+    // request — the StubMailerAdapter already warns when no real email is
+    // sent (non-prod / misconfig).
     try {
-      const out = await this.cognito.adminCreateUser({
-        email: args.email,
-        display_name: args.display_name,
+      const tenantLabel = await this.identitySvc.getTenantLabel(args.tenant_id);
+      const { acceptBaseUrl } = loadInviteLinkConfig();
+      const acceptUrl = buildAcceptUrl(acceptBaseUrl, created.raw_token);
+      const email = renderInviteEmail({ tenantLabel, acceptUrl });
+      await this.mailer.send({
+        to: args.email,
+        subject: email.subject,
+        html: email.html,
+        text: email.text,
       });
-      cognito_sub = out.cognito_sub;
     } catch (err) {
       this.logger.warn(
-        `tenant invite — cognito admin create user failed: ${(err as Error).message}`,
-      );
-      throw new AramoError(
-        'COGNITO_PROVISION_FAILED',
-        'Cognito AdminCreateUser failed',
-        502,
-        {
-          requestId: args.request_id,
-          details: {
-            email: args.email,
-            pool: 'tenant',
-            error_message: (err as Error).message,
-          },
-        },
+        `tenant invite — invite email send failed (invite persisted; resend available): ${(err as Error).message}`,
       );
     }
 
-    // Step 2 — identity tx; compensate Cognito on failure. The D5 union-
-    // non-invertibility check fires INSIDE createUserFromInvitation
-    // (D-AUTHZ-PLATFORM-INVITE-1 in-service ruling) — a VALIDATION_ERROR
-    // here triggers the Cognito rollback in the catch block below, so
-    // an invertible bundle never persists in either store.
-    try {
-      const created = await this.identitySvc.createUserFromInvitation({
-        email: args.email,
-        display_name: args.display_name,
-        provider: 'cognito',
-        provider_subject: cognito_sub,
-        tenant_id: args.tenant_id,
-        role_keys: args.role_keys,
-        role_ids,
-        actor_user_id: args.actor_user_id,
-        request_id: args.request_id,
-      });
-      return {
-        user: created.user,
-        membership_id: created.membership_id,
-        cognito_sub,
-      };
-    } catch (err) {
-      await this.cognito
-        .adminDeleteUser({ email: args.email })
-        .catch((compErr: unknown) => {
-          this.logger.warn(
-            `tenant invite — cognito rollback failed: ${(compErr as Error).message}`,
-          );
-        });
-      throw err;
-    }
+    return {
+      user: created.user,
+      membership_id: created.membership_id,
+      invite_status: 'INVITED',
+      invitation_id: created.invitation_id,
+    };
   }
 
   // DISABLE — identity-first saga.

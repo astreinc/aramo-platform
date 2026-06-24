@@ -62,6 +62,10 @@ const IDENTITY_MIGRATION = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+const IDENTITY_INVITATION_MIG = resolve(
+  __dirname,
+  '../../../../libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
+);
 const IDENTITY_SITE_AXIS_MIGRATION = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
@@ -351,6 +355,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setup.$connect();
       for (const stmt of [
         ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_INVITATION_MIG, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_SITE_AXIS_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_D4A_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_PROFILE_MIGRATION, 'utf8')),

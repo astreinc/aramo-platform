@@ -116,6 +116,14 @@ model UserTenantMembership {
   // (existing behavior pre-A1a, preserved); set = site-scoped membership.
   site_id      String?  @db.Uuid
   is_active    Boolean  @default(true)
+  // Invite-S2 (Pattern-2 invite flow) — the per-tenant 3-state machine
+  // (INVITED | ACCEPTED | ACTIVE). String + app-side guard (INVITE_STATUSES),
+  // NOT a Prisma enum (repo convention). Per-tenant: a user can be ACTIVE in
+  // tenant A and INVITED in tenant B. Default ACTIVE so every pre-S2 row
+  // (already-authenticated users + the seeded no-sub owner) reads sensibly;
+  // the no-sub invite create explicitly writes INVITED, acceptance writes
+  // ACCEPTED, and the reconcile-spine first-login hook writes ACTIVE.
+  invite_status String  @default("ACTIVE")
   joined_at    DateTime @default(now()) @db.Timestamptz
   deactivated_at DateTime? @db.Timestamptz
   created_at   DateTime @default(now()) @db.Timestamptz
@@ -210,6 +218,42 @@ model ExternalIdentity {
 
   @@unique([provider, provider_subject])
   @@index([user_id])
+  @@schema("identity")
+}
+
+// Invitation — Invite-S2 (Pattern-2) token model. Mirrors auth_storage's
+// RefreshToken (hash-at-rest + expiry + single-use/revoke) and the
+// pkce.service token generator (randomBytes → base64url, HASH-only persist).
+//
+// Lifecycle: issued at the no-sub invite create (status INVITED on the
+// membership); the raw token is embedded in the invite email link and
+// returned to the caller ONCE — only its sha256·base64url hash is stored
+// here. The public acceptance endpoint validates by hash (not expired,
+// accepted_at null, revoked_at null), stamps accepted_at (single-use), and
+// flips the membership INVITED → ACCEPTED. revoked_at is set when an admin
+// revokes a still-pending invite (the resend path issues a fresh row).
+model Invitation {
+  id            String    @id @db.Uuid
+  user_id       String    @db.Uuid
+  tenant_id     String    @db.Uuid
+  membership_id String    @db.Uuid
+  // sha256(raw token)·base64url. Never the raw token. @unique so an accept
+  // is a single indexed lookup and a hash collision is impossible.
+  token_hash    String    @unique
+  // TTL. 7-day default set app-side at issue (no existing identity-schema
+  // TTL convention dictates otherwise; auth_storage refresh tokens carry an
+  // explicit expires_at the same way).
+  expires_at    DateTime  @db.Timestamptz
+  // Single-use: a non-null accepted_at rejects re-acceptance.
+  accepted_at   DateTime? @db.Timestamptz
+  // Admin-revoke of a still-pending invite.
+  revoked_at    DateTime? @db.Timestamptz
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  updated_at    DateTime  @updatedAt @db.Timestamptz
+
+  @@index([user_id, tenant_id])
+  @@index([membership_id])
+  @@index([expires_at])
   @@schema("identity")
 }
 

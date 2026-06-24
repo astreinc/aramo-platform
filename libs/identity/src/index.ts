@@ -70,6 +70,16 @@ export type {
   InviteResult,
   DisableResult,
 } from './lib/tenant-user/tenant-user-lifecycle.service.js';
+// Invite-S2 (Pattern-2) — the public acceptance flow's lifecycle service,
+// consumed by apps/api's un-guarded PublicInvitationController.
+export {
+  InvitationLifecycleService,
+} from './lib/tenant-user/invitation-lifecycle.service.js';
+export {
+  INVITE_STATUSES,
+  isInviteStatus,
+  type InviteStatus,
+} from './lib/tenant-user/invitation-token.js';
 // §5 Auth-Hardening D4 — the minimal assignable-roster row, consumed by
 // apps/api's cross-schema AssignableUsersController.
 export type { AssignableUserView } from './lib/identity.repository.js';

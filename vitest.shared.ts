@@ -91,6 +91,12 @@ export default defineConfig({
       // $transaction arrays). Leaf: deps = @aramo/common + 'uuid'; no
       // back-edge into any domain.
       '@aramo/metering': resolve(root, 'libs/metering/src/index.ts'),
+      // Email-S1 — generic transactional mailer leaf. Invite-S2 wires
+      // MailerModule into IdentityModule (the invite/acceptance email path),
+      // so apps/api + libs/identity specs that boot that graph resolve
+      // @aramo/mailer at vitest runtime. Mirrors tsconfig.base.json.
+      // (The add-alias-in-same-PR lesson.)
+      '@aramo/mailer': resolve(root, 'libs/mailer/src/index.ts'),
       // A8-3a — new leaf lib hosting the S3 object-storage substrate
       // (S3 client + presigned PUT/GET helpers + tenant-scoped key
       // convention + PII-floor access-log redaction). Mirrors
@@ -162,6 +168,16 @@ export default defineConfig({
   test: {
     globals: false,
     environment: 'node',
+    // Invite-S2 — the test environment uses the STUB mailer. Once
+    // MailerModule is wired into IdentityModule, every spec that boots the
+    // apps/api / libs/identity graph instantiates MAILER_PORT, whose factory
+    // fails LOUD if MAILER_PROVIDER is unset. Defaulting it to 'stub' here
+    // (one touch) keeps the existing integration specs green and preserves
+    // the fail-loud posture for real boots (prod sets MAILER_PROVIDER=ses).
+    // The mailer's own DI spec save/restores these keys, so it is unaffected.
+    env: {
+      MAILER_PROVIDER: 'stub',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

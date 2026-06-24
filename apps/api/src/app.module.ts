@@ -39,6 +39,7 @@ import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { AssignableUsersController } from './controllers/assignable-users.controller.js';
 import { MeController } from './controllers/me.controller.js';
+import { PublicInvitationController } from './controllers/public-invitation.controller.js';
 import { CompensationFieldMaskInterceptor } from './interceptors/compensation-field-mask.interceptor.js';
 import { TalentRecordEnrichmentInterceptor } from './talent-enrichment/talent-record-enrichment.interceptor.js';
 import { TalentRecordEnrichmentService } from './talent-enrichment/talent-record-enrichment.service.js';
@@ -321,6 +322,11 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // tenant read composed on IdentityService — it never touches the token
     // surface (reads only; the session DTO stays frozen at 6 fields).
     MeController,
+    // Invite-S2 (Pattern-2) — the PUBLIC (un-guarded) invitation-acceptance
+    // endpoint (POST /v1/invitations/accept). No JwtAuthGuard — the invitee
+    // has no session yet; authority is the single-use token in the body.
+    // Delegates to InvitationLifecycleService (exported by IdentityModule).
+    PublicInvitationController,
   ],
   providers: [
     // AUTHZ-D4b Gate 6 — register the VisibilityInterceptor as a global

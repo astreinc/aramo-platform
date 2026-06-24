@@ -49,6 +49,10 @@ const IDENTITY_INIT = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+const IDENTITY_INVITATION_MIG = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
+);
 // Settings Rebuild D3 — additive tenant-profile columns (Prisma SELECTs them).
 const IDENTITY_PROFILE = resolve(
   ROOT,
@@ -116,7 +120,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   - entitlement  → @RequireCapability('core') gate
       //   - settings     → TenantSettingService read+write
       //   - identity     → IdentityAuditEvent (the audit two-call seam)
-      for (const p of [IDENTITY_INIT, IDENTITY_PROFILE, ENTITLEMENT_INIT, SETTINGS_INIT]) {
+      for (const p of [IDENTITY_INIT, IDENTITY_INVITATION_MIG, IDENTITY_PROFILE, ENTITLEMENT_INIT, SETTINGS_INIT]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 

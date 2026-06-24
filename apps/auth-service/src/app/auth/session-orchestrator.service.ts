@@ -174,6 +174,15 @@ export class SessionOrchestratorService {
         provider_subject: cognito.sub,
         email_snapshot: cognito.email,
       });
+      // Invite-S2 (Pattern-2) — the ACTIVE-hook (§4.2). This branch is the
+      // by-sub MISS (the sub was just linked on first federated login), so a
+      // pending invited/accepted membership transitions to its live ACTIVE
+      // state HERE, exactly once, alongside the sub-link. SAFE BY
+      // CONSTRUCTION: an already-active user resolves by-sub HIT and never
+      // enters this `user === null` branch, so their login path is
+      // byte-unchanged — no membership read, no state write. Best-effort and
+      // idempotent (already-ACTIVE rows are not touched).
+      await this.identity.activateMembershipsOnLink({ user_id: existing.id });
       // Canonical audit event for sub-linking (global; best-effort — the
       // wrapper swallows failures). actor = the self-authenticating user.
       await this.audit.writeGlobalEvent({

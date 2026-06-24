@@ -60,7 +60,8 @@ describe('users-api — endpoint wiring', () => {
         mockJson(201, {
           user_id: 'u1',
           membership_id: 'm1',
-          cognito_sub: 's1',
+          invite_status: 'INVITED',
+          invitation_id: 'inv1',
         }),
       );
 

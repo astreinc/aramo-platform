@@ -17,6 +17,11 @@ import {
   metaRank,
 } from './role-catalog/role-catalog.view.js';
 import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
+import {
+  generateInvitationToken,
+  hashInvitationToken,
+  INVITATION_TTL_MS,
+} from './tenant-user/invitation-token.js';
 
 // Aramo-Identity-Me-Endpoint — the public shape returned by GET /v1/me. A
 // self-read display projection (NOT the admin TenantUserView): the caller's
@@ -279,6 +284,212 @@ export class IdentityService {
     });
 
     return { user: result.user, membership_id: result.membership_id };
+  }
+
+  // Invite-S2 (Pattern-2) — the NO-SUB invite create. The tenant-tier
+  // federated-invite counterpart to createUserFromInvitation: it mirrors that
+  // method MINUS the Cognito sub. No ExternalIdentity is written (no sub is
+  // minted at invite time — it links at first federated login via the
+  // reconcile spine, exactly as the seeded Astre owner already does), so the
+  // identity.external_identity.linked audit event is NOT emitted here.
+  //
+  // The D5 union-non-invertibility gate runs HERE (REUSED as-is from
+  // createUserFromInvitation), BEFORE the DB write and BEFORE any audit
+  // emission — every multi-role invite is covered. On success it also issues
+  // the Invitation token (hash persisted, raw returned ONCE for the email
+  // link) and returns the new response shape (invitation_id + the raw token
+  // for the caller's email step; the membership starts in invite_status
+  // INVITED).
+  async createInvitedUserNoSub(args: {
+    email: string;
+    display_name: string | null;
+    tenant_id: string;
+    role_keys: readonly string[];
+    role_ids: readonly string[];
+    actor_user_id: string;
+    request_id: string;
+  }): Promise<{
+    user: UserDto;
+    membership_id: string;
+    invitation_id: string;
+    raw_token: string;
+    expires_at: string;
+  }> {
+    // D5 integrity gate — in-service. No-ops at length<2; rejects an
+    // invertible union with VALIDATION_ERROR before any write.
+    await this.roleBundle.assertUnionNonInvertible({
+      role_keys: args.role_keys,
+      request_id: args.request_id,
+    });
+
+    const user_id = uuidv7();
+    const result = await this.identityRepo.createUserWithMembership({
+      user_id,
+      email: args.email,
+      display_name: args.display_name,
+      tenant_id: args.tenant_id,
+      role_ids: args.role_ids,
+    });
+
+    // Issue the invite token (mirror RefreshToken: hash at rest, raw once).
+    const { raw, hash } = generateInvitationToken();
+    const expires_at = new Date(Date.now() + INVITATION_TTL_MS);
+    const invitation = await this.identityRepo.createInvitation({
+      user_id,
+      tenant_id: args.tenant_id,
+      membership_id: result.membership_id,
+      token_hash: hash,
+      expires_at,
+    });
+
+    // Audit emission — best-effort (the wrapper swallows failures + logs).
+    // identity.user.created is GLOBAL; membership.created + invitation.created
+    // are tenant-scoped. NO identity.external_identity.linked (no sub minted).
+    await this.audit.writeGlobalEvent({
+      event_type: 'identity.user.created',
+      actor_type: 'user',
+      actor_id: args.actor_user_id,
+      subject_id: result.user.id,
+      payload: { email: args.email, source: 'invitation' },
+    });
+    await this.audit.writeEvent({
+      event_type: 'identity.membership.created',
+      actor_type: 'user',
+      actor_id: args.actor_user_id,
+      tenant_id: args.tenant_id,
+      subject_id: result.user.id,
+      payload: { membership_id: result.membership_id },
+    });
+    await this.audit.writeEvent({
+      event_type: 'identity.invitation.created',
+      actor_type: 'user',
+      actor_id: args.actor_user_id,
+      tenant_id: args.tenant_id,
+      subject_id: result.user.id,
+      payload: {
+        email: args.email,
+        invitation_id: invitation.id,
+        role_ids: [...args.role_ids],
+        flow: 'pattern2_federated',
+      },
+    });
+
+    return {
+      user: result.user,
+      membership_id: result.membership_id,
+      invitation_id: invitation.id,
+      raw_token: raw,
+      expires_at: invitation.expires_at,
+    };
+  }
+
+  // Invite-S2 — the ACCEPT primitive behind the public acceptance endpoint.
+  // Validates the URL-supplied raw token by its stored hash, enforces the
+  // single-use / expiry / revoke invariants (each a CLEAR 4xx, never a 500),
+  // then atomically stamps accepted_at + flips the membership INVITED →
+  // ACCEPTED and emits identity.invitation.accepted. It issues NO session and
+  // forces NO sign-in — it returns the context the lifecycle service needs to
+  // send the acceptance-confirmation email. Identity-writes stay here in
+  // libs/identity; the public controller + the email send live one layer out.
+  async acceptInvitationByToken(args: {
+    raw_token: string;
+    request_id: string;
+  }): Promise<{
+    invitation_id: string;
+    user_id: string;
+    membership_id: string;
+    tenant_id: string;
+    email: string;
+    tenant_name: string;
+    tenant_display_name: string | null;
+  }> {
+    const invalid = (reason: string): AramoError =>
+      new AramoError(
+        'VALIDATION_ERROR',
+        'invitation is invalid or expired',
+        400,
+        { requestId: args.request_id, details: { reason } },
+      );
+
+    const token = (args.raw_token ?? '').trim();
+    if (token.length === 0) throw invalid('missing_token');
+
+    const hash = hashInvitationToken(token);
+    const invitation = await this.identityRepo.findInvitationByHash(hash);
+    if (invitation === null) throw invalid('invalid_token');
+    if (invitation.revoked_at !== null) throw invalid('revoked');
+    if (invitation.accepted_at !== null) throw invalid('already_accepted');
+    if (new Date(invitation.expires_at).getTime() <= Date.now()) {
+      throw invalid('expired');
+    }
+
+    const accepted_at = new Date();
+    await this.identityRepo.acceptInvitationTx({
+      invitation_id: invitation.id,
+      membership_id: invitation.membership_id,
+      accepted_at,
+    });
+
+    await this.audit.writeEvent({
+      event_type: 'identity.invitation.accepted',
+      actor_type: 'user',
+      actor_id: invitation.user_id,
+      tenant_id: invitation.tenant_id,
+      subject_id: invitation.user_id,
+      payload: {
+        invitation_id: invitation.id,
+        membership_id: invitation.membership_id,
+      },
+    });
+
+    // Reads for the confirmation email (best-effort labels; the accept itself
+    // already committed). A missing user/tenant degrades the email greeting,
+    // never the acceptance.
+    const user = await this.identityRepo.findUserById(invitation.user_id);
+    const tenant = await this.identityRepo.findTenantNameById(invitation.tenant_id);
+
+    return {
+      invitation_id: invitation.id,
+      user_id: invitation.user_id,
+      membership_id: invitation.membership_id,
+      tenant_id: invitation.tenant_id,
+      email: user?.email ?? '',
+      tenant_name: tenant?.name ?? 'your workspace',
+      tenant_display_name: tenant?.display_name ?? null,
+    };
+  }
+
+  // Invite-S2 — the tenant label for the invite email greeting: the branding
+  // display_name, falling back to the workspace name (same precedence as
+  // GET /v1/me), and a neutral default for an unknown tenant.
+  async getTenantLabel(tenant_id: string): Promise<string> {
+    const t = await this.identityRepo.findTenantNameById(tenant_id);
+    return t?.display_name ?? t?.name ?? 'your workspace';
+  }
+
+  // Invite-S2 — the reconcile-spine ACTIVE-hook (§4.2). Called by the
+  // session-orchestrator from its by-sub-MISS branch, immediately after
+  // linkExternalIdentity links the sub on first federated login: it flips the
+  // user's not-yet-ACTIVE memberships (INVITED or ACCEPTED) to ACTIVE. SAFE
+  // BY CONSTRUCTION — the by-sub-MISS branch is structurally unreachable for
+  // an already-active user (their login resolves by-sub HIT and never calls
+  // this), so the proven login path is byte-unchanged. Idempotent.
+  async activateMembershipsOnLink(args: {
+    user_id: string;
+  }): Promise<{ activated: number }> {
+    return this.identityRepo.activateMembershipsForUser(args.user_id);
+  }
+
+  // Invite-S2 — admin revoke of a still-pending invite (§4.3 backend method;
+  // the FE action is S3). Idempotent at the repo (already-revoked / accepted
+  // invites are not re-stamped). Returns whether a row changed.
+  async revokeInvitation(args: {
+    invitation_id: string;
+  }): Promise<{ changed: boolean }> {
+    return this.identityRepo.revokeInvitation({
+      invitation_id: args.invitation_id,
+      revoked_at: new Date(),
+    });
   }
 
   // AUTHZ-2: the new-tenant re-invite case (Lead ruling 8 case 3). The

@@ -84,6 +84,10 @@ const IDENTITY_INIT = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+const IDENTITY_INVITATION_MIG = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
+);
 const IDENTITY_SITE_AXIS = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
@@ -271,7 +275,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // The provisioned recruiter (filled by the invite saga in beforeAll).
     let recruiterUserId = '';
     let recruiterMembershipId = '';
-    let recruiterCognitoSub = '';
+    let recruiterInvitationId = '';
     let recruiterScopes: string[] = [];
     let recruiterJwt = '';
 
@@ -285,10 +289,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let taskMine = ''; //    assignee = primary recruiter
     let taskOther = ''; //   assignee = the other recruiter
 
-    // The mocked Cognito sub the port hands back on adminCreateUser. A fresh
-    // valid UUID per invite (keyed by email) so the ExternalIdentity link is a
-    // real, asserted value rather than a placeholder.
-    const cognitoSubByEmail = new Map<string, string>();
 
     async function signJwt(args: {
       sub: string;
@@ -355,10 +355,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return res.rows.map((r) => r.key);
     }
 
-    // POST the real invite saga (Cognito mocked at the port).
-    async function inviteRecruiter(
-      email: string,
-    ): Promise<{ user_id: string; membership_id: string; cognito_sub: string }> {
+    // POST the real invite saga. Invite-S2 (Pattern-2): no Cognito user is
+    // minted at invite time — the response carries invite_status (INVITED) +
+    // invitation_id, NOT cognito_sub.
+    async function inviteRecruiter(email: string): Promise<{
+      user_id: string;
+      membership_id: string;
+      invite_status: string;
+      invitation_id: string;
+    }> {
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/tenant/users/invitations`,
         {
@@ -378,7 +383,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return (await res.json()) as {
         user_id: string;
         membership_id: string;
-        cognito_sub: string;
+        invite_status: string;
+        invitation_id: string;
       };
     }
 
@@ -480,6 +486,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       for (const p of [
         IDENTITY_INIT,
+        IDENTITY_INVITATION_MIG,
         IDENTITY_SITE_AXIS,
         IDENTITY_D4A,
         IDENTITY_PROFILE,
@@ -539,16 +546,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       adminJwt = await signJwt({ sub: TENANT_ADMIN, scopes: TENANT_ADMIN_SCOPES });
 
-      // Mock Cognito at the port — adminCreateUser returns a fresh valid UUID
-      // sub per email (the real saga still writes ExternalIdentity/User/
-      // Membership/roles against it). No AWS, no SSO; the literal browser
-      // round-trip defers to staging (boundary C).
+      // Bind the TENANT_COGNITO_PORT (required by IdentityModule.forRoot).
+      // Invite-S2 (Pattern-2): the invite saga NO LONGER calls Cognito — no
+      // sub is minted at invite time (it links at first federated login). The
+      // mock's adminCreateUser is RETAINED for the dormant native path but is
+      // never reached by this spec's invite flow; the other verbs serve the
+      // disable lifecycle (not exercised here). No AWS, no SSO.
       const cognitoMock: TenantCognitoPort = {
-        adminCreateUser: async ({ email }) => {
-          const sub = uuidv7();
-          cognitoSubByEmail.set(email, sub);
-          return { cognito_sub: sub };
-        },
+        adminCreateUser: async ({ email }) => ({ cognito_sub: `unused-${email}` }),
         adminDeleteUser: async () => undefined,
         adminDisableUser: async () => undefined,
         adminEnableUser: async () => undefined,
@@ -575,7 +580,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const primary = await inviteRecruiter('recruiter.d1@aramo.dev');
       recruiterUserId = primary.user_id;
       recruiterMembershipId = primary.membership_id;
-      recruiterCognitoSub = primary.cognito_sub;
+      recruiterInvitationId = primary.invitation_id;
 
       const other = await inviteRecruiter('recruiter.d1.other@aramo.dev');
       otherUserId = other.user_id;
@@ -615,11 +620,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // ======================================================================
     // A — the saga produced a complete, consistent, login-capable identity
     // ======================================================================
-    it('A — invite saga provisions a complete recruiter identity (Cognito ↔ ExternalIdentity ↔ User ↔ Membership ↔ roles)', async () => {
-      // The saga returned a cognito sub that matches what the port handed back.
-      expect(recruiterCognitoSub).toBe(
-        cognitoSubByEmail.get('recruiter.d1@aramo.dev'),
-      );
+    it('A — invite saga provisions a NO-SUB recruiter identity (User ↔ Membership[INVITED] ↔ roles + Invitation token; NO ExternalIdentity yet)', async () => {
+      // Invite-S2 (Pattern-2): the response carries the INVITED state + the
+      // issued invitation id — NOT a cognito sub.
+      expect(recruiterInvitationId).toMatch(/^[0-9a-f-]{36}$/);
 
       // User row.
       const user = await db.query<{ email: string; is_active: boolean }>(
@@ -630,27 +634,42 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(user.rows[0]?.email).toBe('recruiter.d1@aramo.dev');
       expect(user.rows[0]?.is_active).toBe(true);
 
-      // ExternalIdentity links the Cognito sub → the User (login-capable).
-      const ext = await db.query<{
-        provider: string;
-        provider_subject: string;
-        user_id: string;
-      }>(
-        `SELECT provider, provider_subject, user_id
-           FROM identity."ExternalIdentity"
+      // NO ExternalIdentity at invite time — the federated sub is minted by
+      // Cognito and linked by the reconcile spine at FIRST login (which also
+      // flips the membership to ACTIVE). The pending invitee has none yet.
+      const ext = await db.query(
+        `SELECT 1 FROM identity."ExternalIdentity"
           WHERE user_id = $1::uuid AND provider = 'cognito'`,
         [recruiterUserId],
       );
-      expect(ext.rows).toHaveLength(1);
-      expect(ext.rows[0]?.provider_subject).toBe(recruiterCognitoSub);
+      expect(ext.rows).toHaveLength(0);
 
-      // Membership — active, in this tenant, id matches the saga response.
+      // The Invitation token row exists for this membership (hash-stored,
+      // not yet accepted or revoked).
+      const inv = await db.query<{
+        id: string;
+        accepted_at: string | null;
+        revoked_at: string | null;
+        token_hash: string;
+      }>(
+        `SELECT id, accepted_at, revoked_at, token_hash
+           FROM identity."Invitation" WHERE membership_id = $1::uuid`,
+        [recruiterMembershipId],
+      );
+      expect(inv.rows).toHaveLength(1);
+      expect(inv.rows[0]?.id).toBe(recruiterInvitationId);
+      expect(inv.rows[0]?.accepted_at).toBeNull();
+      expect(inv.rows[0]?.revoked_at).toBeNull();
+      expect(inv.rows[0]?.token_hash.length).toBeGreaterThan(0);
+
+      // Membership — active, INVITED, in this tenant, id matches the response.
       const membership = await db.query<{
         id: string;
         tenant_id: string;
         is_active: boolean;
+        invite_status: string;
       }>(
-        `SELECT id, tenant_id, is_active
+        `SELECT id, tenant_id, is_active, invite_status
            FROM identity."UserTenantMembership"
           WHERE user_id = $1::uuid AND tenant_id = $2::uuid`,
         [recruiterUserId, TENANT_ATS],
@@ -658,6 +677,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(membership.rows).toHaveLength(1);
       expect(membership.rows[0]?.id).toBe(recruiterMembershipId);
       expect(membership.rows[0]?.is_active).toBe(true);
+      expect(membership.rows[0]?.invite_status).toBe('INVITED');
 
       // Exactly the recruiter role is attached to the membership.
       const roles = await db.query<{ key: string }>(

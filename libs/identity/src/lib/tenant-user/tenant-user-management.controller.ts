@@ -195,22 +195,25 @@ export class TenantUserManagementController {
     return row;
   }
 
-  // POST /v1/tenant/users/invitations — invite a new tenant user.
+  // POST /v1/tenant/users/invitations — invite a new tenant user (Pattern-2).
   //
   // Request: { email, display_name?, role_keys: string[] (>=1) }
-  // Response (201): { user_id, membership_id, cognito_sub }
+  // Response (201): { user_id, membership_id, invite_status, invitation_id }
+  //
+  // Invite-S2: the no-sub flow. No Cognito user is minted at invite time —
+  // the response no longer carries cognito_sub. The membership is created in
+  // invite_status INVITED, an invite token is issued (invitation_id), and the
+  // invite email (S1 mailer) carries the accept link. The federated sub links
+  // at first login (reconcile spine), which flips the membership to ACTIVE.
   //
   // Errors:
   //   400 VALIDATION_ERROR (empty role_keys; unknown role_key; invertible
   //                         role-union)
-  //   502 COGNITO_PROVISION_FAILED (AdminCreateUser upstream)
-  //   500 INTERNAL_ERROR (identity-tx failure post-Cognito; Cognito
-  //                       compensated via AdminDeleteUser)
   //
-  // The audit events for invite are emitted INSIDE createUserFromInvitation
-  // (identity.user.created + identity.external_identity.linked +
-  // identity.membership.created + identity.invitation.created). No
-  // additional audit emission at this controller for invite.
+  // The audit events for invite are emitted INSIDE createInvitedUserNoSub
+  // (identity.user.created + identity.membership.created +
+  // identity.invitation.created). NO identity.external_identity.linked (no
+  // sub) and no additional audit emission at this controller for invite.
   @Post('invitations')
   @HttpCode(HttpStatus.CREATED)
   @RequireScopes('tenant:admin:user-manage')
@@ -221,7 +224,8 @@ export class TenantUserManagementController {
   ): Promise<{
     user_id: string;
     membership_id: string;
-    cognito_sub: string;
+    invite_status: string;
+    invitation_id: string;
   }> {
     const parsed = parseInviteBody(body, requestId);
     const result = await this.lifecycle.inviteTenantUser({
@@ -235,7 +239,8 @@ export class TenantUserManagementController {
     return {
       user_id: result.user.id,
       membership_id: result.membership_id,
-      cognito_sub: result.cognito_sub,
+      invite_status: result.invite_status,
+      invitation_id: result.invitation_id,
     };
   }
 

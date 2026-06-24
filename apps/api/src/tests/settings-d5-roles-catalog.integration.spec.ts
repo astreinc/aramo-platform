@@ -40,6 +40,10 @@ const IDENTITY_INIT = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+const IDENTITY_INVITATION_MIG = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-settings-d5-spec';
@@ -115,7 +119,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       db = new Client({ connectionString: url });
       await db.connect();
-      for (const p of [ENTITLEMENT_INIT, IDENTITY_INIT]) {
+      for (const p of [ENTITLEMENT_INIT, IDENTITY_INIT, IDENTITY_INVITATION_MIG]) {
         await db.query(readFileSync(p, 'utf8'));
       }
       await db.query(

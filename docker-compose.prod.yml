@@ -97,6 +97,9 @@ services:
       # transactional mailer (Email-S1): ses|stub + the fixed SES sender
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS
+      # invite links (Invite-S2 / Pattern-2): accept-page + sign-in-page bases
+      - INVITE_ACCEPT_URL
+      - INVITE_SIGNIN_URL
       - ADDRESS_AUTOCOMPLETE_ENABLED
       - ADDRESS_AUTOCOMPLETE_PROVIDER
       - GOOGLE_PLACES_API_KEY

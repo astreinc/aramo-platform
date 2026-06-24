@@ -60,7 +60,8 @@ describe('InviteDialog', () => {
     const inviteFn = vi.fn(async () => ({
       user_id: 'u1',
       membership_id: 'm1',
-      cognito_sub: 's1',
+      invite_status: 'INVITED',
+      invitation_id: 'inv1',
     }));
     const onInvited = vi.fn();
     renderDialog({ inviteFn, onInvited });

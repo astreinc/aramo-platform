@@ -82,6 +82,10 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
         created_at: '',
         updated_at: '',
       }),
+      // Invite-S2 — the reconcile-spine ACTIVE-hook. Reached ONLY on the
+      // by-sub MISS branch (right after linkExternalIdentity), never on the
+      // by-sub HIT default-success path.
+      activateMembershipsOnLink: vi.fn().mockResolvedValue({ activated: 0 }),
     } as unknown as IdentityService,
     tenant: {
       getTenantsByUser: vi.fn().mockResolvedValue([
@@ -331,6 +335,9 @@ describe('SessionOrchestratorService.handleCallback', () => {
         resolveUser: vi.fn().mockResolvedValue(null), // by-sub MISS
         findUserByEmail: vi.fn().mockResolvedValue(existing),
         linkExternalIdentity: linkSpy,
+        activateMembershipsOnLink: vi
+          .fn()
+          .mockResolvedValue({ activated: 1 }),
       } as unknown as IdentityService,
     });
     const svc = makeService(mocks);
@@ -346,6 +353,12 @@ describe('SessionOrchestratorService.handleCallback', () => {
     expect(result.kind).toBe('success');
     // Email matched normalized-exact (lowercased + trimmed).
     expect(mocks.identity.findUserByEmail).toHaveBeenCalledWith('a@b.c');
+    // Invite-S2 — the ACTIVE-hook fired exactly once on this first-login
+    // reconcile, for the just-linked user (INVITED/ACCEPTED → ACTIVE).
+    expect(mocks.identity.activateMembershipsOnLink).toHaveBeenCalledTimes(1);
+    expect(mocks.identity.activateMembershipsOnLink).toHaveBeenCalledWith({
+      user_id: USER_ID,
+    });
     // The link wires to the existing user with the federated sub.
     expect(linkSpy).toHaveBeenCalledWith({
       user_id: USER_ID,
@@ -473,5 +486,109 @@ describe('SessionOrchestratorService.handleCallback', () => {
     // Issuer payload must NOT include site_id (byte-shape parity).
     const signCall = (mocks.jwtIssuer.sign as ReturnType<typeof vi.fn>).mock.calls[0]![0]!;
     expect('site_id' in signCall).toBe(false);
+  });
+});
+
+// =============================================================================
+// Invite-S2 (Pattern-2) — the reconcile-spine ACTIVE-hook SAFETY GUARD (§8.8).
+//
+// THE NON-NEGOTIABLE REGRESSION GUARD: an already-ACTIVE user's login is the
+// proven path. The ACTIVE-hook (activateMembershipsOnLink) lives INSIDE the
+// by-sub-MISS branch, structurally unreachable for an already-active user
+// whose login resolves by-sub HIT. This proves the by-sub-HIT path is
+// BYTE-UNCHANGED: no membership state write, no reconcile link, no extra audit
+// — the hook never fires.
+// =============================================================================
+describe('SessionOrchestratorService — Invite-S2 ACTIVE-hook safety (by-sub HIT path byte-unchanged)', () => {
+  it('already-ACTIVE user (by-sub HIT) → ACTIVE-hook NEVER fires; no reconcile link; no extra writes', async () => {
+    // The default mock resolves the user by sub (HIT) — the existing-user
+    // login path. This is the path the whole product runs on today.
+    const mocks = makeMocks();
+    const svc = makeService(mocks);
+
+    const result = await svc.handleCallback({
+      consumer: 'recruiter',
+      code: 'auth-code-123',
+      state: 'state-1',
+      cognitoError: undefined,
+      cognitoErrorDescription: undefined,
+      pkceStateCipher: 'cipher',
+    });
+
+    expect(result.kind).toBe('success');
+
+    // THE LOAD-BEARING GUARD: the ACTIVE-hook did NOT fire on the by-sub HIT
+    // path. An already-active user's membership state is never touched.
+    expect(mocks.identity.activateMembershipsOnLink).not.toHaveBeenCalled();
+
+    // And the rest of the reconcile machinery stayed dormant too — proving
+    // the path is byte-identical to pre-S2:
+    //   - no reconcile-by-email lookup,
+    //   - no sub re-link,
+    //   - no external_identity.linked audit (only the normal session.issued).
+    expect(mocks.identity.findUserByEmail).not.toHaveBeenCalled();
+    expect(mocks.identity.linkExternalIdentity).not.toHaveBeenCalled();
+    expect(mocks.audit.writeGlobalEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'identity.external_identity.linked',
+      }),
+    );
+  });
+
+  it('first-login reconcile (by-sub MISS + email match) → ACTIVE-hook fires exactly once for the linked user', async () => {
+    // The complement: on the by-sub MISS branch the hook DOES fire — exactly
+    // once, after the sub-link, for the just-matched user. (The success-path
+    // detail is already covered by the reconcile test above; here we isolate
+    // the hook's once-only firing + ordering relative to the link.)
+    const existing = {
+      id: USER_ID,
+      email: 'a@b.c',
+      display_name: null,
+      is_active: true,
+      deactivated_at: null,
+      created_at: '',
+      updated_at: '',
+    };
+    const order: string[] = [];
+    const linkSpy = vi.fn().mockImplementation(async () => {
+      order.push('link');
+      return {
+        id: 'ext-1',
+        provider: 'cognito',
+        provider_subject: COGNITO_SUB,
+        user_id: USER_ID,
+        email_snapshot: 'a@b.c',
+        created_at: '',
+        updated_at: '',
+      };
+    });
+    const activateSpy = vi.fn().mockImplementation(async () => {
+      order.push('activate');
+      return { activated: 1 };
+    });
+    const mocks = makeMocks({
+      identity: {
+        resolveUser: vi.fn().mockResolvedValue(null), // by-sub MISS
+        findUserByEmail: vi.fn().mockResolvedValue(existing),
+        linkExternalIdentity: linkSpy,
+        activateMembershipsOnLink: activateSpy,
+      } as unknown as IdentityService,
+    });
+    const svc = makeService(mocks);
+
+    const result = await svc.handleCallback({
+      consumer: 'recruiter',
+      code: 'c',
+      state: 'state-1',
+      cognitoError: undefined,
+      cognitoErrorDescription: undefined,
+      pkceStateCipher: 'cipher',
+    });
+
+    expect(result.kind).toBe('success');
+    expect(activateSpy).toHaveBeenCalledTimes(1);
+    expect(activateSpy).toHaveBeenCalledWith({ user_id: USER_ID });
+    // The hook fires AFTER the sub-link (ACTIVE follows the link, never before).
+    expect(order).toEqual(['link', 'activate']);
   });
 });

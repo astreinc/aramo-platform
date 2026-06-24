@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { MailerPort } from '@aramo/mailer';
 
 import type { UserDto } from '../lib/dto/user.dto.js';
 import type { IdentityService } from '../lib/identity.service.js';
@@ -61,7 +62,10 @@ function makeUserDto(): UserDto {
 interface Mocks {
   identitySvc: {
     resolveRoleIdsByKeys: ReturnType<typeof vi.fn>;
-    createUserFromInvitation: ReturnType<typeof vi.fn>;
+    // Invite-S2 — the no-sub create + token issue (replaces the old
+    // Cognito-first createUserFromInvitation on the tenant invite path).
+    createInvitedUserNoSub: ReturnType<typeof vi.fn>;
+    getTenantLabel: ReturnType<typeof vi.fn>;
     findUserById: ReturnType<typeof vi.fn>;
     disableMembership: ReturnType<typeof vi.fn>;
     reEnableMembership: ReturnType<typeof vi.fn>;
@@ -78,13 +82,17 @@ interface Mocks {
   auditFinancialsGate: {
     isFinancialsAuditEnabled: ReturnType<typeof vi.fn>;
   };
+  mailer: {
+    send: ReturnType<typeof vi.fn>;
+  };
   service: TenantUserLifecycleService;
 }
 
 function makeMocks(): Mocks {
   const identitySvc = {
     resolveRoleIdsByKeys: vi.fn(),
-    createUserFromInvitation: vi.fn(),
+    createInvitedUserNoSub: vi.fn(),
+    getTenantLabel: vi.fn().mockResolvedValue('Astre'),
     findUserById: vi.fn(),
     disableMembership: vi.fn(),
     reEnableMembership: vi.fn(),
@@ -105,19 +113,28 @@ function makeMocks(): Mocks {
   const auditFinancialsGate = {
     isFinancialsAuditEnabled: vi.fn().mockResolvedValue(false),
   };
-  // D-AUTHZ-PLATFORM-INVITE-1: lifecycle constructor shrank — no more
-  // RoleBundleValidator arg (the D5 check lives inside IdentityService).
+  // Invite-S2 — the S1 mailer. Defaults to a successful send returning a
+  // synthetic message id (matches StubMailerAdapter's shape).
+  const mailer = {
+    send: vi.fn().mockResolvedValue({ message_id: 'stub-msg-1' }),
+  };
   const service = new TenantUserLifecycleService(
     identitySvc as unknown as IdentityService,
     cognito as unknown as TenantCognitoPort,
     auditFinancialsGate as unknown as AuditFinancialsGate,
+    mailer as unknown as MailerPort,
   );
-  return { identitySvc, cognito, auditFinancialsGate, service };
+  return { identitySvc, cognito, auditFinancialsGate, mailer, service };
 }
 
+// Invite-S2 (Pattern-2) — the NO-SUB invite flow. The lifecycle no longer
+// calls Cognito at invite time: createInvitedUserNoSub does the no-sub create
+// + token issue (the D5 gate fires INSIDE it), then the invite email is sent
+// via the S1 mailer. adminCreateUser is RETAINED in the adapter but NEVER
+// called by invite.
 describe('TenantUserLifecycleService.inviteTenantUser', () => {
-  it('empty role_keys → VALIDATION_ERROR (no Cognito call, no identity-tx)', async () => {
-    const { service, cognito, identitySvc } = makeMocks();
+  it('empty role_keys → VALIDATION_ERROR (no create, no Cognito, no email)', async () => {
+    const { service, cognito, identitySvc, mailer } = makeMocks();
     await expect(
       service.inviteTenantUser({
         tenant_id: TENANT_ID,
@@ -132,24 +149,20 @@ describe('TenantUserLifecycleService.inviteTenantUser', () => {
       statusCode: 400,
       context: { details: { reason: 'empty_role_keys' } },
     });
+    expect(identitySvc.createInvitedUserNoSub).not.toHaveBeenCalled();
     expect(cognito.adminCreateUser).not.toHaveBeenCalled();
-    expect(identitySvc.createUserFromInvitation).not.toHaveBeenCalled();
+    expect(mailer.send).not.toHaveBeenCalled();
   });
 
-  // D-AUTHZ-PLATFORM-INVITE-1: the D5 union-non-invertibility check moved
-  // INTO IdentityService.createUserFromInvitation. The lifecycle test
-  // exercises the boundary by mocking the IdentityService method to throw
-  // exactly the AramoError shape the real validator throws. Behavior
-  // shift: the validator now fires AFTER Cognito (inside the identity-tx),
-  // so an invertible bundle does create a Cognito user and the rollback
-  // path compensates — single-source-of-enforcement traded for one extra
-  // upstream side effect per bad bundle. The safe-by-construction proof
-  // (the validator actually firing) lives in identity.service.spec.ts.
-  it('invertible role union → VALIDATION_ERROR surfaces from identity-tx; Cognito created then rolled back', async () => {
-    const { service, cognito, identitySvc } = makeMocks();
+  // The D5 union-non-invertibility check lives INSIDE createInvitedUserNoSub
+  // (REUSED from createUserFromInvitation). The lifecycle surfaces the
+  // rejection unchanged. Unlike the old Cognito-first saga there is NO
+  // external side effect to roll back — no Cognito user is ever created, so
+  // an invertible bundle rejects with ZERO external footprint.
+  it('invertible role union → VALIDATION_ERROR surfaces from createInvitedUserNoSub; no Cognito, no email', async () => {
+    const { service, cognito, identitySvc, mailer } = makeMocks();
     identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-1', 'rid-2']);
-    cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'cog-sub-bad' });
-    identitySvc.createUserFromInvitation.mockRejectedValue(
+    identitySvc.createInvitedUserNoSub.mockRejectedValue(
       Object.assign(new Error('invertible'), {
         code: 'VALIDATION_ERROR',
         statusCode: 400,
@@ -172,59 +185,21 @@ describe('TenantUserLifecycleService.inviteTenantUser', () => {
       code: 'VALIDATION_ERROR',
       context: { details: { reason: 'invertible_role_union' } },
     });
-    // Cognito WAS reached (the in-service trade); rollback compensates.
-    expect(cognito.adminCreateUser).toHaveBeenCalled();
-    expect(cognito.adminDeleteUser).toHaveBeenCalledWith({ email: EMAIL });
-  });
-
-  it('Cognito AdminCreateUser failure → 502 COGNITO_PROVISION_FAILED; no identity-tx, no rollback', async () => {
-    const { service, cognito, identitySvc } = makeMocks();
-    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-1']);
-    cognito.adminCreateUser.mockRejectedValue(new Error('cognito boom'));
-    await expect(
-      service.inviteTenantUser({
-        tenant_id: TENANT_ID,
-        email: EMAIL,
-        display_name: null,
-        role_keys: ['rA'],
-        actor_user_id: ACTOR_ID,
-        request_id: REQUEST_ID,
-      }),
-    ).rejects.toMatchObject({
-      code: 'COGNITO_PROVISION_FAILED',
-      statusCode: 502,
-    });
-    expect(identitySvc.createUserFromInvitation).not.toHaveBeenCalled();
+    // ZERO external footprint — the Pattern-2 invite never touches Cognito.
+    expect(cognito.adminCreateUser).not.toHaveBeenCalled();
     expect(cognito.adminDeleteUser).not.toHaveBeenCalled();
+    expect(mailer.send).not.toHaveBeenCalled();
   });
 
-  it('identity-tx failure post-Cognito → rethrows + Cognito rollback (AdminDeleteUser called)', async () => {
-    const { service, cognito, identitySvc } = makeMocks();
-    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-1']);
-    cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'cog-sub-x' });
-    identitySvc.createUserFromInvitation.mockRejectedValue(
-      new Error('identity tx boom'),
-    );
-    await expect(
-      service.inviteTenantUser({
-        tenant_id: TENANT_ID,
-        email: EMAIL,
-        display_name: null,
-        role_keys: ['rA'],
-        actor_user_id: ACTOR_ID,
-        request_id: REQUEST_ID,
-      }),
-    ).rejects.toThrow('identity tx boom');
-    expect(cognito.adminDeleteUser).toHaveBeenCalledWith({ email: EMAIL });
-  });
-
-  it('happy path → returns user + membership_id + cognito_sub; identity called with caller tenant_id', async () => {
-    const { service, cognito, identitySvc } = makeMocks();
+  it('happy path → no-sub create + token, invite email sent, returns INVITED + invitation_id (NEVER calls Cognito)', async () => {
+    const { service, cognito, identitySvc, mailer } = makeMocks();
     identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-1', 'rid-2']);
-    cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'cog-sub-1' });
-    identitySvc.createUserFromInvitation.mockResolvedValue({
+    identitySvc.createInvitedUserNoSub.mockResolvedValue({
       user: makeUserDto(),
       membership_id: 'mem-1',
+      invitation_id: 'inv-1',
+      raw_token: 'raw-token-xyz',
+      expires_at: '2026-07-01T00:00:00.000Z',
     });
     const result = await service.inviteTenantUser({
       tenant_id: TENANT_ID,
@@ -234,23 +209,66 @@ describe('TenantUserLifecycleService.inviteTenantUser', () => {
       actor_user_id: ACTOR_ID,
       request_id: REQUEST_ID,
     });
+    // New response shape — cognito_sub gone, state + invitation_id added.
     expect(result).toEqual({
       user: makeUserDto(),
       membership_id: 'mem-1',
-      cognito_sub: 'cog-sub-1',
+      invite_status: 'INVITED',
+      invitation_id: 'inv-1',
     });
-    expect(identitySvc.createUserFromInvitation).toHaveBeenCalledWith(
+    expect(identitySvc.createInvitedUserNoSub).toHaveBeenCalledWith(
       expect.objectContaining({
         tenant_id: TENANT_ID,
         actor_user_id: ACTOR_ID,
-        provider: 'cognito',
-        provider_subject: 'cog-sub-1',
+        email: EMAIL,
         role_keys: ['rA', 'rB'],
         role_ids: ['rid-1', 'rid-2'],
         request_id: REQUEST_ID,
       }),
     );
+    // The invite path NEVER mints a Cognito user (Pattern-2).
+    expect(cognito.adminCreateUser).not.toHaveBeenCalled();
     expect(cognito.adminDeleteUser).not.toHaveBeenCalled();
+    // The invite email was sent to the invitee, carrying the raw token link.
+    expect(mailer.send).toHaveBeenCalledTimes(1);
+    const sent = mailer.send.mock.calls[0]![0] as {
+      to: string;
+      subject: string;
+      html: string;
+      text: string;
+    };
+    expect(sent.to).toBe(EMAIL);
+    expect(sent.html).toContain('raw-token-xyz');
+    expect(sent.text).toContain('raw-token-xyz');
+  });
+
+  it('email send failure does NOT fail the invite (best-effort; the record + token already committed)', async () => {
+    const { service, identitySvc, mailer } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-1']);
+    identitySvc.createInvitedUserNoSub.mockResolvedValue({
+      user: makeUserDto(),
+      membership_id: 'mem-1',
+      invitation_id: 'inv-1',
+      raw_token: 'raw-token-xyz',
+      expires_at: '2026-07-01T00:00:00.000Z',
+    });
+    mailer.send.mockRejectedValue(new Error('SES unavailable'));
+    const result = await service.inviteTenantUser({
+      tenant_id: TENANT_ID,
+      email: EMAIL,
+      display_name: null,
+      role_keys: ['rA'],
+      actor_user_id: ACTOR_ID,
+      request_id: REQUEST_ID,
+    });
+    // The invite still SUCCEEDS — the user + token persisted; resend covers
+    // the missed email.
+    expect(result).toMatchObject({
+      membership_id: 'mem-1',
+      invite_status: 'INVITED',
+      invitation_id: 'inv-1',
+    });
+    expect(mailer.send).toHaveBeenCalled();
   });
 });
 

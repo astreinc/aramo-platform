@@ -19,11 +19,16 @@ import { Injectable, Logger } from '@nestjs/common';
 // design pattern (Cognito-first invite, identity-first disable + compensation).
 //
 // Method semantics:
-//   - adminCreateUser: invoked at the invite saga step 1; returns the Cognito
-//     `sub` used as ExternalIdentity.provider_subject. Failure surfaces to the
-//     caller; identity-tx never runs.
-//   - adminDeleteUser: the COMPENSATION for an invite saga whose identity-tx
-//     failed AFTER Cognito returned a sub; idempotent (no-throw if missing).
+//   - adminCreateUser: RETAINED for the backlogged native-account invite
+//     path; NOT called by the Pattern-2 federated invite flow (Invite-S2).
+//     The Pattern-2 invite mints no Cognito user at invite time — the sub is
+//     minted by Cognito at the invitee's first federated login and linked by
+//     the reconcile spine. Kept fully implemented (mirrors adminEnableUser's
+//     declared-but-not-currently-called posture) for the future native path.
+//   - adminDeleteUser: RETAINED. Was the COMPENSATION for the old Cognito-
+//     first invite saga (idempotent; no-throw if missing). The Pattern-2
+//     invite has no Cognito leg to roll back, so it is not called by invite
+//     either; kept for the native path + symmetry.
 //   - adminDisableUser: invoked at the disable saga step 2 (AFTER the
 //     identity flip commits); failure triggers the reEnableMembership
 //     compensation.

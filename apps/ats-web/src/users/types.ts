@@ -73,7 +73,12 @@ export interface InviteRequest {
 export interface InviteResponse {
   user_id: string;
   membership_id: string;
-  cognito_sub: string;
+  // Invite-S2 (Pattern-2): the membership's initial 3-state value (always
+  // INVITED at create) + the issued invitation's id. cognito_sub is gone (no
+  // sub is minted at invite time). onInvited discards the body, so this is a
+  // type-only change at the FE runtime.
+  invite_status: string;
+  invitation_id: string;
 }
 
 export interface DisableResponse {

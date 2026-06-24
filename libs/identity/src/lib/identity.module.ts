@@ -8,6 +8,7 @@ import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { CommonModule } from '@aramo/common';
 import { EntitlementModule } from '@aramo/entitlement';
+import { MailerModule } from '@aramo/mailer';
 
 import { IdentityCoreModule } from './identity-core.module.js';
 // Settings S3a — tenant-user lifecycle (invite + disable).
@@ -18,6 +19,8 @@ import {
 } from './tenant-user/tenant-cognito.port.js';
 import { TenantUserLifecycleService } from './tenant-user/tenant-user-lifecycle.service.js';
 import { TenantUserManagementController } from './tenant-user/tenant-user-management.controller.js';
+// Invite-S2 (Pattern-2) — the public acceptance flow's lifecycle service.
+import { InvitationLifecycleService } from './tenant-user/invitation-lifecycle.service.js';
 // Settings S4 — auditor_with_financials GATE precondition port.
 import {
   AUDIT_FINANCIALS_GATE,
@@ -87,6 +90,14 @@ export interface IdentityModuleOptions {
     AuthorizationModule,
     CommonModule,
     EntitlementModule,
+    // Invite-S2 — the S1 generic mailer. A CLEAN STATIC LEAF (no forRoot) so
+    // MAILER_PORT binds once and resolves in this module's scope for both
+    // lifecycle services. MailerModule enters ONLY apps/api's graph (via this
+    // slim IdentityModule, imported only by apps/api's forRoot) — the five
+    // IdentityCoreModule importers never see it. Its MAILER_PORT factory reads
+    // MAILER_PROVIDER at module-binding time (fail-loud on unset); the test
+    // env defaults it to 'stub' in vitest.shared.js.
+    MailerModule,
   ],
   controllers: [
     // Settings S3a — tenant-tier user lifecycle endpoints (invite + disable +
@@ -96,6 +107,9 @@ export interface IdentityModuleOptions {
   ],
   providers: [
     TenantUserLifecycleService,
+    // Invite-S2 — the public acceptance flow's lifecycle service (exported
+    // below so apps/api's PublicInvitationController can inject it).
+    InvitationLifecycleService,
     // The plain-import defaults: throw-on-call stubs. apps/api's forRoot
     // appends same-token providers (real adapters) to THIS module's own scope
     // (last-wins). Since nothing imports IdentityModule statically anymore, the
@@ -116,6 +130,9 @@ export interface IdentityModuleOptions {
     // etc. from a single `@aramo/identity` import.
     IdentityCoreModule,
     TenantUserLifecycleService,
+    // Invite-S2 — exported so apps/api's public (un-guarded) acceptance
+    // controller can inject it.
+    InvitationLifecycleService,
   ],
 })
 export class IdentityModule {
