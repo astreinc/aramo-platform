@@ -38,6 +38,7 @@ import { TaskModule } from '@aramo/task';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { AssignableUsersController } from './controllers/assignable-users.controller.js';
+import { MeController } from './controllers/me.controller.js';
 import { CompensationFieldMaskInterceptor } from './interceptors/compensation-field-mask.interceptor.js';
 import { TalentRecordEnrichmentInterceptor } from './talent-enrichment/talent-record-enrichment.interceptor.js';
 import { TalentRecordEnrichmentService } from './talent-enrichment/talent-record-enrichment.service.js';
@@ -307,6 +308,12 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // the company schema's user↔client mapping — a cross-schema join wired at
     // the app boundary (CompanyModule + IdentityModule both in this graph).
     AssignableUsersController,
+    // Aramo-Identity-Me-Endpoint — GET /v1/me, the self-read display companion
+    // to the lean session JWT (name + email + role display names + tenant org
+    // label). Lives here (not libs/identity, not auth-service) as a plain
+    // tenant read composed on IdentityService — it never touches the token
+    // surface (reads only; the session DTO stays frozen at 6 fields).
+    MeController,
   ],
   providers: [
     // AUTHZ-D4b Gate 6 — register the VisibilityInterceptor as a global

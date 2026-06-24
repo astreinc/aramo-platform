@@ -773,6 +773,101 @@ button.rc-link-action {
   border: 1.5px solid var(--surface);
 }
 
+/* ─────────────── Org label + UserMenu (top-right) ─────────────── */
+
+/* Org-context label (M365 pattern) — the tenant display_name as quiet text,
+   never a logo. Truncates rather than pushing the user menu off-screen. */
+.rc-orglabel {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+  padding-left: 4px;
+}
+
+.rc-usermenu {
+  position: relative;
+  flex: none;
+}
+.rc-usermenu__trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 4px 8px 4px 4px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.rc-usermenu__trigger:hover {
+  border-color: var(--brand-accent);
+  color: var(--ink);
+}
+.rc-usermenu__trigger svg {
+  width: 16px;
+  height: 16px;
+}
+.rc-usermenu__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--elev);
+  padding: 6px;
+  z-index: 20;
+}
+.rc-usermenu__id {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+}
+.rc-usermenu__name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.rc-usermenu__email {
+  font-size: 0.78rem;
+  color: var(--muted);
+  word-break: break-all;
+}
+.rc-usermenu__role {
+  font-size: 0.74rem;
+  color: var(--faint);
+  margin-top: 3px;
+}
+.rc-usermenu__item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  border-radius: var(--r-sm);
+  font-size: 0.84rem;
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+  text-align: left;
+}
+.rc-usermenu__item:hover {
+  background: var(--canvas);
+}
+.rc-usermenu__item svg {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  flex: none;
+}
+
 /* ─────────────── Card / CardHead ─────────────── */
 
 .rc-card {

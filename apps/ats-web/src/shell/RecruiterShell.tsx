@@ -18,6 +18,8 @@ import {
   RailNavLabel,
   RailUser,
   TopBar,
+  UserMenu,
+  initialsOf,
   type BreadcrumbItem,
 } from '../ui';
 import {
@@ -33,6 +35,13 @@ import {
 } from '../ui/icons';
 
 import { BreadcrumbProvider, useBreadcrumbEntity } from './breadcrumb';
+import { useMe } from './me-api';
+
+// The tenant-profile route — the existing destination for the user menu's
+// Settings link (also the /admin default redirect target). Gated behind admin
+// access (it lives under the tenant:admin:* admin surface), so the link is
+// shown only to a principal who can reach it.
+const SETTINGS_PROFILE_PATH = '/admin/settings/profile';
 
 // RecruiterShell — Phase 2A. The app-layer chrome that REPLACES the frozen
 // fe-foundation Shell (non-consumption, Lead-approved). Composes AppShell +
@@ -100,19 +109,6 @@ const SECTION_LABEL: Record<string, string> = {
   admin: 'Settings',
 };
 
-function HUMAN_CONSUMER(type: Session['consumer_type']): string {
-  switch (type) {
-    case 'recruiter':
-      return 'Recruiter';
-    case 'portal':
-      return 'Portal user';
-    case 'ingestion':
-      return 'Ingestion';
-    default:
-      return 'User';
-  }
-}
-
 interface RecruiterShellProps {
   readonly session: Session;
   readonly children: ReactNode;
@@ -136,9 +132,22 @@ function RecruiterShellInner({
   onLogoutComplete,
 }: RecruiterShellProps) {
   const location = useLocation();
+  const me = useMe();
   const segment = location.pathname.split('/')[1] ?? '';
   const entity = useBreadcrumbEntity();
   const section = SECTION_LABEL[segment] ?? 'Aramo';
+
+  // The resolved /me display data (loading-safe — `me` is null until the fetch
+  // resolves and stays null on error). Name falls back display_name → email;
+  // the role line joins ALL roles ("Tenant Admin · Recruiter"); both the menu
+  // and the rail footer read from the SAME source (no more consumer_type label).
+  const displayName = me ? me.user.display_name ?? me.user.email : null;
+  const roleLine =
+    me && me.roles.length > 0 ? me.roles.join(' · ') : null;
+  // Rail footer: real identity once loaded; neutral placeholders while in
+  // flight so the chrome (avatar slot + logout) never collapses.
+  const railName = displayName ?? '—';
+  const railInitials = displayName ? initialsOf(displayName) : '·';
   const crumbs: readonly BreadcrumbItem[] =
     entity !== null
       ? [{ label: section, href: `/${segment}` }, { label: entity }]
@@ -164,13 +173,15 @@ function RecruiterShellInner({
         />
       ));
 
-  const role = HUMAN_CONSUMER(session.consumer_type);
-
   const rail = (
     <Rail
       user={
         <>
-          <RailUser initials={role.charAt(0)} name={role} />
+          <RailUser
+            initials={railInitials}
+            name={railName}
+            role={roleLine ?? undefined}
+          />
           <button
             type="button"
             className="rc-rail__logout"
@@ -200,6 +211,23 @@ function RecruiterShellInner({
       <Breadcrumb items={crumbs} />
       <CmdKSearch />
       <NotificationButton />
+      {/* Org-context label (M365 pattern) — the tenant display_name as plain
+          text, NOT a logo. The internal brand stays pure-Aramo (ShellBrand);
+          the tenant appears ONLY here. Hidden until /me resolves. */}
+      {me ? (
+        <span className="rc-orglabel" title={me.tenant.display_name}>
+          {me.tenant.display_name}
+        </span>
+      ) : null}
+      <UserMenu
+        name={displayName ?? ''}
+        email={me?.user.email ?? ''}
+        roleLine={roleLine}
+        onSignOut={handleLogout}
+        settingsHref={
+          hasAdminScope(session) ? SETTINGS_PROFILE_PATH : undefined
+        }
+      />
     </TopBar>
   );
 

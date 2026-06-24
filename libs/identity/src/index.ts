@@ -68,6 +68,9 @@ export type {
 export type { AssignableUserView } from './lib/identity.repository.js';
 // §5 Auth-Hardening D4b — the name-resolver row (directory endpoint).
 export type { DirectoryUserView } from './lib/identity.repository.js';
+// Aramo-Identity-Me-Endpoint — the self-read display shape for GET /v1/me,
+// consumed by apps/api's MeController.
+export type { MeView } from './lib/identity.service.js';
 export {
   TENANT_COGNITO_PORT,
   StubTenantCognitoAdapter,
