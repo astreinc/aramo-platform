@@ -12,7 +12,24 @@ import {
   type DirectoryUserView,
   type TenantUserView,
 } from './identity.repository.js';
+import {
+  displayFromDescription,
+  metaRank,
+} from './role-catalog/role-catalog.view.js';
 import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
+
+// Aramo-Identity-Me-Endpoint — the public shape returned by GET /v1/me. A
+// self-read display projection (NOT the admin TenantUserView): the caller's
+// own name + email, the human display names of ALL their roles in this tenant
+// (multi-role shows every role), and the tenant org label (display_name with
+// a fall back to the workspace name so it is never empty). Carries no scopes,
+// no status, no IDs — the JWT remains the lean authorization token; this is the
+// display companion (the session DTO stays frozen at 6 fields).
+export interface MeView {
+  user: { display_name: string | null; email: string };
+  roles: string[];
+  tenant: { display_name: string };
+}
 
 // IdentityService — at AUTHZ-1, this surface was resolve-only (the original
 // "never creates a User" §3 + §11 halt rule), with the auth-service
@@ -87,6 +104,41 @@ export class IdentityService {
     tenant_id: string;
   }): Promise<MembershipDto | null> {
     return this.identityRepo.findMembership(args);
+  }
+
+  // Aramo-Identity-Me-Endpoint — the self-read behind GET /v1/me. Resolves the
+  // caller's own display data (NEVER another user's — the repo keys on the
+  // composite (user_id, tenant_id) from the JWT). Returns null when the caller
+  // has no membership in the tenant (the controller maps null → 404).
+  //
+  // Roles: ALL of the caller's active roles, projected to their human display
+  // names (displayFromDescription — the same source the roles-catalog uses) and
+  // ordered by presentation tier then name (metaRank), so a multi-role user
+  // reads e.g. "Tenant Admin" before "Recruiter". The role line shows every
+  // role; an empty membership (no roles) yields [].
+  //
+  // Tenant label: display_name, falling back to the workspace `name` when the
+  // branding label is unset — never empty.
+  async getMe(args: {
+    user_id: string;
+    tenant_id: string;
+  }): Promise<MeView | null> {
+    const ctx = await this.identityRepo.findMeContext(args);
+    if (ctx === null) return null;
+    const roles = [...ctx.roles]
+      .sort(
+        (a, b) =>
+          metaRank(a.key) - metaRank(b.key) ||
+          displayFromDescription(a.description, a.key).localeCompare(
+            displayFromDescription(b.description, b.key),
+          ),
+      )
+      .map((r) => displayFromDescription(r.description, r.key));
+    return {
+      user: { display_name: ctx.display_name, email: ctx.email },
+      roles,
+      tenant: { display_name: ctx.tenant_display_name ?? ctx.tenant_name },
+    };
   }
 
   // Settings S5-BE1 — tenant-users reads (the S5b prereq). The user-roster

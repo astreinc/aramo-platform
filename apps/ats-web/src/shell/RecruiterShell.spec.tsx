@@ -136,4 +136,67 @@ describe('RecruiterShell', () => {
     expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
     expect(screen.getByText('page content')).toBeInTheDocument();
   });
+
+  // Aramo-Identity-Me-Endpoint-UserMenu — the shell fetches /me and feeds the
+  // org label, the top-right user menu, and the rail footer from it (replacing
+  // the old hardcoded "Recruiter" consumer_type label).
+  const ME = {
+    user: { display_name: 'Purush Pichaimuthu', email: 'purush@astreinc.com' },
+    roles: ['Tenant Admin', 'Recruiter'],
+    tenant: { display_name: 'Astre Consulting Services Inc' },
+  };
+
+  it('renders the tenant org label and real rail identity from /me', async () => {
+    vi.spyOn(apiClient, 'get').mockResolvedValue(ME);
+    renderShell(makeSession(['talent:read', 'tenant:admin:settings']));
+    // Org-context label (M365 text, not a logo).
+    expect(
+      await screen.findByText('Astre Consulting Services Inc'),
+    ).toBeInTheDocument();
+    // Rail footer now shows the real name + joined role line — NOT "Recruiter".
+    expect(screen.getByText('Purush Pichaimuthu')).toBeInTheDocument();
+    expect(screen.getByText('Tenant Admin · Recruiter')).toBeInTheDocument();
+  });
+
+  it('surfaces name, email, and role line in the top-right user menu', async () => {
+    vi.spyOn(apiClient, 'get').mockResolvedValue(ME);
+    renderShell(makeSession(['talent:read', 'tenant:admin:settings']));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Account: Purush Pichaimuthu' }),
+    );
+    expect(screen.getByText('purush@astreinc.com')).toBeInTheDocument();
+    // Admin → the Settings link to the profile route is present.
+    expect(screen.getByRole('menuitem', { name: 'Settings' })).toHaveAttribute(
+      'href',
+      '/admin/settings/profile',
+    );
+  });
+
+  it('hides the user-menu Settings link from a non-admin principal', async () => {
+    vi.spyOn(apiClient, 'get').mockResolvedValue({
+      ...ME,
+      roles: ['Recruiter'],
+    });
+    renderShell(makeSession(['requisition:read', 'talent:read']));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Account: Purush Pichaimuthu' }),
+    );
+    expect(
+      screen.queryByRole('menuitem', { name: 'Settings' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('is loading-safe: chrome renders intact when /me fails', async () => {
+    vi.spyOn(apiClient, 'get').mockRejectedValue(new Error('network'));
+    renderShell(makeSession(['requisition:read']));
+    // Chrome intact: nav landmark + a neutral account trigger, no crash.
+    expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'Account menu' }),
+    ).toBeInTheDocument();
+    // No org label until /me resolves.
+    expect(
+      screen.queryByText('Astre Consulting Services Inc'),
+    ).not.toBeInTheDocument();
+  });
 });

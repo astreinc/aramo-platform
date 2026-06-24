@@ -297,6 +297,48 @@ export class IdentityRepository {
     return rows.map((r) => r.role_id);
   }
 
+  // Aramo-Identity-Me-Endpoint — the self-read behind GET /v1/me. Resolves the
+  // caller's membership in this tenant and joins through to the User (email +
+  // display_name), the membership's ACTIVE roles (key + description, for the
+  // display-name resolution in the service — mirrors getTenantUser's
+  // active-roles-only filter), and the Tenant (name + display_name, for the org
+  // label). Keyed on the composite (user_id, tenant_id) from the JWT — a member
+  // of tenant A can never read tenant B (no membership row → null → 404). Returns
+  // null when no membership exists for the pair (e.g. a stale token after the
+  // membership was removed).
+  async findMeContext(args: {
+    user_id: string;
+    tenant_id: string;
+  }): Promise<MeContextRow | null> {
+    const row = await this.prisma.userTenantMembership.findUnique({
+      where: {
+        user_id_tenant_id: {
+          user_id: args.user_id,
+          tenant_id: args.tenant_id,
+        },
+      },
+      include: {
+        user: { select: { email: true, display_name: true } },
+        tenant: { select: { name: true, display_name: true } },
+        role_assignments: {
+          where: { role: { is_active: true } },
+          include: { role: { select: { key: true, description: true } } },
+        },
+      },
+    });
+    if (row === null) return null;
+    return {
+      email: row.user.email,
+      display_name: row.user.display_name,
+      roles: row.role_assignments.map((ra) => ({
+        key: ra.role.key,
+        description: ra.role.description,
+      })),
+      tenant_name: row.tenant.name,
+      tenant_display_name: row.tenant.display_name,
+    };
+  }
+
   // Settings S3b — needed by TenantUserLifecycleService.assignTenantUserRoles
   // for the before/after role-key audit payloads (role KEYS, not IDs, so the
   // change-log row is human-readable). Joins through Role to project the key
@@ -641,6 +683,22 @@ export interface AssignableUserView {
 export interface DirectoryUserView {
   user_id: string;
   display_name: string | null;
+}
+
+// Aramo-Identity-Me-Endpoint — the raw context behind GET /v1/me, resolved
+// for the CALLER's own membership in ONE query. Deliberately a self-read
+// projection (the caller's identity, their roles in this tenant, and the
+// tenant's org label) — no other user's data is reachable through it (the
+// query keys on the composite (user_id, tenant_id)). Role rows carry BOTH
+// key and description so the service can resolve the human display name
+// (displayFromDescription) without a second round-trip; the presentation
+// mapping (key/description → display) lives in the service, not the repo.
+export interface MeContextRow {
+  email: string;
+  display_name: string | null;
+  roles: { key: string; description: string | null }[];
+  tenant_name: string;
+  tenant_display_name: string | null;
 }
 
 type TenantUserRow = {
