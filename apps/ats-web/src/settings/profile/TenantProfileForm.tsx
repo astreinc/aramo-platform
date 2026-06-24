@@ -1,10 +1,11 @@
-import { ApiError, useToast } from '@aramo/fe-foundation';
+import { ApiError, Combobox, useToast, type ComboboxItem } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState } from 'react';
 
 import { IconBuilding } from '../../ui/icons';
 import { Button, Card, InlineAlert } from '../../ui';
 import { SettingCardHead, SettingHint } from '../components';
 
+import { ISO_3166_COUNTRIES } from './iso-3166-country';
 import {
   EDITABLE_PROFILE_FIELDS,
   fetchTenantProfile,
@@ -14,12 +15,19 @@ import {
   type TenantProfileView,
 } from './profile-api';
 
+// The country picker mirrors the ISO-4217 currency precedent
+// (CompensationSection.tsx): a Combobox whose item value is the 2-letter
+// ISO-3166 code (what gets PATCHed) and whose label is the country name.
+const COUNTRY_ITEMS: readonly ComboboxItem[] = ISO_3166_COUNTRIES.map(
+  (c) => ({ value: c.value, label: c.label }),
+);
+
 // Settings Rebuild Directive 3 — the tenant-profile form (replaces the D1
 // Organization & branding seam). GET-populated, PATCH-on-save (only the fields
 // that actually changed). The logo is an honest URL reference field — the
 // upload pipeline is a later increment, so there is no non-working uploader.
 
-type FieldKind = 'text' | 'email' | 'url';
+type FieldKind = 'text' | 'email' | 'url' | 'country';
 interface FieldDef {
   readonly field: EditableProfileField;
   readonly label: string;
@@ -47,7 +55,7 @@ const GROUPS: readonly Group[] = [
       { field: 'city', label: 'City' },
       { field: 'state_province', label: 'State / province' },
       { field: 'postal_code', label: 'Postal code' },
-      { field: 'country_code', label: 'Country (ISO-2)', placeholder: 'US' },
+      { field: 'country_code', label: 'Country', placeholder: 'Select country…', kind: 'country' },
     ],
   },
   {
@@ -178,16 +186,29 @@ export function TenantProfileForm({ fetchFn, saveFn }: Props = {}) {
               {group.fields.map((fd) => (
                 <label className="rc-ifield" key={fd.field}>
                   <span>{fd.label}</span>
-                  <input
-                    className="rc-input"
-                    type={fd.kind === 'email' ? 'email' : fd.kind === 'url' ? 'url' : 'text'}
-                    value={v[fd.field]}
-                    placeholder={fd.placeholder}
-                    onChange={(e) =>
-                      setValues({ ...v, [fd.field]: e.target.value })
-                    }
-                    data-testid={`profile-field-${fd.field}`}
-                  />
+                  {fd.kind === 'country' ? (
+                    <Combobox
+                      ariaLabel={fd.label}
+                      items={COUNTRY_ITEMS}
+                      value={v[fd.field] === '' ? null : v[fd.field]}
+                      onSelect={(item) =>
+                        setValues({ ...v, [fd.field]: item.value })
+                      }
+                      placeholder={fd.placeholder ?? 'Select…'}
+                      testId={`profile-field-${fd.field}`}
+                    />
+                  ) : (
+                    <input
+                      className="rc-input"
+                      type={fd.kind === 'email' ? 'email' : fd.kind === 'url' ? 'url' : 'text'}
+                      value={v[fd.field]}
+                      placeholder={fd.placeholder}
+                      onChange={(e) =>
+                        setValues({ ...v, [fd.field]: e.target.value })
+                      }
+                      data-testid={`profile-field-${fd.field}`}
+                    />
+                  )}
                 </label>
               ))}
             </div>

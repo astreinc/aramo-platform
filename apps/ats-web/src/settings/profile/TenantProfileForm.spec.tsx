@@ -81,4 +81,25 @@ describe('TenantProfileForm', () => {
     renderForm({ fetchFn: () => Promise.reject(new Error('boom')) });
     expect(await screen.findByText('boom')).toBeInTheDocument();
   });
+
+  it('renders country as a Combobox; an already-set code initializes to the country name', async () => {
+    renderForm({ fetchFn: () => Promise.resolve(view({ country_code: 'US' })) });
+    const trigger = await screen.findByRole('combobox', { name: 'Country' });
+    expect(trigger).toHaveTextContent('United States of America');
+  });
+
+  it('an unset country shows the placeholder, not a pre-filled value', async () => {
+    renderForm({ fetchFn: () => Promise.resolve(view({ country_code: null })) });
+    const trigger = await screen.findByRole('combobox', { name: 'Country' });
+    expect(trigger).toHaveTextContent('Select country…');
+  });
+
+  it('selecting a country PATCHes the 2-letter ISO code', async () => {
+    const saveFn = vi.fn(async (p: ProfilePatch) => view({ ...p }));
+    renderForm({ fetchFn: () => Promise.resolve(view()), saveFn });
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Country' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Canada' }));
+    fireEvent.click(screen.getByTestId('profile-save'));
+    await waitFor(() => expect(saveFn).toHaveBeenCalledWith({ country_code: 'CA' }));
+  });
 });
