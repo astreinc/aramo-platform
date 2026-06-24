@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CompanyModule } from '@aramo/company';
 import { ContactModule } from '@aramo/contact';
-import { IdentityModule } from '@aramo/identity';
+import { IdentityCoreModule } from '@aramo/identity';
 import { PipelineModule } from '@aramo/pipeline';
 import { RequisitionModule } from '@aramo/requisition';
 
@@ -24,7 +24,7 @@ import { VisibilityResolverService } from './visibility-resolver.service.js';
 // lint:nx-boundaries on import-x/no-cycle.
 @Module({
   imports: [
-    IdentityModule,
+    IdentityCoreModule,
     CompanyModule,
     RequisitionModule,
     PipelineModule,

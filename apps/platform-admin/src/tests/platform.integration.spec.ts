@@ -29,7 +29,7 @@ import { AuthModule, PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
 import {
-  IdentityModule,
+  IdentityCoreModule,
   PrismaService as IdentityPrismaService,
 } from '@aramo/identity';
 
@@ -389,7 +389,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           CommonModule,
           AuthModule,
           AuthorizationModule,
-          IdentityModule,
+          IdentityCoreModule,
           EntitlementModule,
         ],
         controllers: [PlatformController],

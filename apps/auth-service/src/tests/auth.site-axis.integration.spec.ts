@@ -40,7 +40,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { decodeJwt } from 'jose';
 import { AramoExceptionFilter, CommonModule } from '@aramo/common';
 import {
-  IdentityModule,
+  IdentityCoreModule,
   PrismaService as IdentityPrismaService,
 } from '@aramo/identity';
 import { AuthStorageModule } from '@aramo/auth-storage';
@@ -180,13 +180,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['AUTH_REFRESH_GRACE_SECONDS'] = '0';
       process.env['AUTH_ALLOW_INSECURE_COOKIES'] = 'true';
 
-      // Build the testing module — IdentityModule provides REAL
+      // Build the testing module — IdentityCoreModule provides REAL
       // IdentityService / TenantService / RoleService. Only Cognito is
       // stubbed (external dependency).
       module = await Test.createTestingModule({
         imports: [
           CommonModule,
-          IdentityModule,
+          IdentityCoreModule,
           AuthStorageModule,
           AuthorizationModule,
         ],

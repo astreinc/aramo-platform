@@ -1,4 +1,11 @@
 export { IdentityModule } from './lib/identity.module.js';
+// Auth-Hardening IdentityModule-Split v1.0 — the SHARED identity read surface.
+// Every module OUTSIDE apps/api's invite/role surface (company, visibility,
+// task-via-forRoot-imports, auth-service, platform-admin) imports THIS module,
+// not IdentityModule. It carries no invite ports and no lifecycle consumer, so
+// a static import can never create the second, stub-bound instance that the
+// forRoot IdentityModule used to collide with.
+export { IdentityCoreModule } from './lib/identity-core.module.js';
 export { IdentityService } from './lib/identity.service.js';
 export { TenantService } from './lib/tenant.service.js';
 export { RoleService } from './lib/role.service.js';

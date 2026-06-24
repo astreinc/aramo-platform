@@ -18,7 +18,7 @@ import { ContactModule } from '@aramo/contact';
 import { EngagementModule } from '@aramo/engagement';
 import { EntitlementModule } from '@aramo/entitlement';
 import { ExportModule } from '@aramo/export';
-import { IdentityModule } from '@aramo/identity';
+import { IdentityModule, IdentityCoreModule } from '@aramo/identity';
 import { ImportModule } from '@aramo/import';
 import { IngestionModule } from '@aramo/ingestion';
 import { MatchingModule } from '@aramo/matching';
@@ -116,14 +116,20 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // so the R5 active-within-tenant assignee check silently accepted ANY
     // assignee (the accept-any stub, a fail-OPEN authz hole).
     //
-    // imports: [IdentityModule] threads IdentityService into TaskModule's
+    // imports: [IdentityCoreModule] threads IdentityService into TaskModule's
     // dynamic scope so TaskAssigneeAdapter (which injects it) can be
     // instantiated there. Unlike the no-arg cognito adapter, this adapter has
-    // a Nest dependency; libs/task stays leaf (it never names IdentityModule —
+    // a Nest dependency; libs/task stays leaf (it never names the module —
     // apps/api passes it through as an opaque module ref).
+    //
+    // Auth-Hardening IdentityModule-Split v1.0 — threads IdentityCoreModule
+    // (the shared read surface), NOT IdentityModule. TaskAssigneeAdapter needs
+    // only IdentityService; importing the slim IdentityModule statically here
+    // would re-create the second stub-bound instance the split removes (this
+    // was one of the three apps/api-graph static importers in the defect).
     TaskModule.forRoot({
       assigneeValidator: TaskAssigneeAdapter,
-      imports: [IdentityModule],
+      imports: [IdentityCoreModule],
     }),
     // Search PR-2 — the résumé re-extract worker. SEPARATE from
     // TalentRecordModule (imported widely) so only apps/api stands up the
@@ -247,8 +253,9 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // @aramo/common. This mirrors the libs/company → @aramo/identity
     // cross-lib audit-emission edge (the D4a precedent) and D5's field-
     // mask interceptor placement (terminal lib + app-level cross-cutting
-    // wire). IdentityModule was already in the apps/api module graph
-    // transitively via CompanyModule; the direct import here makes
+    // wire). The shared identity surface (IdentityCoreModule) was already in
+    // the apps/api module graph transitively via CompanyModule; the
+    // IdentityModule.forRoot import below re-exports it, making
     // IdentityAuditService injectable into TenantSettingsController.
     //
     // Auth-Cognito-Binding-Fix v1.0 — apps/api owns the live Cognito

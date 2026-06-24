@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
-import { IdentityModule } from '@aramo/identity';
+import { IdentityCoreModule } from '@aramo/identity';
 
 import { AddressLookupController } from './address-lookup.controller.js';
 import { AddressLookupService } from './address-lookup.service.js';
@@ -23,7 +23,7 @@ import { UserClientAssignmentRepository } from './user-client-assignment.reposit
 //   - AuthModule          → JwtAuthGuard
 //   - AuthorizationModule → RolesGuard
 //   - EntitlementModule   → EntitlementGuard
-//   - IdentityModule      → IdentityAuditService (AUTHZ-D4a). Audit events
+//   - IdentityCoreModule  → IdentityAuditService (AUTHZ-D4a). Audit events
 //     for company-side D4a writes (user_client_assignment,
 //     team.client_ownership) are emitted to identity's closed EVENT_TYPES
 //     set; the cross-lib audit emission is the only acceptable path under
@@ -31,7 +31,12 @@ import { UserClientAssignmentRepository } from './user-client-assignment.reposit
 //     §7.3 + the directive's no-cross-schema-FK halt-condition). No
 //     identity imports from libs/company — no cycle.
 @Module({
-  imports: [AuthModule, AuthorizationModule, EntitlementModule, IdentityModule],
+  imports: [
+    AuthModule,
+    AuthorizationModule,
+    EntitlementModule,
+    IdentityCoreModule,
+  ],
   controllers: [
     CompanyController,
     D4aCompanyController,

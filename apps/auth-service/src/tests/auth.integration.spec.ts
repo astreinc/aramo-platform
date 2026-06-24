@@ -21,7 +21,7 @@ import request from 'supertest';
 import { v7 as uuidv7 } from 'uuid';
 import { CommonModule } from '@aramo/common';
 import {
-  IdentityModule,
+  IdentityCoreModule,
   IdentityService,
   PrismaService as IdentityPrismaService,
   RoleService,
@@ -139,7 +139,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // libs/identity); IdentityAuditService stays real so audit rows
       // genuinely land in Postgres.
       module = await Test.createTestingModule({
-        imports: [CommonModule, IdentityModule, AuthStorageModule],
+        imports: [CommonModule, IdentityCoreModule, AuthStorageModule],
         controllers: [AuthController, JwksController],
         providers: [
           PkceService,
