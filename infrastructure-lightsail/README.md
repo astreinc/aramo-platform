@@ -59,6 +59,32 @@ This is the credential the Directive-3 backup job uses (see the ops runbook).
 S3-side retention is a bucket **lifecycle rule** managed out-of-band, so the box
 credential stays `PutObject`-only.
 
+## SES mailer IAM — `ses:SendEmail` grant (PO-console apply)
+
+Email-S1 adds Aramo's transactional mailer (`@aramo/mailer`). The api authenticates
+to AWS via the **static access-key creds** in the box's `.env` (`AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY`) — that principal is **managed out-of-band, not a Terraform
+resource here** (only the optional backup user is in `main.tf`). So the SES grant is a
+**manual/console apply to that principal**, the same category as Cognito + `.env` below.
+
+The least-privilege statement to attach is [`ses-mailer-iam.json`](ses-mailer-iam.json)
+— modeled on the `s3:PutObject`-only backup policy shape (`main.tf` §Backup IAM):
+`ses:SendEmail` / `ses:SendRawEmail` scoped to the `aramo.ai` verified identity and
+**pinned to `support@aramo.ai`** via an `ses:FromAddress` condition (can't send as
+anything else). Apply with:
+
+```sh
+# attach to the principal whose access key the box's .env carries:
+aws iam put-user-policy --user-name <api-principal> \
+  --policy-name ses-send-support-only \
+  --policy-document file://ses-mailer-iam.json
+```
+
+PO console prerequisites (SES side — AWS's clock, start first): verify the `aramo.ai`
+domain identity (us-east-1), add the SES-generated DKIM CNAMEs to Route53 zone
+`Z036386539U6ZS64ATYDK`, and **file the SES sandbox-exit / production-access request**
+(the longest-lead item — until granted, SES sends only to verified addresses).
+
 ## Explicitly OUT of this root (the remaining manual / runbook steps)
 
 - **Cognito** — the pool `us-east-1_4fKlnGfaW` was created outside Terraform and

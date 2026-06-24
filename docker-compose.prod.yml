@@ -94,6 +94,9 @@ services:
       - AWS_REGION
       - AWS_ACCESS_KEY_ID
       - AWS_SECRET_ACCESS_KEY
+      # transactional mailer (Email-S1): ses|stub + the fixed SES sender
+      - MAILER_PROVIDER
+      - SES_FROM_ADDRESS
       - ADDRESS_AUTOCOMPLETE_ENABLED
       - ADDRESS_AUTOCOMPLETE_PROVIDER
       - GOOGLE_PLACES_API_KEY

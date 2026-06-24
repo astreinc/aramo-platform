@@ -51,6 +51,7 @@
       "@aramo/import": ["libs/import/src/index.ts"],
       "@aramo/ingestion": ["libs/ingestion/src/index.ts"],
       "@aramo/job-domain": ["libs/job-domain/src/index.ts"],
+      "@aramo/mailer": ["libs/mailer/src/index.ts"],
       "@aramo/matching": ["libs/matching/src/index.ts"],
       "@aramo/metering": ["libs/metering/src/index.ts"],
       "@aramo/object-storage": ["libs/object-storage/src/index.ts"],
