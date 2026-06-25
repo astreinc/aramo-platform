@@ -30,8 +30,10 @@ sudo systemctl enable --now aramo-singlebox.service        # see §A
 
 # 2. Apply the schema, then seed Astre (catalog + Astre + owner ONLY — the
 #    scrub PR makes seed-astre skip the dev fixtures). Run against the box DB.
-#    (DATABASE_URL points at the prod Postgres; see db-sync notes in run-layer.md.)
-npm run db:sync:local         # replays every module migration
+#    Use deploy/migrate-prod.sh — it applies migrations in a postgres:17
+#    container on the compose network (the box host has no psql; the same step
+#    every redeploy runs) and GATES on zero-pending.
+deploy/migrate-prod.sh        # apply every module migration + assert zero-pending
 npm run prisma:seed-astre     # catalog + Astre tenant + purush@astreinc.com (no sub)
 
 # 3. Verify the front door, then run the §5 Cognito checklist (§G) — login links
@@ -285,8 +287,59 @@ docker exec aramo-prod-postgres psql -U aramo -d aramo -tA -c \
 
 ## Update / redeploy the stack
 
+The migration step is **MANDATORY and ordered** — it runs AFTER `git pull` (so
+the new `migration.sql` files are present) and BEFORE containers are rebuilt /
+recreated (so a container never starts against a schema missing the columns its
+code reads). This is the fix for the incident where Invite-S2's migration shipped
+in code but was never applied — the Users list then threw "Internal error" on the
+new `invite_status` column until it was applied by hand.
+
 ```bash
-cd /opt/aramo && git pull          # or drop new image tags (ARAMO_API_IMAGE/…)
+cd /opt/aramo && git pull --ff-only   # new code + new migration files
+                                       # (or drop new image tags ARAMO_API_IMAGE/…)
+
+# >>> migration step + GATE — NEVER SKIP. <<<
+# Applies pending migrations (idempotent; an in-sync DB is a no-op) and then
+# asserts ZERO pending. On a failed/partial apply it exits non-zero — STOP:
+# do NOT recreate containers (the old image keeps serving the old-but-consistent
+# schema; recreating now would serve code against a half-migrated DB).
+deploy/migrate-prod.sh
+
+# Only if migrate-prod.sh exited 0 (gate passed): rebuild (if building on the box)
+# + recreate. The launcher restart triggers compose up -d.
 sudo systemctl restart aramo-singlebox.service
-# schema change? apply migrations, then smoke (§B step 5).
+
+# Smoke (§B step 5 / §G).
+```
+
+**Rules (do not break):**
+- **NEVER skip the migration step.** Every redeploy runs `deploy/migrate-prod.sh`,
+  even when you "think" there's no schema change — it's idempotent and cheap, and
+  the alternative (a missed migration) is a prod outage.
+- **NEVER recreate containers if the migration gate fails** (non-zero exit). The
+  gate failing means the schema is NOT in sync with the pulled code; proceeding
+  ships broken reads. Fix the migration apply first.
+
+### How `deploy/migrate-prod.sh` works (and the manual fallback)
+
+It runs the idempotent `tools/db-sync-local.sh` runner inside a `postgres:17`
+container joined to the compose network (`aramo-singlebox_default`): the box host
+has **no `psql`**, and the `postgres` service hostname only resolves **on** the
+compose network. The repo is mounted so the runner can read
+`libs/*/prisma/migrations/`. `DATABASE_URL` is built from the `.env` parts
+(`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`) exactly as compose builds it
+for the api/auth containers — **read without shell-sourcing so a `$` in the
+password survives verbatim** (a sourced or double-quoted password loses its `$`;
+that gotcha is why the manual recipe single-quotes the URL).
+
+If `deploy/migrate-prod.sh` is unavailable, the proven manual one-liner — note the
+**single-quoted** `DATABASE_URL` (the password's `$`) — is:
+
+```bash
+docker run --rm \
+  --network aramo-singlebox_default \
+  -v /opt/aramo:/repo -w /repo \
+  -e DATABASE_URL='postgresql://aramo:<pw-with-$-single-quoted>@postgres:5432/aramo?schema=public' \
+  postgres:17 \
+  bash tools/db-sync-local.sh           # apply; add --status for a read-only check
 ```
