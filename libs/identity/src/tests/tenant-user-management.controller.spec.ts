@@ -57,6 +57,10 @@ interface Mocks {
     inviteTenantUser: ReturnType<typeof vi.fn>;
     disableTenantUser: ReturnType<typeof vi.fn>;
     assignTenantUserRoles: ReturnType<typeof vi.fn>;
+    enableTenantUser: ReturnType<typeof vi.fn>;
+    revokeTenantInvite: ReturnType<typeof vi.fn>;
+    resendInvitation: ReturnType<typeof vi.fn>;
+    editInvitedUserEmail: ReturnType<typeof vi.fn>;
   };
   audit: { writeEvent: ReturnType<typeof vi.fn> };
   identity: {
@@ -71,6 +75,12 @@ function makeMocks(): Mocks {
     inviteTenantUser: vi.fn(),
     disableTenantUser: vi.fn(),
     assignTenantUserRoles: vi.fn(),
+    enableTenantUser: vi.fn().mockResolvedValue({ membership_id: 'mem-1' }),
+    revokeTenantInvite: vi
+      .fn()
+      .mockResolvedValue({ revoked: true, displayed_status: 'INACTIVE' }),
+    resendInvitation: vi.fn().mockResolvedValue({ sent: 'invitation' }),
+    editInvitedUserEmail: vi.fn().mockResolvedValue({ sent: 'invitation' }),
   };
   const audit = {
     writeEvent: vi.fn().mockResolvedValue(undefined),
@@ -651,5 +661,94 @@ describe('TenantUserManagementController.detail — Cat-5 (b) (f) + scoping', ()
 
     expect(result.is_active).toBe(false);
     expect(result.deactivated_at).toBe(disabledAt);
+  });
+});
+
+// Invite-S3 — the 4 new route delegations (§4). The controller is a thin
+// implicit-tenant edge over the lifecycle service; these prove each route
+// threads authContext.tenant_id (NEVER a body field) + the user_id param, and
+// that edit-email parses its body.
+
+describe('TenantUserManagementController.enable (§4.1)', () => {
+  it('delegates with authContext.tenant_id + the user_id param', async () => {
+    const { ctl, lifecycle } = makeMocks();
+    const result = await ctl.enable(makeAuthContext(), USER_ID, REQUEST_ID);
+    expect(result).toEqual({ membership_id: 'mem-1' });
+    expect(lifecycle.enableTenantUser).toHaveBeenCalledWith({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      request_id: REQUEST_ID,
+    });
+  });
+});
+
+describe('TenantUserManagementController.revoke (§4.2)', () => {
+  it('delegates with the implicit tenant + user_id', async () => {
+    const { ctl, lifecycle } = makeMocks();
+    const result = await ctl.revoke(
+      makeAuthContext(OTHER_TENANT_ID),
+      USER_ID,
+      REQUEST_ID,
+    );
+    expect(result).toEqual({ revoked: true, displayed_status: 'INACTIVE' });
+    expect(lifecycle.revokeTenantInvite).toHaveBeenCalledWith({
+      tenant_id: OTHER_TENANT_ID,
+      user_id: USER_ID,
+      request_id: REQUEST_ID,
+    });
+  });
+});
+
+describe('TenantUserManagementController.resend (§4.3)', () => {
+  it('delegates and returns which email was sent', async () => {
+    const { ctl, lifecycle } = makeMocks();
+    lifecycle.resendInvitation.mockResolvedValue({ sent: 'confirmation' });
+    const result = await ctl.resend(makeAuthContext(), USER_ID, REQUEST_ID);
+    expect(result).toEqual({ sent: 'confirmation' });
+    expect(lifecycle.resendInvitation).toHaveBeenCalledWith({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      request_id: REQUEST_ID,
+    });
+  });
+});
+
+describe('TenantUserManagementController.editEmail (§4.4) — body parsing', () => {
+  it('non-object body → VALIDATION_ERROR (missing_body); saga not called', async () => {
+    const { ctl, lifecycle } = makeMocks();
+    await expect(
+      ctl.editEmail(makeAuthContext(), USER_ID, null, REQUEST_ID),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'missing_body' } },
+    });
+    expect(lifecycle.editInvitedUserEmail).not.toHaveBeenCalled();
+  });
+
+  it('blank email → VALIDATION_ERROR (invalid_email)', async () => {
+    const { ctl } = makeMocks();
+    await expect(
+      ctl.editEmail(makeAuthContext(), USER_ID, { email: '   ' }, REQUEST_ID),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'invalid_email' } },
+    });
+  });
+
+  it('valid email → delegates with trimmed email + implicit tenant', async () => {
+    const { ctl, lifecycle } = makeMocks();
+    const result = await ctl.editEmail(
+      makeAuthContext(),
+      USER_ID,
+      { email: '  fixed@aramo.dev  ' },
+      REQUEST_ID,
+    );
+    expect(result).toEqual({ sent: 'invitation' });
+    expect(lifecycle.editInvitedUserEmail).toHaveBeenCalledWith({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      new_email: 'fixed@aramo.dev',
+      request_id: REQUEST_ID,
+    });
   });
 });

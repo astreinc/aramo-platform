@@ -72,6 +72,11 @@ interface Mocks {
     findMembership: ReturnType<typeof vi.fn>;
     findRoleKeysForMembership: ReturnType<typeof vi.fn>;
     replaceMembershipRoles: ReturnType<typeof vi.fn>;
+    // Invite-S3 — the state-dependent action primitives.
+    findActiveInvitation: ReturnType<typeof vi.fn>;
+    revokeInvitation: ReturnType<typeof vi.fn>;
+    rotateInvitationToken: ReturnType<typeof vi.fn>;
+    updateUserEmail: ReturnType<typeof vi.fn>;
   };
   cognito: {
     adminCreateUser: ReturnType<typeof vi.fn>;
@@ -99,6 +104,12 @@ function makeMocks(): Mocks {
     findMembership: vi.fn(),
     findRoleKeysForMembership: vi.fn(),
     replaceMembershipRoles: vi.fn(),
+    findActiveInvitation: vi.fn(),
+    revokeInvitation: vi.fn().mockResolvedValue({ changed: true }),
+    rotateInvitationToken: vi
+      .fn()
+      .mockResolvedValue({ raw_token: 'rotated-token', expires_at: 'x' }),
+    updateUserEmail: vi.fn().mockResolvedValue(undefined),
   };
   const cognito = {
     adminCreateUser: vi.fn(),
@@ -803,5 +814,331 @@ describe('TenantUserLifecycleService.assignTenantUserRoles — Settings S4 GATE 
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     expect(auditFinancialsGate.isFinancialsAuditEnabled).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Invite-S3 — the state-dependent lifecycle actions (§4). Proves the action
+// gating mirrors the §0 displayed-status model and that each branch reaches
+// the right primitive: enable (re-enable), revoke (invitation revoke +
+// identity-only soft-disable, NO Cognito), resend (3 behaviors), edit-email
+// (FAILED-only guard + uniqueness mapping).
+// ──────────────────────────────────────────────────────────────────────────
+
+function membership(overrides: {
+  is_active: boolean;
+  invite_status: string;
+}): Record<string, unknown> {
+  return {
+    id: MEMBERSHIP_ID,
+    user_id: USER_ID,
+    tenant_id: TENANT_ID,
+    site_id: null,
+    is_active: overrides.is_active,
+    invite_status: overrides.invite_status,
+    joined_at: '2026-06-05T00:00:00.000Z',
+    deactivated_at: null,
+    created_at: '2026-06-05T00:00:00.000Z',
+    updated_at: '2026-06-05T00:00:00.000Z',
+  };
+}
+
+const INVITATION = {
+  id: '01900000-0000-7000-8000-0000000000dd',
+  user_id: USER_ID,
+  tenant_id: TENANT_ID,
+  membership_id: MEMBERSHIP_ID,
+  expires_at: '2026-07-01T00:00:00.000Z',
+  accepted_at: null,
+  revoked_at: null,
+  created_at: '2026-06-05T00:00:00.000Z',
+  updated_at: '2026-06-05T00:00:00.000Z',
+};
+
+describe('TenantUserLifecycleService.enableTenantUser (§4.1)', () => {
+  it('re-enables the membership (identity-only; no Cognito) and returns membership_id', async () => {
+    const { service, identitySvc, cognito } = makeMocks();
+    identitySvc.reEnableMembership.mockResolvedValue({
+      membership_id: MEMBERSHIP_ID,
+    });
+    const result = await service.enableTenantUser({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      request_id: REQUEST_ID,
+    });
+    expect(result).toEqual({ membership_id: MEMBERSHIP_ID });
+    expect(identitySvc.reEnableMembership).toHaveBeenCalledWith({
+      user_id: USER_ID,
+      tenant_id: TENANT_ID,
+    });
+    // Identity-only — no Cognito leg.
+    expect(cognito.adminEnableUser).not.toHaveBeenCalled();
+  });
+
+  it('no membership in this tenant → 404 NOT_FOUND', async () => {
+    const { service, identitySvc } = makeMocks();
+    identitySvc.reEnableMembership.mockResolvedValue(null);
+    await expect(
+      service.enableTenantUser({
+        tenant_id: TENANT_ID,
+        user_id: USER_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  });
+});
+
+describe('TenantUserLifecycleService.revokeTenantInvite (§4.2)', () => {
+  it('INVITED → stamps invitation revoked + soft-disables membership (NO Cognito)', async () => {
+    const { service, identitySvc, cognito } = makeMocks();
+    identitySvc.findMembership.mockResolvedValue(
+      membership({ is_active: true, invite_status: 'INVITED' }),
+    );
+    identitySvc.findActiveInvitation.mockResolvedValue(INVITATION);
+    identitySvc.disableMembership.mockResolvedValue({
+      changed: true,
+      membership_id: MEMBERSHIP_ID,
+    });
+    const result = await service.revokeTenantInvite({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      request_id: REQUEST_ID,
+    });
+    expect(result.revoked).toBe(true);
+    expect(identitySvc.revokeInvitation).toHaveBeenCalledWith({
+      invitation_id: INVITATION.id,
+    });
+    expect(identitySvc.disableMembership).toHaveBeenCalledWith({
+      user_id: USER_ID,
+      tenant_id: TENANT_ID,
+    });
+    // The revoke path NEVER touches Cognito (pending invitee has no sub).
+    expect(cognito.adminDisableUser).not.toHaveBeenCalled();
+  });
+
+  it('ACTIVE → 4xx no_pending_invite (nothing to revoke); no writes', async () => {
+    const { service, identitySvc } = makeMocks();
+    identitySvc.findMembership.mockResolvedValue(
+      membership({ is_active: true, invite_status: 'ACTIVE' }),
+    );
+    await expect(
+      service.revokeTenantInvite({
+        tenant_id: TENANT_ID,
+        user_id: USER_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      statusCode: 400,
+      context: { details: { reason: 'no_pending_invite' } },
+    });
+    expect(identitySvc.revokeInvitation).not.toHaveBeenCalled();
+    expect(identitySvc.disableMembership).not.toHaveBeenCalled();
+  });
+
+  it('INACTIVE → 4xx no_pending_invite', async () => {
+    const { service, identitySvc } = makeMocks();
+    identitySvc.findMembership.mockResolvedValue(
+      membership({ is_active: false, invite_status: 'ACTIVE' }),
+    );
+    await expect(
+      service.revokeTenantInvite({
+        tenant_id: TENANT_ID,
+        user_id: USER_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({
+      context: { details: { reason: 'no_pending_invite' } },
+    });
+  });
+
+  it('no membership → 404 NOT_FOUND', async () => {
+    const { service, identitySvc } = makeMocks();
+    identitySvc.findMembership.mockResolvedValue(null);
+    await expect(
+      service.revokeTenantInvite({
+        tenant_id: TENANT_ID,
+        user_id: USER_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  });
+});
+
+describe('TenantUserLifecycleService.resendInvitation (§4.3 — 3 behaviors)', () => {
+  it('INVITED → token-ROTATE + invitation email', async () => {
+    const { service, identitySvc, mailer } = makeMocks();
+    identitySvc.findMembership.mockResolvedValue(
+      membership({ is_active: true, invite_status: 'INVITED' }),
+    );
+    identitySvc.findActiveInvitation.mockResolvedValue(INVITATION);
+    identitySvc.findUserById.mockResolvedValue(makeUserDto());
+    const result = await service.resendInvitation({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      request_id: REQUEST_ID,
+    });
+    expect(result).toEqual({ sent: 'invitation' });
+    expect(identitySvc.rotateInvitationToken).toHaveBeenCalledWith({
+      invitation_id: INVITATION.id,
+    });
+    // The invitation email carries the freshly-rotated raw token.
+    expect(mailer.send).toHaveBeenCalledTimes(1);
+    const sent = mailer.send.mock.calls[0]![0] as { to: string; html: string };
+    expect(sent.to).toBe(EMAIL);
+    expect(sent.html).toContain('rotated-token');
+  });
+
+  it('ACCEPTED → confirmation email, NO token change', async () => {
+    const { service, identitySvc, mailer } = makeMocks();
+    identitySvc.findMembership.mockResolvedValue(
+      membership({ is_active: true, invite_status: 'ACCEPTED' }),
+    );
+    identitySvc.findUserById.mockResolvedValue(makeUserDto());
+    const result = await service.resendInvitation({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      request_id: REQUEST_ID,
+    });
+    expect(result).toEqual({ sent: 'confirmation' });
+    // No token rotation for an already-accepted invite.
+    expect(identitySvc.rotateInvitationToken).not.toHaveBeenCalled();
+    expect(mailer.send).toHaveBeenCalledTimes(1);
+    // Confirmation email points at sign-in (no accept token).
+    const sent = mailer.send.mock.calls[0]![0] as { html: string };
+    expect(sent.html).not.toContain('rotated-token');
+  });
+
+  it('ACTIVE → 4xx no_pending_invite; no rotate, no email', async () => {
+    const { service, identitySvc, mailer } = makeMocks();
+    identitySvc.findMembership.mockResolvedValue(
+      membership({ is_active: true, invite_status: 'ACTIVE' }),
+    );
+    await expect(
+      service.resendInvitation({
+        tenant_id: TENANT_ID,
+        user_id: USER_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'no_pending_invite' } },
+    });
+    expect(identitySvc.rotateInvitationToken).not.toHaveBeenCalled();
+    expect(mailer.send).not.toHaveBeenCalled();
+  });
+
+  it('INACTIVE → 4xx no_pending_invite', async () => {
+    const { service, identitySvc } = makeMocks();
+    identitySvc.findMembership.mockResolvedValue(
+      membership({ is_active: false, invite_status: 'INVITED' }),
+    );
+    await expect(
+      service.resendInvitation({
+        tenant_id: TENANT_ID,
+        user_id: USER_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({
+      context: { details: { reason: 'no_pending_invite' } },
+    });
+  });
+
+  it('email send failure is best-effort — the rotate still committed, request succeeds', async () => {
+    const { service, identitySvc, mailer } = makeMocks();
+    identitySvc.findMembership.mockResolvedValue(
+      membership({ is_active: true, invite_status: 'INVITED' }),
+    );
+    identitySvc.findActiveInvitation.mockResolvedValue(INVITATION);
+    identitySvc.findUserById.mockResolvedValue(makeUserDto());
+    mailer.send.mockRejectedValue(new Error('SES down'));
+    const result = await service.resendInvitation({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      request_id: REQUEST_ID,
+    });
+    expect(result).toEqual({ sent: 'invitation' });
+    expect(identitySvc.rotateInvitationToken).toHaveBeenCalled();
+  });
+});
+
+describe('TenantUserLifecycleService.editInvitedUserEmail (§4.4 — FAILED-only)', () => {
+  // S3 ships NO FAILED writer, so EVERY current status rejects. The guard is
+  // live now; the mutate path is built + ready for S4.
+  for (const status of [
+    { is_active: true, invite_status: 'INVITED', displayed: 'INVITED' },
+    { is_active: true, invite_status: 'ACCEPTED', displayed: 'ACCEPTED' },
+    { is_active: true, invite_status: 'ACTIVE', displayed: 'ACTIVE' },
+    { is_active: false, invite_status: 'ACTIVE', displayed: 'INACTIVE' },
+  ]) {
+    it(`${status.displayed} → 4xx email_locked; no email mutation`, async () => {
+      const { service, identitySvc } = makeMocks();
+      identitySvc.findMembership.mockResolvedValue(
+        membership({
+          is_active: status.is_active,
+          invite_status: status.invite_status,
+        }),
+      );
+      await expect(
+        service.editInvitedUserEmail({
+          tenant_id: TENANT_ID,
+          user_id: USER_ID,
+          new_email: 'fixed@aramo.dev',
+          request_id: REQUEST_ID,
+        }),
+      ).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        statusCode: 400,
+        context: { details: { reason: 'email_locked' } },
+      });
+      expect(identitySvc.updateUserEmail).not.toHaveBeenCalled();
+    });
+  }
+
+  it('FAILED → mutates email + rotates token + sends invitation (the S4-ready happy path)', async () => {
+    const { service, identitySvc, mailer } = makeMocks();
+    identitySvc.findMembership.mockResolvedValue(
+      membership({ is_active: true, invite_status: 'FAILED' }),
+    );
+    identitySvc.findActiveInvitation.mockResolvedValue(INVITATION);
+    identitySvc.findUserById.mockResolvedValue(makeUserDto());
+    const result = await service.editInvitedUserEmail({
+      tenant_id: TENANT_ID,
+      user_id: USER_ID,
+      new_email: 'fixed@aramo.dev',
+      request_id: REQUEST_ID,
+    });
+    expect(result).toEqual({ sent: 'invitation' });
+    expect(identitySvc.updateUserEmail).toHaveBeenCalledWith({
+      user_id: USER_ID,
+      email: 'fixed@aramo.dev',
+    });
+    expect(identitySvc.rotateInvitationToken).toHaveBeenCalled();
+    // Invitation email goes to the CORRECTED address.
+    const sent = mailer.send.mock.calls[0]![0] as { to: string };
+    expect(sent.to).toBe('fixed@aramo.dev');
+  });
+
+  it('FAILED + email collision (P2002) → 4xx email_in_use; no token rotate', async () => {
+    const { service, identitySvc } = makeMocks();
+    identitySvc.findMembership.mockResolvedValue(
+      membership({ is_active: true, invite_status: 'FAILED' }),
+    );
+    identitySvc.updateUserEmail.mockRejectedValue(
+      Object.assign(new Error('unique'), { code: 'P2002' }),
+    );
+    await expect(
+      service.editInvitedUserEmail({
+        tenant_id: TENANT_ID,
+        user_id: USER_ID,
+        new_email: 'taken@aramo.dev',
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      statusCode: 400,
+      context: { details: { reason: 'email_in_use' } },
+    });
+    expect(identitySvc.rotateInvitationToken).not.toHaveBeenCalled();
   });
 });

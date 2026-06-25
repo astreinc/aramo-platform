@@ -11,6 +11,7 @@ const activeUser: TenantUserView = {
   email: 'active@b.test',
   display_name: 'Active Person',
   is_active: true,
+  invite_status: 'ACTIVE',
   deactivated_at: null,
   site_id: null,
   role_keys: ['recruiter'],
@@ -21,7 +22,31 @@ const disabledUser: TenantUserView = {
   email: 'disabled@b.test',
   display_name: 'Disabled Person',
   is_active: false,
+  invite_status: 'ACTIVE',
   deactivated_at: '2026-01-01T00:00:00.000Z',
+  site_id: null,
+  role_keys: ['recruiter'],
+};
+
+// Invite-S3 — the pending-state fixtures.
+const invitedUser: TenantUserView = {
+  user_id: 'u-invited',
+  email: 'invited@b.test',
+  display_name: 'Invited Person',
+  is_active: true,
+  invite_status: 'INVITED',
+  deactivated_at: null,
+  site_id: null,
+  role_keys: ['recruiter'],
+};
+
+const acceptedUser: TenantUserView = {
+  user_id: 'u-accepted',
+  email: 'accepted@b.test',
+  display_name: 'Accepted Person',
+  is_active: true,
+  invite_status: 'ACCEPTED',
+  deactivated_at: null,
   site_id: null,
   role_keys: ['recruiter'],
 };
@@ -29,6 +54,10 @@ const disabledUser: TenantUserView = {
 function renderView(opts?: {
   users?: readonly TenantUserView[];
   financials?: 'known-on' | 'known-off' | 'unknown';
+  enableFn?: (userId: string) => Promise<{ membership_id: string }>;
+  resendFn?: (
+    userId: string,
+  ) => Promise<{ sent: 'invitation' | 'confirmation' }>;
 }) {
   const items = opts?.users ?? [activeUser, disabledUser];
   const probeFn = vi.fn(async () =>
@@ -46,6 +75,8 @@ function renderView(opts?: {
           fetchUsersFn={fetchUsersFn}
           probeFinancialsFn={probeFn}
           rolesFn={async () => ROLE_FIXTURE}
+          enableFn={opts?.enableFn}
+          resendFn={opts?.resendFn}
         />
       </ToastProvider>,
     ),
@@ -82,15 +113,18 @@ describe('UsersListView', () => {
     expect(mutedRows.length).toBe(1);
   });
 
-  it('disable button is disabled on already-disabled rows', async () => {
+  it('a disabled (INACTIVE) row shows Enable and NOT Disable (§3 matrix)', async () => {
     renderView();
     await waitFor(() =>
       expect(screen.getByText('Disabled Person')).toBeInTheDocument(),
     );
-    const disableBtn = screen.getByTestId(
-      `disable-${disabledUser.user_id}`,
-    ) as HTMLButtonElement;
-    expect(disableBtn.disabled).toBe(true);
+    // INACTIVE → Enable available, Disable absent.
+    expect(
+      screen.getByTestId(`enable-${disabledUser.user_id}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId(`disable-${disabledUser.user_id}`),
+    ).not.toBeInTheDocument();
   });
 
   it('opens the InviteDialog when "Invite user" is clicked', async () => {
@@ -120,7 +154,7 @@ describe('UsersListView', () => {
     );
     fireEvent.click(screen.getByTestId(`disable-${activeUser.user_id}`));
     expect(
-      screen.getByText(/Re-enabling isn.t yet available from this screen/i),
+      screen.getByText(/You can re-enable them later from this screen/i),
     ).toBeInTheDocument();
   });
 
@@ -146,5 +180,103 @@ describe('UsersListView', () => {
       /^Auditor with Financials/,
     ) as HTMLInputElement;
     expect(auditor.disabled).toBe(true);
+  });
+});
+
+// Invite-S3 — the 5-state badge + state-dependent action cell.
+describe('UsersListView — 5-state badge + actions (§2/§3)', () => {
+  it('renders the right badge per displayed status', async () => {
+    renderView({ users: [invitedUser, acceptedUser, activeUser, disabledUser] });
+    await waitFor(() =>
+      expect(screen.getByText('Invited Person')).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByTestId(`user-status-${invitedUser.user_id}`),
+    ).toHaveTextContent(/^Invited$/);
+    expect(
+      screen.getByTestId(`user-status-${acceptedUser.user_id}`),
+    ).toHaveTextContent(/^Accepted$/);
+    expect(
+      screen.getByTestId(`user-status-${activeUser.user_id}`),
+    ).toHaveTextContent(/^Active$/);
+    expect(
+      screen.getByTestId(`user-status-${disabledUser.user_id}`),
+    ).toHaveTextContent(/^Disabled$/);
+  });
+
+  it('INVITED row → Resend + Revoke (no Disable/Enable)', async () => {
+    renderView({ users: [invitedUser] });
+    await waitFor(() =>
+      expect(screen.getByText('Invited Person')).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByTestId(`resend-${invitedUser.user_id}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId(`revoke-${invitedUser.user_id}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId(`disable-${invitedUser.user_id}`),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId(`enable-${invitedUser.user_id}`),
+    ).not.toBeInTheDocument();
+  });
+
+  it('ACTIVE row → Disable only (no Resend/Revoke/Enable)', async () => {
+    renderView({ users: [activeUser] });
+    await waitFor(() =>
+      expect(screen.getByText('Active Person')).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByTestId(`disable-${activeUser.user_id}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId(`resend-${activeUser.user_id}`),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId(`revoke-${activeUser.user_id}`),
+    ).not.toBeInTheDocument();
+  });
+
+  it('Resend (INVITED) calls the endpoint and toasts an invitation', async () => {
+    const resendFn = vi.fn(async () => ({ sent: 'invitation' as const }));
+    renderView({ users: [invitedUser], resendFn });
+    await waitFor(() =>
+      expect(screen.getByText('Invited Person')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId(`resend-${invitedUser.user_id}`));
+    await waitFor(() =>
+      expect(resendFn).toHaveBeenCalledWith(invitedUser.user_id),
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/Invitation re-sent/i)).toBeInTheDocument(),
+    );
+  });
+
+  it('Enable (INACTIVE) calls the endpoint and toasts', async () => {
+    const enableFn = vi.fn(async () => ({ membership_id: 'm1' }));
+    renderView({ users: [disabledUser], enableFn });
+    await waitFor(() =>
+      expect(screen.getByText('Disabled Person')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId(`enable-${disabledUser.user_id}`));
+    await waitFor(() =>
+      expect(enableFn).toHaveBeenCalledWith(disabledUser.user_id),
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/Enabled/i)).toBeInTheDocument(),
+    );
+  });
+
+  it('Revoke (INVITED) opens the confirm dialog', async () => {
+    renderView({ users: [invitedUser] });
+    await waitFor(() =>
+      expect(screen.getByText('Invited Person')).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId(`revoke-${invitedUser.user_id}`));
+    expect(
+      screen.getByText(/Revoke this invitation\?/i),
+    ).toBeInTheDocument();
   });
 });

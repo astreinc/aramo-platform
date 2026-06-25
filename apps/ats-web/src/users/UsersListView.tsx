@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useToast } from '@aramo/fe-foundation';
 
 import {
   Button,
@@ -12,13 +13,24 @@ import {
 } from '../ui';
 
 import { DisableConfirmDialog } from './DisableConfirmDialog';
+import { EditEmailDialog } from './EditEmailDialog';
 import { InviteDialog } from './InviteDialog';
+import { RevokeConfirmDialog } from './RevokeConfirmDialog';
 import { RoleAssignEditor } from './RoleAssignEditor';
+import { messageForLifecycleActionError } from './error-messages';
 import type { TenantRoleCatalogEntry, TenantUserView } from './types';
 import {
+  STATUS_LABEL,
+  STATUS_TONE,
+  actionsForUser,
+  deriveDisplayedStatus,
+} from './user-status';
+import {
+  enableTenantUser,
   fetchPickerRoles,
   fetchTenantUsers,
   probeFinancialsToggle,
+  resendTenantInvitation,
   type FinancialsToggleState,
 } from './users-api';
 
@@ -36,6 +48,9 @@ interface Props {
   // Settings Rebuild D5 — the roles catalog (drives the RolePicker + the role
   // labels in the roster). Sourced from GET /v1/tenant/roles-catalog.
   rolesFn?: () => Promise<readonly TenantRoleCatalogEntry[]>;
+  // Invite-S3 — the inline lifecycle actions (test seams).
+  enableFn?: typeof enableTenantUser;
+  resendFn?: typeof resendTenantInvitation;
 }
 
 type LoadState =
@@ -43,11 +58,15 @@ type LoadState =
   | { status: 'ready'; users: readonly TenantUserView[] }
   | { status: 'error'; message: string };
 
+// Invite-S3 (§0/§2) — the 5-state badge. The displayed status layers the two
+// orthogonal axes (is_active overrides → INACTIVE; else invite_status), mapped
+// to a StatusPill tone via the STATUS_TONE record.
 function StatusBadge({ user }: { user: TenantUserView }) {
+  const displayed = deriveDisplayedStatus(user);
   return (
     <span data-testid={`user-status-${user.user_id}`}>
-      <StatusPill tone={user.is_active ? 'ok' : 'neutral'}>
-        {user.is_active ? 'Active' : 'Disabled'}
+      <StatusPill tone={STATUS_TONE[displayed]}>
+        {STATUS_LABEL[displayed]}
       </StatusPill>
     </span>
   );
@@ -76,10 +95,15 @@ export function UsersListView({
   fetchUsersFn,
   probeFinancialsFn,
   rolesFn,
+  enableFn,
+  resendFn,
 }: Props = {}) {
   const fetchUsers = fetchUsersFn ?? fetchTenantUsers;
   const probe = probeFinancialsFn ?? probeFinancialsToggle;
   const loadRoles = rolesFn ?? fetchPickerRoles;
+  const enable = enableFn ?? enableTenantUser;
+  const resend = resendFn ?? resendTenantInvitation;
+  const toast = useToast();
 
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [financialsToggle, setFinancialsToggle] =
@@ -91,6 +115,13 @@ export function UsersListView({
     null,
   );
   const [editTarget, setEditTarget] = useState<TenantUserView | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<TenantUserView | null>(null);
+  const [editEmailTarget, setEditEmailTarget] = useState<TenantUserView | null>(
+    null,
+  );
+  // Invite-S3 — the in-flight inline action (enable / resend), keyed by
+  // user_id, so a row's buttons disable while its action runs.
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const refresh = () => {
     setState({ status: 'loading' });
@@ -140,6 +171,39 @@ export function UsersListView({
   const roleLabelOf = (key: string): string =>
     roles.find((r) => r.key === key)?.label ?? key;
 
+  // Invite-S3 — the inline (no-dialog) actions: enable + resend. Both are
+  // non-destructive; they run on click, toast, and refresh. The destructive
+  // actions (disable, revoke) and the email edit go through dialogs.
+  const handleEnable = async (u: TenantUserView) => {
+    setBusyId(u.user_id);
+    try {
+      await enable(u.user_id);
+      toast.show(`Enabled ${u.email}.`);
+      refresh();
+    } catch (err: unknown) {
+      toast.show(messageForLifecycleActionError(err).title);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleResend = async (u: TenantUserView) => {
+    setBusyId(u.user_id);
+    try {
+      const { sent } = await resend(u.user_id);
+      toast.show(
+        sent === 'confirmation'
+          ? `Sign-in reminder re-sent to ${u.email}.`
+          : `Invitation re-sent to ${u.email}.`,
+      );
+      refresh();
+    } catch (err: unknown) {
+      toast.show(messageForLifecycleActionError(err).title);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const columns: ReadonlyArray<TableColumn<TenantUserView>> = [
     {
       key: 'name',
@@ -165,29 +229,83 @@ export function UsersListView({
     {
       key: 'actions',
       header: '',
-      width: '220px',
+      width: '300px',
       align: 'right',
-      render: (u) => (
-        <span className="rc-rowactions">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setEditTarget(u)}
-            data-testid={`edit-roles-${u.user_id}`}
-          >
-            Edit roles
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={!u.is_active}
-            onClick={() => setDisableTarget(u)}
-            data-testid={`disable-${u.user_id}`}
-          >
-            Disable
-          </Button>
-        </span>
-      ),
+      // Invite-S3 (§3) — the state-dependent action cell. The matrix
+      // (actionsForUser) drives which buttons render per displayed status;
+      // Edit-roles is always present. A row's actions disable while its inline
+      // action is in flight.
+      render: (u) => {
+        const actions = actionsForUser(u);
+        const busy = busyId === u.user_id;
+        return (
+          <span className="rc-rowactions">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setEditTarget(u)}
+              data-testid={`edit-roles-${u.user_id}`}
+            >
+              Edit roles
+            </Button>
+            {actions.editEmail && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => setEditEmailTarget(u)}
+                data-testid={`edit-email-${u.user_id}`}
+              >
+                Edit email
+              </Button>
+            )}
+            {actions.resend !== null && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => handleResend(u)}
+                data-testid={`resend-${u.user_id}`}
+              >
+                Resend
+              </Button>
+            )}
+            {actions.revoke && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => setRevokeTarget(u)}
+                data-testid={`revoke-${u.user_id}`}
+              >
+                Revoke
+              </Button>
+            )}
+            {actions.enable && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => handleEnable(u)}
+                data-testid={`enable-${u.user_id}`}
+              >
+                Enable
+              </Button>
+            )}
+            {actions.disable && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => setDisableTarget(u)}
+                data-testid={`disable-${u.user_id}`}
+              >
+                Disable
+              </Button>
+            )}
+          </span>
+        );
+      },
     },
   ];
 
@@ -246,6 +364,20 @@ export function UsersListView({
         onSaved={() => refresh()}
         financialsToggle={financialsToggle}
         roles={roles}
+      />
+      <RevokeConfirmDialog
+        user={revokeTarget}
+        onOpenChange={(open) => {
+          if (!open) setRevokeTarget(null);
+        }}
+        onRevoked={() => refresh()}
+      />
+      <EditEmailDialog
+        user={editEmailTarget}
+        onOpenChange={(open) => {
+          if (!open) setEditEmailTarget(null);
+        }}
+        onSaved={() => refresh()}
       />
     </section>
   );

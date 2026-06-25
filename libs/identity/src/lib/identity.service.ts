@@ -4,6 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { IdentityAuditService } from './audit/identity-audit.service.js';
 import type { ExternalIdentityDto } from './dto/external-identity.dto.js';
+import type { InvitationDto } from './dto/invitation.dto.js';
 import type { MembershipDto } from './dto/membership.dto.js';
 import type { UserDto } from './dto/user.dto.js';
 import {
@@ -490,6 +491,42 @@ export class IdentityService {
       invitation_id: args.invitation_id,
       revoked_at: new Date(),
     });
+  }
+
+  // Invite-S3 — resolve the active invitation for a user in a tenant (the S3
+  // admin actions key on user_id, with no invitation_id on the roster row).
+  async findActiveInvitation(args: {
+    user_id: string;
+    tenant_id: string;
+  }): Promise<InvitationDto | null> {
+    return this.identityRepo.findActiveInvitationByUserAndTenant(args);
+  }
+
+  // Invite-S3 (§4.3) — rotate an invitation's token. Mints a fresh token
+  // (hash at rest, raw returned ONCE for the resend email link, mirroring the
+  // create path), resets the 7-day TTL, and clears accepted_at/revoked_at so
+  // the invite is live-pending again. Returns the raw token + the new expiry.
+  async rotateInvitationToken(args: {
+    invitation_id: string;
+  }): Promise<{ raw_token: string; expires_at: string }> {
+    const { raw, hash } = generateInvitationToken();
+    const expires_at = new Date(Date.now() + INVITATION_TTL_MS);
+    await this.identityRepo.rotateInvitationToken({
+      invitation_id: args.invitation_id,
+      token_hash: hash,
+      expires_at,
+    });
+    return { raw_token: raw, expires_at: expires_at.toISOString() };
+  }
+
+  // Invite-S3 (§4.4) — mutate User.email (the FAILED-only edit path). The
+  // FAILED-only precondition is enforced by the caller (lifecycle service); a
+  // @unique collision propagates as the Prisma error the caller maps to a 4xx.
+  async updateUserEmail(args: {
+    user_id: string;
+    email: string;
+  }): Promise<void> {
+    await this.identityRepo.updateUserEmail(args);
   }
 
   // AUTHZ-2: the new-tenant re-invite case (Lead ruling 8 case 3). The

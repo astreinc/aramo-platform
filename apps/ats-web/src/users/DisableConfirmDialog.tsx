@@ -14,11 +14,9 @@ import { disableTenantUser } from './users-api';
 // Wires POST /v1/tenant/users/:user_id/disable. Optional free-text
 // `reason` rides the body.
 //
-// Ruling 1 — disable is one-way from this screen. No tenant-facing
-// re-enable endpoint exists yet (only the saga's Cognito-failure
-// compensation). The copy is HONEST about this: "Re-enabling isn’t
-// yet available from this screen." A re-enable backend PR is an
-// S5b-adjacent follow-up.
+// Invite-S3 (§4.1) — re-enable IS now available (POST :user_id/enable, the
+// INACTIVE-row "Enable" action). The copy reflects that the disable is
+// reversible from this screen.
 //
 // Idempotency: the BE distinguishes `changed: true` (first disable) from
 // `already_disabled: true` (no-op). Both surface as success here — the
@@ -118,8 +116,8 @@ export function DisableConfirmDialog({
         </InlineAlert>
       )}
       <InlineAlert variant="error">
-        Disabling removes their access. Re-enabling isn’t yet available from
-        this screen.
+        Disabling removes their access. You can re-enable them later from this
+        screen.
       </InlineAlert>
       <FormField
         label={<label htmlFor="disable-reason">Reason (optional)</label>}

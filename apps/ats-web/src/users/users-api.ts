@@ -150,6 +150,48 @@ export async function disableTenantUser(args: {
   );
 }
 
+// Invite-S3 (§4.1) — POST /v1/tenant/users/:user_id/enable. Re-enable a
+// soft-disabled (INACTIVE) membership; invite_status untouched.
+export async function enableTenantUser(
+  userId: string,
+): Promise<{ membership_id: string }> {
+  return apiClient.post<{ membership_id: string }>(
+    `${USERS_PATH}/${encodeURIComponent(userId)}/enable`,
+  );
+}
+
+// Invite-S3 (§4.2) — POST /v1/tenant/users/:user_id/revoke. Cancel a pending
+// invite (→ the membership projects to INACTIVE).
+export async function revokeTenantInvitation(
+  userId: string,
+): Promise<{ revoked: boolean; displayed_status: string }> {
+  return apiClient.post<{ revoked: boolean; displayed_status: string }>(
+    `${USERS_PATH}/${encodeURIComponent(userId)}/revoke`,
+  );
+}
+
+// Invite-S3 (§4.3) — POST /v1/tenant/users/:user_id/resend. State-dependent:
+// INVITED/FAILED → invitation email (fresh token); ACCEPTED → confirmation.
+export async function resendTenantInvitation(
+  userId: string,
+): Promise<{ sent: 'invitation' | 'confirmation' }> {
+  return apiClient.post<{ sent: 'invitation' | 'confirmation' }>(
+    `${USERS_PATH}/${encodeURIComponent(userId)}/resend`,
+  );
+}
+
+// Invite-S3 (§4.4) — PATCH /v1/tenant/users/:user_id/email. FAILED-only;
+// changes the email then re-issues a fresh invitation.
+export async function editTenantUserEmail(args: {
+  userId: string;
+  email: string;
+}): Promise<{ sent: 'invitation' }> {
+  return apiClient.patch<{ sent: 'invitation' }>(
+    `${USERS_PATH}/${encodeURIComponent(args.userId)}/email`,
+    { email: args.email },
+  );
+}
+
 // PATCH /v1/tenant/users/:user_id/roles — replace the role-set.
 export async function assignTenantUserRoles(args: {
   userId: string;
