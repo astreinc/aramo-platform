@@ -80,8 +80,9 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // Settings S3b: +2 tenant_user.role_assigned + tenant_user.role_removed (24 -> 26).
   // Settings D3: +1 tenant_profile.updated (26 -> 27).
   // Settings D4: +3 site.created + site.updated + site.deactivated (27 -> 30).
-  it('EVENT_TYPES contains 30 values (7 prereq + 4 session + 2 invitation + 9 D4a team-model + 1 settings + 3 user-lifecycle + 1 tenant-profile + 3 sites) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(30);
+  // Domain-Enforcement P2b: +2 domain.verification.requested + domain.verified (30 -> 32).
+  it('EVENT_TYPES contains 32 values (7 prereq + 4 session + 2 invitation + 9 D4a team-model + 1 settings + 3 user-lifecycle + 1 tenant-profile + 3 sites + 2 domain-verification) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(32);
     const create = vi.fn().mockResolvedValue({ id: 'r' });
     const repo = new IdentityAuditRepository(makePrisma(create));
 
@@ -106,7 +107,8 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // role_assigned + tenant_user.role_removed (19 -> 21).
   // Settings D3 adds tenant_profile.updated (21 -> 22).
   // Settings D4 adds site.created + site.updated + site.deactivated (22 -> 25).
-  it('TENANT_SCOPED_EVENT_TYPES contains all 25 tenant-scoped values', () => {
+  // Domain-Enforcement P2b adds domain.verification.requested + domain.verified (25 -> 27).
+  it('TENANT_SCOPED_EVENT_TYPES contains all 27 tenant-scoped values', () => {
     const expected = [
       'identity.tenant.created',
       'identity.membership.created',
@@ -139,8 +141,11 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       'identity.site.created',
       'identity.site.updated',
       'identity.site.deactivated',
+      // Domain-Enforcement P2b — DNS-TXT verification events.
+      'identity.domain.verification.requested',
+      'identity.domain.verified',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(25);
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(27);
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

@@ -121,6 +121,15 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
         status: 'soon',
         badge: SOON,
       },
+      {
+        // Domain-Enforcement P2b — LIVE: prove DNS ownership of the locked domain.
+        key: 'domain',
+        label: 'Domain verification',
+        icon: <IconShieldCheck />,
+        to: '/admin/settings/domain',
+        match: '/admin/settings/domain',
+        status: 'live',
+      },
     ],
   },
   {

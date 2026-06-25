@@ -46,6 +46,10 @@ const MIGRATION_PATHS = [
   ),
   resolve(
     __dirname,
+    '../../prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql',
+  ),
+  resolve(
+    __dirname,
     '../../prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
   ),
   resolve(
@@ -283,6 +287,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'task:read',
         'task:write',
         'team:manage',
+        'tenant:admin:domain',
         'tenant:admin:profile',
         'tenant:admin:settings',
         'tenant:admin:sites',
@@ -363,7 +368,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   458 → 468 = +10 §5 Auth-Hardening D4b (tenant:user:read:directory ×
       //   the 10 list-view viewers = the 9 + finance; DIRECTORY_SEED_BUNDLES
       //   @ 0x950). The name-resolver (id→name incl. inactive).
-      expect(roleScopes).toBe(468);
+      //   468 → 470 = +2 Domain-Enforcement P2b (tenant:admin:domain ×
+      //   tenant_owner + tenant_admin; DOMAIN_ADMIN_SEED_BUNDLES @ 0x960).
+      expect(roleScopes).toBe(470);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -457,9 +464,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Settings-D2 +1 (audit:read), Settings-D3 +1 (tenant:admin:profile),
       // then Settings-D4 +1 (tenant:admin:sites) = 80, then §5 Auth-Hardening
       // D4 +1 (tenant:user:read:assignable) = 81, then D4b +1
-      // (tenant:user:read:directory) = 82. (Distinct from SEED_SCOPE_KEYS=85,
-      // which counts the 3 platform:* scopes this query excludes.)
-      expect(tenantScopes.length).toBe(82);
+      // (tenant:user:read:directory) = 82, then Domain-Enforcement P2b +1
+      // (tenant:admin:domain) = 83. (Distinct from SEED_SCOPE_KEYS=86, which
+      // counts the 3 platform:* scopes this query excludes.)
+      expect(tenantScopes.length).toBe(83);
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -734,6 +742,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'task:read',
         'task:write',
         'team:manage',
+        'tenant:admin:domain',
         'tenant:admin:profile',
         'tenant:admin:settings',
         'tenant:admin:sites',
@@ -963,6 +972,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'task:read',
         'task:write',
         'team:manage',
+        'tenant:admin:domain',
         'tenant:admin:profile',
         'tenant:admin:settings',
         'tenant:admin:sites',
@@ -1186,6 +1196,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'task:read',
         'task:write',
         'team:manage',
+        'tenant:admin:domain',
         'tenant:admin:profile',
         'tenant:admin:settings',
         'tenant:admin:sites',
@@ -1775,7 +1786,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Settings S3b: +2 tenant_user.role_assigned + tenant_user.role_removed (19 -> 21).
       // Settings D3: +1 tenant_profile.updated (21 -> 22).
       // Settings D4: +3 site.created + site.deactivated + site.updated (22 -> 25).
+      // Domain-Enforcement P2b: +2 domain.verification.requested + domain.verified (25 -> 27).
       expect([...TENANT_SCOPED_EVENT_TYPES].sort()).toEqual([
+        'identity.domain.verification.requested',
+        'identity.domain.verified',
         'identity.invitation.accepted',
         'identity.invitation.created',
         'identity.management_edge.cleared',

@@ -100,6 +100,14 @@ export const EVENT_TYPES = [
   'identity.site.created',
   'identity.site.updated',
   'identity.site.deactivated',
+  // Domain-Enforcement P2b — DNS-TXT ownership verification lifecycle. Emitted
+  // by the DomainVerificationController two-call seam. `requested` on a token
+  // (re)issue (→ PENDING); `verified` ONLY on the transition to VERIFIED (no-op-
+  // no-audit — a re-check that stays PENDING emits nothing). Both tenant-scoped;
+  // subject_id is the tenant_id; payload carries the domain (no token — the token
+  // is public but irrelevant to the audit trail).
+  'identity.domain.verification.requested',
+  'identity.domain.verified',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -148,6 +156,9 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.site.created',
   'identity.site.updated',
   'identity.site.deactivated',
+  // Domain-Enforcement P2b — both verification events carry the writing tenant's id.
+  'identity.domain.verification.requested',
+  'identity.domain.verified',
 ]);
 
 export interface WriteAuditEventInput {

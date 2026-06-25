@@ -42,17 +42,25 @@ const MIGRATION_DIR = resolve(__dirname, '../../prisma/migrations');
 const MIGRATIONS = [
   '20260512000000_init_identity_model',
   '20260625000000_add_tenant_allowed_domain',
+  '20260626000000_add_tenant_domain_verification',
+  // Pre-existing bitrot fix (P2b): the seed writes UserTenantMembership.
+  // invite_status (added by invite-S2), so this migration MUST be applied or
+  // the seed throws "column invite_status does not exist". It was missing from
+  // this curated list since invite-S2 landed (the spec is gated behind
+  // ARAMO_RUN_INTEGRATION, so the bitrot went unnoticed).
+  '20260624000000_add_invitation_and_invite_status',
   '20260601000000_add_site_axis',
   '20260604000000_add_authz_team_models',
   '20260619000000_add_tenant_profile',
   '20260620000000_add_site_hierarchy',
 ];
 
-// The locked catalog shape (Single-Box D2 memory: 85 scopes / 14 roles / 468
-// grants). These are the numbers the scrub must keep byte-identical.
+// The locked catalog shape (86 scopes / 14 roles / 470 grants — Domain-
+// Enforcement P2b added tenant:admin:domain (+1 scope) granted to tenant_owner +
+// tenant_admin (+2 grants)). These are the numbers the scrub must keep byte-identical.
 const CATALOG_ROLE_COUNT = 14;
-const CATALOG_SCOPE_COUNT = 85;
-const CATALOG_ROLE_SCOPE_COUNT = 468;
+const CATALOG_SCOPE_COUNT = 86;
+const CATALOG_ROLE_SCOPE_COUNT = 470;
 
 // Naive DDL splitter — mirrors identity.integration.spec.ts.
 function splitDdl(sql: string): string[] {

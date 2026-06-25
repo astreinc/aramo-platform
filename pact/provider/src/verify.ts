@@ -56,6 +56,11 @@ const IDENTITY_ALLOWED_DOMAIN_MIGRATION = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
 );
+// Domain-Enforcement P2b — additive Tenant domain-verification columns.
+const IDENTITY_DOMAIN_VERIFICATION_MIGRATION = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql',
+);
 // AUTHZ-D4a — the FIRST authz migration into the pact verifier MIGRATIONS
 // set (PL-95 finally exercised). Adds the team-model substrate (3 identity-
 // schema tables: ManagementEdge / Team / TeamMembership) so apps/auth-service
@@ -109,6 +114,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       for (const stmt of [
         ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_ALLOWED_DOMAIN_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_DOMAIN_VERIFICATION_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_D4A_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_PROFILE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
