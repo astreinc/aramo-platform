@@ -34,7 +34,12 @@ sudo systemctl enable --now aramo-singlebox.service        # see §A
 #    container on the compose network (the box host has no psql; the same step
 #    every redeploy runs) and GATES on zero-pending.
 deploy/migrate-prod.sh        # apply every module migration + assert zero-pending
-npm run prisma:seed-astre     # catalog + Astre tenant + purush@astreinc.com (no sub)
+# Then deploy/seed-prod.sh — it (A) regenerates the host-side Prisma client in a
+# node:22-bookworm container (so a migration-added column is in the client) and
+# (B) runs the seed in a node container ON the compose network (the box host has
+# no psql + can't resolve the 'postgres' hostname, so the bare `npm run
+# prisma:seed-astre` CANNOT run here), then ASSERTS the Astre tenant landed.
+deploy/seed-prod.sh           # regen client + seed (catalog + Astre + purush@astreinc.com, no sub) + assert
 
 # 3. Verify the front door, then run the §5 Cognito checklist (§G) — login links
 #    the owner's real Cognito sub to the seeded no-sub owner (reconcile scenario 3).
@@ -305,8 +310,18 @@ cd /opt/aramo && git pull --ff-only   # new code + new migration files
 # schema; recreating now would serve code against a half-migrated DB).
 deploy/migrate-prod.sh
 
-# Only if migrate-prod.sh exited 0 (gate passed): rebuild (if building on the box)
-# + recreate. The launcher restart triggers compose up -d.
+# >>> regen + seed step + ASSERT — NEVER SKIP. <<<
+# (A) Regenerates the HOST-SIDE Prisma client (a migration that added a column
+# leaves the committed client stale → host-side tools fail "Unknown argument
+# <field>"; the api/auth images regenerate on build, so this is only the repo
+# client). (B) Runs the idempotent Astre seed on the compose network (the box
+# host has no psql + can't resolve 'postgres', so a bare `npm run prisma:seed-astre`
+# can't run on the host). Then ASSERTS the Astre tenant + backfilled domain
+# exist. On a failed regen/seed/assert it exits non-zero — STOP: do NOT recreate.
+deploy/seed-prod.sh
+
+# Only if BOTH migrate-prod.sh AND seed-prod.sh exited 0 (gates passed): rebuild
+# (if building on the box) + recreate. The launcher restart triggers compose up -d.
 sudo systemctl restart aramo-singlebox.service
 
 # Smoke (§B step 5 / §G).
@@ -319,6 +334,15 @@ sudo systemctl restart aramo-singlebox.service
 - **NEVER recreate containers if the migration gate fails** (non-zero exit). The
   gate failing means the schema is NOT in sync with the pulled code; proceeding
   ships broken reads. Fix the migration apply first.
+- **NEVER skip the regen + seed step.** Every redeploy runs `deploy/seed-prod.sh`
+  after the migration gate — regen is idempotent and cheap, and a stale host-side
+  client breaks the seed (and any host-side tool) the moment a migration adds a
+  column. The seed itself is idempotent and post-login-safe (upserts; the owner's
+  linked Cognito sub is untouched), so running it every deploy is a no-op when
+  already in sync.
+- **NEVER recreate containers if the seed assertion fails** (non-zero exit). It
+  means the Astre tenant/domain is not confirmed in the DB — fix the regen/seed
+  first.
 
 ### How `deploy/migrate-prod.sh` works (and the manual fallback)
 
@@ -342,4 +366,54 @@ docker run --rm \
   -e DATABASE_URL='postgresql://aramo:<pw-with-$-single-quoted>@postgres:5432/aramo?schema=public' \
   postgres:17 \
   bash tools/db-sync-local.sh           # apply; add --status for a read-only check
+```
+
+### How `deploy/seed-prod.sh` works (and the manual fallback)
+
+It is a **sibling** to `deploy/migrate-prod.sh` and reuses its scaffolding
+(`read_env` / `build_dburl` / the `on_exit` trap / the overridable config /
+the source-guard / the numeric gate). Run it **after** the migration gate, in
+two stages plus an assertion:
+
+- **Stage A — regen (no DB):** `npm run prisma:generate` inside a
+  **`node:22-bookworm`** container with the repo mounted. **NON-SLIM on purpose**
+  — `node:22-slim` omits `openssl`, which Prisma's generator probes (the api
+  Dockerfile `apt-get`s openssl for the same reason). No `--network`, no
+  `DATABASE_URL`: generate reads only the schema files. It relies on the mounted
+  repo's `node_modules` (`jiti` / `.bin/prisma` / `@prisma/adapter-pg`, present
+  from the box `npm ci`) — no `npm ci` needed.
+- **Stage B — seed (DB, on-network):** `npm run prisma:seed-astre` inside the
+  same node image joined to the compose network, with the **$-safe** `DATABASE_URL`
+  (built the same way as migrate-prod.sh). The seed reads plain
+  `process.env['DATABASE_URL']` and is idempotent + post-login-safe.
+- **Assertion (the gate):** a read-only `psql` count (run in `postgres:17`, which
+  has psql — the node image does not) confirming the Astre tenant row exists with
+  its backfilled `allowed_domain`. **Numeric `== 1`** or the deploy aborts.
+
+If `deploy/seed-prod.sh` is unavailable, the proven manual fallback — again with a
+**single-quoted** `DATABASE_URL` — is the three steps it automates:
+
+```bash
+# A. regen the host-side client (no DB, NON-SLIM node for openssl)
+docker run --rm \
+  -v /opt/aramo:/repo -w /repo \
+  node:22-bookworm \
+  npm run prisma:generate
+
+# B. run the seed on the compose network ($-safe DATABASE_URL, single-quoted)
+docker run --rm \
+  --network aramo-singlebox_default \
+  -v /opt/aramo:/repo -w /repo \
+  -e DATABASE_URL='postgresql://aramo:<pw-with-$-single-quoted>@postgres:5432/aramo?schema=public' \
+  node:22-bookworm \
+  npm run prisma:seed-astre
+
+# C. assert the Astre tenant landed (psql lives in postgres:17, NOT the node image)
+docker run --rm \
+  --network aramo-singlebox_default \
+  -e DATABASE_URL='postgresql://aramo:<pw-with-$-single-quoted>@postgres:5432/aramo?schema=public' \
+  postgres:17 \
+  psql 'postgresql://aramo:<pw-with-$-single-quoted>@postgres:5432/aramo' -t -A -c \
+  "SELECT count(*) FROM identity.\"Tenant\" WHERE id='019000a0-0000-7000-8000-000000000001' AND allowed_domain='astreinc.com';"
+  # expect exactly: 1
 ```
