@@ -468,6 +468,14 @@ export class IdentityService {
     return t?.display_name ?? t?.name ?? 'your workspace';
   }
 
+  // Domain-Enforcement P1 — the invite domain-lock loads the tenant's locked
+  // domain through here. null = unset (legacy) or unknown tenant → the lock
+  // allows through (NULL never occurs for a real tenant once provision sets
+  // it + Astre is backfilled).
+  async getTenantAllowedDomain(tenant_id: string): Promise<string | null> {
+    return this.identityRepo.findTenantAllowedDomainById(tenant_id);
+  }
+
   // Invite-S2 — the reconcile-spine ACTIVE-hook (§4.2). Called by the
   // session-orchestrator from its by-sub-MISS branch, immediately after
   // linkExternalIdentity links the sub on first federated login: it flips the

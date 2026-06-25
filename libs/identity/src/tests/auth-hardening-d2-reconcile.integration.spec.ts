@@ -44,6 +44,7 @@ const ROOT = resolve(__dirname, '../../../..');
 
 const MIGRATIONS = [
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
+  'libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
   'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
   'libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
   'libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql',

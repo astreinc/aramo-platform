@@ -41,6 +41,13 @@ export const ASTRE_SEED_IDS = {
 } as const;
 
 export const ASTRE_TENANT_NAME = 'Astre';
+// Domain-Enforcement P1 — Astre's locked domain. The seed BACKFILLS it (the
+// upsert sets it in BOTH create AND update, so an Astre row created before the
+// allowed_domain migration is backfilled on the next idempotent re-seed). The
+// seeded owner purush@astreinc.com matches it (astreinc.com is non-personal),
+// so the existing owner stays valid — no retroactive break. After this runs,
+// NULL allowed_domain does not exist for any real tenant.
+export const ASTRE_ALLOWED_DOMAIN = 'astreinc.com';
 // NORMALIZED form — the reconcile lookup is findUserByEmail(cognito.email
 // .trim().toLowerCase()) with an EXACT match (no stored-side normalization),
 // so the seeded email MUST equal the lowercase+trimmed login email.
@@ -76,11 +83,14 @@ export async function runAstreSeed(
   // 2. The Astre tenant.
   await db.tenant.upsert({
     where: { id: ASTRE_SEED_IDS.tenant },
-    update: {},
+    // Domain-Enforcement P1 — set allowed_domain in UPDATE too so a pre-
+    // migration Astre row is backfilled on re-seed (NULL → astreinc.com).
+    update: { allowed_domain: ASTRE_ALLOWED_DOMAIN },
     create: {
       id: ASTRE_SEED_IDS.tenant,
       name: ASTRE_TENANT_NAME,
       is_active: true,
+      allowed_domain: ASTRE_ALLOWED_DOMAIN,
     },
   });
 

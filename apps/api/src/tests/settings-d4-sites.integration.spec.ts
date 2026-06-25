@@ -42,6 +42,11 @@ const IDENTITY_INIT = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+// Domain-Enforcement P1 — additive Tenant.allowed_domain column.
+const IDENTITY_ALLOWED_DOMAIN = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
+);
 const IDENTITY_INVITATION_MIG = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
@@ -158,6 +163,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const p of [
         ENTITLEMENT_INIT,
         IDENTITY_INIT,
+        IDENTITY_ALLOWED_DOMAIN,
         IDENTITY_INVITATION_MIG,
         IDENTITY_SITE_AXIS,
         IDENTITY_SITE_HIERARCHY,

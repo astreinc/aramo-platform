@@ -66,6 +66,10 @@ interface Mocks {
     // Cognito-first createUserFromInvitation on the tenant invite path).
     createInvitedUserNoSub: ReturnType<typeof vi.fn>;
     getTenantLabel: ReturnType<typeof vi.fn>;
+    // Domain-Enforcement P1 — the invite domain-lock reads the tenant's
+    // allowed_domain through this. Defaults to null (allow-through), so the
+    // pre-P1 invite tests are unaffected.
+    getTenantAllowedDomain: ReturnType<typeof vi.fn>;
     findUserById: ReturnType<typeof vi.fn>;
     disableMembership: ReturnType<typeof vi.fn>;
     reEnableMembership: ReturnType<typeof vi.fn>;
@@ -98,6 +102,7 @@ function makeMocks(): Mocks {
     resolveRoleIdsByKeys: vi.fn(),
     createInvitedUserNoSub: vi.fn(),
     getTenantLabel: vi.fn().mockResolvedValue('Astre'),
+    getTenantAllowedDomain: vi.fn().mockResolvedValue(null),
     findUserById: vi.fn(),
     disableMembership: vi.fn(),
     reEnableMembership: vi.fn(),
@@ -280,6 +285,132 @@ describe('TenantUserLifecycleService.inviteTenantUser', () => {
       invitation_id: 'inv-1',
     });
     expect(mailer.send).toHaveBeenCalled();
+  });
+});
+
+// Domain-Enforcement P1 — the invite domain-lock (§3) + invited-email
+// normalization (§4). The lock loads the tenant's allowed_domain via
+// IdentityService.getTenantAllowedDomain and enforces an EXACT-match (no
+// subdomain/suffix), normalized on both sides. NULL allowed_domain →
+// allow-through. The email is normalized (trim+lowercase) BEFORE the lock,
+// the store (createInvitedUserNoSub.email), and the send (mailer.to).
+describe('TenantUserLifecycleService.inviteTenantUser — Domain-Enforcement P1', () => {
+  function primeHappyCreate(identitySvc: Mocks['identitySvc']): void {
+    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-1']);
+    identitySvc.createInvitedUserNoSub.mockResolvedValue({
+      user: makeUserDto(),
+      membership_id: 'mem-1',
+      invitation_id: 'inv-1',
+      raw_token: 'raw-token-xyz',
+      expires_at: '2026-07-01T00:00:00.000Z',
+    });
+  }
+
+  it('matching domain → invite proceeds (exact match, allowed_domain loaded)', async () => {
+    const { service, identitySvc } = makeMocks();
+    identitySvc.getTenantAllowedDomain.mockResolvedValue('astreinc.com');
+    primeHappyCreate(identitySvc);
+    const result = await service.inviteTenantUser({
+      tenant_id: TENANT_ID,
+      email: 'divya@astreinc.com',
+      display_name: null,
+      role_keys: ['rA'],
+      actor_user_id: ACTOR_ID,
+      request_id: REQUEST_ID,
+    });
+    expect(result.invite_status).toBe('INVITED');
+    expect(identitySvc.getTenantAllowedDomain).toHaveBeenCalledWith(TENANT_ID);
+    expect(identitySvc.createInvitedUserNoSub).toHaveBeenCalled();
+  });
+
+  it('mismatched domain → VALIDATION_ERROR email_domain_mismatch (no create, no email)', async () => {
+    const { service, identitySvc, mailer } = makeMocks();
+    identitySvc.getTenantAllowedDomain.mockResolvedValue('astreinc.com');
+    primeHappyCreate(identitySvc);
+    await expect(
+      service.inviteTenantUser({
+        tenant_id: TENANT_ID,
+        email: 'evil@gmail.com',
+        display_name: null,
+        role_keys: ['rA'],
+        actor_user_id: ACTOR_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      statusCode: 400,
+      context: {
+        details: {
+          reason: 'email_domain_mismatch',
+          allowed_domain: 'astreinc.com',
+          invited_domain: 'gmail.com',
+        },
+      },
+    });
+    expect(identitySvc.createInvitedUserNoSub).not.toHaveBeenCalled();
+    expect(mailer.send).not.toHaveBeenCalled();
+  });
+
+  it('SUBDOMAIN is rejected — exact match only (mail.astreinc.com ≠ astreinc.com)', async () => {
+    const { service, identitySvc } = makeMocks();
+    identitySvc.getTenantAllowedDomain.mockResolvedValue('astreinc.com');
+    primeHappyCreate(identitySvc);
+    await expect(
+      service.inviteTenantUser({
+        tenant_id: TENANT_ID,
+        email: 'user@mail.astreinc.com',
+        display_name: null,
+        role_keys: ['rA'],
+        actor_user_id: ACTOR_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'email_domain_mismatch' } },
+    });
+    expect(identitySvc.createInvitedUserNoSub).not.toHaveBeenCalled();
+  });
+
+  it('NULL allowed_domain → allow-through (no lock, no crash)', async () => {
+    const { service, identitySvc } = makeMocks();
+    identitySvc.getTenantAllowedDomain.mockResolvedValue(null);
+    primeHappyCreate(identitySvc);
+    const result = await service.inviteTenantUser({
+      tenant_id: TENANT_ID,
+      // A domain that would be rejected if a lock were set — proves NULL is
+      // a true allow-through, not just a matching-domain happy path.
+      email: 'anyone@some-other-co.com',
+      display_name: null,
+      role_keys: ['rA'],
+      actor_user_id: ACTOR_ID,
+      request_id: REQUEST_ID,
+    });
+    expect(result.invite_status).toBe('INVITED');
+    expect(identitySvc.createInvitedUserNoSub).toHaveBeenCalled();
+  });
+
+  it('invited email is NORMALIZED (trim+lowercase) on store AND send — closes the mixed-case reconcile bug', async () => {
+    const { service, identitySvc, mailer } = makeMocks();
+    identitySvc.getTenantAllowedDomain.mockResolvedValue('astreinc.com');
+    primeHappyCreate(identitySvc);
+    await service.inviteTenantUser({
+      tenant_id: TENANT_ID,
+      // Mixed-case + surrounding whitespace — the exact shape that used to
+      // be stored verbatim and then fail to reconcile against the lowercased
+      // login email. The domain-lock ALSO must pass on the normalized form.
+      email: '  Divya@AstreInc.com  ',
+      display_name: null,
+      role_keys: ['rA'],
+      actor_user_id: ACTOR_ID,
+      request_id: REQUEST_ID,
+    });
+    // Stored normalized.
+    expect(identitySvc.createInvitedUserNoSub).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'divya@astreinc.com' }),
+    );
+    // Sent to the normalized address.
+    const sent = mailer.send.mock.calls[0]![0] as { to: string };
+    expect(sent.to).toBe('divya@astreinc.com');
   });
 });
 

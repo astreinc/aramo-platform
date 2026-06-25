@@ -39,6 +39,11 @@ const IDENTITY_INIT = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+// Domain-Enforcement P1 — additive Tenant.allowed_domain column.
+const IDENTITY_ALLOWED_DOMAIN = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
+);
 // The site axis adds UserTenantMembership.site_id, which the generated Prisma
 // client SELECTs/INSERTs on every membership op — required for the client to
 // match the DB even though this proof never sets a site.
@@ -80,6 +85,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setup.$connect();
       for (const file of [
         IDENTITY_INIT,
+        IDENTITY_ALLOWED_DOMAIN,
         IDENTITY_SITE_AXIS,
         IDENTITY_PROFILE,
         IDENTITY_INVITATION,

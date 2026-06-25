@@ -4,6 +4,10 @@ import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
 
 import { IdentityService } from '../identity.service.js';
 import type { UserDto } from '../dto/user.dto.js';
+import {
+  extractEmailDomain,
+  normalizeEmail,
+} from '../util/email-domain.js';
 
 import {
   TENANT_COGNITO_PORT,
@@ -150,6 +154,44 @@ export class TenantUserLifecycleService {
       );
     }
 
+    // Domain-Enforcement P1 — normalize the invited email ONCE (trim +
+    // lowercase) and use the normalized form for the domain-lock, the store,
+    // AND the email send. Normalizing on store closes the latent reconcile bug
+    // (a mixed-case invite — `Divya@astreinc.com` — was stored verbatim while
+    // the reconcile spine looks up the lowercased login email, so it could
+    // fail to reconcile). The reconcile spine itself is NOT rewired here.
+    const email = normalizeEmail(args.email);
+
+    // Domain-Enforcement P1 — the invite domain-lock (exact match). Load the
+    // tenant's locked allowed_domain; the invited email's domain MUST equal it
+    // exactly (no subdomain/suffix match — `user@mail.astreinc.com` is REJECTED
+    // when allowed_domain=astreinc.com). NULL allowed_domain (legacy tenant
+    // pre-backfill) → allow-through (no lock); NULL does not occur for a real
+    // tenant once provision sets it + Astre is backfilled. The personal/
+    // disposable blocklist is NOT consulted here — the equality against an
+    // already-non-personal allowed_domain enforces it transitively.
+    const allowed_domain = await this.identitySvc.getTenantAllowedDomain(
+      args.tenant_id,
+    );
+    if (allowed_domain !== null) {
+      const invitedDomain = extractEmailDomain(email);
+      if (invitedDomain !== allowed_domain) {
+        throw new AramoError(
+          'VALIDATION_ERROR',
+          `This email must be on the tenant's domain (${allowed_domain})`,
+          400,
+          {
+            requestId: args.request_id,
+            details: {
+              reason: 'email_domain_mismatch',
+              allowed_domain,
+              invited_domain: invitedDomain,
+            },
+          },
+        );
+      }
+    }
+
     // Step 1 — resolve role keys to ids. resolveRoleIdsByKeys throws
     // VALIDATION_ERROR on unknown keys (existing behavior).
     const role_ids = await this.identitySvc.resolveRoleIdsByKeys(
@@ -159,9 +201,10 @@ export class TenantUserLifecycleService {
     // Step 2 — no-sub identity create + token. The D5 union-non-invertibility
     // gate fires INSIDE createInvitedUserNoSub (REUSED as-is), BEFORE the DB
     // write and BEFORE any audit emission — an invertible bundle never
-    // persists. The membership starts in invite_status INVITED.
+    // persists. The membership starts in invite_status INVITED. The email is
+    // the NORMALIZED form (domain-locked + lowercased above).
     const created = await this.identitySvc.createInvitedUserNoSub({
-      email: args.email,
+      email,
       display_name: args.display_name,
       tenant_id: args.tenant_id,
       role_keys: args.role_keys,
@@ -179,12 +222,12 @@ export class TenantUserLifecycleService {
       const tenantLabel = await this.identitySvc.getTenantLabel(args.tenant_id);
       const { acceptBaseUrl } = loadInviteLinkConfig();
       const acceptUrl = buildAcceptUrl(acceptBaseUrl, created.raw_token);
-      const email = renderInviteEmail({ tenantLabel, acceptUrl });
+      const inviteEmail = renderInviteEmail({ tenantLabel, acceptUrl });
       await this.mailer.send({
-        to: args.email,
-        subject: email.subject,
-        html: email.html,
-        text: email.text,
+        to: email,
+        subject: inviteEmail.subject,
+        html: inviteEmail.html,
+        text: inviteEmail.text,
       });
     } catch (err) {
       this.logger.warn(

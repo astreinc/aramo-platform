@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PrismaService } from '../lib/prisma/prisma.service.js';
+import type { IdentityAuditService } from '../lib/audit/identity-audit.service.js';
 import { TenantRepository } from '../lib/tenant.repository.js';
 import { TenantService } from '../lib/tenant.service.js';
 import type { TenantDto } from '../lib/dto/tenant.dto.js';
@@ -81,5 +82,100 @@ describe('TenantService.getTenantsByUser', () => {
       expect(typeof t.updated_at).toBe('string');
       expect(t).not.toHaveProperty('memberships');
     }
+  });
+});
+
+// Domain-Enforcement P1 — the SERVICE-LAYER reject-personal invariant (§2).
+// provisionTenant derives the owner's domain, rejects a personal/disposable
+// provider, and persists the surviving (business) domain as the tenant's
+// locked allowed_domain. Because the invariant lives in the service method
+// (not the platform-admin controller), EVERY future creation path inherits it.
+describe('TenantService.provisionTenant — Domain-Enforcement P1', () => {
+  const ACTOR_ID = '01900000-0000-7000-8000-0000000000aa';
+
+  function makeService(createdName = 'Acme'): {
+    service: TenantService;
+    createTenant: ReturnType<typeof vi.fn>;
+    writeEvent: ReturnType<typeof vi.fn>;
+  } {
+    const createTenant = vi.fn().mockResolvedValue({
+      id: TENANT_A,
+      name: createdName,
+      is_active: true,
+      created_at: '2026-06-25T00:00:00.000Z',
+      updated_at: '2026-06-25T00:00:00.000Z',
+    } satisfies TenantDto);
+    const repo = {
+      findByNameCaseInsensitive: vi.fn().mockResolvedValue(null),
+      createTenant,
+    } as unknown as TenantRepository;
+    const writeEvent = vi.fn().mockResolvedValue(undefined);
+    const audit = { writeEvent } as unknown as IdentityAuditService;
+    return { service: new TenantService(repo, audit), createTenant, writeEvent };
+  }
+
+  it('PERSONAL owner email (gmail) → VALIDATION_ERROR personal_email_not_allowed; tenant NOT created', async () => {
+    const { service, createTenant } = makeService();
+    await expect(
+      service.provisionTenant({
+        name: 'Acme',
+        owner_email: 'founder@gmail.com',
+        actor_user_id: ACTOR_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      statusCode: 400,
+      context: { details: { reason: 'personal_email_not_allowed', domain: 'gmail.com' } },
+    });
+    expect(createTenant).not.toHaveBeenCalled();
+  });
+
+  it('DISPOSABLE owner email (mailinator) → VALIDATION_ERROR personal_email_not_allowed; tenant NOT created', async () => {
+    const { service, createTenant } = makeService();
+    await expect(
+      service.provisionTenant({
+        name: 'Acme',
+        owner_email: 'throwaway@mailinator.com',
+        actor_user_id: ACTOR_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'personal_email_not_allowed' } },
+    });
+    expect(createTenant).not.toHaveBeenCalled();
+  });
+
+  it('malformed owner email (no domain) → VALIDATION_ERROR invalid_owner_email', async () => {
+    const { service, createTenant } = makeService();
+    await expect(
+      service.provisionTenant({
+        name: 'Acme',
+        owner_email: 'not-an-email',
+        actor_user_id: ACTOR_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'invalid_owner_email' } },
+    });
+    expect(createTenant).not.toHaveBeenCalled();
+  });
+
+  it('BUSINESS owner email → tenant created with allowed_domain set + audit carries it', async () => {
+    const { service, createTenant, writeEvent } = makeService();
+    await service.provisionTenant({
+      name: 'Acme',
+      // Mixed-case to prove the persisted domain is normalized (lowercased).
+      owner_email: 'Owner@Astreinc.com',
+      actor_user_id: ACTOR_ID,
+    });
+    expect(createTenant).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Acme', allowed_domain: 'astreinc.com' }),
+    );
+    expect(writeEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'identity.tenant.created',
+        payload: expect.objectContaining({ allowed_domain: 'astreinc.com' }),
+      }),
+    );
   });
 });

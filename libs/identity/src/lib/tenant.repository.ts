@@ -47,9 +47,22 @@ export class TenantRepository {
     return row === null ? null : toTenantDto(row);
   }
 
-  async createTenant(args: { id: string; name: string }): Promise<TenantDto> {
+  // Domain-Enforcement P1 — allowed_domain is set at creation by
+  // TenantService.provisionTenant (derived from the owner's non-personal
+  // email domain, stored normalized). Optional so legacy/test callers that
+  // do not supply it leave it NULL (the invite domain-lock then allows
+  // through — see TenantUserLifecycleService.inviteTenantUser).
+  async createTenant(args: {
+    id: string;
+    name: string;
+    allowed_domain?: string | null;
+  }): Promise<TenantDto> {
     const row = await this.prisma.tenant.create({
-      data: { id: args.id, name: args.name },
+      data: {
+        id: args.id,
+        name: args.name,
+        allowed_domain: args.allowed_domain ?? null,
+      },
     });
     return toTenantDto(row);
   }

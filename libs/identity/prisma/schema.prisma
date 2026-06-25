@@ -48,6 +48,16 @@ model Tenant {
   created_at   DateTime @default(now()) @db.Timestamptz
   updated_at   DateTime @updatedAt @db.Timestamptz
 
+  // Domain-Enforcement P1 — the one email domain this tenant is locked to
+  // (stored NORMALIZED / lowercased). Nullable because existing tenants
+  // predate it; `required-on-new` is enforced in app code at provision
+  // (TenantService.provisionTenant derives it from the owner's non-personal
+  // domain), NOT at the DB. The invite domain-lock loads this and rejects an
+  // invited email whose domain does not exactly equal it (NULL → allow-
+  // through; the Astre backfill + provision-time set mean NULL never occurs
+  // for a real tenant in practice). Do NOT overload primary_contact_email.
+  allowed_domain         String?
+
   // Settings Rebuild Directive 3 — tenant profile (additive, all nullable so
   // existing tenants keep their pre-D3 name-only semantics). The canonical
   // `name` above stays the workspace identifier; `display_name` is the branding
