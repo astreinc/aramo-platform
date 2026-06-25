@@ -395,6 +395,96 @@ export class TenantUserManagementController {
 
     return result;
   }
+
+  // Invite-S3 (§4.1) — POST /v1/tenant/users/:user_id/enable.
+  //
+  // Re-enable a soft-disabled (INACTIVE) membership → restores is_active=true,
+  // invite_status untouched (the prior lifecycle state is recovered). Route
+  // over the existing identity-only reEnableMembership; idempotent. 404 when
+  // the user has no membership in this tenant (per-tenant isolation).
+  @Post(':user_id/enable')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('tenant:admin:user-manage')
+  async enable(
+    @AuthContext() authContext: AuthContextType,
+    @Param('user_id') userId: string,
+    @RequestId() requestId: string,
+  ): Promise<{ membership_id: string }> {
+    return this.lifecycle.enableTenantUser({
+      tenant_id: authContext.tenant_id,
+      user_id: userId,
+      request_id: requestId,
+    });
+  }
+
+  // Invite-S3 (§4.2) — POST /v1/tenant/users/:user_id/revoke.
+  //
+  // Cancel a still-pending invite (INVITED/ACCEPTED/FAILED): stamps the active
+  // invitation revoked + identity-only soft-disables the membership so it
+  // projects to INACTIVE (non-actionable for invites, reversible via Enable +
+  // Resend). 4xx when there is nothing pending to revoke (ACTIVE/INACTIVE);
+  // 404 when no membership in this tenant.
+  @Post(':user_id/revoke')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('tenant:admin:user-manage')
+  async revoke(
+    @AuthContext() authContext: AuthContextType,
+    @Param('user_id') userId: string,
+    @RequestId() requestId: string,
+  ): Promise<{ revoked: boolean; displayed_status: string }> {
+    return this.lifecycle.revokeTenantInvite({
+      tenant_id: authContext.tenant_id,
+      user_id: userId,
+      request_id: requestId,
+    });
+  }
+
+  // Invite-S3 (§4.3) — POST /v1/tenant/users/:user_id/resend.
+  //
+  // State-dependent (§3): INVITED/FAILED → token-rotate + invitation email;
+  // ACCEPTED → confirmation email (no token change); ACTIVE/INACTIVE → 4xx.
+  // 404 when no membership in this tenant.
+  @Post(':user_id/resend')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('tenant:admin:user-manage')
+  async resend(
+    @AuthContext() authContext: AuthContextType,
+    @Param('user_id') userId: string,
+    @RequestId() requestId: string,
+  ): Promise<{ sent: 'invitation' | 'confirmation' }> {
+    return this.lifecycle.resendInvitation({
+      tenant_id: authContext.tenant_id,
+      user_id: userId,
+      request_id: requestId,
+    });
+  }
+
+  // Invite-S3 (§4.4) — PATCH /v1/tenant/users/:user_id/email.
+  //
+  // FAILED-only: change a failed invite's email (handling the @unique
+  // collision) then re-issue a fresh token + invitation email. Every non-FAILED
+  // status → 4xx (the email is locked once the user is real). In S3 NO status
+  // is FAILED yet, so this rejects every current row; the path is built + ready
+  // for S4's bounce writer.
+  //
+  // Request: { email: string }
+  @Patch(':user_id/email')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('tenant:admin:user-manage')
+  async editEmail(
+    @AuthContext() authContext: AuthContextType,
+    @Param('user_id') userId: string,
+    @Body() body: unknown,
+    @RequestId() requestId: string,
+  ): Promise<{ sent: 'invitation' }> {
+    const email = parseEmailBody(body, requestId);
+    return this.lifecycle.editInvitedUserEmail({
+      tenant_id: authContext.tenant_id,
+      user_id: userId,
+      new_email: email,
+      request_id: requestId,
+    });
+  }
 }
 
 // --- helpers --------------------------------------------------------------
@@ -488,6 +578,26 @@ function parseAssignRolesBody(
     role_keys.push(rk);
   }
   return role_keys;
+}
+
+// Invite-S3 (§4.4) — parse the edit-email body. A non-empty string `email`.
+// The deeper validation (FAILED-only gate, @unique collision) lives in the
+// lifecycle service; this enforces the wire shape.
+function parseEmailBody(body: unknown, requestId: string): string {
+  if (typeof body !== 'object' || body === null) {
+    throw new AramoError('VALIDATION_ERROR', 'request body required', 400, {
+      requestId,
+      details: { reason: 'missing_body' },
+    });
+  }
+  const email = (body as Record<string, unknown>)['email'];
+  if (typeof email !== 'string' || email.trim().length === 0) {
+    throw new AramoError('VALIDATION_ERROR', 'email is required', 400, {
+      requestId,
+      details: { reason: 'invalid_email' },
+    });
+  }
+  return email.trim();
 }
 
 function parseOptionalReason(body: unknown, requestId: string): string | null {

@@ -11,6 +11,7 @@ const fakeUser: TenantUserView = {
   email: 'a@b.test',
   display_name: 'A Person',
   is_active: true,
+  invite_status: 'ACTIVE',
   deactivated_at: null,
   site_id: null,
   role_keys: ['recruiter'],
@@ -35,11 +36,11 @@ function renderDialog(opts?: {
 }
 
 describe('DisableConfirmDialog', () => {
-  it('renders the user name and the honest "not reversible from this screen" copy (ruling 1)', () => {
+  it('renders the user name and the reversible-disable copy (Invite-S3: Enable now exists)', () => {
     renderDialog();
     expect(screen.getByText(/A Person.*lose access/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/Re-enabling isn.t yet available from this screen/i),
+      screen.getByText(/You can re-enable them later from this screen/i),
     ).toBeInTheDocument();
   });
 

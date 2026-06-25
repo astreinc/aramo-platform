@@ -21,6 +21,11 @@ export interface TenantUserView {
   readonly email: string;
   readonly display_name: string | null;
   readonly is_active: boolean;
+  // Invite-S3 (§1 keystone) — the membership's 3-state lifecycle value
+  // (INVITED | ACCEPTED | ACTIVE; FAILED lands in S4). Layered with is_active
+  // to derive the 5-state displayed status (see user-status.ts). Without it
+  // the roster renders a freshly-invited user as green "Active".
+  readonly invite_status: string;
   readonly deactivated_at: string | null;
   readonly site_id: string | null;
   readonly role_keys: readonly string[];

@@ -12,6 +12,7 @@ const baseUser: TenantUserView = {
   email: 'a@b.test',
   display_name: 'A Person',
   is_active: true,
+  invite_status: 'ACTIVE',
   deactivated_at: null,
   site_id: null,
   role_keys: ['recruiter'],

@@ -16,8 +16,10 @@ import {
 import {
   buildAcceptUrl,
   loadInviteLinkConfig,
+  renderAcceptanceEmail,
   renderInviteEmail,
 } from './invite-emails.js';
+import { deriveDisplayedStatus } from './invitation-token.js';
 
 // Settings S4 — the narrow role-key whose grant is policy-gated by the
 // tenant's `audit.financials_enabled` KNOWN_SETTING. Exported as a const
@@ -467,5 +469,342 @@ export class TenantUserLifecycleService {
       added_role_keys,
       removed_role_keys,
     };
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Invite-S3 — the state-dependent lifecycle actions (§4). All keyed by
+  // user_id (implicit-tenant from the controller's AuthContext) and resolve
+  // the active invitation internally (no invitation_id on the roster row).
+  // The action gating mirrors the §3 matrix and reuses the §0 display model
+  // (deriveDisplayedStatus) so backend enforcement and FE rendering agree.
+  // ──────────────────────────────────────────────────────────────────────
+
+  // §4.1 ENABLE — route over the existing identity-only reEnableMembership.
+  // INACTIVE → restores is_active=true (deactivated_at cleared); invite_status
+  // is untouched so the prior lifecycle state is recovered (ACTIVE-disabled →
+  // INACTIVE → ACTIVE; a revoked-then-re-enabled invite → its prior INVITED).
+  // No Cognito leg (the directive's route-only scope; mirrors the existing
+  // identity-only re-enable). Idempotent (re-enabling an active membership is a
+  // no-op). 404 when the user has no membership in this tenant.
+  async enableTenantUser(args: {
+    tenant_id: string;
+    user_id: string;
+    request_id: string;
+  }): Promise<{ membership_id: string }> {
+    const result = await this.identitySvc.reEnableMembership({
+      user_id: args.user_id,
+      tenant_id: args.tenant_id,
+    });
+    if (result === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'membership not found for user in this tenant',
+        404,
+        {
+          requestId: args.request_id,
+          details: { user_id: args.user_id, tenant_id: args.tenant_id },
+        },
+      );
+    }
+    return { membership_id: result.membership_id };
+  }
+
+  // §4.2 REVOKE — cancel a still-pending invite. Two writes, both identity-
+  // only (a pending/accepted invitee has NO Cognito sub to disable, so there
+  // is NO Cognito leg and NO saga): (1) stamp the active invitation's
+  // revoked_at (existing primitive; idempotent — a no-op for an already-
+  // accepted invite); (2) soft-disable the membership so it projects to
+  // INACTIVE (is_active=false OVERRIDES the lifecycle axis per §0). The revoked
+  // invite thus leaves the pending set, renders greyed, and is non-actionable
+  // for invites — reversible via Enable (restores the prior lifecycle) + Resend
+  // (rotates a fresh token). Permitted ONLY when the displayed status is
+  // pending (INVITED/ACCEPTED/FAILED); ACTIVE/INACTIVE → 4xx (nothing to
+  // revoke). 404 when no membership exists in this tenant.
+  async revokeTenantInvite(args: {
+    tenant_id: string;
+    user_id: string;
+    request_id: string;
+  }): Promise<{ revoked: boolean; displayed_status: 'INACTIVE' }> {
+    // Asserts a pending displayed state (INVITED/ACCEPTED/FAILED); ACTIVE /
+    // INACTIVE → 4xx no_pending_invite.
+    await this.requirePendingMembership({ ...args, action: 'revoke' });
+    const invitation = await this.identitySvc.findActiveInvitation({
+      user_id: args.user_id,
+      tenant_id: args.tenant_id,
+    });
+    let revoked = false;
+    if (invitation !== null) {
+      const res = await this.identitySvc.revokeInvitation({
+        invitation_id: invitation.id,
+      });
+      revoked = res.changed;
+    }
+    // Identity-only soft-disable (NO Cognito leg). disableMembership is the
+    // bare repo flip used as the disable-saga's first leg; calling it directly
+    // (not disableTenantUser) skips the Cognito AdminDisableUser the pending
+    // invitee has no user for. is_active=false → the row now projects to the
+    // deterministic post-revoke displayed state: INACTIVE (§0).
+    await this.identitySvc.disableMembership({
+      user_id: args.user_id,
+      tenant_id: args.tenant_id,
+    });
+    return { revoked, displayed_status: 'INACTIVE' };
+  }
+
+  // §4.3 RESEND — state-dependent (3 behaviors per §3):
+  //   INVITED | FAILED → token-ROTATE (fresh token + reset TTL) + invitation
+  //                      email (the accept link carries the new raw token).
+  //   ACCEPTED         → confirmation email only (a first-login reminder; NO
+  //                      token change — acceptance is already done).
+  //   ACTIVE | INACTIVE → 4xx (no pending invite to resend).
+  // The email send is BEST-EFFORT (mirrors invite): the state change (rotate)
+  // already committed, so a transient send failure logs LOUD and the admin can
+  // resend again rather than failing the request.
+  async resendInvitation(args: {
+    tenant_id: string;
+    user_id: string;
+    request_id: string;
+  }): Promise<{ sent: 'invitation' | 'confirmation' }> {
+    const membership = await this.findMembershipOr404(args);
+    const displayed = deriveDisplayedStatus(
+      membership.is_active,
+      membership.invite_status,
+    );
+
+    if (displayed === 'INVITED' || displayed === 'FAILED') {
+      const invitation = await this.resolvePendingInvitationOr404({
+        ...args,
+        action: 'resend',
+      });
+      const { raw_token } = await this.identitySvc.rotateInvitationToken({
+        invitation_id: invitation.id,
+      });
+      await this.sendInvitationEmail({
+        tenant_id: args.tenant_id,
+        raw_token,
+        user_id: args.user_id,
+      });
+      return { sent: 'invitation' };
+    }
+
+    if (displayed === 'ACCEPTED') {
+      await this.sendConfirmationEmail({
+        tenant_id: args.tenant_id,
+        user_id: args.user_id,
+      });
+      return { sent: 'confirmation' };
+    }
+
+    // ACTIVE | INACTIVE — no pending invite.
+    throw new AramoError(
+      'VALIDATION_ERROR',
+      'no pending invitation to resend',
+      400,
+      {
+        requestId: args.request_id,
+        details: { reason: 'no_pending_invite', displayed_status: displayed },
+      },
+    );
+  }
+
+  // §4.4 EDIT EMAIL — FAILED-only. Mutates User.email (write-once until a
+  // bounce makes the invite FAILED), handling the @unique collision, then
+  // re-issues a fresh token + invitation email (Resend-after-edit). Permitted
+  // ONLY when the displayed status is FAILED; every other status → 4xx (the
+  // email is the reconcile identity and is locked once the user is real). In
+  // S3 NO status is FAILED yet (S4 writes it), so this rejects EVERY current
+  // row — the guard is live now; the mutate path is ready for S4.
+  async editInvitedUserEmail(args: {
+    tenant_id: string;
+    user_id: string;
+    new_email: string;
+    request_id: string;
+  }): Promise<{ sent: 'invitation' }> {
+    const membership = await this.findMembershipOr404(args);
+    const displayed = deriveDisplayedStatus(
+      membership.is_active,
+      membership.invite_status,
+    );
+    if (displayed !== 'FAILED') {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'email can only be edited while an invitation has failed',
+        400,
+        {
+          requestId: args.request_id,
+          details: { reason: 'email_locked', displayed_status: displayed },
+        },
+      );
+    }
+
+    // ── S4-ready mutate path (unreachable in S3 — no FAILED writer yet) ──
+    try {
+      await this.identitySvc.updateUserEmail({
+        user_id: args.user_id,
+        email: args.new_email,
+      });
+    } catch (err) {
+      if ((err as { code?: string }).code === 'P2002') {
+        throw new AramoError(
+          'VALIDATION_ERROR',
+          'that email is already in use',
+          400,
+          {
+            requestId: args.request_id,
+            details: { reason: 'email_in_use' },
+          },
+        );
+      }
+      throw err;
+    }
+
+    const invitation = await this.resolvePendingInvitationOr404({
+      ...args,
+      action: 'edit-email',
+    });
+    const { raw_token } = await this.identitySvc.rotateInvitationToken({
+      invitation_id: invitation.id,
+    });
+    await this.sendInvitationEmail({
+      tenant_id: args.tenant_id,
+      to: args.new_email,
+      raw_token,
+      user_id: args.user_id,
+    });
+    return { sent: 'invitation' };
+  }
+
+  // ── shared helpers ────────────────────────────────────────────────────
+
+  private async findMembershipOr404(args: {
+    tenant_id: string;
+    user_id: string;
+    request_id: string;
+  }) {
+    const membership = await this.identitySvc.findMembership({
+      user_id: args.user_id,
+      tenant_id: args.tenant_id,
+    });
+    if (membership === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'membership not found for user in this tenant',
+        404,
+        {
+          requestId: args.request_id,
+          details: { user_id: args.user_id, tenant_id: args.tenant_id },
+        },
+      );
+    }
+    return membership;
+  }
+
+  // Resolve a membership AND assert it is in a pending displayed state
+  // (INVITED/ACCEPTED/FAILED) — the precondition shared by revoke.
+  private async requirePendingMembership(args: {
+    tenant_id: string;
+    user_id: string;
+    request_id: string;
+    action: string;
+  }) {
+    const membership = await this.findMembershipOr404(args);
+    const displayed = deriveDisplayedStatus(
+      membership.is_active,
+      membership.invite_status,
+    );
+    if (
+      displayed !== 'INVITED' &&
+      displayed !== 'ACCEPTED' &&
+      displayed !== 'FAILED'
+    ) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `no pending invitation to ${args.action}`,
+        400,
+        {
+          requestId: args.request_id,
+          details: { reason: 'no_pending_invite', displayed_status: displayed },
+        },
+      );
+    }
+    return membership;
+  }
+
+  private async resolvePendingInvitationOr404(args: {
+    tenant_id: string;
+    user_id: string;
+    request_id: string;
+    action: string;
+  }) {
+    const invitation = await this.identitySvc.findActiveInvitation({
+      user_id: args.user_id,
+      tenant_id: args.tenant_id,
+    });
+    if (invitation === null) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `no pending invitation to ${args.action}`,
+        400,
+        {
+          requestId: args.request_id,
+          details: { reason: 'no_pending_invite' },
+        },
+      );
+    }
+    return invitation;
+  }
+
+  // Invitation (accept-link) email — best-effort (mirrors invite). Resolves the
+  // recipient from the User row so the caller need not thread the email.
+  private async sendInvitationEmail(args: {
+    tenant_id: string;
+    user_id: string;
+    raw_token: string;
+    to?: string;
+  }): Promise<void> {
+    try {
+      const recipient =
+        args.to ?? (await this.identitySvc.findUserById(args.user_id))?.email;
+      if (recipient === undefined || recipient.length === 0) return;
+      const tenantLabel = await this.identitySvc.getTenantLabel(args.tenant_id);
+      const { acceptBaseUrl } = loadInviteLinkConfig();
+      const acceptUrl = buildAcceptUrl(acceptBaseUrl, args.raw_token);
+      const email = renderInviteEmail({ tenantLabel, acceptUrl });
+      await this.mailer.send({
+        to: recipient,
+        subject: email.subject,
+        html: email.html,
+        text: email.text,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `invite resend — invitation email send failed (token rotated; resend available): ${(err as Error).message}`,
+      );
+    }
+  }
+
+  // Confirmation (sign-in reminder) email — best-effort. No token.
+  private async sendConfirmationEmail(args: {
+    tenant_id: string;
+    user_id: string;
+  }): Promise<void> {
+    try {
+      const recipient = (await this.identitySvc.findUserById(args.user_id))
+        ?.email;
+      if (recipient === undefined || recipient.length === 0) return;
+      const tenantLabel = await this.identitySvc.getTenantLabel(args.tenant_id);
+      const { signInUrl } = loadInviteLinkConfig();
+      const email = renderAcceptanceEmail({ tenantLabel, signInUrl });
+      await this.mailer.send({
+        to: recipient,
+        subject: email.subject,
+        html: email.html,
+        text: email.text,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `invite resend — confirmation email send failed: ${(err as Error).message}`,
+      );
+    }
   }
 }

@@ -111,7 +111,7 @@ export function InviteDialog({
         onOpenChange(next);
       }}
       title="Invite a user"
-      description="They’ll receive an email to set their password and finish signup."
+      description="They’ll get an email inviting them to accept and join your workspace, then sign in with their work account."
       size="lg"
       footer={
         <>

@@ -41,6 +41,53 @@ button {
   border-radius: var(--r-sm);
 }
 
+/* Invite-S3 (§5) — the standalone PUBLIC invitation-accept page. Rendered
+ * OUTSIDE the app shell (no session), so it carries its own centered chrome
+ * (the ForbiddenState centered-card pattern) + a minimal Aramo wordmark. */
+.aramo-accept {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-6);
+  background-color: var(--c-bg);
+}
+
+.aramo-accept__inner {
+  width: 100%;
+  max-width: 480px;
+}
+
+.aramo-accept__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+  color: var(--brand);
+}
+
+.aramo-accept__logo {
+  width: 28px;
+  height: 28px;
+}
+
+.aramo-accept__wordmark {
+  font-size: var(--fs-20, 1.25rem);
+  font-weight: 600;
+  color: var(--brand);
+}
+
+.aramo-accept__title {
+  font-size: var(--fs-18, 1.125rem);
+  font-weight: 600;
+  margin: 0 0 var(--sp-2);
+  color: var(--c-text);
+}
+
+.aramo-accept__cta {
+  margin-top: var(--sp-4);
+}
+
 /* R3 Tabs — ats-web-local (ruling 4: hand-built; not in the
  * frozen foundation). Token-based; the active tab is marked by an accent
  * underline. */

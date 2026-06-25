@@ -26,6 +26,37 @@ export function isInviteStatus(value: string): value is InviteStatus {
   return (INVITE_STATUSES as readonly string[]).includes(value);
 }
 
+// Invite-S3 (§0) — the 5-state DISPLAY model. Two orthogonal axes that LAYER:
+//   displayed = (is_active === false) ? INACTIVE : invite_status
+// INACTIVE is the soft-disable projection (is_active=false OVERRIDES the
+// lifecycle field — disabling preserves invite_status so re-enable restores
+// the prior state). FAILED is the NET-NEW 4th invite_status value that S4's
+// bounce-ingestion writes; S3 ships the precedence + renderable branch but NO
+// FAILED writer. This single source is consumed by the lifecycle service's
+// action guards (resend/revoke/edit-email) and mirrored on the FE
+// (users/user-status.ts) so backend gating and frontend rendering agree.
+export const DISPLAYED_STATUSES = [
+  'INVITED',
+  'ACCEPTED',
+  'ACTIVE',
+  'INACTIVE',
+  'FAILED',
+] as const;
+export type DisplayedStatus = (typeof DISPLAYED_STATUSES)[number];
+
+export function deriveDisplayedStatus(
+  is_active: boolean,
+  invite_status: string,
+): DisplayedStatus {
+  if (is_active === false) return 'INACTIVE';
+  if (invite_status === 'INVITED') return 'INVITED';
+  if (invite_status === 'ACCEPTED') return 'ACCEPTED';
+  if (invite_status === 'FAILED') return 'FAILED';
+  // ACTIVE (the column default) and any unknown forward-compat value project
+  // to ACTIVE — an is_active membership with a non-pending lifecycle is active.
+  return 'ACTIVE';
+}
+
 // Hash a raw token for storage / lookup. SHA-256 → base64url, matching the
 // auth_storage refresh-token convention (sha256Base64Url).
 export function hashInvitationToken(raw: string): string {

@@ -17,6 +17,7 @@ import { ContactEditView } from './contacts/ContactEditView';
 import { ContactsListView } from './contacts/ContactsListView';
 import { EngagementDetailView } from './engagement/EngagementDetailView';
 import { IndexRoute } from './dashboard/IndexRoute';
+import { InvitationAcceptPage } from './routes/InvitationAcceptPage';
 import { LoginPage } from './routes/LoginPage';
 import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
@@ -61,6 +62,13 @@ export function App() {
     <ToastProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {/* Invite-S3 (§5) — the PUBLIC invitation-accept page. Top-level,
+            BEFORE the path="/*" catch-all and OUTSIDE RouteGuard (mirrors
+            /login) so it renders session-less. */}
+        <Route
+          path="/invitations/accept"
+          element={<InvitationAcceptPage />}
+        />
         {/* Design-system showcase (Storybook substitute) + the 2A app-shell
             preview. DEV-only: excluded from production builds; no session/data
             required. */}

@@ -157,3 +157,41 @@ export function messageForDisableError(err: unknown): ErrorMessage {
   }
   return { title: err.message };
 }
+
+// Invite-S3 — the shared mapper for the state-dependent lifecycle actions
+// (enable / revoke / resend / edit-email). The backend surfaces a per-reason
+// taxonomy on VALIDATION_ERROR.details.reason; we render an operator message.
+export function messageForLifecycleActionError(err: unknown): ErrorMessage {
+  if (!(err instanceof ApiError)) {
+    return { title: 'Unexpected error. Please try again.' };
+  }
+  const details = err.details ?? {};
+  const reason =
+    typeof details['reason'] === 'string'
+      ? (details['reason'] as string)
+      : null;
+
+  if (reason === 'no_pending_invite') {
+    return {
+      title: 'There’s no pending invitation for this user.',
+      detail: 'The list may be out of date — refresh and try again.',
+    };
+  }
+  if (reason === 'email_locked') {
+    return {
+      title: 'This user’s email can’t be changed.',
+      detail:
+        'The email is only editable while an invitation has failed to deliver.',
+    };
+  }
+  if (reason === 'email_in_use') {
+    return { title: 'That email is already in use by another user.' };
+  }
+  if (reason === 'invalid_email') {
+    return { title: 'Please enter a valid email address.' };
+  }
+  if (err.status === 404) {
+    return { title: 'This user is not part of your tenant.' };
+  }
+  return { title: err.message };
+}

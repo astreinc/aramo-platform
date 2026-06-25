@@ -568,6 +568,61 @@ export class IdentityRepository {
     return row === null ? null : toInvitationDto(row);
   }
 
+  // Invite-S3 — resolve the active invitation for a (user_id, tenant_id) pair.
+  // The S3 admin actions (revoke / resend / edit-email) key on user_id, so the
+  // service must find the invitation WITHOUT an invitation_id on the roster row
+  // (Audit Finding 5). The no-sub invite flow creates exactly one Invitation
+  // per membership and resend ROTATES it in place (UPDATE, not insert), so a
+  // membership has at most one row; the most-recently-created is returned to be
+  // robust against any future multi-row history. Returns null when the user has
+  // no invitation in this tenant (e.g. a seeded ACTIVE owner) — the caller maps
+  // that to a clear 4xx for the resend/revoke "no pending invite" case.
+  async findActiveInvitationByUserAndTenant(args: {
+    user_id: string;
+    tenant_id: string;
+  }): Promise<InvitationDto | null> {
+    const row = await this.prisma.invitation.findFirst({
+      where: { user_id: args.user_id, tenant_id: args.tenant_id },
+      orderBy: { created_at: 'desc' },
+    });
+    return row === null ? null : toInvitationDto(row);
+  }
+
+  // Invite-S3 (§4.3) — rotate an invitation's token IN PLACE. Resend re-issues
+  // a fresh high-entropy token (new token_hash) and resets the TTL; it also
+  // clears accepted_at + revoked_at so the row returns to a clean pending state
+  // (the recovery path: a revoked-then-re-enabled invite, or a FAILED invite
+  // re-sent post-email-edit, becomes a live pending invite again). An UPDATE on
+  // existing columns — no schema change. Returns nothing; the caller already
+  // holds the raw token to email.
+  async rotateInvitationToken(args: {
+    invitation_id: string;
+    token_hash: string;
+    expires_at: Date;
+  }): Promise<void> {
+    await this.prisma.invitation.update({
+      where: { id: args.invitation_id },
+      data: {
+        token_hash: args.token_hash,
+        expires_at: args.expires_at,
+        accepted_at: null,
+        revoked_at: null,
+      },
+    });
+  }
+
+  // Invite-S3 (§4.4) — mutate User.email (write-once at create until the
+  // FAILED-only edit path opens it). The email is the @unique reconcile
+  // identity; a collision with an existing user surfaces as a Prisma P2002
+  // which the lifecycle service maps to a clear 4xx (email_in_use). The caller
+  // (lifecycle service) enforces the FAILED-only precondition BEFORE this runs.
+  async updateUserEmail(args: { user_id: string; email: string }): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: args.user_id },
+      data: { email: args.email },
+    });
+  }
+
   // Invite-S2 — ACCEPT transaction. Stamps the invite's accepted_at (single-
   // use) AND flips the membership INVITED → ACCEPTED, atomically. The
   // membership update is guarded on invite_status='INVITED' so a concurrent
@@ -849,6 +904,12 @@ export interface TenantUserView {
   email: string;
   display_name: string | null;
   is_active: boolean;
+  // Invite-S3 (§1 keystone) — the membership's 3-state lifecycle value
+  // (INVITED | ACCEPTED | ACTIVE; the S4 FAILED value lands later). The FE
+  // layers this with is_active to derive the 5-state displayed status
+  // (deriveDisplayedStatus). Without it the roster renders a freshly-invited
+  // user as "Active".
+  invite_status: string;
   deactivated_at: string | null;
   site_id: string | null;
   role_keys: string[];
@@ -893,6 +954,7 @@ type TenantUserRow = {
   user_id: string;
   site_id: string | null;
   is_active: boolean;
+  invite_status: string;
   deactivated_at: Date | null;
   user: { email: string; display_name: string | null };
   role_assignments: { role: { key: string } }[];
@@ -904,6 +966,7 @@ function toTenantUserView(row: TenantUserRow): TenantUserView {
     email: row.user.email,
     display_name: row.user.display_name,
     is_active: row.is_active,
+    invite_status: row.invite_status,
     deactivated_at:
       row.deactivated_at !== null ? row.deactivated_at.toISOString() : null,
     site_id: row.site_id,
