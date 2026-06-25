@@ -9,6 +9,7 @@ import {
 import {
   IdentityService,
   TenantService,
+  deriveAllowedDomainOrThrow,
 } from '@aramo/identity';
 
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
@@ -103,6 +104,16 @@ export class PlatformInvitationService {
       );
     }
 
+    // 0a-bis. Domain-Enforcement P1 — reject a personal/disposable owner
+    // domain BEFORE the Cognito side-effect. provisionTenant (step 2) is the
+    // authoritative gate and would reject + the saga would AdminDeleteUser-
+    // rollback, but Cognito AdminCreateUser emails a temp-password to the
+    // owner address, so a personal recipient would receive an Aramo invite we
+    // then revoke. This pre-check (the SAME single-source gate provisionTenant
+    // runs) prevents that email entirely — mirrors the 0a name pre-check that
+    // avoids a Cognito side-effect for an obvious conflict.
+    deriveAllowedDomainOrThrow(args.owner_email, 'platform.provision');
+
     // 0b. Resolve role IDs (the Tenant-Owner-first invite hard-fixes
     // the role to 'tenant_owner').
     const role_ids = await this.identitySvc.resolveRoleIdsByKeys([
@@ -147,6 +158,7 @@ export class PlatformInvitationService {
     try {
       const tenant = await this.tenantSvc.provisionTenant({
         name: args.name,
+        owner_email: args.owner_email,
         actor_user_id: args.actor_user_id,
       });
       tenant_id = tenant.id;

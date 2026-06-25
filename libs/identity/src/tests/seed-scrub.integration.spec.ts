@@ -41,6 +41,7 @@ import {
 const MIGRATION_DIR = resolve(__dirname, '../../prisma/migrations');
 const MIGRATIONS = [
   '20260512000000_init_identity_model',
+  '20260625000000_add_tenant_allowed_domain',
   '20260601000000_add_site_axis',
   '20260604000000_add_authz_team_models',
   '20260619000000_add_tenant_profile',

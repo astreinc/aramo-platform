@@ -62,6 +62,12 @@ const IDENTITY_MIGRATION = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+// Domain-Enforcement P1 — additive Tenant.allowed_domain column (provision now
+// derives + persists it; the Prisma client SELECTs it on every Tenant read).
+const IDENTITY_ALLOWED_DOMAIN_MIGRATION = resolve(
+  __dirname,
+  '../../../../libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
+);
 const IDENTITY_INVITATION_MIG = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
@@ -355,6 +361,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setup.$connect();
       for (const stmt of [
         ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_ALLOWED_DOMAIN_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_INVITATION_MIG, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_SITE_AXIS_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_D4A_MIGRATION, 'utf8')),
@@ -508,6 +515,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         where: { id: tenantId },
       });
       expect(tenant?.name).toBe('Acme Corp');
+      // Domain-Enforcement P1 — the owner's (business) domain is derived +
+      // persisted as the tenant's locked allowed_domain (real-graph proof).
+      expect(tenant?.allowed_domain).toBe('acme.corp');
       const owner = await identityPrisma.user.findUnique({
         where: { email: 'owner@acme.corp' },
       });
@@ -526,6 +536,34 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           where: { event_type: 'identity.invitation.created', tenant_id: tenantId },
         });
       expect(invitationAudit).not.toBeNull();
+    });
+
+    // Domain-Enforcement P1 — reject-personal at provision (real-graph proof
+    // of §2). A personal/free owner domain is rejected with a 4xx
+    // VALIDATION_ERROR (reason personal_email_not_allowed) and NO tenant /
+    // Cognito user is created — the pre-Cognito pre-check fires before
+    // AdminCreateUser, so no temp-password email goes to the personal address.
+    it('proof 7 — personal owner email (gmail) is rejected; no tenant, no Cognito', async () => {
+      const token = await platformJwt();
+      cognitoMock.adminCreateUser.mockClear();
+      const res = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          name: 'Personal Co',
+          owner_email: 'founder@gmail.com',
+          owner_display_name: 'Personal Founder',
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details?.reason).toBe('personal_email_not_allowed');
+      // No Cognito side-effect (pre-check ran BEFORE AdminCreateUser).
+      expect(cognitoMock.adminCreateUser).not.toHaveBeenCalled();
+      // No tenant row was created.
+      const leaked = await identityPrisma.tenant.findFirst({
+        where: { name: 'Personal Co' },
+      });
+      expect(leaked).toBeNull();
     });
 
     // -------------------------------------------------------------------

@@ -128,6 +128,19 @@ export class IdentityRepository {
     return row === null ? null : { name: row.name, display_name: row.display_name };
   }
 
+  // Domain-Enforcement P1 — the invite domain-lock reads this. Returns the
+  // tenant's normalized allowed_domain, or null for an unset (legacy) or
+  // unknown tenant (both → allow-through at the lock).
+  async findTenantAllowedDomainById(
+    tenant_id: string,
+  ): Promise<string | null> {
+    const row = await this.prisma.tenant.findUnique({
+      where: { id: tenant_id },
+      select: { allowed_domain: true },
+    });
+    return row?.allowed_domain ?? null;
+  }
+
   async findMembership(args: {
     user_id: string;
     tenant_id: string;

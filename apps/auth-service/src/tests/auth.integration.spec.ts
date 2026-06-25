@@ -48,6 +48,12 @@ const IDENTITY_MIGRATION = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
 );
+// Domain-Enforcement P1 — additive Tenant.allowed_domain column (the Prisma
+// client SELECTs it on every Tenant read, incl. the auth tenant-resolution path).
+const IDENTITY_ALLOWED_DOMAIN_MIGRATION = resolve(
+  __dirname,
+  '../../../../libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
+);
 const IDENTITY_INVITATION_MIG = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
@@ -95,6 +101,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setup.$connect();
       for (const stmt of [
         ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_ALLOWED_DOMAIN_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_INVITATION_MIG, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_SITE_AXIS_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_PROFILE_MIGRATION, 'utf8')),

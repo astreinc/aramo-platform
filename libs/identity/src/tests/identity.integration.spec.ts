@@ -39,6 +39,11 @@ const MIGRATION_PATHS = [
     __dirname,
     '../../prisma/migrations/20260512000000_init_identity_model/migration.sql',
   ),
+  // Domain-Enforcement P1 — additive Tenant.allowed_domain column.
+  resolve(
+    __dirname,
+    '../../prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
+  ),
   resolve(
     __dirname,
     '../../prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',

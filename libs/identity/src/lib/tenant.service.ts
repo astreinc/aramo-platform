@@ -5,6 +5,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { IdentityAuditService } from './audit/identity-audit.service.js';
 import type { TenantDto } from './dto/tenant.dto.js';
 import { TenantRepository } from './tenant.repository.js';
+import { deriveAllowedDomainOrThrow } from './util/email-domain.js';
 
 // TenantService — at AUTHZ-1, this surface was read-only
 // (getTenantsByUser) with the auth-service SessionOrchestrator the only
@@ -44,8 +45,18 @@ export class TenantService {
   // entitlement-tx after the identity write completes. Soft-disable on
   // entitlement-tx failure (Lead ruling 7) is performed via
   // deactivateTenant below.
+  //
+  // Domain-Enforcement P1 (the SERVICE-LAYER invariant — the load-bearing
+  // placement choice): the reject-personal check + allowed_domain derivation
+  // live HERE, not in the platform-admin controller. Every tenant-creation
+  // path calls provisionTenant (today: platform-admin; tomorrow: a self-
+  // service signup), so placing the invariant where the tenant is BORN means
+  // every future caller inherits personal-email rejection + domain-lock with
+  // ZERO new validation logic. The owner's (non-personal) email domain
+  // BECOMES the tenant's locked allowed_domain.
   async provisionTenant(args: {
     name: string;
+    owner_email: string;
     actor_user_id: string;
   }): Promise<TenantDto> {
     const existing = await this.tenantRepo.findByNameCaseInsensitive(args.name);
@@ -60,10 +71,23 @@ export class TenantService {
         },
       );
     }
+
+    // Domain-Enforcement P1 — derive + validate the owner's domain (the
+    // single-source gate; throws 4xx for an empty/personal/disposable domain).
+    // The owner_email is @IsEmail-validated at the platform-admin DTO, but the
+    // service stays authoritative so a future caller (self-service signup)
+    // inherits the invariant. The surviving domain becomes the tenant's locked
+    // allowed_domain (stored normalized).
+    const allowed_domain = deriveAllowedDomainOrThrow(
+      args.owner_email,
+      'provision',
+    );
+
     const tenant_id = uuidv7();
     const tenant = await this.tenantRepo.createTenant({
       id: tenant_id,
       name: args.name,
+      allowed_domain,
     });
     await this.audit.writeEvent({
       event_type: 'identity.tenant.created',
@@ -71,7 +95,11 @@ export class TenantService {
       actor_id: args.actor_user_id,
       tenant_id: tenant.id,
       subject_id: tenant.id,
-      payload: { name: args.name, source: 'platform.provision' },
+      payload: {
+        name: args.name,
+        source: 'platform.provision',
+        allowed_domain,
+      },
     });
     return tenant;
   }

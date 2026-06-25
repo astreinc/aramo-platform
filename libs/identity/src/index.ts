@@ -55,6 +55,16 @@ export {
   CursorDecodeError,
 } from './lib/util/identity-audit-cursor.js';
 export type { IdentityAuditCursorPayload } from './lib/util/identity-audit-cursor.js';
+// Domain-Enforcement P1 — the email-domain primitives. Exported so the
+// platform-admin invitation service can run the SAME reject-personal gate
+// (deriveAllowedDomainOrThrow) as a pre-check BEFORE Cognito AdminCreateUser
+// (the authoritative enforcement still lives in TenantService.provisionTenant).
+export {
+  normalizeEmail,
+  extractEmailDomain,
+  isPersonalOrDisposableDomain,
+  deriveAllowedDomainOrThrow,
+} from './lib/util/email-domain.js';
 // Settings S3a — tenant-user lifecycle public surface. Exports the
 // validator + saga service for testing; the Cognito port token + interface
 // for apps/api to bind a live AWS-SDK adapter. The StubTenantCognitoAdapter
