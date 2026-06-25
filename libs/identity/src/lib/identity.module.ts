@@ -27,6 +27,10 @@ import {
   StubAuditFinancialsGateAdapter,
   type AuditFinancialsGate,
 } from './tenant-user/audit-financials-gate.port.js';
+// Domain-Enforcement P2b — DNS-TXT domain-verification surface + resolver port.
+import { DnsResolverModule } from './dns/dns-resolver.module.js';
+import { DomainVerificationController } from './domain-verification/domain-verification.controller.js';
+import { DomainVerificationService } from './domain-verification/domain-verification.service.js';
 
 // Options for IdentityModule.forRoot — the composition-root entry point.
 // cognitoAdapter is the live TenantCognitoPort implementation (apps/api's
@@ -98,15 +102,28 @@ export interface IdentityModuleOptions {
     // MAILER_PROVIDER at module-binding time (fail-loud on unset); the test
     // env defaults it to 'stub' in vitest.shared.js.
     MailerModule,
+    // Domain-Enforcement P2b — the DNS resolver port (Mailer-shaped static leaf,
+    // no forRoot). Enters ONLY apps/api's graph (via this slim IdentityModule,
+    // imported only by apps/api's forRoot) — the five IdentityCoreModule
+    // importers never see it, so DNS_PROVIDER is required only in apps/api's env
+    // (the test env defaults it to 'stub' in vitest.shared.ts).
+    DnsResolverModule,
   ],
   controllers: [
     // Settings S3a — tenant-tier user lifecycle endpoints (invite + disable +
     // role-assign). The Cognito cross-store reach is via TENANT_COGNITO_PORT;
     // the financials-gate precondition via AUDIT_FINANCIALS_GATE.
     TenantUserManagementController,
+    // Domain-Enforcement P2b — the tenant-admin domain-verification surface
+    // (GET/POST /v1/tenant/domain-verification + /check, tenant:admin:domain).
+    DomainVerificationController,
   ],
   providers: [
     TenantUserLifecycleService,
+    // Domain-Enforcement P2b — the verification orchestration (mint/resolve/
+    // match/transition). Injects TenantRepository (from IdentityCoreModule) +
+    // DNS_RESOLVER_PORT (from DnsResolverModule).
+    DomainVerificationService,
     // Invite-S2 — the public acceptance flow's lifecycle service (exported
     // below so apps/api's PublicInvitationController can inject it).
     InvitationLifecycleService,

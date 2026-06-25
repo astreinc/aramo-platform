@@ -89,6 +89,63 @@ export class TenantRepository {
     const row = await this.prisma.tenant.update({ where: { id }, data: patch });
     return toProfileRow(row);
   }
+
+  // Domain-Enforcement P2b — the DNS-verification read. tenant_id is always the
+  // caller's own (pinned from the JWT at the controller); no cross-tenant path.
+  // Returns null for a missing/unknown tenant. allowed_domain (the P1 column) is
+  // carried alongside the verification state because the record-to-publish is
+  // derived from it.
+  async findDomainVerificationById(
+    id: string,
+  ): Promise<DomainVerificationRow | null> {
+    const row = await this.prisma.tenant.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        allowed_domain: true,
+        domain_verification_status: true,
+        domain_verification_token: true,
+        domain_verified_at: true,
+        domain_token_issued_at: true,
+      },
+    });
+    return row === null ? null : row;
+  }
+
+  // Domain-Enforcement P2b — the DNS-verification write (mint token → PENDING;
+  // check match → VERIFIED). Only the verification columns are touched.
+  async updateDomainVerification(
+    id: string,
+    patch: {
+      domain_verification_status?: string;
+      domain_verification_token?: string | null;
+      domain_verified_at?: Date | null;
+      domain_token_issued_at?: Date | null;
+    },
+  ): Promise<DomainVerificationRow> {
+    const row = await this.prisma.tenant.update({
+      where: { id },
+      data: patch,
+      select: {
+        id: true,
+        allowed_domain: true,
+        domain_verification_status: true,
+        domain_verification_token: true,
+        domain_verified_at: true,
+        domain_token_issued_at: true,
+      },
+    });
+    return row;
+  }
+}
+
+export interface DomainVerificationRow {
+  id: string;
+  allowed_domain: string | null;
+  domain_verification_status: string;
+  domain_verification_token: string | null;
+  domain_verified_at: Date | null;
+  domain_token_issued_at: Date | null;
 }
 
 type TenantRow = {

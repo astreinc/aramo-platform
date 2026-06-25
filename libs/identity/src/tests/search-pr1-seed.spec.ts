@@ -24,8 +24,9 @@ describe('Search PR-1 — scope catalog parity', () => {
     // appended tenant:admin:profile (81→82); the Settings Rebuild D4 appended
     // tenant:admin:sites (82→83).
     // §5 Auth-Hardening D4 appended tenant:user:read:assignable (83→84); D4b
-    // appended tenant:user:read:directory (84→85).
-    expect(SEED_SCOPE_KEYS).toHaveLength(85);
+    // appended tenant:user:read:directory (84→85); Domain-Enforcement P2b
+    // appended tenant:admin:domain (85→86).
+    expect(SEED_SCOPE_KEYS).toHaveLength(86);
   });
 
   it('the 3 NEW per-entity search scopes are in the catalog', () => {

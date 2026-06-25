@@ -177,6 +177,12 @@ export default defineConfig({
     // The mailer's own DI spec save/restores these keys, so it is unaffected.
     env: {
       MAILER_PROVIDER: 'stub',
+      // Domain-Enforcement P2b — DnsResolverModule (wired into IdentityModule,
+      // apps/api graph) binds DNS_RESOLVER_PORT via a factory that fails LOUD if
+      // DNS_PROVIDER is unset. Defaulting it to 'stub' here (one touch) keeps the
+      // integration specs green and preserves fail-loud for real boots (the box
+      // sets DNS_PROVIDER=node). The DNS DI spec save/restores this key.
+      DNS_PROVIDER: 'stub',
     },
     coverage: {
       provider: 'v8',

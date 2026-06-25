@@ -270,6 +270,13 @@ export const SEED_IDS = {
     // renumber): 0xae. Granted via DIRECTORY_SEED_BUNDLES (the 10 list-view
     // viewers; RoleScope 0x950+).
     'tenant:user:read:directory': '01900000-0000-7000-8000-0000000000ae',
+    // Domain-Enforcement P2b — the DNS-TXT domain-verification admin scope
+    // (GET/POST /v1/tenant/domain-verification + /check). DEDICATED (kept
+    // distinct from settings/profile/sites so the admin taxonomy stays
+    // coherent). Next free id after the 0xae directory scope (append-don't-
+    // renumber): 0xaf. Granted via DOMAIN_ADMIN_SEED_BUNDLES (tenant_admin +
+    // tenant_owner; RoleScope 0x960+).
+    'tenant:admin:domain': '01900000-0000-7000-8000-0000000000af',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1603,6 +1610,30 @@ const DIRECTORY_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Domain-Enforcement P2b — tenant:admin:domain grant bundle. DEDICATED scope:
+// tenant:admin:domain → tenant_admin + tenant_owner ONLY (the same admin tier as
+// settings/audit/profile/sites; NOT recruiters). 2 RoleScope rows.
+export const DOMAIN_ADMIN_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_owner', ['tenant:admin:domain']],
+  ['tenant_admin', ['tenant:admin:domain']],
+];
+
+// Deterministic RoleScope row ids for the 2 tenant:admin:domain grants. Disjoint
+// range 0x960+ (the next clear range after DIRECTORY's 0x950..0x959; all prior
+// ranges untouched — append-don't-renumber).
+const DOMAIN_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x960;
+  for (const [role, scopes] of DOMAIN_ADMIN_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -1872,6 +1903,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['audit:read'], 'audit:read', 'Read the tenant audit log (GET /v1/tenant/audit-events) — the keyset-paginated, filterable read over the IdentityAuditEvent trail (who did what, when). Tenant-scoped (never cross-tenant); detail is redacted of values the viewer\'s scopes don\'t permit. Granted to tenant_admin + tenant_owner (the admin/compliance tier; NOT recruiters). NO scope.created audit event (mirrors the Reporting/Engagement/Search/Task/Settings-D1 scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:profile'], 'tenant:admin:profile', 'Read + edit the tenant profile (GET/PATCH /v1/tenant/profile) — the org legal identity (legal/display name, address, tax/registration IDs, primary contact, logo). DEDICATED scope (Lead ruling): kept distinct from tenant:admin:settings so org-legal-identity and app-config stay separable, and the audit trail (identity.tenant_profile.updated) carries a clean per-scope authorization story. Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:sites'], 'tenant:admin:sites', 'Manage sites/branches (CRUD /v1/tenant/sites) — the org STRUCTURE: sub-tenant branch partitions + the parent/child branch hierarchy. DEDICATED scope (Lead ruling): kept distinct from tenant:admin:settings (config) and tenant:admin:profile (legal identity) so the admin taxonomy stays coherent and sites stay separable later. Emits identity.site.created/updated/deactivated (field names only). Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:domain'], 'tenant:admin:domain', 'Prove DNS-TXT ownership of the tenant\'s locked domain (GET/POST /v1/tenant/domain-verification + /check) — request a verification token, publish it in a DNS TXT record, and have Aramo resolve+match it to mark the domain VERIFIED. INFORMATIONAL in P2b (gates nothing — P1\'s invite domain-lock works regardless of verification status). DEDICATED scope: kept distinct from settings/profile/sites so the admin taxonomy stays coherent. Emits identity.domain.verification.requested/verified. Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:user:read:directory'], 'tenant:user:read:directory', 'Resolve user_id → display_name for ANY tenant user INCLUDING inactive/departed (GET /v1/tenant/users/directory). The name-resolution half of the two-jobs split: distinct from tenant:user:read:assignable (the active-only assignable picker) because authorship/ownership/assignee names in list+detail views must still render for departed users (historical integrity). Minimal {user_id, display_name} ONLY — name lookup, NOT a roster, NOT admin data (no email/status/roles/audit). Batch-capable (?user_ids=). Granted to the 10 list-view viewers (the 9 work-assigning roles + finance, who reads the requisition/talent lists). NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:user:read:assignable'], 'tenant:user:read:assignable', 'Read the MINIMAL assignable-user roster (GET /v1/tenant/users/assignable) — id + display_name of ACTIVE tenant members only, for the assign-a-teammate pickers (task / requisition / pod). The recruiter-tier counterpart to tenant:admin:user-manage: it serves a deliberately narrow roster (least-data), NOT the admin UserView (no email/status/roles/audit). The users analogue of company:read for the company-assign picker. Granted to the 9 work-assigning operational roles (the task:read/:write tier: tenant_owner, tenant_admin, account_manager, recruiting_manager, recruiter, lead_recruiter, back_office, delivery_manager, sourcer). NO scope.created audit event (scope-seed precedent).');
 
@@ -2181,6 +2213,24 @@ export async function runIdentitySeed(
       const rsId = DIRECTORY_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`AuthHardening-D4b Directory-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Domain-Enforcement P2b — tenant:admin:domain grants (2 rows; tenant_admin +
+  // tenant_owner). Range 0x960+.
+  for (const [roleKey, scopeKeys] of DOMAIN_ADMIN_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = DOMAIN_ADMIN_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`Domain-Enforcement-P2b Domain-Admin-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

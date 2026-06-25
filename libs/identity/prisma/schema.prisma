@@ -58,6 +58,25 @@ model Tenant {
   // for a real tenant in practice). Do NOT overload primary_contact_email.
   allowed_domain         String?
 
+  // Domain-Enforcement P2b — DNS-TXT ownership verification state (additive).
+  // P1 trusts that the owner's email was on `allowed_domain` (trusted-at-
+  // provision); P2b lets the tenant PROVE it controls that domain by publishing
+  // an Aramo-issued token in a DNS TXT record. These fields are INFORMATIONAL in
+  // P2b (PO ruling (a)) — VERIFIED gates nothing; P1's invite domain-lock works
+  // regardless. Fields-on-Tenant (Audit #2: one-domain-per-tenant → no separate
+  // model). Status is a String + app-guard (DOMAIN_VERIFICATION_STATUSES in
+  // util/domain-verification.ts), NOT a Prisma enum — the invite_status
+  // precedent. The token is stored RAW (NOT hashed): a DNS token is PUBLIC by
+  // design (the tenant publishes it), so it proves DNS control, not secrecy, and
+  // re-checks compare the same token repeatedly. domain_token_issued_at is
+  // recorded for observability only (Lead ruling: NO hard expiry on PENDING —
+  // DNS propagation lag is real). A VERIFIED domain stays VERIFIED even if the
+  // record later disappears (Lead ruling — don't punish transient DNS).
+  domain_verification_status String   @default("UNVERIFIED")
+  domain_verification_token  String?
+  domain_verified_at         DateTime? @db.Timestamptz
+  domain_token_issued_at     DateTime? @db.Timestamptz
+
   // Settings Rebuild Directive 3 — tenant profile (additive, all nullable so
   // existing tenants keep their pre-D3 name-only semantics). The canonical
   // `name` above stays the workspace identifier; `display_name` is the branding

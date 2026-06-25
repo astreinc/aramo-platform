@@ -111,3 +111,22 @@ export {
   StubAuditFinancialsGateAdapter,
 } from './lib/tenant-user/audit-financials-gate.port.js';
 export type { AuditFinancialsGate } from './lib/tenant-user/audit-financials-gate.port.js';
+// Domain-Enforcement P2b — DNS-TXT domain-verification surface + resolver port.
+// DnsResolverModule is wired into IdentityModule; these are exported so apps/api
+// integration specs can prime the StubDnsAdapter (via DNS_RESOLVER_PORT) and
+// assert the verification view/transitions.
+export { DnsResolverModule } from './lib/dns/dns-resolver.module.js';
+export {
+  DNS_RESOLVER_PORT,
+} from './lib/dns/dns-resolver.port.js';
+export type { DnsResolverPort } from './lib/dns/dns-resolver.port.js';
+export { NodeDnsAdapter } from './lib/dns/node-dns.adapter.js';
+export { StubDnsAdapter } from './lib/dns/stub-dns.adapter.js';
+export { DomainVerificationService } from './lib/domain-verification/domain-verification.service.js';
+export type { DomainVerificationView } from './lib/domain-verification/domain-verification.view.js';
+export {
+  DOMAIN_VERIFICATION_STATUSES,
+  isDomainVerificationStatus,
+  generateDomainVerificationToken,
+} from './lib/util/domain-verification.js';
+export type { DomainVerificationStatus } from './lib/util/domain-verification.js';

@@ -224,6 +224,9 @@ export const SEED_SCOPE_KEYS = [
   // for ALL tenant users INCL. inactive/departed (historical integrity), so it
   // is DISTINCT from the active-only assignable picker. Minimal id+display_name.
   'tenant:user:read:directory',         // 10 list-view viewers (the 9 assignable roles + finance, who reads the req/talent lists); name-resolution only
+  // Domain-Enforcement P2b — the DNS-TXT domain-verification admin scope
+  // (GET/POST /v1/tenant/domain-verification + /check).
+  'tenant:admin:domain',                // tenant_admin + tenant_owner (DEDICATED; prove DNS ownership of the locked domain — informational, gates nothing)
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

@@ -45,6 +45,11 @@ const IDENTITY_ALLOWED_DOMAIN = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
 );
+// Domain-Enforcement P2b — additive Tenant domain-verification columns.
+const IDENTITY_DOMAIN_VERIFICATION = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql',
+);
 const IDENTITY_INVITATION_MIG = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
@@ -124,7 +129,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       db = new Client({ connectionString: url });
       await db.connect();
-      for (const p of [ENTITLEMENT_INIT, IDENTITY_INIT, IDENTITY_ALLOWED_DOMAIN, IDENTITY_INVITATION_MIG]) {
+      for (const p of [ENTITLEMENT_INIT, IDENTITY_INIT, IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION, IDENTITY_INVITATION_MIG]) {
         await db.query(readFileSync(p, 'utf8'));
       }
       await db.query(

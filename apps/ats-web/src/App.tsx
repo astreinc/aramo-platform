@@ -41,6 +41,7 @@ import {
   SecuritySection,
 } from './settings/sections/SeamSections';
 import { AuditSection } from './settings/audit/AuditSection';
+import { DomainVerificationSection } from './settings/sections/DomainVerificationSection';
 import { RolesSection } from './settings/roles/RolesSection';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
 import { MyTasksView } from './task/MyTasksView';
@@ -353,6 +354,10 @@ export function App() {
                               <Route
                                 path="settings/security"
                                 element={<SecuritySection />}
+                              />
+                              <Route
+                                path="settings/domain"
+                                element={<DomainVerificationSection />}
                               />
                               <Route
                                 path="settings/portal"
