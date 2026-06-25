@@ -54,3 +54,13 @@ npm run db:sync:local -- --baseline# stamp the current DB state as already-appli
 Part of the local run story (`tools/local-run-link.sh`):
 `nx build` → `tools/local-run-link.sh` (runtime links) → **`db:sync:local`**
 (migrations) → `source .env` → `node dist/apps/api/src/main.js`.
+
+## On the box (prod): the same runner, wrapped + gated
+
+The single-box deploy applies these same migrations via
+**`deploy/migrate-prod.sh`** (a mandatory deploy step, after `git pull`, before
+container recreate). It runs `db:sync:local` inside a `postgres:17` container on
+the compose network (the box host has no `psql`) and then GATES on zero-pending —
+a failed/partial apply aborts the deploy rather than recreating containers against
+a stale schema. See `doc/runbooks/singlebox-ops.md` → "Update / redeploy the
+stack". `db:sync:local` itself is unchanged — the box just wraps it.
