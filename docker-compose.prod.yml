@@ -97,6 +97,10 @@ services:
       # transactional mailer (Email-S1): ses|stub + the fixed SES sender
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS
+      # DNS resolver for domain verification (Domain-Enforcement P2b): node|stub.
+      # REQUIRED — loadDnsConfig fails LOUD if unset (api crash-loops). api-only;
+      # auth-service does not load the DNS module.
+      - DNS_PROVIDER
       # invite links (Invite-S2 / Pattern-2): accept-page + sign-in-page bases
       - INVITE_ACCEPT_URL
       - INVITE_SIGNIN_URL

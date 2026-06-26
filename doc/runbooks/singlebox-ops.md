@@ -344,6 +344,28 @@ sudo systemctl restart aramo-singlebox.service
   means the Astre tenant/domain is not confirmed in the DB — fix the regen/seed
   first.
 
+### Adding a NEW REQUIRED env var (the 3-place checklist)
+
+A new **required** env var (one a fail-loud config loader throws on when unset —
+e.g. `loadDnsConfig` / `loadMailerConfig`) needs **THREE** things to be
+deploy-safe. Miss any one and the container crash-loops on the next recreate:
+
+1. **box `.env`** — the real value set on the box (`/opt/aramo/.env`), and
+   documented in `.env.prod.example` (committed) so the next operator knows it's
+   required.
+2. **`docker-compose.prod.yml` service `environment:` block** — a **bare-name
+   passthrough** entry (`- THE_VAR`) on the service(s) that load the config,
+   **committed to the repo**. Without this, the var lives in the box shell but
+   never reaches the container, so the loader sees it unset and throws.
+3. **container recreated** — `sudo systemctl restart aramo-singlebox.service`
+   (compose `up -d`) so the new env reaches a fresh container.
+
+> Real incident (P2b): `DNS_PROVIDER` was added to the box `.env` (1) and the
+> container was recreated (3), but the compose `environment:` block (2) was never
+> updated **in the repo** — the api crash-looped `env_missing: DNS_PROVIDER`. It
+> was hotfixed directly on the box's compose file, then committed back so box and
+> repo agree. **Always do all three, and commit step 2.**
+
 ### How `deploy/migrate-prod.sh` works (and the manual fallback)
 
 It runs the idempotent `tools/db-sync-local.sh` runner inside a `postgres:17`
