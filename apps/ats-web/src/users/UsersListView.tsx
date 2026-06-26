@@ -6,11 +6,11 @@ import {
   Card,
   DataTable,
   InlineAlert,
-  PageHeader,
   StatusPill,
   Tag,
   type TableColumn,
 } from '../ui';
+import { SettingsSection } from '../settings/components';
 
 import { DisableConfirmDialog } from './DisableConfirmDialog';
 import { EditEmailDialog } from './EditEmailDialog';
@@ -228,7 +228,11 @@ export function UsersListView({
     },
     {
       key: 'actions',
-      header: '',
+      // Lead ruling — a SINGLE right-aligned "Actions" header over the
+      // row-state-dependent affordances (Active: Edit roles · Disable;
+      // Invited/Accepted: Edit roles · Resend · Revoke). One stable column
+      // header, never per-action headers (which can't align to a varying set).
+      header: 'Actions',
       width: '300px',
       align: 'right',
       // Invite-S3 (§3) — the state-dependent action cell. The matrix
@@ -310,21 +314,25 @@ export function UsersListView({
   ];
 
   return (
-    <section className="rc-stack">
-      <PageHeader
-        title="Users"
-        description="Invite, edit roles, and disable users in your tenant."
-      />
-      <div className="rc-formfoot">
-        <span className="rc-muted-line">
-          {state.status === 'ready'
-            ? `${state.users.length} user${state.users.length === 1 ? '' : 's'}`
-            : ''}
-        </span>
+    // Settings Rebuild — Users consumes the SAME shared settings wrapper
+    // (SettingsSection → .set-content: max-width + horizontal padding + page-
+    // header block) as Roles & permissions, so its header/table left edge and
+    // max-width match the other settings surfaces exactly (no bespoke layout).
+    // The Invite action lives in the section head's right-aligned actions slot.
+    <SettingsSection
+      title="Users"
+      description="Invite, edit roles, and disable users in your tenant."
+      actions={
         <Button onClick={() => setInviteOpen(true)} data-testid="open-invite">
           Invite user
         </Button>
-      </div>
+      }
+    >
+      {state.status === 'ready' && (
+        <p className="rc-muted-line" style={{ marginBottom: 14 }}>
+          {`${state.users.length} user${state.users.length === 1 ? '' : 's'}`}
+        </p>
+      )}
       {state.status === 'loading' && (
         <p className="rc-muted-line">Loading users…</p>
       )}
@@ -379,6 +387,6 @@ export function UsersListView({
         }}
         onSaved={() => refresh()}
       />
-    </section>
+    </SettingsSection>
   );
 }
