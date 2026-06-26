@@ -28,8 +28,9 @@ import { RoleBundleValidator } from '../lib/tenant-user/role-bundle-validator.js
 //              stored, raw returned once); NO ExternalIdentity.
 //   ACCEPTED — acceptInvitationByToken validates the raw token by its hash,
 //              stamps accepted_at, flips the membership INVITED → ACCEPTED.
-//   ACTIVE   — activateMembershipsOnLink (the reconcile-spine hook, invoked
-//              here to SIMULATE first federated login) flips ACCEPTED → ACTIVE.
+//   ACTIVE   — activateAcceptedMembershipsOnSession (the single authenticated-
+//              session activation seam, invoked here to SIMULATE a sign-in)
+//              flips ACCEPTED → ACTIVE.
 //
 // Plus the token invariants: hash-at-rest (never the raw token), single-use
 // (a second accept is rejected), expiry enforced, revoke honored.
@@ -210,7 +211,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(row?.accepted_at).not.toBeNull();
     });
 
-    it('ACTIVE — the reconcile-spine hook (simulated first login) flips ACCEPTED → ACTIVE', async () => {
+    it('ACTIVE — the single authenticated-session activation seam flips ACCEPTED → ACTIVE (every login: by-sub HIT and MISS)', async () => {
+      // People&Access activation-on-sign-in fix — the ONE activation seam. It
+      // is called by the session-orchestrator on EVERY authenticated session
+      // (both the by-sub MISS first-login and the by-sub HIT path that was the
+      // bug: a user whose Cognito sub was already linked when they first sign in
+      // after accepting). Strict ACCEPTED → ACTIVE, idempotent.
       const inv = await invite('active-flow@astre.test');
       await svc.acceptInvitationByToken({
         raw_token: inv.raw_token,
@@ -218,16 +224,31 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(await inviteStatus(inv.user_id)).toBe('ACCEPTED');
 
-      // Simulate the by-sub-MISS first login: the session-orchestrator calls
-      // this right after linkExternalIdentity.
-      const res = await svc.activateMembershipsOnLink({ user_id: inv.user_id });
+      const res = await svc.activateAcceptedMembershipsOnSession({
+        user_id: inv.user_id,
+      });
       expect(res.activated).toBe(1);
       expect(await inviteStatus(inv.user_id)).toBe('ACTIVE');
 
-      // Idempotent: a re-run touches nothing (already ACTIVE).
-      const again = await svc.activateMembershipsOnLink({ user_id: inv.user_id });
+      // Idempotent: a re-run (a later session) touches nothing (already ACTIVE).
+      const again = await svc.activateAcceptedMembershipsOnSession({
+        user_id: inv.user_id,
+      });
       expect(again.activated).toBe(0);
       expect(await inviteStatus(inv.user_id)).toBe('ACTIVE');
+    });
+
+    it('NEVER INVITED — the authenticated-session activation does not lift a still-INVITED (un-accepted) membership', async () => {
+      // The Lead-ruled guard: strict ACCEPTED→ACTIVE only. A user who somehow
+      // authenticates before accepting must NOT be auto-activated.
+      const inv = await invite('session-invited@astre.test');
+      expect(await inviteStatus(inv.user_id)).toBe('INVITED');
+
+      const res = await svc.activateAcceptedMembershipsOnSession({
+        user_id: inv.user_id,
+      });
+      expect(res.activated).toBe(0);
+      expect(await inviteStatus(inv.user_id)).toBe('INVITED');
     });
 
     it('TOKEN single-use — a second accept of the same token is rejected (4xx, not 500)', async () => {
