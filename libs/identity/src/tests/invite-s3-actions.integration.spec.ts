@@ -198,8 +198,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await tokenHash(invitation!.id)).toBe(hashAccepted); // unchanged
       expect(await displayedFor(userId)).toBe('ACCEPTED');
 
-      // ── activate (simulate first federated login) → ACTIVE ──
-      await svc.activateMembershipsOnLink({ user_id: userId });
+      // ── activate (simulate sign-in) → ACTIVE ──
+      await svc.activateAcceptedMembershipsOnSession({ user_id: userId });
       expect(await displayedFor(userId)).toBe('ACTIVE');
 
       // ── disable → INACTIVE (is_active overrides) ──

@@ -476,17 +476,18 @@ export class IdentityService {
     return this.identityRepo.findTenantAllowedDomainById(tenant_id);
   }
 
-  // Invite-S2 — the reconcile-spine ACTIVE-hook (§4.2). Called by the
-  // session-orchestrator from its by-sub-MISS branch, immediately after
-  // linkExternalIdentity links the sub on first federated login: it flips the
-  // user's not-yet-ACTIVE memberships (INVITED or ACCEPTED) to ACTIVE. SAFE
-  // BY CONSTRUCTION — the by-sub-MISS branch is structurally unreachable for
-  // an already-active user (their login resolves by-sub HIT and never calls
-  // this), so the proven login path is byte-unchanged. Idempotent.
-  async activateMembershipsOnLink(args: {
+  // People&Access activation-on-sign-in fix — THE SINGLE membership-activation
+  // seam. The session-orchestrator calls this on EVERY authenticated session
+  // (both by-sub HIT and MISS), so a user who reaches first sign-in by-sub HIT
+  // — their Cognito sub was linked before the membership was accepted — is
+  // activated too. It replaces the original link-coupled ACTIVE-hook, which
+  // fired only on the one-time sub-link and so left by-sub-HIT users stuck at
+  // ACCEPTED. Strict + idempotent: ONLY ACCEPTED→ACTIVE on an active
+  // membership; never INVITED, never disabled, never a downgrade.
+  async activateAcceptedMembershipsOnSession(args: {
     user_id: string;
   }): Promise<{ activated: number }> {
-    return this.identityRepo.activateMembershipsForUser(args.user_id);
+    return this.identityRepo.activateAcceptedMembershipsForUser(args.user_id);
   }
 
   // Invite-S2 — admin revoke of a still-pending invite (§4.3 backend method;

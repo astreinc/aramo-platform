@@ -2,6 +2,14 @@
 
 This folder holds the Aramo program's Architecture Decision Records (ADRs). An ADR captures a decision whose rationale must survive Claude Code instance turnover and Lead Engineer rotation. Per `doc/04-risks.md` CX2 (Architectural rationale forgotten), ADRs are the named mitigation mechanism: Charter, Group 2 Baseline, Architecture v2.0, and API Contracts v1.0 preserve the long-term locked specifications, but day-to-day implementation choices that are *consequential but not locked* live here.
 
+## Governing principles (precedence above feature ADRs)
+
+Most ADRs in this folder are *feature/convention* records of equal standing. A small number are **governing principles** — LOCKED, PO-ratified decisions that govern how *every other* decision is scoped. Where a feature ADR's scoping conflicts with a governing principle, the governing principle wins.
+
+| ID | Principle | Status |
+|---|---|---|
+| [0020](0020-build-for-tenant-50-governing-principle.md) | **Build For Tenant #50 (Astre Is The Test Harness)** — scope every capability for the general multi-tenant case, not the Astre-specific one; a new tenant is a data operation, not an engineering one. | LOCKED (PO-ratified) |
+
 ## Format
 
 Every ADR in this folder uses the **Michael Nygard short-ADR template**. Each ADR file declares the following sections:
@@ -36,6 +44,8 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 | [0016](0016-rds-substrate-conventions.md) | RDS Substrate Conventions (VPC + RDS Modules, Per-Env Scope, Secrets Manager Master Password) | Accepted | 2026-05-27 |
 | [0017](0017-rds-disaster-recovery-strategy.md) | RDS Disaster Recovery Strategy (Backup Retention + PITR Configuration, Per-Env Backup Window, M7 Deferrals) | Accepted | 2026-05-27 |
 | [0018](0018-background-jobs-substrate.md) | Background Jobs Substrate (BullMQ Pattern Standardization, 4 Aramo Core Jobs, PL-66 Category 5 Ratification, Deferrals) | Accepted | 2026-05-27 |
+| [0019](0019-manual-recruiter-rating-r10-boundary.md) | Manual Recruiter Rating and the R10 Boundary | **Rejected** | 2026-06-16 |
+| [0020](0020-build-for-tenant-50-governing-principle.md) | **Build For Tenant #50 (Astre Is The Test Harness)** — governing principle (see above) | **Accepted — LOCKED** | 2026-06-26 |
 
 ## When to write an ADR
 

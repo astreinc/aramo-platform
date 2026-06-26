@@ -82,10 +82,11 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
         created_at: '',
         updated_at: '',
       }),
-      // Invite-S2 — the reconcile-spine ACTIVE-hook. Reached ONLY on the
-      // by-sub MISS branch (right after linkExternalIdentity), never on the
-      // by-sub HIT default-success path.
-      activateMembershipsOnLink: vi.fn().mockResolvedValue({ activated: 0 }),
+      // People&Access activation-on-sign-in fix — THE SINGLE membership-
+      // activation seam. Runs on EVERY login (both by-sub HIT and MISS).
+      activateAcceptedMembershipsOnSession: vi
+        .fn()
+        .mockResolvedValue({ activated: 0 }),
     } as unknown as IdentityService,
     tenant: {
       getTenantsByUser: vi.fn().mockResolvedValue([
@@ -335,7 +336,7 @@ describe('SessionOrchestratorService.handleCallback', () => {
         resolveUser: vi.fn().mockResolvedValue(null), // by-sub MISS
         findUserByEmail: vi.fn().mockResolvedValue(existing),
         linkExternalIdentity: linkSpy,
-        activateMembershipsOnLink: vi
+        activateAcceptedMembershipsOnSession: vi
           .fn()
           .mockResolvedValue({ activated: 1 }),
       } as unknown as IdentityService,
@@ -353,10 +354,14 @@ describe('SessionOrchestratorService.handleCallback', () => {
     expect(result.kind).toBe('success');
     // Email matched normalized-exact (lowercased + trimmed).
     expect(mocks.identity.findUserByEmail).toHaveBeenCalledWith('a@b.c');
-    // Invite-S2 — the ACTIVE-hook fired exactly once on this first-login
-    // reconcile, for the just-linked user (INVITED/ACCEPTED → ACTIVE).
-    expect(mocks.identity.activateMembershipsOnLink).toHaveBeenCalledTimes(1);
-    expect(mocks.identity.activateMembershipsOnLink).toHaveBeenCalledWith({
+    // The single activation seam fired exactly once on this first-login
+    // reconcile, for the just-linked user (ACCEPTED → ACTIVE).
+    expect(
+      mocks.identity.activateAcceptedMembershipsOnSession,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.identity.activateAcceptedMembershipsOnSession,
+    ).toHaveBeenCalledWith({
       user_id: USER_ID,
     });
     // The link wires to the existing user with the federated sub.
@@ -490,17 +495,21 @@ describe('SessionOrchestratorService.handleCallback', () => {
 });
 
 // =============================================================================
-// Invite-S2 (Pattern-2) — the reconcile-spine ACTIVE-hook SAFETY GUARD (§8.8).
+// Invite-S2 (Pattern-2) — the reconcile-spine SUB-LINK SAFETY GUARD (§8.8),
+// updated by the People&Access activation-on-sign-in fix.
 //
 // THE NON-NEGOTIABLE REGRESSION GUARD: an already-ACTIVE user's login is the
-// proven path. The ACTIVE-hook (activateMembershipsOnLink) lives INSIDE the
-// by-sub-MISS branch, structurally unreachable for an already-active user
-// whose login resolves by-sub HIT. This proves the by-sub-HIT path is
-// BYTE-UNCHANGED: no membership state write, no reconcile link, no extra audit
-// — the hook never fires.
+// proven path. The SUB-LINK machinery (findUserByEmail / linkExternalIdentity /
+// external_identity.linked audit) lives INSIDE the by-sub-MISS branch,
+// structurally unreachable for a user whose login resolves by-sub HIT — that
+// branch stays dormant. The membership-activation seam, by contrast, is SINGLE
+// and common to BOTH paths: activateAcceptedMembershipsOnSession runs on the
+// HIT path too — idempotently (a no-op for an already-ACTIVE membership) —
+// because the old link-coupled hook's MISS-only placement was the very bug
+// that left by-sub-HIT users stuck at ACCEPTED.
 // =============================================================================
-describe('SessionOrchestratorService — Invite-S2 ACTIVE-hook safety (by-sub HIT path byte-unchanged)', () => {
-  it('already-ACTIVE user (by-sub HIT) → ACTIVE-hook NEVER fires; no reconcile link; no extra writes', async () => {
+describe('SessionOrchestratorService — Invite-S2 sub-link safety + activation-on-sign-in (by-sub HIT path)', () => {
+  it('already-ACTIVE user (by-sub HIT) → sub-link hook NEVER fires; strict session activation fires idempotently', async () => {
     // The default mock resolves the user by sub (HIT) — the existing-user
     // login path. This is the path the whole product runs on today.
     const mocks = makeMocks();
@@ -517,15 +526,9 @@ describe('SessionOrchestratorService — Invite-S2 ACTIVE-hook safety (by-sub HI
 
     expect(result.kind).toBe('success');
 
-    // THE LOAD-BEARING GUARD: the ACTIVE-hook did NOT fire on the by-sub HIT
-    // path. An already-active user's membership state is never touched.
-    expect(mocks.identity.activateMembershipsOnLink).not.toHaveBeenCalled();
-
-    // And the rest of the reconcile machinery stayed dormant too — proving
-    // the path is byte-identical to pre-S2:
-    //   - no reconcile-by-email lookup,
-    //   - no sub re-link,
-    //   - no external_identity.linked audit (only the normal session.issued).
+    // THE LOAD-BEARING GUARD: the by-sub-MISS sub-link machinery stayed dormant
+    // on the HIT path — no reconcile-by-email lookup, no sub re-link, no
+    // external_identity.linked audit.
     expect(mocks.identity.findUserByEmail).not.toHaveBeenCalled();
     expect(mocks.identity.linkExternalIdentity).not.toHaveBeenCalled();
     expect(mocks.audit.writeGlobalEvent).not.toHaveBeenCalledWith(
@@ -533,13 +536,24 @@ describe('SessionOrchestratorService — Invite-S2 ACTIVE-hook safety (by-sub HI
         event_type: 'identity.external_identity.linked',
       }),
     );
+
+    // THE FIX: the strict authenticated-session activation DOES run on the HIT
+    // path, exactly once, for the resolved user — this is what activates a user
+    // whose sub was linked before their membership was accepted. Idempotent:
+    // for an already-ACTIVE membership the repo updateMany matches nothing.
+    expect(
+      mocks.identity.activateAcceptedMembershipsOnSession,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.identity.activateAcceptedMembershipsOnSession,
+    ).toHaveBeenCalledWith({ user_id: USER_ID });
   });
 
-  it('first-login reconcile (by-sub MISS + email match) → ACTIVE-hook fires exactly once for the linked user', async () => {
-    // The complement: on the by-sub MISS branch the hook DOES fire — exactly
-    // once, after the sub-link, for the just-matched user. (The success-path
-    // detail is already covered by the reconcile test above; here we isolate
-    // the hook's once-only firing + ordering relative to the link.)
+  it('first-login reconcile (by-sub MISS + email match) → the single activation seam fires once, after the sub-link', async () => {
+    // The complement: on the by-sub MISS branch the SAME single seam fires —
+    // exactly once, AFTER the sub-link, for the just-matched user. This proves
+    // there is one activation path (not a MISS-only hook plus a HIT-only call)
+    // and that ACTIVE follows the link, never before it.
     const existing = {
       id: USER_ID,
       email: 'a@b.c',
@@ -571,7 +585,7 @@ describe('SessionOrchestratorService — Invite-S2 ACTIVE-hook safety (by-sub HI
         resolveUser: vi.fn().mockResolvedValue(null), // by-sub MISS
         findUserByEmail: vi.fn().mockResolvedValue(existing),
         linkExternalIdentity: linkSpy,
-        activateMembershipsOnLink: activateSpy,
+        activateAcceptedMembershipsOnSession: activateSpy,
       } as unknown as IdentityService,
     });
     const svc = makeService(mocks);
@@ -588,7 +602,7 @@ describe('SessionOrchestratorService — Invite-S2 ACTIVE-hook safety (by-sub HI
     expect(result.kind).toBe('success');
     expect(activateSpy).toHaveBeenCalledTimes(1);
     expect(activateSpy).toHaveBeenCalledWith({ user_id: USER_ID });
-    // The hook fires AFTER the sub-link (ACTIVE follows the link, never before).
+    // The seam fires AFTER the sub-link (ACTIVE follows the link, never before).
     expect(order).toEqual(['link', 'activate']);
   });
 });
