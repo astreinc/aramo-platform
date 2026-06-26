@@ -40,6 +40,7 @@ import { TenantSettingsController } from './controllers/tenant-settings.controll
 import { AssignableUsersController } from './controllers/assignable-users.controller.js';
 import { MeController } from './controllers/me.controller.js';
 import { PublicInvitationController } from './controllers/public-invitation.controller.js';
+import { PublicTenantCertController } from './controllers/public-tenant-cert.controller.js';
 import { CompensationFieldMaskInterceptor } from './interceptors/compensation-field-mask.interceptor.js';
 import { TalentRecordEnrichmentInterceptor } from './talent-enrichment/talent-record-enrichment.interceptor.js';
 import { TalentRecordEnrichmentService } from './talent-enrichment/talent-record-enrichment.service.js';
@@ -327,6 +328,12 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // has no session yet; authority is the single-use token in the body.
     // Delegates to InvitationLifecycleService (exported by IdentityModule).
     PublicInvitationController,
+    // Subdomain-Identity Directive A — the PUBLIC (un-guarded) cert-eligibility
+    // ask-endpoint (GET /v1/tenants/cert-eligible?domain=). Caddy's on-demand
+    // TLS calls it before issuing a per-host cert; 200 iff a real active tenant
+    // owns the host's slug, 404 otherwise. No JwtAuthGuard — Caddy calls it
+    // pre-TLS, before any session exists. Delegates to TenantService.
+    PublicTenantCertController,
   ],
   providers: [
     // AUTHZ-D4b Gate 6 — register the VisibilityInterceptor as a global

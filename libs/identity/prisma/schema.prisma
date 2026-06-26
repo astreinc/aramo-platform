@@ -58,6 +58,22 @@ model Tenant {
   // for a real tenant in practice). Do NOT overload primary_contact_email.
   allowed_domain         String?
 
+  // Subdomain-Identity Directive A — the tenant's subdomain label (the `slug`
+  // in <slug>.aramo.ai). The SINGLE SOURCE OF TRUTH for "is this a valid
+  // subdomain": the public ask-endpoint (cert-eligibility) looks a host up by
+  // this column, so inserting a Tenant row with a slug is what makes that
+  // subdomain resolve + cert-eligible — onboarding is a DATA op, not an infra
+  // op. UNIQUE (globally — unlike allowed_domain, two tenants cannot share a
+  // subdomain; a nullable @unique permits many NULL legacy rows in Postgres).
+  // Nullable for backfill-safety (existing tenants predate it; Astre is
+  // backfilled to 'astre' via the idempotent seed). Stored lowercase + DNS-safe
+  // (^[a-z0-9]([a-z0-9-]*[a-z0-9])?$), enforced in app code at provision
+  // (deriveSlugOrThrow — mirrors allowed_domain's service-layer placement so
+  // every creation path inherits the invariant), NOT at the DB. Directive A is
+  // RESOLUTION + cert-eligibility only; the host→tenant IdP routing that also
+  // reads this column is Directive B.
+  slug                   String?  @unique
+
   // Domain-Enforcement P2b — DNS-TXT ownership verification state (additive).
   // P1 trusts that the owner's email was on `allowed_domain` (trusted-at-
   // provision); P2b lets the tenant PROVE it controls that domain by publishing

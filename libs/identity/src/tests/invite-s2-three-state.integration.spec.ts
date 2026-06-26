@@ -49,6 +49,10 @@ const IDENTITY_DOMAIN_VERIFICATION = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql',
 );
+const IDENTITY_SLUG = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql',
+);
 // The site axis adds UserTenantMembership.site_id, which the generated Prisma
 // client SELECTs/INSERTs on every membership op — required for the client to
 // match the DB even though this proof never sets a site.
@@ -90,7 +94,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setup.$connect();
       for (const file of [
         IDENTITY_INIT,
-        IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION,
+        IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG,
         IDENTITY_SITE_AXIS,
         IDENTITY_PROFILE,
         IDENTITY_INVITATION,

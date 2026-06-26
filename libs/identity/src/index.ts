@@ -65,6 +65,16 @@ export {
   isPersonalOrDisposableDomain,
   deriveAllowedDomainOrThrow,
 } from './lib/util/email-domain.js';
+// Subdomain-Identity Directive A — the subdomain-slug primitives. Exported so
+// apps/api's public cert-eligibility ask-endpoint can extract the slug from the
+// inbound host (extractTenantSlugFromHost) and so the slug validator
+// (deriveSlugOrThrow) is testable; the authoritative provision-time enforcement
+// lives in TenantService.provisionTenant.
+export {
+  normalizeSlug,
+  deriveSlugOrThrow,
+  extractTenantSlugFromHost,
+} from './lib/util/tenant-slug.js';
 // Settings S3a — tenant-user lifecycle public surface. Exports the
 // validator + saga service for testing; the Cognito port token + interface
 // for apps/api to bind a live AWS-SDK adapter. The StubTenantCognitoAdapter

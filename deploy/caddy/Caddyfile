@@ -1,4 +1,4 @@
-# Aramo — Single-Box prod front-door (Directive 1).
+# Aramo — Single-Box prod front-door (Directive 1 + Subdomain-Identity A).
 #
 # One origin, path-routed: Caddy serves the ats-web static SPA at / and
 # reverse-proxies the API surfaces to the container-internal backends. Because
@@ -7,24 +7,56 @@
 # build-time-URL problem entirely; the FE's ApiClient already defaults to an
 # empty base, see libs/fe-foundation/src/api/client.ts).
 #
-# TLS is parameterized by two env vars (set in docker-compose.prod.yml from the
-# real .env; see .env.prod.example) so the SAME Caddyfile runs both locally and
-# on the box:
+# TLS is parameterized by env vars (set in docker-compose.prod.yml from the real
+# .env; see .env.prod.example) so the SAME Caddyfile runs both locally and on the
+# box:
 #   CADDY_SITE_ADDRESS — the address Caddy answers on.
 #       local : localhost        (no public domain needed)
-#       box   : astre.aramo.ai   (the public domain)
+#       box   : *.aramo.ai       (Subdomain-Identity A — ANY tenant subdomain;
+#                                 a single wildcard host, NOT a per-tenant block.
+#                                 astre.aramo.ai is subsumed here so Astre flows
+#                                 through the SAME on-demand path as tenant #50.)
 #   CADDY_TLS          — the `tls` directive argument.
 #       local : internal         (Caddy's local CA — trusted on the laptop)
 #       box   : admin@aramo.ai   (an ACME email → Caddy auto-provisions AND
-#                                 auto-renews a real Let's Encrypt cert)
+#                                 auto-renews real Let's Encrypt certs)
+#   CADDY_TLS_ONDEMAND — the optional on-demand toggle inside the tls block.
+#       local : (unset/empty)    → no on-demand; localhost gets one internal cert
+#       box   : on_demand        → Subdomain-Identity A: Caddy mints a per-host
+#                                  cert JUST-IN-TIME on first request, but only
+#                                  after the ask-endpoint validates the host
+#                                  against the tenant table (see the global
+#                                  on_demand_tls block below). Keeps HTTP-01 — no
+#                                  DNS-01, no Route53 plugin, no Route53 creds.
 #
 # Locally the full stack runs + is testable with NO public domain (Caddy local
-# CA over https://localhost). On the box the same config gets a real cert — the
-# honest box-only boundary per §D (real Let's Encrypt needs the public domain +
-# ACME challenge, verified on the box, not locally).
+# CA over https://localhost, NO on-demand). On the box the same config serves
+# every <slug>.aramo.ai with a tenant-validated on-demand cert — the honest
+# box-only boundary per §D (real Let's Encrypt needs the public domain + ACME
+# challenge, verified on the box, not locally).
+{
+	# Subdomain-Identity A — on-demand TLS ask-endpoint (global option). Caddy
+	# calls this URL BEFORE issuing an on-demand cert, forwarding the requested
+	# host as ?domain=<host>; it issues ONLY on a 2xx. So the tenant table is the
+	# single source of truth for "is this a valid subdomain": a host gets a cert
+	# iff a real active tenant owns its slug (apps/api PublicTenantCertController →
+	# TenantService.findActiveBySlug). The default points at the compose-internal
+	# api service (no new required env var); override via CADDY_ASK_URL if needed.
+	#
+	# This block is ALWAYS present but is ONLY consulted by a site that opts into
+	# `on_demand` — so it is inert locally (the localhost site below leaves
+	# CADDY_TLS_ONDEMAND empty and never asks).
+	on_demand_tls {
+		ask {$CADDY_ASK_URL:http://api:3000/v1/tenants/cert-eligible}
+	}
+}
 
 {$CADDY_SITE_ADDRESS:localhost} {
-	tls {$CADDY_TLS:internal}
+	tls {$CADDY_TLS:internal} {
+		# Empty locally (one static internal/ACME cert); `on_demand` on the box
+		# (per-host, tenant-validated via the ask-endpoint above).
+		{$CADDY_TLS_ONDEMAND:}
+	}
 
 	# API + auth surfaces → the container-internal backends (compose service
 	# names). These ports are NEVER published to the host — Caddy is the only
@@ -38,7 +70,8 @@
 	}
 	# The JWKS document (auth-service's only /.well-known route). Matched by
 	# exact path — NOT /.well-known/* — so /.well-known/acme-challenge/* stays
-	# free for Caddy's own Let's Encrypt HTTP-01 challenge on the box.
+	# free for Caddy's own Let's Encrypt HTTP-01 challenge on the box (on-demand
+	# certs are issued via HTTP-01 too — no DNS-01).
 	handle /.well-known/jwks.json {
 		reverse_proxy auth-service:3001
 	}

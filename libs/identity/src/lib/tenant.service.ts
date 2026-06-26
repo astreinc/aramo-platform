@@ -6,6 +6,7 @@ import { IdentityAuditService } from './audit/identity-audit.service.js';
 import type { TenantDto } from './dto/tenant.dto.js';
 import { TenantRepository } from './tenant.repository.js';
 import { deriveAllowedDomainOrThrow } from './util/email-domain.js';
+import { deriveSlugOrThrow } from './util/tenant-slug.js';
 
 // TenantService — at AUTHZ-1, this surface was read-only
 // (getTenantsByUser) with the auth-service SessionOrchestrator the only
@@ -37,6 +38,15 @@ export class TenantService {
     return this.tenantRepo.findByNameCaseInsensitive(name);
   }
 
+  // Subdomain-Identity Directive A — resolve a tenant by its subdomain slug,
+  // active only. The single read the public cert-eligibility ask-endpoint needs
+  // ("is <slug>.aramo.ai a real active tenant?") and the same lookup Directive
+  // B's host→tenant IdP routing will reuse on this column. Returns null for an
+  // unknown or disabled slug (the caller maps that to a 404 / not-eligible).
+  async findActiveBySlug(slug: string): Promise<TenantDto | null> {
+    return this.tenantRepo.findActiveBySlug(slug);
+  }
+
   // AUTHZ-2: the guarded tenant-provisioning surface. Raises
   // TENANT_ALREADY_EXISTS (409) when the name collides case-
   // insensitively. The caller (platform-admin's PlatformInvitationService)
@@ -58,6 +68,14 @@ export class TenantService {
     name: string;
     owner_email: string;
     actor_user_id: string;
+    // Subdomain-Identity Directive A — the tenant's subdomain slug. Optional:
+    // when supplied (a future self-service signup, or Directive B's provisioning
+    // path) it is DNS-safe-validated HERE (the same service-layer placement as
+    // allowed_domain, so every creation path inherits the invariant) and stored
+    // normalized; when omitted, the tenant is created without a subdomain (slug
+    // NULL) — exactly the pre-A behavior. Astre's slug is set by the seed, not
+    // this path.
+    slug?: string;
   }): Promise<TenantDto> {
     const existing = await this.tenantRepo.findByNameCaseInsensitive(args.name);
     if (existing !== null) {
@@ -83,11 +101,20 @@ export class TenantService {
       'provision',
     );
 
+    // Subdomain-Identity Directive A — validate the slug (if supplied) at the
+    // same authoritative spine, throwing 4xx for a non-DNS-safe value. The
+    // normalized (lowercased) form is what gets persisted to the UNIQUE column.
+    const slug =
+      args.slug === undefined
+        ? undefined
+        : deriveSlugOrThrow(args.slug, 'provision');
+
     const tenant_id = uuidv7();
     const tenant = await this.tenantRepo.createTenant({
       id: tenant_id,
       name: args.name,
       allowed_domain,
+      slug,
     });
     await this.audit.writeEvent({
       event_type: 'identity.tenant.created',
@@ -99,6 +126,7 @@ export class TenantService {
         name: args.name,
         source: 'platform.provision',
         allowed_domain,
+        ...(slug === undefined ? {} : { slug }),
       },
     });
     return tenant;

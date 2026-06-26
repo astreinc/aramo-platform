@@ -50,6 +50,10 @@ const MIGRATION_PATHS = [
   ),
   resolve(
     __dirname,
+    '../../prisma/migrations/20260626120000_add_tenant_slug/migration.sql',
+  ),
+  resolve(
+    __dirname,
     '../../prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
   ),
   resolve(

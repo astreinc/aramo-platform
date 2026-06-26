@@ -88,6 +88,31 @@ resource "aws_route53_record" "app" {
   records = [aws_lightsail_static_ip.this.ip_address]
 }
 
+# Subdomain-Identity Directive A §1 — the WILDCARD record that makes any
+# <slug>.aramo.ai resolve to the box WITHOUT a per-tenant DNS change. Onboarding
+# a tenant becomes a DATA op (insert a Tenant row with a slug), never an infra op
+# (no human hand-adds DNS). Shape-identical to the `app` record above — same
+# zone, same static IP, same TTL — only the wildcard name differs.
+#
+# The literal `app` record (astre.aramo.ai) STAYS: a specific A record wins over
+# a wildcard match in Route53 resolution, so Astre keeps its exact record and
+# every OTHER subdomain falls through to this wildcard. They coexist; removing
+# the specific record would be needless churn (no behavior change).
+#
+# TLS for these subdomains is NOT provisioned here — Caddy mints a per-host cert
+# on-demand, gated by the tenant-validated ask-endpoint (Directive A §3/§4). So
+# this wildcard grants RESOLUTION only; cert eligibility stays bound to the
+# tenant table. (The platform-agnostic infrastructure/ dir has no Route53 surface
+# today — DNS is deferred to a future edge directive there — so the wildcard
+# lives only here for go-live #1.)
+resource "aws_route53_record" "wildcard" {
+  zone_id = data.aws_route53_zone.this.zone_id
+  name    = "*.${var.dns_zone_name}"
+  type    = "A"
+  ttl     = var.dns_record_ttl
+  records = [aws_lightsail_static_ip.this.ip_address]
+}
+
 # --- Optional scoped S3-backup IAM (Directive §D) ---------------------------
 # User + narrow policy only. NO aws_iam_access_key here: an access key's secret
 # would be persisted in Terraform state. Generate the key out-of-band after

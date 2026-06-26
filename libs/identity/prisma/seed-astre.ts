@@ -48,6 +48,13 @@ export const ASTRE_TENANT_NAME = 'Astre';
 // so the existing owner stays valid — no retroactive break. After this runs,
 // NULL allowed_domain does not exist for any real tenant.
 export const ASTRE_ALLOWED_DOMAIN = 'astreinc.com';
+// Subdomain-Identity Directive A — Astre's subdomain slug. The seed BACKFILLS it
+// (set in BOTH create AND update, like allowed_domain) so a pre-migration Astre
+// row gets slug 'astre' on the next idempotent re-seed (NULL → 'astre'). This
+// matches Astre's existing literal record astre.aramo.ai, so Astre flows through
+// the SAME on-demand cert path as every future tenant (the tenant-50 dogfood):
+// astre.aramo.ai → ask-endpoint → slug 'astre' found → cert issued.
+export const ASTRE_SLUG = 'astre';
 // NORMALIZED form — the reconcile lookup is findUserByEmail(cognito.email
 // .trim().toLowerCase()) with an EXACT match (no stored-side normalization),
 // so the seeded email MUST equal the lowercase+trimmed login email.
@@ -83,14 +90,16 @@ export async function runAstreSeed(
   // 2. The Astre tenant.
   await db.tenant.upsert({
     where: { id: ASTRE_SEED_IDS.tenant },
-    // Domain-Enforcement P1 — set allowed_domain in UPDATE too so a pre-
-    // migration Astre row is backfilled on re-seed (NULL → astreinc.com).
-    update: { allowed_domain: ASTRE_ALLOWED_DOMAIN },
+    // Domain-Enforcement P1 + Subdomain-Identity Directive A — set allowed_domain
+    // AND slug in UPDATE too so a pre-migration Astre row is backfilled on re-seed
+    // (NULL → astreinc.com / 'astre').
+    update: { allowed_domain: ASTRE_ALLOWED_DOMAIN, slug: ASTRE_SLUG },
     create: {
       id: ASTRE_SEED_IDS.tenant,
       name: ASTRE_TENANT_NAME,
       is_active: true,
       allowed_domain: ASTRE_ALLOWED_DOMAIN,
+      slug: ASTRE_SLUG,
     },
   });
 
