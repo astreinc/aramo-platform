@@ -174,15 +174,6 @@ export class SessionOrchestratorService {
         provider_subject: cognito.sub,
         email_snapshot: cognito.email,
       });
-      // Invite-S2 (Pattern-2) — the ACTIVE-hook (§4.2). This branch is the
-      // by-sub MISS (the sub was just linked on first federated login), so a
-      // pending invited/accepted membership transitions to its live ACTIVE
-      // state HERE, exactly once, alongside the sub-link. SAFE BY
-      // CONSTRUCTION: an already-active user resolves by-sub HIT and never
-      // enters this `user === null` branch, so their login path is
-      // byte-unchanged — no membership read, no state write. Best-effort and
-      // idempotent (already-ACTIVE rows are not touched).
-      await this.identity.activateMembershipsOnLink({ user_id: existing.id });
       // Canonical audit event for sub-linking (global; best-effort — the
       // wrapper swallows failures). actor = the self-authenticating user.
       await this.audit.writeGlobalEvent({
@@ -197,6 +188,26 @@ export class SessionOrchestratorService {
         },
       });
       user = existing;
+    }
+
+    // People&Access activation-on-sign-in fix — THE SINGLE membership-activation
+    // seam. It runs on EVERY authenticated session for the resolved user, on
+    // BOTH the by-sub HIT and MISS paths, and idempotently flips ACCEPTED →
+    // ACTIVE (ONLY that: never INVITED, never a disabled membership, never a
+    // downgrade). This replaces the original link-coupled ACTIVE-hook, which
+    // fired ONLY on the one-time sub-link (by-sub MISS) and so left every user
+    // whose Cognito sub was already linked at sign-in stuck at ACCEPTED — the
+    // observed bug. Placed after the reconcile block so it covers the just-
+    // linked MISS user too. Best-effort: an activation write must not break an
+    // otherwise-valid sign-in.
+    try {
+      await this.identity.activateAcceptedMembershipsOnSession({
+        user_id: user.id,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `accepted-membership activation failed (non-blocking): ${(err as Error).message}`,
+      );
     }
 
     const tenants = await this.tenant.getTenantsByUser({ user_id: user.id });

@@ -674,16 +674,20 @@ export class IdentityRepository {
     return { changed: res.count > 0 };
   }
 
-  // Invite-S2 — the reconcile-spine ACTIVE-hook write. Sets invite_status →
-  // ACTIVE for every membership of the just-linked user that is not already
-  // ACTIVE (idempotent; INVITED or ACCEPTED → ACTIVE). Called ONLY from the
-  // session-orchestrator's by-sub-MISS branch (first federated login, right
-  // after linkExternalIdentity), so it is structurally unreachable for an
-  // already-active user whose login resolves by-sub HIT. Returns the count
-  // flipped so the caller / spec can assert it fired exactly when expected.
-  async activateMembershipsForUser(user_id: string): Promise<{ activated: number }> {
+  // People&Access activation-on-sign-in fix — THE SINGLE membership-activation
+  // write. The session-orchestrator calls this on EVERY authenticated session
+  // establishment (both by-sub HIT and MISS). It replaces the original
+  // link-coupled hook, which fired only when the federated sub was FIRST linked
+  // and so left every user whose Cognito sub was already linked at sign-in stuck
+  // at ACCEPTED. Strict (per the Lead ruling): it flips ONLY ACCEPTED → ACTIVE
+  // and ONLY for a still-active membership (is_active=true) — never an INVITED
+  // (un-accepted) row, never a disabled (is_active=false) row, never a downgrade.
+  // Idempotent: an already-ACTIVE row is not matched. Returns the count flipped.
+  async activateAcceptedMembershipsForUser(
+    user_id: string,
+  ): Promise<{ activated: number }> {
     const res = await this.prisma.userTenantMembership.updateMany({
-      where: { user_id, invite_status: { not: 'ACTIVE' } },
+      where: { user_id, invite_status: 'ACCEPTED', is_active: true },
       data: { invite_status: 'ACTIVE' },
     });
     return { activated: res.count };
