@@ -50,24 +50,34 @@ resource "aws_lightsail_static_ip_attachment" "this" {
 resource "aws_lightsail_instance_public_ports" "this" {
   instance_name = aws_lightsail_instance.this.name
 
+  # cidrs/ipv6_cidrs declared explicitly: opening a port to 0.0.0.0/0 makes
+  # Lightsail auto-add the IPv6 mirror (::/0), so we declare it here to keep the
+  # plan a no-op (otherwise the undeclared field forces a perpetual replace).
   port_info {
-    protocol  = "tcp"
-    from_port = 80
-    to_port   = 80
+    protocol   = "tcp"
+    from_port  = 80
+    to_port    = 80
+    cidrs      = ["0.0.0.0/0"]
+    ipv6_cidrs = ["::/0"]
   }
 
   port_info {
-    protocol  = "tcp"
-    from_port = 443
-    to_port   = 443
+    protocol   = "tcp"
+    from_port  = 443
+    to_port    = 443
+    cidrs      = ["0.0.0.0/0"]
+    ipv6_cidrs = ["::/0"]
   }
 
   # SSH restricted to the PO's source CIDR (var-driven, default-deny-wide).
+  # cidr_list_aliases: Lightsail auto-adds the "lightsail-connect" browser-SSH
+  # alias on port 22; declared here so it matches state (no perpetual replace).
   port_info {
-    protocol  = "tcp"
-    from_port = 22
-    to_port   = 22
-    cidrs     = [var.ssh_source_cidr]
+    protocol          = "tcp"
+    from_port         = 22
+    to_port           = 22
+    cidrs             = [var.ssh_source_cidr]
+    cidr_list_aliases = ["lightsail-connect"]
   }
 }
 
