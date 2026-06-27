@@ -6,11 +6,11 @@ import {
   Card,
   DataTable,
   InlineAlert,
-  PageHeader,
   StatusPill,
   Tag,
   type TableColumn,
 } from '../ui';
+import { SettingsSection } from '../settings/components';
 
 import { DisableConfirmDialog } from './DisableConfirmDialog';
 import { EditEmailDialog } from './EditEmailDialog';
@@ -310,38 +310,46 @@ export function UsersListView({
   ];
 
   return (
-    <section className="rc-stack">
-      <PageHeader
-        title="Users"
-        description="Invite, edit roles, and disable users in your tenant."
-      />
-      <div className="rc-formfoot">
-        <span className="rc-muted-line">
-          {state.status === 'ready'
-            ? `${state.users.length} user${state.users.length === 1 ? '' : 's'}`
-            : ''}
-        </span>
-        <Button onClick={() => setInviteOpen(true)} data-testid="open-invite">
-          Invite user
-        </Button>
+    // People & access — Users renders inside the SettingsShell rail alongside
+    // Roles & permissions, so it uses the SAME section grammar (SettingsSection
+    // → .set-content padding + max-width, .set-head title) as every other
+    // settings section. (It previously used a raw rc-stack + the retired
+    // tenant-console PageHeader, which has no styling in ats-web — leaving the
+    // page flush/full-width with an unstyled oversized title, misaligned with
+    // its rail-mates.)
+    <SettingsSection
+      title="Users"
+      description="Invite, edit roles, and disable users in your tenant."
+    >
+      <div className="rc-stack">
+        <div className="rc-formfoot">
+          <span className="rc-muted-line">
+            {state.status === 'ready'
+              ? `${state.users.length} user${state.users.length === 1 ? '' : 's'}`
+              : ''}
+          </span>
+          <Button onClick={() => setInviteOpen(true)} data-testid="open-invite">
+            Invite user
+          </Button>
+        </div>
+        {state.status === 'loading' && (
+          <p className="rc-muted-line">Loading users…</p>
+        )}
+        {state.status === 'error' && (
+          <InlineAlert variant="error">{state.message}</InlineAlert>
+        )}
+        {state.status === 'ready' && (
+          <Card flush>
+            <DataTable<TenantUserView>
+              columns={columns}
+              rows={state.users}
+              rowKey={(u) => u.user_id}
+              rowMuted={(u) => !u.is_active}
+              emptyMessage="No users yet. Invite one to get started."
+            />
+          </Card>
+        )}
       </div>
-      {state.status === 'loading' && (
-        <p className="rc-muted-line">Loading users…</p>
-      )}
-      {state.status === 'error' && (
-        <InlineAlert variant="error">{state.message}</InlineAlert>
-      )}
-      {state.status === 'ready' && (
-        <Card flush>
-          <DataTable<TenantUserView>
-            columns={columns}
-            rows={state.users}
-            rowKey={(u) => u.user_id}
-            rowMuted={(u) => !u.is_active}
-            emptyMessage="No users yet. Invite one to get started."
-          />
-        </Card>
-      )}
       <InviteDialog
         open={inviteOpen}
         onOpenChange={setInviteOpen}
@@ -379,6 +387,6 @@ export function UsersListView({
         }}
         onSaved={() => refresh()}
       />
-    </section>
+    </SettingsSection>
   );
 }
