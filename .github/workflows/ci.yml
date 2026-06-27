@@ -68,6 +68,57 @@ jobs:
       - run: npm run prisma:generate
       - run: npx nx run-many --target=build --all
 
+  # Builds every deployable image through its real Dockerfile — the artifact
+  # that actually ships. The host `build` job above (nx run-many) is a fast,
+  # non-required compile signal; it does NOT exercise the Dockerfiles, so a
+  # break that only shows up in a clean image build (e.g. a missing ^build
+  # dependsOn) passed CI green until now. This job closes that gap and is a
+  # REQUIRED gate (wired into deployment-gate `needs`).
+  #
+  # On a PR: build only (push:false) — proves each image compiles end-to-end.
+  # On push to main: also push SHA-tagged + :latest images to GHCR, so deploys
+  # pull a CI-built artifact with provenance instead of rebuilding on the box.
+  # Registry = GHCR (ghcr.io) via the built-in GITHUB_TOKEN (packages:write) —
+  # no extra cloud-auth dance. The box-pull cutover (GHCR login / package
+  # visibility) is a deliberate, separately-tested deploy step — see PR body.
+  docker-build:
+    name: docker-build
+    runs-on: ubuntu-latest
+    needs: install
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: api, dockerfile: apps/api/Dockerfile }
+          - { name: auth-service, dockerfile: apps/auth-service/Dockerfile }
+          - { name: caddy, dockerfile: deploy/caddy/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Push only on push-to-main; PRs (incl. forks, where GITHUB_TOKEN is
+      # read-only) build without pushing.
+      - name: Log in to GHCR (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build image (and push on main)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/aramo-${{ matrix.name }}:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/aramo-${{ matrix.name }}:latest
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
   test-unit:
     name: test:unit
     runs-on: ubuntu-latest
@@ -479,6 +530,7 @@ jobs:
       - test-unit
       - tests-integration
       - lint-nx-boundaries
+      - docker-build
       - terraform-fmt
       - terraform-validate
       - terraform-lint
