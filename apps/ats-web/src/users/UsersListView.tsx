@@ -226,39 +226,42 @@ export function UsersListView({
       header: 'Roles',
       render: (u) => <RoleChips role_keys={u.role_keys} labelOf={roleLabelOf} />,
     },
+    // The action buttons are grouped into three labelled columns so the table
+    // has a header for every column and each action sits in a fixed position
+    // across rows (previously one far-right unlabelled cell, where buttons
+    // clustered at the edge and never lined up row-to-row). The grouping mirrors
+    // the §3 matrix axes: Permissions (role-set), Invitations (the invite
+    // lifecycle: resend + edit-email), Access (membership access: revoke /
+    // enable / disable). Each cell preserves its Invite-S3 testids, handlers,
+    // and busy-disable behaviour verbatim.
     {
-      key: 'actions',
-      header: '',
-      width: '300px',
+      key: 'permissions',
+      header: 'Permissions',
+      width: '120px',
       align: 'right',
-      // Invite-S3 (§3) — the state-dependent action cell. The matrix
-      // (actionsForUser) drives which buttons render per displayed status;
-      // Edit-roles is always present. A row's actions disable while its inline
-      // action is in flight.
+      render: (u) => (
+        <span className="rc-rowactions">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setEditTarget(u)}
+            data-testid={`edit-roles-${u.user_id}`}
+          >
+            Edit roles
+          </Button>
+        </span>
+      ),
+    },
+    {
+      key: 'invitations',
+      header: 'Invitations',
+      width: '160px',
+      align: 'right',
       render: (u) => {
         const actions = actionsForUser(u);
         const busy = busyId === u.user_id;
         return (
           <span className="rc-rowactions">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setEditTarget(u)}
-              data-testid={`edit-roles-${u.user_id}`}
-            >
-              Edit roles
-            </Button>
-            {actions.editEmail && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                onClick={() => setEditEmailTarget(u)}
-                data-testid={`edit-email-${u.user_id}`}
-              >
-                Edit email
-              </Button>
-            )}
             {actions.resend !== null && (
               <Button
                 variant="ghost"
@@ -270,6 +273,31 @@ export function UsersListView({
                 Resend
               </Button>
             )}
+            {actions.editEmail && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => setEditEmailTarget(u)}
+                data-testid={`edit-email-${u.user_id}`}
+              >
+                Edit email
+              </Button>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'access',
+      header: 'Access',
+      width: '120px',
+      align: 'right',
+      render: (u) => {
+        const actions = actionsForUser(u);
+        const busy = busyId === u.user_id;
+        return (
+          <span className="rc-rowactions">
             {actions.revoke && (
               <Button
                 variant="ghost"
