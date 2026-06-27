@@ -175,6 +175,9 @@ type TenantRow = {
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
+  // Subdomain-Identity Directive B — carried so findActiveBySlug surfaces it to
+  // the login redirect for Home Realm Discovery.
+  identity_provider: string | null;
 };
 
 export interface TenantProfileRow {
@@ -244,5 +247,6 @@ function toTenantDto(row: TenantRow): TenantDto {
     is_active: row.is_active,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
+    identity_provider: row.identity_provider,
   };
 }

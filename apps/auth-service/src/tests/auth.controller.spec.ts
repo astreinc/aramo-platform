@@ -1,6 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AramoError } from '@aramo/common';
-import type { IdentityAuditService } from '@aramo/identity';
+import type {
+  IdentityAuditService,
+  TenantDto,
+  TenantService,
+} from '@aramo/identity';
 import type { RefreshTokenDto, RefreshTokenService } from '@aramo/auth-storage';
 
 import { AuthController } from '../app/auth/auth.controller.js';
@@ -38,6 +42,7 @@ function makeController(
     cookieVerifier: CookieVerifierService;
     refreshTokens: RefreshTokenService;
     audit: IdentityAuditService;
+    tenants: TenantService;
   }> = {},
 ): AuthController {
   return new AuthController(
@@ -47,6 +52,7 @@ function makeController(
     overrides.cookieVerifier ?? ({} as CookieVerifierService),
     overrides.refreshTokens ?? ({} as RefreshTokenService),
     overrides.audit ?? ({} as IdentityAuditService),
+    overrides.tenants ?? ({} as TenantService),
   );
 }
 
@@ -490,5 +496,180 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
       code: 'TENANT_SELECTION_REQUIRED',
       statusCode: 409,
     });
+  });
+});
+
+describe('AuthController.login (Subdomain-Identity B — Home Realm Discovery)', () => {
+  const DOMAIN = 'aramo.auth.example.test';
+  const CLIENT_ID = 'client-abc';
+  const REDIRECT_URI = 'https://app.staging.example.test/auth/recruiter/callback';
+
+  // login() needs the Cognito Hosted-UI config + a stable apex for the slug
+  // parse. Set them for the whole block and restore after, mirroring the
+  // logoutRedirect tests' env discipline.
+  const ENV = {
+    AUTH_COGNITO_DOMAIN: DOMAIN,
+    AUTH_COGNITO_CLIENT_ID: CLIENT_ID,
+    AUTH_COGNITO_REDIRECT_URI: REDIRECT_URI,
+    APP_ROOT_DOMAIN: 'aramo.ai',
+  } as const;
+  const savedEnv: Partial<Record<string, string | undefined>> = {};
+
+  beforeAll(() => {
+    for (const k of Object.keys(ENV) as (keyof typeof ENV)[]) {
+      savedEnv[k] = process.env[k];
+      process.env[k] = ENV[k];
+    }
+  });
+  afterAll(() => {
+    for (const k of Object.keys(ENV) as (keyof typeof ENV)[]) {
+      if (savedEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = savedEnv[k];
+    }
+  });
+
+  function fakePkce(): PkceService {
+    return {
+      generate: vi.fn().mockReturnValue({
+        verifier: 'verifier',
+        state: 'state-xyz',
+        challenge: 'challenge-abc',
+      }),
+      encryptState: vi.fn().mockReturnValue('cipher'),
+    } as unknown as PkceService;
+  }
+
+  // findActiveBySlug returns the full TenantDto shape; only identity_provider
+  // matters here.
+  function tenantWith(identity_provider: string | null): TenantDto {
+    return {
+      id: TENANT_ID,
+      name: 'Astre',
+      is_active: true,
+      created_at: '',
+      updated_at: '',
+      identity_provider,
+    };
+  }
+
+  function reqWithHost(host: string | undefined): never {
+    return {
+      requestId: 'r',
+      get: (name: string) =>
+        name.toLowerCase() === 'host' ? host : undefined,
+    } as never;
+  }
+
+  function locationOf(res: FakeResponse): URL {
+    expect(res.redirect).toHaveBeenCalledTimes(1);
+    const [status, location] = res.redirect.mock.calls[0] as [number, string];
+    expect(status).toBe(302);
+    return new URL(location);
+  }
+
+  it('pins identity_provider when the host resolves to a tenant with one set', async () => {
+    const findActiveBySlug = vi.fn().mockResolvedValue(tenantWith('microsoft'));
+    const ctl = makeController({
+      pkce: fakePkce(),
+      tenants: { findActiveBySlug } as unknown as TenantService,
+    });
+    const res = makeRes();
+
+    await ctl.login('recruiter', reqWithHost('astre.aramo.ai'), res as never);
+
+    // Resolved the slug from the apex-anchored host, verbatim from the column.
+    expect(findActiveBySlug).toHaveBeenCalledWith('astre');
+    const url = locationOf(res);
+    expect(url.searchParams.get('identity_provider')).toBe('microsoft');
+    // The base authorize params are untouched by the additive hint.
+    expect(url.searchParams.get('client_id')).toBe(CLIENT_ID);
+    expect(url.searchParams.get('redirect_uri')).toBe(REDIRECT_URI);
+    expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+  });
+
+  it('shows the chooser (no param) when the resolved tenant has a null IdP', async () => {
+    const findActiveBySlug = vi.fn().mockResolvedValue(tenantWith(null));
+    const ctl = makeController({
+      pkce: fakePkce(),
+      tenants: { findActiveBySlug } as unknown as TenantService,
+    });
+    const res = makeRes();
+
+    await ctl.login('recruiter', reqWithHost('acme.aramo.ai'), res as never);
+
+    expect(findActiveBySlug).toHaveBeenCalledWith('acme');
+    expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
+  });
+
+  it('shows the chooser (no param) when the slug resolves to no active tenant', async () => {
+    const findActiveBySlug = vi.fn().mockResolvedValue(null);
+    const ctl = makeController({
+      pkce: fakePkce(),
+      tenants: { findActiveBySlug } as unknown as TenantService,
+    });
+    const res = makeRes();
+
+    await ctl.login('recruiter', reqWithHost('ghost.aramo.ai'), res as never);
+
+    expect(findActiveBySlug).toHaveBeenCalledWith('ghost');
+    expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
+  });
+
+  it('shows the chooser for the bare apex — no slug, no DB lookup', async () => {
+    const findActiveBySlug = vi.fn();
+    const ctl = makeController({
+      pkce: fakePkce(),
+      tenants: { findActiveBySlug } as unknown as TenantService,
+    });
+    const res = makeRes();
+
+    await ctl.login('recruiter', reqWithHost('aramo.ai'), res as never);
+
+    // Apex-anchored parse yields no slug → short-circuits before the DB.
+    expect(findActiveBySlug).not.toHaveBeenCalled();
+    expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
+  });
+
+  it('shows the chooser for a foreign host — cannot be tricked by <slug>.attacker.com', async () => {
+    const findActiveBySlug = vi.fn();
+    const ctl = makeController({
+      pkce: fakePkce(),
+      tenants: { findActiveBySlug } as unknown as TenantService,
+    });
+    const res = makeRes();
+
+    await ctl.login('recruiter', reqWithHost('astre.attacker.com'), res as never);
+
+    expect(findActiveBySlug).not.toHaveBeenCalled();
+    expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
+  });
+
+  it('shows the chooser when the Host header is absent', async () => {
+    const findActiveBySlug = vi.fn();
+    const ctl = makeController({
+      pkce: fakePkce(),
+      tenants: { findActiveBySlug } as unknown as TenantService,
+    });
+    const res = makeRes();
+
+    await ctl.login('recruiter', reqWithHost(undefined), res as never);
+
+    expect(findActiveBySlug).not.toHaveBeenCalled();
+    expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
+  });
+
+  it('FAILS OPEN to the chooser (still 302, no param) when the lookup throws', async () => {
+    const findActiveBySlug = vi.fn().mockRejectedValue(new Error('db down'));
+    const ctl = makeController({
+      pkce: fakePkce(),
+      tenants: { findActiveBySlug } as unknown as TenantService,
+    });
+    const res = makeRes();
+
+    await ctl.login('recruiter', reqWithHost('astre.aramo.ai'), res as never);
+
+    // A resolution failure never becomes an error page — the user still reaches
+    // a login, just the chooser.
+    expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
   });
 });

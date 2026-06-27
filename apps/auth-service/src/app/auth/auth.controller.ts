@@ -14,6 +14,8 @@ import { AramoError } from '@aramo/common';
 import { CONSUMER_TYPES, type ConsumerType } from '@aramo/auth';
 import {
   IdentityAuditService,
+  TenantService,
+  extractTenantSlugFromHost,
 } from '@aramo/identity';
 import { RefreshTokenService } from '@aramo/auth-storage';
 import type { Request, Response } from 'express';
@@ -130,6 +132,7 @@ export class AuthController {
     private readonly cookieVerifier: CookieVerifierService,
     private readonly refreshTokens: RefreshTokenService,
     private readonly audit: IdentityAuditService,
+    private readonly tenants: TenantService,
   ) {}
 
   // §8.1 — GET /auth/{consumer}/login → 302 + pkce_state cookie
@@ -172,7 +175,46 @@ export class AuthController {
     url.searchParams.set('state', pair.state);
     url.searchParams.set('code_challenge', pair.challenge);
     url.searchParams.set('code_challenge_method', 'S256');
+    // Subdomain-Identity Directive B — Home Realm Discovery. If the requesting
+    // host resolves to a tenant that has pinned an IdP, append the verbatim
+    // Cognito identity_provider hint so the Hosted UI skips the chooser and goes
+    // straight to that provider. Anything else (no tenant host, unknown/inactive
+    // slug, null IdP, lookup error) leaves the URL exactly as built above → the
+    // chooser shows. This is a purely additive front-door hint; it does NOT
+    // touch the callback/token-exchange/reconcile spine.
+    const identityProvider = await this.resolveIdentityProvider(req.get('host'));
+    if (identityProvider !== null) {
+      url.searchParams.set('identity_provider', identityProvider);
+    }
     res.redirect(302, url.toString());
+  }
+
+  // Subdomain-Identity Directive B — resolve the requesting host to its tenant's
+  // pinned Cognito identity_provider string, or null = show the chooser. FAILS
+  // OPEN to null on every non-happy path: a user must always be able to reach a
+  // login. The slug parse is apex-anchored (extractTenantSlugFromHost requires
+  // the .aramo.ai suffix) so it can't be tricked by <slug>.attacker.com. The
+  // provider string is returned VERBATIM from the column — never hardcoded — so
+  // the logic stays tenant-agnostic (Astre's value happens to be 'microsoft').
+  private async resolveIdentityProvider(
+    host: string | undefined,
+  ): Promise<string | null> {
+    if (host === undefined || host.length === 0) {
+      return null;
+    }
+    try {
+      const rootDomain = process.env['APP_ROOT_DOMAIN'] ?? 'aramo.ai';
+      const slug = extractTenantSlugFromHost(host, rootDomain);
+      if (slug === null) {
+        return null;
+      }
+      const tenant = await this.tenants.findActiveBySlug(slug);
+      return tenant?.identity_provider ?? null;
+    } catch {
+      // Any resolution failure (lookup error, etc.) → fall back to the chooser,
+      // never an error page.
+      return null;
+    }
   }
 
   // §8.2 — GET /auth/{consumer}/callback

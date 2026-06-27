@@ -55,6 +55,14 @@ export const ASTRE_ALLOWED_DOMAIN = 'astreinc.com';
 // the SAME on-demand cert path as every future tenant (the tenant-50 dogfood):
 // astre.aramo.ai → ask-endpoint → slug 'astre' found → cert issued.
 export const ASTRE_SLUG = 'astre';
+// Subdomain-Identity Directive B — Astre's pinned Cognito Hosted-UI
+// identity_provider. The seed BACKFILLS it (set in BOTH create AND update, like
+// allowed_domain/slug) so a pre-migration Astre row gets 'microsoft' on the next
+// idempotent re-seed (NULL → 'microsoft'). 'microsoft' is the EXACT lowercase
+// OIDC provider name configured in the Cognito pool (us-east-1_4fKlnGfaW) — the
+// string the Hosted UI `identity_provider` param expects. With this set,
+// astre.aramo.ai → login → Microsoft directly, no Google/Microsoft chooser.
+export const ASTRE_IDENTITY_PROVIDER = 'microsoft';
 // NORMALIZED form — the reconcile lookup is findUserByEmail(cognito.email
 // .trim().toLowerCase()) with an EXACT match (no stored-side normalization),
 // so the seeded email MUST equal the lowercase+trimmed login email.
@@ -90,16 +98,22 @@ export async function runAstreSeed(
   // 2. The Astre tenant.
   await db.tenant.upsert({
     where: { id: ASTRE_SEED_IDS.tenant },
-    // Domain-Enforcement P1 + Subdomain-Identity Directive A — set allowed_domain
-    // AND slug in UPDATE too so a pre-migration Astre row is backfilled on re-seed
-    // (NULL → astreinc.com / 'astre').
-    update: { allowed_domain: ASTRE_ALLOWED_DOMAIN, slug: ASTRE_SLUG },
+    // Domain-Enforcement P1 + Subdomain-Identity Directives A & B — set
+    // allowed_domain, slug AND identity_provider in UPDATE too so a pre-migration
+    // Astre row is backfilled on re-seed (NULL → astreinc.com / 'astre' /
+    // 'microsoft').
+    update: {
+      allowed_domain: ASTRE_ALLOWED_DOMAIN,
+      slug: ASTRE_SLUG,
+      identity_provider: ASTRE_IDENTITY_PROVIDER,
+    },
     create: {
       id: ASTRE_SEED_IDS.tenant,
       name: ASTRE_TENANT_NAME,
       is_active: true,
       allowed_domain: ASTRE_ALLOWED_DOMAIN,
       slug: ASTRE_SLUG,
+      identity_provider: ASTRE_IDENTITY_PROVIDER,
     },
   });
 

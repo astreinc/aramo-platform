@@ -74,6 +74,22 @@ model Tenant {
   // reads this column is Directive B.
   slug                   String?  @unique
 
+  // Subdomain-Identity Directive B — Home Realm Discovery. The EXACT Cognito
+  // Hosted-UI `identity_provider` string this tenant federates through (e.g.
+  // 'microsoft' for Astre, the lowercase OIDC provider name confirmed in the
+  // pool console). When a user lands on <slug>.aramo.ai, the login redirect
+  // pins this provider so the Google/Microsoft chooser is skipped (the
+  // enterprise HRD pattern — Okta routing rules, Auth0 Organizations, WorkOS
+  // connections, Entra domain federation: federation binds to the TENANT, not
+  // the user). Stored as the provider-name STRING (not a boolean/enum) so a
+  // future tenant on Okta/Google Workspace reuses this column with a different
+  // value, zero schema change. NULL = show the chooser (today's behavior); the
+  // change is purely additive (null = chooser, set = pinned). Read verbatim at
+  // the redirect — never hardcoded — so the logic is tenant-agnostic. Backfilled
+  // to 'microsoft' for Astre via the idempotent seed. Routing FAILS OPEN to the
+  // chooser on any resolution failure; the callback/reconcile spine is unchanged.
+  identity_provider      String?
+
   // Domain-Enforcement P2b — DNS-TXT ownership verification state (additive).
   // P1 trusts that the owner's email was on `allowed_domain` (trusted-at-
   // provision); P2b lets the tenant PROVE it controls that domain by publishing
