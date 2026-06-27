@@ -52,11 +52,16 @@ services:
     container_name: aramo-prod-caddy
     restart: unless-stopped
     environment:
-      # TLS/domain parameterization (Caddyfile defaults to localhost/internal
-      # when unset — local just works; the box sets these to astre.aramo.ai +
-      # an ACME email). Bare-name passthrough so the box can override via .env.
+      # TLS/domain parameterization (Caddyfile defaults to localhost/internal,
+      # no on-demand, when unset — local just works; the box sets the wildcard
+      # *.aramo.ai + an ACME email + on_demand for Subdomain-Identity A's
+      # tenant-validated per-host certs). CADDY_ASK_URL is optional (Caddyfile
+      # defaults it to the compose-internal api ask-endpoint). Bare-name
+      # passthrough so the box can override via .env.
       - CADDY_SITE_ADDRESS
       - CADDY_TLS
+      - CADDY_TLS_ONDEMAND
+      - CADDY_ASK_URL
     ports:
       - '80:80'
       - '443:443'

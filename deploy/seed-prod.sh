@@ -65,9 +65,12 @@ NODE_IMAGE="${ARAMO_SEED_NODE_IMAGE:-node:22-bookworm}"
 ASSERT_IMAGE="${ARAMO_SEED_ASSERT_IMAGE:-postgres:17}"
 
 # The Astre tenant identity the seed provisions (seed-astre.ts:33 / :50). The
-# post-seed assertion confirms this exact row exists with the backfilled domain.
+# post-seed assertion confirms this exact row exists with the backfilled domain
+# AND subdomain slug (Subdomain-Identity Directive A — the slug is what makes
+# astre.aramo.ai resolve through the on-demand cert path).
 ASTRE_TENANT_ID="${ARAMO_ASTRE_TENANT_ID:-019000a0-0000-7000-8000-000000000001}"
 ASTRE_ALLOWED_DOMAIN="${ARAMO_ASTRE_ALLOWED_DOMAIN:-astreinc.com}"
+ASTRE_SLUG="${ARAMO_ASTRE_SLUG:-astre}"
 
 # --- helpers --------------------------------------------------------------
 
@@ -127,7 +130,7 @@ run_assert_query() {
     -e DATABASE_URL="$DBURL" \
     "$ASSERT_IMAGE" \
     psql "${DBURL%%\?*}" -v ON_ERROR_STOP=1 -q -t -A -c \
-    "SELECT count(*) FROM identity.\"Tenant\" WHERE id='${ASTRE_TENANT_ID}' AND allowed_domain='${ASTRE_ALLOWED_DOMAIN}';"
+    "SELECT count(*) FROM identity.\"Tenant\" WHERE id='${ASTRE_TENANT_ID}' AND allowed_domain='${ASTRE_ALLOWED_DOMAIN}' AND slug='${ASTRE_SLUG}';"
 }
 
 # THE GATE. The seed-presence query returns a single count. Returns 0 iff that

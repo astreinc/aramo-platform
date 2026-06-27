@@ -59,6 +59,10 @@ const IDENTITY_DOMAIN_VERIFICATION = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql',
 );
+const IDENTITY_SLUG = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql',
+);
 const IDENTITY_INVITATION_MIG = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
@@ -130,7 +134,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   - entitlement  → @RequireCapability('core') gate
       //   - settings     → TenantSettingService read+write
       //   - identity     → IdentityAuditEvent (the audit two-call seam)
-      for (const p of [IDENTITY_INIT, IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION, IDENTITY_INVITATION_MIG, IDENTITY_PROFILE, ENTITLEMENT_INIT, SETTINGS_INIT]) {
+      for (const p of [IDENTITY_INIT, IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG, IDENTITY_INVITATION_MIG, IDENTITY_PROFILE, ENTITLEMENT_INIT, SETTINGS_INIT]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 

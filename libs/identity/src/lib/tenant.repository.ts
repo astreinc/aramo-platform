@@ -47,6 +47,21 @@ export class TenantRepository {
     return row === null ? null : toTenantDto(row);
   }
 
+  // Subdomain-Identity Directive A — the cert-eligibility lookup. Returns the
+  // tenant that owns this subdomain slug AND is active, or null. Both conditions
+  // are in the WHERE so a single indexed query (slug is @unique) answers "is
+  // <slug>.aramo.ai a real, active tenant?" — the question the public ask-
+  // endpoint asks before Caddy issues an on-demand cert. Slug is stored
+  // normalized (lowercase); the caller passes a lowercased host label, so this
+  // is an exact match. A disabled tenant (is_active=false) is NOT eligible — its
+  // subdomain stops getting new certs (existing ones in Caddy's store persist).
+  async findActiveBySlug(slug: string): Promise<TenantDto | null> {
+    const row = await this.prisma.tenant.findFirst({
+      where: { slug, is_active: true },
+    });
+    return row === null ? null : toTenantDto(row);
+  }
+
   // Domain-Enforcement P1 — allowed_domain is set at creation by
   // TenantService.provisionTenant (derived from the owner's non-personal
   // email domain, stored normalized). Optional so legacy/test callers that
@@ -56,12 +71,18 @@ export class TenantRepository {
     id: string;
     name: string;
     allowed_domain?: string | null;
+    // Subdomain-Identity Directive A — the validated subdomain slug (DNS-safe,
+    // lowercased by deriveSlugOrThrow upstream). Optional so legacy/test callers
+    // that do not supply it leave it NULL (no subdomain; the ask-endpoint 404s
+    // for that tenant until a slug is set).
+    slug?: string | null;
   }): Promise<TenantDto> {
     const row = await this.prisma.tenant.create({
       data: {
         id: args.id,
         name: args.name,
         allowed_domain: args.allowed_domain ?? null,
+        slug: args.slug ?? null,
       },
     });
     return toTenantDto(row);

@@ -43,6 +43,7 @@ const MIGRATIONS = [
   '20260512000000_init_identity_model',
   '20260625000000_add_tenant_allowed_domain',
   '20260626000000_add_tenant_domain_verification',
+  '20260626120000_add_tenant_slug',
   // Pre-existing bitrot fix (P2b): the seed writes UserTenantMembership.
   // invite_status (added by invite-S2), so this migration MUST be applied or
   // the seed throws "column invite_status does not exist". It was missing from
