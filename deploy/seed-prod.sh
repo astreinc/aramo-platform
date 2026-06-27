@@ -65,12 +65,15 @@ NODE_IMAGE="${ARAMO_SEED_NODE_IMAGE:-node:22-bookworm}"
 ASSERT_IMAGE="${ARAMO_SEED_ASSERT_IMAGE:-postgres:17}"
 
 # The Astre tenant identity the seed provisions (seed-astre.ts:33 / :50). The
-# post-seed assertion confirms this exact row exists with the backfilled domain
-# AND subdomain slug (Subdomain-Identity Directive A — the slug is what makes
-# astre.aramo.ai resolve through the on-demand cert path).
+# post-seed assertion confirms this exact row exists with the backfilled domain,
+# subdomain slug (Subdomain-Identity Directive A — the slug is what makes
+# astre.aramo.ai resolve through the on-demand cert path) AND pinned IdP
+# (Subdomain-Identity Directive B — 'microsoft' makes astre.aramo.ai login skip
+# the chooser and go straight to Microsoft).
 ASTRE_TENANT_ID="${ARAMO_ASTRE_TENANT_ID:-019000a0-0000-7000-8000-000000000001}"
 ASTRE_ALLOWED_DOMAIN="${ARAMO_ASTRE_ALLOWED_DOMAIN:-astreinc.com}"
 ASTRE_SLUG="${ARAMO_ASTRE_SLUG:-astre}"
+ASTRE_IDENTITY_PROVIDER="${ARAMO_ASTRE_IDENTITY_PROVIDER:-microsoft}"
 
 # --- helpers --------------------------------------------------------------
 
@@ -130,7 +133,7 @@ run_assert_query() {
     -e DATABASE_URL="$DBURL" \
     "$ASSERT_IMAGE" \
     psql "${DBURL%%\?*}" -v ON_ERROR_STOP=1 -q -t -A -c \
-    "SELECT count(*) FROM identity.\"Tenant\" WHERE id='${ASTRE_TENANT_ID}' AND allowed_domain='${ASTRE_ALLOWED_DOMAIN}' AND slug='${ASTRE_SLUG}';"
+    "SELECT count(*) FROM identity.\"Tenant\" WHERE id='${ASTRE_TENANT_ID}' AND allowed_domain='${ASTRE_ALLOWED_DOMAIN}' AND slug='${ASTRE_SLUG}' AND identity_provider='${ASTRE_IDENTITY_PROVIDER}';"
 }
 
 # THE GATE. The seed-presence query returns a single count. Returns 0 iff that
@@ -168,10 +171,10 @@ main() {
   # ABORTS (containers are NOT recreated — exit non-zero stops the sequence).
   local count
   count="$(run_assert_query)"
-  echo "[seed] post-seed assertion: Astre tenant rows matching id+domain = '${count}'"
+  echo "[seed] post-seed assertion: Astre tenant rows matching id+domain+slug+idp = '${count}'"
 
   if assert_passes "$count"; then
-    echo "[seed] OK — Astre tenant present with allowed_domain. Safe to build + recreate containers."
+    echo "[seed] OK — Astre tenant present with allowed_domain + slug + identity_provider. Safe to build + recreate containers."
   else
     echo "[seed] FATAL: post-seed assertion failed (expected exactly 1 Astre tenant row)." >&2
     # The on_exit trap prints the "containers NOT recreated" reassurance.

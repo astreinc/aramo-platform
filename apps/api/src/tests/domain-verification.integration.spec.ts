@@ -56,6 +56,11 @@ const IDENTITY_SLUG = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql',
 );
+// Subdomain-Identity Directive B — additive Tenant.identity_provider column.
+const IDENTITY_IDP = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-domain-verification-spec';
@@ -146,7 +151,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ENTITLEMENT_INIT,
         IDENTITY_INIT,
         IDENTITY_ALLOWED_DOMAIN,
-        IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG,
+        IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG, IDENTITY_IDP,
       ]) {
         await db.query(readFileSync(p, 'utf8'));
       }

@@ -54,6 +54,11 @@ const IDENTITY_SLUG = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql',
 );
+// Subdomain-Identity Directive B — additive Tenant.identity_provider column.
+const IDENTITY_IDP = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
+);
 const IDENTITY_INVITATION_MIG = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
@@ -149,7 +154,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       db = new Client({ connectionString: url });
       await db.connect();
 
-      for (const p of [ENTITLEMENT_INIT, IDENTITY_INIT, IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG, IDENTITY_INVITATION_MIG, IDENTITY_PROFILE]) {
+      for (const p of [ENTITLEMENT_INIT, IDENTITY_INIT, IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG, IDENTITY_IDP, IDENTITY_INVITATION_MIG, IDENTITY_PROFILE]) {
         await db.query(readFileSync(p, 'utf8'));
       }
       for (const t of [TENANT_A, TENANT_B]) {
