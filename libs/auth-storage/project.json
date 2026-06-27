@@ -8,7 +8,7 @@
     "build": {
       "executor": "@nx/js:tsc",
       "outputs": ["{options.outputPath}"],
-      "dependsOn": ["prisma:generate"],
+      "dependsOn": ["^build", "prisma:generate"],
       "options": {
         "outputPath": "dist/libs/auth-storage",
         "main": "libs/auth-storage/src/index.ts",
