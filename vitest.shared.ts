@@ -60,7 +60,6 @@ export default defineConfig({
       // vitest runtime resolves the AppModule import (apps/api wires
       // EntitlementModule).
       '@aramo/entitlement': resolve(root, 'libs/entitlement/src/index.ts'),
-      '@aramo/entrustability': resolve(root, 'libs/entrustability/src/index.ts'),
       '@aramo/events': resolve(root, 'libs/events/src/index.ts'),
       '@aramo/evidence': resolve(root, 'libs/evidence/src/index.ts'),
       '@aramo/examination': resolve(root, 'libs/examination/src/index.ts'),
