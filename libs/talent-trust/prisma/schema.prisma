@@ -1,0 +1,270 @@
+// Per-module Prisma schema for the `talent_trust` module — TR-1
+// (Trust Model & Vocabulary, foundation slice).
+//
+// Per Architecture v2.x §7 (Schema-per-Module data architecture) and
+// doc/05-conventions.md "Database Conventions". Cross-schema references
+// are UUID-only without FK constraints (§7.3). Intra-schema relations
+// (within the `talent_trust` schema) carry real FKs (the cross-schema
+// no-FK rule does not apply within a single schema).
+//
+// TR-1 builds a LEDGER + a VOCABULARY + a materialized rollup. It runs no
+// verification (TR-2…TR-10) and makes no accept/reject/sufficiency decision
+// (TR-12). The §8 interface (TrustService) is the only public surface.
+//
+// CLOSED-VOCABULARY DISCIPLINE (PO Ruling 2, this slice): every closed
+// vocabulary is a Postgres `String` (TEXT) column with the allowed values
+// documented in a `///` comment, enforced at the DTO layer via TS unions +
+// class-validator (@IsIn) — NOT a Prisma native enum. This is the
+// documented convention (doc/05-conventions.md "Append-Only Event Tables":
+// `scope String // ConsentScope enum value`) and the libs/consent /
+// libs/identity / libs/talent precedent. Rationale: `assertion_type` is
+// extensible (§5.3 — "later slices register more"); native Prisma enums
+// would force a migration each time a downstream slice registers a new
+// assertion_type. For module uniformity the genuinely-fixed vocabularies
+// (source_class, dimension, bands, current_status) follow the same
+// String-backed convention — no native enums anywhere in this schema.
+//
+// IMMUTABILITY (DoD): `EvidenceRecord` assertion content is immutable once
+// written — the ONLY mutable column is `current_status` (a projection of
+// the latest EvidenceEvent). A BEFORE UPDATE trigger (added in the same
+// migration) raises if any column other than `current_status` is changed.
+// `EvidenceEvent` and `EvidenceLink` are append-only — whole-row BEFORE
+// UPDATE triggers reject any UPDATE (mirrors libs/consent's
+// TalentConsentEvent PR-2 precedent). `TrustState` is a projection
+// (recomputed on every write, never hand-authored) and is therefore freely
+// upsertable — no immutability trigger.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["talent_trust"]
+}
+
+// ResolutionSubject — the resolution-index node (owned by the Intelligence
+// layer), the keying target for all evidence. Under the ratified ATS-as-heart
+// / Core-as-index model, the ATS TalentRecord is the system-of-record (the
+// heart); this node is the index that resolves references to the same human.
+// Maps 1:1 to a reference initially and is mergeable later (R6) — the
+// merged_into pointer + reversible merge/unmerge IS the index's same-human
+// mechanism. Gives TR-6 (cross-persona resolution) / TR-11 (portable trust) a
+// merge point without rewriting evidence.
+model ResolutionSubject {
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+
+  /// ResolutionSubjectStatus closed vocabulary: ACTIVE | MERGED | SUPERSEDED
+  status String @default("ACTIVE")
+
+  // When status = MERGED, points at the surviving subject (R6 / §8 merge
+  // capability). Reversible (unmerge clears it). UUID-only — no relation, to
+  // avoid a self-referential Prisma relation TR-1 does not need.
+  merged_into_subject_id String? @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  // Intra-schema relations (real FKs — within the talent_trust schema).
+  refs     ResolutionSubjectRef[]
+  evidence EvidenceRecord[]
+  state    TrustState?
+
+  @@index([tenant_id])
+  @@index([tenant_id, status])
+  @@schema("talent_trust")
+}
+
+// ResolutionSubjectRef — crosswalk from a resolution-index node to the
+// reference(s) it covers. Initially one ref per subject; multiple after a TR-6
+// merge. The `ref_type` discriminator keys against the ATS TalentRecord.id
+// (ATS_TALENT_RECORD — the system-of-record ref, the heart, tenant-scoped and
+// always present), a tenant-spanning person-cluster (PERSON_CLUSTER — an index
+// ref, NOT a Core-Talent-SOR ref), or a minted ANCHOR.
+model ResolutionSubjectRef {
+  id String @id @db.Uuid
+
+  subject_id String @db.Uuid
+  tenant_id  String @db.Uuid
+
+  /// ResolutionSubjectRefType closed vocabulary:
+  ///   ATS_TALENT_RECORD | PERSON_CLUSTER | ANCHOR
+  ref_type String
+
+  // The external reference value (ATS TalentRecord.id, a person-cluster id, or
+  // a minted ANCHOR id). Cross-schema logical reference — UUID-only, no FK.
+  ref_id String @db.Uuid
+
+  linked_at   DateTime @default(now()) @db.Timestamptz
+  link_source String
+
+  subject ResolutionSubject @relation(fields: [subject_id], references: [id])
+
+  // A given external ref resolves to exactly one subject within a tenant
+  // (recordEvidence's resolve-or-create key).
+  @@unique([tenant_id, ref_type, ref_id])
+  @@index([subject_id])
+  @@index([tenant_id])
+  @@schema("talent_trust")
+}
+
+// EvidenceRecord — the atomic fact. Assertion content is IMMUTABLE once
+// written (enforced by the BEFORE UPDATE trigger; only `current_status` is
+// mutable). `strength` is the base strength derived from source_class ×
+// method at write time (§6.1) and persisted; time-decay (§7) is applied as a
+// function of age at rollup-derivation time, so the persisted base is
+// immutable too.
+model EvidenceRecord {
+  id String @id @db.Uuid
+
+  subject_id String @db.Uuid
+  tenant_id  String @db.Uuid
+
+  /// TrustDimension closed vocabulary (R1 — four):
+  ///   IDENTITY | CLAIMS | CONTINUITY | ELIGIBILITY
+  dimension String
+
+  /// assertion_type — extensible typed set (§5.3). TR-1 seeds a starter set
+  /// (PHONE_VERIFIED, SKILL, EMPLOYMENT, DEGREE, CERTIFICATION, FACE_MATCH,
+  /// LIVENESS, RIGHT_TO_WORK, IDENTITY_DOCUMENT); later slices register more.
+  assertion_type String
+
+  // The structured claim (§5.1). JSONB per §7.4 (derived/metadata payload).
+  assertion_payload Json
+
+  /// SourceClass independence ladder (§5.2, ordered worthless→authoritative):
+  ///   SELF | THIRD_PARTY_UNVERIFIED | THIRD_PARTY_VERIFIED |
+  ///   AUTHORITATIVE_ISSUER | CRYPTOGRAPHIC | BIOMETRIC
+  source_class String
+
+  // The specific issuer/party (§5.1). JSONB; nullable. Doubles as the
+  // independence key for the §6.2 correlated-evidence collapse.
+  source_ref Json?
+
+  /// Method closed vocabulary (§5.3):
+  ///   SELF_DECLARED | DOCUMENT | API_REGISTRY | SIGNATURE | BIOMETRIC |
+  ///   HUMAN_ATTESTED
+  method String
+
+  // Derived & persisted base strength (§6.1) — source_class × method. Never
+  // surfaced as a talent-level number (R4); it is the band-derivation input.
+  strength Float
+
+  collected_at DateTime @db.Timestamptz
+
+  /// DecayProfile closed vocabulary (§7):
+  ///   DURABLE | SLOW | MODERATE | FAST | PER_STEP
+  decay_profile String
+
+  /// PortabilityClass closed vocabulary (§5.1 / §9):
+  ///   TENANT_ONLY | ATTESTATION_PORTABLE
+  portability_class String
+
+  // Ruling 5 — AI-produced evidence must be distinguishable. Orthogonal to
+  // `method` (an agent may produce DOCUMENT- or API_REGISTRY-method
+  // evidence). The ONLY agent accommodation in TR-1: a flag, not a method
+  // value. Lets AI-originated evidence be weighted / surfaced / routed to
+  // review independently downstream.
+  ai_derived Boolean @default(false)
+
+  /// EvidenceStatus — the ONLY mutable column. A projection of the latest
+  /// EvidenceEvent, never hand-edited (§5.5):
+  ///   PENDING | VALID | STALE | CONTRADICTED | REVOKED | SUPERSEDED | DISPUTED
+  current_status String
+
+  // The writing slice (§5.1 created_by).
+  created_by String
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  subject ResolutionSubject   @relation(fields: [subject_id], references: [id])
+  events  EvidenceEvent[]
+
+  @@index([tenant_id, subject_id])
+  @@index([tenant_id, subject_id, dimension])
+  @@schema("talent_trust")
+}
+
+// EvidenceEvent — append-only lifecycle log. This is how `current_status`
+// ever changes (§5.5). Immutable — whole-row BEFORE UPDATE trigger rejects
+// any UPDATE.
+model EvidenceEvent {
+  id String @id @db.Uuid
+
+  evidence_id String @db.Uuid
+  // tenant_id is not named in the §5.1 EvidenceEvent field list but is added
+  // for the program-wide tenant-scoping + indexing convention
+  // (doc/05-conventions.md "Tenant ID Required"). Additive, consistent.
+  tenant_id String @db.Uuid
+
+  /// EvidenceEventType closed vocabulary (§5.1):
+  ///   CREATED | VALIDATED | MARKED_STALE | CONTRADICTED | REVOKED |
+  ///   SUPERSEDED | DISPUTED | DISPUTE_RESOLVED
+  event_type String
+
+  reason String?
+
+  // The other evidence implicated by this event (e.g. the contradicting /
+  // superseding record). UUID-only, no FK. Nullable.
+  linked_evidence_id String? @db.Uuid
+
+  actor       String?
+  occurred_at DateTime @default(now()) @db.Timestamptz
+  // No updated_at — events are immutable.
+
+  evidence EvidenceRecord @relation(fields: [evidence_id], references: [id])
+
+  @@index([tenant_id, evidence_id, occurred_at])
+  @@schema("talent_trust")
+}
+
+// EvidenceLink — first-class evidence-to-evidence relations (§5.1). Stored
+// for CORROBORATES / CONTRADICTS / SUPERSEDES. from/to are kept UUID-only
+// (no Prisma relation) to avoid a dual self-referential relation TR-1 does
+// not need. Append-only — whole-row BEFORE UPDATE trigger rejects UPDATE.
+model EvidenceLink {
+  id String @id @db.Uuid
+
+  from_evidence_id String @db.Uuid
+  to_evidence_id   String @db.Uuid
+
+  /// EvidenceLinkRelation closed vocabulary (§5.1):
+  ///   CORROBORATES | CONTRADICTS | SUPERSEDES
+  relation String
+
+  tenant_id  String   @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenant_id, from_evidence_id])
+  @@index([tenant_id, to_evidence_id])
+  @@schema("talent_trust")
+}
+
+// TrustState — the materialized rollup downstream reads (§5.1). A projection,
+// recomputed on every evidence/event write, never authored directly — always
+// reconstructible from the ledger + events. 1:1 with ResolutionSubject. NO
+// composite talent-level score (R4) — per-dimension bands + flags only.
+model TrustState {
+  subject_id String @id @db.Uuid
+  tenant_id  String @db.Uuid
+
+  /// Each band is a PresentationBand closed vocabulary value (§5.4):
+  ///   NOT_ESTABLISHED | SELF_ASSERTED | CORROBORATED |
+  ///   INDEPENDENTLY_VERIFIED | AUTHORITATIVE
+  identity_band    String
+  claims_band      String
+  continuity_band  String
+  eligibility_band String
+
+  open_contradiction_count Int     @default(0)
+  stale_evidence_count     Int     @default(0)
+  has_open_dispute         Boolean @default(false)
+
+  last_recomputed_at DateTime @db.Timestamptz
+
+  subject ResolutionSubject @relation(fields: [subject_id], references: [id])
+
+  @@index([tenant_id])
+  @@schema("talent_trust")
+}
