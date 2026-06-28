@@ -68,6 +68,7 @@
       "@aramo/talent": ["libs/talent/src/index.ts"],
       "@aramo/talent-evidence": ["libs/talent-evidence/src/index.ts"],
       "@aramo/talent-record": ["libs/talent-record/src/index.ts"],
+      "@aramo/talent-trust": ["libs/talent-trust/src/index.ts"],
       "@aramo/task": ["libs/task/src/index.ts"],
       "@aramo/visibility": ["libs/visibility/src/index.ts"]
     }

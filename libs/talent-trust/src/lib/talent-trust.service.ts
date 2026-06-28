@@ -1,0 +1,304 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+
+import {
+  deriveTrustState,
+  type EvidenceForDerivation,
+} from './band-derivation.js';
+import { deriveStrength } from './strength.js';
+import {
+  TalentTrustRepository,
+  type EvidenceRecordRow,
+  type TrustStateRow,
+  type ResolutionSubjectRow,
+} from './talent-trust.repository.js';
+import {
+  EVENT_TO_STATUS,
+  type DecayProfile,
+  type EvidenceEventType,
+  type Method,
+  type PortabilityClass,
+  type SourceClass,
+  type TrustDimension,
+  type ResolutionSubjectRefType,
+} from './vocab.js';
+
+// TalentTrustService — the §8 interface and the ONLY public surface of TR-1.
+//
+// Writes append to the immutable ledger; every write recomputes the
+// materialized TrustState (never hand-authored, always reconstructible from
+// the ledger). Reads return the rollup or the ledger. TR-1 runs no
+// verification and makes no accept/reject/sufficiency decision — it records
+// and rolls up.
+
+// A reference the resolution index keys against. Holds the ATS TalentRecord.id
+// (ATS_TALENT_RECORD — the system-of-record ref / heart), a person-cluster id
+// (PERSON_CLUSTER — an index ref), or an ANCHOR.
+export interface SubjectRef {
+  tenant_id: string;
+  ref_type: ResolutionSubjectRefType;
+  ref_id: string;
+  // Provenance of the link (who/what associated this ref). Defaults to the
+  // writing slice when omitted.
+  link_source?: string;
+}
+
+export interface RecordEvidenceInput {
+  subjectRef: SubjectRef;
+  dimension: TrustDimension;
+  assertion_type: string;
+  assertion_payload: unknown;
+  source_class: SourceClass;
+  method: Method;
+  source_ref?: unknown | null;
+  portability_class: PortabilityClass;
+  decay_profile: DecayProfile;
+  // Defaults to now() when omitted.
+  collected_at?: Date;
+  // Ruling 5 — AI-produced evidence flag. Orthogonal to method. Default false.
+  ai_derived?: boolean;
+  // The writing slice (TR-2…TR-10).
+  created_by: string;
+}
+
+@Injectable()
+export class TalentTrustService {
+  constructor(private readonly repo: TalentTrustRepository) {}
+
+  // ---- Writes: evidence in (§8) --------------------------------------
+
+  async recordEvidence(input: RecordEvidenceInput): Promise<EvidenceRecordRow> {
+    const now = new Date();
+    const { subjectRef } = input;
+
+    const subjectId = await this.repo.resolveOrCreateSubject(
+      subjectRef.tenant_id,
+      subjectRef.ref_type,
+      subjectRef.ref_id,
+      subjectRef.link_source ?? input.created_by,
+    );
+
+    // Strength is derived (§6.1), never entered.
+    const strength = deriveStrength(input.source_class, input.method);
+
+    const evidence = await this.repo.insertEvidence({
+      subject_id: subjectId,
+      tenant_id: subjectRef.tenant_id,
+      dimension: input.dimension,
+      assertion_type: input.assertion_type,
+      assertion_payload: input.assertion_payload,
+      source_class: input.source_class,
+      source_ref: input.source_ref ?? null,
+      method: input.method,
+      strength,
+      collected_at: input.collected_at ?? now,
+      decay_profile: input.decay_profile,
+      portability_class: input.portability_class,
+      ai_derived: input.ai_derived ?? false,
+      // current_status is a projection of the latest event; the CREATED event
+      // below is that event. VALID = recorded & active.
+      current_status: EVENT_TO_STATUS.CREATED,
+      created_by: input.created_by,
+    });
+
+    await this.repo.appendEvent({
+      evidence_id: evidence.id,
+      tenant_id: subjectRef.tenant_id,
+      event_type: 'CREATED',
+      actor: input.created_by,
+      occurred_at: now,
+    });
+
+    await this.recompute(subjectId, subjectRef.tenant_id, now);
+    return evidence;
+  }
+
+  // ---- Writes: lifecycle ops (§8) ------------------------------------
+  // Each appends an EvidenceEvent (+ EvidenceLink where relational), projects
+  // the new current_status, and recomputes TrustState.
+
+  async markStale(evidenceId: string): Promise<void> {
+    await this.applyLifecycle(evidenceId, 'MARKED_STALE', {});
+  }
+
+  async revoke(evidenceId: string, reason: string): Promise<void> {
+    await this.applyLifecycle(evidenceId, 'REVOKED', { reason });
+  }
+
+  async contradict(evidenceId: string, byEvidenceId: string, reason: string): Promise<void> {
+    const ev = await this.requireEvidence(evidenceId);
+    await this.repo.appendLink({
+      from_evidence_id: byEvidenceId,
+      to_evidence_id: evidenceId,
+      relation: 'CONTRADICTS',
+      tenant_id: ev.tenant_id,
+    });
+    await this.applyLifecycle(evidenceId, 'CONTRADICTED', {
+      reason,
+      linked_evidence_id: byEvidenceId,
+      evidence: ev,
+    });
+  }
+
+  async supersede(oldId: string, newId: string): Promise<void> {
+    const ev = await this.requireEvidence(oldId);
+    await this.repo.appendLink({
+      from_evidence_id: newId,
+      to_evidence_id: oldId,
+      relation: 'SUPERSEDES',
+      tenant_id: ev.tenant_id,
+    });
+    await this.applyLifecycle(oldId, 'SUPERSEDED', { linked_evidence_id: newId, evidence: ev });
+  }
+
+  async dispute(evidenceId: string, reason: string): Promise<void> {
+    await this.applyLifecycle(evidenceId, 'DISPUTED', { reason });
+  }
+
+  async resolveDispute(evidenceId: string, outcome: string): Promise<void> {
+    await this.applyLifecycle(evidenceId, 'DISPUTE_RESOLVED', { reason: outcome });
+  }
+
+  // ---- Subject capability (§8) — reversible; logic deferred to TR-6 ---
+
+  async mergeSubjects(
+    survivingSubjectId: string,
+    mergedSubjectId: string,
+    reason: string,
+  ): Promise<ResolutionSubjectRow> {
+    await this.requireSubject(survivingSubjectId);
+    await this.requireSubject(mergedSubjectId);
+    // `reason` is part of the §8 merge contract; TR-1 ships the reversible
+    // capability only (mark, never delete — the immutable ledger is
+    // untouched). TR-6 supplies the WHEN, the evidence reconciliation, and the
+    // merge-audit persistence the reason will feed.
+    void reason;
+    return this.repo.setSubjectMergeState(mergedSubjectId, 'MERGED', survivingSubjectId);
+  }
+
+  async unmergeSubjects(mergedSubjectId: string, reason: string): Promise<ResolutionSubjectRow> {
+    await this.requireSubject(mergedSubjectId);
+    void reason; // See mergeSubjects — reason persistence is deferred to TR-6.
+    return this.repo.setSubjectMergeState(mergedSubjectId, 'ACTIVE', null);
+  }
+
+  // ---- Reads: state out (§8) -----------------------------------------
+
+  async getTrustState(subjectRef: SubjectRef): Promise<TrustStateRow | null> {
+    const subject = await this.resolveSubjectForRead(subjectRef);
+    if (subject === null) return null;
+
+    const persisted = await this.repo.findTrustStateBySubject(subject.id);
+    if (persisted) return persisted;
+
+    // Subject exists but carries no evidence yet — synthesize the empty
+    // rollup so callers always receive four bands.
+    return {
+      subject_id: subject.id,
+      tenant_id: subject.tenant_id,
+      identity_band: 'NOT_ESTABLISHED',
+      claims_band: 'NOT_ESTABLISHED',
+      continuity_band: 'NOT_ESTABLISHED',
+      eligibility_band: 'NOT_ESTABLISHED',
+      open_contradiction_count: 0,
+      stale_evidence_count: 0,
+      has_open_dispute: false,
+      last_recomputed_at: subject.created_at,
+    };
+  }
+
+  async getEvidence(
+    subjectRef: SubjectRef,
+    filters?: Parameters<TalentTrustRepository['listEvidenceBySubject']>[1],
+  ): Promise<EvidenceRecordRow[]> {
+    const subject = await this.resolveSubjectForRead(subjectRef);
+    if (subject === null) return [];
+    return this.repo.listEvidenceBySubject(subject.id, filters);
+  }
+
+  // ---- internals ------------------------------------------------------
+
+  private async applyLifecycle(
+    evidenceId: string,
+    eventType: EvidenceEventType,
+    opts: {
+      reason?: string;
+      linked_evidence_id?: string;
+      actor?: string;
+      // Pre-fetched record (callers that already loaded it pass it through).
+      evidence?: EvidenceRecordRow;
+    },
+  ): Promise<void> {
+    const ev = opts.evidence ?? (await this.requireEvidence(evidenceId));
+    const now = new Date();
+
+    await this.repo.appendEvent({
+      evidence_id: evidenceId,
+      tenant_id: ev.tenant_id,
+      event_type: eventType,
+      reason: opts.reason ?? null,
+      linked_evidence_id: opts.linked_evidence_id ?? null,
+      actor: opts.actor ?? null,
+      occurred_at: now,
+    });
+
+    // current_status is set ONLY by applying an event (§5.5) — this is the
+    // projection of the latest event.
+    await this.repo.updateEvidenceStatus(evidenceId, EVENT_TO_STATUS[eventType]);
+
+    await this.recompute(ev.subject_id, ev.tenant_id, now);
+  }
+
+  // Recompute the materialized TrustState from the full ledger. Never
+  // hand-authored — always reconstructible from evidence + events.
+  private async recompute(subjectId: string, tenantId: string, now: Date): Promise<void> {
+    const evidence = await this.repo.listEvidenceBySubject(subjectId);
+    const projection: EvidenceForDerivation[] = evidence.map((e) => ({
+      dimension: e.dimension,
+      source_class: e.source_class,
+      method: e.method,
+      strength: e.strength,
+      current_status: e.current_status,
+      decay_profile: e.decay_profile,
+      collected_at: e.collected_at,
+      source_ref: e.source_ref,
+    }));
+
+    const derived = deriveTrustState(projection, now);
+    await this.repo.upsertTrustState({
+      subject_id: subjectId,
+      tenant_id: tenantId,
+      ...derived,
+      last_recomputed_at: now,
+    });
+  }
+
+  private async resolveSubjectForRead(subjectRef: SubjectRef): Promise<ResolutionSubjectRow | null> {
+    const subject = await this.repo.findSubjectByRef(
+      subjectRef.tenant_id,
+      subjectRef.ref_type,
+      subjectRef.ref_id,
+    );
+    if (subject === null) return null;
+    // Follow a merge pointer to the surviving subject (R6).
+    if (subject.status === 'MERGED' && subject.merged_into_subject_id !== null) {
+      return this.repo.findSubjectById(subject.merged_into_subject_id);
+    }
+    return subject;
+  }
+
+  private async requireEvidence(evidenceId: string): Promise<EvidenceRecordRow> {
+    const ev = await this.repo.findEvidenceById(evidenceId);
+    if (ev === null) {
+      throw new NotFoundException(`EvidenceRecord ${evidenceId} not found`);
+    }
+    return ev;
+  }
+
+  private async requireSubject(subjectId: string): Promise<ResolutionSubjectRow> {
+    const subject = await this.repo.findSubjectById(subjectId);
+    if (subject === null) {
+      throw new NotFoundException(`ResolutionSubject ${subjectId} not found`);
+    }
+    return subject;
+  }
+}
