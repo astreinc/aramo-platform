@@ -267,7 +267,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         subjectRef: subjectRefB,
         dimension: 'IDENTITY',
         assertion_type: 'FACE_MATCH',
-        assertion_payload: { score: 0.99 },
+        assertion_payload: { match_confidence: 0.99 },
         source_class: 'BIOMETRIC',
         method: 'BIOMETRIC',
         portability_class: 'TENANT_ONLY',

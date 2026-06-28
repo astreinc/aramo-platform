@@ -243,8 +243,8 @@ model EvidenceLink {
 
 // TrustState — the materialized rollup downstream reads (§5.1). A projection,
 // recomputed on every evidence/event write, never authored directly — always
-// reconstructible from the ledger + events. 1:1 with ResolutionSubject. NO
-// composite talent-level score (R4) — per-dimension bands + flags only.
+// reconstructible from the ledger + events. 1:1 with ResolutionSubject.
+// Per-dimension bands + flags only; no composite talent-level value (R4).
 model TrustState {
   subject_id String @id @db.Uuid
   tenant_id  String @db.Uuid

@@ -23,7 +23,7 @@ export type TrustDimension = (typeof TRUST_DIMENSIONS)[number];
 
 // ---- EvidenceRecord.source_class — the independence ladder (§5.2) ------
 // ORDERED worthless → authoritative. The ordering is fixed (R2); the index
-// in this array IS the ladder rank used by strength + band derivation.
+// in this array IS the ladder position used by strength + band derivation.
 export const SOURCE_CLASSES = [
   'SELF',
   'THIRD_PARTY_UNVERIFIED',
@@ -100,8 +100,8 @@ export const EVIDENCE_LINK_RELATIONS = ['CORROBORATES', 'CONTRADICTS', 'SUPERSED
 export type EvidenceLinkRelation = (typeof EVIDENCE_LINK_RELATIONS)[number];
 
 // ---- TrustState bands — PresentationBand (§5.4, per dimension) ---------
-// ORDERED lowest → highest. The index IS the band rank (band derivation
-// compares and caps by rank).
+// ORDERED lowest → highest. The index IS the band position (band derivation
+// compares and caps by position).
 export const PRESENTATION_BANDS = [
   'NOT_ESTABLISHED',
   'SELF_ASSERTED',
