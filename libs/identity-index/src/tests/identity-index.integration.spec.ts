@@ -105,5 +105,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const b = await repo.createClusterWithFingerprint(fpB, 'email');
       expect(a.id).not.toBe(b.id);
     });
+
+    it('findOrCreateClusterByFingerprint creates once then resolves the same cluster (the 4b resolver primitive)', async () => {
+      const fp = computeEmailFingerprint('find-or-create@example.com', PEPPER);
+      const first = await repo.findOrCreateClusterByFingerprint(fp, 'email');
+      const second = await repo.findOrCreateClusterByFingerprint(fp, 'email');
+      expect(second.id).toBe(first.id);
+      // Exactly one cluster + one fingerprint — no duplicate minted.
+      const count = await repo.findClusterByFingerprint(fp);
+      expect(count?.id).toBe(first.id);
+    });
   },
 );

@@ -28,7 +28,7 @@ describe('RawPayloadReference schema — structural guarantees', () => {
     expect(readSchema()).toMatch(/model\s+RawPayloadReference\s*\{/);
   });
 
-  it('declares exactly the PR-12 §4.2 + PR-13 §4.4 + T2-2a additive field set (no extras)', () => {
+  it('declares exactly the PR-12 §4.2 + PR-13 §4.4 + T2-2a + 4b additive field set (no extras)', () => {
     // Positive assertion — the only field-declaration lines in the
     // RawPayloadReference block are the ones the PR-12 directive
     // §4.2 names plus the PR-13 §4.4 skill_surface_forms column plus
@@ -53,6 +53,7 @@ describe('RawPayloadReference schema — structural guarantees', () => {
         'id',
         'profile_url',
         'resolution_method',
+        'resolved_cluster_id',
         'resolved_talent_id',
         'sha256',
         'skill_surface_forms',

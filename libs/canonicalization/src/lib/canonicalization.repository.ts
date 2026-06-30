@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
-import { AramoError, type AramoLogger } from '@aramo/common';
+import {
+  AramoError,
+  type AramoLogger,
+  computeEmailFingerprint,
+  loadIdentityPepper,
+} from '@aramo/common';
+import { IdentityIndexRepository } from '@aramo/identity-index';
 
 import { Prisma } from '../../prisma/generated/client/client.js';
 
@@ -19,17 +25,20 @@ import { PrismaService } from './prisma/prisma.service.js';
 //     → CanonicalizeResult
 //
 // Semantics (T2-3 RESOLVE + retained T2-2a test affordances):
-//   - core_talent_id OMITTED (production path) → run the inline T2-1
-//     verified-email resolver:
-//       * payload.verified_email is non-null AND a verified email-type
-//         TalentContactMethod exists with the same value → resolve to
-//         that Talent (cross-tenant: Core Talent is tenant-agnostic;
-//         the overlay is tenant-scoped per the T2-1 model);
-//         resolution_method = verified_email_match.
-//       * Else → CREATE-NEW Talent; resolution_method = new_identity.
-//     T2-1 Decision 3 — DETERMINISTIC, exact, oldest-first; no fuzzy
+//   - core_talent_id OMITTED (production path) → run the inline resolver.
+//     Step 4b (ADR-0016) splits resolution into two anchors:
+//       * PER-TENANT CORE HUSK (resolved_talent_id): a WITHIN-TENANT verified-
+//         email match (the findFirst is tenant-filtered). Hit → reuse that
+//         tenant's husk; miss → CREATE-NEW husk. resolution_method =
+//         verified_email_match | new_identity. The husk no longer crosses
+//         tenants (Core is now per-tenant, en route to retirement).
+//       * CROSS-TENANT CLUSTER (resolved_cluster_id): a salted one-way
+//         fingerprint of the verified email, computed tenant-side, resolves a
+//         PII-free identity_index.PersonCluster (I14 — no raw email crosses the
+//         tenant wall). One human across tenants shares ONE cluster.
+//     DETERMINISTIC, exact, oldest-first within the tenant; no fuzzy
 //     auto-merge. An UNverified email does NOT resolve (held as evidence,
-//     not an identity key).
+//     not an identity key) and yields no fingerprint.
 //   - core_talent_id = <UUID> (test/internal) → ASSOCIATE: validate the
 //     supplied id; create overlay if absent; populate evidence; record.
 //     resolution_method defaults to 'caller_supplied'.
@@ -165,6 +174,12 @@ export class CanonicalizationRepository {
     private readonly prisma: PrismaService,
     @Inject('CanonicalizationRepositoryLogger')
     private readonly logger: AramoLogger,
+    // Step 4b — the PII-free cross-tenant resolution index. Cluster
+    // resolution happens via its OWN client (identity_index schema is not in
+    // canonicalization's multi-schema follower client); an orphan cluster on
+    // a canonicalize rollback is harmless and reused on retry (idempotent via
+    // the fingerprint @@unique).
+    private readonly identityIndex: IdentityIndexRepository,
   ) {}
 
   // T2-3 — polling-outbox read. Returns up to `limit` unresolved payloads
@@ -282,6 +297,9 @@ export class CanonicalizationRepository {
         let talentId: string;
         let resolvedMethod: ResolutionMethodValue;
         let needsCreate = false;
+        // Step 4b — the cross-tenant cluster anchor (identity_index). Set only
+        // when a verified_email yields a fingerprint; NULL otherwise.
+        let resolvedClusterId: string | null = null;
 
         if (input.core_talent_id === undefined) {
           // T2-3 PRODUCTION PATH: the inline T2-1 verified-email resolver.
@@ -289,15 +307,20 @@ export class CanonicalizationRepository {
           // ingestion (libs/ingestion ingestion.service.ts:74-77); we match
           // on the stored value directly.
           //
-          // Cross-tenant: Core Talent is tenant-agnostic; the resolver
-          // does NOT filter by tenant_id. One Jane, tenant-scoped overlay
-          // (the T2-1 model). Deterministic — exact, oldest match wins.
+          // Step 4b (ADR-0016) — WITHIN-TENANT ONLY. The findFirst is
+          // tenant-filtered: this resolves the per-tenant Core husk and MUST
+          // NOT read another tenant's contact method. Cross-tenant same-human
+          // resolution has moved to the PII-free identity_index cluster
+          // (fingerprint-matched, below). One human across tenants now shares
+          // ONE cluster but a DISTINCT husk per tenant. Deterministic within
+          // the tenant — exact, oldest match wins.
           //
           // Unverified-doesn't-resolve: only verification_status='verified'
           // contact methods are identity keys; the rest are evidence.
           if (payload.verified_email !== null) {
             const existing = await tx.talentContactMethod.findFirst({
               where: {
+                tenant_id: payload.tenant_id,
                 type: 'email',
                 value: payload.verified_email,
                 verification_status: 'verified',
@@ -347,6 +370,29 @@ export class CanonicalizationRepository {
           needsCreate = true;
           resolvedMethod = input.resolution_method ?? 'new_identity';
           talentId = ''; // assigned in the create branch below
+        }
+
+        // Step 3a (4b) — CROSS-TENANT IDENTITY → PERSON_CLUSTER (PII-free).
+        // The same-human key across tenants is a salted one-way fingerprint of
+        // the verified email, computed TENANT-SIDE; only the opaque fingerprint
+        // crosses into identity_index (I14 — no raw email leaves the tenant
+        // wall). resolve-or-create is race-safe via the fingerprint @@unique.
+        // No verified email ⇒ no cross-tenant key ⇒ resolvedClusterId stays
+        // NULL. The pepper read is fail-loud (loadIdentityPepper throws if
+        // ARAMO_IDENTITY_PEPPER is absent/empty) so the service STOPS rather
+        // than mis-resolving with an unkeyed fingerprint.
+        if (payload.verified_email !== null) {
+          const pepper = loadIdentityPepper();
+          const fingerprint = computeEmailFingerprint(
+            payload.verified_email,
+            pepper,
+          );
+          const cluster =
+            await this.identityIndex.findOrCreateClusterByFingerprint(
+              fingerprint,
+              'email',
+            );
+          resolvedClusterId = cluster.id;
         }
 
         if (needsCreate) {
@@ -439,7 +485,12 @@ export class CanonicalizationRepository {
         await tx.rawPayloadReference.update({
           where: { id: payload.id },
           data: {
+            // resolved_talent_id remains the per-tenant Core husk pointer +
+            // the idempotency anchor (unchanged). resolved_cluster_id (4b) is
+            // the additive cross-tenant cluster anchor — each column means
+            // exactly what its name says.
             resolved_talent_id: talentId,
+            resolved_cluster_id: resolvedClusterId,
             resolution_method: resolvedMethod,
           },
         });

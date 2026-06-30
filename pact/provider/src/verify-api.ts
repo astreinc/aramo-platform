@@ -107,6 +107,14 @@ const INGESTION_T2_ADDITIVE_MIGRATION = resolve(
   ROOT,
   'libs/ingestion/prisma/migrations/20260603160100_add_resolved_talent_id_to_raw_payload_reference/migration.sql',
 );
+// Step 4b additive — resolved_cluster_id. Same RETURNING * reason as the
+// T2-2a additive above: the regenerated ingestion client expects the column,
+// so createPayload's RETURNING * 500s on the ingestion-consumer pacts without
+// this migration applied.
+const INGESTION_4B_ADDITIVE_MIGRATION = resolve(
+  ROOT,
+  'libs/ingestion/prisma/migrations/20260630120000_add_resolved_cluster_id_to_raw_payload_reference/migration.sql',
+);
 const EXAMINATION_INIT_MIGRATION = resolve(
   ROOT,
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
@@ -1321,6 +1329,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         INGESTION_INIT_MIGRATION,
         INGESTION_SURFACE_MIGRATION,
         INGESTION_T2_ADDITIVE_MIGRATION,
+        INGESTION_4B_ADDITIVE_MIGRATION,
         EXAMINATION_INIT_MIGRATION,
         EXAMINATION_LIVE_LIST_MIGRATION,
         // M4 PR-5 §4.10 — ExaminationOverride table + immutability trigger

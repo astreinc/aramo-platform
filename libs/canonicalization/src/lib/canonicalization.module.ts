@@ -5,6 +5,7 @@ import {
   createAramoLogger,
   RedisConnectionConfig,
 } from '@aramo/common';
+import { IdentityIndexModule } from '@aramo/identity-index';
 import { IngestionModule } from '@aramo/ingestion';
 import { TalentModule } from '@aramo/talent';
 import { TalentEvidenceModule } from '@aramo/talent-evidence';
@@ -43,6 +44,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 @Module({
   imports: [
     CommonModule,
+    IdentityIndexModule,
     IngestionModule,
     TalentModule,
     TalentEvidenceModule,
