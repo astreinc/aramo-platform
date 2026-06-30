@@ -400,6 +400,7 @@ model RawPayloadReference {
   // `sha256_payload_dup` to the enum.
   resolved_talent_id  String?           @db.Uuid
   resolution_method   ResolutionMethod?
+  resolved_cluster_id String?           @db.Uuid
 
   created_at      DateTime @default(now()) @db.Timestamptz
   updated_at      DateTime @updatedAt @db.Timestamptz

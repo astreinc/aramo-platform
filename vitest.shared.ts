@@ -75,6 +75,12 @@ export default defineConfig({
       // resolves the apps/api AppModule import + the D5 catalog tests.
       '@aramo/field-masking': resolve(root, 'libs/field-masking/src/index.ts'),
       '@aramo/identity': resolve(root, 'libs/identity/src/index.ts'),
+      // Step 4b (ADR-0016) — identity-index leaf (the PII-free cross-tenant
+      // resolution index; PersonCluster + the fingerprint store). Mirrors
+      // tsconfig.base.json so vitest runtime resolves the @aramo/identity-index
+      // import added to CanonicalizationModule (the first cross-lib runtime
+      // importer). The add-alias-in-same-PR lesson.
+      '@aramo/identity-index': resolve(root, 'libs/identity-index/src/index.ts'),
       // PR-A8-1 Gate 5 — import-engine leaf (audited reversible batches
       // + partial-commit). Mirrors tsconfig.base.json alias so vitest
       // runtime resolves the apps/api AppModule import + the A8-1
@@ -182,6 +188,12 @@ export default defineConfig({
       // integration specs green and preserves fail-loud for real boots (the box
       // sets DNS_PROVIDER=node). The DNS DI spec save/restores this key.
       DNS_PROVIDER: 'stub',
+      // Step 4b — the canonicalization resolver fingerprints verified emails;
+      // loadIdentityPepper fails LOUD if ARAMO_IDENTITY_PEPPER is unset. A
+      // test-only default keeps specs that boot the canonicalization graph
+      // green and preserves fail-loud for real boots (prod sets a real secret).
+      // The pepper fail-loud proof save/restores this key for its one assertion.
+      ARAMO_IDENTITY_PEPPER: 'vitest-shared-test-pepper',
     },
     coverage: {
       provider: 'v8',

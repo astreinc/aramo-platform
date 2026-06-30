@@ -104,6 +104,14 @@ model RawPayloadReference {
   // (Directive §1 Ruling 1 atomicity).
   resolved_talent_id  String?           @db.Uuid
   resolution_method   ResolutionMethod?
+  // Step 4b (ADR-0016) — the cross-tenant resolution anchor: the
+  // identity_index.PersonCluster id this payload resolved to (PII-free,
+  // fingerprint-matched). DISTINCT from resolved_talent_id (the per-tenant
+  // Core husk): one human across tenants shares ONE cluster but gets a
+  // husk per tenant. Nullable — set only when a verified_email produced a
+  // fingerprint; no verified email ⇒ no cross-tenant key ⇒ NULL. UUID-only,
+  // no FK (cross-schema; identity_index owns PersonCluster).
+  resolved_cluster_id String?           @db.Uuid
   // Server-set audit timestamps.
   created_at      DateTime @default(now()) @db.Timestamptz
   updated_at      DateTime @updatedAt @db.Timestamptz

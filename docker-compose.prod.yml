@@ -113,6 +113,12 @@ services:
       - ADDRESS_AUTOCOMPLETE_PROVIDER
       - GOOGLE_PLACES_API_KEY
       - IMPORT_FAILURE_THRESHOLD_PCT
+      # identity fingerprint pepper (Step 4b / ADR-0016): the platform secret
+      # keying the cross-tenant email fingerprint, held SEPARATE from the DB.
+      # REQUIRED — loadIdentityPepper fails LOUD if unset, so canonicalization
+      # STOPS rather than mis-resolving with an unkeyed fingerprint. api-only
+      # (auth-service does not run canonicalization). Migrate to KMS/HSM later.
+      - ARAMO_IDENTITY_PEPPER
     depends_on:
       postgres:
         condition: service_healthy

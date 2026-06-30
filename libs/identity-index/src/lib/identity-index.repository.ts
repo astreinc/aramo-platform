@@ -51,6 +51,31 @@ export class IdentityIndexRepository {
   }
 
   /**
+   * Resolve a cluster by fingerprint, creating it if absent. Race-safe: if a
+   * concurrent caller wins the create (the @@unique([fingerprint]) rejects the
+   * loser), the loser re-reads and returns the winner's cluster. This is the
+   * resolve-or-create primitive the cross-tenant resolver (step 4b) calls — the
+   * unique index is the serialization point, so two tenants ingesting the same
+   * email concurrently converge on ONE cluster.
+   */
+  async findOrCreateClusterByFingerprint(
+    fingerprint: string,
+    kind: string,
+  ): Promise<PersonClusterRow> {
+    const existing = await this.findClusterByFingerprint(fingerprint);
+    if (existing !== null) return existing;
+    try {
+      return await this.createClusterWithFingerprint(fingerprint, kind);
+    } catch (err) {
+      // Lost the create race (unique-violation on fingerprint) → the winner's
+      // cluster now exists; re-read it. Any other error propagates.
+      const afterRace = await this.findClusterByFingerprint(fingerprint);
+      if (afterRace !== null) return afterRace;
+      throw err;
+    }
+  }
+
+  /**
    * Mint a new PersonCluster and attach the given fingerprint to it, atomically.
    * Returns the new cluster. Caller is responsible for having checked
    * findClusterByFingerprint first (the @@unique([fingerprint]) is the

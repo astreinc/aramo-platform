@@ -56,8 +56,13 @@ const MIGRATIONS = [
   resolve(ROOT, 'libs/ingestion/prisma/migrations/20260516130715_init_ingestion_model/migration.sql'),
   resolve(ROOT, 'libs/ingestion/prisma/migrations/20260516183528_add_skill_surface_forms/migration.sql'),
   resolve(ROOT, 'libs/ingestion/prisma/migrations/20260603160100_add_resolved_talent_id_to_raw_payload_reference/migration.sql'),
+  // ingestion (4b additive) — resolved_cluster_id.
+  resolve(ROOT, 'libs/ingestion/prisma/migrations/20260630120000_add_resolved_cluster_id_to_raw_payload_reference/migration.sql'),
   // canonicalization (init) — canonicalization PG schema + OutboxEvent.
   resolve(ROOT, 'libs/canonicalization/prisma/migrations/20260603160000_init_canonicalization_schema/migration.sql'),
+  // identity_index (init, 4b) — PersonCluster + ClusterFingerprint (the
+  // PII-free cross-tenant resolution index the resolver now keys to).
+  resolve(ROOT, 'libs/identity-index/prisma/migrations/20260630000000_init_identity_index/migration.sql'),
 ];
 
 // Mirrors libs/ingestion + libs/talent splitDdl: strip line comments,
@@ -142,6 +147,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setup.end();
 
       process.env['DATABASE_URL'] = url;
+      // Step 4b — the resolver fingerprints verified emails; the pepper must
+      // be set or loadIdentityPepper fails loud (see the dedicated fail-loud
+      // proof, which unsets it for one assertion).
+      process.env['ARAMO_IDENTITY_PEPPER'] = 'canonicalization-integration-pepper';
       app = await Test.createTestingModule({
         imports: [TestModule],
       }).compile();
@@ -718,7 +727,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(updatedPayload.rows[0].resolution_method).toBe('verified_email_match');
     });
 
-    it('T2-3 proof 3 — CROSS-TENANT RESOLUTION (T2-1 model — one Talent, tenant-scoped overlays): same verified email arriving in TENANT_B resolves to the TENANT_A Core Talent + a new TENANT_B overlay (no new Talent, +1 overlay)', async () => {
+    it('T2-3 proof 3 (4b) — CROSS-TENANT IDENTITY MOVES TO THE CLUSTER, NO CROSS-TENANT EMAIL READ: same verified email in TENANT_A then TENANT_B → DISTINCT per-tenant Core husks BUT the SAME PERSON_CLUSTER (resolved via fingerprint, not a cross-tenant email read)', async () => {
       // Seed in TENANT_A.
       const seedEmail = `t2-3-cross-${randomUUID()}@example.com`;
       const seedPayloadId = uuidv7();
@@ -740,12 +749,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: randomUUID(),
       });
 
-      // A payload arrives in TENANT_B with the same verified email.
-      // T2-1 rule: one Jane, tenant-scoped overlay. Expected:
-      //   - Same Core Talent (no new Talent).
-      //   - A new overlay for TENANT_B.
-      //   - resolution_method = 'verified_email_match' (the cross-tenant
-      //     hit).
+      // A payload arrives in TENANT_B with the SAME verified email.
+      // 4b rule: cross-tenant same-human resolution is the CLUSTER's job
+      // (fingerprint-matched, PII-free). The per-tenant Core husk is resolved
+      // WITHIN the tenant only — so TENANT_B gets its OWN new husk (the
+      // tenant-filtered findFirst CANNOT see TENANT_A's contact method).
+      // Expected:
+      //   - resolution_method = 'new_identity' (no within-tenant husk in B).
+      //   - A DISTINCT Core husk (talent_id != TENANT_A's).
+      //   - Talent count +1.
+      //   - The SAME resolved_cluster_id as TENANT_A (cross-tenant identity).
       const payloadId = uuidv7();
       await insertPayload(dbClient, {
         id: payloadId,
@@ -762,11 +775,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const beforeTalents = await dbClient.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM "talent"."Talent"`,
       );
-      const beforeOverlaysB = await dbClient.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count
-           FROM "talent"."TalentTenantOverlay" WHERE tenant_id = $1`,
-        [TENANT_B],
-      );
 
       const result = await service.canonicalize({
         payload_id: payloadId,
@@ -775,38 +783,136 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: randomUUID(),
       });
 
-      expect(result.resolution_method).toBe('verified_email_match');
-      expect(result.talent_id).toBe(seed.talent_id);
+      // NO cross-tenant email read: TENANT_B did NOT resolve to TENANT_A's
+      // husk. It minted its own (new_identity), proving the findFirst is
+      // tenant-scoped.
+      expect(result.resolution_method).toBe('new_identity');
+      expect(result.talent_id).not.toBe(seed.talent_id);
       expect(result.tenant_id).toBe(TENANT_B);
 
-      // Talent count +0 (the SAME Core Talent is reused — the T2-1 model).
+      // Talent count +1 (a DISTINCT per-tenant husk — no cross-tenant sharing).
       const afterTalents = await dbClient.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM "talent"."Talent"`,
       );
-      expect(afterTalents.rows[0]!.count).toBe(beforeTalents.rows[0]!.count);
-
-      // TENANT_B overlay count +1 (the new tenant overlay for the same
-      // Talent identity).
-      const afterOverlaysB = await dbClient.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count
-           FROM "talent"."TalentTenantOverlay" WHERE tenant_id = $1`,
-        [TENANT_B],
-      );
       expect(
-        Number(afterOverlaysB.rows[0]!.count) -
-          Number(beforeOverlaysB.rows[0]!.count),
+        Number(afterTalents.rows[0]!.count) -
+          Number(beforeTalents.rows[0]!.count),
       ).toBe(1);
 
-      // Cross-tenant evidence isolation — TENANT_B got its OWN
-      // TalentContactMethod row tagged with tenant_id=TENANT_B (the
-      // evidence is overlay-scoped, even though the identity is shared).
-      const bContacts = await dbClient.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count
-           FROM "talent_evidence"."TalentContactMethod"
-           WHERE talent_id = $1 AND tenant_id = $2 AND value = $3`,
-        [seed.talent_id, TENANT_B, seedEmail],
+      // THE CROSS-TENANT IDENTITY: both payloads resolved to the SAME
+      // PERSON_CLUSTER — established by fingerprint, never by reading the
+      // other tenant's email. resolved_cluster_id is set + equal across the
+      // two tenants; resolved_talent_id (the husks) differ.
+      const clusters = await dbClient.query<{
+        id: string;
+        resolved_talent_id: string;
+        resolved_cluster_id: string | null;
+      }>(
+        `SELECT id, resolved_talent_id, resolved_cluster_id
+           FROM "ingestion"."RawPayloadReference"
+          WHERE id = ANY($1::uuid[])`,
+        [[seedPayloadId, payloadId]],
       );
-      expect(Number(bContacts.rows[0]!.count)).toBe(1);
+      const seedRow = clusters.rows.find((r) => r.id === seedPayloadId)!;
+      const bRow = clusters.rows.find((r) => r.id === payloadId)!;
+      expect(seedRow.resolved_cluster_id).not.toBeNull();
+      expect(bRow.resolved_cluster_id).toBe(seedRow.resolved_cluster_id);
+      expect(bRow.resolved_talent_id).not.toBe(seedRow.resolved_talent_id);
+
+      // Exactly ONE cluster + ONE fingerprint for this email across both
+      // tenants (the index is tenant-agnostic; the fingerprint @@unique
+      // converged them).
+      const clusterCount = await dbClient.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM "identity_index"."ClusterFingerprint"
+          WHERE cluster_id = $1`,
+        [seedRow.resolved_cluster_id],
+      );
+      expect(clusterCount.rows[0]!.count).toBe('1');
+    });
+
+    it('T2-3 proof 3b (4b) — WITHIN-TENANT DEDUP INTACT + SAME CLUSTER: same verified email, same tenant, two payloads → the SAME Core husk (tenant-filter preserves dedup) AND the same cluster', async () => {
+      const email = `t2-3-within-${randomUUID()}@example.com`;
+      const p1 = uuidv7();
+      const p2 = uuidv7();
+      for (const [pid, ref] of [[p1, 'w1'], [p2, 'w2']] as const) {
+        await insertPayload(dbClient, {
+          id: pid,
+          tenant_id: TENANT_A,
+          source: 'talent_direct',
+          storage_ref: `s3://bucket/t2-3-p3b-${ref}`,
+          sha256: `t2-3-p3b-${ref}` + 'f'.repeat(52),
+          content_type: 'application/json',
+          captured_at: new Date(),
+          verified_email: email,
+          profile_url: null,
+        });
+      }
+      const r1 = await service.canonicalize({
+        payload_id: p1,
+        source_channel: 'self_signup',
+        authContext: { tenant_id: TENANT_A },
+        requestId: randomUUID(),
+      });
+      const r2 = await service.canonicalize({
+        payload_id: p2,
+        source_channel: 'self_signup',
+        authContext: { tenant_id: TENANT_A },
+        requestId: randomUUID(),
+      });
+
+      // Within-tenant dedup intact: second payload reuses the first husk.
+      expect(r1.resolution_method).toBe('new_identity');
+      expect(r2.resolution_method).toBe('verified_email_match');
+      expect(r2.talent_id).toBe(r1.talent_id);
+
+      // Both share the same cluster.
+      const rows = await dbClient.query<{ id: string; resolved_cluster_id: string | null }>(
+        `SELECT id, resolved_cluster_id FROM "ingestion"."RawPayloadReference"
+          WHERE id = ANY($1::uuid[])`,
+        [[p1, p2]],
+      );
+      const c1 = rows.rows.find((r) => r.id === p1)!.resolved_cluster_id;
+      const c2 = rows.rows.find((r) => r.id === p2)!.resolved_cluster_id;
+      expect(c1).not.toBeNull();
+      expect(c2).toBe(c1);
+    });
+
+    it('T2-3 proof 3c (4b) — PEPPER FAIL-LOUD: with ARAMO_IDENTITY_PEPPER unset, canonicalize THROWS rather than mis-resolving with an unkeyed fingerprint', async () => {
+      const email = `t2-3-pepper-${randomUUID()}@example.com`;
+      const pid = uuidv7();
+      await insertPayload(dbClient, {
+        id: pid,
+        tenant_id: TENANT_A,
+        source: 'talent_direct',
+        storage_ref: 's3://bucket/t2-3-p3c',
+        sha256: 't2-3-p3c-' + 'g'.repeat(55),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: email,
+        profile_url: null,
+      });
+      const saved = process.env['ARAMO_IDENTITY_PEPPER'];
+      delete process.env['ARAMO_IDENTITY_PEPPER'];
+      try {
+        await expect(
+          service.canonicalize({
+            payload_id: pid,
+            source_channel: 'self_signup',
+            authContext: { tenant_id: TENANT_A },
+            requestId: randomUUID(),
+          }),
+        ).rejects.toThrow(/ARAMO_IDENTITY_PEPPER/);
+      } finally {
+        if (saved !== undefined) process.env['ARAMO_IDENTITY_PEPPER'] = saved;
+      }
+      // The payload stayed UNRESOLVED (no mis-resolution) — the row is still
+      // re-pickable on the next tick.
+      const row = await dbClient.query<{ resolved_talent_id: string | null }>(
+        `SELECT resolved_talent_id FROM "ingestion"."RawPayloadReference" WHERE id = $1`,
+        [pid],
+      );
+      expect(row.rows[0]!.resolved_talent_id).toBeNull();
     });
 
     it('T2-3 proof 4 — UNVERIFIED EMAIL DOES NOT RESOLVE: a TalentContactMethod with verification_status="unverified" is held as evidence, not as an identity key → CREATE-NEW Talent', async () => {
