@@ -726,10 +726,16 @@ export class TalentRecordRepository {
     tenant_id: string;
     id: string;
     core_talent_id: string;
+    // 4d — the optional PERSON_CLUSTER pointer, written alongside the
+    // (untouched) core_talent_id during the Core-retirement transition.
+    cluster_id?: string;
   }): Promise<TalentRecordView | null> {
     const result = await this.prisma.talentRecord.updateMany({
       where: { id: args.id, tenant_id: args.tenant_id },
-      data: { core_talent_id: args.core_talent_id },
+      data: {
+        core_talent_id: args.core_talent_id,
+        ...(args.cluster_id !== undefined ? { cluster_id: args.cluster_id } : {}),
+      },
     });
     if (result.count === 0) {
       // Row was not in tenant (or vanished) — caller handles as

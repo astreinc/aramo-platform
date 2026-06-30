@@ -165,6 +165,11 @@ const TALENT_RECORD_STATED_FIELDS = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260615000000_talent_stated_fields/migration.sql',
 );
+// 4d — overlay-fold columns + cluster_id (TalentRecord RETURNING projects them).
+const TALENT_RECORD_OVERLAY_FOLD = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260630140000_overlay_fold_cluster_id/migration.sql',
+);
 
 // === CORE / ENGAGEMENT / SUBMITTAL MIGRATIONS — DELIBERATELY OMITTED ===
 //
@@ -307,6 +312,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_LINK_ADD,
         TALENT_RECORD_IMPORT_BACK_REF,
         TALENT_RECORD_STATED_FIELDS,
+        TALENT_RECORD_OVERLAY_FOLD,
         PIPELINE_INIT,
         METERING_INIT,
       ]) {

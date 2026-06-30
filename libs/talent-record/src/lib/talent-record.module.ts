@@ -3,6 +3,7 @@ import { createAramoLogger } from '@aramo/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
+import { IdentityIndexModule } from '@aramo/identity-index';
 import { ObjectStorageModule } from '@aramo/object-storage';
 import { ResumeParseModule } from '@aramo/resume-parse';
 import { TalentModule } from '@aramo/talent';
@@ -41,6 +42,7 @@ import { ResumeTextService } from './resume-text/resume-text.service.js';
     AuthModule,
     AuthorizationModule,
     EntitlementModule,
+    IdentityIndexModule,
     ObjectStorageModule,
     ResumeParseModule,
     TalentModule,

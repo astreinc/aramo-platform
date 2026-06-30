@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
+import { IdentityIndexRepository } from '@aramo/identity-index';
 import { TalentRepository } from '@aramo/talent';
 
 import type { TalentLinkView } from './dto/talent-link.view.js';
@@ -25,17 +26,20 @@ import { TalentRecordRepository } from './talent-record.repository.js';
 // recruiter-driven UI today, a future identity-resolver tomorrow —
 // Tier 3, out of scope here).
 //
-// === The two-step in-tenant gate (the validation) ===
+// === The in-tenant gate (the validation) ===
 //
-//   (1) Talent identity exists in Core (TalentRepository.findTalentById).
-//   (2) The requesting tenant has a TalentTenantOverlay for that
-//       identity (TalentRepository.findOverlayByTenant by the
-//       (talent_id, tenant_id) unique pair).
+//   (1) The TalentRecord exists in the requesting tenant (404 if not — this
+//       IS the in-tenant gate post-4d).
+//   (2) Talent identity exists in Core (TalentRepository.findTalentById) —
+//       guard for core_talent_id, UNTOUCHED by 4d.
+//   (3) (4d, optional) If a cluster_id is supplied, the PERSON_CLUSTER exists
+//       in identity_index.
 //
-// Failing either gate → 422 TALENT_LINK_INVALID with
-// details.reason ∈ {'core_talent_not_found', 'tenant_overlay_missing'}.
-// The TalentRecord-not-in-tenant case is 404 NOT_FOUND verbatim
-// (existing pattern, no new code needed for the ATS-side miss).
+// Failing (2) → 422 TALENT_LINK_INVALID reason='core_talent_not_found';
+// failing (3) → 422 reason='cluster_not_found'. 4d COLLAPSED the former
+// overlay-existence gate (tenant_overlay_missing) into (1): the global
+// PERSON_CLUSTER has no per-tenant relationship, and the tenant relationship
+// now lives on the TalentRecord.
 //
 // === Why this lives in a dedicated service (not the controller, not
 //     the repository) ===
@@ -58,6 +62,9 @@ export class TalentLinkService {
   constructor(
     private readonly talentRecordRepo: TalentRecordRepository,
     private readonly talentRepo: TalentRepository,
+    // 4d — the PII-free cross-tenant resolution index, for the optional
+    // cluster_id link + its cluster-exists validation.
+    private readonly identityIndex: IdentityIndexRepository,
   ) {}
 
   /**
@@ -101,9 +108,16 @@ export class TalentLinkService {
    *   1. The TalentRecord exists in the requesting tenant (else 404).
    *   2. The Core Talent identity exists (else 422,
    *      details.reason='core_talent_not_found').
-   *   3. The requesting tenant has an overlay for the Talent (else
-   *      422, details.reason='tenant_overlay_missing').
-   *   4. setLink writes the column (tenant-scoped UPDATE).
+   *   3. (4d) If a cluster_id is supplied, the PERSON_CLUSTER exists in
+   *      identity_index (else 422, details.reason='cluster_not_found').
+   *   4. setLink writes the column(s) (tenant-scoped UPDATE).
+   *
+   * 4d note: the former overlay-existence gate (guard-3, tenant_overlay_
+   * missing) is COLLAPSED into guard-1 — the TalentRecord existing in the
+   * tenant IS the tenant relationship now; the cross-tenant cluster carries
+   * no per-tenant relationship. core_talent_id is UNTOUCHED (still written;
+   * consent reads it; owned by the consent re-key directive). cluster_id is
+   * the new, optional, post-realignment identity pointer.
    *
    * Idempotent: linking to the same id again is a no-op write that
    * succeeds. Re-linking to a DIFFERENT id requires unlink first
@@ -114,6 +128,7 @@ export class TalentLinkService {
     tenant_id: string;
     talent_record_id: string;
     core_talent_id: string;
+    cluster_id?: string;
     requestId: string;
   }): Promise<TalentLinkView> {
     const existing = await this.talentRecordRepo.findById({
@@ -185,31 +200,38 @@ export class TalentLinkService {
         },
       );
     }
-    // === Step 2: tenant has an overlay for it (the in-tenant gate). ===
-    const overlay = await this.talentRepo.findOverlayByTenant({
-      talent_id: args.core_talent_id,
-      tenant_id: args.tenant_id,
-    });
-    if (overlay === null) {
-      throw new AramoError(
-        'TALENT_LINK_INVALID',
-        'Core Talent has no overlay for this tenant',
-        422,
-        {
-          requestId: args.requestId,
-          details: {
-            id: args.talent_record_id,
-            core_talent_id: args.core_talent_id,
-            reason: 'tenant_overlay_missing',
+    // === Step 2 (4d): the in-tenant gate is now guard-1 (the TalentRecord
+    // exists in the tenant — read above). The former overlay-existence gate
+    // is removed: the global PERSON_CLUSTER carries no per-tenant relationship,
+    // and the tenant relationship lives on the TalentRecord. ===
+
+    // === Step 2b (4d): if a cluster is supplied, it must exist in the
+    // PII-free identity_index (cluster-exists validation). ===
+    if (args.cluster_id !== undefined) {
+      const cluster = await this.identityIndex.findClusterById(args.cluster_id);
+      if (cluster === null) {
+        throw new AramoError(
+          'TALENT_LINK_INVALID',
+          'PERSON_CLUSTER not found',
+          422,
+          {
+            requestId: args.requestId,
+            details: {
+              id: args.talent_record_id,
+              cluster_id: args.cluster_id,
+              reason: 'cluster_not_found',
+            },
           },
-        },
-      );
+        );
+      }
     }
-    // === Step 3: column write (tenant-scoped). ===
+    // === Step 3: column write (tenant-scoped). core_talent_id UNTOUCHED;
+    // cluster_id written when supplied. ===
     const updated = await this.talentRecordRepo.setLink({
       tenant_id: args.tenant_id,
       id: args.talent_record_id,
       core_talent_id: args.core_talent_id,
+      cluster_id: args.cluster_id,
     });
     if (updated === null) {
       // Defensive: row vanished between the initial read and the
