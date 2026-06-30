@@ -1,0 +1,88 @@
+// Per-module Prisma schema for the `identity_index` module — Step 4a
+// (Architecture Realignment, ADR-0016: Core retirement + identity_index
+// successor).
+//
+// Per Architecture v2.x §7 (Schema-per-Module data architecture) and
+// doc/05-conventions.md "Database Conventions". Cross-schema references are
+// UUID-only without FK constraints (§7.3). Intra-schema relations (within the
+// `identity_index` schema) carry real FKs.
+//
+// ===========================================================================
+// HARD CONSTRAINT — THE CROSS-TENANT PRIVACY WALL (I14). NON-NEGOTIABLE.
+// ===========================================================================
+// This schema is the global, tenant-spanning resolution index (the PERSON_
+// CLUSTER node). It exists specifically so cross-tenant same-human resolution
+// can happen WITHOUT any tenant reading another tenant's data. Therefore:
+//
+//   * NO `tenant_id` column may EVER appear in this schema. The index is
+//     tenant-AGNOSTIC by design; tenant scoping lives in the ATS TalentRecord
+//     (the system-of-record / heart), never here.
+//   * NO PII column may EVER appear here. The same-human key is an opaque,
+//     salted one-way FINGERPRINT (HMAC-SHA256 of the normalized email, keyed
+//     by a platform pepper held separate from the DB) computed TENANT-SIDE
+//     before it crosses the wall (@aramo/common computeEmailFingerprint). The
+//     raw email never enters this schema. An index-only breach yields
+//     pepperless fingerprints — useless.
+//
+// This wall is CI-enforced, not just documented: src/tests/privacy-wall.spec.ts
+// fails the build if a `tenant_id` or any known-PII column name ever appears in
+// this schema or its migration, or if a column outside the allowlist is added.
+//
+// SCOPE (4a): the substrate only. PersonCluster + ClusterFingerprint + the
+// find/create repository. The resolver transfer (wiring this into the
+// canonicalization path) is step 4b; the email fingerprint is the only `kind`
+// today (phone / credential anchors are TR-2).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["identity_index"]
+}
+
+// PersonCluster — the resolution-index node: one tenant-spanning human
+// identity. The PERSON_CLUSTER that canonicalization resolves to (step 4b).
+// Deliberately bare: an opaque id + timestamps, NOTHING else. No tenant_id,
+// no PII — the wall.
+model PersonCluster {
+  id String @id @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @updatedAt @db.Timestamptz
+
+  // Intra-schema relation (real FK — within identity_index).
+  fingerprints ClusterFingerprint[]
+
+  @@schema("identity_index")
+}
+
+// ClusterFingerprint — the opaque same-human key for a cluster. Holds the
+// salted one-way fingerprint (PII-free) and its kind. One fingerprint resolves
+// to exactly one cluster (the @@unique). The raw email that produced the
+// fingerprint is NEVER stored here — it stays tenant-side.
+model ClusterFingerprint {
+  id String @id @db.Uuid
+
+  cluster_id String @db.Uuid
+
+  /// The opaque, salted one-way fingerprint (HMAC-SHA256 hex). PII-free —
+  /// NOT the raw value it was derived from.
+  fingerprint String
+
+  /// Fingerprint kind closed vocabulary: 'email' (4a). phone / credential are
+  /// TR-2 anchors, out of scope here.
+  kind String
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  // Intra-schema relation (real FK — within identity_index).
+  cluster PersonCluster @relation(fields: [cluster_id], references: [id])
+
+  // One fingerprint → one cluster (the same-human resolution invariant).
+  @@unique([fingerprint])
+  @@index([cluster_id])
+  @@schema("identity_index")
+}

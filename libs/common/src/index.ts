@@ -2,6 +2,14 @@ export { CommonModule } from './lib/common.module.js';
 export { RequestIdMiddleware } from './lib/middleware/request-id.middleware.js';
 export { RequestId } from './lib/decorators/request-id.decorator.js';
 export { hashCanonicalizedBody } from './lib/util/canonicalize.js';
+// Step 4a (ADR-0016) — tenant-side email fingerprint primitive for the
+// cross-tenant identity privacy wall (I14). The raw email stays tenant-side;
+// only the opaque fingerprint crosses into the PII-free identity_index.
+export {
+  computeEmailFingerprint,
+  normalizeEmail,
+  loadIdentityPepper,
+} from './lib/util/identity-fingerprint.js';
 export {
   AramoError,
   AramoExceptionFilter,
