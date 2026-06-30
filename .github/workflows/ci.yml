@@ -356,6 +356,7 @@ jobs:
       - run: npx vitest run --root apps/api
       - run: npx vitest run --root libs/engagement
       - run: npx vitest run --root libs/ai-draft
+      - run: npx vitest run --root libs/identity-index
 
   # ---------------------------------------------------------------------------
   # M4 PR-8 — Terraform IaC foundation gates (no AWS credentials required).

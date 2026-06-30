@@ -1,0 +1,16 @@
+// Public surface of @aramo/identity-index (Step 4a). The cross-tenant PII-free
+// resolution index (PERSON_CLUSTER) substrate.
+//
+// The tenant-side email fingerprint primitive lives in @aramo/common
+// (computeEmailFingerprint) — NOT here — so the raw email is fingerprinted
+// before it ever crosses into this schema. This lib only stores/reads the
+// opaque result.
+
+export { IdentityIndexModule } from './lib/identity-index.module.js';
+export { IdentityIndexRepository } from './lib/identity-index.repository.js';
+export { PrismaService } from './lib/prisma/prisma.service.js';
+
+export type {
+  PersonClusterRow,
+  ClusterFingerprintRow,
+} from './lib/identity-index.repository.js';
