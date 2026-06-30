@@ -228,9 +228,6 @@ TIER2_EXCLUDES=(
   # anti-token list. Same structural pattern + same Charter-Level
   # rationale as the canonicalization.tripwires.spec.ts entry above.
   "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts"
-  "pact/consumers/ats-thin/src/engagement-create.consumer.test.ts"
-  "pact/consumers/ats-thin/src/engagement-transition.consumer.test.ts"
-  "pact/consumers/ats-thin/src/engagement-reads.consumer.test.ts"
   "libs/engagement/src/tests/engagement.controller.spec.ts"
   "apps/api/src/tests/engagement.controller.integration.spec.ts"
   # M5 PR-4: OpenAPI common.yaml carries the canonical EngagementEventTypeValue
@@ -276,7 +273,6 @@ TIER2_EXCLUDES=(
   # names (the new spec is a dedicated refusal-class file per Ruling 10
   # rather than an extension of outreach-send.integration.spec.ts).
   "apps/api/src/tests/outreach-send-consent-revoked.integration.spec.ts"
-  "pact/consumers/ats-thin/src/outreach-send.consumer.test.ts"
   "openapi/ats.yaml"
   # M5 PR-6 — repository unit + integration tests reference outreach in
   # test names + mocks (the controller spec + apps/api integration
@@ -295,14 +291,12 @@ TIER2_EXCLUDES=(
   "libs/engagement/src/lib/dto/engagement-response-received-payload.ts"
   "apps/api/src/tests/response-received.negative-shape.spec.ts"
   "apps/api/src/tests/response-received.integration.spec.ts"
-  "pact/consumers/ats-thin/src/response-received.consumer.test.ts"
   # M5 PR-8a — conversation-started specs traverse /outreach + /response to reach
   # responded precondition; same canonical-vocab rationale as M5 PR-6 + PR-7 entries above
   "apps/api/src/tests/conversation-started.negative-shape.spec.ts"
   "apps/api/src/tests/conversation-started.integration.spec.ts"
   "libs/engagement/src/lib/dto/record-conversation-started-response.dto.ts"
   "libs/engagement/src/lib/dto/engagement-conversation-started-payload.ts"
-  "pact/consumers/ats-thin/src/conversation-started.consumer.test.ts"
   # M5 PR-11 Ruling 7: 4 BullMQ background job integration specs
   # (stale-consent + outbox-publisher + cross-schema-consistency +
   # skill-canonicalization). Pattern matches F23 standing per-spec

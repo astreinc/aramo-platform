@@ -627,7 +627,7 @@ paths:
   # M5 PR-4 — Engagement HTTP surface (Charter v1.2 §4.3 row 4).
   #
   # Four endpoints exposing the M5 PR-1/2/3 engagement substrate at the
-  # ATS-thin recruiter-facing surface:
+  # recruiter-facing ATS surface:
   #   GET  /v1/engagements                   — LIST (R7 BE-prereq P1; D4b-composed)
   #   POST /v1/engagements                   — create (Ruling 4 + Ruling 9)
   #   POST /v1/engagements/{id}/transitions  — state transition (Ruling 10)

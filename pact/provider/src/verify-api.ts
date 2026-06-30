@@ -44,11 +44,13 @@ const PACT_DELIVERY_PROVIDER_TOKEN = 'DELIVERY_PROVIDER_TOKEN';
 //   - PR-14: ingestion-consumer (2 interactions) + prohibited-source-type
 //     (1 interaction)
 //   - PR-15 §4.2 (F10): tenant-console-consumer (5 consent interactions)
-//   - PR-15 §4.3 (F9): ats-thin (23 consent interactions)
-//   - M3 PR-8 §4.7: ats-thin match-list (4 interactions; happy path,
-//     empty list, 400 INVALID_REQUEST, 403 INSUFFICIENT_PERMISSIONS).
-//     PR-8's match-list interactions MUST pass; pre-existing 23 consent
-//     interactions remain covered by the PR-15 §4.3 handlers below.
+//   - (retired) the thin recruiter consumer formerly contributed 23
+//     consent + 4 match-list interactions plus the engagement / submittal
+//     / examination / outreach surface. Its pact was removed in the
+//     Architecture-Realignment thin-consumer retirement; the state
+//     handlers it drove remain below as now-unexercised dead code
+//     (pact-js never invokes a handler whose pact is unloaded). Pruning
+//     them is a follow-up.
 //   - M3 PR-9 §4.8: portal-thin (5 interactions; profile happy + 403 +
 //     401, consent happy + 403). Talent + TalentTenantOverlay seeded via
 //     a new seedPortalTalentFixture helper; talent migration added to
@@ -73,10 +75,10 @@ const PACT_DELIVERY_PROVIDER_TOKEN = 'DELIVERY_PROVIDER_TOKEN';
 // Request filter:
 //   - tenant-console-consumer pacts ship Cookie: aramo_access_token=
 //     eyJfake.access.token — rewritten to the real JWT cookie.
-//   - ats-thin pacts ship Authorization: Bearer eyJfake.token — rewritten
-//     to a real Bearer JWT. The literal 'Bearer not-a-jwt' (interaction
-//     #14 of ats-thin) is intentionally NOT rewritten so JwtAuthGuard
-//     returns INVALID_TOKEN 401.
+//   - the retired thin-consumer pacts shipped Authorization: Bearer
+//     eyJfake.token — rewritten to a real Bearer JWT. The literal
+//     'Bearer not-a-jwt' was intentionally NOT rewritten so JwtAuthGuard
+//     returns INVALID_TOKEN 401. (Both branches are now unexercised.)
 //
 // Run condition: ARAMO_RUN_PACT_PROVIDER=1 gating. Invoke via
 // `npm run pact:provider`.
@@ -141,8 +143,8 @@ const ENTITLEMENT_INIT_MIGRATION = resolve(
 );
 // PR-A1c §4 sweep — metering schema applied because every engagement +
 // submittal state-transition write method (the methods the pact provider
-// exercises through ats-thin + engagement-* pacts) now emits an in-tx
-// UsageEvent INSERT in the same $transaction array.
+// formerly exercised through the retired thin-consumer pacts) now emits
+// an in-tx UsageEvent INSERT in the same $transaction array.
 const METERING_INIT_MIGRATION = resolve(
   ROOT,
   'libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
@@ -270,7 +272,6 @@ const TENANT_CONSOLE_PACT = resolve(
   ROOT,
   'pact/pacts/tenant-console-consumer-aramo-core.json',
 );
-const ATS_THIN_PACT = resolve(ROOT, 'pact/pacts/ats-thin-aramo-core.json');
 const PORTAL_THIN_PACT = resolve(ROOT, 'pact/pacts/portal-thin-aramo-core.json');
 
 const ISSUER = 'Aramo Core Auth';
@@ -285,14 +286,15 @@ const TENANT_ID = '11111111-1111-7111-8111-111111111111';
 // pact/consumers/portal-thin/src/portal-*.consumer.test.ts constant.
 const PORTAL_TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 
-// Constants shared across the tenant-console + ats-thin pacts. The talent
-// uuid matches the value the consumer tests use; the recruiter actor uuid
-// matches the audit-row value the pacts assert with a regex matcher.
+// Constants used by the tenant-console pacts (and formerly the retired
+// thin consumer). The talent uuid matches the value the consumer tests
+// use; the recruiter actor uuid matches the audit-row value the pacts
+// assert with a regex matcher.
 const PACT_TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const PACT_RECRUITER_ACTOR_ID = '00000000-0000-7000-8000-000000000bb1';
 
-// Cursor anchor reused by ats-thin #13 / #17 and the regenerated
-// tenant-console-consumer pact #3 (PR-15 §4.1). c is the keyset's
+// Cursor anchor used by the regenerated tenant-console-consumer pact #3
+// (PR-15 §4.1). c is the keyset's
 // created_at edge; e is the keyset's event_id. Page-2 seeded rows must
 // have created_at strictly older than CURSOR_C so the predicate
 // (created_at, id) < (CURSOR_C, CURSOR_E) returns them.
@@ -1417,11 +1419,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // PR-A1a §6 — recruiter accessJwt carries 'submittal:create'.
       // PR-A1a-2 §3 — adds 'submittal:approve' for the 5 newly-guarded
       // confirm/revoke/mark-ready/submit-to-ats/confirm-ats routes that
-      // ats-thin pacts exercise. The 'ingestion:write' entry is
-      // preserved for the legacy ingestion-typed interactions that still
-      // assert this scope shape. Recruiter role in the PR-A1a-2 seed
-      // catalog carries the full operational scope set; the provider
-      // mint reflects the subset the ats-thin pacts require.
+      // the retired thin-consumer pacts exercised. The 'ingestion:write'
+      // entry is preserved for the legacy ingestion-typed interactions
+      // that still assert this scope shape. Recruiter role in the
+      // PR-A1a-2 seed catalog carries the full operational scope set; the
+      // provider mint reflects the subset those pacts required.
       accessJwt = await new SignJWT({
         sub: RECRUITER_ID,
         consumer_type: 'recruiter',
@@ -1574,8 +1576,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       }
     }, 60_000);
 
-    // State handlers for the 3 ingestion-pact + 5 tenant-console + 23
-    // ats-thin interactions. Each handler:
+    // State handlers for the 3 ingestion-pact + 5 tenant-console + 5
+    // portal-thin interactions, plus the now-unexercised handlers the
+    // retired thin recruiter consumer drove (kept as dead code; see the
+    // file header). Each handler:
     //   1. Begins by truncating every table the pacts touch (resetAllRows),
     //      ensuring no prior interaction's rows leak forward.
     //   2. Seeds the rows the state name describes.
@@ -1682,10 +1686,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         await withClient((c) => resetAllRows(c));
       },
 
-      // ===== PR-15 §4.3 ats-thin (18 unique state handlers covering 23
-      // interactions; duplicates of 'a valid recruiter token' / 'a talent
-      // with no consent events' / 'no valid token' are handled by a
-      // single entry each) =====
+      // ===== (retired) thin recruiter consumer — 18 unique state
+      // handlers that formerly covered its 23 consent interactions
+      // (duplicates of 'a valid recruiter token' / 'a talent with no
+      // consent events' / 'no valid token' handled by a single entry
+      // each). Now-unexercised dead code after its pact was removed;
+      // retained pending a follow-up prune. =====
 
       // -- /v1/consent/check ----------------------------------------------
       'a talent with contacting consent older than 12 months': async () => {
@@ -3474,10 +3480,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     //   - tenant-console-consumer ships
     //     `Cookie: aramo_access_token=eyJfake.access.token` → rewrite
     //     the cookie value to the production-issuer JWT.
-    //   - ats-thin ships `Authorization: Bearer eyJfake.token` → rewrite
-    //     to `Bearer <real JWT>`. The literal `Bearer not-a-jwt` (the
-    //     401-INVALID_TOKEN interaction) is intentionally bypassed so
-    //     JwtAuthGuard rejects it.
+    //   - the retired thin consumer shipped `Authorization: Bearer
+    //     eyJfake.token` → rewrite to `Bearer <real JWT>`; the literal
+    //     `Bearer not-a-jwt` (the 401-INVALID_TOKEN interaction) was
+    //     intentionally bypassed so JwtAuthGuard rejects it. Both
+    //     branches are now unexercised.
     //   - tenant-console-consumer #5 ships NO Cookie header — the cookie
     //     branch is conditional on the literal substring, so it's a
     //     no-op for that interaction.
@@ -3517,9 +3524,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       ) {
         // M3 PR-9 §4.8 — portal-thin 403 interaction (recruiter token
         // hitting /v1/portal/profile). Same rewrite target as
-        // 'Bearer eyJfake.token' (the canonical recruiter JWT); ats-thin
-        // interactions continue to use 'Bearer eyJfake.token' via the
-        // first branch.
+        // 'Bearer eyJfake.token' (the canonical recruiter JWT). The
+        // retired thin-consumer interactions used 'Bearer eyJfake.token'
+        // via the first branch, which is now unexercised.
         req.headers['authorization'] = `Bearer ${accessJwt}`;
       } else if (
         typeof authHeader === 'string' &&
@@ -3533,7 +3540,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
 
     it(
-      'verifies all interactions from the 5 aramo-core pacts',
+      'verifies all interactions from the 4 aramo-core pacts',
       async () => {
         const verifier = new Verifier({
           providerBaseUrl: `http://127.0.0.1:${port}`,
@@ -3541,7 +3548,6 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             INGESTION_PACT,
             PROHIBITED_PACT,
             TENANT_CONSOLE_PACT,
-            ATS_THIN_PACT,
             PORTAL_THIN_PACT,
           ],
           stateHandlers,
