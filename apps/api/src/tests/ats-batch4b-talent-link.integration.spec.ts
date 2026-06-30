@@ -93,6 +93,17 @@ const TALENT_RECORD_STATED_FIELDS = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260615000000_talent_stated_fields/migration.sql',
 );
+// 4d — the overlay-fold columns + cluster_id (TalentRecord RETURNING projects
+// them; the test DB must carry them or createTalentRecord 500s).
+const TALENT_RECORD_OVERLAY_FOLD = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260630140000_overlay_fold_cluster_id/migration.sql',
+);
+// 4d — identity_index (PersonCluster) for the cluster-exists link validation.
+const IDENTITY_INDEX_INIT = resolve(
+  ROOT,
+  'libs/identity-index/prisma/migrations/20260630000000_init_identity_index/migration.sql',
+);
 
 const MIGRATIONS = [
   ENTITLEMENT_INIT,
@@ -101,6 +112,8 @@ const MIGRATIONS = [
   TALENT_RECORD_LINK_ADD,
   TALENT_RECORD_IMPORT_BACK_REF,
   TALENT_RECORD_STATED_FIELDS,
+  TALENT_RECORD_OVERLAY_FOLD,
+  IDENTITY_INDEX_INIT,
 ];
 
 const ISSUER = 'Aramo Core Auth';
@@ -193,6 +206,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return r.rows[0]?.core_talent_id ?? null;
     }
 
+    // 4d — read the new cluster_id pointer; seed a PERSON_CLUSTER.
+    async function readClusterId(
+      talentRecordId: string,
+    ): Promise<string | null> {
+      const r = await setupClient.query<{ cluster_id: string | null }>(
+        `SELECT cluster_id FROM talent_record."TalentRecord" WHERE id = $1::uuid`,
+        [talentRecordId],
+      );
+      return r.rows[0]?.cluster_id ?? null;
+    }
+    async function seedCluster(id: string): Promise<void> {
+      await setupClient.query(
+        `INSERT INTO identity_index."PersonCluster" (id, updated_at)
+         VALUES ($1::uuid, NOW()) ON CONFLICT (id) DO NOTHING`,
+        [id],
+      );
+    }
+
     async function createTalentRecord(
       jwt: string,
       args?: { tenant_id_for_url?: string; first?: string },
@@ -220,6 +251,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       jwt: string,
       talentRecordId: string,
       coreTalentId: string,
+      clusterId?: string,
     ): Promise<{ status: number; body: unknown }> {
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/talent-records/${talentRecordId}/link?site_id=${SITE_A}`,
@@ -229,7 +261,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             Authorization: `Bearer ${jwt}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ core_talent_id: coreTalentId }),
+          body: JSON.stringify(
+            clusterId === undefined
+              ? { core_talent_id: coreTalentId }
+              : { core_talent_id: coreTalentId, cluster_id: clusterId },
+          ),
         },
       );
       return { status: res.status, body: await res.json() };
@@ -562,21 +598,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
     });
 
-    it('Reject when Talent exists but no overlay for this tenant: 422 TALENT_LINK_INVALID, reason=tenant_overlay_missing', async () => {
+    it('4d: link SUCCEEDS when the Talent exists but has no overlay (guard-5 collapsed — the in-tenant gate is the TalentRecord, not the overlay)', async () => {
       const record = await createTalentRecord(recruiterJwt_Ats_SiteA);
       const link = await postLink(
         recruiterJwt_Ats_SiteA,
         record.id,
         TALENT_NO_OVERLAY,
       );
-      expect(link.status).toBe(422);
-      const body = link.body as {
-        error: { code: string; details?: { reason?: string } };
-      };
-      expect(body.error.code).toBe('TALENT_LINK_INVALID');
-      expect(body.error.details?.reason).toBe('tenant_overlay_missing');
-      expect(await readCoreTalentId(record.id)).toBeNull();
+      // Pre-4d this was 422 tenant_overlay_missing; 4d removed the overlay gate.
+      expect(link.status).toBe(200);
+      expect(await readCoreTalentId(record.id)).toBe(TALENT_NO_OVERLAY);
 
+      await deleteLink(recruiterJwt_Ats_SiteA, record.id);
       await fetch(
         `http://127.0.0.1:${port}/v1/talent-records/${record.id}?site_id=${SITE_A}`,
         {
@@ -586,28 +619,32 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
     });
 
-    it('Reject cross-tenant overlay: linking to a Talent whose overlay is in TENANT_OTHER → 422 reason=tenant_overlay_missing (cross-tenant isolation)', async () => {
-      // The Talent exists. The overlay exists too — but for TENANT_OTHER,
-      // not TENANT_ATS. The linker's findOverlayByTenant({talent_id,
-      // tenant_id: TENANT_ATS}) returns null because the overlay's
-      // (talent_id, tenant_id) tuple is keyed on TENANT_OTHER. The
-      // cross-tenant isolation is structural — no leaked overlay.
+    it('4d: cross-tenant isolation is now the TalentRecord-in-tenant gate (guard-1), not the overlay — both tenants can link the same (global) Core Talent against their OWN record', async () => {
+      // Pre-4d, TENANT_ATS linking a Talent whose overlay is only in
+      // TENANT_OTHER was rejected (tenant_overlay_missing). 4d collapsed that
+      // gate: Core Talent is a global husk, guard-4 finds it, and the in-tenant
+      // protection is that the TalentRecord being linked is in the caller's
+      // tenant (guard-1 — covered by the 404-on-other-tenant-record test). So
+      // linking now SUCCEEDS against the caller's own record.
       const record = await createTalentRecord(recruiterJwt_Ats_SiteA);
       const link = await postLink(
         recruiterJwt_Ats_SiteA,
         record.id,
         TALENT_OTHER_TENANT_ONLY,
       );
-      expect(link.status).toBe(422);
-      const body = link.body as {
-        error: { code: string; details?: { reason?: string } };
-      };
-      expect(body.error.code).toBe('TALENT_LINK_INVALID');
-      expect(body.error.details?.reason).toBe('tenant_overlay_missing');
+      expect(link.status).toBe(200);
+      expect(await readCoreTalentId(record.id)).toBe(TALENT_OTHER_TENANT_ONLY);
+      await deleteLink(recruiterJwt_Ats_SiteA, record.id);
+      await fetch(
+        `http://127.0.0.1:${port}/v1/talent-records/${record.id}?site_id=${SITE_A}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
+        },
+      );
 
-      // Symmetric proof from the other side: TENANT_OTHER, with an
-      // overlay for TALENT_OTHER_TENANT_ONLY, SHOULD be allowed to
-      // link. Create a record in TENANT_OTHER and verify.
+      // Symmetric proof from the other side: TENANT_OTHER links its OWN record
+      // to the same global Core Talent and succeeds.
       const otherRecord = await createTalentRecord(
         recruiterJwt_OtherTenant_SiteA,
       );
@@ -635,6 +672,62 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           },
         },
       );
+      await fetch(
+        `http://127.0.0.1:${port}/v1/talent-records/${record.id}?site_id=${SITE_A}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
+        },
+      );
+    });
+
+    // -------------------------------------------------------------------------
+    // D2) 4d — cluster_id pointer + cluster-exists validation.
+    // -------------------------------------------------------------------------
+
+    it('4d: link with a valid cluster_id writes TalentRecord.cluster_id (cluster-exists validated against identity_index)', async () => {
+      const CLUSTER_OK = 'c1c1c1c1-1c1c-7c1c-8c1c-c1c1c1c1c1c1';
+      await seedCluster(CLUSTER_OK);
+      const record = await createTalentRecord(recruiterJwt_Ats_SiteA);
+      const link = await postLink(
+        recruiterJwt_Ats_SiteA,
+        record.id,
+        TALENT_NO_OVERLAY,
+        CLUSTER_OK,
+      );
+      expect(link.status).toBe(200);
+      expect(await readClusterId(record.id)).toBe(CLUSTER_OK);
+      // core_talent_id is written alongside, UNTOUCHED by 4d's semantics.
+      expect(await readCoreTalentId(record.id)).toBe(TALENT_NO_OVERLAY);
+
+      await deleteLink(recruiterJwt_Ats_SiteA, record.id);
+      await fetch(
+        `http://127.0.0.1:${port}/v1/talent-records/${record.id}?site_id=${SITE_A}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
+        },
+      );
+    });
+
+    it('4d: link with a non-existent cluster_id → 422 TALENT_LINK_INVALID, reason=cluster_not_found', async () => {
+      const record = await createTalentRecord(recruiterJwt_Ats_SiteA);
+      const link = await postLink(
+        recruiterJwt_Ats_SiteA,
+        record.id,
+        TALENT_NO_OVERLAY,
+        'deadbeef-dead-7ead-8ead-deaddeaddead',
+      );
+      expect(link.status).toBe(422);
+      const body = link.body as {
+        error: { code: string; details?: { reason?: string } };
+      };
+      expect(body.error.code).toBe('TALENT_LINK_INVALID');
+      expect(body.error.details?.reason).toBe('cluster_not_found');
+      // Refused → neither pointer written.
+      expect(await readClusterId(record.id)).toBeNull();
+      expect(await readCoreTalentId(record.id)).toBeNull();
+
       await fetch(
         `http://127.0.0.1:${port}/v1/talent-records/${record.id}?site_id=${SITE_A}`,
         {

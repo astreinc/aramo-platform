@@ -51,6 +51,23 @@ export class IdentityIndexRepository {
   }
 
   /**
+   * Existence/identity lookup by cluster id. Returns the PersonCluster row or
+   * null. Used by the cluster-exists validation when a caller links a record to
+   * a known PERSON_CLUSTER (step 4d) — no PII, no fingerprint needed.
+   */
+  async findClusterById(id: string): Promise<PersonClusterRow | null> {
+    const cluster = await this.prisma.personCluster.findUnique({
+      where: { id },
+    });
+    if (cluster === null) return null;
+    return {
+      id: cluster.id,
+      created_at: cluster.created_at,
+      updated_at: cluster.updated_at,
+    };
+  }
+
+  /**
    * Resolve a cluster by fingerprint, creating it if absent. Race-safe: if a
    * concurrent caller wins the create (the @@unique([fingerprint]) rejects the
    * loser), the loser re-reads and returns the winner's cluster. This is the

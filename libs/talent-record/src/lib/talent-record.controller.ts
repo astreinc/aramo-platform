@@ -338,6 +338,7 @@ export class TalentRecordController {
       tenant_id: authContext.tenant_id,
       talent_record_id: id,
       core_talent_id: body.core_talent_id,
+      cluster_id: body.cluster_id,
       requestId,
     });
   }

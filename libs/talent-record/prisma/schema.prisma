@@ -99,14 +99,35 @@ model TalentRecord {
   owner_id      String? @db.Uuid
   entered_by_id String? @db.Uuid
 
+  // ADR-0016 step 4d — the TalentTenantOverlay fold. The overlay's
+  // tenant-relationship fields move onto the TalentRecord (the ATS heart);
+  // the overlay table itself survives until 4e (the ingestion/canonicalize
+  // path still writes a per-tenant Core-husk overlay). NULLABLE — ATS-created
+  // records have no overlay writer today, so these are unset until the ATS
+  // sets the tenant relationship (or the ingestion→TalentRecord association,
+  // a later step). Closed vocabularies match the overlay (Talent Record Spec
+  // §2.2): source_channel {self_signup|recruiter_capture|referral|import};
+  // tenant_status is the per-tenant lifecycle.
+  source_channel      String? // closed vocab (overlay parity), nullable on the fold
+  tenant_status       String?
+  source_recruiter_id String? @db.Uuid
+
+  // ADR-0016 step 4d — the cross-tenant identity pointer: the
+  // identity_index.PersonCluster this record belongs to (UUID-only cross-
+  // schema ref, no FK per §7.3). Set by TalentLinkService (cluster-exists
+  // validated against identity_index). This is the post-realignment identity
+  // pointer; core_talent_id (below) stays alongside it during the transition
+  // (consent is still Core-keyed and owned by the consent re-key directive),
+  // and both retire together in 4e.
+  cluster_id String? @db.Uuid
+
   // PR-A5b-2 — the Core-Talent link (the keystone of the ATS↔Core
   // seam). Logical cross-schema reference to `talent.Talent.id`
   // (Architecture §7.3 — UUID-only, no FK). Nullable: an UNLINKED
   // TalentRecord is valid (most records start unlinked). Set ONLY by
-  // TalentLinkService via the dedicated /link routes; the in-tenant
-  // gate is the existence of a TalentTenantOverlay for
-  // (talent_id = core_talent_id, tenant_id = record.tenant_id).
-  // LINK-NOT-CREATE: the linker NEVER mutates Core. ASSOCIATE-NOT-
+  // TalentLinkService via the dedicated /link routes. UNTOUCHED by 4d —
+  // the per-tenant Core husk pointer; consent reads it (consent re-key owns
+  // it). LINK-NOT-CREATE: the linker NEVER mutates Core. ASSOCIATE-NOT-
   // RESOLVE: the linker takes this id as an explicit input; the lib
   // carries no identity-resolution surface.
   core_talent_id String? @db.Uuid
@@ -142,6 +163,8 @@ model TalentRecord {
   @@index([tenant_id, site_id])
   @@index([tenant_id, is_hot])
   @@index([tenant_id, core_talent_id])
+  // 4d — "which records in tenant belong to this PERSON_CLUSTER".
+  @@index([tenant_id, cluster_id])
   @@index([tenant_id, import_batch_id])
   // Segment-4 server-side faceting (stated-fields amendment §5).
   @@index([tenant_id, availability_status])

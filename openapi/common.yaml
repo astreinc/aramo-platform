@@ -1457,16 +1457,19 @@ components:
         at 0, allow-and-go-negative-with-warning) were rejected as
         data-integrity hazards.
         PR-A5b-2 adds TALENT_LINK_INVALID (HTTP 422) for the
-        TalentRecord ↔ Core-Talent linker's cross-schema validation
-        refusal. Two failure modes share the code (distinguished by
+        TalentRecord ↔ identity linker's cross-schema validation
+        refusal. Failure modes share the code (distinguished by
         details.reason): 'core_talent_not_found' (the given
-        core_talent_id does not resolve in `talent.Talent`) and
-        'tenant_overlay_missing' (the Core Talent exists but no
-        TalentTenantOverlay exists for this tenant — the in-tenant
-        gate fails). Mirrors the M5 PR-3 ENGAGEMENT_REFERENCE_NOT_FOUND
-        cross-schema-validator precedent. The linker is ASSOCIATE-
-        ONLY (no resolution, no creation); this code is the refusal
-        point when the caller's chosen id doesn't validate.
+        core_talent_id does not resolve in `talent.Talent`) and, when a
+        cluster_id is supplied, 'cluster_not_found' (the given
+        cluster_id does not resolve in `identity_index.PersonCluster`).
+        (ADR-0016 step 4d COLLAPSED the former 'tenant_overlay_missing'
+        reason: the in-tenant gate is now the TalentRecord existing in
+        the tenant, surfaced as 404 NOT_FOUND.) Mirrors the M5 PR-3
+        ENGAGEMENT_REFERENCE_NOT_FOUND cross-schema-validator precedent.
+        The linker is ASSOCIATE-ONLY (no resolution, no creation); this
+        code is the refusal point when the caller's chosen id doesn't
+        validate.
         PR-A6 adds SAVED_LIST_ITEM_TYPE_MISMATCH (HTTP 422) for the
         saved-list homogeneity invariant: a SavedList's `item_type`
         (fixed at creation) constrains every entry's type. An
