@@ -343,9 +343,10 @@ export class CanonicalizationRepository {
           }
         } else if (input.core_talent_id !== null) {
           // ASSOCIATE (test/internal): validate the supplied id exists in
-          // `talent.Talent`. The follower model is bit-identical to the
-          // source-of-truth (the drift-tripwire enforces); tenant-agnostic
-          // because Core Talents are tenant-agnostic.
+          // `talent.Talent`. The follower model is bit-identical to its
+          // owning schema (the drift-tripwire enforces). Core Talent is a
+          // per-tenant husk post-4b (no cross-tenant sharing); this id-lookup
+          // is a structural existence check, not a cross-tenant resolution.
           const existing = await tx.talent.findUnique({
             where: { id: input.core_talent_id },
           });
