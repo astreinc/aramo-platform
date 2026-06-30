@@ -85,8 +85,10 @@ model TalentJobExamination {
   id                              String                    @id @db.Uuid
 
   // Cross-schema references (Architecture v2.1 §7.3 — UUID-only, no FK).
-  // job_id and golden_profile_id reference Job-domain entities deferred
-  // to Group 3; no Job/GoldenProfile table exists in the workspace.
+  // talent_id references talent_record.TalentRecord.id (the tenant-scoped
+  // ATS heart; post-ADR-0016, was Core talent.Talent). job_id and
+  // golden_profile_id reference Job-domain entities deferred to Group 3;
+  // no Job/GoldenProfile table exists in the workspace.
   tenant_id                       String                    @db.Uuid
   talent_id                       String                    @db.Uuid
   job_id                          String                    @db.Uuid

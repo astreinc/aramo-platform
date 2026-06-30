@@ -103,6 +103,8 @@ model TalentSubmittalRecord {
   // Identity.
   id        String @id @default(uuid()) @db.Uuid
   tenant_id String @db.Uuid
+  // talent_id references talent_record.TalentRecord.id (the tenant-scoped
+  // ATS heart; post-ADR-0016, was Core talent.Talent). UUID-only, no FK (§7.3).
   talent_id String @db.Uuid
   job_id    String @db.Uuid
 

@@ -12,8 +12,11 @@ import {
 // TalentService — CRUD-level operations for Talent + TalentTenantOverlay.
 // PR-10 establishes the data model; ingestion logic is M2 scope.
 //
-// The Talent core is tenant-agnostic. Tenant association lives in
-// TalentTenantOverlay; overlay reads are scoped by (talent_id, tenant_id).
+// The Talent core has no tenant_id, but post-realignment (ADR-0016) it is a
+// per-tenant identity husk demoted from the former Core SOR (the ATS
+// TalentRecord is the system of record; pending retirement, step 4e).
+// Tenant association lives in TalentTenantOverlay; overlay reads are scoped
+// by (talent_id, tenant_id).
 //
 // M3 PR-9 §4.2 adds findSelfProfile — the portal talent's self-view
 // projection. R10-filtered: returns only the per-tenant context fields

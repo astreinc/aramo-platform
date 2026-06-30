@@ -34,7 +34,9 @@
 //
 // Cross-schema UUID references (Architecture §7.3 — UUID-only, no FK):
 //   - tenant_id: tenant replication per §7.2.
-//   - talent_id: references talent.Talent (M3 PR-1).
+//   - talent_id: references talent_record.TalentRecord.id (the tenant-scoped
+//     ATS heart, post-ADR-0016; was Core talent.Talent before the Core-as-
+//     index realignment).
 //   - requisition_id: references job-domain.Requisition (M3 PR-4).
 //   - examination_id: nullable references
 //     examination.TalentJobExamination (M3 PR-1; engagement may exist

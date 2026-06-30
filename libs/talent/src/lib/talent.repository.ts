@@ -7,8 +7,11 @@ import { PrismaService } from './prisma/prisma.service.js';
 // Repository for Talent + TalentTenantOverlay reads/writes. CRUD-level
 // only — no ingestion logic (M2 scope per PR-10 directive §4.3).
 //
-// The Talent core is tenant-agnostic (no tenant_id field — PR-10
-// directive §4.1). All tenant association lives in TalentTenantOverlay.
+// The Talent core has no tenant_id field, but post-realignment (ADR-0016)
+// it is a per-tenant identity husk demoted from the former Core SOR — the
+// ATS TalentRecord is the system of record, identity_index.PersonCluster is
+// the cross-tenant index, and Core Talent is pending retirement (step 4e).
+// All tenant association lives in TalentTenantOverlay.
 
 export interface CreateTalentInput {
   // Optional: callers may pass a UUID v7 generated app-side (program

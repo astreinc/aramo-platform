@@ -4,12 +4,16 @@
 // doc/05-conventions.md "Database Conventions". Cross-schema references
 // elsewhere in the program are UUID-only without FK constraints.
 //
-// PR-10 introduces the Talent core entity and the TalentTenantOverlay
-// (per Talent Record Specification §2.2). The Talent model is
-// tenant-agnostic identity (no tenant_id); all tenant-specific
-// relationship data lives in TalentTenantOverlay. The overlay's
-// tenant_id is a cross-schema reference to libs/identity's Tenant —
-// UUID-only, no FK (Architecture v2.0 §7).
+// PR-10 introduced the Talent core entity and the TalentTenantOverlay
+// (per Talent Record Specification §2.2). Talent has no tenant_id column,
+// but post-realignment (ADR-0016) it is NOT the cross-tenant identity: it
+// is a bare per-tenant identity HUSK (each tenant mints its own; the
+// resolver no longer shares one across tenants — step 4b). The ATS
+// talent_record.TalentRecord is the system of record (the heart); the
+// PII-free identity_index.PersonCluster is the cross-tenant resolution
+// index. Core Talent is demoted, pending retirement (step 4e). The
+// overlay's tenant_id is a cross-schema reference to libs/identity's
+// Tenant — UUID-only, no FK (Architecture v2.0 §7).
 //
 // One optional Talent Record Spec §2.2 overlay field is DEFERRED from
 // PR-10 per directive §4.4 (PO ruling, 2026-05-16) and tracked as
@@ -26,10 +30,12 @@ datasource db {
   schemas  = ["talent"]
 }
 
-// Talent core — tenant-agnostic identity. Per Talent Record Spec §2.2:
-// "Talent core is tenant-agnostic identity." Carries identity anchor,
-// lifecycle state, and timestamps only. All tenant-specific data lives
-// in TalentTenantOverlay.
+// Talent core — a bare per-tenant identity HUSK (no tenant_id column, but
+// post-4b each tenant gets its own; NOT a cross-tenant identity — that is
+// identity_index.PersonCluster). Demoted from the former Core source-of-
+// record; the ATS TalentRecord is now the system of record (the heart).
+// Carries lifecycle state + timestamps only; pending retirement (ADR-0016
+// step 4e). All tenant-specific data lives in TalentTenantOverlay.
 model Talent {
   id               String   @id @default(uuid()) @db.Uuid
   // Closed vocabulary (Talent Record Spec §2.2, 4 values):
