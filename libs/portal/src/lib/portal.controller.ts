@@ -22,12 +22,18 @@ import type { PortalProfileDto } from './dto/portal-profile.dto.js';
 //                              ConsentService.getState; the existing
 //                              recruiter-facing surface is unchanged)
 //
-// Auth posture (directive §2 Ruling 5): portal JWT carries
-// `sub: <talent_uuid>` — the portal session embodies the talent it
-// represents. Both endpoints derive `talent_id` from `authContext.sub`
-// rather than accepting it as a path/body parameter. This is the
-// structural enforcement that a portal talent can only see their own
-// data: there is no surface to pass any other talent_id.
+// Auth posture (directive §2 Ruling 5): the portal session embodies the
+// talent it represents — both endpoints DERIVE the talent identity from the
+// JWT rather than accepting it as a path/body parameter (structural
+// enforcement: a portal talent can only see their own data; no surface to
+// pass another talent_id).
+//
+// 4d-2 (ADR-0016): that derivation now routes through the single
+// resolvePortalTalentRecordId() seam. The portal JWT `sub` is the
+// identity.User id (NOT a TalentRecord id), and there is no user→TalentRecord
+// linkage yet — so the seam returns `sub` as a TRANSITIONAL PLACEHOLDER (same
+// behaviour as before) until OPEN-4 supplies the real resolution. The former
+// silent `talent_id = sub` conflation is now explicit + named (see the seam).
 //
 // Per-route consumer_type === 'portal' assertion mirrors the PR-8
 // recruiter-only pattern; non-portal consumers (recruiter, ingestion)
@@ -82,8 +88,9 @@ export class PortalController {
   ): Promise<PortalProfileDto> {
     // Step 1 — auth: consumer_type === 'portal'.
     this.assertConsumerIsPortal(authContext, requestId);
-    // Step 2 — talent_id derived from authContext.sub.
-    const talent_id = this.assertSubIsUuid(authContext, requestId);
+    // Step 2 — resolve the portal user to their TalentRecord id (4d-2 seam —
+    // a transitional placeholder returning sub until OPEN-4; see the method).
+    const talent_id = this.resolvePortalTalentRecordId(authContext, requestId);
     // Step 3 — tenant_id from auth context (JWT claim).
     const tenant_id = authContext.tenant_id;
     // Step 4 — repository call (TalentService.findSelfProfile).
@@ -120,14 +127,42 @@ export class PortalController {
   ): Promise<TalentConsentStateResponseDto> {
     // Step 1 — auth: consumer_type === 'portal'.
     this.assertConsumerIsPortal(authContext, requestId);
-    // Step 2 — talent_id derived from authContext.sub.
-    const talent_id = this.assertSubIsUuid(authContext, requestId);
+    // Step 2 — resolve the portal user to their TalentRecord id (4d-2 seam —
+    // a transitional placeholder returning sub until OPEN-4; see the method).
+    const talent_id = this.resolvePortalTalentRecordId(authContext, requestId);
     // Step 3 — call existing ConsentService.getState (resolves all 5 scopes
     // from the consent event ledger; same path used by the recruiter-facing
     // /v1/consent/state/{talent_id} endpoint).
     // Step 4 — return TalentConsentStateResponseDto verbatim (no re-shaping;
     // the existing DTO already carries the R10-safe fields).
     return this.consentService.getState(talent_id, authContext, requestId);
+  }
+
+  // ===========================================================================
+  // 4d-2 (ADR-0016) — the portal talent-identity resolution SEAM.
+  // ===========================================================================
+  // HONEST BOUNDARY, not a resolution. The portal JWT `sub` is the
+  // identity.User id (the auth subject), NOT a talent_record.TalentRecord id —
+  // and there is NO user→TalentRecord linkage in the data model yet (recon
+  // 4d-2: identity.User carries no talent field; ExternalIdentity maps only
+  // provider→user_id). The pre-realignment code silently assumed
+  // `talent_id = sub`, conflating two distinct entities (an identity.User is
+  // not a TalentRecord). This seam makes that conflation EXPLICIT + NAMED so it
+  // cannot be inherited unnoticed.
+  //
+  // TRANSITIONAL PLACEHOLDER: it returns `sub` verbatim, preserving the exact
+  // pre-realignment behaviour (and keeping the portal-thin pact green — the
+  // portal surface is structure-only, no live users). When the first-party
+  // portal engagement surface (OPEN-4) is built, THIS is the single place that
+  // must be replaced with a real authenticated-user → tenant-TalentRecord
+  // resolution (a user→record linkage OPEN-4 will introduce). Do not scatter
+  // `authContext.sub`-as-talent_id elsewhere — route portal identity through
+  // here.
+  private resolvePortalTalentRecordId(
+    authContext: AuthContextType,
+    requestId: string,
+  ): string {
+    return this.assertSubIsUuid(authContext, requestId);
   }
 
   private assertConsumerIsPortal(
