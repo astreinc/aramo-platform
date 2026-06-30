@@ -165,9 +165,6 @@ export default [
       // fixture data, not as misuse of `outreach` as a standalone entity name.
       'apps/api/src/tests/engagement-create.negative-shape.spec.ts',
       'apps/api/src/tests/engagement-transition.negative-shape.spec.ts',
-      'pact/consumers/ats-thin/src/engagement-create.consumer.test.ts',
-      'pact/consumers/ats-thin/src/engagement-transition.consumer.test.ts',
-      'pact/consumers/ats-thin/src/engagement-reads.consumer.test.ts',
       'libs/engagement/src/tests/engagement.controller.spec.ts',
       'apps/api/src/tests/engagement.controller.integration.spec.ts',
       // M5 PR-6 — outreach-send HTTP surface + delivery port. Same
@@ -209,7 +206,6 @@ export default [
       'libs/engagement/src/tests/engagement.repository.integration.spec.ts',
       'apps/api/src/tests/outreach-send.negative-shape.spec.ts',
       'apps/api/src/tests/outreach-send.integration.spec.ts',
-      'pact/consumers/ats-thin/src/outreach-send.consumer.test.ts',
       'pact/provider/src/verify-api.ts',
       // M5 PR-7 — response-received HTTP surface. DTOs + Pact consumer +
       // negative-shape spec + integration spec carry the canonical
@@ -222,14 +218,12 @@ export default [
       'libs/engagement/src/lib/dto/engagement-response-received-payload.ts',
       'apps/api/src/tests/response-received.negative-shape.spec.ts',
       'apps/api/src/tests/response-received.integration.spec.ts',
-      'pact/consumers/ats-thin/src/response-received.consumer.test.ts',
       // M5 PR-8a — conversation-started specs traverse /outreach + /response to reach
       // responded precondition; same canonical-vocab rationale as M5 PR-6 + PR-7 entries above
       'apps/api/src/tests/conversation-started.negative-shape.spec.ts',
       'apps/api/src/tests/conversation-started.integration.spec.ts',
       'libs/engagement/src/lib/dto/record-conversation-started-response.dto.ts',
       'libs/engagement/src/lib/dto/engagement-conversation-started-payload.ts',
-      'pact/consumers/ats-thin/src/conversation-started.consumer.test.ts',
       // M5 PR-9b — consent-at-send refusal integration spec carries the
       // canonical `outreach` engagement-endpoint vocabulary by design
       // (the spec exercises POST /v1/engagements/{id}/outreach as the

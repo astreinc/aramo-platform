@@ -280,9 +280,9 @@ jobs:
       # port-reuse race (~7% warm / ~17% cold per attempt at HEAD 9ac157e
       # after the afterEach setImmediate yield). k=3 projects job failure
       # to < 0.5% (cold 17%³ ≈ 0.5%; warm 6.7%³ ≈ 0.03%). Wraps the
-      # umbrella `pact:consumer` (all 6 suites; ats-thin carries the race
-      # but the retry covers any consumer suite that exhibits the same
-      # pact-rust signature). HK-M6 carry-forward for upstream fix in
+      # umbrella `pact:consumer` (all 5 suites; the retry covers any
+      # consumer suite that exhibits the same pact-rust signature).
+      # HK-M6 carry-forward for upstream fix in
       # pact-foundation/pact-core or pact-rust (cleanupMockServer should
       # await listener unbind synchronously).
       - name: Run pact:consumer (with bounded retry for pact-rust race)

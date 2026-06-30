@@ -140,8 +140,8 @@
 //     context.details.kind is 'provider_unavailable' or
 //     'provider_internal_error' (per the M5 PR-5 AnthropicProvider
 //     error-translation table) to a stable HTTP-bearing code so the
-//     ATS-thin client can distinguish upstream LLM transport failures
-//     from generic 5xx INTERNAL_ERROR.
+//     recruiter ATS client can distinguish upstream LLM transport
+//     failures from generic 5xx INTERNAL_ERROR.
 //   - AI_RATE_LIMITED (HTTP 429) — EngagementController.sendOutreach
 //     remaps AiDraftService INTERNAL_ERROR throws whose
 //     context.details.kind is 'provider_rate_limited' (LLM rate-limit
