@@ -10,6 +10,7 @@ import { ResumeParseModule } from '@aramo/resume-parse';
 import { PrismaService } from './prisma/prisma.service.js';
 import { TalentRecordController } from './talent-record.controller.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
+import { TalentRecordService } from './talent-record.service.js';
 import { TalentLinkService } from './talent-link.service.js';
 import { ResumeTextService } from './resume-text/resume-text.service.js';
 
@@ -48,6 +49,7 @@ import { ResumeTextService } from './resume-text/resume-text.service.js';
   providers: [
     PrismaService,
     TalentRecordRepository,
+    TalentRecordService,
     TalentLinkService,
     // Search PR-2 — the résumé-text re-extract + persistence service. The
     // enqueue side is consumed by AttachmentController (the commit seam);
@@ -60,6 +62,11 @@ import { ResumeTextService } from './resume-text/resume-text.service.js';
       useFactory: () => createAramoLogger(ResumeTextService.name),
     },
   ],
-  exports: [TalentRecordRepository, TalentLinkService, ResumeTextService],
+  exports: [
+    TalentRecordRepository,
+    TalentRecordService,
+    TalentLinkService,
+    ResumeTextService,
+  ],
 })
 export class TalentRecordModule {}

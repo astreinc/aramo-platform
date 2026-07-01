@@ -412,8 +412,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // interaction's data doesn't leak forward.
       await c.query('TRUNCATE TABLE examination."TalentJobExamination" CASCADE');
       await c.query('TRUNCATE TABLE job_domain."Requisition" CASCADE');
-      // M3 PR-9 — portal-thin state handlers seed Talent + TalentTenantOverlay;
-      // truncate at the start of every interaction.
+      // Core husk truncate — other states (e.g. engagement) may still seed
+      // Talent + overlay. 4e-rest-b: portal-thin now seeds a TalentRecord
+      // instead (truncated below).
       await c.query('TRUNCATE TABLE talent."TalentTenantOverlay" CASCADE');
       await c.query('TRUNCATE TABLE talent."Talent" CASCADE');
       // 4e-engagement-key — engagement.talent_id references TalentRecord.
@@ -449,29 +450,23 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await c.query('TRUNCATE TABLE ai_draft."AiDraftEvent" CASCADE');
     }
 
-    // M3 PR-9 §4.8 — seed a Talent core row + a TalentTenantOverlay for
-    // the portal-thin pacts. The portal JWT's sub is PORTAL_TALENT_ID;
-    // the controller derives talent_id from authContext.sub and
-    // tenant_id from authContext.tenant_id (TENANT_ID below). Both
-    // states ("profile P" and "consent grants G") use the same fixture
-    // shape; consent grants are seeded separately via seedConsentEvent
-    // when the test requires them.
+    // 4e-rest-b — seed the portal talent's TalentRecord for the portal-thin
+    // pacts. findSelfProfile re-homed OFF Core (Talent+overlay) ONTO the
+    // TalentRecord heart, so the fixture now seeds one talent_record row.
+    // The portal JWT's sub is PORTAL_TALENT_ID; the controller derives
+    // talent_id from authContext.sub (= the TalentRecord id) and tenant_id
+    // from authContext.tenant_id (TENANT_ID). tenant_status + source_channel
+    // are set non-null so the reader's un-statused → 404 guard is satisfied
+    // (the pact matches both as non-null). Both states ("profile P" and
+    // "consent grants G") use the same fixture; consent grants are seeded
+    // separately via seedConsentEvent.
     async function seedPortalTalentFixture(c: Client): Promise<void> {
       await c.query(
-        `INSERT INTO talent."Talent" (id, lifecycle_status, updated_at)
-         VALUES ($1, 'active', NOW())`,
-        [PORTAL_TALENT_ID],
-      );
-      await c.query(
-        `INSERT INTO talent."TalentTenantOverlay"
-           (id, talent_id, tenant_id, source_recruiter_id, source_channel,
-            tenant_status, updated_at)
-         VALUES ($1, $2, $3, NULL, 'self_signup', 'active', NOW())`,
-        [
-          '00000000-0000-7000-8000-0000000000aa',
-          PORTAL_TALENT_ID,
-          TENANT_ID,
-        ],
+        `INSERT INTO talent_record."TalentRecord"
+           (id, tenant_id, first_name, last_name, tenant_status, source_channel,
+            created_at, updated_at)
+         VALUES ($1, $2, 'Portal', 'Talent', 'active', 'self_signup', NOW(), NOW())`,
+        [PORTAL_TALENT_ID, TENANT_ID],
       );
     }
 
@@ -2524,16 +2519,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       },
       // ===== M3 PR-9 §4.8 portal-thin (5 interactions) =====
       'a portal talent with profile P exists': async () => {
-        // PR-9 §4.8 — happy /v1/portal/profile interaction. Seed Talent
-        // + TalentTenantOverlay so findSelfProfile returns a projection.
+        // PR-9 §4.8 — happy /v1/portal/profile interaction. 4e-rest-b: seed a
+        // TalentRecord so the re-homed findSelfProfile returns a projection.
         await withClient(async (c) => {
           await resetAllRows(c);
           await seedPortalTalentFixture(c);
         });
       },
       'a portal talent with consent grants G exists': async () => {
-        // PR-9 §4.8 — happy /v1/portal/consent interaction. Seed Talent
-        // + overlay AND a grant for each of the 5 ConsentScope values so
+        // PR-9 §4.8 — happy /v1/portal/consent interaction. 4e-rest-b: seed a
+        // TalentRecord AND a grant for each of the 5 ConsentScope values so
         // every scope in the always-5-scopes response (PR-5 Decision D)
         // carries a non-null granted_at. The consumer pact uses
         // eachLike() with a date-string matcher on granted_at; if any

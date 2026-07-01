@@ -1,6 +1,8 @@
 export { TalentRecordModule } from './lib/talent-record.module.js';
 export { TalentRecordController } from './lib/talent-record.controller.js';
 export { TalentRecordRepository } from './lib/talent-record.repository.js';
+export { TalentRecordService } from './lib/talent-record.service.js';
+export type { PortalProfileProjection } from './lib/dto/portal-profile-projection.dto.js';
 export { TalentLinkService } from './lib/talent-link.service.js';
 export { PrismaService as TalentRecordPrismaService } from './lib/prisma/prisma.service.js';
 

@@ -43,10 +43,10 @@ describe('portal-thin consumer → GET /v1/portal/profile', () => {
       .willRespondWith(200, (b) => {
         b.jsonBody({
           // Strict — exactly the PortalProfile fields, no like() wrapper
-          // on the outer object.
+          // on the outer object. 4e-rest-b: lifecycle_status DROPPED (Core-
+          // only field, re-homed off Core); tenant_status is the status field.
           talent_id: uuid(TALENT_SUB),
           tenant_id: uuid(TENANT_ID),
-          lifecycle_status: regex('active|inactive|archived|deleted', 'active'),
           tenant_status: regex('active|inactive|archived', 'active'),
           source_channel: regex('self_signup|recruiter_capture|referral|import', 'self_signup'),
           created_at: regex(

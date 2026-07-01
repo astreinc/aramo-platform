@@ -9,5 +9,4 @@ export { PrismaService } from './lib/prisma/prisma.service.js';
 export type {
   TalentDto,
   TalentTenantOverlayDto,
-  PortalProfileProjection,
 } from './lib/dto/index.js';
