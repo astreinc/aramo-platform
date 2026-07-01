@@ -37,6 +37,7 @@ const ROOT = resolve(__dirname, '../../../..');
 const M = (p: string): string => resolve(ROOT, p);
 const MIGRATIONS = [
   M('libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql'),
+  M('libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql'),
   M('libs/ingestion/prisma/migrations/20260516130715_init_ingestion_model/migration.sql'),
   M('libs/ingestion/prisma/migrations/20260516183528_add_skill_surface_forms/migration.sql'),
   M('libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql'),

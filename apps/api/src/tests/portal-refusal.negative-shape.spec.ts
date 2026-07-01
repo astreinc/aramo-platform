@@ -53,6 +53,10 @@ const CONSENT_MIGRATION = resolve(
   ROOT,
   'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
 );
+const CONSENT_REKEY_MIGRATION = resolve(
+  ROOT,
+  'libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql',
+);
 const INGESTION_INIT_MIGRATION = resolve(
   ROOT,
   'libs/ingestion/prisma/migrations/20260516130715_init_ingestion_model/migration.sql',
@@ -179,6 +183,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setup.connect();
       for (const migrationPath of [
         CONSENT_MIGRATION,
+        CONSENT_REKEY_MIGRATION,
         INGESTION_INIT_MIGRATION,
         INGESTION_SURFACE_MIGRATION,
         EXAMINATION_INIT_MIGRATION,
@@ -222,7 +227,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // non-trivial scope state.
       await setup.query(
         `INSERT INTO consent."TalentConsentEvent"
-           (id, talent_id, tenant_id, scope, action, captured_by_actor_id,
+           (id, talent_record_id, tenant_id, scope, action, captured_by_actor_id,
             captured_method, consent_version, occurred_at, created_at)
          VALUES ($1,$2,$3,'matching','granted',$4,
                  'recruiter_capture','v1','2026-04-01T10:00:00Z',
@@ -371,7 +376,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // (C): TalentConsentStateResponse locked envelope keys.
       expect(new Set(Object.keys(body))).toEqual(
         new Set([
-          'talent_id',
+          'talent_record_id',
           'tenant_id',
           'is_anonymized',
           'computed_at',

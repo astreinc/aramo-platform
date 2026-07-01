@@ -15,7 +15,7 @@ import {
 // VALIDATION_ERROR if channel is missing for a contacting operation.
 export class ConsentCheckRequestDto {
   @IsUUID()
-  talent_id!: string;
+  talent_record_id!: string;
 
   @IsIn(CONSENT_CHECK_OPERATIONS)
   operation!: ConsentCheckOperation;

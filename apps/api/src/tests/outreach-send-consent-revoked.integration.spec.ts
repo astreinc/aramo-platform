@@ -59,6 +59,7 @@ const ROOT = resolve(__dirname, '../../../..');
 const M = (p: string): string => resolve(ROOT, p);
 const MIGRATIONS = [
   M('libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql'),
+  M('libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql'),
   M('libs/ingestion/prisma/migrations/20260516130715_init_ingestion_model/migration.sql'),
   M('libs/ingestion/prisma/migrations/20260516183528_add_skill_surface_forms/migration.sql'),
   M('libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql'),
@@ -309,7 +310,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const scope of ['profile_storage', 'matching', 'contacting']) {
         await setup.query(
           `INSERT INTO consent."TalentConsentEvent"
-             (id, talent_id, tenant_id, scope, action, captured_by_actor_id,
+             (id, talent_record_id, tenant_id, scope, action, captured_by_actor_id,
               captured_method, consent_version, occurred_at, created_at)
            VALUES ($1, $2, $3, $4, 'granted', $5,
                    'recruiter_capture', 'v1', $6, NOW())`,
@@ -332,7 +333,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const scope of ['profile_storage', 'matching']) {
         await setup.query(
           `INSERT INTO consent."TalentConsentEvent"
-             (id, talent_id, tenant_id, scope, action, captured_by_actor_id,
+             (id, talent_record_id, tenant_id, scope, action, captured_by_actor_id,
               captured_method, consent_version, occurred_at, created_at)
            VALUES ($1, $2, $3, $4, 'granted', $5,
                    'recruiter_capture', 'v1', $6, NOW())`,
@@ -349,7 +350,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     ): Promise<void> {
       await setup.query(
         `INSERT INTO consent."TalentConsentEvent"
-           (id, talent_id, tenant_id, scope, action, captured_by_actor_id,
+           (id, talent_record_id, tenant_id, scope, action, captured_by_actor_id,
             captured_method, consent_version, occurred_at, created_at)
          VALUES ($1, $2, $3, 'contacting', 'revoked', $4,
                  'recruiter_capture', 'v1', $5, NOW())`,
@@ -483,6 +484,47 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const draft = await draftOutreach(recruiterAJwt, id);
       expect(draft.status).toBe(200);
 
+      const res = await sendOutreach(recruiterAJwt, id, draft.body.draft_event_id as string);
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('CONSENT_NOT_GRANTED_AT_SEND');
+    });
+
+    // ───────────────────────────────────────────────────────────────────
+    // STEP-4 (consent re-key) MANDATORY ACCEPTANCE GATE — the distinct-id
+    // grant→send round-trip. 4e could NOT prove this (there, the engagement's
+    // TalentRecord.id and the Core id were one shared UUID). The consent re-key
+    // is what makes the ledger TalentRecord-keyed, so this is the test that
+    // proves the axis keys on TalentRecord.id — NOT the Core id.
+    // CORE_DISTINCT is a Core-style id deliberately ≠ the engagement's
+    // TalentRecord.id (TALENT_A).
+    // ───────────────────────────────────────────────────────────────────
+    const CORE_DISTINCT = '9c9c9c9c-9c9c-7c9c-8c9c-9c9c9c9c9c9c';
+
+    it('STEP-4(a): consent granted under the engagement TalentRecord.id IS found by the send-gate → 200', { timeout: 60_000 }, async () => {
+      expect(CORE_DISTINCT).not.toBe(TALENT_A);
+      // Full chain keyed to TALENT_A — the engagement's talent_id IS a
+      // TalentRecord.id (post-#349) and consent is now TalentRecord-keyed.
+      await seedContactingGrant(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
+      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      const draft = await draftOutreach(recruiterAJwt, id);
+      expect(draft.status).toBe(200);
+      const res = await sendOutreach(recruiterAJwt, id, draft.body.draft_event_id as string);
+      expect(res.status).toBe(200);
+    });
+
+    it('STEP-4(b): consent granted under a Core id DISTINCT from the TalentRecord.id is NOT found → 403', { timeout: 60_000 }, async () => {
+      // Full contacting chain granted under CORE_DISTINCT (≠ the engagement's
+      // TalentRecord.id); prerequisites granted under TALENT_A so the resolver
+      // reaches the contacting decision for TALENT_A rather than 422-ing on a
+      // missing dependency.
+      await seedContactingGrant(CORE_DISTINCT, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
+      await seedPrerequisiteChainOnly(TALENT_A, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
+      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, TALENT_A, REQ_A);
+      const draft = await draftOutreach(recruiterAJwt, id);
+      expect(draft.status).toBe(200);
+      // The gate queries consent by TALENT_A (the TalentRecord.id); the
+      // contacting grant under CORE_DISTINCT is invisible → denied → 403.
       const res = await sendOutreach(recruiterAJwt, id, draft.body.draft_event_id as string);
       expect(res.status).toBe(403);
       const body = (await res.json()) as { error: { code: string } };

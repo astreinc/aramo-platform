@@ -32,7 +32,7 @@ import type { ConsentSourceType } from './dto/source-consent-source.js';
 
 export interface RegisterSourceDerivedConsentInput {
   tenant_id: string;
-  talent_id: string;
+  talent_record_id: string;
   source: ConsentSourceType;
   // ISO-8601 timestamp the source-derived consent should record as
   // its occurred_at. Caller provides; typically the ingestion
@@ -118,7 +118,7 @@ export class SourceConsentService {
     for (const grant of grants) {
       const requestHash = hashCanonicalizedBody({
         tenant_id: input.tenant_id,
-        talent_id: input.talent_id,
+        talent_record_id: input.talent_record_id,
         source: input.source,
         scope: grant.scope,
       });
@@ -130,7 +130,7 @@ export class SourceConsentService {
       await this.consentRepo.recordConsentEvent({
         action: 'granted',
         tenant_id: input.tenant_id,
-        talent_id: input.talent_id,
+        talent_record_id: input.talent_record_id,
         scope: grant.scope,
         captured_method,
         // Source-derived consent has no human actor — the import

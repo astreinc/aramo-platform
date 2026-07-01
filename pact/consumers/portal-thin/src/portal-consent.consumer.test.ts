@@ -38,7 +38,7 @@ describe('portal-thin consumer → GET /v1/portal/consent', () => {
       })
       .willRespondWith(200, (b) => {
         b.jsonBody({
-          talent_id: uuid(TALENT_SUB),
+          talent_record_id: uuid(TALENT_SUB),
           tenant_id: uuid(TENANT_ID),
           is_anonymized: boolean(false),
           computed_at: regex(
@@ -67,7 +67,7 @@ describe('portal-thin consumer → GET /v1/portal/consent', () => {
         });
         expect(res.status).toBe(200);
         const body = (await res.json()) as {
-          talent_id: string;
+          talent_record_id: string;
           tenant_id: string;
           is_anonymized: boolean;
           scopes: unknown[];

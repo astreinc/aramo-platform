@@ -34,6 +34,11 @@ const PR2_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
 );
+// Step-5 consent re-key: talent_id → talent_record_id.
+const REKEY_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql',
+);
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
 const TALENT_STALE = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaa111';
@@ -57,13 +62,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]);
 
       const pgUrl = pgContainer.getConnectionUri();
-      const migrationSql = readFileSync(PR2_MIGRATION_PATH, 'utf8');
       const setupClient = new PrismaService(pgUrl);
       await setupClient.$connect();
-      for (const stmt of splitDdl(migrationSql)) {
-        const trimmed = stmt.trim();
-        if (trimmed.length === 0) continue;
-        await setupClient.$executeRawUnsafe(trimmed);
+      for (const p of [PR2_MIGRATION_PATH, REKEY_MIGRATION_PATH]) {
+        for (const stmt of splitDdl(readFileSync(p, 'utf8'))) {
+          const trimmed = stmt.trim();
+          if (trimmed.length === 0) continue;
+          await setupClient.$executeRawUnsafe(trimmed);
+        }
       }
       await setupClient.$disconnect();
 
@@ -123,7 +129,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         data: {
           id: uuidv7(),
           tenant_id: TENANT_A,
-          talent_id: TALENT_STALE,
+          talent_record_id: TALENT_STALE,
           scope: 'contacting',
           action: 'granted',
           captured_by_actor_id: null,
@@ -138,7 +144,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         data: {
           id: uuidv7(),
           tenant_id: TENANT_A,
-          talent_id: TALENT_FRESH,
+          talent_record_id: TALENT_FRESH,
           scope: 'contacting',
           action: 'granted',
           captured_by_actor_id: null,
@@ -167,13 +173,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Assert: stale talent now has an action='expired' row.
       const staleExpired = await prisma.talentConsentEvent.findMany({
-        where: { tenant_id: TENANT_A, talent_id: TALENT_STALE, action: 'expired' },
+        where: { tenant_id: TENANT_A, talent_record_id: TALENT_STALE, action: 'expired' },
       });
       expect(staleExpired).toHaveLength(1);
 
       // Assert: fresh talent has NO expired row.
       const freshExpired = await prisma.talentConsentEvent.findMany({
-        where: { tenant_id: TENANT_A, talent_id: TALENT_FRESH, action: 'expired' },
+        where: { tenant_id: TENANT_A, talent_record_id: TALENT_FRESH, action: 'expired' },
       });
       expect(freshExpired).toHaveLength(0);
 
@@ -202,7 +208,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const stale = await repo.findStaleContactingGrants({ cutoff, computedAt });
       // After the prior test, the stale talent's latest event is 'expired'
       // (not 'granted'), so it should NOT be returned by this scan.
-      const staleTalentIds = stale.map((s) => s.talent_id);
+      const staleTalentIds = stale.map((s) => s.talent_record_id);
       expect(staleTalentIds).not.toContain(TALENT_STALE);
       expect(staleTalentIds).not.toContain(TALENT_FRESH);
     });

@@ -1,6 +1,6 @@
 import type { ConsentDecisionLogEntryDto } from './consent-decision-log-entry.dto.js';
 
-// Wrapped response DTO for GET /consent/decision-log/{talent_id} (PR-7 §4).
+// Wrapped response DTO for GET /consent/decision-log/{talent_record_id} (PR-7 §4).
 //
 // Wrapped, never bare. Never 404 on empty (ADR-0007 Decision D). Empty
 // decision log returns { entries: [], next_cursor: null,

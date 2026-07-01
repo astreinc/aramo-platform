@@ -52,6 +52,7 @@ type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
 const CONSENT_MIGRATION = resolve(ROOT, 'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql');
+const CONSENT_REKEY = resolve(ROOT, 'libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql');
 const INGESTION_INIT = resolve(ROOT, 'libs/ingestion/prisma/migrations/20260516130715_init_ingestion_model/migration.sql');
 const INGESTION_SURFACE = resolve(ROOT, 'libs/ingestion/prisma/migrations/20260516183528_add_skill_surface_forms/migration.sql');
 const EXAM_INIT = resolve(ROOT, 'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql');
@@ -123,6 +124,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setupClient.connect();
       for (const p of [
         CONSENT_MIGRATION,
+        CONSENT_REKEY,
         INGESTION_INIT,
         INGESTION_SURFACE,
         EXAM_INIT,

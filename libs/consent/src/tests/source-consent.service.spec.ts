@@ -56,7 +56,7 @@ describe('SourceConsentService — Group 2 v2.3a source-consent mapping', () => 
 
       await service.registerSourceDerivedConsent({
         tenant_id: TENANT_ID,
-        talent_id: TALENT_ID,
+        talent_record_id: TALENT_ID,
         source: 'indeed',
         occurred_at: OCCURRED_AT,
         requestId: REQUEST_ID,
@@ -104,7 +104,7 @@ describe('SourceConsentService — Group 2 v2.3a source-consent mapping', () => 
 
       await service.registerSourceDerivedConsent({
         tenant_id: TENANT_ID,
-        talent_id: TALENT_ID,
+        talent_record_id: TALENT_ID,
         source: 'indeed',
         occurred_at: OCCURRED_AT,
         requestId: REQUEST_ID,
@@ -131,7 +131,7 @@ describe('SourceConsentService — Group 2 v2.3a source-consent mapping', () => 
 
       await service.registerSourceDerivedConsent({
         tenant_id: TENANT_ID,
-        talent_id: TALENT_ID,
+        talent_record_id: TALENT_ID,
         source: 'github',
         occurred_at: OCCURRED_AT,
         requestId: REQUEST_ID,
@@ -161,7 +161,7 @@ describe('SourceConsentService — Group 2 v2.3a source-consent mapping', () => 
 
       await service.registerSourceDerivedConsent({
         tenant_id: TENANT_ID,
-        talent_id: TALENT_ID,
+        talent_record_id: TALENT_ID,
         source: 'astre_import',
         occurred_at: OCCURRED_AT,
         requestId: REQUEST_ID,
@@ -188,7 +188,7 @@ describe('SourceConsentService — Group 2 v2.3a source-consent mapping', () => 
 
       await service.registerSourceDerivedConsent({
         tenant_id: TENANT_ID,
-        talent_id: TALENT_ID,
+        talent_record_id: TALENT_ID,
         source: 'talent_direct',
         occurred_at: OCCURRED_AT,
         requestId: REQUEST_ID,
@@ -216,7 +216,7 @@ describe('SourceConsentService — Group 2 v2.3a source-consent mapping', () => 
 
       await service.registerSourceDerivedConsent({
         tenant_id: TENANT_ID,
-        talent_id: TALENT_ID,
+        talent_record_id: TALENT_ID,
         source: 'indeed',
         occurred_at: OCCURRED_AT,
         requestId: REQUEST_ID,
@@ -224,10 +224,10 @@ describe('SourceConsentService — Group 2 v2.3a source-consent mapping', () => 
 
       const calls = (repo.recordConsentEvent as ReturnType<typeof vi.fn>).mock.calls;
       for (const c of calls) {
-        const input = c[0] as { action: string; tenant_id: string; talent_id: string };
+        const input = c[0] as { action: string; tenant_id: string; talent_record_id: string };
         expect(input.action).toBe('granted');
         expect(input.tenant_id).toBe(TENANT_ID);
-        expect(input.talent_id).toBe(TALENT_ID);
+        expect(input.talent_record_id).toBe(TALENT_ID);
       }
     });
   });

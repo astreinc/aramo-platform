@@ -1,4 +1,4 @@
-// Per-entry DTO for /consent/decision-log/{talent_id} (PR-7 §4).
+// Per-entry DTO for /consent/decision-log/{talent_record_id} (PR-7 §4).
 //
 // Field set is closed at exactly seven fields. The entry DTO is closed
 // (additionalProperties: false at the OpenAPI surface); only
@@ -6,7 +6,7 @@
 //
 // Field name mapping (PR-7 §5):
 //   DB id          → API event_id   (PR-6 precedent)
-//   DB subject_id  → API talent_id  (PR-7 exception, this directive)
+//   DB subject_id  → API talent_record_id  (PR-7 exception, this directive)
 //
 // `event_type` is a closed set per PR-7 §7 + ADR-0009 §4 (audit/event-log
 // table principle): {consent.grant.recorded, consent.revoke.recorded,
@@ -34,7 +34,7 @@ export const CONSENT_DECISION_LOG_EVENT_TYPES: readonly ConsentDecisionLogEventT
 
 export interface ConsentDecisionLogEntryDto {
   event_id: string;
-  talent_id: string;
+  talent_record_id: string;
   event_type: ConsentDecisionLogEventType;
   created_at: string;
   actor_id: string | null;

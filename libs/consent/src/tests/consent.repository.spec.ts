@@ -58,7 +58,7 @@ function makePrisma(tx: MockTx): PrismaService {
 function makeGrantInput(overrides: Partial<RecordConsentEventInput> = {}): RecordConsentEventInput {
   return {
     tenant_id: TENANT_ID,
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     action: 'granted',
     scope: 'matching',
     captured_method: 'recruiter_capture',
@@ -304,7 +304,7 @@ describe('ConsentRepository.recordConsentEvent — revoke', () => {
     };
     expect(outboxRow.data.event_type).toBe('consent.revoked');
     expect(outboxRow.data.event_payload).toMatchObject({
-      talent_id: TALENT_ID,
+      talent_record_id: TALENT_ID,
       scope: 'matching',
       revoked_event_id: PRIOR_GRANT_ID,
     });
@@ -392,7 +392,7 @@ function makeResolveInput(
 ): ResolveConsentStateInput {
   return {
     tenant_id: TENANT_ID,
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     operation: 'matching',
     requestHash: 'resolve-hash-1',
     requestId: 'req-resolve-1',
@@ -891,7 +891,7 @@ describe('ConsentRepository.resolveConsentState — Decision H (decision-log aud
     expect(auditRow.data.event_payload['decision_id']).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
-    expect(auditRow.data.event_payload['talent_id']).toBe(TALENT_ID);
+    expect(auditRow.data.event_payload['talent_record_id']).toBe(TALENT_ID);
     expect(auditRow.data.event_payload['operation']).toBe('matching');
   });
 
@@ -1014,12 +1014,12 @@ const ALL_SCOPES = [
 
 function makeAllScopesInput(): {
   tenant_id: string;
-  talent_id: string;
+  talent_record_id: string;
   requestId: string;
 } {
   return {
     tenant_id: TENANT_ID,
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     requestId: 'req-state-1',
   };
 }
@@ -1034,7 +1034,7 @@ describe('ConsentRepository.resolveAllScopes — Decision D (always 5 scopes)', 
     expect(result.scopes).toHaveLength(5);
     expect(result.is_anonymized).toBe(false);
     expect(result.tenant_id).toBe(TENANT_ID);
-    expect(result.talent_id).toBe(TALENT_ID);
+    expect(result.talent_record_id).toBe(TALENT_ID);
     for (const scope of ALL_SCOPES) {
       const entry = result.scopes.find((s) => s.scope === scope);
       expect(entry).toBeDefined();
@@ -1314,11 +1314,11 @@ describe('ConsentRepository.resolveAllScopes — root metadata', () => {
     const repo = new ConsentRepository(makePrisma(tx));
     const result = await repo.resolveAllScopes({
       tenant_id: TENANT_ID,
-      talent_id: TALENT_ID,
+      talent_record_id: TALENT_ID,
       requestId: 'req-state-meta-1',
     });
     expect(result.tenant_id).toBe(TENANT_ID);
-    expect(result.talent_id).toBe(TALENT_ID);
+    expect(result.talent_record_id).toBe(TALENT_ID);
   });
 
   it('computed_at is an ISO-8601 timestamp', async () => {
@@ -1358,7 +1358,7 @@ function makeHistoryRow(overrides: Partial<HistoryRow> = {}): HistoryRow {
 
 function makeHistoryInput(overrides: Partial<{
   tenant_id: string;
-  talent_id: string;
+  talent_record_id: string;
   scope: string;
   limit: number;
   cursor: { created_at: Date; event_id: string };
@@ -1366,21 +1366,21 @@ function makeHistoryInput(overrides: Partial<{
 }> = {}) {
   const base: {
     tenant_id: string;
-    talent_id: string;
+    talent_record_id: string;
     limit: number;
     requestId: string;
     scope?: string;
     cursor?: { created_at: Date; event_id: string };
   } = {
     tenant_id: TENANT_ID,
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     limit: 50,
     requestId: 'req-history-1',
   };
   if (overrides.scope !== undefined) base.scope = overrides.scope;
   if (overrides.cursor !== undefined) base.cursor = overrides.cursor;
   if (overrides.tenant_id !== undefined) base.tenant_id = overrides.tenant_id;
-  if (overrides.talent_id !== undefined) base.talent_id = overrides.talent_id;
+  if (overrides.talent_record_id !== undefined) base.talent_record_id = overrides.talent_record_id;
   if (overrides.limit !== undefined) base.limit = overrides.limit;
   if (overrides.requestId !== undefined) base.requestId = overrides.requestId;
   return base;
@@ -1498,7 +1498,7 @@ describe('ConsentRepository.resolveHistory — §7 test 5 (scope filter pre-pagi
     // to the same query (cursor traverses the filtered set per §5).
     expect(findManyArgs.where['OR']).toBeDefined();
     expect(findManyArgs.where['tenant_id']).toBe(TENANT_ID);
-    expect(findManyArgs.where['talent_id']).toBe(TALENT_ID);
+    expect(findManyArgs.where['talent_record_id']).toBe(TALENT_ID);
   });
 });
 
@@ -1701,7 +1701,7 @@ describe('ConsentRepository.resolveHistory — DTO field mapping (event_id, expi
 });
 
 describe('ConsentRepository.resolveHistory — Tenant scoping (§3 + ADR-0007 Decision B)', () => {
-  it('tenant_id and talent_id flow into where clause from input', async () => {
+  it('tenant_id and talent_record_id flow into where clause from input', async () => {
     const tx = makeTx();
     tx.talentConsentEvent.findMany.mockResolvedValue([]);
     const repo = new ConsentRepository(makePrisma(tx));
@@ -1711,7 +1711,7 @@ describe('ConsentRepository.resolveHistory — Tenant scoping (§3 + ADR-0007 De
       where: Record<string, unknown>;
     };
     expect(findManyArgs.where['tenant_id']).toBe(TENANT_ID);
-    expect(findManyArgs.where['talent_id']).toBe(TALENT_ID);
+    expect(findManyArgs.where['talent_record_id']).toBe(TALENT_ID);
   });
 });
 
@@ -1751,7 +1751,7 @@ function makeDecisionLogRow(overrides: Partial<DecisionLogRow> = {}): DecisionLo
 
 function makeDecisionLogInput(overrides: Partial<{
   tenant_id: string;
-  talent_id: string;
+  talent_record_id: string;
   event_type: string;
   limit: number;
   cursor: { created_at: Date; event_id: string };
@@ -1759,21 +1759,21 @@ function makeDecisionLogInput(overrides: Partial<{
 }> = {}) {
   const base: {
     tenant_id: string;
-    talent_id: string;
+    talent_record_id: string;
     limit: number;
     requestId: string;
     event_type?: string;
     cursor?: { created_at: Date; event_id: string };
   } = {
     tenant_id: TENANT_ID,
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     limit: 50,
     requestId: 'req-decision-log-1',
   };
   if (overrides.event_type !== undefined) base.event_type = overrides.event_type;
   if (overrides.cursor !== undefined) base.cursor = overrides.cursor;
   if (overrides.tenant_id !== undefined) base.tenant_id = overrides.tenant_id;
-  if (overrides.talent_id !== undefined) base.talent_id = overrides.talent_id;
+  if (overrides.talent_record_id !== undefined) base.talent_record_id = overrides.talent_record_id;
   if (overrides.limit !== undefined) base.limit = overrides.limit;
   if (overrides.requestId !== undefined) base.requestId = overrides.requestId;
   return base;
@@ -1883,9 +1883,9 @@ describe('ConsentRepository.resolveDecisionLog — §9 test 3 (event_type filter
     // Cursor predicate co-applies (cursor traverses the filtered set)
     expect(findManyArgs.where['OR']).toBeDefined();
     expect(findManyArgs.where['tenant_id']).toBe(TENANT_ID);
-    // §5 mapping: input.talent_id → DB subject_id at the where clause
+    // §5 mapping: input.talent_record_id → DB subject_id at the where clause
     expect(findManyArgs.where['subject_id']).toBe(TALENT_ID);
-    expect(findManyArgs.where['talent_id']).toBeUndefined();
+    expect(findManyArgs.where['talent_record_id']).toBeUndefined();
   });
 });
 
@@ -1978,8 +1978,8 @@ describe('ConsentRepository.resolveDecisionLog — Pagination (next_cursor + tak
   });
 });
 
-describe('ConsentRepository.resolveDecisionLog — §9 test 5 (subject_id → talent_id mapping)', () => {
-  it('Prisma query references subject_id; DTO output references talent_id', async () => {
+describe('ConsentRepository.resolveDecisionLog — §9 test 5 (subject_id → talent_record_id mapping)', () => {
+  it('Prisma query references subject_id; DTO output references talent_record_id', async () => {
     const tx = makeTx();
     tx.consentAuditEvent.findMany.mockResolvedValue([
       makeDecisionLogRow({ subject_id: TALENT_ID }),
@@ -1992,10 +1992,10 @@ describe('ConsentRepository.resolveDecisionLog — §9 test 5 (subject_id → ta
       where: Record<string, unknown>;
     };
     expect(findManyArgs.where['subject_id']).toBe(TALENT_ID);
-    expect(findManyArgs.where['talent_id']).toBeUndefined();
+    expect(findManyArgs.where['talent_record_id']).toBeUndefined();
 
-    // DTO output: talent_id at the response boundary
-    expect(result.entries[0]?.talent_id).toBe(TALENT_ID);
+    // DTO output: talent_record_id at the response boundary
+    expect(result.entries[0]?.talent_record_id).toBe(TALENT_ID);
     expect((result.entries[0] as Record<string, unknown>)['subject_id']).toBeUndefined();
   });
 });
@@ -2096,7 +2096,7 @@ describe('ConsentRepository.resolveDecisionLog — §9 test 9 (is_anonymized alw
 });
 
 describe('ConsentRepository.resolveDecisionLog — DTO field set (§4 closed entry shape)', () => {
-  it('seven entry-level fields present (event_id, talent_id, event_type, created_at, actor_id, actor_type, event_payload)', async () => {
+  it('seven entry-level fields present (event_id, talent_record_id, event_type, created_at, actor_id, actor_type, event_payload)', async () => {
     const tx = makeTx();
     tx.consentAuditEvent.findMany.mockResolvedValue([
       makeDecisionLogRow({
@@ -2119,7 +2119,7 @@ describe('ConsentRepository.resolveDecisionLog — DTO field set (§4 closed ent
       'event_id',
       'event_payload',
       'event_type',
-      'talent_id',
+      'talent_record_id',
     ]);
   });
 

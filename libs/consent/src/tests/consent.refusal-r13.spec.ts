@@ -53,7 +53,7 @@ function makePrisma(tx: MockTx): PrismaService {
 function makeGrantInput(): RecordConsentEventInput {
   return {
     tenant_id: TENANT_ID,
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     action: 'granted',
     scope: 'matching',
     captured_method: 'recruiter_capture',
@@ -143,7 +143,7 @@ describe('Refusal R13 — consent integrity over engagement velocity', () => {
     await expect(
       repo.resolveConsentState({
         tenant_id: TENANT_ID,
-        talent_id: TALENT_ID,
+        talent_record_id: TALENT_ID,
         operation: 'matching',
         requestHash: 'r13-h-1',
         requestId: 'r13-req-1',
@@ -160,7 +160,7 @@ describe('Refusal R13 — consent integrity over engagement velocity', () => {
     await expect(
       repo.resolveConsentState({
         tenant_id: TENANT_ID,
-        talent_id: TALENT_ID,
+        talent_record_id: TALENT_ID,
         operation: 'matching',
         requestHash: 'r13-h-2',
         requestId: 'r13-req-2',
@@ -176,7 +176,7 @@ describe('Refusal R13 — consent integrity over engagement velocity', () => {
     await expect(
       repo.resolveConsentState({
         tenant_id: TENANT_ID,
-        talent_id: TALENT_ID,
+        talent_record_id: TALENT_ID,
         operation: 'matching',
         idempotencyKey: 'aabbccdd-0000-7000-8000-000000000400',
         requestHash: 'r13-h-3',

@@ -90,6 +90,13 @@ const CONSENT_MIGRATION = resolve(
   ROOT,
   'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
 );
+// Step-5 consent re-key: renames TalentConsentEvent.talent_id → talent_record_id
+// (a returned-shape change), so the migration must be registered here + the
+// seedConsentEvent INSERT column below updated, or provider verification 500s.
+const CONSENT_REKEY_MIGRATION = resolve(
+  ROOT,
+  'libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql',
+);
 const INGESTION_INIT_MIGRATION = resolve(
   ROOT,
   'libs/ingestion/prisma/migrations/20260516130715_init_ingestion_model/migration.sql',
@@ -479,7 +486,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       const createdAtSql = opts.createdAt ?? opts.occurredAt;
       await c.query(
         `INSERT INTO consent."TalentConsentEvent"
-           (id, talent_id, tenant_id, scope, action, captured_by_actor_id,
+           (id, talent_record_id, tenant_id, scope, action, captured_by_actor_id,
             captured_method, consent_version, occurred_at, expires_at,
             created_at)
          VALUES ($1,$2,$3,$4,$5,$6,'recruiter_capture','v1',$7,$8,$9)`,
@@ -1339,6 +1346,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await setup.connect();
       for (const migrationPath of [
         CONSENT_MIGRATION,
+        CONSENT_REKEY_MIGRATION,
         INGESTION_INIT_MIGRATION,
         INGESTION_SURFACE_MIGRATION,
         INGESTION_T2_ADDITIVE_MIGRATION,
@@ -2413,14 +2421,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f98',
               key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1d30',
               requestHash: hashCanonicalizedBody({
-                talent_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+                talent_record_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
                 scope: 'contacting',
                 captured_method: 'recruiter_capture',
                 consent_version: 'v1',
                 occurred_at: '2026-05-25T10:00:00.000Z',
               }),
               responseStatus: 201,
-              responseBody: { event: { talent_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa', scope: 'contacting' } },
+              responseBody: { event: { talent_record_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa', scope: 'contacting' } },
             });
           });
         },
@@ -2434,14 +2442,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f99',
               key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1d31',
               requestHash: hashCanonicalizedBody({
-                talent_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
+                talent_record_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa',
                 scope: 'contacting',
                 captured_method: 'recruiter_capture',
                 consent_version: 'v1',
                 occurred_at: '2026-05-25T11:00:00.000Z',
               }),
               responseStatus: 201,
-              responseBody: { event: { talent_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa', scope: 'contacting' } },
+              responseBody: { event: { talent_record_id: 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa', scope: 'contacting' } },
             });
           });
         },

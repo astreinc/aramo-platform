@@ -23,7 +23,7 @@ import {
 // grant-time concepts; revocation has neither. Per PR-3 canonical contract.
 export class ConsentRevokeRequestDto {
   @IsUUID()
-  talent_id!: string;
+  talent_record_id!: string;
 
   @IsIn(CONSENT_SCOPES)
   scope!: ConsentScopeValue;

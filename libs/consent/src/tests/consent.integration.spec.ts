@@ -16,6 +16,11 @@ const MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
 );
+// Step-5 consent re-key: talent_id → talent_record_id.
+const REKEY_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql',
+);
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
 const TENANT_B = '22222222-2222-7222-8222-222222222222';
@@ -27,7 +32,7 @@ const RECRUITER_ID = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
 function baseGrantInput(overrides: Partial<RecordConsentEventInput> = {}): RecordConsentEventInput {
   return {
     tenant_id: TENANT_A,
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     action: 'granted',
     scope: 'matching',
     captured_method: 'recruiter_capture',
@@ -55,14 +60,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
-      const migrationSql = readFileSync(MIGRATION_PATH, 'utf8');
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
-      const statements = splitDdl(migrationSql);
-      for (const stmt of statements) {
-        const trimmed = stmt.trim();
-        if (trimmed.length === 0) continue;
-        await setupClient.$executeRawUnsafe(trimmed);
+      for (const p of [MIGRATION_PATH, REKEY_MIGRATION_PATH]) {
+        for (const stmt of splitDdl(readFileSync(p, 'utf8'))) {
+          const trimmed = stmt.trim();
+          if (trimmed.length === 0) continue;
+          await setupClient.$executeRawUnsafe(trimmed);
+        }
       }
       await setupClient.$disconnect();
 
@@ -104,7 +109,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const second = await repo.recordConsentEvent(input);
       expect(second).toEqual(first);
       const consentCount = await prisma.talentConsentEvent.count({
-        where: { tenant_id: TENANT_A, talent_id: TALENT_ID },
+        where: { tenant_id: TENANT_A, talent_record_id: TALENT_ID },
       });
       expect(consentCount).toBeGreaterThan(0);
     });
@@ -176,7 +181,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('revoke without prior grant: revoked_event_id is null (Decision D)', async () => {
       const revokeInput = baseRevokeInput({
-        talent_id: TALENT_ID_NOPRIOR,
+        talent_record_id: TALENT_ID_NOPRIOR,
         idempotencyKey: 'aabbccdd-0000-7000-8000-000000000110',
         requestHash: 'h-rev-noprior',
       });
@@ -196,7 +201,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Seed two grants with different occurred_at; revoke should pick the most recent.
       const earlyGrant = await repo.recordConsentEvent(
         baseGrantInput({
-          talent_id: TALENT_ID_MULTI,
+          talent_record_id: TALENT_ID_MULTI,
           occurred_at: '2026-04-01T00:00:00Z',
           idempotencyKey: 'aabbccdd-0000-7000-8000-000000000120',
           requestHash: 'h-rev-multi-1',
@@ -204,7 +209,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       const recentGrant = await repo.recordConsentEvent(
         baseGrantInput({
-          talent_id: TALENT_ID_MULTI,
+          talent_record_id: TALENT_ID_MULTI,
           occurred_at: '2026-04-15T00:00:00Z',
           idempotencyKey: 'aabbccdd-0000-7000-8000-000000000121',
           requestHash: 'h-rev-multi-2',
@@ -214,7 +219,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const revokeResult = (await repo.recordConsentEvent(
         baseRevokeInput({
-          talent_id: TALENT_ID_MULTI,
+          talent_record_id: TALENT_ID_MULTI,
           idempotencyKey: 'aabbccdd-0000-7000-8000-000000000122',
           requestHash: 'h-rev-multi-3',
         }),
@@ -296,7 +301,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(outboxRows).toHaveLength(1);
       const payload = outboxRows[0]?.event_payload as Record<string, unknown>;
       expect(payload['revoked_event_id']).toBe(grantResult.event_id);
-      expect(payload['talent_id']).toBe(TALENT_ID);
+      expect(payload['talent_record_id']).toBe(TALENT_ID);
       expect(revokeResult.revoked_event_id).toBe(grantResult.event_id);
     });
 
@@ -318,7 +323,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     ): Promise<void> {
       await repo.recordConsentEvent({
         tenant_id: RESOLVER_TENANT,
-        talent_id: RESOLVER_TALENT,
+        talent_record_id: RESOLVER_TALENT,
         action: 'granted',
         scope: scope as never,
         captured_method: capturedMethod as never,
@@ -336,7 +341,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('resolver: empty ledger for an unseen talent → result=error reason=consent_state_unknown', async () => {
       const decision = await repo.resolveConsentState({
         tenant_id: RESOLVER_TENANT,
-        talent_id: 'dddddddd-dddd-7ddd-8ddd-dddddddddddd', // unseeded
+        talent_record_id: 'dddddddd-dddd-7ddd-8ddd-dddddddddddd', // unseeded
         operation: 'matching',
         requestHash: 'res-empty-h',
         requestId: 'res-empty-req',
@@ -356,7 +361,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ] as const) {
         await repo.recordConsentEvent({
           tenant_id: tenant,
-          talent_id: talent,
+          talent_record_id: talent,
           action: 'granted',
           scope: scope as never,
           captured_method: 'self_signup',
@@ -371,7 +376,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Indeed-import: contacting revoked (the restriction)
       await repo.recordConsentEvent({
         tenant_id: tenant,
-        talent_id: talent,
+        talent_record_id: talent,
         action: 'revoked',
         scope: 'contacting',
         captured_method: 'import',
@@ -385,7 +390,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const decision = await repo.resolveConsentState({
         tenant_id: tenant,
-        talent_id: talent,
+        talent_record_id: talent,
         operation: 'engagement',
         channel: 'email',
         requestHash: 'cci-check-h',
@@ -401,7 +406,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Only profile_storage + contacting; matching dep missing
       await repo.recordConsentEvent({
         tenant_id: tenant,
-        talent_id: talent,
+        talent_record_id: talent,
         action: 'granted',
         scope: 'profile_storage',
         captured_method: 'recruiter_capture',
@@ -414,7 +419,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       await repo.recordConsentEvent({
         tenant_id: tenant,
-        talent_id: talent,
+        talent_record_id: talent,
         action: 'granted',
         scope: 'contacting',
         captured_method: 'recruiter_capture',
@@ -428,7 +433,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       try {
         await repo.resolveConsentState({
           tenant_id: tenant,
-          talent_id: talent,
+          talent_record_id: talent,
           operation: 'engagement',
           channel: 'email',
           requestHash: 'dep-check-h',
@@ -467,7 +472,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ] as const) {
         await repo.recordConsentEvent({
           tenant_id: tenant,
-          talent_id: talent,
+          talent_record_id: talent,
           action: 'granted',
           scope: scope as never,
           captured_method: 'recruiter_capture',
@@ -481,7 +486,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       const decision = await repo.resolveConsentState({
         tenant_id: tenant,
-        talent_id: talent,
+        talent_record_id: talent,
         operation: 'engagement',
         channel: 'email',
         requestHash: 'stale-check-h',
@@ -502,7 +507,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ] as const) {
         await repo.recordConsentEvent({
           tenant_id: tenant,
-          talent_id: talent,
+          talent_record_id: talent,
           action: 'granted',
           scope: scope as never,
           captured_method: 'recruiter_capture',
@@ -516,7 +521,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       const decision = await repo.resolveConsentState({
         tenant_id: tenant,
-        talent_id: talent,
+        talent_record_id: talent,
         operation: 'matching',
         requestHash: 'audit-check-h',
         requestId: 'audit-check-req',
@@ -556,7 +561,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       const result = await repo.resolveAllScopes({
         tenant_id: STATE_TENANT,
-        talent_id: talent,
+        talent_record_id: talent,
         requestId: 'state-empty-req',
       });
       expect(result.scopes).toHaveLength(5);
@@ -568,7 +573,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       expect(result.is_anonymized).toBe(false);
       expect(result.tenant_id).toBe(STATE_TENANT);
-      expect(result.talent_id).toBe(talent);
+      expect(result.talent_record_id).toBe(talent);
       // Decision H: no audit row written for state reads
       const auditCountAfter = await prisma.consentAuditEvent.count({
         where: { tenant_id: STATE_TENANT },
@@ -586,7 +591,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ] as const) {
         await repo.recordConsentEvent({
           tenant_id: tenant,
-          talent_id: talent,
+          talent_record_id: talent,
           action: 'granted',
           scope: scope as never,
           captured_method: 'recruiter_capture',
@@ -601,7 +606,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Contacting granted then revoked
       await repo.recordConsentEvent({
         tenant_id: tenant,
-        talent_id: talent,
+        talent_record_id: talent,
         action: 'granted',
         scope: 'contacting',
         captured_method: 'recruiter_capture',
@@ -614,7 +619,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       await repo.recordConsentEvent({
         tenant_id: tenant,
-        talent_id: talent,
+        talent_record_id: talent,
         action: 'revoked',
         scope: 'contacting',
         captured_method: 'recruiter_capture',
@@ -628,7 +633,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const result = await repo.resolveAllScopes({
         tenant_id: tenant,
-        talent_id: talent,
+        talent_record_id: talent,
         requestId: 'state-mixed-req',
       });
 
@@ -659,7 +664,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ] as const) {
         await repo.recordConsentEvent({
           tenant_id: tenant,
-          talent_id: talent,
+          talent_record_id: talent,
           action: 'granted',
           scope: scope as never,
           captured_method: 'self_signup',
@@ -674,7 +679,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Indeed-import: contacting revoked
       await repo.recordConsentEvent({
         tenant_id: tenant,
-        talent_id: talent,
+        talent_record_id: talent,
         action: 'revoked',
         scope: 'contacting',
         captured_method: 'import',
@@ -688,7 +693,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const result = await repo.resolveAllScopes({
         tenant_id: tenant,
-        talent_id: talent,
+        talent_record_id: talent,
         requestId: 'cci-state-req',
       });
 
@@ -726,7 +731,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         data: ids.map((id) => ({
           id,
           tenant_id: tenant,
-          talent_id: talent,
+          talent_record_id: talent,
           scope: 'matching',
           action: 'granted',
           captured_method: 'recruiter_capture',
@@ -745,7 +750,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       while (pages < maxPages) {
         const page = await repo.resolveHistory({
           tenant_id: tenant,
-          talent_id: talent,
+          talent_record_id: talent,
           limit: 2,
           ...(cursor !== null && cursor !== undefined
             ? {
@@ -789,7 +794,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           {
             id: 'aabbccdd-0000-7000-8000-000020000001',
             tenant_id: tenant,
-            talent_id: talent,
+            talent_record_id: talent,
             scope: 'contacting',
             action: 'granted',
             captured_method: 'recruiter_capture',
@@ -803,7 +808,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const page = await repo.resolveHistory({
         tenant_id: tenant,
-        talent_id: talent,
+        talent_record_id: talent,
         limit: 50,
         requestId: 'history-stale-req',
       });
@@ -826,7 +831,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]);
     });
 
-    it('history §7 test 12: cross-tenant isolation — same talent_id in two tenants returns disjoint event sets', async () => {
+    it('history §7 test 12: cross-tenant isolation — same talent_record_id in two tenants returns disjoint event sets', async () => {
       const tenantA = 'eeeeee03-eeee-7eee-8eee-eeeeeeeeeeea';
       const tenantB = 'eeeeee03-eeee-7eee-8eee-eeeeeeeeeeeb';
       const sharedTalent = 'cccccccc-cccc-7ccc-8ccc-cccccccceee3';
@@ -836,7 +841,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           {
             id: 'aabbccdd-0000-7000-8000-000030000001',
             tenant_id: tenantA,
-            talent_id: sharedTalent,
+            talent_record_id: sharedTalent,
             scope: 'matching',
             action: 'granted',
             captured_method: 'recruiter_capture',
@@ -848,7 +853,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           {
             id: 'aabbccdd-0000-7000-8000-000030000002',
             tenant_id: tenantB,
-            talent_id: sharedTalent,
+            talent_record_id: sharedTalent,
             scope: 'profile_storage',
             action: 'granted',
             captured_method: 'self_signup',
@@ -862,13 +867,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const tenantAResult = await repo.resolveHistory({
         tenant_id: tenantA,
-        talent_id: sharedTalent,
+        talent_record_id: sharedTalent,
         limit: 50,
         requestId: 'history-iso-a',
       });
       const tenantBResult = await repo.resolveHistory({
         tenant_id: tenantB,
-        talent_id: sharedTalent,
+        talent_record_id: sharedTalent,
         limit: 50,
         requestId: 'history-iso-b',
       });
@@ -922,7 +927,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           actor_id: RECRUITER_ID,
           actor_type: 'recruiter',
           event_type: 'consent.grant.recorded',
-          subject_id: talent, // §5: DB subject_id ↔ API talent_id
+          subject_id: talent, // §5: DB subject_id ↔ API talent_record_id
           event_payload: { event_id: id, scope: 'matching' },
           created_at: sameTime,
         })),
@@ -935,7 +940,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       while (pages < maxPages) {
         const page = await repo.resolveDecisionLog({
           tenant_id: tenant,
-          talent_id: talent,
+          talent_record_id: talent,
           limit: 2,
           ...(cursor !== null && cursor !== undefined
             ? {
@@ -966,7 +971,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect([...unique].sort()).toEqual([...ids].sort());
     });
 
-    it('decision-log §9 test 11: cross-tenant isolation — same talent_id (subject_id) in two tenants returns disjoint sets', async () => {
+    it('decision-log §9 test 11: cross-tenant isolation — same talent_record_id (subject_id) in two tenants returns disjoint sets', async () => {
       const tenantA = 'eeeeee05-eeee-7eee-8eee-eeeeeeeeeeea';
       const tenantB = 'eeeeee05-eeee-7eee-8eee-eeeeeeeeeeeb';
       const sharedTalent = 'cccccccc-cccc-7ccc-8ccc-cccccccceee5';
@@ -998,13 +1003,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const tenantAResult = await repo.resolveDecisionLog({
         tenant_id: tenantA,
-        talent_id: sharedTalent,
+        talent_record_id: sharedTalent,
         limit: 50,
         requestId: 'decision-log-iso-a',
       });
       const tenantBResult = await repo.resolveDecisionLog({
         tenant_id: tenantB,
-        talent_id: sharedTalent,
+        talent_record_id: sharedTalent,
         limit: 50,
         requestId: 'decision-log-iso-b',
       });
@@ -1014,7 +1019,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'aabbccdd-0000-7000-8000-000050000001',
       );
       expect(tenantAResult.entries[0]?.actor_type).toBe('recruiter');
-      expect(tenantAResult.entries[0]?.talent_id).toBe(sharedTalent);
+      expect(tenantAResult.entries[0]?.talent_record_id).toBe(sharedTalent);
 
       expect(tenantBResult.entries).toHaveLength(1);
       expect(tenantBResult.entries[0]?.event_id).toBe(
@@ -1079,7 +1084,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Unfiltered: all three entries, ordered by created_at DESC
       const allEntries = await repo.resolveDecisionLog({
         tenant_id: tenant,
-        talent_id: talent,
+        talent_record_id: talent,
         limit: 50,
         requestId: 'decision-log-mixed-all',
       });
@@ -1098,7 +1103,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ] as const) {
         const filtered = await repo.resolveDecisionLog({
           tenant_id: tenant,
-          talent_id: talent,
+          talent_record_id: talent,
           event_type: target,
           limit: 50,
           requestId: `decision-log-mixed-${target}`,
@@ -1123,8 +1128,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // cover the read-side enumeration paths. PR-11 adds the missing
     // narrative case on the consent state and check paths: a grant in
     // Tenant B must not appear in Tenant A's state view or check
-    // decision for the same talent_id. The resolver enforces this via
-    // the where: { tenant_id, talent_id } clause in resolveAllScopes /
+    // decision for the same talent_record_id. The resolver enforces this via
+    // the where: { tenant_id, talent_record_id } clause in resolveAllScopes /
     // resolveConsentState, with tenant_id JWT-derived from authContext
     // at the service layer. This test is a behavior tripwire: failure
     // means the tenant scoping has regressed and Charter R5 is at risk.
@@ -1140,7 +1145,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // this talent. The case is "grants in Tenant B; Tenant A remains
         // restricted."
         const grantBase = {
-          talent_id: sharedTalent,
+          talent_record_id: sharedTalent,
           action: 'granted' as const,
           captured_method: 'self_signup' as const,
           captured_by_actor_id: null,
@@ -1168,12 +1173,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
         const tenantAState = await repo.resolveAllScopes({
           tenant_id: tenantA,
-          talent_id: sharedTalent,
+          talent_record_id: sharedTalent,
           requestId: 'v27-state-a',
         });
         const tenantBState = await repo.resolveAllScopes({
           tenant_id: tenantB,
-          talent_id: sharedTalent,
+          talent_record_id: sharedTalent,
           requestId: 'v27-state-b',
         });
 
@@ -1202,14 +1207,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
         const tenantADecision = await repo.resolveConsentState({
           tenant_id: tenantA,
-          talent_id: sharedTalent,
+          talent_record_id: sharedTalent,
           operation: 'matching',
           requestHash: 'v27-check-h-a',
           requestId: 'v27-check-a',
         });
         const tenantBDecision = await repo.resolveConsentState({
           tenant_id: tenantB,
-          talent_id: sharedTalent,
+          talent_record_id: sharedTalent,
           operation: 'matching',
           requestHash: 'v27-check-h-b',
           requestId: 'v27-check-b',

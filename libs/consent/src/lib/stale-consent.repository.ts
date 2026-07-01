@@ -22,7 +22,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 //
 // findStaleContactingGrants returns latest-contacting-grant rows whose
 // occurred_at is older than the 12-month staleness window AND whose
-// latest event for the same (tenant_id, talent_id, scope='contacting')
+// latest event for the same (tenant_id, talent_record_id, scope='contacting')
 // is still 'granted' (not already revoked or expired).
 //
 // markExpired inserts a new TalentConsentEvent row with action='expired'
@@ -31,14 +31,14 @@ import { PrismaService } from './prisma/prisma.service.js';
 
 export interface StaleContactingGrant {
   tenant_id: string;
-  talent_id: string;
+  talent_record_id: string;
   latest_grant_event_id: string;
   latest_grant_occurred_at: Date;
 }
 
 export interface MarkExpiredInput {
   tenant_id: string;
-  talent_id: string;
+  talent_record_id: string;
   // PR-11 ships staleness only for the contacting scope (Decision F precedent).
   // The parameter is closed-typed to make any future scope expansion an
   // explicit type-change rather than a runtime surprise.
@@ -56,7 +56,7 @@ export class StaleConsentRepository {
 
   /**
    * Scan: returns latest contacting-scope grants whose occurred_at is
-   * older than `cutoff` AND whose latest event for (tenant_id, talent_id,
+   * older than `cutoff` AND whose latest event for (tenant_id, talent_record_id,
    * scope) is still `granted`. The "latest event is still granted" check
    * is performed in-memory after a single bounded findMany — same
    * pattern as the resolver-path readers.
@@ -69,17 +69,17 @@ export class StaleConsentRepository {
       where: { scope: 'contacting' },
       orderBy: [
         { tenant_id: 'asc' },
-        { talent_id: 'asc' },
+        { talent_record_id: 'asc' },
         { occurred_at: 'desc' },
       ],
     });
 
-    // Partition by (tenant_id, talent_id) and take the latest event per
+    // Partition by (tenant_id, talent_record_id) and take the latest event per
     // partition. A latest event with action='granted' AND occurred_at <
     // cutoff yields a stale-consent result row.
     const latestByTalent = new Map<string, typeof events[number]>();
     for (const ev of events) {
-      const key = `${ev.tenant_id}:${ev.talent_id}`;
+      const key = `${ev.tenant_id}:${ev.talent_record_id}`;
       if (!latestByTalent.has(key)) {
         latestByTalent.set(key, ev);
       }
@@ -91,7 +91,7 @@ export class StaleConsentRepository {
       if (ev.occurred_at.getTime() >= input.cutoff.getTime()) continue;
       stale.push({
         tenant_id: ev.tenant_id,
-        talent_id: ev.talent_id,
+        talent_record_id: ev.talent_record_id,
         latest_grant_event_id: ev.id,
         latest_grant_occurred_at: ev.occurred_at,
       });
@@ -116,7 +116,7 @@ export class StaleConsentRepository {
         data: {
           id: eventId,
           tenant_id: input.tenant_id,
-          talent_id: input.talent_id,
+          talent_record_id: input.talent_record_id,
           scope: input.scope,
           action: 'expired',
           captured_by_actor_id: null,
@@ -145,7 +145,7 @@ export class StaleConsentRepository {
           actor_id: null,
           actor_type: 'system',
           event_type: 'consent.expired.recorded',
-          subject_id: input.talent_id,
+          subject_id: input.talent_record_id,
           event_payload: {
             event_id: eventId,
             scope: input.scope,
@@ -163,7 +163,7 @@ export class StaleConsentRepository {
           event_type: 'consent.expired',
           event_payload: {
             event_id: eventId,
-            talent_id: input.talent_id,
+            talent_record_id: input.talent_record_id,
             scope: input.scope,
             reason: input.reason,
           } as never,

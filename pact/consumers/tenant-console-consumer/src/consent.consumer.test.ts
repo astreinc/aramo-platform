@@ -15,11 +15,11 @@ const { like, uuid, regex } = MatchersV3;
 // Scope (PR-9 §4.5): the 3 consent read endpoints the tenant-console
 // actually consumes:
 //
-//   1. GET /v1/consent/state/{talent_id}        200 nominal
-//   2. GET /v1/consent/state/{talent_id}        401 INVALID_TOKEN (no cookie)
-//   3. GET /v1/consent/history/{talent_id}      200 nominal (first page)
-//   4. GET /v1/consent/history/{talent_id}      200 paginated (with cursor)
-//   5. GET /v1/consent/decision-log/{talent_id} 200 nominal (first page)
+//   1. GET /v1/consent/state/{talent_record_id}        200 nominal
+//   2. GET /v1/consent/state/{talent_record_id}        401 INVALID_TOKEN (no cookie)
+//   3. GET /v1/consent/history/{talent_record_id}      200 nominal (first page)
+//   4. GET /v1/consent/history/{talent_record_id}      200 paginated (with cursor)
+//   5. GET /v1/consent/decision-log/{talent_record_id} 200 nominal (first page)
 //
 // Pact coverage is minimum-viable per the directive — only the 3 reads
 // PR-9 consumes; PR-9 does not call /consent/grant, /consent/revoke,
@@ -65,10 +65,10 @@ const ACCESS_COOKIE = 'aramo_access_token=eyJfake.access.token';
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/;
 
 // ----------------------------------------------------------------------
-// Interaction 1 — GET /v1/consent/state/{talent_id} — 200 nominal
+// Interaction 1 — GET /v1/consent/state/{talent_record_id} — 200 nominal
 // ----------------------------------------------------------------------
 
-describe('tenant-console-consumer → GET /v1/consent/state/:talent_id', () => {
+describe('tenant-console-consumer → GET /v1/consent/state/:talent_record_id', () => {
   it('returns 200 with TalentConsentStateResponse (5 scopes)', async () => {
     await provider
       .addInteraction()
@@ -79,7 +79,7 @@ describe('tenant-console-consumer → GET /v1/consent/state/:talent_id', () => {
       })
       .willRespondWith(200, (b) => {
         b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
-          talent_id: uuid(TALENT_ID),
+          talent_record_id: uuid(TALENT_ID),
           tenant_id: uuid(TENANT_ID),
           is_anonymized: false,
           computed_at: regex(ISO_TIMESTAMP, '2026-05-16T00:00:00Z'),
@@ -128,7 +128,7 @@ describe('tenant-console-consumer → GET /v1/consent/state/:talent_id', () => {
         });
         expect(res.status).toBe(200);
         const body = (await res.json()) as {
-          talent_id: string;
+          talent_record_id: string;
           tenant_id: string;
           is_anonymized: boolean;
           computed_at: string;
@@ -140,7 +140,7 @@ describe('tenant-console-consumer → GET /v1/consent/state/:talent_id', () => {
   });
 
   // --------------------------------------------------------------------
-  // Interaction 2 — GET /v1/consent/state/{talent_id} — 401 AUTH_REQUIRED
+  // Interaction 2 — GET /v1/consent/state/{talent_record_id} — 401 AUTH_REQUIRED
   // (no access cookie + no Bearer header). PR-15 Amendment v1.1 §2.3
   // (Class C): the API's JwtAuthGuard throws AUTH_REQUIRED when both
   // Authorization and the aramo_access_token cookie are absent
@@ -175,10 +175,10 @@ describe('tenant-console-consumer → GET /v1/consent/state/:talent_id', () => {
 });
 
 // ----------------------------------------------------------------------
-// Interaction 3 — GET /v1/consent/history/{talent_id} — 200 first page
+// Interaction 3 — GET /v1/consent/history/{talent_record_id} — 200 first page
 // ----------------------------------------------------------------------
 
-describe('tenant-console-consumer → GET /v1/consent/history/:talent_id', () => {
+describe('tenant-console-consumer → GET /v1/consent/history/:talent_record_id', () => {
   it('returns 200 ConsentHistoryResponse first page', async () => {
     await provider
       .addInteraction()
@@ -223,7 +223,7 @@ describe('tenant-console-consumer → GET /v1/consent/history/:talent_id', () =>
   });
 
   // --------------------------------------------------------------------
-  // Interaction 4 — GET /v1/consent/history/{talent_id}?cursor=... — 200
+  // Interaction 4 — GET /v1/consent/history/{talent_record_id}?cursor=... — 200
   // (paginated; final page → next_cursor is null)
   // --------------------------------------------------------------------
 
@@ -269,10 +269,10 @@ describe('tenant-console-consumer → GET /v1/consent/history/:talent_id', () =>
 });
 
 // ----------------------------------------------------------------------
-// Interaction 5 — GET /v1/consent/decision-log/{talent_id} — 200 first page
+// Interaction 5 — GET /v1/consent/decision-log/{talent_record_id} — 200 first page
 // ----------------------------------------------------------------------
 
-describe('tenant-console-consumer → GET /v1/consent/decision-log/:talent_id', () => {
+describe('tenant-console-consumer → GET /v1/consent/decision-log/:talent_record_id', () => {
   it('returns 200 ConsentDecisionLogResponse first page', async () => {
     await provider
       .addInteraction()
@@ -286,7 +286,7 @@ describe('tenant-console-consumer → GET /v1/consent/decision-log/:talent_id', 
           entries: [
             {
               event_id: uuid(EVENT_ID_A),
-              talent_id: uuid(TALENT_ID),
+              talent_record_id: uuid(TALENT_ID),
               event_type: 'consent.grant.recorded',
               created_at: regex(ISO_TIMESTAMP, '2026-04-29T00:00:00Z'),
               actor_id: uuid(),

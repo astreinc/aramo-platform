@@ -10,10 +10,10 @@ gap manually. See the register entry in
 [../go-live-known-limitations.md](../go-live-known-limitations.md) (Talent →
 "RTBF / talent erasure") and [ADR-0007](../adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md).
 
-> Scope: this erases the ATS-side résumé artifacts + ATS TalentRecord for a
-> verified request. The Core Talent identity anonymization (ADR-0007 state
-> machine) and Core-keyed consent-event ledger are **out of scope** here and
-> remain a deferred build — note them in the erasure record.
+> Scope: this erases the ATS-side résumé artifacts + ATS TalentRecord + the
+> (now TalentRecord-keyed) consent-event ledger for a verified request. The Core
+> Talent identity anonymization (ADR-0007 state machine) remains **out of scope**
+> (a deferred build) — note it in the erasure record.
 
 ---
 
@@ -125,26 +125,49 @@ WHERE tenant_id = :TENANT_ID AND id = :TALENT_ID;
 -- talent_record.talent_resume_text cascades.
 ```
 
-## Step 5 — Verify
+## Step 5 — Erase the consent-event ledger (Step-5 consent re-key)
+
+The consent ledger is now keyed by `TalentRecord.id` (the same `:TALENT_ID` as
+Step 4), so it is directly addressable here. It lives in a SEPARATE
+schema/datasource with a UUID-only, no-FK cross-schema reference (Architecture
+§7.3), so the Step-4 `TalentRecord` delete does **not** cascade into it — this
+explicit DELETE is required. The ledger's immutability trigger blocks `UPDATE`,
+not `DELETE`.
 
 ```sql
--- expect 0 rows for all three:
+DELETE FROM consent."TalentConsentEvent"
+WHERE tenant_id = :TENANT_ID AND talent_record_id = :TALENT_ID;
+```
+
+Forensic audit rows (`audit."ConsentAuditEvent".subject_id = :TALENT_ID`) are
+retained under the audit-retention policy; delete them explicitly only when the
+compliance order requires it.
+
+> A programmatic erase hook (wiring this DELETE into the `DELETE
+> /v1/talent-records/:id` path) is a deferred follow-up; today this is an
+> operator SQL step.
+
+## Step 6 — Verify
+
+```sql
+-- expect 0 rows for all four:
 SELECT count(*) FROM talent_record."TalentRecord"       WHERE id = :TALENT_ID;
 SELECT count(*) FROM talent_record."talent_resume_text" WHERE talent_record_id = :TALENT_ID;
 SELECT count(*) FROM attachment."Attachment"
   WHERE owner_type='talent' AND owner_id = :TALENT_ID;
+SELECT count(*) FROM consent."TalentConsentEvent"       WHERE talent_record_id = :TALENT_ID;
 ```
 
 And re-run the Step-2 verify for each key (empty `Versions` + `DeleteMarkers`).
 
-## Step 6 — Record what remains out of scope
+## Step 7 — Record what remains out of scope
 
 In the erasure record, note the deferred items NOT cleared by this procedure:
 
 - **Core Talent identity** (if `core_talent_id` was ever linked) — anonymization
   is the deferred ADR-0007 state machine; not erased here.
-- **Consent-event ledger** (`libs/consent`, Core-keyed) — immutable ledger;
-  handled by the Core erasure path, not this ATS runbook.
+- **Consent audit trail** (`audit."ConsentAuditEvent"`) — retained under the
+  audit-retention policy (see Step 5); erase only when the order requires it.
 
 ---
 

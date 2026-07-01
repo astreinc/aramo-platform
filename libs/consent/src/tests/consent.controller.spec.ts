@@ -15,7 +15,7 @@ const VALID_KEY = 'd2d7a0f0-0000-7000-8000-000000000001';
 
 function makeGrantRequest(): ConsentGrantRequestDto {
   return {
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     scope: 'matching',
     captured_method: 'recruiter_capture',
     consent_version: 'v1',
@@ -25,7 +25,7 @@ function makeGrantRequest(): ConsentGrantRequestDto {
 
 function makeRevokeRequest(): ConsentRevokeRequestDto {
   return {
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     scope: 'matching',
     captured_method: 'recruiter_capture',
     consent_version: 'v1',
@@ -134,7 +134,7 @@ function makeCheckRequest(
   overrides: Partial<ConsentCheckRequestDto> = {},
 ): ConsentCheckRequestDto {
   return {
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     operation: 'matching',
     ...overrides,
   } as ConsentCheckRequestDto;
@@ -187,7 +187,7 @@ describe('ConsentController.checkConsent', () => {
 
 describe('ConsentController.getTalentConsentState', () => {
   const stateResponse = {
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     tenant_id: TENANT_ID,
     is_anonymized: false,
     computed_at: '2026-05-01T12:00:00Z',
@@ -202,7 +202,7 @@ describe('ConsentController.getTalentConsentState', () => {
     ],
   };
 
-  it('delegates to ConsentService.getState on a valid talent_id', async () => {
+  it('delegates to ConsentService.getState on a valid talent_record_id', async () => {
     const service = {
       grant: vi.fn(),
       revoke: vi.fn(),
@@ -216,19 +216,19 @@ describe('ConsentController.getTalentConsentState', () => {
     expect(result).toEqual(stateResponse);
   });
 
-  it('throws VALIDATION_ERROR when talent_id is not a UUID', async () => {
+  it('throws VALIDATION_ERROR when talent_record_id is not a UUID', async () => {
     const service = { grant: vi.fn(), revoke: vi.fn(), check: vi.fn(), getState: vi.fn() };
     const controller = new ConsentController(service as unknown as ConsentService);
     await expect(
       controller.getTalentConsentState('not-a-uuid', makeAuth(), 'req-s2'),
     ).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
-      context: { details: { invalid_field: 'talent_id' } },
+      context: { details: { invalid_field: 'talent_record_id' } },
     });
     expect(service.getState).not.toHaveBeenCalled();
   });
 
-  it('throws VALIDATION_ERROR when talent_id is malformed (random string)', async () => {
+  it('throws VALIDATION_ERROR when talent_record_id is malformed (random string)', async () => {
     const service = { grant: vi.fn(), revoke: vi.fn(), check: vi.fn(), getState: vi.fn() };
     const controller = new ConsentController(service as unknown as ConsentService);
     await expect(
@@ -430,7 +430,7 @@ describe('ConsentController.getTalentConsentHistory (PR-6)', () => {
     expect(service.getHistory).not.toHaveBeenCalled();
   });
 
-  it('rejects malformed talent_id with VALIDATION_ERROR (before decoding cursor)', async () => {
+  it('rejects malformed talent_record_id with VALIDATION_ERROR (before decoding cursor)', async () => {
     const service = makeFullService();
     const controller = new ConsentController(service as unknown as ConsentService);
     await expect(
@@ -444,7 +444,7 @@ describe('ConsentController.getTalentConsentHistory (PR-6)', () => {
       ),
     ).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
-      context: { details: { invalid_field: 'talent_id' } },
+      context: { details: { invalid_field: 'talent_record_id' } },
     });
     expect(service.getHistory).not.toHaveBeenCalled();
   });
@@ -647,7 +647,7 @@ describe('ConsentController.getTalentConsentDecisionLog (PR-7)', () => {
     expect(service.getDecisionLog).not.toHaveBeenCalled();
   });
 
-  it('rejects malformed talent_id with VALIDATION_ERROR (before decoding cursor)', async () => {
+  it('rejects malformed talent_record_id with VALIDATION_ERROR (before decoding cursor)', async () => {
     const service = makeFullService();
     const controller = new ConsentController(service as unknown as ConsentService);
     await expect(
@@ -661,7 +661,7 @@ describe('ConsentController.getTalentConsentDecisionLog (PR-7)', () => {
       ),
     ).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
-      context: { details: { invalid_field: 'talent_id' } },
+      context: { details: { invalid_field: 'talent_record_id' } },
     });
     expect(service.getDecisionLog).not.toHaveBeenCalled();
   });

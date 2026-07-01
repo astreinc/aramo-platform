@@ -146,7 +146,9 @@ describe('IngestionService.acceptIndeedSearchResults — Phase 4 Group 3 Step 1'
       const callArg = sourceConsent.registerSourceDerivedConsent.mock.calls[0][0];
       expect(callArg.source).toBe('indeed');
       expect(callArg.tenant_id).toBe(TENANT_ID);
-      expect(callArg.talent_id).toBe(TALENT_ID);
+      // Step-5 consent re-key: the ingestion request field stays talent_id, but
+      // the SourceConsent call is keyed by talent_record_id (the TalentRecord.id).
+      expect(callArg.talent_record_id).toBe(TALENT_ID);
     });
 
     it('does NOT re-register source-consent on a duplicate Indeed ingest (sha256 match)', async () => {

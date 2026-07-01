@@ -18,16 +18,16 @@ describe('ConsentRepository.findContactingConsentSummaryForTalentIds', () => {
   it('maps the contacting-scope state to the 3-value summary', async () => {
     const repo = repoWith([
       // granted, no expiry → contactable
-      { talent_id: 'g', action: 'granted', captured_method: 'self_signup', occurred_at: at(1000), expires_at: null },
+      { talent_record_id: 'g', action: 'granted', captured_method: 'self_signup', occurred_at: at(1000), expires_at: null },
       // granted, expires in 10d → expiring_lt_30d
-      { talent_id: 'e', action: 'granted', captured_method: 'self_signup', occurred_at: at(1000), expires_at: exp(10 * DAY) },
+      { talent_record_id: 'e', action: 'granted', captured_method: 'self_signup', occurred_at: at(1000), expires_at: exp(10 * DAY) },
       // granted then later revoked (same source) → do_not_contact
-      { talent_id: 'r', action: 'granted', captured_method: 'self_signup', occurred_at: at(2000), expires_at: null },
-      { talent_id: 'r', action: 'revoked', captured_method: 'self_signup', occurred_at: at(1000), expires_at: null },
+      { talent_record_id: 'r', action: 'granted', captured_method: 'self_signup', occurred_at: at(2000), expires_at: null },
+      { talent_record_id: 'r', action: 'revoked', captured_method: 'self_signup', occurred_at: at(1000), expires_at: null },
     ]);
     const m = await repo.findContactingConsentSummaryForTalentIds({
       tenant_id: 't',
-      talent_ids: ['g', 'e', 'r', 'x'],
+      talent_record_ids: ['g', 'e', 'r', 'x'],
     });
     expect(m.get('g')).toBe('contactable');
     expect(m.get('e')).toBe('expiring_lt_30d');
@@ -42,7 +42,7 @@ describe('ConsentRepository.findContactingConsentSummaryForTalentIds', () => {
     } as unknown as PrismaService);
     const m = await repo.findContactingConsentSummaryForTalentIds({
       tenant_id: 't',
-      talent_ids: [],
+      talent_record_ids: [],
     });
     expect(m.size).toBe(0);
     expect(findMany).not.toHaveBeenCalled();
