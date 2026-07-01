@@ -6,7 +6,6 @@ import { EntitlementModule } from '@aramo/entitlement';
 import { IdentityIndexModule } from '@aramo/identity-index';
 import { ObjectStorageModule } from '@aramo/object-storage';
 import { ResumeParseModule } from '@aramo/resume-parse';
-import { TalentModule } from '@aramo/talent';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { TalentRecordController } from './talent-record.controller.js';
@@ -20,10 +19,9 @@ import { ResumeTextService } from './resume-text/resume-text.service.js';
 //   - AuthModule          → JwtAuthGuard
 //   - AuthorizationModule → RolesGuard
 //   - EntitlementModule   → EntitlementGuard
-//   - TalentModule (PR-A5b-2) → TalentRepository (the in-tenant
-//     validation gate for the Core-Talent link). DIRECTIONAL EDGE
-//     ONLY — `talent` does NOT import `talent-record` (verified by
-//     grep + lint:nx-boundaries). No cycle.
+//   - IdentityIndexModule → IdentityIndexRepository (the cluster-exists
+//     validation gate for the PERSON_CLUSTER link). DIRECTIONAL EDGE
+//     ONLY — `identity-index` does NOT import `talent-record`. No cycle.
 //   - ObjectStorageModule (A8-3b) → ObjectStorageService (the E1
 //     presigned-PUT helper for résumé uploads).
 //   - ResumeParseModule (A8-3b) → ResumeParserService (the E2
@@ -32,11 +30,11 @@ import { ResumeTextService } from './resume-text/resume-text.service.js';
 //     would cycle because resume-parse defines the prefill type
 //     structurally (libs/resume-parse types/TalentRecordPrefill).
 //
-// PR-A5b-2 fills the deferred attach point that this lib's prior doc-
-// comment promised — "the Core-Talent adapter is A5's responsibility
-// per amendment §3 / §5". TalentLinkService is that adapter; it
-// composes TalentRecordRepository (the ATS-side write) with
-// TalentRepository (the Core-side read-only validation).
+// TalentLinkService is the ATS↔identity-index link adapter; it composes
+// TalentRecordRepository (the ATS-side write) with IdentityIndexRepository
+// (the cluster read-only validation). 4e-rest retired the Core TalentModule
+// edge (the Core-Talent link was dropped once engagement #349 + consent #350
+// released it).
 @Module({
   imports: [
     AuthModule,
@@ -45,7 +43,6 @@ import { ResumeTextService } from './resume-text/resume-text.service.js';
     IdentityIndexModule,
     ObjectStorageModule,
     ResumeParseModule,
-    TalentModule,
   ],
   controllers: [TalentRecordController],
   providers: [

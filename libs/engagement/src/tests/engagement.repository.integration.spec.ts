@@ -16,10 +16,6 @@ import {
   PrismaService as JobDomainPrismaService,
 } from '@aramo/job-domain';
 import {
-  TalentRepository,
-  PrismaService as TalentPrismaService,
-} from '@aramo/talent';
-import {
   TalentRecordRepository,
   TalentRecordPrismaService,
 } from '@aramo/talent-record';
@@ -137,7 +133,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   () => {
     let container: StartedPostgreSqlContainer;
     let prisma: PrismaService;
-    let talentPrisma: TalentPrismaService;
     let talentRecordPrisma: TalentRecordPrismaService;
     let jobDomainPrisma: JobDomainPrismaService;
     let examPrisma: ExaminationPrismaService;
@@ -173,8 +168,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       prisma = new PrismaService(url);
       await prisma.$connect();
-      talentPrisma = new TalentPrismaService(url);
-      await talentPrisma.$connect();
       jobDomainPrisma = new JobDomainPrismaService(url);
       await jobDomainPrisma.$connect();
       examPrisma = new ExaminationPrismaService(url);
@@ -182,7 +175,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       talentRecordPrisma = new TalentRecordPrismaService(url);
       await talentRecordPrisma.$connect();
 
-      const talentRepo = new TalentRepository(talentPrisma);
       const talentRecordRepo = new TalentRecordRepository(talentRecordPrisma);
       const jobDomainRepo = new JobDomainRepository(jobDomainPrisma);
       const examRepo = new ExaminationRepository(examPrisma, undefined as never);
@@ -190,7 +182,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       repo = new EngagementRepository(
         prisma,
         engagementEventRepo,
-        talentRepo,
         talentRecordRepo,
         jobDomainRepo,
         examRepo,
@@ -331,7 +322,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     afterAll(async () => {
       await setupClient?.$disconnect();
       await prisma?.$disconnect();
-      await talentPrisma?.$disconnect();
       await talentRecordPrisma?.$disconnect();
       await jobDomainPrisma?.$disconnect();
       await examPrisma?.$disconnect();

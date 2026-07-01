@@ -304,8 +304,10 @@ export class TalentRecordController {
   // a dedicated scope can be added without rewriting the routes.
   //
   // SACRED BOUNDARIES (enforced by TalentLinkService):
-  //   - LINK-NOT-CREATE — never mutates Core.
-  //   - ASSOCIATE-NOT-RESOLVE — core_talent_id is an explicit input.
+  //   - LINK-NOT-CREATE — never mints an identity.
+  //   - ASSOCIATE-NOT-RESOLVE — cluster_id is an explicit input.
+  // 4e-rest: the link is now CLUSTER-ONLY (the PERSON_CLUSTER pointer); the
+  // Core-Talent link (core_talent_id) was dropped.
   // -------------------------------------------------------------------------
 
   @Get(':id/link')
@@ -337,7 +339,6 @@ export class TalentRecordController {
     return this.linkService.link({
       tenant_id: authContext.tenant_id,
       talent_record_id: id,
-      core_talent_id: body.core_talent_id,
       cluster_id: body.cluster_id,
       requestId,
     });

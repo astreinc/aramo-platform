@@ -89,8 +89,11 @@ interface TalentRecordRow {
   engagement_type: EngagementType | null;
   owner_id: string | null;
   entered_by_id: string | null;
-  // PR-A5b-2 — the Core-Talent link (nullable; null for unlinked).
-  core_talent_id: string | null;
+  // 4e-rest — the PERSON_CLUSTER pointer (identity_index). SERVER-ONLY: it is
+  // carried on the internal row for TalentLinkService's link-state reads via
+  // findLinkState, and is DELIBERATELY absent from projectView / TalentRecordView
+  // (cluster_id is a cross-tenant id — never rendered to a tenant-visible surface).
+  cluster_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -128,7 +131,6 @@ function projectView(row: TalentRecordRow): TalentRecordView {
     engagement_type: row.engagement_type,
     owner_id: row.owner_id,
     entered_by_id: row.entered_by_id,
-    core_talent_id: row.core_talent_id,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -180,7 +182,6 @@ function projectSearchRow(row: RawSearchRow): TalentRecordView {
     engagement_type: row.engagement_type,
     owner_id: row.owner_id,
     entered_by_id: row.entered_by_id,
-    core_talent_id: row.core_talent_id,
     created_at: toIso(row.created_at),
     updated_at: toIso(row.updated_at),
     resume_snippet: row.resume_snippet,
@@ -509,15 +510,15 @@ export class TalentRecordRepository {
 
   // Full filtered key set (no pagination) — apps/api's cross-schema path runs
   // the Seg-3 batch accessors over this, bounded by the materialize guard (it
-  // asks for at most `limit`+1 rows to detect "over the guard"). Returns id
-  // (for activity/pipeline accessors) + core_talent_id (consent is Core-keyed).
+  // asks for at most `limit`+1 rows to detect "over the guard"). Returns the
+  // TalentRecord id (activity / pipeline / consent are all TalentRecord-keyed).
   async findFilteredKeys(
     query: TalentSearchQuery,
     limit: number,
-  ): Promise<Array<{ id: string; core_talent_id: string | null }>> {
+  ): Promise<Array<{ id: string }>> {
     const rows = await this.prisma.talentRecord.findMany({
       where: buildSearchWhere(query),
-      select: { id: true, core_talent_id: true },
+      select: { id: true },
       take: limit + 1,
     });
     return rows;
@@ -722,41 +723,55 @@ export class TalentRecordRepository {
   // different tenant.
   // -------------------------------------------------------------------------
 
+  // 4e-rest: SERVER-ONLY link-state read for TalentLinkService. Returns just
+  // the tenant-local id + the PERSON_CLUSTER pointer via a MINIMAL select —
+  // never widen it. cluster_id is a cross-tenant id, so it is exposed only on
+  // this internal accessor, never on findById / projectView / TalentRecordView.
+  // The service uses findById for existence/404 and findLinkState for the link
+  // reads (idempotency, already-linked guard, is_linked).
+  async findLinkState(args: {
+    tenant_id: string;
+    id: string;
+  }): Promise<{ id: string; cluster_id: string | null } | null> {
+    return this.prisma.talentRecord.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+      select: { id: true, cluster_id: true },
+    });
+  }
+
+  // 4e-rest: cluster-only link write (the Core-Talent link + core_talent_id
+  // were dropped). Writes the PERSON_CLUSTER pointer; tenant-scoped at the row
+  // level so a controller mistake cannot link a row from a different tenant.
   async setLink(args: {
     tenant_id: string;
     id: string;
-    core_talent_id: string;
-    // 4d — the optional PERSON_CLUSTER pointer, written alongside the
-    // (untouched) core_talent_id during the Core-retirement transition.
-    cluster_id?: string;
-  }): Promise<TalentRecordView | null> {
+    cluster_id: string;
+  }): Promise<{ id: string; cluster_id: string | null } | null> {
     const result = await this.prisma.talentRecord.updateMany({
       where: { id: args.id, tenant_id: args.tenant_id },
-      data: {
-        core_talent_id: args.core_talent_id,
-        ...(args.cluster_id !== undefined ? { cluster_id: args.cluster_id } : {}),
-      },
+      data: { cluster_id: args.cluster_id },
     });
     if (result.count === 0) {
       // Row was not in tenant (or vanished) — caller handles as
       // NOT_FOUND. We don't throw here so the read-after-write below
-      // is the single fetch point.
+      // is the single fetch point. Returns link-state only (no
+      // tenant-visible view — cluster_id is server-only).
       return null;
     }
-    return this.findById({ tenant_id: args.tenant_id, id: args.id });
+    return this.findLinkState({ tenant_id: args.tenant_id, id: args.id });
   }
 
   async clearLink(args: {
     tenant_id: string;
     id: string;
-  }): Promise<TalentRecordView | null> {
+  }): Promise<{ id: string; cluster_id: string | null } | null> {
     const result = await this.prisma.talentRecord.updateMany({
       where: { id: args.id, tenant_id: args.tenant_id },
-      data: { core_talent_id: null },
+      data: { cluster_id: null },
     });
     if (result.count === 0) {
       return null;
     }
-    return this.findById({ tenant_id: args.tenant_id, id: args.id });
+    return this.findLinkState({ tenant_id: args.tenant_id, id: args.id });
   }
 }

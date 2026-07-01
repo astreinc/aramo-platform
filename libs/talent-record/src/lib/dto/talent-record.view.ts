@@ -5,11 +5,11 @@
 // ats-batch3-talent-record-attachment.integration.spec.ts asserts this
 // structurally at runtime.
 //
-// PR-A5b-2 adds `core_talent_id` — the Core-Talent link (nullable; null
-// for unlinked records, populated by TalentLinkService when the record
-// has been associated with a Core Talent identity). The PATCH update
-// surface deliberately excludes this field so the link can only be
-// set via the dedicated /link routes (which run the in-tenant gate).
+// 4e-rest: `core_talent_id` was DROPPED from this view (the Core-Talent
+// link is retired). The record's cluster linkage (cluster_id) is a
+// cross-tenant id and is DELIBERATELY NOT exposed on this or any other
+// tenant-visible surface — link STATE is read via GET /:id/link
+// (TalentLinkView.is_linked), never as a raw id here.
 import type {
   AvailabilityStatus,
   EngagementType,
@@ -49,7 +49,6 @@ export interface TalentRecordView {
   engagement_type: EngagementType | null;
   owner_id: string | null;
   entered_by_id: string | null;
-  core_talent_id: string | null;
   created_at: string;
   updated_at: string;
 

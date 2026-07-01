@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import type { ExaminationRepository } from '@aramo/examination';
 import type { JobDomainRepository } from '@aramo/job-domain';
-import type { TalentRepository } from '@aramo/talent';
 import type { TalentRecordRepository } from '@aramo/talent-record';
 
 import {
@@ -38,7 +37,7 @@ function makeSpyLogger(): AramoLogger & { log: ReturnType<typeof vi.fn> } {
 //
 // Vitest mocks PrismaService.talentJobEngagement +
 // .talentEngagementEvent + .$transaction. Cross-schema validator deps
-// (talentRepository, jobDomainRepository, examinationRepository) are
+// (talentRecordRepository, jobDomainRepository, examinationRepository) are
 // mocked per-test for the three-pattern validator design (Amendment
 // v1.1 §2). Integration tests against real Postgres + real repositories
 // live in engagement.repository.integration.spec.ts.
@@ -152,14 +151,6 @@ function makeMockPrisma(): MockPrismaService {
   return prisma;
 }
 
-function makeMockTalentRepo(): TalentRepository & {
-  findOverlayByTenant: ReturnType<typeof vi.fn>;
-} {
-  return {
-    findOverlayByTenant: vi.fn(),
-  } as unknown as TalentRepository & { findOverlayByTenant: ReturnType<typeof vi.fn> };
-}
-
 // 4e-engagement-key — the Pattern-C validator now resolves against
 // TalentRecord (talent_id is a TalentRecord.id). findById is the only
 // surface createEngagement touches.
@@ -202,7 +193,6 @@ describe('EngagementRepository — read surface (M5 PR-1)', () => {
     repo = new EngagementRepository(
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
-      makeMockTalentRepo(),
       makeMockTalentRecordRepo(),
       makeMockJobDomainRepo(),
       makeMockExaminationRepo(),
@@ -333,7 +323,6 @@ describe('EngagementRepository — read surface (M5 PR-1)', () => {
 
 describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
   let prisma: MockPrismaService;
-  let talentRepo: ReturnType<typeof makeMockTalentRepo>;
   let talentRecordRepo: ReturnType<typeof makeMockTalentRecordRepo>;
   let jobDomainRepo: ReturnType<typeof makeMockJobDomainRepo>;
   let examRepo: ReturnType<typeof makeMockExaminationRepo>;
@@ -351,7 +340,6 @@ describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
 
   beforeEach(() => {
     prisma = makeMockPrisma();
-    talentRepo = makeMockTalentRepo();
     talentRecordRepo = makeMockTalentRecordRepo();
     jobDomainRepo = makeMockJobDomainRepo();
     examRepo = makeMockExaminationRepo();
@@ -359,7 +347,6 @@ describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
     repo = new EngagementRepository(
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
-      talentRepo,
       talentRecordRepo,
       jobDomainRepo,
       examRepo,
@@ -368,10 +355,8 @@ describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
   });
 
   function arrangeAllValid(): void {
-    // 4e-engagement-key: the Pattern-C validator resolves against
-    // TalentRecord (talent_id is a TalentRecord.id). A non-null result =
-    // visible in tenant. (talentRepo.findOverlayByTenant is no longer
-    // called — the Core dep is retained-but-unused pending 4e-rest.)
+    // Pattern-C validator resolves against TalentRecord (talent_id is a
+    // TalentRecord.id). A non-null result = visible in tenant.
     talentRecordRepo.findById.mockResolvedValue({
       id: TALENT_A,
       tenant_id: TENANT_A,
@@ -548,7 +533,6 @@ describe('EngagementRepository.transitionState (M5 PR-3 unit)', () => {
     repo = new EngagementRepository(
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
-      makeMockTalentRepo(),
       makeMockTalentRecordRepo(),
       makeMockJobDomainRepo(),
       makeMockExaminationRepo(),
@@ -653,7 +637,6 @@ describe('EngagementRepository.draftOutreach (Outreach Draft/Preview unit)', () 
     repo = new EngagementRepository(
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
-      makeMockTalentRepo(),
       makeMockTalentRecordRepo(),
       makeMockJobDomainRepo(),
       makeMockExaminationRepo(),
@@ -768,7 +751,6 @@ describe('EngagementRepository.sendOutreach (Outreach Draft/Preview unit)', () =
     repo = new EngagementRepository(
       prisma as unknown as PrismaService,
       eventRepo,
-      makeMockTalentRepo(),
       makeMockTalentRecordRepo(),
       makeMockJobDomainRepo(),
       makeMockExaminationRepo(),
@@ -915,7 +897,6 @@ describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
     repo = new EngagementRepository(
       prisma as unknown as PrismaService,
       eventRepo,
-      makeMockTalentRepo(),
       makeMockTalentRecordRepo(),
       makeMockJobDomainRepo(),
       makeMockExaminationRepo(),
@@ -1077,7 +1058,6 @@ describe('EngagementRepository.recordConversationStarted (M5 PR-8a unit)', () =>
     repo = new EngagementRepository(
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
-      makeMockTalentRepo(),
       makeMockTalentRecordRepo(),
       makeMockJobDomainRepo(),
       makeMockExaminationRepo(),

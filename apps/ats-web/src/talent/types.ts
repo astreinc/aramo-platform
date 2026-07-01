@@ -52,7 +52,6 @@ export interface TalentRecordView {
   readonly best_time_to_call: string | null;
   readonly owner_id: string | null;
   readonly entered_by_id: string | null;
-  readonly core_talent_id: string | null;
   readonly created_at: string;
   readonly updated_at: string;
   // Search PR-2 — the résumé-content-match excerpt (ts_headline over the

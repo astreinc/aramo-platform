@@ -43,13 +43,10 @@
 //     contract follows it. (An internal-provenance column for the
 //     import engine's revert path; recruiter-facing exports don't
 //     carry it.)
-//   - talent_record carries `core_talent_id` — this is an ATS-schema
-//     column (the cross-schema logical UUID ref to talent.Talent.id,
-//     Architecture §7.3), NOT a Core-judgment field. R10 forbids
-//     the Core-judgment column set (see refusal-check); an opaque
-//     foreign-key UUID to Core is structurally indistinguishable
-//     from any other UUID column and carries no judgment, so it is
-//     exportable.
+//   - 4e-rest: `core_talent_id` was dropped from talent_record (the
+//     Core-Talent link is retired). The record's cluster linkage
+//     (cluster_id) is a cross-tenant id and is NOT exported — it is
+//     never rendered to a tenant-visible surface.
 //
 // The catalog is the single source of truth for the column-selection
 // validator at the controller (§2 design: an unknown column → 400
@@ -182,9 +179,9 @@ const TALENT_RECORD_COLUMNS: readonly string[] = [
   'best_time_to_call',
   'owner_id',
   'entered_by_id',
-  // PR-A5b-2 — the Core-Talent link (cross-schema logical UUID ref;
-  // an OPAQUE FK, not a Core-judgment field — R10-safe).
-  'core_talent_id',
+  // 4e-rest — `core_talent_id` was dropped (Core-Talent link retired). The
+  // cluster linkage is a cross-tenant id and is NOT exported (never rendered
+  // to any tenant-visible surface).
   'created_at',
   'updated_at',
 ];
