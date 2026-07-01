@@ -12,16 +12,20 @@ import type { Client } from 'pg';
 
 const ROOT = resolve(__dirname, '../../../..');
 
-// The 5 COLUMN-adding talent-record migrations. The Prisma client projects
-// every scalar column on findFirst, so the table must carry them all (init +
-// the additive columns). The trgm / résumé-text / search-index migrations add
-// no TalentRecord scalar columns and are intentionally omitted.
+// The COLUMN-mutating talent-record migrations. The Prisma client projects
+// every scalar column on findFirst, so the table must match the client (init +
+// the additive columns, minus the 4e-rest core_talent_id drop). The trgm /
+// résumé-text / search-index migrations add no TalentRecord scalar columns and
+// are intentionally omitted.
 const TALENT_RECORD_MIGRATION_PATHS = [
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
   'libs/talent-record/prisma/migrations/20260603020000_add_core_talent_link_to_talent_record/migration.sql',
   'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
   'libs/talent-record/prisma/migrations/20260615000000_talent_stated_fields/migration.sql',
   'libs/talent-record/prisma/migrations/20260630140000_overlay_fold_cluster_id/migration.sql',
+  // 4e-rest — drops core_talent_id (must run last so the test schema matches
+  // the regenerated Prisma client, which no longer projects the column).
+  'libs/talent-record/prisma/migrations/20260701120000_drop_core_talent_id/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 // Apply the talent_record schema to a test database. Feeds each whole

@@ -4,7 +4,6 @@ import { AramoError, type AramoLogger } from '@aramo/common';
 import { ExaminationRepository } from '@aramo/examination';
 import { JobDomainRepository } from '@aramo/job-domain';
 import { recordUsage } from '@aramo/metering';
-import { TalentRepository } from '@aramo/talent';
 import { TalentRecordRepository } from '@aramo/talent-record';
 
 import { canTransition, type EngagementStateValue } from './engagement-state.js';
@@ -305,14 +304,10 @@ export class EngagementRepository {
     // M5 PR-5/6/7 consumers that may delegate event-append to the
     // dedicated repository.
     private readonly engagementEventRepository: EngagementEventRepository,
-    // M5 PR-3 — Pattern C (Talent, Core) cross-schema validator dep.
-    // 4e-engagement-key: NO LONGER USED (the validator now resolves against
-    // TalentRecord via talentRecordRepository). Retained injected for now;
-    // its removal is 4e-rest (Core retirement). See PR description.
-    private readonly talentRepository: TalentRepository,
-    // 4e-engagement-key — Pattern C (TalentRecord) cross-schema validator
-    // dep. engagement.talent_id is now interpreted as a TalentRecord.id;
-    // createEngagement validates it against the tenant-scoped TalentRecord.
+    // Pattern C cross-schema validator dep. engagement.talent_id IS a
+    // TalentRecord.id (4e-engagement-key); createEngagement validates it
+    // against the tenant-scoped TalentRecord. (The dead Core TalentRepository
+    // was removed in 4e-rest — Core retirement.)
     private readonly talentRecordRepository: TalentRecordRepository,
     // M5 PR-3 — Pattern A (Requisition) cross-schema validator dep.
     private readonly jobDomainRepository: JobDomainRepository,

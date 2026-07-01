@@ -3,8 +3,8 @@ import type { TalentRecordView } from '@aramo/talent-record';
 
 import { TalentRecordEnrichmentService } from '../talent-enrichment/talent-record-enrichment.service.js';
 
-function view(id: string, core: string | null = null): TalentRecordView {
-  return { id, core_talent_id: core } as unknown as TalentRecordView;
+function view(id: string): TalentRecordView {
+  return { id } as unknown as TalentRecordView;
 }
 
 describe('TalentRecordEnrichmentService', () => {
@@ -33,7 +33,7 @@ describe('TalentRecordEnrichmentService', () => {
       {} as never,
     );
 
-    const out = await svc.enrich([view('t1', 'core1'), view('t2')], {
+    const out = await svc.enrich([view('t1'), view('t2')], {
       tenant_id: 't',
       visible_requisition_ids: new Set(['r1']),
     });
@@ -134,16 +134,16 @@ describe('TalentRecordEnrichmentService.crossFacets (Segment 4b)', () => {
         new Map([
           ['t1', 'contactable'],
           ['t2', 'expiring_lt_30d'],
-          // t3 (unlinked) + t4 absent → do_not_contact (no positive grant)
+          // t3 + t4 absent → do_not_contact (no positive grant)
         ]),
       ),
     };
     const talent = {
       findFilteredKeys: vi.fn().mockResolvedValue([
-        { id: 't1', core_talent_id: 'core1' },
-        { id: 't2', core_talent_id: 'core2' },
-        { id: 't3', core_talent_id: null }, // unlinked → do_not_contact
-        { id: 't4', core_talent_id: 'core4' },
+        { id: 't1' },
+        { id: 't2' },
+        { id: 't3' }, // no positive grant → do_not_contact
+        { id: 't4' },
       ]),
     };
     const svc = new TalentRecordEnrichmentService(
@@ -196,11 +196,7 @@ describe('TalentRecordEnrichmentService.crossFacets (Segment 4b)', () => {
       const talent = {
         findFilteredKeys: vi
           .fn()
-          .mockResolvedValue([
-            { id: 't1', core_talent_id: null },
-            { id: 't2', core_talent_id: null },
-            { id: 't3', core_talent_id: null },
-          ]),
+          .mockResolvedValue([{ id: 't1' }, { id: 't2' }, { id: 't3' }]),
       };
       const svc = new TalentRecordEnrichmentService(
         activity as never,

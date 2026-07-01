@@ -189,7 +189,6 @@ describe('PR-2 proof #2/#3/#4 — résumé content-search SQL (repo)', () => {
         best_time_to_call: null,
         owner_id: null,
         entered_by_id: null,
-        core_talent_id: null,
         created_at: now,
         updated_at: now,
         resume_snippet: 'led the <mark>Kubernetes</mark> migration',

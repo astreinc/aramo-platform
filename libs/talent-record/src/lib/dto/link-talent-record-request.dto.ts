@@ -1,21 +1,18 @@
-import { IsOptional, IsUUID } from 'class-validator';
+import { IsUUID } from 'class-validator';
 
 // LinkTalentRecordRequestDto — the body of POST /v1/talent-records/:id/link.
 //
-// PR-A5b-2 ASSOCIATE-NOT-RESOLVE boundary: the caller supplies the
-// `core_talent_id` explicitly. The linker does NOT search Core by
-// email/name/etc. to infer it — the absence of any such resolution
-// surface (no `findTalentByEmail`, no `resolveIdentity`) in libs/talent
-// and libs/identity is the structural guarantee.
+// ASSOCIATE-NOT-RESOLVE boundary: the caller supplies the `cluster_id`
+// explicitly. The linker does NOT search identity_index by email/name/etc.
+// to infer it — the absence of any such resolution surface (no
+// `findClusterByFingerprint` reached from here, no `resolveIdentity`) in the
+// link path is the structural guarantee.
+//
+// 4e-rest: the Core-Talent link (core_talent_id) was dropped; cluster_id (the
+// PERSON_CLUSTER pointer in identity_index) is now the REQUIRED link input.
+// This is operation INPUT, inside the trust wall — allowed to name the
+// cross-tenant id (unlike the tenant-visible read surfaces, which never do).
 export class LinkTalentRecordRequestDto {
   @IsUUID()
-  core_talent_id!: string;
-
-  // 4d (ADR-0016) — the optional PERSON_CLUSTER pointer (identity_index).
-  // When supplied, the linker validates the cluster exists and writes
-  // TalentRecord.cluster_id. ASSOCIATE-NOT-RESOLVE applies here too: the
-  // caller supplies the cluster id; the linker does not infer it.
-  @IsOptional()
-  @IsUUID()
-  cluster_id?: string;
+  cluster_id!: string;
 }

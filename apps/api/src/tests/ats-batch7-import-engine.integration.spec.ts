@@ -38,10 +38,11 @@ import { AppModule } from '../app.module.js';
 //      the batch's rows removed (by import_batch_id); non-batch rows
 //      untouched. Re-revert → 409 IMPORT_ALREADY_REVERTED.
 //   F) THE non-negotiable boundary (load-bearing): importing
-//      target_entity='talent_record' creates TalentRecord rows with
-//      core_talent_id NULL; talent.Talent + talent.TalentTenantOverlay
-//      row-counts are BIT-IDENTICAL pre/post the import. The A5b-2
-//      boundary-proof pattern, replayed at the import layer.
+//      target_entity='talent_record' leaves talent.Talent +
+//      talent.TalentTenantOverlay row-counts BIT-IDENTICAL pre/post the
+//      import. The A5b-2 boundary-proof pattern, replayed at the import
+//      layer. (4e-rest: the former core_talent_id-NULL leg was excised —
+//      the column was dropped.)
 //
 // Skipped unless ARAMO_RUN_INTEGRATION=1.
 
@@ -272,15 +273,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return Number(r.rows[0]?.c ?? '0');
     }
 
-    async function countCoreTalentLinks(): Promise<number> {
-      // Defensive: even if Core tables exist, no TalentRecord created
-      // by the engine should carry a non-NULL core_talent_id.
-      const r = await setupClient.query<{ c: string }>(
-        `SELECT COUNT(*)::text AS c FROM talent_record."TalentRecord"
-         WHERE core_talent_id IS NOT NULL`,
-      );
-      return Number(r.rows[0]?.c ?? '0');
-    }
+    // 4e-rest: the countCoreTalentLinks helper + its assertion were EXCISED —
+    // core_talent_id was dropped, so "no imported record carries a non-NULL
+    // core_talent_id" is an obsolete (uncompilable) invariant. The engine
+    // never wrote the column; the remaining Talent/overlay row-count proof
+    // below still asserts the import engine never crosses into Core.
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
@@ -724,10 +721,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // proof, replayed at the import layer.
     // -------------------------------------------------------------------------
 
-    it('Boundary proof: importing talent_record creates rows with core_talent_id NULL; talent.Talent + talent.TalentTenantOverlay row-counts bit-identical pre/post', async () => {
+    it('Boundary proof: importing talent_record leaves talent.Talent + talent.TalentTenantOverlay row-counts bit-identical pre/post', async () => {
       const talentBefore = await countTalentRows();
       const overlayBefore = await countOverlayRows();
-      const coreLinkedBefore = await countCoreTalentLinks();
 
       const rows = Array.from({ length: 8 }, (_, i) => ({
         First: `Boundary${i + 1}`,
@@ -764,9 +760,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // The engine never crossed into Core.
       expect(await countTalentRows()).toBe(talentBefore);
       expect(await countOverlayRows()).toBe(overlayBefore);
-
-      // No imported TalentRecord carries a non-NULL core_talent_id.
-      expect(await countCoreTalentLinks()).toBe(coreLinkedBefore);
     });
 
     // -------------------------------------------------------------------------

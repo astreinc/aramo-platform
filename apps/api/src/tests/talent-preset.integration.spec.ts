@@ -19,9 +19,9 @@ import { TalentPresetInterceptor } from '../talent-enrichment/talent-preset.inte
 // assertion is the actual narrowed result — not just the call args.
 
 const FIXTURE = [
-  { id: 't1', owner_id: 'me', first_name: 'Ann', last_name: 'A', core_talent_id: null },
-  { id: 't2', owner_id: 'mate', first_name: 'Ben', last_name: 'B', core_talent_id: null },
-  { id: 't3', owner_id: 'other', first_name: 'Cal', last_name: 'C', core_talent_id: null },
+  { id: 't1', owner_id: 'me', first_name: 'Ann', last_name: 'A' },
+  { id: 't2', owner_id: 'mate', first_name: 'Ben', last_name: 'B' },
+  { id: 't3', owner_id: 'other', first_name: 'Cal', last_name: 'C' },
 ];
 
 function fakeRepo() {

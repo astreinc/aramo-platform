@@ -9,19 +9,16 @@
 // pre-existing Core libs/talent (tenant-AGNOSTIC identity Talent +
 // TalentTenantOverlay, PR-10 baseline).
 //
-// PR-A5b-2 (the keystone) — the Core-Talent link lands here as an
-// additive nullable `core_talent_id` column referencing
-// `talent.Talent.id` (Architecture v2.0 §7.3 — UUID-only, no FK).
-// The link is set/cleared by TalentLinkService, NEVER by a free PATCH
-// (the service runs the two-step in-tenant gate: (1) Talent identity
-// exists in Core, (2) this tenant has an overlay for it). The link
-// column is the ATS side ONLY — Core `talent.*` schema is unchanged.
-// SACRED BOUNDARIES: LINK-NOT-CREATE (the linker NEVER calls
-// createTalent / createOverlay — proven structurally by the
-// integration spec's bit-identical talent.* row-counts) and
-// ASSOCIATE-NOT-RESOLVE (the linker takes core_talent_id as an
-// explicit input; the lib carries no `findTalentByEmail` /
-// resolveIdentity surface — proven by absence).
+// 4d/4e — the identity link lands here as a nullable `cluster_id`
+// column referencing `identity_index.PersonCluster.id` (Architecture
+// v2.0 §7.3 — UUID-only, no FK). It is set/cleared by TalentLinkService,
+// NEVER by a free PATCH (the service runs the in-tenant gate + a
+// cluster-exists check). The column is the ATS side ONLY — identity_index
+// is unchanged. SACRED BOUNDARIES: LINK-NOT-CREATE (the linker NEVER
+// mints a cluster — proven by the integration spec's bit-identical
+// PersonCluster row-counts) and ASSOCIATE-NOT-RESOLVE (the linker takes
+// cluster_id as an explicit input; no PII-keyed resolution surface).
+// 4e-rest dropped the former Core-Talent link (`core_talent_id`).
 //
 // Refusals enforced structurally:
 //   - R10 — NO portal-forbidden numeric/ordinal fields. The talent
@@ -114,32 +111,19 @@ model TalentRecord {
 
   // ADR-0016 step 4d — the cross-tenant identity pointer: the
   // identity_index.PersonCluster this record belongs to (UUID-only cross-
-  // schema ref, no FK per §7.3). Set by TalentLinkService (cluster-exists
-  // validated against identity_index). This is the post-realignment identity
-  // pointer; core_talent_id (below) stays alongside it during the transition
-  // (consent is still Core-keyed and owned by the consent re-key directive),
-  // and both retire together in 4e.
+  // schema ref, no FK per §7.3). The post-realignment identity pointer.
+  // 4e-rest retired the Core husk (the `core_talent_id` column + the Core
+  // Talent link were dropped once engagement (#349) + consent (#350) released
+  // them). cluster_id is a write-less forward column until TR-2 re-establishes
+  // cluster linking with its own semantics.
   cluster_id String? @db.Uuid
-
-  // PR-A5b-2 — the Core-Talent link (the keystone of the ATS↔Core
-  // seam). Logical cross-schema reference to `talent.Talent.id`
-  // (Architecture §7.3 — UUID-only, no FK). Nullable: an UNLINKED
-  // TalentRecord is valid (most records start unlinked). Set ONLY by
-  // TalentLinkService via the dedicated /link routes. UNTOUCHED by 4d —
-  // the per-tenant Core husk pointer; consent reads it (consent re-key owns
-  // it). LINK-NOT-CREATE: the linker NEVER mutates Core. ASSOCIATE-NOT-
-  // RESOLVE: the linker takes this id as an explicit input; the lib
-  // carries no identity-resolution surface.
-  core_talent_id String? @db.Uuid
 
   // PR-A8-1 — back-reference to the import batch that created this row
   // (NULL for rows created outside the import engine). Cross-schema
   // logical reference to import.ImportBatch.id (§7.3). THE non-
-  // negotiable boundary (directive §0): imports of target_entity
-  // 'talent_record' create rows here with `core_talent_id` NULL — the
-  // engine NEVER calls Core's createTalent / createOverlay. The
-  // bit-identical talent.* row-counts pre/post the import is the
-  // load-bearing integration-spec assertion.
+  // negotiable boundary (directive §0): the engine NEVER calls Core's
+  // createTalent / createOverlay — the bit-identical talent.* row-counts
+  // pre/post the import is the load-bearing integration-spec assertion.
   import_batch_id String? @db.Uuid
 
   // Timestamps.
@@ -156,13 +140,10 @@ model TalentRecord {
   resume_text TalentResumeText?
 
   // Indexes — every query path leads with tenant_id; (last, first)
-  // serves the dominant "search by name" recruiter query path. PR-A5b-2
-  // adds (tenant, core_talent_id) for the "which records in tenant are
-  // linked to this Core Talent" query.
+  // serves the dominant "search by name" recruiter query path.
   @@index([tenant_id, last_name, first_name])
   @@index([tenant_id, site_id])
   @@index([tenant_id, is_hot])
-  @@index([tenant_id, core_talent_id])
   // 4d — "which records in tenant belong to this PERSON_CLUSTER".
   @@index([tenant_id, cluster_id])
   @@index([tenant_id, import_batch_id])

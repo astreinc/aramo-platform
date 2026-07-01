@@ -41,7 +41,6 @@ function makeTalent(overrides: Partial<TalentRecordView> = {}): TalentRecordView
     best_time_to_call: null,
     owner_id: null,
     entered_by_id: null,
-    core_talent_id: null,
     created_at: '2026-06-01T00:00:00Z',
     updated_at: '2026-06-01T00:00:00Z',
     ...overrides,

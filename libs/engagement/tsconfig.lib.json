@@ -16,7 +16,6 @@
       "@aramo/examination": ["../../dist/libs/examination/src/index.d.ts"],
       "@aramo/job-domain": ["../../dist/libs/job-domain/src/index.d.ts"],
       "@aramo/metering": ["../../dist/libs/metering/src/index.d.ts"],
-      "@aramo/talent": ["../../dist/libs/talent/src/index.d.ts"],
       "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"]
     }
   },

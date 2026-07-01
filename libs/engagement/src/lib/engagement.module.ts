@@ -5,7 +5,6 @@ import { createAramoLogger } from '@aramo/common';
 import { ConsentModule } from '@aramo/consent';
 import { ExaminationModule } from '@aramo/examination';
 import { JobDomainModule } from '@aramo/job-domain';
-import { TalentModule } from '@aramo/talent';
 import { TalentRecordModule } from '@aramo/talent-record';
 
 import { DELIVERY_PROVIDER_TOKEN } from './delivery/tokens.js';
@@ -59,15 +58,10 @@ import { PrismaService } from './prisma/prisma.service.js';
   imports: [
     AuthModule,
     ConsentModule,
-    // TalentModule (Core) — formerly the Pattern-C create validator dep
-    // (findOverlayByTenant). After 4e-engagement-key it is NO LONGER used
-    // by engagement (the validator now resolves against TalentRecord); kept
-    // wired only because TalentRepository is still injected for now. Its
-    // removal is 4e-rest (Core retirement). Directional edge; no cycle.
-    TalentModule,
-    // 4e-engagement-key — TalentRecordModule supplies TalentRecordRepository,
-    // the Pattern-C create validator (engagement.talent_id is now a
-    // TalentRecord.id). Acyclic: talent-record does NOT import engagement.
+    // TalentRecordModule supplies TalentRecordRepository, the Pattern-C create
+    // validator (engagement.talent_id is a TalentRecord.id). Acyclic:
+    // talent-record does NOT import engagement. (The dead Core TalentModule
+    // edge was removed in 4e-rest.)
     TalentRecordModule,
     JobDomainModule,
     ExaminationModule,

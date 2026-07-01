@@ -150,7 +150,7 @@ const TALENT_INIT_MIGRATION = resolve(
 );
 // 4e-engagement-key — engagement.talent_id now references
 // talent_record.TalentRecord.id, so the engagement-create provider state
-// (seedEngagementBasics) seeds a TalentRecord. The 5 column-adding
+// (seedEngagementBasics) seeds a TalentRecord. The column-mutating
 // talent-record migrations (whole files; pg parses them natively).
 const TALENT_RECORD_MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
@@ -158,6 +158,9 @@ const TALENT_RECORD_MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
   'libs/talent-record/prisma/migrations/20260615000000_talent_stated_fields/migration.sql',
   'libs/talent-record/prisma/migrations/20260630140000_overlay_fold_cluster_id/migration.sql',
+  // 4e-rest — drops core_talent_id (must run last so the provider schema
+  // matches the regenerated Prisma client, which no longer projects it).
+  'libs/talent-record/prisma/migrations/20260701120000_drop_core_talent_id/migration.sql',
 ].map((p) => resolve(ROOT, p));
 // PR-A1b §4 sweep — entitlement schema applied for the pact verifier so
 // the portal-thin pact interactions (5 interactions traversing the now
