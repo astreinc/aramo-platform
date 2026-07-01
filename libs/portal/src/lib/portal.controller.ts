@@ -10,7 +10,7 @@ import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { ConsentService, type TalentConsentStateResponseDto } from '@aramo/consent';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
-import { TalentService } from '@aramo/talent';
+import { TalentRecordService } from '@aramo/talent-record';
 
 import type { PortalProfileDto } from './dto/portal-profile.dto.js';
 
@@ -75,7 +75,7 @@ const UUID_REGEX =
 @RequireCapability('portal')
 export class PortalController {
   constructor(
-    private readonly talentService: TalentService,
+    private readonly talentRecordService: TalentRecordService,
     private readonly consentService: ConsentService,
   ) {}
 
@@ -93,12 +93,14 @@ export class PortalController {
     const talent_id = this.resolvePortalTalentRecordId(authContext, requestId);
     // Step 3 — tenant_id from auth context (JWT claim).
     const tenant_id = authContext.tenant_id;
-    // Step 4 — repository call (TalentService.findSelfProfile).
-    const projection = await this.talentService.findSelfProfile({
+    // Step 4 — repository call (TalentRecordService.findSelfProfile, reading
+    // the talent's own TalentRecord — the ATS heart; 4e-rest-b re-home).
+    const projection = await this.talentRecordService.findSelfProfile({
       tenant_id,
       talent_id,
     });
-    // Step 5 — 404 on null (no overlay in this tenant → resource absent).
+    // Step 5 — 404 on null (no TalentRecord in this tenant, or an un-statused
+    // record → no presentable self-profile → resource absent).
     if (projection === null) {
       throw new AramoError(
         'NOT_FOUND',
@@ -108,10 +110,11 @@ export class PortalController {
       );
     }
     // Step 6 — return DTO (structurally identical to PortalProfileProjection).
+    // 4e-rest-b: no lifecycle_status (Core-only field, dropped in the re-home);
+    // tenant_status is the profile's status field.
     return {
       talent_id: projection.talent_id,
       tenant_id: projection.tenant_id,
-      lifecycle_status: projection.lifecycle_status,
       tenant_status: projection.tenant_status,
       source_channel: projection.source_channel,
       created_at: projection.created_at,

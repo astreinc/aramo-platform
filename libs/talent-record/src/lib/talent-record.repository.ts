@@ -739,6 +739,33 @@ export class TalentRecordRepository {
     });
   }
 
+  // 4e-rest-b: SERVER-ONLY portal self-profile read. Tenant-scoped, MINIMAL
+  // select of exactly the fields the portal profile projects — never widen it.
+  // TalentRecordService.findSelfProfile null-guards + shapes the projection;
+  // this is the raw row (nullable tenant_status / source_channel surfaced so
+  // the service can enforce the un-statused → 404 policy).
+  async findPortalProfileRow(args: {
+    tenant_id: string;
+    id: string;
+  }): Promise<{
+    id: string;
+    tenant_id: string;
+    tenant_status: string | null;
+    source_channel: string | null;
+    created_at: Date;
+  } | null> {
+    return this.prisma.talentRecord.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+      select: {
+        id: true,
+        tenant_id: true,
+        tenant_status: true,
+        source_channel: true,
+        created_at: true,
+      },
+    });
+  }
+
   // 4e-rest: cluster-only link write (the Core-Talent link + core_talent_id
   // were dropped). Writes the PERSON_CLUSTER pointer; tenant-scoped at the row
   // level so a controller mistake cannot link a row from a different tenant.

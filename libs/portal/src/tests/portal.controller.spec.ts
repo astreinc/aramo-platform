@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { PortalController } from '../lib/portal.controller.js';
 
-// M3 PR-9 §4.9 — controller unit tests with mocked TalentService and
-// ConsentService. Verifies the per-endpoint behavior in §4.1:
-// auth check, talent_id resolution from sub, UUID sanity, service
-// wiring, 404 on null findSelfProfile, response DTO shape.
+// M3 PR-9 §4.9 — controller unit tests with mocked TalentRecordService
+// (4e-rest-b re-home) and ConsentService. Verifies the per-endpoint
+// behavior in §4.1: auth check, talent_id resolution from sub, UUID sanity,
+// service wiring, 404 on null findSelfProfile, response DTO shape.
 //
 // End-to-end (AppModule compile + HTTP request + R10-class field
 // absence) lives in apps/api/src/tests/portal-refusal.negative-shape.spec.ts.
@@ -33,8 +33,8 @@ function portalAuth(overrides: Partial<{
 interface ProfileCall { tenant_id: string; talent_id: string }
 interface ConsentCall { talent_id: string; authContext: unknown; requestId: string }
 
-function makeTalentService(
-  returns: { talent_id: string; tenant_id: string; lifecycle_status: string; tenant_status: string; source_channel: string; created_at: string } | null,
+function makeTalentRecordService(
+  returns: { talent_id: string; tenant_id: string; tenant_status: string; source_channel: string; created_at: string } | null,
   calls: { profile: ProfileCall[] },
 ) {
   return {
@@ -60,7 +60,6 @@ function makeConsentService(
 const sampleProjection = {
   talent_id: TALENT_SUB,
   tenant_id: TENANT_ID,
-  lifecycle_status: 'active',
   tenant_status: 'active',
   source_channel: 'self_signup',
   created_at: '2026-05-01T12:00:00.000Z',
@@ -78,7 +77,7 @@ describe('PortalController — /v1/portal/profile', () => {
   it('returns 403 INSUFFICIENT_PERMISSIONS when consumer_type !== "portal"', async () => {
     const calls = { profile: [] as ProfileCall[] };
     const controller = new PortalController(
-      makeTalentService(sampleProjection, calls) as never,
+      makeTalentRecordService(sampleProjection, calls) as never,
       makeConsentService(sampleConsentState, { consent: [] }) as never,
     );
     await expect(
@@ -90,7 +89,7 @@ describe('PortalController — /v1/portal/profile', () => {
   it('returns 400 INVALID_REQUEST when sub claim is not a UUID', async () => {
     const calls = { profile: [] as ProfileCall[] };
     const controller = new PortalController(
-      makeTalentService(sampleProjection, calls) as never,
+      makeTalentRecordService(sampleProjection, calls) as never,
       makeConsentService(sampleConsentState, { consent: [] }) as never,
     );
     await expect(
@@ -106,7 +105,7 @@ describe('PortalController — /v1/portal/profile', () => {
   it('wires (tenant_id, talent_id) from authContext.{tenant_id, sub} into findSelfProfile', async () => {
     const calls = { profile: [] as ProfileCall[] };
     const controller = new PortalController(
-      makeTalentService(sampleProjection, calls) as never,
+      makeTalentRecordService(sampleProjection, calls) as never,
       makeConsentService(sampleConsentState, { consent: [] }) as never,
     );
     await controller.getProfile(portalAuth(), 'req-1');
@@ -116,7 +115,7 @@ describe('PortalController — /v1/portal/profile', () => {
   it('returns 404 NOT_FOUND when findSelfProfile returns null', async () => {
     const calls = { profile: [] as ProfileCall[] };
     const controller = new PortalController(
-      makeTalentService(null, calls) as never,
+      makeTalentRecordService(null, calls) as never,
       makeConsentService(sampleConsentState, { consent: [] }) as never,
     );
     await expect(controller.getProfile(portalAuth(), 'req-1')).rejects.toMatchObject({
@@ -128,14 +127,13 @@ describe('PortalController — /v1/portal/profile', () => {
   it('returns PortalProfileDto verbatim from the projection (no extras, no Full-class leakage)', async () => {
     const calls = { profile: [] as ProfileCall[] };
     const controller = new PortalController(
-      makeTalentService(sampleProjection, calls) as never,
+      makeTalentRecordService(sampleProjection, calls) as never,
       makeConsentService(sampleConsentState, { consent: [] }) as never,
     );
     const result = await controller.getProfile(portalAuth(), 'req-1');
     expect(result).toEqual({
       talent_id: TALENT_SUB,
       tenant_id: TENANT_ID,
-      lifecycle_status: 'active',
       tenant_status: 'active',
       source_channel: 'self_signup',
       created_at: '2026-05-01T12:00:00.000Z',
@@ -156,7 +154,7 @@ describe('PortalController — /v1/portal/consent', () => {
   it('returns 403 INSUFFICIENT_PERMISSIONS when consumer_type !== "portal"', async () => {
     const calls = { consent: [] as ConsentCall[] };
     const controller = new PortalController(
-      makeTalentService(sampleProjection, { profile: [] }) as never,
+      makeTalentRecordService(sampleProjection, { profile: [] }) as never,
       makeConsentService(sampleConsentState, calls) as never,
     );
     await expect(
@@ -168,7 +166,7 @@ describe('PortalController — /v1/portal/consent', () => {
   it('returns 400 INVALID_REQUEST when sub claim is not a UUID', async () => {
     const calls = { consent: [] as ConsentCall[] };
     const controller = new PortalController(
-      makeTalentService(sampleProjection, { profile: [] }) as never,
+      makeTalentRecordService(sampleProjection, { profile: [] }) as never,
       makeConsentService(sampleConsentState, calls) as never,
     );
     await expect(
@@ -180,7 +178,7 @@ describe('PortalController — /v1/portal/consent', () => {
   it('wires (talent_id, authContext, requestId) from sub into ConsentService.getState', async () => {
     const calls = { consent: [] as ConsentCall[] };
     const controller = new PortalController(
-      makeTalentService(sampleProjection, { profile: [] }) as never,
+      makeTalentRecordService(sampleProjection, { profile: [] }) as never,
       makeConsentService(sampleConsentState, calls) as never,
     );
     const auth = portalAuth();
@@ -193,7 +191,7 @@ describe('PortalController — /v1/portal/consent', () => {
   it('returns the ConsentService response verbatim (no Match-class/Full-class leakage)', async () => {
     const calls = { consent: [] as ConsentCall[] };
     const controller = new PortalController(
-      makeTalentService(sampleProjection, { profile: [] }) as never,
+      makeTalentRecordService(sampleProjection, { profile: [] }) as never,
       makeConsentService(sampleConsentState, calls) as never,
     );
     const result = await controller.getOwnConsent(portalAuth(), 'req-1');
@@ -205,7 +203,7 @@ describe('PortalController — /v1/portal/consent', () => {
   it('portal session cannot address another talent (sub is the only talent_id surface)', async () => {
     const calls = { consent: [] as ConsentCall[] };
     const controller = new PortalController(
-      makeTalentService(sampleProjection, { profile: [] }) as never,
+      makeTalentRecordService(sampleProjection, { profile: [] }) as never,
       makeConsentService(sampleConsentState, calls) as never,
     );
     // Even if some other talent's id were passed somewhere, the controller

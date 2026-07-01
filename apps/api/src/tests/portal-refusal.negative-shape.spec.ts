@@ -21,6 +21,8 @@ import {
 
 import { AppModule } from '../app.module.js';
 
+import { applyTalentRecordMigrations } from './talent-record-fixtures.js';
+
 // M3 PR-9 §4.6 — Portal refusal negative-shape integration test (F23
 // pattern, mirroring PR-8's match-list.negative-shape.spec.ts).
 //
@@ -194,6 +196,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
+      // 4e-rest-b — the portal profile re-homed onto TalentRecord; apply the
+      // talent_record schema so the re-pointed portal fixture (a TalentRecord
+      // row) is readable by findSelfProfile.
+      await applyTalentRecordMigrations(setup);
 
       // PR-A1b §4 — seed the integration-spec tenant with the `portal`
       // capability so the pass-path tests can traverse the gated routes.
@@ -206,22 +212,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [TENANT_ID],
       );
 
-      // Seed Talent + TalentTenantOverlay for the portal talent.
+      // 4e-rest-b — seed the portal talent's TalentRecord (findSelfProfile
+      // re-homed onto the ATS heart). tenant_status + source_channel non-null
+      // so the reader's un-statused → 404 guard is satisfied.
       await setup.query(
-        `INSERT INTO talent."Talent" (id, lifecycle_status, updated_at)
-         VALUES ($1, 'active', NOW())`,
-        [PORTAL_TALENT_ID],
-      );
-      await setup.query(
-        `INSERT INTO talent."TalentTenantOverlay"
-           (id, talent_id, tenant_id, source_recruiter_id, source_channel,
-            tenant_status, updated_at)
-         VALUES ($1, $2, $3, NULL, 'self_signup', 'active', NOW())`,
-        [
-          '00000000-0000-7000-8000-0000000000aa',
-          PORTAL_TALENT_ID,
-          TENANT_ID,
-        ],
+        `INSERT INTO talent_record."TalentRecord"
+           (id, tenant_id, first_name, last_name, tenant_status, source_channel,
+            created_at, updated_at)
+         VALUES ($1, $2, 'Portal', 'Talent', 'active', 'self_signup', NOW(), NOW())`,
+        [PORTAL_TALENT_ID, TENANT_ID],
       );
       // Seed a matching consent grant so ConsentService.getState returns a
       // non-trivial scope state.
@@ -349,12 +348,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const body = (await res.json()) as Record<string, unknown>;
       // (A) + (B): per-field R10 + Match-class absence.
       assertNoR10OrMatchClass(body, '/v1/portal/profile.response');
-      // (C): locked PortalProfile key set exactly.
+      // (C): locked PortalProfile key set exactly. 4e-rest-b: lifecycle_status
+      // DROPPED (Core-only field, re-homed off Core); tenant_status stays.
       expect(new Set(Object.keys(body))).toEqual(
         new Set([
           'talent_id',
           'tenant_id',
-          'lifecycle_status',
           'tenant_status',
           'source_channel',
           'created_at',

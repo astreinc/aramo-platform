@@ -97,7 +97,6 @@ components:
       required:
         - talent_id
         - tenant_id
-        - lifecycle_status
         - tenant_status
         - source_channel
         - created_at
@@ -110,11 +109,6 @@ components:
           type: string
           format: uuid
           description: The tenant context (from JWT tenant_id claim).
-        lifecycle_status:
-          type: string
-          description: |
-            Talent core lifecycle status (closed vocabulary per Talent
-            Record Spec §2.2: active | inactive | archived | deleted).
         tenant_status:
           type: string
           description: |
@@ -130,5 +124,4 @@ components:
           type: string
           format: date-time
           description: |
-            When the talent joined this tenant (overlay's created_at;
-            distinct from the Talent core's first-seen timestamp).
+            When the talent's TalentRecord was created in this tenant.
