@@ -9,7 +9,8 @@ import { Pool, type PoolClient } from 'pg';
 // tenant references, submittal references) deferred to M6/M7.
 //
 // Critical pairs (per audit Axis E Lead-Q-E1=(b) disposition):
-//   1. consent."TalentConsentEvent".talent_id ↔ talent."Talent".id
+//   1. consent."TalentConsentEvent".talent_record_id ↔ talent_record."TalentRecord".id
+//      (Step-5 consent re-key — was talent."Talent".id before the re-key)
 //   2. engagement."TalentJobEngagement".talent_id ↔ talent_record."TalentRecord".id
 //      (4e-engagement-key — was talent."Talent".id before the re-point)
 //   3. examination."TalentJobExamination".talent_id ↔ talent."Talent".id
@@ -52,12 +53,14 @@ export interface CrossSchemaPairResult {
 
 const PAIRS = [
   {
-    pair_id: 'consent.TalentConsentEvent.talent_id->talent.Talent',
+    // Step-5 consent re-key: consent.TalentConsentEvent.talent_record_id now
+    // references talent_record.TalentRecord.id (was Core talent.Talent).
+    pair_id: 'consent.TalentConsentEvent.talent_record_id->talent_record.TalentRecord',
     sql:
-      'SELECT cte.id AS row_id, cte.talent_id AS missing_foreign_id ' +
+      'SELECT cte.id AS row_id, cte.talent_record_id AS missing_foreign_id ' +
       'FROM "consent"."TalentConsentEvent" cte ' +
-      'LEFT JOIN "talent"."Talent" t ON t."id" = cte."talent_id" ' +
-      'WHERE t."id" IS NULL',
+      'LEFT JOIN "talent_record"."TalentRecord" tr ON tr."id" = cte."talent_record_id" ' +
+      'WHERE tr."id" IS NULL',
   },
   {
     // 4e-engagement-key: engagement.talent_id now references

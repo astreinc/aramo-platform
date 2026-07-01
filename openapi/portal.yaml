@@ -55,9 +55,9 @@ paths:
         Talent-self-view of consent. Wraps the existing
         ConsentService.getState surface — returns the same
         TalentConsentStateResponse shape the recruiter-facing
-        /v1/consent/state/{talent_id} returns, but the talent_id is
-        derived from the JWT `sub` claim (no path parameter — the
-        portal session embodies the talent).
+        /v1/consent/state/{talent_record_id} returns, but the
+        talent_record_id is derived from the JWT `sub` claim (no path
+        parameter — the portal session embodies the talent).
 
         Includes all 5 consent scopes (always-5-scopes deterministic
         shape per PR-5 Decision D). No is_stale field (excluded per

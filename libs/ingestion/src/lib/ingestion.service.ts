@@ -206,7 +206,10 @@ export class IngestionService {
     // context.
     await this.sourceConsentService.registerSourceDerivedConsent({
       tenant_id,
-      talent_id: request.talent_id,
+      // Step-5 consent re-key: the consent ledger is now TalentRecord-keyed.
+      // The ingestion request's talent_id IS the TalentRecord.id (the ATS
+      // heart, post-ADR-0016); the ingestion contract field name is unchanged.
+      talent_record_id: request.talent_id,
       source: 'indeed',
       occurred_at: request.captured_at,
       requestId,

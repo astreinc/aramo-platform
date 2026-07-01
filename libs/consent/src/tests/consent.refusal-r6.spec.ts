@@ -90,7 +90,7 @@ describe('Refusal R6 — no acting on stale consent (resolver reports, does not 
     const repo = new ConsentRepository(makePrisma(tx));
     const decision = await repo.resolveConsentState({
       tenant_id: TENANT_ID,
-      talent_id: TALENT_ID,
+      talent_record_id: TALENT_ID,
       operation: 'engagement',
       channel: 'email',
       requestHash: 'r6-h-1',
@@ -106,7 +106,7 @@ describe('Refusal R6 — no acting on stale consent (resolver reports, does not 
     const repo = new ConsentRepository(makePrisma(tx));
     await repo.resolveConsentState({
       tenant_id: TENANT_ID,
-      talent_id: TALENT_ID,
+      talent_record_id: TALENT_ID,
       operation: 'engagement',
       channel: 'email',
       requestHash: 'r6-h-2',
@@ -124,7 +124,7 @@ describe('Refusal R6 — no acting on stale consent (resolver reports, does not 
     const repo = new ConsentRepository(makePrisma(tx));
     await repo.resolveConsentState({
       tenant_id: TENANT_ID,
-      talent_id: TALENT_ID,
+      talent_record_id: TALENT_ID,
       operation: 'engagement',
       channel: 'email',
       requestHash: 'r6-h-3',
@@ -145,7 +145,7 @@ describe('Refusal R6 — no acting on stale consent (resolver reports, does not 
     const repo = new ConsentRepository(makePrisma(tx));
     await repo.resolveConsentState({
       tenant_id: TENANT_ID,
-      talent_id: TALENT_ID,
+      talent_record_id: TALENT_ID,
       operation: 'engagement',
       channel: 'email',
       requestHash: 'r6-h-4',

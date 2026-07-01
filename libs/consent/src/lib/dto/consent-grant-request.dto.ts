@@ -32,7 +32,7 @@ export type ConsentCapturedMethodValue = (typeof CONSENT_CAPTURED_METHODS)[numbe
 // consent.refusal-action-locked.spec.ts).
 export class ConsentGrantRequestDto {
   @IsUUID()
-  talent_id!: string;
+  talent_record_id!: string;
 
   @IsIn(CONSENT_SCOPES)
   scope!: ConsentScopeValue;

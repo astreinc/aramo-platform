@@ -13,7 +13,7 @@ import type { TalentConsentScopeStateDto } from './talent-consent-scope-state.dt
 // `scopes` always contains all 5 ConsentScope values per Decision D
 // (always-5-scopes deterministic response).
 export interface TalentConsentStateResponseDto {
-  talent_id: string;
+  talent_record_id: string;
   tenant_id: string;
   is_anonymized: boolean;
   computed_at: string;

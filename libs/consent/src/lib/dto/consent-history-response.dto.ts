@@ -1,6 +1,6 @@
 import type { ConsentHistoryEventDto } from './consent-history-event.dto.js';
 
-// Wrapped response DTO for GET /consent/history/{talent_id} (PR-6 §4).
+// Wrapped response DTO for GET /consent/history/{talent_record_id} (PR-6 §4).
 //
 // Wrapped, never bare. Never 404 on empty (directive §4 + §7 test 7).
 // Empty history returns { events: [], next_cursor: null, is_anonymized:

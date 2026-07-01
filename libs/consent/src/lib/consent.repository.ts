@@ -38,7 +38,7 @@ export type ConsentActionValue = 'granted' | 'revoked';
 
 export interface RecordConsentEventInput {
   tenant_id: string;
-  talent_id: string;
+  talent_record_id: string;
   action: ConsentActionValue;
   scope: ConsentScopeValue;
   captured_method: ConsentCapturedMethodValue;
@@ -69,7 +69,7 @@ export type ConsentEventResponseShape<T extends ConsentActionValue> =
 
 export interface ResolveConsentStateInput {
   tenant_id: string;
-  talent_id: string;
+  talent_record_id: string;
   operation: ConsentCheckOperation;
   channel?: ContactChannel;
   // Optional per Phase 1 §6 line 497. Same key + same body → cached
@@ -82,7 +82,7 @@ export interface ResolveConsentStateInput {
 
 export interface ResolveAllScopesInput {
   tenant_id: string;
-  talent_id: string;
+  talent_record_id: string;
   requestId: string;
 }
 
@@ -93,7 +93,7 @@ export interface ResolveAllScopesInput {
 // 400 mapping per §3).
 export interface ResolveHistoryInput {
   tenant_id: string;
-  talent_id: string;
+  talent_record_id: string;
   scope?: ConsentScopeValue;
   limit: number;
   cursor?: HistoryCursorPayload;
@@ -108,7 +108,7 @@ export interface ResolveHistoryInput {
 // mapping per PR-6 §3 pattern).
 export interface ResolveDecisionLogInput {
   tenant_id: string;
-  talent_id: string;
+  talent_record_id: string;
   event_type?: ConsentDecisionLogEventType;
   limit: number;
   cursor?: HistoryCursorPayload;
@@ -217,7 +217,7 @@ export class ConsentRepository {
         const priorGrant = await tx.talentConsentEvent.findFirst({
           where: {
             tenant_id: input.tenant_id,
-            talent_id: input.talent_id,
+            talent_record_id: input.talent_record_id,
             scope: input.scope,
             action: 'granted',
           },
@@ -239,7 +239,7 @@ export class ConsentRepository {
         data: {
           id: eventId,
           tenant_id: input.tenant_id,
-          talent_id: input.talent_id,
+          talent_record_id: input.talent_record_id,
           scope: input.scope,
           action: input.action,
           captured_by_actor_id: input.captured_by_actor_id,
@@ -278,7 +278,7 @@ export class ConsentRepository {
           event_type: isGrant
             ? 'consent.grant.recorded'
             : 'consent.revoke.recorded',
-          subject_id: input.talent_id,
+          subject_id: input.talent_record_id,
           event_payload: auditPayload as never,
         },
       });
@@ -287,12 +287,12 @@ export class ConsentRepository {
       const outboxPayload = isGrant
         ? {
             event_id: eventId,
-            talent_id: input.talent_id,
+            talent_record_id: input.talent_record_id,
             scope: input.scope,
           }
         : {
             event_id: eventId,
-            talent_id: input.talent_id,
+            talent_record_id: input.talent_record_id,
             scope: input.scope,
             revoked_event_id: revokedEventId,
           };
@@ -313,7 +313,7 @@ export class ConsentRepository {
           ? ({
               event_id: eventId,
               tenant_id: input.tenant_id,
-              talent_id: input.talent_id,
+              talent_record_id: input.talent_record_id,
               scope: input.scope,
               action: 'granted',
               captured_method: input.captured_method,
@@ -332,7 +332,7 @@ export class ConsentRepository {
           : ({
               event_id: eventId,
               tenant_id: input.tenant_id,
-              talent_id: input.talent_id,
+              talent_record_id: input.talent_record_id,
               scope: input.scope,
               action: 'revoked',
               captured_method: input.captured_method,
@@ -388,7 +388,7 @@ export class ConsentRepository {
    * Algorithm (Decisions A through L, PR-4):
    *   1. Decision C: derive required scope from operation
    *   2. Decision G validation: channel required when scope is contacting
-   *   3. Read all ledger events for (tenant_id, talent_id) — partition in memory
+   *   3. Read all ledger events for (tenant_id, talent_record_id) — partition in memory
    *   4. Decision K: empty ledger → result: error, reason: consent_state_unknown
    *   5. Decision E: validate scope dependency chain — 422 if any dep denied
    *   6. Decision D: most-restrictive computation for the requested scope
@@ -471,7 +471,7 @@ export class ConsentRepository {
       const events = await tx.talentConsentEvent.findMany({
         where: {
           tenant_id: input.tenant_id,
-          talent_id: input.talent_id,
+          talent_record_id: input.talent_record_id,
         },
         orderBy: { occurred_at: 'desc' },
       });
@@ -482,7 +482,7 @@ export class ConsentRepository {
           result: 'error',
           scope: requiredScope,
           reason_code: 'consent_state_unknown',
-          log_message: `consent_state_missing for talent ${input.talent_id}`,
+          log_message: `consent_state_missing for talent ${input.talent_record_id}`,
           decision_id: decisionId,
           computed_at: computedAt.toISOString(),
         });
@@ -683,7 +683,7 @@ export class ConsentRepository {
       const events = await tx.talentConsentEvent.findMany({
         where: {
           tenant_id: input.tenant_id,
-          talent_id: input.talent_id,
+          talent_record_id: input.talent_record_id,
         },
       });
 
@@ -692,7 +692,7 @@ export class ConsentRepository {
       );
 
       return {
-        talent_id: input.talent_id,
+        talent_record_id: input.talent_record_id,
         tenant_id: input.tenant_id,
         is_anonymized: false,
         computed_at: computedAt.toISOString(),
@@ -730,7 +730,7 @@ export class ConsentRepository {
    *   - Scope filter applied before pagination; cursor traverses the
    *     filtered set
    *   - Supporting index added in PR-6 schema migration:
-   *     @@index([tenant_id, talent_id, created_at(sort: Desc), id(sort: Desc)])
+   *     @@index([tenant_id, talent_record_id, created_at(sort: Desc), id(sort: Desc)])
    *
    * Per directive §5 field naming: the DB column `id` maps to the
    * API/DTO field `event_id`. Prisma references `id`; the cursor and
@@ -753,7 +753,7 @@ export class ConsentRepository {
       // OR/AND form per directive §5.
       const where: Record<string, unknown> = {
         tenant_id: input.tenant_id,
-        talent_id: input.talent_id,
+        talent_record_id: input.talent_record_id,
       };
       if (input.scope !== undefined) {
         where['scope'] = input.scope;
@@ -839,9 +839,9 @@ export class ConsentRepository {
    *
    * Per directive §5 field name mapping:
    *   - DB id          → API event_id   (PR-6 precedent)
-   *   - DB subject_id  → API talent_id  (PR-7 exception, this directive)
+   *   - DB subject_id  → API talent_record_id  (PR-7 exception, this directive)
    *   The Prisma query references `subject_id`; the response DTO and
-   *   cursor reference `talent_id` and `event_id` respectively.
+   *   cursor reference `talent_record_id` and `event_id` respectively.
    *
    * Per directive §4: event_payload is opaque JSON pass-through. No
    * extraction or transformation of payload fields into top-level entry
@@ -862,7 +862,7 @@ export class ConsentRepository {
       // uses Prisma's OR/AND form per directive §6 + PR-6 §5 pattern.
       const where: Record<string, unknown> = {
         tenant_id: input.tenant_id,
-        subject_id: input.talent_id,
+        subject_id: input.talent_record_id,
       };
       if (input.event_type !== undefined) {
         where['event_type'] = input.event_type;
@@ -893,7 +893,7 @@ export class ConsentRepository {
 
       const entries: ConsentDecisionLogEntryDto[] = pageRows.map((row) => ({
         event_id: row.id,
-        talent_id: row.subject_id,
+        talent_record_id: row.subject_id,
         event_type: row.event_type as ConsentDecisionLogEventType,
         created_at: row.created_at.toISOString(),
         actor_id: row.actor_id,
@@ -919,28 +919,28 @@ export class ConsentRepository {
   }
 
   // Segment 3 — BATCH contact-consent summary for the talent-records list
-  // enrichment. Set-based over the page's Core talent_id set (ONE query), never
+  // enrichment. Set-based over the page's Core talent_record_id set (ONE query), never
   // per-row. Surfaces ONLY the 3-value summary for the `contacting` scope (no
   // raw consent internals leak). Mirrors deriveScopeStateForReadEndpoint's
   // latest-per-source status derivation. Mapping: granted & not near expiry →
   // contactable; granted & expires within 30 days → expiring_lt_30d;
-  // revoked / expired / no_grant → do_not_contact. talent_ids with NO contacting
+  // revoked / expired / no_grant → do_not_contact. talent_record_ids with NO contacting
   // events are absent from the map (the caller defaults to do_not_contact — no
   // grant means no permission).
   async findContactingConsentSummaryForTalentIds(args: {
     tenant_id: string;
-    talent_ids: readonly string[];
+    talent_record_ids: readonly string[];
   }): Promise<Map<string, ConsentSummary>> {
     const out = new Map<string, ConsentSummary>();
-    if (args.talent_ids.length === 0) return out;
+    if (args.talent_record_ids.length === 0) return out;
     const events = await this.prisma.talentConsentEvent.findMany({
       where: {
         tenant_id: args.tenant_id,
-        talent_id: { in: [...args.talent_ids] },
+        talent_record_id: { in: [...args.talent_record_ids] },
         scope: 'contacting',
       },
       select: {
-        talent_id: true,
+        talent_record_id: true,
         action: true,
         captured_method: true,
         occurred_at: true,
@@ -950,9 +950,9 @@ export class ConsentRepository {
     type Ev = (typeof events)[number];
     const byTalent = new Map<string, Ev[]>();
     for (const e of events) {
-      const arr = byTalent.get(e.talent_id) ?? [];
+      const arr = byTalent.get(e.talent_record_id) ?? [];
       arr.push(e);
-      byTalent.set(e.talent_id, arr);
+      byTalent.set(e.talent_record_id, arr);
     }
     const horizon = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     for (const [talentId, evs] of byTalent) {
@@ -1155,10 +1155,10 @@ async function persistDecisionAudit(
       actor_id: null,
       actor_type: 'system',
       event_type: 'consent.check.decision',
-      subject_id: input.talent_id,
+      subject_id: input.talent_record_id,
       event_payload: {
         decision_id: decision.decision_id,
-        talent_id: input.talent_id,
+        talent_record_id: input.talent_record_id,
         tenant_id: input.tenant_id,
         operation: input.operation,
         scope: decision.scope ?? null,

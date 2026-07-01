@@ -31,7 +31,7 @@ export class ConsentService {
     return this.consentRepo.recordConsentEvent({
       action: 'granted',
       tenant_id: authContext.tenant_id,
-      talent_id: request.talent_id,
+      talent_record_id: request.talent_record_id,
       scope: request.scope,
       captured_method: request.captured_method,
       captured_by_actor_id: this.deriveActorId(authContext),
@@ -56,7 +56,7 @@ export class ConsentService {
     return this.consentRepo.recordConsentEvent({
       action: 'revoked',
       tenant_id: authContext.tenant_id,
-      talent_id: request.talent_id,
+      talent_record_id: request.talent_record_id,
       scope: request.scope,
       captured_method: request.captured_method,
       captured_by_actor_id: this.deriveActorId(authContext),
@@ -88,7 +88,7 @@ export class ConsentService {
   ): Promise<ConsentDecisionDto> {
     return this.consentRepo.resolveConsentState({
       tenant_id: authContext.tenant_id,
-      talent_id: request.talent_id,
+      talent_record_id: request.talent_record_id,
       operation: request.operation,
       channel: request.channel,
       idempotencyKey,
@@ -104,13 +104,13 @@ export class ConsentService {
    * write (Decision H — informational endpoints don't log).
    */
   async getState(
-    talent_id: string,
+    talent_record_id: string,
     authContext: AuthContextType,
     requestId: string,
   ): Promise<TalentConsentStateResponseDto> {
     return this.consentRepo.resolveAllScopes({
       tenant_id: authContext.tenant_id,
-      talent_id,
+      talent_record_id,
       requestId,
     });
   }
@@ -121,7 +121,7 @@ export class ConsentService {
    * tenant context. No idempotency, no decision log write (Decision H).
    *
    * The controller is responsible for:
-   *   - validating talent_id format
+   *   - validating talent_record_id format
    *   - clamping/validating limit per directive §5
    *   - decoding the cursor and mapping decode errors to HTTP 400
    *     VALIDATION_ERROR (cursor errors must not propagate as 500)
@@ -129,7 +129,7 @@ export class ConsentService {
    * The service trusts those guarantees and forwards to the resolver.
    */
   async getHistory(
-    talent_id: string,
+    talent_record_id: string,
     scope: ConsentScopeValue | undefined,
     limit: number,
     cursor: HistoryCursorPayload | undefined,
@@ -138,7 +138,7 @@ export class ConsentService {
   ): Promise<ConsentHistoryResponseDto> {
     return this.consentRepo.resolveHistory({
       tenant_id: authContext.tenant_id,
-      talent_id,
+      talent_record_id,
       scope,
       limit,
       cursor,
@@ -154,7 +154,7 @@ export class ConsentService {
    * convention prohibits writing to).
    *
    * The controller is responsible for:
-   *   - validating talent_id format
+   *   - validating talent_record_id format
    *   - validating event_type against the closed set per PR-7 §7
    *   - clamping/validating limit per PR-6 §5
    *   - decoding the cursor and mapping decode errors to HTTP 400
@@ -163,7 +163,7 @@ export class ConsentService {
    * The service trusts those guarantees and forwards to the resolver.
    */
   async getDecisionLog(
-    talent_id: string,
+    talent_record_id: string,
     event_type: ConsentDecisionLogEventType | undefined,
     limit: number,
     cursor: HistoryCursorPayload | undefined,
@@ -172,7 +172,7 @@ export class ConsentService {
   ): Promise<ConsentDecisionLogResponseDto> {
     return this.consentRepo.resolveDecisionLog({
       tenant_id: authContext.tenant_id,
-      talent_id,
+      talent_record_id,
       event_type,
       limit,
       cursor,

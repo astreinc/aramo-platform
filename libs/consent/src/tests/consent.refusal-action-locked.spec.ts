@@ -50,7 +50,7 @@ function makePrisma(tx: MockTx): PrismaService {
 function validRevokeInput(): RecordConsentEventInput {
   return {
     tenant_id: TENANT_ID,
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     action: 'revoked',
     scope: 'matching',
     captured_method: 'recruiter_capture',
@@ -71,7 +71,7 @@ describe('Refusal — action locked per endpoint', () => {
 
     const input = {
       tenant_id: TENANT_ID,
-      talent_id: TALENT_ID,
+      talent_record_id: TALENT_ID,
       action: 'granted',
       scope: 'matching',
       captured_method: 'recruiter_capture',

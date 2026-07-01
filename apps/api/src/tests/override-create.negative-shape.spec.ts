@@ -48,6 +48,10 @@ const CONSENT_MIGRATION = resolve(
   ROOT,
   'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
 );
+const CONSENT_REKEY_MIGRATION = resolve(
+  ROOT,
+  'libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql',
+);
 const INGESTION_INIT_MIGRATION = resolve(
   ROOT,
   'libs/ingestion/prisma/migrations/20260516130715_init_ingestion_model/migration.sql',
@@ -165,6 +169,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setup.connect();
       for (const migrationPath of [
         CONSENT_MIGRATION,
+        CONSENT_REKEY_MIGRATION,
         INGESTION_INIT_MIGRATION,
         INGESTION_SURFACE_MIGRATION,
         EXAMINATION_INIT_MIGRATION,

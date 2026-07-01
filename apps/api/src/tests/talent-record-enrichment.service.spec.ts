@@ -24,7 +24,7 @@ describe('TalentRecordEnrichmentService', () => {
     const consent = {
       findContactingConsentSummaryForTalentIds: vi
         .fn()
-        .mockResolvedValue(new Map([['core1', 'contactable']])),
+        .mockResolvedValue(new Map([['t1', 'contactable']])),
     };
     const svc = new TalentRecordEnrichmentService(
       activity as never,
@@ -56,18 +56,21 @@ describe('TalentRecordEnrichmentService', () => {
     expect(activity.findLastActivityForTalentIds).toHaveBeenCalledTimes(1);
     expect(pipeline.findCurrentStageForTalentIds).toHaveBeenCalledTimes(1);
     expect(consent.findContactingConsentSummaryForTalentIds).toHaveBeenCalledTimes(1);
-    // consent only queried for the linked core id; pipeline got the visible set.
+    // Step-5 consent re-key: consent queried by TalentRecord.id (the page's id
+    // set); pipeline got the visible set.
     expect(
-      consent.findContactingConsentSummaryForTalentIds.mock.calls[0]![0].talent_ids,
-    ).toEqual(['core1']);
+      consent.findContactingConsentSummaryForTalentIds.mock.calls[0]![0].talent_record_ids,
+    ).toEqual(['t1', 't2']);
     expect([
       ...pipeline.findCurrentStageForTalentIds.mock.calls[0]![0]
         .visible_requisition_ids,
     ]).toEqual(['r1']);
   });
 
-  it('skips the consent query when no item is Core-linked', async () => {
-    const consent = { findContactingConsentSummaryForTalentIds: vi.fn() };
+  it('queries consent by TalentRecord.id; no contacting grant → do_not_contact', async () => {
+    const consent = {
+      findContactingConsentSummaryForTalentIds: vi.fn().mockResolvedValue(new Map()),
+    };
     const svc = new TalentRecordEnrichmentService(
       { findLastActivityForTalentIds: vi.fn().mockResolvedValue(new Map()) } as never,
       consent as never,
@@ -78,7 +81,12 @@ describe('TalentRecordEnrichmentService', () => {
       tenant_id: 't',
       visible_requisition_ids: null,
     });
-    expect(consent.findContactingConsentSummaryForTalentIds).not.toHaveBeenCalled();
+    // Step-5 consent re-key: consent is keyed by TalentRecord.id, so the query
+    // always runs over the page's id set (no Core-link gating).
+    expect(consent.findContactingConsentSummaryForTalentIds).toHaveBeenCalledTimes(1);
+    expect(
+      consent.findContactingConsentSummaryForTalentIds.mock.calls[0]![0].talent_record_ids,
+    ).toEqual(['t1']);
     expect(out[0]!.consent_summary).toBe('do_not_contact');
   });
 
@@ -124,9 +132,9 @@ describe('TalentRecordEnrichmentService.crossFacets (Segment 4b)', () => {
     const consent = {
       findContactingConsentSummaryForTalentIds: vi.fn().mockResolvedValue(
         new Map([
-          ['core1', 'contactable'],
-          ['core2', 'expiring_lt_30d'],
-          // core4 absent → do_not_contact (no positive grant)
+          ['t1', 'contactable'],
+          ['t2', 'expiring_lt_30d'],
+          // t3 (unlinked) + t4 absent → do_not_contact (no positive grant)
         ]),
       ),
     };

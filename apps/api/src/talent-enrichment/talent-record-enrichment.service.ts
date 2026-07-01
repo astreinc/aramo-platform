@@ -46,14 +46,6 @@ export class TalentRecordEnrichmentService {
     if (items.length === 0) return [...items];
 
     const ids = items.map((i) => i.id);
-    // consent is Core-keyed — only linked records can carry a grant.
-    const coreIds = [
-      ...new Set(
-        items
-          .map((i) => i.core_talent_id)
-          .filter((x): x is string => x !== null),
-      ),
-    ];
 
     const [lastActivity, stages, consent] = await Promise.all([
       this.activity.findLastActivityForTalentIds({
@@ -65,24 +57,21 @@ export class TalentRecordEnrichmentService {
         talent_record_ids: ids,
         visible_requisition_ids: ctx.visible_requisition_ids,
       }),
-      coreIds.length > 0
-        ? this.consent.findContactingConsentSummaryForTalentIds({
-            tenant_id: ctx.tenant_id,
-            talent_ids: coreIds,
-          })
-        : Promise.resolve(new Map<string, ConsentSummary>()),
+      // Step-5 consent re-key: consent is now keyed by TalentRecord.id (i.id) —
+      // no Core hop / core_talent_id filter. items.length > 0 guarded above.
+      this.consent.findContactingConsentSummaryForTalentIds({
+        tenant_id: ctx.tenant_id,
+        talent_record_ids: ids,
+      }),
     ]);
 
     return items.map((i) => ({
       ...i,
       last_activity_at: lastActivity.get(i.id) ?? null,
       current_stage: stages.get(i.id) ?? null,
-      // Unlinked (no core_talent_id) or no contacting grant ⇒ do_not_contact
-      // (no permission). Only a positive grant is contactable.
-      consent_summary:
-        i.core_talent_id !== null
-          ? (consent.get(i.core_talent_id) ?? 'do_not_contact')
-          : 'do_not_contact',
+      // Keyed by TalentRecord.id; no contacting grant ⇒ do_not_contact (only a
+      // positive grant is contactable).
+      consent_summary: consent.get(i.id) ?? 'do_not_contact',
     }));
   }
 
@@ -118,13 +107,6 @@ export class TalentRecordEnrichmentService {
     }
 
     const ids = keys.map((k) => k.id);
-    const coreIds = [
-      ...new Set(
-        keys
-          .map((k) => k.core_talent_id)
-          .filter((x): x is string => x !== null),
-      ),
-    ];
 
     const [lastActivity, stages, consent] = await Promise.all([
       this.activity.findLastActivityForTalentIds({
@@ -136,10 +118,11 @@ export class TalentRecordEnrichmentService {
         talent_record_ids: ids,
         visible_requisition_ids: ctx.visible_requisition_ids,
       }),
-      coreIds.length > 0
+      // Step-5 consent re-key: consent keyed by TalentRecord.id (k.id).
+      ids.length > 0
         ? this.consent.findContactingConsentSummaryForTalentIds({
             tenant_id: ctx.tenant_id,
-            talent_ids: coreIds,
+            talent_record_ids: ids,
           })
         : Promise.resolve(new Map<string, ConsentSummary>()),
     ]);
@@ -165,14 +148,11 @@ export class TalentRecordEnrichmentService {
       if (days <= 0) recency.today++;
     }
 
-    // consent — same do_not_contact-by-default rule as enrich(): unlinked or
-    // no positive grant ⇒ do_not_contact.
+    // consent — same do_not_contact-by-default rule as enrich(): no positive
+    // contacting grant ⇒ do_not_contact. Keyed by TalentRecord.id (k.id).
     const consentCounts = new Map<string, number>();
     for (const k of keys) {
-      const summary =
-        k.core_talent_id !== null
-          ? (consent.get(k.core_talent_id) ?? 'do_not_contact')
-          : 'do_not_contact';
+      const summary = consent.get(k.id) ?? 'do_not_contact';
       consentCounts.set(summary, (consentCounts.get(summary) ?? 0) + 1);
     }
 

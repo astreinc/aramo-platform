@@ -30,7 +30,11 @@ model TalentConsentEvent {
   // UUID v7, generated app-side via uuid.v7(). Postgres 17 has no native
   // uuidv7() function (PR-2 precedent decision #3).
   id                     String    @id @db.Uuid
-  talent_id              String    @db.Uuid
+  /// The ATS-heart person key (Step-5 consent re-key, ADR-0016): references
+  /// talent_record.TalentRecord.id (cross-schema, UUID-only, no FK per §7.3).
+  /// Was Core talent.Talent.id before the re-key; consent is now addressable
+  /// by the same TalentRecord.id the RTBF erasure runbook holds.
+  talent_record_id       String    @db.Uuid
   tenant_id              String    @db.Uuid
   // Closed enum (Group 2 §2.2, 5 values):
   //   profile_storage | resume_processing | matching | contacting | cross_tenant_visibility
@@ -56,13 +60,13 @@ model TalentConsentEvent {
   // When the row was inserted.
   created_at             DateTime  @default(now()) @db.Timestamptz
 
-  @@index([tenant_id, talent_id, occurred_at])
+  @@index([tenant_id, talent_record_id, occurred_at])
   @@index([tenant_id, scope, action])
   // PR-6: keyset pagination support for /consent/history. Ordering is
   // (created_at DESC, id DESC); the index matches that exactly so the
   // cursor predicate can seek without sort. Per directive §6, ordering
   // and pagination must execute in the database.
-  @@index([tenant_id, talent_id, created_at(sort: Desc), id(sort: Desc)])
+  @@index([tenant_id, talent_record_id, created_at(sort: Desc), id(sort: Desc)])
   @@schema("consent")
 }
 
@@ -109,7 +113,10 @@ model ConsentAuditEvent {
   actor_type    String
   // e.g., consent.grant.recorded
   event_type    String
-  // talent_id (cross-schema reference, UUID-only per Architecture §7).
+  // talent_record_id — the ATS-heart person key (Step-5 consent re-key):
+  // references talent_record.TalentRecord.id (cross-schema, UUID-only per §7).
+  // Column name stays `subject_id` (audit-domain vocab); it now holds the
+  // TalentRecord.id, not the Core talent.Talent.id.
   subject_id    String   @db.Uuid
   event_payload Json
   created_at    DateTime @default(now()) @db.Timestamptz

@@ -8,7 +8,7 @@ import type {
 export interface ConsentGrantResponseDto {
   event_id: string;
   tenant_id: string;
-  talent_id: string;
+  talent_record_id: string;
   scope: ConsentScopeValue;
   action: 'granted';
   captured_method: ConsentCapturedMethodValue;

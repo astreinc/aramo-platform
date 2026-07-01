@@ -115,7 +115,7 @@ paths:
         action is set server-side to "revoked"; the request body
         does not accept a writable action field. Inside the same
         transaction, the server performs a single-event lookup for
-        the most recent prior grant event by (tenant_id, talent_id,
+        the most recent prior grant event by (tenant_id, talent_record_id,
         scope) and records its id as `revoked_event_id` in the
         response, audit, and outbox payloads. If no prior grant
         exists, `revoked_event_id` is null (revoke without grant is
@@ -301,7 +301,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /consent/state/{talent_id}:
+  /consent/state/{talent_record_id}:
     get:
       operationId: getTalentConsentState
       tags: [Consent]
@@ -320,7 +320,7 @@ paths:
         batch findMany call.
 
         Idempotency: N/A per Phase 1 §6 endpoint table (line 500).
-        No request body. talent_id is a path parameter (UUID).
+        No request body. talent_record_id is a path parameter (UUID).
 
         This is the program's first informational read endpoint.
         Per Decision H (PR-5), informational endpoints do NOT
@@ -334,14 +334,14 @@ paths:
         Decision J's "partial consent NOT flattened" pattern.
 
         Right-to-be-forgotten (Decision F, PR-5): the endpoint
-        continues to function for anonymized talent_ids and
+        continues to function for anonymized talent_record_ids and
         signals anonymization via is_anonymized at root level.
         PR-5 limitation: the talent module providing identity-
         existence detection does not exist yet, so is_anonymized
         is always false in PR-5. The schema field is in place
         for forward-compatibility.
       parameters:
-        - name: talent_id
+        - name: talent_record_id
           in: path
           required: true
           schema:
@@ -366,7 +366,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TalentConsentStateResponse'
         '400':
-          description: Invalid talent_id (not a UUID)
+          description: Invalid talent_record_id (not a UUID)
           content:
             application/json:
               schema:
@@ -390,7 +390,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /consent/history/{talent_id}:
+  /consent/history/{talent_record_id}:
     get:
       operationId: getTalentConsentHistory
       tags: [Consent]
@@ -409,7 +409,7 @@ paths:
 
         Per directive §6, ordering and pagination execute in the
         database; the schema includes the supporting index
-        (tenant_id, talent_id, created_at DESC, id DESC).
+        (tenant_id, talent_record_id, created_at DESC, id DESC).
 
         Per ADR-0007 Decision E (extended to history): historical
         events preserve their original status. Staleness is
@@ -430,7 +430,7 @@ paths:
         { events: [], next_cursor: null, is_anonymized: false }.
         Never 404 on empty.
       parameters:
-        - name: talent_id
+        - name: talent_record_id
           in: path
           required: true
           schema:
@@ -488,7 +488,7 @@ paths:
                 $ref: '#/components/schemas/ConsentHistoryResponse'
         '400':
           description: |
-            Validation error (invalid talent_id, invalid limit,
+            Validation error (invalid talent_record_id, invalid limit,
             invalid cursor)
           content:
             application/json:
@@ -513,7 +513,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /consent/decision-log/{talent_id}:
+  /consent/decision-log/{talent_record_id}:
     get:
       operationId: getTalentConsentDecisionLog
       tags: [Consent]
@@ -537,7 +537,7 @@ paths:
 
         Field name mapping (PR-7 §5):
           DB id          → API event_id   (PR-6 precedent)
-          DB subject_id  → API talent_id  (PR-7 exception)
+          DB subject_id  → API talent_record_id  (PR-7 exception)
 
         event_payload is opaque JSON pass-through; clients inspect it
         for finer-grained selection. The directive forbids extraction
@@ -558,7 +558,7 @@ paths:
         { entries: [], next_cursor: null, is_anonymized: false }.
         Never 404 on empty (ADR-0007 Decision D).
       parameters:
-        - name: talent_id
+        - name: talent_record_id
           in: path
           required: true
           schema:
@@ -623,7 +623,7 @@ paths:
                 $ref: '#/components/schemas/ConsentDecisionLogResponse'
         '400':
           description: |
-            Validation error (invalid talent_id, invalid event_type,
+            Validation error (invalid talent_record_id, invalid event_type,
             invalid limit, invalid cursor)
           content:
             application/json:
@@ -869,13 +869,13 @@ components:
         Request body for POST /consent/grant. The `action` field is
         deliberately absent — server sets `action = granted`.
       required:
-        - talent_id
+        - talent_record_id
         - scope
         - captured_method
         - consent_version
         - occurred_at
       properties:
-        talent_id:
+        talent_record_id:
           type: string
           format: uuid
         scope:
@@ -909,7 +909,7 @@ components:
       required:
         - event_id
         - tenant_id
-        - talent_id
+        - talent_record_id
         - scope
         - action
         - captured_method
@@ -923,7 +923,7 @@ components:
         tenant_id:
           type: string
           format: uuid
-        talent_id:
+        talent_record_id:
           type: string
           format: uuid
         scope:
@@ -973,13 +973,13 @@ components:
         absent; both are grant-time concepts. Per PR-3 canonical
         contract.
       required:
-        - talent_id
+        - talent_record_id
         - scope
         - captured_method
         - consent_version
         - occurred_at
       properties:
-        talent_id:
+        talent_record_id:
           type: string
           format: uuid
         scope:
@@ -1007,7 +1007,7 @@ components:
       required:
         - event_id
         - tenant_id
-        - talent_id
+        - talent_record_id
         - scope
         - action
         - captured_method
@@ -1022,7 +1022,7 @@ components:
         tenant_id:
           type: string
           format: uuid
-        talent_id:
+        talent_record_id:
           type: string
           format: uuid
         scope:
@@ -1060,7 +1060,7 @@ components:
           description: |
             ID of the prior grant event being revoked. Server-derived
             via single-event lookup against the ledger for the latest
-            matching granted event by (tenant_id, talent_id, scope).
+            matching granted event by (tenant_id, talent_record_id, scope).
             Null if no prior grant exists (revoke without grant is
             allowed per PR-3 Decision D).
         metadata:
@@ -1081,10 +1081,10 @@ components:
         resolver returns 400 VALIDATION_ERROR if absent in that
         case.
       required:
-        - talent_id
+        - talent_record_id
         - operation
       properties:
-        talent_id:
+        talent_record_id:
           type: string
           format: uuid
         operation:
@@ -1181,7 +1181,7 @@ components:
       type: object
       additionalProperties: false
       description: |
-        Wrapped response shape for GET /consent/state/{talent_id}
+        Wrapped response shape for GET /consent/state/{talent_record_id}
         (PR-5 Decision A). Metadata fields plus a `scopes` array
         that always contains all 5 ConsentScope values (Decision D:
         always-5-scopes deterministic response).
@@ -1192,13 +1192,13 @@ components:
         not exist yet. Schema field present for forward-
         compatibility; future PRs wire detection.
       required:
-        - talent_id
+        - talent_record_id
         - tenant_id
         - is_anonymized
         - computed_at
         - scopes
       properties:
-        talent_id:
+        talent_record_id:
           type: string
           format: uuid
         tenant_id:
@@ -1268,7 +1268,7 @@ components:
       type: object
       additionalProperties: false
       description: |
-        Wrapped response shape for GET /consent/history/{talent_id}
+        Wrapped response shape for GET /consent/history/{talent_record_id}
         (PR-6 §4). Wrapped, never bare. Never 404 on empty.
 
         `next_cursor` is null when there are no more pages,
@@ -1308,7 +1308,7 @@ components:
 
         Field name mapping (PR-7 §5):
           DB id          → API event_id   (PR-6 precedent)
-          DB subject_id  → API talent_id  (PR-7 exception)
+          DB subject_id  → API talent_record_id  (PR-7 exception)
 
         `event_type` is a closed set per PR-7 §7 + ADR-0009 §4.
         `actor_type` is a closed set: {recruiter, self, system}.
@@ -1319,7 +1319,7 @@ components:
         transforming payload fields into top-level entry fields.
       required:
         - event_id
-        - talent_id
+        - talent_record_id
         - event_type
         - created_at
         - event_payload
@@ -1327,7 +1327,7 @@ components:
         event_id:
           type: string
           format: uuid
-        talent_id:
+        talent_record_id:
           type: string
           format: uuid
         event_type:
@@ -1358,7 +1358,7 @@ components:
       type: object
       additionalProperties: false
       description: |
-        Wrapped response shape for GET /consent/decision-log/{talent_id}
+        Wrapped response shape for GET /consent/decision-log/{talent_record_id}
         (PR-7 §4). Wrapped, never bare. Never 404 on empty (ADR-0007
         Decision D).
 

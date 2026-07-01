@@ -78,7 +78,7 @@ export class StaleConsentProcessor
     for (const grant of stale) {
       await this.staleRepo.markExpired({
         tenant_id: grant.tenant_id,
-        talent_id: grant.talent_id,
+        talent_record_id: grant.talent_record_id,
         scope: 'contacting',
         occurred_at: computedAt,
         reason: 'stale_consent_12mo_window',

@@ -40,7 +40,7 @@ function portalContext(overrides: Partial<AuthContextType> = {}): AuthContextTyp
 
 function makeGrantRequest(): ConsentGrantRequestDto {
   return {
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     scope: 'matching',
     captured_method: 'recruiter_capture',
     consent_version: 'v1',
@@ -50,7 +50,7 @@ function makeGrantRequest(): ConsentGrantRequestDto {
 
 function makeRevokeRequest(): ConsentRevokeRequestDto {
   return {
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     scope: 'matching',
     captured_method: 'recruiter_capture',
     consent_version: 'v1',
@@ -167,7 +167,7 @@ function makeCheckRequest(
   overrides: Partial<ConsentCheckRequestDto> = {},
 ): ConsentCheckRequestDto {
   return {
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     operation: 'matching',
     ...overrides,
   } as ConsentCheckRequestDto;
@@ -183,7 +183,7 @@ function makeDecision(): ConsentDecisionDto {
 }
 
 describe('ConsentService.check', () => {
-  it('forwards talent_id, operation, channel, idempotencyKey, requestId, and JWT-derived tenant', async () => {
+  it('forwards talent_record_id, operation, channel, idempotencyKey, requestId, and JWT-derived tenant', async () => {
     const repo = { resolveConsentState: vi.fn().mockResolvedValue(makeDecision()) };
     const service = new ConsentService(repo as unknown as ConsentRepository);
     await service.check(
@@ -195,14 +195,14 @@ describe('ConsentService.check', () => {
     expect(repo.resolveConsentState).toHaveBeenCalledOnce();
     const args = repo.resolveConsentState.mock.calls[0][0] as {
       tenant_id: string;
-      talent_id: string;
+      talent_record_id: string;
       operation: string;
       channel: string;
       idempotencyKey: string;
       requestId: string;
     };
     expect(args.tenant_id).toBe(TENANT_ID);
-    expect(args.talent_id).toBe(TALENT_ID);
+    expect(args.talent_record_id).toBe(TALENT_ID);
     expect(args.operation).toBe('engagement');
     expect(args.channel).toBe('email');
     expect(args.idempotencyKey).toBe('aabbccdd-0000-7000-8000-000000000001');
@@ -253,7 +253,7 @@ describe('ConsentService.check', () => {
 
 describe('ConsentService.getState', () => {
   const stateResponse = {
-    talent_id: TALENT_ID,
+    talent_record_id: TALENT_ID,
     tenant_id: TENANT_ID,
     is_anonymized: false,
     computed_at: '2026-05-01T12:00:00Z',
@@ -268,18 +268,18 @@ describe('ConsentService.getState', () => {
     ],
   };
 
-  it('forwards talent_id, requestId, and JWT-derived tenant_id to the resolver', async () => {
+  it('forwards talent_record_id, requestId, and JWT-derived tenant_id to the resolver', async () => {
     const repo = { resolveAllScopes: vi.fn().mockResolvedValue(stateResponse) };
     const service = new ConsentService(repo as unknown as ConsentRepository);
     await service.getState(TALENT_ID, recruiterContext(), 'req-state-1');
     expect(repo.resolveAllScopes).toHaveBeenCalledOnce();
     const args = repo.resolveAllScopes.mock.calls[0][0] as {
       tenant_id: string;
-      talent_id: string;
+      talent_record_id: string;
       requestId: string;
     };
     expect(args.tenant_id).toBe(TENANT_ID);
-    expect(args.talent_id).toBe(TALENT_ID);
+    expect(args.talent_record_id).toBe(TALENT_ID);
     expect(args.requestId).toBe('req-state-1');
   });
 
@@ -307,7 +307,7 @@ describe('ConsentService.getHistory (PR-6)', () => {
     is_anonymized: false,
   };
 
-  it('forwards talent_id, scope, limit, cursor, requestId, and JWT-derived tenant_id', async () => {
+  it('forwards talent_record_id, scope, limit, cursor, requestId, and JWT-derived tenant_id', async () => {
     const repo = { resolveHistory: vi.fn().mockResolvedValue(historyResponse) };
     const service = new ConsentService(repo as unknown as ConsentRepository);
     const cursor = {
@@ -325,14 +325,14 @@ describe('ConsentService.getHistory (PR-6)', () => {
     expect(repo.resolveHistory).toHaveBeenCalledOnce();
     const args = repo.resolveHistory.mock.calls[0][0] as {
       tenant_id: string;
-      talent_id: string;
+      talent_record_id: string;
       scope: string;
       limit: number;
       cursor: { created_at: Date; event_id: string };
       requestId: string;
     };
     expect(args.tenant_id).toBe(TENANT_ID);
-    expect(args.talent_id).toBe(TALENT_ID);
+    expect(args.talent_record_id).toBe(TALENT_ID);
     expect(args.scope).toBe('contacting');
     expect(args.limit).toBe(25);
     expect(args.cursor).toEqual(cursor);
@@ -388,7 +388,7 @@ describe('ConsentService.getDecisionLog (PR-7)', () => {
     is_anonymized: false,
   };
 
-  it('forwards talent_id, event_type, limit, cursor, requestId, and JWT-derived tenant_id', async () => {
+  it('forwards talent_record_id, event_type, limit, cursor, requestId, and JWT-derived tenant_id', async () => {
     const repo = { resolveDecisionLog: vi.fn().mockResolvedValue(decisionLogResponse) };
     const service = new ConsentService(repo as unknown as ConsentRepository);
     const cursor = {
@@ -406,14 +406,14 @@ describe('ConsentService.getDecisionLog (PR-7)', () => {
     expect(repo.resolveDecisionLog).toHaveBeenCalledOnce();
     const args = repo.resolveDecisionLog.mock.calls[0][0] as {
       tenant_id: string;
-      talent_id: string;
+      talent_record_id: string;
       event_type: string;
       limit: number;
       cursor: { created_at: Date; event_id: string };
       requestId: string;
     };
     expect(args.tenant_id).toBe(TENANT_ID);
-    expect(args.talent_id).toBe(TALENT_ID);
+    expect(args.talent_record_id).toBe(TALENT_ID);
     expect(args.event_type).toBe('consent.check.decision');
     expect(args.limit).toBe(25);
     expect(args.cursor).toEqual(cursor);

@@ -34,6 +34,9 @@ import { CrossSchemaConsistencyRepository } from '../lib/cross-schema-consistenc
 
 const MIGRATIONS: readonly string[] = [
   resolve(__dirname, '../../../consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql'),
+  // Step-5 consent re-key: talent_id → talent_record_id (the consent pair now
+  // LEFT JOINs talent_record.TalentRecord).
+  resolve(__dirname, '../../../consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql'),
   resolve(__dirname, '../../../talent/prisma/migrations/20260516085014_init_talent_model/migration.sql'),
   // 4e-engagement-key — the engagement→talent pair now LEFT JOINs
   // talent_record.TalentRecord (was talent.Talent), so the target table must
@@ -129,22 +132,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Seed: 1 valid talent row.
       const client = await pgPool.connect();
       try {
+        // Step-5 consent re-key: the consent pair now joins
+        // talent_record.TalentRecord, so the valid case seeds a TalentRecord.
         await client.query(
-          'INSERT INTO "talent"."Talent" ("id", "lifecycle_status", "created_at", "updated_at") ' +
-            'VALUES ($1, $2, NOW(), NOW())',
-          [VALID_TALENT, 'active'],
+          'INSERT INTO "talent_record"."TalentRecord" ("id", "tenant_id", "first_name", "last_name", "created_at", "updated_at") ' +
+            'VALUES ($1, $2, $3, $4, NOW(), NOW())',
+          [VALID_TALENT, TENANT_A, 'Valid', 'Talent'],
         );
-        // Seed: 1 consent event whose talent_id matches the valid talent.
+        // Seed: 1 consent event whose talent_record_id matches the valid TalentRecord.
         await client.query(
           'INSERT INTO "consent"."TalentConsentEvent" ' +
-            '("id", "talent_id", "tenant_id", "scope", "action", "captured_method", "consent_version", "occurred_at") ' +
+            '("id", "talent_record_id", "tenant_id", "scope", "action", "captured_method", "consent_version", "occurred_at") ' +
             'VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())',
           [uuidv7(), VALID_TALENT, TENANT_A, 'matching', 'granted', 'self_signup', 'v1'],
         );
-        // Seed: 1 consent event whose talent_id is ORPHANED (no matching talent.Talent row).
+        // Seed: 1 consent event whose talent_record_id is ORPHANED (no matching TalentRecord row).
         await client.query(
           'INSERT INTO "consent"."TalentConsentEvent" ' +
-            '("id", "talent_id", "tenant_id", "scope", "action", "captured_method", "consent_version", "occurred_at") ' +
+            '("id", "talent_record_id", "tenant_id", "scope", "action", "captured_method", "consent_version", "occurred_at") ' +
             'VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())',
           [uuidv7(), ORPHAN_TALENT, TENANT_A, 'matching', 'granted', 'self_signup', 'v1'],
         );
@@ -157,7 +162,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Find the consent->talent pair result.
       const consentTalentPair = results.find(
-        (r) => r.pair_id === 'consent.TalentConsentEvent.talent_id->talent.Talent',
+        (r) => r.pair_id === 'consent.TalentConsentEvent.talent_record_id->talent_record.TalentRecord',
       );
       expect(consentTalentPair).toBeDefined();
       expect(consentTalentPair?.orphan_count).toBe(1);
@@ -166,7 +171,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Other pairs have empty tables, so orphan_count should be 0 for each.
       for (const r of results) {
-        if (r.pair_id === 'consent.TalentConsentEvent.talent_id->talent.Talent') continue;
+        if (r.pair_id === 'consent.TalentConsentEvent.talent_record_id->talent_record.TalentRecord') continue;
         expect(r.orphan_count).toBe(0);
       }
     });

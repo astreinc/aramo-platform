@@ -506,7 +506,9 @@ export class EngagementController {
     let consentWarning: OutreachDraftResponseDto['consent_warning'];
     const consentDecision = await this.consentService.check(
       {
-        talent_id: engagement.talent_id,
+        // Post-#349 engagement.talent_id IS a TalentRecord.id; consent is now
+        // TalentRecord-keyed (Step-5 re-key), so the gate meets the ledger.
+        talent_record_id: engagement.talent_id,
         operation: 'engagement',
         channel: 'email',
       },
@@ -808,7 +810,9 @@ export class EngagementController {
     // 500 INTERNAL_ERROR (retry, not back-off).
     const consentDecision = await this.consentService.check(
       {
-        talent_id: engagement.talent_id,
+        // Post-#349 engagement.talent_id IS a TalentRecord.id; consent is now
+        // TalentRecord-keyed (Step-5 re-key), so the gate meets the ledger.
+        talent_record_id: engagement.talent_id,
         operation: 'engagement',
         channel: 'email',
       },

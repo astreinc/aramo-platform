@@ -112,7 +112,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const stubResponse = {
         event_id: '11111111-1111-7111-8111-111111111111',
         tenant_id: TENANT_ID,
-        talent_id: TALENT_ID,
+        talent_record_id: TALENT_ID,
         scope: 'matching',
         action: 'granted',
         captured_method: 'recruiter_capture',
@@ -129,7 +129,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .set('Cookie', [`aramo_access_token=${token}`])
         .set('Idempotency-Key', IDEMPOTENCY_KEY)
         .send({
-          talent_id: TALENT_ID,
+          talent_record_id: TALENT_ID,
           scope: 'matching',
           captured_method: 'recruiter_capture',
           consent_version: 'v1',
