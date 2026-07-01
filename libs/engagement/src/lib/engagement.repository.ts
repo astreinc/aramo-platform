@@ -5,6 +5,7 @@ import { ExaminationRepository } from '@aramo/examination';
 import { JobDomainRepository } from '@aramo/job-domain';
 import { recordUsage } from '@aramo/metering';
 import { TalentRepository } from '@aramo/talent';
+import { TalentRecordRepository } from '@aramo/talent-record';
 
 import { canTransition, type EngagementStateValue } from './engagement-state.js';
 import type { EngagementEventTypeValue } from './engagement-event.js';
@@ -304,8 +305,15 @@ export class EngagementRepository {
     // M5 PR-5/6/7 consumers that may delegate event-append to the
     // dedicated repository.
     private readonly engagementEventRepository: EngagementEventRepository,
-    // M5 PR-3 — Pattern C (Talent) cross-schema validator dep.
+    // M5 PR-3 — Pattern C (Talent, Core) cross-schema validator dep.
+    // 4e-engagement-key: NO LONGER USED (the validator now resolves against
+    // TalentRecord via talentRecordRepository). Retained injected for now;
+    // its removal is 4e-rest (Core retirement). See PR description.
     private readonly talentRepository: TalentRepository,
+    // 4e-engagement-key — Pattern C (TalentRecord) cross-schema validator
+    // dep. engagement.talent_id is now interpreted as a TalentRecord.id;
+    // createEngagement validates it against the tenant-scoped TalentRecord.
+    private readonly talentRecordRepository: TalentRecordRepository,
     // M5 PR-3 — Pattern A (Requisition) cross-schema validator dep.
     private readonly jobDomainRepository: JobDomainRepository,
     // M5 PR-3 — Pattern B (Examination) cross-schema validator dep.
@@ -494,12 +502,16 @@ export class EngagementRepository {
     // ---- Step 1: input validation -------------------------------------
     this.validateCreateInput(input);
 
-    // ---- Step 2a: Pattern C — Talent (overlay-existence) --------------
-    const overlay = await this.talentRepository.findOverlayByTenant({
-      talent_id: input.talent_id,
+    // ---- Step 2a: Pattern C — TalentRecord (in-tenant existence) ------
+    // 4e-engagement-key: engagement.talent_id is now a TalentRecord.id (the
+    // ATS heart), not a Core talent.Talent.id. The caller supplies it; we
+    // validate it exists in the requesting tenant against the TalentRecord
+    // table (was Core findOverlayByTenant before the re-point). null → 422.
+    const talentRecord = await this.talentRecordRepository.findById({
       tenant_id: input.tenant_id,
+      id: input.talent_id,
     });
-    if (overlay === null) {
+    if (talentRecord === null) {
       this.logRefused('ENGAGEMENT_REFERENCE_NOT_FOUND', input, 'talent_id');
       throw new AramoError(
         'ENGAGEMENT_REFERENCE_NOT_FOUND',

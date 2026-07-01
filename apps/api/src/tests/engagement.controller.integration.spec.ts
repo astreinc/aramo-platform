@@ -22,6 +22,11 @@ import {
 
 import { AppModule } from '../../../../apps/api/src/app.module.js';
 
+import {
+  applyTalentRecordMigrations,
+  seedTalentRecord,
+} from './talent-record-fixtures.js';
+
 // M5 PR-4 §4.11 — EngagementController integration spec.
 //
 // Boots AppModule via NestJS Test against a Postgres 17 testcontainer
@@ -141,6 +146,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           await setupClient.query(trimmed);
         }
       }
+      // 4e-engagement-key — TalentRecord substrate (engagement.talent_id).
+      // TENANT_A only; TENANT_B has no TalentRecord → Pattern C refusal 422.
+      await applyTalentRecordMigrations(setupClient);
+      await seedTalentRecord(setupClient, { id: TALENT_A, tenant_id: TENANT_A });
 
       // Seed Talent + overlay (TENANT_A only — TENANT_B has no overlay for
       // Pattern C refusal test).

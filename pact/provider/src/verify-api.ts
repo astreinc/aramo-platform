@@ -141,6 +141,17 @@ const TALENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
 );
+// 4e-engagement-key — engagement.talent_id now references
+// talent_record.TalentRecord.id, so the engagement-create provider state
+// (seedEngagementBasics) seeds a TalentRecord. The 5 column-adding
+// talent-record migrations (whole files; pg parses them natively).
+const TALENT_RECORD_MIGRATIONS = [
+  'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
+  'libs/talent-record/prisma/migrations/20260603020000_add_core_talent_link_to_talent_record/migration.sql',
+  'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
+  'libs/talent-record/prisma/migrations/20260615000000_talent_stated_fields/migration.sql',
+  'libs/talent-record/prisma/migrations/20260630140000_overlay_fold_cluster_id/migration.sql',
+].map((p) => resolve(ROOT, p));
 // PR-A1b §4 sweep — entitlement schema applied for the pact verifier so
 // the portal-thin pact interactions (5 interactions traversing the now
 // class-level @RequireCapability('portal') gate) can pass through
@@ -395,6 +406,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // truncate at the start of every interaction.
       await c.query('TRUNCATE TABLE talent."TalentTenantOverlay" CASCADE');
       await c.query('TRUNCATE TABLE talent."Talent" CASCADE');
+      // 4e-engagement-key — engagement.talent_id references TalentRecord.
+      await c.query('TRUNCATE TABLE talent_record."TalentRecord" CASCADE');
       // M4 PR-3 — submittal-create state handlers seed an examination
       // and trigger buildPackage which writes the evidence package +
       // submittal record. Truncate both tables so prior runs don't leak.
@@ -1338,6 +1351,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         EXAMINATION_OVERRIDE_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
         TALENT_INIT_MIGRATION,
+        // 4e-engagement-key — talent_record schema (engagement.talent_id).
+        ...TALENT_RECORD_MIGRATIONS,
         // M4 PR-3 §4.8 — evidence + talent-evidence + submittal
         // migrations applied so the submittal-create pact verification
         // can build the evidence package + persist the workflow record.
@@ -2944,9 +2959,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            // Seed Talent + Requisition but NOT the overlay for the GHOST
-            // talent referenced by the test. The controller's Pattern C
-            // validator returns null → 422 ENGAGEMENT_REFERENCE_NOT_FOUND.
+            // 4e-engagement-key: seed the happy-path TalentRecord +
+            // Requisition, but the interaction references a GHOST talent_id
+            // (no matching TalentRecord in tenant). The controller's Pattern C
+            // validator (talentRecordRepository.findById) returns null → 422
+            // ENGAGEMENT_REFERENCE_NOT_FOUND.
             await seedEngagementBasics(c);
           });
         },
@@ -3434,26 +3451,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         },
     };
 
-    // M5 PR-4 helpers: seed Talent + overlay + Job + Requisition for the
+    // M5 PR-4 helpers: seed TalentRecord + Job + Requisition for the
     // PACT_RECRUITER_ACTOR_ID tenant context — engagement-create's three
     // cross-schema validators need all three to be visible.
+    //
+    // 4e-engagement-key: engagement.talent_id is now a TalentRecord.id (was a
+    // Core talent.Talent.id). The Pattern-C validator resolves against
+    // talent_record.TalentRecord (not the Core overlay), so we seed a
+    // TalentRecord row keyed by `talentId` instead of Talent + overlay.
     async function seedEngagementBasics(c: Client): Promise<void> {
       const talentId = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
       const jobId = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
       const reqId = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
       await c.query(
-        `INSERT INTO talent."Talent" (id, lifecycle_status, updated_at)
-         VALUES ($1, 'active', NOW())
+        `INSERT INTO talent_record."TalentRecord"
+           (id, tenant_id, first_name, last_name, created_at, updated_at)
+         VALUES ($1, $2, 'Pact', 'Talent', NOW(), NOW())
          ON CONFLICT (id) DO NOTHING`,
-        [talentId],
-      );
-      await c.query(
-        `INSERT INTO talent."TalentTenantOverlay"
-           (id, talent_id, tenant_id, source_recruiter_id, source_channel,
-            tenant_status, updated_at)
-         VALUES ($1, $2, $3, NULL, 'self_signup', 'active', NOW())
-         ON CONFLICT (id) DO NOTHING`,
-        ['00000000-0000-7fff-8fff-000000000040', talentId, TENANT_ID],
+        [talentId, TENANT_ID],
       );
       await c.query(
         `INSERT INTO job_domain."Job" (id, tenant_id)

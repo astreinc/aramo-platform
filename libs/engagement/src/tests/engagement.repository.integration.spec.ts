@@ -19,6 +19,10 @@ import {
   TalentRepository,
   PrismaService as TalentPrismaService,
 } from '@aramo/talent';
+import {
+  TalentRecordRepository,
+  TalentRecordPrismaService,
+} from '@aramo/talent-record';
 
 import { EngagementRepository } from '../lib/engagement.repository.js';
 import { EngagementEventRepository } from '../lib/engagement-event.repository.js';
@@ -77,6 +81,18 @@ const EXAMINATION_INIT_MIGRATION_PATH = resolve(
   __dirname,
   '../../../examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
 );
+// 4e-engagement-key — the Pattern-C create validator now resolves against
+// talent_record.TalentRecord (engagement.talent_id is a TalentRecord.id).
+// The 5 column-adding talent-record migrations (init + the additive columns
+// the regenerated Prisma client projects); the trgm/resume/search-index
+// migrations are not needed for the TalentRecord scalar projection.
+const TALENT_RECORD_MIGRATION_PATHS = [
+  '../../../talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
+  '../../../talent-record/prisma/migrations/20260603020000_add_core_talent_link_to_talent_record/migration.sql',
+  '../../../talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
+  '../../../talent-record/prisma/migrations/20260615000000_talent_stated_fields/migration.sql',
+  '../../../talent-record/prisma/migrations/20260630140000_overlay_fold_cluster_id/migration.sql',
+].map((p) => resolve(__dirname, p));
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
 const TENANT_B = '22222222-2222-7222-8222-222222222222';
@@ -122,6 +138,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let container: StartedPostgreSqlContainer;
     let prisma: PrismaService;
     let talentPrisma: TalentPrismaService;
+    let talentRecordPrisma: TalentRecordPrismaService;
     let jobDomainPrisma: JobDomainPrismaService;
     let examPrisma: ExaminationPrismaService;
     let repo: EngagementRepository;
@@ -139,6 +156,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // PR-A1c §4 — metering schema (cross-schema in-tx UsageEvent INSERT).
         readFileSync(METERING_INIT_MIGRATION_PATH, 'utf8'),
         readFileSync(TALENT_MIGRATION_PATH, 'utf8'),
+        ...TALENT_RECORD_MIGRATION_PATHS.map((p) => readFileSync(p, 'utf8')),
         readFileSync(JOB_DOMAIN_MIGRATION_PATH, 'utf8'),
         readFileSync(EXAMINATION_INIT_MIGRATION_PATH, 'utf8'),
       ];
@@ -161,8 +179,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await jobDomainPrisma.$connect();
       examPrisma = new ExaminationPrismaService(url);
       await examPrisma.$connect();
+      talentRecordPrisma = new TalentRecordPrismaService(url);
+      await talentRecordPrisma.$connect();
 
       const talentRepo = new TalentRepository(talentPrisma);
+      const talentRecordRepo = new TalentRecordRepository(talentRecordPrisma);
       const jobDomainRepo = new JobDomainRepository(jobDomainPrisma);
       const examRepo = new ExaminationRepository(examPrisma, undefined as never);
       const engagementEventRepo = new EngagementEventRepository(prisma, makeMockLogger());
@@ -170,6 +191,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         prisma,
         engagementEventRepo,
         talentRepo,
+        talentRecordRepo,
         jobDomainRepo,
         examRepo,
         makeMockLogger(),
@@ -224,6 +246,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // No overlay for TALENT_A in TENANT_B → Pattern C refusal test.
       await seedTalentOverlay(setupClient, {
         talent_id: TALENT_B,
+        tenant_id: TENANT_A,
+      });
+      // 4e-engagement-key — the Pattern-C validator now resolves against
+      // TalentRecord (id == talent_id, tenant-scoped). Seed the same
+      // (talent, tenant) pairs the overlays cover; NO TalentRecord for
+      // TALENT_A in TENANT_B → Pattern C refusal stays a 422.
+      await seedTalentRecord(setupClient, {
+        id: TALENT_A,
+        tenant_id: TENANT_A,
+      });
+      await seedTalentRecord(setupClient, {
+        id: TALENT_B,
         tenant_id: TENANT_A,
       });
 
@@ -298,6 +332,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setupClient?.$disconnect();
       await prisma?.$disconnect();
       await talentPrisma?.$disconnect();
+      await talentRecordPrisma?.$disconnect();
       await jobDomainPrisma?.$disconnect();
       await examPrisma?.$disconnect();
       await container?.stop();
@@ -426,8 +461,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(Number(evRows[0]?.count ?? 0n)).toBe(1);
     });
 
-    it('createEngagement Pattern C refusal — talent overlay absent → ENGAGEMENT_REFERENCE_NOT_FOUND 422; no rows', async () => {
-      // TALENT_A has no overlay in TENANT_B → findOverlayByTenant returns null.
+    it('createEngagement Pattern C refusal — TalentRecord absent in tenant → ENGAGEMENT_REFERENCE_NOT_FOUND 422; no rows', async () => {
+      // TALENT_A has no TalentRecord in TENANT_B → findById returns null.
       const promise = repo.createEngagement({
         id: CREATE_TALENT_REFUSE_ID,
         event_id: '00000000-0000-7000-8000-eeeec0000002',
@@ -695,6 +730,21 @@ async function seedTalent(client: PrismaService, id: string): Promise<void> {
   );
 }
 
+// 4e-engagement-key — TalentRecord (the ATS heart) the create validator now
+// resolves against. id == the engagement's talent_id (tenant-scoped).
+async function seedTalentRecord(
+  client: PrismaService,
+  opts: { id: string; tenant_id: string },
+): Promise<void> {
+  await client.$executeRawUnsafe(
+    `INSERT INTO talent_record."TalentRecord" (
+       id, tenant_id, first_name, last_name, created_at, updated_at
+     ) VALUES (
+       '${opts.id}'::uuid, '${opts.tenant_id}'::uuid, 'Pact', 'Talent', NOW(), NOW()
+     )`,
+  );
+}
+
 // Monotonic counter ensures unique overlay IDs across calls (test
 // fixtures repeat across talent/tenant combinations).
 let overlaySeq = 0;
@@ -815,6 +865,14 @@ function splitDdl(sql: string): string[] {
   let inDollar = false;
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i];
+    // Strip `--` line comments (outside $$ blocks) so a `;` inside a comment
+    // does not split a statement (e.g. talent-record stated-fields migration).
+    if (!inDollar && ch === '-' && sql[i + 1] === '-') {
+      const nl = sql.indexOf('\n', i);
+      if (nl === -1) break;
+      i = nl - 1;
+      continue;
+    }
     if (sql.startsWith('$$', i)) {
       inDollar = !inDollar;
       current += '$$';

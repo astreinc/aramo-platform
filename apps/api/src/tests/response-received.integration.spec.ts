@@ -22,6 +22,11 @@ import {
 
 import { AppModule } from '../app.module.js';
 
+import {
+  applyTalentRecordMigrations,
+  seedTalentRecord,
+} from './talent-record-fixtures.js';
+
 // M5 PR-7 §4.12 — POST /v1/engagements/{id}/response HTTP integration.
 //
 // Coverage:
@@ -123,6 +128,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           await setup.query(t);
         }
       }
+      // 4e-engagement-key — TalentRecord substrate (engagement.talent_id).
+      await applyTalentRecordMigrations(setup);
+      await seedTalentRecord(setup, { id: TALENT_A, tenant_id: TENANT_A });
       await setup.query(
         `INSERT INTO talent."Talent" (id, lifecycle_status, updated_at) VALUES ($1, 'active', NOW())`,
         [TALENT_A],
