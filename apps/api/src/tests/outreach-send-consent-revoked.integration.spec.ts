@@ -22,6 +22,11 @@ import {
 
 import { AppModule } from '../app.module.js';
 
+import {
+  applyTalentRecordMigrations,
+  seedTalentRecord,
+} from './talent-record-fixtures.js';
+
 // M5 PR-9b §4.6 / Ruling 10 — POST /v1/engagements/{id}/outreach
 // consent-at-send refusal integration spec. Plan v1.5 §M5 Track B item 3
 // closure: "Consent enforcement at message send time (not just engagement
@@ -157,6 +162,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           await setup.query(t);
         }
       }
+      // 4e-engagement-key — TalentRecord substrate (engagement.talent_id).
+      await applyTalentRecordMigrations(setup);
+      await seedTalentRecord(setup, { id: TALENT_A, tenant_id: TENANT_A });
+      await seedTalentRecord(setup, { id: TALENT_B, tenant_id: TENANT_B });
 
       // Seed Talents + overlays for two tenants (TENANT_A + TENANT_B).
       await setup.query(

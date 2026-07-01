@@ -10,7 +10,8 @@ import { Pool, type PoolClient } from 'pg';
 //
 // Critical pairs (per audit Axis E Lead-Q-E1=(b) disposition):
 //   1. consent."TalentConsentEvent".talent_id ↔ talent."Talent".id
-//   2. engagement."TalentJobEngagement".talent_id ↔ talent."Talent".id
+//   2. engagement."TalentJobEngagement".talent_id ↔ talent_record."TalentRecord".id
+//      (4e-engagement-key — was talent."Talent".id before the re-point)
 //   3. examination."TalentJobExamination".talent_id ↔ talent."Talent".id
 //   4. examination."TalentJobExamination".job_id ↔ job_domain."Job".id
 //   5. examination."TalentJobExamination".golden_profile_id
@@ -59,12 +60,17 @@ const PAIRS = [
       'WHERE t."id" IS NULL',
   },
   {
-    pair_id: 'engagement.TalentJobEngagement.talent_id->talent.Talent',
+    // 4e-engagement-key: engagement.talent_id now references
+    // talent_record.TalentRecord.id (the ATS heart), not Core talent.Talent.
+    // Re-pointed in lockstep with the engagement validator swap — without
+    // this the scanner would LEFT JOIN every engagement row to a NULL Core
+    // row and report 100% orphaned.
+    pair_id: 'engagement.TalentJobEngagement.talent_id->talent_record.TalentRecord',
     sql:
       'SELECT tje."id" AS row_id, tje."talent_id" AS missing_foreign_id ' +
       'FROM "engagement"."TalentJobEngagement" tje ' +
-      'LEFT JOIN "talent"."Talent" t ON t."id" = tje."talent_id" ' +
-      'WHERE t."id" IS NULL',
+      'LEFT JOIN "talent_record"."TalentRecord" tr ON tr."id" = tje."talent_id" ' +
+      'WHERE tr."id" IS NULL',
   },
   {
     pair_id: 'examination.TalentJobExamination.talent_id->talent.Talent',

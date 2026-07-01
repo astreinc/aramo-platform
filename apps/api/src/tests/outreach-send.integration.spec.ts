@@ -23,6 +23,11 @@ import { AramoError } from '@aramo/common';
 
 import { AppModule } from '../app.module.js';
 
+import {
+  applyTalentRecordMigrations,
+  seedTalentRecord,
+} from './talent-record-fixtures.js';
+
 // M5 PR-6 §4.16 — POST /v1/engagements/{id}/outreach HTTP integration spec.
 //
 // Boots AppModule via NestJS Test against a Postgres 17 testcontainer
@@ -151,6 +156,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           await setup.query(t);
         }
       }
+      // 4e-engagement-key — engagement.talent_id now references TalentRecord.
+      await applyTalentRecordMigrations(setup);
 
       // Seed Talent + overlay (TENANT_A only).
       await setup.query(
@@ -163,6 +170,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          VALUES ($1, $2, $3, 'self_signup', 'active', NOW())`,
         ['00000000-0000-7fff-8fff-000000000080', TALENT_A, TENANT_A],
       );
+      // 4e-engagement-key — the TalentRecord the create validator resolves
+      // (id == engagement.talent_id, tenant-scoped).
+      await seedTalentRecord(setup, { id: TALENT_A, tenant_id: TENANT_A });
       // Seed Job + Requisition (TENANT_A).
       await setup.query(
         `INSERT INTO job_domain."Job" (id, tenant_id) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
