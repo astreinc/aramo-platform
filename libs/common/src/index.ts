@@ -10,6 +10,8 @@ export {
   normalizeEmail,
   loadIdentityPepper,
 } from './lib/util/identity-fingerprint.js';
+// TR-2a-1 — deterministic within-tenant phone normalizer (digit-strip, no LLM).
+export { normalizePhone } from './lib/util/normalize-phone.js';
 export {
   AramoError,
   AramoExceptionFilter,

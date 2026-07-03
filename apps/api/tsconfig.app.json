@@ -43,6 +43,7 @@
       "@aramo/talent-evidence": ["../../dist/libs/talent-evidence/src/index.d.ts"],
       "@aramo/talent-extraction": ["../../dist/libs/talent-extraction/src/index.d.ts"],
       "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"],
+      "@aramo/talent-trust": ["../../dist/libs/talent-trust/src/index.d.ts"],
       "@aramo/task": ["../../dist/libs/task/src/index.d.ts"],
       "@aramo/visibility": ["../../dist/libs/visibility/src/index.d.ts"]
     }

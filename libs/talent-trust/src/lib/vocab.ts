@@ -21,6 +21,13 @@ export type ResolutionSubjectRefType = (typeof RESOLUTION_SUBJECT_REF_TYPES)[num
 export const TRUST_DIMENSIONS = ['IDENTITY', 'CLAIMS', 'CONTINUITY', 'ELIGIBILITY'] as const;
 export type TrustDimension = (typeof TRUST_DIMENSIONS)[number];
 
+// ---- SubjectAnchor.anchor_kind (TR-2a-1) -------------------------------
+// The within-tenant identifier anchors the matcher keys on. Doubles as the
+// anchor EvidenceRecord's assertion_type (dimension = IDENTITY). EMAIL/PHONE
+// only in this slice; more identifier kinds register in later slices.
+export const ANCHOR_KINDS = ['EMAIL', 'PHONE'] as const;
+export type AnchorKind = (typeof ANCHOR_KINDS)[number];
+
 // ---- EvidenceRecord.source_class — the independence ladder (§5.2) ------
 // ORDERED worthless → authoritative. The ordering is fixed (R2); the index
 // in this array IS the ladder position used by strength + band derivation.
