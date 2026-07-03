@@ -331,4 +331,37 @@ describe('EvidenceRepository.buildPackage (unit)', () => {
     expect(rcNoRate.talent_confirmed.rate).toBeUndefined();
     expect(rateFind).not.toHaveBeenCalled();
   });
+
+  // Gate-1 G1-B keying correction — Step-2 job_id strict-equality under
+  // shared-UUID alignment. The SubmittalWizard passes the ATS requisition id
+  // (R) as input.job_id (submittals-api shared-UUID assumption); examine now
+  // keys examination.job_id = R (was a divergent random J under Option-C
+  // mint-only). So examinationRow.job_id === input.job_id holds and the build
+  // succeeds; a divergent examination job_id (the pre-correction hazard) is
+  // rejected at Step 2.
+  it('9. R-alignment: examinationRow.job_id === input.job_id (= R) → build succeeds', async () => {
+    const R = '22222222-2222-7222-8222-222222222222';
+    examFindById.mockResolvedValue(makeRow({ job_id: R }));
+    examFindByIdFull.mockResolvedValue(makeFullView({ job_id: R }));
+    const view = await repo.buildPackage(makeBuildInput({ job_id: R }));
+    expect(view.job_id).toBe(R);
+    expect(view.examination_id).toBe(EXAM_ID);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('9b. divergent examination job_id (pre-correction J ≠ R) → VALIDATION_ERROR at Step 2', async () => {
+    const R = '22222222-2222-7222-8222-222222222222';
+    const J = '77777777-7777-7777-8777-777777777777';
+    examFindById.mockResolvedValue(makeRow({ job_id: J }));
+    examFindByIdFull.mockResolvedValue(makeFullView({ job_id: J }));
+    try {
+      await repo.buildPackage(makeBuildInput({ job_id: R }));
+      throw new Error('expected throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AramoError);
+      expect((err as AramoError).code).toBe('VALIDATION_ERROR');
+      expect((err as AramoError).message).toContain('job_id');
+    }
+    expect(create).not.toHaveBeenCalled();
+  });
 });

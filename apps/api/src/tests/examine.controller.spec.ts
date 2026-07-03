@@ -5,7 +5,7 @@ import { ExamineController } from '../controllers/examine.controller.js';
 
 // Gate-1 G1-B — examine controller orchestration (mocked deps). Proves the
 // LAZY + IDEMPOTENT extraction guard (exists-check, not upsert), the sync mint
-// via evaluateAndPersist, Option-C keying (job_id = GoldenProfile.job_id), and
+// via evaluateAndPersist, shared-UUID keying (job_id = GoldenProfile.job_id), and
 // the auth / 404 / 422 error surface. The deterministic derivation itself is
 // covered by derive-matching-input.spec.ts; the DB wiring by AppModule boot in
 // the integration suite.
@@ -77,7 +77,7 @@ function make(opts: {
 }
 
 describe('ExamineController — mint + lazy/idempotent orchestration', () => {
-  it('no declared evidence → runs extraction (lazy), then mints; Option-C keying job_id = GoldenProfile.job_id', async () => {
+  it('no declared evidence → runs extraction (lazy), then mints; shared-UUID keying job_id = GoldenProfile.job_id', async () => {
     const { ctl, extract, evaluateAndPersist } = make({ evidenceCount: 0 });
     const res = await ctl.examine({ talent_id: TALENT, requisition_id: REQ }, recruiterAuth(), 'rq-1');
     expect(extract).toHaveBeenCalledTimes(1);
@@ -85,7 +85,9 @@ describe('ExamineController — mint + lazy/idempotent orchestration', () => {
     expect(res.job_id).toBe(JOB);
     expect(res.examination_id).toBe('exam-1');
     expect(res.tier).toBe('WORTH_CONSIDERING');
-    expect(res.live_list_visible).toBe(false);
+    // G1-B keying correction — under shared-UUID alignment the minted
+    // examination IS visible via GET /v1/jobs/:id/matches.
+    expect(res.live_list_visible).toBe(true);
   });
 
   it('IDEMPOTENT: declared evidence already exists → extraction SKIPPED (guard is the exists-check, not an upsert)', async () => {
