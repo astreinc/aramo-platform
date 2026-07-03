@@ -783,6 +783,24 @@ export class TalentRecordRepository {
     });
   }
 
+  // Gate-1 G1-B — tenant-scoped getter for a talent's REDACTED résumé body
+  // (TalentResumeText.redacted_text; already PII-redacted at persist per D4).
+  // The examine endpoint feeds this (+ key_skills) to TalentExtractionService.
+  // Returns null when the talent has no résumé text row / no extracted body.
+  async findResumeRedactedText(args: {
+    tenant_id: string;
+    talent_record_id: string;
+  }): Promise<string | null> {
+    const row = await this.prisma.talentResumeText.findFirst({
+      where: {
+        tenant_id: args.tenant_id,
+        talent_record_id: args.talent_record_id,
+      },
+      select: { redacted_text: true },
+    });
+    return row?.redacted_text ?? null;
+  }
+
   // 4e-rest: cluster-only link write (the Core-Talent link + core_talent_id
   // were dropped). Writes the PERSON_CLUSTER pointer; tenant-scoped at the row
   // level so a controller mistake cannot link a row from a different tenant.

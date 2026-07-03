@@ -26,6 +26,7 @@
       "@aramo/identity": ["../../dist/libs/identity/src/index.d.ts"],
       "@aramo/import": ["../../dist/libs/import/src/index.d.ts"],
       "@aramo/ingestion": ["../../dist/libs/ingestion/src/index.d.ts"],
+      "@aramo/job-domain": ["../../dist/libs/job-domain/src/index.d.ts"],
       "@aramo/matching": ["../../dist/libs/matching/src/index.d.ts"],
       "@aramo/metering": ["../../dist/libs/metering/src/index.d.ts"],
       "@aramo/examination": ["../../dist/libs/examination/src/index.d.ts"],
@@ -39,6 +40,8 @@
       "@aramo/settings": ["../../dist/libs/settings/src/index.d.ts"],
       "@aramo/skills-taxonomy": ["../../dist/libs/skills-taxonomy/src/index.d.ts"],
       "@aramo/submittal": ["../../dist/libs/submittal/src/index.d.ts"],
+      "@aramo/talent-evidence": ["../../dist/libs/talent-evidence/src/index.d.ts"],
+      "@aramo/talent-extraction": ["../../dist/libs/talent-extraction/src/index.d.ts"],
       "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"],
       "@aramo/task": ["../../dist/libs/task/src/index.d.ts"],
       "@aramo/visibility": ["../../dist/libs/visibility/src/index.d.ts"]
