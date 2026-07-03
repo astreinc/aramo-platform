@@ -1,6 +1,10 @@
 // CreateTalentRecordRequestDto — POST /v1/talent-records payload.
 // tenant_id derived from AuthContext.tenant_id (never the body).
-import type { AvailabilityStatus, EngagementType } from './stated-fields.js';
+import type {
+  AvailabilityStatus,
+  EngagementType,
+  WorkAuthorization,
+} from './stated-fields.js';
 
 export interface CreateTalentRecordRequestDto {
   first_name: string;
@@ -32,5 +36,6 @@ export interface CreateTalentRecordRequestDto {
   // @IsIn intent honored via the module's manual-guard idiom).
   availability_status?: AvailabilityStatus;
   engagement_type?: EngagementType;
+  work_authorization?: WorkAuthorization;
   owner_id?: string;
 }

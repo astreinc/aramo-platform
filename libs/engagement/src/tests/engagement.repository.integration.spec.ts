@@ -88,6 +88,9 @@ const TALENT_RECORD_MIGRATION_PATHS = [
   '../../../talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
   '../../../talent-record/prisma/migrations/20260615000000_talent_stated_fields/migration.sql',
   '../../../talent-record/prisma/migrations/20260630140000_overlay_fold_cluster_id/migration.sql',
+  // Gate-1 G1-A — adds work_authorization (regenerated talent-record client
+  // projects it; TalentRecordRepository.findById 500s without the column).
+  '../../../talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';

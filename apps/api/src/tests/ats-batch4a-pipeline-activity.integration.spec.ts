@@ -158,6 +158,11 @@ const TALENT_RECORD_OVERLAY_FOLD = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260630140000_overlay_fold_cluster_id/migration.sql',
 );
+// Gate-1 G1-A — work_authorization column (regenerated client projects it).
+const TALENT_RECORD_WORK_AUTH = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
+);
 
 // Submittal & engagement migrations carry the submittal schema (the A5b
 // boundary asserts no submittal row is touched). We don't load them —
@@ -176,6 +181,7 @@ const MIGRATIONS = [
   TALENT_RECORD_IMPORT_BACK_REF,
   TALENT_RECORD_STATED_FIELDS,
   TALENT_RECORD_OVERLAY_FOLD,
+  TALENT_RECORD_WORK_AUTH,
   ACTIVITY_INIT,
   PIPELINE_INIT,
 ];
