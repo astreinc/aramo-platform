@@ -28,14 +28,16 @@ import {
 // evidence already exists) → deterministic derivation → sync
 // MatchingService.evaluateAndPersist.
 //
-// ⚠️ T1 DEFERRAL (Option C, mint-only): the minted examination is NOT yet
-// visible via GET /v1/jobs/:id/matches. That Live List resolves through a
-// job-domain Requisition keyed to the ATS requisition id — the T1 Core/ATS
-// identity bridge that is DEFERRED (its own Phase-B carry doc:
-// Aramo-Carry-T1-Identity-Bridge-and-ATS-…-Store-Phase-B). This endpoint
-// asserts the examination is MINTED + correct (tier / evidence / keying); FE
-// Live-List visibility lands with the T1 bridge increment. We do NOT fabricate
-// the bridge here.
+// FE-VISIBLE (Gate-1 G1-B keying correction — shared-UUID alignment): the
+// minted examination IS visible via GET /v1/jobs/:id/matches. examine keys
+// examination.job_id = golden.job_id, and confirmProfile now mints
+// GoldenProfile.job_id = the ATS requisition id (R) + the job-domain
+// Requisition mirror (id = R, job_id = R, active) the Live List resolves
+// through — so GET /v1/jobs/R/matches returns this examination. The explicit
+// core_job_id Core/ATS identity bridge + the ATS-side per-(talent,job) tier
+// store remain DEFERRED to external-ATS Phase-B (their own carry docs); they
+// are NOT required in the single-backend shared-UUID case and are NOT
+// fabricated here.
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,8 +53,9 @@ interface ExamineResponseDto {
   job_id: string;
   golden_profile_id: string;
   tier: string;
-  // T1-deferred: not yet visible in GET /v1/jobs/:id/matches (see class note).
-  live_list_visible: false;
+  // Shared-UUID alignment (G1-B keying correction): the minted examination is
+  // visible via GET /v1/jobs/:id/matches (see class note).
+  live_list_visible: true;
 }
 
 @Controller('v1/examinations')
@@ -163,7 +166,7 @@ export class ExamineController {
       examination_id: newExaminationId(),
       tenant_id,
       talent_id,
-      job_id: golden.job_id, // Option C keying: examination.job_id = GoldenProfile.job_id.
+      job_id: golden.job_id, // shared-UUID: examination.job_id = GoldenProfile.job_id = R.
       golden_profile_id: golden.id,
       computed_at: new Date(),
       role_family: roleFamilyRaw,
@@ -193,7 +196,7 @@ export class ExamineController {
       job_id: examination.job_id,
       golden_profile_id: examination.golden_profile_id,
       tier: examination.tier,
-      live_list_visible: false,
+      live_list_visible: true,
     };
   }
 

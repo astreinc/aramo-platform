@@ -230,14 +230,48 @@ export class RequisitionProfileService {
       // The linked row vanished (defensive) — fall through to re-mint.
     }
 
-    // Mint: create Job + GoldenProfile, then stamp the seam.
-    const jobId = randomUUID();
-    await this.jobDomainRepository.createJob({ id: jobId, tenant_id: args.tenant_id });
+    // Mint: create Job + GoldenProfile (+ the job-domain Requisition mirror),
+    // then stamp the seam.
+    //
+    // Gate-1 T1 shared-UUID alignment (single-backend, per the LOCKED
+    // Platform-Integration-Model DDR amendment + T1 carry): Job.id =
+    // GoldenProfile.job_id = examination.job_id = the ATS requisition id (R).
+    // This makes `examine` (which keys examination.job_id = GoldenProfile.job_id)
+    // land on R, satisfies the cross-schema-consistency invariant
+    // examination.job_id ↔ job_domain.Job.id (R↔R), and matches the
+    // submittal/evidence.buildPackage shared-UUID assumption. The explicit
+    // core_job_id bridge + the ATS-side per-(talent,job) tier store stay
+    // deferred to Phase-B.
+    const jobId = args.requisition_id; // R
+    // Idempotent: on the defensive re-mint (a vanished GoldenProfile) or a
+    // re-confirm that reaches here, Job R / the Requisition mirror already
+    // exist — skip-if-exists, never PK-conflict.
+    if ((await this.jobDomainRepository.findJobById(jobId)) === null) {
+      await this.jobDomainRepository.createJob({ id: jobId, tenant_id: args.tenant_id });
+    }
+    // The job-domain Requisition mirror the Live List resolves through:
+    // findActiveReqLiveList(R) → findRequisitionById(R) → examinations WHERE
+    // job_id = requisition.job_id (= R). recruiter_id is required by the schema
+    // (not read by the Live List) — take it from the ATS requisition, falling
+    // back to the confirming actor so it is always non-null.
+    if ((await this.jobDomainRepository.findRequisitionById(jobId)) === null) {
+      await this.jobDomainRepository.createRequisition({
+        id: jobId,
+        tenant_id: args.tenant_id,
+        job_id: jobId,
+        recruiter_id:
+          view.recruiter_id ??
+          view.owner_id ??
+          view.entered_by_id ??
+          args.visibility.actor_user_id,
+        state: 'active',
+      });
+    }
     const goldenProfileId = randomUUID();
     await this.jobDomainRepository.createGoldenProfile({
       id: goldenProfileId,
       tenant_id: args.tenant_id,
-      job_id: jobId,
+      job_id: jobId, // = R (shared-UUID)
       skills: storage.skills,
       experience: storage.experience,
       constraints: storage.constraints,

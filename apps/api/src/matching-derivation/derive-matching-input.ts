@@ -17,11 +17,11 @@ import { normalizeSkillSurfaceForm } from '@aramo/talent-extraction';
 // so the mapping (name↔surface_form overlap, constraint checks, HONEST
 // confidence indicators) is unit-testable in isolation.
 //
-// Keying (Option C, mint-only): job_id = GoldenProfile.job_id (the honest
-// current value). The minted examination is NOT yet visible via GET
-// /v1/jobs/:id/matches — that read resolves through a job-domain Requisition
-// the T1 Core/ATS identity bridge (deferred; its own Phase-B carry doc:
-// Aramo-Carry-T1-Identity-Bridge-and-ATS-…-Store-Phase-B) will populate.
+// Keying (G1-B correction — shared-UUID alignment): job_id = GoldenProfile.job_id,
+// which confirmProfile now mints equal to the ATS requisition id (R). The minted
+// examination IS visible via GET /v1/jobs/:id/matches (that read resolves through
+// the job-domain Requisition mirror confirmProfile creates at id = job_id = R).
+// The explicit T1 Core/ATS identity bridge stays deferred to external-ATS Phase-B.
 
 export interface DeclaredSkillEvidence {
   surface_form: string;
