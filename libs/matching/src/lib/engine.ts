@@ -122,10 +122,17 @@ export function evaluateEntrustability(
         expected_threshold: expected,
       });
     }
-    // Ingested-source requirement (engineering roles): part of the
-    // Skill Evidence Rule, not in §2.5's soft list — HARD.
+    // Ingested-source requirement (engineering roles): Gate-1 R7 —
+    // submittable-with-vouching. Declared-only evidence on a requires_ingested
+    // family is now a SOFT criterion, NOT hard: it CAPS the tier at
+    // WORTH_CONSIDERING (submittable — the recruiter vouches) and never sinks to
+    // STRETCH. The ENTRUSTABLE moat stays intact — a soft criterion still blocks
+    // ENTRUSTABLE (which requires zero hard AND zero soft), so only
+    // ingested-corroborated evidence reaches ENTRUSTABLE. EVIDENCE_THRESHOLDS is
+    // unchanged (all families keep requires_ingested); only this rule's
+    // classification flips hard→soft.
     if (threshold.requires_ingested && !skill.has_ingested_evidence) {
-      hard.push({
+      soft.push({
         criterion: `skill_ingested_evidence (${skill.name})`,
         field_path: `skill_match.matched_critical_skills[${skill.name}].has_ingested_evidence`,
         observed_value: 'false',
@@ -134,9 +141,16 @@ export function evaluateEntrustability(
     }
   }
 
-  // -- Constraint Rule + Blocking Conditions ("X = fail" for the four) --
-  // Any non-'pass' status fails the Constraint Rule; §2.5's soft list
-  // does not include constraint statuses, so every non-pass is HARD.
+  // -- Constraint Rule — Gate-1 R8 per-value classification --
+  //   'pass'    → satisfied (no criterion).
+  //   'fail'    → HARD (a genuine incompatibility — e.g. work_authorization
+  //               mismatch or an out-of-range rate — correctly blocks/STRETCH).
+  //   'partial' → SOFT (partially satisfied; caps at WORTH_CONSIDERING).
+  //   'unknown' → NON-BLOCKING (no declared source to evaluate — e.g. work_mode
+  //               has no TalentRecord source). It does NOT block; the honest
+  //               signal is carried by confidence_indicators.data_completeness
+  //               (low when constraints are unknown), which soft-caps ENTRUSTABLE
+  //               via the confidence rule below. Never fabricate a 'pass'.
   const constraintFields: readonly (keyof typeof input.constraint_checks_evaluated)[] = [
     'location',
     'work_mode',
@@ -145,14 +159,22 @@ export function evaluateEntrustability(
   ];
   for (const field of constraintFields) {
     const value = input.constraint_checks_evaluated[field];
-    if (value !== 'pass') {
+    if (value === 'fail') {
       hard.push({
         criterion: `constraint_${field}`,
         field_path: `constraint_checks.${field}`,
         observed_value: value,
         expected_threshold: 'pass',
       });
+    } else if (value === 'partial') {
+      soft.push({
+        criterion: `constraint_${field}`,
+        field_path: `constraint_checks.${field}`,
+        observed_value: value,
+        expected_threshold: 'pass',
+      });
     }
+    // 'pass' and 'unknown' add no criterion (unknown is non-blocking).
   }
 
   // -- Risk Rule: no risk_flag with severity = 'high' --

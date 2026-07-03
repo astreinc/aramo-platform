@@ -17,7 +17,7 @@ import { TalentEvidenceRepository } from '../lib/talent-evidence.repository.js';
 // is exercised by talent-evidence.integration.spec.ts against a real
 // Postgres testcontainer under ARAMO_RUN_INTEGRATION=1.
 describe('TalentEvidenceRepository — surface', () => {
-  it('exposes exactly 14 create/find methods (7 entities × 2)', () => {
+  it('exposes the 14 create/find methods + the 2 Gate-1 G1-B by-talent reads', () => {
     const methods = Object.getOwnPropertyNames(TalentEvidenceRepository.prototype)
       .filter((m) => m !== 'constructor')
       .sort();
@@ -37,6 +37,11 @@ describe('TalentEvidenceRepository — surface', () => {
         'findTalentDocumentById',
         'createTalentDerivedSnapshot',
         'findTalentDerivedSnapshotById',
+        // Gate-1 G1-B — deterministic-derivation by-talent reads (the matching
+        // engine consumes a talent's declared skill evidence; the examine
+        // endpoint's exists-check gates lazy extraction).
+        'findTalentSkillEvidenceByTalent',
+        'countTalentSkillEvidenceByTalent',
       ].sort(),
     );
   });

@@ -21,6 +21,7 @@ import { ExportModule } from '@aramo/export';
 import { IdentityModule, IdentityCoreModule } from '@aramo/identity';
 import { ImportModule } from '@aramo/import';
 import { IngestionModule } from '@aramo/ingestion';
+import { JobDomainModule } from '@aramo/job-domain';
 import { MatchingModule } from '@aramo/matching';
 import { ObjectStorageModule } from '@aramo/object-storage';
 import { OutboxPublisherModule } from '@aramo/outbox-publisher';
@@ -32,10 +33,13 @@ import { SavedListModule } from '@aramo/saved-list';
 import { SettingsModule } from '@aramo/settings';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { SubmittalModule } from '@aramo/submittal';
+import { TalentEvidenceModule } from '@aramo/talent-evidence';
+import { TalentExtractionModule } from '@aramo/talent-extraction';
 import { TalentRecordModule, ResumeReindexModule } from '@aramo/talent-record';
 import { TaskModule } from '@aramo/task';
 
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
+import { ExamineController } from './controllers/examine.controller.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { AssignableUsersController } from './controllers/assignable-users.controller.js';
 import { MeController } from './controllers/me.controller.js';
@@ -87,6 +91,13 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     EngagementModule,
     IngestionModule,
     MatchingModule,
+    // Gate-1 G1-B — the examine endpoint's derivation reads GoldenProfile
+    // (JobDomainModule), declared skill evidence (TalentEvidenceModule), and
+    // lazily runs extraction (TalentExtractionModule). Composition-root imports
+    // — no lib→lib edge, no cycle.
+    JobDomainModule,
+    TalentEvidenceModule,
+    TalentExtractionModule,
     PortalModule,
     // PR-A3 Gate 5 — second ATS-domain leaf. RequisitionModule carries
     // the requisition CRUD + the assignment-visibility filter (Ruling 2:
@@ -312,6 +323,11 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // repository. Lives here (not in libs/settings) to preserve the
     // leaf-lib invariant on the new lib.
     TenantSettingsController,
+    // Gate-1 G1-B — POST /v1/examinations pairing-level examine (mint-only).
+    // Lives here (not a lib) because it composes requisition + job-domain +
+    // talent-record + talent-evidence + talent-extraction + matching at the
+    // app boundary (the deterministic cross-schema derivation).
+    ExamineController,
     // §5 Auth-Hardening D4 — the recruiter assignable-roster endpoint. Lives
     // here (not libs/identity) because it composes identity (active+role) with
     // the company schema's user↔client mapping — a cross-schema join wired at

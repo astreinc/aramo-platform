@@ -116,6 +116,51 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(read?.years_claimed).toBeNull();
     });
 
+    // Gate-1 G1-B — by-talent list + count reads (tenant/talent-scoped). A
+    // second talent's row must NOT leak into the first talent's read.
+    it('findTalentSkillEvidenceByTalent + countTalentSkillEvidenceByTalent are tenant+talent-scoped', async () => {
+      const OTHER_TALENT = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaff';
+      await repo.createTalentSkillEvidence({
+        id: '00000000-0000-7000-8000-0000000000f1',
+        talent_id: TALENT,
+        tenant_id: TENANT,
+        skill_id: SKILL,
+        surface_form: 'Kubernetes',
+        source: 'ingested',
+        created_at: new Date('2026-07-03T10:00:00Z'),
+      });
+      await repo.createTalentSkillEvidence({
+        id: '00000000-0000-7000-8000-0000000000f2',
+        talent_id: OTHER_TALENT,
+        tenant_id: TENANT,
+        skill_id: SKILL,
+        surface_form: 'Rust',
+        source: 'declared',
+        created_at: new Date('2026-07-03T10:00:00Z'),
+      });
+
+      const rows = await repo.findTalentSkillEvidenceByTalent({
+        tenant_id: TENANT,
+        talent_id: OTHER_TALENT,
+      });
+      expect(rows).toEqual([
+        { surface_form: 'Rust', source: 'declared', skill_id: SKILL },
+      ]);
+      expect(
+        await repo.countTalentSkillEvidenceByTalent({
+          tenant_id: TENANT,
+          talent_id: OTHER_TALENT,
+        }),
+      ).toBe(1);
+      // A never-seen talent has zero (the examine exists-check → lazy extract).
+      expect(
+        await repo.countTalentSkillEvidenceByTalent({
+          tenant_id: TENANT,
+          talent_id: '99999999-9999-7999-8999-999999999999',
+        }),
+      ).toBe(0);
+    });
+
     it('persists TalentDocument and TalentWorkHistoryEntry; source_document_id intra-lib UUID round-trips (§2.2 #8, #10)', async () => {
       await repo.createTalentDocument({
         id: DOC_ID,

@@ -361,6 +361,41 @@ export class TalentEvidenceRepository {
     return (row as TalentSkillEvidenceRow | null) ?? null;
   }
 
+  // Gate-1 G1-B — by-talent list read for the deterministic matching-analysis
+  // derivation. Tenant-scoped; MINIMAL select (surface_form for the name↔skill
+  // overlap, source to detect ingested evidence, skill_id for grouping) — never
+  // widen it. The derivation counts declared rows per Golden-Profile critical
+  // skill (evidence_count) and checks for any source='ingested' row
+  // (has_ingested_evidence).
+  async findTalentSkillEvidenceByTalent(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<
+    Array<{
+      surface_form: string;
+      source: TalentSkillEvidenceSourceValue;
+      skill_id: string;
+    }>
+  > {
+    return this.prisma.talentSkillEvidence.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      select: { surface_form: true, source: true, skill_id: true },
+    });
+  }
+
+  // Gate-1 G1-B — exists/count guard for the examine endpoint's LAZY extraction
+  // (run extraction only when the talent has NO declared skill evidence). The
+  // idempotency guard is this exists-check, NOT an upsert: re-running extraction
+  // would insert duplicate rows (no @@unique on TalentSkillEvidence).
+  async countTalentSkillEvidenceByTalent(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<number> {
+    return this.prisma.talentSkillEvidence.count({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+    });
+  }
+
   // ---- TalentWorkHistoryEntry ----------------------------------------
 
   async createTalentWorkHistoryEntry(

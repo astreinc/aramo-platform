@@ -69,18 +69,25 @@ describe('evaluateEntrustability — Skill Evidence Rule (§2.5)', () => {
     );
   });
 
-  it('missing-ingested for an engineering role is HARD even when count is met', () => {
+  // Gate-1 R7 — declared-only (no ingested) on a requires_ingested family is a
+  // SOFT criterion now: caps at WORTH_CONSIDERING (submittable-with-vouching),
+  // never STRETCH. The ENTRUSTABLE moat stays: the soft blocks ENTRUSTABLE.
+  it('R7: missing-ingested for an engineering role is SOFT → WORTH_CONSIDERING (never STRETCH), and blocks ENTRUSTABLE', () => {
     const result = evaluateEntrustability(
       entrustablePass({
         critical_skills: [
-          // count satisfied (2) but no ingested evidence → fails the
-          // Skill Evidence Rule's ingested clause → HARD.
+          // count satisfied (2) but no ingested evidence → R7 soft, not hard.
           { name: 'Java', evidence_count: 2, has_ingested_evidence: false },
         ],
       }),
     );
-    expect(result.tier).toBe('STRETCH');
-    expect(result.hard_failures.map((f) => f.criterion)).toContain(
+    expect(result.tier).toBe('WORTH_CONSIDERING');
+    expect(result.tier).not.toBe('STRETCH');
+    expect(result.tier).not.toBe('ENTRUSTABLE');
+    expect(result.hard_failures.map((f) => f.criterion)).not.toContain(
+      'skill_ingested_evidence (Java)',
+    );
+    expect(result.soft_failures.map((f) => f.criterion)).toContain(
       'skill_ingested_evidence (Java)',
     );
   });
@@ -98,27 +105,66 @@ describe('evaluateEntrustability — Skill Evidence Rule (§2.5)', () => {
   });
 });
 
-describe('evaluateEntrustability — Constraint Rule (§2.5)', () => {
-  for (const status of ['partial', 'fail', 'unknown'] as const) {
-    for (const field of ['location', 'work_mode', 'rate', 'work_authorization'] as const) {
-      it(`constraint_${field}=${status} is HARD and tier=STRETCH`, () => {
-        const result = evaluateEntrustability(
-          entrustablePass({
-            constraint_checks_evaluated: {
-              location: 'pass',
-              work_mode: 'pass',
-              rate: 'pass',
-              work_authorization: 'pass',
-              [field]: status,
-            },
-          }),
-        );
-        expect(result.tier).toBe('STRETCH');
-        expect(result.hard_failures.map((f) => f.criterion)).toContain(
-          `constraint_${field}`,
-        );
-      });
-    }
+describe('evaluateEntrustability — Constraint Rule (Gate-1 R8 per-value)', () => {
+  for (const field of ['location', 'work_mode', 'rate', 'work_authorization'] as const) {
+    // 'fail' → HARD (STRETCH) — a genuine incompatibility still blocks.
+    it(`R8: constraint_${field}='fail' is HARD → STRETCH`, () => {
+      const result = evaluateEntrustability(
+        entrustablePass({
+          constraint_checks_evaluated: {
+            location: 'pass',
+            work_mode: 'pass',
+            rate: 'pass',
+            work_authorization: 'pass',
+            [field]: 'fail',
+          },
+        }),
+      );
+      expect(result.tier).toBe('STRETCH');
+      expect(result.hard_failures.map((f) => f.criterion)).toContain(
+        `constraint_${field}`,
+      );
+    });
+
+    // 'partial' → SOFT (WORTH_CONSIDERING) — partially satisfied, caps not sinks.
+    it(`R8: constraint_${field}='partial' is SOFT → WORTH_CONSIDERING`, () => {
+      const result = evaluateEntrustability(
+        entrustablePass({
+          constraint_checks_evaluated: {
+            location: 'pass',
+            work_mode: 'pass',
+            rate: 'pass',
+            work_authorization: 'pass',
+            [field]: 'partial',
+          },
+        }),
+      );
+      expect(result.tier).toBe('WORTH_CONSIDERING');
+      expect(result.hard_failures).toEqual([]);
+      expect(result.soft_failures.map((f) => f.criterion)).toContain(
+        `constraint_${field}`,
+      );
+    });
+
+    // 'unknown' → NON-BLOCKING — no criterion; honest signal is carried by
+    // confidence_indicators.data_completeness (not this loop).
+    it(`R8: constraint_${field}='unknown' is NON-BLOCKING (no criterion, tier unchanged)`, () => {
+      const result = evaluateEntrustability(
+        entrustablePass({
+          constraint_checks_evaluated: {
+            location: 'pass',
+            work_mode: 'pass',
+            rate: 'pass',
+            work_authorization: 'pass',
+            [field]: 'unknown',
+          },
+        }),
+      );
+      expect(result.tier).toBe('ENTRUSTABLE');
+      expect(
+        result.failed_criteria.map((f) => f.criterion),
+      ).not.toContain(`constraint_${field}`);
+    });
   }
 });
 
