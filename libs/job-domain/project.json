@@ -3,7 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "libs/job-domain/src",
   "projectType": "library",
-  "tags": [],
+  "tags": ["scope:boundary"],
   "targets": {
     "build": {
       "executor": "@nx/js:tsc",
