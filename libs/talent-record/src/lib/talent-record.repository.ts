@@ -491,6 +491,37 @@ export class TalentRecordRepository {
     return (rows as TalentRecordRow[]).map(projectView);
   }
 
+  // TR-2a-1 — stable keyset enumeration over ALL of a tenant's TalentRecords,
+  // ordered (created_at, id) ascending, for the anchor-producer backfill (an
+  // apps/api system op — no visibility scoping; it must see every record). The
+  // caller pages forward by passing the last row's (created_at, id) as `after`.
+  async listByTenantKeyset(args: {
+    tenant_id: string;
+    limit: number;
+    after?: { created_at: string; id: string };
+  }): Promise<TalentRecordView[]> {
+    const limit = Math.min(args.limit, 500);
+    const rows = await this.prisma.talentRecord.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        ...(args.after === undefined
+          ? {}
+          : {
+              OR: [
+                { created_at: { gt: new Date(args.after.created_at) } },
+                {
+                  created_at: new Date(args.after.created_at),
+                  id: { gt: args.after.id },
+                },
+              ],
+            }),
+      },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    return (rows as TalentRecordRow[]).map(projectView);
+  }
+
   // ── Segment 4 — native server-side faceted search + keyset pagination ──
   // Single-schema: filter / sort / cursor / full-set facet COUNTS run against
   // TalentRecord columns ONLY. No cross-schema read here (apps/api composes the

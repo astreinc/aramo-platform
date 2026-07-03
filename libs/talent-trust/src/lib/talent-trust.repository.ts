@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import type {
+  AnchorKind,
   DecayProfile,
   EvidenceEventType,
   EvidenceLinkRelation,
@@ -82,6 +83,24 @@ export interface InsertEvidenceInput {
   ai_derived: boolean;
   current_status: EvidenceStatus;
   created_by: string;
+}
+
+export interface SubjectAnchorRow {
+  id: string;
+  subject_id: string;
+  tenant_id: string;
+  anchor_kind: AnchorKind;
+  normalized_value: string;
+  source_evidence_id: string;
+  created_at: Date;
+}
+
+// TR-2a-1 — the anchor write: the EvidenceRecord (source of truth) + its CREATED
+// event + the SubjectAnchor projection, together in one transaction.
+export interface InsertAnchorInput {
+  evidence: InsertEvidenceInput;
+  anchor_kind: AnchorKind;
+  normalized_value: string;
 }
 
 @Injectable()
@@ -271,5 +290,92 @@ export class TalentTrustRepository {
   async findTrustStateBySubject(subjectId: string): Promise<TrustStateRow | null> {
     const row = await this.prisma.trustState.findUnique({ where: { subject_id: subjectId } });
     return (row as TrustStateRow | null) ?? null;
+  }
+
+  // ---- SubjectAnchor (TR-2a-1 within-tenant match index) -------------------
+
+  // Idempotency gate: the producer checks this before writing so a re-run /
+  // backfill never duplicates the anchor OR its evidence.
+  async findSubjectAnchor(
+    tenantId: string,
+    subjectId: string,
+    anchorKind: AnchorKind,
+    normalizedValue: string,
+  ): Promise<SubjectAnchorRow | null> {
+    const row = await this.prisma.subjectAnchor.findUnique({
+      where: {
+        tenant_id_subject_id_anchor_kind_normalized_value: {
+          tenant_id: tenantId,
+          subject_id: subjectId,
+          anchor_kind: anchorKind,
+          normalized_value: normalizedValue,
+        },
+      },
+    });
+    return (row as SubjectAnchorRow | null) ?? null;
+  }
+
+  async listAnchorsBySubject(subjectId: string): Promise<SubjectAnchorRow[]> {
+    const rows = await this.prisma.subjectAnchor.findMany({
+      where: { subject_id: subjectId },
+      orderBy: { created_at: 'asc' },
+    });
+    return rows as SubjectAnchorRow[];
+  }
+
+  // The anchor write — EvidenceRecord (source of truth) + its CREATED event +
+  // the SubjectAnchor projection, in ONE transaction (atomic: no projection
+  // without its evidence, no evidence without its projection).
+  async insertAnchor(
+    input: InsertAnchorInput,
+  ): Promise<{ evidence: EvidenceRecordRow; anchor: SubjectAnchorRow }> {
+    const ev = input.evidence;
+    const evidenceId = uuidv7();
+    const anchorId = uuidv7();
+    const [evidence, anchor] = await this.prisma.$transaction([
+      this.prisma.evidenceRecord.create({
+        data: {
+          id: evidenceId,
+          subject_id: ev.subject_id,
+          tenant_id: ev.tenant_id,
+          dimension: ev.dimension,
+          assertion_type: ev.assertion_type,
+          assertion_payload: ev.assertion_payload as never,
+          source_class: ev.source_class,
+          source_ref: (ev.source_ref ?? null) as never,
+          method: ev.method,
+          strength: ev.strength,
+          collected_at: ev.collected_at,
+          decay_profile: ev.decay_profile,
+          portability_class: ev.portability_class,
+          ai_derived: ev.ai_derived,
+          current_status: ev.current_status,
+          created_by: ev.created_by,
+        },
+      }),
+      this.prisma.subjectAnchor.create({
+        data: {
+          id: anchorId,
+          subject_id: ev.subject_id,
+          tenant_id: ev.tenant_id,
+          anchor_kind: input.anchor_kind,
+          normalized_value: input.normalized_value,
+          source_evidence_id: evidenceId,
+        },
+      }),
+      this.prisma.evidenceEvent.create({
+        data: {
+          id: uuidv7(),
+          evidence_id: evidenceId,
+          tenant_id: ev.tenant_id,
+          event_type: 'CREATED',
+          actor: ev.created_by,
+        },
+      }),
+    ]);
+    return {
+      evidence: evidence as EvidenceRecordRow,
+      anchor: anchor as SubjectAnchorRow,
+    };
   }
 }

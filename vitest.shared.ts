@@ -161,6 +161,9 @@ export default defineConfig({
       // talent record; renamed from `talent` to avoid collision with
       // Core libs/talent identity. Amendment §3.)
       '@aramo/talent-record': resolve(root, 'libs/talent-record/src/index.ts'),
+      // TR-2a-1 — talent-trust (the trust ledger + within-tenant anchors). The
+      // apps/api anchor producer imports it above the I15 wall.
+      '@aramo/talent-trust': resolve(root, 'libs/talent-trust/src/index.ts'),
       // Tasks backend — task leaf (the actionable/assignable to-do; the last
       // core recruiter surface). Mirrors tsconfig.base.json @aramo/task alias
       // so vitest runtime resolves the apps/api AppModule import (TaskModule +

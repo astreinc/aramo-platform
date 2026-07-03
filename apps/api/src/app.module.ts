@@ -36,9 +36,12 @@ import { SubmittalModule } from '@aramo/submittal';
 import { TalentEvidenceModule } from '@aramo/talent-evidence';
 import { TalentExtractionModule } from '@aramo/talent-extraction';
 import { TalentRecordModule, ResumeReindexModule } from '@aramo/talent-record';
+import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
+import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
+import { TalentAnchorProducerService } from './talent-anchor/talent-anchor-producer.service.js';
 import { ExamineController } from './controllers/examine.controller.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { AssignableUsersController } from './controllers/assignable-users.controller.js';
@@ -98,6 +101,12 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     JobDomainModule,
     TalentEvidenceModule,
     TalentExtractionModule,
+    // TR-2a-1 — the anchor producer (apps/api, above the I15 wall) records
+    // TalentRecord identifier anchors into the trust ledger. TalentTrustModule
+    // provides TalentTrustService; TalentRecordModule (above) provides the
+    // repository the producer reads. Composition-root wiring — talent_trust
+    // (cip) never imports talent-record (ats).
+    TalentTrustModule,
     PortalModule,
     // PR-A3 Gate 5 — second ATS-domain leaf. RequisitionModule carries
     // the requisition CRUD + the assignment-visibility filter (Ruling 2:
@@ -383,6 +392,17 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     {
       provide: APP_INTERCEPTOR,
       useClass: TalentRecordEnrichmentInterceptor,
+    },
+    // TR-2a-1 — the write-time anchor hook. Global APP_INTERCEPTOR route-guarded
+    // to the talent-record WRITE routes (POST /v1/talent-records, PATCH :id);
+    // on success it records the record's identifier anchors into the trust
+    // ledger via the producer. apps/api orchestration above the I15 wall — the
+    // lib controller is untouched, best-effort (never fails the write; the
+    // backfill reconciles).
+    TalentAnchorProducerService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TalentAnchorInterceptor,
     },
     // Segment 4c — Views presets + "My team" scope. The resolver injects the
     // four read-only cross-schema accessors (activity / pipeline / tasks /

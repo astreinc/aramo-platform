@@ -8,11 +8,13 @@ import { deriveStrength } from './strength.js';
 import {
   TalentTrustRepository,
   type EvidenceRecordRow,
+  type SubjectAnchorRow,
   type TrustStateRow,
   type ResolutionSubjectRow,
 } from './talent-trust.repository.js';
 import {
   EVENT_TO_STATUS,
+  type AnchorKind,
   type DecayProfile,
   type EvidenceEventType,
   type Method,
@@ -57,6 +59,26 @@ export interface RecordEvidenceInput {
   // Ruling 5 — AI-produced evidence flag. Orthogonal to method. Default false.
   ai_derived?: boolean;
   // The writing slice (TR-2…TR-10).
+  created_by: string;
+}
+
+// TR-2a-1 — record a within-tenant identifier anchor for the subject resolved
+// from an ATS TalentRecord. The producer (apps/api, above the wall) normalizes
+// the identifier and calls this; talent_trust imports NOTHING from ats.
+export interface RecordAnchorInput {
+  tenant_id: string;
+  // The ATS TalentRecord.id whose subject the anchor attaches to (resolved via
+  // the ATS_TALENT_RECORD ref — the caller passes the id; talent_trust never
+  // reads talent-record: the I15 wall).
+  talent_record_id: string;
+  anchor_kind: AnchorKind;
+  // The DETERMINISTICALLY-normalized value (email trim+lowercase / phone
+  // digit-strip) — normalized by the caller (@aramo/common), no LLM.
+  normalized_value: string;
+  // The raw identifier as it appeared on the TalentRecord (provenance, stored
+  // in assertion_payload alongside the normalized value).
+  raw_source: string;
+  // The writing slice — the producer.
   created_by: string;
 }
 
@@ -110,6 +132,66 @@ export class TalentTrustService {
 
     await this.recompute(subjectId, subjectRef.tenant_id, now);
     return evidence;
+  }
+
+  // TR-2a-1 — record a within-tenant identifier anchor. Resolves-or-creates the
+  // subject via the ATS_TALENT_RECORD ref, then (idempotently) writes the anchor
+  // EvidenceRecord (dimension IDENTITY, assertion_type = the anchor kind, the
+  // normalized value in assertion_payload — an unverified SELF-declared contact,
+  // source_class SELF / method SELF_DECLARED) + its SubjectAnchor projection in
+  // ONE transaction, then recomputes TrustState. Re-run safe: if the anchor
+  // already exists for this (tenant, subject, kind, value) it is a no-op — so no
+  // duplicate evidence and no duplicate projection (write-hook + backfill both
+  // converge). Keyed to the ORIGIN subject; never re-homed on merge.
+  async recordAnchor(
+    input: RecordAnchorInput,
+  ): Promise<{ evidence: EvidenceRecordRow; anchor: SubjectAnchorRow } | null> {
+    const now = new Date();
+    const subjectId = await this.repo.resolveOrCreateSubject(
+      input.tenant_id,
+      'ATS_TALENT_RECORD',
+      input.talent_record_id,
+      input.created_by,
+    );
+
+    // Idempotency gate — exists-check BEFORE writing evidence (resolve-or-create
+    // dedupes the subject; this dedupes the anchor + its evidence).
+    const existing = await this.repo.findSubjectAnchor(
+      input.tenant_id,
+      subjectId,
+      input.anchor_kind,
+      input.normalized_value,
+    );
+    if (existing !== null) return null;
+
+    const strength = deriveStrength('SELF', 'SELF_DECLARED');
+    const written = await this.repo.insertAnchor({
+      evidence: {
+        subject_id: subjectId,
+        tenant_id: input.tenant_id,
+        dimension: 'IDENTITY',
+        assertion_type: input.anchor_kind,
+        assertion_payload: {
+          normalized_value: input.normalized_value,
+          raw_source: input.raw_source,
+        },
+        source_class: 'SELF',
+        method: 'SELF_DECLARED',
+        strength,
+        collected_at: now,
+        // Contact identifiers drift (job change, new number) — SLOW, not DURABLE.
+        decay_profile: 'SLOW',
+        portability_class: 'TENANT_ONLY',
+        ai_derived: false,
+        current_status: EVENT_TO_STATUS.CREATED,
+        created_by: input.created_by,
+      },
+      anchor_kind: input.anchor_kind,
+      normalized_value: input.normalized_value,
+    });
+
+    await this.recompute(subjectId, input.tenant_id, now);
+    return written;
   }
 
   // ---- Writes: lifecycle ops (§8) ------------------------------------

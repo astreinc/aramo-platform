@@ -11,12 +11,15 @@ export { PrismaService } from './lib/prisma/prisma.service.js';
 export type {
   SubjectRef,
   RecordEvidenceInput,
+  RecordAnchorInput,
 } from './lib/talent-trust.service.js';
 export type {
   EvidenceRecordRow,
   ResolutionSubjectRow,
   TrustStateRow,
   InsertEvidenceInput,
+  SubjectAnchorRow,
+  InsertAnchorInput,
 } from './lib/talent-trust.repository.js';
 
 // Band-derivation core (pure) — exported for downstream explainability/tests.
@@ -35,6 +38,7 @@ export {
   RESOLUTION_SUBJECT_STATUSES,
   RESOLUTION_SUBJECT_REF_TYPES,
   TRUST_DIMENSIONS,
+  ANCHOR_KINDS,
   SOURCE_CLASSES,
   METHODS,
   SEED_ASSERTION_TYPES,
@@ -50,6 +54,7 @@ export type {
   ResolutionSubjectStatus,
   ResolutionSubjectRefType,
   TrustDimension,
+  AnchorKind,
   SourceClass,
   Method,
   SeedAssertionType,

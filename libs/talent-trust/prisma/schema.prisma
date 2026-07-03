@@ -71,6 +71,7 @@ model ResolutionSubject {
   refs     ResolutionSubjectRef[]
   evidence EvidenceRecord[]
   state    TrustState?
+  anchors  SubjectAnchor[]
 
   @@index([tenant_id])
   @@index([tenant_id, status])
@@ -266,5 +267,52 @@ model TrustState {
   subject ResolutionSubject @relation(fields: [subject_id], references: [id])
 
   @@index([tenant_id])
+  @@schema("talent_trust")
+}
+
+// SubjectAnchor — TR-2a-1 within-tenant MATCH INDEX. A thin derived projection
+// over the ledger (like TrustState): one row per (subject, anchor_kind,
+// normalized_value), pointing back to the anchor EvidenceRecord that IS its
+// source of truth (source_evidence_id). NOT a second source of truth — the
+// producer writes it in the SAME transaction as the anchor evidence. The
+// within-tenant matcher (TR-2a-2) reads this btree index to find subjects
+// sharing a normalized identifier; this slice only builds/populates it.
+//
+// UN-MERGE CONTRACT: keyed to the ORIGIN subject_id and NEVER re-homed on merge
+// (mergeSubjects is pointer-only — resolution follows ResolutionSubject.
+// merged_into at read time). So an anchor's origin survives merge/unmerge.
+//
+// WALL: tenant-scoped. The normalized identifier is PII and lives ONLY here
+// (talent_trust, tenant-scoped) — NEVER in identity_index (the I14 wall). Cross-
+// tenant same-human resolution is identity_index / fingerprints (TR-2b), never
+// this table.
+model SubjectAnchor {
+  id String @id @db.Uuid
+
+  subject_id String @db.Uuid
+  tenant_id  String @db.Uuid
+
+  /// AnchorKind closed vocabulary (TR-2a-1): EMAIL | PHONE
+  anchor_kind String
+
+  /// The deterministically-normalized identifier the matcher keys on
+  /// (email: trim+lowercase; phone: digit-strip — no LLM, Decision 10).
+  normalized_value String
+
+  // The anchor EvidenceRecord this row projects (its source of truth).
+  // UUID-only logical reference within the schema.
+  source_evidence_id String @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  subject ResolutionSubject @relation(fields: [subject_id], references: [id])
+
+  // Idempotency: one anchor row per (tenant, subject, kind, value). The producer
+  // exists-checks this before writing, so re-run / backfill never duplicates the
+  // anchor OR its evidence.
+  @@unique([tenant_id, subject_id, anchor_kind, normalized_value])
+  // The matcher's btree surface: subjects sharing a normalized value in-tenant.
+  @@index([tenant_id, anchor_kind, normalized_value])
+  @@index([subject_id])
   @@schema("talent_trust")
 }
