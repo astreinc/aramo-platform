@@ -28,6 +28,18 @@ export type TrustDimension = (typeof TRUST_DIMENSIONS)[number];
 export const ANCHOR_KINDS = ['EMAIL', 'PHONE'] as const;
 export type AnchorKind = (typeof ANCHOR_KINDS)[number];
 
+// ---- SubjectMatchAdvisory.advise_band (TR-2a-2) -----------------------
+// Split-biased / inclusive on ADVISE (advisories never merge — R4). One shared
+// anchor = ADVISE_WEAK; multiple / multi-kind shared anchors = ADVISE_STRONG.
+// ADVISORY METADATA ONLY — gates nothing (nothing merges); orders a reviewer queue.
+export const MATCH_ADVISE_BANDS = ['ADVISE_WEAK', 'ADVISE_STRONG'] as const;
+export type MatchAdviseBand = (typeof MATCH_ADVISE_BANDS)[number];
+
+// ---- SubjectMatchAdvisory.status (TR-2a-2) ----------------------------
+// This slice writes PENDING_REVIEW ONLY; TR-2a-3 transitions it (append-only-style).
+export const MATCH_ADVISORY_STATUSES = ['PENDING_REVIEW', 'CONFIRMED', 'DISMISSED'] as const;
+export type MatchAdvisoryStatus = (typeof MATCH_ADVISORY_STATUSES)[number];
+
 // ---- EvidenceRecord.source_class — the independence ladder (§5.2) ------
 // ORDERED worthless → authoritative. The ordering is fixed (R2); the index
 // in this array IS the ladder position used by strength + band derivation.

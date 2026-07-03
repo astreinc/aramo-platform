@@ -5,6 +5,7 @@
 export { TalentTrustModule } from './lib/talent-trust.module.js';
 export { TalentTrustService } from './lib/talent-trust.service.js';
 export { TalentTrustRepository } from './lib/talent-trust.repository.js';
+export { SubjectMatcherService } from './lib/subject-matcher.service.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 
 // §8 interface input/output shapes.
@@ -20,7 +21,18 @@ export type {
   InsertEvidenceInput,
   SubjectAnchorRow,
   InsertAnchorInput,
+  SubjectMatchAdvisoryRow,
+  UpsertMatchAdvisoryInput,
 } from './lib/talent-trust.repository.js';
+
+// TR-2a-2 within-tenant same-human matcher — the pure classifier core (exported
+// for downstream explainability / tests, mirroring band-derivation).
+export {
+  classifyPair,
+  type AnchorForMatch,
+  type SharedAnchorRef,
+  type MatchClassification,
+} from './lib/match-classification.js';
 
 // Band-derivation core (pure) — exported for downstream explainability/tests.
 export {
@@ -39,6 +51,8 @@ export {
   RESOLUTION_SUBJECT_REF_TYPES,
   TRUST_DIMENSIONS,
   ANCHOR_KINDS,
+  MATCH_ADVISE_BANDS,
+  MATCH_ADVISORY_STATUSES,
   SOURCE_CLASSES,
   METHODS,
   SEED_ASSERTION_TYPES,
@@ -55,6 +69,8 @@ export type {
   ResolutionSubjectRefType,
   TrustDimension,
   AnchorKind,
+  MatchAdviseBand,
+  MatchAdvisoryStatus,
   SourceClass,
   Method,
   SeedAssertionType,
