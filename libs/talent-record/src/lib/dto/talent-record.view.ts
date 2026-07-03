@@ -13,6 +13,7 @@
 import type {
   AvailabilityStatus,
   EngagementType,
+  WorkAuthorization,
 } from './stated-fields.js';
 
 export interface TalentRecordView {
@@ -47,6 +48,7 @@ export interface TalentRecordView {
   // 'unknown' member — distinct from null at the data layer).
   availability_status: AvailabilityStatus | null;
   engagement_type: EngagementType | null;
+  work_authorization: WorkAuthorization | null;
   owner_id: string | null;
   entered_by_id: string | null;
   created_at: string;

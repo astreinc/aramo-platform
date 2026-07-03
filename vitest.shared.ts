@@ -154,6 +154,9 @@ export default defineConfig({
       '@aramo/submittal': resolve(root, 'libs/submittal/src/index.ts'),
       '@aramo/talent': resolve(root, 'libs/talent/src/index.ts'),
       '@aramo/talent-evidence': resolve(root, 'libs/talent-evidence/src/index.ts'),
+      // Gate-1 G1-A — talent-extraction (declared-evidence production; 3rd
+      // ai-draft consumer per ADR-0015 v1.3).
+      '@aramo/talent-extraction': resolve(root, 'libs/talent-extraction/src/index.ts'),
       // PR-A4 Gate 5 — talent-record leaf (the ATS recruiter-facing
       // talent record; renamed from `talent` to avoid collision with
       // Core libs/talent identity. Amendment §3.)

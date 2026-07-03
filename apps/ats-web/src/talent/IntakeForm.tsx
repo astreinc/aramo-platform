@@ -7,6 +7,8 @@ import {
   AVAILABILITY_STATUS_VALUES,
   ENGAGEMENT_LABELS,
   ENGAGEMENT_TYPE_VALUES,
+  WORK_AUTHORIZATION_LABELS,
+  WORK_AUTHORIZATION_VALUES,
 } from './stated-fields';
 import { ProvenanceChip, type Provenance, type ProvenanceMap } from './provenance';
 import type { IntakeState } from './intake-fields';
@@ -75,7 +77,7 @@ export function IntakeForm({
   }
 
   function select(
-    key: 'availability_status' | 'engagement_type',
+    key: 'availability_status' | 'engagement_type' | 'work_authorization',
     label: string,
     options: readonly string[],
     labels: Record<string, string>,
@@ -202,6 +204,12 @@ export function IntakeForm({
             'Engagement type',
             ENGAGEMENT_TYPE_VALUES,
             ENGAGEMENT_LABELS,
+          )}
+          {select(
+            'work_authorization',
+            'Work authorization',
+            WORK_AUTHORIZATION_VALUES,
+            WORK_AUTHORIZATION_LABELS,
           )}
           {field('date_available', 'Date available', { type: 'date' })}
           {field('current_pay', 'Current pay', { placeholder: 'e.g. $72/hr' })}

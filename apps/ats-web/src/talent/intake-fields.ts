@@ -25,6 +25,7 @@ export interface IntakeState {
   zip: string;
   availability_status: string;
   engagement_type: string;
+  work_authorization: string;
   date_available: string;
   current_pay: string;
   desired_pay: string;
@@ -54,6 +55,7 @@ export const INTAKE_TEXT_KEYS: ReadonlyArray<
   'zip',
   'availability_status',
   'engagement_type',
+  'work_authorization',
   'date_available',
   'current_pay',
   'desired_pay',
@@ -97,6 +99,7 @@ export function emptyIntakeState(): IntakeState {
     zip: '',
     availability_status: '',
     engagement_type: '',
+    work_authorization: '',
     date_available: '',
     current_pay: '',
     desired_pay: '',

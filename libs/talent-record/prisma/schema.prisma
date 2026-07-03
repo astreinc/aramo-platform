@@ -92,6 +92,14 @@ model TalentRecord {
   availability_status String?
   engagement_type     String?
 
+  // Gate-1 G1-A (R6) — talent-STATED work authorization. String + closed
+  // vocabulary reusing the talent_evidence.TalentWorkAuthorizationStatus values
+  // (US_CITIZEN|PERMANENT_RESIDENT|VISA_HOLDER|REQUIRES_SPONSORSHIP|OTHER|
+  // NOT_DISCLOSED) so a declared value maps 1:1 to an ingested
+  // TalentWorkAuthorization evidence row later. null = not stated. Feeds the
+  // matching constraint_checks_evaluated.work_authorization derivation (G1-B).
+  work_authorization  String?
+
   // Provenance (UUID-only logical refs to identity.User).
   owner_id      String? @db.Uuid
   entered_by_id String? @db.Uuid
@@ -150,6 +158,7 @@ model TalentRecord {
   // Segment-4 server-side faceting (stated-fields amendment §5).
   @@index([tenant_id, availability_status])
   @@index([tenant_id, engagement_type])
+  @@index([tenant_id, work_authorization])
   // Segment-4 keyset cursor sort orders (sort key + id tiebreak). The
   // key_skills pg_trgm GIN is hand-authored in the migration (Prisma can't
   // express gin_trgm_ops).

@@ -55,6 +55,7 @@ function makeTalent() {
     desired_pay: null,
     availability_status: null,
     engagement_type: null,
+    work_authorization: null,
     date_available: null,
     can_relocate: false,
     is_hot: false,

@@ -33,6 +33,7 @@ function row(id: string, over: Record<string, unknown> = {}) {
     best_time_to_call: null,
     availability_status: null,
     engagement_type: null,
+    work_authorization: null,
     owner_id: null,
     entered_by_id: null,
     created_at: new Date('2026-06-01T00:00:00Z'),

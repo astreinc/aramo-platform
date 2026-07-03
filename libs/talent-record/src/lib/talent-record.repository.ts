@@ -5,8 +5,10 @@ import type { CreateTalentRecordRequestDto } from './dto/create-talent-record-re
 import {
   isAvailabilityStatus,
   isEngagementType,
+  isWorkAuthorization,
   type AvailabilityStatus,
   type EngagementType,
+  type WorkAuthorization,
 } from './dto/stated-fields.js';
 import type { TalentRecordView } from './dto/talent-record.view.js';
 import type {
@@ -28,6 +30,7 @@ function assertStatedFields(
   input: {
     availability_status?: string | null;
     engagement_type?: string | null;
+    work_authorization?: string | null;
   },
   requestId: string,
 ): void {
@@ -44,6 +47,15 @@ function assertStatedFields(
     throw new AramoError('VALIDATION_ERROR', 'Invalid engagement_type', 400, {
       requestId,
       details: { field: 'engagement_type' },
+    });
+  }
+  if (
+    input.work_authorization != null &&
+    !isWorkAuthorization(input.work_authorization)
+  ) {
+    throw new AramoError('VALIDATION_ERROR', 'Invalid work_authorization', 400, {
+      requestId,
+      details: { field: 'work_authorization' },
     });
   }
 }
@@ -87,6 +99,7 @@ interface TalentRecordRow {
   best_time_to_call: string | null;
   availability_status: AvailabilityStatus | null;
   engagement_type: EngagementType | null;
+  work_authorization: WorkAuthorization | null;
   owner_id: string | null;
   entered_by_id: string | null;
   // 4e-rest — the PERSON_CLUSTER pointer (identity_index). SERVER-ONLY: it is
@@ -129,6 +142,7 @@ function projectView(row: TalentRecordRow): TalentRecordView {
     best_time_to_call: row.best_time_to_call,
     availability_status: row.availability_status,
     engagement_type: row.engagement_type,
+    work_authorization: row.work_authorization,
     owner_id: row.owner_id,
     entered_by_id: row.entered_by_id,
     created_at: row.created_at.toISOString(),
@@ -180,6 +194,7 @@ function projectSearchRow(row: RawSearchRow): TalentRecordView {
     best_time_to_call: row.best_time_to_call,
     availability_status: row.availability_status,
     engagement_type: row.engagement_type,
+    work_authorization: row.work_authorization,
     owner_id: row.owner_id,
     entered_by_id: row.entered_by_id,
     created_at: toIso(row.created_at),
@@ -358,6 +373,7 @@ export class TalentRecordRepository {
         best_time_to_call: input.best_time_to_call ?? null,
         availability_status: input.availability_status ?? null,
         engagement_type: input.engagement_type ?? null,
+        work_authorization: input.work_authorization ?? null,
         owner_id: input.owner_id ?? entered_by_id,
         entered_by_id,
       },
@@ -682,6 +698,7 @@ export class TalentRecordRepository {
     if (i.best_time_to_call !== undefined) data['best_time_to_call'] = i.best_time_to_call;
     if (i.availability_status !== undefined) data['availability_status'] = i.availability_status;
     if (i.engagement_type !== undefined) data['engagement_type'] = i.engagement_type;
+    if (i.work_authorization !== undefined) data['work_authorization'] = i.work_authorization;
     if (i.owner_id !== undefined) data['owner_id'] = i.owner_id;
 
     const row = await this.prisma.talentRecord.update({

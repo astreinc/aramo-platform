@@ -26,6 +26,9 @@ const TALENT_RECORD_MIGRATION_PATHS = [
   // 4e-rest — drops core_talent_id (must run last so the test schema matches
   // the regenerated Prisma client, which no longer projects the column).
   'libs/talent-record/prisma/migrations/20260701120000_drop_core_talent_id/migration.sql',
+  // Gate-1 G1-A — adds work_authorization (the regenerated client projects it;
+  // the test schema must carry it or findFirst 500s).
+  'libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 // Apply the talent_record schema to a test database. Feeds each whole

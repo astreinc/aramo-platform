@@ -19,6 +19,19 @@ export const ENGAGEMENT_TYPE_VALUES = [
 ] as const;
 export type EngagementType = (typeof ENGAGEMENT_TYPE_VALUES)[number];
 
+// Gate-1 G1-A (R6) — talent-STATED work authorization; mirrors the BE
+// WORK_AUTHORIZATION_VALUES (which reuse talent_evidence's
+// TalentWorkAuthorizationStatus vocab). Kept 1:1 by stated-fields.drift.spec.ts.
+export const WORK_AUTHORIZATION_VALUES = [
+  'US_CITIZEN',
+  'PERMANENT_RESIDENT',
+  'VISA_HOLDER',
+  'REQUIRES_SPONSORSHIP',
+  'OTHER',
+  'NOT_DISCLOSED',
+] as const;
+export type WorkAuthorization = (typeof WORK_AUTHORIZATION_VALUES)[number];
+
 export const AVAILABILITY_LABELS: Record<AvailabilityStatus, string> = {
   available_now: 'Available now',
   open_to_offers: 'Open to offers',
@@ -30,4 +43,13 @@ export const ENGAGEMENT_LABELS: Record<EngagementType, string> = {
   contract_to_hire: 'Contract-to-hire',
   contract: 'Contract',
   direct_hire: 'Direct hire',
+};
+
+export const WORK_AUTHORIZATION_LABELS: Record<WorkAuthorization, string> = {
+  US_CITIZEN: 'U.S. citizen',
+  PERMANENT_RESIDENT: 'Permanent resident',
+  VISA_HOLDER: 'Visa holder',
+  REQUIRES_SPONSORSHIP: 'Requires sponsorship',
+  OTHER: 'Other',
+  NOT_DISCLOSED: 'Not disclosed',
 };

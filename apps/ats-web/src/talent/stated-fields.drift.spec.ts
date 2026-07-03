@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AVAILABILITY_STATUS_VALUES,
   ENGAGEMENT_TYPE_VALUES,
+  WORK_AUTHORIZATION_VALUES,
 } from './stated-fields';
 
 // Drift guard — the FE stated-fields vocab MUST stay 1:1 with the BE source
@@ -39,6 +40,12 @@ describe('stated-fields drift guard (FE mirror ↔ BE source)', () => {
   it('engagement_type vocabulary matches the BE source 1:1', () => {
     expect(beArray('ENGAGEMENT_TYPE_VALUES', source)).toEqual([
       ...ENGAGEMENT_TYPE_VALUES,
+    ]);
+  });
+
+  it('work_authorization vocabulary matches the BE source 1:1', () => {
+    expect(beArray('WORK_AUTHORIZATION_VALUES', source)).toEqual([
+      ...WORK_AUTHORIZATION_VALUES,
     ]);
   });
 });

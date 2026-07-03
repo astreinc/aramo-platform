@@ -6,7 +6,11 @@
 // in-tenant gate via TalentRepository.findOverlayByTenant). The
 // allowlist-walk in TalentRecordRepository.update structurally
 // prevents any free-form column update from setting the link.
-import type { AvailabilityStatus, EngagementType } from './stated-fields.js';
+import type {
+  AvailabilityStatus,
+  EngagementType,
+  WorkAuthorization,
+} from './stated-fields.js';
 
 export interface UpdateTalentRecordRequestDto {
   first_name?: string;
@@ -36,5 +40,6 @@ export interface UpdateTalentRecordRequestDto {
   // allow clearing back to "not stated". Closed-vocabulary guard in the repo.
   availability_status?: AvailabilityStatus | null;
   engagement_type?: EngagementType | null;
+  work_authorization?: WorkAuthorization | null;
   owner_id?: string | null;
 }

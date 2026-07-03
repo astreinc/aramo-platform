@@ -7,7 +7,11 @@
 // pattern is not applied here (rule of three — that pattern is for
 // mirrored logic, not flat fields).
 
-import type { AvailabilityStatus, EngagementType } from './stated-fields';
+import type {
+  AvailabilityStatus,
+  EngagementType,
+  WorkAuthorization,
+} from './stated-fields';
 
 export interface TalentRecordView {
   readonly id: string;
@@ -35,6 +39,7 @@ export interface TalentRecordView {
   // "Unknown" bucket alongside the explicit 'unknown' member).
   readonly availability_status: AvailabilityStatus | null;
   readonly engagement_type: EngagementType | null;
+  readonly work_authorization: WorkAuthorization | null;
   // Segment 3 — list-response enrichment (COMPOSED in apps/api, optional).
   // last_activity_at: ISO timestamp of the most-recent activity, or null.
   // consent_summary: the 3-value contact-consent summary (libs/consent

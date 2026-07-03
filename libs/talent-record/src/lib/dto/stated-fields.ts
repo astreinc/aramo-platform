@@ -33,6 +33,23 @@ export const ENGAGEMENT_TYPE_VALUES = [
 ] as const;
 export type EngagementType = (typeof ENGAGEMENT_TYPE_VALUES)[number];
 
+// Gate-1 G1-A (R6) — talent-STATED work authorization. These 6 values REUSE the
+// talent_evidence.TalentWorkAuthorizationStatus vocabulary (NOT a parallel enum)
+// so a declared TalentRecord.work_authorization maps 1:1 to an ingested
+// TalentWorkAuthorization evidence row later. `null` = not stated. Kept as a
+// string closed-vocab here (the stated-fields convention) rather than importing
+// the talent-evidence type; the ats-web mirror + drift spec keep it 1:1, and the
+// values MUST stay identical to talent_evidence's enum.
+export const WORK_AUTHORIZATION_VALUES = [
+  'US_CITIZEN',
+  'PERMANENT_RESIDENT',
+  'VISA_HOLDER',
+  'REQUIRES_SPONSORSHIP',
+  'OTHER',
+  'NOT_DISCLOSED',
+] as const;
+export type WorkAuthorization = (typeof WORK_AUTHORIZATION_VALUES)[number];
+
 // Closed-set guards — the @IsIn intent honored via the module's interface-DTO
 // idiom (talent-record DTOs are interfaces, not class-validator classes). The
 // controller/repository reject an out-of-vocabulary value at the wire boundary.
@@ -46,5 +63,11 @@ export function isEngagementType(v: unknown): v is EngagementType {
   return (
     typeof v === 'string' &&
     (ENGAGEMENT_TYPE_VALUES as readonly string[]).includes(v)
+  );
+}
+export function isWorkAuthorization(v: unknown): v is WorkAuthorization {
+  return (
+    typeof v === 'string' &&
+    (WORK_AUTHORIZATION_VALUES as readonly string[]).includes(v)
   );
 }

@@ -161,6 +161,8 @@ const TALENT_RECORD_MIGRATIONS = [
   // 4e-rest — drops core_talent_id (must run last so the provider schema
   // matches the regenerated Prisma client, which no longer projects it).
   'libs/talent-record/prisma/migrations/20260701120000_drop_core_talent_id/migration.sql',
+  // Gate-1 G1-A — adds work_authorization (regenerated client projects it).
+  'libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
 ].map((p) => resolve(ROOT, p));
 // PR-A1b §4 sweep — entitlement schema applied for the pact verifier so
 // the portal-thin pact interactions (5 interactions traversing the now
