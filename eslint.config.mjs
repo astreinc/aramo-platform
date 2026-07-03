@@ -13,6 +13,23 @@
 import nx from '@nx/eslint-plugin';
 import importX from 'eslint-plugin-import-x';
 
+// I15 (ADR-0017) — the CIP(Pipeline)⊥ATS import wall, enforced by nx module
+// boundaries via project scope tags (libs/<lib>/project.json "tags").
+//   - scope:cip MUST NOT import scope:ats  ← THE WALL
+//   - scope:ats MAY import scope:cip       ← the allowed direction (ATS consumes Pipeline)
+//   - scope:boundary spans neither cluster's workflow (job-domain, consent)
+//   - scope:shared is leaf infra (depends only on shared)
+// The trailing '*' rule leaves untagged sources (apps composition roots, the
+// pact provider harness) unconstrained — the wall governs the tagged libs.
+// Proven to fire by libs/matching/src/tests/i15-negative-control.spec.ts.
+const SCOPE_DEP_CONSTRAINTS = [
+  { sourceTag: 'scope:cip', onlyDependOnLibsWithTags: ['scope:cip', 'scope:boundary', 'scope:shared'] },
+  { sourceTag: 'scope:ats', onlyDependOnLibsWithTags: ['scope:ats', 'scope:cip', 'scope:boundary', 'scope:shared'] },
+  { sourceTag: 'scope:boundary', onlyDependOnLibsWithTags: ['scope:boundary', 'scope:shared'] },
+  { sourceTag: 'scope:shared', onlyDependOnLibsWithTags: ['scope:shared'] },
+  { sourceTag: '*', onlyDependOnLibsWithTags: ['*'] },
+];
+
 export default [
   {
     ignores: [
@@ -24,6 +41,12 @@ export default [
       '**/prisma/generated/**',
       '**/playwright-report/**',
       '**/test-results/**',
+      // I15 negative-control fixture: a committed, deliberate scope:cip →
+      // scope:ats import that must NOT red the real gate. The wall-fires spec
+      // (libs/matching/src/tests/i15-negative-control.spec.ts) lints it
+      // explicitly with `eslint --no-ignore` to prove the boundary rule rejects
+      // it. Also tsconfig.lib.json-excluded from the matching build.
+      '**/i15-negative-control/**',
     ],
   },
   ...nx.configs['flat/base'],
@@ -37,9 +60,7 @@ export default [
         {
           enforceBuildableLibDependency: true,
           allow: [],
-          depConstraints: [
-            { sourceTag: '*', onlyDependOnLibsWithTags: ['*'] },
-          ],
+          depConstraints: SCOPE_DEP_CONSTRAINTS,
         },
       ],
     },
@@ -87,9 +108,7 @@ export default [
         {
           enforceBuildableLibDependency: true,
           allow: ['@aramo/auth-service', '@aramo/api'],
-          depConstraints: [
-            { sourceTag: '*', onlyDependOnLibsWithTags: ['*'] },
-          ],
+          depConstraints: SCOPE_DEP_CONSTRAINTS,
         },
       ],
     },

@@ -14,5 +14,5 @@
     }
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/tests/**/*", "**/*.spec.ts"]
+  "exclude": ["src/tests/**/*", "**/*.spec.ts", "src/i15-negative-control/**"]
 }
