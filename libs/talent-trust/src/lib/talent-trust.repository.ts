@@ -8,6 +8,8 @@ import type {
   EvidenceEventType,
   EvidenceLinkRelation,
   EvidenceStatus,
+  MatchAdviseBand,
+  MatchAdvisoryStatus,
   Method,
   PortabilityClass,
   PresentationBand,
@@ -93,6 +95,32 @@ export interface SubjectAnchorRow {
   normalized_value: string;
   source_evidence_id: string;
   created_at: Date;
+}
+
+// TR-2a-2 — the within-tenant same-human ADVISORY row (a match match).
+export interface SubjectMatchAdvisoryRow {
+  id: string;
+  tenant_id: string;
+  subject_a_id: string;
+  subject_b_id: string;
+  advise_band: MatchAdviseBand;
+  has_contradiction: boolean;
+  // { shared: SharedAnchorRef[], contradiction_kinds: AnchorKind[] } — PII-free.
+  match_basis: unknown;
+  status: MatchAdvisoryStatus;
+  created_by: string;
+  created_at: Date;
+}
+
+// The upsert input for an advisory. Keyed by the canonical unordered pair.
+export interface UpsertMatchAdvisoryInput {
+  tenant_id: string;
+  subject_a_id: string;
+  subject_b_id: string;
+  advise_band: MatchAdviseBand;
+  has_contradiction: boolean;
+  match_basis: unknown;
+  created_by: string;
 }
 
 // TR-2a-1 — the anchor write: the EvidenceRecord (source of truth) + its CREATED
@@ -323,6 +351,32 @@ export class TalentTrustRepository {
     return rows as SubjectAnchorRow[];
   }
 
+  // TR-2a-2 — the matcher's btree read: subjects sharing a normalized value in-tenant.
+  // Tenant-scoped (the cross-tenant path is TR-2b / identity_index, never this table).
+  // Uses the @@index([tenant_id, anchor_kind, normalized_value]) surface.
+  async findAnchorsByValue(
+    tenantId: string,
+    anchorKind: AnchorKind,
+    normalizedValue: string,
+  ): Promise<SubjectAnchorRow[]> {
+    const rows = await this.prisma.subjectAnchor.findMany({
+      where: { tenant_id: tenantId, anchor_kind: anchorKind, normalized_value: normalizedValue },
+    });
+    return rows as SubjectAnchorRow[];
+  }
+
+  // The distinct subjects in a tenant that carry ≥1 anchor — the backfill sweep's
+  // work-list (matcher runs per subject; the canonical-pair unique key dedupes).
+  async listSubjectIdsWithAnchors(tenantId: string): Promise<string[]> {
+    const rows = await this.prisma.subjectAnchor.findMany({
+      where: { tenant_id: tenantId },
+      distinct: ['subject_id'],
+      select: { subject_id: true },
+      orderBy: { subject_id: 'asc' },
+    });
+    return rows.map((r) => r.subject_id);
+  }
+
   // The anchor write — EvidenceRecord (source of truth) + its CREATED event +
   // the SubjectAnchor projection, in ONE transaction (atomic: no projection
   // without its evidence, no evidence without its projection).
@@ -377,5 +431,78 @@ export class TalentTrustRepository {
       evidence: evidence as EvidenceRecordRow,
       anchor: anchor as SubjectAnchorRow,
     };
+  }
+
+  // ---- SubjectMatchAdvisory (TR-2a-2 within-tenant same-human advisory) ----
+
+  // Upsert an advisory by its canonical unordered pair (idempotent backfill /
+  // re-run). The derived fields (band / contradiction / basis) are recomputed and
+  // updated; `status` is set ONLY on insert — this slice never mutates a status,
+  // and a later slice's human resolution must not be clobbered by a re-sweep.
+  async upsertMatchAdvisory(
+    input: UpsertMatchAdvisoryInput,
+  ): Promise<SubjectMatchAdvisoryRow> {
+    const upserted = await this.prisma.subjectMatchAdvisory.upsert({
+      where: {
+        tenant_id_subject_a_id_subject_b_id: {
+          tenant_id: input.tenant_id,
+          subject_a_id: input.subject_a_id,
+          subject_b_id: input.subject_b_id,
+        },
+      },
+      create: {
+        id: uuidv7(),
+        tenant_id: input.tenant_id,
+        subject_a_id: input.subject_a_id,
+        subject_b_id: input.subject_b_id,
+        advise_band: input.advise_band,
+        has_contradiction: input.has_contradiction,
+        match_basis: input.match_basis as never,
+        created_by: input.created_by,
+        // status defaults to PENDING_REVIEW.
+      },
+      update: {
+        advise_band: input.advise_band,
+        has_contradiction: input.has_contradiction,
+        match_basis: input.match_basis as never,
+        // status intentionally NOT updated (append-only-style; preserve resolution).
+      },
+    });
+    return upserted as SubjectMatchAdvisoryRow;
+  }
+
+  async findMatchAdvisory(
+    tenantId: string,
+    subjectAId: string,
+    subjectBId: string,
+  ): Promise<SubjectMatchAdvisoryRow | null> {
+    const row = await this.prisma.subjectMatchAdvisory.findUnique({
+      where: {
+        tenant_id_subject_a_id_subject_b_id: {
+          tenant_id: tenantId,
+          subject_a_id: subjectAId,
+          subject_b_id: subjectBId,
+        },
+      },
+    });
+    return (row as SubjectMatchAdvisoryRow | null) ?? null;
+  }
+
+  // List advisories for a tenant, optionally only those a given subject appears in
+  // (either side of the canonical pair).
+  async listMatchAdvisories(
+    tenantId: string,
+    opts?: { subjectId?: string },
+  ): Promise<SubjectMatchAdvisoryRow[]> {
+    const rows = await this.prisma.subjectMatchAdvisory.findMany({
+      where: {
+        tenant_id: tenantId,
+        ...(opts?.subjectId
+          ? { OR: [{ subject_a_id: opts.subjectId }, { subject_b_id: opts.subjectId }] }
+          : {}),
+      },
+      orderBy: { created_at: 'asc' },
+    });
+    return rows as SubjectMatchAdvisoryRow[];
   }
 }

@@ -73,6 +73,12 @@ model ResolutionSubject {
   state    TrustState?
   anchors  SubjectAnchor[]
 
+  // TR-2a-2 within-tenant same-human advisories this subject appears in (as the
+  // canonical-lower `a` side or the canonical-higher `b` side of a pair). ADVISORY
+  // only — an advisory NEVER changes a subject's status (advise-only, R1).
+  match_advisories_a SubjectMatchAdvisory[] @relation("MatchAdvisorySubjectA")
+  match_advisories_b SubjectMatchAdvisory[] @relation("MatchAdvisorySubjectB")
+
   @@index([tenant_id])
   @@index([tenant_id, status])
   @@schema("talent_trust")
@@ -314,5 +320,71 @@ model SubjectAnchor {
   // The matcher's btree surface: subjects sharing a normalized value in-tenant.
   @@index([tenant_id, anchor_kind, normalized_value])
   @@index([subject_id])
+  @@schema("talent_trust")
+}
+
+// SubjectMatchAdvisory — TR-2a-2 within-tenant SAME-HUMAN ADVISORY. The matcher
+// surfaces a pair of ResolutionSubjects in the SAME tenant that share ≥1 normalized
+// anchor (SubjectAnchor) and records this advisory for a human reviewer.
+//
+// ADVISE-ONLY (R1): this record is COUNSEL, never an action. Writing it takes ZERO
+// merge action — no mergeSubjects call, no subject status change. A later slice
+// (TR-2a-3) resolves the advisory (human-approve / auto-on-verified-Tier-A). Because
+// self-declared shared email/phone are CORROBORATORS not verified Tier-A anchors (R2),
+// NOTHING here auto-merges — false-merge is structurally impossible in this slice.
+//
+// The pair is stored CANONICALLY (subject_a_id < subject_b_id by string compare) so a
+// given human-pair maps to exactly ONE advisory regardless of discovery direction —
+// the unique constraint makes the backfill / re-run idempotent (no A/B vs B/A dup).
+//
+// PII DISCIPLINE (R3): this row holds only subject refs + anchor-row refs + kinds — it
+// NEVER copies a normalized_value. The identifier PII stays in SubjectAnchor. `match_basis`
+// points to the shared SubjectAnchor rows by id; a reviewer resolves them to see WHAT matched.
+//
+// WALL: tenant-scoped, talent_trust-internal (cip). No identity_index, no cross-tenant
+// (that is TR-2b / fingerprints), no ats import (I15). Deterministic — no LLM (Decision 10).
+model SubjectMatchAdvisory {
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+
+  // Canonical unordered pair (subject_a_id < subject_b_id, string compare).
+  subject_a_id String @db.Uuid
+  subject_b_id String @db.Uuid
+
+  /// MatchAdviseBand closed vocabulary (TR-2a-2, split-biased/inclusive):
+  ///   ADVISE_WEAK (one shared anchor) | ADVISE_STRONG (multiple / multi-kind).
+  /// ADVISORY METADATA ONLY — gates NOTHING (nothing merges); it orders a human's queue.
+  advise_band String
+
+  // R5 contradiction flag — the pair shares ≥1 anchor of one kind but has
+  // NON-overlapping values on another shared-capable kind (e.g. same email,
+  // different phone). Lowers reviewer confidence; split-bias earning its keep.
+  has_contradiction Boolean @default(false)
+
+  // The shared + contradicting anchor references — PII-FREE (kinds + SubjectAnchor
+  // row ids, never the normalized_value). Shape (§R3):
+  //   { shared: [{ anchor_kind, a_anchor_id, b_anchor_id }],
+  //     contradiction_kinds: [AnchorKind, …] }
+  match_basis Json
+
+  /// MatchAdvisoryStatus closed vocabulary:
+  ///   PENDING_REVIEW | CONFIRMED | DISMISSED
+  /// This slice writes PENDING_REVIEW ONLY; TR-2a-3 transitions it (append-only-style —
+  /// the advisory is never deleted, only resolved).
+  status String @default("PENDING_REVIEW")
+
+  created_by String
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  subject_a ResolutionSubject @relation("MatchAdvisorySubjectA", fields: [subject_a_id], references: [id])
+  subject_b ResolutionSubject @relation("MatchAdvisorySubjectB", fields: [subject_b_id], references: [id])
+
+  // One advisory per tenant-scoped unordered pair — the idempotency key (backfill /
+  // re-run upserts, never duplicates).
+  @@unique([tenant_id, subject_a_id, subject_b_id])
+  @@index([tenant_id, status])
+  @@index([subject_a_id])
+  @@index([subject_b_id])
   @@schema("talent_trust")
 }
