@@ -104,6 +104,14 @@ model RawPayloadReference {
   // (Directive §1 Ruling 1 atomicity).
   resolved_talent_id  String?           @db.Uuid
   resolution_method   ResolutionMethod?
+  // Fix-Slice-2 (ADR-0016 D3/D5) — the within-tenant L2 resolution anchor: the
+  // talent_trust.ResolutionSubject id this arrival resolved to (verified-email
+  // SubjectAnchor match → existing subject, or a new subject). The NEW
+  // canonicalize idempotency anchor + poll gate (replacing the husk
+  // resolved_talent_id, which retires with the husk in the final drop slice).
+  // DISTINCT from resolved_cluster_id. Nullable — NULL until canonicalize
+  // fires. UUID-only, no FK (cross-schema; talent_trust owns ResolutionSubject).
+  resolved_subject_id String?           @db.Uuid
   // Step 4b (ADR-0016) — the cross-tenant resolution anchor: the
   // identity_index.PersonCluster id this payload resolved to (PII-free,
   // fingerprint-matched). DISTINCT from resolved_talent_id (the per-tenant

@@ -82,6 +82,39 @@ export interface RecordAnchorInput {
   created_by: string;
 }
 
+// Fix-Slice-2 — a cold-ingest channel arrival (from libs/canonicalization,
+// scope:ats, above the wall). This seam RE-HOMES the retired Core husk's
+// within-tenant verified-email resolution onto L2 (ResolutionSubject), composing
+// the BUILT TR-2a-1 primitives (findAnchorsByValue + resolveOrCreateSubject +
+// insertAnchor + insertEvidence). It is NOT the TR-2 matcher engine — no
+// advisory classification, no cross-tenant. Anchor is within-tenant (I4/I14).
+export interface RecordSourcedArrivalInput {
+  tenant_id: string;
+  // The L1 arrival id (ingestion.RawPayloadReference.id) — the SOURCED_TALENT
+  // ref_id keying the subject on a MISS (per-arrival provenance, I10).
+  payload_id: string;
+  // Already normalized at ingestion (trim + lowercase). null when the arrival
+  // carried no email (no identity key → always a new subject).
+  verified_email: string | null;
+  // Unverified contact URL from the payload (nullable). Recorded as evidence,
+  // never an identity anchor.
+  profile_url: string | null;
+  // Provenance — the channel this arrival came from (stored on evidence).
+  source_channel: string;
+  // The writing slice — 'canonicalization'.
+  created_by: string;
+}
+
+export interface RecordSourcedArrivalResult {
+  subject_id: string;
+  // verified_email_match = the normalized-email SubjectAnchor hit an existing
+  // subject (Tier-A deterministic same-human, §6A/I5); new_identity = no email
+  // match, a new subject was created.
+  resolution_method: 'verified_email_match' | 'new_identity';
+  // Count of contact EvidenceRecords written this arrival (email + url).
+  contact_evidence_written: number;
+}
+
 @Injectable()
 export class TalentTrustService {
   constructor(private readonly repo: TalentTrustRepository) {}
@@ -192,6 +225,153 @@ export class TalentTrustService {
 
     await this.recompute(subjectId, input.tenant_id, now);
     return written;
+  }
+
+  // Fix-Slice-2 — resolve a cold-ingest arrival's within-tenant ResolutionSubject
+  // and attach its per-arrival contact evidence. RE-HOMES the husk's verified-email
+  // resolution (`talentContactMethod.findFirst(verified)` → husk id) onto L2:
+  //   - verified_email present → look up the normalized-email SubjectAnchor
+  //     (deterministic, oldest wins — mirrors the husk's orderBy created_at asc):
+  //       * HIT  → resolve to that subject (verified_email_match, Tier-A §6A/I5);
+  //       * MISS → create a subject keyed by the SOURCED_TALENT ref (payload_id)
+  //                and record the email SubjectAnchor (new_identity).
+  //   - no verified_email → a new subject keyed by the SOURCED_TALENT ref.
+  // Contact evidence (email observation on a hit, profile_url) attaches to the
+  // resolved subject with the arrival's provenance (payload_id + source_channel);
+  // channel-sourced ⇒ THIRD_PARTY_UNVERIFIED / DOCUMENT, tenant-walled (I8).
+  async recordSourcedArrival(
+    input: RecordSourcedArrivalInput,
+  ): Promise<RecordSourcedArrivalResult> {
+    const now = new Date();
+    let subjectId: string;
+    let resolution_method: RecordSourcedArrivalResult['resolution_method'];
+    let contactWritten = 0;
+
+    if (input.verified_email !== null) {
+      const anchors = await this.repo.findAnchorsByValue(
+        input.tenant_id,
+        'EMAIL',
+        input.verified_email,
+      );
+      if (anchors.length > 0) {
+        // Deterministic: the oldest anchor's origin subject wins (mirrors the
+        // retired husk's `orderBy created_at asc`).
+        const oldest = anchors.reduce((a, b) => (a.created_at <= b.created_at ? a : b));
+        subjectId = oldest.subject_id;
+        resolution_method = 'verified_email_match';
+        // Per-arrival email observation (I10 attributability). The anchor already
+        // exists (that is how we matched) — this is evidence, not a new anchor.
+        await this.attachContactEvidence(
+          subjectId,
+          input,
+          'EMAIL',
+          input.verified_email,
+          now,
+        );
+        contactWritten += 1;
+      } else {
+        subjectId = await this.repo.resolveOrCreateSubject(
+          input.tenant_id,
+          'SOURCED_TALENT',
+          input.payload_id,
+          input.created_by,
+        );
+        resolution_method = 'new_identity';
+        // Record the email SubjectAnchor (writes its source EvidenceRecord +
+        // the anchor projection in one tx). Exists-checked for re-run safety.
+        const existing = await this.repo.findSubjectAnchor(
+          input.tenant_id,
+          subjectId,
+          'EMAIL',
+          input.verified_email,
+        );
+        if (existing === null) {
+          const strength = deriveStrength('THIRD_PARTY_UNVERIFIED', 'DOCUMENT');
+          await this.repo.insertAnchor({
+            evidence: {
+              subject_id: subjectId,
+              tenant_id: input.tenant_id,
+              dimension: 'IDENTITY',
+              assertion_type: 'EMAIL',
+              assertion_payload: {
+                normalized_value: input.verified_email,
+                source_channel: input.source_channel,
+                payload_id: input.payload_id,
+              },
+              source_class: 'THIRD_PARTY_UNVERIFIED',
+              method: 'DOCUMENT',
+              strength,
+              collected_at: now,
+              decay_profile: 'SLOW',
+              portability_class: 'TENANT_ONLY',
+              ai_derived: false,
+              current_status: EVENT_TO_STATUS.CREATED,
+              created_by: input.created_by,
+            },
+            anchor_kind: 'EMAIL',
+            normalized_value: input.verified_email,
+          });
+          contactWritten += 1;
+        }
+      }
+    } else {
+      subjectId = await this.repo.resolveOrCreateSubject(
+        input.tenant_id,
+        'SOURCED_TALENT',
+        input.payload_id,
+        input.created_by,
+      );
+      resolution_method = 'new_identity';
+    }
+
+    // profile_url — an unverified contact evidence (never an identity anchor).
+    if (input.profile_url !== null) {
+      await this.attachContactEvidence(subjectId, input, 'PROFILE_URL', input.profile_url, now);
+      contactWritten += 1;
+    }
+
+    await this.recompute(subjectId, input.tenant_id, now);
+    return { subject_id: subjectId, resolution_method, contact_evidence_written: contactWritten };
+  }
+
+  // Attach one per-arrival contact EvidenceRecord (+ CREATED event) to a resolved
+  // subject. Channel-sourced ⇒ THIRD_PARTY_UNVERIFIED / DOCUMENT; IDENTITY dim;
+  // provenance (payload_id + source_channel) travels in the assertion_payload.
+  private async attachContactEvidence(
+    subjectId: string,
+    input: RecordSourcedArrivalInput,
+    assertionType: 'EMAIL' | 'PROFILE_URL',
+    value: string,
+    now: Date,
+  ): Promise<void> {
+    const strength = deriveStrength('THIRD_PARTY_UNVERIFIED', 'DOCUMENT');
+    const evidence = await this.repo.insertEvidence({
+      subject_id: subjectId,
+      tenant_id: input.tenant_id,
+      dimension: 'IDENTITY',
+      assertion_type: assertionType,
+      assertion_payload: {
+        value,
+        source_channel: input.source_channel,
+        payload_id: input.payload_id,
+      },
+      source_class: 'THIRD_PARTY_UNVERIFIED',
+      method: 'DOCUMENT',
+      strength,
+      collected_at: now,
+      decay_profile: 'SLOW',
+      portability_class: 'TENANT_ONLY',
+      ai_derived: false,
+      current_status: EVENT_TO_STATUS.CREATED,
+      created_by: input.created_by,
+    });
+    await this.repo.appendEvent({
+      evidence_id: evidence.id,
+      tenant_id: input.tenant_id,
+      event_type: 'CREATED',
+      actor: input.created_by,
+      occurred_at: now,
+    });
   }
 
   // ---- Writes: lifecycle ops (§8) ------------------------------------

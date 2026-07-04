@@ -54,6 +54,7 @@ describe('RawPayloadReference schema — structural guarantees', () => {
         'profile_url',
         'resolution_method',
         'resolved_cluster_id',
+        'resolved_subject_id',
         'resolved_talent_id',
         'sha256',
         'skill_surface_forms',

@@ -9,6 +9,7 @@ import { IdentityIndexModule } from '@aramo/identity-index';
 import { IngestionModule } from '@aramo/ingestion';
 import { TalentModule } from '@aramo/talent';
 import { TalentEvidenceModule } from '@aramo/talent-evidence';
+import { TalentTrustModule } from '@aramo/talent-trust';
 
 import { CanonicalizationOutboxRepository } from './canonicalization-outbox.repository.js';
 import { CanonicalizationRepository } from './canonicalization.repository.js';
@@ -45,6 +46,10 @@ import { PrismaService } from './prisma/prisma.service.js';
   imports: [
     CommonModule,
     IdentityIndexModule,
+    // Fix-Slice-2 — the within-tenant L2 resolution seam (TR-2a). ats→cip
+    // (canonicalization is scope:ats; talent-trust scope:cip), lint-green —
+    // mirrors the IdentityIndexModule edge. Provides TalentTrustService.
+    TalentTrustModule,
     IngestionModule,
     TalentModule,
     TalentEvidenceModule,
