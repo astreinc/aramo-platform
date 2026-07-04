@@ -54,14 +54,21 @@ const MIGRATIONS = [
   '20260604000000_add_authz_team_models',
   '20260619000000_add_tenant_profile',
   '20260620000000_add_site_hierarchy',
+  // Same curated-list bitrot as invite_status above: the seed's Tenant upsert
+  // writes/SELECTs Tenant.identity_provider (added by Subdomain-Identity B), so
+  // this migration MUST be applied or the seed throws "column identity_provider
+  // does not exist". Missing since Subdomain-Identity B landed (gated behind
+  // ARAMO_RUN_INTEGRATION, so it went unnoticed).
+  '20260627000000_add_tenant_identity_provider',
 ];
 
-// The locked catalog shape (86 scopes / 14 roles / 470 grants — Domain-
-// Enforcement P2b added tenant:admin:domain (+1 scope) granted to tenant_owner +
-// tenant_admin (+2 grants)). These are the numbers the scrub must keep byte-identical.
+// The locked catalog shape (87 scopes / 14 roles / 472 grants — TR-2a-3 added
+// identity:resolve (+1 scope) granted to tenant_owner + tenant_admin (+2 grants),
+// on top of Domain-Enforcement P2b's tenant:admin:domain). These are the numbers
+// the scrub must keep byte-identical.
 const CATALOG_ROLE_COUNT = 14;
-const CATALOG_SCOPE_COUNT = 86;
-const CATALOG_ROLE_SCOPE_COUNT = 470;
+const CATALOG_SCOPE_COUNT = 87;
+const CATALOG_ROLE_SCOPE_COUNT = 472;
 
 // Naive DDL splitter — mirrors identity.integration.spec.ts.
 function splitDdl(sql: string): string[] {

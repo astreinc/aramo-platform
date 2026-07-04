@@ -35,10 +35,27 @@ export type AnchorKind = (typeof ANCHOR_KINDS)[number];
 export const MATCH_ADVISE_BANDS = ['ADVISE_WEAK', 'ADVISE_STRONG'] as const;
 export type MatchAdviseBand = (typeof MATCH_ADVISE_BANDS)[number];
 
-// ---- SubjectMatchAdvisory.status (TR-2a-2) ----------------------------
-// This slice writes PENDING_REVIEW ONLY; TR-2a-3 transitions it (append-only-style).
-export const MATCH_ADVISORY_STATUSES = ['PENDING_REVIEW', 'CONFIRMED', 'DISMISSED'] as const;
+// ---- SubjectMatchAdvisory.status (TR-2a-2 seed → TR-2a-3 lifecycle) ----
+// Lifecycle (R5): PENDING_REVIEW → { MERGED (approved+executed) | DISMISSED
+// (reviewer: not same human) }; a MERGED advisory whose merge is later reversed
+// → REVERSED (history preserved, never deleted). TR-2a-2 wrote PENDING_REVIEW
+// only; TR-2a-3 adds the human-driven transitions. (The TR-2a-2 placeholder
+// 'CONFIRMED' — never written — is replaced by the executed-merge terminal
+// 'MERGED'.)
+export const MATCH_ADVISORY_STATUSES = [
+  'PENDING_REVIEW',
+  'MERGED',
+  'DISMISSED',
+  'REVERSED',
+] as const;
 export type MatchAdvisoryStatus = (typeof MATCH_ADVISORY_STATUSES)[number];
+
+// ---- SubjectMatchAdvisory.resolution_action (TR-2a-3) -----------------
+// The human action recorded on the advisory (R4 audit). MERGE = approve →
+// executed pointer-only mergeSubjects; DISMISS = reviewer judged not-same-human;
+// REVERSE = a prior MERGE was un-merged (unmergeSubjects), advisory → REVERSED.
+export const MATCH_RESOLUTION_ACTIONS = ['MERGE', 'DISMISS', 'REVERSE'] as const;
+export type MatchResolutionAction = (typeof MATCH_RESOLUTION_ACTIONS)[number];
 
 // ---- EvidenceRecord.source_class — the independence ladder (§5.2) ------
 // ORDERED worthless → authoritative. The ordering is fixed (R2); the index

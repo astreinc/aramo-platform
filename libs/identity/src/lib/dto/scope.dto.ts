@@ -227,6 +227,9 @@ export const SEED_SCOPE_KEYS = [
   // Domain-Enforcement P2b — the DNS-TXT domain-verification admin scope
   // (GET/POST /v1/tenant/domain-verification + /check).
   'tenant:admin:domain',                // tenant_admin + tenant_owner (DEDICATED; prove DNS ownership of the locked domain — informational, gates nothing)
+  // TR-2a-3 — privileged within-tenant identity-resolution (same-human advisory
+  // merge / dismiss / un-merge). tenant_admin + tenant_owner ONLY (NOT recruiters).
+  'identity:resolve',                   // tenant_admin + tenant_owner (DEDICATED; approve/dismiss/reverse a same-human match advisory — the merge action)
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

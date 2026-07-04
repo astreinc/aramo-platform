@@ -368,14 +368,40 @@ model SubjectMatchAdvisory {
   //     contradiction_kinds: [AnchorKind, …] }
   match_basis Json
 
-  /// MatchAdvisoryStatus closed vocabulary:
-  ///   PENDING_REVIEW | CONFIRMED | DISMISSED
-  /// This slice writes PENDING_REVIEW ONLY; TR-2a-3 transitions it (append-only-style —
-  /// the advisory is never deleted, only resolved).
+  /// MatchAdvisoryStatus closed vocabulary (TR-2a-2 seed → TR-2a-3 lifecycle):
+  ///   PENDING_REVIEW | MERGED | DISMISSED | REVERSED
+  /// TR-2a-2 writes PENDING_REVIEW only; TR-2a-3 transitions it (append-style — the
+  /// advisory is never deleted, its resolution/reversal audit is layered on).
   status String @default("PENDING_REVIEW")
 
   created_by String
   created_at DateTime @default(now()) @db.Timestamptz
+
+  // ---- TR-2a-3 resolution audit (R4) — every action records actor/time/why ----
+  // The advisory is the PRIMARY record of its own resolution (libs/audit is a stub;
+  // no general event stream to also-emit to). All nullable until first resolved.
+
+  /// MatchResolutionAction closed vocabulary: MERGE | DISMISS | REVERSE.
+  resolution_action String?
+
+  // Who resolved it + when (actor id from the privileged caller, JWT sub).
+  resolved_by String?
+  resolved_at DateTime? @db.Timestamptz
+
+  // Reviewer justification. REQUIRED to override a has_contradiction=true advisory
+  // (R3 — the F34 explicit-acknowledgment+justification override); otherwise optional.
+  resolution_justification String?
+
+  // On MERGE (R2 un-merge contract): the surviving subject + the subject whose status
+  // became MERGED (what reverseMerge un-merges). UUID-only refs (equal subject_a/_b);
+  // no extra FK relation. Null unless resolution_action = MERGE.
+  surviving_subject_id String? @db.Uuid
+  merged_subject_id    String? @db.Uuid
+
+  // ---- Reversal audit (R2/R5) — set when a MERGED advisory is un-merged → REVERSED.
+  reversed_by            String?
+  reversed_at            DateTime? @db.Timestamptz
+  reversal_justification String?
 
   subject_a ResolutionSubject @relation("MatchAdvisorySubjectA", fields: [subject_a_id], references: [id])
   subject_b ResolutionSubject @relation("MatchAdvisorySubjectB", fields: [subject_b_id], references: [id])
