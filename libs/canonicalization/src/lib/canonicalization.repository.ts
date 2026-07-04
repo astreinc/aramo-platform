@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import { Inject, Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 import {
@@ -9,6 +7,7 @@ import {
   loadIdentityPepper,
 } from '@aramo/common';
 import { IdentityIndexRepository } from '@aramo/identity-index';
+import { TalentTrustService } from '@aramo/talent-trust';
 
 import { Prisma } from '../../prisma/generated/client/client.js';
 
@@ -71,9 +70,11 @@ import { PrismaService } from './prisma/prisma.service.js';
 // VIOLATE R12.
 
 // Resolution method — closed enum mirroring the ingestion-schema
-// ResolutionMethod (DB) enum. T2-3: the service COMPUTES this on the
-// production path (verified_email_match | new_identity); callers MAY
-// supply it on the ASSOCIATE test path (defaults to 'caller_supplied').
+// ResolutionMethod (DB) enum. Fix-Slice-2: canonicalize computes it from the
+// L2 verified-email SubjectAnchor resolution — verified_email_match (hit) |
+// new_identity (miss). `caller_supplied` is a retired husk-era value the DB
+// enum still carries (no data migration this slice); canonicalize never
+// produces it.
 export type ResolutionMethodValue =
   | 'new_identity'
   | 'verified_email_match'
@@ -91,38 +92,29 @@ export interface CanonicalizeAuthContext {
 
 export interface CanonicalizeInput {
   payload_id: string;
-  // T2-3: optional. When undefined → the inline resolver runs (the
-  // production path). Test/internal affordances retained:
-  //   - null → force CREATE-NEW (skip resolver)
-  //   - <UUID> → force ASSOCIATE with this id (skip resolver)
-  core_talent_id?: string | null;
-  // Closed vocabulary on TalentTenantOverlay (Talent Record Spec §2.2,
-  // 4 values): self_signup | recruiter_capture | referral | import.
+  // Provenance channel of the arrival (stored on the L2 contact evidence).
   source_channel: string;
-  // T2-3: optional. When undefined the service computes it (the
-  // production path: verified_email_match | new_identity). When supplied
-  // alongside a UUID core_talent_id, used as the recorded method.
-  resolution_method?: ResolutionMethodValue;
   authContext: CanonicalizeAuthContext;
   requestId: string;
 }
 
 export interface CanonicalizeResult {
-  talent_id: string;
+  // Fix-Slice-2 — the within-tenant L2 ResolutionSubject id this arrival
+  // resolved to (was the Core husk talent_id). The husk is retired; canonicalize
+  // resolves the arrival's subject via the verified-email SubjectAnchor.
+  subject_id: string;
   tenant_id: string;
   resolution_method: ResolutionMethodValue;
   // true when the payload was already canonicalized (the idempotency
-  // short-circuit fired). When true: no new Talent / overlay /
-  // evidence / outbox-event was written; the caller sees the prior
-  // result. outbox_event_id is null in this case.
+  // short-circuit fired). When true: no new subject / evidence / outbox-event
+  // was written; the caller sees the prior result. outbox_event_id is null.
   already_canonicalized: boolean;
   // OutboxEvent id IF a new event was written (i.e.
   // already_canonicalized === false). Drained by T2-2b.
   outbox_event_id: string | null;
-  // Number of TalentContactMethod rows written in this run (0 when
-  // payload carried no verified_email + no profile_url, or when
-  // already_canonicalized === true).
-  contact_methods_created: number;
+  // Number of L2 contact EvidenceRecords written this run (email + profile_url;
+  // 0 when the payload carried neither, or already_canonicalized === true).
+  contact_evidence_written: number;
 }
 
 // Locked-row shape returned by the SELECT … FOR UPDATE. Mirrors the
@@ -132,26 +124,9 @@ interface LockedPayloadRow {
   tenant_id: string;
   verified_email: string | null;
   profile_url: string | null;
-  resolved_talent_id: string | null;
+  // Fix-Slice-2 — the L2 subject idempotency anchor (was resolved_talent_id).
+  resolved_subject_id: string | null;
   resolution_method: ResolutionMethodValue | null;
-}
-
-// URL-host heuristic for TalentContactType classification of profile_url
-// (Directive §2.4). Conservative: only linkedin / github get specific
-// categorization; everything else is 'other'. R12-faithful — we do not
-// fabricate 'portfolio' for arbitrary domains since the §2.2 contact-type
-// closed enum (TalentContactType) ascribes specific semantics to
-// 'portfolio' that we cannot reliably derive from URL host alone.
-type ContactTypeForUrl = 'linkedin' | 'github' | 'other';
-function classifyProfileUrl(url: string): ContactTypeForUrl {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    if (host === 'linkedin.com' || host.endsWith('.linkedin.com')) return 'linkedin';
-    if (host === 'github.com' || host.endsWith('.github.com')) return 'github';
-    return 'other';
-  } catch {
-    return 'other';
-  }
 }
 
 // T2-3 — unresolved-payload batch shape (the polling-outbox row). The
@@ -180,6 +155,12 @@ export class CanonicalizationRepository {
     // a canonicalize rollback is harmless and reused on retry (idempotent via
     // the fingerprint @@unique).
     private readonly identityIndex: IdentityIndexRepository,
+    // Fix-Slice-2 — the within-tenant L2 resolution seam (TR-2a). Canonicalize
+    // (scope:ats) → talent-trust (scope:cip) is ats→cip, lint-green (mirrors the
+    // identityIndex edge). Runs on talent-trust's OWN client (a separate
+    // connection, like identityIndex) — its writes are orphan-safe on a
+    // canonicalize rollback and re-resolve idempotently on retry.
+    private readonly talentTrust: TalentTrustService,
   ) {}
 
   // T2-3 — polling-outbox read. Returns up to `limit` unresolved payloads
@@ -198,7 +179,7 @@ export class CanonicalizationRepository {
     limit: number;
   }): Promise<UnresolvedPayloadRow[]> {
     const rows = await this.prisma.rawPayloadReference.findMany({
-      where: { resolved_talent_id: null },
+      where: { resolved_subject_id: null },
       orderBy: { created_at: 'asc' },
       take: args.limit,
       select: {
@@ -216,8 +197,6 @@ export class CanonicalizationRepository {
       event: 'canonicalize_started',
       tenant_id: input.authContext.tenant_id,
       payload_id: input.payload_id,
-      core_talent_id: input.core_talent_id,
-      resolution_method: input.resolution_method,
       source_channel: input.source_channel,
     });
 
@@ -236,7 +215,7 @@ export class CanonicalizationRepository {
             tenant_id,
             verified_email,
             profile_url,
-            resolved_talent_id,
+            resolved_subject_id,
             resolution_method
           FROM "ingestion"."RawPayloadReference"
           WHERE id = ${input.payload_id}::uuid
@@ -260,128 +239,43 @@ export class CanonicalizationRepository {
           );
         }
 
-        // Step 2 — idempotency. If resolved_talent_id is already set, the
+        // Step 2 — idempotency. If resolved_subject_id is already set, the
         // payload has been canonicalized in a prior run; no-op return.
-        // The locked row + this check is the idempotency-anchor (T2-1
-        // Decision 4): the resolved_talent_id write is the LAST mutation
-        // inside the tx, so this read sees either NULL (first canonicalize)
-        // or the committed non-NULL value (a prior canonicalize succeeded).
-        if (payload.resolved_talent_id !== null) {
+        // The locked row + this check is the idempotency-anchor: the
+        // resolved_subject_id write is the LAST mutation inside the tx, so this
+        // read sees either NULL (first canonicalize) or the committed non-NULL
+        // value (a prior canonicalize succeeded).
+        if (payload.resolved_subject_id !== null) {
           this.logger.log({
             event: 'canonicalize_idempotent_noop',
             tenant_id: payload.tenant_id,
             payload_id: payload.id,
-            talent_id: payload.resolved_talent_id,
+            subject_id: payload.resolved_subject_id,
             prior_resolution_method: payload.resolution_method,
           });
           // The prior canonicalize wrote resolution_method alongside
-          // resolved_talent_id (the last-write tuple at Step 5). A non-
-          // null resolved_talent_id ⇒ a non-null resolution_method.
-          const priorMethod =
-            payload.resolution_method ??
-            input.resolution_method ??
-            'caller_supplied';
+          // resolved_subject_id (the last-write tuple at Step 5). A non-null
+          // resolved_subject_id ⇒ a non-null resolution_method.
+          const priorMethod = payload.resolution_method ?? 'new_identity';
           return {
-            talent_id: payload.resolved_talent_id,
+            subject_id: payload.resolved_subject_id,
             tenant_id: payload.tenant_id,
             resolution_method: priorMethod,
             already_canonicalized: true,
             outbox_event_id: null,
-            contact_methods_created: 0,
+            contact_evidence_written: 0,
           } satisfies CanonicalizeResult;
         }
 
-        // Step 3 — Talent decision (T2-3: RESOLVE | ASSOCIATE | CREATE-NEW).
-        // The resolveOrCreate seam is INLINE here; lib-surface forbidden-
-        // names tripwire (proof 5) stays literally green.
-        let talentId: string;
-        let resolvedMethod: ResolutionMethodValue;
-        let needsCreate = false;
-        // Step 4b — the cross-tenant cluster anchor (identity_index). Set only
-        // when a verified_email yields a fingerprint; NULL otherwise.
-        let resolvedClusterId: string | null = null;
-
-        if (input.core_talent_id === undefined) {
-          // T2-3 PRODUCTION PATH: the inline T2-1 verified-email resolver.
-          // payload.verified_email is already lowercased + trimmed at
-          // ingestion (libs/ingestion ingestion.service.ts:74-77); we match
-          // on the stored value directly.
-          //
-          // Step 4b (ADR-0016) — WITHIN-TENANT ONLY. The findFirst is
-          // tenant-filtered: this resolves the per-tenant Core husk and MUST
-          // NOT read another tenant's contact method. Cross-tenant same-human
-          // resolution has moved to the PII-free identity_index cluster
-          // (fingerprint-matched, below). One human across tenants now shares
-          // ONE cluster but a DISTINCT husk per tenant. Deterministic within
-          // the tenant — exact, oldest match wins.
-          //
-          // Unverified-doesn't-resolve: only verification_status='verified'
-          // contact methods are identity keys; the rest are evidence.
-          if (payload.verified_email !== null) {
-            const existing = await tx.talentContactMethod.findFirst({
-              where: {
-                tenant_id: payload.tenant_id,
-                type: 'email',
-                value: payload.verified_email,
-                verification_status: 'verified',
-              },
-              orderBy: { created_at: 'asc' },
-            });
-            if (existing !== null) {
-              talentId = existing.talent_id;
-              resolvedMethod = 'verified_email_match';
-            } else {
-              needsCreate = true;
-              resolvedMethod = 'new_identity';
-              talentId = ''; // assigned in the create branch below
-            }
-          } else {
-            // No verified email → no identity key → CREATE-NEW.
-            needsCreate = true;
-            resolvedMethod = 'new_identity';
-            talentId = ''; // assigned in the create branch below
-          }
-        } else if (input.core_talent_id !== null) {
-          // ASSOCIATE (test/internal): validate the supplied id exists in
-          // `talent.Talent`. The follower model is bit-identical to its
-          // owning schema (the drift-tripwire enforces). Core Talent is a
-          // per-tenant husk post-4b (no cross-tenant sharing); this id-lookup
-          // is a structural existence check, not a cross-tenant resolution.
-          const existing = await tx.talent.findUnique({
-            where: { id: input.core_talent_id },
-          });
-          if (existing === null) {
-            throw new AramoError(
-              'NOT_FOUND',
-              'Talent not found',
-              404,
-              {
-                requestId: input.requestId,
-                details: {
-                  reason: 'core_talent_not_found',
-                  core_talent_id: input.core_talent_id,
-                },
-              },
-            );
-          }
-          talentId = existing.id;
-          resolvedMethod = input.resolution_method ?? 'caller_supplied';
-        } else {
-          // CREATE-NEW forced (test/internal — explicit null).
-          needsCreate = true;
-          resolvedMethod = input.resolution_method ?? 'new_identity';
-          talentId = ''; // assigned in the create branch below
-        }
-
         // Step 3a (4b) — CROSS-TENANT IDENTITY → PERSON_CLUSTER (PII-free).
-        // The same-human key across tenants is a salted one-way fingerprint of
-        // the verified email, computed TENANT-SIDE; only the opaque fingerprint
-        // crosses into identity_index (I14 — no raw email leaves the tenant
-        // wall). resolve-or-create is race-safe via the fingerprint @@unique.
-        // No verified email ⇒ no cross-tenant key ⇒ resolvedClusterId stays
-        // NULL. The pepper read is fail-loud (loadIdentityPepper throws if
-        // ARAMO_IDENTITY_PEPPER is absent/empty) so the service STOPS rather
-        // than mis-resolving with an unkeyed fingerprint.
+        // UNTOUCHED by Fix-Slice-2 (§5 leave-untouched, R1). The same-human key
+        // across tenants is a salted one-way fingerprint of the verified email,
+        // computed TENANT-SIDE; only the opaque fingerprint crosses into
+        // identity_index (I14 — no raw email leaves the tenant wall).
+        // resolve-or-create is race-safe via the fingerprint @@unique. No
+        // verified email ⇒ no cross-tenant key ⇒ resolvedClusterId stays NULL.
+        // Runs on identityIndex's OWN client (cross-connection, orphan-safe).
+        let resolvedClusterId: string | null = null;
         if (payload.verified_email !== null) {
           const pepper = loadIdentityPepper();
           const fingerprint = computeEmailFingerprint(
@@ -396,113 +290,45 @@ export class CanonicalizationRepository {
           resolvedClusterId = cluster.id;
         }
 
-        if (needsCreate) {
-          // The ONE authorized createTalent call site at T2-2a / T2-3.
-          // Proof 6 (authorized-creation tripwire) asserts ATS ops still
-          // create ZERO Talents and this is the ONLY new caller outside
-          // libs/talent itself. The resolver miss + the forced CREATE-NEW
-          // path FOLD HERE (single `.talent.create(` invocation in the
-          // lib source — the proof 6 count assertion stays at exactly 1).
-          talentId = uuidv7();
-          await tx.talent.create({
-            data: {
-              id: talentId,
-              lifecycle_status: 'active',
-            },
-          });
-        }
-
-        // Step 3b — overlay for (talent_id, tenant_id). Create if absent.
-        // findUnique on the @@unique([talent_id, tenant_id]) compound key.
-        const existingOverlay = await tx.talentTenantOverlay.findUnique({
-          where: {
-            talent_id_tenant_id: {
-              talent_id: talentId,
-              tenant_id: payload.tenant_id,
-            },
-          },
+        // Step 3 (Fix-Slice-2 §4.2/§4.3) — WITHIN-TENANT IDENTITY → L2
+        // ResolutionSubject. The husk mint (`tx.talent.create`) + overlay +
+        // husk-keyed TalentContactMethod writes are RETIRED. The arrival's
+        // subject is resolved through the built TR-2a-1 verified-email
+        // SubjectAnchor (hit → verified_email_match; miss → new subject +
+        // record anchor → new_identity), and its per-arrival contact evidence
+        // attaches on L2 — re-homing the husk's function, same semantic, new
+        // substrate. Runs on talent-trust's OWN client (cross-connection,
+        // orphan-safe on rollback; the subject re-resolves idempotently on
+        // retry via the email anchor / SOURCED_TALENT @@unique).
+        const arrival = await this.talentTrust.recordSourcedArrival({
+          tenant_id: payload.tenant_id,
+          payload_id: payload.id,
+          verified_email: payload.verified_email,
+          profile_url: payload.profile_url,
+          source_channel: input.source_channel,
+          created_by: 'canonicalization',
         });
-        if (existingOverlay === null) {
-          await tx.talentTenantOverlay.create({
-            data: {
-              id: uuidv7(),
-              talent_id: talentId,
-              tenant_id: payload.tenant_id,
-              source_channel: input.source_channel,
-              // Closed vocabulary (Talent Record Spec §2.2). New overlay
-              // lands in 'active' — the canonicalize event is the
-              // tenant's first relationship to the Talent identity.
-              tenant_status: 'active',
-            },
-          });
-        }
+        const subjectId = arrival.subject_id;
+        const resolvedMethod: ResolutionMethodValue = arrival.resolution_method;
 
-        // Step 4 — populate contact-method evidence (R12-faithful, what
-        // the payload carries). Skill / work-history / rate / work-auth /
-        // document / derived-snapshot are DEFERRED per F-canonicalization-
-        // skills (the generic payload carries no real signal for them;
-        // fabricating would violate R12 "1:1 to spec").
-        const nowTs = new Date();
-        let contactMethodsCreated = 0;
-        if (payload.verified_email !== null) {
-          await tx.talentContactMethod.create({
-            data: {
-              id: uuidv7(),
-              talent_id: talentId,
-              tenant_id: payload.tenant_id,
-              type: 'email',
-              value: payload.verified_email,
-              is_primary: false,
-              verification_status: 'verified',
-              verified_at: nowTs,
-              created_at: nowTs,
-            },
-          });
-          contactMethodsCreated += 1;
-        }
-        if (payload.profile_url !== null) {
-          const type = classifyProfileUrl(payload.profile_url);
-          await tx.talentContactMethod.create({
-            data: {
-              id: uuidv7(),
-              talent_id: talentId,
-              tenant_id: payload.tenant_id,
-              type,
-              value: payload.profile_url,
-              is_primary: false,
-              verification_status: 'unverified',
-              created_at: nowTs,
-            },
-          });
-          contactMethodsCreated += 1;
-        }
-
-        // Step 5 — record the decision (T2-1 Decision 4) on the
-        // RawPayloadReference row. The LAST write before the outbox
-        // emission; the idempotency anchor (the next canonicalize call
-        // on this payload short-circuits at step 2). resolvedMethod was
-        // computed by the T2-3 Step-3 branch (verified_email_match |
-        // new_identity | caller_supplied).
+        // Step 5 — record the decision on the RawPayloadReference row. The LAST
+        // write before the outbox emission; the idempotency anchor (the next
+        // canonicalize on this payload short-circuits at Step 2 on a non-null
+        // resolved_subject_id). resolved_talent_id is intentionally left NULL
+        // (the husk is retired; the column drops in the final slice).
         await tx.rawPayloadReference.update({
           where: { id: payload.id },
           data: {
-            // resolved_talent_id remains the per-tenant Core husk pointer +
-            // the idempotency anchor (unchanged). resolved_cluster_id (4b) is
-            // the additive cross-tenant cluster anchor — each column means
-            // exactly what its name says.
-            resolved_talent_id: talentId,
+            resolved_subject_id: subjectId,
             resolved_cluster_id: resolvedClusterId,
             resolution_method: resolvedMethod,
           },
         });
 
-        // Step 6 — write the outbox event IN THE SAME TRANSACTION (the
-        // split seam per Directive §0: T2-2a writes, T2-2b drains).
-        // The outbox invariant — the event commits atomically with the
-        // state change; rollback leaves no orphan event row (atomicity
-        // proof 4). Event payload carries identity + method + the source
-        // payload id; downstream consumers (T2-2b drain → SNS at M7)
-        // reconstruct the canonicalization decision from this envelope.
+        // Step 6 — write the outbox event IN THE SAME TRANSACTION (T2-2a
+        // writes, T2-2b drains). The event commits atomically with the state
+        // change; rollback leaves no orphan event row (atomicity proof 4). The
+        // payload now carries the L2 subject id (was the husk talent_id).
         const outboxEventId = uuidv7();
         await tx.outboxEvent.create({
           data: {
@@ -510,7 +336,7 @@ export class CanonicalizationRepository {
             tenant_id: payload.tenant_id,
             event_type: 'talent.canonicalized',
             event_payload: {
-              talent_id: talentId,
+              subject_id: subjectId,
               tenant_id: payload.tenant_id,
               resolution_method: resolvedMethod,
               payload_id: payload.id,
@@ -519,12 +345,12 @@ export class CanonicalizationRepository {
         });
 
         return {
-          talent_id: talentId,
+          subject_id: subjectId,
           tenant_id: payload.tenant_id,
           resolution_method: resolvedMethod,
           already_canonicalized: false,
           outbox_event_id: outboxEventId,
-          contact_methods_created: contactMethodsCreated,
+          contact_evidence_written: arrival.contact_evidence_written,
         } satisfies CanonicalizeResult;
       },
       {
@@ -541,11 +367,11 @@ export class CanonicalizationRepository {
       event: 'canonicalize_completed',
       tenant_id: result.tenant_id,
       payload_id: input.payload_id,
-      talent_id: result.talent_id,
+      subject_id: result.subject_id,
       resolution_method: result.resolution_method,
       already_canonicalized: result.already_canonicalized,
       outbox_event_id: result.outbox_event_id,
-      contact_methods_created: result.contact_methods_created,
+      contact_evidence_written: result.contact_evidence_written,
       latency_ms: Date.now() - startedAt,
     });
 

@@ -7,41 +7,24 @@ import { describe, expect, it } from 'vitest';
 // scans). Per Directive §4 proofs 5-7 and the standing
 // Charter-R10/R12-clean enforcement.
 //
-//   Proof 5 — RE-FRAMED at T2-3 — resolution-lives-in-Core tripwire.
-//             OLD (T2-2a): "canonicalize does NOT resolve."
-//             NEW (T2-3): "ONLY Core canonicalization resolves; the ATS
-//             still never does." The boundary shifted (the A5b-2
-//             deferral vindicated; T2-1 ruled resolution belongs in
-//             Core). Concretely:
-//               (a) core_talent_id is OPTIONAL on canonicalize's input
-//                   (undefined → the inline resolver runs; null/UUID →
-//                   the test-affordance ASSOCIATE-NOT-RESOLVE path).
-//               (b) The inline T2-1 verified-email match exists IN the
-//                   canonicalize $transaction (tx.talentContactMethod.
-//                   findFirst on type='email' / verification_status=
-//                   'verified').
-//               (c) NO standalone named resolver method on the lib
-//                   surface (findByVerifiedEmail / resolveIdentity /
-//                   resolveTalent are still forbidden as identifiers).
-//             The ATS no-resolution tripwire lives separately at
-//             apps/api/src/tests/ats-batch4b-talent-link.integration.
-//             spec.ts and STAYS untouched (libs/talent + libs/identity
-//             carry no findTalentByEmail / resolveIdentity / matchIdentity
-//             — the structural commitment that resolution lives in
-//             Core ONLY).
-//   Proof 6 — authorized-creation tripwire: canonicalization is the ONLY
-//             new createTalent call site outside libs/talent's own
-//             repository. ATS-side libs (talent-record, import) must
-//             continue to NOT call createTalent. The Directive's
-//             "talent.* bit-identical under ATS ops" assertion holds
-//             structurally. T2-3 folds the resolver-miss + the explicit-
-//             null CREATE-NEW paths into a SINGLE `.talent.create(` call
-//             site (the count assertion stays at exactly 1).
-//   Proof 7 — R10/R12: the canonicalize source carries no
-//             tier / score / rank / match output vocabulary, and the
-//             populated evidence shape is contact-method-only (R12-
-//             faithful — TalentSkillEvidence + 5 others are deferred
-//             per F-canonicalization-skills, NOT fabricated).
+//   Proof 5 — RE-HOMED at Fix-Slice-2 — within-tenant resolution lives on L2.
+//             The retired husk resolver + mint + overlay are GONE from
+//             canonicalize; within-tenant resolution now routes to the built
+//             TR-2a-1 seam (talentTrust.recordSourcedArrival, which composes
+//             the verified-email SubjectAnchor lookup / resolveOrCreateSubject).
+//             resolution_method is still computed (verified_email_match |
+//             new_identity). No standalone named resolver on the lib surface
+//             (findByVerifiedEmail / resolveIdentity / resolveTalent forbidden).
+//   Proof 6 — INVERTED at Fix-Slice-2 — canonicalize mints ZERO Core husk.
+//             The canonicalize source carries zero `.talent.create(` and no
+//             husk overlay write. Scope: the canonicalization lib source ONLY
+//             (Amendment v1.1 §4.6) — the dormant TalentService.createTalent
+//             (libs/talent) retires in the final drop slice, so this is NOT a
+//             platform-wide zero assertion.
+//   Proof 7 — R10/R12: the canonicalize source carries no tier/score/rank/match
+//             output vocabulary; it writes NO talent_evidence husk rows (contact
+//             evidence attaches on L2 via the seam); the outbox payload is
+//             subject-keyed (no husk talent_id).
 
 const ROOT = resolve(__dirname, '../../../..');
 const LIB_SRC = resolve(ROOT, 'libs/canonicalization/src/lib');
@@ -76,43 +59,49 @@ function stripComments(src: string): string {
     .replace(/\/\/[^\n]*/g, '');
 }
 
-describe('T2-3 — Proof 5 (re-framed): resolution lives in Core canonicalization ONLY', () => {
-  it('canonicalize takes core_talent_id as OPTIONAL input (T2-3: undefined → resolver runs; null/UUID → caller-supplied test path)', () => {
-    const repo = readFileSync(
-      resolve(LIB_SRC, 'canonicalization.repository.ts'),
-      'utf8',
-    );
-    // The CanonicalizeInput interface MUST declare core_talent_id as
-    // OPTIONAL (`?: string | null`). The optional shape encodes the
-    // T2-3 production path (undefined ⇒ resolve) while retaining the
-    // T2-2a test affordances (null ⇒ force CREATE-NEW; UUID ⇒ associate).
-    expect(repo).toMatch(/core_talent_id\?:\s*string\s*\|\s*null/);
-  });
-
-  it('the inline T2-1 verified-email resolver IS present in the canonicalize $transaction', () => {
+describe('Fix-Slice-2 — Proof 5 (re-homed): within-tenant resolution lives on L2 ResolutionSubject', () => {
+  it('the husk resolver + mint are GONE from canonicalize (no inline talentContactMethod.findFirst, no talent.create, no overlay)', () => {
     const repo = readFileSync(
       resolve(LIB_SRC, 'canonicalization.repository.ts'),
       'utf8',
     );
     const code = stripComments(repo);
-    // The structural commitment of the T2-3 re-frame: the resolver lives
-    // INLINE here (a `tx.talentContactMethod.findFirst` looking up by
-    // type='email', verification_status='verified', value=verified_email).
-    // The presence of this lookup is the positive evidence that
-    // resolution exists in Core.
-    expect(code).toMatch(/talentContactMethod\.findFirst/);
-    expect(code).toMatch(/type:\s*'email'/);
-    expect(code).toMatch(/verification_status:\s*'verified'/);
-    // The value matched is the payload's verified_email (already
-    // normalized by ingestion — .trim().toLowerCase() at write time).
-    expect(code).toMatch(/value:\s*payload\.verified_email/);
+    // The retired husk-era within-tenant resolver + mint + overlay are gone.
+    expect(code).not.toMatch(/talentContactMethod\.findFirst/);
+    expect(code).not.toMatch(/\.talent\.create\s*\(/);
+    expect(code).not.toMatch(/talentTenantOverlay\.create/);
+  });
+
+  it('canonicalize routes within-tenant resolution to the built L2 seam (talentTrust.recordSourcedArrival)', () => {
+    const repo = readFileSync(
+      resolve(LIB_SRC, 'canonicalization.repository.ts'),
+      'utf8',
+    );
+    const code = stripComments(repo);
+    // Positive evidence that within-tenant resolution now lives on L2: the
+    // arrival's subject is resolved via the talent-trust seam (which composes
+    // the verified-email SubjectAnchor lookup / resolveOrCreateSubject).
+    expect(code).toMatch(/this\.talentTrust\.recordSourcedArrival/);
+    // The result feeds resolved_subject_id + a subject-keyed outbox.
+    expect(code).toMatch(/resolved_subject_id:/);
+  });
+
+  it('resolution_method is still computed (verified_email_match | new_identity) — same-human semantic preserved on L2', () => {
+    const service = readFileSync(
+      resolve(ROOT, 'libs/talent-trust/src/lib/talent-trust.service.ts'),
+      'utf8',
+    );
+    const code = stripComments(service);
+    // The L2 seam preserves the husk's Tier-A verified-email resolution:
+    // an email SubjectAnchor hit → verified_email_match; miss → new_identity.
+    expect(code).toMatch(/findAnchorsByValue/);
+    expect(code).toMatch(/verified_email_match/);
+    expect(code).toMatch(/new_identity/);
   });
 
   it('NO standalone named resolver method on the canonicalize lib surface (findByVerifiedEmail / resolveIdentity / resolveTalent)', () => {
-    // The resolver is INLINE in the $transaction, not a named public
-    // method. The forbidden-identifier check stays literally green —
-    // the substrate-cleanest seam (no `resolveOrCreate` method hangs
-    // off CanonicalizationService).
+    // The resolution routes through talent-trust; the canonicalize lib exposes
+    // no local resolver method (the forbidden-identifier check stays green).
     const sources = readAllSrc();
     const forbidden = ['findByVerifiedEmail', 'resolveIdentity', 'resolveTalent'];
     const hits: Array<{ file: string; identifier: string; lineSnippet: string }> = [];
@@ -127,55 +116,32 @@ describe('T2-3 — Proof 5 (re-framed): resolution lives in Core canonicalizatio
     }
     expect(hits).toEqual([]);
   });
-
-  it('the resolver is deterministic + exact + verified-only (T2-1 Decision 3 — no fuzzy auto-merge, unverified does not resolve)', () => {
-    const repo = readFileSync(
-      resolve(LIB_SRC, 'canonicalization.repository.ts'),
-      'utf8',
-    );
-    const code = stripComments(repo);
-    // Determinism: oldest match wins (orderBy created_at asc).
-    expect(code).toMatch(/orderBy:\s*\{\s*created_at:\s*'asc'\s*\}/);
-    // The lookup uses verification_status='verified' (the gate that
-    // distinguishes identity keys from mere evidence — an unverified
-    // email does NOT resolve).
-    expect(code).toMatch(/verification_status:\s*'verified'/);
-  });
 });
 
-describe('T2-2a — Proof 6: authorized-creation tripwire', () => {
-  it('canonicalization is the ONLY new createTalent call site (ONE call, inside the canonicalize $transaction)', () => {
+describe('Fix-Slice-2 — Proof 6 (inverted): canonicalize mints ZERO Core husk', () => {
+  it('canonicalize source contains ZERO `.talent.create(` call sites (the husk mint is retired)', () => {
+    // Scope: the canonicalization lib source ONLY (readAllSrc = LIB_SRC).
+    // Per Amendment v1.1 §4.6, we assert canonicalize mints zero husk — NOT
+    // platform-wide zero: the dormant TalentService.createTalent (libs/talent)
+    // is out of this lib's scan and retires in the final drop slice.
     const sources = readAllSrc();
     let createTalentCallCount = 0;
     for (const [, src] of sources) {
       const code = stripComments(src);
-      // Match `.talent.create(` — Prisma idiom for the create. We
-      // count actual Prisma createTalent invocations (`tx.talent.create`
-      // or `prisma.talent.create`), not type references.
       const matches = code.match(/\.talent\.create\s*\(/g);
       if (matches !== null) {
         createTalentCallCount += matches.length;
       }
     }
-    // Exactly ONE call site (the CREATE-NEW branch of canonicalize).
-    expect(createTalentCallCount).toBe(1);
+    expect(createTalentCallCount).toBe(0);
   });
 
-  it('the createTalent call site is inside an interactive $transaction (atomicity guarantee)', () => {
-    const repo = readFileSync(
-      resolve(LIB_SRC, 'canonicalization.repository.ts'),
-      'utf8',
-    );
-    // Find the index of `.talent.create(` and verify the preceding
-    // context contains `$transaction(` within a reasonable distance —
-    // i.e. the create lives inside the tx callback.
-    const createIdx = repo.indexOf('.talent.create');
-    expect(createIdx).toBeGreaterThan(-1);
-    const txIdx = repo.lastIndexOf('$transaction', createIdx);
-    expect(txIdx).toBeGreaterThan(-1);
-    // The $transaction must come before the create AND within ~3KB
-    // (i.e. inside the same function body).
-    expect(createIdx - txIdx).toBeLessThan(8000);
+  it('canonicalize writes no husk overlay either (talentTenantOverlay.create absent)', () => {
+    const sources = readAllSrc();
+    for (const [, src] of sources) {
+      const code = stripComments(src);
+      expect(code).not.toMatch(/talentTenantOverlay\.create/);
+    }
   });
 
   it('READ COMMITTED isolation is applied to the $transaction (Directive §1 Ruling 4)', () => {
@@ -230,41 +196,27 @@ describe('T2-2a — Proof 7: R10/R12 boundary', () => {
     expect(hits).toEqual([]);
   });
 
-  it('R12: contact-method evidence is the ONLY evidence populated (TalentSkillEvidence + 5 others DEFERRED per F-canonicalization-skills)', () => {
+  it('R12 / Fix-Slice-2: canonicalize writes NO talent_evidence husk rows — contact evidence routes to L2', () => {
     const repo = readFileSync(
       resolve(LIB_SRC, 'canonicalization.repository.ts'),
       'utf8',
     );
     const code = stripComments(repo);
-    // The contact-method create IS present (twice — email + URL).
-    const contactCreates = code.match(/talentContactMethod\.create/g);
-    expect(contactCreates?.length).toBe(2);
-    // The other 5 non-contact evidence creates are ABSENT.
+    // The husk-keyed talent_evidence writes are GONE — the split (S1) closes:
+    // canonicalize no longer writes TalentContactMethod (or any talent_evidence
+    // table). The arrival's contact evidence attaches on L2 via the seam.
+    expect(code).not.toMatch(/talentContactMethod\.create/);
     expect(code).not.toMatch(/talentSkillEvidence\.create/);
     expect(code).not.toMatch(/talentWorkHistoryEntry\.create/);
     expect(code).not.toMatch(/talentRateExpectation\.create/);
     expect(code).not.toMatch(/talentWorkAuthorization\.create/);
     expect(code).not.toMatch(/talentDocument\.create/);
     expect(code).not.toMatch(/talentDerivedSnapshot\.create/);
+    // Positive: contact evidence is now an L2 concern (the seam).
+    expect(code).toMatch(/this\.talentTrust\.recordSourcedArrival/);
   });
 
-  it('R12 / structural: contact-method values are 1:1 to spec — verified_email → email; profile_url → linkedin|github|other (URL-host heuristic)', () => {
-    const repo = readFileSync(
-      resolve(LIB_SRC, 'canonicalization.repository.ts'),
-      'utf8',
-    );
-    const code = stripComments(repo);
-    // Email path
-    expect(code).toMatch(/type:\s*'email'/);
-    expect(code).toMatch(/verification_status:\s*'verified'/);
-    // URL path — linkedin / github / other are the only categorisations
-    // (R12 conservatism per the inline comment).
-    expect(code).toMatch(/return\s*'linkedin'/);
-    expect(code).toMatch(/return\s*'github'/);
-    expect(code).toMatch(/return\s*'other'/);
-  });
-
-  it('outbox event payload carries identity + method + payload_id ONLY (no tier/score/rank)', () => {
+  it('outbox event payload carries subject_id + method + payload_id ONLY (no husk talent_id, no tier/score/rank)', () => {
     const repo = readFileSync(
       resolve(LIB_SRC, 'canonicalization.repository.ts'),
       'utf8',
@@ -273,11 +225,13 @@ describe('T2-2a — Proof 7: R10/R12 boundary', () => {
     const m = repo.match(/event_payload:\s*\{[\s\S]+?\}\s+as\s+never/);
     expect(m).not.toBeNull();
     const payloadLiteral = stripComments(m![0]);
-    // The 4 expected keys are present.
-    expect(payloadLiteral).toMatch(/talent_id:/);
+    // The payload is now L2-subject-keyed (was the husk talent_id).
+    expect(payloadLiteral).toMatch(/subject_id:/);
     expect(payloadLiteral).toMatch(/tenant_id:/);
     expect(payloadLiteral).toMatch(/resolution_method:/);
     expect(payloadLiteral).toMatch(/payload_id:/);
+    // The retired husk key is gone.
+    expect(payloadLiteral).not.toMatch(/talent_id:/);
     // NO R10-forbidden keys present.
     for (const k of ['tier', 'score', 'rank', 'why_matched_sentence', 'strengths']) {
       const re = new RegExp(`\\b${k}\\b`);

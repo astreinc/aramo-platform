@@ -147,7 +147,7 @@ export class CanonicalizationTriggerProcessor
           job_id: args.jobId,
           payload_id: row.id,
           tenant_id: row.tenant_id,
-          talent_id: result.talent_id,
+          subject_id: result.subject_id,
           resolution_method: result.resolution_method,
           already_canonicalized: result.already_canonicalized,
         });
