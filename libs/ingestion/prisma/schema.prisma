@@ -107,6 +107,15 @@ model RawPayloadReference {
   // no verified email ⇒ no cross-tenant key ⇒ NULL. UUID-only, no FK
   // (cross-schema; identity_index owns PersonCluster).
   resolved_cluster_id String?           @db.Uuid
+  // Cold-Ingest Extraction — the async subject-poll's extract-once gate (the
+  // analogue of resolved_subject_id's canonicalize-poll gate). A resolved
+  // arrival with a résumé storage_ref is picked up by the extraction poll;
+  // extraction_done_at is stamped once evidence is written OR the résumé
+  // parses with no name (permanent — a name-less résumé must not loop).
+  // NULL = still needs extraction. extraction_attempts bounds transient
+  // (S3/fetch) retries so a persistently-failing fetch does not spin forever.
+  extraction_done_at  DateTime?         @db.Timestamptz
+  extraction_attempts Int               @default(0)
   // Server-set audit timestamps.
   created_at      DateTime @default(now()) @db.Timestamptz
   updated_at      DateTime @updatedAt @db.Timestamptz

@@ -16,6 +16,7 @@
       "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
       "@aramo/calendar": ["../../dist/libs/calendar/src/index.d.ts"],
       "@aramo/canonicalization": ["../../dist/libs/canonicalization/src/index.d.ts"],
+      "@aramo/cold-ingest-extraction": ["../../dist/libs/cold-ingest-extraction/src/index.d.ts"],
       "@aramo/company": ["../../dist/libs/company/src/index.d.ts"],
       "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
       "@aramo/contact": ["../../dist/libs/contact/src/index.d.ts"],

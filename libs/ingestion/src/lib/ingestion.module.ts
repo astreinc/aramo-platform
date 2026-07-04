@@ -21,6 +21,12 @@ import { PrismaService } from './prisma/prisma.service.js';
   imports: [CommonModule, AuthModule, ConsentModule],
   controllers: [IngestionController],
   providers: [PrismaService, IngestionRepository, IngestionService],
-  exports: [IngestionService],
+  // IngestionService is the HTTP-facing accept seam. IngestionRepository is
+  // additionally exported for the Cold-Ingest Extraction poll (libs/cold-ingest-
+  // extraction) which consumes the extract-once queries
+  // (findArrivalsNeedingExtraction / markExtractionDone / bumpExtractionAttempt).
+  // Exporting a repository for a downstream poll mirrors CanonicalizationModule
+  // exporting CanonicalizationOutboxRepository for the outbox-publisher drain.
+  exports: [IngestionService, IngestionRepository],
 })
 export class IngestionModule {}

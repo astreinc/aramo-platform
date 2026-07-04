@@ -34,6 +34,7 @@
       "@aramo/authorization": ["libs/authorization/src/index.ts"],
       "@aramo/calendar": ["libs/calendar/src/index.ts"],
       "@aramo/canonicalization": ["libs/canonicalization/src/index.ts"],
+      "@aramo/cold-ingest-extraction": ["libs/cold-ingest-extraction/src/index.ts"],
       "@aramo/common": ["libs/common/src/index.ts"],
       "@aramo/company": ["libs/company/src/index.ts"],
       "@aramo/consent": ["libs/consent/src/index.ts"],

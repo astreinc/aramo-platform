@@ -29,6 +29,7 @@ const MIGRATION_PATH = resolve(
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const REF_A = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const REF_B = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
+const REF_C = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
 
 const subjectRefA: SubjectRef = {
   tenant_id: TENANT,
@@ -41,6 +42,12 @@ const subjectRefB: SubjectRef = {
   ref_type: 'PERSON_CLUSTER',
   ref_id: REF_B,
   link_source: 'tr-1-integration',
+};
+const subjectRefC: SubjectRef = {
+  tenant_id: TENANT,
+  ref_type: 'ATS_TALENT_RECORD',
+  ref_id: REF_C,
+  link_source: 'cold-ingest-extraction-integration',
 };
 
 // $$-aware DDL splitter (the migration's trigger function bodies contain
@@ -321,6 +328,63 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(all.length).toBeGreaterThan(0);
       const eligibility = await service.getEvidence(subjectRefA, { dimension: 'ELIGIBILITY' });
       expect(eligibility.every((e) => e.dimension === 'ELIGIBILITY')).toBe(true);
+    });
+
+    it('recordDeclaredEvidenceForSubject writes declared IDENTITY evidence to a KNOWN subject (Cold-Ingest Extraction seam)', async () => {
+      // Seed the subject (resolve-or-create via a SELF CLAIMS record) so we hold
+      // its id — mirrors the extraction poll, which receives resolved_subject_id
+      // on the arrival, NOT a per-payload ref.
+      const seed = await service.recordEvidence({
+        subjectRef: subjectRefC,
+        dimension: 'CLAIMS',
+        assertion_type: 'SKILL',
+        assertion_payload: { skill: 'Go' },
+        source_class: 'SELF',
+        method: 'SELF_DECLARED',
+        portability_class: 'TENANT_ONLY',
+        decay_profile: 'MODERATE',
+        created_by: 'seed',
+      });
+      const subjectId = seed.subject_id;
+
+      const preState = await service.getTrustState(subjectRefC);
+      expect(preState?.identity_band).toBe('NOT_ESTABLISHED');
+
+      const { evidence_ids } = await service.recordDeclaredEvidenceForSubject({
+        tenant_id: TENANT,
+        subject_id: subjectId,
+        created_by: 'system:cold-ingest-extraction',
+        entries: [
+          {
+            dimension: 'IDENTITY',
+            assertion_type: 'FULL_NAME',
+            assertion_payload: { first_name: 'Ada', last_name: 'Lovelace', payload_id: REF_C },
+          },
+          {
+            dimension: 'IDENTITY',
+            assertion_type: 'PHONE',
+            assertion_payload: { value: '+15551234567', payload_id: REF_C },
+          },
+        ],
+      });
+      expect(evidence_ids).toHaveLength(2);
+
+      const identity = await service.getEvidence(subjectRefC, { dimension: 'IDENTITY' });
+      const byType = new Map(identity.map((e) => [e.assertion_type, e]));
+      const fullName = byType.get('FULL_NAME');
+      expect(fullName).toBeDefined();
+      expect(fullName?.subject_id).toBe(subjectId);
+      // Channel-sourced declared — never SELF, never verified.
+      expect(fullName?.source_class).toBe('THIRD_PARTY_UNVERIFIED');
+      expect(fullName?.method).toBe('DOCUMENT');
+      expect(fullName?.current_status).toBe('VALID');
+      expect(fullName?.ai_derived).toBe(false);
+      expect(byType.get('PHONE')).toBeDefined();
+
+      // The identity dimension now has evidence → no longer NOT_ESTABLISHED
+      // (the promotion-unblock: a name now exists on the subject).
+      const postState = await service.getTrustState(subjectRefC);
+      expect(postState?.identity_band).not.toBe('NOT_ESTABLISHED');
     });
   },
 );

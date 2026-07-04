@@ -40,6 +40,16 @@ export interface RawPayloadRow {
   updated_at: Date;
 }
 
+// Cold-Ingest Extraction — the poll's projection: a resolved arrival whose
+// résumé still needs declared-evidence extraction, plus the subject it resolved
+// to (resolved_subject_id, the write target).
+export interface ArrivalNeedingExtraction {
+  id: string;
+  tenant_id: string;
+  storage_ref: string;
+  resolved_subject_id: string;
+}
+
 @Injectable()
 export class IngestionRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -71,6 +81,59 @@ export class IngestionRepository {
       },
     });
     return row as RawPayloadRow;
+  }
+
+  // ---- Cold-Ingest Extraction poll (the extract-once gate) -----------------
+
+  // A resolved cold-ingest arrival whose résumé still needs extraction. The
+  // subject is carried on the arrival (resolved_subject_id, set by canonicalize).
+  async findArrivalsNeedingExtraction(args: {
+    limit: number;
+    maxAttempts: number;
+  }): Promise<ArrivalNeedingExtraction[]> {
+    // NEEDS extraction = canonicalized (has a subject) + not-yet-done + under
+    // the transient-retry cap. Oldest first (created_at asc), like the
+    // canonicalize poll. storage_ref is always present (non-nullable column).
+    const rows = await this.prisma.rawPayloadReference.findMany({
+      where: {
+        resolved_subject_id: { not: null },
+        extraction_done_at: null,
+        extraction_attempts: { lt: args.maxAttempts },
+      },
+      orderBy: { created_at: 'asc' },
+      take: args.limit,
+      select: {
+        id: true,
+        tenant_id: true,
+        storage_ref: true,
+        resolved_subject_id: true,
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      tenant_id: r.tenant_id,
+      storage_ref: r.storage_ref,
+      // Non-null by the where-filter; narrow for the caller.
+      resolved_subject_id: r.resolved_subject_id as string,
+    }));
+  }
+
+  // Stamp the extract-once gate — success OR a permanent parse-outcome (parsed,
+  // no name). The arrival drops out of the poll; a name-less résumé never loops.
+  async markExtractionDone(id: string): Promise<void> {
+    await this.prisma.rawPayloadReference.update({
+      where: { id },
+      data: { extraction_done_at: new Date() },
+    });
+  }
+
+  // Record a transient (S3/fetch) failure — bump the attempt counter, leave the
+  // gate NULL so the next tick re-picks it (bounded by maxAttempts).
+  async bumpExtractionAttempt(id: string): Promise<void> {
+    await this.prisma.rawPayloadReference.update({
+      where: { id },
+      data: { extraction_attempts: { increment: 1 } },
+    });
   }
 
   // Content-addressed lookup: a (tenant_id, sha256) hit means the same

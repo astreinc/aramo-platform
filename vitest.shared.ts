@@ -42,6 +42,11 @@ export default defineConfig({
       // resolves the apps/api AppModule import + the canonicalization
       // integration / tripwire / drift specs.
       '@aramo/canonicalization': resolve(root, 'libs/canonicalization/src/index.ts'),
+      // Cold-Ingest Extraction — the resolved-arrival → declared-evidence poll
+      // (scope:cip). Mirrors tsconfig.base.json @aramo/cold-ingest-extraction so
+      // vitest resolves the apps/api AppModule import + the lib's unit/integration
+      // specs.
+      '@aramo/cold-ingest-extraction': resolve(root, 'libs/cold-ingest-extraction/src/index.ts'),
       '@aramo/consent': resolve(root, 'libs/consent/src/index.ts'),
       // PR-A2 Gate 5 — first ATS-domain leaves (company + contact). Mirrors
       // tsconfig.base.json aliases so vitest runtime resolves the AppModule

@@ -227,5 +227,92 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(bResult.tenant_id).toBe(tenantB);
       expect(bResult.id).not.toBe(aResult.id);
     });
+
+    // ---- Cold-Ingest Extraction poll (extract-once gate) -----------------
+    // findArrivalsNeedingExtraction + markExtractionDone + bumpExtractionAttempt
+    // against the real extraction_done_at / extraction_attempts columns. The
+    // poll is global (no tenant filter); we scope assertions to our own ids so
+    // other tests' (never-resolved) rows do not interfere.
+
+    async function accept(tenantId: string, seed: string): Promise<string> {
+      const r = await service.acceptPayload({
+        tenant_id: tenantId,
+        request: {
+          source: 'talent_direct',
+          storage_ref: 's3://aramo-raw-ingestion/' + tenantId + '/' + seed + '.pdf',
+          sha256: shaHex(seed + '-' + tenantId),
+          content_type: 'application/pdf',
+          captured_at: '2026-07-04T12:00:00.000Z',
+        },
+      });
+      return r.id;
+    }
+    async function setResolved(id: string, subjectId: string): Promise<void> {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "ingestion"."RawPayloadReference" SET "resolved_subject_id" = '${subjectId}'::uuid WHERE id = '${id}'::uuid`,
+      );
+    }
+
+    it('poll returns only resolved + unextracted rows under the attempt cap', async () => {
+      const tenant = uuidv7();
+      const eligible = await accept(tenant, 'poll-eligible');
+      const unresolved = await accept(tenant, 'poll-unresolved');
+      const alreadyDone = await accept(tenant, 'poll-done');
+      const atCap = await accept(tenant, 'poll-atcap');
+
+      const subject = uuidv7();
+      await setResolved(eligible, subject);
+      // unresolved: resolved_subject_id stays NULL → excluded.
+      await setResolved(alreadyDone, uuidv7());
+      await prisma.$executeRawUnsafe(
+        `UPDATE "ingestion"."RawPayloadReference" SET "extraction_done_at" = now() WHERE id = '${alreadyDone}'::uuid`,
+      );
+      await setResolved(atCap, uuidv7());
+      await prisma.$executeRawUnsafe(
+        `UPDATE "ingestion"."RawPayloadReference" SET "extraction_attempts" = 5 WHERE id = '${atCap}'::uuid`,
+      );
+
+      const repo = new IngestionRepository(prisma);
+      const arrivals = await repo.findArrivalsNeedingExtraction({
+        limit: 100,
+        maxAttempts: 5,
+      });
+      const myIds = new Set([eligible, unresolved, alreadyDone, atCap]);
+      const returnedMine = arrivals.filter((a) => myIds.has(a.id));
+      expect(returnedMine.map((a) => a.id)).toEqual([eligible]);
+      expect(returnedMine[0]?.resolved_subject_id).toBe(subject);
+      expect(returnedMine[0]?.storage_ref).toContain('poll-eligible');
+    });
+
+    it('markExtractionDone stamps the gate so the row drops out of the poll', async () => {
+      const tenant = uuidv7();
+      const id = await accept(tenant, 'mark-done');
+      await setResolved(id, uuidv7());
+      const repo = new IngestionRepository(prisma);
+
+      const before = await repo.findArrivalsNeedingExtraction({ limit: 100, maxAttempts: 5 });
+      expect(before.some((a) => a.id === id)).toBe(true);
+
+      await repo.markExtractionDone(id);
+      const after = await repo.findArrivalsNeedingExtraction({ limit: 100, maxAttempts: 5 });
+      expect(after.some((a) => a.id === id)).toBe(false);
+    });
+
+    it('bumpExtractionAttempt increments; the row drops out at the cap', async () => {
+      const tenant = uuidv7();
+      const id = await accept(tenant, 'bump-attempt');
+      await setResolved(id, uuidv7());
+      const repo = new IngestionRepository(prisma);
+
+      for (let i = 0; i < 5; i += 1) {
+        await repo.bumpExtractionAttempt(id);
+      }
+      // attempts === 5 is NOT < maxAttempts(5) → excluded.
+      const atCap = await repo.findArrivalsNeedingExtraction({ limit: 100, maxAttempts: 5 });
+      expect(atCap.some((a) => a.id === id)).toBe(false);
+      // A higher cap re-admits it (still not done).
+      const higherCap = await repo.findArrivalsNeedingExtraction({ limit: 100, maxAttempts: 6 });
+      expect(higherCap.some((a) => a.id === id)).toBe(true);
+    });
   },
 );

@@ -14,6 +14,7 @@ export type {
   SubjectRef,
   RecordEvidenceInput,
   RecordAnchorInput,
+  DeclaredEvidenceEntry,
 } from './lib/talent-trust.service.js';
 export type {
   EvidenceRecordRow,
