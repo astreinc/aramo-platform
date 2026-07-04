@@ -1,0 +1,30 @@
+{
+  "name": "cold-ingest-extraction",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/cold-ingest-extraction/src",
+  "projectType": "library",
+  "tags": ["scope:cip"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/cold-ingest-extraction",
+        "main": "libs/cold-ingest-extraction/src/index.ts",
+        "tsConfig": "libs/cold-ingest-extraction/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/cold-ingest-extraction/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/cold-ingest-extraction"
+      }
+    }
+  }
+}

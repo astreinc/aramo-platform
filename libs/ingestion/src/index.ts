@@ -7,6 +7,7 @@ export type {
 export type {
   CreateRawPayloadInput,
   RawPayloadRow,
+  ArrivalNeedingExtraction,
 } from './lib/ingestion.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export {

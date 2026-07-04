@@ -115,6 +115,15 @@ export interface RecordSourcedArrivalResult {
   contact_evidence_written: number;
 }
 
+// Cold-Ingest Extraction — one declared evidence fact to attach to a known
+// subject (dimension + assertion_type + payload; the source_class/method/decay
+// are fixed at THIRD_PARTY_UNVERIFIED/DOCUMENT/SLOW by the writer).
+export interface DeclaredEvidenceEntry {
+  dimension: TrustDimension;
+  assertion_type: string;
+  assertion_payload: unknown;
+}
+
 @Injectable()
 export class TalentTrustService {
   constructor(private readonly repo: TalentTrustRepository) {}
@@ -372,6 +381,54 @@ export class TalentTrustService {
       actor: input.created_by,
       occurred_at: now,
     });
+  }
+
+  // Cold-Ingest Extraction — write declared evidence to an ALREADY-RESOLVED
+  // subject (the arrival's resolved_subject_id), NOT resolve-by-ref: the caller
+  // holds the subject id (a re-arrival matched by email carries no per-payload
+  // SOURCED_TALENT ref, so resolve-by-ref would mint a wrong subject). All
+  // entries are channel-sourced declared evidence — THIRD_PARTY_UNVERIFIED /
+  // DOCUMENT, never SELF, never verified (ADR-0015 guardrail 3: structuring a
+  // claim is not verification). One TrustState recompute after the batch.
+  async recordDeclaredEvidenceForSubject(input: {
+    tenant_id: string;
+    subject_id: string;
+    entries: DeclaredEvidenceEntry[];
+    created_by: string;
+  }): Promise<{ evidence_ids: string[] }> {
+    const now = new Date();
+    const strength = deriveStrength('THIRD_PARTY_UNVERIFIED', 'DOCUMENT');
+    const evidence_ids: string[] = [];
+    for (const e of input.entries) {
+      const evidence = await this.repo.insertEvidence({
+        subject_id: input.subject_id,
+        tenant_id: input.tenant_id,
+        dimension: e.dimension,
+        assertion_type: e.assertion_type,
+        assertion_payload: e.assertion_payload,
+        source_class: 'THIRD_PARTY_UNVERIFIED',
+        method: 'DOCUMENT',
+        strength,
+        collected_at: now,
+        decay_profile: 'SLOW',
+        portability_class: 'TENANT_ONLY',
+        ai_derived: false,
+        current_status: EVENT_TO_STATUS.CREATED,
+        created_by: input.created_by,
+      });
+      await this.repo.appendEvent({
+        evidence_id: evidence.id,
+        tenant_id: input.tenant_id,
+        event_type: 'CREATED',
+        actor: input.created_by,
+        occurred_at: now,
+      });
+      evidence_ids.push(evidence.id);
+    }
+    if (evidence_ids.length > 0) {
+      await this.recompute(input.subject_id, input.tenant_id, now);
+    }
+    return { evidence_ids };
   }
 
   // ---- Writes: lifecycle ops (§8) ------------------------------------

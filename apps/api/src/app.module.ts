@@ -12,6 +12,7 @@ import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { CalendarModule } from '@aramo/calendar';
 import { CanonicalizationModule } from '@aramo/canonicalization';
+import { ColdIngestExtractionModule } from '@aramo/cold-ingest-extraction';
 import { CompanyModule } from '@aramo/company';
 import { ConsentModule } from '@aramo/consent';
 import { ContactModule } from '@aramo/contact';
@@ -253,6 +254,16 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // edge does NOT yet exist at T2-2a (the split seam — events sit
     // unpublished, harmless because no consumer).
     CanonicalizationModule,
+    // Cold-Ingest Extraction — the resolved-arrival → declared-identity-evidence
+    // poll (NEW leaf lib, scope:cip). Registers a BullMQ tick worker that drains
+    // resolved RawPayloadReference rows whose résumé still needs extraction,
+    // re-reads the retained résumé with the deterministic parser (no LLM), and
+    // writes name/phone/address as THIRD_PARTY_UNVERIFIED declared evidence onto
+    // the arrival's resolved_subject_id — unblocking cold-ingest promotion (a
+    // TalentRecord needs a name). Consumer leaf: imports {ingestion, resume-parse,
+    // talent-trust} (all scope:cip). Placed after CanonicalizationModule so a
+    // subject exists before extraction polls it.
+    ColdIngestExtractionModule,
     // A8-3a — ObjectStorageModule (new leaf lib). The platform's first
     // live S3 substrate: presigned PUT/GET helpers + tenant-scoped key
     // convention + PII floor (≤ 300s expiry cap + access-log emission).
