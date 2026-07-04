@@ -44,6 +44,7 @@ import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
 import { TalentAnchorProducerService } from './talent-anchor/talent-anchor-producer.service.js';
 import { AdvisoryResolutionController } from './talent-identity/advisory-resolution.controller.js';
+import { PromotionService } from './talent-identity/promotion.service.js';
 import { ExamineController } from './controllers/examine.controller.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { AssignableUsersController } from './controllers/assignable-users.controller.js';
@@ -421,6 +422,15 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
       provide: APP_INTERCEPTOR,
       useClass: TalentAnchorInterceptor,
     },
+    // Promotion Gate — Slice A (create branch). apps/api orchestration above the
+    // I15 wall: PromotionService.promoteSubject reads the cip trust ledger +
+    // ingestion arrival and writes the ats TalentRecord + consent event, linking
+    // a cold-ingest ResolutionSubject (L2) to a freshly-minted TalentRecord (L3).
+    // Provider-only (no HTTP surface — the auto-trigger policy is deferred to a
+    // later slice); the deps (TalentTrustService, TalentRecordRepository,
+    // SourceConsentService, IngestionRepository) come from their already-imported
+    // modules.
+    PromotionService,
     // Segment 4c — Views presets + "My team" scope. The resolver injects the
     // four read-only cross-schema accessors (activity / pipeline / tasks /
     // teams); the interceptor (global, PRE-handler, route-guarded to the paged

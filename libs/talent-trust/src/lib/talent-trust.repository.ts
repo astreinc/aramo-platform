@@ -57,6 +57,16 @@ export interface ResolutionSubjectRow {
   created_at: Date;
 }
 
+// A ResolutionSubjectRef row — the (ref_type, ref_id) keying a subject to an
+// external identity (ATS_TALENT_RECORD.id / PERSON_CLUSTER.id / SOURCED_TALENT
+// payload_id). Promotion Gate reads these to (a) detect an existing record link
+// [already-promoted no-op] and (b) find the origin SOURCED_TALENT arrival.
+export interface ResolutionSubjectRefRow {
+  ref_type: ResolutionSubjectRefType;
+  ref_id: string;
+  link_source: string;
+}
+
 export interface TrustStateRow {
   subject_id: string;
   tenant_id: string;
@@ -193,6 +203,56 @@ export class TalentTrustRepository {
       },
     });
     return subjectId;
+  }
+
+  // List a subject's external refs (Promotion Gate). One subject → many refs
+  // (SOURCED_TALENT on cold-ingest, plus ATS_TALENT_RECORD once promoted).
+  async listRefsBySubject(subjectId: string): Promise<ResolutionSubjectRefRow[]> {
+    const rows = await this.prisma.resolutionSubjectRef.findMany({
+      where: { subject_id: subjectId },
+      select: { ref_type: true, ref_id: true, link_source: true },
+      orderBy: { linked_at: 'asc' },
+    });
+    return rows.map((r) => ({
+      ref_type: r.ref_type as ResolutionSubjectRefType,
+      ref_id: r.ref_id,
+      link_source: r.link_source,
+    }));
+  }
+
+  // Attach a NEW ref to an ALREADY-EXISTING subject (Promotion Gate's link
+  // step). DISTINCT from resolveOrCreateSubject, which mints a subject when the
+  // ref is absent — here the subject is known and we point a ref at it (the
+  // promotion links the cold-ingest subject to the newly-minted TalentRecord).
+  // Idempotent: the (tenant_id, ref_type, ref_id) unique makes a re-run a no-op.
+  // UUID-only, no cross-schema FK (I1).
+  async attachRef(input: {
+    subject_id: string;
+    tenant_id: string;
+    ref_type: ResolutionSubjectRefType;
+    ref_id: string;
+    link_source: string;
+  }): Promise<void> {
+    const existing = await this.prisma.resolutionSubjectRef.findUnique({
+      where: {
+        tenant_id_ref_type_ref_id: {
+          tenant_id: input.tenant_id,
+          ref_type: input.ref_type,
+          ref_id: input.ref_id,
+        },
+      },
+    });
+    if (existing !== null) return;
+    await this.prisma.resolutionSubjectRef.create({
+      data: {
+        id: uuidv7(),
+        subject_id: input.subject_id,
+        tenant_id: input.tenant_id,
+        ref_type: input.ref_type,
+        ref_id: input.ref_id,
+        link_source: input.link_source,
+      },
+    });
   }
 
   async setSubjectMergeState(
