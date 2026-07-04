@@ -89,36 +89,23 @@ model RawPayloadReference {
   // Group 2 v2.3a "Skills Taxonomy dependency": "store surface_form
   // only and run canonicalization backfill later."
   skill_surface_forms Json?
-  // T2-2a additive — the canonicalize idempotency anchor +
-  // method-of-resolution record (T2-1 Decision 4). resolved_talent_id is
-  // set ONCE as the LAST write inside the canonicalize $transaction; a
-  // non-null value short-circuits re-canonicalization to a no-op (proof 3).
-  // resolution_method records WHAT the caller told us (T2-2a is
-  // ASSOCIATE-NOT-RESOLVE — the caller supplies the id; T2-2a does NOT
-  // compute the decision; T2-3 wires the resolver).
-  //
-  // Both columns are nullable: rows ingested before T2-2a and rows whose
-  // canonicalize has not yet fired both carry NULL. The canonicalize
-  // service's atomic $transaction sets both atomically with the Talent /
-  // overlay / evidence / outbox writes — partial-state is impossible
-  // (Directive §1 Ruling 1 atomicity).
-  resolved_talent_id  String?           @db.Uuid
+  // The canonicalize method-of-resolution record (verified_email_match |
+  // new_identity), written with resolved_subject_id in the canonicalize tx.
   resolution_method   ResolutionMethod?
   // Fix-Slice-2 (ADR-0016 D3/D5) — the within-tenant L2 resolution anchor: the
   // talent_trust.ResolutionSubject id this arrival resolved to (verified-email
-  // SubjectAnchor match → existing subject, or a new subject). The NEW
-  // canonicalize idempotency anchor + poll gate (replacing the husk
-  // resolved_talent_id, which retires with the husk in the final drop slice).
-  // DISTINCT from resolved_cluster_id. Nullable — NULL until canonicalize
-  // fires. UUID-only, no FK (cross-schema; talent_trust owns ResolutionSubject).
+  // SubjectAnchor match → existing subject, or a new subject). The canonicalize
+  // idempotency anchor + poll gate (the husk resolved_talent_id was dropped in
+  // Fix-Slice-Final-Drop). DISTINCT from resolved_cluster_id. Nullable — NULL
+  // until canonicalize fires. UUID-only, no FK (talent_trust owns the subject).
   resolved_subject_id String?           @db.Uuid
   // Step 4b (ADR-0016) — the cross-tenant resolution anchor: the
   // identity_index.PersonCluster id this payload resolved to (PII-free,
-  // fingerprint-matched). DISTINCT from resolved_talent_id (the per-tenant
-  // Core husk): one human across tenants shares ONE cluster but gets a
-  // husk per tenant. Nullable — set only when a verified_email produced a
-  // fingerprint; no verified email ⇒ no cross-tenant key ⇒ NULL. UUID-only,
-  // no FK (cross-schema; identity_index owns PersonCluster).
+  // fingerprint-matched). DISTINCT from resolved_subject_id (within-tenant L2):
+  // one human across tenants shares ONE cluster but a distinct subject per
+  // tenant. Nullable — set only when a verified_email produced a fingerprint;
+  // no verified email ⇒ no cross-tenant key ⇒ NULL. UUID-only, no FK
+  // (cross-schema; identity_index owns PersonCluster).
   resolved_cluster_id String?           @db.Uuid
   // Server-set audit timestamps.
   created_at      DateTime @default(now()) @db.Timestamptz

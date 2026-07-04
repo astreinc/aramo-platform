@@ -50,6 +50,34 @@ function readAllSrc(): Map<string, string> {
   return m;
 }
 
+// Fix-Slice-Final-Drop — platform-wide production source (libs/ + apps/),
+// excluding tests, node_modules, dist, and prisma generated clients. Used to
+// assert the husk mint is gone EVERYWHERE (Proof-6 widened once the dormant
+// TalentService.createTalent 2nd site is removed).
+function collectProdSources(): Map<string, string> {
+  const roots = [resolve(ROOT, 'libs'), resolve(ROOT, 'apps')];
+  const m = new Map<string, string>();
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (
+        entry.name === 'node_modules' ||
+        entry.name === 'dist' ||
+        entry.name === 'generated'
+      ) {
+        continue;
+      }
+      const p = resolve(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(p);
+      } else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts')) {
+        m.set(p, readFileSync(p, 'utf8'));
+      }
+    }
+  };
+  for (const r of roots) walk(r);
+  return m;
+}
+
 // Strip line comments + block comments before searching for forbidden
 // identifiers — keeps documentation-mentions in comments from triggering
 // a false positive. (Comments often explain what the lib does NOT do.)
@@ -118,22 +146,19 @@ describe('Fix-Slice-2 — Proof 5 (re-homed): within-tenant resolution lives on 
   });
 });
 
-describe('Fix-Slice-2 — Proof 6 (inverted): canonicalize mints ZERO Core husk', () => {
-  it('canonicalize source contains ZERO `.talent.create(` call sites (the husk mint is retired)', () => {
-    // Scope: the canonicalization lib source ONLY (readAllSrc = LIB_SRC).
-    // Per Amendment v1.1 §4.6, we assert canonicalize mints zero husk — NOT
-    // platform-wide zero: the dormant TalentService.createTalent (libs/talent)
-    // is out of this lib's scan and retires in the final drop slice.
-    const sources = readAllSrc();
-    let createTalentCallCount = 0;
-    for (const [, src] of sources) {
+describe('Fix-Slice-Final-Drop — Proof 6 (widened): the Core husk mint is retired PLATFORM-WIDE', () => {
+  it('ZERO `.talent.create(` call sites across ALL production source (libs/ + apps/) — the husk substrate is gone', () => {
+    // Widened per the final drop slice: the dormant TalentService.createTalent
+    // (libs/talent) is removed, so `.talent.create(` is now zero EVERYWHERE, not
+    // just in the canonicalize lib. Excludes tests (their assertion strings
+    // legitimately mention the pattern) and generated clients.
+    const sources = collectProdSources();
+    const hits: string[] = [];
+    for (const [file, src] of sources) {
       const code = stripComments(src);
-      const matches = code.match(/\.talent\.create\s*\(/g);
-      if (matches !== null) {
-        createTalentCallCount += matches.length;
-      }
+      if (/\.talent\.create\s*\(/.test(code)) hits.push(file);
     }
-    expect(createTalentCallCount).toBe(0);
+    expect(hits).toEqual([]);
   });
 
   it('canonicalize writes no husk overlay either (talentTenantOverlay.create absent)', () => {

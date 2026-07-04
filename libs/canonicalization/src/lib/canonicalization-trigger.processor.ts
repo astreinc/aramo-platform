@@ -15,10 +15,10 @@ import {
 // Design (Lead-reviewable SPLIT — the polling-outbox shape, the
 // simplest substrate-aligned variant of the §3 outbox-driven option):
 //
-//   - The unresolved RawPayloadReference row (resolved_talent_id IS NULL)
+//   - The unresolved RawPayloadReference row (resolved_subject_id IS NULL)
 //     IS the trigger's "work-to-do" signal. No separate
 //     ingestion.OutboxEvent table is needed — the existing
-//     resolved_talent_id field (added by T2-2a) already encodes both
+//     resolved_subject_id field (added by T2-2a) already encodes both
 //     "needs canonicalize" (NULL) and "canonicalized" (non-NULL).
 //
 //   - Each tick: fetch up to N unresolved payloads (oldest first),
@@ -27,15 +27,15 @@ import {
 //     resolver runs (verified-email match → existing Talent + new
 //     overlay; no match → CREATE-NEW).
 //
-//   - Durability: a failed canonicalize leaves resolved_talent_id NULL;
+//   - Durability: a failed canonicalize leaves resolved_subject_id NULL;
 //     the next tick re-picks the row. A payload is NEVER lost on
 //     canonicalization failure (per-payload errors are caught + logged
 //     so one bad payload does not abort the whole tick — mirrors
 //     OutboxPublisherProcessor.drainSchema's per-schema isolation).
 //
 //   - Idempotency: two layers — (a) the polling query filters out
-//     already-resolved rows (WHERE resolved_talent_id IS NULL); (b)
-//     canonicalize's own resolved_talent_id short-circuit (T2-2a Step 2)
+//     already-resolved rows (WHERE resolved_subject_id IS NULL); (b)
+//     canonicalize's own resolved_subject_id short-circuit (T2-2a Step 2)
 //     catches any race-induced re-fire (e.g. two ticks racing on the
 //     same row both serialize on the SELECT FOR UPDATE lock; only the
 //     first does work, the second short-circuits).

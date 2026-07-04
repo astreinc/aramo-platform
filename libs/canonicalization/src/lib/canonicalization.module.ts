@@ -7,8 +7,6 @@ import {
 } from '@aramo/common';
 import { IdentityIndexModule } from '@aramo/identity-index';
 import { IngestionModule } from '@aramo/ingestion';
-import { TalentModule } from '@aramo/talent';
-import { TalentEvidenceModule } from '@aramo/talent-evidence';
 import { TalentTrustModule } from '@aramo/talent-trust';
 
 import { CanonicalizationOutboxRepository } from './canonicalization-outbox.repository.js';
@@ -20,12 +18,12 @@ import { PrismaService } from './prisma/prisma.service.js';
 
 // T2-2a / T2-3 — libs/canonicalization module.
 //
-//   - New leaf lib in the consumer direction; imports IngestionModule +
-//     TalentModule + TalentEvidenceModule (forward edges, no cycle —
-//     lint:nx-boundaries enforces). The imports establish the module-graph
-//     edges that match the Prisma-schema follower direction: this lib
-//     READS the talent / talent_evidence / ingestion schemas via its
-//     OWN multi-schema Prisma client (Option A).
+//   - Consumer-direction leaf; imports IngestionModule (the follower still
+//     reads/writes the ingestion RawPayloadReference), IdentityIndexModule
+//     (4b cluster) + TalentTrustModule (L2 resolution seam). Fix-Slice-Final-
+//     Drop removed the TalentModule + TalentEvidenceModule edges — with the
+//     husk retired, canonicalize no longer follows the talent / talent_evidence
+//     schemas.
 //
 //   - T2-2a: service-only (no controller). The PR-10 precedent.
 //
@@ -51,8 +49,6 @@ import { PrismaService } from './prisma/prisma.service.js';
     // mirrors the IdentityIndexModule edge. Provides TalentTrustService.
     TalentTrustModule,
     IngestionModule,
-    TalentModule,
-    TalentEvidenceModule,
     BullModule.forRootAsync({
       extraOptions: { manualRegistration: true },
       useFactory: (cfg: RedisConnectionConfig) => {
