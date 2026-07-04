@@ -14,7 +14,17 @@ export type ResolutionSubjectStatus = (typeof RESOLUTION_SUBJECT_STATUSES)[numbe
 // ATS-as-heart / Core-as-index: ATS_TALENT_RECORD is the system-of-record ref
 // (the heart); PERSON_CLUSTER is a tenant-spanning person-cluster index ref
 // (NOT a Core-Talent-SOR ref); ANCHOR is a minted trust-layer anchor.
-export const RESOLUTION_SUBJECT_REF_TYPES = ['ATS_TALENT_RECORD', 'PERSON_CLUSTER', 'ANCHOR'] as const;
+// SOURCED_TALENT (Fix-Slice-1) is an L1 staging-arrival ref (a sourced_talent
+// row) — the PRE-PROMOTION attachment point: evidence attaches to a subject
+// keyed to a raw channel arrival BEFORE any TalentRecord exists (Lifecycle
+// Spec v1.1 §3.2 / §5). Ref value is the sourced_talent arrival UUID
+// (cross-schema, UUID-only, no FK — I1).
+export const RESOLUTION_SUBJECT_REF_TYPES = [
+  'ATS_TALENT_RECORD',
+  'PERSON_CLUSTER',
+  'ANCHOR',
+  'SOURCED_TALENT',
+] as const;
 export type ResolutionSubjectRefType = (typeof RESOLUTION_SUBJECT_REF_TYPES)[number];
 
 // ---- EvidenceRecord.dimension (§5.1 / R1 — four) -----------------------

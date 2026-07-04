@@ -89,7 +89,11 @@ model ResolutionSubject {
 // merge. The `ref_type` discriminator keys against the ATS TalentRecord.id
 // (ATS_TALENT_RECORD — the system-of-record ref, the heart, tenant-scoped and
 // always present), a tenant-spanning person-cluster (PERSON_CLUSTER — an index
-// ref, NOT a Core-Talent-SOR ref), or a minted ANCHOR.
+// ref, NOT a Core-Talent-SOR ref), a minted ANCHOR, or an L1 sourced_talent
+// staging arrival (SOURCED_TALENT — the PRE-PROMOTION attachment point, so
+// evidence can accrue against a raw channel arrival before any TalentRecord
+// exists; Fix-Slice-1 / Lifecycle Spec §3.2). ref_type is a plain TEXT column
+// (no DB CHECK) — a new value is additive at the vocab/DTO layer, no migration.
 model ResolutionSubjectRef {
   id String @id @db.Uuid
 
@@ -97,11 +101,12 @@ model ResolutionSubjectRef {
   tenant_id  String @db.Uuid
 
   /// ResolutionSubjectRefType closed vocabulary:
-  ///   ATS_TALENT_RECORD | PERSON_CLUSTER | ANCHOR
+  ///   ATS_TALENT_RECORD | PERSON_CLUSTER | ANCHOR | SOURCED_TALENT
   ref_type String
 
-  // The external reference value (ATS TalentRecord.id, a person-cluster id, or
-  // a minted ANCHOR id). Cross-schema logical reference — UUID-only, no FK.
+  // The external reference value (ATS TalentRecord.id, a person-cluster id, a
+  // minted ANCHOR id, or a sourced_talent arrival id). Cross-schema logical
+  // reference — UUID-only, no FK.
   ref_id String @db.Uuid
 
   linked_at   DateTime @default(now()) @db.Timestamptz

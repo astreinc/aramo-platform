@@ -1,0 +1,84 @@
+// Per-module Prisma schema for the `sourced_talent` module — Fix-Slice-1
+// (Staging Front Door). The L1 per-arrival staging table of the Pipeline (CIP)
+// (Talent-Lifecycle & Trust Architecture Spec v1.1 §2 L1 / §3.1). The
+// `sourced_talent` token is the Rule-5-compliant name mandated by the locked
+// vocabulary amendment (the forbidden substring is renamed out of code).
+//
+// Per Architecture v2.x §7 (Schema-per-Module data architecture) and
+// doc/05-conventions.md "Database Conventions". Cross-schema references are
+// UUID-only without FK constraints (§7.3). Intra-schema relations carry real
+// FKs (this schema has none — a single flat arrival table).
+//
+// ===========================================================================
+// L1 IS TENANT-SCOPED — this is NOT identity_index. NON-NEGOTIABLE.
+// ===========================================================================
+// A sourced arrival lands INSIDE the tenant wall (Spec §2: "Tenant-scoped,
+// immutable, raw"). This schema therefore CARRIES a `tenant_id` and MAY hold
+// tenant-visible provenance. The I14 no-`tenant_id`/no-PII cross-tenant wall
+// applies ONLY to identity_index (the global PII-free index) — it does NOT
+// apply here, and the two must not be conflated. Channel-sourced profile data
+// stays tenant-walled (I8) — this schema is where it lands.
+//
+// IMMUTABILITY: a sourced arrival is raw + immutable (Spec §2). A whole-row
+// BEFORE UPDATE trigger (added in the same migration) rejects any UPDATE —
+// mirrors the talent_trust EvidenceEvent/EvidenceLink append-only precedent.
+//
+// SCOPE (Fix-Slice-1): the landing SUBSTRATE only — the table + its
+// find/record repository. The sibling Sourcing Service that WRITES arrivals
+// (ADR-0019, un-ratified) and the canonicalization re-route that promotes them
+// (fix-slice-2) are out of scope. Nothing writes here yet.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["sourced_talent"]
+}
+
+// SourcedTalent — one raw arrival per channel pull (L1). Immutable once
+// written; the tenant's dedup memory (Spec §4) — a re-pull of the same channel
+// profile is the SAME arrival (the @@unique). Evidence attaches to a
+// ResolutionSubject that references this row by a SOURCED_TALENT
+// ResolutionSubjectRef (talent_trust), BEFORE any TalentRecord exists
+// (pre-promotion attachment, Spec §3.2).
+model SourcedTalent {
+  id String @id @db.Uuid
+
+  // L1 is tenant-scoped (see the header wall note — this is NOT identity_index).
+  tenant_id String @db.Uuid
+
+  /// SourceChannel — the channel this arrival came from. Documented starter set
+  /// (extensible; NOT @IsIn-gated — mirrors talent_trust assertion_type's
+  /// extensibility): INDEED | DICE | GITHUB | TALENT_DIRECT | ... (more register
+  /// as connectors land).
+  source_channel String
+
+  /// The external system's stable id for this arrival (the channel-side
+  /// profile id). (tenant_id, source_channel, external_source_id) is the
+  /// idempotency key — the dedup-memory anchor.
+  external_source_id String
+
+  /// Provenance — how/where this arrival was obtained (pull query, actor, raw
+  /// payload ref, fetched-at). JSONB; raw, immutable.
+  provenance Json
+
+  /// Legal-basis record (Spec §4 — basis + source + provenance; NOT a
+  /// create-time yes/no). The lawful basis under which this arrival may be
+  /// processed; reconciled to the L3 TalentRecord consent on promotion. JSONB.
+  legal_basis Json
+
+  /// When the arrival occurred at the channel (caller-supplied — the sourcing
+  /// pull time), distinct from created_at (when this row was persisted).
+  arrived_at DateTime @db.Timestamptz
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  // Dedup memory (§4): one arrival per (tenant, channel, external id).
+  @@unique([tenant_id, source_channel, external_source_id])
+  @@index([tenant_id])
+  @@index([tenant_id, source_channel])
+  @@schema("sourced_talent")
+}
