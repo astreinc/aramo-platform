@@ -8,6 +8,7 @@ import { deriveStrength } from './strength.js';
 import {
   TalentTrustRepository,
   type EvidenceRecordRow,
+  type ResolutionSubjectRefRow,
   type SubjectAnchorRow,
   type TrustStateRow,
   type ResolutionSubjectRow,
@@ -532,6 +533,39 @@ export class TalentTrustService {
     const subject = await this.resolveSubjectForRead(subjectRef);
     if (subject === null) return [];
     return this.repo.listEvidenceBySubject(subject.id, filters);
+  }
+
+  // ---- Promotion Gate reads/link (Slice A) ----------------------------
+  // These three compose the L2→L3 create branch (the orchestration lives in
+  // apps/api, above the I15 wall; talent_trust imports NO ats). resolveSubjectRef
+  // exposes the merge-followed subject id; listSubjectRefs backs the
+  // already-promoted no-op + the origin-arrival lookup; attachSubjectRef links
+  // the subject to the freshly-minted TalentRecord.
+
+  // Resolve a subjectRef to its (merge-followed) subject. Public wrapper of the
+  // read-resolver so apps/api can get subject_id without re-deriving it.
+  async resolveSubjectRef(subjectRef: SubjectRef): Promise<ResolutionSubjectRow | null> {
+    return this.resolveSubjectForRead(subjectRef);
+  }
+
+  async listSubjectRefs(
+    tenantId: string,
+    subjectId: string,
+  ): Promise<ResolutionSubjectRefRow[]> {
+    return this.repo.listRefsBySubject(subjectId);
+  }
+
+  // Attach a ref (e.g. ATS_TALENT_RECORD → newRecord.id) to an existing subject.
+  // Idempotent (repo dedupes on tenant+ref_type+ref_id). NOT resolveOrCreate:
+  // the subject is known; this points a new ref at it (the promotion link).
+  async attachSubjectRef(input: {
+    tenant_id: string;
+    subject_id: string;
+    ref_type: ResolutionSubjectRefType;
+    ref_id: string;
+    link_source: string;
+  }): Promise<void> {
+    await this.repo.attachRef(input);
   }
 
   // ---- internals ------------------------------------------------------

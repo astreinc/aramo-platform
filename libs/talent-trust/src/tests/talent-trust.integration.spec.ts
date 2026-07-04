@@ -386,5 +386,72 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const postState = await service.getTrustState(subjectRefC);
       expect(postState?.identity_band).not.toBe('NOT_ESTABLISHED');
     });
+
+    it('Promotion Gate seams: resolveSubjectRef + listSubjectRefs + attachSubjectRef (attach ATS_TALENT_RECORD to a cold-ingest subject, idempotent)', async () => {
+      // Seed a cold-ingest-shaped subject keyed by a SOURCED_TALENT ref (a
+      // payload id) — the pre-promotion attachment point.
+      const payloadId = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
+      const sourcedRef: SubjectRef = {
+        tenant_id: TENANT,
+        ref_type: 'SOURCED_TALENT',
+        ref_id: payloadId,
+        link_source: 'promotion-seam-integration',
+      };
+      const seeded = await service.recordEvidence({
+        subjectRef: sourcedRef,
+        dimension: 'IDENTITY',
+        assertion_type: 'FULL_NAME',
+        assertion_payload: { first_name: 'Alan', last_name: 'Turing' },
+        source_class: 'THIRD_PARTY_UNVERIFIED',
+        method: 'DOCUMENT',
+        portability_class: 'TENANT_ONLY',
+        decay_profile: 'SLOW',
+        created_by: 'seed',
+      });
+      const subjectId = seeded.subject_id;
+
+      // resolveSubjectRef exposes the (merge-followed) subject id.
+      const resolved = await service.resolveSubjectRef(sourcedRef);
+      expect(resolved?.id).toBe(subjectId);
+
+      // Before link: only the SOURCED_TALENT ref, no record ref.
+      const before = await service.listSubjectRefs(TENANT, subjectId);
+      expect(before.map((r) => r.ref_type)).toEqual(['SOURCED_TALENT']);
+      expect(before.find((r) => r.ref_type === 'ATS_TALENT_RECORD')).toBeUndefined();
+
+      // Attach the ATS_TALENT_RECORD ref (the promotion link).
+      const recordId = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
+      await service.attachSubjectRef({
+        tenant_id: TENANT,
+        subject_id: subjectId,
+        ref_type: 'ATS_TALENT_RECORD',
+        ref_id: recordId,
+        link_source: 'promotion-gate-create',
+      });
+
+      const after = await service.listSubjectRefs(TENANT, subjectId);
+      const recordRef = after.find((r) => r.ref_type === 'ATS_TALENT_RECORD');
+      expect(recordRef?.ref_id).toBe(recordId);
+      expect(recordRef?.link_source).toBe('promotion-gate-create');
+
+      // Idempotent: re-attaching the same ref is a no-op (no duplicate row).
+      await service.attachSubjectRef({
+        tenant_id: TENANT,
+        subject_id: subjectId,
+        ref_type: 'ATS_TALENT_RECORD',
+        ref_id: recordId,
+        link_source: 'promotion-gate-create',
+      });
+      const afterReattach = await service.listSubjectRefs(TENANT, subjectId);
+      expect(afterReattach.filter((r) => r.ref_type === 'ATS_TALENT_RECORD')).toHaveLength(1);
+
+      // The record ref now resolves back to the SAME subject (findSubjectByRef).
+      const viaRecord = await service.resolveSubjectRef({
+        tenant_id: TENANT,
+        ref_type: 'ATS_TALENT_RECORD',
+        ref_id: recordId,
+      });
+      expect(viaRecord?.id).toBe(subjectId);
+    });
   },
 );
