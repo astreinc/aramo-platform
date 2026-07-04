@@ -129,6 +129,13 @@ const INGESTION_FS2_ADDITIVE_MIGRATION = resolve(
   ROOT,
   'libs/ingestion/prisma/migrations/20260704120000_add_resolved_subject_id_to_raw_payload_reference/migration.sql',
 );
+// Fix-Slice-Final-Drop — drops the husk resolved_talent_id (added then dropped;
+// the regenerated ingestion client no longer selects it, so createPayload's
+// RETURNING * must not encounter it).
+const INGESTION_FS2_DROP_MIGRATION = resolve(
+  ROOT,
+  'libs/ingestion/prisma/migrations/20260704160000_drop_resolved_talent_id_from_raw_payload_reference/migration.sql',
+);
 const EXAMINATION_INIT_MIGRATION = resolve(
   ROOT,
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
@@ -149,12 +156,8 @@ const JOB_DOMAIN_INIT_MIGRATION = resolve(
   ROOT,
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
 );
-// M3 PR-9 §4.8 — talent migration applied so the portal-thin state
-// handlers can seed Talent + TalentTenantOverlay rows.
-const TALENT_INIT_MIGRATION = resolve(
-  ROOT,
-  'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
-);
+// Fix-Slice-Final-Drop — the talent (Core husk) schema is retired; no provider
+// state seeds or reads talent.Talent, so its init migration is no longer applied.
 // 4e-engagement-key — engagement.talent_id now references
 // talent_record.TalentRecord.id, so the engagement-create provider state
 // (seedEngagementBasics) seeds a TalentRecord. The column-mutating
@@ -421,11 +424,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // interaction's data doesn't leak forward.
       await c.query('TRUNCATE TABLE examination."TalentJobExamination" CASCADE');
       await c.query('TRUNCATE TABLE job_domain."Requisition" CASCADE');
-      // Core husk truncate — other states (e.g. engagement) may still seed
-      // Talent + overlay. 4e-rest-b: portal-thin now seeds a TalentRecord
-      // instead (truncated below).
-      await c.query('TRUNCATE TABLE talent."TalentTenantOverlay" CASCADE');
-      await c.query('TRUNCATE TABLE talent."Talent" CASCADE');
+      // Fix-Slice-Final-Drop: the Core husk (talent.Talent + overlay) is
+      // dropped; no provider state seeds it (nothing reads it post-fix-sequence).
       // 4e-engagement-key — engagement.talent_id references TalentRecord.
       await c.query('TRUNCATE TABLE talent_record."TalentRecord" CASCADE');
       // M4 PR-3 — submittal-create state handlers seed an examination
@@ -1359,6 +1359,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         INGESTION_T2_ADDITIVE_MIGRATION,
         INGESTION_4B_ADDITIVE_MIGRATION,
         INGESTION_FS2_ADDITIVE_MIGRATION,
+        INGESTION_FS2_DROP_MIGRATION,
         EXAMINATION_INIT_MIGRATION,
         EXAMINATION_LIVE_LIST_MIGRATION,
         // M4 PR-5 §4.10 — ExaminationOverride table + immutability trigger
@@ -1366,7 +1367,6 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // search path is set up).
         EXAMINATION_OVERRIDE_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
-        TALENT_INIT_MIGRATION,
         // 4e-engagement-key — talent_record schema (engagement.talent_id).
         ...TALENT_RECORD_MIGRATIONS,
         // M4 PR-3 §4.8 — evidence + talent-evidence + submittal

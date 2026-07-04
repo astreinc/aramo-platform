@@ -1,24 +1,17 @@
-// Per-module Prisma schema for the `talent` module.
+// Per-module Prisma schema for the `talent` module — RETIRED.
 //
-// Per Architecture v2.0 Section 7 (Schema-per-Module data architecture) and
-// doc/05-conventions.md "Database Conventions". Cross-schema references
-// elsewhere in the program are UUID-only without FK constraints.
+// Fix-Slice-Final-Drop (ADR-0016 §13 OPEN-5 / D3): the Core husk substrate is
+// retired. The `talent.Talent` + `talent.TalentTenantOverlay` tables (and the
+// `talent` PG schema) are dropped by the 20260704160000_drop_core_talent
+// migration. Nothing mints or reads them after the fix-sequence:
+//   - the canonicalization mint was removed (Fix-Slice-2);
+//   - the within-tenant identity now lives on talent_trust.ResolutionSubject (L2);
+//   - the tenant's system of record is the ATS talent_record.TalentRecord (heart);
+//   - cross-tenant resolution is the PII-free identity_index.PersonCluster.
 //
-// PR-10 introduced the Talent core entity and the TalentTenantOverlay
-// (per Talent Record Specification §2.2). Talent has no tenant_id column,
-// but post-realignment (ADR-0016) it is NOT the cross-tenant identity: it
-// is a bare per-tenant identity HUSK (each tenant mints its own; the
-// resolver no longer shares one across tenants — step 4b). The ATS
-// talent_record.TalentRecord is the system of record (the heart); the
-// PII-free identity_index.PersonCluster is the cross-tenant resolution
-// index. Core Talent is demoted, pending retirement (step 4e). The
-// overlay's tenant_id is a cross-schema reference to libs/identity's
-// Tenant — UUID-only, no FK (Architecture v2.0 §7).
-//
-// One optional Talent Record Spec §2.2 overlay field is DEFERRED from
-// PR-10 per directive §4.4 (PO ruling, 2026-05-16) and tracked as
-// follow-up F8. The deferral keeps the overlay vocabulary-clean for
-// Charter R10 enforcement.
+// This schema is a lineage tombstone: it owns the drop migration and carries no
+// models. The lib's code (TalentService/TalentRepository/TalentModule) was
+// removed; @aramo/talent has no importers.
 
 generator client {
   provider = "prisma-client-js"
@@ -27,58 +20,4 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["talent"]
-}
-
-// Talent core — a bare per-tenant identity HUSK (no tenant_id column, but
-// post-4b each tenant gets its own; NOT a cross-tenant identity — that is
-// identity_index.PersonCluster). Demoted from the former Core source-of-
-// record; the ATS TalentRecord is now the system of record (the heart).
-// Carries lifecycle state + timestamps only; pending retirement (ADR-0016
-// step 4e). All tenant-specific data lives in TalentTenantOverlay.
-model Talent {
-  id               String   @id @default(uuid()) @db.Uuid
-  // Closed vocabulary (Talent Record Spec §2.2, 4 values):
-  //   active | inactive | archived | deleted
-  // Implemented as String (not Prisma enum) per libs/identity / libs/consent
-  // precedent — neither uses Prisma enums for comparable closed-vocabulary
-  // status fields.
-  lifecycle_status String
-  created_at       DateTime @default(now()) @db.Timestamptz
-  updated_at       DateTime @updatedAt @db.Timestamptz
-
-  overlays         TalentTenantOverlay[]
-
-  @@schema("talent")
-}
-
-// TalentTenantOverlay — per-tenant relationship record. Per Talent Record
-// Spec §2.2: "All tenant-specific relationship data for a Talent lives in
-// the overlay. In v1, a Talent has one overlay (one tenant)."
-//
-// The @@unique([talent_id, tenant_id]) constraint enforces the v1
-// "one overlay per (talent, tenant) pair" rule and structurally
-// permits future multi-tenant features (additional overlays for
-// additional tenants) without core changes.
-model TalentTenantOverlay {
-  id                  String   @id @default(uuid()) @db.Uuid
-  // Intra-schema FK to Talent (allowed; the UUID-only-no-FK rule
-  // applies to CROSS-schema references per Architecture v2.0 §7).
-  talent_id           String   @db.Uuid
-  // Cross-schema reference to libs/identity's Tenant — UUID-only,
-  // no FK (Architecture v2.0 §7).
-  tenant_id           String   @db.Uuid
-  source_recruiter_id String?  @db.Uuid
-  // Closed vocabulary (Talent Record Spec §2.2, 4 values):
-  //   self_signup | recruiter_capture | referral | import
-  source_channel      String
-  tenant_status       String
-  created_at          DateTime @default(now()) @db.Timestamptz
-  updated_at          DateTime @updatedAt @db.Timestamptz
-
-  talent              Talent   @relation(fields: [talent_id], references: [id])
-
-  @@unique([talent_id, tenant_id])
-  @@index([tenant_id])
-  @@schema("talent")
 }

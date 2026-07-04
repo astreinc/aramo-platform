@@ -35,8 +35,6 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = resolve(__dirname, '../../../..');
 const CANONICAL_SCHEMA = resolve(ROOT, 'libs/canonicalization/prisma/schema.prisma');
-const TALENT_SCHEMA = resolve(ROOT, 'libs/talent/prisma/schema.prisma');
-const TALENT_EVIDENCE_SCHEMA = resolve(ROOT, 'libs/talent-evidence/prisma/schema.prisma');
 const INGESTION_SCHEMA = resolve(ROOT, 'libs/ingestion/prisma/schema.prisma');
 
 function readSchema(path: string): string {
@@ -89,45 +87,19 @@ interface FollowerSpec {
   sourcePath: string;
 }
 
-// All followed MODELS that the canonicalization follower must mirror
-// bit-identical from their source-of-truth.
+// The followed MODELS the canonicalization follower must mirror bit-identical.
+// Fix-Slice-Final-Drop shrank this to the ingestion follower ONLY — the talent
+// + talent_evidence followers were dropped with the husk (canonicalize no
+// longer follows those schemas).
 const FOLLOWED_MODELS: FollowerSpec[] = [
-  // talent schema
-  { name: 'Talent', sourcePath: TALENT_SCHEMA },
-  { name: 'TalentTenantOverlay', sourcePath: TALENT_SCHEMA },
-  // talent_evidence schema (7 evidence models)
-  { name: 'TalentSkillEvidence', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentWorkHistoryEntry', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentContactMethod', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentRateExpectation', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentWorkAuthorization', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentDocument', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentDerivedSnapshot', sourcePath: TALENT_EVIDENCE_SCHEMA },
   // ingestion schema
   { name: 'RawPayloadReference', sourcePath: INGESTION_SCHEMA },
 ];
 
-// All followed ENUMS that the canonicalization follower must mirror
-// bit-identical from their source-of-truth.
+// The followed ENUMS the canonicalization follower must mirror bit-identical.
+// Shrunk to the ingestion ResolutionMethod (the talent_evidence enums were
+// dropped with their followers).
 const FOLLOWED_ENUMS: FollowerSpec[] = [
-  // talent_evidence enums (10 — TalentSkillEvidenceSource,
-  // TalentWorkHistorySource, TalentContactType,
-  // TalentContactVerificationStatus, TalentEmploymentType,
-  // TalentRatePeriod, TalentRateSource, TalentWorkAuthorizationStatus,
-  // TalentDocumentType, TalentDocumentParseStatus,
-  // TalentDocumentRetentionPolicy = 11 total)
-  { name: 'TalentSkillEvidenceSource', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentWorkHistorySource', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentContactType', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentContactVerificationStatus', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentEmploymentType', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentRatePeriod', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentRateSource', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentWorkAuthorizationStatus', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentDocumentType', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentDocumentParseStatus', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  { name: 'TalentDocumentRetentionPolicy', sourcePath: TALENT_EVIDENCE_SCHEMA },
-  // ingestion enum (T2-2a additive)
   { name: 'ResolutionMethod', sourcePath: INGESTION_SCHEMA },
 ];
 
@@ -168,7 +140,7 @@ describe('T2-2a Directive §1 Ruling 2 — MANDATORY drift-tripwire (follower bi
   // Self-test: a contrived drift demonstrates the test catches it.
   it('self-test: a fabricated drift in the comparison input is caught (the tripwire is real, not a stub)', () => {
     const followerBody = normalizeBody(
-      extractModelBody(followerSchema, 'Talent'),
+      extractModelBody(followerSchema, 'RawPayloadReference'),
     );
     const driftedBody = [...followerBody];
     // Insert a phantom column declaration that does NOT appear in the
@@ -177,7 +149,7 @@ describe('T2-2a Directive §1 Ruling 2 — MANDATORY drift-tripwire (follower bi
     driftedBody.push('phantom_drift_column String');
     driftedBody.sort();
     const sourceBody = normalizeBody(
-      extractModelBody(readSchema(TALENT_SCHEMA), 'Talent'),
+      extractModelBody(readSchema(INGESTION_SCHEMA), 'RawPayloadReference'),
     );
     expect(driftedBody).not.toEqual(sourceBody);
   });

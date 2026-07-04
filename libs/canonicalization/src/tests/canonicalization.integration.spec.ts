@@ -35,26 +35,26 @@ import { CanonicalizationTriggerProcessor } from '../lib/canonicalization-trigge
 // + follower-drift.spec.ts.
 
 const ROOT = resolve(__dirname, '../../../..');
+// Fix-Slice-Final-Drop: the talent + talent_evidence schemas are retired — the
+// canonicalization follower client no longer references them, so they are no
+// longer applied here. resolved_talent_id is added then dropped (the husk
+// column is gone; resolved_subject_id is the sole live pointer).
 const MIGRATIONS = [
-  // talent (init) — Talent + TalentTenantOverlay (retired schema, still present
-  // per §5; canonicalize no longer writes it — asserted at 0 husk rows).
-  resolve(ROOT, 'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql'),
-  // talent_evidence (init) — 7 evidence models + 10 enums.
-  resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql'),
-  // ingestion (init + skill_surface_forms + resolved_talent_id).
+  // ingestion (init + skill_surface_forms + resolved_talent_id + drop).
   resolve(ROOT, 'libs/ingestion/prisma/migrations/20260516130715_init_ingestion_model/migration.sql'),
   resolve(ROOT, 'libs/ingestion/prisma/migrations/20260516183528_add_skill_surface_forms/migration.sql'),
   resolve(ROOT, 'libs/ingestion/prisma/migrations/20260603160100_add_resolved_talent_id_to_raw_payload_reference/migration.sql'),
   // ingestion (4b additive) — resolved_cluster_id.
   resolve(ROOT, 'libs/ingestion/prisma/migrations/20260630120000_add_resolved_cluster_id_to_raw_payload_reference/migration.sql'),
-  // ingestion (Fix-Slice-2 additive) — resolved_subject_id (the NEW L2 anchor).
+  // ingestion (Fix-Slice-2 additive) — resolved_subject_id (the L2 anchor).
   resolve(ROOT, 'libs/ingestion/prisma/migrations/20260704120000_add_resolved_subject_id_to_raw_payload_reference/migration.sql'),
+  // ingestion (Fix-Slice-Final-Drop) — drop the husk resolved_talent_id.
+  resolve(ROOT, 'libs/ingestion/prisma/migrations/20260704160000_drop_resolved_talent_id_from_raw_payload_reference/migration.sql'),
   // canonicalization (init) — canonicalization PG schema + OutboxEvent.
   resolve(ROOT, 'libs/canonicalization/prisma/migrations/20260603160000_init_canonicalization_schema/migration.sql'),
   // identity_index (init, 4b) — PersonCluster + ClusterFingerprint.
   resolve(ROOT, 'libs/identity-index/prisma/migrations/20260630000000_init_identity_index/migration.sql'),
-  // talent_trust — the L2 resolution substrate the re-route resolves onto
-  // (ResolutionSubject/Ref/EvidenceRecord/EvidenceEvent/TrustState + SubjectAnchor).
+  // talent_trust — the L2 resolution substrate the re-route resolves onto.
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql'),
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql'),
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql'),
@@ -138,21 +138,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let triggerProcessor: CanonicalizationTriggerProcessor;
     let dbClient: Client;
 
-    async function countHuskTalents(): Promise<number> {
-      const r = await dbClient.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count FROM "talent"."Talent"`,
-      );
-      return Number(r.rows[0]!.count);
-    }
-
     async function payloadRow(id: string): Promise<{
       resolved_subject_id: string | null;
-      resolved_talent_id: string | null;
       resolved_cluster_id: string | null;
       resolution_method: string | null;
     }> {
       const r = await dbClient.query(
-        `SELECT resolved_subject_id, resolved_talent_id, resolved_cluster_id, resolution_method
+        `SELECT resolved_subject_id, resolved_cluster_id, resolution_method
            FROM "ingestion"."RawPayloadReference" WHERE id = $1`,
         [id],
       );
@@ -213,7 +205,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         profile_url: 'https://github.com/fs2p1',
       });
 
-      const huskBefore = await countHuskTalents();
       const result = await service.canonicalize({
         payload_id: payloadId,
         source_channel: 'self_signup',
@@ -227,9 +218,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(result.outbox_event_id).not.toBeNull();
       // email anchor evidence + profile_url evidence.
       expect(result.contact_evidence_written).toBe(2);
-
-      // ZERO husk minted (the mint is retired).
-      expect(await countHuskTalents()).toBe(huskBefore);
+      // The husk substrate is gone platform-wide (Proof-6, tripwires spec); the
+      // talent.Talent table no longer exists to query here.
 
       // The ResolutionSubject exists and is what resolved_subject_id points at.
       const subj = await dbClient.query(
@@ -242,8 +232,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const row = await payloadRow(payloadId);
       expect(row.resolved_subject_id).toBe(result.subject_id);
       expect(row.resolution_method).toBe('new_identity');
-      // The husk pointer is intentionally left NULL (retires in the drop slice).
-      expect(row.resolved_talent_id).toBeNull();
 
       // An EMAIL SubjectAnchor was recorded for the subject.
       const anchor = await dbClient.query(
@@ -326,7 +314,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         verified_email: email,
         profile_url: null,
       });
-      const huskBefore = await countHuskTalents();
       const result = await service.canonicalize({
         payload_id: secondId,
         source_channel: 'import',
@@ -338,8 +325,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(result.resolution_method).toBe('verified_email_match');
       // SAME subject as the seed — the Tier-A email anchor resolved same-human.
       expect(result.subject_id).toBe(seed.subject_id);
-      // No husk, ever.
-      expect(await countHuskTalents()).toBe(huskBefore);
 
       const row = await payloadRow(secondId);
       expect(row.resolved_subject_id).toBe(seed.subject_id);
