@@ -25,6 +25,9 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260628000000_init_talent_trust/migration.sql',
   '../../prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
   '../../prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
+  // TR-2a-3 added SubjectMatchAdvisory resolution columns; the regenerated client
+  // SELECTs them on every advisory query, so this list must apply the migration.
+  '../../prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';

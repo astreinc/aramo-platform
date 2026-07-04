@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { SubjectMatcherService } from './subject-matcher.service.js';
+import { SubjectResolutionService } from './subject-resolution.service.js';
 import { TalentTrustRepository } from './talent-trust.repository.js';
 import { TalentTrustService } from './talent-trust.service.js';
 
@@ -16,7 +17,18 @@ import { TalentTrustService } from './talent-trust.service.js';
 // decision logic (TR-6 supplies the when), the cross-tenant path (TR-11), and
 // any client dossier view (TR-14).
 @Module({
-  providers: [PrismaService, TalentTrustRepository, TalentTrustService, SubjectMatcherService],
-  exports: [TalentTrustService, TalentTrustRepository, SubjectMatcherService],
+  providers: [
+    PrismaService,
+    TalentTrustRepository,
+    TalentTrustService,
+    SubjectMatcherService,
+    SubjectResolutionService,
+  ],
+  exports: [
+    TalentTrustService,
+    TalentTrustRepository,
+    SubjectMatcherService,
+    SubjectResolutionService,
+  ],
 })
 export class TalentTrustModule {}

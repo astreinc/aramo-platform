@@ -42,6 +42,7 @@ import { TaskModule } from '@aramo/task';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
 import { TalentAnchorProducerService } from './talent-anchor/talent-anchor-producer.service.js';
+import { AdvisoryResolutionController } from './talent-identity/advisory-resolution.controller.js';
 import { ExamineController } from './controllers/examine.controller.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { AssignableUsersController } from './controllers/assignable-users.controller.js';
@@ -359,6 +360,11 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // owns the host's slug, 404 otherwise. No JwtAuthGuard — Caddy calls it
     // pre-TLS, before any session exists. Delegates to TenantService.
     PublicTenantCertController,
+    // TR-2a-3 — the privileged advisory-resolution surface (approve-merge /
+    // dismiss / reverse / list). Lives here (not libs/talent-trust) because it is
+    // the composition-root HTTP edge ABOVE the I15 wall calling the cip resolution
+    // service; gated by the tenant-scoped identity:resolve scope (admin tier).
+    AdvisoryResolutionController,
   ],
   providers: [
     // AUTHZ-D4b Gate 6 — register the VisibilityInterceptor as a global

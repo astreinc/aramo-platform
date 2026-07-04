@@ -10,6 +10,7 @@ import type {
   EvidenceStatus,
   MatchAdviseBand,
   MatchAdvisoryStatus,
+  MatchResolutionAction,
   Method,
   PortabilityClass,
   PresentationBand,
@@ -97,7 +98,8 @@ export interface SubjectAnchorRow {
   created_at: Date;
 }
 
-// TR-2a-2 — the within-tenant same-human ADVISORY row (a match match).
+// TR-2a-2 — the within-tenant same-human ADVISORY row (a same-human match pair).
+// TR-2a-3 adds the resolution + reversal audit (all nullable until resolved).
 export interface SubjectMatchAdvisoryRow {
   id: string;
   tenant_id: string;
@@ -110,6 +112,16 @@ export interface SubjectMatchAdvisoryRow {
   status: MatchAdvisoryStatus;
   created_by: string;
   created_at: Date;
+  // TR-2a-3 resolution audit.
+  resolution_action: MatchResolutionAction | null;
+  resolved_by: string | null;
+  resolved_at: Date | null;
+  resolution_justification: string | null;
+  surviving_subject_id: string | null;
+  merged_subject_id: string | null;
+  reversed_by: string | null;
+  reversed_at: Date | null;
+  reversal_justification: string | null;
 }
 
 // The upsert input for an advisory. Keyed by the canonical unordered pair.
@@ -488,15 +500,16 @@ export class TalentTrustRepository {
     return (row as SubjectMatchAdvisoryRow | null) ?? null;
   }
 
-  // List advisories for a tenant, optionally only those a given subject appears in
-  // (either side of the canonical pair).
+  // List advisories for a tenant, optionally filtered by the subject it involves
+  // and/or its status (the reviewer queue is status = PENDING_REVIEW).
   async listMatchAdvisories(
     tenantId: string,
-    opts?: { subjectId?: string },
+    opts?: { subjectId?: string; status?: MatchAdvisoryStatus },
   ): Promise<SubjectMatchAdvisoryRow[]> {
     const rows = await this.prisma.subjectMatchAdvisory.findMany({
       where: {
         tenant_id: tenantId,
+        ...(opts?.status ? { status: opts.status } : {}),
         ...(opts?.subjectId
           ? { OR: [{ subject_a_id: opts.subjectId }, { subject_b_id: opts.subjectId }] }
           : {}),
@@ -504,5 +517,66 @@ export class TalentTrustRepository {
       orderBy: { created_at: 'asc' },
     });
     return rows as SubjectMatchAdvisoryRow[];
+  }
+
+  // ---- SubjectMatchAdvisory resolution (TR-2a-3) --------------------------
+
+  // Tenant-scoped fetch by id — the resolution service loads-then-guards.
+  async findMatchAdvisoryById(
+    tenantId: string,
+    id: string,
+  ): Promise<SubjectMatchAdvisoryRow | null> {
+    const row = await this.prisma.subjectMatchAdvisory.findFirst({
+      where: { id, tenant_id: tenantId },
+    });
+    return (row as SubjectMatchAdvisoryRow | null) ?? null;
+  }
+
+  // Record a MERGE or DISMISS resolution on a PENDING_REVIEW advisory (R4/R5).
+  // The status/resolution_action come from the caller; guards live in the service.
+  async applyAdvisoryResolution(input: {
+    id: string;
+    status: Extract<MatchAdvisoryStatus, 'MERGED' | 'DISMISSED'>;
+    resolution_action: Extract<MatchResolutionAction, 'MERGE' | 'DISMISS'>;
+    resolved_by: string;
+    resolved_at: Date;
+    resolution_justification: string | null;
+    surviving_subject_id: string | null;
+    merged_subject_id: string | null;
+  }): Promise<SubjectMatchAdvisoryRow> {
+    const updated = await this.prisma.subjectMatchAdvisory.update({
+      where: { id: input.id },
+      data: {
+        status: input.status,
+        resolution_action: input.resolution_action,
+        resolved_by: input.resolved_by,
+        resolved_at: input.resolved_at,
+        resolution_justification: input.resolution_justification,
+        surviving_subject_id: input.surviving_subject_id,
+        merged_subject_id: input.merged_subject_id,
+      },
+    });
+    return updated as SubjectMatchAdvisoryRow;
+  }
+
+  // Record a REVERSE on a MERGED advisory (R2/R5) — layers the reversal audit on
+  // top; the original resolution_* fields are preserved (append-style history).
+  async applyAdvisoryReversal(input: {
+    id: string;
+    reversed_by: string;
+    reversed_at: Date;
+    reversal_justification: string;
+  }): Promise<SubjectMatchAdvisoryRow> {
+    const updated = await this.prisma.subjectMatchAdvisory.update({
+      where: { id: input.id },
+      data: {
+        status: 'REVERSED',
+        resolution_action: 'REVERSE',
+        reversed_by: input.reversed_by,
+        reversed_at: input.reversed_at,
+        reversal_justification: input.reversal_justification,
+      },
+    });
+    return updated as SubjectMatchAdvisoryRow;
   }
 }
