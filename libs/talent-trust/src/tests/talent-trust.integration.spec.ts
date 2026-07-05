@@ -25,6 +25,12 @@ const MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260628000000_init_talent_trust/migration.sql',
 );
+// Slice-B1 — the regenerated client SELECTs ResolutionSubject.last_reconciled_at
+// + reconcile_attempts on every subject read, so the columns must exist.
+const WATERMARK_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
+);
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const REF_A = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
@@ -90,10 +96,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const stmt of splitDdl(migrationSql)) {
-        const trimmed = stmt.trim();
-        if (trimmed.length === 0) continue;
-        await setupClient.$executeRawUnsafe(trimmed);
+      const watermarkSql = readFileSync(WATERMARK_MIGRATION_PATH, 'utf8');
+      for (const sql of [migrationSql, watermarkSql]) {
+        for (const stmt of splitDdl(sql)) {
+          const trimmed = stmt.trim();
+          if (trimmed.length === 0) continue;
+          await setupClient.$executeRawUnsafe(trimmed);
+        }
       }
       await setupClient.$disconnect();
 
@@ -452,6 +461,73 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ref_id: recordId,
       });
       expect(viaRecord?.id).toBe(subjectId);
+    });
+
+    it('Reconcile poll: findSubjectsNeedingReconcile selects promoted subjects with newer evidence; markReconciled/bump gate it', async () => {
+      // A promoted subject: keyed by SOURCED_TALENT, linked to a record, with
+      // one declared identity fact.
+      const payloadId = 'ffffffff-ffff-7fff-8fff-ffffffffffff';
+      const recordId = '99999999-9999-7999-8999-999999999999';
+      const sourcedRef: SubjectRef = {
+        tenant_id: TENANT,
+        ref_type: 'SOURCED_TALENT',
+        ref_id: payloadId,
+        link_source: 'reconcile-poll-integration',
+      };
+      const seeded = await service.recordEvidence({
+        subjectRef: sourcedRef,
+        dimension: 'IDENTITY',
+        assertion_type: 'FULL_NAME',
+        assertion_payload: { first_name: 'Grace', last_name: 'Hopper' },
+        source_class: 'THIRD_PARTY_UNVERIFIED',
+        method: 'DOCUMENT',
+        portability_class: 'TENANT_ONLY',
+        decay_profile: 'SLOW',
+        created_by: 'seed',
+      });
+      const subjectId = seeded.subject_id;
+      await service.attachSubjectRef({
+        tenant_id: TENANT,
+        subject_id: subjectId,
+        ref_type: 'ATS_TALENT_RECORD',
+        ref_id: recordId,
+        link_source: 'promotion-gate-create',
+      });
+
+      const mine = (rows: Array<{ subject_id: string; talent_record_id: string }>) =>
+        rows.find((r) => r.subject_id === subjectId);
+
+      // Never reconciled (watermark NULL) + has evidence → selected, carrying the
+      // ATS record id to enrich.
+      const before = await service.findSubjectsNeedingReconcile({ limit: 100, maxAttempts: 5 });
+      expect(mine(before)?.talent_record_id).toBe(recordId);
+
+      // Stamp the watermark → no evidence newer than it → dropped.
+      await service.markReconciled(subjectId);
+      const afterMark = await service.findSubjectsNeedingReconcile({ limit: 100, maxAttempts: 5 });
+      expect(mine(afterMark)).toBeUndefined();
+
+      // New evidence arrives (created_at > watermark) → re-selected.
+      await service.recordEvidence({
+        subjectRef: sourcedRef,
+        dimension: 'IDENTITY',
+        assertion_type: 'PHONE',
+        assertion_payload: { value: '+15559990000' },
+        source_class: 'THIRD_PARTY_UNVERIFIED',
+        method: 'DOCUMENT',
+        portability_class: 'TENANT_ONLY',
+        decay_profile: 'SLOW',
+        created_by: 'seed',
+      });
+      const afterNew = await service.findSubjectsNeedingReconcile({ limit: 100, maxAttempts: 5 });
+      expect(mine(afterNew)?.subject_id).toBe(subjectId);
+
+      // Attempt cap: bump to 5 → excluded at maxAttempts 5, re-admitted at 6.
+      for (let i = 0; i < 5; i += 1) await service.bumpReconcileAttempt(subjectId);
+      const atCap = await service.findSubjectsNeedingReconcile({ limit: 100, maxAttempts: 5 });
+      expect(mine(atCap)).toBeUndefined();
+      const higherCap = await service.findSubjectsNeedingReconcile({ limit: 100, maxAttempts: 6 });
+      expect(mine(higherCap)?.subject_id).toBe(subjectId);
     });
   },
 );

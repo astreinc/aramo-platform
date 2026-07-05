@@ -20,6 +20,7 @@ export type {
   EvidenceRecordRow,
   ResolutionSubjectRow,
   ResolutionSubjectRefRow,
+  ReconcileTargetRow,
   TrustStateRow,
   InsertEvidenceInput,
   SubjectAnchorRow,

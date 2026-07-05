@@ -13,6 +13,7 @@ import { AuthorizationModule } from '@aramo/authorization';
 import { CalendarModule } from '@aramo/calendar';
 import { CanonicalizationModule } from '@aramo/canonicalization';
 import { ColdIngestExtractionModule } from '@aramo/cold-ingest-extraction';
+import { TalentReconcileModule } from '@aramo/talent-reconcile';
 import { CompanyModule } from '@aramo/company';
 import { ConsentModule } from '@aramo/consent';
 import { ContactModule } from '@aramo/contact';
@@ -265,6 +266,15 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // talent-trust} (all scope:cip). Placed after CanonicalizationModule so a
     // subject exists before extraction polls it.
     ColdIngestExtractionModule,
+    // Promotion Gate Slice-B1 — the reconcile poll (NEW leaf lib, scope:ats).
+    // Above the I15 wall: reads the cip trust ledger + writes the ats TalentRecord
+    // (enrich fill-null contact + append key_skills) with field→evidence
+    // provenance, recording occupied+newer-differing as pending contradictions
+    // (B2 acts). OPEN-2: L2 is the retained history, L3 the current projection —
+    // no L3 version table. Imports {talent-trust (cip), talent-record (ats)};
+    // ats→cip is wall-clean (canonicalization precedent). Placed after the
+    // promotion/extraction path so a promoted subject exists before reconcile.
+    TalentReconcileModule,
     // A8-3a — ObjectStorageModule (new leaf lib). The platform's first
     // live S3 substrate: presigned PUT/GET helpers + tenant-scoped key
     // convention + PII floor (≤ 300s expiry cap + access-log emission).

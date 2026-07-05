@@ -28,6 +28,8 @@ const MIGRATIONS = [
   // TR-2a-3 added SubjectMatchAdvisory resolution columns; the regenerated client
   // SELECTs them on every advisory query, so this list must apply the migration.
   '../../prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
+  // Slice-B1 — ResolutionSubject.last_reconciled_at + reconcile_attempts.
+  '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
