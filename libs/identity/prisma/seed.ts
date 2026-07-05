@@ -106,6 +106,7 @@ export const SEED_IDS = {
     'talent:edit': '01900000-0000-7000-8000-00000000006a',
     'talent:delete': '01900000-0000-7000-8000-00000000006b',
     'talent:search': '01900000-0000-7000-8000-00000000006c',
+    'talent:source': '01900000-0000-7000-8000-0000000000b1',
     // company (4)
     'company:read': '01900000-0000-7000-8000-00000000006d',
     'company:create': '01900000-0000-7000-8000-00000000006e',
@@ -420,6 +421,9 @@ export const SEED_IDS = {
     scope_talent_edit_created: '01900000-0000-7000-8000-000000000209',
     scope_talent_delete_created: '01900000-0000-7000-8000-00000000020a',
     scope_talent_search_created: '01900000-0000-7000-8000-00000000020b',
+    // Promotion-Trigger slice-A — talent:source (fresh 0x2e0 slot, above the
+    // current audit-event max 0x242).
+    scope_talent_source_created: '01900000-0000-7000-8000-0000000002e0',
     scope_company_read_created: '01900000-0000-7000-8000-00000000020c',
     scope_company_create_created: '01900000-0000-7000-8000-00000000020d',
     scope_company_edit_created: '01900000-0000-7000-8000-00000000020e',
@@ -792,10 +796,11 @@ export const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]>
     // AUTHZ-D4a — AM is the demand-side / client-ownership anchor.
     'company:assign', 'team:manage',
   ]],
-  // sourcer — 14 scopes (intake-focused; NO :delete, NO submittal).
+  // sourcer — 15 scopes (intake-focused; NO :delete, NO submittal). Promotion-
+  // Trigger slice-A adds talent:source (the sourcer's promote-from-pool capability).
   ['sourcer', [
     'auth:session:read',
-    'talent:read', 'talent:create', 'talent:search',
+    'talent:read', 'talent:create', 'talent:search', 'talent:source',
     'company:read', 'contact:read', 'contact:create',
     'requisition:read',
     'pipeline:read', 'pipeline:add', 'pipeline:change-status', 'pipeline:add-activity',
@@ -1818,6 +1823,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['talent:edit'], 'talent:edit', 'Edit a talent record');
   await upsertScope(prisma, SEED_IDS.scopes['talent:delete'], 'talent:delete', 'Delete a talent record (tenant_admin only — Ruling 1)');
   await upsertScope(prisma, SEED_IDS.scopes['talent:search'], 'talent:search', 'Search the talent index (Constrained Talent Access)');
+  await upsertScope(prisma, SEED_IDS.scopes['talent:source'], 'talent:source', 'Promote a sourced L2 subject into an ATS talent record (sourcer)');
   await upsertScope(prisma, SEED_IDS.scopes['company:read'], 'company:read', 'Read a company record');
   await upsertScope(prisma, SEED_IDS.scopes['company:create'], 'company:create', 'Create a company record');
   await upsertScope(prisma, SEED_IDS.scopes['company:edit'], 'company:edit', 'Edit a company record');
@@ -2606,6 +2612,7 @@ export async function runIdentitySeed(
     { audit_id: SEED_IDS.audit_events.scope_talent_edit_created, key: 'talent:edit' },
     { audit_id: SEED_IDS.audit_events.scope_talent_delete_created, key: 'talent:delete' },
     { audit_id: SEED_IDS.audit_events.scope_talent_search_created, key: 'talent:search' },
+    { audit_id: SEED_IDS.audit_events.scope_talent_source_created, key: 'talent:source' },
     { audit_id: SEED_IDS.audit_events.scope_company_read_created, key: 'company:read' },
     { audit_id: SEED_IDS.audit_events.scope_company_create_created, key: 'company:create' },
     { audit_id: SEED_IDS.audit_events.scope_company_edit_created, key: 'company:edit' },

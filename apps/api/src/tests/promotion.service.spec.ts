@@ -33,6 +33,7 @@ function makeService(over: {
   evidence?: unknown[];
   arrival?: unknown;
   trustState?: unknown;
+  openAdvisories?: unknown[];
 } = {}) {
   const resolveSubjectRef = vi
     .fn()
@@ -44,6 +45,11 @@ function makeService(over: {
   const attachSubjectRef = vi.fn().mockResolvedValue(undefined);
   const getTrustState = vi.fn().mockResolvedValue(over.trustState ?? { identity_band: 'SELF_ASSERTED' });
   const trust = { resolveSubjectRef, listSubjectRefs, getEvidence, attachSubjectRef, getTrustState } as never;
+
+  // Promotion-Trigger slice-A — the identity gate reader. Default: no open
+  // advisories (identity settled).
+  const listMatchAdvisories = vi.fn().mockResolvedValue(over.openAdvisories ?? []);
+  const trustRepo = { listMatchAdvisories } as never;
 
   const create = vi.fn().mockResolvedValue({ id: RECORD_ID });
   const talentRecords = { create } as never;
@@ -64,8 +70,8 @@ function makeService(over: {
     );
   const ingestion = { findById } as never;
 
-  const service = new PromotionService(trust, talentRecords, reconcileRepo, sourceConsent, ingestion);
-  return { service, resolveSubjectRef, listSubjectRefs, getEvidence, attachSubjectRef, getTrustState, create, upsertFieldProvenance, registerSourceDerivedConsent, findById };
+  const service = new PromotionService(trust, trustRepo, talentRecords, reconcileRepo, sourceConsent, ingestion);
+  return { service, resolveSubjectRef, listSubjectRefs, getEvidence, attachSubjectRef, getTrustState, listMatchAdvisories, create, upsertFieldProvenance, registerSourceDerivedConsent, findById };
 }
 
 describe('PromotionService.promoteSubject — create branch', () => {
@@ -195,5 +201,33 @@ describe('PromotionService.promoteSubject — create branch', () => {
     const result = await service.promoteSubject(sourcedRef);
     expect(result).toEqual({ status: 'deferred_unknown_subject' });
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('deferred_unresolved_identity (Promotion-Trigger gate): a PENDING_REVIEW merge advisory blocks the mint', async () => {
+    const { service, create, listMatchAdvisories, attachSubjectRef } = makeService({
+      evidence: [ev('FULL_NAME', { first_name: 'Alan', last_name: 'Turing' })],
+      openAdvisories: [{ id: 'adv-1', status: 'PENDING_REVIEW' }],
+    });
+    const result = await service.promoteSubject(sourcedRef);
+    expect(result).toEqual({ status: 'deferred_unresolved_identity' });
+    expect(listMatchAdvisories).toHaveBeenCalledWith(TENANT, {
+      subjectId: SUBJECT_ID,
+      status: 'PENDING_REVIEW',
+    });
+    // Identity not settled → NO record minted, NO link attached.
+    expect(create).not.toHaveBeenCalled();
+    expect(attachSubjectRef).not.toHaveBeenCalled();
+  });
+
+  it('identity gate does not block an already-promoted subject (no-op returns before the gate)', async () => {
+    const { service, listMatchAdvisories } = makeService({
+      refs: [
+        { ref_type: 'SOURCED_TALENT', ref_id: PAYLOAD_ID, link_source: 'canonicalization' },
+        { ref_type: 'ATS_TALENT_RECORD', ref_id: RECORD_ID, link_source: 'manual' },
+      ],
+    });
+    const result = await service.promoteSubject(sourcedRef);
+    expect(result).toEqual({ status: 'already_promoted', talent_record_id: RECORD_ID });
+    expect(listMatchAdvisories).not.toHaveBeenCalled();
   });
 });

@@ -43,6 +43,15 @@ import { PrismaService } from './prisma/prisma.service.js';
 // integrity check at the LIST side (vs. the per-entry owner check
 // that integrity-checks the typed entity).
 
+// Promotion-Trigger slice-A — the reserved per-tenant sourcing bench identity.
+// list_kind marks it; a system sentinel owns it (owner_id is NOT NULL, and the
+// bench has no human owner); the name is a stable label. One bench per tenant is
+// enforced by a partial-unique index.
+export const TENANT_BENCH_LIST_KIND = 'tenant_bench' as const;
+export const TENANT_BENCH_OWNER_ID =
+  '00000000-0000-4000-8000-00000000be0c' as const;
+export const TENANT_BENCH_NAME = 'Sourced Talent Bench' as const;
+
 interface SavedListRow {
   id: string;
   tenant_id: string;
@@ -178,6 +187,65 @@ export class SavedListRepository {
       },
     });
     return projectListView(row as SavedListRow);
+  }
+
+  // Promotion-Trigger slice-A — get-or-create the reserved per-tenant sourcing
+  // bench (one talent_record list per tenant, owner = a system sentinel). Race-
+  // safe: the partial-unique (tenant_id WHERE list_kind='tenant_bench') rejects a
+  // concurrent create → re-find. Does NOT touch owner-scoped personal lists.
+  async getOrCreateTenantBench(tenant_id: string): Promise<SavedListView> {
+    const existing = await this.prisma.savedList.findFirst({
+      where: { tenant_id, list_kind: TENANT_BENCH_LIST_KIND },
+    });
+    if (existing !== null) return projectListView(existing as SavedListRow);
+    try {
+      const row = await this.prisma.savedList.create({
+        data: {
+          tenant_id,
+          owner_id: TENANT_BENCH_OWNER_ID,
+          name: TENANT_BENCH_NAME,
+          item_type: 'talent_record',
+          list_kind: TENANT_BENCH_LIST_KIND,
+        },
+      });
+      return projectListView(row as SavedListRow);
+    } catch (err) {
+      // Concurrent create lost the partial-unique race — the bench now exists.
+      const raced = await this.prisma.savedList.findFirst({
+        where: { tenant_id, list_kind: TENANT_BENCH_LIST_KIND },
+      });
+      if (raced !== null) return projectListView(raced as SavedListRow);
+      throw err;
+    }
+  }
+
+  // Promotion-Trigger slice-A — idempotently add a talent_record to the tenant
+  // bench (the @@unique([saved_list_id, item_id]) makes a re-add a no-op). Skips
+  // the personal-list homogeneity/owner validation (the record was just minted
+  // by the promotion path; the bench is always item_type='talent_record').
+  async addToTenantBench(args: {
+    tenant_id: string;
+    bench_id: string;
+    talent_record_id: string;
+  }): Promise<{ added: boolean }> {
+    const existing = await this.prisma.savedListEntry.findUnique({
+      where: {
+        saved_list_id_item_id: {
+          saved_list_id: args.bench_id,
+          item_id: args.talent_record_id,
+        },
+      },
+    });
+    if (existing !== null) return { added: false };
+    await this.prisma.savedListEntry.create({
+      data: {
+        tenant_id: args.tenant_id,
+        saved_list_id: args.bench_id,
+        item_type: 'talent_record',
+        item_id: args.talent_record_id,
+      },
+    });
+    return { added: true };
   }
 
   async findListById(args: {

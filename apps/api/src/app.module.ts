@@ -46,6 +46,8 @@ import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.intercept
 import { TalentAnchorProducerService } from './talent-anchor/talent-anchor-producer.service.js';
 import { AdvisoryResolutionController } from './talent-identity/advisory-resolution.controller.js';
 import { PromotionService } from './talent-identity/promotion.service.js';
+import { SourcingController } from './talent-identity/sourcing.controller.js';
+import { SourcingService } from './talent-identity/sourcing.service.js';
 import { ExamineController } from './controllers/examine.controller.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { AssignableUsersController } from './controllers/assignable-users.controller.js';
@@ -387,6 +389,10 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // the composition-root HTTP edge ABOVE the I15 wall calling the cip resolution
     // service; gated by the tenant-scoped identity:resolve scope (admin tier).
     AdvisoryResolutionController,
+    // Promotion-Trigger slice-A — the sourcer's two triggers (Add to Pipeline /
+    // Save to Pool). Both promote a sourced L2 subject → ATS TalentRecord behind
+    // the identity gate, then associate. Gated on the talent:source scope.
+    SourcingController,
   ],
   providers: [
     // AUTHZ-D4b Gate 6 — register the VisibilityInterceptor as a global
@@ -441,6 +447,10 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // SourceConsentService, IngestionRepository) come from their already-imported
     // modules.
     PromotionService,
+    // Promotion-Trigger slice-A — the sourcing trigger orchestrator (deps
+    // PromotionService + PipelineRepository + SavedListRepository resolve via
+    // their already-imported modules).
+    SourcingService,
     // Segment 4c — Views presets + "My team" scope. The resolver injects the
     // four read-only cross-schema accessors (activity / pipeline / tasks /
     // teams); the interceptor (global, PRE-handler, route-guarded to the paged
