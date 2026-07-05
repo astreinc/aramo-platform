@@ -10,6 +10,7 @@ import { ResumeParseModule } from '@aramo/resume-parse';
 import { PrismaService } from './prisma/prisma.service.js';
 import { TalentRecordController } from './talent-record.controller.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
+import { TalentRecordReconcileRepository } from './talent-record-reconcile.repository.js';
 import { TalentRecordService } from './talent-record.service.js';
 import { TalentLinkService } from './talent-link.service.js';
 import { ResumeTextService } from './resume-text/resume-text.service.js';
@@ -49,6 +50,10 @@ import { ResumeTextService } from './resume-text/resume-text.service.js';
   providers: [
     PrismaService,
     TalentRecordRepository,
+    // Promotion Gate Slice-B1 — reconcile writes (enrich + provenance +
+    // pending contradictions). Consumed by the apps/api reconcile poll above
+    // the I15 wall (mirrors TalentRecordRepository's cross-lib export).
+    TalentRecordReconcileRepository,
     TalentRecordService,
     TalentLinkService,
     // Search PR-2 — the résumé-text re-extract + persistence service. The
@@ -64,6 +69,7 @@ import { ResumeTextService } from './resume-text/resume-text.service.js';
   ],
   exports: [
     TalentRecordRepository,
+    TalentRecordReconcileRepository,
     TalentRecordService,
     TalentLinkService,
     ResumeTextService,

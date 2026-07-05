@@ -67,6 +67,14 @@ export interface ResolutionSubjectRefRow {
   link_source: string;
 }
 
+// Promotion Gate Slice-B1 — a promoted subject with unreconciled evidence: the
+// subject id, its tenant, and the ATS_TALENT_RECORD.id (ref_id) to enrich.
+export interface ReconcileTargetRow {
+  subject_id: string;
+  tenant_id: string;
+  talent_record_id: string;
+}
+
 export interface TrustStateRow {
   subject_id: string;
   tenant_id: string;
@@ -252,6 +260,61 @@ export class TalentTrustRepository {
         ref_id: input.ref_id,
         link_source: input.link_source,
       },
+    });
+  }
+
+  // ---- Promotion Gate Slice-B1 — reconcile poll ---------------------------
+
+  // Promoted subjects (carrying an ATS_TALENT_RECORD ref) whose immutable
+  // EvidenceRecord history has grown SINCE the reconcile watermark (or that were
+  // never reconciled). The "newer unreconciled evidence" gate is a row-relative
+  // compare (e.created_at > s.last_reconciled_at) — beyond Prisma's typed API,
+  // so raw SQL. Oldest subject first; bounded by reconcile_attempts.
+  async findSubjectsNeedingReconcile(args: {
+    limit: number;
+    maxAttempts: number;
+  }): Promise<ReconcileTargetRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{ subject_id: string; tenant_id: string; talent_record_id: string }>
+    >(
+      `SELECT DISTINCT ON (s.id) s.id AS subject_id, s.tenant_id, r.ref_id AS talent_record_id
+       FROM "talent_trust"."ResolutionSubject" s
+       JOIN "talent_trust"."ResolutionSubjectRef" r
+         ON r.subject_id = s.id AND r.ref_type = 'ATS_TALENT_RECORD'
+       WHERE s.status = 'ACTIVE'
+         AND s.reconcile_attempts < $1
+         AND EXISTS (
+           SELECT 1 FROM "talent_trust"."EvidenceRecord" e
+           WHERE e.subject_id = s.id
+             AND e.created_at > COALESCE(s.last_reconciled_at, '1970-01-01'::timestamptz)
+         )
+       ORDER BY s.id, s.created_at ASC
+       LIMIT $2`,
+      args.maxAttempts,
+      args.limit,
+    );
+    return rows.map((r) => ({
+      subject_id: r.subject_id,
+      tenant_id: r.tenant_id,
+      talent_record_id: r.talent_record_id,
+    }));
+  }
+
+  // Stamp the reconcile watermark (LAST write — advances past the evidence just
+  // projected). The next tick re-selects only if newer evidence arrives.
+  async markReconciled(subjectId: string): Promise<void> {
+    await this.prisma.resolutionSubject.update({
+      where: { id: subjectId },
+      data: { last_reconciled_at: new Date() },
+    });
+  }
+
+  // Record a transient reconcile failure — bump the attempt counter, leave the
+  // watermark un-advanced so the next tick re-picks (bounded by maxAttempts).
+  async bumpReconcileAttempt(subjectId: string): Promise<void> {
+    await this.prisma.resolutionSubject.update({
+      where: { id: subjectId },
+      data: { reconcile_attempts: { increment: 1 } },
     });
   }
 

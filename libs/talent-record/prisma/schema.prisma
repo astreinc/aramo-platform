@@ -147,6 +147,14 @@ model TalentRecord {
   // dependent).
   resume_text TalentResumeText?
 
+  // Promotion Gate Slice-B1 — the reconcile projection annotations (same-schema
+  // relations; onDelete Cascade purges them with the record). field_provenance
+  // records which L2 EvidenceRecord currently projects each enrichable field;
+  // reconcile_contradictions holds the pending (field, new evidence) pairs B2
+  // consumes. Neither is on the flat row (keeps `current` a cheap single read).
+  field_provenance         TalentRecordFieldProvenance[]
+  reconcile_contradictions TalentRecordReconcileContradiction[]
+
   // Indexes — every query path leads with tenant_id; (last, first)
   // serves the dominant "search by name" recruiter query path.
   @@index([tenant_id, last_name, first_name])
@@ -231,5 +239,62 @@ model TalentResumeText {
   // model is PascalCase, so @@map binds the client to the real table. Field
   // names already match their snake columns (no per-field @map needed).
   @@map("talent_resume_text")
+  @@schema("talent_record")
+}
+
+// Promotion Gate Slice-B1 — projection-provenance carrier. OPEN-2 keeps L3 as
+// the current projection over L2 history (NO L3 version/event/log table); this
+// map records WHICH L2 EvidenceRecord currently projects each enriched
+// TalentRecord field — I10 provenance by REFERENCE, not duplication. One row per
+// (record, field), upserted as the reconcile poll re-projects. evidence_id is a
+// cross-schema UUID-only ref to talent_trust.EvidenceRecord (no FK, §7.3 / I1).
+model TalentRecordFieldProvenance {
+  id               String @id @default(uuid()) @db.Uuid
+  tenant_id        String @db.Uuid
+  talent_record_id String @db.Uuid
+  // The enrichable TalentRecord column this provenance covers (email1,
+  // phone_cell, web_site, address, …). Constrained to the enrichable set by the
+  // writer (not a DB CHECK — the libs/talent / libs/consent String precedent).
+  field_name       String
+  // The L2 EvidenceRecord that projected the current value (→ its payload_id
+  // gives the contributing arrival). Cross-schema UUID-only, no FK.
+  evidence_id      String @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  talent_record TalentRecord @relation(fields: [talent_record_id], references: [id], onDelete: Cascade)
+
+  // One provenance row per (record, field) — upserted on each re-projection.
+  @@unique([talent_record_id, field_name])
+  @@index([tenant_id])
+  @@map("talent_record_field_provenance")
+  @@schema("talent_record")
+}
+
+// Promotion Gate Slice-B1 — the pending-contradiction store. When a re-arrival
+// carries newer declared evidence that DIFFERS from an occupied identity-stable
+// (or occupied single-slot) field, B1 does NOT overwrite; it RECORDS the pending
+// pair here. Slice B2 consumes these → contradict() → EvidenceLink CONTRADICTS +
+// needs-review. B1 never acts (leave-untouched §5). new_evidence_id is a
+// cross-schema UUID-only ref to talent_trust.EvidenceRecord (no FK, §7.3 / I1).
+model TalentRecordReconcileContradiction {
+  id               String @id @default(uuid()) @db.Uuid
+  tenant_id        String @db.Uuid
+  talent_record_id String @db.Uuid
+  field_name       String
+  new_evidence_id  String @db.Uuid
+  // Closed lifecycle: 'pending' (B1 records) | 'resolved' (B2 consumes). B1
+  // writes 'pending' only.
+  status           String @default("pending")
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  talent_record TalentRecord @relation(fields: [talent_record_id], references: [id], onDelete: Cascade)
+
+  // Idempotent record: one pending contradiction per (record, field, evidence).
+  @@unique([talent_record_id, field_name, new_evidence_id])
+  @@index([tenant_id, status])
+  @@map("talent_record_reconcile_contradiction")
   @@schema("talent_record")
 }

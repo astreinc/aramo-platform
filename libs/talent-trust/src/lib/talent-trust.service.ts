@@ -9,6 +9,7 @@ import {
   TalentTrustRepository,
   type EvidenceRecordRow,
   type ResolutionSubjectRefRow,
+  type ReconcileTargetRow,
   type SubjectAnchorRow,
   type TrustStateRow,
   type ResolutionSubjectRow,
@@ -566,6 +567,26 @@ export class TalentTrustService {
     link_source: string;
   }): Promise<void> {
     await this.repo.attachRef(input);
+  }
+
+  // ---- Promotion Gate Slice-B1 — reconcile poll (enrich-only) ----------
+  // The reconcile processor (apps/api, above the wall) drives these: find
+  // promoted subjects with newer evidence, then stamp/bump the watermark. The
+  // enrichment READ uses the existing getEvidence(subjectRef) — no new read.
+
+  async findSubjectsNeedingReconcile(args: {
+    limit: number;
+    maxAttempts: number;
+  }): Promise<ReconcileTargetRow[]> {
+    return this.repo.findSubjectsNeedingReconcile(args);
+  }
+
+  async markReconciled(subjectId: string): Promise<void> {
+    await this.repo.markReconciled(subjectId);
+  }
+
+  async bumpReconcileAttempt(subjectId: string): Promise<void> {
+    await this.repo.bumpReconcileAttempt(subjectId);
   }
 
   // ---- internals ------------------------------------------------------

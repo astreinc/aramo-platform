@@ -19,6 +19,9 @@ import { TalentTrustService } from '../lib/talent-trust.service.js';
 const MIGRATIONS = [
   '../../prisma/migrations/20260628000000_init_talent_trust/migration.sql',
   '../../prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
+  // Slice-B1 — the regenerated client SELECTs ResolutionSubject.last_reconciled_at
+  // + reconcile_attempts (findSubjectByRef include), so the columns must exist.
+  '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
