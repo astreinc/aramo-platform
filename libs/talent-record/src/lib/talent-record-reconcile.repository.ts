@@ -43,6 +43,19 @@ export interface PendingContradictionRow {
   status: string;
 }
 
+// Slice-B2 — a pending contradiction joined to the incumbent EvidenceRecord the
+// field currently projects (talent_record_field_provenance). incumbent_evidence_id
+// is null ONLY if the create/null-fill provenance invariant was violated (B2
+// leaves such a row pending + logs — never guesses an incumbent).
+export interface PendingContradictionForResolution {
+  id: string;
+  tenant_id: string;
+  talent_record_id: string;
+  field_name: string;
+  new_evidence_id: string;
+  incumbent_evidence_id: string | null;
+}
+
 @Injectable()
 export class TalentRecordReconcileRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -117,6 +130,54 @@ export class TalentRecordReconcileRepository {
         new_evidence_id: args.new_evidence_id,
         status: 'pending',
       },
+    });
+  }
+
+  // Slice-B2 poll — pending contradictions joined to the incumbent EvidenceRecord
+  // each field currently projects (talent_record_field_provenance). Oldest first;
+  // LEFT JOIN so a (should-not-happen) missing-incumbent row still surfaces with
+  // incumbent_evidence_id = null (B2 leaves it pending + logs). The status='pending'
+  // filter is served by the @@index([tenant_id, status]).
+  async findPendingContradictions(args: {
+    limit: number;
+  }): Promise<PendingContradictionForResolution[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{
+        id: string;
+        tenant_id: string;
+        talent_record_id: string;
+        field_name: string;
+        new_evidence_id: string;
+        incumbent_evidence_id: string | null;
+      }>
+    >(
+      `SELECT c.id, c.tenant_id, c.talent_record_id, c.field_name, c.new_evidence_id,
+              p.evidence_id AS incumbent_evidence_id
+       FROM "talent_record"."talent_record_reconcile_contradiction" c
+       LEFT JOIN "talent_record"."talent_record_field_provenance" p
+         ON p.talent_record_id = c.talent_record_id AND p.field_name = c.field_name
+       WHERE c.status = 'pending'
+       ORDER BY c.created_at ASC
+       LIMIT $1`,
+      args.limit,
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      tenant_id: r.tenant_id,
+      talent_record_id: r.talent_record_id,
+      field_name: r.field_name,
+      new_evidence_id: r.new_evidence_id,
+      incumbent_evidence_id: r.incumbent_evidence_id,
+    }));
+  }
+
+  // Slice-B2 done-marker — flip a pending contradiction to resolved AFTER
+  // contradict() fires. This is the idempotency gate (contradict() is NOT
+  // link-idempotent): a resolved row is never re-polled → no duplicate links.
+  async markContradictionResolved(id: string): Promise<void> {
+    await this.prisma.talentRecordReconcileContradiction.update({
+      where: { id },
+      data: { status: 'resolved' },
     });
   }
 

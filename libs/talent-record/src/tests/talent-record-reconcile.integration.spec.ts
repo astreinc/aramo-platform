@@ -130,5 +130,40 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await repo.listFieldProvenance(recordId)).toHaveLength(0);
       expect(await repo.listPendingContradictions(recordId)).toHaveLength(0);
     });
+
+    // ---- Slice-B2 — the pending poll (join incumbent) + markResolved ----------
+
+    it('findPendingContradictions joins the incumbent evidence + markResolved drops the row from the poll', async () => {
+      const recordId = await seedRecord();
+      const incumbent = uuidv7();
+      const challenger = uuidv7();
+      // The field currently projects `incumbent` (create/null-fill provenance);
+      // a newer differing arrival recorded `challenger` as pending.
+      await repo.upsertFieldProvenance({ tenant_id: TENANT, talent_record_id: recordId, field_name: 'email1', evidence_id: incumbent });
+      await repo.recordPendingContradiction({ tenant_id: TENANT, talent_record_id: recordId, field_name: 'email1', new_evidence_id: challenger });
+
+      const pending = await repo.findPendingContradictions({ limit: 100 });
+      const mine = pending.find((p) => p.talent_record_id === recordId && p.field_name === 'email1');
+      expect(mine).toBeDefined();
+      expect(mine?.new_evidence_id).toBe(challenger);
+      expect(mine?.incumbent_evidence_id).toBe(incumbent);
+
+      // markResolved → the row leaves the pending poll (idempotency gate).
+      if (mine !== undefined) await repo.markContradictionResolved(mine.id);
+      const after = await repo.findPendingContradictions({ limit: 100 });
+      expect(after.some((p) => p.id === mine?.id)).toBe(false);
+    });
+
+    it('a pending row whose field has NO provenance surfaces incumbent_evidence_id = null (LEFT JOIN)', async () => {
+      const recordId = await seedRecord();
+      const challenger = uuidv7();
+      // No provenance for phone_cell → the invariant-violation case.
+      await repo.recordPendingContradiction({ tenant_id: TENANT, talent_record_id: recordId, field_name: 'phone_cell', new_evidence_id: challenger });
+
+      const pending = await repo.findPendingContradictions({ limit: 100 });
+      const mine = pending.find((p) => p.talent_record_id === recordId && p.field_name === 'phone_cell');
+      expect(mine).toBeDefined();
+      expect(mine?.incumbent_evidence_id).toBeNull();
+    });
   },
 );

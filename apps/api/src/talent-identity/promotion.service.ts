@@ -7,6 +7,7 @@ import {
 import { IngestionRepository } from '@aramo/ingestion';
 import {
   TalentRecordRepository,
+  TalentRecordReconcileRepository,
   type CreateTalentRecordRequestDto,
 } from '@aramo/talent-record';
 import {
@@ -57,6 +58,7 @@ export class PromotionService {
   constructor(
     private readonly trust: TalentTrustService,
     private readonly talentRecords: TalentRecordRepository,
+    private readonly reconcileRepo: TalentRecordReconcileRepository,
     private readonly sourceConsent: SourceConsentService,
     private readonly ingestion: IngestionRepository,
   ) {}
@@ -112,16 +114,17 @@ export class PromotionService {
 
     // 5. Map the declared identity evidence to the record's PII fields.
     const contact = extractContact(identity);
+    const f = contact.fields;
     const input: CreateTalentRecordRequestDto = {
       first_name: name.first_name,
       last_name: name.last_name,
-      ...(contact.email1 !== undefined ? { email1: contact.email1 } : {}),
-      ...(contact.phone_cell !== undefined ? { phone_cell: contact.phone_cell } : {}),
-      ...(contact.address !== undefined ? { address: contact.address } : {}),
-      ...(contact.address2 !== undefined ? { address2: contact.address2 } : {}),
-      ...(contact.city !== undefined ? { city: contact.city } : {}),
-      ...(contact.state !== undefined ? { state: contact.state } : {}),
-      ...(contact.zip !== undefined ? { zip: contact.zip } : {}),
+      ...(f.email1 !== undefined ? { email1: f.email1 } : {}),
+      ...(f.phone_cell !== undefined ? { phone_cell: f.phone_cell } : {}),
+      ...(f.address !== undefined ? { address: f.address } : {}),
+      ...(f.address2 !== undefined ? { address2: f.address2 } : {}),
+      ...(f.city !== undefined ? { city: f.city } : {}),
+      ...(f.state !== undefined ? { state: f.state } : {}),
+      ...(f.zip !== undefined ? { zip: f.zip } : {}),
       source,
     };
 
@@ -143,6 +146,34 @@ export class PromotionService {
       ref_id: record.id,
       link_source: PROMOTION_LINK_SOURCE,
     });
+
+    // 7.5. Create-path provenance (Slice-B2 back-fill invariant) — record which
+    //    EvidenceRecord each set field projects, so B2's pending → provenance →
+    //    incumbent join always resolves (a field set here and later contradicted
+    //    at the FIRST reconcile would otherwise have no incumbent). Best-effort:
+    //    the record is already created + linked; a provenance write failure is
+    //    self-healed by B1's occupied-same align on the next reconcile. Same
+    //    talent_record schema as the record (not cross-client); residual write
+    //    failure registered to backlog B1.
+    const provenance: FieldEvidence[] = [
+      { field_name: 'first_name', evidence_id: name.evidence_id },
+      { field_name: 'last_name', evidence_id: name.evidence_id },
+      ...contact.provenance,
+    ];
+    try {
+      for (const pr of provenance) {
+        await this.reconcileRepo.upsertFieldProvenance({
+          tenant_id,
+          talent_record_id: record.id,
+          field_name: pr.field_name,
+          evidence_id: pr.evidence_id,
+        });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `promoteSubject: create-path provenance write failed for record ${record.id} (${requestId}); B1 reconcile will back-fill: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
     // 8. Reconcile legal basis → L3 TalentConsentEvent keyed to the new record.
     await this.sourceConsent.registerSourceDerivedConsent({
@@ -187,18 +218,27 @@ function str(v: unknown): string | undefined {
   return t.length === 0 ? undefined : t;
 }
 
+// Slice-B2 — the (field_name → source EvidenceRecord.id) provenance a create
+// projects. The value came FROM this evidence; the back-fill invariant records
+// it so B2's pending-row → provenance → incumbent join always resolves.
+interface FieldEvidence {
+  field_name: string;
+  evidence_id: string;
+}
+
 // A named record needs BOTH parts (the DTO contract is non-null). A partial
-// name (only first or only last) is NOT promotable → null (defer).
+// name (only first or only last) is NOT promotable → null (defer). Carries the
+// FULL_NAME EvidenceRecord.id so create writes first_name/last_name provenance.
 function extractName(
   identity: EvidenceRecordRow[],
-): { first_name: string; last_name: string } | null {
+): { first_name: string; last_name: string; evidence_id: string } | null {
   for (const e of identity) {
     if (e.assertion_type !== 'FULL_NAME' || !isLive(e)) continue;
     const p = payloadOf(e);
     const first_name = str(p['first_name']);
     const last_name = str(p['last_name']);
     if (first_name !== undefined && last_name !== undefined) {
-      return { first_name, last_name };
+      return { first_name, last_name, evidence_id: e.id };
     }
   }
   return null;
@@ -214,24 +254,36 @@ interface ContactFields {
   zip?: string;
 }
 
-function extractContact(identity: EvidenceRecordRow[]): ContactFields {
-  const out: ContactFields = {};
+// Returns the mapped contact fields AND, per field actually set, the source
+// EvidenceRecord.id (create-path provenance; the field_names match B1's so B2's
+// join is uniform). ADDRESS sub-fields share their one ADDRESS evidence.
+function extractContact(identity: EvidenceRecordRow[]): {
+  fields: ContactFields;
+  provenance: FieldEvidence[];
+} {
+  const fields: ContactFields = {};
+  const provenance: FieldEvidence[] = [];
+  const set = (field_name: keyof ContactFields, value: string | undefined, evidence_id: string): void => {
+    if (value === undefined) return;
+    fields[field_name] = value;
+    provenance.push({ field_name, evidence_id });
+  };
   for (const e of identity) {
     if (!isLive(e)) continue;
     const p = payloadOf(e);
-    if (e.assertion_type === 'EMAIL' && out.email1 === undefined) {
+    if (e.assertion_type === 'EMAIL' && fields.email1 === undefined) {
       // recordSourcedArrival anchors write normalized_value; attachContactEvidence
       // writes value — accept either.
-      out.email1 = str(p['normalized_value']) ?? str(p['value']);
-    } else if (e.assertion_type === 'PHONE' && out.phone_cell === undefined) {
-      out.phone_cell = str(p['value']);
-    } else if (e.assertion_type === 'ADDRESS' && out.address === undefined) {
-      out.address = str(p['address']);
-      out.address2 = str(p['address2']);
-      out.city = str(p['city']);
-      out.state = str(p['state']);
-      out.zip = str(p['zip']);
+      set('email1', str(p['normalized_value']) ?? str(p['value']), e.id);
+    } else if (e.assertion_type === 'PHONE' && fields.phone_cell === undefined) {
+      set('phone_cell', str(p['value']), e.id);
+    } else if (e.assertion_type === 'ADDRESS' && fields.address === undefined) {
+      set('address', str(p['address']), e.id);
+      set('address2', str(p['address2']), e.id);
+      set('city', str(p['city']), e.id);
+      set('state', str(p['state']), e.id);
+      set('zip', str(p['zip']), e.id);
     }
   }
-  return out;
+  return { fields, provenance };
 }

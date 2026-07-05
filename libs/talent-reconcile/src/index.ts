@@ -18,3 +18,16 @@ export {
   TALENT_RECONCILE_MAX_ATTEMPTS,
   TALENT_RECONCILE_ACTOR,
 } from './lib/talent-reconcile.queue.constants.js';
+export {
+  ContradictionDetectionService,
+  type ContradictionOutcome,
+  type ContradictionResult,
+} from './lib/contradiction-detection.service.js';
+export {
+  ContradictionDetectionProcessor,
+  type ContradictionDetectionTickInput,
+} from './lib/contradiction-detection.processor.js';
+export {
+  CONTRADICTION_DETECTION_QUEUE_NAME,
+  CONTRADICTION_DETECTION_BATCH_SIZE,
+} from './lib/contradiction-detection.queue.constants.js';
