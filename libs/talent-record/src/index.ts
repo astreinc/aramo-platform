@@ -6,6 +6,7 @@ export {
   type EnrichmentPatch,
   type FieldProvenanceRow,
   type PendingContradictionRow,
+  type PendingContradictionForResolution,
 } from './lib/talent-record-reconcile.repository.js';
 export { TalentRecordService } from './lib/talent-record.service.js';
 export type { PortalProfileProjection } from './lib/dto/portal-profile-projection.dto.js';

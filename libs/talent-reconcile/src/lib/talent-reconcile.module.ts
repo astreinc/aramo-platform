@@ -11,6 +11,9 @@ import { TalentTrustModule } from '@aramo/talent-trust';
 import { TalentReconcileService } from './talent-reconcile.service.js';
 import { TalentReconcileProcessor } from './talent-reconcile.processor.js';
 import { TALENT_RECONCILE_QUEUE_NAME } from './talent-reconcile.queue.constants.js';
+import { ContradictionDetectionService } from './contradiction-detection.service.js';
+import { ContradictionDetectionProcessor } from './contradiction-detection.processor.js';
+import { CONTRADICTION_DETECTION_QUEUE_NAME } from './contradiction-detection.queue.constants.js';
 
 // Promotion Gate Slice-B1 — the reconcile poll module (scope:ats).
 //
@@ -59,10 +62,17 @@ import { TALENT_RECONCILE_QUEUE_NAME } from './talent-reconcile.queue.constants.
       extraProviders: [RedisConnectionConfig],
     }),
     BullModule.registerQueue({ name: TALENT_RECONCILE_QUEUE_NAME }),
+    // Slice-B2 — the contradiction-detection poll's queue (sibling worker).
+    BullModule.registerQueue({ name: CONTRADICTION_DETECTION_QUEUE_NAME }),
   ],
   providers: [
     TalentReconcileService,
     TalentReconcileProcessor,
+    // Slice-B2 — the contradiction-detection consumer (drains B1's pending store
+    // → contradict() → resolved). Deps {talent-record, talent-trust} already
+    // imported above.
+    ContradictionDetectionService,
+    ContradictionDetectionProcessor,
     {
       provide: 'TalentReconcileServiceLogger',
       useFactory: () => createAramoLogger(TalentReconcileService.name),
@@ -71,7 +81,20 @@ import { TALENT_RECONCILE_QUEUE_NAME } from './talent-reconcile.queue.constants.
       provide: 'TalentReconcileProcessorLogger',
       useFactory: () => createAramoLogger(TalentReconcileProcessor.name),
     },
+    {
+      provide: 'ContradictionDetectionServiceLogger',
+      useFactory: () => createAramoLogger(ContradictionDetectionService.name),
+    },
+    {
+      provide: 'ContradictionDetectionProcessorLogger',
+      useFactory: () => createAramoLogger(ContradictionDetectionProcessor.name),
+    },
   ],
-  exports: [TalentReconcileService, TalentReconcileProcessor],
+  exports: [
+    TalentReconcileService,
+    TalentReconcileProcessor,
+    ContradictionDetectionService,
+    ContradictionDetectionProcessor,
+  ],
 })
 export class TalentReconcileModule {}

@@ -24,7 +24,7 @@ const sourcedRef = {
 };
 
 function ev(assertion_type: string, assertion_payload: unknown, current_status = 'VALID') {
-  return { assertion_type, assertion_payload, current_status, dimension: 'IDENTITY' };
+  return { id: `ev-${assertion_type}`, assertion_type, assertion_payload, current_status, dimension: 'IDENTITY' };
 }
 
 function makeService(over: {
@@ -48,6 +48,10 @@ function makeService(over: {
   const create = vi.fn().mockResolvedValue({ id: RECORD_ID });
   const talentRecords = { create } as never;
 
+  // Slice-B2 — the create-path provenance writer.
+  const upsertFieldProvenance = vi.fn().mockResolvedValue(undefined);
+  const reconcileRepo = { upsertFieldProvenance } as never;
+
   const registerSourceDerivedConsent = vi.fn().mockResolvedValue(undefined);
   const sourceConsent = { registerSourceDerivedConsent } as never;
 
@@ -60,13 +64,13 @@ function makeService(over: {
     );
   const ingestion = { findById } as never;
 
-  const service = new PromotionService(trust, talentRecords, sourceConsent, ingestion);
-  return { service, resolveSubjectRef, listSubjectRefs, getEvidence, attachSubjectRef, getTrustState, create, registerSourceDerivedConsent, findById };
+  const service = new PromotionService(trust, talentRecords, reconcileRepo, sourceConsent, ingestion);
+  return { service, resolveSubjectRef, listSubjectRefs, getEvidence, attachSubjectRef, getTrustState, create, upsertFieldProvenance, registerSourceDerivedConsent, findById };
 }
 
 describe('PromotionService.promoteSubject — create branch', () => {
   it('promotes: maps FULL_NAME + contact → named record (system actor), links, reconciles consent, attaches advisory', async () => {
-    const { service, create, attachSubjectRef, registerSourceDerivedConsent } = makeService({
+    const { service, create, attachSubjectRef, registerSourceDerivedConsent, upsertFieldProvenance } = makeService({
       evidence: [
         ev('FULL_NAME', { first_name: 'Alan', last_name: 'Turing' }),
         ev('EMAIL', { normalized_value: 'alan@example.com' }),
@@ -112,6 +116,23 @@ describe('PromotionService.promoteSubject — create branch', () => {
         source: 'indeed',
         occurred_at: '2026-07-04T00:00:00.000Z',
       }),
+    );
+    // Slice-B2 create-path provenance: each set field → its source EvidenceRecord.id
+    // (the back-fill invariant so B2's incumbent join always resolves).
+    const provWrites = upsertFieldProvenance.mock.calls.map((c) => ({
+      field_name: c[0].field_name,
+      evidence_id: c[0].evidence_id,
+      talent_record_id: c[0].talent_record_id,
+    }));
+    expect(provWrites).toEqual(
+      expect.arrayContaining([
+        { field_name: 'first_name', evidence_id: 'ev-FULL_NAME', talent_record_id: RECORD_ID },
+        { field_name: 'last_name', evidence_id: 'ev-FULL_NAME', talent_record_id: RECORD_ID },
+        { field_name: 'email1', evidence_id: 'ev-EMAIL', talent_record_id: RECORD_ID },
+        { field_name: 'phone_cell', evidence_id: 'ev-PHONE', talent_record_id: RECORD_ID },
+        { field_name: 'address', evidence_id: 'ev-ADDRESS', talent_record_id: RECORD_ID },
+        { field_name: 'city', evidence_id: 'ev-ADDRESS', talent_record_id: RECORD_ID },
+      ]),
     );
   });
 
