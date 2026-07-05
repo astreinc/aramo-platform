@@ -31,6 +31,12 @@ const WATERMARK_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
 );
+// Promotion-Trigger slice-A — the partial-unique (≤1 ATS_TALENT_RECORD ref per
+// subject); this spec's race-guard test relies on it existing.
+const ATS_REF_UNIQUE_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260706120000_ats_ref_partial_unique/migration.sql',
+);
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const REF_A = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
@@ -97,7 +103,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
       const watermarkSql = readFileSync(WATERMARK_MIGRATION_PATH, 'utf8');
-      for (const sql of [migrationSql, watermarkSql]) {
+      const atsRefUniqueSql = readFileSync(ATS_REF_UNIQUE_MIGRATION_PATH, 'utf8');
+      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql]) {
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
           if (trimmed.length === 0) continue;
@@ -528,6 +535,59 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(mine(atCap)).toBeUndefined();
       const higherCap = await service.findSubjectsNeedingReconcile({ limit: 100, maxAttempts: 6 });
       expect(mine(higherCap)?.subject_id).toBe(subjectId);
+    });
+
+    it('Promotion-Trigger guard: the partial-unique rejects a SECOND ATS_TALENT_RECORD ref on one subject (the race guard)', async () => {
+      // Seed a subject; attach one ATS_TALENT_RECORD ref (the promotion link).
+      const payloadId = '77777777-7777-7777-8777-777777777777';
+      const sourcedRef: SubjectRef = {
+        tenant_id: TENANT,
+        ref_type: 'SOURCED_TALENT',
+        ref_id: payloadId,
+        link_source: 'ats-guard-integration',
+      };
+      const seeded = await service.recordEvidence({
+        subjectRef: sourcedRef,
+        dimension: 'IDENTITY',
+        assertion_type: 'FULL_NAME',
+        assertion_payload: { first_name: 'Ada', last_name: 'Byron' },
+        source_class: 'THIRD_PARTY_UNVERIFIED',
+        method: 'DOCUMENT',
+        portability_class: 'TENANT_ONLY',
+        decay_profile: 'SLOW',
+        created_by: 'seed',
+      });
+      const subjectId = seeded.subject_id;
+      await service.attachSubjectRef({
+        tenant_id: TENANT,
+        subject_id: subjectId,
+        ref_type: 'ATS_TALENT_RECORD',
+        ref_id: '88888888-8888-7888-8888-888888888881',
+        link_source: 'promotion-gate-create',
+      });
+
+      // A SECOND, DIFFERENT ATS_TALENT_RECORD ref on the SAME subject — the
+      // partial-unique (subject_id) WHERE ref_type='ATS_TALENT_RECORD' rejects it.
+      // (attachSubjectRef dedupes only same ref_id; a distinct record id is the
+      // double-mint race the DB guard closes.) Raw insert to bypass the app path.
+      await expect(
+        prisma.$executeRawUnsafe(
+          `INSERT INTO "talent_trust"."ResolutionSubjectRef" (id, subject_id, tenant_id, ref_type, ref_id, link_source)
+           VALUES (gen_random_uuid(), '${subjectId}'::uuid, '${TENANT}'::uuid, 'ATS_TALENT_RECORD', '88888888-8888-7888-8888-888888888882'::uuid, 'race')`,
+        ),
+      ).rejects.toThrow();
+
+      // A NON-ats ref (SOURCED_TALENT) on the same subject is unaffected (the
+      // partial predicate only covers ATS_TALENT_RECORD).
+      await service.attachSubjectRef({
+        tenant_id: TENANT,
+        subject_id: subjectId,
+        ref_type: 'PERSON_CLUSTER',
+        ref_id: '99999999-9999-7999-8999-999999999991',
+        link_source: 'ok',
+      });
+      const refs = await service.listSubjectRefs(TENANT, subjectId);
+      expect(refs.filter((r) => r.ref_type === 'ATS_TALENT_RECORD')).toHaveLength(1);
     });
   },
 );

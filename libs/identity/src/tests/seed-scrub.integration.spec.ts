@@ -67,8 +67,8 @@ const MIGRATIONS = [
 // on top of Domain-Enforcement P2b's tenant:admin:domain). These are the numbers
 // the scrub must keep byte-identical.
 const CATALOG_ROLE_COUNT = 14;
-const CATALOG_SCOPE_COUNT = 87;
-const CATALOG_ROLE_SCOPE_COUNT = 472;
+const CATALOG_SCOPE_COUNT = 88;
+const CATALOG_ROLE_SCOPE_COUNT = 473;
 
 // Naive DDL splitter — mirrors identity.integration.spec.ts.
 function splitDdl(sql: string): string[] {

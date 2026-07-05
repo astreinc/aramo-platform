@@ -12,6 +12,7 @@ import {
 } from '@aramo/talent-record';
 import {
   TalentTrustService,
+  TalentTrustRepository,
   type EvidenceRecordRow,
   type SubjectRef,
   type TrustStateRow,
@@ -19,6 +20,7 @@ import {
 
 import {
   PROMOTION_LINK_SOURCE,
+  PROMOTION_SOURCED_STATUS,
   PROMOTION_SYSTEM_ACTOR_ID,
 } from './promotion.constants.js';
 
@@ -49,7 +51,13 @@ export type PromotionOutcome =
   | { status: 'already_promoted'; talent_record_id: string }
   | { status: 'deferred_no_name' }
   | { status: 'deferred_no_basis' }
-  | { status: 'deferred_unknown_subject' };
+  | { status: 'deferred_unknown_subject' }
+  // Promotion-Trigger slice-A — the identity gate: the subject has an
+  // unresolved (PENDING_REVIEW) merge advisory ("might be the same human as
+  // another subject"). Block the mint until identity is settled (a human
+  // resolves the advisory). NOT an attribute contradiction (those ride onto
+  // the record) — this is identity-not-settled.
+  | { status: 'deferred_unresolved_identity' };
 
 @Injectable()
 export class PromotionService {
@@ -57,6 +65,7 @@ export class PromotionService {
 
   constructor(
     private readonly trust: TalentTrustService,
+    private readonly trustRepo: TalentTrustRepository,
     private readonly talentRecords: TalentRecordRepository,
     private readonly reconcileRepo: TalentRecordReconcileRepository,
     private readonly sourceConsent: SourceConsentService,
@@ -85,6 +94,24 @@ export class PromotionService {
     const existingRecordRef = refs.find((r) => r.ref_type === 'ATS_TALENT_RECORD');
     if (existingRecordRef !== undefined) {
       return { status: 'already_promoted', talent_record_id: existingRecordRef.ref_id };
+    }
+
+    // 2.5. Identity gate (Promotion-Trigger slice-A) — block the mint if the
+    //    subject has an UNRESOLVED merge advisory ("might be the same human as
+    //    another subject"). Identity must be settled before a record exists, so
+    //    two live records never key to one human. Read-only check against the
+    //    TR-2a advisory ledger (does NOT rebuild resolution — that is TR-2).
+    //    Attribute contradictions (name/phone) do NOT block here — they ride
+    //    onto the record as the sourcer's clean-up queue (B1/B2).
+    const openAdvisories = await this.trustRepo.listMatchAdvisories(tenant_id, {
+      subjectId: subject.id,
+      status: 'PENDING_REVIEW',
+    });
+    if (openAdvisories.length > 0) {
+      this.logger.warn(
+        `promoteSubject: subject ${subject.id} has ${openAdvisories.length} unresolved merge advisory(ies); deferring (${requestId})`,
+      );
+      return { status: 'deferred_unresolved_identity' };
     }
 
     // 3. Gather declared identity evidence → name (required: BOTH parts, the
@@ -129,11 +156,14 @@ export class PromotionService {
     };
 
     // 6. Create the record (system actor — automated promotion, not a human).
+    //    Lands at tenant_status='sourced' (un-worked); a recruiter working it in
+    //    L3 flips it to 'engaged' (deferred to its own slice).
     const record = await this.talentRecords.create({
       tenant_id,
       entered_by_id: PROMOTION_SYSTEM_ACTOR_ID,
       input,
       requestId,
+      tenant_status: PROMOTION_SOURCED_STATUS,
     });
 
     // 7. Link — attach the ATS_TALENT_RECORD ref to THIS subject (idempotent;

@@ -338,6 +338,12 @@ export class TalentRecordRepository {
     entered_by_id: string;
     input: CreateTalentRecordRequestDto;
     requestId?: string;
+    // Promotion-Trigger slice-A — the per-tenant lifecycle status at mint. A
+    // SERVER-side param (NOT on the wire DTO): the recruiter create omits it
+    // (→ null); the promotion path sets 'sourced'. Nullable string, no enum;
+    // nothing else writes tenant_status (the retired Core overlay was its
+    // former writer).
+    tenant_status?: string;
   }): Promise<TalentRecordView> {
     const { tenant_id, entered_by_id, input } = args;
     assertStatedFields(input, args.requestId ?? '');
@@ -376,6 +382,7 @@ export class TalentRecordRepository {
         work_authorization: input.work_authorization ?? null,
         owner_id: input.owner_id ?? entered_by_id,
         entered_by_id,
+        tenant_status: args.tenant_status ?? null,
       },
     });
     return projectView(row as TalentRecordRow);

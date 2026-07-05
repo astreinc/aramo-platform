@@ -296,6 +296,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'talent:edit',
         'talent:read',
         'talent:search',
+        'talent:source',
         'task:read',
         'task:write',
         'team:manage',
@@ -384,7 +385,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   tenant_owner + tenant_admin; DOMAIN_ADMIN_SEED_BUNDLES @ 0x960).
       //   470 → 472 = +2 TR-2a-3 (identity:resolve × tenant_owner +
       //   tenant_admin; IDENTITY_RESOLVE_SEED_BUNDLES @ 0x970).
-      expect(roleScopes).toBe(472);
+      expect(roleScopes).toBe(473);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -430,7 +431,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // added after D-AUTHZ-COMP-WRITE-1 contribute zero audit rows; the
       // count correctly stays 82. (This assertion was never reached before
       // — the stale scope-catalog list above aborted test 10 first.)
-      expect(auditRows.length).toBe(82);
+      expect(auditRows.length).toBe(83);
       // Every audit event uses actor_type 'system' and actor_id = SA id.
       for (const row of auditRows) {
         expect(row.actor_type).toBe('system');
@@ -482,7 +483,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // (tenant:admin:domain) = 83, then TR-2a-3 +1 (identity:resolve) = 84.
       // (Distinct from SEED_SCOPE_KEYS=87, which counts the 3 platform:* scopes
       // this query excludes.)
-      expect(tenantScopes.length).toBe(84);
+      expect(tenantScopes.length).toBe(85);
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -1316,6 +1317,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'talent:create',
         'talent:read',
         'talent:search',
+        'talent:source',
         'task:read',
         'task:write',
         'tenant:user:read:assignable',

@@ -15,6 +15,6 @@ describe('Company-Fields v1.1 — company:read_commercial catalog parity', () =>
   });
 
   it('SEED_SCOPE_KEYS is 87 (86 + 1 TR-2a-3 identity:resolve scope)', () => {
-    expect(SEED_SCOPE_KEYS).toHaveLength(87);
+    expect(SEED_SCOPE_KEYS).toHaveLength(88);
   });
 });

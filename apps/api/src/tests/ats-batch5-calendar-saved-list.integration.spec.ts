@@ -61,6 +61,12 @@ const SAVED_LIST_INIT = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
 );
+// Promotion-Trigger slice-A — list_kind column; the regenerated SavedList client
+// SELECTs it on every list read, so it must be applied after the init.
+const SAVED_LIST_LIST_KIND = resolve(
+  ROOT,
+  'libs/saved-list/prisma/migrations/20260706130000_add_list_kind_tenant_bench/migration.sql',
+);
 // Saved-list typed-polymorphism validation reads the 4 ATS entity
 // repositories. Need their schemas applied so the in-tenant lookups
 // can find seeded rows.
@@ -240,6 +246,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ENTITLEMENT_INIT,
         CALENDAR_INIT,
         SAVED_LIST_INIT,
+        SAVED_LIST_LIST_KIND,
         COMPANY_INIT,
         COMPANY_FIELD_EXPANSION,
         COMPANY_ADDRESS_PLACE_REF,

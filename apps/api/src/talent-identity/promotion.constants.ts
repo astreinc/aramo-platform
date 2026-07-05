@@ -12,3 +12,8 @@ export const PROMOTION_SYSTEM_ACTOR_ID =
 // promotion attaches (link_source) — records that the L2→L3 link was minted by
 // the create branch of the promotion gate.
 export const PROMOTION_LINK_SOURCE = 'promotion-gate-create' as const;
+
+// Promotion-Trigger slice-A — the per-tenant lifecycle status a promotion-minted
+// record lands at: 'sourced' (un-worked). A recruiter working it in L3 flips it
+// to 'engaged' (deferred to its own slice — no trivial engage hook exists yet).
+export const PROMOTION_SOURCED_STATUS = 'sourced' as const;

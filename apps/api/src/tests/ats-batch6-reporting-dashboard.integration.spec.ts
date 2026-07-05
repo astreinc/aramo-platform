@@ -101,6 +101,11 @@ const SAVED_LIST_INIT = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
 );
+// Promotion-Trigger slice-A — list_kind column (regenerated SavedList client SELECTs it).
+const SAVED_LIST_LIST_KIND = resolve(
+  ROOT,
+  'libs/saved-list/prisma/migrations/20260706130000_add_list_kind_tenant_bench/migration.sql',
+);
 // metering is required because PipelineRepository.transition writes a
 // UsageEvent row inside the same tx (PR-A1c). We don't transition any
 // pipelines in this spec, so the table just needs to exist for the
@@ -286,6 +291,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         PIPELINE_INIT,
         CALENDAR_INIT,
         SAVED_LIST_INIT,
+        SAVED_LIST_LIST_KIND,
         METERING_INIT,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
