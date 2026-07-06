@@ -2,8 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from './prisma/prisma.service.js';
+import type { SharedAnchorRef } from './match-classification.js';
 import type {
   AnchorKind,
+  CorroboratorConflictKind,
   DecayProfile,
   EvidenceEventType,
   EvidenceLinkRelation,
@@ -19,6 +21,25 @@ import type {
   ResolutionSubjectRefType,
   ResolutionSubjectStatus,
 } from './vocab.js';
+
+// TR-2a-B2 (DDR-2 §2 pre-step) — the outcome of following merged_into pointers
+// to a subject's ACTIVE fixpoint. CYCLE/LIMIT are anomalies → the resolver
+// splits and logs loudly; DEAD_END is a non-ACTIVE husk with no forward pointer.
+export type FixpointResult =
+  | { kind: 'ACTIVE'; subjectId: string }
+  | { kind: 'CYCLE' }
+  | { kind: 'LIMIT' }
+  | { kind: 'DEAD_END' };
+
+// TR-2a-B2 — the PII-free advisory basis persisted on SubjectMatchAdvisory
+// (kinds + anchor-row ids only; never a normalized_value). corroborator_conflict_kinds
+// is resolver-contributed (e.g. a CONFIRMED-arm NAME demotion).
+export interface MatchBasis {
+  shared: SharedAnchorRef[];
+  contradiction_kinds: AnchorKind[];
+  confirmed_kinds: AnchorKind[];
+  corroborator_conflict_kinds?: CorroboratorConflictKind[];
+}
 
 // Repository for the talent-trust ledger (TR-1). The Prisma boundary — all
 // SQL lives here; the service composes these into the §8 interface and owns
@@ -163,6 +184,9 @@ export interface SubjectMatchAdvisoryRow {
   reversed_by: string | null;
   reversed_at: Date | null;
   reversal_justification: string | null;
+  // TR-2a-B2 re-open provenance (DDR-2 §5).
+  reopened_at: Date | null;
+  reopened_from_band: MatchAdviseBand | null;
 }
 
 // The upsert input for an advisory. Keyed by the canonical unordered pair.
@@ -171,8 +195,14 @@ export interface UpsertMatchAdvisoryInput {
   subject_a_id: string;
   subject_b_id: string;
   advise_band: MatchAdviseBand;
+  // The anchor-based contradiction from classifyPair. The stored has_contradiction
+  // = this ∪ (corroborator_conflict_kinds non-empty) — DDR-2 §4.
   has_contradiction: boolean;
-  match_basis: unknown;
+  match_basis: MatchBasis;
+  // TR-2a-B2 (Amendment §2.3) — resolver-contributed strong-corroborator conflicts
+  // (e.g. ['NAME'] from a CONFIRMED-arm demotion). Merged into has_contradiction +
+  // match_basis. A new corroborator conflict does NOT re-open a dismissed pair.
+  corroborator_conflict_kinds?: CorroboratorConflictKind[];
   created_by: string;
 }
 
@@ -205,6 +235,29 @@ export class TalentTrustRepository {
   async findSubjectById(id: string): Promise<ResolutionSubjectRow | null> {
     const row = await this.prisma.resolutionSubject.findUnique({ where: { id } });
     return (row as ResolutionSubjectRow | null) ?? null;
+  }
+
+  // TR-2a-B2 (DDR-2 §2 pre-step) — follow merged_into_subject_id iteratively to
+  // the subject's ACTIVE fixpoint. Bounded (guard limit) + cycle-guarded (seen
+  // set). An arrival must never attach to a MERGED husk, and must not stop one
+  // hop short on an A→B→C chain. B3 generalizes this to every reader; B2 wires
+  // the RESOLVER only. Cycle/limit → the resolver splits (logs loudly).
+  async resolveActiveFixpoint(startSubjectId: string): Promise<FixpointResult> {
+    const LIMIT = 64;
+    const seen = new Set<string>();
+    let currentId = startSubjectId;
+    for (let hops = 0; hops <= LIMIT; hops++) {
+      if (seen.has(currentId)) return { kind: 'CYCLE' };
+      seen.add(currentId);
+      const subject = await this.findSubjectById(currentId);
+      // A pointer to a non-existent subject, or a non-ACTIVE husk with no forward
+      // pointer, is a dead end (anomalous — a husk should always point forward).
+      if (subject === null) return { kind: 'DEAD_END' };
+      if (subject.status === 'ACTIVE') return { kind: 'ACTIVE', subjectId: subject.id };
+      if (subject.merged_into_subject_id === null) return { kind: 'DEAD_END' };
+      currentId = subject.merged_into_subject_id;
+    }
+    return { kind: 'LIMIT' };
   }
 
   // Resolve-or-create the ResolutionSubject for a ref (recordEvidence §8). One ref
@@ -683,40 +736,94 @@ export class TalentTrustRepository {
 
   // ---- SubjectMatchAdvisory (TR-2a-2 within-tenant same-human advisory) ----
 
-  // Upsert an advisory by its canonical unordered pair (idempotent backfill /
-  // re-run). The derived fields (band / contradiction / basis) are recomputed and
-  // updated; `status` is set ONLY on insert — this slice never mutates a status,
-  // and a later slice's human resolution must not be clobbered by a re-sweep.
+  // Upsert an advisory by its canonical unordered pair — STATUS-AWARE (DDR-2 §5,
+  // TR-2a-B2). The old "always overwrite band/basis regardless of status" is
+  // RETIRED (Q2.3 silent-drift bug):
+  //   - no row            → create PENDING_REVIEW.
+  //   - PENDING_REVIEW    → update band / has_contradiction / basis as today.
+  //   - DISMISSED         → re-open to PENDING_REVIEW IFF strictly stronger
+  //     (shared-ref count increased OR a new confirmed_kinds entry), recording
+  //     reopen provenance; otherwise STRICT NO-OP (no silent field drift; new
+  //     contradictions / corroborator conflicts do NOT re-open).
+  //   - MERGED | REVERSED → never touched (their lifecycle is applyAdvisory…).
+  // has_contradiction = anchor contradiction ∪ corroborator conflicts; the basis
+  // merges resolver-contributed corroborator_conflict_kinds (PII-free labels).
   async upsertMatchAdvisory(
     input: UpsertMatchAdvisoryInput,
   ): Promise<SubjectMatchAdvisoryRow> {
-    const upserted = await this.prisma.subjectMatchAdvisory.upsert({
-      where: {
-        tenant_id_subject_a_id_subject_b_id: {
+    const corroborator = input.corroborator_conflict_kinds ?? [];
+    const hasContradiction = input.has_contradiction || corroborator.length > 0;
+    const storedBasis: MatchBasis = {
+      shared: input.match_basis.shared,
+      contradiction_kinds: input.match_basis.contradiction_kinds,
+      confirmed_kinds: input.match_basis.confirmed_kinds,
+      ...(corroborator.length > 0 ? { corroborator_conflict_kinds: corroborator } : {}),
+    };
+
+    const existing = await this.findMatchAdvisory(
+      input.tenant_id,
+      input.subject_a_id,
+      input.subject_b_id,
+    );
+
+    if (existing === null) {
+      const created = await this.prisma.subjectMatchAdvisory.create({
+        data: {
+          id: uuidv7(),
           tenant_id: input.tenant_id,
           subject_a_id: input.subject_a_id,
           subject_b_id: input.subject_b_id,
+          advise_band: input.advise_band,
+          has_contradiction: hasContradiction,
+          match_basis: storedBasis as never,
+          created_by: input.created_by,
+          // status defaults to PENDING_REVIEW.
         },
-      },
-      create: {
-        id: uuidv7(),
-        tenant_id: input.tenant_id,
-        subject_a_id: input.subject_a_id,
-        subject_b_id: input.subject_b_id,
-        advise_band: input.advise_band,
-        has_contradiction: input.has_contradiction,
-        match_basis: input.match_basis as never,
-        created_by: input.created_by,
-        // status defaults to PENDING_REVIEW.
-      },
-      update: {
-        advise_band: input.advise_band,
-        has_contradiction: input.has_contradiction,
-        match_basis: input.match_basis as never,
-        // status intentionally NOT updated (append-only-style; preserve resolution).
-      },
-    });
-    return upserted as SubjectMatchAdvisoryRow;
+      });
+      return created as SubjectMatchAdvisoryRow;
+    }
+
+    if (existing.status === 'PENDING_REVIEW') {
+      const updated = await this.prisma.subjectMatchAdvisory.update({
+        where: { id: existing.id },
+        data: {
+          advise_band: input.advise_band,
+          has_contradiction: hasContradiction,
+          match_basis: storedBasis as never,
+        },
+      });
+      return updated as SubjectMatchAdvisoryRow;
+    }
+
+    if (existing.status === 'DISMISSED') {
+      const prev = (existing.match_basis ?? {}) as Partial<MatchBasis>;
+      const prevSharedCount = prev.shared?.length ?? 0;
+      const prevConfirmed = new Set<AnchorKind>(prev.confirmed_kinds ?? []);
+      const newConfirmedEntry = storedBasis.confirmed_kinds.some(
+        (k) => !prevConfirmed.has(k),
+      );
+      const strictlyStronger =
+        storedBasis.shared.length > prevSharedCount || newConfirmedEntry;
+      if (!strictlyStronger) {
+        // Strict no-op — no field drift on a non-pending advisory.
+        return existing;
+      }
+      const reopened = await this.prisma.subjectMatchAdvisory.update({
+        where: { id: existing.id },
+        data: {
+          status: 'PENDING_REVIEW',
+          advise_band: input.advise_band,
+          has_contradiction: hasContradiction,
+          match_basis: storedBasis as never,
+          reopened_at: new Date(),
+          reopened_from_band: existing.advise_band,
+        },
+      });
+      return reopened as SubjectMatchAdvisoryRow;
+    }
+
+    // MERGED | REVERSED — never touched by upsert.
+    return existing;
   }
 
   async findMatchAdvisory(

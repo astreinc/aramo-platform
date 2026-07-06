@@ -70,13 +70,13 @@ import { PrismaService } from './prisma/prisma.service.js';
 // VIOLATE R12.
 
 // Resolution method — closed enum mirroring the ingestion-schema
-// ResolutionMethod (DB) enum. Fix-Slice-2: canonicalize computes it from the
-// L2 verified-email SubjectAnchor resolution — verified_email_match (hit) |
-// new_identity (miss). `caller_supplied` is a retired husk-era value the DB
-// enum still carries (no data migration this slice); canonicalize never
-// produces it.
+// ResolutionMethod (DB) enum. TR-2a-B2 (DDR-2 §6): canonicalize/recordSourcedArrival
+// WRITES only {new_identity, confirmed_anchor_match}. `verified_email_match` +
+// `caller_supplied` are read-widened HISTORICAL values the DB enum still carries
+// (append-only truth of the retired rule); canonicalize never produces them.
 export type ResolutionMethodValue =
   | 'new_identity'
+  | 'confirmed_anchor_match'
   | 'verified_email_match'
   | 'caller_supplied';
 
@@ -129,6 +129,9 @@ interface LockedPayloadRow {
   // (String at the client), narrowed to SourceClass at the recordSourcedArrival
   // boundary — the value was written from the closed channel map at ingest.
   source_class: string;
+  // TR-2a-B2 (Name-Wiring §1) — the declared name claim, threaded to the
+  // resolver's CONFIRMED-arm NAME guard. Nullable.
+  declared_name: string | null;
   // Fix-Slice-2 — the L2 subject idempotency anchor (was resolved_talent_id).
   resolved_subject_id: string | null;
   resolution_method: ResolutionMethodValue | null;
@@ -221,6 +224,7 @@ export class CanonicalizationRepository {
             verified_email,
             profile_url,
             source_class,
+            declared_name,
             resolved_subject_id,
             resolution_method
           FROM "ingestion"."RawPayloadReference"
@@ -316,6 +320,8 @@ export class CanonicalizationRepository {
           // onto the resolver's evidence/anchor writes. Narrowed from the TEXT
           // column: the value was set at ingest from the closed channel map.
           source_class: payload.source_class as SourceClass,
+          // TR-2a-B2 (Name-Wiring §1) — the declared name claim for the NAME guard.
+          declared_name: payload.declared_name,
           created_by: 'canonicalization',
         });
         const subjectId = arrival.subject_id;

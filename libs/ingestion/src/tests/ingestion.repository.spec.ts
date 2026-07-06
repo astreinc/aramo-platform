@@ -18,6 +18,7 @@ const ROW = {
   verified_email: null,
   profile_url: null,
   source_class: 'SELF',
+    declared_name: null,
   skill_surface_forms: null,
   created_at: new Date('2026-05-16T12:00:01Z'),
   updated_at: new Date('2026-05-16T12:00:01Z'),
@@ -52,6 +53,7 @@ describe('IngestionRepository.createPayload', () => {
       verified_email: null,
       profile_url: null,
       source_class: 'SELF',
+    declared_name: null,
     });
 
     const writeCall = create.mock.calls[0]?.[0] as {
@@ -82,6 +84,7 @@ describe('IngestionRepository.createPayload', () => {
       verified_email: null,
       profile_url: null,
       source_class: 'SELF',
+    declared_name: null,
     });
 
     const writeCall = create.mock.calls[0]?.[0] as {

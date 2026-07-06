@@ -7,6 +7,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { TalentTrustRepository } from '../lib/talent-trust.repository.js';
 import { TalentTrustService } from '../lib/talent-trust.service.js';
+import { SubjectMatcherService } from '../lib/subject-matcher.service.js';
 import { deriveStrength } from '../lib/strength.js';
 import type { SourceClass } from '../lib/vocab.js';
 
@@ -86,7 +87,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       prisma = new PrismaService(url);
       await prisma.$connect();
       repo = new TalentTrustRepository(prisma);
-      service = new TalentTrustService(repo);
+      service = new TalentTrustService(repo, new SubjectMatcherService(repo));
     }, 120_000);
 
     afterAll(async () => {

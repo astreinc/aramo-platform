@@ -40,6 +40,7 @@ function makeRow(overrides: Partial<RawPayloadRow> = {}): RawPayloadRow {
     verified_email: null,
     profile_url: null,
     source_class: 'SELF',
+    declared_name: null,
     skill_surface_forms: null,
     created_at: new Date('2026-05-16T12:00:01Z'),
     updated_at: new Date('2026-05-16T12:00:01Z'),
@@ -94,6 +95,8 @@ describe('IngestionService.acceptPayload — TR-2a-B1 §6(b) server-derived sour
     const laundered = {
       ...makeRequest({ source: 'github' }),
       source_class: 'THIRD_PARTY_VERIFIED',
+      // A null declared_name must be handled gracefully (normalized to null).
+      declared_name: null,
     } as never;
 
     await service.acceptPayload({ tenant_id: TENANT_ID, request: laundered });

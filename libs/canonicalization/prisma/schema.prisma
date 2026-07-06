@@ -83,6 +83,8 @@ model OutboxEvent {
 
 enum ResolutionMethod {
   new_identity
+  // TR-2a-B2 — follower mirror; confirmed_anchor_match is the new writable value.
+  confirmed_anchor_match
   verified_email_match
   caller_supplied
 
@@ -97,6 +99,9 @@ model RawPayloadReference {
   // The arrival's server-derived attestation level canonicalize reads and threads
   // to the resolver's writes. Bit-identical to source-of-truth per follower-drift.
   source_class    String
+  // TR-2a-B2 (Name-Wiring §1) — FOLLOWER mirror. The channel-supplied declared
+  // name claim canonicalize reads and threads to the resolver's NAME guard.
+  declared_name   String?
   storage_ref     String
   sha256          String
   content_type    String

@@ -150,6 +150,19 @@ const INGESTION_SOURCE_CLASS_MIGRATION = resolve(
   ROOT,
   'libs/ingestion/prisma/migrations/20260706170000_add_source_class_to_raw_payload_reference/migration.sql',
 );
+// TR-2a-B2 declared_name additive: the regenerated ingestion client selects it,
+// so createPayload's RETURNING * 500s on the ingestion-consumer pacts without
+// this migration applied.
+const INGESTION_DECLARED_NAME_MIGRATION = resolve(
+  ROOT,
+  'libs/ingestion/prisma/migrations/20260706190000_add_declared_name_to_raw_payload_reference/migration.sql',
+);
+// TR-2a-B2 ResolutionMethod enum value add (confirmed_anchor_match). Keeps the
+// DB enum in step with the regenerated client's widened type.
+const INGESTION_CONFIRMED_METHOD_MIGRATION = resolve(
+  ROOT,
+  'libs/ingestion/prisma/migrations/20260706210000_add_confirmed_anchor_match_to_resolution_method/migration.sql',
+);
 const EXAMINATION_INIT_MIGRATION = resolve(
   ROOT,
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
@@ -1601,6 +1614,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         INGESTION_FS2_DROP_MIGRATION,
         INGESTION_EXTRACTION_MARKER_MIGRATION,
         INGESTION_SOURCE_CLASS_MIGRATION,
+        INGESTION_DECLARED_NAME_MIGRATION,
+        INGESTION_CONFIRMED_METHOD_MIGRATION,
         EXAMINATION_INIT_MIGRATION,
         EXAMINATION_LIVE_LIST_MIGRATION,
         // M4 PR-5 §4.10 — ExaminationOverride table + immutability trigger

@@ -1,10 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 
+import { isConfirmingAnchor } from './anchor-confirmation.js';
 import {
   deriveTrustState,
   type EvidenceForDerivation,
 } from './band-derivation.js';
+import { namesFlatlyConflict } from './name-guard.js';
 import { deriveStrength } from './strength.js';
+import {
+  SubjectMatcherService,
+  type CorroboratorConflictsByTarget,
+} from './subject-matcher.service.js';
 import {
   TalentTrustRepository,
   type EvidenceRecordRow,
@@ -16,7 +22,9 @@ import {
 } from './talent-trust.repository.js';
 import {
   EVENT_TO_STATUS,
+  SOURCE_CLASSES,
   type AnchorKind,
+  type CorroboratorConflictKind,
   type DecayProfile,
   type EvidenceEventType,
   type Method,
@@ -113,16 +121,23 @@ export interface RecordSourcedArrivalInput {
   // records it on the evidence/anchor writes, replacing the old hard-coded
   // THIRD_PARTY_UNVERIFIED literals).
   source_class: SourceClass;
+  // TR-2a-B2 (Name-Wiring §1) — the channel-supplied declared name CLAIM
+  // (nullable). Consumed ONLY by the CONFIRMED-arm NAME guard (Amendment §2.2);
+  // never an identity key, never persisted as evidence in this slice. Absence
+  // never conflicts.
+  declared_name: string | null;
   // The writing slice — 'canonicalization'.
   created_by: string;
 }
 
 export interface RecordSourcedArrivalResult {
   subject_id: string;
-  // verified_email_match = the normalized-email SubjectAnchor hit an existing
-  // subject (Tier-A deterministic same-human, §6A/I5); new_identity = no email
-  // match, a new subject was created.
-  resolution_method: 'verified_email_match' | 'new_identity';
+  // TR-2a-B2 (DDR-2 §2/§6) — the WRITABLE method set: confirmed_anchor_match = a
+  // deterministic Tier-A both-sides-confirming resolve (single ACTIVE target,
+  // NAME guard passed); new_identity = everything else (split/ambiguity/unresolved
+  // + a NAME-demoted confirming hit). verified_email_match is retired from the
+  // writable set (its name asserted a verification that never occurred).
+  resolution_method: 'confirmed_anchor_match' | 'new_identity';
   // Count of contact EvidenceRecords written this arrival (email + url).
   contact_evidence_written: number;
 }
@@ -138,7 +153,15 @@ export interface DeclaredEvidenceEntry {
 
 @Injectable()
 export class TalentTrustService {
-  constructor(private readonly repo: TalentTrustRepository) {}
+  private readonly logger = new Logger(TalentTrustService.name);
+
+  // TR-2a-B2 (DDR-2 §3) — the resolver→matcher hand-off is intra-module DI:
+  // TalentTrustService gains SubjectMatcherService (both talent_trust providers,
+  // acyclic — the matcher does NOT depend on this service). No new @aramo/* edge.
+  constructor(
+    private readonly repo: TalentTrustRepository,
+    private readonly matcher: SubjectMatcherService,
+  ) {}
 
   // ---- Writes: evidence in (§8) --------------------------------------
 
@@ -251,25 +274,36 @@ export class TalentTrustService {
     return written;
   }
 
-  // Fix-Slice-2 — resolve a cold-ingest arrival's within-tenant ResolutionSubject
-  // and attach its per-arrival contact evidence. RE-HOMES the husk's verified-email
-  // resolution (`talentContactMethod.findFirst(verified)` → husk id) onto L2:
-  //   - verified_email present → look up the normalized-email SubjectAnchor
-  //     (deterministic, oldest wins — mirrors the husk's orderBy created_at asc):
-  //       * HIT  → resolve to that subject (verified_email_match, Tier-A §6A/I5);
-  //       * MISS → create a subject keyed by the SOURCED_TALENT ref (payload_id)
-  //                and record the email SubjectAnchor (new_identity).
-  //   - no verified_email → a new subject keyed by the SOURCED_TALENT ref.
-  // Contact evidence (email observation on a hit, profile_url) attaches to the
-  // resolved subject with the arrival's provenance (payload_id + source_channel);
-  // channel-sourced ⇒ THIRD_PARTY_UNVERIFIED / DOCUMENT, tenant-walled (I8).
+  // TR-2a-B2 (DDR-2 §2 + Amendment §2.1 + Name-Wiring §1) — the arrival-time
+  // resolve DECISION. The B1 R1.3 "oldest anchor wins" auto-resolve is RETIRED.
+  //
+  // Target subjects = each hit anchor's origin subject resolved to its ACTIVE
+  // FIXPOINT (never a MERGED husk; cycle/limit → split, logged loudly). Per
+  // target, C_st = the strongest source_class among its anchors for (EMAIL,value).
+  //   - CONFIRMED: exactly ONE ACTIVE target, isConfirmingAnchor(C_in) AND
+  //     isConfirmingAnchor(C_st) AND the NAME guard passes → auto-resolve;
+  //     per-arrival observation at C_in; confirmed_anchor_match.
+  //   - NAME conflict (Amendment §2.2) → DEMOTE to split; the hand-off advisory
+  //     for (new subject, target) carries corroborator_conflict_kinds=['NAME'].
+  //   - NEEDS-REVIEW (ambiguity): ≥2 ACTIVE targets, ALL confirming, C_in
+  //     confirming → new subject + anchor; hand-off on the new subject AND each
+  //     conflicting target (the triangle).
+  //   - SPLIT / UNRESOLVED: everything else → new subject (+ anchor at C_in if a
+  //     claim is present); new_identity.
+  // Product-visible (DDR-2 §2.2): no live channel supplies a confirming C_in, so
+  // nothing auto-resolves today — look-alikes accumulate as advisories (test j).
+  // The hand-off (matchSubject) runs on EVERY outcome, awaited + loud-fail (§3.3).
   async recordSourcedArrival(
     input: RecordSourcedArrivalInput,
   ): Promise<RecordSourcedArrivalResult> {
     const now = new Date();
+    const cIn = input.source_class;
     let subjectId: string;
-    let resolution_method: RecordSourcedArrivalResult['resolution_method'];
+    let resolution_method: RecordSourcedArrivalResult['resolution_method'] = 'new_identity';
     let contactWritten = 0;
+    // Hand-off plan (executed after the recompute).
+    let ambiguityTargets: string[] = [];
+    let corroboratorConflicts: CorroboratorConflictsByTarget | undefined;
 
     if (input.verified_email !== null) {
       const anchors = await this.repo.findAnchorsByValue(
@@ -277,76 +311,76 @@ export class TalentTrustService {
         'EMAIL',
         input.verified_email,
       );
-      if (anchors.length > 0) {
-        // Deterministic: the oldest anchor's origin subject wins (mirrors the
-        // retired husk's `orderBy created_at asc`).
-        const oldest = anchors.reduce((a, b) => (a.created_at <= b.created_at ? a : b));
-        subjectId = oldest.subject_id;
-        resolution_method = 'verified_email_match';
-        // Per-arrival email observation (I10 attributability). The anchor already
-        // exists (that is how we matched) — this is evidence, not a new anchor.
-        await this.attachContactEvidence(
-          subjectId,
-          input,
-          'EMAIL',
-          input.verified_email,
-          now,
-        );
-        contactWritten += 1;
-      } else {
-        subjectId = await this.repo.resolveOrCreateSubject(
-          input.tenant_id,
-          'SOURCED_TALENT',
-          input.payload_id,
-          input.created_by,
-        );
-        resolution_method = 'new_identity';
-        // Record the email SubjectAnchor (writes its source EvidenceRecord +
-        // the anchor projection in one tx). Exists-checked for re-run safety.
-        const existing = await this.repo.findSubjectAnchor(
-          input.tenant_id,
-          subjectId,
-          'EMAIL',
-          input.verified_email,
-          input.source_class,
-        );
-        if (existing === null) {
-          const strength = deriveStrength(input.source_class, 'DOCUMENT');
-          await this.repo.insertAnchor({
-            evidence: {
-              subject_id: subjectId,
-              tenant_id: input.tenant_id,
-              dimension: 'IDENTITY',
-              assertion_type: 'EMAIL',
-              assertion_payload: {
-                normalized_value: input.verified_email,
-                source_channel: input.source_channel,
-                payload_id: input.payload_id,
-              },
-              source_class: input.source_class,
-              method: 'DOCUMENT',
-              strength,
-              collected_at: now,
-              decay_profile: 'SLOW',
-              portability_class: 'TENANT_ONLY',
-              ai_derived: false,
-              current_status: EVENT_TO_STATUS.CREATED,
-              created_by: input.created_by,
-            },
-            anchor_kind: 'EMAIL',
-            normalized_value: input.verified_email,
-          });
-          contactWritten += 1;
+
+      // Resolve each hit anchor's origin to its ACTIVE fixpoint; group the hit
+      // anchors by target so C_st = strongest class among a target's own anchors.
+      const targetAnchors = new Map<string, SubjectAnchorRow[]>();
+      let anomaly = false;
+      for (const anchor of anchors) {
+        const fp = await this.repo.resolveActiveFixpoint(anchor.subject_id);
+        if (fp.kind === 'ACTIVE') {
+          const arr = targetAnchors.get(fp.subjectId) ?? [];
+          arr.push(anchor);
+          targetAnchors.set(fp.subjectId, arr);
+        } else if (fp.kind === 'CYCLE' || fp.kind === 'LIMIT') {
+          anomaly = true;
+          this.logger.error(
+            `recordSourcedArrival fixpoint anomaly (${fp.kind}) origin=${anchor.subject_id} tenant=${input.tenant_id} — routing to split`,
+          );
+        } else {
+          this.logger.warn(
+            `recordSourcedArrival fixpoint dead-end origin=${anchor.subject_id} tenant=${input.tenant_id}`,
+          );
         }
       }
-    } else {
-      subjectId = await this.repo.resolveOrCreateSubject(
-        input.tenant_id,
-        'SOURCED_TALENT',
-        input.payload_id,
-        input.created_by,
+
+      const activeTargets = [...targetAnchors.keys()];
+      const cInConfirming = isConfirmingAnchor('EMAIL', cIn);
+      const confirmingTargets = activeTargets.filter((t) =>
+        isConfirmingAnchor('EMAIL', strongestAnchorClass(targetAnchors.get(t)!)),
       );
-      resolution_method = 'new_identity';
+
+      const canConfirm = !anomaly && cInConfirming && confirmingTargets.length > 0;
+
+      if (canConfirm && activeTargets.length === 1) {
+        // CONFIRMED case — the single ACTIVE target is confirming. Apply the
+        // NAME guard before auto-resolving.
+        const target = activeTargets[0]!;
+        const targetName = await this.readSubjectName(target);
+        if (namesFlatlyConflict(input.declared_name, targetName)) {
+          // DEMOTE → split (Amendment §2.2). New subject + anchor; the hand-off
+          // advisory for (newSubject, target) carries the NAME conflict.
+          subjectId = await this.mintSourcedSubject(input);
+          contactWritten += await this.mintEmailAnchorIfAbsent(subjectId, input, now);
+          corroboratorConflicts = new Map<string, CorroboratorConflictKind[]>([
+            [target, ['NAME']],
+          ]);
+          this.logger.warn(
+            `recordSourcedArrival CONFIRMED-arm NAME conflict → demoted to split target=${target} tenant=${input.tenant_id}`,
+          );
+        } else {
+          // CONFIRMED — auto-resolve to the target. Per-arrival observation at C_in
+          // (I10 attributability); the anchor already exists on the target.
+          subjectId = target;
+          resolution_method = 'confirmed_anchor_match';
+          await this.attachContactEvidence(subjectId, input, 'EMAIL', input.verified_email, now);
+          contactWritten += 1;
+        }
+      } else if (canConfirm && confirmingTargets.length === activeTargets.length) {
+        // NEEDS-REVIEW (ambiguity) — ≥2 ACTIVE targets, all confirming, C_in
+        // confirming. NO auto-resolve; new subject + anchor; the triangle.
+        subjectId = await this.mintSourcedSubject(input);
+        contactWritten += await this.mintEmailAnchorIfAbsent(subjectId, input, now);
+        ambiguityTargets = confirmingTargets;
+      } else {
+        // SPLIT — a hit that is not a clean confirming single target (C_in
+        // non-confirming, no confirming target, mixed targets, or an anomaly).
+        subjectId = await this.mintSourcedSubject(input);
+        contactWritten += await this.mintEmailAnchorIfAbsent(subjectId, input, now);
+      }
+    } else {
+      // UNRESOLVED — no identity claim → a new subject, no anchor.
+      subjectId = await this.mintSourcedSubject(input);
     }
 
     // profile_url — an unverified contact evidence (never an identity anchor).
@@ -356,7 +390,88 @@ export class TalentTrustService {
     }
 
     await this.recompute(subjectId, input.tenant_id, now);
+
+    // Resolver→matcher hand-off on EVERY outcome (DDR-2 §3), AWAITED after the
+    // recompute, LOUD-FAIL (errors propagate — an advisory silently not raised is
+    // a silent split with no warn). Ambiguity adds each conflicting target.
+    await this.matcher.matchSubject(input.tenant_id, subjectId, corroboratorConflicts);
+    for (const target of ambiguityTargets) {
+      await this.matcher.matchSubject(input.tenant_id, target);
+    }
+
     return { subject_id: subjectId, resolution_method, contact_evidence_written: contactWritten };
+  }
+
+  // Mint (or resolve idempotently) the SOURCED_TALENT subject for this arrival.
+  private async mintSourcedSubject(input: RecordSourcedArrivalInput): Promise<string> {
+    return this.repo.resolveOrCreateSubject(
+      input.tenant_id,
+      'SOURCED_TALENT',
+      input.payload_id,
+      input.created_by,
+    );
+  }
+
+  // Record the arrival's email SubjectAnchor at C_in (evidence + projection in one
+  // tx), exists-checked at (tenant, subject, EMAIL, value, class) for re-run
+  // safety. Returns 1 if minted, 0 if already present. Only called when a claim
+  // is present (input.verified_email non-null in the caller's branch).
+  private async mintEmailAnchorIfAbsent(
+    subjectId: string,
+    input: RecordSourcedArrivalInput,
+    now: Date,
+  ): Promise<number> {
+    const email = input.verified_email!;
+    const existing = await this.repo.findSubjectAnchor(
+      input.tenant_id,
+      subjectId,
+      'EMAIL',
+      email,
+      input.source_class,
+    );
+    if (existing !== null) return 0;
+    const strength = deriveStrength(input.source_class, 'DOCUMENT');
+    await this.repo.insertAnchor({
+      evidence: {
+        subject_id: subjectId,
+        tenant_id: input.tenant_id,
+        dimension: 'IDENTITY',
+        assertion_type: 'EMAIL',
+        assertion_payload: {
+          normalized_value: email,
+          source_channel: input.source_channel,
+          payload_id: input.payload_id,
+        },
+        source_class: input.source_class,
+        method: 'DOCUMENT',
+        strength,
+        collected_at: now,
+        decay_profile: 'SLOW',
+        portability_class: 'TENANT_ONLY',
+        ai_derived: false,
+        current_status: EVENT_TO_STATUS.CREATED,
+        created_by: input.created_by,
+      },
+      anchor_kind: 'EMAIL',
+      normalized_value: email,
+    });
+    return 1;
+  }
+
+  // The target subject's known name, reconstructed from its FULL_NAME evidence
+  // (first_name + last_name; cold-ingest extraction is its writer). Multiple
+  // FULL_NAME rows combine into one token pool — the NAME guard tokenizes it.
+  // Null when the subject has no name evidence (absence never conflicts).
+  private async readSubjectName(subjectId: string): Promise<string | null> {
+    const evidence = await this.repo.listEvidenceBySubject(subjectId);
+    const parts: string[] = [];
+    for (const e of evidence) {
+      if (e.assertion_type !== 'FULL_NAME') continue;
+      const p = e.assertion_payload as { first_name?: unknown; last_name?: unknown };
+      if (typeof p.first_name === 'string' && p.first_name.length > 0) parts.push(p.first_name);
+      if (typeof p.last_name === 'string' && p.last_name.length > 0) parts.push(p.last_name);
+    }
+    return parts.length > 0 ? parts.join(' ') : null;
   }
 
   // Attach one per-arrival contact EvidenceRecord (+ CREATED event) to a resolved
@@ -692,4 +807,17 @@ export class TalentTrustService {
     }
     return subject;
   }
+}
+
+// TR-2a-B2 — strongest source_class among a target's anchors for a value
+// (SOURCE_CLASSES is ordered worthless→authoritative; the max index wins). The
+// group is non-empty (the caller built it from ≥1 hit anchor).
+function strongestAnchorClass(anchors: readonly SubjectAnchorRow[]): SourceClass {
+  let best = anchors[0]!.source_class;
+  for (const a of anchors) {
+    if (SOURCE_CLASSES.indexOf(a.source_class) > SOURCE_CLASSES.indexOf(best)) {
+      best = a.source_class;
+    }
+  }
+  return best;
 }

@@ -114,17 +114,22 @@ describe('Fix-Slice-2 — Proof 5 (re-homed): within-tenant resolution lives on 
     expect(code).toMatch(/resolved_subject_id:/);
   });
 
-  it('resolution_method is still computed (verified_email_match | new_identity) — same-human semantic preserved on L2', () => {
+  it('resolution_method is computed (confirmed_anchor_match | new_identity) — the DDR-2 decision procedure on L2', () => {
     const service = readFileSync(
       resolve(ROOT, 'libs/talent-trust/src/lib/talent-trust.service.ts'),
       'utf8',
     );
     const code = stripComments(service);
-    // The L2 seam preserves the husk's Tier-A verified-email resolution:
-    // an email SubjectAnchor hit → verified_email_match; miss → new_identity.
+    // TR-2a-B2 (DDR-2 §2/§6): the R1.3 auto-resolve is retired. The resolver
+    // looks up email SubjectAnchors and runs the decision table — a single
+    // confirming ACTIVE target passing the NAME guard → confirmed_anchor_match;
+    // everything else → new_identity. verified_email_match is no longer WRITTEN
+    // (read-widened historical only).
     expect(code).toMatch(/findAnchorsByValue/);
-    expect(code).toMatch(/verified_email_match/);
+    expect(code).toMatch(/confirmed_anchor_match/);
     expect(code).toMatch(/new_identity/);
+    // The retired auto-resolve literal is not a WRITE target anymore.
+    expect(code).not.toMatch(/resolution_method = 'verified_email_match'/);
   });
 
   it('NO standalone named resolver method on the canonicalize lib surface (findByVerifiedEmail / resolveIdentity / resolveTalent)', () => {

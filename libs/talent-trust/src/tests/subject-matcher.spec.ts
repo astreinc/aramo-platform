@@ -23,6 +23,9 @@ function anchor(subject_id: string, id: string, normalized_value: string): Subje
     anchor_kind: 'EMAIL',
     normalized_value,
     source_evidence_id: `ev-${id}`,
+    // TR-2a-B2 — non-confirming (no channel confirms today); confirmed_kinds stays
+    // empty so the advise band is unchanged from the TR-2a-2 semantics.
+    source_class: 'THIRD_PARTY_UNVERIFIED',
     created_at: new Date('2026-07-03T00:00:00Z'),
   };
 }

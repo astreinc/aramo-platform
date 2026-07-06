@@ -51,6 +51,7 @@ describe('RawPayloadReference schema — structural guarantees', () => {
         'captured_at',
         'content_type',
         'created_at',
+        'declared_name',
         'extraction_attempts',
         'extraction_done_at',
         'id',

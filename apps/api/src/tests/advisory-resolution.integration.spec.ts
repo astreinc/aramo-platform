@@ -47,6 +47,8 @@ const MIGRATIONS = [
   // key. The regenerated client SELECTs source_class on anchor reads.
   'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
   'libs/talent-trust/prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
+  // TR-2a-B2 — SubjectMatchAdvisory reopen provenance (client selects reopened_at).
+  'libs/talent-trust/prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 const ISSUER = 'Aramo Core Auth';
