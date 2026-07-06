@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 41 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a)', () => {
+  it('ERROR_CODES contains the 42 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a)', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -82,6 +82,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'INVITATION_ALREADY_EXISTS',
       // AUTHZ-D4a — 1 management-edge cycle code.
       'MANAGEMENT_CYCLE_REJECTED',
+      // TR-2a-B3a — 1 record-supersession operational-refusal code.
+      'TALENT_RECORD_SUPERSEDED',
     ]);
   });
 });

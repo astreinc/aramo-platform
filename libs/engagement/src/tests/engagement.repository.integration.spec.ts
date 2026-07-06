@@ -481,6 +481,43 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(noEng).toBeNull();
     });
 
+    it('createEngagement Pattern C refusal — superseded TalentRecord → TALENT_RECORD_SUPERSEDED 422; no rows (Gate-6 Lead ruling)', async () => {
+      // TR-2a-B3a (DDR-3 §3) — "non-operational" covers being the TARGET of new
+      // operational work. Seed a SUPERSEDED record (the state B3b's reconcile
+      // writer produces — seeded directly, writer-less slice) and prove
+      // createEngagement refuses it at the same TalentRecord validation site.
+      const supersededId = '00000000-0000-7000-8000-cccc00000010';
+      const survivorId = '00000000-0000-7000-8000-cccc00000011';
+      const engId = '00000000-0000-7000-8000-cccc00000012';
+      await setupClient.$executeRawUnsafe(
+        `INSERT INTO talent_record."TalentRecord"
+           (id, tenant_id, first_name, last_name, record_status, superseded_by_record_id, superseded_at, created_at, updated_at)
+         VALUES ('${supersededId}'::uuid, '${TENANT_A}'::uuid, 'Superseded', 'Husk',
+                 'superseded', '${survivorId}'::uuid, NOW(), NOW(), NOW())`,
+      );
+      const promise = repo.createEngagement({
+        id: engId,
+        event_id: '00000000-0000-7000-8000-cccc00000013',
+        tenant_id: TENANT_A,
+        talent_id: supersededId,
+        requisition_id: REQUISITION_A,
+        examination_id: null,
+      });
+      await expect(promise).rejects.toBeInstanceOf(AramoError);
+      try {
+        await promise;
+      } catch (err) {
+        const e = err as AramoError;
+        expect(e.code).toBe('TALENT_RECORD_SUPERSEDED');
+        expect(e.statusCode).toBe(422);
+        expect(e.context.details?.['field']).toBe('talent_id');
+        expect(e.context.details?.['superseded_by_record_id']).toBe(survivorId);
+      }
+      // No engagement row written (refusal is before the $transaction).
+      const noEng = await repo.findById(engId);
+      expect(noEng).toBeNull();
+    });
+
     it('createEngagement Pattern A refusal — requisition absent → ENGAGEMENT_REFERENCE_NOT_FOUND 422', async () => {
       const ghostReq = '99999999-9999-7999-8999-999999999999';
       const promise = repo.createEngagement({

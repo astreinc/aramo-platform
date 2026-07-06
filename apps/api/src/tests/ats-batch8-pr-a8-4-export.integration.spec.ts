@@ -174,6 +174,11 @@ const TALENT_RECORD_OVERLAY_FOLD = resolve(
 const TALENT_RECORD_WORK_AUTH = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
+);
+// TR-2a-B3a (DDR-3 §3) — record_status / superseded_* columns (regenerated client
+// projects them; TalentRecord RETURNING/findFirst 500s without them).
+const TALENT_RECORD_SUPERSESSION = resolve(
+  ROOT,
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
 
@@ -320,6 +325,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_STATED_FIELDS,
         TALENT_RECORD_OVERLAY_FOLD,
         TALENT_RECORD_WORK_AUTH,
+        TALENT_RECORD_SUPERSESSION,
         PIPELINE_INIT,
         METERING_INIT,
       ]) {

@@ -519,6 +519,32 @@ export class EngagementRepository {
       );
     }
 
+    // ---- Step 2a′: TR-2a-B3a (DDR-3 §3) supersession gate -------------
+    // "Non-operational" covers being the TARGET of new operational work, not
+    // only outbound sends (Gate-6 Lead ruling). Creating an engagement against a
+    // superseded record mints an operational row born needing re-point — reject
+    // it here, at the same TalentRecord validation site, with the send-gate's
+    // 422 TALENT_RECORD_SUPERSEDED. findById returns the record of ANY status
+    // WITH its supersession metadata (the survivor pointer surfaces where the
+    // live record is). Writer-less in B3a (no producer supersedes yet).
+    if (talentRecord.record_status === 'superseded') {
+      this.logRefused('TALENT_RECORD_SUPERSEDED', input, 'talent_id');
+      throw new AramoError(
+        'TALENT_RECORD_SUPERSEDED',
+        'talent record is superseded (non-operational) — the surviving record speaks for this human',
+        422,
+        {
+          requestId: 'engagement-create',
+          details: {
+            field: 'talent_id',
+            talent_id: input.talent_id,
+            tenant_id: input.tenant_id,
+            superseded_by_record_id: talentRecord.superseded_by_record_id ?? null,
+          },
+        },
+      );
+    }
+
     // ---- Step 2b: Pattern A — Requisition (app-layer tenant check) ----
     const requisition = await this.jobDomainRepository.findRequisitionById(input.requisition_id);
     if (requisition === null || requisition.tenant_id !== input.tenant_id) {

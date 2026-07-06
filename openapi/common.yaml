@@ -1536,6 +1536,13 @@ components:
         in the ancestor set, the edge is rejected. Mirrors the
         SUBMITTAL_ALREADY_CONFIRMED / IMPORT_ALREADY_REVERTED 409
         state-conflict precedent.
+        TR-2a-B3a adds one code for the record-supersession substrate.
+        TALENT_RECORD_SUPERSEDED (HTTP 422) — operational refusal: the
+        engagement's TalentRecord was superseded by a late-merge
+        reconcile (record_status='superseded'); the surviving record
+        speaks for the human, so the husk is non-operational. Fired by
+        the outreach send-gate and by createEngagement. Mirrors the
+        ENGAGEMENT_STATE_INVALID 422 state-invalid precedent.
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1580,6 +1587,7 @@ components:
         - COGNITO_PROVISION_FAILED
         - INVITATION_ALREADY_EXISTS
         - MANAGEMENT_CYCLE_REJECTED
+        - TALENT_RECORD_SUPERSEDED
 
     ErrorObject:
       type: object
