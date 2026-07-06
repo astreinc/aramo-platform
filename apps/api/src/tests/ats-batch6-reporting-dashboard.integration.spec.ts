@@ -171,6 +171,7 @@ const TALENT_RECORD_OVERLAY_FOLD = resolve(
 const TALENT_RECORD_WORK_AUTH = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
+  'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 );
 
 // === CORE / ENGAGEMENT / SUBMITTAL MIGRATIONS — DELIBERATELY OMITTED ===

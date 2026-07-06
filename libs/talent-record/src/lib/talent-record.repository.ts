@@ -107,6 +107,13 @@ interface TalentRecordRow {
   // findLinkState, and is DELIBERATELY absent from projectView / TalentRecordView
   // (cluster_id is a cross-tenant id — never rendered to a tenant-visible surface).
   cluster_id: string | null;
+  // TR-2a-B3a (DDR-3 §3) — the record supersession lifecycle axis (distinct from
+  // tenant_status). record_status defaults 'live'; the superseded_* pair is set
+  // by the reconcile writer (B3b, writer-less here). Carried on the internal row;
+  // surfaced to the view ONLY on the detail read (projectViewWithSupersession).
+  record_status: string;
+  superseded_by_record_id: string | null;
+  superseded_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -147,6 +154,21 @@ function projectView(row: TalentRecordRow): TalentRecordView {
     entered_by_id: row.entered_by_id,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
+  };
+}
+
+// TR-2a-B3a (DDR-3 §3) — the DETAIL projection: projectView + the supersession
+// metadata. findById is the ONLY read that returns superseded rows, so it is the
+// only surface that carries the metadata (list/search are live-only, so they use
+// the byte-identical projectView). On a stale link the consumer reads
+// record_status='superseded' + superseded_by_record_id → where the survivor is.
+function projectDetailView(row: TalentRecordRow): TalentRecordView {
+  return {
+    ...projectView(row),
+    record_status: row.record_status === 'superseded' ? 'superseded' : 'live',
+    superseded_by_record_id: row.superseded_by_record_id,
+    superseded_at:
+      row.superseded_at === null ? null : row.superseded_at.toISOString(),
   };
 }
 
@@ -243,7 +265,13 @@ function buildOrderBy(
 // columns; the `id_allowlist` is how presets / My-team narrow (resolve-then-
 // filter — the ids are resolved cross-schema in apps/api and passed in here).
 function buildSearchWhere(q: TalentSearchQuery): Record<string, unknown> {
-  const where: Record<string, unknown> = { tenant_id: q.tenant_id };
+  // TR-2a-B3a (DDR-3 §3) — search (searchPaged + findFilteredKeys, incl. the
+  // faceted counts computed over this WHERE) defaults to live-only, matching
+  // list(). A superseded record never surfaces in a tenant search or its facets.
+  const where: Record<string, unknown> = {
+    tenant_id: q.tenant_id,
+    record_status: 'live',
+  };
   const and: Array<Record<string, unknown>> = [];
   if (q.site_id !== undefined) where['site_id'] = q.site_id;
   if (q.is_hot !== undefined) where['is_hot'] = q.is_hot;
@@ -457,6 +485,11 @@ export class TalentRecordRepository {
     return result.count;
   }
 
+  // TR-2a-B3a (DDR-3 §3) — findById returns rows of ANY record_status (no
+  // live-only filter): a superseded record is returned WITH its supersession
+  // metadata so a stale link resolves informatively (projectDetailView). This is
+  // deliberately the see-everything detail read; the live-only filter lives on
+  // list/search (the tenant-facing enumerations) instead.
   async findById(args: {
     tenant_id: string;
     id: string;
@@ -464,7 +497,7 @@ export class TalentRecordRepository {
     const row = await this.prisma.talentRecord.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
     });
-    return row === null ? null : projectView(row as TalentRecordRow);
+    return row === null ? null : projectDetailView(row as TalentRecordRow);
   }
 
   async list(args: {
@@ -482,6 +515,10 @@ export class TalentRecordRepository {
     const rows = await this.prisma.talentRecord.findMany({
       where: {
         tenant_id: args.tenant_id,
+        // TR-2a-B3a (DDR-3 §3) — tenant-facing list defaults to live-only. A
+        // superseded record is reachable only via findById (informative stale
+        // link) and listByTenantKeyset (system backfill), never a tenant list.
+        record_status: 'live',
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
         ...(args.q === undefined
           ? {}
@@ -502,6 +539,9 @@ export class TalentRecordRepository {
   // ordered (created_at, id) ascending, for the anchor-producer backfill (an
   // apps/api system op — no visibility scoping; it must see every record). The
   // caller pages forward by passing the last row's (created_at, id) as `after`.
+  // TR-2a-B3a (DDR-3 §3) — DELIBERATELY see-everything: NO record_status filter.
+  // The system backfill must observe superseded records too; the live-only
+  // default is a tenant-facing (list/search) posture, not a system-read one.
   async listByTenantKeyset(args: {
     tenant_id: string;
     limit: number;
@@ -642,6 +682,9 @@ export class TalentRecordRepository {
     const params: unknown[] = [args.resume_q, args.tenant_id];
     const conds: string[] = [
       'tr.tenant_id = $2',
+      // TR-2a-B3a (DDR-3 §3) — résumé content-search is live-only, matching
+      // list()/searchPaged. A superseded record never surfaces in a ?resume_q=.
+      "tr.record_status = 'live'",
       "rt.search_tsv @@ websearch_to_tsquery('english', $1)",
     ];
     if (args.site_id !== undefined) {
@@ -685,6 +728,10 @@ export class TalentRecordRepository {
     return this.prisma.talentRecord.count({
       where: {
         tenant_id: args.tenant_id,
+        // TR-2a-B3a (DDR-3 §3) — count is the cardinality of the tenant-facing
+        // list surface, so it shares list()'s live-only default: a superseded
+        // record is not counted where it would not be listed.
+        record_status: 'live',
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
       },
     });

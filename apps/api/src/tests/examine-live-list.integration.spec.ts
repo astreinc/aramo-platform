@@ -77,6 +77,7 @@ const MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260630140000_overlay_fold_cluster_id/migration.sql',
   'libs/talent-record/prisma/migrations/20260701120000_drop_core_talent_id/migration.sql',
   'libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
+  'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
   // talent-evidence
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
   // examination

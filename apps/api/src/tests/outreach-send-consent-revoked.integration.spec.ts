@@ -471,6 +471,56 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(eventsAfter).toBe(eventsBefore);
     });
 
+    it('TR-2a-B3a superseded-record send-gate: DRAFT ok, SEND → 422 TALENT_RECORD_SUPERSEDED (before consent), no new events', { timeout: 60_000 }, async () => {
+      // Directive §5(b) — the send-gate treats a superseded record as
+      // non-operational. Seed a FRESH live record, create+engage against it while
+      // live, grant contacting (so consent would PASS — proving the refusal is the
+      // supersession gate at Step 5.5, not the consent gate at Step 8), THEN
+      // supersede it (the state the B3b reconcile writer will produce — seeded
+      // directly here, writer-less slice), THEN send.
+      const supersededTalent = '0a0a0a0a-0a0a-7a0a-8a0a-0a0a0a0a0a0a';
+      const survivorTalent = '0b0b0b0b-0b0b-7b0b-8b0b-0b0b0b0b0b0b';
+      await setup.query(
+        `INSERT INTO talent_record."TalentRecord" (id, tenant_id, first_name, last_name, created_at, updated_at)
+         VALUES ($1, $2, 'Superseded', 'Husk', NOW(), NOW())
+         ON CONFLICT (id) DO UPDATE SET record_status = 'live', superseded_by_record_id = NULL, superseded_at = NULL`,
+        [supersededTalent, TENANT_A],
+      );
+      await seedContactingGrant(supersededTalent, TENANT_A, RECRUITER_A, new Date('2026-01-01T00:00:00.000Z'));
+      const id = await createEngagementAdvanceToEngaged(recruiterAJwt, supersededTalent, REQ_A);
+
+      // Supersede the record AFTER the engagement exists (a late merge retired it).
+      await setup.query(
+        `UPDATE talent_record."TalentRecord"
+           SET record_status = 'superseded', superseded_by_record_id = $2::uuid, superseded_at = NOW()
+         WHERE id = $1::uuid`,
+        [supersededTalent, survivorTalent],
+      );
+
+      // DRAFT is not gated (non-blocking) — it still produces a draft event.
+      const draft = await draftOutreach(recruiterAJwt, id);
+      expect(draft.status).toBe(200);
+      expect(draft.body.draft_event_id).toBeDefined();
+      const eventsBefore = await countEvents(id);
+
+      // SEND refuses with the supersession gate — 422, survivor pointer surfaced.
+      const res = await sendOutreach(recruiterAJwt, id, draft.body.draft_event_id as string);
+      expect(res.status).toBe(422);
+      const body = (await res.json()) as {
+        error: { code: string; details: { superseded_by_record_id: string; engagement_id: string } };
+      };
+      expect(body.error.code).toBe('TALENT_RECORD_SUPERSEDED');
+      expect(body.error.details.superseded_by_record_id).toBe(survivorTalent);
+      expect(body.error.details.engagement_id).toBe(id);
+
+      // No delivery, no new events — the refusal short-circuits before the write.
+      const eventsAfter = await countEvents(id);
+      expect(eventsAfter).toBe(eventsBefore);
+
+      // Clean up so the stray record does not perturb other tests' tenant reads.
+      await setup.query(`DELETE FROM talent_record."TalentRecord" WHERE id = $1::uuid`, [supersededTalent]);
+    });
+
     it('contacting-never-granted (prerequisites only): DRAFT ok, SEND → 403 CONSENT_NOT_GRANTED_AT_SEND', { timeout: 60_000 }, async () => {
       // Realistic production scenario: profile_storage + matching are
       // granted (talent is searchable + has been matched), but

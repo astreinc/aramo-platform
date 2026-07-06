@@ -117,6 +117,21 @@ model TalentRecord {
   tenant_status       String?
   source_recruiter_id String? @db.Uuid
 
+  // TR-2a-B3a (DDR-3 §3) — record supersession: a NEW lifecycle axis, DELIBERATELY
+  // SEPARATE from tenant_status. tenant_status is the per-tenant RELATIONSHIP
+  // (sourced/engaged — how the tenant relates to the human); record_status is the
+  // record IDENTITY VALIDITY (which record speaks for the human after a late
+  // merge). Supersession is NEVER deletion and NEVER the RTBF/delete path — a
+  // superseded row persists with full content as the un-merge restore source and
+  // honest history. superseded_by_record_id points at the surviving record so a
+  // stale link resolves informatively (findById returns the metadata). Writer-less
+  // in B3a (the read model); the reconcile writer lands in B3b. Closed vocab
+  // {live|superseded} (String, not a Prisma enum — the libs/talent-record String
+  // precedent). Cross-record UUID-only ref, no FK (§7.3).
+  record_status           String    @default("live")
+  superseded_by_record_id String?   @db.Uuid
+  superseded_at           DateTime? @db.Timestamptz
+
   // ADR-0016 step 4d — the cross-tenant identity pointer: the
   // identity_index.PersonCluster this record belongs to (UUID-only cross-
   // schema ref, no FK per §7.3). The post-realignment identity pointer.

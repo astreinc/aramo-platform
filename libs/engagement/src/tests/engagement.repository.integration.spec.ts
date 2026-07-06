@@ -91,6 +91,9 @@ const TALENT_RECORD_MIGRATION_PATHS = [
   // Gate-1 G1-A — adds work_authorization (regenerated talent-record client
   // projects it; TalentRecordRepository.findById 500s without the column).
   '../../../talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
+  // TR-2a-B3a (DDR-3 §3) — record_status / superseded_* columns (regenerated
+  // client projects them; TalentRecordRepository.findById 500s without them).
+  '../../../talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';

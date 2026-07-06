@@ -57,6 +57,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   COGNITO_PROVISION_FAILED: 502,
   INVITATION_ALREADY_EXISTS: 409,
   MANAGEMENT_CYCLE_REJECTED: 409,
+  TALENT_RECORD_SUPERSEDED: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response
