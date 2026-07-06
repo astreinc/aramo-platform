@@ -385,7 +385,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   tenant_owner + tenant_admin; DOMAIN_ADMIN_SEED_BUNDLES @ 0x960).
       //   470 → 472 = +2 TR-2a-3 (identity:resolve × tenant_owner +
       //   tenant_admin; IDENTITY_RESOLVE_SEED_BUNDLES @ 0x970).
-      expect(roleScopes).toBe(473);
+      expect(roleScopes).toBe(474);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -1308,6 +1308,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'contact:create',
         'contact:read',
         'contact:search',
+        'identity:resolve',
         'pipeline:add',
         'pipeline:add-activity',
         'pipeline:change-status',

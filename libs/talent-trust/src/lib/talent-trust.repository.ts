@@ -75,6 +75,26 @@ export interface ReconcileTargetRow {
   talent_record_id: string;
 }
 
+// Promotion-Trigger slice B-api — one pre-promotion pool row: the subject +
+// its 4 TrustState bands (null when no evidence yet) + open_contradiction_count.
+export interface SourcedPoolRow {
+  subject_id: string;
+  created_at: Date;
+  identity_band: string | null;
+  claims_band: string | null;
+  continuity_band: string | null;
+  eligibility_band: string | null;
+  open_contradiction_count: number;
+}
+
+// Promotion-Trigger slice B-api — one display-identity evidence row from the
+// batched page read (FULL_NAME / EMAIL, VALID only).
+export interface DisplayIdentityEvidenceRow {
+  subject_id: string;
+  assertion_type: string;
+  assertion_payload: unknown;
+}
+
 export interface TrustStateRow {
   subject_id: string;
   tenant_id: string;
@@ -316,6 +336,88 @@ export class TalentTrustRepository {
       where: { id: subjectId },
       data: { reconcile_attempts: { increment: 1 } },
     });
+  }
+
+  // ---- Promotion-Trigger slice B-api — sourcing-pool readers -----------------
+
+  // The pre-promotion pool: ACTIVE ResolutionSubjects for a tenant that ARE a
+  // sourced arrival (SOURCED_TALENT ref EXISTS) but are NOT yet promoted
+  // (ATS_TALENT_RECORD ref does NOT exist) — the anti-join. Bands +
+  // open_contradiction_count come from the 1:1 TrustState LEFT JOIN (NULL bands
+  // when a subject has no evidence yet). Keyset-paginated oldest-first
+  // (created_at, id) — a growing pool must not be offset-paginated. Raw SQL for
+  // the anti-join + row-tuple keyset (beyond Prisma's typed API).
+  async listSourcedPool(args: {
+    tenant_id: string;
+    limit: number;
+    cursor?: { created_at: Date; id: string } | null;
+  }): Promise<SourcedPoolRow[]> {
+    const params: unknown[] = [args.tenant_id, args.limit];
+    let cursorClause = '';
+    if (args.cursor) {
+      cursorClause = `AND (s.created_at, s.id) > ($3::timestamptz, $4::uuid)`;
+      params.push(args.cursor.created_at, args.cursor.id);
+    }
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{
+        subject_id: string;
+        created_at: Date;
+        identity_band: string | null;
+        claims_band: string | null;
+        continuity_band: string | null;
+        eligibility_band: string | null;
+        open_contradiction_count: number;
+      }>
+    >(
+      `SELECT s.id AS subject_id, s.created_at,
+              ts.identity_band, ts.claims_band, ts.continuity_band, ts.eligibility_band,
+              COALESCE(ts.open_contradiction_count, 0)::int AS open_contradiction_count
+       FROM "talent_trust"."ResolutionSubject" s
+       LEFT JOIN "talent_trust"."TrustState" ts ON ts.subject_id = s.id
+       WHERE s.tenant_id = $1 AND s.status = 'ACTIVE'
+         AND EXISTS (SELECT 1 FROM "talent_trust"."ResolutionSubjectRef" r
+                     WHERE r.subject_id = s.id AND r.ref_type = 'SOURCED_TALENT')
+         AND NOT EXISTS (SELECT 1 FROM "talent_trust"."ResolutionSubjectRef" a
+                         WHERE a.subject_id = s.id AND a.ref_type = 'ATS_TALENT_RECORD')
+         ${cursorClause}
+       ORDER BY s.created_at ASC, s.id ASC
+       LIMIT $2`,
+      ...params,
+    );
+    return rows.map((r) => ({
+      subject_id: r.subject_id,
+      created_at: r.created_at,
+      identity_band: r.identity_band,
+      claims_band: r.claims_band,
+      continuity_band: r.continuity_band,
+      eligibility_band: r.eligibility_band,
+      open_contradiction_count: Number(r.open_contradiction_count),
+    }));
+  }
+
+  // Batched display-identity evidence for a PAGE of subjects (NOT N+1). Newest-
+  // first so the service takes the newest FULL_NAME / EMAIL per subject. Only
+  // VALID evidence. @@index([tenant_id, subject_id]) serves the IN-list.
+  async listDisplayIdentityEvidence(
+    tenantId: string,
+    subjectIds: string[],
+  ): Promise<DisplayIdentityEvidenceRow[]> {
+    if (subjectIds.length === 0) return [];
+    const rows = await this.prisma.evidenceRecord.findMany({
+      where: {
+        tenant_id: tenantId,
+        subject_id: { in: subjectIds },
+        assertion_type: { in: ['FULL_NAME', 'EMAIL'] },
+        current_status: 'VALID',
+      },
+      select: { subject_id: true, assertion_type: true, assertion_payload: true },
+      orderBy: { collected_at: 'desc' },
+    });
+    return rows.map((r) => ({
+      subject_id: r.subject_id,
+      assertion_type: r.assertion_type,
+      assertion_payload: r.assertion_payload,
+    }));
   }
 
   async setSubjectMergeState(

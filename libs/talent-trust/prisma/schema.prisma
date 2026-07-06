@@ -93,6 +93,10 @@ model ResolutionSubject {
 
   @@index([tenant_id])
   @@index([tenant_id, status])
+  // Promotion-Trigger slice B-api — the sourcing-pool list reader keyset-paginates
+  // ACTIVE subjects oldest-first; this supports the (tenant_id, status, created_at,
+  // id) scan + keyset cursor without a sort.
+  @@index([tenant_id, status, created_at, id])
   @@schema("talent_trust")
 }
 

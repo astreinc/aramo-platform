@@ -21,6 +21,8 @@ export type {
   ResolutionSubjectRow,
   ResolutionSubjectRefRow,
   ReconcileTargetRow,
+  SourcedPoolRow,
+  DisplayIdentityEvidenceRow,
   TrustStateRow,
   InsertEvidenceInput,
   SubjectAnchorRow,
