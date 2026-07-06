@@ -334,6 +334,21 @@ const SETTINGS_INIT_MIGRATION = resolve(
   ROOT,
   'libs/settings/prisma/migrations/20260605000000_init_settings_model/migration.sql',
 );
+// PC-4 — activity + pipeline schemas. GET /v1/talent-records runs the
+// apps/api TalentRecordEnrichmentInterceptor, which reads activity
+// (last_activity_at) + pipeline (current_stage) + consent (consent_summary).
+// consent is already applied; without activity + pipeline the enrichment
+// SELECTs hit missing tables → 500 INTERNAL_ERROR on list/search. Both init
+// migrations are self-contained (no external-schema FK refs); the tables stay
+// empty (no seed) so the enrichment resolves to null / default.
+const ACTIVITY_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
+);
+const PIPELINE_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
+);
 const INGESTION_PACT = resolve(
   ROOT,
   'pact/pacts/ingestion-consumer-aramo-core.json',
@@ -2006,6 +2021,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // the verifier ready for future settings-touching consumer pacts
         // (the S2 pricing-model write, S3 user-management, etc.).
         SETTINGS_INIT_MIGRATION,
+        // PC-4 — activity + pipeline for the talent-records enrichment reads.
+        ACTIVITY_INIT_MIGRATION,
+        PIPELINE_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
