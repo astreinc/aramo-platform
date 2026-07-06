@@ -792,6 +792,293 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       });
     }
 
+    // ===================================================================
+    // PC-2 — ats-web submittal domain live fixtures.
+    //
+    // seedAtsWebExamination + seedAtsWebEvidencePackage are COMPOSABLE
+    // NAMED helpers (Lead Gate-5 addition #2): PC-3 (examination domain)
+    // imports them. Fresh live seeds — NOT the dead ats-thin
+    // seedSubmittalFixture/insertExaminationRow (kept untouched). All
+    // tables here are already truncated by resetAllRows (examination,
+    // job_domain.Requisition, talent_record, engagement.TalentSubmittal*,
+    // evidence.TalentJobEvidencePackage, consent.IdempotencyKey) → NO new
+    // TRUNCATE lines.
+    // ===================================================================
+    const ATSW_SUB_JOB_ID = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
+    const ATSW_SUB_REQ_ID = '22222222-0000-7000-8000-0000000000dd';
+    const ATSW_SUB_GOLDEN_ID = '22221111-0000-7000-8000-0000000000dd';
+    const ATSW_SUB_EXAM_ID = '00000000-0000-7000-8000-5e0000000001';
+    const ATSW_SUB_EXAM_NEWER_ID = '00000000-0000-7000-8000-5e0000000002';
+    const ATSW_SUB_CREATED_ID = '00000000-0000-7000-8000-5a0000000001';
+    const ATSW_SUB_HANDOFF_ID = '00000000-0000-7000-8000-5a0000000002';
+    const ATSW_SUB_READY_ID = '00000000-0000-7000-8000-5a0000000003';
+    const ATSW_SUB_SUBMITTED_ID = '00000000-0000-7000-8000-5a0000000004';
+    const ATSW_SUB_CONFIRMED_ID = '00000000-0000-7000-8000-5a0000000005';
+    const ATSW_SUB_STRETCH_ID = '00000000-0000-7000-8000-5a0000000006';
+    const ATSW_SUB_WORTH_ID = '00000000-0000-7000-8000-5a0000000007';
+    const ATSW_SUB_OUTDATED_ID = '00000000-0000-7000-8000-5a0000000008';
+    const ATSW_SUB_EVIDENCE_ID = '00000000-0000-7000-8000-5c0000000001';
+    // idempotency keys (mirror the consumer).
+    const ATSW_SUB_K_CREATE_REPLAY = '00000000-0000-7000-8000-5d0000000101';
+    const ATSW_SUB_K_CREATE_CONFLICT = '00000000-0000-7000-8000-5d0000000102';
+    const ATSW_SUB_K_MARKREADY_REPLAY = '00000000-0000-7000-8000-5d0000000201';
+    const ATSW_SUB_K_MARKREADY_CONFLICT = '00000000-0000-7000-8000-5d0000000202';
+    const ATSW_SUB_K_SUBMIT_REPLAY = '00000000-0000-7000-8000-5d0000000301';
+    const ATSW_SUB_K_SUBMIT_CONFLICT = '00000000-0000-7000-8000-5d0000000302';
+    const ATSW_SUB_K_CONFIRM_REPLAY = '00000000-0000-7000-8000-5d0000000401';
+    const ATSW_SUB_K_CONFIRM_CONFLICT = '00000000-0000-7000-8000-5d0000000402';
+    const ATSW_SUB_K_CONFIRMATS_REPLAY = '00000000-0000-7000-8000-5d0000000501';
+    const ATSW_SUB_K_CONFIRMATS_CONFLICT = '00000000-0000-7000-8000-5d0000000502';
+    const ATSW_SUB_K_REVOKE_REPLAY = '00000000-0000-7000-8000-5d0000000601';
+    const ATSW_SUB_K_REVOKE_CONFLICT = '00000000-0000-7000-8000-5d0000000602';
+    // Request bodies — MUST byte-match the consumer bodies (hash parity).
+    const ATSW_SUB_CREATE_BODY = {
+      talent_id: PACT_TALENT_ID,
+      job_id: ATSW_SUB_JOB_ID,
+      examination_id: ATSW_SUB_EXAM_ID,
+      talent_identity: { full_name: 'Pact Talent', location: 'Remote (US)' },
+      contact_summary: { contact_available: true, channels_verified: ['email'] },
+      capability_summary_overrides: {
+        key_work_history: [
+          { employer_name: 'Acme', role_title: 'Senior Engineer', start_date: '2020-01' },
+        ],
+      },
+      recruiter_contribution: {
+        conversation_summary: { recruiter_summary: 'Spoke with the talent about the role.' },
+        talent_confirmed: { spoken_to_recruiter: true },
+      },
+    };
+    const ATSW_SUB_EMPTY_BODY = {};
+    const ATSW_SUB_ATTEST_OK = {
+      attestations: {
+        talent_evidence_reviewed: true,
+        constraints_reviewed: true,
+        submittal_risk_acknowledged: true,
+      },
+    };
+    const ATSW_SUB_REVOKE_BODY = {
+      revocation_justification: 'Role closed before the submittal advanced.',
+    };
+
+    // Cached response body for submittal idempotency-replay fixtures
+    // (returned verbatim by the controller's idempotency.lookup replay).
+    function atswSubmittalBody(
+      id: string,
+      state: string,
+      opts: { confirmedAt?: boolean; revoked?: boolean } = {},
+    ): unknown {
+      return {
+        id,
+        tenant_id: TENANT_ID,
+        talent_id: PACT_TALENT_ID,
+        job_id: ATSW_SUB_JOB_ID,
+        evidence_package_id: ATSW_SUB_EVIDENCE_ID,
+        pinned_examination_id: ATSW_SUB_EXAM_ID,
+        state,
+        created_by: PACT_RECRUITER_ACTOR_ID,
+        justification: null,
+        failed_criterion_acknowledgments: null,
+        created_at: '2026-05-25T00:00:00.000Z',
+        confirmed_at: opts.confirmedAt ? '2026-05-25T00:00:00.000Z' : null,
+        revoked_at: opts.revoked ? '2026-05-25T00:00:00.000Z' : null,
+        revoked_by: opts.revoked ? PACT_RECRUITER_ACTOR_ID : null,
+        revocation_justification: opts.revoked
+          ? 'Role closed before the submittal advanced.'
+          : null,
+      };
+    }
+
+    // COMPOSABLE (PC-3 reuse): seed requisition + talent + a tiered active
+    // examination for (PACT_TALENT_ID, ATSW_SUB_JOB_ID).
+    async function seedAtsWebExamination(
+      c: Client,
+      params: {
+        examinationId: string;
+        tier: 'ENTRUSTABLE' | 'WORTH_CONSIDERING' | 'STRETCH';
+        computedAt: string;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO job_domain."Job" (id, tenant_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [ATSW_SUB_JOB_ID, TENANT_ID],
+      );
+      await c.query(
+        `INSERT INTO job_domain."Requisition" (id, tenant_id, job_id, recruiter_id, state)
+         VALUES ($1,$2,$3,$4,'active'::job_domain."RequisitionState") ON CONFLICT DO NOTHING`,
+        [ATSW_SUB_REQ_ID, TENANT_ID, ATSW_SUB_JOB_ID, PACT_RECRUITER_ACTOR_ID],
+      );
+      await c.query(
+        `INSERT INTO talent_record."TalentRecord"
+           (id, tenant_id, first_name, last_name, created_at, updated_at)
+         VALUES ($1,$2,'Pact','Talent',NOW(),NOW()) ON CONFLICT (id) DO NOTHING`,
+        [PACT_TALENT_ID, TENANT_ID],
+      );
+      await c.query(
+        `INSERT INTO examination."TalentJobExamination"
+           (id, tenant_id, talent_id, job_id, golden_profile_id, trigger,
+            tier, rank_ordinal, why_matched_sentence, match_summary,
+            expanded_reasoning, skill_match, experience_match,
+            constraint_checks, strengths, gaps, risk_flags,
+            confidence_indicators, freshness_indicator, delta_to_entrustable,
+            examination_version, model_version, taxonomy_version,
+            computed_at, lifecycle_state)
+         VALUES ($1,$2,$3,$4,$5,'initial_match'::examination."ExaminationTrigger",
+                 $6::examination."ExaminationTier",$7,$8,$9,
+                 $10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14::jsonb,
+                 $15::jsonb,$16::jsonb,$17::jsonb,$18::jsonb,$19::jsonb,
+                 $20,$21,$22,$23,'active'::examination."ExaminationLifecycleState")`,
+        [
+          params.examinationId,
+          TENANT_ID,
+          PACT_TALENT_ID,
+          ATSW_SUB_JOB_ID,
+          ATSW_SUB_GOLDEN_ID,
+          params.tier,
+          1,
+          'Strong critical-skill coverage',
+          'baseline match summary',
+          JSON.stringify([]),
+          JSON.stringify({ matched_count: 5, missing_count: 0, per_skill: [] }),
+          JSON.stringify({ years: 7, summary: 'Strong overlap' }),
+          JSON.stringify({}),
+          JSON.stringify(['typescript-expertise']),
+          JSON.stringify([]),
+          JSON.stringify([]),
+          JSON.stringify({
+            evidence_strength: { level: 'high', basis: 'ingested-evidence' },
+            data_completeness: { level: 'high', basis: 'profile-complete' },
+            constraint_confidence: { level: 'high', basis: 'verified' },
+          }),
+          JSON.stringify({ profile_age_days: 14 }),
+          JSON.stringify(null),
+          'v1',
+          'v1',
+          'v1',
+          params.computedAt,
+        ],
+      );
+    }
+
+    // COMPOSABLE (PC-3 reuse): seed the immutable evidence package row,
+    // back-linked to the submittal.
+    async function seedAtsWebEvidencePackage(
+      c: Client,
+      params: { evidencePackageId: string; examinationId: string; submittalId: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO evidence."TalentJobEvidencePackage"
+           (id, tenant_id, talent_id, job_id, examination_id, submittal_record_id,
+            talent_identity, contact_summary, capability_summary,
+            match_justification, recruiter_contribution, engagement_event_refs)
+         VALUES ($1,$2,$3,$4,$5,$6,
+                 $7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb)`,
+        [
+          params.evidencePackageId,
+          TENANT_ID,
+          PACT_TALENT_ID,
+          ATSW_SUB_JOB_ID,
+          params.examinationId,
+          params.submittalId,
+          JSON.stringify({ full_name: 'Pact Talent', location: 'Remote (US)' }),
+          JSON.stringify({ contact_available: true, channels_verified: ['email'] }),
+          JSON.stringify({
+            key_work_history: [{ employer_name: 'Acme', role_title: 'Senior Engineer' }],
+          }),
+          JSON.stringify({ why_this_talent: 'Pact-seeded sample.' }),
+          JSON.stringify({
+            conversation_summary: { recruiter_summary: 'Discussed.' },
+            talent_confirmed: { spoken_to_recruiter: true },
+          }),
+          JSON.stringify([]),
+        ],
+      );
+    }
+
+    // Seed a submittal record in a given state, pinned to an examination.
+    async function seedAtsWebSubmittal(
+      c: Client,
+      params: {
+        submittalId: string;
+        evidencePackageId: string;
+        examinationId: string;
+        state: string;
+        justification?: string | null;
+        fca?: ReadonlyArray<Record<string, unknown>> | null;
+        confirmedAt?: string | null;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO engagement."TalentSubmittalRecord"
+           (id, tenant_id, talent_id, job_id, evidence_package_id,
+            pinned_examination_id, state, created_by,
+            justification, failed_criterion_acknowledgments, confirmed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7::engagement."SubmittalState",$8,$9,$10::jsonb,$11)`,
+        [
+          params.submittalId,
+          TENANT_ID,
+          PACT_TALENT_ID,
+          ATSW_SUB_JOB_ID,
+          params.evidencePackageId,
+          params.examinationId,
+          params.state,
+          PACT_RECRUITER_ACTOR_ID,
+          params.justification ?? null,
+          params.fca === undefined || params.fca === null ? null : JSON.stringify(params.fca),
+          params.confirmedAt ?? null,
+        ],
+      );
+    }
+
+    // Orchestrate the full chain (examination + evidence + submittal) in a
+    // given state/tier, with optional newer-examination (pinned-outdated).
+    async function seedAtsWebSubmittalChain(
+      c: Client,
+      params: {
+        submittalId: string;
+        state: string;
+        tier?: 'ENTRUSTABLE' | 'WORTH_CONSIDERING' | 'STRETCH';
+        justification?: string | null;
+        seedNewer?: boolean;
+      },
+    ): Promise<void> {
+      await seedAtsWebExamination(c, {
+        examinationId: ATSW_SUB_EXAM_ID,
+        tier: params.tier ?? 'ENTRUSTABLE',
+        computedAt: '2026-05-22T09:00:00.000Z',
+      });
+      if (params.seedNewer === true) {
+        // A newer examination for the same (talent, job) → confirm's
+        // findLatestByTenantTalentJob != pinned → EXAMINATION_PINNED_OUTDATED.
+        await seedAtsWebExamination(c, {
+          examinationId: ATSW_SUB_EXAM_NEWER_ID,
+          tier: 'ENTRUSTABLE',
+          computedAt: '2026-05-23T09:00:00.000Z',
+        });
+      }
+      await seedAtsWebEvidencePackage(c, {
+        evidencePackageId: ATSW_SUB_EVIDENCE_ID,
+        examinationId: ATSW_SUB_EXAM_ID,
+        submittalId: params.submittalId,
+      });
+      // Ruling 6: submit-to-ats populates confirmed_at (NULL -> non-NULL);
+      // it persists through 'confirmed'. A legitimately submitted_to_ats /
+      // confirmed row therefore ALWAYS carries confirmed_at — seed it so
+      // the confirm-ats happy-path response projects a real timestamp
+      // (direct-seed without it returned confirmed_at='' → pact regex fail).
+      const confirmedAt =
+        params.state === 'submitted_to_ats' || params.state === 'confirmed'
+          ? '2026-05-25T00:00:00.000Z'
+          : null;
+      await seedAtsWebSubmittal(c, {
+        submittalId: params.submittalId,
+        evidencePackageId: ATSW_SUB_EVIDENCE_ID,
+        examinationId: ATSW_SUB_EXAM_ID,
+        state: params.state,
+        justification: params.justification ?? null,
+        confirmedAt,
+      });
+    }
+
     // M3 PR-8 §4.7 — seed the active Requisition + N ranked Summary
     // examinations that the match-list state handlers describe. Mirrors
     // the live-list integration spec's seeding pattern (raw SQL because
@@ -4010,6 +4297,288 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               id: '00000000-0000-7000-8000-c0000000009a',
               key: ATSW_K_SEND_CONFLICT,
               requestHash: 'pact-pc1-conflict-hash-send',
+            });
+          });
+        },
+
+      // ===============================================================
+      // PC-2 — ats-web submittal domain state handlers (22). Dead
+      // ats-thin submittal handlers above left untouched (distinct given
+      // strings → they stay unexercised).
+      // ===============================================================
+
+      // -- create-happy: an entrustable examination, no submittal yet.
+      'an ats-web recruiter and an entrustable examination ready for a new submittal exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebExamination(c, {
+              examinationId: ATSW_SUB_EXAM_ID,
+              tier: 'ENTRUSTABLE',
+              computedAt: '2026-05-22T09:00:00.000Z',
+            });
+          });
+        },
+
+      // -- the created-state fixture (entrustable, latest, with evidence).
+      // Serves: find, get, evidence-package, confirm-happy, revoke-happy,
+      // attestation-missing, and the mark-ready/submit-to-ats/confirm-ats
+      // illegal-state cases (all 422 from 'created').
+      'an ats-web recruiter and a created submittal with a current entrustable examination and evidence package exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebSubmittalChain(c, {
+              submittalId: ATSW_SUB_CREATED_ID,
+              state: 'created',
+              tier: 'ENTRUSTABLE',
+            });
+          });
+        },
+
+      // -- get NOT_FOUND: no submittal seeded.
+      'an ats-web recruiter and no submittal for the id exist': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+
+      // -- handoff_draft fixture (mark-ready-happy + confirm already-confirmed).
+      'an ats-web recruiter and a handoff_draft submittal exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebSubmittalChain(c, {
+            submittalId: ATSW_SUB_HANDOFF_ID,
+            state: 'handoff_draft',
+          });
+        });
+      },
+
+      // -- ready_for_review fixture (submit-to-ats-happy + confirm-illegal).
+      'an ats-web recruiter and a ready_for_review submittal exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebSubmittalChain(c, {
+            submittalId: ATSW_SUB_READY_ID,
+            state: 'ready_for_review',
+          });
+        });
+      },
+
+      // -- submitted_to_ats fixture (confirm-ats-happy).
+      'an ats-web recruiter and a submitted_to_ats submittal exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebSubmittalChain(c, {
+            submittalId: ATSW_SUB_SUBMITTED_ID,
+            state: 'submitted_to_ats',
+          });
+        });
+      },
+
+      // -- confirmed fixture (revoke-not-allowed: terminal).
+      'an ats-web recruiter and a confirmed submittal exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebSubmittalChain(c, {
+            submittalId: ATSW_SUB_CONFIRMED_ID,
+            state: 'confirmed',
+          });
+        });
+      },
+
+      // -- stretch-tier fixture (confirm STRETCH_BLOCKED).
+      'an ats-web recruiter and a created submittal pinned to a stretch-tier examination exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebSubmittalChain(c, {
+              submittalId: ATSW_SUB_STRETCH_ID,
+              state: 'created',
+              tier: 'STRETCH',
+            });
+          });
+        },
+
+      // -- worth-considering-without-justification fixture (JUSTIFICATION_REQUIRED).
+      'an ats-web recruiter and a created worth-considering submittal without justification exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebSubmittalChain(c, {
+              submittalId: ATSW_SUB_WORTH_ID,
+              state: 'created',
+              tier: 'WORTH_CONSIDERING',
+              justification: null,
+            });
+          });
+        },
+
+      // -- pinned-outdated fixture (a newer examination supersedes the pinned).
+      'an ats-web recruiter and a created submittal whose pinned examination has been superseded by a newer one exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebSubmittalChain(c, {
+              submittalId: ATSW_SUB_OUTDATED_ID,
+              state: 'created',
+              tier: 'ENTRUSTABLE',
+              seedNewer: true,
+            });
+          });
+        },
+
+      // -- submittal idempotency replay/conflict pairs (6 endpoints × 2).
+      'a prior submittal-create response is cached under an Idempotency-Key':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebIdempotencyKey(c, {
+              id: '00000000-0000-7000-8000-c1000000c101',
+              key: ATSW_SUB_K_CREATE_REPLAY,
+              requestHash: hashCanonicalizedBody(ATSW_SUB_CREATE_BODY),
+              responseStatus: 201,
+              responseBody: { submittal: atswSubmittalBody(ATSW_SUB_CREATED_ID, 'created') },
+            });
+          });
+        },
+      'an Idempotency-Key was used with a different submittal-create body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebIdempotencyKey(c, {
+              id: '00000000-0000-7000-8000-c1000000c102',
+              key: ATSW_SUB_K_CREATE_CONFLICT,
+              requestHash: 'pact-pc2-conflict-hash-create',
+            });
+          });
+        },
+      'a prior submittal-mark-ready response is cached under an Idempotency-Key':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebIdempotencyKey(c, {
+              id: '00000000-0000-7000-8000-c1000000c201',
+              key: ATSW_SUB_K_MARKREADY_REPLAY,
+              requestHash: hashCanonicalizedBody(ATSW_SUB_EMPTY_BODY),
+              responseStatus: 200,
+              responseBody: { submittal: atswSubmittalBody(ATSW_SUB_HANDOFF_ID, 'ready_for_review') },
+            });
+          });
+        },
+      'an Idempotency-Key was used with a different submittal-mark-ready body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebIdempotencyKey(c, {
+              id: '00000000-0000-7000-8000-c1000000c202',
+              key: ATSW_SUB_K_MARKREADY_CONFLICT,
+              requestHash: 'pact-pc2-conflict-hash-mark-ready',
+            });
+          });
+        },
+      'a prior submittal-submit-to-ats response is cached under an Idempotency-Key':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebIdempotencyKey(c, {
+              id: '00000000-0000-7000-8000-c1000000c301',
+              key: ATSW_SUB_K_SUBMIT_REPLAY,
+              requestHash: hashCanonicalizedBody(ATSW_SUB_EMPTY_BODY),
+              responseStatus: 200,
+              responseBody: {
+                submittal: atswSubmittalBody(ATSW_SUB_READY_ID, 'submitted_to_ats', {
+                  confirmedAt: true,
+                }),
+              },
+            });
+          });
+        },
+      'an Idempotency-Key was used with a different submittal-submit-to-ats body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebIdempotencyKey(c, {
+              id: '00000000-0000-7000-8000-c1000000c302',
+              key: ATSW_SUB_K_SUBMIT_CONFLICT,
+              requestHash: 'pact-pc2-conflict-hash-submit-to-ats',
+            });
+          });
+        },
+      'a prior submittal-confirm response is cached under an Idempotency-Key':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebIdempotencyKey(c, {
+              id: '00000000-0000-7000-8000-c1000000c401',
+              key: ATSW_SUB_K_CONFIRM_REPLAY,
+              requestHash: hashCanonicalizedBody(ATSW_SUB_ATTEST_OK),
+              responseStatus: 200,
+              responseBody: { submittal: atswSubmittalBody(ATSW_SUB_CREATED_ID, 'handoff_draft') },
+            });
+          });
+        },
+      'an Idempotency-Key was used with a different submittal-confirm body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebIdempotencyKey(c, {
+              id: '00000000-0000-7000-8000-c1000000c402',
+              key: ATSW_SUB_K_CONFIRM_CONFLICT,
+              requestHash: 'pact-pc2-conflict-hash-confirm',
+            });
+          });
+        },
+      'a prior submittal-confirm-ats response is cached under an Idempotency-Key':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebIdempotencyKey(c, {
+              id: '00000000-0000-7000-8000-c1000000c501',
+              key: ATSW_SUB_K_CONFIRMATS_REPLAY,
+              requestHash: hashCanonicalizedBody(ATSW_SUB_EMPTY_BODY),
+              responseStatus: 200,
+              responseBody: {
+                submittal: atswSubmittalBody(ATSW_SUB_SUBMITTED_ID, 'confirmed', {
+                  confirmedAt: true,
+                }),
+              },
+            });
+          });
+        },
+      'an Idempotency-Key was used with a different submittal-confirm-ats body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebIdempotencyKey(c, {
+              id: '00000000-0000-7000-8000-c1000000c502',
+              key: ATSW_SUB_K_CONFIRMATS_CONFLICT,
+              requestHash: 'pact-pc2-conflict-hash-confirm-ats',
+            });
+          });
+        },
+      'a prior submittal-revoke response is cached under an Idempotency-Key':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebIdempotencyKey(c, {
+              id: '00000000-0000-7000-8000-c1000000c601',
+              key: ATSW_SUB_K_REVOKE_REPLAY,
+              requestHash: hashCanonicalizedBody(ATSW_SUB_REVOKE_BODY),
+              responseStatus: 200,
+              responseBody: {
+                submittal: atswSubmittalBody(ATSW_SUB_CREATED_ID, 'revoked', { revoked: true }),
+                evidence_package_mutated: false,
+              },
+            });
+          });
+        },
+      'an Idempotency-Key was used with a different submittal-revoke body':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebIdempotencyKey(c, {
+              id: '00000000-0000-7000-8000-c1000000c602',
+              key: ATSW_SUB_K_REVOKE_CONFLICT,
+              requestHash: 'pact-pc2-conflict-hash-revoke',
             });
           });
         },
