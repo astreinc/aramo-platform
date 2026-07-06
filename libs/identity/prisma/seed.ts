@@ -1650,9 +1650,14 @@ const DOMAIN_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 export const IDENTITY_RESOLVE_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['identity:resolve']],
   ['tenant_admin', ['identity:resolve']],
+  // Promotion-Trigger slice B-api (PO-ruled) — the sourcer sees AND resolves
+  // merge advisories from the sourcing surface, so identity:resolve joins the
+  // sourcer bundle. Appended (→ row id 0x972) so tenant_owner/tenant_admin ids
+  // (0x970/0x971) do not shift.
+  ['sourcer', ['identity:resolve']],
 ];
 
-// Deterministic RoleScope row ids for the 2 identity:resolve grants. Disjoint
+// Deterministic RoleScope row ids for the 3 identity:resolve grants. Disjoint
 // range 0x970+ (the next clear range after DOMAIN's 0x960..0x961; all prior
 // ranges untouched — append-don't-renumber).
 const IDENTITY_RESOLVE_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {

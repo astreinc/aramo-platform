@@ -1,9 +1,13 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
@@ -11,7 +15,12 @@ import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import type { SubjectRef } from '@aramo/talent-trust';
 
-import { SourcingService, type SourcingResult } from './sourcing.service.js';
+import {
+  SourcingService,
+  type SourcingResult,
+  type PoolPage,
+  type SubjectDetail,
+} from './sourcing.service.js';
 import {
   AddToPipelineRequestDto,
   SaveToBenchRequestDto,
@@ -30,6 +39,37 @@ import {
 @RequireCapability('core')
 export class SourcingController {
   constructor(private readonly sourcing: SourcingService) {}
+
+  // ---- Slice B-api — the sourcing-pool read surface (talent:source) ----------
+
+  // The pre-promotion pool: un-promoted sourced subjects (bands +
+  // open_contradiction_count + display name/email), keyset-paginated oldest-first.
+  @Get('pool')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:source')
+  async pool(
+    @AuthContext() authContext: AuthContextType,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ): Promise<PoolPage> {
+    return this.sourcing.getPool(authContext.tenant_id, {
+      cursor: cursor ?? null,
+      ...(limit !== undefined && limit.length > 0 ? { limit: Number(limit) } : {}),
+    });
+  }
+
+  // Subject drill-in: trust bands + evidence ledger + refs + pending identity
+  // merge advisories (adjudicated via the existing advisory-resolution endpoints,
+  // now reachable by a sourcer via the identity:resolve grant).
+  @Get('pool/:subjectId')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:source')
+  async subjectDetail(
+    @AuthContext() authContext: AuthContextType,
+    @Param('subjectId', ParseUUIDPipe) subjectId: string,
+  ): Promise<SubjectDetail> {
+    return this.sourcing.getSubjectDetail(authContext.tenant_id, subjectId);
+  }
 
   @Post('pipeline')
   @HttpCode(HttpStatus.OK)
