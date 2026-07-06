@@ -197,6 +197,10 @@ export class SubjectResolutionService {
     );
   }
 
+  // TR-2a-B3a (DDR-3 §2.3/§5) — INTENTIONAL NON-FOLLOWER: the merge operands
+  // must be ACTIVE in their OWN right (a subject already merged elsewhere is not
+  // re-mergeable). Following the fixpoint here would mask exactly the double-
+  // merge this guard exists to reject — do NOT switch to resolveActiveFixpoint.
   private async requireActive(subjectId: string): Promise<void> {
     const subject = await this.repo.findSubjectById(subjectId);
     if (subject === null) {

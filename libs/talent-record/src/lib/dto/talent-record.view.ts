@@ -73,4 +73,16 @@ export interface TalentRecordView {
   // every other read, so a normal list response is byte-identical to today
   // (backward-compat). NOT a portal-forbidden numeric/ordinal field (R10).
   resume_snippet?: string | null;
+
+  // TR-2a-B3a (DDR-3 §3) — record supersession metadata. Present ONLY on the
+  // record-DETAIL read (findById), OMITTED (undefined) on list/search so those
+  // responses stay byte-identical AND are already live-only (a listed record is
+  // always live, so the metadata would be constant noise). On a stale detail
+  // link the consumer sees record_status='superseded' + superseded_by_record_id
+  // pointing at the surviving record — the API surface tells it where the
+  // survivor is (informative resolution). NOT a portal-forbidden numeric/ordinal
+  // field (R10) — record_status is a closed vocab string.
+  record_status?: 'live' | 'superseded';
+  superseded_by_record_id?: string | null;
+  superseded_at?: string | null;
 }

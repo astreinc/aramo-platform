@@ -659,13 +659,20 @@ export class TalentTrustService {
     };
   }
 
+  // TR-2a-B3a (DDR-3 §5) — CLUSTER-UNION evidence read. The ref resolves to its
+  // ACTIVE fixpoint (the survivor); getEvidence then surfaces the UNION of every
+  // cluster member's evidence, each row carrying its ORIGIN subject_id +
+  // provenance UNTOUCHED. Evidence written to a merged husk is NOT stranded — it
+  // surfaces here on the survivor. An unmerged subject's cluster is itself, so
+  // this is byte-identical to the pre-B3a read for the common case.
   async getEvidence(
     subjectRef: SubjectRef,
-    filters?: Parameters<TalentTrustRepository['listEvidenceBySubject']>[1],
+    filters?: Parameters<TalentTrustRepository['listEvidenceBySubjects']>[1],
   ): Promise<EvidenceRecordRow[]> {
     const subject = await this.resolveSubjectForRead(subjectRef);
     if (subject === null) return [];
-    return this.repo.listEvidenceBySubject(subject.id, filters);
+    const members = await this.repo.clusterMembers(subject.id);
+    return this.repo.listEvidenceBySubjects(members, filters);
   }
 
   // ---- Promotion Gate reads/link (Slice A) ----------------------------
@@ -681,6 +688,10 @@ export class TalentTrustService {
     return this.resolveSubjectForRead(subjectRef);
   }
 
+  // TR-2a-B3a (DDR-3 §2.3/§5) — INTENTIONAL NON-FOLLOWER (origin-keyed by
+  // design): refs are keyed to the subject that owns them, not to a merge
+  // fixpoint. Do NOT switch this to resolveActiveFixpoint — the promotion no-op
+  // and origin-arrival lookup need the ORIGIN subject's own refs.
   async listSubjectRefs(
     tenantId: string,
     subjectId: string,
@@ -754,10 +765,26 @@ export class TalentTrustService {
     await this.recompute(ev.subject_id, ev.tenant_id, now);
   }
 
+  // TR-2a-B3a (DDR-3 §5) — public cluster-union recompute entry point. The
+  // reconcile (B3b) calls this on the survivor at phase-2 end, and on BOTH
+  // subjects on reversal (their evidence sets separate cleanly — no blending ever
+  // occurred). Exposed now so the read model is drivable + testable while the
+  // reconcile writer is still absent (B3a is writer-less).
+  async recomputeTrustState(subjectId: string, tenantId: string): Promise<void> {
+    await this.recompute(subjectId, tenantId, new Date());
+  }
+
   // Recompute the materialized TrustState from the full ledger. Never
   // hand-authored — always reconstructible from evidence + events.
+  // TR-2a-B3a (DDR-3 §5) — CLUSTER-UNION: derive from the evidence of the WHOLE
+  // cluster whose survivor is subjectId (the survivor + every subject merged into
+  // it). For an unmerged subject the cluster is just itself → byte-identical to
+  // the pre-B3a single-subject recompute. Evidence never moves; the union is a
+  // read-time projection. The TrustState row is stored keyed to subjectId (the
+  // survivor); a loser's frozen row persists as-is (reads follow to the survivor).
   private async recompute(subjectId: string, tenantId: string, now: Date): Promise<void> {
-    const evidence = await this.repo.listEvidenceBySubject(subjectId);
+    const members = await this.repo.clusterMembers(subjectId);
+    const evidence = await this.repo.listEvidenceBySubjects(members);
     const projection: EvidenceForDerivation[] = evidence.map((e) => ({
       dimension: e.dimension,
       source_class: e.source_class,
@@ -778,6 +805,14 @@ export class TalentTrustService {
     });
   }
 
+  // TR-2a-B3a (DDR-3 §5) — resolve a ref to the ACTIVE FIXPOINT of its subject's
+  // merge chain. The 1-hop follow (stop at merged_into's immediate target) is
+  // RETIRED: an A→B→C chain now resolves to C, not B (the Q3.2 under-follow is
+  // dead here as it already was in the resolver). resolveActiveFixpoint is
+  // bounded (64) + cycle-guarded. A CYCLE/LIMIT anomaly FAILS LOUDLY — a silent
+  // mis-resolve (reading a husk's stale trust) is worse than a raised error. This
+  // read-resolver is also the promotion gate's resolve (promoteSubject →
+  // resolveSubjectRef → here), so the gate globalizes with it.
   private async resolveSubjectForRead(subjectRef: SubjectRef): Promise<ResolutionSubjectRow | null> {
     const subject = await this.repo.findSubjectByRef(
       subjectRef.tenant_id,
@@ -785,11 +820,27 @@ export class TalentTrustService {
       subjectRef.ref_id,
     );
     if (subject === null) return null;
-    // Follow a merge pointer to the surviving subject (R6).
-    if (subject.status === 'MERGED' && subject.merged_into_subject_id !== null) {
-      return this.repo.findSubjectById(subject.merged_into_subject_id);
+    // Fast path — an ACTIVE origin is its own fixpoint (no chain to follow).
+    if (subject.status === 'ACTIVE') return subject;
+
+    const fp = await this.repo.resolveActiveFixpoint(subject.id);
+    if (fp.kind === 'ACTIVE') return this.repo.findSubjectById(fp.subjectId);
+    if (fp.kind === 'CYCLE' || fp.kind === 'LIMIT') {
+      // Loud fail — a merge-chain anomaly must never resolve to a plausible-but-
+      // wrong subject. The reconcile (B3b) is what repairs the chain.
+      this.logger.error(
+        `resolveSubjectForRead fixpoint anomaly (${fp.kind}) origin=${subject.id} ref=${subjectRef.ref_type}:${subjectRef.ref_id} tenant=${subjectRef.tenant_id}`,
+      );
+      throw new Error(
+        `resolveSubjectForRead: merge-chain ${fp.kind} for subject ${subject.id}`,
+      );
     }
-    return subject;
+    // DEAD_END — a non-ACTIVE husk with no forward pointer (anomalous; a husk
+    // should always point forward). Nothing live to read → null (logged).
+    this.logger.warn(
+      `resolveSubjectForRead fixpoint dead-end origin=${subject.id} ref=${subjectRef.ref_type}:${subjectRef.ref_id} tenant=${subjectRef.tenant_id}`,
+    );
+    return null;
   }
 
   private async requireEvidence(evidenceId: string): Promise<EvidenceRecordRow> {
@@ -800,6 +851,9 @@ export class TalentTrustService {
     return ev;
   }
 
+  // TR-2a-B3a (DDR-3 §2.3/§5) — INTENTIONAL NON-FOLLOWER: existence/identity
+  // guard on a SPECIFIC subject id (merge/un-merge operands). It must see the
+  // subject AS-IS (ACTIVE or MERGED), never its fixpoint — do NOT follow.
   private async requireSubject(subjectId: string): Promise<ResolutionSubjectRow> {
     const subject = await this.repo.findSubjectById(subjectId);
     if (subject === null) {

@@ -24,6 +24,7 @@ import {
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { ConsentService, IdempotencyService } from '@aramo/consent';
+import { TalentRecordRepository } from '@aramo/talent-record';
 import { AiDraftService } from '@aramo/ai-draft';
 
 import type { CreateEngagementRequestDto } from './dto/create-engagement-request.dto.js';
@@ -163,6 +164,11 @@ export class EngagementController {
     // edge engagement → consent already established via IdempotencyService
     // (audit Axis D); this extension is purely additive.
     private readonly consentService: ConsentService,
+    // TR-2a-B3a (DDR-3 §3) — TalentRecordRepository for the send-gate's
+    // record_status read. engagement → talent-record is an existing intra-scope
+    // (scope:ats) edge (EngagementRepository already depends on it); this adds
+    // the controller-side read that treats a superseded record as non-operational.
+    private readonly talentRecords: TalentRecordRepository,
     @Inject('EngagementControllerLogger')
     private readonly logger: AramoLogger,
     // M5 PR-6 §4.1 — AiDraftService dep for outreach LLM drafts.
@@ -738,6 +744,43 @@ export class EngagementController {
         'TalentJobEngagement not found',
         404,
         { requestId, details: { engagement_id: id } },
+      );
+    }
+
+    // Step 5.5 — TR-2a-B3a (DDR-3 §3) record-supersession send-gate. The
+    // engagement's talent_id IS a TalentRecord.id (4e-engagement-key); an
+    // operational gate must treat a superseded record as NON-OPERATIONAL — a
+    // send against a husk (a record the late-merge reconcile retired in favour
+    // of the survivor) must not go out. findById returns the record of ANY
+    // status WITH its supersession metadata; record_status!='live' → refuse
+    // BEFORE any delivery. Writer-less in B3a (no producer supersedes yet), so
+    // this gate never fires in production today; it is the read-side guarantee
+    // the B3b reconcile writer relies on.
+    const talentRecord = await this.talentRecords.findById({
+      tenant_id: authContext.tenant_id,
+      id: engagement.talent_id,
+    });
+    if (talentRecord !== null && talentRecord.record_status === 'superseded') {
+      this.logger.log({
+        event: 'engagement.outreach_send_refused',
+        error_code: 'TALENT_RECORD_SUPERSEDED',
+        tenant_id: authContext.tenant_id,
+        engagement_id: id,
+        talent_record_id: engagement.talent_id,
+        superseded_by_record_id: talentRecord.superseded_by_record_id ?? null,
+      });
+      throw new AramoError(
+        'TALENT_RECORD_SUPERSEDED',
+        'talent record is superseded (non-operational) — the surviving record speaks for this human',
+        422,
+        {
+          requestId,
+          details: {
+            engagement_id: id,
+            talent_record_id: engagement.talent_id,
+            superseded_by_record_id: talentRecord.superseded_by_record_id ?? null,
+          },
+        },
       );
     }
 

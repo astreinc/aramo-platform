@@ -91,6 +91,9 @@ const TALENT_RECORD_MIGRATION_PATHS = [
   // Gate-1 G1-A — adds work_authorization (regenerated talent-record client
   // projects it; TalentRecordRepository.findById 500s without the column).
   '../../../talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
+  // TR-2a-B3a (DDR-3 §3) — record_status / superseded_* columns (regenerated
+  // client projects them; TalentRecordRepository.findById 500s without them).
+  '../../../talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
@@ -475,6 +478,43 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       // No rows written (atomicity / fail-fast before $transaction).
       const noEng = await repo.findById(CREATE_TALENT_REFUSE_ID);
+      expect(noEng).toBeNull();
+    });
+
+    it('createEngagement Pattern C refusal — superseded TalentRecord → TALENT_RECORD_SUPERSEDED 422; no rows (Gate-6 Lead ruling)', async () => {
+      // TR-2a-B3a (DDR-3 §3) — "non-operational" covers being the TARGET of new
+      // operational work. Seed a SUPERSEDED record (the state B3b's reconcile
+      // writer produces — seeded directly, writer-less slice) and prove
+      // createEngagement refuses it at the same TalentRecord validation site.
+      const supersededId = '00000000-0000-7000-8000-cccc00000010';
+      const survivorId = '00000000-0000-7000-8000-cccc00000011';
+      const engId = '00000000-0000-7000-8000-cccc00000012';
+      await setupClient.$executeRawUnsafe(
+        `INSERT INTO talent_record."TalentRecord"
+           (id, tenant_id, first_name, last_name, record_status, superseded_by_record_id, superseded_at, created_at, updated_at)
+         VALUES ('${supersededId}'::uuid, '${TENANT_A}'::uuid, 'Superseded', 'Husk',
+                 'superseded', '${survivorId}'::uuid, NOW(), NOW(), NOW())`,
+      );
+      const promise = repo.createEngagement({
+        id: engId,
+        event_id: '00000000-0000-7000-8000-cccc00000013',
+        tenant_id: TENANT_A,
+        talent_id: supersededId,
+        requisition_id: REQUISITION_A,
+        examination_id: null,
+      });
+      await expect(promise).rejects.toBeInstanceOf(AramoError);
+      try {
+        await promise;
+      } catch (err) {
+        const e = err as AramoError;
+        expect(e.code).toBe('TALENT_RECORD_SUPERSEDED');
+        expect(e.statusCode).toBe(422);
+        expect(e.context.details?.['field']).toBe('talent_id');
+        expect(e.context.details?.['superseded_by_record_id']).toBe(survivorId);
+      }
+      // No engagement row written (refusal is before the $transaction).
+      const noEng = await repo.findById(engId);
       expect(noEng).toBeNull();
     });
 

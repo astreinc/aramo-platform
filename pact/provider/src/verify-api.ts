@@ -200,6 +200,12 @@ const TALENT_RECORD_MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260701120000_drop_core_talent_id/migration.sql',
   // Gate-1 G1-A — adds work_authorization (regenerated client projects it).
   'libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
+  // TR-2a-B3a (DDR-3 §3) — adds record_status / superseded_by_record_id /
+  // superseded_at (the regenerated client projects them; the provider schema
+  // must carry them or every TalentRecord read 500s). COUPLING FLAG: this file
+  // is the TR-2a↔Pact coupling point — whichever of the TR-2a track / a
+  // concurrent pact-consumer track lands SECOND rebases this list onto the other.
+  'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 ].map((p) => resolve(ROOT, p));
 // PR-A1b §4 sweep — entitlement schema applied for the pact verifier so
 // the portal-thin pact interactions (5 interactions traversing the now

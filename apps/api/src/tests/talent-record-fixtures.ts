@@ -29,6 +29,7 @@ const TALENT_RECORD_MIGRATION_PATHS = [
   // Gate-1 G1-A — adds work_authorization (the regenerated client projects it;
   // the test schema must carry it or findFirst 500s).
   'libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
+  'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 // Apply the talent_record schema to a test database. Feeds each whole

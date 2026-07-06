@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import type { ConsentService, IdempotencyService } from '@aramo/consent';
+import type { TalentRecordRepository } from '@aramo/talent-record';
 import type { AiDraftService } from '@aramo/ai-draft';
 
 import { EngagementController } from '../lib/engagement.controller.js';
@@ -162,17 +163,22 @@ function makeMocks(): {
   };
   const aiDraftService: MockAiDraftService = { generateDraft: vi.fn() };
   const deliveryProvider: MockDeliveryProvider = { deliver: vi.fn() };
+  // TR-2a-B3a — the send-gate reads the TalentRecord's record_status. Default to
+  // a LIVE record so existing send happy-paths proceed; superseded-gate tests can
+  // override findById per-call.
+  const talentRecords = { findById: vi.fn().mockResolvedValue({ record_status: 'live', superseded_by_record_id: null }) };
   const logger = makeSpyLogger();
   const controller = new EngagementController(
     engagementRepo as unknown as EngagementRepository,
     eventRepo as unknown as EngagementEventRepository,
     idempotency as unknown as IdempotencyService,
     consentService as unknown as ConsentService,
+    talentRecords as unknown as TalentRecordRepository,
     logger,
     aiDraftService as unknown as AiDraftService,
     deliveryProvider as unknown as DeliveryProvider,
   );
-  return { engagementRepo, eventRepo, idempotency, consentService, aiDraftService, deliveryProvider, logger, controller };
+  return { engagementRepo, eventRepo, idempotency, consentService, talentRecords, aiDraftService, deliveryProvider, logger, controller };
 }
 
 function makeEngagementView(overrides: Record<string, unknown> = {}): Record<string, unknown> {

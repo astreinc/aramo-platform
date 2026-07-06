@@ -260,9 +260,42 @@ export class TalentTrustRepository {
     return { kind: 'LIMIT' };
   }
 
+  // TR-2a-B3a (DDR-3 §5) — the cluster members of a surviving subject: the
+  // survivor itself PLUS every subject whose merged_into chain resolves to it
+  // (reverse-reachability over merged_into edges). Bounded + cycle-safe (the
+  // `members` set dedupes, so a pointer cycle terminates). Multi-level chains
+  // fold in: A→B→C returns {C,B,A} when called with C. The union READ layer
+  // (getEvidence / recompute) uses this to heal the stranded-evidence strand at
+  // read time WITHOUT moving any evidence (evidence stays origin-keyed, §2.3).
+  async clusterMembers(survivingSubjectId: string): Promise<string[]> {
+    const LIMIT = 4096;
+    const members = new Set<string>([survivingSubjectId]);
+    let frontier = [survivingSubjectId];
+    while (frontier.length > 0 && members.size <= LIMIT) {
+      const children = await this.prisma.resolutionSubject.findMany({
+        where: { merged_into_subject_id: { in: frontier } },
+        select: { id: true },
+      });
+      const next: string[] = [];
+      for (const c of children) {
+        if (!members.has(c.id)) {
+          members.add(c.id);
+          next.push(c.id);
+        }
+      }
+      frontier = next;
+    }
+    return [...members];
+  }
+
   // Resolve-or-create the ResolutionSubject for a ref (recordEvidence §8). One ref
   // → one subject within a tenant (the unique constraint). Returns the
   // subject id.
+  // TR-2a-B3a (DDR-3 §2.3/§5) — INTENTIONAL NON-FOLLOWER (write-side, origin-
+  // keyed by design): a write lands on the ORIGIN subject of its ref, never a
+  // merge fixpoint. Cluster-union READS (§5) surface it on the survivor — a
+  // write on a merged husk is not stranded, and it is exactly where provenance
+  // says it belongs. Do NOT add fixpoint-following here.
   async resolveOrCreateSubject(
     tenantId: string,
     refType: ResolutionSubjectRefType,
@@ -526,6 +559,27 @@ export class TalentTrustRepository {
     const rows = await this.prisma.evidenceRecord.findMany({
       where: {
         subject_id: subjectId,
+        ...(filters?.dimension ? { dimension: filters.dimension } : {}),
+        ...(filters?.current_status ? { current_status: filters.current_status } : {}),
+      },
+      orderBy: { created_at: 'asc' },
+    });
+    return rows as EvidenceRecordRow[];
+  }
+
+  // TR-2a-B3a (DDR-3 §5) — the cluster-union evidence read: every EvidenceRecord
+  // across a set of cluster members, globally ordered by created_at (one query,
+  // not N). Each row carries its ORIGIN subject_id + provenance UNTOUCHED —
+  // evidence never moves; the union is a read-time projection. A single-element
+  // set is byte-identical to listEvidenceBySubject (the unmerged common case).
+  async listEvidenceBySubjects(
+    subjectIds: string[],
+    filters?: { dimension?: TrustDimension; current_status?: EvidenceStatus },
+  ): Promise<EvidenceRecordRow[]> {
+    if (subjectIds.length === 0) return [];
+    const rows = await this.prisma.evidenceRecord.findMany({
+      where: {
+        subject_id: { in: subjectIds },
         ...(filters?.dimension ? { dimension: filters.dimension } : {}),
         ...(filters?.current_status ? { current_status: filters.current_status } : {}),
       },

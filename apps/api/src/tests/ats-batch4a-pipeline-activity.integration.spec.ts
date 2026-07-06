@@ -163,6 +163,12 @@ const TALENT_RECORD_WORK_AUTH = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql',
 );
+// TR-2a-B3a (DDR-3 §3) — record_status / superseded_* columns (regenerated client
+// projects them; TalentRecord RETURNING/findFirst 500s without them).
+const TALENT_RECORD_SUPERSESSION = resolve(
+  ROOT,
+  'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
+);
 
 // Submittal & engagement migrations carry the submittal schema (the A5b
 // boundary asserts no submittal row is touched). We don't load them —
@@ -182,6 +188,7 @@ const MIGRATIONS = [
   TALENT_RECORD_STATED_FIELDS,
   TALENT_RECORD_OVERLAY_FOLD,
   TALENT_RECORD_WORK_AUTH,
+  TALENT_RECORD_SUPERSESSION,
   ACTIVITY_INIT,
   PIPELINE_INIT,
 ];
