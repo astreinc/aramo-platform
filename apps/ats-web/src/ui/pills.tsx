@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { bandLabel, bandTone } from './band-map';
 import { stageLabel, stageTone, type PipelineStatus } from './stage-map';
 
 export type PillTone =
@@ -44,6 +45,23 @@ export function StagePill({ status }: StagePillProps) {
   return (
     <span className={`rc-pill rc-stagepill rc-pill--${stageTone(status)}`}>
       {stageLabel(status)}
+    </span>
+  );
+}
+
+interface BandPillProps {
+  /** A PresentationBand value off the wire, or null when no TrustState exists. */
+  readonly band: string | null;
+}
+
+// Trust-band chip. Takes a per-dimension presentation band and projects it to
+// the human label + band tone (band-map.ts, a hand-mirror of the talent-trust
+// PRESENTATION_BANDS vocab, drift-guarded by band-map.spec.ts). R10: a band is
+// a LABEL, never a number or a star — a null band renders "Not established".
+export function BandPill({ band }: BandPillProps) {
+  return (
+    <span className={`rc-pill rc-bandpill rc-pill--${bandTone(band)}`}>
+      {bandLabel(band)}
     </span>
   );
 }

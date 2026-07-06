@@ -24,6 +24,7 @@ import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
 import { SearchView } from './search/SearchView';
+import { SourcingPoolView } from './sourcing/SourcingPoolView';
 import { SettingsView } from './settings/SettingsView';
 import { SettingsShell } from './settings/SettingsShell';
 import { TenantProfileSection } from './settings/sections/TenantProfileSection';
@@ -180,6 +181,20 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <TalentEditView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* Promotion-Trigger slice B-ui — the sourcing pool. The
+                        subject detail is a DRAWER (not a route), opened from the
+                        queue; promotion is detail-gated. talent:source. */}
+                    <Route
+                      path="sourcing"
+                      element={
+                        <RouteGuard
+                          requireScope="talent:source"
+                          sessionStateOverride={state}
+                        >
+                          <SourcingPoolView />
                         </RouteGuard>
                       }
                     />
