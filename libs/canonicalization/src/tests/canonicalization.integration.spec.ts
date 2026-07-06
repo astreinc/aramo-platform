@@ -50,6 +50,13 @@ const MIGRATIONS = [
   resolve(ROOT, 'libs/ingestion/prisma/migrations/20260704120000_add_resolved_subject_id_to_raw_payload_reference/migration.sql'),
   // ingestion (Fix-Slice-Final-Drop) — drop the husk resolved_talent_id.
   resolve(ROOT, 'libs/ingestion/prisma/migrations/20260704160000_drop_resolved_talent_id_from_raw_payload_reference/migration.sql'),
+  // ingestion (Cold-Ingest-Extraction) — extraction_done_at + extraction_attempts.
+  // canonicalize's rawPayloadReference.update RETURNs every column, so the
+  // (regenerated) client 500s without this migration applied.
+  resolve(ROOT, 'libs/ingestion/prisma/migrations/20260704180000_add_extraction_marker_to_raw_payload_reference/migration.sql'),
+  // ingestion (TR-2a-B1) — source_class: canonicalize's SELECT … FOR UPDATE now
+  // reads it off the payload row to thread onto the resolver's writes.
+  resolve(ROOT, 'libs/ingestion/prisma/migrations/20260706170000_add_source_class_to_raw_payload_reference/migration.sql'),
   // canonicalization (init) — canonicalization PG schema + OutboxEvent.
   resolve(ROOT, 'libs/canonicalization/prisma/migrations/20260603160000_init_canonicalization_schema/migration.sql'),
   // identity_index (init, 4b) — PersonCluster + ClusterFingerprint.
@@ -59,6 +66,14 @@ const MIGRATIONS = [
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql'),
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql'),
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql'),
+  // ResolutionSubject.last_reconciled_at + reconcile_attempts — resolveOrCreateSubject's
+  // create RETURNs every column, so the (regenerated) talent_trust client 500s
+  // without this migration applied.
+  resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql'),
+  // talent_trust (TR-2a-B1) — SubjectAnchor.source_class (the resolver's anchor
+  // write projects it) + the extended (…, source_class) unique key.
+  resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql'),
+  resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql'),
 ];
 
 // $$-aware DDL splitter — strips `--` line comments (so a `;` inside a comment
@@ -109,15 +124,22 @@ interface PayloadSeed {
 }
 
 async function insertPayload(setup: Client, seed: PayloadSeed): Promise<void> {
+  // TR-2a-B1 — source_class is NOT NULL; ingest sets it server-side from the
+  // channel map. Mirror that rule here (talent_direct → SELF, else the
+  // fail-closed THIRD_PARTY_UNVERIFIED) so the seeded row is coherent. The
+  // resolve decision does not read source_class in B1, so the existing
+  // resolution assertions below are unaffected.
+  const sourceClass = seed.source === 'talent_direct' ? 'SELF' : 'THIRD_PARTY_UNVERIFIED';
   await setup.query(
     `INSERT INTO "ingestion"."RawPayloadReference"
-       (id, tenant_id, source, storage_ref, sha256, content_type, captured_at,
-        verified_email, profile_url, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+       (id, tenant_id, source, source_class, storage_ref, sha256, content_type,
+        captured_at, verified_email, profile_url, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
     [
       seed.id,
       seed.tenant_id,
       seed.source,
+      sourceClass,
       seed.storage_ref,
       seed.sha256,
       seed.content_type,

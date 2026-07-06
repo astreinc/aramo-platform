@@ -133,6 +133,9 @@ export interface SubjectAnchorRow {
   anchor_kind: AnchorKind;
   normalized_value: string;
   source_evidence_id: string;
+  // TR-2a-B1 (DDR-1 §3.2) — the minting evidence's SourceClass, projected
+  // atomically inside insertAnchor. Part of the extended anchor unique key.
+  source_class: SourceClass;
   created_at: Date;
 }
 
@@ -566,14 +569,19 @@ export class TalentTrustRepository {
     subjectId: string,
     anchorKind: AnchorKind,
     normalizedValue: string,
+    // TR-2a-B1 (DDR-1 §3.2) — the idempotency key gained source_class: a value
+    // anchored later at a higher class is a NEW append-only row, so exists-check
+    // is per (tenant, subject, kind, value, class).
+    sourceClass: SourceClass,
   ): Promise<SubjectAnchorRow | null> {
     const row = await this.prisma.subjectAnchor.findUnique({
       where: {
-        tenant_id_subject_id_anchor_kind_normalized_value: {
+        tenant_id_subject_id_anchor_kind_normalized_value_source_class: {
           tenant_id: tenantId,
           subject_id: subjectId,
           anchor_kind: anchorKind,
           normalized_value: normalizedValue,
+          source_class: sourceClass,
         },
       },
     });
@@ -652,6 +660,9 @@ export class TalentTrustRepository {
           anchor_kind: input.anchor_kind,
           normalized_value: input.normalized_value,
           source_evidence_id: evidenceId,
+          // TR-2a-B1 (DDR-1 §3.2) — the projection stays atomic with its
+          // evidence: same source_class as the minting EvidenceRecord.
+          source_class: ev.source_class,
         },
       }),
       this.prisma.evidenceEvent.create({

@@ -7,6 +7,8 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { TalentTrustRepository } from '../lib/talent-trust.repository.js';
 import { TalentTrustService } from '../lib/talent-trust.service.js';
+import { deriveStrength } from '../lib/strength.js';
+import type { SourceClass } from '../lib/vocab.js';
 
 // TR-2a-1 anchor integration — real Postgres 17. Applies the init + SubjectAnchor
 // migrations and proves against real SQL:
@@ -22,6 +24,10 @@ const MIGRATIONS = [
   // Slice-B1 — the regenerated client SELECTs ResolutionSubject.last_reconciled_at
   // + reconcile_attempts (findSubjectByRef include), so the columns must exist.
   '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
+  // TR-2a-B1 — SubjectAnchor.source_class (regenerated client SELECTs it) + the
+  // extended (…, source_class) unique key. Both required once tr2a1 exists.
+  '../../prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
+  '../../prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
@@ -178,6 +184,68 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           (e.assertion_payload as { normalized_value: string }).normalized_value === '19998887777',
       );
       expect(phoneEvidence).toHaveLength(1);
+    });
+
+    it('§6(c) — anchor carries the minting evidence class; the extended key admits two classes per value, rejects a same-class dup', async () => {
+      const subjectId = await repo.resolveOrCreateSubject(
+        TENANT_A,
+        'ATS_TALENT_RECORD',
+        'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee',
+        CREATED_BY,
+      );
+      const value = 'multiclass@example.com';
+      const now = new Date();
+      const mkEvidence = (sourceClass: SourceClass) => ({
+        subject_id: subjectId,
+        tenant_id: TENANT_A,
+        dimension: 'IDENTITY' as const,
+        assertion_type: 'EMAIL',
+        assertion_payload: { normalized_value: value },
+        source_class: sourceClass,
+        method: 'DOCUMENT' as const,
+        strength: deriveStrength(sourceClass, 'DOCUMENT'),
+        collected_at: now,
+        decay_profile: 'SLOW' as const,
+        portability_class: 'TENANT_ONLY' as const,
+        ai_derived: false,
+        current_status: 'VALID' as const,
+        created_by: CREATED_BY,
+      });
+
+      // The anchor projects the minting evidence's class (atomic in insertAnchor).
+      const a1 = await repo.insertAnchor({
+        evidence: mkEvidence('THIRD_PARTY_UNVERIFIED'),
+        anchor_kind: 'EMAIL',
+        normalized_value: value,
+      });
+      expect(a1.evidence.source_class).toBe('THIRD_PARTY_UNVERIFIED');
+      expect(a1.anchor.source_class).toBe('THIRD_PARTY_UNVERIFIED');
+
+      // Same (kind, value), DIFFERENT class — the extended key admits it (a later
+      // verification is a NEW append-only row at the higher class).
+      const a2 = await repo.insertAnchor({
+        evidence: mkEvidence('THIRD_PARTY_VERIFIED'),
+        anchor_kind: 'EMAIL',
+        normalized_value: value,
+      });
+      expect(a2.anchor.source_class).toBe('THIRD_PARTY_VERIFIED');
+
+      const anchors = (await repo.listAnchorsBySubject(subjectId)).filter(
+        (x) => x.normalized_value === value,
+      );
+      expect(anchors).toHaveLength(2);
+      expect(new Set(anchors.map((x) => x.source_class))).toEqual(
+        new Set(['THIRD_PARTY_UNVERIFIED', 'THIRD_PARTY_VERIFIED']),
+      );
+
+      // Same (kind, value, class) again — the unique key rejects the duplicate.
+      await expect(
+        repo.insertAnchor({
+          evidence: mkEvidence('THIRD_PARTY_UNVERIFIED'),
+          anchor_kind: 'EMAIL',
+          normalized_value: value,
+        }),
+      ).rejects.toThrow();
     });
 
     it('keeps anchors on their ORIGIN subject through merge + unmerge (un-merge contract)', async () => {

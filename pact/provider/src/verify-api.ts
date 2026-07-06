@@ -143,6 +143,13 @@ const INGESTION_EXTRACTION_MARKER_MIGRATION = resolve(
   ROOT,
   'libs/ingestion/prisma/migrations/20260704180000_add_extraction_marker_to_raw_payload_reference/migration.sql',
 );
+// TR-2a-B1 source_class additive above: the regenerated ingestion client selects
+// source_class, so createPayload's RETURNING * 500s on the ingestion-consumer
+// pacts without this migration applied.
+const INGESTION_SOURCE_CLASS_MIGRATION = resolve(
+  ROOT,
+  'libs/ingestion/prisma/migrations/20260706170000_add_source_class_to_raw_payload_reference/migration.sql',
+);
 const EXAMINATION_INIT_MIGRATION = resolve(
   ROOT,
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
@@ -1368,6 +1375,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         INGESTION_FS2_ADDITIVE_MIGRATION,
         INGESTION_FS2_DROP_MIGRATION,
         INGESTION_EXTRACTION_MARKER_MIGRATION,
+        INGESTION_SOURCE_CLASS_MIGRATION,
         EXAMINATION_INIT_MIGRATION,
         EXAMINATION_LIVE_LIST_MIGRATION,
         // M4 PR-5 §4.10 — ExaminationOverride table + immutability trigger

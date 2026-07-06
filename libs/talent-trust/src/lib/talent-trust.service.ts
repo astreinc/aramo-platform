@@ -97,12 +97,22 @@ export interface RecordSourcedArrivalInput {
   payload_id: string;
   // Already normalized at ingestion (trim + lowercase). null when the arrival
   // carried no email (no identity key → always a new subject).
+  // NOTE (DDR-1 §3.3): `verified_email` is a documented misnomer — the value is
+  // channel-CLAIMED, not verified. Its verification level is carried by
+  // `source_class` below, never by this field's name.
   verified_email: string | null;
   // Unverified contact URL from the payload (nullable). Recorded as evidence,
   // never an identity anchor.
   profile_url: string | null;
   // Provenance — the channel this arrival came from (stored on evidence).
   source_channel: string;
+  // TR-2a-B1 (DDR-1 §3.1) — the arrival's attestation level, SERVER-derived in
+  // the ingestion adapter and read off the payload row (never caller-supplied).
+  // Threaded onto the per-arrival contact evidence and the minted email anchor.
+  // The resolve DECISION does not read it in B1 (that is B2 — this slice only
+  // records it on the evidence/anchor writes, replacing the old hard-coded
+  // THIRD_PARTY_UNVERIFIED literals).
+  source_class: SourceClass;
   // The writing slice — 'canonicalization'.
   created_by: string;
 }
@@ -205,6 +215,9 @@ export class TalentTrustService {
       subjectId,
       input.anchor_kind,
       input.normalized_value,
+      // The ATS producer path is definitionally SELF (DDR-1 §4). A value already
+      // anchored at a different class would be a distinct append-only row.
+      'SELF',
     );
     if (existing !== null) return null;
 
@@ -295,9 +308,10 @@ export class TalentTrustService {
           subjectId,
           'EMAIL',
           input.verified_email,
+          input.source_class,
         );
         if (existing === null) {
-          const strength = deriveStrength('THIRD_PARTY_UNVERIFIED', 'DOCUMENT');
+          const strength = deriveStrength(input.source_class, 'DOCUMENT');
           await this.repo.insertAnchor({
             evidence: {
               subject_id: subjectId,
@@ -309,7 +323,7 @@ export class TalentTrustService {
                 source_channel: input.source_channel,
                 payload_id: input.payload_id,
               },
-              source_class: 'THIRD_PARTY_UNVERIFIED',
+              source_class: input.source_class,
               method: 'DOCUMENT',
               strength,
               collected_at: now,
@@ -355,7 +369,10 @@ export class TalentTrustService {
     value: string,
     now: Date,
   ): Promise<void> {
-    const strength = deriveStrength('THIRD_PARTY_UNVERIFIED', 'DOCUMENT');
+    // Per-arrival observation evidence carries the ARRIVAL's attestation level
+    // (DDR-1 §3.1 threaded value), replacing the old hard-coded literal. strength
+    // derives from the same class so the row stays coherent.
+    const strength = deriveStrength(input.source_class, 'DOCUMENT');
     const evidence = await this.repo.insertEvidence({
       subject_id: subjectId,
       tenant_id: input.tenant_id,
@@ -366,7 +383,7 @@ export class TalentTrustService {
         source_channel: input.source_channel,
         payload_id: input.payload_id,
       },
-      source_class: 'THIRD_PARTY_UNVERIFIED',
+      source_class: input.source_class,
       method: 'DOCUMENT',
       strength,
       collected_at: now,

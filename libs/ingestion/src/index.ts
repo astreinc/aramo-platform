@@ -10,6 +10,9 @@ export type {
   ArrivalNeedingExtraction,
 } from './lib/ingestion.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
+// TR-2a-B1 (DDR-1 §3.1/§4) — the server-derived channel-source_class map.
+export { deriveSourceClass } from './lib/source-class.map.js';
+export type { IngestionSourceClass } from './lib/source-class.map.js';
 export {
   INGESTION_SOURCES,
   IngestionPayloadRequestDto,

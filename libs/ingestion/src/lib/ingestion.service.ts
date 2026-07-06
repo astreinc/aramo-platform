@@ -13,6 +13,7 @@ import {
   IngestionRepository,
   type RawPayloadRow,
 } from './ingestion.repository.js';
+import { deriveSourceClass } from './source-class.map.js';
 
 // IngestionService — accept a generic ingestion payload, store the raw
 // payload reference, run deduplication, return the ingestion result.
@@ -106,7 +107,8 @@ export class IngestionService {
       }
     }
 
-    // No prior match — store the raw payload reference.
+    // No prior match — store the raw payload reference. source_class is
+    // SERVER-DERIVED from the channel (DDR-1 §3.1/§4), never from the request.
     const row = await this.ingestionRepo.createPayload({
       tenant_id,
       source: request.source,
@@ -116,6 +118,7 @@ export class IngestionService {
       captured_at: new Date(request.captured_at),
       verified_email: normalizedEmail,
       profile_url: normalizedProfileUrl,
+      source_class: deriveSourceClass(request.source),
     });
     return this.toResponse(row, 'accepted', {
       match_signal: null,
@@ -197,6 +200,10 @@ export class IngestionService {
       // both verified_email and profile_url are explicitly null.
       verified_email: null,
       profile_url: null,
+      // Server-derived from the 'indeed' channel (DDR-1 §4 — sourced Indeed is
+      // an unverified third-party claim; the attestation lives on Indeed Apply,
+      // not the search-results shortlist).
+      source_class: deriveSourceClass('indeed'),
       skill_surface_forms: request.skill_surface_forms ?? null,
     });
 

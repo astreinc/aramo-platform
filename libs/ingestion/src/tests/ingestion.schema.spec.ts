@@ -61,6 +61,7 @@ describe('RawPayloadReference schema — structural guarantees', () => {
         'sha256',
         'skill_surface_forms',
         'source',
+        'source_class',
         'storage_ref',
         'tenant_id',
         'updated_at',

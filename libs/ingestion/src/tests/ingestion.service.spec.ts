@@ -39,6 +39,7 @@ function makeRow(overrides: Partial<RawPayloadRow> = {}): RawPayloadRow {
     captured_at: new Date('2026-05-16T12:00:00Z'),
     verified_email: null,
     profile_url: null,
+    source_class: 'SELF',
     skill_surface_forms: null,
     created_at: new Date('2026-05-16T12:00:01Z'),
     updated_at: new Date('2026-05-16T12:00:01Z'),
@@ -66,6 +67,42 @@ function makeSourceConsentStub(): never {
     registerSourceDerivedConsent: vi.fn().mockResolvedValue(undefined),
   } as never;
 }
+
+describe('IngestionService.acceptPayload — TR-2a-B1 §6(b) server-derived source_class', () => {
+  it('derives source_class server-side from the channel (talent_direct → SELF)', async () => {
+    const repo = makeRepoMock();
+    (repo.createPayload as ReturnType<typeof vi.fn>).mockResolvedValue(makeRow());
+    const service = new IngestionService(repo, makeSourceConsentStub());
+
+    await service.acceptPayload({
+      tenant_id: TENANT_ID,
+      request: makeRequest({ source: 'talent_direct' }),
+    });
+
+    const writeCall = (repo.createPayload as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(writeCall.source_class).toBe('SELF');
+  });
+
+  it('IGNORES any caller-supplied source_class — the class is server-derived, never trusted', async () => {
+    const repo = makeRepoMock();
+    (repo.createPayload as ReturnType<typeof vi.fn>).mockResolvedValue(makeRow());
+    const service = new IngestionService(repo, makeSourceConsentStub());
+
+    // A caller attempts to launder its own attestation level by injecting
+    // source_class onto the request body. The DTO does not carry the field and
+    // the service never reads it — the persisted class is derived from `source`.
+    const laundered = {
+      ...makeRequest({ source: 'github' }),
+      source_class: 'THIRD_PARTY_VERIFIED',
+    } as never;
+
+    await service.acceptPayload({ tenant_id: TENANT_ID, request: laundered });
+
+    const writeCall = (repo.createPayload as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // Server-derived from github, NOT the injected THIRD_PARTY_VERIFIED.
+    expect(writeCall.source_class).toBe('THIRD_PARTY_UNVERIFIED');
+  });
+});
 
 describe('IngestionService.acceptPayload — accept (fresh)', () => {
   it('stores a new payload when no prior match exists; reports status=accepted, dedup match_signal=null', async () => {
