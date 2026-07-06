@@ -894,6 +894,40 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       };
     }
 
+    // PC-4 — talent-record fixture id (list/search/update target).
+    const ATSW_TALENT_ID = '00000000-0000-7000-8000-7a0000000001';
+
+    // COMPOSABLE (PC-4, PC-5+ reuse): seed a talent-record row. Extracted
+    // from seedAtsWebExamination's inline insert (behavior-preserving —
+    // tenant_status/source_channel default to NULL when omitted, exactly the
+    // prior columns; non-regression proven by the 61 existing interactions
+    // staying green through pact:provider in CI).
+    async function seedAtsWebTalentRecord(
+      c: Client,
+      params: {
+        id: string;
+        firstName: string;
+        lastName: string;
+        tenantStatus?: string;
+        sourceChannel?: string;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO talent_record."TalentRecord"
+           (id, tenant_id, first_name, last_name, tenant_status, source_channel,
+            created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW()) ON CONFLICT (id) DO NOTHING`,
+        [
+          params.id,
+          TENANT_ID,
+          params.firstName,
+          params.lastName,
+          params.tenantStatus ?? null,
+          params.sourceChannel ?? null,
+        ],
+      );
+    }
+
     // COMPOSABLE (PC-3 reuse): seed requisition + talent + a tiered active
     // examination for (PACT_TALENT_ID, ATSW_SUB_JOB_ID).
     async function seedAtsWebExamination(
@@ -913,12 +947,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
          VALUES ($1,$2,$3,$4,'active'::job_domain."RequisitionState") ON CONFLICT DO NOTHING`,
         [ATSW_SUB_REQ_ID, TENANT_ID, ATSW_SUB_JOB_ID, PACT_RECRUITER_ACTOR_ID],
       );
-      await c.query(
-        `INSERT INTO talent_record."TalentRecord"
-           (id, tenant_id, first_name, last_name, created_at, updated_at)
-         VALUES ($1,$2,'Pact','Talent',NOW(),NOW()) ON CONFLICT (id) DO NOTHING`,
-        [PACT_TALENT_ID, TENANT_ID],
-      );
+      await seedAtsWebTalentRecord(c, {
+        id: PACT_TALENT_ID,
+        firstName: 'Pact',
+        lastName: 'Talent',
+      });
       await c.query(
         `INSERT INTO examination."TalentJobExamination"
            (id, tenant_id, talent_id, job_id, golden_profile_id, trigger,
@@ -1987,6 +2020,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
          VALUES ($1::uuid, 'portal') ON CONFLICT DO NOTHING`,
         [TENANT_ID],
       );
+      // PC-4 — the 'ats' capability so TENANT_ID traverses EntitlementGuard
+      // on the talent-record controller's @RequireCapability('ats'). Additive
+      // (mirrors the 'portal' seed above); the engagement/submittal/examination
+      // interactions don't use EntitlementGuard, so this is inert for them.
+      await setup.query(
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
+         VALUES ($1::uuid, 'ats') ON CONFLICT DO NOTHING`,
+        [TENANT_ID],
+      );
       await setup.end();
 
       // Inline JWT signing per Amendment §2.2 — production issuer
@@ -2038,6 +2080,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'engagement:read',
           'engagement:write',
           'engagement:outreach',
+          // PC-4 — talent-record CRUD scopes (RolesGuard @RequireScopes on
+          // libs/talent-record/src/lib/talent-record.controller.ts). Additive;
+          // existing interactions check their own scopes, so extra scopes are
+          // inert for them (non-regression = 61 green in CI).
+          'talent:read',
+          'talent:create',
+          'talent:edit',
         ],
       })
         .setProtectedHeader({ alg: ALG })
@@ -4613,6 +4662,30 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // malformed-job_id 400 (validates pre-repo). Both need only a
       // recruiter session over an empty match substrate.
       'an ats-web recruiter and no seeded matches exist': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+
+      // ===============================================================
+      // PC-4 — ats-web talent-record domain (stable CRUD subset).
+      // ===============================================================
+
+      // -- a seeded talent-record (list, paged-search, update:id target).
+      'an ats-web recruiter and a talent record exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTalentRecord(c, {
+            id: ATSW_TALENT_ID,
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            tenantStatus: 'active',
+            sourceChannel: 'recruiter_capture',
+          });
+        });
+      },
+
+      // -- create: no pre-existing record (the endpoint mints it). The 'ats'
+      // entitlement + talent:create scope are set at bootstrap.
+      'an ats-web recruiter can create talent records': async () => {
         await withClient((c) => resetAllRows(c));
       },
     };
