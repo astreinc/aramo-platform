@@ -4582,6 +4582,33 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             });
           });
         },
+
+      // ===============================================================
+      // PC-3 — ats-web examination domain (GET /v1/jobs/:job_id/matches).
+      // Reuses seedAtsWebExamination as-is (cycle law 3, no extension).
+      // ===============================================================
+
+      // -- match-list happy (with results): active requisition
+      // (job_id=ATSW_SUB_JOB_ID) + one active ranked examination →
+      // findActiveReqLiveList returns a 1-row summary list.
+      'an ats-web recruiter and an active requisition with a ranked examination exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebExamination(c, {
+              examinationId: ATSW_SUB_EXAM_ID,
+              tier: 'ENTRUSTABLE',
+              computedAt: '2026-05-22T09:00:00.000Z',
+            });
+          });
+        },
+
+      // -- match-list empty-list (no active requisition → 200 empty) AND
+      // malformed-job_id 400 (validates pre-repo). Both need only a
+      // recruiter session over an empty match substrate.
+      'an ats-web recruiter and no seeded matches exist': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
     };
 
     // M5 PR-4 helpers: seed TalentRecord + Job + Requisition for the
