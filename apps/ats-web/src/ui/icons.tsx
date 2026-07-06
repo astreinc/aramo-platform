@@ -526,3 +526,12 @@ export function IconPlug(props: IconProps) {
     </svg>
   );
 }
+
+// Sourcing — a funnel narrowing the pool to a promotable subject.
+export function IconSourcing(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3 5h18l-7 8v6l-4 2v-8z" />
+    </svg>
+  );
+}

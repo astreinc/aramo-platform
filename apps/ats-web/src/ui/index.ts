@@ -50,12 +50,19 @@ export { UserMenu } from './UserMenu';
 export {
   StatusPill,
   StagePill,
+  BandPill,
   Tag,
   TagList,
   ConstraintChip,
   type PillTone,
   type ConstraintState,
 } from './pills';
+export {
+  PRESENTATION_BANDS,
+  bandTone,
+  bandLabel,
+  type PresentationBand,
+} from './band-map';
 export { MetricCard } from './MetricCard';
 export { KpiCard, type KpiDelta, type KpiPace } from './KpiCard';
 export { Sparkline, type SparkTone } from './Sparkline';

@@ -30,6 +30,7 @@ import {
   IconRequisitions,
   IconSearch,
   IconShield,
+  IconSourcing,
   IconTalent,
   IconTasks,
 } from '../ui/icons';
@@ -69,6 +70,9 @@ const PRIMARY_NAV: readonly NavItem[] = [
   { to: '/', end: true, label: 'My desk', icon: <IconDesk />, scope: 'dashboard:read' },
   { to: '/requisitions', label: 'Requisitions', icon: <IconRequisitions />, scope: 'requisition:read' },
   { to: '/talent', label: 'Talent', icon: <IconTalent />, scope: 'talent:read' },
+  // Promotion-Trigger slice B-ui — the sourcing pool (talent:source). Gated by
+  // the same hasScope filter as its siblings; hidden from a non-sourcer.
+  { to: '/sourcing', label: 'Sourcing', icon: <IconSourcing />, scope: 'talent:source' },
   { to: '/companies', label: 'Companies', icon: <IconCompanies />, scope: 'company:read' },
   { to: '/contacts', label: 'Contacts', icon: <IconContacts />, scope: 'contact:read' },
   // Search is always-visible (any-of-4 search scopes; the view gates per
@@ -101,6 +105,7 @@ const SECTION_LABEL: Record<string, string> = {
   '': 'My desk',
   requisitions: 'Requisitions',
   talent: 'Talent',
+  sourcing: 'Sourcing',
   companies: 'Companies',
   contacts: 'Contacts',
   engagements: 'Engagement',
