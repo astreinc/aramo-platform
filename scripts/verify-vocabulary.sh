@@ -280,6 +280,15 @@ TIER2_EXCLUDES=(
   "libs/engagement/src/tests/engagement.repository.spec.ts"
   "libs/engagement/src/tests/engagement.repository.integration.spec.ts"
   "pact/provider/src/verify-api.ts"
+  # PC-1: ats-web engagement consumer pact. Carries the canonical
+  # `outreach` engagement vocabulary in the outreach-draft / outreach-send
+  # endpoint paths + event-type discriminants (`outreach_sent`,
+  # `outreach_drafted`) + given/uponReceiving names — NOT a misuse of
+  # `outreach` as a standalone entity name. Same rationale as the M5 PR-6/
+  # PR-7 engagement source + spec entries above and pact/provider/src/
+  # verify-api.ts. (ESLint no-restricted-syntax is scoped to apps/**+libs/**,
+  # so pact/consumers/** needs no matching eslint.config.mjs entry.)
+  "pact/consumers/ats-web/src/engagement.consumer.test.ts"
   # M5 PR-7: response-received HTTP surface — new DTOs + Pact consumer +
   # negative-shape spec + integration spec carry the canonical `outreach`
   # vocabulary via the cross-event reference field `outreach_event_ref_id`
