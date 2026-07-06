@@ -7,7 +7,7 @@ import {
   loadIdentityPepper,
 } from '@aramo/common';
 import { IdentityIndexRepository } from '@aramo/identity-index';
-import { TalentTrustService } from '@aramo/talent-trust';
+import { TalentTrustService, type SourceClass } from '@aramo/talent-trust';
 
 import { Prisma } from '../../prisma/generated/client/client.js';
 
@@ -124,6 +124,11 @@ interface LockedPayloadRow {
   tenant_id: string;
   verified_email: string | null;
   profile_url: string | null;
+  // TR-2a-B1 (DDR-1 §3.1) — the arrival's server-derived attestation level,
+  // read off the payload row and threaded to the resolver's writes. TEXT column
+  // (String at the client), narrowed to SourceClass at the recordSourcedArrival
+  // boundary — the value was written from the closed channel map at ingest.
+  source_class: string;
   // Fix-Slice-2 — the L2 subject idempotency anchor (was resolved_talent_id).
   resolved_subject_id: string | null;
   resolution_method: ResolutionMethodValue | null;
@@ -215,6 +220,7 @@ export class CanonicalizationRepository {
             tenant_id,
             verified_email,
             profile_url,
+            source_class,
             resolved_subject_id,
             resolution_method
           FROM "ingestion"."RawPayloadReference"
@@ -306,6 +312,10 @@ export class CanonicalizationRepository {
           verified_email: payload.verified_email,
           profile_url: payload.profile_url,
           source_channel: input.source_channel,
+          // TR-2a-B1 (DDR-1 §3.1) — thread the server-derived attestation level
+          // onto the resolver's evidence/anchor writes. Narrowed from the TEXT
+          // column: the value was set at ingest from the closed channel map.
+          source_class: payload.source_class as SourceClass,
           created_by: 'canonicalization',
         });
         const subjectId = arrival.subject_id;

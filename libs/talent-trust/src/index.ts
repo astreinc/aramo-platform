@@ -55,6 +55,9 @@ export {
   type DerivedTrustState,
 } from './lib/band-derivation.js';
 export { deriveStrength, effectiveStrength } from './lib/strength.js';
+// TR-2a-B1 (DDR-1 §3.4) — the confirming/non-confirming anchor projection.
+// Landed cold: exported + unit-tested, consumed by the resolver in B2.
+export { isConfirmingAnchor } from './lib/anchor-confirmation.js';
 
 // DTO (closed-vocabulary enforcement surface, Ruling 2).
 export { RecordEvidenceDto, SubjectRefDto } from './lib/dto/record-evidence.dto.js';

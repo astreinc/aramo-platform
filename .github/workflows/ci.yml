@@ -357,6 +357,13 @@ jobs:
       - run: npx vitest run --root libs/engagement
       - run: npx vitest run --root libs/ai-draft
       - run: npx vitest run --root libs/identity-index
+      # TR-2a-B1 — the resolution-substrate roots. Their integration specs (the
+      # source_class acceptance tests + the R1.3 resolve-unchanged proof) were
+      # absent from this job, so observed-CI-green never observed them. Added so
+      # the slice's own acceptance surface runs in CI.
+      - run: npx vitest run --root libs/ingestion
+      - run: npx vitest run --root libs/talent-trust
+      - run: npx vitest run --root libs/canonicalization
 
   # ---------------------------------------------------------------------------
   # M4 PR-8 — Terraform IaC foundation gates (no AWS credentials required).

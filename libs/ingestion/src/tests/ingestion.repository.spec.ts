@@ -17,6 +17,7 @@ const ROW = {
   captured_at: new Date('2026-05-16T12:00:00Z'),
   verified_email: null,
   profile_url: null,
+  source_class: 'SELF',
   skill_surface_forms: null,
   created_at: new Date('2026-05-16T12:00:01Z'),
   updated_at: new Date('2026-05-16T12:00:01Z'),
@@ -50,6 +51,7 @@ describe('IngestionRepository.createPayload', () => {
       captured_at: new Date('2026-05-16T12:00:00Z'),
       verified_email: null,
       profile_url: null,
+      source_class: 'SELF',
     });
 
     const writeCall = create.mock.calls[0]?.[0] as {
@@ -58,6 +60,8 @@ describe('IngestionRepository.createPayload', () => {
     expect(writeCall.data['tenant_id']).toBe(TENANT_ID);
     expect(writeCall.data['source']).toBe('talent_direct');
     expect(writeCall.data['sha256']).toBe(SHA);
+    // TR-2a-B1 — the server-derived attestation level is persisted on the row.
+    expect(writeCall.data['source_class']).toBe('SELF');
     // The R10 structural guarantee (no R10-forbidden output fields on
     // the persistence model) is verified by ingestion.schema.spec.ts'
     // field-allowlist assertion. No runtime-level enumeration here.
@@ -77,6 +81,7 @@ describe('IngestionRepository.createPayload', () => {
       captured_at: new Date('2026-05-16T12:00:00Z'),
       verified_email: null,
       profile_url: null,
+      source_class: 'SELF',
     });
 
     const writeCall = create.mock.calls[0]?.[0] as {

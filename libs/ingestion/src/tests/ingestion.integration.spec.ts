@@ -228,6 +228,56 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(bResult.id).not.toBe(aResult.id);
     });
 
+    // ---- TR-2a-B1 §6(a) — server-derived source_class persists ----------
+    async function persistedSourceClass(id: string): Promise<string> {
+      const r = await prisma.$queryRawUnsafe<{ source_class: string }[]>(
+        `SELECT source_class FROM "ingestion"."RawPayloadReference" WHERE id = '${id}'::uuid`,
+      );
+      return r[0]!.source_class;
+    }
+
+    it('§6(a) — each mapped channel persists its ruled source_class on the payload row', async () => {
+      const tenantId = uuidv7();
+      const cases: Array<[string, string]> = [
+        ['talent_direct', 'SELF'],
+        ['github', 'THIRD_PARTY_UNVERIFIED'],
+        ['astre_import', 'THIRD_PARTY_UNVERIFIED'],
+        ['indeed', 'THIRD_PARTY_UNVERIFIED'],
+      ];
+      for (const [source, expected] of cases) {
+        const r = await service.acceptPayload({
+          tenant_id: tenantId,
+          request: {
+            source,
+            storage_ref: 's3://x/' + source + '.json',
+            sha256: shaHex('sc-' + source + '-' + tenantId),
+            content_type: 'application/json',
+            captured_at: '2026-07-06T12:00:00.000Z',
+          },
+        });
+        expect(r.status).toBe('accepted');
+        expect(await persistedSourceClass(r.id)).toBe(expected);
+      }
+    });
+
+    it('§6(a) — an unmapped source persists the fail-closed THIRD_PARTY_UNVERIFIED default', async () => {
+      // The DTO closes the wire vocabulary, but the service is fail-closed for
+      // ANY source (DDR-1 §4): a future/unmapped channel never confirms by
+      // omission. Exercised at the service layer with a source outside the map.
+      const tenantId = uuidv7();
+      const r = await service.acceptPayload({
+        tenant_id: tenantId,
+        request: {
+          source: 'a_future_unmapped_channel' as never,
+          storage_ref: 's3://x/unmapped.json',
+          sha256: shaHex('sc-unmapped-' + tenantId),
+          content_type: 'application/json',
+          captured_at: '2026-07-06T12:00:00.000Z',
+        },
+      });
+      expect(await persistedSourceClass(r.id)).toBe('THIRD_PARTY_UNVERIFIED');
+    });
+
     // ---- Cold-Ingest Extraction poll (extract-once gate) -----------------
     // findArrivalsNeedingExtraction + markExtractionDone + bumpExtractionAttempt
     // against the real extraction_done_at / extraction_attempts columns. The

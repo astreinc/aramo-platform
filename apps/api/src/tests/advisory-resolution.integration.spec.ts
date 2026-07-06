@@ -43,6 +43,10 @@ const MIGRATIONS = [
   // .last_reconciled_at + reconcile_attempts on every subject read (merge/
   // unmerge), so the columns must exist or the advisory endpoints 500.
   'libs/talent-trust/prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
+  // TR-2a-B1 — SubjectAnchor.source_class + extended (…, source_class) unique
+  // key. The regenerated client SELECTs source_class on anchor reads.
+  'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 const ISSUER = 'Aramo Core Auth';

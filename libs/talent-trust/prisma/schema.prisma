@@ -330,14 +330,24 @@ model SubjectAnchor {
   // UUID-only logical reference within the schema.
   source_evidence_id String @db.Uuid
 
+  /// SourceClass of the minting evidence (TR-2a-B1, DDR-1 §3.2). Projected
+  /// atomically from source_evidence_id inside insertAnchor. Tier is (signal
+  /// kind × attestation): only THIRD_PARTY_VERIFIED confirms (isConfirmingAnchor);
+  /// SELF / THIRD_PARTY_UNVERIFIED corroborate. Appended, never mutated — a later
+  /// verification of the same value mints a NEW row at the higher class (the
+  /// extended unique key below), preserving provenance (I10).
+  source_class String
+
   created_at DateTime @default(now()) @db.Timestamptz
 
   subject ResolutionSubject @relation(fields: [subject_id], references: [id])
 
-  // Idempotency: one anchor row per (tenant, subject, kind, value). The producer
-  // exists-checks this before writing, so re-run / backfill never duplicates the
-  // anchor OR its evidence.
-  @@unique([tenant_id, subject_id, anchor_kind, normalized_value])
+  // Idempotency: one anchor row per (tenant, subject, kind, value, class). The
+  // producer exists-checks this before writing, so re-run / backfill never
+  // duplicates the anchor OR its evidence. source_class is part of the key
+  // (DDR-1 §3.2): a value verified later is a NEW append-only row at the higher
+  // class, not a mutation — two rows for one value at two classes is correct.
+  @@unique([tenant_id, subject_id, anchor_kind, normalized_value, source_class])
   // The matcher's btree surface: subjects sharing a normalized value in-tenant.
   @@index([tenant_id, anchor_kind, normalized_value])
   @@index([subject_id])

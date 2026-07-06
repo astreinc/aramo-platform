@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
+import type { IngestionSourceClass } from './source-class.map.js';
 
 // Repository for the RawPayloadReference model. PR-12 scope: payload
 // writes + dedup queries. No merge, no resolve, no canonicalize
@@ -16,6 +17,10 @@ export interface CreateRawPayloadInput {
   captured_at: Date;
   verified_email: string | null;
   profile_url: string | null;
+  // TR-2a-B1 (DDR-1 §3.1) — the server-derived attestation level for this
+  // arrival. Computed by the service from `source` via deriveSourceClass; NOT
+  // caller-supplied. NOT NULL at the DB layer.
+  source_class: IngestionSourceClass;
   // PR-13: optional raw skill surface forms (Plan §3 M2 Track A:
   // "raw forms stored, canonicalization deferred"). Opaque strings.
   skill_surface_forms?: string[] | null;
@@ -31,6 +36,8 @@ export interface RawPayloadRow {
   captured_at: Date;
   verified_email: string | null;
   profile_url: string | null;
+  // TR-2a-B1 (DDR-1 §3.1) — the arrival's server-derived attestation level.
+  source_class: IngestionSourceClass;
   // PR-13: nullable Json column (per Prisma `Json?`) — at runtime
   // Prisma surfaces this as `unknown | null` since Json columns
   // accept arbitrary shapes. The wire-level shape is string[]; the
@@ -77,6 +84,7 @@ export class IngestionRepository {
         captured_at: input.captured_at,
         verified_email: input.verified_email,
         profile_url: input.profile_url,
+        source_class: input.source_class,
         ...skillSurfaceField,
       },
     });

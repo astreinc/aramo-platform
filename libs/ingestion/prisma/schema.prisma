@@ -71,6 +71,16 @@ model RawPayloadReference {
   // Implemented as String (not Prisma enum) per the libs/talent /
   // libs/consent precedent.
   source          String
+  // TR-2a-B1 (DDR-1 §3.1/§3.2 + §4): the arrival's attestation level, SERVER-
+  // derived from `source` via the ingestion channel-source_class map, written
+  // once at ingest and NEVER caller-supplied (a caller asserting its own
+  // attestation level is self-attestation laundering). Closed vocab mirroring
+  // talent_trust SourceClass: SELF for first-party declarations,
+  // THIRD_PARTY_UNVERIFIED for github/astre_import/indeed and any unmapped
+  // channel (fail-closed default), THIRD_PARTY_VERIFIED only for a channel whose
+  // documented semantics attest verification. TEXT column, not a Prisma enum
+  // (libs/talent-trust / libs/consent precedent).
+  source_class    String
   // RawPayloadReference wire fields (Phase 4 §"Raw Payload Reference Model"):
   storage_ref     String
   sha256          String
@@ -79,6 +89,11 @@ model RawPayloadReference {
   // Dedup-supporting fields (Plan §3 M2 Track A — "verified email
   // match, profile URL match"). Both optional: a given payload may
   // carry one, both, or neither.
+  // NOTE (TR-2a-B1 / DDR-1 §3.3): `verified_email` is a documented misnomer —
+  // it holds the channel-CLAIMED email, normalized (trim + lowercase), NOT a
+  // verified one. The verification level of this value is carried by
+  // `source_class`, never by this field's name. Rename to `claimed_email` is a
+  // filed non-blocking follow-up, deferred off the source_class substrate change.
   verified_email  String?
   profile_url     String?
   // Skill surface forms (Plan v1.2 §3 M2 Track A — "Skill surface
