@@ -1,12 +1,20 @@
-import { resolve } from 'node:path';
-
-import { PactV4, MatchersV3 } from '@pact-foundation/pact';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-const { like, uuid, regex } = MatchersV3;
+import {
+  ACCESS_COOKIE,
+  ISO_TIMESTAMP,
+  TALENT_ID,
+  TENANT_ID,
+  errorBody,
+  like,
+  makeAtsWebProvider,
+  regex,
+  uuid,
+} from './support/ats-web-pact.js';
 
 // PC-1 — Pact consumer for ats-web (the live recruiter SPA), engagement
-// domain.
+// domain. PC-2: retrofitted onto the shared support module (ctor factory +
+// shared constants + generic errorBody); domain views/constants stay here.
 //
 // Consumer:  ats-web     (browser/SPA; the only live FE — Lead ruling R1)
 // Provider:  aramo-core  (apps/api)
@@ -40,18 +48,10 @@ const { like, uuid, regex } = MatchersV3;
 // recruiter JWT by the provider requestFilter (verify-api.ts) — same
 // posture as tenant-console-consumer.
 
-const provider = new PactV4({
-  consumer: 'ats-web',
-  provider: 'aramo-core',
-  dir: resolve(__dirname, '../../../pacts'),
-  logLevel: 'warn',
-});
+const provider = makeAtsWebProvider();
 
-// ---- shared constants (mirror verify-api.ts provider fixtures) ---------
-const TENANT_ID = '11111111-1111-7111-8111-111111111111';
-const TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
+// ---- engagement-domain constant (shared ones come from the support module)
 const REQUISITION_ID = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
-const ACCESS_COOKIE = 'aramo_access_token=eyJfake.access.token';
 
 // Engagement fixtures, one id per seeded state (see verify-api.ts PC-1
 // state handlers).
@@ -87,13 +87,9 @@ const K_SEND_CONFLICT = '00000000-0000-7000-8000-d00000000502';
 // event_id supplied by the transition caller (state-keyed per FE ruling).
 const TRANSITION_EVENT_ID = '00000000-0000-7000-8000-e00000000001';
 
-// Amendment v1.1 §2.1 — ms-aware, end-anchored ISO pattern (matches the
-// API's Date.toISOString() output; same pattern as the ingestion +
-// tenant-console pacts).
-const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/;
+// ISO_TIMESTAMP now imported from the support module.
 
-// Reusable response-shape builders (this file only — no cross-file share
-// until PC-2 introduces a second ats-web domain file; see Gate-6 note).
+// Engagement-domain response-shape builders (stay in the domain file).
 function engagementView(id: string, state: string) {
   return {
     id: uuid(id),
@@ -117,48 +113,22 @@ function eventView(engagementId: string, eventType: string) {
   };
 }
 
+// Engagement-domain error aliases — thin semantic wrappers over the shared
+// errorBody (same code + message example → byte-identical pact output).
 function stateInvalidError() {
-  return {
-    error: {
-      code: 'ENGAGEMENT_STATE_INVALID',
-      message: like('Illegal engagement state transition'),
-      request_id: uuid(),
-      details: like({}),
-    },
-  };
+  return errorBody('ENGAGEMENT_STATE_INVALID', 'Illegal engagement state transition');
 }
 
 function idempotencyConflictError() {
-  return {
-    error: {
-      code: 'IDEMPOTENCY_KEY_CONFLICT',
-      message: like('Idempotency-Key conflict'),
-      request_id: uuid(),
-      details: like({}),
-    },
-  };
+  return errorBody('IDEMPOTENCY_KEY_CONFLICT', 'Idempotency-Key conflict');
 }
 
 function consentNotGrantedError() {
-  return {
-    error: {
-      code: 'CONSENT_NOT_GRANTED_AT_SEND',
-      message: like('consent denied at send time'),
-      request_id: uuid(),
-      details: like({}),
-    },
-  };
+  return errorBody('CONSENT_NOT_GRANTED_AT_SEND', 'consent denied at send time');
 }
 
 function referenceNotFoundError() {
-  return {
-    error: {
-      code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
-      message: like('reference not found'),
-      request_id: uuid(),
-      details: like({}),
-    },
-  };
+  return errorBody('ENGAGEMENT_REFERENCE_NOT_FOUND', 'reference not found');
 }
 
 // ======================================================================
