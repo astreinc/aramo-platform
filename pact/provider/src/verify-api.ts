@@ -1004,14 +1004,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         state: string;
         justification?: string | null;
         fca?: ReadonlyArray<Record<string, unknown>> | null;
+        confirmedAt?: string | null;
       },
     ): Promise<void> {
       await c.query(
         `INSERT INTO engagement."TalentSubmittalRecord"
            (id, tenant_id, talent_id, job_id, evidence_package_id,
             pinned_examination_id, state, created_by,
-            justification, failed_criterion_acknowledgments)
-         VALUES ($1,$2,$3,$4,$5,$6,$7::engagement."SubmittalState",$8,$9,$10::jsonb)`,
+            justification, failed_criterion_acknowledgments, confirmed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7::engagement."SubmittalState",$8,$9,$10::jsonb,$11)`,
         [
           params.submittalId,
           TENANT_ID,
@@ -1023,6 +1024,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           PACT_RECRUITER_ACTOR_ID,
           params.justification ?? null,
           params.fca === undefined || params.fca === null ? null : JSON.stringify(params.fca),
+          params.confirmedAt ?? null,
         ],
       );
     }
@@ -1058,12 +1060,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         examinationId: ATSW_SUB_EXAM_ID,
         submittalId: params.submittalId,
       });
+      // Ruling 6: submit-to-ats populates confirmed_at (NULL -> non-NULL);
+      // it persists through 'confirmed'. A legitimately submitted_to_ats /
+      // confirmed row therefore ALWAYS carries confirmed_at — seed it so
+      // the confirm-ats happy-path response projects a real timestamp
+      // (direct-seed without it returned confirmed_at='' → pact regex fail).
+      const confirmedAt =
+        params.state === 'submitted_to_ats' || params.state === 'confirmed'
+          ? '2026-05-25T00:00:00.000Z'
+          : null;
       await seedAtsWebSubmittal(c, {
         submittalId: params.submittalId,
         evidencePackageId: ATSW_SUB_EVIDENCE_ID,
         examinationId: ATSW_SUB_EXAM_ID,
         state: params.state,
         justification: params.justification ?? null,
+        confirmedAt,
       });
     }
 
