@@ -9,7 +9,19 @@ import {
   type SubjectAnchorRow,
   type SubjectMatchAdvisoryRow,
 } from './talent-trust.repository.js';
-import type { ResolutionSubjectRefType } from './vocab.js';
+import type {
+  CorroboratorConflictKind,
+  ResolutionSubjectRefType,
+} from './vocab.js';
+
+// TR-2a-B2 — resolver-contributed strong-corroborator conflicts, keyed by the
+// OTHER subject id in the pair. A CONFIRMED-arm NAME demotion passes
+// { <targetId> => ['NAME'] } so the hand-off advisory for that specific pair
+// carries corroborator_conflict_kinds. Absent → no corroborator conflict.
+export type CorroboratorConflictsByTarget = ReadonlyMap<
+  string,
+  CorroboratorConflictKind[]
+>;
 
 // SubjectMatcherService — TR-2a-2 WITHIN-TENANT SAME-HUMAN MATCHER (ADVISE-ONLY).
 //
@@ -39,7 +51,11 @@ export class SubjectMatcherService {
   // Detect + record advisories for ONE subject: find every OTHER in-tenant subject
   // sharing an anchor, classify the pair, and upsert the advisory. Returns the
   // advisories touched (created or refreshed). Takes NO merge action.
-  async matchSubject(tenantId: string, subjectId: string): Promise<SubjectMatchAdvisoryRow[]> {
+  async matchSubject(
+    tenantId: string,
+    subjectId: string,
+    corroboratorConflicts?: CorroboratorConflictsByTarget,
+  ): Promise<SubjectMatchAdvisoryRow[]> {
     const mine = await this.repo.listAnchorsBySubject(subjectId);
     if (mine.length === 0) return [];
 
@@ -63,7 +79,14 @@ export class SubjectMatcherService {
     // stable sequence.
     for (const otherId of [...otherSubjectIds].sort()) {
       const theirs = await this.repo.listAnchorsBySubject(otherId);
-      const advisory = await this.classifyAndUpsert(tenantId, subjectId, mine, otherId, theirs);
+      const advisory = await this.classifyAndUpsert(
+        tenantId,
+        subjectId,
+        mine,
+        otherId,
+        theirs,
+        corroboratorConflicts?.get(otherId),
+      );
       if (advisory !== null) out.push(advisory);
     }
     return out;
@@ -108,6 +131,7 @@ export class SubjectMatcherService {
     s1Anchors: SubjectAnchorRow[],
     s2: string,
     s2Anchors: SubjectAnchorRow[],
+    corroboratorConflictKinds?: CorroboratorConflictKind[],
   ): Promise<SubjectMatchAdvisoryRow | null> {
     const s1Lower = s1 < s2;
     const aId = s1Lower ? s1 : s2;
@@ -127,7 +151,14 @@ export class SubjectMatcherService {
       match_basis: {
         shared: classification.shared,
         contradiction_kinds: classification.contradiction_kinds,
+        confirmed_kinds: classification.confirmed_kinds,
       },
+      // Resolver-contributed (e.g. a CONFIRMED-arm NAME demotion for this pair).
+      // The repo merges it into has_contradiction + match_basis.
+      corroborator_conflict_kinds:
+        corroboratorConflictKinds !== undefined && corroboratorConflictKinds.length > 0
+          ? corroboratorConflictKinds
+          : undefined,
       created_by: CREATED_BY,
     });
   }
@@ -138,5 +169,8 @@ function toMatchAnchors(rows: SubjectAnchorRow[]): AnchorForMatch[] {
     anchor_id: r.id,
     anchor_kind: r.anchor_kind,
     normalized_value: r.normalized_value,
+    // TR-2a-B2 (DDR-2 §4) — project source_class so classifyPair can force
+    // ADVISE_STRONG + confirmed_kinds on confirming-both shared refs.
+    source_class: r.source_class,
   }));
 }

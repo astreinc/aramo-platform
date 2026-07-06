@@ -57,6 +57,10 @@ const MIGRATIONS = [
   // ingestion (TR-2a-B1) — source_class: canonicalize's SELECT … FOR UPDATE now
   // reads it off the payload row to thread onto the resolver's writes.
   resolve(ROOT, 'libs/ingestion/prisma/migrations/20260706170000_add_source_class_to_raw_payload_reference/migration.sql'),
+  // ingestion (TR-2a-B2) — declared_name: canonicalize's SELECT reads it for the
+  // NAME guard; the enum add so canonicalize can write confirmed_anchor_match.
+  resolve(ROOT, 'libs/ingestion/prisma/migrations/20260706190000_add_declared_name_to_raw_payload_reference/migration.sql'),
+  resolve(ROOT, 'libs/ingestion/prisma/migrations/20260706210000_add_confirmed_anchor_match_to_resolution_method/migration.sql'),
   // canonicalization (init) — canonicalization PG schema + OutboxEvent.
   resolve(ROOT, 'libs/canonicalization/prisma/migrations/20260603160000_init_canonicalization_schema/migration.sql'),
   // identity_index (init, 4b) — PersonCluster + ClusterFingerprint.
@@ -74,6 +78,9 @@ const MIGRATIONS = [
   // write projects it) + the extended (…, source_class) unique key.
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql'),
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql'),
+  // talent_trust (TR-2a-B2) — SubjectMatchAdvisory reopen provenance columns. The
+  // resolver hand-off upserts advisories, so the regenerated client selects them.
+  resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql'),
 ];
 
 // $$-aware DDL splitter — strips `--` line comments (so a `;` inside a comment
@@ -302,7 +309,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // same verified email resolves to the SAME subject (Tier-A, §6A/I5). Same
     // human, one subject; no new subject.
     // -----------------------------------------------------------------------
-    it('proof 2 — VERIFIED_EMAIL_MATCH: a same-email arrival resolves to the SAME ResolutionSubject (no new subject, no husk)', async () => {
+    it('proof 2 — TR-2a-B2 SPLIT: a same-email arrival on a NON-confirming channel does NOT auto-resolve — new subject + advisory (DDR-2 §2.2)', async () => {
       const email = `fs2-match-${randomUUID()}@example.com`;
       const seedId = uuidv7();
       await insertPayload(dbClient, {
@@ -344,13 +351,27 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
 
       expect(result.already_canonicalized).toBe(false);
-      expect(result.resolution_method).toBe('verified_email_match');
-      // SAME subject as the seed — the Tier-A email anchor resolved same-human.
-      expect(result.subject_id).toBe(seed.subject_id);
+      // TR-2a-B2 (DDR-2 §2/§2.2): both arrivals carry a NON-confirming class
+      // (self_signup→SELF, import→UNVERIFIED), so the shared email does NOT
+      // auto-resolve — the arrival lands on a NEW subject (split-biased).
+      expect(result.resolution_method).toBe('new_identity');
+      expect(result.subject_id).not.toBe(seed.subject_id);
 
       const row = await payloadRow(secondId);
-      expect(row.resolved_subject_id).toBe(seed.subject_id);
-      expect(row.resolution_method).toBe('verified_email_match');
+      expect(row.resolved_subject_id).toBe(result.subject_id);
+      expect(row.resolution_method).toBe('new_identity');
+
+      // The resolver→matcher hand-off raised the same-human advisory for the pair.
+      const [lo, hi] =
+        seed.subject_id < result.subject_id
+          ? [seed.subject_id, result.subject_id]
+          : [result.subject_id, seed.subject_id];
+      const adv = await dbClient.query(
+        `SELECT 1 FROM "talent_trust"."SubjectMatchAdvisory"
+           WHERE tenant_id = $1 AND subject_a_id = $2 AND subject_b_id = $3`,
+        [TENANT_ID, lo, hi],
+      );
+      expect(adv.rows.length).toBe(1);
     });
 
     // -----------------------------------------------------------------------
@@ -544,10 +565,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // -----------------------------------------------------------------------
-    // 4b (PRESERVED) — WITHIN-TENANT: same email, same tenant → the SAME subject
-    // (verified_email_match) AND the same cluster.
+    // 4b (TR-2a-B2) — WITHIN-TENANT: same email, same tenant on a non-confirming
+    // channel → DISTINCT L2 subjects (the split-biased decision) but the SAME
+    // cross-tenant cluster (identity_index is untouched by B2).
     // -----------------------------------------------------------------------
-    it('4b (preserved) — WITHIN-TENANT: same email same tenant → same subject AND same cluster', async () => {
+    it('4b (TR-2a-B2) — WITHIN-TENANT: same email same tenant on a non-confirming channel → DISTINCT subjects (split), SAME cluster', async () => {
       const email = `fs2-within-${randomUUID()}@example.com`;
       const p1 = uuidv7();
       const p2 = uuidv7();
@@ -577,10 +599,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: randomUUID(),
       });
 
+      // TR-2a-B2 (DDR-2 §2.2): talent_direct → SELF (non-confirming), so the
+      // shared email does NOT auto-resolve within the tenant — the 2nd arrival
+      // splits to a NEW L2 subject (look-alikes accumulate as advisories).
       expect(r1.resolution_method).toBe('new_identity');
-      expect(r2.resolution_method).toBe('verified_email_match');
-      expect(r2.subject_id).toBe(r1.subject_id);
+      expect(r2.resolution_method).toBe('new_identity');
+      expect(r2.subject_id).not.toBe(r1.subject_id);
 
+      // The cross-tenant PII-free cluster (identity_index) is UNCHANGED by B2 —
+      // one email fingerprint still maps to one cluster.
       const row1 = await payloadRow(p1);
       const row2 = await payloadRow(p2);
       expect(row1.resolved_cluster_id).not.toBeNull();

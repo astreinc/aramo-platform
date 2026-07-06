@@ -60,4 +60,13 @@ export class IngestionPayloadRequestDto {
   @IsString()
   @MaxLength(2048)
   profile_url?: string;
+
+  // TR-2a-B2 (Name-Wiring §1) — the channel-supplied structured declared name.
+  // A CLAIM (caller-suppliable by nature — unlike source_class, which the DTO
+  // does NOT carry): consumed only by the CONFIRMED-arm NAME guard, never an
+  // identity key. Optional; MaxLength-bounded.
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  declared_name?: string;
 }

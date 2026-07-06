@@ -60,6 +60,14 @@ export const MATCH_ADVISORY_STATUSES = [
 ] as const;
 export type MatchAdvisoryStatus = (typeof MATCH_ADVISORY_STATUSES)[number];
 
+// ---- Corroborator conflict kinds (TR-2a-B2, DDR-2 Amendment §2.3) ------
+// A STRONG-corroborator conflict contributed by the RESOLVER (not the anchor
+// classifier) into an advisory's match_basis + has_contradiction. NAME only in
+// this slice — the problem statement's named case (§4-b3). Additional kinds
+// (address, employer) join only by a further amendment with their own predicate.
+export const CORROBORATOR_CONFLICT_KINDS = ['NAME'] as const;
+export type CorroboratorConflictKind = (typeof CORROBORATOR_CONFLICT_KINDS)[number];
+
 // ---- SubjectMatchAdvisory.resolution_action (TR-2a-3) -----------------
 // The human action recorded on the advisory (R4 audit). MERGE = approve →
 // executed pointer-only mergeSubjects; DISMISS = reviewer judged not-same-human;

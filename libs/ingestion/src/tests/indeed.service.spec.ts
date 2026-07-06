@@ -38,6 +38,7 @@ function makeRow(overrides: Partial<RawPayloadRow> = {}): RawPayloadRow {
     verified_email: null,
     profile_url: null,
     source_class: 'THIRD_PARTY_UNVERIFIED',
+    declared_name: null,
     skill_surface_forms: null,
     created_at: new Date('2026-05-17T12:00:01Z'),
     updated_at: new Date('2026-05-17T12:00:01Z'),

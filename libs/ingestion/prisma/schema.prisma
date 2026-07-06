@@ -40,6 +40,12 @@ datasource db {
 //                            Talent).
 enum ResolutionMethod {
   new_identity
+  // TR-2a-B2 (DDR-2 §6): confirmed_anchor_match is the NEW writable value — a
+  // deterministic Tier-A both-sides-confirming resolve. verified_email_match +
+  // caller_supplied are HISTORICAL, read-widened (never newly written; the old
+  // rows are append-only truth of what the retired rule did). sha256_payload_dup
+  // is NOT minted (item-3: no dedup short-circuit records a method).
+  confirmed_anchor_match
   verified_email_match
   caller_supplied
 
@@ -86,6 +92,14 @@ model RawPayloadReference {
   sha256          String
   content_type    String
   captured_at     DateTime @db.Timestamptz
+  // TR-2a-B2 (Name-Wiring ruling §1): the channel-supplied structured declared
+  // name. UNLIKE source_class (an attestation LEVEL, server-derived only), this
+  // is a CLAIM — caller/channel-supplied is its nature. Consumed ONLY by the
+  // CONFIRMED-arm NAME guard (Amendment §2.1-§2.2), never an identity key.
+  // Normalized at write (trim + inner-whitespace collapse; case preserved for
+  // display — tokenization normalizes at compare time). Nullable — today's
+  // channels supply none, so the guard passes vacuously (absence never conflicts).
+  declared_name   String?
   // Dedup-supporting fields (Plan §3 M2 Track A — "verified email
   // match, profile URL match"). Both optional: a given payload may
   // carry one, both, or neither.

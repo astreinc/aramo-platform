@@ -21,6 +21,10 @@ export interface CreateRawPayloadInput {
   // arrival. Computed by the service from `source` via deriveSourceClass; NOT
   // caller-supplied. NOT NULL at the DB layer.
   source_class: IngestionSourceClass;
+  // TR-2a-B2 (Name-Wiring §1) — the channel-supplied declared name claim
+  // (normalized at the service; nullable). Distinct from source_class: a claim,
+  // caller-suppliable. Consumed by the CONFIRMED-arm NAME guard only.
+  declared_name: string | null;
   // PR-13: optional raw skill surface forms (Plan §3 M2 Track A:
   // "raw forms stored, canonicalization deferred"). Opaque strings.
   skill_surface_forms?: string[] | null;
@@ -38,6 +42,8 @@ export interface RawPayloadRow {
   profile_url: string | null;
   // TR-2a-B1 (DDR-1 §3.1) — the arrival's server-derived attestation level.
   source_class: IngestionSourceClass;
+  // TR-2a-B2 (Name-Wiring §1) — the declared name claim (nullable).
+  declared_name: string | null;
   // PR-13: nullable Json column (per Prisma `Json?`) — at runtime
   // Prisma surfaces this as `unknown | null` since Json columns
   // accept arbitrary shapes. The wire-level shape is string[]; the
@@ -85,6 +91,7 @@ export class IngestionRepository {
         verified_email: input.verified_email,
         profile_url: input.profile_url,
         source_class: input.source_class,
+        declared_name: input.declared_name,
         ...skillSurfaceField,
       },
     });

@@ -434,6 +434,13 @@ model SubjectMatchAdvisory {
   reversed_at            DateTime? @db.Timestamptz
   reversal_justification String?
 
+  // ---- TR-2a-B2 re-open provenance (DDR-2 §5) — set when a DISMISSED advisory is
+  // re-opened by a strictly-stronger re-match (shared-ref count up OR a new
+  // confirmed_kinds entry). The reviewer must see it is a re-open, not a fresh
+  // pair. New contradictions / corroborator conflicts do NOT re-open. Nullable.
+  reopened_at        DateTime? @db.Timestamptz
+  reopened_from_band String?
+
   subject_a ResolutionSubject @relation("MatchAdvisorySubjectA", fields: [subject_a_id], references: [id])
   subject_b ResolutionSubject @relation("MatchAdvisorySubjectB", fields: [subject_b_id], references: [id])
 

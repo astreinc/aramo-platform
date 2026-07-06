@@ -1,4 +1,11 @@
-import { ANCHOR_KINDS, type AnchorKind, type MatchAdviseBand } from './vocab.js';
+import { isConfirmingAnchor } from './anchor-confirmation.js';
+import {
+  ANCHOR_KINDS,
+  SOURCE_CLASSES,
+  type AnchorKind,
+  type MatchAdviseBand,
+  type SourceClass,
+} from './vocab.js';
 
 // TR-2a-2 within-tenant same-human MATCH CLASSIFIER — pure, no I/O, DETERMINISTIC
 // (no LLM, Decision 10). Mirrors the band-derivation / strength pure-core pattern:
@@ -24,6 +31,10 @@ export interface AnchorForMatch {
   anchor_id: string;
   anchor_kind: AnchorKind;
   normalized_value: string;
+  // TR-2a-B2 (DDR-2 §4) — the anchor's attestation level. A shared (kind, value)
+  // whose strongest class on BOTH sides is confirming lists the kind in
+  // confirmed_kinds and forces ADVISE_STRONG.
+  source_class: SourceClass;
 }
 
 // A PII-free reference to a shared anchor: the kind + the two SubjectAnchor row ids
@@ -37,8 +48,23 @@ export interface SharedAnchorRef {
 export interface MatchClassification {
   shared: SharedAnchorRef[];
   contradiction_kinds: AnchorKind[];
+  // TR-2a-B2 (DDR-2 §4) — kinds shared with BOTH sides confirming-class. Forces
+  // ADVISE_STRONG; PII-free (kind labels only). A strictly-stronger re-open key.
+  confirmed_kinds: AnchorKind[];
   advise_band: MatchAdviseBand;
   has_contradiction: boolean;
+}
+
+// Strongest source_class among a group of anchors (SOURCE_CLASSES is ordered
+// worthless -> authoritative, so the max index wins). The group is non-empty.
+function strongestClass(anchors: readonly AnchorForMatch[]): SourceClass {
+  let best = anchors[0]!.source_class;
+  for (const a of anchors) {
+    if (SOURCE_CLASSES.indexOf(a.source_class) > SOURCE_CLASSES.indexOf(best)) {
+      best = a.source_class;
+    }
+  }
+  return best;
 }
 
 // Classify the pair. Returns null when the two subjects share NO anchor (not a
@@ -50,6 +76,7 @@ export function classifyPair(
 ): MatchClassification | null {
   const shared: SharedAnchorRef[] = [];
   const contradictionKinds: AnchorKind[] = [];
+  const confirmedKinds: AnchorKind[] = [];
 
   for (const kind of ANCHOR_KINDS) {
     const aOfKind = aAnchors.filter((x) => x.anchor_kind === kind);
@@ -58,10 +85,25 @@ export function classifyPair(
     if (aOfKind.length === 0 || bOfKind.length === 0) continue;
 
     const sharedOfKind: SharedAnchorRef[] = [];
+    let confirmedBothThisKind = false;
+    // Group by value (B1's extended key admits >1 class-row per value) so a
+    // shared VALUE is ONE shared identity signal regardless of class-row count.
+    const seenValues = new Set<string>();
     for (const av of aOfKind) {
-      const bv = bOfKind.find((x) => x.normalized_value === av.normalized_value);
-      if (bv !== undefined) {
-        sharedOfKind.push({ anchor_kind: kind, a_anchor_id: av.anchor_id, b_anchor_id: bv.anchor_id });
+      if (seenValues.has(av.normalized_value)) continue;
+      const bForValue = bOfKind.filter((x) => x.normalized_value === av.normalized_value);
+      if (bForValue.length === 0) continue;
+      seenValues.add(av.normalized_value);
+      const aForValue = aOfKind.filter((x) => x.normalized_value === av.normalized_value);
+      const aStrong = strongestClass(aForValue);
+      const bStrong = strongestClass(bForValue);
+      // Deterministic representative ids: the strongest-class anchor per side.
+      const aRep = aForValue.find((x) => x.source_class === aStrong) ?? aForValue[0]!;
+      const bRep = bForValue.find((x) => x.source_class === bStrong) ?? bForValue[0]!;
+      sharedOfKind.push({ anchor_kind: kind, a_anchor_id: aRep.anchor_id, b_anchor_id: bRep.anchor_id });
+      // Confirming-BOTH on this value (strongest class per side).
+      if (isConfirmingAnchor(kind, aStrong) && isConfirmingAnchor(kind, bStrong)) {
+        confirmedBothThisKind = true;
       }
     }
 
@@ -69,6 +111,7 @@ export function classifyPair(
       // Deterministic order within a kind: by a_anchor_id.
       sharedOfKind.sort((x, y) => (x.a_anchor_id < y.a_anchor_id ? -1 : x.a_anchor_id > y.a_anchor_id ? 1 : 0));
       shared.push(...sharedOfKind);
+      if (confirmedBothThisKind) confirmedKinds.push(kind);
     } else {
       // Both subjects carry this kind but no value overlaps → contradiction (R5).
       contradictionKinds.push(kind);
@@ -77,12 +120,15 @@ export function classifyPair(
 
   if (shared.length === 0) return null;
 
-  // R4 — one shared anchor is WEAK; multiple (incl. multi-kind, which is ≥2) is STRONG.
-  const advise_band: MatchAdviseBand = shared.length >= 2 ? 'ADVISE_STRONG' : 'ADVISE_WEAK';
+  // R4 — one shared anchor is WEAK; multiple (incl. multi-kind, ≥2) is STRONG.
+  // B2 (DDR-2 §4): any confirming-both shared ref forces STRONG regardless of count.
+  const advise_band: MatchAdviseBand =
+    shared.length >= 2 || confirmedKinds.length > 0 ? 'ADVISE_STRONG' : 'ADVISE_WEAK';
 
   return {
     shared,
     contradiction_kinds: contradictionKinds,
+    confirmed_kinds: confirmedKinds,
     advise_band,
     has_contradiction: contradictionKinds.length > 0,
   };

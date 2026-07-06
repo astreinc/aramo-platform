@@ -26,6 +26,8 @@ const MIGRATIONS = [
   // TR-2a-B1 — SubjectAnchor.source_class + extended (…, source_class) unique key.
   '../../prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
   '../../prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
+  // TR-2a-B2 — SubjectMatchAdvisory reopen provenance (client selects reopened_at).
+  '../../prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const CREATED_BY = 'tr2a3-resolution-integration';
@@ -125,7 +127,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       prisma = new PrismaService(url);
       await prisma.$connect();
       repo = new TalentTrustRepository(prisma);
-      service = new TalentTrustService(repo);
+      service = new TalentTrustService(repo, new SubjectMatcherService(repo));
       matcher = new SubjectMatcherService(repo);
       resolution = new SubjectResolutionService(repo, service);
     }, 120_000);

@@ -78,6 +78,14 @@ export class IngestionService {
         : null;
     const normalizedProfileUrl =
       request.profile_url !== undefined ? request.profile_url.trim() : null;
+    // TR-2a-B2 — declared_name normalized for STORAGE: trim + collapse inner
+    // whitespace, case PRESERVED for display (the NAME guard tokenizes + folds
+    // case at compare time). Empty after trim → null (absence, never conflicts).
+    const normalizedDeclaredName =
+      typeof request.declared_name === 'string' &&
+      request.declared_name.trim().length > 0
+        ? request.declared_name.trim().replace(/\s+/g, ' ')
+        : null;
 
     // Dedup: verified_email match within tenant.
     if (normalizedEmail !== null && normalizedEmail.length > 0) {
@@ -119,6 +127,7 @@ export class IngestionService {
       verified_email: normalizedEmail,
       profile_url: normalizedProfileUrl,
       source_class: deriveSourceClass(request.source),
+      declared_name: normalizedDeclaredName,
     });
     return this.toResponse(row, 'accepted', {
       match_signal: null,
@@ -204,6 +213,9 @@ export class IngestionService {
       // an unverified third-party claim; the attestation lives on Indeed Apply,
       // not the search-results shortlist).
       source_class: deriveSourceClass('indeed'),
+      // TR-2a-B2 (Name-Wiring §1) — the search-results stage carries no contact
+      // data, so no declared name either.
+      declared_name: null,
       skill_surface_forms: request.skill_surface_forms ?? null,
     });
 
