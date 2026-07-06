@@ -1418,7 +1418,8 @@ export class EngagementRepository {
   }
 
   private logRefused(
-    code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
+    // TR-2a-B3a — createEngagement now also refuses a superseded TalentRecord.
+    code: 'ENGAGEMENT_REFERENCE_NOT_FOUND' | 'TALENT_RECORD_SUPERSEDED',
     input: CreateEngagementInput,
     field: 'talent_id' | 'requisition_id' | 'examination_id',
   ): void {
