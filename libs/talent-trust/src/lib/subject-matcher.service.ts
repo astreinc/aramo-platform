@@ -167,10 +167,12 @@ export class SubjectMatcherService {
   // Callable engine keyed by an external ref (e.g. the ATS TalentRecord.id) — resolves
   // the subject WITHOUT following a merge pointer (anchors are keyed to the ORIGIN
   // subject), then matches it. Returns [] when the ref has no subject yet.
-  // TR-2a-B3a (DDR-3 §2.3/§5) — INTENTIONAL NON-FOLLOWER: the matcher pairs
-  // ORIGIN subjects (anchors live on the origin). Do NOT switch this to
-  // resolveActiveFixpoint — matching the fixpoint would collapse exactly the
-  // same-human pairs the advisory exists to surface.
+  // TR-2a-B3a (DDR-3 §2.3/§5) — INTENTIONAL NON-FOLLOWER at the REF-resolution
+  // step: resolve the ref to its ORIGIN subject (findSubjectByRef), NOT its
+  // fixpoint — the identity evidence (anchors) lives on the origin, and resolving
+  // the ref to the survivor would read the survivor's anchors and miss the husk's
+  // same-human link. (Distinct from TR-6 B1 D2, which normalizes only the advisory
+  // KEYING to survivors inside matchSubject while still reading origin anchors.)
   async matchForRef(
     tenantId: string,
     refType: ResolutionSubjectRefType,
