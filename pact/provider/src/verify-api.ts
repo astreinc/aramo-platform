@@ -397,6 +397,40 @@ const CONTACT_LIST_SURFACE_MIGRATION = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql',
 );
+// PC-5b — ats-web Gate-2a desk (requisition spine + profile-confirm +
+// assignments). Requisition init CREATEs the schema + Requisition +
+// RequisitionAssignment + the RequisitionStatus enum; the additive ALTERs add
+// the compensation / job-module / rate-type columns RequisitionView reads.
+// All FKs are intra-schema (RequisitionAssignment -> Requisition); every
+// cross-schema ref (company_id, golden_profile_id, …) is a plain UUID (§7.3),
+// so the list applies in isolation. Search PR-1 (pg_trgm) omitted (index-
+// only; no ?q= path — GET /v1/requisitions has no paged variant). profile-
+// confirm writes job_domain.Job/GoldenProfile/Requisition, all created by the
+// already-applied JOB_DOMAIN_INIT_MIGRATION.
+const REQUISITION_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
+);
+const REQUISITION_IMPORT_BATCH_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql',
+);
+const REQUISITION_COMPENSATION_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql',
+);
+const REQUISITION_JOB_MODULE_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql',
+);
+const REQUISITION_DROP_LEGACY_COMP_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260612120000_drop_legacy_requisition_comp/migration.sql',
+);
+const REQUISITION_RATE_TYPE_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260618120000_add_rate_type_subk_runmatch/migration.sql',
+);
 const INGESTION_PACT = resolve(
   ROOT,
   'pact/pacts/ingestion-consumer-aramo-core.json',
@@ -561,6 +595,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // logical ref) so it is truncated explicitly.
       await c.query('TRUNCATE TABLE company."Company" CASCADE');
       await c.query('TRUNCATE TABLE contact."Contact" CASCADE');
+      // PC-5b — requisition spine. TRUNCATE Requisition CASCADE clears
+      // RequisitionAssignment (FK requisition_id ON DELETE CASCADE). profile-
+      // confirm writes job_domain.Job + GoldenProfile (job_domain.Requisition
+      // is already truncated above); clear them so prior confirms don't leak.
+      await c.query('TRUNCATE TABLE requisition."Requisition" CASCADE');
+      await c.query('TRUNCATE TABLE job_domain."Job" CASCADE');
+      await c.query('TRUNCATE TABLE job_domain."GoldenProfile" CASCADE');
     }
 
     // 4e-rest-b — seed the portal talent's TalentRecord for the portal-thin
@@ -1069,6 +1110,41 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
            (id, tenant_id, company_id, first_name, last_name)
          VALUES ($1,$2,$3,$4,$5) ON CONFLICT (id) DO NOTHING`,
         [params.id, TENANT_ID, params.companyId, params.firstName, params.lastName],
+      );
+    }
+
+    // PC-5b — requisition spine fixture ids (list/get/patch/profile/confirm +
+    // assignment targets). REQ_COMPANY_ID is a logical UUID ref (no FK), so no
+    // company row is required for the requisition seeds.
+    const ATSW_REQ_ID = '00000000-0000-7000-8000-4e9000000001';
+    const ATSW_REQ_COMPANY_ID = '00000000-0000-7000-8000-c00000000001';
+    const ATSW_REQ_ASSIGN_USER_ID = '00000000-0000-7000-8000-115e00000002';
+    const ATSW_REQ_ASSIGNMENT_ID = '00000000-0000-7000-8000-a55160000002';
+
+    // COMPOSABLE (PC-5b+): seed a requisition row. Only the required columns
+    // (tenant_id, title, company_id); status defaults 'active', openings/
+    // openings_available default 1, golden_profile_id stays null (profile-less
+    // until confirm stamps it).
+    async function seedAtsWebRequisition(
+      c: Client,
+      params: { id: string; title: string; companyId: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.title, params.companyId],
+      );
+    }
+
+    async function seedAtsWebRequisitionAssignment(
+      c: Client,
+      params: { id: string; requisitionId: string; userId: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO requisition."RequisitionAssignment"
+           (id, tenant_id, requisition_id, user_id)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.requisitionId, params.userId],
       );
     }
 
@@ -2170,6 +2246,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         CONTACT_INIT_MIGRATION,
         CONTACT_IMPORT_BATCH_MIGRATION,
         CONTACT_LIST_SURFACE_MIGRATION,
+        // PC-5b — requisition spine (Requisition + RequisitionAssignment +
+        // the comp/job-module/rate-type columns RequisitionView reads). init
+        // CREATEs the schema + enum; all FKs intra-schema. job_domain (for
+        // profile-confirm's Job/GoldenProfile/Requisition writes) is already
+        // applied above. Search PR-1 (pg_trgm) omitted (index-only; no ?q=).
+        REQUISITION_INIT_MIGRATION,
+        REQUISITION_IMPORT_BATCH_MIGRATION,
+        REQUISITION_COMPENSATION_MIGRATION,
+        REQUISITION_JOB_MODULE_MIGRATION,
+        REQUISITION_DROP_LEGACY_COMP_MIGRATION,
+        REQUISITION_RATE_TYPE_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -2270,6 +2357,19 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'contact:create',
           'contact:edit',
           'team:manage',
+          // PC-5b — requisition spine RolesGuard @RequireScopes. read:all
+          // (already present above) short-circuits visibility; requisition:read
+          // satisfies the GET routes' scope check; edit gates PATCH (the in-
+          // service status/comp gate resolves 'edit' for a non-comp field like
+          // is_hot); profile:generate gates profile-confirm; assign gates the
+          // assignment routes. No compensation:view:*/requisition:view:
+          // financials scopes — the masked comp/financial keys stay stripped
+          // (contracts pin the non-commercial shape).
+          'requisition:read',
+          'requisition:create',
+          'requisition:edit',
+          'requisition:profile:generate',
+          'requisition:assign',
         ],
       })
         .setProtectedHeader({ alg: ALG })
@@ -4964,6 +5064,48 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         });
       },
+
+      // ===============================================================
+      // PC-5b — ats-web Gate-2a desk (requisition spine + profile-confirm
+      // + assignments).
+      // ===============================================================
+
+      // -- a seeded profile-less requisition (list, get:id, patch, profile-
+      // read [empty DTO], profile-confirm [stamps golden_profile_id], and the
+      // parent for POST assignment).
+      'an ats-web recruiter and a requisition exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebRequisition(c, {
+            id: ATSW_REQ_ID,
+            title: 'Senior Engineer',
+            companyId: ATSW_REQ_COMPANY_ID,
+          });
+        });
+      },
+
+      // -- create: no pre-existing requisition (the endpoint mints it).
+      'an ats-web recruiter can create requisitions': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+
+      // -- requisition + one assignment (assignments-list, assignment-delete).
+      'an ats-web recruiter and a requisition with an assignment exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebRequisition(c, {
+              id: ATSW_REQ_ID,
+              title: 'Senior Engineer',
+              companyId: ATSW_REQ_COMPANY_ID,
+            });
+            await seedAtsWebRequisitionAssignment(c, {
+              id: ATSW_REQ_ASSIGNMENT_ID,
+              requisitionId: ATSW_REQ_ID,
+              userId: ATSW_REQ_ASSIGN_USER_ID,
+            });
+          });
+        },
     };
 
     // M5 PR-4 helpers: seed TalentRecord + Job + Requisition for the
