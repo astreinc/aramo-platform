@@ -20,6 +20,10 @@ import {
   type KeyObject,
 } from 'jose';
 import { AppModule } from '@aramo/api';
+// PC-6 — resume mock-infra: overrideProvider(Class) needs the concrete class
+// (Gate-5 eslint amendment). Backends only; controllers stay live-verified.
+import { ObjectStorageService } from '@aramo/object-storage';
+import { ResumeParserService } from '@aramo/resume-parse';
 // M5 PR-9 §4.2 — hashCanonicalizedBody imported for idempotency
 // replay/conflict state-handlers. The same hash function the controllers
 // use computes the request_hash that the seeded IdempotencyKey row must
@@ -2928,19 +2932,67 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // results. The outreach-send happy-path interaction asserts
       // model_used + token counts + delivery_channel + delivery_id —
       // these fixtures must match the consumer pact body shape.
+      // PC-6 — the draft-provider fake now branches (cycle-law-2: outreach
+      // stays byte-identical). intake/profile system_messages carry
+      // 'golden_profile' / 'nice_to_have_skills'; both completion parsers are
+      // JSON-tolerant, so ONE merged JSON satisfies parseIntakeCompletion
+      // (fields/jd_text/required_skills/nice_to_have_skills) AND
+      // parseProfileCompletion (jd_text/golden_profile). Anything else (the
+      // engagement outreach draft) falls through to the original prose.
+      const PACT_DRAFT_JSON = JSON.stringify({
+        fields: {},
+        jd_text: 'Senior Engineer — pact draft.',
+        required_skills: [{ name: 'TypeScript' }],
+        nice_to_have_skills: [{ name: 'GraphQL' }],
+        golden_profile: {
+          jd_text: 'Senior Engineer — pact draft.',
+          required_skills: [{ name: 'TypeScript' }],
+          preferred_skills: [{ name: 'GraphQL' }],
+          critical_skills: [],
+          experience: { industries: [] },
+          constraints: {},
+        },
+      });
       const mockDraftProvider = {
-        generate: async (): Promise<{
+        generate: async (input?: { system_message?: string }): Promise<{
           completion: string;
           model_used: string;
           input_tokens: number;
           output_tokens: number;
           provider_request_id: string;
-        }> => ({
-          completion: 'Mocked outreach draft for pact verification.',
-          model_used: 'claude-sonnet-mock',
-          input_tokens: 10,
-          output_tokens: 20,
-          provider_request_id: 'pact-mock-provider-request-id',
+        }> => {
+          const sys = input?.system_message ?? '';
+          const isStructuredDraft =
+            sys.includes('golden_profile') || sys.includes('nice_to_have_skills');
+          return {
+            completion: isStructuredDraft
+              ? PACT_DRAFT_JSON
+              : 'Mocked outreach draft for pact verification.',
+            model_used: 'claude-sonnet-mock',
+            input_tokens: 10,
+            output_tokens: 20,
+            provider_request_id: 'pact-mock-provider-request-id',
+          };
+        },
+      };
+      // PC-6 — resume backends (deterministic; controllers map these to the
+      // wire shape). Overriding ResumeParserService wholesale bypasses its
+      // internal ObjectStorageService.createPresignedGet + real fetch.
+      const mockObjectStorage = {
+        createResumePresignedPut: async () => ({
+          storage_key: 'resumes/pact-seed.pdf',
+          presigned_url: 'https://mock-storage.local/put/pact-seed',
+          expires_at: '2026-05-25T00:05:00.000Z',
+        }),
+      };
+      const mockResumeParser = {
+        parseFromStorageKey: async () => ({
+          prefill: {
+            first_name: 'Grace',
+            last_name: 'Hopper',
+            email1: 'grace@example.com',
+          },
+          parse_status: 'parsed' as const,
         }),
       };
       const mockDeliveryProvider = {
@@ -2964,6 +3016,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .useValue(mockDraftProvider)
         .overrideProvider(PACT_DELIVERY_PROVIDER_TOKEN)
         .useValue(mockDeliveryProvider)
+        // PC-6 — resume mock-infra (backends only).
+        .overrideProvider(ObjectStorageService)
+        .useValue(mockObjectStorage)
+        .overrideProvider(ResumeParserService)
+        .useValue(mockResumeParser)
         .compile();
 
       app = module.createNestApplication();
@@ -5970,6 +6027,27 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             });
           });
         },
+
+      // ===============================================================
+      // PC-6 — mock-infra (resume + ai-draft). Backends mocked; no seed for
+      // the mocked-only paths; profile/draft needs a visible requisition.
+      // ===============================================================
+      'an ats-web recruiter can start a resume flow': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+      'an ats-web recruiter can draft a requisition from intake': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+      'an ats-web recruiter and a requisition for drafting exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebRequisition(c, {
+            id: ATSW_REQ_ID,
+            title: 'Senior Engineer',
+            companyId: ATSW_REQ_COMPANY_ID,
+          });
+        });
+      },
     };
 
     // M5 PR-4 helpers: seed TalentRecord + Job + Requisition for the

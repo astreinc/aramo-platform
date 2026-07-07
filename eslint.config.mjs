@@ -107,7 +107,17 @@ export default [
         'error',
         {
           enforceBuildableLibDependency: true,
-          allow: ['@aramo/auth-service', '@aramo/api'],
+          // PC-6 (Gate-5 amendment): the mock-infra increment overrides the
+          // resume backends in the provider verifier — overrideProvider(Class)
+          // needs the concrete class import, crossing the test boundary.
+          // @aramo/ai-draft NOT added: its provider seam is a string token
+          // ('DRAFT_PROVIDER_TOKEN'), overridden by value with no import.
+          allow: [
+            '@aramo/auth-service',
+            '@aramo/api',
+            '@aramo/object-storage',
+            '@aramo/resume-parse',
+          ],
           depConstraints: SCOPE_DEP_CONSTRAINTS,
         },
       ],
