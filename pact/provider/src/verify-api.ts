@@ -624,6 +624,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await c.query('TRUNCATE TABLE requisition."Requisition" CASCADE');
       await c.query('TRUNCATE TABLE job_domain."Job" CASCADE');
       await c.query('TRUNCATE TABLE job_domain."GoldenProfile" CASCADE');
+      // PC-5c — pipeline + activity. TRUNCATE Pipeline CASCADE clears
+      // PipelineStatusHistory (FK pipeline_id ON DELETE CASCADE); the
+      // transition write also appends an activity + a history row, cleared
+      // here per interaction. Activity is standalone (no FK).
+      await c.query('TRUNCATE TABLE pipeline."Pipeline" CASCADE');
+      await c.query('TRUNCATE TABLE activity."Activity" CASCADE');
     }
 
     // 4e-rest-b — seed the portal talent's TalentRecord for the portal-thin
@@ -1167,6 +1173,90 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
            (id, tenant_id, requisition_id, user_id)
          VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
         [params.id, TENANT_ID, params.requisitionId, params.userId],
+      );
+    }
+
+    // PC-5c — pipeline + activity fixture ids. talent_record_id and
+    // requisition_id on Pipeline are logical UUID refs (no FK), so a basic
+    // pipeline seed needs no parent rows; only the no-openings 409 case seeds
+    // a real requisition (openings_available forced to 0).
+    const ATSW_PIPE_ID = '00000000-0000-7000-8000-71be00000001';
+    const ATSW_PIPE_OFFERED_ID = '00000000-0000-7000-8000-71be00000002';
+    const ATSW_PIPE_TALENT_ID = '00000000-0000-7000-8000-7a1e00000001';
+    const ATSW_PIPE_REQ_ID = '00000000-0000-7000-8000-4e9100000001';
+    const ATSW_PIPE_FULL_REQ_ID = '00000000-0000-7000-8000-4e9100000002';
+    const ATSW_PIPE_HISTORY_ID = '00000000-0000-7000-8000-415700000001';
+    const ATSW_ACTIVITY_ID = '00000000-0000-7000-8000-ac7100000001';
+
+    // COMPOSABLE (PC-5c+): seed a pipeline row. status defaults 'no_contact'
+    // (the create-state) unless a specific stage is passed (e.g. 'offered' for
+    // the placement-transition case).
+    async function seedAtsWebPipeline(
+      c: Client,
+      params: {
+        id: string;
+        talentRecordId: string;
+        requisitionId: string;
+        status?: string;
+      },
+    ): Promise<void> {
+      if (params.status === undefined) {
+        await c.query(
+          `INSERT INTO pipeline."Pipeline" (id, tenant_id, talent_record_id, requisition_id)
+           VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+          [params.id, TENANT_ID, params.talentRecordId, params.requisitionId],
+        );
+        return;
+      }
+      await c.query(
+        `INSERT INTO pipeline."Pipeline"
+           (id, tenant_id, talent_record_id, requisition_id, status)
+         VALUES ($1,$2,$3,$4,$5::"pipeline"."PipelineStatus")
+         ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.talentRecordId, params.requisitionId, params.status],
+      );
+    }
+
+    async function seedAtsWebPipelineHistory(
+      c: Client,
+      params: {
+        id: string;
+        pipelineId: string;
+        statusFrom: string;
+        statusTo: string;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO pipeline."PipelineStatusHistory"
+           (id, tenant_id, pipeline_id, status_from, status_to)
+         VALUES ($1,$2,$3,$4::"pipeline"."PipelineStatus",$5::"pipeline"."PipelineStatus")
+         ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.pipelineId, params.statusFrom, params.statusTo],
+      );
+    }
+
+    async function seedAtsWebActivity(
+      c: Client,
+      params: {
+        id: string;
+        type: string;
+        subjectType?: string;
+        subjectId?: string;
+        notes?: string;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO activity."Activity"
+           (id, tenant_id, type, subject_type, subject_id, notes)
+         VALUES ($1,$2,$3::"activity"."ActivityType",$4,$5,$6) ON CONFLICT (id) DO NOTHING`,
+        [
+          params.id,
+          TENANT_ID,
+          params.type,
+          params.subjectType ?? null,
+          params.subjectId ?? null,
+          params.notes ?? null,
+        ],
       );
     }
 
@@ -2399,6 +2489,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'requisition:edit',
           'requisition:profile:generate',
           'requisition:assign',
+          // PC-5c — pipeline state machine + activity RolesGuard
+          // @RequireScopes. pipeline:change-status gates the transition
+          // endpoint (the state machine); pipeline:remove omitted (DELETE is
+          // EXCLUDE-R2). Visibility (resolveVisibleRequisitionIds /
+          // resolveVisiblePipelineIds) short-circuits to zero reads under the
+          // company:read:all / requisition:read:all bits already present.
+          'pipeline:read',
+          'pipeline:add',
+          'pipeline:change-status',
+          'activity:read',
+          'activity:create',
         ],
       })
         .setProtectedHeader({ alg: ALG })
@@ -5135,6 +5236,94 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             });
           });
         },
+
+      // ===============================================================
+      // PC-5c — ats-web Gate-2a desk (pipeline state machine + activity).
+      // ===============================================================
+
+      // -- a seeded pipeline at the create-state no_contact (list; the happy
+      // transition no_contact->contacted; the illegal transition
+      // no_contact->placed [INVALID_PIPELINE_TRANSITION 422]).
+      'an ats-web recruiter and a pipeline exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebPipeline(c, {
+            id: ATSW_PIPE_ID,
+            talentRecordId: ATSW_PIPE_TALENT_ID,
+            requisitionId: ATSW_PIPE_REQ_ID,
+          });
+        });
+      },
+
+      // -- a pipeline with one status-history entry (create() writes no
+      // history, so the row is seeded directly for the history read).
+      'an ats-web recruiter and a pipeline with a status history entry exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebPipeline(c, {
+              id: ATSW_PIPE_ID,
+              talentRecordId: ATSW_PIPE_TALENT_ID,
+              requisitionId: ATSW_PIPE_REQ_ID,
+            });
+            await seedAtsWebPipelineHistory(c, {
+              id: ATSW_PIPE_HISTORY_ID,
+              pipelineId: ATSW_PIPE_ID,
+              statusFrom: 'no_contact',
+              statusTo: 'contacted',
+            });
+          });
+        },
+
+      // -- create: no pre-existing pipeline (the endpoint mints it at
+      // no_contact). talent_record_id/requisition_id are logical refs.
+      'an ats-web recruiter can create pipelines': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+
+      // -- a pipeline at 'offered' whose linked requisition has zero available
+      // openings: offered->placed is legal but the placement decrement matches
+      // no rows -> REQUISITION_NO_OPENINGS 409.
+      'an ats-web recruiter and a pipeline in offered state with no requisition openings exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebRequisition(c, {
+              id: ATSW_PIPE_FULL_REQ_ID,
+              title: 'Fully Placed Role',
+              companyId: ATSW_REQ_COMPANY_ID,
+            });
+            await c.query(
+              `UPDATE requisition."Requisition" SET openings_available = 0 WHERE id = $1`,
+              [ATSW_PIPE_FULL_REQ_ID],
+            );
+            await seedAtsWebPipeline(c, {
+              id: ATSW_PIPE_OFFERED_ID,
+              talentRecordId: ATSW_PIPE_TALENT_ID,
+              requisitionId: ATSW_PIPE_FULL_REQ_ID,
+              status: 'offered',
+            });
+          });
+        },
+
+      // -- a seeded activity (activities list).
+      'an ats-web recruiter and an activity exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebActivity(c, {
+            id: ATSW_ACTIVITY_ID,
+            type: 'note',
+            subjectType: 'requisition',
+            subjectId: ATSW_REQ_ID,
+            notes: 'Kickoff call notes.',
+          });
+        });
+      },
+
+      // -- create: no pre-existing activity (the endpoint mints it).
+      'an ats-web recruiter can create activities': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
     };
 
     // M5 PR-4 helpers: seed TalentRecord + Job + Requisition for the
