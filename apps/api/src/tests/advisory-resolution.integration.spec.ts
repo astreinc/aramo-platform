@@ -107,6 +107,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return { status: res.status, json: () => res.json() };
     }
 
+    async function get(
+      path: string,
+      jwt: string,
+    ): Promise<{ status: number; json: () => Promise<unknown> }> {
+      const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      return { status: res.status, json: () => res.json() };
+    }
+
     async function subjectStatus(id: string): Promise<{ status: string; merged_into: string | null }> {
       const r = await db.query(
         `SELECT status, merged_into_subject_id FROM talent_trust."ResolutionSubject" WHERE id = $1::uuid`,
@@ -313,5 +323,183 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       expect(res.status).toBe(409);
     });
+
+    // ---- TR-6 B2 (DDR D5 §5a) — keyset pagination -----------------------
+    it('(a) pagination: stable keyset across pages; default PENDING_REVIEW; status filter works', async () => {
+      const tenant = uuidv7();
+      await db.query(
+        `INSERT INTO identity."Tenant" (id, name, updated_at) VALUES ($1::uuid,'pg',CURRENT_TIMESTAMP)`,
+        [tenant],
+      );
+      await db.query(
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid,'core')`,
+        [tenant],
+      );
+      // Seed 3 PENDING + 1 DISMISSED, deterministic created_at order.
+      const pendingIds: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        const { advisoryId } = await seedAdvisoryFor(tenant, 'PENDING_REVIEW', i);
+        pendingIds.push(advisoryId);
+      }
+      await seedAdvisoryFor(tenant, 'DISMISSED', 9);
+
+      const jwt = await signJwt([RESOLVE_SCOPE], tenant);
+      // Default (no status) → PENDING_REVIEW only, limit 2 → page of 2 + next_cursor.
+      const p1 = await get(`/v1/talent/identity/advisories?limit=2`, jwt);
+      expect(p1.status).toBe(200);
+      const page1 = (await p1.json()) as { items: Array<{ id: string; status: string }>; next_cursor: string | null };
+      expect(page1.items).toHaveLength(2);
+      expect(page1.items.every((i) => i.status === 'PENDING_REVIEW')).toBe(true);
+      expect(page1.next_cursor).not.toBeNull();
+
+      // Page 2 via cursor → the remaining 1 PENDING, then next_cursor null.
+      const p2 = await get(
+        `/v1/talent/identity/advisories?limit=2&cursor=${page1.next_cursor}`,
+        jwt,
+      );
+      const page2 = (await p2.json()) as { items: Array<{ id: string }>; next_cursor: string | null };
+      expect(page2.items).toHaveLength(1);
+      expect(page2.next_cursor).toBeNull();
+      // Stable, non-overlapping keyset (all 3 distinct pending ids across the 2 pages).
+      const seen = new Set([...page1.items, ...page2.items].map((i) => i.id));
+      expect(seen).toEqual(new Set(pendingIds));
+
+      // Status filter → the DISMISSED tab.
+      const d = await get(`/v1/talent/identity/advisories?status=DISMISSED`, jwt);
+      const dismissed = (await d.json()) as { items: Array<{ status: string }> };
+      expect(dismissed.items).toHaveLength(1);
+      expect(dismissed.items[0]!.status).toBe('DISMISSED');
+    });
+
+    // ---- TR-6 B2 (DDR D5 §5b) — enrichment: kinds, never values ---------
+    it('(b) enrichment: kinds + reopen provenance present; NO values on the wire', async () => {
+      const tenant = uuidv7();
+      await db.query(
+        `INSERT INTO identity."Tenant" (id, name, updated_at) VALUES ($1::uuid,'enr',CURRENT_TIMESTAMP)`,
+        [tenant],
+      );
+      await db.query(
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid,'core')`,
+        [tenant],
+      );
+      const s1 = uuidv7();
+      const s2 = uuidv7();
+      const [a, b] = s1 < s2 ? [s1, s2] : [s2, s1];
+      for (const id of [a, b]) {
+        await db.query(
+          `INSERT INTO talent_trust."ResolutionSubject" (id, tenant_id, status, created_at)
+           VALUES ($1::uuid,$2::uuid,'ACTIVE',CURRENT_TIMESTAMP)`,
+          [id, tenant],
+        );
+      }
+      const advisoryId = uuidv7();
+      // match_basis carries KINDS + anchor-row ids (PII-free) — NEVER a value.
+      const basis = {
+        shared: [{ anchor_kind: 'EMAIL', a_anchor_id: uuidv7(), b_anchor_id: uuidv7() }],
+        contradiction_kinds: ['PHONE'],
+        confirmed_kinds: ['EMAIL'],
+        corroborator_conflict_kinds: ['NAME'],
+      };
+      await db.query(
+        `INSERT INTO talent_trust."SubjectMatchAdvisory"
+           (id, tenant_id, subject_a_id, subject_b_id, advise_band, has_contradiction, match_basis,
+            status, created_by, created_at, reopened_at, reopened_from_band)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,'ADVISE_STRONG', true, $5::jsonb,
+                 'PENDING_REVIEW','seed',CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'ADVISE_WEAK')`,
+        [advisoryId, tenant, a, b, JSON.stringify(basis)],
+      );
+
+      const res = await get(`/v1/talent/identity/advisories`, await signJwt([RESOLVE_SCOPE], tenant));
+      const bodyText = JSON.stringify(await res.json());
+      const body = JSON.parse(bodyText) as {
+        items: Array<Record<string, unknown>>;
+      };
+      const item = body.items.find((i) => i['id'] === advisoryId)!;
+      expect(item).toBeDefined();
+      expect(item['advise_band']).toBe('ADVISE_STRONG');
+      expect(item['has_contradiction']).toBe(true);
+      expect(item['confirmed_kinds']).toEqual(['EMAIL']);
+      expect(item['contradiction_kinds']).toEqual(['PHONE']);
+      expect(item['corroborator_conflict_kinds']).toEqual(['NAME']);
+      expect(item['shared_anchor_kinds']).toEqual(['EMAIL']);
+      expect(item['reopened_at']).not.toBeNull();
+      expect(item['reopened_from_band']).toBe('ADVISE_WEAK');
+      // KINDS only — the anchor-row ids and the raw match_basis blob never reach the wire.
+      expect(item['match_basis']).toBeUndefined();
+      expect(bodyText).not.toContain('a_anchor_id');
+      expect(bodyText).not.toContain(basis.shared[0]!.a_anchor_id);
+    });
+
+    // ---- TR-6 B2 (DDR D5 §5c) — each refusal returns its DOMAIN code -----
+    it('(c) each advisory refusal returns its domain code', async () => {
+      const jwt = await signJwt([RESOLVE_SCOPE]);
+      const codeOf = async (r: { json: () => Promise<unknown> }): Promise<string> =>
+        ((await r.json()) as { error: { code: string } }).error.code;
+
+      // approve an already-resolved advisory → ADVISORY_NOT_PENDING (409).
+      const r1 = await seedAdvisory(TENANT_A);
+      await post(`/v1/talent/identity/advisories/${r1.advisoryId}/approve`, jwt, {});
+      const reApprove = await post(`/v1/talent/identity/advisories/${r1.advisoryId}/approve`, jwt, {});
+      expect(reApprove.status).toBe(409);
+      expect(await codeOf(reApprove)).toBe('ADVISORY_NOT_PENDING');
+
+      // reverse a not-MERGED (PENDING) advisory → ADVISORY_NOT_MERGED (409).
+      const r2 = await seedAdvisory(TENANT_A);
+      const rev = await post(`/v1/talent/identity/advisories/${r2.advisoryId}/reverse`, jwt, {
+        justification: 'x',
+      });
+      expect(rev.status).toBe(409);
+      expect(await codeOf(rev)).toBe('ADVISORY_NOT_MERGED');
+
+      // approve a contradicted advisory without override → CONTRADICTION_OVERRIDE_REQUIRED (400).
+      const r3 = await seedAdvisory(TENANT_A, { contradiction: true });
+      const contra = await post(`/v1/talent/identity/advisories/${r3.advisoryId}/approve`, jwt, {});
+      expect(contra.status).toBe(400);
+      expect(await codeOf(contra)).toBe('CONTRADICTION_OVERRIDE_REQUIRED');
+
+      // reverse without a justification → REVERSAL_JUSTIFICATION_REQUIRED (400).
+      const r4 = await seedAdvisory(TENANT_A);
+      await post(`/v1/talent/identity/advisories/${r4.advisoryId}/approve`, jwt, {});
+      const noJust = await post(`/v1/talent/identity/advisories/${r4.advisoryId}/reverse`, jwt, {});
+      expect(noJust.status).toBe(400);
+      expect(await codeOf(noJust)).toBe('REVERSAL_JUSTIFICATION_REQUIRED');
+
+      // a missing advisory → NOT_FOUND (404).
+      const missing = await post(
+        `/v1/talent/identity/advisories/${uuidv7()}/dismiss`,
+        jwt,
+        {},
+      );
+      expect(missing.status).toBe(404);
+      expect(await codeOf(missing)).toBe('NOT_FOUND');
+    });
+
+    // Seed a PENDING/DISMISSED advisory with a tie-broken created_at ordinal.
+    async function seedAdvisoryFor(
+      tenant: string,
+      status: string,
+      ordinal: number,
+    ): Promise<{ advisoryId: string; a: string; b: string }> {
+      const s1 = uuidv7();
+      const s2 = uuidv7();
+      const [a, b] = s1 < s2 ? [s1, s2] : [s2, s1];
+      for (const id of [a, b]) {
+        await db.query(
+          `INSERT INTO talent_trust."ResolutionSubject" (id, tenant_id, status, created_at)
+           VALUES ($1::uuid,$2::uuid,'ACTIVE',CURRENT_TIMESTAMP)`,
+          [id, tenant],
+        );
+      }
+      const advisoryId = uuidv7();
+      await db.query(
+        `INSERT INTO talent_trust."SubjectMatchAdvisory"
+           (id, tenant_id, subject_a_id, subject_b_id, advise_band, has_contradiction, match_basis, status, created_by, created_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,'ADVISE_WEAK', false,
+                 '{"shared":[],"contradiction_kinds":[],"confirmed_kinds":[]}'::jsonb, $5,
+                 'seed', CURRENT_TIMESTAMP + ($6 || ' seconds')::interval)`,
+        [advisoryId, tenant, a, b, status, String(ordinal)],
+      );
+      return { advisoryId, a, b };
+    }
   },
 );

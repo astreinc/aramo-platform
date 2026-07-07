@@ -1,4 +1,3 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SubjectResolutionService } from '../lib/subject-resolution.service.js';
@@ -11,6 +10,10 @@ import type { TalentTrustService } from '../lib/talent-trust.service.js';
 // TR-2a-3 — resolution service guards + mechanism (mocked repo + trust, no DB).
 // Proves the R1/R3/R5 guards and that the merge/un-merge go through the EXISTING
 // TalentTrustService (pointer-only), plus the audit fields written on the advisory.
+//
+// TR-6 B2 (DDR D5 §5c) — the per-refusal DOMAIN-CODE test: each guard now throws an
+// AramoError carrying its advisory-scope code (no longer a Nest exception the filter
+// status-collapsed). This asserts the exact code via .rejects.toMatchObject({ code }).
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const SUBJ_A = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
@@ -76,7 +79,7 @@ describe('SubjectResolutionService — TR-2a-3 resolution', () => {
 
   it('approveMerge (non-contradicted) → pointer-only mergeSubjects(a survives, b merges) + MERGED audit', async () => {
     const { svc, mergeSubjects, applyAdvisoryResolution } = makeService(advisory());
-    await svc.approveMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR });
+    await svc.approveMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR, requestId: 'req-test' });
 
     expect(mergeSubjects).toHaveBeenCalledTimes(1);
     // Default direction: subject_a survives, subject_b merges into it.
@@ -95,6 +98,7 @@ describe('SubjectResolutionService — TR-2a-3 resolution', () => {
       tenant_id: TENANT,
       advisory_id: ADV,
       actor: ACTOR,
+      requestId: 'req-test',
       surviving_subject_id: SUBJ_B,
     });
     expect(mergeSubjects.mock.calls[0]!.slice(0, 2)).toEqual([SUBJ_B, SUBJ_A]);
@@ -107,26 +111,28 @@ describe('SubjectResolutionService — TR-2a-3 resolution', () => {
         tenant_id: TENANT,
         advisory_id: ADV,
         actor: ACTOR,
+      requestId: 'req-test',
         surviving_subject_id: 'dddddddd-dddd-7ddd-8ddd-dddddddddddd',
       }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     expect(mergeSubjects).not.toHaveBeenCalled();
   });
 
   it('approveMerge on a CONTRADICTED advisory WITHOUT ack+justification → BadRequest, NO merge (R3)', async () => {
     const { svc, mergeSubjects } = makeService(advisory({ has_contradiction: true }));
     await expect(
-      svc.approveMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+      svc.approveMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR, requestId: 'req-test' }),
+    ).rejects.toMatchObject({ code: 'CONTRADICTION_OVERRIDE_REQUIRED' });
     // Even ack alone (no justification) is not enough.
     await expect(
       svc.approveMerge({
         tenant_id: TENANT,
         advisory_id: ADV,
         actor: ACTOR,
+      requestId: 'req-test',
         override_acknowledged: true,
       }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toMatchObject({ code: 'CONTRADICTION_OVERRIDE_REQUIRED' });
     expect(mergeSubjects).not.toHaveBeenCalled();
   });
 
@@ -138,6 +144,7 @@ describe('SubjectResolutionService — TR-2a-3 resolution', () => {
       tenant_id: TENANT,
       advisory_id: ADV,
       actor: ACTOR,
+      requestId: 'req-test',
       override_acknowledged: true,
       justification: 'same human — phone changed jobs, confirmed via reference',
     });
@@ -149,22 +156,23 @@ describe('SubjectResolutionService — TR-2a-3 resolution', () => {
   it('approveMerge on an already-resolved advisory → Conflict (R5 idempotency)', async () => {
     const { svc, mergeSubjects } = makeService(advisory({ status: 'MERGED' }));
     await expect(
-      svc.approveMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR }),
-    ).rejects.toBeInstanceOf(ConflictException);
+      svc.approveMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR, requestId: 'req-test' }),
+    ).rejects.toMatchObject({ code: 'ADVISORY_NOT_PENDING' });
     expect(mergeSubjects).not.toHaveBeenCalled();
   });
 
   it('approveMerge when a subject is not ACTIVE → Conflict, NO merge (R5)', async () => {
     const { svc, mergeSubjects } = makeService(advisory(), 'MERGED');
     await expect(
-      svc.approveMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR }),
-    ).rejects.toBeInstanceOf(ConflictException);
+      svc.approveMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR, requestId: 'req-test' }),
+    ).rejects.toMatchObject({ code: 'MERGE_SUBJECT_NOT_ACTIVE' });
     expect(mergeSubjects).not.toHaveBeenCalled();
   });
 
   it('dismiss → DISMISSED audit, NO merge', async () => {
     const { svc, mergeSubjects, applyAdvisoryResolution } = makeService(advisory());
-    await svc.dismiss({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR, justification: 'different people' });
+    await svc.dismiss({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR,
+      requestId: 'req-test', justification: 'different people' });
     expect(mergeSubjects).not.toHaveBeenCalled();
     const audit = applyAdvisoryResolution.mock.calls[0]![0] as Record<string, unknown>;
     expect(audit.status).toBe('DISMISSED');
@@ -175,7 +183,8 @@ describe('SubjectResolutionService — TR-2a-3 resolution', () => {
   it('reverseMerge on a MERGED advisory → unmergeSubjects(merged) + REVERSED audit (R2)', async () => {
     const merged = advisory({ status: 'MERGED', surviving_subject_id: SUBJ_A, merged_subject_id: SUBJ_B });
     const { svc, unmergeSubjects, applyAdvisoryReversal } = makeService(merged);
-    await svc.reverseMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR, justification: 'merge was wrong' });
+    await svc.reverseMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR,
+      requestId: 'req-test', justification: 'merge was wrong' });
     expect(unmergeSubjects).toHaveBeenCalledTimes(1);
     expect(unmergeSubjects.mock.calls[0]![0]).toBe(SUBJ_B); // the merged subject
     const audit = applyAdvisoryReversal.mock.calls[0]![0] as Record<string, unknown>;
@@ -187,16 +196,18 @@ describe('SubjectResolutionService — TR-2a-3 resolution', () => {
     const merged = advisory({ status: 'MERGED', merged_subject_id: SUBJ_B });
     const { svc, unmergeSubjects } = makeService(merged);
     await expect(
-      svc.reverseMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR, justification: '   ' }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+      svc.reverseMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR,
+      requestId: 'req-test', justification: '   ' }),
+    ).rejects.toMatchObject({ code: 'REVERSAL_JUSTIFICATION_REQUIRED' });
     expect(unmergeSubjects).not.toHaveBeenCalled();
   });
 
   it('reverseMerge on a non-MERGED advisory → Conflict', async () => {
     const { svc, unmergeSubjects } = makeService(advisory({ status: 'PENDING_REVIEW' }));
     await expect(
-      svc.reverseMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR, justification: 'x' }),
-    ).rejects.toBeInstanceOf(ConflictException);
+      svc.reverseMerge({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR,
+      requestId: 'req-test', justification: 'x' }),
+    ).rejects.toMatchObject({ code: 'ADVISORY_NOT_MERGED' });
     expect(unmergeSubjects).not.toHaveBeenCalled();
   });
 
@@ -207,8 +218,8 @@ describe('SubjectResolutionService — TR-2a-3 resolution', () => {
     } as unknown as TalentTrustRepository;
     const svc2 = new SubjectResolutionService(repo, {} as unknown as TalentTrustService);
     await expect(
-      svc2.dismiss({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR }),
-    ).rejects.toBeInstanceOf(NotFoundException);
+      svc2.dismiss({ tenant_id: TENANT, advisory_id: ADV, actor: ACTOR, requestId: 'req-test' }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
     void svc;
   });
 });

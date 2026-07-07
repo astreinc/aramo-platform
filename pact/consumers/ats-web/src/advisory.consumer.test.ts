@@ -25,13 +25,15 @@ import {
 //
 // idempotency: 0-by-substrate (no Idempotency-Key).
 //
-// SUBSTRATE NOTE (pinned faithfully): the controller throws Nest built-in
-// Conflict/BadRequest exceptions; AramoExceptionFilter maps them by STATUS,
-// not by semantic literal — 409 -> code 'IDEMPOTENCY_KEY_CONFLICT', 400 ->
-// code 'VALIDATION_ERROR'. So the distinct invariant literals
-// (contradiction_override_required / reversal_justification_required / not-
-// MERGED / already-resolved) live in the message (like-matched); the wire code
-// is the generic status-mapped one. This is the real provider shape.
+// TR-6 B2 (DDR D5 + PC Exit Accounting §5.1 — the coordinated fix): the advisory
+// refusals now throw AramoError with ADVISORY-SCOPE DOMAIN CODES instead of Nest
+// built-in exceptions the AramoExceptionFilter status-collapsed to the
+// semantically-false generic codes (409→IDEMPOTENCY_KEY_CONFLICT,
+// 400→VALIDATION_ERROR). The 4 refusal/illegal-state interactions below pin the
+// TRUE codes: ADVISORY_NOT_PENDING (409), ADVISORY_NOT_MERGED (409),
+// CONTRADICTION_OVERRIDE_REQUIRED (400), REVERSAL_JUSTIFICATION_REQUIRED (400).
+// This PR updates them + the provider in the same slice — coordinated by design.
+// The 3 happy interactions are unchanged. The filter itself is untouched.
 //
 // Guard chain: @RequireCapability('core') + @RequireScopes('identity:resolve').
 
@@ -57,6 +59,61 @@ function advisoryView(id: string, status: string) {
     created_at: regex(ISO_TIMESTAMP, '2026-05-25T00:00:00Z'),
   };
 }
+
+// ======================================================================
+// TR-6 B2 (DDR D5) — the reviewer worklist read: keyset-paginated + enriched
+// (bands + named KINDS only, never values; R10 clean (bands, not numeric signals)). New FE interaction,
+// pinned with the correct shape from day one.
+// ======================================================================
+describe('ats-web → GET /v1/talent/identity/advisories (worklist)', () => {
+  it('returns 200 an enriched keyset page of PENDING_REVIEW advisories', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a pending advisory without contradiction exist')
+      .uponReceiving('an identity advisories worklist read')
+      .withRequest('GET', ADV_BASE, (b) => {
+        b.query({ status: 'PENDING_REVIEW' }).headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          items: [
+            {
+              id: uuid(ADV_PENDING_ID),
+              tenant_id: uuid(TENANT_ID),
+              subject_a_id: uuid(ADV_SUBJECT_A),
+              subject_b_id: uuid(ADV_SUBJECT_B),
+              advise_band: like('ADVISE_STRONG'),
+              has_contradiction: like(false),
+              status: 'PENDING_REVIEW',
+              created_at: regex(ISO_TIMESTAMP, '2026-05-25T00:00:00Z'),
+              // Named KINDS only — never a normalized value; bands only, no numeric ordering signal (R10).
+              confirmed_kinds: like([]),
+              contradiction_kinds: like([]),
+              corroborator_conflict_kinds: like([]),
+              shared_anchor_kinds: like([]),
+              reopened_at: null,
+              reopened_from_band: null,
+            },
+          ],
+          next_cursor: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${ADV_BASE}?status=PENDING_REVIEW`, {
+          headers: { Cookie: ACCESS_COOKIE },
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          items: Array<{ status: string; shared_anchor_kinds: string[] }>;
+          next_cursor: string | null;
+        };
+        expect(body.items.length).toBeGreaterThan(0);
+        expect(body.items[0]!.status).toBe('PENDING_REVIEW');
+        expect(Array.isArray(body.items[0]!.shared_anchor_kinds)).toBe(true);
+        expect(body.next_cursor).toBeNull();
+      });
+  });
+});
 
 // ======================================================================
 // happy — approve / dismiss / reverse
@@ -150,7 +207,7 @@ describe('ats-web → advisory resolution (illegal-state)', () => {
       })
       .willRespondWith(409, (b) => {
         b.jsonBody(
-          errorBody('IDEMPOTENCY_KEY_CONFLICT', 'advisory is already MERGED — cannot re-resolve'),
+          errorBody('ADVISORY_NOT_PENDING', 'advisory is already MERGED — cannot re-resolve'),
         );
       })
       .executeTest(async (mock) => {
@@ -161,7 +218,7 @@ describe('ats-web → advisory resolution (illegal-state)', () => {
         });
         expect(res.status).toBe(409);
         const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+        expect(body.error.code).toBe('ADVISORY_NOT_PENDING');
       });
   });
 
@@ -176,7 +233,7 @@ describe('ats-web → advisory resolution (illegal-state)', () => {
       })
       .willRespondWith(409, (b) => {
         b.jsonBody(
-          errorBody('IDEMPOTENCY_KEY_CONFLICT', 'advisory is PENDING_REVIEW, not MERGED — cannot reverse'),
+          errorBody('ADVISORY_NOT_MERGED', 'advisory is PENDING_REVIEW, not MERGED — cannot reverse'),
         );
       })
       .executeTest(async (mock) => {
@@ -187,7 +244,7 @@ describe('ats-web → advisory resolution (illegal-state)', () => {
         });
         expect(res.status).toBe(409);
         const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('IDEMPOTENCY_KEY_CONFLICT');
+        expect(body.error.code).toBe('ADVISORY_NOT_MERGED');
       });
   });
 });
@@ -208,7 +265,7 @@ describe('ats-web → advisory resolution (refusal)', () => {
       .willRespondWith(400, (b) => {
         b.jsonBody(
           errorBody(
-            'VALIDATION_ERROR',
+            'CONTRADICTION_OVERRIDE_REQUIRED',
             'contradiction_override_required: merging an advisory with has_contradiction=true requires override_acknowledged=true and a justification',
           ),
         );
@@ -221,7 +278,7 @@ describe('ats-web → advisory resolution (refusal)', () => {
         });
         expect(res.status).toBe(400);
         const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('VALIDATION_ERROR');
+        expect(body.error.code).toBe('CONTRADICTION_OVERRIDE_REQUIRED');
       });
   });
 
@@ -235,7 +292,7 @@ describe('ats-web → advisory resolution (refusal)', () => {
         b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody(BODY);
       })
       .willRespondWith(400, (b) => {
-        b.jsonBody(errorBody('VALIDATION_ERROR', 'reversal_justification_required'));
+        b.jsonBody(errorBody('REVERSAL_JUSTIFICATION_REQUIRED', 'reversal_justification_required'));
       })
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}${ADV_BASE}/${ADV_MERGED_ID}/reverse`, {
@@ -245,7 +302,7 @@ describe('ats-web → advisory resolution (refusal)', () => {
         });
         expect(res.status).toBe(400);
         const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('VALIDATION_ERROR');
+        expect(body.error.code).toBe('REVERSAL_JUSTIFICATION_REQUIRED');
       });
   });
 });

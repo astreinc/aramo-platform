@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
+import { RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import {
@@ -18,6 +19,7 @@ import {
   SubjectResolutionService,
   TalentTrustRepository,
   type MatchAdvisoryStatus,
+  type MatchBasis,
   type SubjectMatchAdvisoryRow,
 } from '@aramo/talent-trust';
 
@@ -65,6 +67,60 @@ interface AdvisoryView {
   reversal_justification: string | null;
 }
 
+// TR-6 B2 (DDR D5) — the enriched reviewer-worklist LIST item. PII-lean: bands +
+// named KINDS only, NEVER a normalized_value and NEVER a numeric ordering signal (R10 — bands only). The
+// kinds are flattened out of match_basis so the FE renders them as named chips
+// without parsing the basis blob. Reopen provenance is surfaced for the marker.
+interface AdvisoryListItem {
+  id: string;
+  tenant_id: string;
+  subject_a_id: string;
+  subject_b_id: string;
+  advise_band: string;
+  has_contradiction: boolean;
+  status: MatchAdvisoryStatus;
+  created_at: string;
+  confirmed_kinds: string[];
+  contradiction_kinds: string[];
+  corroborator_conflict_kinds: string[];
+  // Distinct anchor KINDS shared by the pair (from match_basis.shared) — kinds only,
+  // never the anchor-row ids and never the normalized value.
+  shared_anchor_kinds: string[];
+  reopened_at: string | null;
+  reopened_from_band: string | null;
+}
+
+// Bounded keyset page size (DDR D5 — "bounded default"). A reviewer scans a page,
+// pages via next_cursor; the cap keeps the response PII-lean and the query cheap.
+const ADVISORY_PAGE_DEFAULT_LIMIT = 25;
+const ADVISORY_PAGE_MAX_LIMIT = 100;
+
+function uniqueKinds(kinds: readonly string[] | undefined): string[] {
+  return kinds === undefined ? [] : [...new Set(kinds)];
+}
+
+function toListItem(row: SubjectMatchAdvisoryRow): AdvisoryListItem {
+  // match_basis is the PII-free MatchBasis blob (kinds + anchor-row ids only).
+  const basis = (row.match_basis ?? {}) as Partial<MatchBasis>;
+  const sharedKinds = uniqueKinds((basis.shared ?? []).map((s) => s.anchor_kind));
+  return {
+    id: row.id,
+    tenant_id: row.tenant_id,
+    subject_a_id: row.subject_a_id,
+    subject_b_id: row.subject_b_id,
+    advise_band: row.advise_band,
+    has_contradiction: row.has_contradiction,
+    status: row.status,
+    created_at: row.created_at.toISOString(),
+    confirmed_kinds: uniqueKinds(basis.confirmed_kinds),
+    contradiction_kinds: uniqueKinds(basis.contradiction_kinds),
+    corroborator_conflict_kinds: uniqueKinds(basis.corroborator_conflict_kinds),
+    shared_anchor_kinds: sharedKinds,
+    reopened_at: row.reopened_at ? row.reopened_at.toISOString() : null,
+    reopened_from_band: row.reopened_from_band,
+  };
+}
+
 function toView(row: SubjectMatchAdvisoryRow): AdvisoryView {
   return {
     id: row.id,
@@ -101,25 +157,41 @@ export class AdvisoryResolutionController {
     private readonly reconcile: RecordReconcileOrchestrator,
   ) {}
 
-  // The reviewer queue. Optional ?status= filter (defaults to all for the tenant).
+  // TR-6 B2 (DDR D5) — the reviewer worklist. Keyset-paginated (cursor + bounded
+  // limit), enriched (bands + named kinds, never values or numeric signals). Default status is
+  // PENDING_REVIEW (the reviewer queue); the ?status= filter is retained for the
+  // resolved tabs. `next_cursor` is null on the last page.
   @Get()
   @HttpCode(HttpStatus.OK)
   @RequireScopes('identity:resolve')
   async list(
     @AuthContext() authContext: AuthContextType,
     @Query('status') status?: string,
-  ): Promise<{ items: AdvisoryView[] }> {
-    let statusFilter: MatchAdvisoryStatus | undefined;
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ): Promise<{ items: AdvisoryListItem[]; next_cursor: string | null }> {
+    // Default to the PENDING_REVIEW queue; an explicit ?status= selects a tab.
+    let statusFilter: MatchAdvisoryStatus = 'PENDING_REVIEW';
     if (status !== undefined && status.length > 0) {
       if (!(MATCH_ADVISORY_STATUSES as readonly string[]).includes(status)) {
         throw new BadRequestException(`invalid status: ${status}`);
       }
       statusFilter = status as MatchAdvisoryStatus;
     }
-    const rows = await this.repo.listMatchAdvisories(authContext.tenant_id, {
-      ...(statusFilter ? { status: statusFilter } : {}),
-    });
-    return { items: rows.map(toView) };
+    const parsedLimit = Number.parseInt(limit ?? '', 10);
+    const effectiveLimit =
+      Number.isFinite(parsedLimit) && parsedLimit > 0
+        ? Math.min(parsedLimit, ADVISORY_PAGE_MAX_LIMIT)
+        : ADVISORY_PAGE_DEFAULT_LIMIT;
+    const { rows, nextCursor } = await this.repo.listMatchAdvisoriesKeyset(
+      authContext.tenant_id,
+      {
+        status: statusFilter,
+        limit: effectiveLimit,
+        ...(cursor !== undefined && cursor.length > 0 ? { cursor } : {}),
+      },
+    );
+    return { items: rows.map(toListItem), next_cursor: nextCursor };
   }
 
   @Post(':id/approve')
@@ -127,6 +199,7 @@ export class AdvisoryResolutionController {
   @RequireScopes('identity:resolve')
   async approve(
     @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
     @Param('id') id: string,
     @Body() body: ApproveMergeRequestDto,
   ): Promise<AdvisoryView> {
@@ -134,6 +207,7 @@ export class AdvisoryResolutionController {
       tenant_id: authContext.tenant_id,
       advisory_id: id,
       actor: authContext.sub,
+      requestId,
       ...(body.surviving_subject_id ? { surviving_subject_id: body.surviving_subject_id } : {}),
       ...(body.justification !== undefined ? { justification: body.justification } : {}),
       ...(body.override_acknowledged !== undefined
@@ -162,6 +236,7 @@ export class AdvisoryResolutionController {
   @RequireScopes('identity:resolve')
   async dismiss(
     @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
     @Param('id') id: string,
     @Body() body: DismissRequestDto,
   ): Promise<AdvisoryView> {
@@ -169,6 +244,7 @@ export class AdvisoryResolutionController {
       tenant_id: authContext.tenant_id,
       advisory_id: id,
       actor: authContext.sub,
+      requestId,
       ...(body.justification !== undefined ? { justification: body.justification } : {}),
     });
     return toView(row);
@@ -179,6 +255,7 @@ export class AdvisoryResolutionController {
   @RequireScopes('identity:resolve')
   async reverse(
     @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
     @Param('id') id: string,
     @Body() body: ReverseMergeRequestDto,
   ): Promise<AdvisoryView> {
@@ -190,7 +267,9 @@ export class AdvisoryResolutionController {
       tenant_id: authContext.tenant_id,
       advisory_id: id,
       actor: authContext.sub,
-      justification: body.justification,
+      requestId,
+      // Empty/missing → the service refuses with REVERSAL_JUSTIFICATION_REQUIRED (R4).
+      justification: body.justification ?? '',
     });
     // Phase 2 — reverse the record reconcile if a COMPLETED operation exists
     // (DDR-3 §6): lift supersession, restore ref topology, re-point back exactly the
@@ -207,7 +286,9 @@ export class AdvisoryResolutionController {
           tenant_id: authContext.tenant_id,
           operation_id: op.id,
           actor_id: authContext.sub,
-          justification: body.justification,
+          // Phase 1 (reverseMerge) already refused an empty justification, so this is
+          // the validated non-empty string; the `?? ''` only satisfies the optional DTO type.
+          justification: body.justification ?? '',
         });
       }
     }

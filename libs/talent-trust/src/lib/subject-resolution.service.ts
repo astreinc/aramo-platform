@@ -1,9 +1,5 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { AramoError } from '@aramo/common';
 
 import {
   TalentTrustRepository,
@@ -31,12 +27,23 @@ import { TalentTrustService } from './talent-trust.service.js';
 //   R5 LIFECYCLE + IDEMPOTENCY — can't re-resolve a resolved advisory; can't merge
 //      already-merged subjects; a MERGED advisory can only be REVERSED.
 //   R8 DETERMINISTIC — no LLM; pointer-only merge; talent_trust-internal (cip).
+//
+// TR-6 B2 (DDR D5 + PC Exit Accounting §5.1) — refusals throw AramoError with
+// ADVISORY-SCOPE DOMAIN CODES (ADVISORY_NOT_PENDING / ADVISORY_NOT_MERGED /
+// ADVISORY_NO_MERGED_SUBJECT / MERGE_SUBJECT_NOT_ACTIVE / CONTRADICTION_OVERRIDE_
+// REQUIRED / REVERSAL_JUSTIFICATION_REQUIRED) instead of Nest exceptions that the
+// AramoExceptionFilter status-collapsed to the semantically-false generic codes
+// (409→IDEMPOTENCY_KEY_CONFLICT, 400→VALIDATION_ERROR). The filter is untouched —
+// AramoError carries its own code, so the correct code reaches the wire. The
+// caller threads its requestId (the AramoError envelope needs it).
 
 export interface ApproveMergeInput {
   tenant_id: string;
   advisory_id: string;
   // The privileged actor (JWT sub) — recorded as resolved_by (R4).
   actor: string;
+  // The request id (threaded from the controller) for the AramoError envelope.
+  requestId: string;
   // Which subject survives the merge. Must be one of the advisory's pair; defaults
   // to subject_a (the canonical-lower id). The OTHER becomes the merged subject.
   surviving_subject_id?: string;
@@ -50,6 +57,7 @@ export interface DismissInput {
   tenant_id: string;
   advisory_id: string;
   actor: string;
+  requestId: string;
   justification?: string;
 }
 
@@ -57,6 +65,7 @@ export interface ReverseMergeInput {
   tenant_id: string;
   advisory_id: string;
   actor: string;
+  requestId: string;
   // Reversal justification is ALWAYS required (R4) — a merge is high-consequence.
   justification: string;
 }
@@ -70,26 +79,37 @@ export class SubjectResolutionService {
 
   // Approve a same-human advisory → execute the pointer-only merge + audit it.
   async approveMerge(input: ApproveMergeInput): Promise<SubjectMatchAdvisoryRow> {
-    const advisory = await this.requirePending(input.tenant_id, input.advisory_id);
+    const advisory = await this.requirePending(
+      input.tenant_id,
+      input.advisory_id,
+      input.requestId,
+    );
 
     // Resolve the merge direction (surviving vs merged) within the advisory's pair.
-    const { surviving, merged } = this.resolveDirection(advisory, input.surviving_subject_id);
+    const { surviving, merged } = this.resolveDirection(
+      advisory,
+      input.requestId,
+      input.surviving_subject_id,
+    );
 
     // R3 — contradiction-gated override. A contradicted advisory may be merged, but
     // ONLY with an explicit acknowledgment + a non-empty justification (F34). Never silent.
     if (advisory.has_contradiction) {
       if (input.override_acknowledged !== true || !hasText(input.justification)) {
-        throw new BadRequestException(
+        throw new AramoError(
+          'CONTRADICTION_OVERRIDE_REQUIRED',
           'contradiction_override_required: merging an advisory with has_contradiction=true ' +
             'requires override_acknowledged=true and a justification',
+          400,
+          { requestId: input.requestId, details: { advisory_id: advisory.id } },
         );
       }
     }
 
     // R5 idempotency — can't merge subjects that aren't both ACTIVE (e.g. one already
     // merged elsewhere). This also fails loud if a subject vanished.
-    await this.requireActive(surviving);
-    await this.requireActive(merged);
+    await this.requireActive(surviving, input.requestId);
+    await this.requireActive(merged, input.requestId);
 
     const justification = hasText(input.justification) ? input.justification!.trim() : null;
 
@@ -117,7 +137,11 @@ export class SubjectResolutionService {
 
   // Dismiss a same-human advisory → NOT the same human. No merge; audited.
   async dismiss(input: DismissInput): Promise<SubjectMatchAdvisoryRow> {
-    const advisory = await this.requirePending(input.tenant_id, input.advisory_id);
+    const advisory = await this.requirePending(
+      input.tenant_id,
+      input.advisory_id,
+      input.requestId,
+    );
     const justification = hasText(input.justification) ? input.justification!.trim() : null;
     return this.repo.applyAdvisoryResolution({
       id: advisory.id,
@@ -135,20 +159,33 @@ export class SubjectResolutionService {
   // merged_into cleared) and record the reversal audit. Justification REQUIRED (R4).
   async reverseMerge(input: ReverseMergeInput): Promise<SubjectMatchAdvisoryRow> {
     if (!hasText(input.justification)) {
-      throw new BadRequestException('reversal_justification_required');
+      throw new AramoError('REVERSAL_JUSTIFICATION_REQUIRED', 'reversal_justification_required', 400, {
+        requestId: input.requestId,
+        details: { advisory_id: input.advisory_id },
+      });
     }
     const advisory = await this.repo.findMatchAdvisoryById(input.tenant_id, input.advisory_id);
     if (advisory === null) {
-      throw new NotFoundException(`advisory ${input.advisory_id} not found`);
+      throw new AramoError('NOT_FOUND', `advisory ${input.advisory_id} not found`, 404, {
+        requestId: input.requestId,
+      });
     }
     if (advisory.status !== 'MERGED') {
-      throw new ConflictException(
-        `advisory ${input.advisory_id} is ${advisory.status}, not MERGED — cannot reverse`,
+      throw new AramoError(
+        'ADVISORY_NOT_MERGED',
+        `advisory is ${advisory.status}, not MERGED — cannot reverse`,
+        409,
+        { requestId: input.requestId, details: { advisory_id: advisory.id, status: advisory.status } },
       );
     }
     if (advisory.merged_subject_id === null) {
       // Defensive: a MERGED advisory always records its merged subject.
-      throw new ConflictException(`advisory ${input.advisory_id} has no merged_subject_id`);
+      throw new AramoError(
+        'ADVISORY_NO_MERGED_SUBJECT',
+        `advisory ${input.advisory_id} has no merged_subject_id`,
+        409,
+        { requestId: input.requestId, details: { advisory_id: advisory.id } },
+      );
     }
 
     // The reversal — pointer cleared, both subjects ACTIVE. TR-6 B1 (DDR §5): an
@@ -174,15 +211,19 @@ export class SubjectResolutionService {
   private async requirePending(
     tenantId: string,
     advisoryId: string,
+    requestId: string,
   ): Promise<SubjectMatchAdvisoryRow> {
     const advisory = await this.repo.findMatchAdvisoryById(tenantId, advisoryId);
     if (advisory === null) {
-      throw new NotFoundException(`advisory ${advisoryId} not found`);
+      throw new AramoError('NOT_FOUND', `advisory ${advisoryId} not found`, 404, { requestId });
     }
     if (advisory.status !== 'PENDING_REVIEW') {
       // R5 — can't re-resolve an already-resolved advisory.
-      throw new ConflictException(
-        `advisory ${advisoryId} is already ${advisory.status} — cannot re-resolve`,
+      throw new AramoError(
+        'ADVISORY_NOT_PENDING',
+        `advisory is already ${advisory.status} — cannot re-resolve`,
+        409,
+        { requestId, details: { advisory_id: advisory.id, status: advisory.status } },
       );
     }
     return advisory;
@@ -190,6 +231,7 @@ export class SubjectResolutionService {
 
   private resolveDirection(
     advisory: SubjectMatchAdvisoryRow,
+    requestId: string,
     survivingSubjectId?: string,
   ): { surviving: string; merged: string } {
     if (survivingSubjectId === undefined) {
@@ -202,8 +244,13 @@ export class SubjectResolutionService {
     if (survivingSubjectId === advisory.subject_b_id) {
       return { surviving: advisory.subject_b_id, merged: advisory.subject_a_id };
     }
-    throw new BadRequestException(
+    // A malformed body param — a genuine input validation (VALIDATION_ERROR is the
+    // correct code, NOT one of the status-collapse false codes this slice fixes).
+    throw new AramoError(
+      'VALIDATION_ERROR',
       'surviving_subject_id must be one of the advisory pair (subject_a_id / subject_b_id)',
+      400,
+      { requestId, details: { advisory_id: advisory.id } },
     );
   }
 
@@ -211,14 +258,19 @@ export class SubjectResolutionService {
   // must be ACTIVE in their OWN right (a subject already merged elsewhere is not
   // re-mergeable). Following the fixpoint here would mask exactly the double-
   // merge this guard exists to reject — do NOT switch to resolveActiveFixpoint.
-  private async requireActive(subjectId: string): Promise<void> {
+  private async requireActive(subjectId: string, requestId: string): Promise<void> {
     const subject = await this.repo.findSubjectById(subjectId);
     if (subject === null) {
-      throw new NotFoundException(`ResolutionSubject ${subjectId} not found`);
+      throw new AramoError('NOT_FOUND', `ResolutionSubject ${subjectId} not found`, 404, {
+        requestId,
+      });
     }
     if (subject.status !== 'ACTIVE') {
-      throw new ConflictException(
+      throw new AramoError(
+        'MERGE_SUBJECT_NOT_ACTIVE',
         `ResolutionSubject ${subjectId} is ${subject.status}, not ACTIVE — cannot merge`,
+        409,
+        { requestId, details: { subject_id: subjectId, status: subject.status } },
       );
     }
   }

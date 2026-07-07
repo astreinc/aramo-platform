@@ -82,6 +82,14 @@ const PRIMARY_NAV: readonly NavItem[] = [
 
 const WORK_NAV: readonly NavItem[] = [
   { to: '/tasks', label: 'Tasks', icon: <IconTasks />, scope: 'task:read' },
+  // TR-6 B2 — the identity-advisory reviewer worklist. Gated on identity:resolve
+  // (the same scope as the route); hidden from a principal who can't resolve.
+  {
+    to: '/identity/advisories',
+    label: 'Identity Advisories',
+    icon: <IconShield />,
+    scope: 'identity:resolve',
+  },
 ];
 
 // Admin-gated nav (FE Consolidation Phase 1). The section is shown only to a
@@ -109,6 +117,7 @@ const SECTION_LABEL: Record<string, string> = {
   companies: 'Companies',
   contacts: 'Contacts',
   engagements: 'Engagement',
+  identity: 'Identity Advisories',
   search: 'Search',
   tasks: 'Tasks',
   admin: 'Settings',

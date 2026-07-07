@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 42 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a)', () => {
+  it('ERROR_CODES contains the 48 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2)', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -84,6 +84,14 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'MANAGEMENT_CYCLE_REJECTED',
       // TR-2a-B3a — 1 record-supersession operational-refusal code.
       'TALENT_RECORD_SUPERSEDED',
+      // TR-6 B2 — 6 advisory-resolution domain refusal codes (replacing the
+      // AramoExceptionFilter status-collapse on the advisory surface only).
+      'ADVISORY_NOT_PENDING',
+      'ADVISORY_NOT_MERGED',
+      'ADVISORY_NO_MERGED_SUBJECT',
+      'MERGE_SUBJECT_NOT_ACTIVE',
+      'CONTRADICTION_OVERRIDE_REQUIRED',
+      'REVERSAL_JUSTIFICATION_REQUIRED',
     ]);
   });
 });
