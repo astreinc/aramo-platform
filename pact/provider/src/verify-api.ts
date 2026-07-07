@@ -528,6 +528,19 @@ const TALENT_TRUST_B3B_MERGE_OP_MIGRATION = resolve(
   ROOT,
   'libs/talent-trust/prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
 );
+// TR-6 B1 — ResolutionSubject.last_matched_at (the regenerated client SELECTs it on
+// every subject read) + SubjectMergeOperation.kind/actor/reason (the advisory
+// reverse-happy state's reverseMerge → unmergeSubjects now persists a DIRECT_UNMERGE
+// row). Without both, the advisory-resolution provider states 500 (client select /
+// insert of a column the DB lacks).
+const TALENT_TRUST_TR6_LAST_MATCHED_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
+);
+const TALENT_TRUST_TR6_MERGE_OP_KIND_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
+);
 const SAVED_LIST_INIT_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
@@ -2717,12 +2730,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_TRUST_ADVISORY_MIGRATION,
         TALENT_TRUST_ADVISORY_RESOLUTION_MIGRATION,
         TALENT_TRUST_WATERMARK_MIGRATION,
+        // TR-6 B1 — last_matched_at (client SELECTs it on every subject read).
+        TALENT_TRUST_TR6_LAST_MATCHED_MIGRATION,
         TALENT_TRUST_ATS_REF_UNIQUE_MIGRATION,
         TALENT_TRUST_POOL_KEYSET_MIGRATION,
         TALENT_TRUST_B1_SOURCE_CLASS_MIGRATION,
         TALENT_TRUST_B1_SOURCE_CLASS_UNIQUE_MIGRATION,
         TALENT_TRUST_B2_REOPEN_MIGRATION,
         TALENT_TRUST_B3B_MERGE_OP_MIGRATION,
+        // TR-6 B1 — SubjectMergeOperation.kind/actor/reason (the reverse-happy
+        // advisory state's unmergeSubjects persists a DIRECT_UNMERGE row).
+        TALENT_TRUST_TR6_MERGE_OP_KIND_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,
         SAVED_LIST_LIST_KIND_MIGRATION,
       ]) {

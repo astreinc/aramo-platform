@@ -12,6 +12,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { v7 as uuidv7 } from 'uuid';
 import {
   SubjectMatcherService,
+  SubjectResolutionService,
   TalentTrustRepository,
   TalentTrustService,
 } from '@aramo/talent-trust';
@@ -69,6 +70,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let detection: IdentityDetectionService;
     let trust: TalentTrustService;
     let repo: TalentTrustRepository;
+    let resolution: SubjectResolutionService;
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
@@ -85,6 +87,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       detection = app.get(IdentityDetectionService);
       trust = app.get(TalentTrustService);
       repo = app.get(TalentTrustRepository);
+      resolution = app.get(SubjectResolutionService);
       void app.get(SubjectMatcherService); // ensure DI graph resolves the matcher
     }, 300_000);
 
@@ -238,6 +241,51 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Read-only — detection mutates NOTHING.
       expect(after).toEqual(before);
+    });
+
+    // ---- D4 regression: reverse a BARE merge (the pact reverse-happy path) --
+
+    it('reversing a bare (no-operation) merge does not fire reconcile.reverse and stays REVERSED', async () => {
+      const T = '0f600000-0000-7000-8000-000000000001';
+      const a = await mkSubject(T);
+      const b = await mkSubject(T);
+      // A merge with NO SubjectMergeOperation row (the pact "a merged advisory
+      // exist" state seeds exactly this): b MERGED into a, plus a MERGED advisory.
+      await db.query(
+        `UPDATE talent_trust."ResolutionSubject" SET status='MERGED', merged_into_subject_id=$1::uuid WHERE id=$2::uuid`,
+        [a, b],
+      );
+      const advisoryId = uuidv7();
+      const [lo, hi] = a < b ? [a, b] : [b, a];
+      await db.query(
+        `INSERT INTO talent_trust."SubjectMatchAdvisory"
+           (id, tenant_id, subject_a_id, subject_b_id, advise_band, match_basis, status,
+            created_by, resolution_action, surviving_subject_id, merged_subject_id)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'ADVISE_WEAK', '{}'::jsonb, 'MERGED',
+                 'seed', 'MERGE', $5::uuid, $6::uuid)`,
+        [advisoryId, T, lo, hi, a, b],
+      );
+
+      const reversed = await resolution.reverseMerge({
+        tenant_id: T,
+        advisory_id: advisoryId,
+        actor: 'reviewer-x',
+        justification: 'undo the bare merge',
+      });
+      expect(reversed.status).toBe('REVERSED');
+
+      // The subject is ACTIVE again.
+      const subB = await repo.findSubjectById(b);
+      expect(subB?.status).toBe('ACTIVE');
+
+      // The DIRECT_UNMERGE audit row exists, carries actor/reason, and is REVERSED —
+      // so the controller's `if (op?.status === 'COMPLETED') reconcile.reverse(...)`
+      // gate does NOT fire on it (there is no merge topology to reverse).
+      const op = await repo.findMergeOperationBySubjects(T, a, b);
+      expect(op).not.toBeNull();
+      expect(op!.kind).toBe('DIRECT_UNMERGE');
+      expect(op!.actor).toBe('reviewer-x');
+      expect(op!.status).not.toBe('COMPLETED');
     });
 
     // ---- raw seed helpers (detection) -------------------------------------

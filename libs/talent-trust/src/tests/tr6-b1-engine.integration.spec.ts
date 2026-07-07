@@ -270,7 +270,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(ops[0]!.actor).toBe(ACTOR);
       // The formerly-voided reason is now retrievable.
       expect(ops[0]!.reason).toBe('reviewer error — undo');
-      expect(ops[0]!.status).toBe('COMPLETED');
+      // Terminal REVERSED, NOT COMPLETED — the advisory-resolution controller
+      // reverses a merge only on a COMPLETED op; a DIRECT_UNMERGE audit row (no
+      // merge topology) must never be picked up as a reversible merge.
+      expect(ops[0]!.status).toBe('REVERSED');
+      expect(ops[0]!.status).not.toBe('COMPLETED');
     });
   },
 );

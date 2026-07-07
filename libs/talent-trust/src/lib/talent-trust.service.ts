@@ -669,6 +669,12 @@ export class TalentTrustService {
             mergedSubjectId,
           );
     if (prior === null) {
+      // Terminal REVERSED (not COMPLETED): this minimal row IS the reversal record,
+      // and the advisory-resolution controller reverses a merge ONLY when
+      // findMergeOperationBySubjects returns a COMPLETED op — a DIRECT_UNMERGE must
+      // never be mistaken for a reversible merge topology (there is none). REVERSED
+      // also keeps D6's stale-PENDING detector from flagging it.
+      const now = new Date();
       await this.repo.createMergeOperation({
         tenant_id: subject.tenant_id,
         kind: 'DIRECT_UNMERGE',
@@ -679,8 +685,8 @@ export class TalentTrustService {
         merged_subject_id: mergedSubjectId,
         surviving_record_id: null,
         superseded_record_id: null,
-        status: 'COMPLETED',
-        completed_at: new Date(),
+        status: 'REVERSED',
+        completed_at: now,
       });
     }
     return this.repo.setSubjectMergeState(mergedSubjectId, 'ACTIVE', null);
