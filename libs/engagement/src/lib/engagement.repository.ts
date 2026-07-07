@@ -494,13 +494,20 @@ export class EngagementRepository {
       params.push(args.only_ids);
       idFilter = `AND id = ANY($${params.length}::uuid[])`;
     }
-    const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
-      `UPDATE "engagement"."TalentJobEngagement" SET talent_id = $1::uuid
-         WHERE talent_id = $2::uuid AND tenant_id = $3::uuid ${idFilter}
-       RETURNING id`,
-      ...params,
-    );
-    return { repointed_ids: rows.map((r) => r.id), removed_rows: [] };
+    return this.prisma.$transaction(async (tx) => {
+      // TR-2a-B3b (Group-2 §2.3b reconcile re-key amendment) — the transaction-local
+      // GUC that tells the TalentJobEngagement immutability trigger this is the
+      // sanctioned supersession re-key of talent_id (loser→survivor). SET LOCAL only
+      // here, in the repoint method — the grep-enumerable scope contract.
+      await tx.$executeRawUnsafe(`SET LOCAL app.reconcile = 'on'`);
+      const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        `UPDATE "engagement"."TalentJobEngagement" SET talent_id = $1::uuid
+           WHERE talent_id = $2::uuid AND tenant_id = $3::uuid ${idFilter}
+         RETURNING id`,
+        ...params,
+      );
+      return { repointed_ids: rows.map((r) => r.id), removed_rows: [] };
+    });
   }
 
   // TR-2a-B3b (DDR-3 §6) — the engagement ids currently keyed to a TalentRecord.

@@ -315,6 +315,28 @@ const SUBMITTAL_OUTBOX_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql',
 );
+// TR-2a-B3b — the four Group-2 immutability reconcile-re-key trigger amendments
+// (GUC-gated exemption of the talent_id re-point). Behaviorally a no-op for the
+// pact interactions (the app.reconcile GUC is never set outside the reconcile
+// repoint methods), but registered so the provider carries the amended trigger
+// fns. COUPLING FLAG: verify-api.ts is the TR-2a↔Pact coupling point — the second
+// of {this track, a concurrent pact track} to land rebases (--force-with-lease).
+const ENGAGEMENT_RECONCILE_REKEY_MIGRATION = resolve(
+  ROOT,
+  'libs/engagement/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
+);
+const EXAMINATION_RECONCILE_REKEY_MIGRATION = resolve(
+  ROOT,
+  'libs/examination/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
+);
+const SUBMITTAL_RECONCILE_REKEY_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
+);
+const EVIDENCE_RECONCILE_REKEY_MIGRATION = resolve(
+  ROOT,
+  'libs/evidence/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
+);
 // M5 PR-6 §4.14 — ai-draft schema migration required by the outreach-send
 // state handlers (AiDraftService writes audit-event rows even when the
 // DraftProvider is mocked; without this migration, prisma.aiDraftEvent
@@ -2209,6 +2231,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted
         // enum value (the draft + send pact split).
         ENGAGEMENT_OUTREACH_DRAFTED_MIGRATION,
+        // TR-2a-B3b — the four immutability reconcile-re-key amendments (applied
+        // AFTER each schema's trigger-defining migrations; CREATE OR REPLACE FUNCTION
+        // redefines the final trigger fn — GUC-off behaviour is unchanged).
+        ENGAGEMENT_RECONCILE_REKEY_MIGRATION,
+        EXAMINATION_RECONCILE_REKEY_MIGRATION,
+        SUBMITTAL_RECONCILE_REKEY_MIGRATION,
+        EVIDENCE_RECONCILE_REKEY_MIGRATION,
         // M5 PR-6 §4.14 — ai-draft schema for outreach-send state
         // handlers. AiDraftService writes audit-event rows even when
         // the DraftProvider is mocked at AppModule bootstrap.

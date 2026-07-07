@@ -448,13 +448,19 @@ export class ExaminationRepository {
       params.push(args.only_ids);
       idFilter = `AND id = ANY($${params.length}::uuid[])`;
     }
-    const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
-      `UPDATE "examination"."TalentJobExamination" SET talent_id = $1::uuid
-         WHERE talent_id = $2::uuid AND tenant_id = $3::uuid ${idFilter}
-       RETURNING id`,
-      ...params,
-    );
-    return { repointed_ids: rows.map((r) => r.id), removed_rows: [] };
+    return this.prisma.$transaction(async (tx) => {
+      // TR-2a-B3b (examination analytical-immutable reconcile re-key amendment) —
+      // the transaction-local GUC exempting the talent_id supersession re-key from
+      // the analytical-immutable trigger. SET LOCAL only here (grep-enumerable scope).
+      await tx.$executeRawUnsafe(`SET LOCAL app.reconcile = 'on'`);
+      const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        `UPDATE "examination"."TalentJobExamination" SET talent_id = $1::uuid
+           WHERE talent_id = $2::uuid AND tenant_id = $3::uuid ${idFilter}
+         RETURNING id`,
+        ...params,
+      );
+      return { repointed_ids: rows.map((r) => r.id), removed_rows: [] };
+    });
   }
 
   async markSuperseded(

@@ -213,13 +213,19 @@ export class EvidenceRepository {
       params.push(args.only_ids);
       idFilter = `AND id = ANY($${params.length}::uuid[])`;
     }
-    const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
-      `UPDATE "evidence"."TalentJobEvidencePackage" SET talent_id = $1::uuid
-         WHERE talent_id = $2::uuid AND tenant_id = $3::uuid ${idFilter}
-       RETURNING id`,
-      ...params,
-    );
-    return { repointed_ids: rows.map((r) => r.id), removed_rows: [] };
+    return this.prisma.$transaction(async (tx) => {
+      // TR-2a-B3b (Group-2 §2.6 evidence reconcile re-key amendment) — the
+      // transaction-local GUC admitting the talent_id-only supersession re-key past
+      // the whole-row immutability trigger. SET LOCAL only here (grep-enumerable).
+      await tx.$executeRawUnsafe(`SET LOCAL app.reconcile = 'on'`);
+      const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        `UPDATE "evidence"."TalentJobEvidencePackage" SET talent_id = $1::uuid
+           WHERE talent_id = $2::uuid AND tenant_id = $3::uuid ${idFilter}
+         RETURNING id`,
+        ...params,
+      );
+      return { repointed_ids: rows.map((r) => r.id), removed_rows: [] };
+    });
   }
 
   // M4 PR-2 §4.1 — evidence-package builder. Nine-step flow:
