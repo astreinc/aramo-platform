@@ -93,11 +93,14 @@ export class SubjectResolutionService {
 
     const justification = hasText(input.justification) ? input.justification!.trim() : null;
 
-    // The EXISTING pointer-only, un-merge-safe merge (unchanged by this slice).
+    // The pointer-only, un-merge-safe merge. TR-6 B1 (DDR §5) — it now persists a
+    // DIRECT_MERGE SubjectMergeOperation carrying the actor + reason (enriched by
+    // the record-reconcile that follows in the controller).
     await this.trust.mergeSubjects(
       surviving,
       merged,
       justification ?? 'TR-2a-3 approve-merge',
+      input.actor,
     );
 
     return this.repo.applyAdvisoryResolution({
@@ -148,8 +151,15 @@ export class SubjectResolutionService {
       throw new ConflictException(`advisory ${input.advisory_id} has no merged_subject_id`);
     }
 
-    // The EXISTING reversal — pointer cleared, both subjects ACTIVE (unchanged by this slice).
-    await this.trust.unmergeSubjects(advisory.merged_subject_id, input.justification.trim());
+    // The reversal — pointer cleared, both subjects ACTIVE. TR-6 B1 (DDR §5): an
+    // operation-backed merge (the common case here) records its reversal on the
+    // existing operation via the controller's reconcile-reverse path; unmergeSubjects
+    // only mints its own DIRECT_UNMERGE row when no prior operation exists.
+    await this.trust.unmergeSubjects(
+      advisory.merged_subject_id,
+      input.justification.trim(),
+      input.actor,
+    );
 
     return this.repo.applyAdvisoryReversal({
       id: advisory.id,

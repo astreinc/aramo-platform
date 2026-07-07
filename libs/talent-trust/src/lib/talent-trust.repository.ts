@@ -13,6 +13,7 @@ import type {
   MatchAdviseBand,
   MatchAdvisoryStatus,
   MatchResolutionAction,
+  MergeOperationKind,
   Method,
   PortabilityClass,
   PresentationBand,
@@ -245,6 +246,12 @@ export interface CollisionRecord {
 export interface SubjectMergeOperationRow {
   id: string;
   tenant_id: string;
+  // TR-6 B1 (DDR §5) — RECONCILE (orchestrator) vs DIRECT_MERGE/DIRECT_UNMERGE.
+  kind: MergeOperationKind;
+  // TR-6 B1 (DDR §5) — the direct merge/unmerge actor + reason (the formerly-voided
+  // string). Null on reconcile-driven rows (their trail is the advisory + reversal).
+  actor: string | null;
+  reason: string | null;
   advisory_id: string | null;
   surviving_subject_id: string;
   merged_subject_id: string;
@@ -777,6 +784,52 @@ export class TalentTrustRepository {
     return rows.map((r) => r.subject_id);
   }
 
+  // TR-6 B1 (DDR §2) — the scheduled sweep's incremental gate query. Returns
+  // ACTIVE subjects (MERGED husks are excluded from the outer loop — they are
+  // handled by D2 on the sharer side) that carry ≥1 anchor NEWER than their
+  // last_matched_at watermark (NULL = never matched). Anchors are append-only, so
+  // a new anchor since the last match is the complete invalidation condition.
+  // DISTINCT ON the subject, oldest-newest-anchor first, LIMIT-bounded per tick.
+  // Tenant-agnostic (the row carries tenant_id) so one query drains all tenants.
+  async listSubjectsToMatch(
+    limit: number,
+  ): Promise<Array<{ subject_id: string; tenant_id: string }>> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{ subject_id: string; tenant_id: string }>
+    >(
+      `SELECT DISTINCT ON (s.id) s.id AS subject_id, s.tenant_id AS tenant_id
+         FROM "talent_trust"."ResolutionSubject" s
+         JOIN "talent_trust"."SubjectAnchor" a ON a.subject_id = s.id
+        WHERE s.status = 'ACTIVE'
+          AND a.created_at > COALESCE(s.last_matched_at, TIMESTAMPTZ 'epoch')
+        ORDER BY s.id
+        LIMIT $1`,
+      limit,
+    );
+    return rows;
+  }
+
+  // TR-6 B1 (DDR §2) — stamp the sweep watermark per subject on completion. The
+  // LAST write of a per-subject sweep; a transient failure leaves it un-advanced
+  // so the next tick re-selects the subject.
+  async setLastMatchedAt(subjectId: string, at: Date): Promise<void> {
+    await this.prisma.resolutionSubject.update({
+      where: { id: subjectId },
+      data: { last_matched_at: at },
+    });
+  }
+
+  // TR-6 B1 (DDR §2) — the match-backfill CLI's --all-tenants escape hatch: every
+  // tenant that owns ≥1 anchored subject (the full-resweep set).
+  async listTenantIdsWithAnchors(): Promise<string[]> {
+    const rows = await this.prisma.subjectAnchor.findMany({
+      distinct: ['tenant_id'],
+      select: { tenant_id: true },
+      orderBy: { tenant_id: 'asc' },
+    });
+    return rows.map((r) => r.tenant_id);
+  }
+
   // The anchor write — EvidenceRecord (source of truth) + its CREATED event +
   // the SubjectAnchor projection, in ONE transaction (atomic: no projection
   // without its evidence, no evidence without its projection).
@@ -1032,6 +1085,9 @@ export class TalentTrustRepository {
     return {
       id: r['id'] as string,
       tenant_id: r['tenant_id'] as string,
+      kind: (r['kind'] as MergeOperationKind | undefined) ?? 'RECONCILE',
+      actor: (r['actor'] as string | null) ?? null,
+      reason: (r['reason'] as string | null) ?? null,
       advisory_id: (r['advisory_id'] as string | null) ?? null,
       surviving_subject_id: r['surviving_subject_id'] as string,
       merged_subject_id: r['merged_subject_id'] as string,
@@ -1050,8 +1106,15 @@ export class TalentTrustRepository {
     };
   }
 
-  // Create the PENDING operation record (the checkpoint anchor). One per merge;
-  // the orchestrator holds its id and checkpoints against it.
+  // Create the operation record (the checkpoint anchor). One per merge; the
+  // orchestrator holds its id and checkpoints against it.
+  //
+  // TR-6 B1 (DDR §5) — kind/actor/reason are optional: the reconcile orchestrator
+  // omits them (kind defaults to RECONCILE — "reconcile flow unchanged except it
+  // stamps its kind"; actor/reason null), and a direct merge/unmerge passes them.
+  // status/completed_at default to PENDING/null (a fresh reconcile checkpoint, or a
+  // direct merge the orchestrator may still enrich); a standalone direct unmerge
+  // passes a terminal status.
   async createMergeOperation(input: {
     tenant_id: string;
     advisory_id: string | null;
@@ -1059,16 +1122,26 @@ export class TalentTrustRepository {
     merged_subject_id: string;
     surviving_record_id: string | null;
     superseded_record_id: string | null;
+    kind?: MergeOperationKind;
+    actor?: string | null;
+    reason?: string | null;
+    status?: 'PENDING' | 'COMPLETED' | 'REVERSED';
+    completed_at?: Date | null;
   }): Promise<SubjectMergeOperationRow> {
     const created = await this.prisma.subjectMergeOperation.create({
       data: {
         id: uuidv7(),
         tenant_id: input.tenant_id,
+        kind: input.kind ?? 'RECONCILE',
+        actor: input.actor ?? null,
+        reason: input.reason ?? null,
         advisory_id: input.advisory_id,
         surviving_subject_id: input.surviving_subject_id,
         merged_subject_id: input.merged_subject_id,
         surviving_record_id: input.surviving_record_id,
         superseded_record_id: input.superseded_record_id,
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.completed_at !== undefined ? { completed_at: input.completed_at } : {}),
       },
     });
     return this.mapOperation(created);
@@ -1204,6 +1277,91 @@ export class TalentTrustRepository {
       tenantId,
     );
     return rows;
+  }
+
+  // ---- TR-6 B1 (DDR §7) — recurring integrity detection (READ-ONLY) --------
+  // Four cheap detector classes the daily cron reports (Q4). Each is a pure read;
+  // the cron logs counts and per-row context and MUTATES NOTHING. Tenant-agnostic
+  // (each row carries tenant_id) so one query serves the all-tenants cron.
+
+  // Class 1 — two-live-record clusters, ALL tenants (the global analogue of
+  // findMergedPromotedPairs). The service confirms both records are still LIVE.
+  async findAllMergedPromotedPairs(): Promise<
+    Array<{
+      tenant_id: string;
+      merged_subject_id: string;
+      surviving_subject_id: string;
+      merged_record_id: string;
+      surviving_record_id: string;
+    }>
+  > {
+    return this.prisma.$queryRawUnsafe(
+      `SELECT m.tenant_id AS tenant_id, m.id AS merged_subject_id, s.id AS surviving_subject_id,
+              rm.ref_id AS merged_record_id, rs.ref_id AS surviving_record_id
+         FROM "talent_trust"."ResolutionSubject" m
+         JOIN "talent_trust"."ResolutionSubject" s ON s.id = m.merged_into_subject_id AND s.status = 'ACTIVE'
+         JOIN "talent_trust"."ResolutionSubjectRef" rm
+           ON rm.subject_id = m.id AND rm.ref_type = 'ATS_TALENT_RECORD' AND rm.tenant_id = m.tenant_id
+         JOIN "talent_trust"."ResolutionSubjectRef" rs
+           ON rs.subject_id = s.id AND rs.ref_type = 'ATS_TALENT_RECORD' AND rs.tenant_id = m.tenant_id
+        WHERE m.status = 'MERGED'`,
+    );
+  }
+
+  // Class 2 — crash-orphaned reconciles: SubjectMergeOperation PENDING beyond age
+  // (the resume command is the human's tool). RECONCILE + DIRECT_MERGE alike — a
+  // DIRECT_MERGE the orchestrator never enriched is equally orphaned.
+  async findStalePendingOperations(
+    olderThan: Date,
+  ): Promise<Array<{ id: string; tenant_id: string; kind: MergeOperationKind; started_at: Date }>> {
+    const rows = await this.prisma.subjectMergeOperation.findMany({
+      where: { status: 'PENDING', started_at: { lt: olderThan } },
+      select: { id: true, tenant_id: true, kind: true, started_at: true },
+    });
+    return rows as Array<{
+      id: string;
+      tenant_id: string;
+      kind: MergeOperationKind;
+      started_at: Date;
+    }>;
+  }
+
+  // Class 3 — PENDING_REVIEW advisories beyond age (a reviewer backlog signal).
+  async findStalePendingAdvisories(
+    olderThan: Date,
+  ): Promise<Array<{ id: string; tenant_id: string; created_at: Date }>> {
+    const rows = await this.prisma.subjectMatchAdvisory.findMany({
+      where: { status: 'PENDING_REVIEW', created_at: { lt: olderThan } },
+      select: { id: true, tenant_id: true, created_at: true },
+    });
+    return rows;
+  }
+
+  // Class 4 — MERGED subjects still receiving writes: a husk with a SubjectAnchor
+  // or EvidenceRecord created AFTER it was merged (the merge moment ≈ the latest
+  // operation's started_at for that subject). A stale ref writing to the old
+  // subject — surfaces on the survivor via cluster-union (B3a) but the husk-side
+  // write is the anomaly.
+  async findMergedSubjectsWithPostMergeWrites(): Promise<
+    Array<{ subject_id: string; tenant_id: string }>
+  > {
+    return this.prisma.$queryRawUnsafe(
+      `SELECT m.id AS subject_id, m.tenant_id AS tenant_id
+         FROM "talent_trust"."ResolutionSubject" m
+         JOIN LATERAL (
+           SELECT max(o.started_at) AS merged_at
+             FROM "talent_trust"."SubjectMergeOperation" o
+            WHERE o.merged_subject_id = m.id
+         ) mo ON true
+        WHERE m.status = 'MERGED'
+          AND mo.merged_at IS NOT NULL
+          AND (
+            EXISTS (SELECT 1 FROM "talent_trust"."SubjectAnchor" a
+                     WHERE a.subject_id = m.id AND a.created_at > mo.merged_at)
+            OR EXISTS (SELECT 1 FROM "talent_trust"."EvidenceRecord" e
+                        WHERE e.subject_id = m.id AND e.created_at > mo.merged_at)
+          )`,
+    );
   }
 
   // ---- Ref normalization (TR-2a-B3b — DDR-3 §2, the #1 surface) ------------

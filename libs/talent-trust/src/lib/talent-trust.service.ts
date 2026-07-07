@@ -617,20 +617,72 @@ export class TalentTrustService {
     survivingSubjectId: string,
     mergedSubjectId: string,
     reason: string,
+    actor: string,
   ): Promise<ResolutionSubjectRow> {
-    await this.requireSubject(survivingSubjectId);
+    const surviving = await this.requireSubject(survivingSubjectId);
     await this.requireSubject(mergedSubjectId);
-    // `reason` is part of the §8 merge contract; TR-1 ships the reversible
-    // capability only (mark, never delete — the immutable ledger is
-    // untouched). TR-6 supplies the WHEN, the evidence reconciliation, and the
-    // merge-audit persistence the reason will feed.
-    void reason;
+    // TR-6 B1 (DDR §5) — the TR-1 merge-audit debt closes here: the merge persists
+    // to SubjectMergeOperation (the void reason dies). A minimal PENDING DIRECT_MERGE
+    // row carrying actor + reason + the subject pair (record fields null). If a
+    // record-reconcile follows (the approve→reconcile path), the orchestrator finds
+    // THIS row via findMergeOperationBySubjects and ENRICHES it — no second row.
+    const prior = await this.repo.findMergeOperationBySubjects(
+      surviving.tenant_id,
+      survivingSubjectId,
+      mergedSubjectId,
+    );
+    if (prior === null) {
+      await this.repo.createMergeOperation({
+        tenant_id: surviving.tenant_id,
+        kind: 'DIRECT_MERGE',
+        actor,
+        reason,
+        advisory_id: null,
+        surviving_subject_id: survivingSubjectId,
+        merged_subject_id: mergedSubjectId,
+        surviving_record_id: null,
+        superseded_record_id: null,
+      });
+    }
     return this.repo.setSubjectMergeState(mergedSubjectId, 'MERGED', survivingSubjectId);
   }
 
-  async unmergeSubjects(mergedSubjectId: string, reason: string): Promise<ResolutionSubjectRow> {
-    await this.requireSubject(mergedSubjectId);
-    void reason; // See mergeSubjects — reason persistence is deferred to TR-6.
+  async unmergeSubjects(
+    mergedSubjectId: string,
+    reason: string,
+    actor: string,
+  ): Promise<ResolutionSubjectRow> {
+    const subject = await this.requireSubject(mergedSubjectId);
+    // TR-6 B1 (DDR §5) — the void reason dies. An operation-backed merge (a prior
+    // SubjectMergeOperation for this direction) records its reversal on THAT row via
+    // the existing reconcile-reverse path (as today) — do NOT touch it here, or the
+    // orchestrator's COMPLETED-gate for the heavy topology restore would be skipped.
+    // A direct unmerge with NO prior row writes its own minimal terminal DIRECT_UNMERGE
+    // audit row (actor + reason + pair; record fields null).
+    const survivingSubjectId = subject.merged_into_subject_id;
+    const prior =
+      survivingSubjectId === null
+        ? null
+        : await this.repo.findMergeOperationBySubjects(
+            subject.tenant_id,
+            survivingSubjectId,
+            mergedSubjectId,
+          );
+    if (prior === null) {
+      await this.repo.createMergeOperation({
+        tenant_id: subject.tenant_id,
+        kind: 'DIRECT_UNMERGE',
+        actor,
+        reason,
+        advisory_id: null,
+        surviving_subject_id: survivingSubjectId ?? mergedSubjectId,
+        merged_subject_id: mergedSubjectId,
+        surviving_record_id: null,
+        superseded_record_id: null,
+        status: 'COMPLETED',
+        completed_at: new Date(),
+      });
+    }
     return this.repo.setSubjectMergeState(mergedSubjectId, 'ACTIVE', null);
   }
 

@@ -25,6 +25,9 @@ const MIGRATIONS = [
   // Slice-B1 — the regenerated client SELECTs ResolutionSubject.last_reconciled_at
   // + reconcile_attempts (findSubjectByRef include), so the columns must exist.
   '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
+  '../../prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
+  '../../prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
+  '../../prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
   // TR-2a-B1 — SubjectAnchor.source_class (regenerated client SELECTs it) + the
   // extended (…, source_class) unique key. Both required once tr2a1 exists.
   '../../prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
@@ -271,14 +274,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(subjectA).not.toBe(subjectB);
 
       // Merge B into A — pointer-only; anchors must NOT be re-homed.
-      await service.mergeSubjects(subjectA, subjectB, 'tr2a1-unmerge-test');
+      await service.mergeSubjects(subjectA, subjectB, 'tr2a1-unmerge-test', 'test-actor');
       const bAnchorsAfterMerge = await repo.listAnchorsBySubject(subjectB);
       expect(bAnchorsAfterMerge).toHaveLength(1);
       expect(bAnchorsAfterMerge[0]!.subject_id).toBe(subjectB); // origin preserved
       expect(bAnchorsAfterMerge[0]!.normalized_value).toBe('origin-b@example.com');
 
       // Unmerge B — anchor still on its origin subject.
-      await service.unmergeSubjects(subjectB, 'tr2a1-unmerge-test');
+      await service.unmergeSubjects(subjectB, 'tr2a1-unmerge-test', 'test-actor');
       const bAnchorsAfterUnmerge = await repo.listAnchorsBySubject(subjectB);
       expect(bAnchorsAfterUnmerge).toHaveLength(1);
       expect(bAnchorsAfterUnmerge[0]!.subject_id).toBe(subjectB);

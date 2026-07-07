@@ -46,6 +46,10 @@ describe('SubjectMatcherService — advise-only mechanism', () => {
         anchor(SUBJ_ME, 'me-e', 'shared@example.com'),
         anchor(SUBJ_OTHER, 'other-e', 'shared@example.com'),
       ]),
+      // TR-6 B1 (D2) — the matcher now maps each sharer to its ACTIVE fixpoint
+      // before keying. Both subjects are ACTIVE (their own fixpoint) here, so the
+      // advisory keying is unchanged (SUBJ_ME, SUBJ_OTHER).
+      resolveActiveFixpoint: vi.fn(async (id: string) => ({ kind: 'ACTIVE', subjectId: id })),
       upsertMatchAdvisory,
       setSubjectMergeState,
       // present on the real repo — assert the matcher never reaches for merge.

@@ -23,11 +23,17 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
   // Slice-B1 — ResolutionSubject.last_reconciled_at + reconcile_attempts.
   '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
+  '../../prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
   // TR-2a-B1 — SubjectAnchor.source_class + extended (…, source_class) unique key.
   '../../prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
   '../../prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
   // TR-2a-B2 — SubjectMatchAdvisory reopen provenance (client selects reopened_at).
   '../../prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
+  // TR-6 B1 — approveMerge/reverseMerge now persist a SubjectMergeOperation
+  // (DIRECT_MERGE/DIRECT_UNMERGE + actor/reason), so this list must create the
+  // table and its kind/actor/reason columns.
+  '../../prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
+  '../../prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const CREATED_BY = 'tr2a3-resolution-integration';

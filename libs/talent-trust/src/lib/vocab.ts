@@ -68,6 +68,21 @@ export type MatchAdvisoryStatus = (typeof MATCH_ADVISORY_STATUSES)[number];
 export const CORROBORATOR_CONFLICT_KINDS = ['NAME'] as const;
 export type CorroboratorConflictKind = (typeof CORROBORATOR_CONFLICT_KINDS)[number];
 
+// ---- SubjectMergeOperation.kind (TR-6 B1, DDR §5) ---------------------
+// Discriminates the record-reconcile flow (RECONCILE — the default; the
+// orchestrator's heavy operation record) from the pointer-only merge capability
+// finally leaving a trail: DIRECT_MERGE (mergeSubjects) and DIRECT_UNMERGE
+// (unmergeSubjects with no prior operation-backed row). A direct merge writes a
+// minimal PENDING row that the orchestrator ENRICHES if a record-reconcile
+// follows (the approve→reconcile path); a standalone direct merge/unmerge is the
+// full audit trail. String-backed, additive at this layer (no DB CHECK).
+export const MERGE_OPERATION_KINDS = [
+  'RECONCILE',
+  'DIRECT_MERGE',
+  'DIRECT_UNMERGE',
+] as const;
+export type MergeOperationKind = (typeof MERGE_OPERATION_KINDS)[number];
+
 // ---- SubjectMatchAdvisory.resolution_action (TR-2a-3) -----------------
 // The human action recorded on the advisory (R4 audit). MERGE = approve →
 // executed pointer-only mergeSubjects; DISMISS = reviewer judged not-same-human;
