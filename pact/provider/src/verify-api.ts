@@ -349,6 +349,54 @@ const PIPELINE_INIT_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
 );
+// PC-5a — ats-web Gate-2a desk (company + contact CRUD spine + D4a). The
+// company schema (Company + CompanyDepartment + the two D4a join tables +
+// the field-expansion columns CompanyView/the facets read) and the contact
+// schema (Contact + list-surface fields). Order is init → additive ALTERs,
+// each same-schema (init CREATEs the schema; nothing here has a cross-schema
+// FK, so the list applies in isolation). The index-only Search PR-1 (pg_trgm
+// GIN) migrations are OMITTED: the paged reads use ?paged=true with no ?q=,
+// so no trigram path is exercised, and an index is never SELECTed by the
+// Prisma client. No identity migrations are needed — company:read:all short-
+// circuits the visibility resolver to zero reads, the D4a service reads only
+// company.* tables, and its IdentityAuditService writes are best-effort
+// (swallowed when the identity audit table is absent).
+const COMPANY_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql',
+);
+const COMPANY_IMPORT_BATCH_MIGRATION = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260603140100_add_import_batch_id_to_company/migration.sql',
+);
+const COMPANY_AUTHZ_MIGRATION = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260604000000_add_authz_assignment_ownership/migration.sql',
+);
+const COMPANY_FIELD_EXPANSION_MIGRATION = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260611000000_add_company_field_expansion/migration.sql',
+);
+const COMPANY_ADDRESS_PLACE_REF_MIGRATION = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260611120000_add_company_address_place_ref/migration.sql',
+);
+const COMPANY_OFF_LIMITS_MIGRATION = resolve(
+  ROOT,
+  'libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql',
+);
+const CONTACT_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql',
+);
+const CONTACT_IMPORT_BATCH_MIGRATION = resolve(
+  ROOT,
+  'libs/contact/prisma/migrations/20260603140100_add_import_batch_id_to_contact/migration.sql',
+);
+const CONTACT_LIST_SURFACE_MIGRATION = resolve(
+  ROOT,
+  'libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql',
+);
 const INGESTION_PACT = resolve(
   ROOT,
   'pact/pacts/ingestion-consumer-aramo-core.json',
@@ -507,6 +555,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // append audit-event rows for each generateDraft call. Truncate so
       // prior runs don't leak forward across pact interactions.
       await c.query('TRUNCATE TABLE ai_draft."AiDraftEvent" CASCADE');
+      // PC-5a — company + contact desk. TRUNCATE Company CASCADE also clears
+      // CompanyDepartment + UserClientAssignment + TeamClientOwnership (all
+      // FK company_id ON DELETE CASCADE). Contact has no FK (company_id is a
+      // logical ref) so it is truncated explicitly.
+      await c.query('TRUNCATE TABLE company."Company" CASCADE');
+      await c.query('TRUNCATE TABLE contact."Contact" CASCADE');
     }
 
     // 4e-rest-b — seed the portal talent's TalentRecord for the portal-thin
@@ -940,6 +994,81 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           params.tenantStatus ?? null,
           params.sourceChannel ?? null,
         ],
+      );
+    }
+
+    // PC-5a — ats-web Gate-2a desk fixture ids. Shared with the consumer
+    // files' local path constants (get/patch/delete targets); POST responses
+    // carry provider-minted ids matched with uuid().
+    const ATSW_COMPANY_ID = '00000000-0000-7000-8000-c00000000001';
+    const ATSW_DEPT_ID = '00000000-0000-7000-8000-de0000000001';
+    const ATSW_CONTACT_ID = '00000000-0000-7000-8000-c07ac0000001';
+    const ATSW_ASSIGN_USER_ID = '00000000-0000-7000-8000-115e00000001';
+    const ATSW_TEAM_ID = '00000000-0000-7000-8000-7ea000000001';
+    const ATSW_ASSIGNMENT_ID = '00000000-0000-7000-8000-a55160000001';
+    const ATSW_OWNERSHIP_ID = '00000000-0000-7000-8000-04e160000001';
+
+    // COMPOSABLE (PC-5a+): seed a company row. Only the required columns
+    // (tenant_id, name); everything else defaults (id/is_hot/status/tags/
+    // off_limits/timestamps).
+    async function seedAtsWebCompany(
+      c: Client,
+      params: { id: string; name: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO company."Company" (id, tenant_id, name)
+         VALUES ($1,$2,$3) ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.name],
+      );
+    }
+
+    async function seedAtsWebCompanyDepartment(
+      c: Client,
+      params: { id: string; companyId: string; name: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO company."CompanyDepartment" (id, tenant_id, company_id, name)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.companyId, params.name],
+      );
+    }
+
+    async function seedAtsWebUserClientAssignment(
+      c: Client,
+      params: { id: string; userId: string; companyId: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO company."UserClientAssignment" (id, tenant_id, user_id, company_id)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.userId, params.companyId],
+      );
+    }
+
+    async function seedAtsWebTeamClientOwnership(
+      c: Client,
+      params: { id: string; teamId: string; companyId: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO company."TeamClientOwnership" (id, tenant_id, team_id, company_id)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.teamId, params.companyId],
+      );
+    }
+
+    async function seedAtsWebContact(
+      c: Client,
+      params: {
+        id: string;
+        companyId: string;
+        firstName: string;
+        lastName: string;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO contact."Contact"
+           (id, tenant_id, company_id, first_name, last_name)
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.companyId, params.firstName, params.lastName],
       );
     }
 
@@ -2024,6 +2153,23 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // PC-4 — activity + pipeline for the talent-records enrichment reads.
         ACTIVITY_INIT_MIGRATION,
         PIPELINE_INIT_MIGRATION,
+        // PC-5a — company + contact desk. Company init CREATEs the schema +
+        // Company + CompanyDepartment; the authz migration adds the two D4a
+        // join tables (UserClientAssignment, TeamClientOwnership); the field-
+        // expansion / address-place-ref / off-limits ALTERs add the columns
+        // CompanyView + the paged facets read. Contact init CREATEs the schema
+        // + Contact; the list-surface migration adds relationship_role /
+        // preference / last_activity_at. Search PR-1 (pg_trgm) omitted (index-
+        // only; no ?q= path contracted).
+        COMPANY_INIT_MIGRATION,
+        COMPANY_IMPORT_BATCH_MIGRATION,
+        COMPANY_AUTHZ_MIGRATION,
+        COMPANY_FIELD_EXPANSION_MIGRATION,
+        COMPANY_ADDRESS_PLACE_REF_MIGRATION,
+        COMPANY_OFF_LIMITS_MIGRATION,
+        CONTACT_INIT_MIGRATION,
+        CONTACT_IMPORT_BATCH_MIGRATION,
+        CONTACT_LIST_SURFACE_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -2105,6 +2251,25 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'talent:read',
           'talent:create',
           'talent:edit',
+          // PC-5a — Gate-2a desk (company + contact + D4a) RolesGuard
+          // @RequireScopes. company:read:all additionally short-circuits the
+          // VisibilityInterceptor resolver to zero reads on the company/
+          // contact CRUD reads (contracts pin shapes, not the visibility-
+          // restricted path — Gate-5 Q4 ruling). company:assign gates the
+          // per-company assignment routes; team:manage gates the team-client
+          // ownership routes. Additive; inert for prior interactions.
+          'company:read',
+          'company:read:all',
+          'company:search',
+          'company:create',
+          'company:edit',
+          'company:delete',
+          'company:assign',
+          'contact:read',
+          'contact:search',
+          'contact:create',
+          'contact:edit',
+          'team:manage',
         ],
       })
         .setProtectedHeader({ alg: ALG })
@@ -4705,6 +4870,99 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // entitlement + talent:create scope are set at bootstrap.
       'an ats-web recruiter can create talent records': async () => {
         await withClient((c) => resetAllRows(c));
+      },
+
+      // ===============================================================
+      // PC-5a — ats-web Gate-2a desk (company + contact CRUD + D4a).
+      // ===============================================================
+
+      // -- a seeded company (list, paged-facet list, get:id, patch target;
+      // also the parent for department-create, POST assignment, POST team-
+      // client, and contact-create).
+      'an ats-web recruiter and a company exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebCompany(c, { id: ATSW_COMPANY_ID, name: 'Acme Corp' });
+        });
+      },
+
+      // -- company + one department (department-list, department-delete).
+      'an ats-web recruiter and a company with a department exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebCompany(c, { id: ATSW_COMPANY_ID, name: 'Acme Corp' });
+          await seedAtsWebCompanyDepartment(c, {
+            id: ATSW_DEPT_ID,
+            companyId: ATSW_COMPANY_ID,
+            name: 'Engineering',
+          });
+        });
+      },
+
+      // -- create: no pre-existing company (the endpoint mints it).
+      'an ats-web recruiter can create companies': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+
+      // -- address-lookup with the external provider unconfigured/failing:
+      // the controller swallows to a 200 degraded body ({suggestions:[]} /
+      // {details:null}), never a 5xx. No seed — the AppModule boots the
+      // provider disabled (no API key), so degraded is the ambient state.
+      'the address-lookup provider is in degraded mode': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+
+      // -- company + one user-client assignment (assignments-list, team read,
+      // assignment-delete). getTeamForCompany derives member_user_ids from
+      // this assignment and owner_id from the (unset) company.owner_id → null.
+      'an ats-web recruiter and a company with a user assignment exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebCompany(c, {
+              id: ATSW_COMPANY_ID,
+              name: 'Acme Corp',
+            });
+            await seedAtsWebUserClientAssignment(c, {
+              id: ATSW_ASSIGNMENT_ID,
+              userId: ATSW_ASSIGN_USER_ID,
+              companyId: ATSW_COMPANY_ID,
+            });
+          });
+        },
+
+      // -- company + one team-client ownership (team-clients-list, team-
+      // client-delete). team_id is a logical ref (no identity.Team seed).
+      'an ats-web recruiter and a team with a client ownership exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebCompany(c, {
+              id: ATSW_COMPANY_ID,
+              name: 'Acme Corp',
+            });
+            await seedAtsWebTeamClientOwnership(c, {
+              id: ATSW_OWNERSHIP_ID,
+              teamId: ATSW_TEAM_ID,
+              companyId: ATSW_COMPANY_ID,
+            });
+          });
+        },
+
+      // -- a seeded contact under a company (list, paged-facet list, get:id,
+      // patch target). The company is seeded so the paged company_name
+      // enrichment resolves.
+      'an ats-web recruiter and a contact exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebCompany(c, { id: ATSW_COMPANY_ID, name: 'Acme Corp' });
+          await seedAtsWebContact(c, {
+            id: ATSW_CONTACT_ID,
+            companyId: ATSW_COMPANY_ID,
+            firstName: 'Ada',
+            lastName: 'Byron',
+          });
+        });
       },
     };
 
