@@ -471,6 +471,67 @@ const ATTACHMENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/attachment/prisma/migrations/20260602120000_init_attachment_model/migration.sql',
 );
+// PC-4b — Promotion / Advisory / Sourcing (post-B3). The talent_trust schema
+// (11 migrations: init + anchor + advisory + resolution + watermark + 2 index-
+// only + 2 B1 source_class + B2 reopen + B3b subject_merge_operation) — the
+// full L2 identity substrate the sourcing/advisory/promote paths read+write.
+// All TEXT-backed vocab (no PG enums), self-contained (CREATE SCHEMA in init),
+// FKs intra-schema, cross-schema refs FK-less UUIDs (I1). PLUS saved_list (init
+// + list_kind) — the WRITE-CLOSURE of POST /v1/sourcing/bench (getOrCreate
+// tenant-bench + addToTenantBench); discovered at build, additive test-infra,
+// bench disposition unchanged.
+const TALENT_TRUST_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql',
+);
+const TALENT_TRUST_ANCHOR_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
+);
+const TALENT_TRUST_ADVISORY_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
+);
+const TALENT_TRUST_ADVISORY_RESOLUTION_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
+);
+const TALENT_TRUST_WATERMARK_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
+);
+const TALENT_TRUST_ATS_REF_UNIQUE_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260706120000_ats_ref_partial_unique/migration.sql',
+);
+const TALENT_TRUST_POOL_KEYSET_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260706160000_sourcing_pool_keyset_index/migration.sql',
+);
+const TALENT_TRUST_B1_SOURCE_CLASS_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
+);
+const TALENT_TRUST_B1_SOURCE_CLASS_UNIQUE_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
+);
+const TALENT_TRUST_B2_REOPEN_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
+);
+const TALENT_TRUST_B3B_MERGE_OP_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
+);
+const SAVED_LIST_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
+);
+const SAVED_LIST_LIST_KIND_MIGRATION = resolve(
+  ROOT,
+  'libs/saved-list/prisma/migrations/20260706130000_add_list_kind_tenant_bench/migration.sql',
+);
 const INGESTION_PACT = resolve(
   ROOT,
   'pact/pacts/ingestion-consumer-aramo-core.json',
@@ -653,6 +714,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // already truncated above.
       await c.query('TRUNCATE TABLE task."Task" CASCADE');
       await c.query('TRUNCATE TABLE attachment."Attachment" CASCADE');
+      // PC-4b — talent_trust L2 substrate + saved_list bench. TRUNCATE
+      // ResolutionSubject CASCADE clears its FK-children (ResolutionSubjectRef,
+      // EvidenceRecord[+events/links], TrustState, SubjectMatchAdvisory,
+      // SubjectAnchor). SubjectMergeOperation has no FK (logical) → separate.
+      // SavedList CASCADE clears SavedListEntry. RawPayloadReference (the mint
+      // arrival) is already truncated above (ingestion).
+      await c.query('TRUNCATE TABLE talent_trust."ResolutionSubject" CASCADE');
+      await c.query('TRUNCATE TABLE talent_trust."SubjectMergeOperation" CASCADE');
+      await c.query('TRUNCATE TABLE saved_list."SavedList" CASCADE');
     }
 
     // 4e-rest-b — seed the portal talent's TalentRecord for the portal-thin
@@ -1348,6 +1418,170 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           params.sizeBytes,
           params.storageKey,
         ],
+      );
+    }
+
+    // PC-4b — Promotion / Advisory / Sourcing fixture ids (talent_trust L2).
+    const ATSW_DETAIL_LIVE_ID = '00000000-0000-7000-8000-7a0000000010';
+    const ATSW_DETAIL_SUPERSEDED_ID = '00000000-0000-7000-8000-7a0000000011';
+    const ATSW_SUPERSEDED_BY_ID = '00000000-0000-7000-8000-7a0000000012';
+    const ATSW_POOL_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000001';
+    const ATSW_POOL_SUBJECT_B_ID = '00000000-0000-7000-8000-5b1000000008';
+    const ATSW_POOL_SOURCED_REF_ID = '00000000-0000-7000-8000-50c000000001';
+    const ATSW_POOL_ADVISORY_ID = '00000000-0000-7000-8000-adf000000009';
+    const ATSW_MINT_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000002';
+    const ATSW_MINT_ARRIVAL_ID = '00000000-0000-7000-8000-a44000000001';
+    const ATSW_PROMOTED_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000003';
+    const ATSW_PROMOTED_ARRIVAL_ID = '00000000-0000-7000-8000-a44000000002';
+    const ATSW_PROMOTED_TALENT_ID = '00000000-0000-7000-8000-7a0000000013';
+    const ATSW_DEFER_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000004';
+    const ATSW_DEFER_SUBJECT_B_ID = '00000000-0000-7000-8000-5b1000000005';
+    const ATSW_DEFER_ARRIVAL_ID = '00000000-0000-7000-8000-a44000000003';
+    const ATSW_DEFER_ADVISORY_ID = '00000000-0000-7000-8000-adf00000000a';
+    const ATSW_ADV_SUBJECT_A_ID = '00000000-0000-7000-8000-5b1000000006';
+    const ATSW_ADV_SUBJECT_B_ID = '00000000-0000-7000-8000-5b1000000007';
+    const ATSW_ADV_PENDING_ID = '00000000-0000-7000-8000-adf000000001';
+    const ATSW_ADV_MERGED_ID = '00000000-0000-7000-8000-adf000000002';
+    const ATSW_ADV_CONTRADICTION_ID = '00000000-0000-7000-8000-adf000000003';
+
+    // COMPOSABLE (PC-4b+): seed a ResolutionSubject (talent_trust L2 anchor).
+    // All talent_trust vocab is TEXT (no enum casts). status defaults ACTIVE.
+    async function seedAtsWebResolutionSubject(
+      c: Client,
+      params: { id: string; status?: string; mergedIntoSubjectId?: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO talent_trust."ResolutionSubject"
+           (id, tenant_id, status, merged_into_subject_id)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.status ?? 'ACTIVE', params.mergedIntoSubjectId ?? null],
+      );
+    }
+
+    async function seedAtsWebResolutionSubjectRef(
+      c: Client,
+      params: { id: string; subjectId: string; refType: string; refId: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO talent_trust."ResolutionSubjectRef"
+           (id, subject_id, tenant_id, ref_type, ref_id, link_source)
+         VALUES ($1,$2,$3,$4,$5,'pact-seed') ON CONFLICT (id) DO NOTHING`,
+        [params.id, params.subjectId, TENANT_ID, params.refType, params.refId],
+      );
+    }
+
+    async function seedAtsWebTrustState(
+      c: Client,
+      params: {
+        subjectId: string;
+        identityBand: string;
+        claimsBand: string;
+        continuityBand: string;
+        eligibilityBand: string;
+        openContradictionCount?: number;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO talent_trust."TrustState"
+           (subject_id, tenant_id, identity_band, claims_band, continuity_band,
+            eligibility_band, open_contradiction_count, last_recomputed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,NOW()) ON CONFLICT (subject_id) DO NOTHING`,
+        [
+          params.subjectId,
+          TENANT_ID,
+          params.identityBand,
+          params.claimsBand,
+          params.continuityBand,
+          params.eligibilityBand,
+          params.openContradictionCount ?? 0,
+        ],
+      );
+    }
+
+    // Evidence — non-read defaults are picked from valid vocab; the promote/
+    // pool/detail paths only read dimension + assertion_type + current_status +
+    // assertion_payload.
+    async function seedAtsWebEvidenceRecord(
+      c: Client,
+      params: {
+        id: string;
+        subjectId: string;
+        assertionType: string;
+        assertionPayload: Record<string, unknown>;
+        dimension?: string;
+        currentStatus?: string;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO talent_trust."EvidenceRecord"
+           (id, subject_id, tenant_id, dimension, assertion_type, assertion_payload,
+            source_class, method, strength, collected_at, decay_profile,
+            portability_class, current_status, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,'THIRD_PARTY_UNVERIFIED','DOCUMENT',0.1,
+                 NOW(),'SLOW','TENANT_ONLY',$7,$8) ON CONFLICT (id) DO NOTHING`,
+        [
+          params.id,
+          params.subjectId,
+          TENANT_ID,
+          params.dimension ?? 'IDENTITY',
+          params.assertionType,
+          JSON.stringify(params.assertionPayload),
+          params.currentStatus ?? 'VALID',
+          RECRUITER_ID,
+        ],
+      );
+    }
+
+    async function seedAtsWebSubjectMatchAdvisory(
+      c: Client,
+      params: {
+        id: string;
+        subjectA: string;
+        subjectB: string;
+        adviseBand: string;
+        status: string;
+        hasContradiction?: boolean;
+        survivingSubjectId?: string;
+        mergedSubjectId?: string;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO talent_trust."SubjectMatchAdvisory"
+           (id, tenant_id, subject_a_id, subject_b_id, advise_band, has_contradiction,
+            match_basis, status, surviving_subject_id, merged_subject_id, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,'{"shared":[],"contradiction_kinds":[]}'::jsonb,
+                 $7,$8,$9,$10) ON CONFLICT (id) DO NOTHING`,
+        [
+          params.id,
+          TENANT_ID,
+          params.subjectA,
+          params.subjectB,
+          params.adviseBand,
+          params.hasContradiction ?? false,
+          params.status,
+          params.survivingSubjectId ?? null,
+          params.mergedSubjectId ?? null,
+          RECRUITER_ID,
+        ],
+      );
+    }
+
+    // The L1 origin arrival (ingestion.RawPayloadReference) the promote basis
+    // check reads: source MUST be a consent-source type (talent_direct). id
+    // MUST equal the SOURCED_TALENT ref_id. updated_at is @updatedAt (no default
+    // → supply it in the raw insert).
+    async function seedAtsWebRawPayloadReference(
+      c: Client,
+      params: { id: string; source?: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO ingestion."RawPayloadReference"
+           (id, tenant_id, source, source_class, storage_ref, sha256, content_type,
+            captured_at, created_at, updated_at)
+         VALUES ($1,$2,$3,'SELF','seed://arrival',
+                 '0000000000000000000000000000000000000000000000000000000000000000',
+                 'application/json',NOW(),NOW(),NOW()) ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.source ?? 'talent_direct'],
       );
     }
 
@@ -2473,6 +2707,20 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TASK_INIT_MIGRATION,
         TASK_WORKSPACE_MIGRATION,
         ATTACHMENT_INIT_MIGRATION,
+        // PC-4b — talent_trust L2 substrate (11) + saved_list write-closure (2).
+        TALENT_TRUST_INIT_MIGRATION,
+        TALENT_TRUST_ANCHOR_MIGRATION,
+        TALENT_TRUST_ADVISORY_MIGRATION,
+        TALENT_TRUST_ADVISORY_RESOLUTION_MIGRATION,
+        TALENT_TRUST_WATERMARK_MIGRATION,
+        TALENT_TRUST_ATS_REF_UNIQUE_MIGRATION,
+        TALENT_TRUST_POOL_KEYSET_MIGRATION,
+        TALENT_TRUST_B1_SOURCE_CLASS_MIGRATION,
+        TALENT_TRUST_B1_SOURCE_CLASS_UNIQUE_MIGRATION,
+        TALENT_TRUST_B2_REOPEN_MIGRATION,
+        TALENT_TRUST_B3B_MERGE_OP_MIGRATION,
+        SAVED_LIST_INIT_MIGRATION,
+        SAVED_LIST_LIST_KIND_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -2494,6 +2742,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await setup.query(
         `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
          VALUES ($1::uuid, 'ats') ON CONFLICT DO NOTHING`,
+        [TENANT_ID],
+      );
+      // PC-4b — the 'core' capability so TENANT_ID traverses EntitlementGuard
+      // on the sourcing + advisory-resolution controllers'
+      // @RequireCapability('core'). Additive; inert for prior interactions.
+      await setup.query(
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
+         VALUES ($1::uuid, 'core') ON CONFLICT DO NOTHING`,
         [TENANT_ID],
       );
       await setup.end();
@@ -2605,6 +2861,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'task:write',
           'attachment:read',
           'attachment:create',
+          // PC-4b — sourcing (talent:source) + advisory-resolution
+          // (identity:resolve) RolesGuard scopes. talent:read (detail) already
+          // present above. Sourcing/advisory are @RequireCapability('core')
+          // (entitlement seeded above).
+          'talent:source',
+          'identity:resolve',
         ],
       })
         .setProtectedHeader({ alg: ALG })
@@ -5489,6 +5751,225 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         });
       },
+
+      // ===============================================================
+      // PC-4b — Promotion / Advisory / Sourcing (post-B3). talent_trust L2.
+      // ===============================================================
+
+      // -- detail: a live talent record (record_status='live', supersession
+      // fields null).
+      'an ats-web recruiter and a live talent record exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTalentRecord(c, {
+            id: ATSW_DETAIL_LIVE_ID,
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+          });
+        });
+      },
+
+      // -- detail: a superseded talent record (DDR-3 — record_status=
+      // 'superseded', superseded_by_record_id + superseded_at non-null).
+      'an ats-web recruiter and a superseded talent record exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTalentRecord(c, {
+            id: ATSW_DETAIL_SUPERSEDED_ID,
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+          });
+          await c.query(
+            `UPDATE talent_record."TalentRecord"
+               SET record_status = 'superseded', superseded_by_record_id = $2, superseded_at = NOW()
+             WHERE id = $1`,
+            [ATSW_DETAIL_SUPERSEDED_ID, ATSW_SUPERSEDED_BY_ID],
+          );
+        });
+      },
+
+      // -- sourcing pool + subject-detail: one sourced ACTIVE subject (SOURCED
+      // ref, no ATS ref) with a TrustState (bands), FULL_NAME + EMAIL evidence
+      // (display), and a PENDING advisory (subject-detail open_identity_
+      // advisories). subject_b has no SOURCED ref -> stays out of the pool.
+      'an ats-web recruiter and a sourced subject with trust and a pending advisory exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebResolutionSubject(c, { id: ATSW_POOL_SUBJECT_ID });
+            await seedAtsWebResolutionSubject(c, { id: ATSW_POOL_SUBJECT_B_ID });
+            await seedAtsWebResolutionSubjectRef(c, {
+              id: ATSW_POOL_SOURCED_REF_ID,
+              subjectId: ATSW_POOL_SUBJECT_ID,
+              refType: 'SOURCED_TALENT',
+              refId: ATSW_MINT_ARRIVAL_ID,
+            });
+            await seedAtsWebTrustState(c, {
+              subjectId: ATSW_POOL_SUBJECT_ID,
+              identityBand: 'CORROBORATED',
+              claimsBand: 'SELF_ASSERTED',
+              continuityBand: 'NOT_ESTABLISHED',
+              eligibilityBand: 'NOT_ESTABLISHED',
+              openContradictionCount: 0,
+            });
+            await seedAtsWebEvidenceRecord(c, {
+              id: '00000000-0000-7000-8000-e00000000001',
+              subjectId: ATSW_POOL_SUBJECT_ID,
+              assertionType: 'FULL_NAME',
+              assertionPayload: { first_name: 'Grace', last_name: 'Hopper' },
+            });
+            await seedAtsWebEvidenceRecord(c, {
+              id: '00000000-0000-7000-8000-e00000000002',
+              subjectId: ATSW_POOL_SUBJECT_ID,
+              assertionType: 'EMAIL',
+              assertionPayload: { normalized_value: 'grace@example.com' },
+            });
+            await seedAtsWebSubjectMatchAdvisory(c, {
+              id: ATSW_POOL_ADVISORY_ID,
+              subjectA: ATSW_POOL_SUBJECT_ID,
+              subjectB: ATSW_POOL_SUBJECT_B_ID,
+              adviseBand: 'ADVISE_WEAK',
+              status: 'PENDING_REVIEW',
+            });
+          });
+        },
+
+      // -- promote fresh-mint: sourced ACTIVE subject + SOURCED ref + VALID
+      // FULL_NAME evidence + the L1 arrival (talent_direct = consent source);
+      // no ATS ref, no PENDING advisory -> promoteSubject returns 'promoted'.
+      'an ats-web recruiter and a promotable sourced subject exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebResolutionSubject(c, { id: ATSW_MINT_SUBJECT_ID });
+          await seedAtsWebResolutionSubjectRef(c, {
+            id: '00000000-0000-7000-8000-50c000000002',
+            subjectId: ATSW_MINT_SUBJECT_ID,
+            refType: 'SOURCED_TALENT',
+            refId: ATSW_MINT_ARRIVAL_ID,
+          });
+          await seedAtsWebEvidenceRecord(c, {
+            id: '00000000-0000-7000-8000-e00000000003',
+            subjectId: ATSW_MINT_SUBJECT_ID,
+            assertionType: 'FULL_NAME',
+            assertionPayload: { first_name: 'Grace', last_name: 'Hopper' },
+          });
+          await seedAtsWebRawPayloadReference(c, {
+            id: ATSW_MINT_ARRIVAL_ID,
+            source: 'talent_direct',
+          });
+        });
+      },
+
+      // -- promote already_promoted: sourced subject that already carries an
+      // ATS_TALENT_RECORD ref -> step-2 returns 'already_promoted'.
+      'an ats-web recruiter and an already-promoted sourced subject exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebResolutionSubject(c, { id: ATSW_PROMOTED_SUBJECT_ID });
+            await seedAtsWebResolutionSubjectRef(c, {
+              id: '00000000-0000-7000-8000-50c000000003',
+              subjectId: ATSW_PROMOTED_SUBJECT_ID,
+              refType: 'SOURCED_TALENT',
+              refId: ATSW_PROMOTED_ARRIVAL_ID,
+            });
+            await seedAtsWebResolutionSubjectRef(c, {
+              id: '00000000-0000-7000-8000-50c000000004',
+              subjectId: ATSW_PROMOTED_SUBJECT_ID,
+              refType: 'ATS_TALENT_RECORD',
+              refId: ATSW_PROMOTED_TALENT_ID,
+            });
+            await seedAtsWebTalentRecord(c, {
+              id: ATSW_PROMOTED_TALENT_ID,
+              firstName: 'Grace',
+              lastName: 'Hopper',
+            });
+          });
+        },
+
+      // -- promote advisory-gate defer: sourced subject with a PENDING advisory
+      // -> step-2.5 returns 'deferred_unresolved_identity' (200).
+      'an ats-web recruiter and a sourced subject with a pending identity advisory exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebResolutionSubject(c, { id: ATSW_DEFER_SUBJECT_ID });
+            await seedAtsWebResolutionSubject(c, { id: ATSW_DEFER_SUBJECT_B_ID });
+            await seedAtsWebResolutionSubjectRef(c, {
+              id: '00000000-0000-7000-8000-50c000000005',
+              subjectId: ATSW_DEFER_SUBJECT_ID,
+              refType: 'SOURCED_TALENT',
+              refId: ATSW_DEFER_ARRIVAL_ID,
+            });
+            await seedAtsWebSubjectMatchAdvisory(c, {
+              id: ATSW_DEFER_ADVISORY_ID,
+              subjectA: ATSW_DEFER_SUBJECT_ID,
+              subjectB: ATSW_DEFER_SUBJECT_B_ID,
+              adviseBand: 'ADVISE_STRONG',
+              status: 'PENDING_REVIEW',
+            });
+          });
+        },
+
+      // -- advisory approve-happy / dismiss-happy / reverse-not-MERGED-409: a
+      // PENDING advisory (no contradiction) over two ACTIVE subjects.
+      'an ats-web recruiter and a pending advisory without contradiction exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebResolutionSubject(c, { id: ATSW_ADV_SUBJECT_A_ID });
+            await seedAtsWebResolutionSubject(c, { id: ATSW_ADV_SUBJECT_B_ID });
+            await seedAtsWebSubjectMatchAdvisory(c, {
+              id: ATSW_ADV_PENDING_ID,
+              subjectA: ATSW_ADV_SUBJECT_A_ID,
+              subjectB: ATSW_ADV_SUBJECT_B_ID,
+              adviseBand: 'ADVISE_STRONG',
+              status: 'PENDING_REVIEW',
+            });
+          });
+        },
+
+      // -- advisory reverse-happy / reversal_justification-400 / approve-
+      // already-resolved-409: a MERGED advisory (subject_b merged into a).
+      'an ats-web recruiter and a merged advisory exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebResolutionSubject(c, { id: ATSW_ADV_SUBJECT_A_ID });
+          await seedAtsWebResolutionSubject(c, {
+            id: ATSW_ADV_SUBJECT_B_ID,
+            status: 'MERGED',
+            mergedIntoSubjectId: ATSW_ADV_SUBJECT_A_ID,
+          });
+          await seedAtsWebSubjectMatchAdvisory(c, {
+            id: ATSW_ADV_MERGED_ID,
+            subjectA: ATSW_ADV_SUBJECT_A_ID,
+            subjectB: ATSW_ADV_SUBJECT_B_ID,
+            adviseBand: 'ADVISE_STRONG',
+            status: 'MERGED',
+            survivingSubjectId: ATSW_ADV_SUBJECT_A_ID,
+            mergedSubjectId: ATSW_ADV_SUBJECT_B_ID,
+          });
+        });
+      },
+
+      // -- advisory approve-contradiction-400: a PENDING advisory with
+      // has_contradiction=true -> approve without override 400.
+      'an ats-web recruiter and a pending advisory with a contradiction exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebResolutionSubject(c, { id: ATSW_ADV_SUBJECT_A_ID });
+            await seedAtsWebResolutionSubject(c, { id: ATSW_ADV_SUBJECT_B_ID });
+            await seedAtsWebSubjectMatchAdvisory(c, {
+              id: ATSW_ADV_CONTRADICTION_ID,
+              subjectA: ATSW_ADV_SUBJECT_A_ID,
+              subjectB: ATSW_ADV_SUBJECT_B_ID,
+              adviseBand: 'ADVISE_STRONG',
+              status: 'PENDING_REVIEW',
+              hasContradiction: true,
+            });
+          });
+        },
     };
 
     // M5 PR-4 helpers: seed TalentRecord + Job + Requisition for the
