@@ -35,6 +35,11 @@ import { SavedListModule } from '@aramo/saved-list';
 import { SettingsModule } from '@aramo/settings';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { SubmittalModule } from '@aramo/submittal';
+// TR-2a-B3b — EvidenceModule + ExaminationModule imported so the record-reconcile
+// orchestrator can inject EvidenceRepository + ExaminationRepository (both were
+// only transitive deps of apps/api before this slice).
+import { EvidenceModule } from '@aramo/evidence';
+import { ExaminationModule } from '@aramo/examination';
 import { TalentEvidenceModule } from '@aramo/talent-evidence';
 import { TalentExtractionModule } from '@aramo/talent-extraction';
 import { TalentRecordModule, ResumeReindexModule } from '@aramo/talent-record';
@@ -46,6 +51,7 @@ import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.intercept
 import { TalentAnchorProducerService } from './talent-anchor/talent-anchor-producer.service.js';
 import { AdvisoryResolutionController } from './talent-identity/advisory-resolution.controller.js';
 import { PromotionService } from './talent-identity/promotion.service.js';
+import { RecordReconcileOrchestrator } from './talent-identity/record-reconcile.orchestrator.js';
 import { SourcingController } from './talent-identity/sourcing.controller.js';
 import { SourcingService } from './talent-identity/sourcing.service.js';
 import { ExamineController } from './controllers/examine.controller.js';
@@ -247,6 +253,12 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).
     SkillsTaxonomyModule,
     SubmittalModule,
+    // TR-2a-B3b — the record-reconcile orchestrator injects EvidenceRepository +
+    // ExaminationRepository (both operational holders swept on a both-promoted
+    // merge). Their modules export the repos; importing them here makes them
+    // available to the orchestrator's DI in app.module.
+    EvidenceModule,
+    ExaminationModule,
     // T2-2a — canonicalization orchestrator (NEW leaf lib). Lead-authored
     // per Aramo-T2-2a-Canonicalization-Orchestration-Directive-v1_0-LOCKED.md.
     // Service-only at T2-2a (no controller). Imported here BEFORE
@@ -447,6 +459,12 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // SourceConsentService, IngestionRepository) come from their already-imported
     // modules.
     PromotionService,
+    // TR-2a-B3b (DDR-3 §1) — the record-reconcile orchestrator (phase 2 of a
+    // merge). apps/api boundary layer above the I15 wall; composes the cip
+    // trust-side (SubjectMergeOperation, ref normalization, recompute) + each ATS
+    // domain's OWN repointTalentRecordRefs. talent_trust imports NO ats. All deps
+    // resolve via already-imported modules.
+    RecordReconcileOrchestrator,
     // Promotion-Trigger slice-A — the sourcing trigger orchestrator (deps
     // PromotionService + PipelineRepository + SavedListRepository resolve via
     // their already-imported modules).

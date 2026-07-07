@@ -452,3 +452,77 @@ model SubjectMatchAdvisory {
   @@index([subject_b_id])
   @@schema("talent_trust")
 }
+
+// SubjectMergeOperation — TR-2a-B3b (DDR-3 §6). The durable record of a
+// record-reconcile (phase 2 of a both-/one-promoted merge). It is THREE things
+// at once: (a) the resumable checkpoint (a crash mid-sweep leaves a PENDING
+// operation a resume command completes idempotently — never a silent half-sweep);
+// (b) the reversal source (reverseMerge restores exactly what the operation did);
+// (c) the merge-audit substrate the TR-1 schema comment deferred to TR-6 — this is
+// that substrate's FIRST increment, so TR-6 EXTENDS this table, never duplicates it.
+//
+// Record ids are bare UUIDs (I1-clean — cip holding TalentRecord UUIDs has
+// precedent in ResolutionSubjectRef.ref_id). Cross-schema, no FK. The sweep/ref/
+// collision progress is stored as JSON (small volumes at this stage — revisit if
+// not). subject_a/b relations are NOT added: the operation references a merge
+// direction (surviving/merged), not the canonical advisory pair.
+model SubjectMergeOperation {
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+
+  // The resolving advisory (nullable — a direct/programmatic merge carries none).
+  // UUID-only, no relation (append-style; the advisory row is the human decision,
+  // this is its record-side execution log).
+  advisory_id String? @db.Uuid
+
+  // The human-elected direction (DDR-3 §2 — record survivorship follows subject
+  // survivorship; no second algorithm). Both are ResolutionSubject.id.
+  surviving_subject_id String @db.Uuid
+  merged_subject_id    String @db.Uuid
+
+  // The TalentRecord ids by case (DDR-3 §2, nullable per case): neither promoted →
+  // both null; one promoted → surviving set, superseded null; both promoted →
+  // surviving live, superseded = R_L (the husk this operation supersedes).
+  surviving_record_id  String? @db.Uuid
+  superseded_record_id String? @db.Uuid
+
+  /// MergeOperationStatus closed vocabulary (String, not a Prisma enum — the
+  /// module convention): PENDING (started, resumable) | COMPLETED | REVERSED.
+  status String @default("PENDING")
+
+  // Ref-normalization actions taken (DDR-3 §2), each recorded verbatim BEFORE the
+  // mutation so reversal restores topology exactly. Shape:
+  //   [{ kind: 're_homed'|'removed', ref_type, ref_id, from_subject_id,
+  //      to_subject_id?, linked_at, link_source }]
+  // The removed variant copies (subject, record, linked_at, link_source) verbatim.
+  ref_actions Json @default("[]")
+
+  // Per-domain sweep steps (DDR-3 §4), one entry per operational/ledger holder
+  // swept, appended as the orchestrator checkpoints. Shape:
+  //   [{ domain, status: 'done', repointed_ids: string[], removed_rows: object[] }]
+  // Idempotent against this list on resume (a step already 'done' is skipped).
+  sweep_steps Json @default("[]")
+
+  // Collision records (DDR-3 §4 — unique-key holders #2 pipeline, #16 saved_list):
+  // the loser-side row removed with its FULL pre-removal content, so reversal
+  // re-creates it verbatim. Shape: [{ domain, row: object }].
+  collision_records Json @default("[]")
+
+  started_at   DateTime  @default(now()) @db.Timestamptz
+  completed_at DateTime? @db.Timestamptz
+
+  // ---- Reversal audit (DDR-3 §6) — set when the operation is reversed.
+  reversed_at            DateTime? @db.Timestamptz
+  reversed_by            String?
+  reversal_justification String?
+  // Post-merge accretions (rows created against R_S AFTER the reconcile) are NOT
+  // guessed at — enumerated here for human triage, never auto-redistributed.
+  post_merge_accretions  Json?
+
+  // Resume/reversal lookups: PENDING operations per tenant; operations by survivor.
+  @@index([tenant_id, status])
+  @@index([tenant_id, surviving_subject_id])
+  @@index([advisory_id])
+  @@schema("talent_trust")
+}

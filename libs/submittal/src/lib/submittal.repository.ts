@@ -358,6 +358,38 @@ export class SubmittalRepository {
     return row === null ? null : projectView(row as TalentSubmittalRecordRow);
   }
 
+  // TR-2a-B3b (DDR-3 §4) — OPERATIONAL re-point: move rows whose TalentRecord.id
+  // ref (talent_id) equals from_record_id to to_record_id, tenant-scoped. Idempotent
+  // (a re-run after the move matches no rows). No unique key on this column → no
+  // collision class → removed_rows is always []. RETURNING id yields affected-row
+  // identity for the operation-record checkpoint.
+  async repointTalentRecordRefs(args: {
+    tenant_id: string;
+    from_record_id: string;
+    to_record_id: string;
+    only_ids?: string[];
+  }): Promise<{ repointed_ids: string[]; removed_rows: unknown[] }> {
+    const params: unknown[] = [args.to_record_id, args.from_record_id, args.tenant_id];
+    let idFilter = '';
+    if (args.only_ids && args.only_ids.length > 0) {
+      params.push(args.only_ids);
+      idFilter = `AND id = ANY($${params.length}::uuid[])`;
+    }
+    return this.prisma.$transaction(async (tx) => {
+      // TR-2a-B3b (Group-2 §2.6 submittal reconcile re-key amendment) — the
+      // transaction-local GUC admitting the talent_id-only supersession re-key past
+      // the column-scoped immutability trigger. SET LOCAL only here (grep-enumerable).
+      await tx.$executeRawUnsafe(`SET LOCAL app.reconcile = 'on'`);
+      const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        `UPDATE "engagement"."TalentSubmittalRecord" SET talent_id = $1::uuid
+           WHERE talent_id = $2::uuid AND tenant_id = $3::uuid ${idFilter}
+         RETURNING id`,
+        ...params,
+      );
+      return { repointed_ids: rows.map((r) => r.id), removed_rows: [] };
+    });
+  }
+
   // M4 PR-4 confirm flow + M5 PR-8b2 rename + cutover.
   //
   // Per Ruling 12: M4 /confirm endpoint semantic becomes canonical

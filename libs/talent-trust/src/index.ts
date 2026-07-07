@@ -29,6 +29,11 @@ export type {
   InsertAnchorInput,
   SubjectMatchAdvisoryRow,
   UpsertMatchAdvisoryInput,
+  // TR-2a-B3b (DDR-3 §6) — the merge-operation record + ref-normalization shapes.
+  SubjectMergeOperationRow,
+  RefActionRecord,
+  SweepStepRecord,
+  CollisionRecord,
 } from './lib/talent-trust.repository.js';
 
 // TR-2a-3 advisory resolution — the merge action + reversal service input shapes

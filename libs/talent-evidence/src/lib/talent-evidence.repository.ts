@@ -591,4 +591,48 @@ export class TalentEvidenceRepository {
     const row = await this.prisma.talentDerivedSnapshot.findUnique({ where: { id } });
     return (row as TalentDerivedSnapshotRow | null) ?? null;
   }
+
+  // ---- Resolution re-point (TR-2a-B3b) -------------------------------
+  // TR-2a-B3b (DDR-3 §4) — OPERATIONAL re-point across ALL seven talent_evidence
+  // holders (talent_id → TalentRecord.id). One method, one UPDATE per model,
+  // tenant-scoped, RETURNING id. Idempotent (re-run matches nothing). No unique key
+  // involves talent_id in any of the seven → no collision → removed_rows always [].
+  //
+  // REVERSAL (DDR-3 §4) — an optional `only_ids` restricts each per-model
+  // UPDATE to a specific id set (`AND id = ANY($4::uuid[])`), so a prior
+  // forward re-point can be re-pointed back for EXACTLY the rows it moved.
+  // Absent/empty behaves as the whole-tenant re-point above.
+  async repointTalentRecordRefs(args: {
+    tenant_id: string;
+    from_record_id: string;
+    to_record_id: string;
+    only_ids?: string[];
+  }): Promise<{ repointed_ids: string[]; removed_rows: unknown[] }> {
+    const tables = [
+      'TalentSkillEvidence',
+      'TalentWorkHistoryEntry',
+      'TalentContactMethod',
+      'TalentRateExpectation',
+      'TalentWorkAuthorization',
+      'TalentDocument',
+      'TalentDerivedSnapshot',
+    ];
+    const base: unknown[] = [args.to_record_id, args.from_record_id, args.tenant_id];
+    let idFilter = '';
+    if (args.only_ids && args.only_ids.length > 0) {
+      base.push(args.only_ids);
+      idFilter = 'AND id = ANY($4::uuid[])';
+    }
+    const ids: string[] = [];
+    for (const t of tables) {
+      const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `UPDATE "talent_evidence"."${t}" SET talent_id = $1::uuid
+           WHERE talent_id = $2::uuid AND tenant_id = $3::uuid ${idFilter}
+         RETURNING id`,
+        ...base,
+      );
+      ids.push(...rows.map((r) => r.id));
+    }
+    return { repointed_ids: ids, removed_rows: [] };
+  }
 }

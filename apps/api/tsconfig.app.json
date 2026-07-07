@@ -31,6 +31,7 @@
       "@aramo/matching": ["../../dist/libs/matching/src/index.d.ts"],
       "@aramo/metering": ["../../dist/libs/metering/src/index.d.ts"],
       "@aramo/examination": ["../../dist/libs/examination/src/index.d.ts"],
+      "@aramo/evidence": ["../../dist/libs/evidence/src/index.d.ts"],
       "@aramo/object-storage": ["../../dist/libs/object-storage/src/index.d.ts"],
       "@aramo/outbox-publisher": ["../../dist/libs/outbox-publisher/src/index.d.ts"],
       "@aramo/pipeline": ["../../dist/libs/pipeline/src/index.d.ts"],
