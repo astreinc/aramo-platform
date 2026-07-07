@@ -53,6 +53,10 @@ const MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   'libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql',
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
+  // + revoke columns + canonical 5-state rename (the current submittal trigger fn
+  // the B3b amendment sits on references both).
+  'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
+  'libs/submittal/prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql',
   'libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql',
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
@@ -208,7 +212,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.query(
         `INSERT INTO engagement."TalentSubmittalRecord"
            (id, tenant_id, talent_id, job_id, evidence_package_id, pinned_examination_id, state, created_by, created_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'draft', $4::uuid, CURRENT_TIMESTAMP)`,
+         VALUES ($1::uuid, $2::uuid, $3::uuid, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'created', $4::uuid, CURRENT_TIMESTAMP)`,
         [id, TENANT, recordId, ACTOR],
       );
       return id;
@@ -492,9 +496,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ];
       for (const [tbl, id] of cases) {
         // No GUC set → user-edit immutability intact → the trigger raises.
+        // Each of the four rejects a bare talent_id change (engagement/examination/
+        // evidence: "immutable"; submittal: the state-machine fallthrough — a
+        // no-state-change talent_id UPDATE matches no permitted transition). All
+        // raise ERRCODE 23514 (check_violation). User-edit immutability intact.
         await expect(
           db.query(`UPDATE ${tbl} SET talent_id = $1::uuid WHERE id = $2::uuid`, [other, id]),
-        ).rejects.toThrow(/immutable|rejected|check_violation|23514/i);
+        ).rejects.toThrow(/immutable|rejected|state machine|permits/i);
       }
     });
 

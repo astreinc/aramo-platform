@@ -42,6 +42,9 @@ describe('TalentEvidenceRepository — surface', () => {
         // endpoint's exists-check gates lazy extraction).
         'findTalentSkillEvidenceByTalent',
         'countTalentSkillEvidenceByTalent',
+        // TR-2a-B3b (DDR-3 §4) — the reconcile re-point of talent_id across all
+        // seven talent_evidence holders (loser→survivor, idempotent).
+        'repointTalentRecordRefs',
       ].sort(),
     );
   });

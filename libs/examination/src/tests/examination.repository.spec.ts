@@ -47,6 +47,9 @@ describe('ExaminationRepository — surface', () => {
         'createOverride',
         'findOverrideById',
         'findOverridesByExaminationId',
+        // TR-2a-B3b (DDR-3 §4) — the reconcile re-point of talent_id (GUC-gated
+        // exemption of the analytical-immutable trigger; loser→survivor only).
+        'repointTalentRecordRefs',
       ].sort(),
     );
   });
