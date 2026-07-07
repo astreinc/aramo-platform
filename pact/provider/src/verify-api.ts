@@ -453,6 +453,24 @@ const REQUISITION_RATE_TYPE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260618120000_add_rate_type_subk_runmatch/migration.sql',
 );
+// PC-5d — ats-web Gate-2a desk (task + attachment, the final increment). task
+// init CREATEs the schema + Task + the TaskStatus enum ('open','done'); the
+// workspace-fields migration ALTERs the enum (+in_progress/waiting/cancelled)
+// and adds the source column. attachment init CREATEs the schema + Attachment +
+// AttachmentOwnerType enum. All columns are logical UUIDs / TEXT / enums — no
+// FK, so each applies in isolation. No index-only migrations to skip.
+const TASK_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/task/prisma/migrations/20260609140000_init_task_model/migration.sql',
+);
+const TASK_WORKSPACE_MIGRATION = resolve(
+  ROOT,
+  'libs/task/prisma/migrations/20260617120000_task_workspace_fields/migration.sql',
+);
+const ATTACHMENT_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/attachment/prisma/migrations/20260602120000_init_attachment_model/migration.sql',
+);
 const INGESTION_PACT = resolve(
   ROOT,
   'pact/pacts/ingestion-consumer-aramo-core.json',
@@ -630,6 +648,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // here per interaction. Activity is standalone (no FK).
       await c.query('TRUNCATE TABLE pipeline."Pipeline" CASCADE');
       await c.query('TRUNCATE TABLE activity."Activity" CASCADE');
+      // PC-5d — task + attachment (no FK; standalone truncates). The
+      // attachment 'talent' owner lives in talent_record."TalentRecord",
+      // already truncated above.
+      await c.query('TRUNCATE TABLE task."Task" CASCADE');
+      await c.query('TRUNCATE TABLE attachment."Attachment" CASCADE');
     }
 
     // 4e-rest-b — seed the portal talent's TalentRecord for the portal-thin
@@ -1256,6 +1279,74 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           params.subjectType ?? null,
           params.subjectId ?? null,
           params.notes ?? null,
+        ],
+      );
+    }
+
+    // PC-5d — task + attachment fixture ids. task owner_id / attachment
+    // owner_id are logical UUID refs (no FK). The my-tasks list keys to the
+    // recruiter (assignee_id = RECRUITER_ID); the attachment 'talent' owner is
+    // a real talent_record.TalentRecord (validateOwner requires it on create).
+    const ATSW_TASK_ID = '00000000-0000-7000-8000-7a5c00000001';
+    const ATSW_TASK_OWNER_REQ_ID = '00000000-0000-7000-8000-4e9200000001';
+    const ATSW_ATT_ID = '00000000-0000-7000-8000-a77ac0000001';
+    const ATSW_ATT_TALENT_ID = '00000000-0000-7000-8000-7a1e00000002';
+
+    // COMPOSABLE (PC-5d+): seed a task. created_by_user_id is required (set to
+    // the recruiter); assignee defaults to the recruiter so the my-tasks list
+    // (keyed to authContext.sub) returns it; status defaults 'open'.
+    async function seedAtsWebTask(
+      c: Client,
+      params: {
+        id: string;
+        title: string;
+        ownerType: string;
+        ownerId: string;
+        assigneeId?: string;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO task."Task"
+           (id, tenant_id, title, created_by_user_id, owner_type, owner_id, assignee_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING`,
+        [
+          params.id,
+          TENANT_ID,
+          params.title,
+          RECRUITER_ID,
+          params.ownerType,
+          params.ownerId,
+          params.assigneeId ?? RECRUITER_ID,
+        ],
+      );
+    }
+
+    async function seedAtsWebAttachment(
+      c: Client,
+      params: {
+        id: string;
+        ownerType: string;
+        ownerId: string;
+        fileName: string;
+        mime: string;
+        sizeBytes: number;
+        storageKey: string;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO attachment."Attachment"
+           (id, tenant_id, owner_type, owner_id, file_name, mime, size_bytes, storage_key)
+         VALUES ($1,$2,$3::"attachment"."AttachmentOwnerType",$4,$5,$6,$7,$8)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          params.id,
+          TENANT_ID,
+          params.ownerType,
+          params.ownerId,
+          params.fileName,
+          params.mime,
+          params.sizeBytes,
+          params.storageKey,
         ],
       );
     }
@@ -2376,6 +2467,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         REQUISITION_JOB_MODULE_MIGRATION,
         REQUISITION_DROP_LEGACY_COMP_MIGRATION,
         REQUISITION_RATE_TYPE_MIGRATION,
+        // PC-5d — task + attachment (final desk increment). task init +
+        // workspace-fields (enum extension + source column); attachment init.
+        // All self-contained (CREATE SCHEMA in init), no FK.
+        TASK_INIT_MIGRATION,
+        TASK_WORKSPACE_MIGRATION,
+        ATTACHMENT_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -2500,6 +2597,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'pipeline:change-status',
           'activity:read',
           'activity:create',
+          // PC-5d — task + attachment RolesGuard @RequireScopes. task:write
+          // gates create/patch/delete; attachment:create gates upload;
+          // attachment:delete omitted (DELETE is EXCLUDE-R2). Task/attachment
+          // visibility short-circuits (task) or is owner-scoped (attachment).
+          'task:read',
+          'task:write',
+          'attachment:read',
+          'attachment:create',
         ],
       })
         .setProtectedHeader({ alg: ALG })
@@ -5323,6 +5428,66 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // -- create: no pre-existing activity (the endpoint mints it).
       'an ats-web recruiter can create activities': async () => {
         await withClient((c) => resetAllRows(c));
+      },
+
+      // ===============================================================
+      // PC-5d — ats-web Gate-2a desk (task + attachment, final increment).
+      // ===============================================================
+
+      // -- a seeded task assigned to the recruiter (my-tasks list, patch,
+      // delete). assignee_id = RECRUITER_ID so the my-tasks branch (keyed to
+      // authContext.sub) returns it; owner is a requisition (logical ref).
+      'an ats-web recruiter and a task exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTask(c, {
+            id: ATSW_TASK_ID,
+            title: 'Call the lead',
+            ownerType: 'requisition',
+            ownerId: ATSW_TASK_OWNER_REQ_ID,
+          });
+        });
+      },
+
+      // -- create: no pre-existing task (the endpoint mints it). The owner
+      // (requisition) is visible under requisition:read:all short-circuit.
+      'an ats-web recruiter can create tasks': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+
+      // -- a seeded attachment on a talent owner (list). The talent_record
+      // owner row is seeded so the shape mirrors a real upload.
+      'an ats-web recruiter and an attachment exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTalentRecord(c, {
+            id: ATSW_ATT_TALENT_ID,
+            firstName: 'Owner',
+            lastName: 'Talent',
+          });
+          await seedAtsWebAttachment(c, {
+            id: ATSW_ATT_ID,
+            ownerType: 'talent',
+            ownerId: ATSW_ATT_TALENT_ID,
+            fileName: 'resume.pdf',
+            mime: 'application/pdf',
+            sizeBytes: 1024,
+            storageKey: 's3://bucket/resume.pdf',
+          });
+        });
+      },
+
+      // -- create: the talent owner must exist (validateOwner('talent') 404s
+      // otherwise); no pre-existing attachment (the endpoint mints it).
+      'an ats-web recruiter can create attachments': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTalentRecord(c, {
+            id: ATSW_ATT_TALENT_ID,
+            firstName: 'Owner',
+            lastName: 'Talent',
+          });
+        });
       },
     };
 
