@@ -32,6 +32,13 @@ const WATERMARK_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
 );
+// TR-6 B1 — last_matched_at (client SELECTs it) + the SubjectMergeOperation table
+// and its kind/actor/reason columns (mergeSubjects/unmergeSubjects now persist a row).
+const TR6_B1_MIGRATION_PATHS = [
+  '../../prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
+  '../../prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
+  '../../prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
+].map((p) => resolve(__dirname, p));
 // Promotion-Trigger slice-A — the partial-unique (≤1 ATS_TALENT_RECORD ref per
 // subject); this spec's race-guard test relies on it existing.
 const ATS_REF_UNIQUE_MIGRATION_PATH = resolve(
@@ -105,7 +112,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setupClient.$connect();
       const watermarkSql = readFileSync(WATERMARK_MIGRATION_PATH, 'utf8');
       const atsRefUniqueSql = readFileSync(ATS_REF_UNIQUE_MIGRATION_PATH, 'utf8');
-      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql]) {
+      const tr6Sqls = TR6_B1_MIGRATION_PATHS.map((p) => readFileSync(p, 'utf8'));
+      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql, ...tr6Sqls]) {
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
           if (trimmed.length === 0) continue;
@@ -328,14 +336,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const subjectBId = stateB.subject_id;
       expect(subjectAId).not.toBe(subjectBId);
 
-      await service.mergeSubjects(subjectAId, subjectBId, 'same human, TR-6 trial');
+      await service.mergeSubjects(subjectAId, subjectBId, 'same human, TR-6 trial', 'test-actor');
 
       // Reading B's ref now returns A's materialized state (the surviving subject).
       const merged = await service.getTrustState(subjectRefB);
       expect(merged?.subject_id).toBe(subjectAId);
 
       // Unmerge restores B to its own state (mark-never-delete, reversible).
-      await service.unmergeSubjects(subjectBId, 'rollback trial');
+      await service.unmergeSubjects(subjectBId, 'rollback trial', 'test-actor');
       const restored = await service.getTrustState(subjectRefB);
       expect(restored?.subject_id).toBe(subjectBId);
     });

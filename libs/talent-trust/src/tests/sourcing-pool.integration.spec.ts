@@ -21,6 +21,7 @@ import { TalentTrustService, type SubjectRef } from '../lib/talent-trust.service
 const MIGRATIONS = [
   '../../prisma/migrations/20260628000000_init_talent_trust/migration.sql',
   '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
+  '../../prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
   '../../prisma/migrations/20260706120000_ats_ref_partial_unique/migration.sql',
   // Slice B-api — the keyset index the list reader scans.
   '../../prisma/migrations/20260706160000_sourcing_pool_keyset_index/migration.sql',

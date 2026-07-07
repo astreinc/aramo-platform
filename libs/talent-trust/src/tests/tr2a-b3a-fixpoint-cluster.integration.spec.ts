@@ -30,6 +30,9 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
   '../../prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
   '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
+  '../../prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
+  '../../prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
+  '../../prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
   '../../prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
   '../../prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
   '../../prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
@@ -144,8 +147,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const c = await mintSubjectWithRef();
 
       // A→B→C: A merged into B, B merged into C, C stays ACTIVE.
-      await service.mergeSubjects(b.subjectId, a.subjectId, 'chain A→B');
-      await service.mergeSubjects(c.subjectId, b.subjectId, 'chain B→C');
+      await service.mergeSubjects(b.subjectId, a.subjectId, 'chain A→B', 'test-actor');
+      await service.mergeSubjects(c.subjectId, b.subjectId, 'chain B→C', 'test-actor');
 
       // resolveSubjectRef IS the promotion gate's resolve (promoteSubject →
       // resolveSubjectRef). Reading A's ref must reach C, not stop at B (1-hop).
@@ -197,7 +200,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         normalized_value: 'origin@example.com',
       });
 
-      await service.mergeSubjects(survivor.subjectId, husk.subjectId, 'merge husk into survivor');
+      await service.mergeSubjects(survivor.subjectId, husk.subjectId, 'merge husk into survivor', 'test-actor');
 
       // listAnchorsBySubject on the husk still returns the husk's OWN anchor
       // (origin-keyed — NOT re-homed to the survivor).
@@ -225,7 +228,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('(e) husk evidence surfaces in the survivor cluster-union read with origin provenance, and recompute folds it in', async () => {
       const survivor = await mintSubjectWithRef();
       const husk = await mintSubjectWithRef();
-      await service.mergeSubjects(survivor.subjectId, husk.subjectId, 'merge for union read');
+      await service.mergeSubjects(survivor.subjectId, husk.subjectId, 'merge for union read', 'test-actor');
 
       // Evidence written to the merged husk (origin-keyed write — stays on husk).
       const evId = await writeAuthoritativeEvidence(husk.subjectId);
@@ -250,7 +253,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('(f) un-merge + recompute both → cleanly separated states (no blending to undo)', async () => {
       const survivor = await mintSubjectWithRef();
       const husk = await mintSubjectWithRef();
-      await service.mergeSubjects(survivor.subjectId, husk.subjectId, 'merge before un-merge');
+      await service.mergeSubjects(survivor.subjectId, husk.subjectId, 'merge before un-merge', 'test-actor');
       await writeAuthoritativeEvidence(husk.subjectId);
       await service.recomputeTrustState(survivor.subjectId, TENANT);
 
@@ -259,7 +262,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(preState?.identity_band).not.toBe('NOT_ESTABLISHED');
 
       // Un-merge, then recompute BOTH.
-      await service.unmergeSubjects(husk.subjectId, 'reviewer error');
+      await service.unmergeSubjects(husk.subjectId, 'reviewer error', 'test-actor');
       await service.recomputeTrustState(survivor.subjectId, TENANT);
       await service.recomputeTrustState(husk.subjectId, TENANT);
 

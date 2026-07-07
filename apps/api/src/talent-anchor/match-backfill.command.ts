@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { SubjectMatcherService } from '@aramo/talent-trust';
+import { SubjectMatcherService, TalentTrustRepository } from '@aramo/talent-trust';
 
 import { AppModule } from '../app.module.js';
 
@@ -15,13 +15,18 @@ import { AppModule } from '../app.module.js';
 // trust ledger. This CLI is an operational entrypoint above the wall (it wires the app
 // context), NOT a request-path trigger.
 //
+// TR-6 B1 (DDR §2) — retained as the FULL-RESWEEP escape hatch beside the hourly
+// incremental sweep (which only re-matches subjects with a new anchor since their
+// watermark). `--all-tenants` sweeps every tenant that owns an anchored subject.
+//
 // Usage (after build):
 //   node dist/apps/api/src/talent-anchor/match-backfill.command.js <tenant_id>
+//   node dist/apps/api/src/talent-anchor/match-backfill.command.js --all-tenants
 async function main(): Promise<void> {
   const logger = new Logger('SubjectMatchBackfill');
-  const tenantId = process.argv[2];
-  if (tenantId === undefined || tenantId.trim().length === 0) {
-    logger.error('usage: match-backfill <tenant_id>');
+  const arg = process.argv[2];
+  if (arg === undefined || arg.trim().length === 0) {
+    logger.error('usage: match-backfill <tenant_id> | --all-tenants');
     process.exitCode = 1;
     return;
   }
@@ -31,10 +36,19 @@ async function main(): Promise<void> {
   });
   try {
     const matcher = ctx.get(SubjectMatcherService);
-    const result = await matcher.backfillMatches(tenantId);
-    logger.log(
-      `match backfill complete tenant=${tenantId}: ${result.subjects} subjects swept, ${result.advisories} advisories`,
-    );
+    const tenantIds =
+      arg === '--all-tenants'
+        ? await ctx.get(TalentTrustRepository).listTenantIdsWithAnchors()
+        : [arg];
+    if (arg === '--all-tenants') {
+      logger.log(`match backfill --all-tenants: ${tenantIds.length} tenant(s) to sweep`);
+    }
+    for (const tenantId of tenantIds) {
+      const result = await matcher.backfillMatches(tenantId);
+      logger.log(
+        `match backfill complete tenant=${tenantId}: ${result.subjects} subjects swept, ${result.advisories} advisories`,
+      );
+    }
   } finally {
     await ctx.close();
   }

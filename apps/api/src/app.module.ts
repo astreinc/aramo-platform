@@ -52,6 +52,7 @@ import { TalentAnchorProducerService } from './talent-anchor/talent-anchor-produ
 import { AdvisoryResolutionController } from './talent-identity/advisory-resolution.controller.js';
 import { PromotionService } from './talent-identity/promotion.service.js';
 import { RecordReconcileOrchestrator } from './talent-identity/record-reconcile.orchestrator.js';
+import { IdentityMaintenanceModule } from './jobs/identity-maintenance.module.js';
 import { SourcingController } from './talent-identity/sourcing.controller.js';
 import { SourcingService } from './talent-identity/sourcing.service.js';
 import { ExamineController } from './controllers/examine.controller.js';
@@ -289,6 +290,11 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // ats→cip is wall-clean (canonicalization precedent). Placed after the
     // promotion/extraction path so a promoted subject exists before reconcile.
     TalentReconcileModule,
+    // TR-6 B1 (DDR §2/§7) — the identity-maintenance jobs: the hourly incremental
+    // match sweep (D1) + the daily read-only integrity-detection cron (D6). apps/api
+    // boundary layer; imports {talent-trust (cip), talent-record (ats)} — both edges
+    // pre-exist. The SCHEDULES registrar (jobs/registration.ts) enqueues its ticks.
+    IdentityMaintenanceModule,
     // A8-3a — ObjectStorageModule (new leaf lib). The platform's first
     // live S3 substrate: presigned PUT/GET helpers + tenant-scoped key
     // convention + PII floor (≤ 300s expiry cap + access-log emission).

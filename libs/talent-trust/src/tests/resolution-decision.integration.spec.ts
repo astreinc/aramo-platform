@@ -27,6 +27,9 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
   '../../prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
   '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
+  '../../prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
+  '../../prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
+  '../../prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
   '../../prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
   '../../prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
   '../../prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
@@ -221,8 +224,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const a = await mintConfirmingSubject(e);
       const b = await repo.resolveOrCreateSubject(TENANT, 'ATS_TALENT_RECORD', uuidv7(), ACTOR);
       const c = await repo.resolveOrCreateSubject(TENANT, 'ATS_TALENT_RECORD', uuidv7(), ACTOR);
-      await service.mergeSubjects(b, a, 'chain A→B'); // A merged into B
-      await service.mergeSubjects(c, b, 'chain B→C'); // B merged into C
+      await service.mergeSubjects(b, a, 'chain A→B', 'test-actor'); // A merged into B
+      await service.mergeSubjects(c, b, 'chain B→C', 'test-actor'); // B merged into C
       const r = await service.recordSourcedArrival(
         arrival({ verified_email: e, source_class: 'THIRD_PARTY_VERIFIED' }),
       );

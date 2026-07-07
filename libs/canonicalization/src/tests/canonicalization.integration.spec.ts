@@ -74,6 +74,10 @@ const MIGRATIONS = [
   // create RETURNs every column, so the (regenerated) talent_trust client 500s
   // without this migration applied.
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql'),
+  // talent_trust (TR-6 B1) — ResolutionSubject.last_matched_at (the scheduled
+  // sweep watermark). resolveOrCreateSubject RETURNs every column, so the
+  // regenerated client selects it — same 500-without-migration ripple as above.
+  resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql'),
   // talent_trust (TR-2a-B1) — SubjectAnchor.source_class (the resolver's anchor
   // write projects it) + the extended (…, source_class) unique key.
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql'),

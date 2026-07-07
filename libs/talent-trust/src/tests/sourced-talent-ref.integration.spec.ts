@@ -26,6 +26,11 @@ const WATERMARK_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
 );
+// TR-6 B1 — ResolutionSubject.last_matched_at (the regenerated client SELECTs it).
+const LAST_MATCHED_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
+);
 
 const TENANT = '22222222-2222-7222-8222-222222222222';
 // Stands in for a sourced_talent arrival id (sourced_talent.SourcedTalent.id).
@@ -74,10 +79,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       const migrationSql = readFileSync(MIGRATION_PATH, 'utf8');
       const watermarkSql = readFileSync(WATERMARK_MIGRATION_PATH, 'utf8');
+      const lastMatchedSql = readFileSync(LAST_MATCHED_MIGRATION_PATH, 'utf8');
 
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const stmt of [...splitDdl(migrationSql), ...splitDdl(watermarkSql)]) {
+      for (const stmt of [
+        ...splitDdl(migrationSql),
+        ...splitDdl(watermarkSql),
+        ...splitDdl(lastMatchedSql),
+      ]) {
         const trimmed = stmt.trim();
         if (trimmed.length === 0) continue;
         await setupClient.$executeRawUnsafe(trimmed);

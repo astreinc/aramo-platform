@@ -8,6 +8,9 @@ import { CROSS_SCHEMA_CONSISTENCY_QUEUE_NAME } from '@aramo/common';
 import { SKILL_CANONICALIZATION_QUEUE_NAME } from '@aramo/skills-taxonomy';
 import { RESUME_REINDEX_QUEUE_NAME } from '@aramo/talent-record';
 
+import { MATCH_SWEEP_QUEUE_NAME } from '../talent-anchor/match-sweep.queue.constants.js';
+import { IDENTITY_DETECTION_QUEUE_NAME } from '../talent-identity/identity-detection.queue.constants.js';
+
 // M5 PR-11 §4.6 — application bootstrap registration for the 4 Aramo Core
 // BullMQ jobs (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6;
 // doc/01 §13 anchor). Per Ruling 3 + ADR-0018 Decision 6, all repeating
@@ -56,6 +59,24 @@ const SCHEDULES = [
     job_name: 'tick',
     job_id: 'resume-reindex-60s',
     repeat: { every: 60_000 },
+  },
+  // TR-6 B1 (DDR §2) — the scheduled incremental match sweep. HOURLY (an engine
+  // constant, not tenant config): re-match every ACTIVE subject with a new anchor
+  // since its last_matched_at watermark. The gate is tenant-agnostic (batches all
+  // tenants per query); the manual match-backfill CLI is the full-resweep escape hatch.
+  {
+    queue_name: MATCH_SWEEP_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'match-sweep-hourly',
+    repeat: { pattern: '0 * * * *', tz: 'UTC' as const },
+  },
+  // TR-6 B1 (DDR §7) — the daily read-only integrity-detection cron. Reports the
+  // cheap detector classes (per-class counts + structured logs); mutates nothing.
+  {
+    queue_name: IDENTITY_DETECTION_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'identity-detection-daily',
+    repeat: { pattern: '0 6 * * *', tz: 'UTC' as const },
   },
 ] as const;
 

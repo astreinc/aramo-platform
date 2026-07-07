@@ -77,6 +77,14 @@ model ResolutionSubject {
   last_reconciled_at DateTime? @db.Timestamptz
   reconcile_attempts Int       @default(0)
 
+  // TR-6 B1 (DDR §2) — the scheduled incremental match-sweep watermark. NULL (or
+  // older than the subject's newest SubjectAnchor.created_at) means the subject
+  // has a new anchor since its last same-human match and must be re-swept. Anchors
+  // are append-only, so this is the complete invalidation condition. Stamped per
+  // subject on sweep completion. A maintenance watermark only — it NEVER keys a
+  // merge and NEVER gates a read (distinct from the supersession/tenant_status axes).
+  last_matched_at DateTime? @db.Timestamptz
+
   created_at DateTime @default(now()) @db.Timestamptz
 
   // Intra-schema relations (real FKs — within the talent_trust schema).
@@ -470,6 +478,20 @@ model SubjectMergeOperation {
   id String @id @db.Uuid
 
   tenant_id String @db.Uuid
+
+  // TR-6 B1 (DDR §5) — the operation kind. RECONCILE is the default (every
+  // pre-existing row + the record-reconcile orchestrator flow); DIRECT_MERGE /
+  // DIRECT_UNMERGE mark the pointer-only mergeSubjects/unmergeSubjects capability
+  // finally leaving a trail. String, not a Prisma enum (module convention).
+  /// MergeOperationKind closed vocabulary: RECONCILE | DIRECT_MERGE | DIRECT_UNMERGE
+  kind String @default("RECONCILE")
+
+  // TR-6 B1 (DDR §5) — the merge/unmerge actor + reason (the formerly-voided
+  // string). Nullable — reconcile-driven operations leave them null (their actor
+  // trail is the resolving advisory + reversal fields); a direct operation fills
+  // them.
+  actor  String?
+  reason String?
 
   // The resolving advisory (nullable — a direct/programmatic merge carries none).
   // UUID-only, no relation (append-style; the advisory row is the human decision,
