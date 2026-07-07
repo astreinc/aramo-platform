@@ -26,6 +26,7 @@ import {
   DismissRequestDto,
   ReverseMergeRequestDto,
 } from './dto/advisory-resolution.dto.js';
+import { RecordReconcileOrchestrator } from './record-reconcile.orchestrator.js';
 
 // TR-2a-3 — the PRIVILEGED advisory-resolution HTTP surface. Lives in apps/api
 // (ABOVE the I15 wall) and calls the cip talent_trust resolution service —
@@ -94,6 +95,10 @@ export class AdvisoryResolutionController {
   constructor(
     private readonly resolution: SubjectResolutionService,
     private readonly repo: TalentTrustRepository,
+    // TR-2a-B3b (DDR-3 §1) — phase 2 (the record reconcile) is delegated to the
+    // boundary orchestrator; this controller is the advisory-resolution entry point
+    // that sequences phase 1 (the cip subject merge) then phase 2.
+    private readonly reconcile: RecordReconcileOrchestrator,
   ) {}
 
   // The reviewer queue. Optional ?status= filter (defaults to all for the tenant).
@@ -135,6 +140,20 @@ export class AdvisoryResolutionController {
         ? { override_acknowledged: body.override_acknowledged }
         : {}),
     });
+
+    // Phase 2 — the record reconcile (DDR-3 §1/§2). Runs synchronously after the
+    // subject merge; the orchestrator determines the case (neither/one/both
+    // promoted), normalizes refs, sweeps holders, and recomputes. Durably
+    // checkpointed → a crash leaves a resumable PENDING operation (resume command).
+    if (row.surviving_subject_id !== null && row.merged_subject_id !== null) {
+      await this.reconcile.reconcile({
+        tenant_id: authContext.tenant_id,
+        advisory_id: row.id,
+        surviving_subject_id: row.surviving_subject_id,
+        merged_subject_id: row.merged_subject_id,
+        actor_id: authContext.sub,
+      });
+    }
     return toView(row);
   }
 
@@ -163,12 +182,35 @@ export class AdvisoryResolutionController {
     @Param('id') id: string,
     @Body() body: ReverseMergeRequestDto,
   ): Promise<AdvisoryView> {
+    // Capture the merge direction BEFORE reverseMerge (the advisory keeps its
+    // surviving/merged ids, but read it up front for the operation lookup).
+    const before = await this.repo.findMatchAdvisoryById(authContext.tenant_id, id);
+    // Phase 1 — un-merge the subject pointer + advisory → REVERSED.
     const row = await this.resolution.reverseMerge({
       tenant_id: authContext.tenant_id,
       advisory_id: id,
       actor: authContext.sub,
       justification: body.justification,
     });
+    // Phase 2 — reverse the record reconcile if a COMPLETED operation exists
+    // (DDR-3 §6): lift supersession, restore ref topology, re-point back exactly the
+    // recorded rows, re-create collision rows, recompute both subjects. Pre-B3b
+    // merges (no operation) reverse as phase 1 only.
+    if (before?.surviving_subject_id != null && before?.merged_subject_id != null) {
+      const op = await this.repo.findMergeOperationBySubjects(
+        authContext.tenant_id,
+        before.surviving_subject_id,
+        before.merged_subject_id,
+      );
+      if (op?.status === 'COMPLETED') {
+        await this.reconcile.reverse({
+          tenant_id: authContext.tenant_id,
+          operation_id: op.id,
+          actor_id: authContext.sub,
+          justification: body.justification,
+        });
+      }
+    }
     return toView(row);
   }
 }

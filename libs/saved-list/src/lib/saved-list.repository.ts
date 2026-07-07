@@ -108,6 +108,66 @@ export class SavedListRepository {
     private readonly requisitionRepository: RequisitionRepository,
   ) {}
 
+  // TR-2a-B3b (DDR-3 §4) — OPERATIONAL re-point WITH COLLISION handling for the
+  // talent_record entries. SavedListEntry has @@unique([saved_list_id, item_id]),
+  // so a loser (from) entry whose saved_list already holds a survivor (to) entry is
+  // a duplicate of one human on one list: survivor-side wins, loser-side removed
+  // with FULL content recorded (deterministic — DDR-3 §4 collision rule). The
+  // item_type='talent_record' discriminator is load-bearing (a requisition/company/
+  // contact entry sharing the id space is never touched). Atomic + idempotent.
+  async repointTalentRecordRefs(args: {
+    tenant_id: string;
+    from_record_id: string;
+    to_record_id: string;
+    // Reversal (DDR-3 §6): re-point ONLY these specific rows (no collision logic).
+    only_ids?: string[];
+  }): Promise<{ repointed_ids: string[]; removed_rows: unknown[] }> {
+    if (args.only_ids && args.only_ids.length > 0) {
+      const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `UPDATE "saved_list"."SavedListEntry" SET item_id = $1::uuid
+           WHERE item_id = $2::uuid AND tenant_id = $3::uuid AND item_type = 'talent_record'
+             AND id = ANY($4::uuid[])
+         RETURNING id`,
+        args.to_record_id, args.from_record_id, args.tenant_id, args.only_ids,
+      );
+      return { repointed_ids: rows.map((r) => r.id), removed_rows: [] };
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const removed = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
+        `DELETE FROM "saved_list"."SavedListEntry"
+           WHERE item_id = $1::uuid AND tenant_id = $2::uuid AND item_type = 'talent_record'
+             AND saved_list_id IN (
+               SELECT saved_list_id FROM "saved_list"."SavedListEntry"
+               WHERE item_id = $3::uuid AND tenant_id = $2::uuid AND item_type = 'talent_record')
+         RETURNING *`,
+        args.from_record_id, args.tenant_id, args.to_record_id,
+      );
+      const repointed = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        `UPDATE "saved_list"."SavedListEntry" SET item_id = $1::uuid
+           WHERE item_id = $2::uuid AND tenant_id = $3::uuid AND item_type = 'talent_record'
+         RETURNING id`,
+        args.to_record_id, args.from_record_id, args.tenant_id,
+      );
+      return { repointed_ids: repointed.map((r) => r.id), removed_rows: removed };
+    });
+  }
+
+  // TR-2a-B3b (DDR-3 §6) — reversal re-creates recorded-and-removed collision
+  // entries verbatim (full content in the operation record, item_id = R_L).
+  // Idempotent (ON CONFLICT DO NOTHING; the @@unique also protects).
+  async restoreRemovedRows(rows: Array<Record<string, unknown>>): Promise<void> {
+    for (const row of rows) {
+      await this.prisma.$executeRawUnsafe(
+        `INSERT INTO "saved_list"."SavedListEntry"
+           (id, tenant_id, saved_list_id, item_type, item_id, created_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::"saved_list"."SavedListItemType", $5::uuid, $6::timestamptz)
+         ON CONFLICT (id) DO NOTHING`,
+        row['id'], row['tenant_id'], row['saved_list_id'], row['item_type'],
+        row['item_id'], row['created_at'],
+      );
+    }
+  }
+
   /**
    * Validate that `item_id` resolves to an in-tenant row of `item_type`.
    * All 4 ATS entities are wired (vs. PR-A4 attachment which stubbed 3

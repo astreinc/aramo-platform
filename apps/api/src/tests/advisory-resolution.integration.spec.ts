@@ -49,6 +49,11 @@ const MIGRATIONS = [
   'libs/talent-trust/prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
   // TR-2a-B2 — SubjectMatchAdvisory reopen provenance (client selects reopened_at).
   'libs/talent-trust/prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
+  // TR-2a-B3b — SubjectMergeOperation. The /approve endpoint now runs phase 2
+  // (the record reconcile) after the subject merge; even the neither-promoted case
+  // (these advisories carry no ATS_TALENT_RECORD ref) creates a completed no-op
+  // operation record, so the table must exist or reconcile 500s.
+  'libs/talent-trust/prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 const ISSUER = 'Aramo Core Auth';

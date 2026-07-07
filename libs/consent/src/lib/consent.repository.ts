@@ -162,6 +162,139 @@ export type ConsentSummary =
 export class ConsentRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  // TR-2a-B3b (DDR-3 §4 LEDGER, #3) — re-point consent onto the surviving record.
+  // The TalentConsentEvent ledger is IMMUTABLE (a BEFORE UPDATE trigger rejects any
+  // UPDATE), so "re-point" is done by APPEND, never by re-keying existing rows:
+  // R_L's effective (latest-per-scope) GRANTS are replayed under R_S as new granted
+  // events, each carrying reconcile provenance {from, to, operation_id} in metadata
+  // (the ledger's own history states the re-key happened). This is what makes the
+  // survivor consent-VISIBLE to the send-gate (which reads consent by
+  // talent_record_id). Idempotent: a scope already reconciled for this operation is
+  // skipped. removed_rows is always [] (append-only). Returns the appended ids.
+  async repointTalentRecordRefs(args: {
+    tenant_id: string;
+    from_record_id: string;
+    to_record_id: string;
+    operation_id: string;
+    actor_id: string | null;
+  }): Promise<{ repointed_ids: string[]; removed_rows: unknown[] }> {
+    // R_L's latest event per scope (the effective state).
+    const effective = await this.prisma.$queryRawUnsafe<
+      Array<{ scope: string; action: string; consent_version: string }>
+    >(
+      `SELECT DISTINCT ON (scope) scope, action, consent_version
+         FROM "consent"."TalentConsentEvent"
+        WHERE talent_record_id = $1::uuid AND tenant_id = $2::uuid
+        ORDER BY scope, occurred_at DESC, created_at DESC`,
+      args.from_record_id,
+      args.tenant_id,
+    );
+    const appended: string[] = [];
+    const now = new Date();
+    for (const e of effective) {
+      if (e.action !== 'granted') continue; // only live grants transfer
+      // Idempotency: skip a scope already reconciled under R_S for this operation.
+      const dup = await this.prisma.$queryRawUnsafe<Array<{ n: bigint }>>(
+        `SELECT COUNT(*)::bigint AS n FROM "consent"."TalentConsentEvent"
+          WHERE talent_record_id = $1::uuid AND tenant_id = $2::uuid AND scope = $3
+            AND metadata -> 'reconcile' ->> 'operation_id' = $4`,
+        args.to_record_id,
+        args.tenant_id,
+        e.scope,
+        args.operation_id,
+      );
+      if (Number(dup[0]?.n ?? 0n) > 0) continue;
+      const id = uuidv7();
+      await this.prisma.talentConsentEvent.create({
+        data: {
+          id,
+          tenant_id: args.tenant_id,
+          talent_record_id: args.to_record_id,
+          scope: e.scope,
+          action: 'granted',
+          captured_by_actor_id: args.actor_id,
+          captured_method: 'import',
+          consent_version: e.consent_version,
+          occurred_at: now,
+          metadata: {
+            reconcile: {
+              from_record_id: args.from_record_id,
+              to_record_id: args.to_record_id,
+              operation_id: args.operation_id,
+            },
+          } as never,
+        },
+      });
+      appended.push(id);
+    }
+    return { repointed_ids: appended, removed_rows: [] };
+  }
+
+  // TR-2a-B3b (DDR-3 §4 AUDIT, #4) — the audit stream is NEVER re-pointed (it is the
+  // immutable forensic record keyed as it happened). The reconcile APPENDS its own
+  // record-reconcile ConsentAuditEvent recording from/to/operation/actor. Idempotent:
+  // one per operation (a re-run finds it and no-ops).
+  async appendRecordReconcileAuditEvent(args: {
+    tenant_id: string;
+    from_record_id: string;
+    to_record_id: string;
+    operation_id: string;
+    actor_id: string | null;
+    // The audit event kind — 'consent.record_reconcile' on reconcile,
+    // 'consent.record_reconcile_reversed' on reversal (DDR-3 §6: reversal appends
+    // its OWN audit event; the original is never rewritten).
+    event_type?: string;
+  }): Promise<void> {
+    const eventType = args.event_type ?? 'consent.record_reconcile';
+    const dup = await this.prisma.$queryRawUnsafe<Array<{ n: bigint }>>(
+      `SELECT COUNT(*)::bigint AS n FROM "audit"."ConsentAuditEvent"
+        WHERE tenant_id = $1::uuid AND event_type = $2
+          AND event_payload ->> 'operation_id' = $3`,
+      args.tenant_id,
+      eventType,
+      args.operation_id,
+    );
+    if (Number(dup[0]?.n ?? 0n) > 0) return;
+    await this.prisma.consentAuditEvent.create({
+      data: {
+        id: uuidv7(),
+        tenant_id: args.tenant_id,
+        actor_id: args.actor_id,
+        actor_type: 'system',
+        event_type: eventType,
+        subject_id: args.to_record_id,
+        event_payload: {
+          from_record_id: args.from_record_id,
+          to_record_id: args.to_record_id,
+          operation_id: args.operation_id,
+        } as never,
+      },
+    });
+  }
+
+  // TR-2a-B3b (DDR-3 §6) — consent reversal. The reconcile GRANTS appended under
+  // R_S were synthetic transfer artifacts (metadata.reconcile.operation_id), not
+  // genuine human consent decisions; un-merging the humans removes them. The
+  // immutability trigger is BEFORE UPDATE only, so DELETE of these synthetic rows
+  // is permitted (their history is the operation record). Idempotent. Returns the
+  // count removed.
+  async deleteReconcileGrants(args: {
+    tenant_id: string;
+    to_record_id: string;
+    operation_id: string;
+  }): Promise<number> {
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
+      `DELETE FROM "consent"."TalentConsentEvent"
+        WHERE tenant_id = $1::uuid AND talent_record_id = $2::uuid
+          AND metadata -> 'reconcile' ->> 'operation_id' = $3
+        RETURNING id`,
+      args.tenant_id,
+      args.to_record_id,
+      args.operation_id,
+    );
+    return rows.length;
+  }
+
   async recordConsentEvent<T extends ConsentActionValue>(
     input: RecordConsentEventInput & { action: T },
   ): Promise<ConsentEventResponseShape<T>> {

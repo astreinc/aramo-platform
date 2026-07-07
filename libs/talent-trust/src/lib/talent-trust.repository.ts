@@ -214,6 +214,54 @@ export interface InsertAnchorInput {
   normalized_value: string;
 }
 
+// TR-2a-B3b (DDR-3 §6) — one recorded ref-normalization action (verbatim, so
+// reversal restores topology exactly). `re_homed` = the ref's subject_id moved
+// from→to; `removed` = the ref row was deleted (its linkage copied here first).
+export interface RefActionRecord {
+  kind: 're_homed' | 'removed';
+  ref_type: ResolutionSubjectRefType;
+  ref_id: string;
+  from_subject_id: string;
+  to_subject_id: string | null;
+  linked_at: string;
+  link_source: string;
+}
+
+// TR-2a-B3b — one per-domain sweep step, appended as the orchestrator checkpoints.
+export interface SweepStepRecord {
+  domain: string;
+  status: 'done';
+  repointed_ids: string[];
+  removed_rows: unknown[];
+}
+
+// TR-2a-B3b — a collision row removed with its FULL pre-removal content.
+export interface CollisionRecord {
+  domain: string;
+  row: unknown;
+}
+
+// TR-2a-B3b — the SubjectMergeOperation row (DDR-3 §6).
+export interface SubjectMergeOperationRow {
+  id: string;
+  tenant_id: string;
+  advisory_id: string | null;
+  surviving_subject_id: string;
+  merged_subject_id: string;
+  surviving_record_id: string | null;
+  superseded_record_id: string | null;
+  status: 'PENDING' | 'COMPLETED' | 'REVERSED';
+  ref_actions: RefActionRecord[];
+  sweep_steps: SweepStepRecord[];
+  collision_records: CollisionRecord[];
+  started_at: Date;
+  completed_at: Date | null;
+  reversed_at: Date | null;
+  reversed_by: string | null;
+  reversal_justification: string | null;
+  post_merge_accretions: unknown | null;
+}
+
 @Injectable()
 export class TalentTrustRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -975,5 +1023,294 @@ export class TalentTrustRepository {
       },
     });
     return updated as SubjectMatchAdvisoryRow;
+  }
+
+  // ---- SubjectMergeOperation (TR-2a-B3b — DDR-3 §6) ------------------------
+
+  private mapOperation(row: unknown): SubjectMergeOperationRow {
+    const r = row as Record<string, unknown>;
+    return {
+      id: r['id'] as string,
+      tenant_id: r['tenant_id'] as string,
+      advisory_id: (r['advisory_id'] as string | null) ?? null,
+      surviving_subject_id: r['surviving_subject_id'] as string,
+      merged_subject_id: r['merged_subject_id'] as string,
+      surviving_record_id: (r['surviving_record_id'] as string | null) ?? null,
+      superseded_record_id: (r['superseded_record_id'] as string | null) ?? null,
+      status: r['status'] as SubjectMergeOperationRow['status'],
+      ref_actions: (r['ref_actions'] as RefActionRecord[]) ?? [],
+      sweep_steps: (r['sweep_steps'] as SweepStepRecord[]) ?? [],
+      collision_records: (r['collision_records'] as CollisionRecord[]) ?? [],
+      started_at: r['started_at'] as Date,
+      completed_at: (r['completed_at'] as Date | null) ?? null,
+      reversed_at: (r['reversed_at'] as Date | null) ?? null,
+      reversed_by: (r['reversed_by'] as string | null) ?? null,
+      reversal_justification: (r['reversal_justification'] as string | null) ?? null,
+      post_merge_accretions: r['post_merge_accretions'] ?? null,
+    };
+  }
+
+  // Create the PENDING operation record (the checkpoint anchor). One per merge;
+  // the orchestrator holds its id and checkpoints against it.
+  async createMergeOperation(input: {
+    tenant_id: string;
+    advisory_id: string | null;
+    surviving_subject_id: string;
+    merged_subject_id: string;
+    surviving_record_id: string | null;
+    superseded_record_id: string | null;
+  }): Promise<SubjectMergeOperationRow> {
+    const created = await this.prisma.subjectMergeOperation.create({
+      data: {
+        id: uuidv7(),
+        tenant_id: input.tenant_id,
+        advisory_id: input.advisory_id,
+        surviving_subject_id: input.surviving_subject_id,
+        merged_subject_id: input.merged_subject_id,
+        surviving_record_id: input.surviving_record_id,
+        superseded_record_id: input.superseded_record_id,
+      },
+    });
+    return this.mapOperation(created);
+  }
+
+  async findMergeOperationById(
+    tenantId: string,
+    id: string,
+  ): Promise<SubjectMergeOperationRow | null> {
+    const row = await this.prisma.subjectMergeOperation.findFirst({
+      where: { id, tenant_id: tenantId },
+    });
+    return row ? this.mapOperation(row) : null;
+  }
+
+  // Idempotency / resume: the most recent operation for a merge direction (so a
+  // re-run of approve→reconcile finds the in-flight operation instead of forking).
+  async findMergeOperationBySubjects(
+    tenantId: string,
+    survivingSubjectId: string,
+    mergedSubjectId: string,
+  ): Promise<SubjectMergeOperationRow | null> {
+    const row = await this.prisma.subjectMergeOperation.findFirst({
+      where: {
+        tenant_id: tenantId,
+        surviving_subject_id: survivingSubjectId,
+        merged_subject_id: mergedSubjectId,
+      },
+      orderBy: { started_at: 'desc' },
+    });
+    return row ? this.mapOperation(row) : null;
+  }
+
+  // The resume command's work-list: PENDING operations in a tenant (oldest first).
+  async findPendingMergeOperations(tenantId: string): Promise<SubjectMergeOperationRow[]> {
+    const rows = await this.prisma.subjectMergeOperation.findMany({
+      where: { tenant_id: tenantId, status: 'PENDING' },
+      orderBy: { started_at: 'asc' },
+    });
+    return rows.map((r) => this.mapOperation(r));
+  }
+
+  // Checkpoint: overwrite the progress arrays / record ids with the orchestrator's
+  // current view (the orchestrator builds the full arrays and persists them each
+  // step; small volumes). Idempotent — a resume re-persists the same shape.
+  async updateMergeOperation(
+    id: string,
+    patch: {
+      surviving_record_id?: string | null;
+      superseded_record_id?: string | null;
+      ref_actions?: RefActionRecord[];
+      sweep_steps?: SweepStepRecord[];
+      collision_records?: CollisionRecord[];
+    },
+  ): Promise<SubjectMergeOperationRow> {
+    const updated = await this.prisma.subjectMergeOperation.update({
+      where: { id },
+      data: {
+        ...(patch.surviving_record_id !== undefined
+          ? { surviving_record_id: patch.surviving_record_id }
+          : {}),
+        ...(patch.superseded_record_id !== undefined
+          ? { superseded_record_id: patch.superseded_record_id }
+          : {}),
+        ...(patch.ref_actions !== undefined ? { ref_actions: patch.ref_actions as never } : {}),
+        ...(patch.sweep_steps !== undefined ? { sweep_steps: patch.sweep_steps as never } : {}),
+        ...(patch.collision_records !== undefined
+          ? { collision_records: patch.collision_records as never }
+          : {}),
+      },
+    });
+    return this.mapOperation(updated);
+  }
+
+  async completeMergeOperation(id: string, completedAt: Date): Promise<SubjectMergeOperationRow> {
+    const updated = await this.prisma.subjectMergeOperation.update({
+      where: { id },
+      data: { status: 'COMPLETED', completed_at: completedAt },
+    });
+    return this.mapOperation(updated);
+  }
+
+  async markMergeOperationReversed(
+    id: string,
+    input: { reversed_by: string; reversed_at: Date; reversal_justification: string; post_merge_accretions: unknown },
+  ): Promise<SubjectMergeOperationRow> {
+    const updated = await this.prisma.subjectMergeOperation.update({
+      where: { id },
+      data: {
+        status: 'REVERSED',
+        reversed_by: input.reversed_by,
+        reversed_at: input.reversed_at,
+        reversal_justification: input.reversal_justification,
+        post_merge_accretions: input.post_merge_accretions as never,
+      },
+    });
+    return this.mapOperation(updated);
+  }
+
+  // TR-2a-B3b (DDR-3 §6 detection sweep) — pre-existing two-live-records clusters:
+  // MERGED subjects whose surviving subject is ACTIVE and where BOTH subjects carry
+  // an ATS_TALENT_RECORD ref (i.e. both were promoted before the reconcile writer
+  // existed → two live records for one human, the state Q2.1 says is silently
+  // creatable today). Returns the pair + both record ids; the orchestrator confirms
+  // both records are still LIVE before reporting. Read-only — acts on nothing.
+  async findMergedPromotedPairs(
+    tenantId: string,
+  ): Promise<
+    Array<{
+      merged_subject_id: string;
+      surviving_subject_id: string;
+      merged_record_id: string;
+      surviving_record_id: string;
+    }>
+  > {
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{
+        merged_subject_id: string;
+        surviving_subject_id: string;
+        merged_record_id: string;
+        surviving_record_id: string;
+      }>
+    >(
+      `SELECT m.id AS merged_subject_id, s.id AS surviving_subject_id,
+              rm.ref_id AS merged_record_id, rs.ref_id AS surviving_record_id
+         FROM "talent_trust"."ResolutionSubject" m
+         JOIN "talent_trust"."ResolutionSubject" s ON s.id = m.merged_into_subject_id AND s.status = 'ACTIVE'
+         JOIN "talent_trust"."ResolutionSubjectRef" rm
+           ON rm.subject_id = m.id AND rm.ref_type = 'ATS_TALENT_RECORD' AND rm.tenant_id = $1::uuid
+         JOIN "talent_trust"."ResolutionSubjectRef" rs
+           ON rs.subject_id = s.id AND rs.ref_type = 'ATS_TALENT_RECORD' AND rs.tenant_id = $1::uuid
+        WHERE m.status = 'MERGED' AND m.tenant_id = $1::uuid`,
+      tenantId,
+    );
+    return rows;
+  }
+
+  // ---- Ref normalization (TR-2a-B3b — DDR-3 §2, the #1 surface) ------------
+
+  // Find a subject's ATS_TALENT_RECORD ref (the record linkage), or null. The
+  // per-subject partial-unique guarantees ≤1, so findFirst is exact.
+  async findAtsRecordRef(
+    tenantId: string,
+    subjectId: string,
+  ): Promise<{ ref_id: string; linked_at: Date; link_source: string } | null> {
+    const row = await this.prisma.resolutionSubjectRef.findFirst({
+      where: { tenant_id: tenantId, subject_id: subjectId, ref_type: 'ATS_TALENT_RECORD' },
+      select: { ref_id: true, linked_at: true, link_source: true },
+    });
+    return row ?? null;
+  }
+
+  // Re-home a ref to the surviving subject (one-promoted case). The per-subject
+  // partial-unique permits it (the survivor has no ATS ref). Returns the recorded
+  // action (verbatim linkage) for the operation record.
+  async rehomeAtsRecordRef(
+    tenantId: string,
+    refId: string,
+    fromSubjectId: string,
+    toSubjectId: string,
+  ): Promise<RefActionRecord> {
+    const existing = await this.prisma.resolutionSubjectRef.findUnique({
+      where: {
+        tenant_id_ref_type_ref_id: { tenant_id: tenantId, ref_type: 'ATS_TALENT_RECORD', ref_id: refId },
+      },
+    });
+    await this.prisma.resolutionSubjectRef.update({
+      where: {
+        tenant_id_ref_type_ref_id: { tenant_id: tenantId, ref_type: 'ATS_TALENT_RECORD', ref_id: refId },
+      },
+      data: { subject_id: toSubjectId },
+    });
+    return {
+      kind: 're_homed',
+      ref_type: 'ATS_TALENT_RECORD',
+      ref_id: refId,
+      from_subject_id: fromSubjectId,
+      to_subject_id: toSubjectId,
+      linked_at: (existing?.linked_at ?? new Date()).toISOString(),
+      link_source: existing?.link_source ?? '',
+    };
+  }
+
+  // Remove a ref row (both-promoted case) — linkage copied verbatim into the
+  // returned action FIRST, so reversal re-creates it. Idempotent: a re-run after
+  // removal finds nothing and returns null.
+  async removeAtsRecordRef(
+    tenantId: string,
+    refId: string,
+    fromSubjectId: string,
+  ): Promise<RefActionRecord | null> {
+    const existing = await this.prisma.resolutionSubjectRef.findUnique({
+      where: {
+        tenant_id_ref_type_ref_id: { tenant_id: tenantId, ref_type: 'ATS_TALENT_RECORD', ref_id: refId },
+      },
+    });
+    if (existing === null) return null;
+    await this.prisma.resolutionSubjectRef.delete({
+      where: {
+        tenant_id_ref_type_ref_id: { tenant_id: tenantId, ref_type: 'ATS_TALENT_RECORD', ref_id: refId },
+      },
+    });
+    return {
+      kind: 'removed',
+      ref_type: 'ATS_TALENT_RECORD',
+      ref_id: refId,
+      from_subject_id: fromSubjectId,
+      to_subject_id: null,
+      linked_at: existing.linked_at.toISOString(),
+      link_source: existing.link_source,
+    };
+  }
+
+  // Reversal: re-create a removed ref verbatim (idempotent — the unique key makes a
+  // re-run a no-op) OR re-home a re_homed ref back to its origin.
+  async restoreRefAction(tenantId: string, action: RefActionRecord): Promise<void> {
+    if (action.kind === 're_homed' && action.to_subject_id !== null) {
+      await this.prisma.resolutionSubjectRef.update({
+        where: {
+          tenant_id_ref_type_ref_id: { tenant_id: tenantId, ref_type: action.ref_type, ref_id: action.ref_id },
+        },
+        data: { subject_id: action.from_subject_id },
+      });
+      return;
+    }
+    // removed → re-create verbatim.
+    const existing = await this.prisma.resolutionSubjectRef.findUnique({
+      where: {
+        tenant_id_ref_type_ref_id: { tenant_id: tenantId, ref_type: action.ref_type, ref_id: action.ref_id },
+      },
+    });
+    if (existing !== null) return;
+    await this.prisma.resolutionSubjectRef.create({
+      data: {
+        id: uuidv7(),
+        subject_id: action.from_subject_id,
+        tenant_id: tenantId,
+        ref_type: action.ref_type,
+        ref_id: action.ref_id,
+        link_source: action.link_source,
+        linked_at: new Date(action.linked_at),
+      },
+    });
   }
 }

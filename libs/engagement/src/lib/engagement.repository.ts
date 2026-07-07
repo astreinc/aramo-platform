@@ -477,6 +477,50 @@ export class EngagementRepository {
     return views;
   }
 
+  // TR-2a-B3b (DDR-3 §4) — OPERATIONAL re-point: move rows whose TalentRecord.id
+  // ref (talent_id) equals from_record_id to to_record_id, tenant-scoped. Idempotent
+  // (a re-run after the move matches no rows). No unique key on this column → no
+  // collision class → removed_rows is always []. RETURNING id yields affected-row
+  // identity for the operation-record checkpoint.
+  async repointTalentRecordRefs(args: {
+    tenant_id: string;
+    from_record_id: string;
+    to_record_id: string;
+    only_ids?: string[];
+  }): Promise<{ repointed_ids: string[]; removed_rows: unknown[] }> {
+    const params: unknown[] = [args.to_record_id, args.from_record_id, args.tenant_id];
+    let idFilter = '';
+    if (args.only_ids && args.only_ids.length > 0) {
+      params.push(args.only_ids);
+      idFilter = `AND id = ANY($${params.length}::uuid[])`;
+    }
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
+      `UPDATE "engagement"."TalentJobEngagement" SET talent_id = $1::uuid
+         WHERE talent_id = $2::uuid AND tenant_id = $3::uuid ${idFilter}
+       RETURNING id`,
+      ...params,
+    );
+    return { repointed_ids: rows.map((r) => r.id), removed_rows: [] };
+  }
+
+  // TR-2a-B3b (DDR-3 §6) — the engagement ids currently keyed to a TalentRecord.
+  // The reversal uses this on the survivor to enumerate POST-MERGE ACCRETIONS (ids
+  // present on R_S but NOT among the operation's recorded repointed rows) for human
+  // triage — never auto-redistributed. Engagement is the representative operational
+  // holder for accretion detection (the send-gate-relevant surface).
+  async listIdsByTalentRecord(args: {
+    tenant_id: string;
+    talent_record_id: string;
+  }): Promise<string[]> {
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT id FROM "engagement"."TalentJobEngagement"
+        WHERE talent_id = $1::uuid AND tenant_id = $2::uuid`,
+      args.talent_record_id,
+      args.tenant_id,
+    );
+    return rows.map((r) => r.id);
+  }
+
   // ---- Write methods (M5 PR-3) -----------------------------------------
 
   // createEngagement — Directive v1.0 §4.1 + Amendment v1.1 §2.

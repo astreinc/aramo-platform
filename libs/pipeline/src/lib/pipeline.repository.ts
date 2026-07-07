@@ -152,6 +152,72 @@ export class PipelineRepository {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  // TR-2a-B3b (DDR-3 §4) — OPERATIONAL re-point WITH COLLISION handling. Pipeline
+  // has @@unique([talent_record_id, requisition_id]), so a loser (from) row whose
+  // requisition_id already has a survivor (to) row is a DUPLICATE of one human's
+  // single fact: the survivor-side row wins, the loser-side row is removed with its
+  // FULL content recorded (deterministic, never leave-split — DDR-3 §4 collision
+  // rule). Non-colliding loser rows re-point straight. Atomic (one tx) so the
+  // delete+repoint is all-or-nothing; idempotent (a re-run matches no `from` rows).
+  // Returns affected-row identity + the removed collision rows (verbatim) for the
+  // operation-record checkpoint / reversal re-create.
+  async repointTalentRecordRefs(args: {
+    tenant_id: string;
+    from_record_id: string;
+    to_record_id: string;
+    // Reversal (DDR-3 §6): re-point ONLY these specific rows (no collision logic —
+    // we are restoring exactly what the operation moved, not a fresh merge).
+    only_ids?: string[];
+  }): Promise<{ repointed_ids: string[]; removed_rows: unknown[] }> {
+    if (args.only_ids && args.only_ids.length > 0) {
+      const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `UPDATE "pipeline"."Pipeline" SET talent_record_id = $1::uuid
+           WHERE talent_record_id = $2::uuid AND tenant_id = $3::uuid AND id = ANY($4::uuid[])
+         RETURNING id`,
+        args.to_record_id, args.from_record_id, args.tenant_id, args.only_ids,
+      );
+      return { repointed_ids: rows.map((r) => r.id), removed_rows: [] };
+    }
+    return this.prisma.$transaction(async (tx) => {
+      // Collision losers: `from` rows whose requisition_id already has a `to` row.
+      const removed = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
+        `DELETE FROM "pipeline"."Pipeline"
+           WHERE talent_record_id = $1::uuid AND tenant_id = $2::uuid
+             AND requisition_id IN (
+               SELECT requisition_id FROM "pipeline"."Pipeline"
+               WHERE talent_record_id = $3::uuid AND tenant_id = $2::uuid)
+         RETURNING *`,
+        args.from_record_id, args.tenant_id, args.to_record_id,
+      );
+      // Re-point the non-colliding remainder.
+      const repointed = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        `UPDATE "pipeline"."Pipeline" SET talent_record_id = $1::uuid
+           WHERE talent_record_id = $2::uuid AND tenant_id = $3::uuid
+         RETURNING id`,
+        args.to_record_id, args.from_record_id, args.tenant_id,
+      );
+      return { repointed_ids: repointed.map((r) => r.id), removed_rows: removed };
+    });
+  }
+
+  // TR-2a-B3b (DDR-3 §6) — reversal re-creates the recorded-and-removed collision
+  // rows verbatim (each row's full pre-removal content is in the operation record;
+  // it carries the original talent_record_id = R_L). Idempotent: a row whose id is
+  // already present is skipped (the @@unique also protects). Re-inserts each row's
+  // stored columns as-is.
+  async restoreRemovedRows(rows: Array<Record<string, unknown>>): Promise<void> {
+    for (const row of rows) {
+      await this.prisma.$executeRawUnsafe(
+        `INSERT INTO "pipeline"."Pipeline"
+           (id, tenant_id, site_id, talent_record_id, requisition_id, status, created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::"pipeline"."PipelineStatus", $7::timestamptz, $8::timestamptz)
+         ON CONFLICT (id) DO NOTHING`,
+        row['id'], row['tenant_id'], row['site_id'] ?? null, row['talent_record_id'],
+        row['requisition_id'], row['status'], row['created_at'], row['updated_at'],
+      );
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Write path — create at no_contact
   // -------------------------------------------------------------------------

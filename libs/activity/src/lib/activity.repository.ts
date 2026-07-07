@@ -181,6 +181,37 @@ export class ActivityRepository {
       .filter((x): x is string => x !== null);
   }
 
+  // TR-2a-B3b (DDR-3 §4) — OPERATIONAL re-point of the polymorphic talent-record
+  // link: move rows whose subject_id == from_record_id AND subject_type ==
+  // 'talent_record' to to_record_id, tenant-scoped. The discriminator filter is
+  // load-bearing — a requisition/company/contact row that happens to share the id
+  // space is never touched. Idempotent (re-run matches nothing). No unique key on
+  // the id column → no collision → removed_rows always [].
+  async repointTalentRecordRefs(args: {
+    tenant_id: string;
+    from_record_id: string;
+    to_record_id: string;
+    only_ids?: string[];
+  }): Promise<{ repointed_ids: string[]; removed_rows: unknown[] }> {
+    const params: unknown[] = [
+      args.to_record_id,
+      args.from_record_id,
+      args.tenant_id,
+    ];
+    let idFilter = '';
+    if (args.only_ids && args.only_ids.length > 0) {
+      params.push(args.only_ids);
+      idFilter = `AND id = ANY($${params.length}::uuid[])`;
+    }
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
+      `UPDATE "activity"."Activity" SET subject_id = $1::uuid
+         WHERE subject_id = $2::uuid AND tenant_id = $3::uuid AND subject_type = 'talent_record' ${idFilter}
+       RETURNING id`,
+      ...params,
+    );
+    return { repointed_ids: rows.map((r) => r.id), removed_rows: [] };
+  }
+
   // AUTHZ-D4b — visibility-scoped read paths.
   //
   // Activity is the POLYMORPHIC entity — subject_type discriminates the

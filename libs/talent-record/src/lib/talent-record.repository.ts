@@ -813,6 +813,40 @@ export class TalentRecordRepository {
     await this.prisma.talentRecord.delete({ where: { id: args.id } });
   }
 
+  // TR-2a-B3b (DDR-3 §2/§3) — the supersession WRITER (the B3a record_status axis
+  // finally gets its producer). Marks R_L as superseded by the surviving record
+  // R_S: record_status='superseded' + superseded_by_record_id + superseded_at.
+  // Supersession is NOT deletion — the row persists with full content (un-merge
+  // restore source + honest history). Tenant-scoped + row-scoped. Idempotent: a
+  // re-run (resume) sets the same values. Returns the affected id or null (missing
+  // or cross-tenant → no-op, the caller treats absent R_L as already-handled).
+  async supersedeRecord(args: {
+    tenant_id: string;
+    id: string;
+    superseded_by_record_id: string;
+    superseded_at?: Date;
+  }): Promise<{ id: string } | null> {
+    const result = await this.prisma.talentRecord.updateMany({
+      where: { id: args.id, tenant_id: args.tenant_id },
+      data: {
+        record_status: 'superseded',
+        superseded_by_record_id: args.superseded_by_record_id,
+        superseded_at: args.superseded_at ?? new Date(),
+      },
+    });
+    return result.count > 0 ? { id: args.id } : null;
+  }
+
+  // TR-2a-B3b (DDR-3 §6) — reversal lifts supersession: record_status→'live',
+  // pointer + timestamp cleared. Idempotent (a re-run sets the same live state).
+  async restoreRecord(args: { tenant_id: string; id: string }): Promise<{ id: string } | null> {
+    const result = await this.prisma.talentRecord.updateMany({
+      where: { id: args.id, tenant_id: args.tenant_id },
+      data: { record_status: 'live', superseded_by_record_id: null, superseded_at: null },
+    });
+    return result.count > 0 ? { id: args.id } : null;
+  }
+
   // -------------------------------------------------------------------------
   // PR-A5b-2 — Core-Talent link write surface (data-only).
   //
