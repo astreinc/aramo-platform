@@ -16,6 +16,7 @@ import {
 } from './cognito-verifier.service.js';
 import { JwtIssuerService } from './jwt-issuer.service.js';
 import { PkceService } from './pkce.service.js';
+import { deriveRedirectUri } from './redirect-uri.js';
 
 // PR-8.0a-Reground §8.2 callback orchestrator. Returns a discriminated
 // result; the controller maps each variant to HTTP response, cookies, and
@@ -125,7 +126,15 @@ export class SessionOrchestratorService {
 
     let idToken: string;
     try {
-      idToken = await this.exchangeCognitoCode(input.code, payload.verifier);
+      // Amendment v1.2 (Workstream D): derive the exchange redirect_uri from the
+      // consumer validated at callback (input.consumer === payload.consumer here,
+      // post consumer-compare) — identical to the login-time derivation, so
+      // OAuth's exchange==authorize redirect_uri invariant holds by construction.
+      idToken = await this.exchangeCognitoCode(
+        input.code,
+        payload.verifier,
+        input.consumer,
+      );
     } catch (err) {
       this.logger.warn(`cognito exchange failed: ${(err as Error).message}`);
       return { kind: 'internal_error', reason: 'cognito_exchange_failed' };
@@ -296,14 +305,20 @@ export class SessionOrchestratorService {
     };
   }
 
-  private async exchangeCognitoCode(code: string, verifier: string): Promise<string> {
+  private async exchangeCognitoCode(
+    code: string,
+    verifier: string,
+    consumer: CallbackInput['consumer'],
+  ): Promise<string> {
     const domain = process.env['AUTH_COGNITO_DOMAIN'];
     const clientId = process.env['AUTH_COGNITO_CLIENT_ID'];
-    const redirectUri = process.env['AUTH_COGNITO_REDIRECT_URI'];
+    // Amendment v1.2 (Workstream D): derive per-consumer, matching the authorize
+    // redirect_uri (same consumer, same base). OAuth requires the two be equal.
+    const redirectUri = deriveRedirectUri(consumer);
     if (
       domain === undefined ||
       clientId === undefined ||
-      redirectUri === undefined
+      redirectUri === null
     ) {
       throw new Error('cognito-exchange-env-missing');
     }

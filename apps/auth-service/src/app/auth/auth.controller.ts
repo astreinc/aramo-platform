@@ -22,6 +22,7 @@ import type { Request, Response } from 'express';
 
 import { CookieVerifierService } from './cookie-verifier.service.js';
 import { PkceService } from './pkce.service.js';
+import { deriveRedirectUri } from './redirect-uri.js';
 import {
   RefreshOrchestratorService,
 } from './refresh-orchestrator.service.js';
@@ -146,11 +147,14 @@ export class AuthController {
     const c = parseConsumer(consumer, requestId);
     const domain = process.env['AUTH_COGNITO_DOMAIN'];
     const clientId = process.env['AUTH_COGNITO_CLIENT_ID'];
-    const redirectUri = process.env['AUTH_COGNITO_REDIRECT_URI'];
+    // Amendment v1.2 (Workstream D): derive the callback URL from the login-path
+    // consumer `c` (the same value sealed into the PKCE state cookie below), so
+    // the login-time and callback-time consumers cannot diverge by construction.
+    const redirectUri = deriveRedirectUri(c);
     if (
       domain === undefined ||
       clientId === undefined ||
-      redirectUri === undefined
+      redirectUri === null
     ) {
       throw new AramoError(
         'INTERNAL_ERROR',

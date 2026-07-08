@@ -33,10 +33,12 @@ secrets you must generate. The keys the stack needs locally:
 | `AUTH_PRIVATE_KEY` / `AUTH_PUBLIC_KEY` | generate (below) | RS256 session signing — never commit |
 | `AUTH_PKCE_STATE_KEY` | `openssl rand -base64 32` | PKCE state cipher |
 | `AUTH_AUDIENCE` | `aramo-local` | |
+| **`AUTH_PUBLIC_BASE_URL`** | `http://localhost:4201` | **required for login** — auth-service derives the hosted-UI callback per consumer as `${AUTH_PUBLIC_BASE_URL}/auth/<consumer>/callback` at authorize + token-exchange (Amendment v1.2). Use `localhost` (not `127.0.0.1`) so it matches the vite dev host and the host-only PKCE cookie survives the callback. Register each derived callback on the Cognito app client. |
+| `AUTH_COGNITO_REDIRECT_URI` | *(deprecated)* | Amendment v1.2 fallback only — if `AUTH_PUBLIC_BASE_URL` is unset, its **origin** is used as the base. Prefer `AUTH_PUBLIC_BASE_URL`. |
 | **`AUTH_POST_LOGIN_REDIRECT`** | `http://localhost:4201` | **required** — `/callback` 302s here; throws if unset (D2). Setting it is what makes `auth.integration` test-39 pass off-CI. |
 | **`AUTH_COGNITO_SIGNOUT_REDIRECT`** | `http://localhost:4201/login` | **required** — Cognito `/logout` return URL; throws if unset (D3). |
 | `AUTH_ALLOW_INSECURE_COOKIES` | `true` | local http; prod still forces Secure via `NODE_ENV=production` |
-| `AUTH_COGNITO_*` (domain/client/pools/issuer/redirect) | real Cognito values | needed only for the **login** flow (Part B) — the stack BOOTS without them; they're read at request time |
+| `AUTH_COGNITO_*` (domain/client/pools/issuer) | real Cognito values | needed only for the **login** flow (Part B) — the stack BOOTS without them; they're read at request time |
 
 Generate the session-signing keypair (paste both PEMs into `.env`, double-quoted
 — dotenv supports multiline values):
