@@ -14,6 +14,10 @@ const SOURCE_CLASS_WEIGHT: Record<SourceClass, number> = {
   SELF: 0.1,
   THIRD_PARTY_UNVERIFIED: 0.3,
   THIRD_PARTY_VERIFIED: 0.6,
+  // TR-3 (DDR-1 Amendment v1.2 §6.1) — the platform performed the act itself:
+  // above THIRD_PARTY_VERIFIED (0.6, trusting a channel's flag), below
+  // AUTHORITATIVE_ISSUER (0.9, an issuer's record).
+  PLATFORM_VERIFIED: 0.7,
   AUTHORITATIVE_ISSUER: 0.9,
   CRYPTOGRAPHIC: 0.95,
   BIOMETRIC: 0.95,
@@ -29,6 +33,11 @@ const METHOD_MULTIPLIER: Record<Method, number> = {
   SIGNATURE: 1.0,
   BIOMETRIC: 1.0,
   HUMAN_ATTESTED: 0.7,
+  // TR-3 (DDR-1 Amendment v1.2 §6.3) — a channel round-trip is a DEFINITIVE,
+  // deterministic proof of control (it either completed or did not), full method
+  // strength. The class weight (0.7) — not the method — bounds how far a
+  // platform-verified email can lift a band.
+  CONTROL_ROUND_TRIP: 1.0,
 };
 
 // Base strength at collection time (persisted on EvidenceRecord.strength).

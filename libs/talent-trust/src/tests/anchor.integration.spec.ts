@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
@@ -32,6 +33,8 @@ const MIGRATIONS = [
   // extended (…, source_class) unique key. Both required once tr2a1 exists.
   '../../prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
   '../../prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
+  // TR-3 B1 — the writer-less VerificationRequest table (seeded directly below).
+  '../../prisma/migrations/20260708120000_tr3_b1_verification_request/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
@@ -249,6 +252,95 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           anchor_kind: 'EMAIL',
           normalized_value: value,
         }),
+      ).rejects.toThrow();
+    });
+
+    it('(TR-3 f) the 5-field key admits a PLATFORM_VERIFIED EMAIL anchor beside the same value at THIRD_PARTY_UNVERIFIED (the verification upgrade row)', async () => {
+      const subjectId = await repo.resolveOrCreateSubject(
+        TENANT_A,
+        'ATS_TALENT_RECORD',
+        'ffffffff-ffff-7fff-8fff-ffffffffffff',
+        CREATED_BY,
+      );
+      const value = 'upgrade@example.com';
+      const now = new Date();
+
+      // The unverified (e.g. sourced-arrival) anchor.
+      await repo.insertAnchor({
+        evidence: {
+          subject_id: subjectId,
+          tenant_id: TENANT_A,
+          dimension: 'IDENTITY',
+          assertion_type: 'EMAIL',
+          assertion_payload: { normalized_value: value },
+          source_class: 'THIRD_PARTY_UNVERIFIED',
+          method: 'DOCUMENT',
+          strength: deriveStrength('THIRD_PARTY_UNVERIFIED', 'DOCUMENT'),
+          collected_at: now,
+          decay_profile: 'SLOW',
+          portability_class: 'TENANT_ONLY',
+          ai_derived: false,
+          current_status: 'VALID',
+          created_by: CREATED_BY,
+        },
+        anchor_kind: 'EMAIL',
+        normalized_value: value,
+      });
+
+      // TR-3: the platform-verified upgrade — a NEW row at the higher class (the
+      // B1 5-field key admits it; this is the exact append-only upgrade path the
+      // verification flow will ride). Its assertion_type is EMAIL_CONTROL_VERIFIED
+      // and its method is CONTROL_ROUND_TRIP.
+      const upgrade = await repo.insertAnchor({
+        evidence: {
+          subject_id: subjectId,
+          tenant_id: TENANT_A,
+          dimension: 'IDENTITY',
+          assertion_type: 'EMAIL_CONTROL_VERIFIED',
+          assertion_payload: { normalized_value: value },
+          source_class: 'PLATFORM_VERIFIED',
+          method: 'CONTROL_ROUND_TRIP',
+          strength: deriveStrength('PLATFORM_VERIFIED', 'CONTROL_ROUND_TRIP'),
+          collected_at: now,
+          decay_profile: 'SLOW',
+          portability_class: 'TENANT_ONLY',
+          ai_derived: false,
+          current_status: 'VALID',
+          created_by: CREATED_BY,
+        },
+        anchor_kind: 'EMAIL',
+        normalized_value: value,
+      });
+      expect(upgrade.anchor.source_class).toBe('PLATFORM_VERIFIED');
+      expect(upgrade.evidence.assertion_type).toBe('EMAIL_CONTROL_VERIFIED');
+
+      const anchors = (await repo.listAnchorsBySubject(subjectId)).filter(
+        (x) => x.normalized_value === value,
+      );
+      expect(anchors).toHaveLength(2);
+      expect(new Set(anchors.map((x) => x.source_class))).toEqual(
+        new Set(['THIRD_PARTY_UNVERIFIED', 'PLATFORM_VERIFIED']),
+      );
+    });
+
+    it('(TR-3) the writer-less VerificationRequest table seeds directly and enforces token_hash @unique', async () => {
+      const base = {
+        tenant_id: TENANT_A,
+        talent_record_id: randomUUID(),
+        subject_id: randomUUID(),
+        anchor_kind: 'EMAIL',
+        normalized_value: 'verify@example.com',
+        token_hash: 'sha256-0123456789abcdef',
+        status: 'PENDING',
+        created_by: CREATED_BY,
+        expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000),
+      };
+      const row = await prisma.verificationRequest.create({ data: { id: randomUUID(), ...base } });
+      expect(row.status).toBe('PENDING');
+      expect(row.consumed_at).toBeNull();
+      // token_hash is @unique — a second row with the same hash is rejected.
+      await expect(
+        prisma.verificationRequest.create({ data: { id: randomUUID(), ...base } }),
       ).rejects.toThrow();
     });
 

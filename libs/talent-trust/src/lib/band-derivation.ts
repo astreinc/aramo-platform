@@ -1,5 +1,6 @@
 import { effectiveStrength } from './strength.js';
 import {
+  AUTHORITATIVE_ASSERTION_TYPES,
   PRESENTATION_BANDS,
   SOURCE_CLASSES,
   type DecayProfile,
@@ -22,6 +23,10 @@ export interface EvidenceForDerivation {
   dimension: TrustDimension;
   source_class: SourceClass;
   method: Method;
+  // TR-3 (OPEN-6, §3) — WHAT the record asserts (a free string). The
+  // authoritative-assertion-type registry gates the top two bands on it; band
+  // derivation previously ignored it (Recon Q1.2 — only how-it-arrived counted).
+  assertion_type: string;
   // Persisted base strength (deriveStrength(source_class, method)).
   strength: number;
   current_status: EvidenceStatus;
@@ -85,6 +90,7 @@ function isAuthoritative(sourceClass: SourceClass, method: Method): boolean {
 }
 
 function deriveDimensionBand(
+  dimension: TrustDimension,
   evidence: EvidenceForDerivation[],
   now: Date,
   dimensionHasOpenContradiction: boolean,
@@ -110,23 +116,35 @@ function deriveDimensionBand(
   });
   const independent = [...groups.values()];
 
-  // The highest source_class present across independent groups gates the band.
+  // The highest source_class present across independent groups gates the band —
+  // the *how-it-arrived* axis. TR-3 (OPEN-6, §3) adds a *what-was-asserted* axis
+  // on the TOP TWO bands: INDEPENDENTLY_VERIFIED / AUTHORITATIVE additionally
+  // require a contributing record whose assertion_type is registry-listed for
+  // this dimension AT the gating class. CORROBORATED and below are unchanged.
+  const registeredTypes = new Set<string>(AUTHORITATIVE_ASSERTION_TYPES[dimension]);
   let band: PresentationBand = 'SELF_ASSERTED';
   const hasIndependentThirdPartyVerifiedOrHigher = independent.some(
     (e) => classRank(e.source_class) >= classRank('THIRD_PARTY_VERIFIED'),
   );
-  const hasAuthoritativeIssuerOrHigher = independent.some(
-    (e) => classRank(e.source_class) >= classRank('AUTHORITATIVE_ISSUER'),
+  // ≥ AUTHORITATIVE_ISSUER class AND a registry-listed assertion_type for the
+  // dimension (a CONTINUITY-empty registry keeps this unreachable — fail-closed).
+  const hasRegisteredAtAuthoritativeIssuerOrHigher = independent.some(
+    (e) =>
+      classRank(e.source_class) >= classRank('AUTHORITATIVE_ISSUER') &&
+      registeredTypes.has(e.assertion_type),
   );
-  const hasAuthoritative = independent.some((e) => isAuthoritative(e.source_class, e.method));
+  // isAuthoritative class AND a registry-listed assertion_type for the dimension.
+  const hasRegisteredAuthoritative = independent.some(
+    (e) => isAuthoritative(e.source_class, e.method) && registeredTypes.has(e.assertion_type),
+  );
 
   // SELF can raise a dimension at most to SELF_ASSERTED and never to verified
   // (§5.2 / §6.3 — the "never verify through a talent-controlled channel"
   // rule, enforced mechanically). The gates below only ever consider non-SELF
   // classes, so SELF-only evidence stays at SELF_ASSERTED.
   if (hasIndependentThirdPartyVerifiedOrHigher) band = 'CORROBORATED';
-  if (hasAuthoritativeIssuerOrHigher) band = 'INDEPENDENTLY_VERIFIED';
-  if (hasAuthoritative) band = 'AUTHORITATIVE';
+  if (hasRegisteredAtAuthoritativeIssuerOrHigher) band = 'INDEPENDENTLY_VERIFIED';
+  if (hasRegisteredAuthoritative) band = 'AUTHORITATIVE';
 
   // Contradiction cap (§7): a confirmed contradiction between independent
   // sources caps the dimension — it cannot reach INDEPENDENTLY_VERIFIED while
@@ -154,6 +172,7 @@ export function deriveTrustState(
 
   const bandFor = (dimension: TrustDimension): PresentationBand =>
     deriveDimensionBand(
+      dimension,
       evidence.filter((e) => e.dimension === dimension),
       now,
       dimensionsWithOpenContradiction.has(dimension),

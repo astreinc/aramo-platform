@@ -27,6 +27,25 @@ describe('deriveStrength — source_class × method (§6.1)', () => {
       }
     }
   });
+
+  // TR-3 acceptance (b) — the new PLATFORM_VERIFIED class ranks between
+  // THIRD_PARTY_VERIFIED and AUTHORITATIVE_ISSUER for a fixed method; existing
+  // strengths are byte-identical (the ladder insertion is a pure addition).
+  it('(TR-3 b) PLATFORM_VERIFIED × CONTROL_ROUND_TRIP lands between TPV and AUTHORITATIVE_ISSUER products', () => {
+    const tpv = deriveStrength('THIRD_PARTY_VERIFIED', 'CONTROL_ROUND_TRIP');
+    const platform = deriveStrength('PLATFORM_VERIFIED', 'CONTROL_ROUND_TRIP');
+    const issuer = deriveStrength('AUTHORITATIVE_ISSUER', 'CONTROL_ROUND_TRIP');
+    expect(platform).toBeGreaterThan(tpv);
+    expect(platform).toBeLessThan(issuer);
+    expect(platform).toBeCloseTo(0.7, 5); // 0.7 weight × 1.0 method
+  });
+
+  it('(TR-3 b) existing strengths are unchanged (regression — the ladder insertion adds, never shifts values)', () => {
+    expect(deriveStrength('SELF', 'SELF_DECLARED')).toBeCloseTo(0.05, 5);
+    expect(deriveStrength('THIRD_PARTY_VERIFIED', 'DOCUMENT')).toBeCloseTo(0.48, 5);
+    expect(deriveStrength('AUTHORITATIVE_ISSUER', 'API_REGISTRY')).toBeCloseTo(0.9, 5);
+    expect(deriveStrength('BIOMETRIC', 'BIOMETRIC')).toBeCloseTo(0.95, 5);
+  });
 });
 
 describe('effectiveStrength — decay (§7)', () => {
