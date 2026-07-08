@@ -361,6 +361,23 @@ const SETTINGS_INIT_MIGRATION = resolve(
   ROOT,
   'libs/settings/prisma/migrations/20260605000000_init_settings_model/migration.sql',
 );
+// PC-7b — settings surface (tenant settings/profile/roles/audit/domain/sites).
+// The FULL identity chain: the Prisma Tenant client SELECTs every column, so
+// all Tenant-column migrations must apply (profile/allowed-domain/domain-
+// verification/slug/idp) or a read 500s on a missing column. All self-contained
+// (init CREATEs the schema), zero cross-schema FK (I1). IdentityAuditEvent is in
+// init; Site + hierarchy in the site migrations; TenantSetting = settings init
+// (already applied above).
+const IDENTITY_INIT_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql');
+const IDENTITY_SITE_AXIS_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql');
+const IDENTITY_AUTHZ_TEAM_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql');
+const IDENTITY_TENANT_PROFILE_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql');
+const IDENTITY_SITE_HIERARCHY_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260620000000_add_site_hierarchy/migration.sql');
+const IDENTITY_INVITATION_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql');
+const IDENTITY_ALLOWED_DOMAIN_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql');
+const IDENTITY_DOMAIN_VERIFICATION_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql');
+const IDENTITY_TENANT_SLUG_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql');
+const IDENTITY_IDP_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql');
 // PC-4 — activity + pipeline schemas. GET /v1/talent-records runs the
 // apps/api TalentRecordEnrichmentInterceptor, which reads activity
 // (last_activity_at) + pipeline (current_stage) + consent (consent_summary).
@@ -733,6 +750,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await c.query('TRUNCATE TABLE talent_trust."ResolutionSubject" CASCADE');
       await c.query('TRUNCATE TABLE talent_trust."SubjectMergeOperation" CASCADE');
       await c.query('TRUNCATE TABLE saved_list."SavedList" CASCADE');
+      // PC-7b — identity + settings. TRUNCATE Tenant CASCADE clears Site (FK) +
+      // memberships/teams; IdentityAuditEvent (nullable tenant_id, no FK) and
+      // settings.TenantSetting are standalone.
+      await c.query('TRUNCATE TABLE identity."Tenant" CASCADE');
+      await c.query('TRUNCATE TABLE identity."IdentityAuditEvent" CASCADE');
+      await c.query('TRUNCATE TABLE settings."TenantSetting" CASCADE');
     }
 
     // 4e-rest-b — seed the portal talent's TalentRecord for the portal-thin
@@ -1595,6 +1618,78 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
+    // PC-7b — settings-surface fixture ids + seed helpers (identity + settings).
+    const ATSW_SITE_ID = '00000000-0000-7000-8000-51e000000001';
+    const ATSW_SITE_CHILD_ID = '00000000-0000-7000-8000-51e000000002';
+    const ATSW_SITE_INACTIVE_ID = '00000000-0000-7000-8000-51e000000003';
+
+    // The tenant row every settings/profile/domain endpoint scopes to. Only
+    // id+name are required; later Tenant columns are nullable/defaulted.
+    async function seedAtsWebTenant(
+      c: Client,
+      params: {
+        domainStatus?: string;
+        token?: string | null;
+        tokenIssuedAt?: string | null;
+        allowedDomain?: string | null;
+      } = {},
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO identity."Tenant"
+           (id, name, domain_verification_status, domain_verification_token,
+            domain_token_issued_at, allowed_domain, updated_at)
+         VALUES ($1,'Astre Consulting',$2,$3,$4,$5,NOW()) ON CONFLICT (id) DO NOTHING`,
+        [
+          TENANT_ID,
+          params.domainStatus ?? 'UNVERIFIED',
+          params.token ?? null,
+          params.tokenIssuedAt ?? null,
+          params.allowedDomain ?? null,
+        ],
+      );
+    }
+
+    async function seedAtsWebSite(
+      c: Client,
+      params: { id: string; name: string; isActive?: boolean; parentSiteId?: string | null },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO identity."Site" (id, tenant_id, name, is_active, parent_site_id, updated_at)
+         VALUES ($1,$2,$3,$4,$5,NOW()) ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.name, params.isActive ?? true, params.parentSiteId ?? null],
+      );
+    }
+
+    async function seedAtsWebIdentityAuditEvent(
+      c: Client,
+      params: { id: string; eventType: string; subjectId: string; createdAt?: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO identity."IdentityAuditEvent"
+           (id, tenant_id, actor_type, actor_id, event_type, subject_id, event_payload, created_at)
+         VALUES ($1,$2,'user',$3,$4,$5,'{}'::jsonb,$6) ON CONFLICT (id) DO NOTHING`,
+        [
+          params.id,
+          TENANT_ID,
+          PACT_RECRUITER_ACTOR_ID,
+          params.eventType,
+          params.subjectId,
+          params.createdAt ?? '2026-05-01T00:00:00.000Z',
+        ],
+      );
+    }
+
+    async function seedAtsWebTenantSetting(
+      c: Client,
+      params: { key: string; value: unknown },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO settings."TenantSetting" (tenant_id, key, value, updated_at)
+         VALUES ($1,$2,$3::jsonb,NOW()) ON CONFLICT (tenant_id, key) DO NOTHING`,
+        [TENANT_ID, params.key, JSON.stringify(params.value)],
+      );
+    }
+
     // COMPOSABLE (PC-3 reuse): seed requisition + talent + a tiered active
     // examination for (PACT_TALENT_ID, ATSW_SUB_JOB_ID).
     async function seedAtsWebExamination(
@@ -2216,6 +2311,18 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // /v1/tenant/settings; the migration applies harmlessly and keeps
         // the verifier ready for future settings-touching consumer pacts
         // (the S2 pricing-model write, S3 user-management, etc.).
+        // PC-7b — full identity chain (Tenant + Site + IdentityAuditEvent +
+        // all Tenant-column additions the Prisma client SELECTs).
+        IDENTITY_INIT_MIGRATION,
+        IDENTITY_SITE_AXIS_MIGRATION,
+        IDENTITY_AUTHZ_TEAM_MIGRATION,
+        IDENTITY_TENANT_PROFILE_MIGRATION,
+        IDENTITY_SITE_HIERARCHY_MIGRATION,
+        IDENTITY_INVITATION_MIGRATION,
+        IDENTITY_ALLOWED_DOMAIN_MIGRATION,
+        IDENTITY_DOMAIN_VERIFICATION_MIGRATION,
+        IDENTITY_TENANT_SLUG_MIGRATION,
+        IDENTITY_IDP_MIGRATION,
         SETTINGS_INIT_MIGRATION,
         // PC-4 — activity + pipeline for the talent-records enrichment reads.
         ACTIVITY_INIT_MIGRATION,
@@ -2419,6 +2526,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // (entitlement seeded above).
           'talent:source',
           'identity:resolve',
+          // PC-7b — settings surface (@RequireCapability('core') seeded; these
+          // 6 route scopes gate tenant settings/profile/roles/audit/domain/sites).
+          'tenant:admin:settings',
+          'tenant:admin:profile',
+          'tenant:admin:user-manage',
+          'audit:read',
+          'tenant:admin:domain',
+          'tenant:admin:sites',
         ],
       })
         .setProtectedHeader({ alg: ALG })
@@ -4565,6 +4680,85 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             id: ATSW_REQ_ID,
             title: 'Senior Engineer',
             companyId: ATSW_REQ_COMPANY_ID,
+          });
+        });
+      },
+
+      // ===============================================================
+      // PC-7b — settings surface (tenant settings/profile/roles/audit/
+      // domain/sites). @RequireCapability('core') + tenant:admin:* scopes.
+      // ===============================================================
+      'an ats-web admin and a tenant exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+        });
+      },
+      'an ats-web admin and tenant settings exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebTenantSetting(c, {
+            key: 'compensation.display_default',
+            value: 'both',
+          });
+          await seedAtsWebTenantSetting(c, {
+            key: 'audit.financials_enabled',
+            value: true,
+          });
+        });
+      },
+      'an ats-web admin and an allowed domain exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c, { allowedDomain: 'astre.example' });
+        });
+      },
+      'an ats-web admin and audit events exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebIdentityAuditEvent(c, {
+            id: '00000000-0000-7000-8000-a0d100000001',
+            eventType: 'tenant.setting.updated',
+            subjectId: '00000000-0000-7000-8000-000000000abc',
+            createdAt: '2026-05-01T00:00:00.000Z',
+          });
+          await seedAtsWebIdentityAuditEvent(c, {
+            id: '00000000-0000-7000-8000-a0d100000002',
+            eventType: 'tenant.site.created',
+            subjectId: ATSW_SITE_ID,
+            createdAt: '2026-05-02T00:00:00.000Z',
+          });
+        });
+      },
+      'an ats-web admin and a site exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebSite(c, { id: ATSW_SITE_ID, name: 'Headquarters' });
+        });
+      },
+      'an ats-web admin and an inactive site exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebSite(c, {
+            id: ATSW_SITE_INACTIVE_ID,
+            name: 'Closed Office',
+            isActive: false,
+          });
+        });
+      },
+      'an ats-web admin and a site with a child exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebSite(c, { id: ATSW_SITE_ID, name: 'Headquarters' });
+          await seedAtsWebSite(c, {
+            id: ATSW_SITE_CHILD_ID,
+            name: 'West Wing',
+            parentSiteId: ATSW_SITE_ID,
           });
         });
       },
