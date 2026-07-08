@@ -589,6 +589,19 @@ const SAVED_LIST_LIST_KIND_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260706130000_add_list_kind_tenant_bench/migration.sql',
 );
+// PC-7d — import model (ImportBatch + ImportFailure). The GET /v1/imports +
+// :id/failures reads live-verify against these tables; only the import_batch_id
+// FK COLUMNS were in-list previously, not the import schema itself.
+const IMPORT_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/import/prisma/migrations/20260603140000_init_import_model/migration.sql',
+);
+// PC-7d — calendar model. GET /v1/dashboard's tenant_counts includes
+// calendarRepository.count() → the read 500s without the schema.
+const CALENDAR_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/calendar/prisma/migrations/20260602120000_init_calendar_model/migration.sql',
+);
 const INGESTION_PACT = resolve(
   ROOT,
   'pact/pacts/ingestion-consumer-aramo-core.json',
@@ -786,6 +799,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // memberships, membership-roles, team-memberships, edges, invitations.
       await c.query('TRUNCATE TABLE identity."User" CASCADE');
       await c.query('TRUNCATE TABLE identity."Role" CASCADE');
+      // PC-7d — import model. TRUNCATE ImportBatch CASCADE; ImportFailure is
+      // truncated explicitly (its import_batch_id FK is not declared ON DELETE
+      // CASCADE) so a prior failures interaction's rows do not leak.
+      await c.query('TRUNCATE TABLE import."ImportBatch" CASCADE');
+      await c.query('TRUNCATE TABLE import."ImportFailure" CASCADE');
     }
 
     // 4e-rest-b — seed the portal talent's TalentRecord for the portal-thin
@@ -1728,6 +1746,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_ROLE_ID = '00000000-0000-7000-8000-401e00000001';
     const ATSW_ITEAM_ID = '00000000-0000-7000-8000-77ea00000001';
     const ATSW_TMEMBER_ID = '00000000-0000-7000-8000-77ee00000001';
+    // PC-7d — import batch fixture id (list + failures target).
+    const ATSW_IMPORT_BATCH_ID = '00000000-0000-7000-8000-1ba700000001';
     const ATSW_EDGE_ID = '00000000-0000-7000-8000-ed6e00000001';
 
     async function seedAtsWebUser(
@@ -1803,13 +1823,85 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
     async function seedAtsWebInvitation(
       c: Client,
-      params: { id: string; userId: string; membershipId: string; tokenHash: string },
+      params: {
+        id: string;
+        userId: string;
+        membershipId: string;
+        tokenHash: string;
+        // PC-7d — accept token-reason machine: `expired` stamps expires_at in
+        // the past (→ 'expired'); revoked_at/accepted_at drive the other
+        // reasons. All default to a valid, unconsumed invite.
+        expired?: boolean;
+      },
     ): Promise<void> {
+      const expiresExpr = params.expired
+        ? `NOW() - INTERVAL '1 day'`
+        : `NOW() + INTERVAL '7 days'`;
       await c.query(
         `INSERT INTO identity."Invitation"
            (id, user_id, tenant_id, membership_id, token_hash, expires_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,NOW() + INTERVAL '7 days',NOW()) ON CONFLICT (id) DO NOTHING`,
+         VALUES ($1,$2,$3,$4,$5,${expiresExpr},NOW()) ON CONFLICT (id) DO NOTHING`,
         [params.id, params.userId, TENANT_ID, params.membershipId, params.tokenHash],
+      );
+    }
+    // PC-7d — import batch/failure seeds (GET /v1/imports + :id/failures reads).
+    async function seedAtsWebImportBatch(
+      c: Client,
+      params: {
+        id: string;
+        importedById: string;
+        targetEntity: string;
+        sourceFilename: string;
+        rowCount?: number;
+        successCount?: number;
+        failureCount?: number;
+        status?: string;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO import."ImportBatch"
+           (id, tenant_id, site_id, imported_by_id, target_entity, source_filename,
+            row_count, success_count, failure_count, status, created_at)
+         VALUES ($1,$2,NULL,$3,$4::import."ImportTargetEntity",$5,$6,$7,$8,
+                 $9::import."ImportBatchStatus",NOW()) ON CONFLICT (id) DO NOTHING`,
+        [
+          params.id,
+          TENANT_ID,
+          params.importedById,
+          params.targetEntity,
+          params.sourceFilename,
+          params.rowCount ?? 0,
+          params.successCount ?? 0,
+          params.failureCount ?? 0,
+          params.status ?? 'pending',
+        ],
+      );
+    }
+    async function seedAtsWebImportFailure(
+      c: Client,
+      params: {
+        id: string;
+        importBatchId: string;
+        rowNumber: number;
+        failureReason: string;
+        offendingFields: string[];
+        originalRowData: Record<string, unknown>;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO import."ImportFailure"
+           (id, tenant_id, import_batch_id, row_number, failure_reason,
+            offending_fields, original_row_data, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,NOW()) ON CONFLICT (id) DO NOTHING`,
+        [
+          params.id,
+          TENANT_ID,
+          params.importBatchId,
+          params.rowNumber,
+          params.failureReason,
+          JSON.stringify(params.offendingFields),
+          JSON.stringify(params.originalRowData),
+        ],
       );
     }
 
@@ -2508,6 +2600,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_TRUST_TR4_LINK_UNIQUE_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,
         SAVED_LIST_LIST_KIND_MIGRATION,
+        IMPORT_INIT_MIGRATION,
+        CALENDAR_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -2674,6 +2768,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'tenant:user:read:directory',
           'tenant:user:read:assignable',
           'org:manage',
+          // PC-7d — reporting + export + import reads. @RequireCapability('ats')
+          // ('ats' entitlement already seeded); /me needs 'core' + no scope;
+          // POST /v1/invitations/accept is PUBLIC (no guard, no cookie).
+          'dashboard:read',
+          'report:read',
+          'export:read',
+          'import:read',
         ],
       })
         .setProtectedHeader({ alg: ALG })
@@ -5116,6 +5217,175 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await seedAtsWebUser(c, { id: ATSW_USER_B, email: 'grace@astre.example', displayName: 'Grace Hopper' });
           await seedAtsWebIdentityTeam(c, { id: ATSW_ITEAM_ID, name: 'Alpha Pod', ownerUserId: ATSW_USER_A });
           await seedAtsWebTeamMembership(c, { id: ATSW_TMEMBER_ID, teamId: ATSW_ITEAM_ID, userId: ATSW_USER_B });
+        });
+      },
+
+      // ===============================================================
+      // PC-7d — reporting + me + export + import + public invitation-accept.
+      // Reporting/export/import: @RequireCapability('ats') + report/dashboard/
+      // export/import:read (+ RequireSiteMatch). /me: @RequireCapability('core'),
+      // no scope. POST /v1/invitations/accept: PUBLIC (no guard).
+      // ===============================================================
+
+      // Reporting reads: one tenant + a company (→ one company-metrics row +
+      // non-zero dashboard tenant_counts) + a talent. recruiter-metrics always
+      // returns its 4 fixed keys; company-placements has no placement → empty.
+      'an ats-web recruiter and tenant reporting data exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebCompany(c, { id: ATSW_COMPANY_ID, name: 'Acme Corp' });
+          await seedAtsWebTalentRecord(c, {
+            id: ATSW_TALENT_ID,
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            tenantStatus: 'active',
+            sourceChannel: 'recruiter_added',
+          });
+        });
+      },
+
+      // /me — the authenticated recruiter (sub = RECRUITER_ID) resolves via
+      // UserTenantMembership(user_id, tenant_id) → user + active roles + tenant.
+      'an ats-web user with a membership and a role exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebUser(c, {
+            id: RECRUITER_ID,
+            email: 'recruiter@astre.example',
+            displayName: 'Rita Recruiter',
+          });
+          await seedAtsWebMembership(c, {
+            id: '00000000-0000-7000-8000-33b0000000bb',
+            userId: RECRUITER_ID,
+            isActive: true,
+            inviteStatus: 'ACTIVE',
+          });
+          await seedAtsWebRole(c, { id: ATSW_ROLE_ID, key: 'recruiter' });
+          await seedAtsWebMembershipRole(c, {
+            id: '00000000-0000-7000-8000-4a0000000bb1',
+            membershipId: '00000000-0000-7000-8000-33b0000000bb',
+            roleId: ATSW_ROLE_ID,
+          });
+        });
+      },
+
+      // Export — text/csv of the talent_record entity. One seeded row → a
+      // header + at least one data line (the pin matches the envelope, not rows).
+      'an ats-web talent record exists for export': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebTalentRecord(c, {
+            id: ATSW_TALENT_ID,
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            tenantStatus: 'active',
+            sourceChannel: 'recruiter_added',
+          });
+        });
+      },
+
+      // Import — a committed batch (GET /v1/imports list read).
+      'an ats-web import batch exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebImportBatch(c, {
+            id: ATSW_IMPORT_BATCH_ID,
+            importedById: RECRUITER_ID,
+            targetEntity: 'talent_record',
+            sourceFilename: 'talent-2026-05.csv',
+            rowCount: 3,
+            successCount: 2,
+            failureCount: 1,
+            status: 'partially_committed',
+          });
+        });
+      },
+
+      // Import failures — a batch with one row-level failure.
+      'an ats-web import batch with a failure exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebImportBatch(c, {
+            id: ATSW_IMPORT_BATCH_ID,
+            importedById: RECRUITER_ID,
+            targetEntity: 'talent_record',
+            sourceFilename: 'talent-2026-05.csv',
+            rowCount: 3,
+            successCount: 2,
+            failureCount: 1,
+            status: 'partially_committed',
+          });
+          await seedAtsWebImportFailure(c, {
+            id: '00000000-0000-7000-8000-1fa100000001',
+            importBatchId: ATSW_IMPORT_BATCH_ID,
+            rowNumber: 2,
+            failureReason: 'invalid email',
+            offendingFields: ['email'],
+            originalRowData: { first_name: 'No', last_name: 'Email', email: 'not-an-email' },
+          });
+        });
+      },
+
+      // Invitation-accept happy — a pending INVITED membership + an unconsumed
+      // invitation whose token_hash = sha256(the consumer's raw token).base64url.
+      'an ats-web pending invitation with a known token exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebUser(c, { id: ATSW_USER_A, email: 'newhire@astre.example', displayName: 'New Hire' });
+          await seedAtsWebMembership(c, {
+            id: ATSW_MEMBERSHIP_ID,
+            userId: ATSW_USER_A,
+            isActive: true,
+            inviteStatus: 'INVITED',
+          });
+          const { createHash } =
+            require('node:crypto') as typeof import('node:crypto');
+          await seedAtsWebInvitation(c, {
+            id: '00000000-0000-7000-8000-19f100000010',
+            userId: ATSW_USER_A,
+            membershipId: ATSW_MEMBERSHIP_ID,
+            tokenHash: createHash('sha256').update('pact-accept-raw-token').digest('base64url'),
+          });
+        });
+      },
+
+      // Invitation-accept invalid — an empty Invitation table: any token misses
+      // the hash lookup → 400 VALIDATION_ERROR details.reason = 'invalid_token'.
+      'no ats-web invitation matches the token': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+        });
+      },
+
+      // Invitation-accept expired — an unconsumed invitation past expires_at →
+      // 400 VALIDATION_ERROR details.reason = 'expired'.
+      'an ats-web expired invitation with a known token exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebUser(c, { id: ATSW_USER_A, email: 'newhire@astre.example', displayName: 'New Hire' });
+          await seedAtsWebMembership(c, {
+            id: ATSW_MEMBERSHIP_ID,
+            userId: ATSW_USER_A,
+            isActive: true,
+            inviteStatus: 'INVITED',
+          });
+          const { createHash } =
+            require('node:crypto') as typeof import('node:crypto');
+          await seedAtsWebInvitation(c, {
+            id: '00000000-0000-7000-8000-19f100000011',
+            userId: ATSW_USER_A,
+            membershipId: ATSW_MEMBERSHIP_ID,
+            tokenHash: createHash('sha256').update('pact-expired-raw-token').digest('base64url'),
+            expired: true,
+          });
         });
       },
     };
