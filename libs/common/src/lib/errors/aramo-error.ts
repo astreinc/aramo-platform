@@ -58,6 +58,13 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   INVITATION_ALREADY_EXISTS: 409,
   MANAGEMENT_CYCLE_REJECTED: 409,
   TALENT_RECORD_SUPERSEDED: 422,
+  // TR-6 B2 — advisory-resolution domain codes (see error-codes.ts).
+  ADVISORY_NOT_PENDING: 409,
+  ADVISORY_NOT_MERGED: 409,
+  ADVISORY_NO_MERGED_SUBJECT: 409,
+  MERGE_SUBJECT_NOT_ACTIVE: 409,
+  CONTRADICTION_OVERRIDE_REQUIRED: 400,
+  REVERSAL_JUSTIFICATION_REQUIRED: 400,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

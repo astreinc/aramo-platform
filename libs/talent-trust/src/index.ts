@@ -29,6 +29,9 @@ export type {
   InsertAnchorInput,
   SubjectMatchAdvisoryRow,
   UpsertMatchAdvisoryInput,
+  // TR-6 B2 (DDR D5) — the PII-free advisory basis (kinds + anchor-row ids only),
+  // projected to KINDS on the enriched worklist list item.
+  MatchBasis,
   // TR-2a-B3b (DDR-3 §6) — the merge-operation record + ref-normalization shapes.
   SubjectMergeOperationRow,
   RefActionRecord,

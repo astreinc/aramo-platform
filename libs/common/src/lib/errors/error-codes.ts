@@ -307,6 +307,18 @@ export const ERROR_CODES = [
   'INVITATION_ALREADY_EXISTS',  // AUTHZ-2 — re-invite refusal for the (email, tenant_id) pair when the User already holds a membership in the tenant with the same role set. HTTP 409. AdminGetUser is the idempotency check; Cognito is NOT re-created. The two same-tenant-different-roles / new-tenant / drift cases (Ruling 8) do NOT raise this — they reconcile.
   'MANAGEMENT_CYCLE_REJECTED',  // AUTHZ-D4a — set-management-edge refusal: the proposed (manager_user_id, report_user_id) edge would create a cycle in the management graph (e.g. A manages B; attempting B manages A, or the transitive A→B→C; attempting C→A). The cycle check walks upward from report_user_id; if manager_user_id appears in the ancestor set, the edge is rejected. HTTP 409 (mirrors SUBMITTAL_ALREADY_CONFIRMED / IMPORT_ALREADY_REVERTED for state-conflict refusals).
   'TALENT_RECORD_SUPERSEDED',  // TR-2a-B3a (DDR-3 §3) — outreach-send refusal: the engagement's TalentRecord was superseded by a late-merge reconcile (record_status='superseded'); the surviving record speaks for the human, so the husk is non-operational. HTTP 422 (a state-invalid refusal — mirrors ENGAGEMENT_STATE_INVALID). Writer-less in B3a; the B3b reconcile writer produces the state.
+  // TR-6 B2 (DDR D5 + PC Exit Accounting §5.1) — advisory-resolution domain refusal codes.
+  // These REPLACE the AramoExceptionFilter status-collapse (409→IDEMPOTENCY_KEY_CONFLICT,
+  // 400→VALIDATION_ERROR) on the advisory surface ONLY: the semantically-false generic
+  // codes the PC-4b interactions pinned are corrected here (the exit accounting's
+  // coordinated-by-design fix). Names derived from the actual refusals in
+  // subject-resolution.service. The filter itself is untouched (other domains keep theirs).
+  'ADVISORY_NOT_PENDING',  // 409 — approve/dismiss on an advisory not in PENDING_REVIEW (already MERGED/DISMISSED/REVERSED — cannot re-resolve).
+  'ADVISORY_NOT_MERGED',  // 409 — reverse on an advisory not in MERGED status (nothing to un-merge).
+  'ADVISORY_NO_MERGED_SUBJECT',  // 409 — reverse on a MERGED advisory whose merged_subject_id is absent (defensive; a MERGED advisory always records its pair).
+  'MERGE_SUBJECT_NOT_ACTIVE',  // 409 — approve merge whose surviving/merged subject is not ACTIVE (already merged elsewhere; the R5 double-merge guard).
+  'CONTRADICTION_OVERRIDE_REQUIRED',  // 400 — approve a has_contradiction advisory without override_acknowledged=true + a justification (R3 / F34 accountability).
+  'REVERSAL_JUSTIFICATION_REQUIRED',  // 400 — reverse without a justification (R4 — a merge reversal is high-consequence, never silent).
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

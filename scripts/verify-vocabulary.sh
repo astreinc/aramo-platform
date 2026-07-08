@@ -398,6 +398,13 @@ TIER2_EXCLUDES=(
   # the matching eslint.config.mjs TIER2_EXCLUDES entries.
   "apps/ats-web/src/engagement/OutreachComposer.tsx"
   "apps/ats-web/src/engagement/OutreachComposer.spec.tsx"
+  # TR-6 B2 — the Identity Advisories reviewer worklist R10-enforcement spec.
+  # It legitimately enumerates the forbidden Match-Class vocabulary
+  # (score/rank/tier/rating) as a negative-shape anti-token list, asserting the
+  # rendered DOM contains NONE of it. Same leakage-detection pattern as the
+  # M3 PR-9 portal-refusal / M4 submittal negative-shape specs above. Product
+  # source (IdentityAdvisoriesView.tsx / types.ts) stays clean — never excluded.
+  "apps/ats-web/src/identity-advisories/IdentityAdvisoriesView.spec.tsx"
 )
 
 # =============================================================================

@@ -1017,6 +1017,31 @@ export class TalentTrustRepository {
     return rows as SubjectMatchAdvisoryRow[];
   }
 
+  // TR-6 B2 (DDR D5) — the reviewer worklist's keyset page. Stable ordering
+  // (created_at ASC, id ASC — oldest-pending first, FIFO) so the keyset cursor is
+  // deterministic even when created_at ties. The cursor is the last item's id; take
+  // limit+1 to detect a next page. Tenant-scoped + status-filtered (default caller-
+  // supplied). No values ever leave the ledger — match_basis is PII-free (kinds +
+  // anchor-row ids only), and the caller projects kinds only onto the wire.
+  async listMatchAdvisoriesKeyset(
+    tenantId: string,
+    opts: { status?: MatchAdvisoryStatus; cursor?: string; limit: number },
+  ): Promise<{ rows: SubjectMatchAdvisoryRow[]; nextCursor: string | null }> {
+    const rows = await this.prisma.subjectMatchAdvisory.findMany({
+      where: {
+        tenant_id: tenantId,
+        ...(opts.status ? { status: opts.status } : {}),
+      },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+      take: opts.limit + 1,
+      ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
+    });
+    const hasMore = rows.length > opts.limit;
+    const page = hasMore ? rows.slice(0, opts.limit) : rows;
+    const nextCursor = hasMore ? (page[page.length - 1]!.id as string) : null;
+    return { rows: page as SubjectMatchAdvisoryRow[], nextCursor };
+  }
+
   // ---- SubjectMatchAdvisory resolution (TR-2a-3) --------------------------
 
   // Tenant-scoped fetch by id — the resolution service loads-then-guards.

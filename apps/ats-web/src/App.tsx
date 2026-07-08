@@ -16,6 +16,7 @@ import { ContactDetailView } from './contacts/ContactDetailView';
 import { ContactEditView } from './contacts/ContactEditView';
 import { ContactsListView } from './contacts/ContactsListView';
 import { EngagementDetailView } from './engagement/EngagementDetailView';
+import { IdentityAdvisoriesView } from './identity-advisories/IdentityAdvisoriesView';
 import { IndexRoute } from './dashboard/IndexRoute';
 import { InvitationAcceptPage } from './routes/InvitationAcceptPage';
 import { LoginPage } from './routes/LoginPage';
@@ -195,6 +196,20 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <SourcingPoolView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* TR-6 B2 — the identity-advisory reviewer worklist. A
+                        route-level surface (not a drawer); resolving a pair
+                        reuses the shared AdvisoryResolveDialog. identity:resolve. */}
+                    <Route
+                      path="identity/advisories"
+                      element={
+                        <RouteGuard
+                          requireScope="identity:resolve"
+                          sessionStateOverride={state}
+                        >
+                          <IdentityAdvisoriesView />
                         </RouteGuard>
                       }
                     />

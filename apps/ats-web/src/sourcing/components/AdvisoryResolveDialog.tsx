@@ -3,16 +3,55 @@ import { Button, Dialog, InlineAlert, useToast } from '@aramo/fe-foundation';
 
 import { approveAdvisory, dismissAdvisory } from '../sourcing-api';
 import { advisoryErrorMessage } from '../error-messages';
-import type { SubjectAdvisory } from '../types';
 
 export type AdvisoryAction = 'approve' | 'dismiss';
 
+// The named-kind arrays the TR-6 worklist enriches an advisory with. Optional:
+// the sourcing subject-drawer path does not carry them, so the dialog falls back
+// to the generic sentence when they are absent.
+export interface AdvisoryKinds {
+  readonly shared_anchor_kinds: readonly string[];
+  readonly confirmed_kinds: readonly string[];
+  readonly contradiction_kinds: readonly string[];
+  readonly corroborator_conflict_kinds: readonly string[];
+}
+
+// Minimal structural shape the dialog needs from EITHER caller: the sourcing
+// SubjectAdvisory OR the identity-advisories worklist item. Only id +
+// has_contradiction drive behaviour; `kinds` is the worklist enrichment.
+export interface ResolvableAdvisory {
+  readonly id: string;
+  readonly has_contradiction: boolean;
+  readonly kinds?: AdvisoryKinds;
+}
+
 interface Props {
-  readonly advisory: SubjectAdvisory | null;
+  readonly advisory: ResolvableAdvisory | null;
   readonly action: AdvisoryAction;
   readonly onClose: () => void;
   /** Re-fetch the subject detail so the resolved advisory drops off the list. */
   readonly onResolved: () => void;
+}
+
+// Compose the compact named-kinds summary, e.g.
+// "Shares EMAIL, PHONE · Contradicts PHONE · Name conflict". Returns null when
+// no kinds are populated so the caller falls back to the generic sentence.
+function kindsSummary(kinds: AdvisoryKinds | undefined): string | null {
+  if (kinds === undefined) return null;
+  const parts: string[] = [];
+  if (kinds.shared_anchor_kinds.length > 0) {
+    parts.push(`Shares ${kinds.shared_anchor_kinds.join(', ')}`);
+  }
+  if (kinds.confirmed_kinds.length > 0) {
+    parts.push(`Confirmed ${kinds.confirmed_kinds.join(', ')}`);
+  }
+  if (kinds.contradiction_kinds.length > 0) {
+    parts.push(`Contradicts ${kinds.contradiction_kinds.join(', ')}`);
+  }
+  if (kinds.corroborator_conflict_kinds.length > 0) {
+    parts.push(`${kinds.corroborator_conflict_kinds.join(', ')} conflict`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : null;
 }
 
 // Inline advisory resolution — approve (execute the pointer-only merge) or
@@ -29,6 +68,7 @@ export function AdvisoryResolveDialog({ advisory, action, onClose, onResolved }:
   const toast = useToast();
 
   const contradicted = advisory?.has_contradiction ?? false;
+  const summary = kindsSummary(advisory?.kinds);
   // R3: approving a contradicted advisory requires ack + a justification.
   const overrideRequired = action === 'approve' && contradicted;
   const justificationOk = !overrideRequired || justification.trim().length > 0;
@@ -101,6 +141,15 @@ export function AdvisoryResolveDialog({ advisory, action, onClose, onResolved }:
         </>
       }
     >
+      {/* TR-6 worklist path: a compact NAMED-kinds summary above the generic
+          sentence, so the reviewer sees exactly which identifiers matched /
+          contradicted. Absent on the sourcing path (kinds undefined). */}
+      {summary !== null ? (
+        <p className="rc-muted-line mono" data-testid="advisory-kinds">
+          {summary}
+        </p>
+      ) : null}
+
       {action === 'approve' ? (
         <InlineAlert variant={contradicted ? 'error' : 'success'}>
           {contradicted

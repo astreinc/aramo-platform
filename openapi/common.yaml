@@ -1543,6 +1543,18 @@ components:
         speaks for the human, so the husk is non-operational. Fired by
         the outreach send-gate and by createEngagement. Mirrors the
         ENGAGEMENT_STATE_INVALID 422 state-invalid precedent.
+
+        TR-6 B2 (DDR D5 + PC Exit Accounting §5.1) — advisory-resolution
+        domain refusal codes replacing the AramoExceptionFilter
+        status-collapse (409→IDEMPOTENCY_KEY_CONFLICT, 400→VALIDATION_ERROR)
+        on the advisory surface ONLY (the filter is untouched):
+        ADVISORY_NOT_PENDING (409, approve/dismiss a resolved advisory),
+        ADVISORY_NOT_MERGED (409, reverse a not-MERGED advisory),
+        ADVISORY_NO_MERGED_SUBJECT (409, reverse with no recorded pair),
+        MERGE_SUBJECT_NOT_ACTIVE (409, merge a non-ACTIVE subject),
+        CONTRADICTION_OVERRIDE_REQUIRED (400, approve a contradicted
+        advisory without ack+justification), REVERSAL_JUSTIFICATION_REQUIRED
+        (400, reverse without a justification).
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1588,6 +1600,12 @@ components:
         - INVITATION_ALREADY_EXISTS
         - MANAGEMENT_CYCLE_REJECTED
         - TALENT_RECORD_SUPERSEDED
+        - ADVISORY_NOT_PENDING
+        - ADVISORY_NOT_MERGED
+        - ADVISORY_NO_MERGED_SUBJECT
+        - MERGE_SUBJECT_NOT_ACTIVE
+        - CONTRADICTION_OVERRIDE_REQUIRED
+        - REVERSAL_JUSTIFICATION_REQUIRED
 
     ErrorObject:
       type: object
