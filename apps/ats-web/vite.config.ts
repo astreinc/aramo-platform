@@ -42,6 +42,16 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // Increment-1 §3.2 (Lead-ruled run-config): the platform-admin backend.
+      // 127.0.0.1 (not localhost) is deliberate — pins IPv4 so the proxy is
+      // immune to the ::1/127.0.0.1 resolution ambiguity a stray dev server on
+      // [::1]:3002 can introduce. The future platform-web FE (Increment-2)
+      // reuses this seam.
+      '/platform': {
+        target: 'http://127.0.0.1:3002', // apps/platform-admin
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
   preview: {
