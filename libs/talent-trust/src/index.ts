@@ -83,6 +83,20 @@ export {
   type ClaimShapeResult,
 } from './lib/canonical-claim-shapes.js';
 
+// TR-4 B3 — the pure consistency detectors + the independence helper. Exported for
+// the acceptance suite (both-ways silence proofs) and downstream reuse.
+export {
+  computeConsistencyPlan,
+  REASON_IMPOSSIBLE_RANGE,
+  REASON_EMPLOYER_CONFLICT_SAME_WINDOW,
+  OVERLAP_THRESHOLD_DAYS,
+  GAP_THRESHOLD_DAYS,
+  type EmploymentClaim,
+  type ExistingGap,
+  type ConsistencyPlan,
+} from './lib/consistency-detectors.js';
+export { sameUltimateSource } from './lib/band-derivation.js';
+
 // DTO (closed-vocabulary enforcement surface, Ruling 2).
 export { RecordEvidenceDto, SubjectRefDto } from './lib/dto/record-evidence.dto.js';
 

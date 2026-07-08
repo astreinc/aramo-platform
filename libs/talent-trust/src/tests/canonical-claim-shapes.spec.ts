@@ -53,6 +53,8 @@ describe('validateClaimShape — registered vs unregistered posture (§5a)', () 
       'PHONE',
       'PROFILE_URL',
       'SKILL',
+      // TR-4 B3 — the consistency detector's CONTINUITY gap signal.
+      'TIMELINE_GAP',
     ]);
   });
 });

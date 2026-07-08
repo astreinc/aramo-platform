@@ -59,6 +59,7 @@ const MIGRATIONS = [
   'libs/talent-trust/prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
   'libs/talent-trust/prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
   'libs/talent-trust/prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
   'libs/talent-trust/prisma/migrations/20260708120000_tr3_b1_verification_request/migration.sql',
 ].map(M);
 

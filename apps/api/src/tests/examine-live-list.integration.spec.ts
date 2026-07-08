@@ -97,6 +97,7 @@ const MIGRATIONS = [
   'libs/talent-trust/prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
   'libs/talent-trust/prisma/migrations/20260708120000_tr3_b1_verification_request/migration.sql',
   'libs/talent-trust/prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
   // examination
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
   'libs/examination/prisma/migrations/20260521120000_add_live_list_index/migration.sql',

@@ -128,6 +128,11 @@ export const METHODS = [
   'BIOMETRIC',
   'HUMAN_ATTESTED',
   'CONTROL_ROUND_TRIP',
+  // TR-4 B3 (§2.3) — a platform-DERIVED signal: not obtained from a source but
+  // computed deterministically by the platform from other evidence (e.g. an
+  // interior TIMELINE_GAP inferred by arithmetic over dated employment windows).
+  // Multiplier 0.5 (strength.ts): an inference cannot outrank its inputs.
+  'DERIVED',
 ] as const;
 export type Method = (typeof METHODS)[number];
 
