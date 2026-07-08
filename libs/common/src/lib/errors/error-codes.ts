@@ -333,6 +333,11 @@ export const ERROR_CODES = [
   // that buys comparability; UNregistered types stay @IsObject passthrough (the
   // OPEN-6 admission-open posture — admission open, registration = shape commitment).
   'CLAIM_SHAPE_INVALID',
+  // TR-4 B3 (§3.3) — the resolve-contradiction endpoint's operational refusal:
+  // resolveContradiction was called on an EvidenceRecord whose current_status is
+  // not CONTRADICTED (a resolve is meaningful only against a standing
+  // contradiction). HTTP 422.
+  'EVIDENCE_NOT_CONTRADICTED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

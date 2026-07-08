@@ -51,6 +51,7 @@ import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
 import { TalentAnchorProducerService } from './talent-anchor/talent-anchor-producer.service.js';
 import { AdvisoryResolutionController } from './talent-identity/advisory-resolution.controller.js';
+import { ContradictionResolutionController } from './talent-identity/contradiction-resolution.controller.js';
 import { EmailVerificationController } from './talent-identity/email-verification.controller.js';
 import { EmailVerificationService } from './talent-identity/email-verification.service.js';
 import {
@@ -419,6 +420,9 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // the composition-root HTTP edge ABOVE the I15 wall calling the cip resolution
     // service; gated by the tenant-scoped identity:resolve scope (admin tier).
     AdvisoryResolutionController,
+    // TR-4 B3 — the privileged resolve-contradiction surface (identity:resolve).
+    // The one human arm on the contradiction machinery the detectors feed.
+    ContradictionResolutionController,
     // Promotion-Trigger slice-A — the sourcer's two triggers (Add to Pipeline /
     // Save to Pool). Both promote a sourced L2 subject → ATS TalentRecord behind
     // the identity gate, then associate. Gated on the talent:source scope.

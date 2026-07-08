@@ -900,6 +900,64 @@ export class TalentTrustRepository {
     return rows.map((r) => r.tenant_id);
   }
 
+  // TR-4 B3 (§3.1) — the consistency-poll gate: the TR-6 match-sweep gate VERBATIM,
+  // with the JOIN on CLAIMS-dimension evidence instead of anchors. ACTIVE subjects
+  // with ≥1 CLAIMS EvidenceRecord created SINCE their consistency watermark (NULL =
+  // never checked). DISTINCT ON, ordered, batch-limited; tenant-agnostic (drains all).
+  async listSubjectsToCheckConsistency(
+    limit: number,
+    tenantId?: string,
+  ): Promise<Array<{ subject_id: string; tenant_id: string }>> {
+    // Optional tenant filter for the CLI escape hatch (the hourly poll passes none
+    // and drains all tenants). $2 is null when unfiltered.
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{ subject_id: string; tenant_id: string }>
+    >(
+      `SELECT DISTINCT ON (s.id) s.id AS subject_id, s.tenant_id AS tenant_id
+         FROM "talent_trust"."ResolutionSubject" s
+         JOIN "talent_trust"."EvidenceRecord" e ON e.subject_id = s.id AND e.dimension = 'CLAIMS'
+        WHERE s.status = 'ACTIVE'
+          AND e.created_at > COALESCE(s.last_consistency_at, TIMESTAMPTZ 'epoch')
+          AND ($2::uuid IS NULL OR s.tenant_id = $2::uuid)
+        ORDER BY s.id
+        LIMIT $1`,
+      limit,
+      tenantId ?? null,
+    );
+    return rows;
+  }
+
+  // TR-4 B3 — watermark writer, set LAST on a per-subject consistency run so a
+  // transient failure leaves it un-advanced and the next tick re-selects the subject.
+  async setLastConsistencyAt(subjectId: string, at: Date): Promise<void> {
+    await this.prisma.resolutionSubject.update({
+      where: { id: subjectId },
+      data: { last_consistency_at: at },
+    });
+  }
+
+  // TR-4 B3 (§3.2.3) — the TIMELINE_GAP idempotence check: is a gap already recorded
+  // for this (subject, bounding-record pair)? Keyed on the composite source_ref, so
+  // a re-run over unchanged evidence writes no duplicate gap.
+  async timelineGapExists(
+    subjectId: string,
+    beforeEvidenceId: string,
+    afterEvidenceId: string,
+  ): Promise<boolean> {
+    const row = await this.prisma.evidenceRecord.findFirst({
+      where: {
+        subject_id: subjectId,
+        assertion_type: 'TIMELINE_GAP',
+        AND: [
+          { source_ref: { path: ['before_evidence_id'], equals: beforeEvidenceId } },
+          { source_ref: { path: ['after_evidence_id'], equals: afterEvidenceId } },
+        ],
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   // The anchor write — EvidenceRecord (source of truth) + its CREATED event +
   // the SubjectAnchor projection, in ONE transaction (atomic: no projection
   // without its evidence, no evidence without its projection).

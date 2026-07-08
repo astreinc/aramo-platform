@@ -23,6 +23,7 @@ import { TalentTrustService } from '../lib/talent-trust.service.js';
 
 const MIGRATIONS = [
   '../../prisma/migrations/20260628000000_init_talent_trust/migration.sql',
+  '../../prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
   '../../prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
   '../../prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
   // TR-2a-3 added SubjectMatchAdvisory resolution columns; the regenerated client

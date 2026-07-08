@@ -66,6 +66,27 @@ function independenceKey(e: EvidenceForDerivation, index: number): string {
   return `ref:${stableStringify(e.source_ref)}`;
 }
 
+// TR-4 B3 — do two evidence rows share an ultimate source (i.e. collapse to ONE
+// signal under §6.2)? Mirrors independenceKey EXACTLY so the consistency
+// detector's "independent sources" definition is the band derivation's own:
+//   - both SELF → same source (all self-claims collapse);
+//   - one SELF, one not → distinct;
+//   - both non-SELF with a null source_ref → distinct (each its own signal);
+//   - both non-SELF with structurally-equal source_ref → same;
+//   - else distinct.
+// The employer-disagreement detector fires ONLY on independent pairs
+// (!sameUltimateSource), so two SELF claims disagreeing stay silent.
+export function sameUltimateSource(
+  a: { source_class: SourceClass; source_ref: unknown | null },
+  b: { source_class: SourceClass; source_ref: unknown | null },
+): boolean {
+  if (a.source_class === 'SELF' && b.source_class === 'SELF') return true;
+  if (a.source_class === 'SELF' || b.source_class === 'SELF') return false;
+  if (a.source_ref === null || a.source_ref === undefined) return false;
+  if (b.source_ref === null || b.source_ref === undefined) return false;
+  return stableStringify(a.source_ref) === stableStringify(b.source_ref);
+}
+
 // Deterministic JSON stringify (object keys sorted) so two structurally-equal
 // source_refs collapse to the same independence key.
 function stableStringify(value: unknown): string {

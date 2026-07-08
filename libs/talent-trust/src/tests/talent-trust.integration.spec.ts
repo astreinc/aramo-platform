@@ -51,6 +51,12 @@ const LINK_UNIQUE_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
 );
+// TR-4 B3 — last_consistency_at watermark (the regenerated client SELECTs it on
+// every ResolutionSubject read below).
+const CONSISTENCY_WATERMARK_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
+);
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const REF_A = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
@@ -120,7 +126,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const atsRefUniqueSql = readFileSync(ATS_REF_UNIQUE_MIGRATION_PATH, 'utf8');
       const tr6Sqls = TR6_B1_MIGRATION_PATHS.map((p) => readFileSync(p, 'utf8'));
       const linkUniqueSql = readFileSync(LINK_UNIQUE_MIGRATION_PATH, 'utf8');
-      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql, ...tr6Sqls, linkUniqueSql]) {
+      const consistencyWatermarkSql = readFileSync(CONSISTENCY_WATERMARK_MIGRATION_PATH, 'utf8');
+      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql, ...tr6Sqls, linkUniqueSql, consistencyWatermarkSql]) {
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
           if (trimmed.length === 0) continue;
