@@ -1562,6 +1562,8 @@ components:
         TR-4 B1 adds CLAIM_SHAPE_INVALID (422, the canonical claim-shape write
         gate — a REGISTERED assertion_type written with a non-conforming
         payload; unregistered types stay passthrough).
+        TR-4 B3 adds EVIDENCE_NOT_CONTRADICTED (422, resolveContradiction called
+        on a record whose current_status is not CONTRADICTED).
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1615,6 +1617,7 @@ components:
         - REVERSAL_JUSTIFICATION_REQUIRED
         - VERIFICATION_CONSENT_REQUIRED
         - CLAIM_SHAPE_INVALID
+        - EVIDENCE_NOT_CONTRADICTED
 
     ErrorObject:
       type: object

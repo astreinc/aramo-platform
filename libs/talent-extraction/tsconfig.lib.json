@@ -10,7 +10,8 @@
     "paths": {
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/ai-draft": ["../../dist/libs/ai-draft/src/index.d.ts"],
-      "@aramo/talent-evidence": ["../../dist/libs/talent-evidence/src/index.d.ts"]
+      "@aramo/talent-evidence": ["../../dist/libs/talent-evidence/src/index.d.ts"],
+      "@aramo/talent-trust": ["../../dist/libs/talent-trust/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

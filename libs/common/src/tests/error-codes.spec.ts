@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 50 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2 + 1 TR-4-B1)', () => {
+  it('ERROR_CODES contains the 51 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2 + 1 TR-4-B1 + 1 TR-4-B3)', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -96,6 +96,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'VERIFICATION_CONSENT_REQUIRED',
       // TR-4 B1 — 1 canonical claim-shape write gate (registered type, non-canonical payload → 422).
       'CLAIM_SHAPE_INVALID',
+      // TR-4 B3 — 1 resolve-contradiction refusal (non-CONTRADICTED record → 422).
+      'EVIDENCE_NOT_CONTRADICTED',
     ]);
   });
 });

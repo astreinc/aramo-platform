@@ -17,7 +17,18 @@ import { TalentEvidenceRepository } from '../lib/talent-evidence.repository.js';
 // is exercised by talent-evidence.integration.spec.ts against a real
 // Postgres testcontainer under ARAMO_RUN_INTEGRATION=1.
 describe('TalentEvidenceRepository — surface', () => {
-  it('exposes the 14 create/find methods + the 2 Gate-1 G1-B by-talent reads', () => {
+  // TR-4 B2 (DDR §3.4) — the ledger-routing reads: bounded, tenant-scoped,
+  // purpose-specific reads the CLAIMS dual-write + backfill need (typed rows →
+  // canonical ledger evidence). NOT an open query surface — each is a named,
+  // single-purpose read. Enumerated here so they are a conscious surface addition.
+  const TR4_B2_LEDGER_READS = [
+    'listSkillEvidenceForLedger',
+    'listWorkHistoryForLedger',
+    'listTalentIdsWithEvidenceByTenant',
+    'listTenantIdsWithEvidence',
+  ];
+
+  it('exposes the 14 create/find methods + the Gate-1 by-talent reads + the TR-4 B2 ledger reads', () => {
     const methods = Object.getOwnPropertyNames(TalentEvidenceRepository.prototype)
       .filter((m) => m !== 'constructor')
       .sort();
@@ -45,11 +56,12 @@ describe('TalentEvidenceRepository — surface', () => {
         // TR-2a-B3b (DDR-3 §4) — the reconcile re-point of talent_id across all
         // seven talent_evidence holders (loser→survivor, idempotent).
         'repointTalentRecordRefs',
+        ...TR4_B2_LEDGER_READS,
       ].sort(),
     );
   });
 
-  it('exposes no update/delete/list/query method (closed surface per PR-1 / PR-4 precedent)', () => {
+  it('exposes no update/delete/list/query method beyond the enumerated TR-4 B2 ledger reads (closed surface)', () => {
     const methods = Object.getOwnPropertyNames(TalentEvidenceRepository.prototype);
     const forbiddenPrefixes = [
       'update',
@@ -61,9 +73,13 @@ describe('TalentEvidenceRepository — surface', () => {
       'search',
       'query',
     ];
-    const offending = methods.filter((m) =>
-      forbiddenPrefixes.some((p) => m.toLowerCase().startsWith(p.toLowerCase())),
+    const offending = methods.filter(
+      (m) =>
+        forbiddenPrefixes.some((p) => m.toLowerCase().startsWith(p.toLowerCase())) &&
+        !TR4_B2_LEDGER_READS.includes(m),
     );
+    // Only the consciously-enumerated B2 ledger reads may carry a list-shaped name;
+    // any NEW list/query method forces an explicit addition to the allowlist above.
     expect(offending).toEqual([]);
   });
 

@@ -80,6 +80,24 @@ const MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
   // talent-evidence
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
+  // talent-trust — TR-4 B2: examine Step-4b now routes declared CLAIMS into the
+  // trust ledger, so the examine flow needs the talent_trust schema present.
+  'libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260706120000_ats_ref_partial_unique/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260706160000_sourcing_pool_keyset_index/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260708120000_tr3_b1_verification_request/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
   // examination
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
   'libs/examination/prisma/migrations/20260521120000_add_live_list_index/migration.sql',

@@ -10,6 +10,7 @@ import { RESUME_REINDEX_QUEUE_NAME } from '@aramo/talent-record';
 
 import { MATCH_SWEEP_QUEUE_NAME } from '../talent-anchor/match-sweep.queue.constants.js';
 import { IDENTITY_DETECTION_QUEUE_NAME } from '../talent-identity/identity-detection.queue.constants.js';
+import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.constants.js';
 
 // M5 PR-11 §4.6 — application bootstrap registration for the 4 Aramo Core
 // BullMQ jobs (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6;
@@ -77,6 +78,17 @@ const SCHEDULES = [
     job_name: 'tick',
     job_id: 'identity-detection-daily',
     repeat: { pattern: '0 6 * * *', tz: 'UTC' as const },
+  },
+  // TR-4 B3 (§3.1) — the hourly cross-source consistency detector poll. Re-checks
+  // every ACTIVE subject with CLAIMS evidence added since its last_consistency_at
+  // watermark; runs the three deterministic detectors over its cluster-union
+  // CLAIMS evidence. Tenant-agnostic gate (batches all tenants); the manual
+  // consistency-check CLI is the escape hatch.
+  {
+    queue_name: CONSISTENCY_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'consistency-check-hourly',
+    repeat: { pattern: '0 * * * *', tz: 'UTC' as const },
   },
 ] as const;
 

@@ -78,6 +78,9 @@ const MIGRATIONS = [
   // sweep watermark). resolveOrCreateSubject RETURNs every column, so the
   // regenerated client selects it — same 500-without-migration ripple as above.
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql'),
+  // talent_trust (TR-4 B3) — ResolutionSubject.last_consistency_at (the consistency
+  // poll watermark). Same regenerated-client-selects-every-column ripple.
+  resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql'),
   // talent_trust (TR-2a-B1) — SubjectAnchor.source_class (the resolver's anchor
   // write projects it) + the extended (…, source_class) unique key.
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql'),

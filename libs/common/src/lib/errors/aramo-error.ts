@@ -69,6 +69,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   VERIFICATION_CONSENT_REQUIRED: 403,
   // TR-4 B1 — registered assertion_type written with a non-canonical payload.
   CLAIM_SHAPE_INVALID: 422,
+  // TR-4 B3 — resolveContradiction on a non-CONTRADICTED record.
+  EVIDENCE_NOT_CONTRADICTED: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

@@ -14,6 +14,9 @@ import { MATCH_SWEEP_QUEUE_NAME } from '../talent-anchor/match-sweep.queue.const
 import { IdentityDetectionService } from '../talent-identity/identity-detection.service.js';
 import { IdentityDetectionProcessor } from '../talent-identity/identity-detection.processor.js';
 import { IDENTITY_DETECTION_QUEUE_NAME } from '../talent-identity/identity-detection.queue.constants.js';
+import { ConsistencyService } from '../talent-identity/consistency.service.js';
+import { ConsistencyProcessor } from '../talent-identity/consistency.processor.js';
+import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.constants.js';
 
 // TR-6 B1 (DDR §2/§7) — the identity-maintenance job module: the hourly incremental
 // match sweep (D1) + the daily read-only integrity detection cron (D6). apps/api
@@ -59,12 +62,16 @@ import { IDENTITY_DETECTION_QUEUE_NAME } from '../talent-identity/identity-detec
     }),
     BullModule.registerQueue({ name: MATCH_SWEEP_QUEUE_NAME }),
     BullModule.registerQueue({ name: IDENTITY_DETECTION_QUEUE_NAME }),
+    // TR-4 B3 — the hourly consistency detector poll (same wiring as the others).
+    BullModule.registerQueue({ name: CONSISTENCY_QUEUE_NAME }),
   ],
   providers: [
     MatchSweepService,
     MatchSweepProcessor,
     IdentityDetectionService,
     IdentityDetectionProcessor,
+    ConsistencyService,
+    ConsistencyProcessor,
     {
       provide: 'MatchSweepServiceLogger',
       useFactory: () => createAramoLogger(MatchSweepService.name),
@@ -81,7 +88,15 @@ import { IDENTITY_DETECTION_QUEUE_NAME } from '../talent-identity/identity-detec
       provide: 'IdentityDetectionProcessorLogger',
       useFactory: () => createAramoLogger(IdentityDetectionProcessor.name),
     },
+    {
+      provide: 'ConsistencyServiceLogger',
+      useFactory: () => createAramoLogger(ConsistencyService.name),
+    },
+    {
+      provide: 'ConsistencyProcessorLogger',
+      useFactory: () => createAramoLogger(ConsistencyProcessor.name),
+    },
   ],
-  exports: [MatchSweepService, IdentityDetectionService],
+  exports: [MatchSweepService, IdentityDetectionService, ConsistencyService],
 })
 export class IdentityMaintenanceModule {}

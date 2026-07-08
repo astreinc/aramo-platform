@@ -203,6 +203,35 @@ const contactShape: ClaimShape = (p) => {
   return { ok: true, canonical: { ...p, value: (p['value'] as string) } };
 };
 
+// TIMELINE_GAP (TR-4 B3, DDR §4.3): a CONTINUITY gap signal the consistency
+// detector records — the bounding ISO dates of an interior hole plus the ids of
+// the two employment records that bound it. A gap is a question, not an
+// accusation. Dates are computed by arithmetic (already ISO), validated here as
+// ISO-or-reject (NOT parseToIsoDateOrNull — a gap with an unparseable bound is a
+// bug, refuse it; the detector only ever produces valid ISO).
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const timelineGapShape: ClaimShape = (p) => {
+  const errors: string[] = [];
+  if (typeof p['gap_start'] !== 'string' || !ISO_DATE.test(p['gap_start'] as string)) {
+    errors.push('gap_start must be an ISO calendar date (YYYY-MM-DD)');
+  }
+  if (typeof p['gap_end'] !== 'string' || !ISO_DATE.test(p['gap_end'] as string)) {
+    errors.push('gap_end must be an ISO calendar date (YYYY-MM-DD)');
+  }
+  if (!nonEmptyString(p['before_evidence_id'])) errors.push('before_evidence_id required');
+  if (!nonEmptyString(p['after_evidence_id'])) errors.push('after_evidence_id required');
+  if (errors.length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    canonical: {
+      gap_start: p['gap_start'] as string,
+      gap_end: p['gap_end'] as string,
+      before_evidence_id: (p['before_evidence_id'] as string).trim(),
+      after_evidence_id: (p['after_evidence_id'] as string).trim(),
+    },
+  };
+};
+
 // The registry: assertion_type → its canonical shape. Membership here IS the
 // "registered" predicate the write gate checks. Adding a type is a DDR-amendment-
 // level act (like AUTHORITATIVE_ASSERTION_TYPES), never a silent extension.
@@ -212,6 +241,8 @@ export const CANONICAL_CLAIM_SHAPES: Record<string, ClaimShape> = {
   EMAIL: contactShape,
   PHONE: contactShape,
   PROFILE_URL: contactShape,
+  // TR-4 B3 — the consistency detector's CONTINUITY gap signal.
+  TIMELINE_GAP: timelineGapShape,
 };
 
 export function isRegisteredAssertionType(assertionType: string): boolean {

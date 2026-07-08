@@ -63,7 +63,14 @@ function make(opts: {
       { surface_form: 'postgresql', source: 'declared', skill_id: 's2' },
     ]),
   };
-  const talentExtractionService = { extractDeclaredEvidence: extract };
+  const talentExtractionService = {
+    extractDeclaredEvidence: extract,
+    // TR-4 B2 — Step-4b calls this unconditionally after extraction (the reconcile
+    // that routes typed CLAIMS into the ledger). Stubbed to a no-op count here.
+    routeDeclaredEvidenceToLedger: vi
+      .fn()
+      .mockResolvedValue({ skills_written: 0, work_history_written: 0, skipped: 0 }),
+  };
   const matchingService = { evaluateAndPersist };
   const ctl = new ExamineController(
     talentRecordRepository as never,

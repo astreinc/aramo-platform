@@ -38,6 +38,9 @@ const METHOD_MULTIPLIER: Record<Method, number> = {
   // strength. The class weight (0.7) — not the method — bounds how far a
   // platform-verified email can lift a band.
   CONTROL_ROUND_TRIP: 1.0,
+  // TR-4 B3 (§2.3) — a platform-derived arithmetic inference. Half strength: it
+  // cannot outrank the source evidence it was computed from.
+  DERIVED: 0.5,
 };
 
 // Base strength at collection time (persisted on EvidenceRecord.strength).

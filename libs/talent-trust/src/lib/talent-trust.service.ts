@@ -4,6 +4,13 @@ import { AramoError } from '@aramo/common';
 import { isConfirmingAnchor } from './anchor-confirmation.js';
 import { validateClaimShape } from './canonical-claim-shapes.js';
 import {
+  computeConsistencyPlan,
+  REASON_EMPLOYER_CONFLICT_SAME_WINDOW,
+  REASON_IMPOSSIBLE_RANGE,
+  type EmploymentClaim,
+  type ExistingGap,
+} from './consistency-detectors.js';
+import {
   deriveTrustState,
   type EvidenceForDerivation,
 } from './band-derivation.js';
@@ -661,6 +668,55 @@ export class TalentTrustService {
     return { evidence_ids };
   }
 
+  // TR-4 B2 (DDR §3.1/§3.2) — the idempotent CLAIMS dual-write behind the
+  // talent-extraction producer. Resolves (or creates) the subject from the ref,
+  // then writes canonical CLAIMS evidence ONLY IF no evidence already exists for
+  // this (subject, assertion_type, source_ref → the typed row). The source_ref is
+  // the STABLE typed-row id, so a re-run / backfill re-writes nothing already
+  // written (§3.2). The write goes through recordEvidence — the T4-B1 canonical
+  // gate validates the payload (the mapper guarantees conformance, so it never
+  // fires here) and the recompute fires (CLAIMS moves off NOT_ESTABLISHED). A
+  // write failure PROPAGATES (loud fail per §3.3 — never a silent half-commit).
+  async recordDeclaredClaimIfAbsent(input: {
+    subjectRef: SubjectRef;
+    assertion_type: string;
+    assertion_payload: unknown;
+    // Must carry `talent_evidence_id` (the typed-row provenance key).
+    source_ref: { talent_evidence_id: string } & Record<string, unknown>;
+    created_by: string;
+  }): Promise<{ written: boolean; evidence_id?: string }> {
+    const subjectId = await this.repo.resolveOrCreateSubject(
+      input.subjectRef.tenant_id,
+      input.subjectRef.ref_type,
+      input.subjectRef.ref_id,
+      input.subjectRef.link_source ?? input.created_by,
+    );
+    const exists = await this.repo.claimEvidenceExistsBySourceRef(
+      subjectId,
+      input.assertion_type,
+      input.source_ref.talent_evidence_id,
+    );
+    if (exists) return { written: false };
+
+    const ev = await this.recordEvidence({
+      subjectRef: input.subjectRef,
+      dimension: 'CLAIMS',
+      assertion_type: input.assertion_type,
+      assertion_payload: input.assertion_payload,
+      // DDR §3: channel-structured, LLM-shaped declared claims.
+      source_class: 'THIRD_PARTY_UNVERIFIED',
+      method: 'DOCUMENT',
+      source_ref: input.source_ref,
+      // Ruling 5 — the STRUCTURING is LLM; ai_derived says who shaped it (zero band
+      // influence by construction). class/method say how it arrived.
+      ai_derived: true,
+      portability_class: 'TENANT_ONLY',
+      decay_profile: 'SLOW',
+      created_by: input.created_by,
+    });
+    return { written: true, evidence_id: ev.id };
+  }
+
   // ---- Writes: lifecycle ops (§8) ------------------------------------
   // Each appends an EvidenceEvent (+ EvidenceLink where relational), projects
   // the new current_status, and recomputes TrustState.
@@ -693,6 +749,19 @@ export class TalentTrustService {
       linked_evidence_id: byEvidenceId,
       evidence: ev,
     });
+  }
+
+  // TR-4 B3 (§3.2.1, the §2.2 finding) — LINKLESS single-record contradiction. The
+  // contradict() arm above requires a contradicting counterpart (byEvidenceId); an
+  // arithmetic impossibility (end < start) has no counterpart evidence. This flips
+  // the record to CONTRADICTED with a reason and NO EvidenceLink. Guard: an
+  // already-CONTRADICTED record is a no-op (re-runs are idempotent). Only the status
+  // drives the band cap (band derivation never reads links), so the linkless variant
+  // caps the dimension exactly as the paired one does.
+  async contradictRecord(evidenceId: string, reason: string): Promise<void> {
+    const ev = await this.requireEvidence(evidenceId);
+    if (ev.current_status === 'CONTRADICTED') return;
+    await this.applyLifecycle(evidenceId, 'CONTRADICTED', { reason, evidence: ev });
   }
 
   async supersede(oldId: string, newId: string): Promise<void> {
@@ -729,14 +798,18 @@ export class TalentTrustService {
     evidenceId: string,
     actor: string,
     reason: string,
+    requestId: string = CLAIM_SHAPE_REQUEST_ID,
   ): Promise<void> {
     const ev = await this.requireEvidence(evidenceId);
     if (ev.current_status !== 'CONTRADICTED') {
-      // Service-level guard (no HTTP surface this slice — B3 adds the resolve API
-      // and maps this to a domain code there). A resolve is meaningful only against
-      // a standing contradiction.
-      throw new Error(
+      // TR-4 B3 (§3.3) — the resolve API's not-CONTRADICTED refusal. A resolve is
+      // meaningful only against a standing contradiction. Domain-coded 422; the
+      // controller passes its requestId (defaults to the lib sentinel off-HTTP).
+      throw new AramoError(
+        'EVIDENCE_NOT_CONTRADICTED',
         `resolveContradiction requires a CONTRADICTED record (evidence ${evidenceId} is ${ev.current_status})`,
+        422,
+        { requestId, details: { evidence_id: evidenceId, current_status: ev.current_status } },
       );
     }
     await this.applyLifecycle(evidenceId, 'CONTRADICTION_RESOLVED', {
@@ -744,6 +817,142 @@ export class TalentTrustService {
       actor,
       evidence: ev,
     });
+  }
+
+  // TR-4 B3 (§3.2.3) — record an interior TIMELINE_GAP as CONTINUITY evidence,
+  // idempotent on the (before, after) composite source_ref. THIRD_PARTY_UNVERIFIED
+  // (the inference cannot outrank its third-party inputs) × DERIVED (arithmetic, not
+  // a source pull) → strength 0.15; ai_derived:false (deterministic, not an LLM).
+  // Goes through the canonical gate (the payload always conforms) + recompute rides
+  // the caller's run.
+  async recordTimelineGapIfAbsent(input: {
+    tenant_id: string;
+    subject_id: string;
+    gap_start: string;
+    gap_end: string;
+    before_evidence_id: string;
+    after_evidence_id: string;
+  }): Promise<{ written: boolean; evidence_id?: string }> {
+    const exists = await this.repo.timelineGapExists(
+      input.subject_id,
+      input.before_evidence_id,
+      input.after_evidence_id,
+    );
+    if (exists) return { written: false };
+
+    const canonical = this.canonicalizeOrRefuse('TIMELINE_GAP', {
+      gap_start: input.gap_start,
+      gap_end: input.gap_end,
+      before_evidence_id: input.before_evidence_id,
+      after_evidence_id: input.after_evidence_id,
+    });
+    const now = new Date();
+    const evidence = await this.repo.insertEvidence({
+      subject_id: input.subject_id,
+      tenant_id: input.tenant_id,
+      dimension: 'CONTINUITY',
+      assertion_type: 'TIMELINE_GAP',
+      assertion_payload: canonical,
+      source_class: 'THIRD_PARTY_UNVERIFIED',
+      method: 'DERIVED',
+      strength: deriveStrength('THIRD_PARTY_UNVERIFIED', 'DERIVED'),
+      source_ref: {
+        before_evidence_id: input.before_evidence_id,
+        after_evidence_id: input.after_evidence_id,
+        kind: 'timeline_gap',
+      },
+      collected_at: now,
+      decay_profile: 'SLOW',
+      portability_class: 'TENANT_ONLY',
+      ai_derived: false,
+      current_status: EVENT_TO_STATUS.CREATED,
+      created_by: 'consistency',
+    });
+    await this.repo.appendEvent({
+      evidence_id: evidence.id,
+      tenant_id: input.tenant_id,
+      event_type: 'CREATED',
+      actor: 'consistency',
+      occurred_at: now,
+    });
+    return { written: true, evidence_id: evidence.id };
+  }
+
+  // TR-4 B3 (§3.1/§3.2) — run the three deterministic detectors over a subject's
+  // CLUSTER-UNION CLAIMS evidence, execute the plan through the lifecycle arms +
+  // recordEvidence, and recompute. Silence over speculation is the pure detectors'
+  // (consistency-detectors.ts) job; this method only executes. Bands move ONLY
+  // through the final recompute. Idempotent (link unique + no-op + gap
+  // existence-check + already-CONTRADICTED guard), so the poll re-runs safely.
+  async runConsistencyForSubject(
+    tenantId: string,
+    subjectId: string,
+  ): Promise<{ contradictions: number; gaps_opened: number; gaps_healed: number }> {
+    const members = await this.repo.clusterMembers(subjectId);
+    const claimsEvidence = await this.repo.listEvidenceBySubjects(members, { dimension: 'CLAIMS' });
+    const continuityEvidence = await this.repo.listEvidenceBySubjects(members, {
+      dimension: 'CONTINUITY',
+    });
+
+    const claims: EmploymentClaim[] = claimsEvidence
+      .filter((e) => e.assertion_type === 'EMPLOYMENT')
+      .map((e) => {
+        const p = (e.assertion_payload ?? {}) as Record<string, unknown>;
+        return {
+          evidence_id: e.id,
+          source_class: e.source_class,
+          source_ref: e.source_ref,
+          employer_norm: typeof p['employer_norm'] === 'string' ? p['employer_norm'] : null,
+          start_date: typeof p['start_date'] === 'string' ? p['start_date'] : null,
+          end_date: typeof p['end_date'] === 'string' ? p['end_date'] : null,
+          collected_at: e.collected_at,
+          current_status: e.current_status,
+        };
+      });
+    const existingGaps: ExistingGap[] = continuityEvidence
+      .filter((e) => e.assertion_type === 'TIMELINE_GAP')
+      .map((e) => {
+        const p = (e.assertion_payload ?? {}) as Record<string, unknown>;
+        return {
+          evidence_id: e.id,
+          before_evidence_id: String(p['before_evidence_id'] ?? ''),
+          after_evidence_id: String(p['after_evidence_id'] ?? ''),
+          gap_start: String(p['gap_start'] ?? ''),
+          gap_end: String(p['gap_end'] ?? ''),
+          current_status: e.current_status,
+        };
+      });
+
+    const plan = computeConsistencyPlan(claims, existingGaps);
+
+    for (const id of plan.impossibleRangeIds) {
+      await this.contradictRecord(id, REASON_IMPOSSIBLE_RANGE);
+    }
+    for (const c of plan.employerConflicts) {
+      await this.contradict(c.a_id, c.b_id, REASON_EMPLOYER_CONFLICT_SAME_WINDOW);
+    }
+    let gaps_opened = 0;
+    for (const g of plan.gapsToOpen) {
+      const r = await this.recordTimelineGapIfAbsent({
+        tenant_id: tenantId,
+        subject_id: subjectId,
+        gap_start: g.gap_start,
+        gap_end: g.gap_end,
+        before_evidence_id: g.before_evidence_id,
+        after_evidence_id: g.after_evidence_id,
+      });
+      if (r.written) gaps_opened += 1;
+    }
+    for (const h of plan.gapsToHeal) {
+      await this.supersede(h.gap_evidence_id, h.filler_evidence_id);
+    }
+
+    await this.recompute(subjectId, tenantId, new Date());
+    return {
+      contradictions: plan.impossibleRangeIds.length + plan.employerConflicts.length,
+      gaps_opened,
+      gaps_healed: plan.gapsToHeal.length,
+    };
   }
 
   // ---- Subject capability (§8) — reversible; logic deferred to TR-6 ---
