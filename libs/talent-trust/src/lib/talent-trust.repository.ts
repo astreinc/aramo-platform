@@ -215,6 +215,36 @@ export interface InsertAnchorInput {
   normalized_value: string;
 }
 
+// TR-3 B2 (§3.1/§3.2) — a VerificationRequest row (the T3-B1 writer-less table
+// gains its writer here). status ∈ PENDING | CONFIRMED | EXPIRED; consumed_at
+// non-null is the single-use marker (stamped LAST under the replay-guarded
+// confirm). token_hash is sha256(raw).base64url — the raw is never stored.
+export interface VerificationRequestRow {
+  id: string;
+  tenant_id: string;
+  talent_record_id: string;
+  subject_id: string;
+  anchor_kind: AnchorKind;
+  normalized_value: string;
+  token_hash: string;
+  status: 'PENDING' | 'CONFIRMED' | 'EXPIRED';
+  created_by: string;
+  created_at: Date;
+  expires_at: Date;
+  consumed_at: Date | null;
+}
+
+export interface CreateVerificationRequestInput {
+  tenant_id: string;
+  talent_record_id: string;
+  subject_id: string;
+  anchor_kind: AnchorKind;
+  normalized_value: string;
+  token_hash: string;
+  created_by: string;
+  expires_at: Date;
+}
+
 // TR-2a-B3b (DDR-3 §6) — one recorded ref-normalization action (verbatim, so
 // reversal restores topology exactly). `re_homed` = the ref's subject_id moved
 // from→to; `removed` = the ref row was deleted (its linkage copied here first).
@@ -887,6 +917,123 @@ export class TalentTrustRepository {
       evidence: evidence as EvidenceRecordRow,
       anchor: anchor as SubjectAnchorRow,
     };
+  }
+
+  // ---- VerificationRequest (TR-3 B2 — the T3-B1 table's writer) -----------
+
+  // Create a fresh PENDING verification request. One row per mint; a resend
+  // rotates the token IN PLACE on the open row (rotateVerificationToken) rather
+  // than inserting a second row (§3.1 rotate-on-resend + idempotent-return).
+  async createVerificationRequest(
+    input: CreateVerificationRequestInput,
+  ): Promise<VerificationRequestRow> {
+    const row = await this.prisma.verificationRequest.create({
+      data: {
+        id: uuidv7(),
+        tenant_id: input.tenant_id,
+        talent_record_id: input.talent_record_id,
+        subject_id: input.subject_id,
+        anchor_kind: input.anchor_kind,
+        normalized_value: input.normalized_value,
+        token_hash: input.token_hash,
+        // status defaults to 'PENDING'.
+        created_by: input.created_by,
+        expires_at: input.expires_at,
+      },
+    });
+    return row as VerificationRequestRow;
+  }
+
+  // Idempotency read (§3.1) — the single OPEN, non-expired request for a
+  // (tenant, subject, kind, value). A second request while one is live rotates
+  // this row's token rather than minting a duplicate. Expired PENDING rows are
+  // NOT open (they must mint fresh). At most one exists by construction (the
+  // request path only ever creates when none is open).
+  async findOpenVerificationRequest(
+    tenantId: string,
+    subjectId: string,
+    anchorKind: AnchorKind,
+    normalizedValue: string,
+    now: Date,
+  ): Promise<VerificationRequestRow | null> {
+    const row = await this.prisma.verificationRequest.findFirst({
+      where: {
+        tenant_id: tenantId,
+        subject_id: subjectId,
+        anchor_kind: anchorKind,
+        normalized_value: normalizedValue,
+        status: 'PENDING',
+        consumed_at: null,
+        expires_at: { gt: now },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+    return row === null ? null : (row as VerificationRequestRow);
+  }
+
+  // Resend (§3.1) — rotate the token secret + re-stamp the TTL on an existing
+  // open request, IN PLACE. The prior raw token is thereby invalidated (its hash
+  // no longer matches this row) — the "revoked" state the confirm path treats
+  // as indistinguishable-not-found (§3.2, acceptance (e)).
+  async rotateVerificationToken(
+    id: string,
+    tokenHash: string,
+    expiresAt: Date,
+  ): Promise<VerificationRequestRow> {
+    const row = await this.prisma.verificationRequest.update({
+      where: { id },
+      data: { token_hash: tokenHash, expires_at: expiresAt },
+    });
+    return row as VerificationRequestRow;
+  }
+
+  // The atomic REPLAY LOCK (§3.2) — a single guarded UPDATE claims the request:
+  // it flips PENDING→CONFIRMED + stamps consumed_at ONLY when the row is still
+  // live (token matches, not consumed, PENDING, unexpired). Concurrent confirms
+  // race on this UPDATE — exactly one flips a row (Postgres row lock); the loser
+  // matches zero rows. Returns the claimed row, or null for EVERY invalid state
+  // (bad/expired/consumed/rotated token) — the caller cannot tell which, and
+  // neither can an attacker. The mint runs only for the single winner.
+  async consumeVerificationRequest(
+    tokenHash: string,
+    now: Date,
+  ): Promise<VerificationRequestRow | null> {
+    const claimed = await this.prisma.verificationRequest.updateMany({
+      where: {
+        token_hash: tokenHash,
+        consumed_at: null,
+        status: 'PENDING',
+        expires_at: { gt: now },
+      },
+      data: { status: 'CONFIRMED', consumed_at: now },
+    });
+    if (claimed.count === 0) return null;
+    // token_hash is @unique — the row we just flipped is the one and only match.
+    const row = await this.prisma.verificationRequest.findUnique({
+      where: { token_hash: tokenHash },
+    });
+    return row === null ? null : (row as VerificationRequestRow);
+  }
+
+  // Status read (§3.3) — the most-recent request for a (tenant, subject, kind,
+  // value), regardless of status. Backs the record-detail pending/expired
+  // display (verified is read off the anchor, not this row).
+  async findLatestVerificationRequest(
+    tenantId: string,
+    subjectId: string,
+    anchorKind: AnchorKind,
+    normalizedValue: string,
+  ): Promise<VerificationRequestRow | null> {
+    const row = await this.prisma.verificationRequest.findFirst({
+      where: {
+        tenant_id: tenantId,
+        subject_id: subjectId,
+        anchor_kind: anchorKind,
+        normalized_value: normalizedValue,
+      },
+      orderBy: { created_at: 'desc' },
+    });
+    return row === null ? null : (row as VerificationRequestRow);
   }
 
   // ---- SubjectMatchAdvisory (TR-2a-2 within-tenant same-human advisory) ----

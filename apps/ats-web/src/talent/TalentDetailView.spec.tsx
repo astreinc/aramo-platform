@@ -339,4 +339,69 @@ describe('TalentDetailView', () => {
       ).toBeInTheDocument(),
     );
   });
+
+  // TR-3 B2 — the email-verification affordance in the Identity panel. The
+  // status GET shares the talent-record base path, so the more specific
+  // /email-verifications pattern must be registered FIRST (installFetch matches
+  // by insertion order).
+  it('TR-3 B2 — with talent:edit + a pending status, the verify button renders, the pill reflects the fetched status, and clicking POSTs a verification request', async () => {
+    installFetch({
+      '/v1/talent-records/tal-1/email-verifications': {
+        items: [
+          { slot: 'email1', value_present: true, status: 'pending' },
+          { slot: 'email2', value_present: false, status: 'none' },
+        ],
+      },
+      '/v1/talent-records/tal-1': makeTalent(),
+    });
+    renderAt('/talent/tal-1', makeSession(['talent:read', 'talent:edit']));
+    await waitFor(() =>
+      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
+    );
+    // The pill reflects the fetched per-slot status (a band/label, not a number).
+    await waitFor(() =>
+      expect(screen.getByTestId('verify-status-email1')).toHaveTextContent(
+        'Pending',
+      ),
+    );
+    const btn = screen.getByTestId('verify-email-btn-email1');
+    expect(btn).toBeInTheDocument();
+    fireEvent.click(btn);
+    await waitFor(() => {
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
+      const post = calls.find(
+        (c) =>
+          String(c[0]).includes('/v1/talent-records/tal-1/email-verifications') &&
+          (c[1] as RequestInit | undefined)?.method === 'POST',
+      );
+      expect(post).toBeDefined();
+      // The stored SLOT is sent — never a free-form address.
+      expect(String((post?.[1] as RequestInit).body)).toContain('email1');
+    });
+    // Optimistic disable after send.
+    await waitFor(() =>
+      expect(screen.getByTestId('verify-email-btn-email1')).toBeDisabled(),
+    );
+  });
+
+  it('TR-3 B2 — without talent:edit the verify button is absent', async () => {
+    installFetch({
+      '/v1/talent-records/tal-1/email-verifications': {
+        items: [
+          { slot: 'email1', value_present: true, status: 'none' },
+          { slot: 'email2', value_present: false, status: 'none' },
+        ],
+      },
+      '/v1/talent-records/tal-1': makeTalent(),
+    });
+    renderAt('/talent/tal-1', makeSession(['talent:read']));
+    await waitFor(() =>
+      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument(),
+    );
+    // The status pill still renders; the action does not.
+    await waitFor(() =>
+      expect(screen.getByTestId('verify-status-email1')).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('verify-email-btn-email1')).toBeNull();
+  });
 });

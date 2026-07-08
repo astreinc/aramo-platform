@@ -9,6 +9,7 @@ import {
   type Session,
 } from '@aramo/fe-foundation';
 
+import { Button, StatusPill, type PillTone } from '../ui';
 import { Tabs, type TabItem } from '../components/Tabs';
 import { EngagementsPanel } from '../engagement/EngagementsPanel';
 import { TasksPanel } from '../task/TasksPanel';
@@ -21,13 +22,23 @@ import {
   type PipelineView,
 } from '../pipeline/types';
 
-import { getTalent, listTalentAttachments } from './talent-api';
+import {
+  getEmailVerificationStatus,
+  getTalent,
+  listTalentAttachments,
+  requestEmailVerification,
+} from './talent-api';
 import {
   attachmentsErrorMessage,
   detailErrorMessage,
   pipelinesErrorMessage,
 } from './error-messages';
-import type { AttachmentView, TalentRecordView } from './types';
+import type {
+  AttachmentView,
+  EmailSlot,
+  EmailSlotVerificationStatus,
+  TalentRecordView,
+} from './types';
 
 // R3 — the talent DETAIL composite. Tabs: Identity / Attachments /
 // Activity / Pipelines. Per-tab scope-gating: the Identity tab uses the
@@ -112,11 +123,13 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
   if (talent === null || session === null) return null;
 
   const scopes = session.scopes;
+  const canEditIdentity =
+    Array.isArray(session.scopes) && hasScope(session, 'talent:edit');
   const tabs: TabItem[] = [
     {
       id: 'identity',
       label: 'Identity',
-      content: <IdentityPanel talent={talent} />,
+      content: <IdentityPanel talent={talent} canEdit={canEditIdentity} />,
     },
   ];
   if (scopes.includes('attachment:read')) {
@@ -191,14 +204,39 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
   );
 }
 
-function IdentityPanel({ talent }: { talent: TalentRecordView }) {
+// TR-3 B2 — per-slot displayed status → StatusPill tone/label. Caller-owned
+// map mirroring DomainVerificationPanel's DOMAIN_TONE/DOMAIN_LABEL (the atom
+// stays domain-neutral; the semantics are the surface's decision). A status is
+// a BAND/LABEL, never a numeric value.
+const EMAIL_STATUS_TONE: Record<EmailSlotVerificationStatus, PillTone> = {
+  verified: 'ok',
+  pending: 'warn',
+  expired: 'danger',
+  none: 'neutral',
+};
+const EMAIL_STATUS_LABEL: Record<EmailSlotVerificationStatus, string> = {
+  verified: 'Verified',
+  pending: 'Pending',
+  expired: 'Expired',
+  none: 'Not verified',
+};
+
+function IdentityPanel({
+  talent,
+  canEdit,
+}: {
+  talent: TalentRecordView;
+  canEdit: boolean;
+}) {
   return (
     <Card>
       <dl className="detail__meta">
-        <div>
-          <dt>Email</dt>
-          <dd>{display(talent.email1)}</dd>
-        </div>
+        <EmailVerificationRow
+          talentId={talent.id}
+          email1={talent.email1}
+          email2={talent.email2}
+          canEdit={canEdit}
+        />
         <div>
           <dt>Phone</dt>
           <dd>
@@ -238,6 +276,119 @@ function IdentityPanel({ talent }: { talent: TalentRecordView }) {
         ) : null}
       </dl>
     </Card>
+  );
+}
+
+// TR-3 B2 — the email-verification affordance inside the Identity panel. For
+// each STORED email slot it shows the address, a StatusPill (verified/pending/
+// expired/none), and — when the actor holds talent:edit and the slot is not
+// already verified — a "Verify email" button that POSTs a request for the
+// STORED slot (no free-form address) and optimistically flips the slot to
+// 'pending'. Status is fetched in a cancel-guarded effect (mirrors getTalent).
+function EmailVerificationRow({
+  talentId,
+  email1,
+  email2,
+  canEdit,
+}: {
+  talentId: string;
+  email1: string | null;
+  email2: string | null;
+  canEdit: boolean;
+}) {
+  const [statuses, setStatuses] = useState<
+    Record<EmailSlot, EmailSlotVerificationStatus>
+  >({ email1: 'none', email2: 'none' });
+  const [sent, setSent] = useState<Record<EmailSlot, boolean>>({
+    email1: false,
+    email2: false,
+  });
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getEmailVerificationStatus(talentId)
+      .then((res) => {
+        if (cancelled) return;
+        const next: Record<EmailSlot, EmailSlotVerificationStatus> = {
+          email1: 'none',
+          email2: 'none',
+        };
+        for (const item of res.items) next[item.slot] = item.status;
+        setStatuses(next);
+      })
+      .catch(() => {
+        // A status-fetch failure leaves the slots at 'none' — the row still
+        // renders the stored address; the verify action stays available.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [talentId]);
+
+  const onVerify = (slot: EmailSlot) => {
+    setRowError(null);
+    requestEmailVerification(talentId, slot)
+      .then(() => {
+        setStatuses((prev) => ({ ...prev, [slot]: 'pending' }));
+        setSent((prev) => ({ ...prev, [slot]: true }));
+      })
+      .catch(() => {
+        setRowError('We couldn’t send the verification email. Please try again.');
+      });
+  };
+
+  const slots: { slot: EmailSlot; value: string | null; n: number }[] = [
+    { slot: 'email1', value: email1, n: 1 },
+    { slot: 'email2', value: email2, n: 2 },
+  ];
+
+  return (
+    <>
+      {slots
+        .filter((s) => s.value !== null && s.value !== '')
+        .map(({ slot, value, n }) => {
+          const status = statuses[slot];
+          const canVerify = canEdit && status !== 'verified';
+          return (
+            <div key={slot}>
+              <dt>Email {n}</dt>
+              <dd>
+                {value}{' '}
+                <span data-testid={`verify-status-${slot}`}>
+                  <StatusPill tone={EMAIL_STATUS_TONE[status]}>
+                    {EMAIL_STATUS_LABEL[status]}
+                  </StatusPill>
+                </span>
+                {canVerify ? (
+                  <>
+                    {' '}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      data-testid={`verify-email-btn-${slot}`}
+                      disabled={sent[slot]}
+                      onClick={() => onVerify(slot)}
+                    >
+                      Verify email
+                    </Button>
+                    {sent[slot] ? (
+                      <span className="rc-muted-line"> Verification email sent</span>
+                    ) : null}
+                  </>
+                ) : null}
+              </dd>
+            </div>
+          );
+        })}
+      {rowError !== null ? (
+        <div>
+          <dd>
+            <InlineAlert variant="error">{rowError}</InlineAlert>
+          </dd>
+        </div>
+      ) : null}
+    </>
   );
 }
 

@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 48 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2)', () => {
+  it('ERROR_CODES contains the 49 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2)', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -92,6 +92,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'MERGE_SUBJECT_NOT_ACTIVE',
       'CONTRADICTION_OVERRIDE_REQUIRED',
       'REVERSAL_JUSTIFICATION_REQUIRED',
+      // TR-3 B2 — 1 email-verification request consent gate (denied OR empty-ledger → 403).
+      'VERIFICATION_CONSENT_REQUIRED',
     ]);
   });
 });

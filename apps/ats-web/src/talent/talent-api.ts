@@ -6,6 +6,9 @@ import type {
   CreateAttachmentRequest,
   CreateTalentRecordRequest,
   DraftFromResumeRequest,
+  EmailSlot,
+  EmailVerificationRequestResult,
+  EmailVerificationStatusResponse,
   ParseResumeResult,
   PresignedPutResult,
   ResumeUploadUrlRequest,
@@ -136,6 +139,29 @@ export async function parseDraftFromResume(
   return apiClient.post<ParseResumeResult>(
     '/v1/talent-records/draft-from-resume',
     body,
+  );
+}
+
+// TR-3 B2 — request an email-verification for a STORED slot (email1|email2).
+// Server derives the address from the stored field; the FE never sends a
+// free-form address. Scope: talent:edit (server-gated).
+export async function requestEmailVerification(
+  recordId: string,
+  slot: EmailSlot,
+): Promise<EmailVerificationRequestResult> {
+  return apiClient.post<EmailVerificationRequestResult>(
+    `/v1/talent-records/${encodeURIComponent(recordId)}/email-verifications`,
+    { slot },
+  );
+}
+
+// TR-3 B2 — the per-slot email-verification status (two items, email1 then
+// email2). Status is a band/label, never a numeric value.
+export async function getEmailVerificationStatus(
+  recordId: string,
+): Promise<EmailVerificationStatusResponse> {
+  return apiClient.get<EmailVerificationStatusResponse>(
+    `/v1/talent-records/${encodeURIComponent(recordId)}/email-verifications`,
   );
 }
 

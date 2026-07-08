@@ -274,6 +274,77 @@ export class TalentTrustService {
     return written;
   }
 
+  // TR-3 B2 (§3.2) — CONFIRM: the one atomic method behind the public confirm
+  // route. Given the sha256-at-rest token_hash (the apps/api confirm controller
+  // hashes the presented raw token with the flow's local util), this:
+  //   1. CONSUMES the request — a single guarded UPDATE (repo) claims it,
+  //      flipping PENDING→CONFIRMED + stamping consumed_at, ONLY if still live.
+  //      The replay guard IS this UPDATE: a second confirm (or a rotated/expired
+  //      /bad token) matches zero rows → { verified:false }. The caller maps
+  //      EVERY false to one indistinguishable not-found (oracle-resistance).
+  //   2. MINTS the PLATFORM_VERIFIED EMAIL anchor (new row per the 5-field key)
+  //      — dimension IDENTITY, assertion_type EMAIL_CONTROL_VERIFIED, method
+  //      CONTROL_ROUND_TRIP (strength 0.7), ai_derived:false, created_by
+  //      'verification' — beside any unverified SELF row for the same value.
+  //      Exists-checked at PLATFORM_VERIFIED so a (belt-and-braces) re-entry
+  //      never violates the unique key.
+  //   3. RECOMPUTES TrustState → IDENTITY lifts to CORROBORATED, and the TR-6
+  //      watermark re-selects the subject on its next poll (no extra wiring).
+  // It performs NO subject resolve/merge (DDR §5 — confirm never auto-resolves).
+  async confirmEmailVerification(
+    tokenHash: string,
+  ): Promise<{ verified: boolean; subject_id?: string; tenant_id?: string }> {
+    const now = new Date();
+    const claimed = await this.repo.consumeVerificationRequest(tokenHash, now);
+    if (claimed === null) return { verified: false };
+
+    const existing = await this.repo.findSubjectAnchor(
+      claimed.tenant_id,
+      claimed.subject_id,
+      claimed.anchor_kind,
+      claimed.normalized_value,
+      'PLATFORM_VERIFIED',
+    );
+    if (existing === null) {
+      const strength = deriveStrength('PLATFORM_VERIFIED', 'CONTROL_ROUND_TRIP');
+      await this.repo.insertAnchor({
+        evidence: {
+          subject_id: claimed.subject_id,
+          tenant_id: claimed.tenant_id,
+          dimension: 'IDENTITY',
+          // EMAIL → EMAIL_CONTROL_VERIFIED (the OPEN-6 IDENTITY registry name);
+          // PHONE reserved for TR-3 v2 (v1 mints EMAIL only, per the request gate).
+          assertion_type:
+            claimed.anchor_kind === 'EMAIL'
+              ? 'EMAIL_CONTROL_VERIFIED'
+              : 'PHONE_CONTROL_VERIFIED',
+          assertion_payload: {
+            normalized_value: claimed.normalized_value,
+            verification_request_id: claimed.id,
+          },
+          source_class: 'PLATFORM_VERIFIED',
+          method: 'CONTROL_ROUND_TRIP',
+          strength,
+          collected_at: now,
+          decay_profile: 'SLOW',
+          portability_class: 'TENANT_ONLY',
+          ai_derived: false,
+          current_status: EVENT_TO_STATUS.CREATED,
+          created_by: 'verification',
+        },
+        anchor_kind: claimed.anchor_kind,
+        normalized_value: claimed.normalized_value,
+      });
+    }
+
+    await this.recompute(claimed.subject_id, claimed.tenant_id, now);
+    return {
+      verified: true,
+      subject_id: claimed.subject_id,
+      tenant_id: claimed.tenant_id,
+    };
+  }
+
   // TR-2a-B2 (DDR-2 §2 + Amendment §2.1 + Name-Wiring §1) — the arrival-time
   // resolve DECISION. The B1 R1.3 "oldest anchor wins" auto-resolve is RETIRED.
   //

@@ -559,6 +559,16 @@ const TALENT_TRUST_TR6_MERGE_OP_KIND_MIGRATION = resolve(
   ROOT,
   'libs/talent-trust/prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
 );
+// TR-3 B2 — the VerificationRequest table (T3-B1, landed writer-less). The
+// email-verification provider states seed/read it (the pending-token confirm
+// state INSERTs a row; the request-happy state's confirm path writes one), and
+// the regenerated client SELECTs its columns, so the table must exist or those
+// provider states 500. COUPLING FLAG: this TALENT_TRUST migration list is shared
+// with the TR track — a concurrent TR lander rebases this addition.
+const TALENT_TRUST_TR3_VERIFICATION_REQUEST_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260708120000_tr3_b1_verification_request/migration.sql',
+);
 const SAVED_LIST_INIT_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
@@ -749,6 +759,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // arrival) is already truncated above (ingestion).
       await c.query('TRUNCATE TABLE talent_trust."ResolutionSubject" CASCADE');
       await c.query('TRUNCATE TABLE talent_trust."SubjectMergeOperation" CASCADE');
+      // TR-3 B2 — VerificationRequest has NO FK to ResolutionSubject (subject_id
+      // is a logical UUID ref), so the CASCADE above does not clear it; truncate
+      // explicitly so a prior email-verification interaction's row does not leak.
+      await c.query('TRUNCATE TABLE talent_trust."VerificationRequest" CASCADE');
       await c.query('TRUNCATE TABLE saved_list."SavedList" CASCADE');
       // PC-7b — identity + settings. TRUNCATE Tenant CASCADE clears Site (FK) +
       // memberships/teams; IdentityAuditEvent (nullable tenant_id, no FK) and
@@ -2378,6 +2392,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // TR-6 B1 — SubjectMergeOperation.kind/actor/reason (the reverse-happy
         // advisory state's unmergeSubjects persists a DIRECT_UNMERGE row).
         TALENT_TRUST_TR6_MERGE_OP_KIND_MIGRATION,
+        // TR-3 B2 — VerificationRequest (the email-verification confirm/request
+        // provider states seed + write it).
+        TALENT_TRUST_TR3_VERIFICATION_REQUEST_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,
         SAVED_LIST_LIST_KIND_MIGRATION,
       ]) {
@@ -2424,10 +2441,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DATABASE_URL: process.env['DATABASE_URL'],
         AUTH_AUDIENCE: process.env['AUTH_AUDIENCE'],
         AUTH_PUBLIC_KEY: process.env['AUTH_PUBLIC_KEY'],
+        MAILER_PROVIDER: process.env['MAILER_PROVIDER'],
       };
       process.env['DATABASE_URL'] = url;
       process.env['AUTH_AUDIENCE'] = AUDIENCE;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
+      // TR-3 B2 — pin the STUB mailer so the email-verification request state's
+      // MAILER_PORT.send is a no-op (never SES). MailerModule's useFactory reads
+      // MAILER_PORT at binding; AppModule already imports it (via IdentityModule
+      // and now directly for the verification flow), so this env must resolve.
+      process.env['MAILER_PROVIDER'] = 'stub';
 
       // PR-A1a §6 — recruiter accessJwt carries 'submittal:create'.
       // PR-A1a-2 §3 — adds 'submittal:approve' for the 5 newly-guarded
@@ -4477,6 +4500,89 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
              WHERE id = $1`,
             [ATSW_DETAIL_SUPERSEDED_ID, ATSW_SUPERSEDED_BY_ID],
           );
+        });
+      },
+
+      // TR-3 B2 — email-verification REQUEST happy: a live record (id =
+      // PACT_TALENT_ID, the consumer's URL id) with a stored email1 + the full
+      // contacting-consent chain granted → the request gate passes and mails the
+      // stored slot (stub mailer). resolveOrCreateSubject materializes the
+      // subject; the VerificationRequest is written by the flow.
+      'an ats-web recruiter and a live talent record with a stored email and consent granted':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebTalentRecord(c, {
+              id: PACT_TALENT_ID,
+              firstName: 'Ada',
+              lastName: 'Lovelace',
+            });
+            await c.query(
+              `UPDATE talent_record."TalentRecord" SET email1 = $2 WHERE id = $1`,
+              [PACT_TALENT_ID, 'ada@example.com'],
+            );
+            await seedAtsWebContactingConsent(c);
+          });
+        },
+
+      // TR-3 B2 — email-verification REQUEST refused: the same live record with a
+      // non-empty ledger but contacting UN-granted → the consent check returns
+      // `denied`, which the verification gate maps to 403
+      // VERIFICATION_CONSENT_REQUIRED (the ruled divergence).
+      'an ats-web recruiter and a live talent record with consent NOT granted':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebTalentRecord(c, {
+              id: PACT_TALENT_ID,
+              firstName: 'Ada',
+              lastName: 'Lovelace',
+            });
+            await c.query(
+              `UPDATE talent_record."TalentRecord" SET email1 = $2 WHERE id = $1`,
+              [PACT_TALENT_ID, 'ada@example.com'],
+            );
+            await seedAtsWebNoContactingConsent(c);
+          });
+        },
+
+      // TR-3 B2 — public confirm happy: a PENDING VerificationRequest whose
+      // token_hash = sha256(the consumer's example token).base64url, pointing at
+      // a seeded ACTIVE subject. The confirm consumes it + mints the
+      // PLATFORM_VERIFIED anchor + recomputes → 200 VERIFIED.
+      'a pending email-verification token exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          const subjectId = '00000000-0000-7000-8000-7e0000000001';
+          await seedAtsWebResolutionSubject(c, { id: subjectId });
+          const { createHash } =
+            require('node:crypto') as typeof import('node:crypto');
+          const tokenHash = createHash('sha256')
+            .update('a-valid-raw-token')
+            .digest('base64url');
+          await c.query(
+            `INSERT INTO talent_trust."VerificationRequest"
+               (id, tenant_id, talent_record_id, subject_id, anchor_kind,
+                normalized_value, token_hash, status, created_by, expires_at)
+             VALUES ($1,$2,$3,$4,'EMAIL','confirm@example.com',$5,'PENDING',
+                     'pact-seed', NOW() + INTERVAL '72 hours')`,
+            [
+              '00000000-0000-7000-8000-7e0000000002',
+              TENANT_ID,
+              PACT_TALENT_ID,
+              subjectId,
+              tokenHash,
+            ],
+          );
+        });
+      },
+
+      // TR-3 B2 — public confirm not-found: an empty VerificationRequest floor
+      // (resetAllRows truncates it) → any token misses → the ONE oracle-resistant
+      // 404 NOT_FOUND.
+      'no matching email-verification token exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
         });
       },
 

@@ -37,6 +37,9 @@ export type {
   RefActionRecord,
   SweepStepRecord,
   CollisionRecord,
+  // TR-3 B2 — the VerificationRequest row + create input (the writer's shapes).
+  VerificationRequestRow,
+  CreateVerificationRequestInput,
 } from './lib/talent-trust.repository.js';
 
 // TR-2a-3 advisory resolution — the merge action + reversal service input shapes

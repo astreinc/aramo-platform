@@ -319,6 +319,13 @@ export const ERROR_CODES = [
   'MERGE_SUBJECT_NOT_ACTIVE',  // 409 — approve merge whose surviving/merged subject is not ACTIVE (already merged elsewhere; the R5 double-merge guard).
   'CONTRADICTION_OVERRIDE_REQUIRED',  // 400 — approve a has_contradiction advisory without override_acknowledged=true + a justification (R3 / F34 accountability).
   'REVERSAL_JUSTIFICATION_REQUIRED',  // 400 — reverse without a justification (R4 — a merge reversal is high-consequence, never silent).
+  // TR-3 B2 (DDR §2.1) — the email-verification REQUEST consent gate. Fires when the
+  // contacting/email consent check returns denied OR error/empty-ledger (the ruled
+  // divergence from the engagement send-gate, which maps empty-ledger to 500): a
+  // voluntary enhancement fails CLOSED on unknown consent state. HTTP 403. (The
+  // CONFIRM path is oracle-resistant and reuses the generic NOT_FOUND 404 for every
+  // invalid/expired/consumed/revoked/rate-limited case — no verification-revealing code.)
+  'VERIFICATION_CONSENT_REQUIRED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
