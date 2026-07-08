@@ -2644,6 +2644,31 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         });
       },
+      // PC-7a — 2 consent events so that a ?limit=1 read returns 1 event AND a
+      // non-null next_cursor: the cursor-opacity pin (the FE passes it back
+      // verbatim, never parsed). Uses the live seedConsentEvent.
+      'an ats-web recruiter and a talent with multiple consent history events':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedConsentEvent(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1b01',
+              scope: 'profile_storage',
+              action: 'granted',
+              occurredAt: '2026-04-29T00:00:00.000Z',
+              createdAt: '2026-04-29T00:00:00.000Z',
+              expiresAt: null,
+            });
+            await seedConsentEvent(c, {
+              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1b02',
+              scope: 'matching',
+              action: 'granted',
+              occurredAt: '2026-04-30T00:00:00.000Z',
+              createdAt: '2026-04-30T00:00:00.000Z',
+              expiresAt: null,
+            });
+          });
+        },
       'a recruiter session and a talent with consent history': async () => {
         // §4.2 #2 — seed 1 granted TalentConsentEvent. The pact response
         // shape is events:[1 element] with next_cursor=like(CURSOR). The
