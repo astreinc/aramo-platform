@@ -548,3 +548,46 @@ model SubjectMergeOperation {
   @@index([advisory_id])
   @@schema("talent_trust")
 }
+
+// TR-3 B1 (DDR §2.2) — the email-verification request. The invitation-token
+// pattern verbatim: a secret randomBytes(32).base64url is emailed as the confirm
+// link, only its sha256 hash lives here (token_hash), single-use via consumed_at
+// under an atomic replay-guarded transaction, app-side 72h TTL (verification
+// links are shorter-lived than invites). Both keys carried: consent + recruiter
+// context key by record (talent_record_id), the anchor mints on the subject
+// (subject_id). anchor_kind is EMAIL only in v1 (the flow is anchor-kind
+// parameterized; PHONE is a deferred sub-scope). Landed WRITER-LESS in B1 — the
+// request/confirm flow is T3-B2 (tests seed rows directly, the supersession
+// precedent). No cross-schema FK (I1 — bare UUIDs).
+model VerificationRequest {
+  id String @id @db.Uuid
+
+  tenant_id        String @db.Uuid
+  talent_record_id String @db.Uuid
+  subject_id       String @db.Uuid
+
+  /// AnchorKind closed vocabulary: EMAIL | PHONE (EMAIL only in TR-3 v1)
+  anchor_kind      String
+  normalized_value String
+
+  // sha256(raw).base64url — the raw token is NEVER stored (invitation pattern).
+  token_hash String
+
+  /// VerificationRequestStatus closed vocabulary: PENDING | CONFIRMED | EXPIRED
+  status String @default("PENDING")
+
+  created_by String
+
+  created_at  DateTime  @default(now()) @db.Timestamptz
+  expires_at  DateTime  @db.Timestamptz
+  // Stamped LAST on a successful confirm, under the replay-guarded transaction —
+  // its non-null value is the single-use marker.
+  consumed_at DateTime? @db.Timestamptz
+
+  // The token is the confirm route's only authority — the lookup must be unique.
+  @@unique([token_hash])
+  // The reviewer/idempotency reads: open requests per tenant; requests by subject.
+  @@index([tenant_id, status])
+  @@index([subject_id])
+  @@schema("talent_trust")
+}

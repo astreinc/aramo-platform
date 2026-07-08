@@ -4,16 +4,25 @@ import { isConfirmingAnchor } from '../lib/anchor-confirmation.js';
 import { ANCHOR_KINDS, SOURCE_CLASSES } from '../lib/vocab.js';
 
 // TR-2a-B1 §6(e) — isConfirmingAnchor truth table (DDR-1 §2.1/§2.2/§3.2).
-// Confirming iff kind ∈ {EMAIL, PHONE} AND class ∈ {THIRD_PARTY_VERIFIED}.
-// Total and fail-closed over ALL SIX SourceClass values and any unknown input.
-describe('isConfirmingAnchor — confirming/non-confirming projection (DDR-1 §3.2)', () => {
-  it('confirms ONLY (EMAIL|PHONE) × THIRD_PARTY_VERIFIED — full truth table over all six classes', () => {
+// TR-3 (DDR-1 Amendment v1.2 §6.2) — PLATFORM_VERIFIED joins the confirming set,
+// cashed in with its producer. Confirming iff kind ∈ {EMAIL, PHONE} AND
+// class ∈ {THIRD_PARTY_VERIFIED, PLATFORM_VERIFIED}. Total and fail-closed over
+// ALL SEVEN SourceClass values and any unknown input.
+describe('isConfirmingAnchor — confirming/non-confirming projection (DDR-1 §3.2 + Amendment v1.2)', () => {
+  const CONFIRMING_CLASSES = new Set(['THIRD_PARTY_VERIFIED', 'PLATFORM_VERIFIED']);
+
+  it('confirms ONLY (EMAIL|PHONE) × {THIRD_PARTY_VERIFIED, PLATFORM_VERIFIED} — full truth table over all seven classes', () => {
     for (const kind of ANCHOR_KINDS) {
       for (const cls of SOURCE_CLASSES) {
-        const expected = cls === 'THIRD_PARTY_VERIFIED';
+        const expected = CONFIRMING_CLASSES.has(cls);
         expect(isConfirmingAnchor(kind, cls)).toBe(expected);
       }
     }
+  });
+
+  it('(TR-3 acceptance a) PLATFORM_VERIFIED is confirming for both anchor kinds', () => {
+    expect(isConfirmingAnchor('EMAIL', 'PLATFORM_VERIFIED')).toBe(true);
+    expect(isConfirmingAnchor('PHONE', 'PLATFORM_VERIFIED')).toBe(true);
   });
 
   it('the higher independence-ladder classes are non-confirming (no producer — fail-closed, DDR-1 §2.2)', () => {
@@ -36,7 +45,6 @@ describe('isConfirmingAnchor — confirming/non-confirming projection (DDR-1 §3
   it('is total and fail-closed for unknown/future kinds and classes (never Tier-A by omission)', () => {
     // Out-of-union values reach this in principle via casts / future vocab.
     expect(isConfirmingAnchor('FUTURE_KIND' as never, 'THIRD_PARTY_VERIFIED')).toBe(false);
-    expect(isConfirmingAnchor('EMAIL', 'PLATFORM_VERIFIED' as never)).toBe(false);
     expect(isConfirmingAnchor('EMAIL', 'GOV_ID' as never)).toBe(false);
     expect(isConfirmingAnchor('' as never, '' as never)).toBe(false);
   });

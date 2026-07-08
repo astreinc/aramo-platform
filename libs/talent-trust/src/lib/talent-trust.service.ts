@@ -847,6 +847,8 @@ export class TalentTrustService {
       dimension: e.dimension,
       source_class: e.source_class,
       method: e.method,
+      // TR-3 (OPEN-6) — the assertion_type feeds the top-band registry gate.
+      assertion_type: e.assertion_type,
       strength: e.strength,
       current_status: e.current_status,
       decay_profile: e.decay_profile,

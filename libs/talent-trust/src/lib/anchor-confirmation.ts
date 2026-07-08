@@ -20,10 +20,17 @@ import type { AnchorKind, SourceClass } from './vocab.js';
 // (AUTHORITATIVE_ISSUER, CRYPTOGRAPHIC, BIOMETRIC) are semantically Tier-A per
 // Spec §6A but have NO anchor producer — per DDR-1 §2.2 fail-closed totality
 // they remain non-confirming until a DDR amendment admits each alongside its
-// producer. A future PLATFORM_VERIFIED (e.g. magic-link) is reserved likewise.
-// Nothing earns confirming power by omission.
+// producer. Nothing earns confirming power by omission.
+//
+// PLATFORM_VERIFIED — CASHED IN (TR-3, DDR-1 Amendment v1.2 §6.2): the semantic
+// reservation §3.2 made is granted now that its producer exists (the email
+// round-trip verification flow, T3-B2), honoring §2.2 — it earns confirming
+// power by amendment-with-producer, not by omission.
 const CONFIRMING_ANCHOR_KINDS: ReadonlySet<string> = new Set(['EMAIL', 'PHONE']);
-const CONFIRMING_SOURCE_CLASSES: ReadonlySet<string> = new Set(['THIRD_PARTY_VERIFIED']);
+const CONFIRMING_SOURCE_CLASSES: ReadonlySet<string> = new Set([
+  'THIRD_PARTY_VERIFIED',
+  'PLATFORM_VERIFIED',
+]);
 
 // Total and fail-closed (DDR-1 §2.2): any (kind, class) pair not explicitly
 // granted confirming power — including unknown/future kinds or classes passed

@@ -91,6 +91,8 @@ export {
   EVIDENCE_LINK_RELATIONS,
   PRESENTATION_BANDS,
   EVENT_TO_STATUS,
+  // TR-3 (OPEN-6, §3) — the per-dimension authoritative-assertion-type registry.
+  AUTHORITATIVE_ASSERTION_TYPES,
 } from './lib/vocab.js';
 export type {
   ResolutionSubjectStatus,

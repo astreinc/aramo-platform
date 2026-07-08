@@ -93,10 +93,22 @@ export type MatchResolutionAction = (typeof MATCH_RESOLUTION_ACTIONS)[number];
 // ---- EvidenceRecord.source_class — the independence ladder (§5.2) ------
 // ORDERED worthless → authoritative. The ordering is fixed (R2); the index
 // in this array IS the ladder position used by strength + band derivation.
+// The ladder position is POSITIONAL and RELATIVE — nothing persists a numeric
+// position value, so a ladder insertion is safe (the ordinal is computed at read
+// time via SOURCE_CLASSES.indexOf, never stored).
+//
+// TR-3 (DDR-1 Amendment v1.2 §6.1) — PLATFORM_VERIFIED admitted with its
+// producer, inserted BETWEEN THIRD_PARTY_VERIFIED and AUTHORITATIVE_ISSUER: the
+// platform performed the verification act itself (stronger than trusting a
+// channel's flag), but a mailbox round-trip is not an authoritative identity
+// document (weaker than an issuer). Yields CORROBORATED on IDENTITY via the
+// existing ≥THIRD_PARTY_VERIFIED gate — an honest "platform-verified email
+// control", never more.
 export const SOURCE_CLASSES = [
   'SELF',
   'THIRD_PARTY_UNVERIFIED',
   'THIRD_PARTY_VERIFIED',
+  'PLATFORM_VERIFIED',
   'AUTHORITATIVE_ISSUER',
   'CRYPTOGRAPHIC',
   'BIOMETRIC',
@@ -104,6 +116,10 @@ export const SOURCE_CLASSES = [
 export type SourceClass = (typeof SOURCE_CLASSES)[number];
 
 // ---- EvidenceRecord.method (§5.3) --------------------------------------
+// TR-3 (DDR-1 Amendment v1.2 §6.3) — CONTROL_ROUND_TRIP: the platform proved
+// control of a channel by a round-trip (a link sent to the address and clicked
+// back). Deterministic (it either completed or did not — no LLM); the method
+// PLATFORM_VERIFIED email/phone verification is obtained by.
 export const METHODS = [
   'SELF_DECLARED',
   'DOCUMENT',
@@ -111,6 +127,7 @@ export const METHODS = [
   'SIGNATURE',
   'BIOMETRIC',
   'HUMAN_ATTESTED',
+  'CONTROL_ROUND_TRIP',
 ] as const;
 export type Method = (typeof METHODS)[number];
 
@@ -128,6 +145,10 @@ export const SEED_ASSERTION_TYPES = [
   'LIVENESS',
   'RIGHT_TO_WORK',
   'IDENTITY_DOCUMENT',
+  // TR-3 (DDR §2.5) — the platform email/phone control-verification assertions
+  // the PLATFORM_VERIFIED producer mints (EMAIL ships in v1; PHONE is reserved).
+  'EMAIL_CONTROL_VERIFIED',
+  'PHONE_CONTROL_VERIFIED',
 ] as const;
 export type SeedAssertionType = (typeof SEED_ASSERTION_TYPES)[number];
 
@@ -192,4 +213,30 @@ export const EVENT_TO_STATUS: Record<EvidenceEventType, EvidenceStatus> = {
   SUPERSEDED: 'SUPERSEDED',
   DISPUTED: 'DISPUTED',
   DISPUTE_RESOLVED: 'VALID',
+};
+
+// ---- OPEN-6: the per-dimension authoritative-assertion-type registry --------
+// TR-3 (DDR §3) — a PURE engine map (the EVENT_TO_STATUS pattern): the closed
+// set of assertion_types that may LIFT a dimension into the top two bands. It
+// gates band ELEVATION, not ingestion — `assertion_type` stays a free string at
+// the DTO (extensibility preserved, see SEED_ASSERTION_TYPES above); an
+// UNregistered type records as evidence normally but cannot raise a dimension to
+// INDEPENDENTLY_VERIFIED or AUTHORITATIVE. This adds a *what-was-asserted*
+// requirement on top of the existing *how-it-arrived* (source_class) gate.
+//
+// NOT tenant-configurable (trust semantics never are — I2/I5 spirit). Registry
+// changes are DDR-amendment-level edits, reviewed like the channel map. A dimension
+// with an EMPTY set (CONTINUITY today) keeps its top gates UNREACHABLE — fail-closed:
+// TR-5/TR-8 populate it. Seed sets per DDR §3.
+export const AUTHORITATIVE_ASSERTION_TYPES: Record<TrustDimension, readonly string[]> = {
+  IDENTITY: [
+    'IDENTITY_DOCUMENT',
+    'FACE_MATCH',
+    'LIVENESS',
+    'EMAIL_CONTROL_VERIFIED',
+    'PHONE_CONTROL_VERIFIED',
+  ],
+  CLAIMS: ['DEGREE', 'CERTIFICATION', 'EMPLOYMENT'],
+  CONTINUITY: [],
+  ELIGIBILITY: ['RIGHT_TO_WORK'],
 };
