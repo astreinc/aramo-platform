@@ -326,6 +326,13 @@ export const ERROR_CODES = [
   // CONFIRM path is oracle-resistant and reuses the generic NOT_FOUND 404 for every
   // invalid/expired/consumed/revoked/rate-limited case — no verification-revealing code.)
   'VERIFICATION_CONSENT_REQUIRED',
+  // TR-4 B1 (DDR §2.2) — the canonical claim-shape write gate. Evidence claiming a
+  // REGISTERED assertion_type (EMPLOYMENT / SKILL / the IDENTITY contact shapes)
+  // whose assertion_payload does not conform to that type's canonical contract is
+  // refused at the write path. HTTP 422. Registering a type is the deliberate act
+  // that buys comparability; UNregistered types stay @IsObject passthrough (the
+  // OPEN-6 admission-open posture — admission open, registration = shape commitment).
+  'CLAIM_SHAPE_INVALID',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

@@ -27,6 +27,10 @@ export interface ReconcilePlan {
 // Single-slot fill-null contact fields, keyed to the pipeline's real
 // assertion_types (recon §1). current_employer/email2/phone_home/phone_work have
 // no evidence writer today → deliberately omitted (no speculative slots).
+// TR-4 B1 (DDR §2.3) — contact writers CONVERGED on canonical key `value` as of
+// 2026-07-08; the `normalized_value ?? value` dual-reads below stay to read
+// pre-convergence rows keyed `normalized_value` (append-only history — no rewrite).
+// New rows carry `value`; the fallback order is harmless once legacy rows age out.
 const SINGLE_SLOT: ReadonlyArray<{
   field: keyof EnrichmentPatch & string;
   recordField: keyof TalentRecordView & string;

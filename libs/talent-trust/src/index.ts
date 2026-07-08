@@ -71,6 +71,18 @@ export { isConfirmingAnchor } from './lib/anchor-confirmation.js';
 // TR-2a-B2 (Amendment §2.2) — the CONFIRMED-arm NAME-conflict predicate.
 export { namesFlatlyConflict } from './lib/name-guard.js';
 
+// TR-4 B1 (DDR §2.1/§2.2) — the canonical claim-shape registry (pure validators/
+// normalizers) + the write-path helper + the deterministic date parse table.
+// B2/B3 and the acceptance suite consume these.
+export {
+  CANONICAL_CLAIM_SHAPES,
+  validateClaimShape,
+  isRegisteredAssertionType,
+  parseToIsoDateOrNull,
+  deriveSkillIdCanonical,
+  type ClaimShapeResult,
+} from './lib/canonical-claim-shapes.js';
+
 // DTO (closed-vocabulary enforcement surface, Ruling 2).
 export { RecordEvidenceDto, SubjectRefDto } from './lib/dto/record-evidence.dto.js';
 

@@ -272,6 +272,12 @@ model EvidenceLink {
   tenant_id  String   @db.Uuid
   created_at DateTime @default(now()) @db.Timestamptz
 
+  // TR-4 B1 (DDR §2.4) — one semantic fact, one row. A (from, to, relation)
+  // triple is unique: re-asserting the same contradiction/supersession is a
+  // no-op at the service layer and rejected at the DB. tenant_id is not in the
+  // key — the evidence ids are globally unique UUIDs, so the triple is already
+  // tenant-unambiguous; adding tenant_id would let a cross-tenant duplicate slip.
+  @@unique([from_evidence_id, to_evidence_id, relation])
   @@index([tenant_id, from_evidence_id])
   @@index([tenant_id, to_evidence_id])
   @@schema("talent_trust")

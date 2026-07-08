@@ -56,6 +56,7 @@ const MIGRATIONS = [
   // operation record, so the table must exist or reconcile 500s.
   'libs/talent-trust/prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
   'libs/talent-trust/prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 const ISSUER = 'Aramo Core Auth';

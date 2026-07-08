@@ -67,6 +67,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   REVERSAL_JUSTIFICATION_REQUIRED: 400,
   // TR-3 B2 — email-verification request consent gate (denied OR empty-ledger).
   VERIFICATION_CONSENT_REQUIRED: 403,
+  // TR-4 B1 — registered assertion_type written with a non-canonical payload.
+  CLAIM_SHAPE_INVALID: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

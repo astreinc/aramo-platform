@@ -45,6 +45,12 @@ const ATS_REF_UNIQUE_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260706120000_ats_ref_partial_unique/migration.sql',
 );
+// TR-4 B1 — EvidenceLink @@unique([from,to,relation]); contradict/supersede below
+// now existence-check first (repeat = no-op) and the DB rejects any stray dup.
+const LINK_UNIQUE_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
+);
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const REF_A = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
@@ -113,7 +119,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const watermarkSql = readFileSync(WATERMARK_MIGRATION_PATH, 'utf8');
       const atsRefUniqueSql = readFileSync(ATS_REF_UNIQUE_MIGRATION_PATH, 'utf8');
       const tr6Sqls = TR6_B1_MIGRATION_PATHS.map((p) => readFileSync(p, 'utf8'));
-      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql, ...tr6Sqls]) {
+      const linkUniqueSql = readFileSync(LINK_UNIQUE_MIGRATION_PATH, 'utf8');
+      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql, ...tr6Sqls, linkUniqueSql]) {
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
           if (trimmed.length === 0) continue;
@@ -138,7 +145,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         subjectRef: subjectRefA,
         dimension: 'CLAIMS',
         assertion_type: 'SKILL',
-        assertion_payload: { skill: 'TypeScript', years: 7 },
+        // TR-4 B1 — SKILL is now a registered canonical shape ({value_raw}).
+        assertion_payload: { value_raw: 'TypeScript' },
         source_class: 'SELF',
         method: 'SELF_DECLARED',
         portability_class: 'TENANT_ONLY',
@@ -227,7 +235,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         subjectRef: subjectRefA,
         dimension: 'CONTINUITY',
         assertion_type: 'EMPLOYMENT',
-        assertion_payload: { employer: 'Acme', current: true },
+        // TR-4 B1 — EMPLOYMENT is now a registered canonical shape.
+        assertion_payload: { employer_raw: 'Acme', role_title_raw: 'Engineer' },
         source_class: 'THIRD_PARTY_VERIFIED',
         method: 'DOCUMENT',
         portability_class: 'TENANT_ONLY',
@@ -238,7 +247,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         subjectRef: subjectRefA,
         dimension: 'CONTINUITY',
         assertion_type: 'EMPLOYMENT',
-        assertion_payload: { employer: 'Acme', current: true, refreshed: true },
+        assertion_payload: { employer_raw: 'Acme', role_title_raw: 'Senior Engineer' },
         source_class: 'AUTHORITATIVE_ISSUER',
         method: 'API_REGISTRY',
         portability_class: 'TENANT_ONLY',
@@ -363,7 +372,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         subjectRef: subjectRefC,
         dimension: 'CLAIMS',
         assertion_type: 'SKILL',
-        assertion_payload: { skill: 'Go' },
+        assertion_payload: { value_raw: 'Go' },
         source_class: 'SELF',
         method: 'SELF_DECLARED',
         portability_class: 'TENANT_ONLY',

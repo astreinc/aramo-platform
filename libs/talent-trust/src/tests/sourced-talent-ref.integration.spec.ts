@@ -110,7 +110,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         subjectRef: sourcedRef,
         dimension: 'CLAIMS',
         assertion_type: 'SKILL',
-        assertion_payload: { skill: 'Go', years: 4 },
+        // TR-4 B1 — SKILL registered canonical shape.
+        assertion_payload: { value_raw: 'Go' },
         source_class: 'SELF',
         method: 'SELF_DECLARED',
         portability_class: 'TENANT_ONLY',
@@ -133,7 +134,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         subjectRef: sourcedRef,
         dimension: 'IDENTITY',
         assertion_type: 'EMPLOYMENT',
-        assertion_payload: { employer: 'Acme' },
+        // TR-4 B1 — EMPLOYMENT registered canonical shape.
+        assertion_payload: { employer_raw: 'Acme', role_title_raw: 'Engineer' },
         source_class: 'SELF',
         method: 'SELF_DECLARED',
         portability_class: 'TENANT_ONLY',

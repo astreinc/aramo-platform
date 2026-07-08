@@ -1559,6 +1559,9 @@ components:
         request consent gate — denied OR error/empty-ledger; the ruled
         divergence from the engagement send-gate's 500 on empty-ledger, a
         voluntary enhancement failing closed on unknown consent state).
+        TR-4 B1 adds CLAIM_SHAPE_INVALID (422, the canonical claim-shape write
+        gate — a REGISTERED assertion_type written with a non-conforming
+        payload; unregistered types stay passthrough).
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1611,6 +1614,7 @@ components:
         - CONTRADICTION_OVERRIDE_REQUIRED
         - REVERSAL_JUSTIFICATION_REQUIRED
         - VERIFICATION_CONSENT_REQUIRED
+        - CLAIM_SHAPE_INVALID
 
     ErrorObject:
       type: object

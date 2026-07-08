@@ -29,6 +29,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
   '../../prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
   '../../prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
+  '../../prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
   // TR-2a-B1 — SubjectAnchor.source_class (regenerated client SELECTs it) + the
   // extended (…, source_class) unique key. Both required once tr2a1 exists.
   '../../prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
@@ -114,11 +115,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const { evidence, anchor } = written!;
 
       // The evidence is the source of truth: IDENTITY / EMAIL, normalized value
-      // in the payload, SELF-declared (unverified contact).
+      // in the payload under canonical key `value` (TR-4 B1 canary convergence),
+      // SELF-declared (unverified contact).
       expect(evidence.dimension).toBe('IDENTITY');
       expect(evidence.assertion_type).toBe('EMAIL');
       expect(evidence.source_class).toBe('SELF');
-      expect((evidence.assertion_payload as { normalized_value: string }).normalized_value).toBe(
+      expect((evidence.assertion_payload as { value: string }).value).toBe(
         'ada@example.com',
       );
 
@@ -188,7 +190,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const phoneEvidence = (await repo.listEvidenceBySubject(subjectId)).filter(
         (e) =>
           e.assertion_type === 'PHONE' &&
-          (e.assertion_payload as { normalized_value: string }).normalized_value === '19998887777',
+          // TR-4 B1 — anchor payloads converged on canonical key `value`.
+          (e.assertion_payload as { value: string }).value === '19998887777',
       );
       expect(phoneEvidence).toHaveLength(1);
     });

@@ -727,6 +727,25 @@ export class TalentTrustRepository {
     });
   }
 
+  // TR-4 B1 (DDR §2.4) — existence check backing the service-side no-op: is this
+  // exact semantic link (from, to, relation) already recorded? Keyed on the new
+  // @@unique triple. Returns true if a repeat raise should be skipped.
+  async evidenceLinkExists(
+    fromEvidenceId: string,
+    toEvidenceId: string,
+    relation: EvidenceLinkRelation,
+  ): Promise<boolean> {
+    const row = await this.prisma.evidenceLink.findFirst({
+      where: {
+        from_evidence_id: fromEvidenceId,
+        to_evidence_id: toEvidenceId,
+        relation,
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   // ---- TrustState (projection — recomputed on every write) -----------
 
   async upsertTrustState(input: TrustStateRow): Promise<TrustStateRow> {

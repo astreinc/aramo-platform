@@ -34,6 +34,7 @@ const MIGRATIONS = [
   // table and its kind/actor/reason columns.
   '../../prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
   '../../prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
+  '../../prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const CREATED_BY = 'tr2a3-resolution-integration';

@@ -182,6 +182,11 @@ export const EVIDENCE_EVENT_TYPES = [
   'SUPERSEDED',
   'DISPUTED',
   'DISPUTE_RESOLVED',
+  // TR-4 B1 (DDR §2.4) — the closure arm the contradiction machinery has lacked
+  // since TR-1. A human (B3's resolve API) applies it to a CONTRADICTED record;
+  // it projects back to VALID (below), lifting the CORROBORATED cap on recompute.
+  // Distinct from DISPUTE_RESOLVED (a separate axis — DISPUTED, not CONTRADICTED).
+  'CONTRADICTION_RESOLVED',
 ] as const;
 export type EvidenceEventType = (typeof EVIDENCE_EVENT_TYPES)[number];
 
@@ -213,6 +218,10 @@ export const EVENT_TO_STATUS: Record<EvidenceEventType, EvidenceStatus> = {
   SUPERSEDED: 'SUPERSEDED',
   DISPUTED: 'DISPUTED',
   DISPUTE_RESOLVED: 'VALID',
+  // TR-4 B1 (DDR §2.4) — a resolved contradiction returns the record to VALID
+  // (the same terminal DISPUTE_RESOLVED uses): the record re-accrues and the
+  // dimension's CORROBORATED cap lifts on the next recompute.
+  CONTRADICTION_RESOLVED: 'VALID',
 };
 
 // ---- OPEN-6: the per-dimension authoritative-assertion-type registry --------
