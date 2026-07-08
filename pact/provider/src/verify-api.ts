@@ -24,6 +24,10 @@ import { AppModule } from '@aramo/api';
 // (Gate-5 eslint amendment). Backends only; controllers stay live-verified.
 import { ObjectStorageService } from '@aramo/object-storage';
 import { ResumeParserService } from '@aramo/resume-parse';
+// PC-7c — Symbol()-keyed ports the tenant-user lifecycle injects. Overriding a
+// Symbol token requires the token itself (Gate-5 eslint amendment). MAILER_PORT
+// is a plain string ('MAILER_PORT'), overridden by string literal below.
+import { TENANT_COGNITO_PORT, AUDIT_FINANCIALS_GATE } from '@aramo/identity';
 // M5 PR-9 §4.2 — hashCanonicalizedBody imported for idempotency
 // replay/conflict state-handlers. The same hash function the controllers
 // use computes the request_hash that the seeded IdempotencyKey row must
@@ -770,6 +774,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await c.query('TRUNCATE TABLE identity."Tenant" CASCADE');
       await c.query('TRUNCATE TABLE identity."IdentityAuditEvent" CASCADE');
       await c.query('TRUNCATE TABLE settings."TenantSetting" CASCADE');
+      // PC-7c — User + Role are global (no tenant FK); CASCADE clears
+      // memberships, membership-roles, team-memberships, edges, invitations.
+      await c.query('TRUNCATE TABLE identity."User" CASCADE');
+      await c.query('TRUNCATE TABLE identity."Role" CASCADE');
     }
 
     // 4e-rest-b — seed the portal talent's TalentRecord for the portal-thin
@@ -1704,6 +1712,99 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
+    // PC-7c — identity-admin fixture ids + seed helpers. Tables with @updatedAt
+    // (User/Role/Membership/Team/Invitation) must supply updated_at.
+    const ATSW_USER_A = '00000000-0000-7000-8000-05e100000001';
+    const ATSW_USER_B = '00000000-0000-7000-8000-05e100000002';
+    const ATSW_MEMBERSHIP_ID = '00000000-0000-7000-8000-33b000000001';
+    const ATSW_ROLE_ID = '00000000-0000-7000-8000-401e00000001';
+    const ATSW_ITEAM_ID = '00000000-0000-7000-8000-77ea00000001';
+    const ATSW_TMEMBER_ID = '00000000-0000-7000-8000-77ee00000001';
+    const ATSW_EDGE_ID = '00000000-0000-7000-8000-ed6e00000001';
+
+    async function seedAtsWebUser(
+      c: Client,
+      params: { id: string; email: string; displayName?: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO identity."User" (id, email, display_name, updated_at)
+         VALUES ($1,$2,$3,NOW()) ON CONFLICT (id) DO NOTHING`,
+        [params.id, params.email, params.displayName ?? null],
+      );
+    }
+    async function seedAtsWebMembership(
+      c: Client,
+      params: { id: string; userId: string; isActive?: boolean; inviteStatus?: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO identity."UserTenantMembership"
+           (id, user_id, tenant_id, is_active, invite_status, updated_at)
+         VALUES ($1,$2,$3,$4,$5,NOW()) ON CONFLICT (id) DO NOTHING`,
+        [params.id, params.userId, TENANT_ID, params.isActive ?? true, params.inviteStatus ?? 'ACTIVE'],
+      );
+    }
+    async function seedAtsWebRole(
+      c: Client,
+      params: { id: string; key: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO identity."Role" (id, key, updated_at)
+         VALUES ($1,$2,NOW()) ON CONFLICT (id) DO NOTHING`,
+        [params.id, params.key],
+      );
+    }
+    async function seedAtsWebMembershipRole(
+      c: Client,
+      params: { id: string; membershipId: string; roleId: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO identity."UserTenantMembershipRole" (id, membership_id, role_id)
+         VALUES ($1,$2,$3) ON CONFLICT (id) DO NOTHING`,
+        [params.id, params.membershipId, params.roleId],
+      );
+    }
+    async function seedAtsWebIdentityTeam(
+      c: Client,
+      params: { id: string; name: string; ownerUserId: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO identity."Team" (id, tenant_id, name, owner_user_id, updated_at)
+         VALUES ($1,$2,$3,$4,NOW()) ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.name, params.ownerUserId],
+      );
+    }
+    async function seedAtsWebTeamMembership(
+      c: Client,
+      params: { id: string; teamId: string; userId: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO identity."TeamMembership" (id, tenant_id, team_id, user_id)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.teamId, params.userId],
+      );
+    }
+    async function seedAtsWebManagementEdge(
+      c: Client,
+      params: { id: string; managerUserId: string; reportUserId: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO identity."ManagementEdge" (id, tenant_id, manager_user_id, report_user_id)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+        [params.id, TENANT_ID, params.managerUserId, params.reportUserId],
+      );
+    }
+    async function seedAtsWebInvitation(
+      c: Client,
+      params: { id: string; userId: string; membershipId: string; tokenHash: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO identity."Invitation"
+           (id, user_id, tenant_id, membership_id, token_hash, expires_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,NOW() + INTERVAL '7 days',NOW()) ON CONFLICT (id) DO NOTHING`,
+        [params.id, params.userId, TENANT_ID, params.membershipId, params.tokenHash],
+      );
+    }
+
     // COMPOSABLE (PC-3 reuse): seed requisition + talent + a tiered active
     // examination for (PACT_TALENT_ID, ATSW_SUB_JOB_ID).
     async function seedAtsWebExamination(
@@ -2557,6 +2658,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'audit:read',
           'tenant:admin:domain',
           'tenant:admin:sites',
+          // PC-7c — identity-admin (tenant-users directory/assignable reads +
+          // management edges). tenant:admin:user-manage + team:manage already
+          // present above.
+          'tenant:user:read:directory',
+          'tenant:user:read:assignable',
+          'org:manage',
         ],
       })
         .setProtectedHeader({ alg: ALG })
@@ -2694,6 +2801,25 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           delivery_channel: 'email',
         }),
       };
+      // PC-7c — tenant-user lifecycle backends (deterministic; controllers +
+      // DB stay live-verified). Cognito adminCreateUser returns a fixed sub;
+      // disable/enable/delete are void. audit-gate pins the gated-ON shapes
+      // (isFinancialsAuditEnabled → true). MAILER_PORT (string token) send
+      // returns a fixed message_id.
+      const mockTenantCognito = {
+        adminCreateUser: async () => ({
+          cognito_sub: '00000000-0000-7000-8000-c09000000001',
+        }),
+        adminDeleteUser: async () => undefined,
+        adminDisableUser: async () => undefined,
+        adminEnableUser: async () => undefined,
+      };
+      const mockAuditFinancialsGate = {
+        isFinancialsAuditEnabled: async () => true,
+      };
+      const mockMailer = {
+        send: async () => ({ message_id: 'pact-mock-message-id' }),
+      };
 
       module = await Test.createTestingModule({
         imports: [AppModule],
@@ -2707,6 +2833,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .useValue(mockObjectStorage)
         .overrideProvider(ResumeParserService)
         .useValue(mockResumeParser)
+        // PC-7c — tenant-user lifecycle backends (Symbol + string tokens).
+        .overrideProvider(TENANT_COGNITO_PORT)
+        .useValue(mockTenantCognito)
+        .overrideProvider(AUDIT_FINANCIALS_GATE)
+        .useValue(mockAuditFinancialsGate)
+        .overrideProvider('MAILER_PORT')
+        .useValue(mockMailer)
         .compile();
 
       app = module.createNestApplication();
@@ -4866,6 +4999,113 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             name: 'West Wing',
             parentSiteId: ATSW_SITE_ID,
           });
+        });
+      },
+
+      // ===============================================================
+      // PC-7c — identity-admin (tenant-users / teams / management-edges).
+      // ===============================================================
+      'an ats-web admin and a tenant user with a role exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebUser(c, { id: ATSW_USER_A, email: 'ada@astre.example', displayName: 'Ada Lovelace' });
+          await seedAtsWebMembership(c, { id: ATSW_MEMBERSHIP_ID, userId: ATSW_USER_A });
+          await seedAtsWebRole(c, { id: ATSW_ROLE_ID, key: 'recruiter' });
+          await seedAtsWebMembershipRole(c, {
+            id: '00000000-0000-7000-8000-401e0000000a',
+            membershipId: ATSW_MEMBERSHIP_ID,
+            roleId: ATSW_ROLE_ID,
+          });
+        });
+      },
+      'an ats-web admin can invite a tenant user': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebRole(c, { id: ATSW_ROLE_ID, key: 'recruiter' });
+        });
+      },
+      'an ats-web admin and an inactive tenant user exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebUser(c, { id: ATSW_USER_A, email: 'ada@astre.example', displayName: 'Ada Lovelace' });
+          await seedAtsWebMembership(c, { id: ATSW_MEMBERSHIP_ID, userId: ATSW_USER_A, isActive: false });
+        });
+      },
+      'an ats-web admin and a pending-invite tenant user exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebUser(c, { id: ATSW_USER_A, email: 'ada@astre.example', displayName: 'Ada Lovelace' });
+          await seedAtsWebMembership(c, {
+            id: ATSW_MEMBERSHIP_ID,
+            userId: ATSW_USER_A,
+            isActive: true,
+            inviteStatus: 'INVITED',
+          });
+          await seedAtsWebInvitation(c, {
+            id: '00000000-0000-7000-8000-19f100000001',
+            userId: ATSW_USER_A,
+            membershipId: ATSW_MEMBERSHIP_ID,
+            tokenHash: 'pact-invite-token-hash-pending',
+          });
+        });
+      },
+      'an ats-web admin and a failed-invite tenant user exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebUser(c, { id: ATSW_USER_A, email: 'ada@astre.example', displayName: 'Ada Lovelace' });
+          await seedAtsWebMembership(c, {
+            id: ATSW_MEMBERSHIP_ID,
+            userId: ATSW_USER_A,
+            isActive: true,
+            inviteStatus: 'FAILED',
+          });
+          await seedAtsWebInvitation(c, {
+            id: '00000000-0000-7000-8000-19f100000002',
+            userId: ATSW_USER_A,
+            membershipId: ATSW_MEMBERSHIP_ID,
+            tokenHash: 'pact-invite-token-hash-failed',
+          });
+        });
+      },
+      'an ats-web admin and two users exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebUser(c, { id: ATSW_USER_A, email: 'ada@astre.example', displayName: 'Ada Lovelace' });
+          await seedAtsWebUser(c, { id: ATSW_USER_B, email: 'grace@astre.example', displayName: 'Grace Hopper' });
+        });
+      },
+      'an ats-web admin and a management edge exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebUser(c, { id: ATSW_USER_A, email: 'ada@astre.example', displayName: 'Ada Lovelace' });
+          await seedAtsWebUser(c, { id: ATSW_USER_B, email: 'grace@astre.example', displayName: 'Grace Hopper' });
+          await seedAtsWebManagementEdge(c, { id: ATSW_EDGE_ID, managerUserId: ATSW_USER_A, reportUserId: ATSW_USER_B });
+        });
+      },
+      'an ats-web admin and a team exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebUser(c, { id: ATSW_USER_A, email: 'ada@astre.example', displayName: 'Ada Lovelace' });
+          await seedAtsWebUser(c, { id: ATSW_USER_B, email: 'grace@astre.example', displayName: 'Grace Hopper' });
+          await seedAtsWebIdentityTeam(c, { id: ATSW_ITEAM_ID, name: 'Alpha Pod', ownerUserId: ATSW_USER_A });
+        });
+      },
+      'an ats-web admin and a team with a member exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebUser(c, { id: ATSW_USER_A, email: 'ada@astre.example', displayName: 'Ada Lovelace' });
+          await seedAtsWebUser(c, { id: ATSW_USER_B, email: 'grace@astre.example', displayName: 'Grace Hopper' });
+          await seedAtsWebIdentityTeam(c, { id: ATSW_ITEAM_ID, name: 'Alpha Pod', ownerUserId: ATSW_USER_A });
+          await seedAtsWebTeamMembership(c, { id: ATSW_TMEMBER_ID, teamId: ATSW_ITEAM_ID, userId: ATSW_USER_B });
         });
       },
     };

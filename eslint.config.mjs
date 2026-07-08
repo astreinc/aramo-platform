@@ -117,6 +117,11 @@ export default [
             '@aramo/api',
             '@aramo/object-storage',
             '@aramo/resume-parse',
+            // PC-7c — the tenant-user lifecycle injects Symbol()-keyed ports
+            // (TENANT_COGNITO_PORT + AUDIT_FINANCIALS_GATE); overrideProvider on
+            // a Symbol needs the token imported by construction. @aramo/mailer
+            // NOT added (MAILER_PORT is a plain string token).
+            '@aramo/identity',
           ],
           depConstraints: SCOPE_DEP_CONSTRAINTS,
         },
