@@ -19,7 +19,11 @@ export default defineConfig({
   },
   server: {
     port: 4201,
-    host: '127.0.0.1',
+    // Increment-1 v1.1 ruling: bind `localhost` (not 127.0.0.1) so the printed
+    // dev URL matches the host in AUTH_PUBLIC_BASE_URL / the derived callback —
+    // the host-only PKCE cookie set at login is then present at the callback
+    // (the pkce_state_missing host divergence stays closed).
+    host: 'localhost',
     // Local-dev same-origin routing (Path B). The FE uses relative paths
     // with an empty base URL, so /auth and /v1 would otherwise hit the
     // Vite dev server (4201) and 404. Proxying them to the backends keeps
@@ -35,6 +39,16 @@ export default defineConfig({
       },
       '/v1': {
         target: 'http://localhost:3000', // apps/api
+        changeOrigin: true,
+        secure: false,
+      },
+      // Increment-1 §3.2 (Lead-ruled run-config): the platform-admin backend.
+      // 127.0.0.1 (not localhost) is deliberate — pins IPv4 so the proxy is
+      // immune to the ::1/127.0.0.1 resolution ambiguity a stray dev server on
+      // [::1]:3002 can introduce. The future platform-web FE (Increment-2)
+      // reuses this seam.
+      '/platform': {
+        target: 'http://127.0.0.1:3002', // apps/platform-admin
         changeOrigin: true,
         secure: false,
       },

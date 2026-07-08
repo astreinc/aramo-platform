@@ -45,6 +45,16 @@ deploy/seed-prod.sh           # regen client + seed (catalog + Astre + purush@as
 #    the owner's real Cognito sub to the seeded no-sub owner (reconcile scenario 3).
 ```
 
+> **Amendment v1.2 (per-consumer redirect derivation) — next release.** Add
+> `AUTH_PUBLIC_BASE_URL=https://astre.aramo.ai` to `/opt/aramo/.env`. auth-service
+> now derives the hosted-UI callback per consumer as
+> `${AUTH_PUBLIC_BASE_URL}/auth/<consumer>/callback` at both authorize and token
+> exchange. The recruiter derivation is `https://astre.aramo.ai/auth/recruiter/callback`
+> — identical to the currently-registered prod callback, so **no Cognito change is
+> needed** for the existing recruiter flow. `AUTH_COGNITO_REDIRECT_URI` remains a
+> fallback (its origin is used if `AUTH_PUBLIC_BASE_URL` is unset) but should be
+> retired once the new var is in place.
+
 **Seed once, cleanly.** The dev-fixtures scrub (§F) must be merged before step 2
 so Astre's first prod DB is clean from creation — never seeded-then-scrubbed.
 
