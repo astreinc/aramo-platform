@@ -302,8 +302,9 @@ function extractContact(identity: EvidenceRecordRow[]): {
     if (!isLive(e)) continue;
     const p = payloadOf(e);
     if (e.assertion_type === 'EMAIL' && fields.email1 === undefined) {
-      // recordSourcedArrival anchors write normalized_value; attachContactEvidence
-      // writes value — accept either.
+      // TR-4 B1 (DDR §2.3) — contact writers CONVERGED on `value` as of 2026-07-08;
+      // this dual-read stays to read pre-convergence rows whose key is the legacy
+      // `normalized_value` (append-only history — no rewrite). New rows carry `value`.
       set('email1', str(p['normalized_value']) ?? str(p['value']), e.id);
     } else if (e.assertion_type === 'PHONE' && fields.phone_cell === undefined) {
       set('phone_cell', str(p['value']), e.id);

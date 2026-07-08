@@ -109,7 +109,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         subjectRef: ref,
         dimension: 'IDENTITY',
         assertion_type: 'EMAIL',
-        assertion_payload: { normalized_value: email },
+        // TR-4 B1 — EMAIL is a registered contact shape; canonical key `value`.
+        assertion_payload: { value: email },
         source_class: 'THIRD_PARTY_UNVERIFIED',
         method: 'DOCUMENT',
         portability_class: 'TENANT_ONLY',
@@ -194,7 +195,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const forA = rows.filter((r) => r.subject_id === a);
       expect(forA.map((r) => r.assertion_type).sort()).toEqual(['EMAIL', 'FULL_NAME']);
       const emailA = forA.find((r) => r.assertion_type === 'EMAIL');
-      expect((emailA?.assertion_payload as { normalized_value?: string })?.normalized_value).toBe('alan@x.com');
+      expect((emailA?.assertion_payload as { value?: string })?.value).toBe('alan@x.com');
       // Both subjects covered in the single batched read.
       expect(new Set(rows.map((r) => r.subject_id))).toEqual(new Set([a, b]));
     });

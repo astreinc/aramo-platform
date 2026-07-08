@@ -573,6 +573,14 @@ const TALENT_TRUST_TR3_VERIFICATION_REQUEST_MIGRATION = resolve(
   ROOT,
   'libs/talent-trust/prisma/migrations/20260708120000_tr3_b1_verification_request/migration.sql',
 );
+// TR-4 B1 — EvidenceLink @@unique([from,to,relation]). Adds no column (the client
+// SELECT shape is unchanged), so no provider state 500s; registered here so the
+// provider schema matches HEAD. COUPLING FLAG: shared talent_trust list — a
+// concurrent TR lander rebases this addition.
+const TALENT_TRUST_TR4_LINK_UNIQUE_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
+);
 const SAVED_LIST_INIT_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
@@ -2496,6 +2504,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // TR-3 B2 — VerificationRequest (the email-verification confirm/request
         // provider states seed + write it).
         TALENT_TRUST_TR3_VERIFICATION_REQUEST_MIGRATION,
+        // TR-4 B1 — EvidenceLink semantic uniqueness (additive index).
+        TALENT_TRUST_TR4_LINK_UNIQUE_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,
         SAVED_LIST_LIST_KIND_MIGRATION,
       ]) {

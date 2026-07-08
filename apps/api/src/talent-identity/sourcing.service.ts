@@ -249,6 +249,9 @@ function groupDisplay(
       );
       if (parts.length > 0) entry.name = parts.join(' ');
     } else if (r.assertion_type === 'EMAIL' && entry.email === undefined) {
+      // TR-4 B1 (DDR §2.3) — contact writers CONVERGED on `value` as of 2026-07-08;
+      // this dual-read stays for pre-convergence rows keyed `normalized_value`
+      // (append-only history — no rewrite).
       const email = str(p['normalized_value']) ?? str(p['value']);
       if (email !== undefined) entry.email = email;
     }

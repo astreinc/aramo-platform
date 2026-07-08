@@ -33,6 +33,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
   '../../prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
   '../../prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
+  '../../prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
   '../../prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
   '../../prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
   '../../prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',

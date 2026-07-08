@@ -1,6 +1,8 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { AramoError } from '@aramo/common';
 
 import { isConfirmingAnchor } from './anchor-confirmation.js';
+import { validateClaimShape } from './canonical-claim-shapes.js';
 import {
   deriveTrustState,
   type EvidenceForDerivation,
@@ -151,6 +153,13 @@ export interface DeclaredEvidenceEntry {
   assertion_payload: unknown;
 }
 
+// TR-4 B1 — the claim-shape gate is a lib-internal invariant (no HTTP request in
+// its call paths today — recordEvidence has no production caller;
+// recordDeclaredEvidenceForSubject runs in the cold-ingest processor). A constant
+// request-id sentinel labels the AramoError envelope (the loadMailerConfig
+// precedent); a real controller in a later slice would pass its own.
+const CLAIM_SHAPE_REQUEST_ID = 'talent-trust-claim-shape';
+
 @Injectable()
 export class TalentTrustService {
   private readonly logger = new Logger(TalentTrustService.name);
@@ -179,12 +188,20 @@ export class TalentTrustService {
     // Strength is derived (§6.1), never entered.
     const strength = deriveStrength(input.source_class, input.method);
 
+    // TR-4 B1 (DDR §2.2) — a REGISTERED assertion_type must carry its canonical
+    // shape; an unregistered type passes through untouched. Refuses (422) here,
+    // before any write.
+    const canonicalPayload = this.canonicalizeOrRefuse(
+      input.assertion_type,
+      input.assertion_payload,
+    );
+
     const evidence = await this.repo.insertEvidence({
       subject_id: subjectId,
       tenant_id: subjectRef.tenant_id,
       dimension: input.dimension,
       assertion_type: input.assertion_type,
-      assertion_payload: input.assertion_payload,
+      assertion_payload: canonicalPayload,
       source_class: input.source_class,
       source_ref: input.source_ref ?? null,
       method: input.method,
@@ -251,8 +268,11 @@ export class TalentTrustService {
         tenant_id: input.tenant_id,
         dimension: 'IDENTITY',
         assertion_type: input.anchor_kind,
+        // TR-4 B1 (DDR §2.3) — canonical contact key is `value` (the normalized
+        // identifier); the raw is preserved beside it. Converged forward from the
+        // legacy `normalized_value` key (the canary readers dual-read both).
         assertion_payload: {
-          normalized_value: input.normalized_value,
+          value: input.normalized_value,
           raw_source: input.raw_source,
         },
         source_class: 'SELF',
@@ -508,8 +528,10 @@ export class TalentTrustService {
         tenant_id: input.tenant_id,
         dimension: 'IDENTITY',
         assertion_type: 'EMAIL',
+        // TR-4 B1 (DDR §2.3) — canonical contact key `value` (normalized email);
+        // converged forward from the legacy `normalized_value` key.
         assertion_payload: {
-          normalized_value: email,
+          value: email,
           source_channel: input.source_channel,
           payload_id: input.payload_id,
         },
@@ -605,12 +627,15 @@ export class TalentTrustService {
     const strength = deriveStrength('THIRD_PARTY_UNVERIFIED', 'DOCUMENT');
     const evidence_ids: string[] = [];
     for (const e of input.entries) {
+      // TR-4 B1 (DDR §2.2) — same canonical-shape gate as recordEvidence: a
+      // registered type refuses a non-conforming payload; unregistered passes through.
+      const canonicalPayload = this.canonicalizeOrRefuse(e.assertion_type, e.assertion_payload);
       const evidence = await this.repo.insertEvidence({
         subject_id: input.subject_id,
         tenant_id: input.tenant_id,
         dimension: e.dimension,
         assertion_type: e.assertion_type,
-        assertion_payload: e.assertion_payload,
+        assertion_payload: canonicalPayload,
         source_class: 'THIRD_PARTY_UNVERIFIED',
         method: 'DOCUMENT',
         strength,
@@ -650,6 +675,13 @@ export class TalentTrustService {
 
   async contradict(evidenceId: string, byEvidenceId: string, reason: string): Promise<void> {
     const ev = await this.requireEvidence(evidenceId);
+    // TR-4 B1 (DDR §2.4) — a repeat raise of the SAME contradiction is a NO-OP,
+    // not an error (and not a duplicate row): the semantic fact already stands.
+    // The link @@unique backs this at the DB; this check keeps it a clean no-op
+    // and avoids a spurious re-CONTRADICTED event on an already-contradicted record.
+    if (await this.repo.evidenceLinkExists(byEvidenceId, evidenceId, 'CONTRADICTS')) {
+      return;
+    }
     await this.repo.appendLink({
       from_evidence_id: byEvidenceId,
       to_evidence_id: evidenceId,
@@ -665,6 +697,10 @@ export class TalentTrustService {
 
   async supersede(oldId: string, newId: string): Promise<void> {
     const ev = await this.requireEvidence(oldId);
+    // TR-4 B1 (DDR §2.4) — repeat supersession of the same pair is a no-op.
+    if (await this.repo.evidenceLinkExists(newId, oldId, 'SUPERSEDES')) {
+      return;
+    }
     await this.repo.appendLink({
       from_evidence_id: newId,
       to_evidence_id: oldId,
@@ -680,6 +716,34 @@ export class TalentTrustService {
 
   async resolveDispute(evidenceId: string, outcome: string): Promise<void> {
     await this.applyLifecycle(evidenceId, 'DISPUTE_RESOLVED', { reason: outcome });
+  }
+
+  // TR-4 B1 (DDR §2.4) — the CLOSURE ARM the contradiction machinery has lacked
+  // since TR-1. Human-invoked (B3 adds the API; no controller this slice): a
+  // CONTRADICTED record is resolved back to VALID with an actor + reason, and the
+  // recompute lifts the dimension's CORROBORATED cap. GUARDED — only a currently
+  // CONTRADICTED record resolves; anything else refuses (a resolve is meaningful
+  // only against a standing contradiction). Distinct from resolveDispute (the
+  // DISPUTED axis). Does NOT touch the CONTRADICTS link (append-only history stays).
+  async resolveContradiction(
+    evidenceId: string,
+    actor: string,
+    reason: string,
+  ): Promise<void> {
+    const ev = await this.requireEvidence(evidenceId);
+    if (ev.current_status !== 'CONTRADICTED') {
+      // Service-level guard (no HTTP surface this slice — B3 adds the resolve API
+      // and maps this to a domain code there). A resolve is meaningful only against
+      // a standing contradiction.
+      throw new Error(
+        `resolveContradiction requires a CONTRADICTED record (evidence ${evidenceId} is ${ev.current_status})`,
+      );
+    }
+    await this.applyLifecycle(evidenceId, 'CONTRADICTION_RESOLVED', {
+      reason,
+      actor,
+      evidence: ev,
+    });
   }
 
   // ---- Subject capability (§8) — reversible; logic deferred to TR-6 ---
@@ -862,6 +926,30 @@ export class TalentTrustService {
   }
 
   // ---- internals ------------------------------------------------------
+
+  // TR-4 B1 (DDR §2.2) — validate + normalize a payload against the canonical
+  // registry. A REGISTERED assertion_type with a non-conforming payload refuses
+  // with CLAIM_SHAPE_INVALID (422); an UNregistered type returns its payload
+  // untouched (admission-open passthrough). The returned canonical payload is
+  // what gets persisted (normalized fields added, raw preserved, dates ISO-or-null).
+  private canonicalizeOrRefuse(
+    assertionType: string,
+    payload: unknown,
+  ): Record<string, unknown> {
+    const result = validateClaimShape(assertionType, payload);
+    if (!result.ok) {
+      throw new AramoError(
+        'CLAIM_SHAPE_INVALID',
+        `assertion_type '${assertionType}' payload is not canonical: ${(result.errors ?? []).join('; ')}`,
+        422,
+        {
+          requestId: CLAIM_SHAPE_REQUEST_ID,
+          details: { assertion_type: assertionType, errors: result.errors ?? [] },
+        },
+      );
+    }
+    return result.canonical ?? {};
+  }
 
   private async applyLifecycle(
     evidenceId: string,
