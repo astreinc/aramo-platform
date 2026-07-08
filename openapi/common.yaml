@@ -1555,6 +1555,10 @@ components:
         CONTRADICTION_OVERRIDE_REQUIRED (400, approve a contradicted
         advisory without ack+justification), REVERSAL_JUSTIFICATION_REQUIRED
         (400, reverse without a justification).
+        TR-3 B2 adds VERIFICATION_CONSENT_REQUIRED (403, the email-verification
+        request consent gate — denied OR error/empty-ledger; the ruled
+        divergence from the engagement send-gate's 500 on empty-ledger, a
+        voluntary enhancement failing closed on unknown consent state).
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1606,6 +1610,7 @@ components:
         - MERGE_SUBJECT_NOT_ACTIVE
         - CONTRADICTION_OVERRIDE_REQUIRED
         - REVERSAL_JUSTIFICATION_REQUIRED
+        - VERIFICATION_CONSENT_REQUIRED
 
     ErrorObject:
       type: object

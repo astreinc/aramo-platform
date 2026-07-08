@@ -139,6 +139,50 @@ export interface AttachmentListResponse {
   readonly items: readonly AttachmentView[];
 }
 
+// TR-3 B2 — email-verification hand-mirrors.
+//
+// Hand-mirrored from the frozen TR-3 B2 backend contract (the authenticated
+// request/status DTOs + the per-slot status projection). Source-annotated so a
+// BE shape change surfaces as a failing build, not silent runtime drift. R2
+// hand-mirrors rather than importing the domain lib (a forbidden edge from
+// apps/ats-web).
+//
+// The verification request stores a SLOT (email1|email2), never a free-form
+// address — the value comes from the stored TalentRecord field. The per-slot
+// status is a BAND/LABEL (verified|pending|expired|none), NEVER a numeric value.
+export type EmailSlot = 'email1' | 'email2';
+
+// POST /v1/talent-records/:id/email-verifications 200 result. status is fixed
+// 'PENDING' on a freshly-issued verification; resent=true when an existing
+// pending verification was re-sent rather than newly minted.
+export interface EmailVerificationRequestResult {
+  readonly verification_id: string;
+  readonly slot: EmailSlot;
+  readonly status: 'PENDING';
+  readonly expires_at: string;
+  readonly resent: boolean;
+}
+
+// The per-slot displayed verification status (GET status items). A band/label
+// vocabulary — never a number. 'none' = no verification exists for the slot.
+export type EmailSlotVerificationStatus =
+  | 'verified'
+  | 'pending'
+  | 'expired'
+  | 'none';
+
+export interface EmailVerificationStatusItem {
+  readonly slot: EmailSlot;
+  readonly value_present: boolean;
+  readonly status: EmailSlotVerificationStatus;
+}
+
+// GET /v1/talent-records/:id/email-verifications 200 body — always two items,
+// email1 then email2.
+export interface EmailVerificationStatusResponse {
+  readonly items: EmailVerificationStatusItem[];
+}
+
 // R5 — mutate-side hand-mirrors.
 
 // Hand-mirrored from libs/talent-record/src/lib/dto/create-talent-record-

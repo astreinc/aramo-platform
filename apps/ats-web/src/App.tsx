@@ -19,6 +19,7 @@ import { EngagementDetailView } from './engagement/EngagementDetailView';
 import { IdentityAdvisoriesView } from './identity-advisories/IdentityAdvisoriesView';
 import { IndexRoute } from './dashboard/IndexRoute';
 import { InvitationAcceptPage } from './routes/InvitationAcceptPage';
+import { VerifyEmailConfirmPage } from './routes/VerifyEmailConfirmPage';
 import { LoginPage } from './routes/LoginPage';
 import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
@@ -71,6 +72,14 @@ export function App() {
         <Route
           path="/invitations/accept"
           element={<InvitationAcceptPage />}
+        />
+        {/* TR-3 B2 — the PUBLIC email-verification confirm page. Top-level,
+            BEFORE the path="/*" catch-all and OUTSIDE RouteGuard (mirrors
+            /invitations/accept) so it renders session-less; the tokenised link
+            is followed by a talent with no account. */}
+        <Route
+          path="/email-verifications/confirm"
+          element={<VerifyEmailConfirmPage />}
         />
         {/* Design-system showcase (Storybook substitute) + the 2A app-shell
             preview. DEV-only: excluded from production builds; no session/data

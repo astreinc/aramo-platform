@@ -24,6 +24,7 @@ import { IdentityModule, IdentityCoreModule } from '@aramo/identity';
 import { ImportModule } from '@aramo/import';
 import { IngestionModule } from '@aramo/ingestion';
 import { JobDomainModule } from '@aramo/job-domain';
+import { MailerModule } from '@aramo/mailer';
 import { MatchingModule } from '@aramo/matching';
 import { ObjectStorageModule } from '@aramo/object-storage';
 import { OutboxPublisherModule } from '@aramo/outbox-publisher';
@@ -50,6 +51,12 @@ import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
 import { TalentAnchorProducerService } from './talent-anchor/talent-anchor-producer.service.js';
 import { AdvisoryResolutionController } from './talent-identity/advisory-resolution.controller.js';
+import { EmailVerificationController } from './talent-identity/email-verification.controller.js';
+import { EmailVerificationService } from './talent-identity/email-verification.service.js';
+import {
+  PublicVerificationController,
+  VerificationConfirmBudget,
+} from './controllers/public-verification.controller.js';
 import { PromotionService } from './talent-identity/promotion.service.js';
 import { RecordReconcileOrchestrator } from './talent-identity/record-reconcile.orchestrator.js';
 import { IdentityMaintenanceModule } from './jobs/identity-maintenance.module.js';
@@ -120,6 +127,11 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // repository the producer reads. Composition-root wiring — talent_trust
     // (cip) never imports talent-record (ats).
     TalentTrustModule,
+    // TR-3 B2 — the email-verification flow's mailer edge. apps/api →
+    // @aramo/mailer is a NEW direct edge (previously only IdentityModule imported
+    // MailerModule, in its own scope). MailerModule is a pure static leaf (no
+    // forRoot) so MAILER_PORT binds once and EmailVerificationService resolves it.
+    MailerModule,
     PortalModule,
     // PR-A3 Gate 5 — second ATS-domain leaf. RequisitionModule carries
     // the requisition CRUD + the assignment-visibility filter (Ruling 2:
@@ -411,6 +423,14 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // Save to Pool). Both promote a sourced L2 subject → ATS TalentRecord behind
     // the identity gate, then associate. Gated on the talent:source scope.
     SourcingController,
+    // TR-3 B2 — the AUTHENTICATED email-verification surface (request + status)
+    // nested under the talent-record resource. Composes talent-record + consent +
+    // trust ledger + mailer at the app boundary (above the I15 wall).
+    EmailVerificationController,
+    // TR-3 B2 — the PUBLIC (un-guarded) confirm endpoint (POST
+    // /v1/email-verifications/confirm). No JwtAuthGuard — the talent has no
+    // session; authority is the single-use token. Oracle-resistant (§3.2).
+    PublicVerificationController,
   ],
   providers: [
     // AUTHZ-D4b Gate 6 — register the VisibilityInterceptor as a global
@@ -475,6 +495,13 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // PromotionService + PipelineRepository + SavedListRepository resolve via
     // their already-imported modules).
     SourcingService,
+    // TR-3 B2 — the email-verification request orchestrator (deps
+    // TalentRecordRepository + TalentTrustRepository + TalentTrustService +
+    // ConsentService + MAILER_PORT resolve via their already-imported modules).
+    EmailVerificationService,
+    // TR-3 B2 — the public confirm route's per-IP fixed-window budget (a shared
+    // singleton the PublicVerificationController injects).
+    VerificationConfirmBudget,
     // Segment 4c — Views presets + "My team" scope. The resolver injects the
     // four read-only cross-schema accessors (activity / pipeline / tasks /
     // teams); the interceptor (global, PRE-handler, route-guarded to the paged

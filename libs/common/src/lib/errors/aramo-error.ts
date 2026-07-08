@@ -65,6 +65,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   MERGE_SUBJECT_NOT_ACTIVE: 409,
   CONTRADICTION_OVERRIDE_REQUIRED: 400,
   REVERSAL_JUSTIFICATION_REQUIRED: 400,
+  // TR-3 B2 — email-verification request consent gate (denied OR empty-ledger).
+  VERIFICATION_CONSENT_REQUIRED: 403,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response
