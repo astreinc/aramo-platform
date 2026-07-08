@@ -661,6 +661,55 @@ export class TalentTrustService {
     return { evidence_ids };
   }
 
+  // TR-4 B2 (DDR §3.1/§3.2) — the idempotent CLAIMS dual-write behind the
+  // talent-extraction producer. Resolves (or creates) the subject from the ref,
+  // then writes canonical CLAIMS evidence ONLY IF no evidence already exists for
+  // this (subject, assertion_type, source_ref → the typed row). The source_ref is
+  // the STABLE typed-row id, so a re-run / backfill re-writes nothing already
+  // written (§3.2). The write goes through recordEvidence — the T4-B1 canonical
+  // gate validates the payload (the mapper guarantees conformance, so it never
+  // fires here) and the recompute fires (CLAIMS moves off NOT_ESTABLISHED). A
+  // write failure PROPAGATES (loud fail per §3.3 — never a silent half-commit).
+  async recordDeclaredClaimIfAbsent(input: {
+    subjectRef: SubjectRef;
+    assertion_type: string;
+    assertion_payload: unknown;
+    // Must carry `talent_evidence_id` (the typed-row provenance key).
+    source_ref: { talent_evidence_id: string } & Record<string, unknown>;
+    created_by: string;
+  }): Promise<{ written: boolean; evidence_id?: string }> {
+    const subjectId = await this.repo.resolveOrCreateSubject(
+      input.subjectRef.tenant_id,
+      input.subjectRef.ref_type,
+      input.subjectRef.ref_id,
+      input.subjectRef.link_source ?? input.created_by,
+    );
+    const exists = await this.repo.claimEvidenceExistsBySourceRef(
+      subjectId,
+      input.assertion_type,
+      input.source_ref.talent_evidence_id,
+    );
+    if (exists) return { written: false };
+
+    const ev = await this.recordEvidence({
+      subjectRef: input.subjectRef,
+      dimension: 'CLAIMS',
+      assertion_type: input.assertion_type,
+      assertion_payload: input.assertion_payload,
+      // DDR §3: channel-structured, LLM-shaped declared claims.
+      source_class: 'THIRD_PARTY_UNVERIFIED',
+      method: 'DOCUMENT',
+      source_ref: input.source_ref,
+      // Ruling 5 — the STRUCTURING is LLM; ai_derived says who shaped it (zero band
+      // influence by construction). class/method say how it arrived.
+      ai_derived: true,
+      portability_class: 'TENANT_ONLY',
+      decay_profile: 'SLOW',
+      created_by: input.created_by,
+    });
+    return { written: true, evidence_id: ev.id };
+  }
+
   // ---- Writes: lifecycle ops (§8) ------------------------------------
   // Each appends an EvidenceEvent (+ EvidenceLink where relational), projects
   // the new current_status, and recomputes TrustState.

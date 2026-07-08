@@ -427,6 +427,88 @@ export class TalentEvidenceRepository {
     return (row as TalentWorkHistoryEntryRow | null) ?? null;
   }
 
+  // ---- TR-4 B2 ledger-routing reads (the dual-write + backfill source) --------
+  // Distinct from findTalentSkillEvidenceByTalent (the matching-derivation read,
+  // deliberately minimal): these carry the row `id` (→ the ledger source_ref) plus
+  // exactly the fields the pure canonical mapper needs. Tenant-scoped.
+
+  async listSkillEvidenceForLedger(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<Array<{ id: string; surface_form: string; skill_id: string }>> {
+    return this.prisma.talentSkillEvidence.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      select: { id: true, surface_form: true, skill_id: true },
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  async listWorkHistoryForLedger(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<
+    Array<{
+      id: string;
+      employer_name: string;
+      role_title: string;
+      start_date: Date | null;
+      end_date: Date | null;
+      employment_type: string | null;
+    }>
+  > {
+    return this.prisma.talentWorkHistoryEntry.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      select: {
+        id: true,
+        employer_name: true,
+        role_title: true,
+        start_date: true,
+        end_date: true,
+        employment_type: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  // Backfill enumeration: the distinct talent_ids that own ANY typed skill or
+  // work-history evidence in a tenant (the union — a talent may have only one kind).
+  async listTalentIdsWithEvidenceByTenant(tenant_id: string): Promise<string[]> {
+    const [skills, work] = await Promise.all([
+      this.prisma.talentSkillEvidence.findMany({
+        where: { tenant_id },
+        select: { talent_id: true },
+        distinct: ['talent_id'],
+      }),
+      this.prisma.talentWorkHistoryEntry.findMany({
+        where: { tenant_id },
+        select: { talent_id: true },
+        distinct: ['talent_id'],
+      }),
+    ]);
+    const ids = new Set<string>();
+    for (const r of skills) ids.add(r.talent_id);
+    for (const r of work) ids.add(r.talent_id);
+    return [...ids].sort();
+  }
+
+  // Backfill --all-tenants: every tenant owning any typed skill/work-history row.
+  async listTenantIdsWithEvidence(): Promise<string[]> {
+    const [skills, work] = await Promise.all([
+      this.prisma.talentSkillEvidence.findMany({
+        select: { tenant_id: true },
+        distinct: ['tenant_id'],
+      }),
+      this.prisma.talentWorkHistoryEntry.findMany({
+        select: { tenant_id: true },
+        distinct: ['tenant_id'],
+      }),
+    ]);
+    const ids = new Set<string>();
+    for (const r of skills) ids.add(r.tenant_id);
+    for (const r of work) ids.add(r.tenant_id);
+    return [...ids].sort();
+  }
+
   // ---- TalentContactMethod -------------------------------------------
 
   async createTalentContactMethod(

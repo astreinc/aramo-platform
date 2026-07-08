@@ -746,6 +746,27 @@ export class TalentTrustRepository {
     return row !== null;
   }
 
+  // TR-4 B2 (DDR §3.2) — the dual-write idempotence existence check: does an
+  // EvidenceRecord already exist for this (subject, assertion_type) whose
+  // source_ref points at the given talent_evidence row? Keyed on the STABLE typed
+  // row id (source_ref.talent_evidence_id), so a re-run / backfill writes nothing
+  // already written. JSONB path filter on the source_ref column.
+  async claimEvidenceExistsBySourceRef(
+    subjectId: string,
+    assertionType: string,
+    talentEvidenceId: string,
+  ): Promise<boolean> {
+    const row = await this.prisma.evidenceRecord.findFirst({
+      where: {
+        subject_id: subjectId,
+        assertion_type: assertionType,
+        source_ref: { path: ['talent_evidence_id'], equals: talentEvidenceId },
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   // ---- TrustState (projection — recomputed on every write) -----------
 
   async upsertTrustState(input: TrustStateRow): Promise<TrustStateRow> {

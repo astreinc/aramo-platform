@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 import { AiDraftService } from '@aramo/ai-draft';
 import { TalentEvidenceRepository } from '@aramo/talent-evidence';
+import { TalentTrustService } from '@aramo/talent-trust';
 
 import type {
   ExtractDeclaredEvidenceInput,
@@ -11,6 +12,7 @@ import type {
   ExtractionCompletion,
 } from './dto/extraction.dto.js';
 import { deriveSkillId } from './skill-id.js';
+import { mapSkillToClaim, mapWorkHistoryToClaim } from './ledger-mapper.js';
 
 // Gate-1 G1-A — TalentExtractionService.
 //
@@ -41,6 +43,8 @@ export class TalentExtractionService {
   constructor(
     private readonly aiDraft: AiDraftService,
     private readonly evidence: TalentEvidenceRepository,
+    // TR-4 B2 — the NEW edge: the producer owns its ledger write (DDR §3).
+    private readonly trust: TalentTrustService,
   ) {}
 
   async extractDeclaredEvidence(
@@ -141,6 +145,115 @@ export class TalentExtractionService {
     });
 
     return { skill_evidence_ids, work_history_ids, rejected_count };
+  }
+
+  // TR-4 B2 (DDR §3.1-§3.3) — route this talent's typed EMPLOYMENT/SKILL rows into
+  // the trust ledger as canonical CLAIMS evidence. A RECONCILE, by design: it reads
+  // the typed store and writes only the rows lacking a ledger counterpart (the
+  // §3.2 source_ref existence check), so it is IDEMPOTENT and SELF-HEALING —
+  // re-running (re-examine or backfill) writes nothing already written, and a
+  // prior partial failure completes exactly once on the next run.
+  //
+  // MARKER-SEMANTICS NOTE (§2.2 finding): talent-extraction has NO poll and NO
+  // boolean marker — extractDeclaredEvidence is invoked synchronously by the
+  // examine HTTP endpoint, gated by an exists-check (skill-count === 0) that guards
+  // only the expensive LLM extraction. This reconcile is therefore called
+  // UNCONDITIONALLY by examine (outside that guard), so a ledger failure on run N
+  // is retried on run N+1. source_ref = the STABLE typed-row id (never re-minted on
+  // a re-examine, since extraction is skipped), so the existence check is sound.
+  //
+  // LOUD FAIL (§3.3): a ledger-write failure PROPAGATES (the examine request errors)
+  // — never swallowed, never a silent half-commit. The typed rows persist; their
+  // ledger counterparts land on the next successful run.
+  async routeDeclaredEvidenceToLedger(input: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<{ skills_written: number; work_history_written: number; skipped: number }> {
+    // talent_id IS the ATS TalentRecord.id (ATS-as-heart) — the subject resolves
+    // via the ATS_TALENT_RECORD ref.
+    const subjectRef = {
+      tenant_id: input.tenant_id,
+      ref_type: 'ATS_TALENT_RECORD' as const,
+      ref_id: input.talent_id,
+      link_source: 'talent-extraction',
+    };
+
+    let skills_written = 0;
+    let work_history_written = 0;
+    let skipped = 0;
+
+    const skills = await this.evidence.listSkillEvidenceForLedger({
+      tenant_id: input.tenant_id,
+      talent_id: input.talent_id,
+    });
+    for (const row of skills) {
+      const claim = mapSkillToClaim(row);
+      const result = await this.trust.recordDeclaredClaimIfAbsent({
+        subjectRef,
+        assertion_type: claim.assertion_type,
+        assertion_payload: claim.payload,
+        source_ref: claim.source_ref,
+        created_by: 'talent-extraction',
+      });
+      if (result.written) skills_written += 1;
+      else skipped += 1;
+    }
+
+    const work = await this.evidence.listWorkHistoryForLedger({
+      tenant_id: input.tenant_id,
+      talent_id: input.talent_id,
+    });
+    for (const row of work) {
+      const claim = mapWorkHistoryToClaim(row);
+      const result = await this.trust.recordDeclaredClaimIfAbsent({
+        subjectRef,
+        assertion_type: claim.assertion_type,
+        assertion_payload: claim.payload,
+        source_ref: claim.source_ref,
+        created_by: 'talent-extraction',
+      });
+      if (result.written) work_history_written += 1;
+      else skipped += 1;
+    }
+
+    if (skills_written > 0 || work_history_written > 0) {
+      this.logger.log({
+        event: 'talent_claims_routed_to_ledger',
+        tenant_id: input.tenant_id,
+        talent_id: input.talent_id,
+        skills_written,
+        work_history_written,
+        skipped,
+      });
+    }
+    return { skills_written, work_history_written, skipped };
+  }
+
+  // TR-4 B2 (DDR §3.4) — the one-time backfill: reconcile every talent in a tenant
+  // that owns typed evidence. Same idempotent per-talent path as the live route, so
+  // a second run reports zero. Recompute rides each subject's writes as always.
+  async backfillLedgerForTenant(tenant_id: string): Promise<{
+    talents: number;
+    skills_written: number;
+    work_history_written: number;
+    skipped: number;
+  }> {
+    const talentIds = await this.evidence.listTalentIdsWithEvidenceByTenant(tenant_id);
+    let skills_written = 0;
+    let work_history_written = 0;
+    let skipped = 0;
+    for (const talent_id of talentIds) {
+      const r = await this.routeDeclaredEvidenceToLedger({ tenant_id, talent_id });
+      skills_written += r.skills_written;
+      work_history_written += r.work_history_written;
+      skipped += r.skipped;
+    }
+    return { talents: talentIds.length, skills_written, work_history_written, skipped };
+  }
+
+  // TR-4 B2 (DDR §3.4) — the --all-tenants enumeration for the backfill CLI.
+  async listTenantIdsWithEvidence(): Promise<string[]> {
+    return this.evidence.listTenantIdsWithEvidence();
   }
 }
 
