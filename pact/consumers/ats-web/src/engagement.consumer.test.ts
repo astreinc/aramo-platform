@@ -45,8 +45,7 @@ import {
 // TalentEngagementEventView, Outreach{Draft,Send}ResponseDto, etc.).
 //
 // Auth: the fake `aramo_access_token` cookie is rewritten to the real
-// recruiter JWT by the provider requestFilter (verify-api.ts) — same
-// posture as tenant-console-consumer.
+// recruiter JWT by the provider requestFilter (verify-api.ts).
 
 const provider = makeAtsWebProvider();
 
