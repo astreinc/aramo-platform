@@ -3,10 +3,16 @@ import { AramoError } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { IdentityAuditService } from './audit/identity-audit.service.js';
+import type { EventType } from './audit/identity-audit.repository.js';
 import type { TenantDto } from './dto/tenant.dto.js';
 import { TenantRepository } from './tenant.repository.js';
 import { deriveAllowedDomainOrThrow } from './util/email-domain.js';
 import { deriveSlugOrThrow } from './util/tenant-slug.js';
+import {
+  isLegalTransition,
+  isTenantStatus,
+  type TenantStatus,
+} from './util/tenant-lifecycle.js';
 
 // TenantService — at AUTHZ-1, this surface was read-only
 // (getTenantsByUser) with the auth-service SessionOrchestrator the only
@@ -45,6 +51,12 @@ export class TenantService {
   // unknown or disabled slug (the caller maps that to a 404 / not-eligible).
   async findActiveBySlug(slug: string): Promise<TenantDto | null> {
     return this.tenantRepo.findActiveBySlug(slug);
+  }
+
+  // Platform-Console Increment-2 PR-1 — single-tenant read for the platform
+  // console detail endpoint. Null for an unknown id.
+  async getTenantById(id: string): Promise<TenantDto | null> {
+    return this.tenantRepo.findById(id);
   }
 
   // AUTHZ-2: the guarded tenant-provisioning surface. Raises
@@ -156,4 +168,160 @@ export class TenantService {
       payload: { rollback: true, reason: args.reason },
     });
   }
+
+  // Platform-Console Increment-2 PR-1 (workstream C) — the lifecycle transition
+  // service. The single authoritative path for every status change: reads the
+  // current state, enforces the doc's transition table + reason guardrails,
+  // stamps the milestone column, and emits the transition audit event (§B
+  // payload shape). Illegal transitions hard-fail (VALIDATION_ERROR reason
+  // `illegal_transition`) AND emit `tenant.lifecycle_transition_rejected`. A
+  // request to the CURRENT state is an idempotent no-op (the activation hook's
+  // race-safety) — no event, no error. Operator endpoints (suspend/reactivate/
+  // start-offboarding/close) and the inline activation hook both call this;
+  // there is no free-form status write.
+  async transitionTenantStatus(args: {
+    tenant_id: string;
+    to: TenantStatus;
+    actor_id: string;
+    actor_type: 'user' | 'system';
+    source: string;
+    reason_code?: string;
+    reason_text?: string;
+    request_id?: string;
+    related?: Record<string, unknown>;
+    // OFFBOARDING-only (doc row 72: close date + retention policy code required).
+    retention_policy_code?: string;
+    close_at?: Date;
+  }): Promise<{ from: TenantStatus; to: TenantStatus; changed: boolean }> {
+    const requestId = args.request_id ?? 'tenant.lifecycle';
+    const current = await this.tenantRepo.findLifecycleById(args.tenant_id);
+    if (current === null) {
+      throw new AramoError('NOT_FOUND', 'Tenant not found', 404, {
+        requestId,
+        details: { tenant_id: args.tenant_id },
+      });
+    }
+    if (!isTenantStatus(current.status)) {
+      // Defensive: a status the code doesn't know is a data-integrity fault.
+      throw new AramoError('INTERNAL_ERROR', 'Unknown tenant status', 500, {
+        requestId,
+        details: { tenant_id: args.tenant_id, status: current.status },
+      });
+    }
+    const from = current.status;
+
+    // Idempotent no-op when already in the target state (activation re-accept
+    // race + operator double-click): no write, no event, no error.
+    if (from === args.to) {
+      return { from, to: args.to, changed: false };
+    }
+
+    // Transition legality (the doc's table). Illegal → rejected-event + throw.
+    if (!isLegalTransition(from, args.to)) {
+      await this.audit.writeEvent({
+        event_type: 'tenant.lifecycle_transition_rejected',
+        actor_type: args.actor_type,
+        actor_id: args.actor_id,
+        tenant_id: args.tenant_id,
+        subject_id: args.tenant_id,
+        payload: {
+          before: { status: from, is_active: current.is_active },
+          after: { status: args.to, is_active: current.is_active },
+          reason: {
+            code: 'illegal_transition',
+            text: args.reason_text ?? null,
+          },
+          context: { source: args.source, requestId },
+          related: args.related ?? {},
+        },
+      });
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `Illegal tenant transition ${from} → ${args.to}`,
+        422,
+        { requestId, details: { reason: 'illegal_transition', from, to: args.to } },
+      );
+    }
+
+    // Reason guardrails (P3 + doc row 72). SUSPEND needs code+text; reactivate
+    // and CLOSE need code; OFFBOARDING needs retention policy code + close date.
+    const requireReason = (needText: boolean): void => {
+      if (args.reason_code === undefined || args.reason_code.length === 0) {
+        throw invalidReason(requestId, 'reason_code_required');
+      }
+      if (needText && (args.reason_text === undefined || args.reason_text.length === 0)) {
+        throw invalidReason(requestId, 'reason_text_required');
+      }
+    };
+    if (args.to === 'SUSPENDED') requireReason(true);
+    if (args.to === 'ACTIVE' && from === 'SUSPENDED') requireReason(false);
+    if (args.to === 'CLOSED') requireReason(false);
+    if (args.to === 'OFFBOARDING') {
+      if (args.retention_policy_code === undefined || args.retention_policy_code.length === 0) {
+        throw invalidReason(requestId, 'retention_policy_code_required');
+      }
+      if (args.close_at === undefined) {
+        throw invalidReason(requestId, 'close_at_required');
+      }
+    }
+
+    // Milestone stamp per transition.
+    const now = new Date();
+    const patch: Parameters<TenantRepository['updateStatus']>[1] = {
+      status: args.to,
+      status_reason_code: args.reason_code ?? null,
+      status_reason_text: args.reason_text ?? null,
+      status_changed_at: now,
+    };
+    if (args.to === 'ACTIVE' && from === 'PROVISIONED') {
+      patch.activated_at = now;
+      patch.owner_accepted_at = now;
+    }
+    if (args.to === 'SUSPENDED') patch.suspended_at = now;
+    if (args.to === 'OFFBOARDING') {
+      patch.offboarding_started_at = now;
+      patch.retention_policy_code = args.retention_policy_code ?? null;
+      patch.retention_delete_after = args.close_at ?? null;
+    }
+    if (args.to === 'CLOSED') patch.closed_at = now;
+
+    await this.tenantRepo.updateStatus(args.tenant_id, patch);
+
+    // Success event (map target state → event_type; §B structured payload).
+    const eventByTarget: Record<TenantStatus, EventType | null> = {
+      PROVISIONED: null,
+      ACTIVE: from === 'PROVISIONED' ? 'tenant.activated' : 'tenant.reactivated',
+      SUSPENDED: 'tenant.suspended',
+      OFFBOARDING: 'tenant.offboarding_started',
+      CLOSED: 'tenant.closed',
+    };
+    const event_type = eventByTarget[args.to];
+    if (event_type !== null) {
+      await this.audit.writeEvent({
+        event_type,
+        actor_type: args.actor_type,
+        actor_id: args.actor_id,
+        tenant_id: args.tenant_id,
+        subject_id: args.tenant_id,
+        payload: {
+          before: { status: from, is_active: current.is_active },
+          after: { status: args.to, is_active: current.is_active },
+          reason: {
+            code: args.reason_code ?? null,
+            text: args.reason_text ?? null,
+          },
+          context: { source: args.source, requestId },
+          related: args.related ?? {},
+        },
+      });
+    }
+    return { from, to: args.to, changed: true };
+  }
+}
+
+function invalidReason(requestId: string, reason: string): AramoError {
+  return new AramoError('VALIDATION_ERROR', 'Transition reason required', 422, {
+    requestId,
+    details: { reason },
+  });
 }
