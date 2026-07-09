@@ -11,6 +11,7 @@ import { RESUME_REINDEX_QUEUE_NAME } from '@aramo/talent-record';
 import { MATCH_SWEEP_QUEUE_NAME } from '../talent-anchor/match-sweep.queue.constants.js';
 import { IDENTITY_DETECTION_QUEUE_NAME } from '../talent-identity/identity-detection.queue.constants.js';
 import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.constants.js';
+import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.queue.constants.js';
 
 // M5 PR-11 §4.6 — application bootstrap registration for the 4 Aramo Core
 // BullMQ jobs (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6;
@@ -89,6 +90,18 @@ const SCHEDULES = [
     job_name: 'tick',
     job_id: 'consistency-check-hourly',
     repeat: { pattern: '0 * * * *', tz: 'UTC' as const },
+  },
+  // TR-5 B1 (DDR §2) — the daily decay-recompute sweep. Re-prices every ACTIVE
+  // subject whose TrustState is older than RECOMPUTE_STALENESS_DAYS and carries
+  // decaying evidence, so a band goes honest on the clock's schedule rather than
+  // only when some other write triggers a recompute. Time-driven (no watermark
+  // column); tenant-agnostic gate (batches all tenants); the manual
+  // recompute-sweep CLI is the escape hatch. Daily is ample — decay is gradual.
+  {
+    queue_name: RECOMPUTE_SWEEP_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'trust-recompute-sweep-daily',
+    repeat: { pattern: '0 7 * * *', tz: 'UTC' as const },
   },
 ] as const;
 

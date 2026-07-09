@@ -65,7 +65,7 @@ export {
   type EvidenceForDerivation,
   type DerivedTrustState,
 } from './lib/band-derivation.js';
-export { deriveStrength, effectiveStrength } from './lib/strength.js';
+export { deriveStrength, effectiveStrength, RECOMPUTE_STALENESS_DAYS } from './lib/strength.js';
 // TR-2a-B1 (DDR-1 §3.4) — the confirming/non-confirming anchor projection.
 export { isConfirmingAnchor } from './lib/anchor-confirmation.js';
 // TR-2a-B2 (Amendment §2.2) — the CONFIRMED-arm NAME-conflict predicate.
