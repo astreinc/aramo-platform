@@ -42,7 +42,10 @@ function make(parts: {
     parts.subject === undefined ? { id: 'subj-1', tenant_id: TENANT } : parts.subject,
   );
   const findTrustStateBySubject = vi.fn().mockResolvedValue(parts.trustState ?? null);
-  const listEvidenceBySubject = vi.fn().mockResolvedValue(parts.evidence ?? []);
+  // TR-14 B1 — getSubjectDetail now reads evidence CLUSTER-UNION (clusterMembers +
+  // listEvidenceBySubjects) instead of the single-subject listEvidenceBySubject.
+  const clusterMembers = vi.fn().mockResolvedValue(['subj-1']);
+  const listEvidenceBySubjects = vi.fn().mockResolvedValue(parts.evidence ?? []);
   const listRefsBySubject = vi.fn().mockResolvedValue(parts.refs ?? []);
   const listMatchAdvisories = vi.fn().mockResolvedValue(parts.advisories ?? []);
   const trustRepo = {
@@ -50,7 +53,8 @@ function make(parts: {
     listDisplayIdentityEvidence,
     findSubjectById,
     findTrustStateBySubject,
-    listEvidenceBySubject,
+    clusterMembers,
+    listEvidenceBySubjects,
     listRefsBySubject,
     listMatchAdvisories,
   } as never;
@@ -172,7 +176,8 @@ describe('SourcingService.getSubjectDetail', () => {
   it('composes trust + evidence + refs + PENDING identity advisories (tenant-scoped)', async () => {
     const { service, listMatchAdvisories } = make({
       trustState: { identity_band: 'CORROBORATED', claims_band: 'NOT_ESTABLISHED', continuity_band: 'NOT_ESTABLISHED', eligibility_band: 'NOT_ESTABLISHED', open_contradiction_count: 1, single_source_only: true, longitudinal_observed: true },
-      evidence: [{ id: 'e1', assertion_type: 'FULL_NAME', assertion_payload: { first_name: 'Ada', last_name: 'Byron' }, current_status: 'VALID' }],
+      // strength is present on the repo row and must be STRIPPED from the wire (TR-14 B1).
+      evidence: [{ id: 'e1', assertion_type: 'FULL_NAME', assertion_payload: { first_name: 'Ada', last_name: 'Byron' }, current_status: 'VALID', strength: 0.42 }],
       refs: [{ ref_type: 'SOURCED_TALENT', ref_id: 'p1', link_source: 'x' }],
       advisories: [{ id: 'adv-1', status: 'PENDING_REVIEW' }],
     });
@@ -182,6 +187,8 @@ describe('SourcingService.getSubjectDetail', () => {
     expect(detail.trust_bands?.identity).toBe('CORROBORATED');
     expect(detail.open_contradiction_count).toBe(1);
     expect(detail.open_identity_advisories).toHaveLength(1);
+    // TR-14 B1 — the ungated `strength` ordinal is stripped from the wire.
+    expect('strength' in detail.evidence[0]!).toBe(false);
     // TR-5 B2 (β1) — the flags surface as statements (strings only, no numbers).
     expect(detail.trust_statements).toEqual(['Evidence from a single source', 'Observed over time']);
     expect(detail.trust_statements.every((s) => !/\d/.test(s))).toBe(true);

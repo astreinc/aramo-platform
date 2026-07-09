@@ -34,9 +34,12 @@ import {
 import {
   TalentTrustRepository,
   type EvidenceRecordRow,
+  type EvidenceLinkRow,
+  type EvidenceEventRow,
   type ResolutionSubjectRefRow,
   type ReconcileTargetRow,
   type SubjectAnchorRow,
+  type SubjectMergeOperationRow,
   type TrustStateRow,
   type ResolutionSubjectRow,
 } from './talent-trust.repository.js';
@@ -1226,6 +1229,39 @@ export class TalentTrustService {
     if (subject === null) return [];
     const members = await this.repo.clusterMembers(subject.id);
     return this.repo.listEvidenceBySubjects(members, filters);
+  }
+
+  // TR-14 B1 (DDR §2.2) — the dossier's three "why" reads. Each resolves the ref
+  // to its ACTIVE fixpoint (record → survivor, husk-safe) and reads over the
+  // CLUSTER-UNION, so a merged identity tells one story. A ref with no subject
+  // (the honest add-talent edge) returns empty — never an error.
+
+  // The link graph around a record's evidence: contradiction pairs, supersede
+  // chains. Cluster-union-safe (link ids drawn from the union's evidence set).
+  async getEvidenceLinks(subjectRef: SubjectRef): Promise<EvidenceLinkRow[]> {
+    const subject = await this.resolveSubjectForRead(subjectRef);
+    if (subject === null) return [];
+    const members = await this.repo.clusterMembers(subject.id);
+    const evidence = await this.repo.listEvidenceBySubjects(members);
+    return this.repo.listEvidenceLinksForEvidence(evidence.map((e) => e.id));
+  }
+
+  // The lifecycle timeline across the cluster-union, keyset newest-first.
+  async getEvidenceTimeline(
+    subjectRef: SubjectRef,
+    opts: { limit: number; before?: { occurred_at: Date; id: string } },
+  ): Promise<EvidenceEventRow[]> {
+    const subject = await this.resolveSubjectForRead(subjectRef);
+    if (subject === null) return [];
+    const members = await this.repo.clusterMembers(subject.id);
+    return this.repo.listEvidenceEventsBySubjects(members, opts);
+  }
+
+  // The provenance line: the COMPLETED merges this identity took part in (either role).
+  async getMergeHistory(subjectRef: SubjectRef): Promise<SubjectMergeOperationRow[]> {
+    const subject = await this.resolveSubjectForRead(subjectRef);
+    if (subject === null) return [];
+    return this.repo.listCompletedMergeOperationsForSubject(subjectRef.tenant_id, subject.id);
   }
 
   // ---- Promotion Gate reads/link (Slice A) ----------------------------

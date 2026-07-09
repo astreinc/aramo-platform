@@ -57,6 +57,11 @@ export interface PoolPage {
   next_cursor: string | null;
 }
 
+// TR-14 B1 (DDR §2.4) — the sourcing evidence row WITHOUT `strength`. The ordinal
+// is stripped server-side (a trust product does not ship an ungated number); the
+// FE already omitted it by type, pact never pinned it.
+export type SourcingEvidenceRow = Omit<EvidenceRecordRow, 'strength'>;
+
 export interface SubjectDetail {
   subject_id: string;
   display_name: string | null;
@@ -68,7 +73,7 @@ export interface SubjectDetail {
   // locked sentence set) — no count, span, or ordinal ever crosses this wire; the
   // numeric payloads stay in the ledger, visible only via `evidence[]`.
   trust_statements: string[];
-  evidence: EvidenceRecordRow[];
+  evidence: SourcingEvidenceRow[];
   refs: ResolutionSubjectRefRow[];
   // The PRE-promotion needs-review: pending same-human MERGE advisories (subject-
   // keyed). Attribute contradictions are post-promotion (record-keyed) — NOT here.
@@ -132,17 +137,29 @@ export class SourcingService {
     if (subject === null || subject.tenant_id !== tenant_id) {
       throw new NotFoundException(`subject ${subjectId} not found in tenant`);
     }
-    const [trustState, evidence, refs, advisories]: [
+    // TR-14 B1 (DDR §2.3) — ONE STORY: the evidence goes CLUSTER-UNION, the same
+    // set the bands derive from at recompute. Previously single-subject
+    // (listEvidenceBySubject) → a merged cluster's bands and evidence diverged.
+    // A pool subject is ACTIVE (its own fixpoint), so clusterMembers(subjectId) IS
+    // the recompute's union set.
+    const members = await this.trustRepo.clusterMembers(subjectId);
+    const [trustState, evidenceRows, refs, advisories]: [
       TrustStateRow | null,
       EvidenceRecordRow[],
       ResolutionSubjectRefRow[],
       SubjectMatchAdvisoryRow[],
     ] = await Promise.all([
       this.trustRepo.findTrustStateBySubject(subjectId),
-      this.trustRepo.listEvidenceBySubject(subjectId),
+      this.trustRepo.listEvidenceBySubjects(members),
       this.trustRepo.listRefsBySubject(subjectId),
       this.trustRepo.listMatchAdvisories(tenant_id, { subjectId, status: 'PENDING_REVIEW' }),
     ]);
+    // TR-14 B1 (DDR §2.4) — STRIP the ungated `strength` ordinal off the wire
+    // (blast radius ~zero: FE omits it, pact does not pin it). The dossier (B2)
+    // never carries it either.
+    const evidence: SourcingEvidenceRow[] = evidenceRows.map(
+      ({ strength: _strength, ...rest }) => rest,
+    );
     const display = groupDisplay(
       evidence
         .filter((e) => e.current_status === 'VALID' && (e.assertion_type === 'FULL_NAME' || e.assertion_type === 'EMAIL'))

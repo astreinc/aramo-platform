@@ -30,8 +30,9 @@ export interface PoolPage {
   readonly next_cursor: string | null;
 }
 
-// One evidence-ledger row. NOTE (R10): `strength` exists on the wire but is
-// deliberately omitted here — it is a derived number and must never render.
+// One evidence-ledger row. NOTE (R10): `strength` is NO LONGER on the wire —
+// TR-14 B1 stripped the ungated ordinal server-side. This type never carried it
+// (a derived number must never render); the omission now matches the response.
 export interface EvidenceRow {
   readonly id: string;
   readonly dimension: string;
