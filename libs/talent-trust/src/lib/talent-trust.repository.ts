@@ -71,6 +71,32 @@ export interface EvidenceRecordRow {
   created_at: Date;
 }
 
+// TR-14 B1 (DDR §2.2) — the EvidenceLink graph, made readable for the dossier
+// (its first reader — previously only appendLink + the existence guard). One
+// row per (from, to, relation) semantic fact: CONTRADICTS pairs, SUPERSEDES chains.
+export interface EvidenceLinkRow {
+  id: string;
+  from_evidence_id: string;
+  to_evidence_id: string;
+  relation: string;
+  tenant_id: string;
+  created_at: Date;
+}
+
+// TR-14 B1 (DDR §2.2) — the EvidenceEvent timeline, made readable for the dossier
+// (its first reader — previously append-only). The lifecycle story of one
+// evidence row: what event, by whom, why, what it implicated, when.
+export interface EvidenceEventRow {
+  id: string;
+  evidence_id: string;
+  tenant_id: string;
+  event_type: string;
+  reason: string | null;
+  linked_evidence_id: string | null;
+  actor: string | null;
+  occurred_at: Date;
+}
+
 export interface ResolutionSubjectRow {
   id: string;
   tenant_id: string;
@@ -747,6 +773,61 @@ export class TalentTrustRepository {
       select: { id: true },
     });
     return row !== null;
+  }
+
+  // TR-14 B1 (DDR §2.2) — the link-graph READ for the dossier: every link that
+  // touches any evidence id in the set, in EITHER direction (from OR to), so the
+  // dossier can assemble contradiction pairs and supersede chains around a
+  // record's evidence. The caller passes the CLUSTER-UNION evidence ids, so the
+  // read is cluster-union-safe by construction. Each direction rides its own
+  // @@index([tenant_id, from|to_evidence_id]). Append-only order (created_at asc).
+  async listEvidenceLinksForEvidence(evidenceIds: string[]): Promise<EvidenceLinkRow[]> {
+    if (evidenceIds.length === 0) return [];
+    const rows = await this.prisma.evidenceLink.findMany({
+      where: {
+        OR: [
+          { from_evidence_id: { in: evidenceIds } },
+          { to_evidence_id: { in: evidenceIds } },
+        ],
+      },
+      orderBy: { created_at: 'asc' },
+    });
+    return rows as EvidenceLinkRow[];
+  }
+
+  // TR-14 B1 (DDR §2.2) — the event-timeline READ for the dossier: the lifecycle
+  // events of every evidence row across a subject's CLUSTER-UNION, keyset-paged
+  // NEWEST-FIRST (the ledger can be long). EvidenceEvent has no FK to
+  // EvidenceRecord (UUID-only by design), so this resolves the cluster's evidence
+  // ids first, then pages events over them. Keyset on (occurred_at, id) desc —
+  // the same (timestamp, id) tuple convention as the sourcing/worklist cursors.
+  async listEvidenceEventsBySubjects(
+    subjectIds: string[],
+    opts: { limit: number; before?: { occurred_at: Date; id: string } },
+  ): Promise<EvidenceEventRow[]> {
+    if (subjectIds.length === 0) return [];
+    const evidence = await this.prisma.evidenceRecord.findMany({
+      where: { subject_id: { in: subjectIds } },
+      select: { id: true },
+    });
+    const evidenceIds = evidence.map((e) => e.id);
+    if (evidenceIds.length === 0) return [];
+    const rows = await this.prisma.evidenceEvent.findMany({
+      where: {
+        evidence_id: { in: evidenceIds },
+        ...(opts.before
+          ? {
+              OR: [
+                { occurred_at: { lt: opts.before.occurred_at } },
+                { occurred_at: opts.before.occurred_at, id: { lt: opts.before.id } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+      take: opts.limit,
+    });
+    return rows as EvidenceEventRow[];
   }
 
   // TR-4 B2 (DDR §3.2) — the dual-write idempotence existence check: does an
@@ -1500,6 +1581,25 @@ export class TalentTrustRepository {
     const rows = await this.prisma.subjectMergeOperation.findMany({
       where: { tenant_id: tenantId, status: 'PENDING' },
       orderBy: { started_at: 'asc' },
+    });
+    return rows.map((r) => this.mapOperation(r));
+  }
+
+  // TR-14 B1 (DDR §2.2) — the merge-history READ for the dossier's provenance
+  // line: the COMPLETED operations this subject took part in, in EITHER role
+  // (survivor or merged), oldest-first. Extends the existing partials
+  // (tenant-PENDING / single-pair) with a per-subject completed view.
+  async listCompletedMergeOperationsForSubject(
+    tenantId: string,
+    subjectId: string,
+  ): Promise<SubjectMergeOperationRow[]> {
+    const rows = await this.prisma.subjectMergeOperation.findMany({
+      where: {
+        tenant_id: tenantId,
+        status: 'COMPLETED',
+        OR: [{ surviving_subject_id: subjectId }, { merged_subject_id: subjectId }],
+      },
+      orderBy: { completed_at: 'asc' },
     });
     return rows.map((r) => this.mapOperation(r));
   }
