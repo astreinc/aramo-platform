@@ -56,6 +56,10 @@ const LINK_UNIQUE_MIGRATION_PATH = resolve(
 const CONSISTENCY_WATERMARK_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
+);
+// TR-5 B2 — TrustState thinness flags (the regenerated client SELECTs them).
+const THINNESS_FLAGS_MIGRATION_PATH = resolve(
+  __dirname,
   '../../prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
 );
 
@@ -128,7 +132,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tr6Sqls = TR6_B1_MIGRATION_PATHS.map((p) => readFileSync(p, 'utf8'));
       const linkUniqueSql = readFileSync(LINK_UNIQUE_MIGRATION_PATH, 'utf8');
       const consistencyWatermarkSql = readFileSync(CONSISTENCY_WATERMARK_MIGRATION_PATH, 'utf8');
-      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql, ...tr6Sqls, linkUniqueSql, consistencyWatermarkSql]) {
+      const thinnessFlagsSql = readFileSync(THINNESS_FLAGS_MIGRATION_PATH, 'utf8');
+      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql, ...tr6Sqls, linkUniqueSql, consistencyWatermarkSql, thinnessFlagsSql]) {
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
           if (trimmed.length === 0) continue;

@@ -35,6 +35,11 @@ const LAST_MATCHED_MIGRATION_PATH = resolve(
 const CONSISTENCY_WATERMARK_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
+);
+// TR-5 B2 — TrustState.single_source_only + longitudinal_observed (the regenerated
+// client SELECTs them on every trust-state read).
+const THINNESS_FLAGS_MIGRATION_PATH = resolve(
+  __dirname,
   '../../prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
 );
 
@@ -87,6 +92,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const watermarkSql = readFileSync(WATERMARK_MIGRATION_PATH, 'utf8');
       const lastMatchedSql = readFileSync(LAST_MATCHED_MIGRATION_PATH, 'utf8');
       const consistencyWatermarkSql = readFileSync(CONSISTENCY_WATERMARK_MIGRATION_PATH, 'utf8');
+      const thinnessFlagsSql = readFileSync(THINNESS_FLAGS_MIGRATION_PATH, 'utf8');
 
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
@@ -95,6 +101,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ...splitDdl(watermarkSql),
         ...splitDdl(lastMatchedSql),
         ...splitDdl(consistencyWatermarkSql),
+        ...splitDdl(thinnessFlagsSql),
       ]) {
         const trimmed = stmt.trim();
         if (trimmed.length === 0) continue;
