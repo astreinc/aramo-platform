@@ -10,10 +10,14 @@
 import { useEffect, useState } from 'react';
 
 import { ApiError, apiClient } from '../api/client';
+import { authPath } from './consumer';
 
 export interface Session {
   sub: string;
-  consumer_type: 'recruiter' | 'portal' | 'ingestion';
+  // Inc-2 PR-2: 'platform' added so the platform console's session (whose token
+  // carries consumer_type='platform') types cleanly. The FE never branches on
+  // this field (RouteGuard keys on scopes); it is carried for completeness.
+  consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform';
   tenant_id: string;
   scopes: string[];
   iat: number;
@@ -25,13 +29,17 @@ export type SessionState =
   | { status: 'authenticated'; session: Session }
   | { status: 'unauthenticated' };
 
+// The default-consumer ('recruiter') paths, retained as named exports for
+// backward compatibility. The functions below derive paths from the CONFIGURED
+// consumer (configureAuthConsumer, default 'recruiter') — so with no
+// configuration these values and the runtime paths coincide exactly.
 export const LOGIN_PATH = '/auth/recruiter/login';
 export const SESSION_PATH = '/auth/recruiter/session';
 export const LOGOUT_PATH = '/auth/recruiter/logout';
 
 export async function fetchSession(): Promise<Session | null> {
   try {
-    return await apiClient.get<Session>(SESSION_PATH);
+    return await apiClient.get<Session>(authPath('session'));
   } catch (error: unknown) {
     if (error instanceof ApiError && error.status === 401) {
       return null;
@@ -41,7 +49,7 @@ export async function fetchSession(): Promise<Session | null> {
 }
 
 export function redirectToLogin(): void {
-  window.location.assign(LOGIN_PATH);
+  window.location.assign(authPath('login'));
 }
 
 // §5 Auth-Hardening D3 — the shared session logout (terminates BOTH sessions).
@@ -63,12 +71,13 @@ export function redirectToLogin(): void {
 // `onComplete` is a test seam — it replaces the real top-level browser
 // navigation so specs can assert the flow without leaving jsdom.
 export async function logout(onComplete?: () => void): Promise<void> {
+  const logoutPath = authPath('logout');
   try {
-    await apiClient.post(LOGOUT_PATH);
+    await apiClient.post(logoutPath);
   } catch {
     // Swallow: same outcome on success or failure; no detail leak.
   }
-  (onComplete ?? (() => window.location.assign(LOGOUT_PATH)))();
+  (onComplete ?? (() => window.location.assign(logoutPath)))();
 }
 
 export function useSession(): SessionState {
