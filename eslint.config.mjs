@@ -94,8 +94,9 @@ export default [
    *
    * PR-14 §4.9 (2026-05-17): extended to also allow @aramo/api so the
    * provider verifier can bootstrap apps/api's AppModule for F7
-   * (tenant-console-consumer + ingestion-consumer + prohibited-source-type
-   * pact verification). Production code does not cross this app-boundary.
+   * (ingestion-consumer + prohibited-source-type pact verification; the
+   * tenant-console-consumer suite named in the original amendment is
+   * retired). Production code does not cross this app-boundary.
    * Test-environment exception narrowly scoped to this single project
    * (pact/provider/src → {@aramo/auth-service, @aramo/api}). Future
    * cross-app test bootstraps require separate amendment.

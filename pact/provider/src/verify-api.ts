@@ -51,7 +51,11 @@ const PACT_DELIVERY_PROVIDER_TOKEN = 'DELIVERY_PROVIDER_TOKEN';
 // Scope:
 //   - PR-14: ingestion-consumer (2 interactions) + prohibited-source-type
 //     (1 interaction)
-//   - PR-15 §4.2 (F10): tenant-console-consumer (5 consent interactions)
+//   - (retired) tenant-console-consumer formerly contributed 5 consent
+//     interactions (PR-15 §4.2, F10). Suite deleted in the console-FE
+//     retirement (PO-attested dead surface); its two consumer-agnostic
+//     given-states survive below, driven by the ats-web consent reads
+//     (PC-7a).
 //   - (retired) the thin recruiter consumer formerly contributed 23
 //     consent + 4 match-list interactions plus the engagement / submittal
 //     / examination / outreach surface. Its pact was removed in the
@@ -82,8 +86,9 @@ const PACT_DELIVERY_PROVIDER_TOKEN = 'DELIVERY_PROVIDER_TOKEN';
 // AUTH_PUBLIC_KEY before AppModule init.
 //
 // Request filter:
-//   - tenant-console-consumer pacts ship Cookie: aramo_access_token=
-//     eyJfake.access.token — rewritten to the real JWT cookie.
+//   - ats-web (and formerly tenant-console-consumer) pacts ship Cookie:
+//     aramo_access_token=eyJfake.access.token — rewritten to the real
+//     JWT cookie.
 //   - the retired thin-consumer pacts shipped Authorization: Bearer
 //     eyJfake.token — rewritten to a real Bearer JWT. The literal
 //     'Bearer not-a-jwt' was intentionally NOT rewritten so JwtAuthGuard
@@ -617,10 +622,6 @@ const PROHIBITED_PACT = resolve(
   ROOT,
   'pact/pacts/prohibited-source-type-aramo-core.json',
 );
-const TENANT_CONSOLE_PACT = resolve(
-  ROOT,
-  'pact/pacts/tenant-console-consumer-aramo-core.json',
-);
 const PORTAL_THIN_PACT = resolve(ROOT, 'pact/pacts/portal-thin-aramo-core.json');
 // PC-1 — ats-web consumer, engagement domain (the only live FE, Lead R1).
 const ATS_WEB_PACT = resolve(ROOT, 'pact/pacts/ats-web-aramo-core.json');
@@ -637,7 +638,7 @@ const TENANT_ID = '11111111-1111-7111-8111-111111111111';
 // pact/consumers/portal-thin/src/portal-*.consumer.test.ts constant.
 const PORTAL_TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 
-// Constants used by the tenant-console pacts (and formerly the retired
+// Constants used by the consent-read given-states (and formerly the retired
 // thin consumer). The talent uuid matches the value the consumer tests
 // use; the recruiter actor uuid matches the audit-row value the pacts
 // assert with a regex matcher.
@@ -2990,9 +2991,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       }
     }, 60_000);
 
-    // State handlers for the live consumer pacts (ingestion, tenant-console,
-    // portal-thin, prohibited-source-type, ats-web). The retired thin-consumer
-    // dead handlers were removed in the backlog-item-2 prune (see file header).
+    // State handlers for the live consumer pacts (ingestion, portal-thin,
+    // prohibited-source-type, ats-web). The retired thin-consumer dead
+    // handlers were removed in the backlog-item-2 prune (see file header);
+    // the retired tenant-console-consumer's exclusive handlers were removed
+    // in the console retirement (its two shared given-states survive below,
+    // driven by ats-web).
     // Each handler:
     //   1. Begins by truncating every table the pacts touch (resetAllRows),
     //      ensuring no prior interaction's rows leak forward.
@@ -3019,7 +3023,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await withClient((c) => resetAllRows(c));
         },
 
-      // ===== PR-15 §4.2 tenant-console (5 interactions) =====
+      // ===== consent given-states (PR-15 §4.2 origin; ats-web-driven since
+      // PC-7a — the tenant-console-consumer suite is retired) =====
       'a recruiter session and a talent with decision-log entries': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
@@ -3060,41 +3065,6 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             });
           });
         },
-      'a recruiter session and a talent with consent history': async () => {
-        // §4.2 #2 — seed 1 granted TalentConsentEvent. The pact response
-        // shape is events:[1 element] with next_cursor=like(CURSOR). The
-        // controller returns events:[1] with next_cursor=null when only
-        // one row exists under the default limit.
-        await withClient(async (c) => {
-          await resetAllRows(c);
-          await seedConsentEvent(c, {
-            id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1a00',
-            scope: 'profile_storage',
-            action: 'granted',
-            occurredAt: '2026-04-29T00:00:00.000Z',
-            expiresAt: null,
-          });
-        });
-      },
-      'a recruiter session and a talent with consent history (page 2 final)':
-        async () => {
-          // §4.2 #3 — seed 1 revoked TalentConsentEvent with created_at
-          // (2026-04-14) strictly earlier than the cursor edge the pact's
-          // page-2 request sends, so the keyset predicate returns exactly
-          // this row. With one row under default limit, hasMore=false and
-          // next_cursor=null (matches the pact's exact-null assertion).
-          await withClient(async (c) => {
-            await resetAllRows(c);
-            await seedConsentEvent(c, {
-              id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1a01',
-              scope: 'profile_storage',
-              action: 'revoked',
-              occurredAt: '2026-04-14T08:00:00.000Z',
-              createdAt: '2026-04-14T08:00:00.000Z',
-              expiresAt: null,
-            });
-          });
-        },
       'a recruiter session and a talent with consent state': async () => {
         // §4.2 #4 — seed profile_storage + resume_processing grants; the
         // remaining 3 scopes return no_grant by Decision D (always-5-scopes
@@ -3118,13 +3088,6 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         });
       },
-      'no setup required': async () => {
-        // §4.2 #5 — no seed. The requestFilter intentionally does NOT
-        // inject a cookie for this interaction (its request has no
-        // Cookie header), so JwtAuthGuard returns INVALID_TOKEN 401.
-        await withClient((c) => resetAllRows(c));
-      },
-
       'no valid token': async () => {
         // §4.3 — Bearer 'not-a-jwt' bypasses the rewriting filter so
         // JwtAuthGuard returns INVALID_TOKEN 401.
@@ -3616,7 +3579,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // carries a non-null granted_at. The consumer pact uses
         // eachLike() with a date-string matcher on granted_at; if any
         // scope's granted_at is null the matcher rejects the array.
-        // Mirrors the tenant-console-consumer "a recruiter session and
+        // Mirrors the consent-read "a recruiter session and
         // a talent with consent state" handler's per-scope-grant pattern.
         const SCOPES = [
           'profile_storage',
@@ -5402,17 +5365,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // Request filter — rewrites the literal fake credentials the
     // consumer pacts ship into the real signed JWT, then forwards.
     //
-    //   - tenant-console-consumer ships
-    //     `Cookie: aramo_access_token=eyJfake.access.token` → rewrite
-    //     the cookie value to the production-issuer JWT.
+    //   - ats-web ships `Cookie: aramo_access_token=eyJfake.access.token`
+    //     → rewrite the cookie value to the production-issuer JWT.
     //   - the retired thin consumer shipped `Authorization: Bearer
     //     eyJfake.token` → rewrite to `Bearer <real JWT>`; the literal
     //     `Bearer not-a-jwt` (the 401-INVALID_TOKEN interaction) was
     //     intentionally bypassed so JwtAuthGuard rejects it. Both
     //     branches are now unexercised.
-    //   - tenant-console-consumer #5 ships NO Cookie header — the cookie
+    //   - interactions that ship NO Cookie header (the PUBLIC
+    //     invitation-accept + email-verification confirms) — the cookie
     //     branch is conditional on the literal substring, so it's a
-    //     no-op for that interaction.
+    //     no-op for those.
     function requestFilter(
       req: { headers: Record<string, string | string[] | undefined> },
       _res: unknown,
@@ -5465,14 +5428,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
 
     it(
-      'verifies all interactions from the 5 aramo-core pacts',
+      'verifies all interactions from the 4 aramo-core pacts',
       async () => {
         const verifier = new Verifier({
           providerBaseUrl: `http://127.0.0.1:${port}`,
           pactUrls: [
             INGESTION_PACT,
             PROHIBITED_PACT,
-            TENANT_CONSOLE_PACT,
             PORTAL_THIN_PACT,
             ATS_WEB_PACT,
           ],
