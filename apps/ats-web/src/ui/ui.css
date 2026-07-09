@@ -3386,6 +3386,23 @@ select.rc-input { appearance: none; padding-right: 28px; }
 .rc-sourcing-statements { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .rc-sourcing-statements__line { color: var(--brand-strong); font-size: 13px; line-height: 1.4; }
 
+/* TR-14 B2 — the Trust tab (the dossier assessment). Confident-blue; per-dimension
+   band rows, statement lines, and item lists (contradictions / verification /
+   merge provenance / timeline). No new pill kinds; no number rendered. */
+.rc-trust { display: flex; flex-direction: column; gap: 20px; }
+.rc-trust__empty { color: var(--muted, #667); font-size: 14px; }
+.rc-trust__sec > h4 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--brand-strong); }
+.rc-trust-bands { display: flex; flex-direction: column; gap: 8px; }
+.rc-trust-band { display: flex; align-items: center; justify-content: space-between; max-width: 340px; }
+.rc-trust-band__dim { font-size: 13px; color: var(--ink, #223); }
+.rc-trust-statements { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.rc-trust-statements__line { color: var(--brand-strong); font-size: 13px; line-height: 1.4; }
+.rc-trust-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.rc-trust-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: var(--r-md, 9px); padding: 8px 12px; }
+.rc-trust-item__body { display: flex; flex-direction: column; gap: 2px; }
+.rc-trust-item__type { font-size: 13px; font-weight: 600; color: var(--ink, #223); }
+.rc-trust-item__reason { font-size: 12px; color: var(--muted, #667); }
+
 /* Pending identity advisories — one card per possible match. */
 .rc-sourcing-adv { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .rc-sourcing-adv__row {

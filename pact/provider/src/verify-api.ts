@@ -1540,6 +1540,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_ADV_PENDING_ID = '00000000-0000-7000-8000-adf000000001';
     const ATSW_ADV_MERGED_ID = '00000000-0000-7000-8000-adf000000002';
     const ATSW_ADV_CONTRADICTION_ID = '00000000-0000-7000-8000-adf000000003';
+    // TR-14 B2 — the trust dossier states.
+    const ATSW_DOSSIER_RECORD_ID = '00000000-0000-7000-8000-d05000000001';
+    const ATSW_DOSSIER_SUBJECT_ID = '00000000-0000-7000-8000-d05000000002';
+    const ATSW_DOSSIER_REF_ID = '00000000-0000-7000-8000-d05000000003';
+    const ATSW_DOSSIER_EVIDENCE_ID = '00000000-0000-7000-8000-d05000000004';
+    const ATSW_DOSSIER_EVENT_ID = '00000000-0000-7000-8000-d05000000005';
+    const ATSW_DOSSIER_EMPTY_RECORD_ID = '00000000-0000-7000-8000-d05000000010';
+    const ATSW_CONTRA_SUBJECT_ID = '00000000-0000-7000-8000-d05000000020';
+    const ATSW_CONTRA_REF_ID = '00000000-0000-7000-8000-d05000000021';
+    const ATSW_CONTRA_RECORD_ID = '00000000-0000-7000-8000-d05000000022';
+    const ATSW_CONTRA_EVIDENCE_ID = '00000000-0000-7000-8000-d05000000023';
 
     // COMPOSABLE (PC-4b+): seed a ResolutionSubject (talent_trust L2 anchor).
     // All talent_trust vocab is TEXT (no enum casts). status defaults ACTIVE.
@@ -1625,6 +1636,34 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           JSON.stringify(params.assertionPayload),
           params.currentStatus ?? 'VALID',
           RECRUITER_ID,
+        ],
+      );
+    }
+
+    // TR-14 B2 — seed an EvidenceEvent (the dossier evidence timeline's spine).
+    async function seedAtsWebEvidenceEvent(
+      c: Client,
+      params: {
+        id: string;
+        evidenceId: string;
+        eventType: string;
+        reason?: string | null;
+        linkedEvidenceId?: string | null;
+        actor?: string | null;
+      },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO talent_trust."EvidenceEvent"
+           (id, evidence_id, tenant_id, event_type, reason, linked_evidence_id, actor, occurred_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,NOW()) ON CONFLICT (id) DO NOTHING`,
+        [
+          params.id,
+          params.evidenceId,
+          TENANT_ID,
+          params.eventType,
+          params.reason ?? null,
+          params.linkedEvidenceId ?? null,
+          params.actor ?? RECRUITER_ID,
         ],
       );
     }
@@ -4857,6 +4896,74 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             });
           });
         },
+
+      // -- TR-14 B2 dossier: a talent record whose ATS_TALENT_RECORD ref resolves
+      // to a subject with a TrustState (bands), a CLAIMS evidence row + its CREATED
+      // event (the timeline). ledger_established:true; the collections are empty
+      // (no contradiction/anchor/merge seeded) — the dossier head pins them loosely.
+      'a talent record with a trust dossier exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebResolutionSubject(c, { id: ATSW_DOSSIER_SUBJECT_ID });
+          await seedAtsWebResolutionSubjectRef(c, {
+            id: ATSW_DOSSIER_REF_ID,
+            subjectId: ATSW_DOSSIER_SUBJECT_ID,
+            refType: 'ATS_TALENT_RECORD',
+            refId: ATSW_DOSSIER_RECORD_ID,
+          });
+          await seedAtsWebTrustState(c, {
+            subjectId: ATSW_DOSSIER_SUBJECT_ID,
+            identityBand: 'CORROBORATED',
+            claimsBand: 'SELF_ASSERTED',
+            continuityBand: 'NOT_ESTABLISHED',
+            eligibilityBand: 'NOT_ESTABLISHED',
+            openContradictionCount: 0,
+          });
+          await seedAtsWebEvidenceRecord(c, {
+            id: ATSW_DOSSIER_EVIDENCE_ID,
+            subjectId: ATSW_DOSSIER_SUBJECT_ID,
+            assertionType: 'EMPLOYMENT',
+            dimension: 'CLAIMS',
+            assertionPayload: { employer_norm: 'acme', start_date: '2020-01-01', end_date: '2021-01-01' },
+          });
+          await seedAtsWebEvidenceEvent(c, {
+            id: ATSW_DOSSIER_EVENT_ID,
+            evidenceId: ATSW_DOSSIER_EVIDENCE_ID,
+            eventType: 'CREATED',
+          });
+        });
+      },
+
+      // -- TR-14 B2 dossier: a record with NO subject (the honest add-talent edge).
+      // The dossier head returns the uniform ledger_established:false shape.
+      'a talent record with no evidence ledger exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+        });
+      },
+
+      // -- TR-14 B2 resolve (the deferred TR-4 interaction): a subject with a
+      // standing CONTRADICTED evidence row — POST .../resolve flips it to VALID.
+      'a talent record with a standing contradiction exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebResolutionSubject(c, { id: ATSW_CONTRA_SUBJECT_ID });
+          await seedAtsWebResolutionSubjectRef(c, {
+            id: ATSW_CONTRA_REF_ID,
+            subjectId: ATSW_CONTRA_SUBJECT_ID,
+            refType: 'ATS_TALENT_RECORD',
+            refId: ATSW_CONTRA_RECORD_ID,
+          });
+          await seedAtsWebEvidenceRecord(c, {
+            id: ATSW_CONTRA_EVIDENCE_ID,
+            subjectId: ATSW_CONTRA_SUBJECT_ID,
+            assertionType: 'EMPLOYMENT',
+            dimension: 'CLAIMS',
+            currentStatus: 'CONTRADICTED',
+            assertionPayload: { employer_norm: 'acme' },
+          });
+        });
+      },
 
       // -- promote fresh-mint: sourced ACTIVE subject + SOURCED ref + VALID
       // FULL_NAME evidence + the L1 arrival (talent_direct = consent source);

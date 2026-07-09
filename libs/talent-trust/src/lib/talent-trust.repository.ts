@@ -830,6 +830,25 @@ export class TalentTrustRepository {
     return rows as EvidenceEventRow[];
   }
 
+  // TR-14 B2 — targeted event read for the dossier HEAD's contradiction items: the
+  // events (optionally one type) for a specific evidence-id set, newest-first. The
+  // contradiction REASON lives on the CONTRADICTED event (contradict() writes it
+  // there, not on the link), so the head reads reasons per contradicted evidence.
+  async listEventsForEvidence(
+    evidenceIds: string[],
+    eventType?: string,
+  ): Promise<EvidenceEventRow[]> {
+    if (evidenceIds.length === 0) return [];
+    const rows = await this.prisma.evidenceEvent.findMany({
+      where: {
+        evidence_id: { in: evidenceIds },
+        ...(eventType ? { event_type: eventType } : {}),
+      },
+      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+    });
+    return rows as EvidenceEventRow[];
+  }
+
   // TR-4 B2 (DDR §3.2) — the dual-write idempotence existence check: does an
   // EvidenceRecord already exist for this (subject, assertion_type) whose
   // source_ref points at the given talent_evidence row? Keyed on the STABLE typed
