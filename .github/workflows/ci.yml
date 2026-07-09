@@ -364,6 +364,12 @@ jobs:
       - run: npx vitest run --root libs/ingestion
       - run: npx vitest run --root libs/talent-trust
       - run: npx vitest run --root libs/canonicalization
+      # Platform-Console Inc-2 PR-1.5 — the platform-admin integration specs
+      # (tenant lifecycle actions/detail/list/resend-owner-invite + the existing
+      # provisioning/invite proofs) now run in CI. Safe because the same PR fixes
+      # the latent readFileSync bug in platform.integration.spec.ts and routes
+      # its migration bootstrap through the shared identity-migrations helper.
+      - run: npx vitest run --root apps/platform-admin
 
   # ---------------------------------------------------------------------------
   # M4 PR-8 — Terraform IaC foundation gates (no AWS credentials required).
