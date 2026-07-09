@@ -13,7 +13,11 @@ import {
 
 // PC-7d — ats-web import/export + PUBLIC invitation-accept.
 //   - GET /v1/exports/:entity_type — text/csv; the pin is the ENVELOPE
-//     (status + Content-Type + a like-matched CSV string), NOT rows (Gate-0).
+//     (status + Content-Type + Content-Disposition), NOT rows (Gate-0).
+//     Ledger item 5 (coordinated pin-and-product): the download name is
+//     attachment; filename="<entity_type>-<YYYY-MM-DD>.csv" — the disposition
+//     is pinned exact on the `attachment; filename="` prefix + `.csv"` and
+//     regex-matched on the date-stamped name (server date varies per run).
 //   - GET /v1/imports + /v1/imports/:id/failures — import:read list reads.
 //   - POST /v1/invitations/accept — NO guard, NO cookie (acceptance precedes
 //     first login). Token-reason machine: every refusal is 400
@@ -38,12 +42,19 @@ describe('ats-web → exports', () => {
       .uponReceiving('a talent-record CSV export')
       .withRequest('GET', '/v1/exports/talent_record', (b) => { b.headers({ Cookie: like(ACCESS_COOKIE) }); })
       .willRespondWith(200, (b) => {
-        b.headers({ 'Content-Type': 'text/csv; charset=utf-8' });
+        b.headers({
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': regex(
+            '^attachment; filename="[a-z_]+-\\d{4}-\\d{2}-\\d{2}\\.csv"$',
+            'attachment; filename="talent_record-2026-07-09.csv"',
+          ),
+        });
       })
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/exports/talent_record`, { headers: { Cookie: ACCESS_COOKIE } });
         expect(res.status).toBe(200);
         expect(res.headers.get('content-type')).toContain('text/csv');
+        expect(res.headers.get('content-disposition')).toMatch(/^attachment; filename="talent_record-\d{4}-\d{2}-\d{2}\.csv"$/);
       });
   });
 });
