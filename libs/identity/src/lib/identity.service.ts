@@ -400,6 +400,7 @@ export class IdentityService {
     user_id: string;
     membership_id: string;
     tenant_id: string;
+    role_keys: string[];
     email: string;
     tenant_name: string;
     tenant_display_name: string | null;
@@ -431,6 +432,14 @@ export class IdentityService {
       accepted_at,
     });
 
+    // Platform-Console Increment-2 PR-1 (R10) — resolve the accepted membership's
+    // role keys so (a) the identity.invitation.accepted payload is enriched with
+    // tenant_id + role_keys, and (b) the caller (InvitationLifecycleService) can
+    // fire the inline tenant activation only for a tenant_owner acceptance.
+    const role_keys = await this.identityRepo.findRoleKeysForMembership(
+      invitation.membership_id,
+    );
+
     await this.audit.writeEvent({
       event_type: 'identity.invitation.accepted',
       actor_type: 'user',
@@ -440,6 +449,8 @@ export class IdentityService {
       payload: {
         invitation_id: invitation.id,
         membership_id: invitation.membership_id,
+        tenant_id: invitation.tenant_id,
+        role_keys,
       },
     });
 
@@ -454,6 +465,7 @@ export class IdentityService {
       user_id: invitation.user_id,
       membership_id: invitation.membership_id,
       tenant_id: invitation.tenant_id,
+      role_keys,
       email: user?.email ?? '',
       tenant_name: tenant?.name ?? 'your workspace',
       tenant_display_name: tenant?.display_name ?? null,

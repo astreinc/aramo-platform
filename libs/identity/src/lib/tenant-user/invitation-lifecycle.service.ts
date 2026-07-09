@@ -2,6 +2,11 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
 
 import { IdentityService } from '../identity.service.js';
+import { TenantService } from '../tenant.service.js';
+import {
+  SYSTEM_SERVICE_ACCOUNT_ID,
+  TENANT_OWNER_ROLE_KEY,
+} from '../util/tenant-lifecycle.js';
 
 import {
   loadInviteLinkConfig,
@@ -28,6 +33,7 @@ export class InvitationLifecycleService {
 
   constructor(
     private readonly identitySvc: IdentityService,
+    private readonly tenantSvc: TenantService,
     @Inject(MAILER_PORT) private readonly mailer: MailerPort,
   ) {}
 
@@ -43,6 +49,38 @@ export class InvitationLifecycleService {
       raw_token: args.raw_token,
       request_id: args.request_id,
     });
+
+    // Platform-Console Increment-2 PR-1 (workstream D, R9) — inline tenant
+    // activation. Transaction boundary: POST-COMMIT + idempotent + best-effort,
+    // mirroring the confirmation-email seam below (the accept already committed;
+    // the activation must never fail the acceptance). No event bus exists for
+    // identity audit events (R9), so this is a direct in-process call, not a
+    // subscriber. Fires ONLY for a tenant_owner acceptance (R10 discriminator);
+    // transitionTenantStatus itself is the idempotency gate — it activates only
+    // PROVISIONED→ACTIVE and no-ops when the tenant is already ACTIVE (re-accept
+    // race / non-first owner). Because acceptance is pre-authentication (recon
+    // finding 1), this completes before the owner's first login, so the mint
+    // gate never sees the owner blocked.
+    if (ctx.role_keys.includes(TENANT_OWNER_ROLE_KEY)) {
+      try {
+        await this.tenantSvc.transitionTenantStatus({
+          tenant_id: ctx.tenant_id,
+          to: 'ACTIVE',
+          actor_id: SYSTEM_SERVICE_ACCOUNT_ID,
+          actor_type: 'system',
+          source: 'invitation_acceptance',
+          request_id: args.request_id,
+          related: {
+            membershipId: ctx.membership_id,
+            invitationId: ctx.invitation_id,
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `invitation accept — tenant activation failed (acceptance committed; tenant stays PROVISIONED, mint-gate allows it): ${(err as Error).message}`,
+        );
+      }
+    }
 
     // Send the acceptance-confirmation email (no token — just a sign-in
     // pointer). BEST-EFFORT: the acceptance already committed, so a send
