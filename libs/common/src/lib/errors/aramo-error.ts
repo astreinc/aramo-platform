@@ -71,6 +71,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   CLAIM_SHAPE_INVALID: 422,
   // TR-4 B3 — resolveContradiction on a non-CONTRADICTED record.
   EVIDENCE_NOT_CONTRADICTED: 422,
+  // Platform-Console Increment-2 PR-1 — tenant lifecycle mint-gate denials (403).
+  TENANT_SUSPENDED: 403,
+  TENANT_CLOSED: 403,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response
