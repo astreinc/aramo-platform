@@ -98,6 +98,38 @@ export class CognitoAdminService {
     return { cognito_sub: sub };
   }
 
+  // Platform-Console Increment-2 PR-1.5 (A2) — re-send the owner's Cognito
+  // invitation. AdminCreateUser with MessageAction='RESEND' re-delivers the
+  // temp-password invitation email to an EXISTING user who has NOT yet set a
+  // password (Cognito status FORCE_CHANGE_PASSWORD). It does NOT create a new
+  // user and does NOT reset an already-CONFIRMED user — Cognito rejects RESEND
+  // for a confirmed account. The caller gates on tenant status PROVISIONED,
+  // which is exactly the window in which the owner is still unconfirmed, so
+  // RESEND is always valid on this path (see resendOwnerInvite).
+  async adminResendInvite(args: {
+    pool: CognitoPool;
+    email: string;
+    display_name?: string | null;
+  }): Promise<void> {
+    const UserPoolId = this.userPoolIdForPool(args.pool);
+    const userAttributes: Array<{ Name: string; Value: string }> = [
+      { Name: 'email', Value: args.email },
+      { Name: 'email_verified', Value: 'true' },
+    ];
+    if (args.display_name !== undefined && args.display_name !== null) {
+      userAttributes.push({ Name: 'name', Value: args.display_name });
+    }
+    await this.client.send(
+      new AdminCreateUserCommand({
+        UserPoolId,
+        Username: args.email,
+        UserAttributes: userAttributes,
+        DesiredDeliveryMediums: ['EMAIL'],
+        MessageAction: 'RESEND',
+      }),
+    );
+  }
+
   async adminGetUser(args: {
     pool: CognitoPool;
     email: string;

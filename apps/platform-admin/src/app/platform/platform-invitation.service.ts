@@ -404,6 +404,86 @@ export class PlatformInvitationService {
     };
   }
 
+  // Platform-Console Increment-2 PR-1.5 (A2) — re-send the tenant owner's
+  // invitation. The owner was invited during provisioning via Pattern A
+  // (Cognito AdminCreateUser emails the temp password); this re-delivers that
+  // email without recreating anything.
+  //
+  // REUSE-vs-REISSUE (the invite machinery's call, reported): re-issue REUSES
+  // the existing Cognito user (same `sub`) and every identity row (User /
+  // Membership / MembershipRole / ExternalIdentity) — nothing is recreated. The
+  // owner invite is NOT a token-`Invitation` row (that model backs the Pattern-2
+  // federated-invite flow, not the Cognito owner flow), so there is NO INVITED
+  // row to reissue here; reuse is at the Cognito-user level, and the sole effect
+  // is a fresh temp-password email via Cognito MessageAction=RESEND.
+  //
+  // GATE ↔ RESEND-ELIGIBILITY: the tenant must be PROVISIONED. This is both the
+  // product rule (resending an owner invite to an already-activated tenant is a
+  // mistake, not a feature) AND the Cognito precondition — a PROVISIONED tenant's
+  // owner has not yet accepted (acceptance activates the tenant → ACTIVE, R9/R10),
+  // so the Cognito user is still FORCE_CHANGE_PASSWORD and RESEND is valid. Once
+  // ACTIVE, Cognito would reject RESEND anyway; the gate and Cognito agree.
+  async resendOwnerInvite(args: {
+    tenant_id: string;
+    actor_user_id: string;
+    request_id: string;
+  }): Promise<{
+    tenant_id: string;
+    owner_user_id: string;
+    owner_email: string;
+    resent: true;
+  }> {
+    const tenant = await this.tenantSvc.getTenantById(args.tenant_id);
+    if (tenant === null) {
+      throw new AramoError('NOT_FOUND', 'Tenant not found', 404, {
+        requestId: args.request_id,
+        details: { tenant_id: args.tenant_id },
+      });
+    }
+    if (tenant.status !== 'PROVISIONED') {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'Owner invite can only be resent while the tenant is PROVISIONED',
+        422,
+        {
+          requestId: args.request_id,
+          details: {
+            reason: 'tenant_not_provisioned',
+            tenant_id: args.tenant_id,
+            status: tenant.status,
+          },
+        },
+      );
+    }
+    const owner = await this.identitySvc.findTenantOwner(args.tenant_id);
+    if (owner === null) {
+      // A PROVISIONED tenant always has a tenant_owner membership (provisioning
+      // creates it). Absence is a data-integrity fault, not a client error.
+      throw new AramoError(
+        'INTERNAL_ERROR',
+        'PROVISIONED tenant has no tenant_owner membership',
+        500,
+        {
+          requestId: args.request_id,
+          details: { tenant_id: args.tenant_id },
+        },
+      );
+    }
+    await this.cognito.adminResendInvite({ pool: 'tenant', email: owner.email });
+    await this.tenantSvc.recordOwnerInviteSent({
+      tenant_id: args.tenant_id,
+      owner_user_id: owner.user_id,
+      actor_id: args.actor_user_id,
+      reason: 'resend',
+    });
+    return {
+      tenant_id: args.tenant_id,
+      owner_user_id: owner.user_id,
+      owner_email: owner.email,
+      resent: true,
+    };
+  }
+
   async invitePlatformAdmin(args: {
     email: string;
     display_name?: string | null;

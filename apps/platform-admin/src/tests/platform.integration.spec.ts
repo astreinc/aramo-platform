@@ -24,6 +24,7 @@ import {
   AramoExceptionFilter,
   CommonModule,
   RequestIdMiddleware,
+  resolveIdentityMigrations,
 } from '@aramo/common';
 import { AuthModule, PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
@@ -58,48 +59,18 @@ import { generateTestKeyPair } from './test-keys.js';
 // is a CLI script at libs/identity/prisma/seed.ts, not part of the
 // library's exported surface).
 
-const IDENTITY_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
-);
-// Domain-Enforcement P1 — additive Tenant.allowed_domain column (provision now
-// derives + persists it; the Prisma client SELECTs it on every Tenant read).
-const IDENTITY_ALLOWED_DOMAIN_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
-);
-// Domain-Enforcement P2b — additive Tenant domain-verification columns.
-const IDENTITY_DOMAIN_VERIFICATION_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql',
-);
-const IDENTITY_SLUG_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql',
-);
-// Subdomain-Identity Directive B — additive Tenant.identity_provider column.
-const IDENTITY_IDP_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
-);
-const IDENTITY_IDP_MIGRATION_LC = resolve(__dirname, '../../../../libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql');
-const IDENTITY_INVITATION_MIG = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
-);
-const IDENTITY_SITE_AXIS_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
-);
-// AUTHZ-D4a — PL-95 finally exercised (the first authz migration; identity-side).
-const IDENTITY_D4A_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql',
-);
-// Settings Rebuild D3 — additive tenant-profile columns (Prisma SELECTs them).
-const IDENTITY_PROFILE_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
+// PR-1.5 Workstream C — the identity migration set now comes from the single
+// shared ordered helper (@aramo/common). This replaces ~10 hand-listed
+// individually-named `const IDENTITY_*_MIGRATION` consts. It ALSO fixes a latent
+// bug that lived here undetected: the old line applied
+//   readFileSync(IDENTITY_IDP_MIGRATION, IDENTITY_IDP_MIGRATION_LC, 'utf8')
+// — passing the lifecycle-status migration path into readFileSync's `options`
+// slot, so the lifecycle_status columns migration was NEVER applied. It went
+// unnoticed because this spec is skipIf-gated on ARAMO_RUN_INTEGRATION and its
+// root was absent from CI's tests-integration job (PR-1.5 adds the root, so this
+// spec now runs in CI — the helper is what makes that safe).
+const IDENTITY_MIGRATION_SQL_PATHS = resolveIdentityMigrations(
+  resolve(__dirname, '../../../..'),
 );
 
 function splitDdl(sql: string): string[] {
@@ -374,18 +345,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const setup = new IdentityPrismaService(url);
       await setup.$connect();
-      for (const stmt of [
-        ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_ALLOWED_DOMAIN_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_DOMAIN_VERIFICATION_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_SLUG_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_IDP_MIGRATION, IDENTITY_IDP_MIGRATION_LC, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_INVITATION_MIG, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_SITE_AXIS_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_D4A_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_PROFILE_MIGRATION, 'utf8')),
-        ...ENTITLEMENT_DDL_STATEMENTS,
-      ]) {
+      // Identity schema from the shared ordered helper (Workstream C), then the
+      // entitlement DDL this spec keeps hand-listed (it is a non-identity stack
+      // spread inline to keep the spec self-contained — see the const above).
+      const identityStatements = IDENTITY_MIGRATION_SQL_PATHS.flatMap((sqlPath) =>
+        splitDdl(readFileSync(sqlPath, 'utf8')),
+      );
+      for (const stmt of [...identityStatements, ...ENTITLEMENT_DDL_STATEMENTS]) {
         const t = stmt.trim();
         if (t.length === 0) continue;
         await setup.$executeRawUnsafe(t);

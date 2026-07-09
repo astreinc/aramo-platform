@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
@@ -84,14 +85,22 @@ export class PlatformController {
     };
   }
 
+  // Platform-Console Increment-2 PR-1.5 (A1) — the platform-operator estate list.
+  // Re-pointed from the session-mint read (getTenantsByUser, membership-gated) to
+  // the ungated operator read: EVERY tenant, EVERY status (a suspended tenant is
+  // MORE visible to an operator, not less). Optional `?status=` (exact) and `?q=`
+  // (case-insensitive contains on name|slug) filters. Scope unchanged
+  // (platform:tenant:read). The sentinel platform tenant appears like any row.
   @Get('tenants')
   @RequireScopes('platform:tenant:read')
   async listTenants(
     @AuthContext() authCtx: AuthContextType,
     @RequestId() requestId: string,
+    @Query('status') status?: string,
+    @Query('q') q?: string,
   ): Promise<PlatformTenantListResponseDto> {
     this.assertConsumerIsPlatform(authCtx, requestId);
-    const tenants = await this.tenantSvc.getTenantsByUser({ user_id: authCtx.sub });
+    const tenants = await this.tenantSvc.listTenantsForPlatform({ status, q });
     return { tenants };
   }
 
@@ -115,6 +124,34 @@ export class PlatformController {
       request_id: requestId,
     });
     return result;
+  }
+
+  // Platform-Console Increment-2 PR-1.5 (A2) — re-send the tenant owner's
+  // invitation (platform:tenant:provision, per PR-1 §3-F). Guard: tenant must be
+  // PROVISIONED (422 VALIDATION_ERROR reason `tenant_not_provisioned` otherwise;
+  // 404 for an unknown tenant). Reuses the Pattern-A Cognito machinery
+  // (MessageAction=RESEND) — nothing is recreated; emits tenant.owner_invite.sent
+  // (reason `resend`). See PlatformInvitationService.resendOwnerInvite for the
+  // reuse-vs-reissue reasoning and the PROVISIONED↔RESEND-eligibility alignment.
+  @Post('tenants/:tenant_id/resend-owner-invite')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('platform:tenant:provision')
+  async resendOwnerInvite(
+    @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{
+    tenant_id: string;
+    owner_user_id: string;
+    owner_email: string;
+    resent: true;
+  }> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    return this.invitations.resendOwnerInvite({
+      tenant_id,
+      actor_user_id: authCtx.sub,
+      request_id: requestId,
+    });
   }
 
   // Platform-Console Increment-2 PR-1 — tenant lifecycle read + operator actions.

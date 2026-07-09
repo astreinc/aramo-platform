@@ -22,6 +22,8 @@ export {
 } from './lib/util/tenant-lifecycle.js';
 export { IdentityRepository } from './lib/identity.repository.js';
 export { TenantRepository } from './lib/tenant.repository.js';
+// Platform-Console Increment-2 PR-1.5 (A1) — the platform-operator list row shape.
+export type { PlatformTenantListRow } from './lib/tenant.repository.js';
 export { RoleRepository } from './lib/role.repository.js';
 // AUTHZ-D4b — exported for consumption by libs/visibility (the D4b
 // resolver reads ManagementEdge for the Axis-1 transitive-reports walk

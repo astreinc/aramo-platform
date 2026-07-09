@@ -6,6 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
+import { resolveIdentityMigrations } from '@aramo/common';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import {
@@ -38,30 +39,15 @@ import {
 //      leaving the catalog BYTE-IDENTICAL — proving the flag gates ONLY the
 //      fixtures and never touches the catalog (the careful-review invariant).
 
-const MIGRATION_DIR = resolve(__dirname, '../../prisma/migrations');
-const MIGRATIONS = [
-  '20260512000000_init_identity_model',
-  '20260625000000_add_tenant_allowed_domain',
-  '20260626000000_add_tenant_domain_verification',
-  '20260626120000_add_tenant_slug',
-  // Pre-existing bitrot fix (P2b): the seed writes UserTenantMembership.
-  // invite_status (added by invite-S2), so this migration MUST be applied or
-  // the seed throws "column invite_status does not exist". It was missing from
-  // this curated list since invite-S2 landed (the spec is gated behind
-  // ARAMO_RUN_INTEGRATION, so the bitrot went unnoticed).
-  '20260624000000_add_invitation_and_invite_status',
-  '20260601000000_add_site_axis',
-  '20260604000000_add_authz_team_models',
-  '20260619000000_add_tenant_profile',
-  '20260620000000_add_site_hierarchy',
-  // Same curated-list bitrot as invite_status above: the seed's Tenant upsert
-  // writes/SELECTs Tenant.identity_provider (added by Subdomain-Identity B), so
-  // this migration MUST be applied or the seed throws "column identity_provider
-  // does not exist". Missing since Subdomain-Identity B landed (gated behind
-  // ARAMO_RUN_INTEGRATION, so it went unnoticed).
-  '20260627000000_add_tenant_identity_provider',
-  '20260709130000_add_tenant_lifecycle_status',
-];
+// PR-1.5 Workstream C — the identity migration set now comes from the single
+// shared ordered helper (@aramo/common). This site applied the FULL 11-migration
+// identity set, so it retrofits cleanly. The helper carries the whole set
+// (invitation/invite_status, identity_provider, lifecycle_status included), so
+// the historical curated-list bitrot this spec fought (missing invite_status /
+// identity_provider columns → seed throws) can no longer recur: adding a column
+// migration is a one-line edit in the helper and every consumer inherits it.
+const REPO_ROOT = resolve(__dirname, '../../../..');
+const MIGRATION_SQL_PATHS = resolveIdentityMigrations(REPO_ROOT);
 
 // The locked catalog shape (88 scopes / 14 roles / 474 grants — slice-A added
 // talent:source (+1 scope, +1 sourcer grant); slice B-api grants identity:resolve
@@ -114,11 +100,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       const setup = new PrismaService(url);
       await setup.$connect();
-      for (const name of MIGRATIONS) {
-        const sql = readFileSync(
-          resolve(MIGRATION_DIR, name, 'migration.sql'),
-          'utf8',
-        );
+      for (const sqlPath of MIGRATION_SQL_PATHS) {
+        const sql = readFileSync(sqlPath, 'utf8');
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
           if (trimmed.length === 0) continue;

@@ -5,7 +5,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { IdentityAuditService } from './audit/identity-audit.service.js';
 import type { EventType } from './audit/identity-audit.repository.js';
 import type { TenantDto } from './dto/tenant.dto.js';
-import { TenantRepository } from './tenant.repository.js';
+import { TenantRepository, type PlatformTenantListRow } from './tenant.repository.js';
 import { deriveAllowedDomainOrThrow } from './util/email-domain.js';
 import { deriveSlugOrThrow } from './util/tenant-slug.js';
 import {
@@ -40,6 +40,18 @@ export class TenantService {
     return this.tenantRepo.findActiveTenantsForUser(args);
   }
 
+  // Platform-Console Increment-2 PR-1.5 (A1) — the platform-operator estate
+  // list. Delegates to the ungated repository read (every tenant, every status).
+  // Kept SEPARATE from getTenantsByUser (the session-mint read) so the mint path
+  // is never coupled to the operator view. Scope-gated at the controller
+  // (platform:tenant:read); no membership filter here by design.
+  async listTenantsForPlatform(args: {
+    status?: string;
+    q?: string;
+  }): Promise<PlatformTenantListRow[]> {
+    return this.tenantRepo.listAllTenants(args);
+  }
+
   async findByNameCaseInsensitive(name: string): Promise<TenantDto | null> {
     return this.tenantRepo.findByNameCaseInsensitive(name);
   }
@@ -57,6 +69,29 @@ export class TenantService {
   // console detail endpoint. Null for an unknown id.
   async getTenantById(id: string): Promise<TenantDto | null> {
     return this.tenantRepo.findById(id);
+  }
+
+  // Platform-Console Increment-2 PR-1.5 (A2) — record the owner-invite re-send
+  // in the audit ledger. The audit write stays inside libs/identity (the
+  // event_type registry + writer live here); the platform-admin resend
+  // orchestration calls this after the Cognito re-send succeeds. Tenant-scoped;
+  // subject_id is the owner user_id (the invited subject); payload carries the
+  // reason (`resend`). Uses the already-registered `tenant.owner_invite.sent`
+  // event_type (no new event_type).
+  async recordOwnerInviteSent(args: {
+    tenant_id: string;
+    owner_user_id: string;
+    actor_id: string;
+    reason: string;
+  }): Promise<void> {
+    await this.audit.writeEvent({
+      event_type: 'tenant.owner_invite.sent',
+      actor_type: 'user',
+      actor_id: args.actor_id,
+      tenant_id: args.tenant_id,
+      subject_id: args.owner_user_id,
+      payload: { reason: args.reason },
+    });
   }
 
   // AUTHZ-2: the guarded tenant-provisioning surface. Raises

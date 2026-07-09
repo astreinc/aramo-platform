@@ -66,3 +66,11 @@ export {
   assertModuleHasNoLlmImports,
   type NoLlmBoundaryViolation,
 } from './lib/testing/no-llm-boundary-assertion.js';
+
+// Platform-Console Inc-2 PR-1.5 Workstream C — the shared identity
+// migration-registration helper (single ordered source of truth so the next
+// identity migration is a one-line edit, not a 23-site sweep).
+export {
+  IDENTITY_MIGRATIONS,
+  resolveIdentityMigrations,
+} from './lib/testing/identity-migrations.js';

@@ -81,6 +81,14 @@ export class IdentityService {
     return this.identityRepo.findUserByEmail(email);
   }
 
+  // Platform-Console Increment-2 PR-1.5 (A2) — resolve a tenant's owner
+  // (user_id + email) for the resend-owner-invite Cognito re-send.
+  async findTenantOwner(
+    tenant_id: string,
+  ): Promise<{ user_id: string; email: string } | null> {
+    return this.identityRepo.findTenantOwner(tenant_id);
+  }
+
   // §5 Auth-Hardening D2 — the reconcile-by-verified-email spine's link step.
   // Links a federated sub to an EXISTING User (resolved by verified email).
   // Delegates to the repository's NO-OP linkExternalIdentity: an idempotent

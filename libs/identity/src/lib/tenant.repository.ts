@@ -100,6 +100,50 @@ export class TenantRepository {
     });
   }
 
+  // Platform-Console Increment-2 PR-1.5 (Workstream A1) — the platform-operator
+  // tenant list. DELIBERATELY UNGATED: no membership predicate and no is_active
+  // predicate — an operator must see EVERY tenant in EVERY status (a suspended
+  // tenant must be MORE visible to an operator, not less). This is the exact
+  // inverse of findActiveTenantsForUser (the session-mint read, which stays
+  // byte-untouched): that answers "which live tenants can THIS user act in";
+  // this answers "show me the whole estate". Optional filters: exact `status`
+  // and `q` (case-insensitive contains on name OR slug). Ordered created_at desc.
+  // No pagination yet (single-digit tenant counts) — the controller wraps the
+  // rows in a `{ tenants: [...] }` envelope so pagination metadata can be added
+  // later without a breaking shape change.
+  async listAllTenants(args: {
+    status?: string;
+    q?: string;
+  }): Promise<PlatformTenantListRow[]> {
+    const where: Record<string, unknown> = {};
+    if (args.status !== undefined && args.status.length > 0) {
+      where['status'] = args.status;
+    }
+    if (args.q !== undefined && args.q.length > 0) {
+      where['OR'] = [
+        { name: { contains: args.q, mode: 'insensitive' } },
+        { slug: { contains: args.q, mode: 'insensitive' } },
+      ];
+    }
+    const rows = await this.prisma.tenant.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        status: true,
+        status_reason_code: true,
+        status_changed_at: true,
+        is_active: true,
+        created_at: true,
+        activated_at: true,
+        suspended_at: true,
+      },
+    });
+    return rows.map(toPlatformTenantListRow);
+  }
+
   // Platform-Console Increment-2 PR-1 — single-tenant read for the platform
   // console detail endpoint (GET /platform/tenants/:id). Returns null for an
   // unknown id (controller maps to NOT_FOUND).
@@ -216,6 +260,51 @@ export interface DomainVerificationRow {
   domain_verification_token: string | null;
   domain_verified_at: Date | null;
   domain_token_issued_at: Date | null;
+}
+
+// Platform-Console Increment-2 PR-1.5 (A1) — the platform-operator list row.
+// Distinct from TenantDto: it carries the lifecycle-snapshot columns an operator
+// needs to triage the estate (status + reason + the activated/suspended
+// milestones) and the slug, but NOT the profile/domain fields. Capability
+// summary stays on the detail endpoint (PR-1), not the list. Timestamps are
+// serialized to ISO strings at the repository boundary (the DTO convention).
+export interface PlatformTenantListRow {
+  id: string;
+  name: string;
+  slug: string | null;
+  status: string;
+  status_reason_code: string | null;
+  status_changed_at: string;
+  is_active: boolean;
+  created_at: string;
+  activated_at: string | null;
+  suspended_at: string | null;
+}
+
+function toPlatformTenantListRow(row: {
+  id: string;
+  name: string;
+  slug: string | null;
+  status: string;
+  status_reason_code: string | null;
+  status_changed_at: Date;
+  is_active: boolean;
+  created_at: Date;
+  activated_at: Date | null;
+  suspended_at: Date | null;
+}): PlatformTenantListRow {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    status: row.status,
+    status_reason_code: row.status_reason_code,
+    status_changed_at: row.status_changed_at.toISOString(),
+    is_active: row.is_active,
+    created_at: row.created_at.toISOString(),
+    activated_at: row.activated_at === null ? null : row.activated_at.toISOString(),
+    suspended_at: row.suspended_at === null ? null : row.suspended_at.toISOString(),
+  };
 }
 
 type TenantRow = {

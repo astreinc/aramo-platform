@@ -6,6 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
+import { resolveIdentityMigrations } from '@aramo/common';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { SEED_IDS } from '../../prisma/seed.js';
@@ -30,22 +31,12 @@ import {
 //   2. It is idempotent (re-run → identical counts; exactly one user /
 //      membership / membership-role row).
 
-const MIGRATION_DIR = resolve(__dirname, '../../prisma/migrations');
-// Curated migration list — mirrors seed-scrub.integration.spec.ts verbatim
-// (the seed's Tenant/User/Membership writes need exactly these columns present).
-const MIGRATIONS = [
-  '20260512000000_init_identity_model',
-  '20260625000000_add_tenant_allowed_domain',
-  '20260626000000_add_tenant_domain_verification',
-  '20260626120000_add_tenant_slug',
-  '20260624000000_add_invitation_and_invite_status',
-  '20260601000000_add_site_axis',
-  '20260604000000_add_authz_team_models',
-  '20260619000000_add_tenant_profile',
-  '20260620000000_add_site_hierarchy',
-  '20260627000000_add_tenant_identity_provider',
-  '20260709130000_add_tenant_lifecycle_status',
-];
+// PR-1.5 Workstream C — the identity migration set now comes from the single
+// shared ordered helper (@aramo/common). This site applied the FULL 11-migration
+// identity set (byte-identical to seed-scrub), so it retrofits cleanly. Adding
+// the next identity migration is a one-line edit in the helper, not here.
+const REPO_ROOT = resolve(__dirname, '../../../..');
+const MIGRATION_SQL_PATHS = resolveIdentityMigrations(REPO_ROOT);
 
 // Naive DDL splitter — mirrors identity.integration.spec.ts / seed-scrub.
 function splitDdl(sql: string): string[] {
@@ -63,11 +54,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       const setup = new PrismaService(url);
       await setup.$connect();
-      for (const name of MIGRATIONS) {
-        const sql = readFileSync(
-          resolve(MIGRATION_DIR, name, 'migration.sql'),
-          'utf8',
-        );
+      for (const sqlPath of MIGRATION_SQL_PATHS) {
+        const sql = readFileSync(sqlPath, 'utf8');
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
           if (trimmed.length === 0) continue;
