@@ -60,6 +60,7 @@ const IDENTITY_SLUG = resolve(
 const IDENTITY_IDP = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
+  'libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql',
 );
 
 const ISSUER = 'Aramo Core Auth';

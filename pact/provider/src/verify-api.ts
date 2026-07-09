@@ -382,6 +382,7 @@ const IDENTITY_ALLOWED_DOMAIN_MIGRATION = resolve(ROOT, 'libs/identity/prisma/mi
 const IDENTITY_DOMAIN_VERIFICATION_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql');
 const IDENTITY_TENANT_SLUG_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql');
 const IDENTITY_IDP_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql');
+const IDENTITY_LIFECYCLE_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql');
 // PC-4 — activity + pipeline schemas. GET /v1/talent-records runs the
 // apps/api TalentRecordEnrichmentInterceptor, which reads activity
 // (last_activity_at) + pipeline (current_stage) + consent (consent_summary).
@@ -2545,6 +2546,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         IDENTITY_DOMAIN_VERIFICATION_MIGRATION,
         IDENTITY_TENANT_SLUG_MIGRATION,
         IDENTITY_IDP_MIGRATION,
+        IDENTITY_LIFECYCLE_MIGRATION,
         SETTINGS_INIT_MIGRATION,
         // PC-4 — activity + pipeline for the talent-records enrichment reads.
         ACTIVITY_INIT_MIGRATION,
