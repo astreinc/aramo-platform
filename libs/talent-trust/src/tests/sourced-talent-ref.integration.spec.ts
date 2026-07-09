@@ -42,6 +42,11 @@ const THINNESS_FLAGS_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
 );
+// TR-8 D2 — TrustState.verified_control_stale (the regenerated client SELECTs it).
+const VERIFIED_STALE_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
+);
 
 const TENANT = '22222222-2222-7222-8222-222222222222';
 // Stands in for a sourced_talent arrival id (sourced_talent.SourcedTalent.id).
@@ -93,6 +98,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const lastMatchedSql = readFileSync(LAST_MATCHED_MIGRATION_PATH, 'utf8');
       const consistencyWatermarkSql = readFileSync(CONSISTENCY_WATERMARK_MIGRATION_PATH, 'utf8');
       const thinnessFlagsSql = readFileSync(THINNESS_FLAGS_MIGRATION_PATH, 'utf8');
+      const verifiedStaleSql = readFileSync(VERIFIED_STALE_MIGRATION_PATH, 'utf8');
 
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
@@ -102,6 +108,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ...splitDdl(lastMatchedSql),
         ...splitDdl(consistencyWatermarkSql),
         ...splitDdl(thinnessFlagsSql),
+        ...splitDdl(verifiedStaleSql),
       ]) {
         const trimmed = stmt.trim();
         if (trimmed.length === 0) continue;

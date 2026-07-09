@@ -37,6 +37,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
   '../../prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
   '../../prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
+  '../../prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const CREATED_BY = 'tr2a3-resolution-integration';

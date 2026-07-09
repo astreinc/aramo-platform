@@ -185,6 +185,7 @@ export class SourcingService {
           : deriveTrustStatements({
               single_source_only: trustState.single_source_only,
               longitudinal_observed: trustState.longitudinal_observed,
+              verified_control_stale: trustState.verified_control_stale,
             }),
       evidence,
       refs,
