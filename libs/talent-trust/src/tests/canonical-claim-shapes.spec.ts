@@ -50,6 +50,10 @@ describe('validateClaimShape — registered vs unregistered posture (§5a)', () 
     expect(Object.keys(CANONICAL_CLAIM_SHAPES).sort()).toEqual([
       'EMAIL',
       'EMPLOYMENT',
+      // TR-5 B2 — the positive CONTINUITY derivers' comparability shapes (NOT in
+      // AUTHORITATIVE_ASSERTION_TYPES.CONTINUITY, which stays empty).
+      'HISTORY_SPAN',
+      'LONGITUDINAL_PRESENCE',
       'PHONE',
       'PROFILE_URL',
       'SKILL',

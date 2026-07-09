@@ -265,6 +265,18 @@ export function SourcingSubjectDrawer({
               </StatusPill>
             </div>
           ) : null}
+          {/* TR-5 B2 — named-thinness assessment statements beside the bands.
+              Plain Confident-blue lines from the server's fixed sentence set;
+              no pill kinds, no numbers. */}
+          {(detail?.trust_statements ?? []).length > 0 ? (
+            <ul className="rc-sourcing-statements">
+              {detail!.trust_statements.map((s) => (
+                <li key={s} className="rc-sourcing-statements__line">
+                  {s}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </section>
 
         {loading ? (

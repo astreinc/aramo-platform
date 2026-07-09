@@ -70,6 +70,8 @@ export interface SubjectDetail {
   readonly email: string | null;
   readonly trust_bands: TrustBands | null;
   readonly open_contradiction_count: number;
+  // TR-5 B2 — named-thinness assessment statements (strings only, no numbers).
+  readonly trust_statements: readonly string[];
   readonly evidence: readonly EvidenceRow[];
   readonly refs: readonly SubjectRefRow[];
   readonly open_identity_advisories: readonly SubjectAdvisory[];

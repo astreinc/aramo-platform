@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PipelineRepository } from '@aramo/pipeline';
 import { SavedListRepository } from '@aramo/saved-list';
 import {
+  deriveTrustStatements,
   TalentTrustRepository,
   type SubjectRef,
   type EvidenceRecordRow,
@@ -62,6 +63,11 @@ export interface SubjectDetail {
   email: string | null;
   trust_bands: TrustBands | null;
   open_contradiction_count: number;
+  // TR-5 B2 (DDR §4, β1) — the named-thinness assessment statements, rendered
+  // from the TrustState flags by deriveTrustStatements. STRINGS ONLY (a fixed,
+  // locked sentence set) — no count, span, or ordinal ever crosses this wire; the
+  // numeric payloads stay in the ledger, visible only via `evidence[]`.
+  trust_statements: string[];
   evidence: EvidenceRecordRow[];
   refs: ResolutionSubjectRefRow[];
   // The PRE-promotion needs-review: pending same-human MERGE advisories (subject-
@@ -156,6 +162,13 @@ export class SourcingService {
               eligibility: trustState.eligibility_band,
             },
       open_contradiction_count: trustState?.open_contradiction_count ?? 0,
+      trust_statements:
+        trustState === null
+          ? []
+          : deriveTrustStatements({
+              single_source_only: trustState.single_source_only,
+              longitudinal_observed: trustState.longitudinal_observed,
+            }),
       evidence,
       refs,
       open_identity_advisories: advisories,

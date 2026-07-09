@@ -3381,6 +3381,11 @@ select.rc-input { appearance: none; padding-right: 28px; }
 }
 .rc-sourcing-contra { margin-top: 12px; }
 
+/* TR-5 B2 — named-thinness assessment statements (Confident-blue plain lines,
+   beside the band pills). No pill kinds, no numbers — a fixed sentence set. */
+.rc-sourcing-statements { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.rc-sourcing-statements__line { color: var(--brand-strong); font-size: 13px; line-height: 1.4; }
+
 /* Pending identity advisories — one card per possible match. */
 .rc-sourcing-adv { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .rc-sourcing-adv__row {

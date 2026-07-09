@@ -11,6 +11,17 @@ import {
   type ExistingGap,
 } from './consistency-detectors.js';
 import {
+  computeContinuityDerivations,
+  CONTACT_ANCHOR_KINDS,
+  HISTORY_SPAN,
+  LONGITUDINAL_PRESENCE,
+  type ContactObservation,
+  type DerivedAction,
+  type ExistingDerived,
+  type HistorySpanPayload,
+  type LongitudinalPresencePayload,
+} from './continuity-derivers.js';
+import {
   deriveTrustState,
   type EvidenceForDerivation,
 } from './band-derivation.js';
@@ -893,6 +904,11 @@ export class TalentTrustService {
     const continuityEvidence = await this.repo.listEvidenceBySubjects(members, {
       dimension: 'CONTINUITY',
     });
+    // TR-5 B2 — the CONTINUITY derivers read IDENTITY contact evidence too (the
+    // per-arrival observations that prove longitudinal presence).
+    const identityEvidence = await this.repo.listEvidenceBySubjects(members, {
+      dimension: 'IDENTITY',
+    });
 
     const claims: EmploymentClaim[] = claimsEvidence
       .filter((e) => e.assertion_type === 'EMPLOYMENT')
@@ -947,12 +963,145 @@ export class TalentTrustService {
       await this.supersede(h.gap_evidence_id, h.filler_evidence_id);
     }
 
+    // TR-5 B2 (DDR §3) — the two positive CONTINUITY derivers, beside the
+    // detectors in the same pass. LONGITUDINAL_PRESENCE reads the IDENTITY contact
+    // observations; HISTORY_SPAN reads the same EMPLOYMENT claims + the open-gap
+    // state. The pure deriver returns write/replace/retire/no-op per assertion
+    // type; this executes it. The final recompute prices whatever landed. The
+    // CONTINUITY evidence is RE-READ inside (not the pre-detector snapshot), so a
+    // gap opened/healed THIS pass is seen — a fresh gap retires a span at once.
+    await this.runContinuityDerivers({ tenantId, subjectId, members, identityEvidence, claims });
+
     await this.recompute(subjectId, tenantId, new Date());
     return {
       contradictions: plan.impossibleRangeIds.length + plan.employerConflicts.length,
       gaps_opened,
       gaps_healed: plan.gapsToHeal.length,
     };
+  }
+
+  // TR-5 B2 (DDR §3) — execute the CONTINUITY derivation plan. PURE decision in
+  // continuity-derivers.ts; this method is the I/O arm. One VALID derived row per
+  // (subject, assertion_type): write a first, replace on basis change (supersede
+  // the prior), retire without replacement when the basis breaks (a newly-opened
+  // gap supersedes a HISTORY_SPAN), or no-op when the current row still holds.
+  private async runContinuityDerivers(input: {
+    tenantId: string;
+    subjectId: string;
+    members: string[];
+    identityEvidence: EvidenceRecordRow[];
+    claims: EmploymentClaim[];
+  }): Promise<void> {
+    // RE-READ CONTINUITY (not the pre-detector snapshot) so a gap opened/healed
+    // earlier in THIS pass is reflected — the span retires the same tick a gap opens.
+    const continuityEvidence = await this.repo.listEvidenceBySubjects(input.members, {
+      dimension: 'CONTINUITY',
+    });
+
+    const contactObservations: ContactObservation[] = input.identityEvidence
+      .filter((e) => (CONTACT_ANCHOR_KINDS as readonly string[]).includes(e.assertion_type))
+      .map((e) => {
+        const p = (e.assertion_payload ?? {}) as Record<string, unknown>;
+        return {
+          evidence_id: e.id,
+          anchor_kind: e.assertion_type,
+          value: typeof p['value'] === 'string' ? p['value'] : '',
+          source_class: e.source_class,
+          collected_at: e.collected_at,
+          current_status: e.current_status,
+        };
+      });
+
+    const employmentClaims = input.claims.map((c) => ({
+      evidence_id: c.evidence_id,
+      source_class: c.source_class,
+      start_date: c.start_date,
+      end_date: c.end_date,
+      current_status: c.current_status,
+    }));
+    const openGaps = continuityEvidence
+      .filter((e) => e.assertion_type === 'TIMELINE_GAP')
+      .map((e) => ({ current_status: e.current_status }));
+
+    // The current VALID derived row per type (the supersede-replace invariant keeps
+    // it singular; if more than one is VALID, take the lowest id deterministically).
+    const currentDerived = (assertionType: string): ExistingDerived | null => {
+      const rows = continuityEvidence
+        .filter((e) => e.assertion_type === assertionType && e.current_status === 'VALID')
+        .sort((a, b) => (a.id < b.id ? -1 : 1));
+      const row = rows[0];
+      return row ? { evidence_id: row.id, payload: (row.assertion_payload ?? {}) as Record<string, unknown> } : null;
+    };
+
+    const plan = computeContinuityDerivations({
+      contactObservations,
+      employmentClaims,
+      openGaps,
+      existingLongitudinal: currentDerived(LONGITUDINAL_PRESENCE),
+      existingHistorySpan: currentDerived(HISTORY_SPAN),
+    });
+
+    await this.executeDerivedAction(input.tenantId, input.subjectId, LONGITUDINAL_PRESENCE, plan.longitudinal);
+    await this.executeDerivedAction(input.tenantId, input.subjectId, HISTORY_SPAN, plan.historySpan);
+  }
+
+  private async executeDerivedAction(
+    tenantId: string,
+    subjectId: string,
+    assertionType: string,
+    action: DerivedAction<LongitudinalPresencePayload> | DerivedAction<HistorySpanPayload>,
+  ): Promise<void> {
+    if (action.kind === 'noop') return;
+    if (action.kind === 'retire') {
+      // Supersession WITHOUT replacement — the basis broke (e.g. a new gap opened
+      // under a HISTORY_SPAN). SUPERSEDED clears the flag; no from-link exists.
+      await this.applyLifecycle(action.supersede_id, 'SUPERSEDED', {});
+      return;
+    }
+    const newId = await this.writeDerivedContinuity(tenantId, subjectId, assertionType, action.payload, action.source_class);
+    if (action.kind === 'replace') {
+      await this.supersede(action.supersede_id, newId);
+    }
+  }
+
+  // The derived-CONTINUITY writer — mirrors recordTimelineGapIfAbsent. DERIVED
+  // method (an inference, not a source pull) × the FLOOR class of its inputs
+  // (§3.1 — the inference cannot outrank them). ai_derived:false (deterministic,
+  // not an LLM). Goes through the canonical gate (the payload always conforms).
+  private async writeDerivedContinuity(
+    tenantId: string,
+    subjectId: string,
+    assertionType: string,
+    payload: object,
+    sourceClass: SourceClass,
+  ): Promise<string> {
+    const canonical = this.canonicalizeOrRefuse(assertionType, payload);
+    const now = new Date();
+    const evidence = await this.repo.insertEvidence({
+      subject_id: subjectId,
+      tenant_id: tenantId,
+      dimension: 'CONTINUITY',
+      assertion_type: assertionType,
+      assertion_payload: canonical,
+      source_class: sourceClass,
+      method: 'DERIVED',
+      strength: deriveStrength(sourceClass, 'DERIVED'),
+      source_ref: { kind: assertionType.toLowerCase() },
+      collected_at: now,
+      decay_profile: 'SLOW',
+      portability_class: 'TENANT_ONLY',
+      ai_derived: false,
+      current_status: EVENT_TO_STATUS.CREATED,
+      created_by: 'consistency',
+    });
+    await this.repo.appendEvent({
+      evidence_id: evidence.id,
+      tenant_id: tenantId,
+      event_type: 'CREATED',
+      actor: 'consistency',
+      occurred_at: now,
+    });
+    return evidence.id;
   }
 
   // ---- Subject capability (§8) — reversible; logic deferred to TR-6 ---
@@ -1057,6 +1206,8 @@ export class TalentTrustService {
       open_contradiction_count: 0,
       stale_evidence_count: 0,
       has_open_dispute: false,
+      single_source_only: false,
+      longitudinal_observed: false,
       last_recomputed_at: subject.created_at,
     };
   }

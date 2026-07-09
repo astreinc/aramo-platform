@@ -45,6 +45,13 @@ export interface DerivedTrustState {
   open_contradiction_count: number;
   stale_evidence_count: number;
   has_open_dispute: boolean;
+  // TR-5 B2 (DDR §4) — named thinness, surfaced as statements never numbers.
+  // single_source_only: all VALID first-hand evidence collapses to ONE
+  // independence group (DERIVED signals are inferences, not sources — excluded).
+  // longitudinal_observed: ≥1 VALID LONGITUDINAL_PRESENCE row (this identity
+  // persisted across arrivals).
+  single_source_only: boolean;
+  longitudinal_observed: boolean;
 }
 
 const bandRank = (b: PresentationBand): number => PRESENTATION_BANDS.indexOf(b);
@@ -203,6 +210,17 @@ export function deriveTrustState(
   // single source of truth; the explicit fields below mirror the schema.
   void TRUST_DIMENSIONS;
 
+  // TR-5 B2 (DDR §4) — thinness flags. single_source_only counts distinct
+  // independence groups over VALID FIRST-HAND evidence: DERIVED rows (gaps,
+  // spans, presence, platform-derived contradictions) are inferences FROM the
+  // ledger, not new sources — including them would falsely clear thinness.
+  const firstHand = evidence.filter((e) => e.current_status === 'VALID' && e.method !== 'DERIVED');
+  const groups = new Set<string>(firstHand.map((e, i) => independenceKey(e, i)));
+  const single_source_only = groups.size === 1;
+  const longitudinal_observed = evidence.some(
+    (e) => e.current_status === 'VALID' && e.assertion_type === 'LONGITUDINAL_PRESENCE',
+  );
+
   return {
     identity_band: bandFor('IDENTITY'),
     claims_band: bandFor('CLAIMS'),
@@ -211,5 +229,25 @@ export function deriveTrustState(
     open_contradiction_count: evidence.filter((e) => e.current_status === 'CONTRADICTED').length,
     stale_evidence_count: evidence.filter((e) => e.current_status === 'STALE').length,
     has_open_dispute: evidence.some((e) => e.current_status === 'DISPUTED'),
+    single_source_only,
+    longitudinal_observed,
   };
+}
+
+// TR-5 B2 (DDR §4) — the why-path renderer (β1, Lead-ruled). Maps the thinness
+// flags to the LOCKED assessment statements — strings only, NO digit, count, or
+// ordinal ever. The fixed sentence set is the whole vocabulary; a reviewer with
+// evidence access reads the underlying numbers in the ledger, never here. This is
+// the renderer TR-14's contracted assessment surface will consume by name.
+export const TRUST_STATEMENT_SINGLE_SOURCE = 'Evidence from a single source';
+export const TRUST_STATEMENT_LONGITUDINAL = 'Observed over time';
+
+export function deriveTrustStatements(state: {
+  single_source_only: boolean;
+  longitudinal_observed: boolean;
+}): string[] {
+  const statements: string[] = [];
+  if (state.single_source_only) statements.push(TRUST_STATEMENT_SINGLE_SOURCE);
+  if (state.longitudinal_observed) statements.push(TRUST_STATEMENT_LONGITUDINAL);
+  return statements;
 }

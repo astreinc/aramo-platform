@@ -43,6 +43,7 @@ const MIGRATIONS = [
   'libs/talent-trust/prisma/migrations/20260708120000_tr3_b1_verification_request/migration.sql',
   'libs/talent-trust/prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
   'libs/talent-trust/prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
 ].map(M);
 
 const TENANT_A = '01900000-0000-7000-8000-0000000000a1';
