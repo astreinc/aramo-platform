@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { deriveTrustState, type EvidenceForDerivation } from '../lib/band-derivation.js';
+import {
+  deriveTrustState,
+  deriveTrustStatements,
+  TRUST_STATEMENT_LONGITUDINAL,
+  TRUST_STATEMENT_SINGLE_SOURCE,
+  type EvidenceForDerivation,
+} from '../lib/band-derivation.js';
 import { deriveStrength } from '../lib/strength.js';
 import type {
   DecayProfile,
@@ -44,6 +50,75 @@ function ev(
     ...partial,
   };
 }
+
+describe('deriveTrustState — thinness flags (TR-5 B2 §4)', () => {
+  it('single_source_only: one first-hand independence group → true; a second independent source → false', () => {
+    const oneSource = deriveTrustState(
+      [ev({ dimension: 'CLAIMS', source_class: 'THIRD_PARTY_UNVERIFIED', method: 'DOCUMENT', source_ref: { s: 'x' } })],
+      NOW,
+    );
+    expect(oneSource.single_source_only).toBe(true);
+    const twoSources = deriveTrustState(
+      [
+        ev({ dimension: 'CLAIMS', source_class: 'THIRD_PARTY_UNVERIFIED', method: 'DOCUMENT', source_ref: { s: 'x' } }),
+        ev({ dimension: 'IDENTITY', source_class: 'THIRD_PARTY_UNVERIFIED', method: 'DOCUMENT', source_ref: { s: 'y' } }),
+      ],
+      NOW,
+    );
+    expect(twoSources.single_source_only).toBe(false);
+  });
+
+  it('single_source_only ignores DERIVED signals (an inference is not a second source)', () => {
+    const s = deriveTrustState(
+      [
+        ev({ dimension: 'CLAIMS', source_class: 'THIRD_PARTY_UNVERIFIED', method: 'DOCUMENT', source_ref: { s: 'x' } }),
+        // a derived CONTINUITY row shares no source but must NOT clear thinness
+        ev({ dimension: 'CONTINUITY', source_class: 'THIRD_PARTY_UNVERIFIED', method: 'DERIVED', assertion_type: 'HISTORY_SPAN', source_ref: { kind: 'history_span' } }),
+      ],
+      NOW,
+    );
+    expect(s.single_source_only).toBe(true);
+  });
+
+  it('longitudinal_observed: true iff a VALID LONGITUDINAL_PRESENCE row exists', () => {
+    const without = deriveTrustState(
+      [ev({ dimension: 'IDENTITY', source_class: 'SELF', method: 'SELF_DECLARED', assertion_type: 'EMAIL' })],
+      NOW,
+    );
+    expect(without.longitudinal_observed).toBe(false);
+    const withLP = deriveTrustState(
+      [ev({ dimension: 'CONTINUITY', source_class: 'THIRD_PARTY_UNVERIFIED', method: 'DERIVED', assertion_type: 'LONGITUDINAL_PRESENCE' })],
+      NOW,
+    );
+    expect(withLP.longitudinal_observed).toBe(true);
+    // a SUPERSEDED LONGITUDINAL_PRESENCE no longer counts
+    const superseded = deriveTrustState(
+      [ev({ dimension: 'CONTINUITY', source_class: 'THIRD_PARTY_UNVERIFIED', method: 'DERIVED', assertion_type: 'LONGITUDINAL_PRESENCE', current_status: 'SUPERSEDED' })],
+      NOW,
+    );
+    expect(superseded.longitudinal_observed).toBe(false);
+  });
+});
+
+describe('deriveTrustStatements — the why-path (β1, strings only)', () => {
+  it('maps each flag to its locked sentence; both off → no statements', () => {
+    expect(deriveTrustStatements({ single_source_only: false, longitudinal_observed: false })).toEqual([]);
+    expect(deriveTrustStatements({ single_source_only: true, longitudinal_observed: false })).toEqual([TRUST_STATEMENT_SINGLE_SOURCE]);
+    expect(deriveTrustStatements({ single_source_only: false, longitudinal_observed: true })).toEqual([TRUST_STATEMENT_LONGITUDINAL]);
+    expect(deriveTrustStatements({ single_source_only: true, longitudinal_observed: true })).toEqual([
+      TRUST_STATEMENT_SINGLE_SOURCE,
+      TRUST_STATEMENT_LONGITUDINAL,
+    ]);
+  });
+
+  it('the fixed sentence set contains no digit, count, or ordinal', () => {
+    for (const s of [TRUST_STATEMENT_SINGLE_SOURCE, TRUST_STATEMENT_LONGITUDINAL]) {
+      expect(/\d/.test(s)).toBe(false);
+    }
+    expect(TRUST_STATEMENT_SINGLE_SOURCE).toBe('Evidence from a single source');
+    expect(TRUST_STATEMENT_LONGITUDINAL).toBe('Observed over time');
+  });
+});
 
 describe('deriveTrustState — band accrual rules (§6)', () => {
   it('empty ledger → all four dimensions NOT_ESTABLISHED', () => {

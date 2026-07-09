@@ -171,7 +171,7 @@ describe('SourcingService.getPool', () => {
 describe('SourcingService.getSubjectDetail', () => {
   it('composes trust + evidence + refs + PENDING identity advisories (tenant-scoped)', async () => {
     const { service, listMatchAdvisories } = make({
-      trustState: { identity_band: 'CORROBORATED', claims_band: 'NOT_ESTABLISHED', continuity_band: 'NOT_ESTABLISHED', eligibility_band: 'NOT_ESTABLISHED', open_contradiction_count: 1 },
+      trustState: { identity_band: 'CORROBORATED', claims_band: 'NOT_ESTABLISHED', continuity_band: 'NOT_ESTABLISHED', eligibility_band: 'NOT_ESTABLISHED', open_contradiction_count: 1, single_source_only: true, longitudinal_observed: true },
       evidence: [{ id: 'e1', assertion_type: 'FULL_NAME', assertion_payload: { first_name: 'Ada', last_name: 'Byron' }, current_status: 'VALID' }],
       refs: [{ ref_type: 'SOURCED_TALENT', ref_id: 'p1', link_source: 'x' }],
       advisories: [{ id: 'adv-1', status: 'PENDING_REVIEW' }],
@@ -182,6 +182,9 @@ describe('SourcingService.getSubjectDetail', () => {
     expect(detail.trust_bands?.identity).toBe('CORROBORATED');
     expect(detail.open_contradiction_count).toBe(1);
     expect(detail.open_identity_advisories).toHaveLength(1);
+    // TR-5 B2 (β1) — the flags surface as statements (strings only, no numbers).
+    expect(detail.trust_statements).toEqual(['Evidence from a single source', 'Observed over time']);
+    expect(detail.trust_statements.every((s) => !/\d/.test(s))).toBe(true);
     // only PENDING_REVIEW advisories for this subject.
     expect(listMatchAdvisories).toHaveBeenCalledWith(TENANT, { subjectId: 'subj-1', status: 'PENDING_REVIEW' });
   });

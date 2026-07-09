@@ -309,6 +309,11 @@ model TrustState {
   stale_evidence_count     Int     @default(0)
   has_open_dispute         Boolean @default(false)
 
+  // TR-5 B2 (DDR §4) — named thinness flags, derived at recompute. Surfaced as
+  // assessment statements, never as numbers on any wire.
+  single_source_only    Boolean @default(false)
+  longitudinal_observed Boolean @default(false)
+
   last_recomputed_at DateTime @db.Timestamptz
 
   subject ResolutionSubject @relation(fields: [subject_id], references: [id])

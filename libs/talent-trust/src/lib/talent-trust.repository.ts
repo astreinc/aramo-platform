@@ -127,6 +127,9 @@ export interface TrustStateRow {
   open_contradiction_count: number;
   stale_evidence_count: number;
   has_open_dispute: boolean;
+  // TR-5 B2 (DDR §4) — named thinness flags (surfaced as statements, never numbers).
+  single_source_only: boolean;
+  longitudinal_observed: boolean;
   last_recomputed_at: Date;
 }
 
@@ -781,6 +784,8 @@ export class TalentTrustRepository {
         open_contradiction_count: input.open_contradiction_count,
         stale_evidence_count: input.stale_evidence_count,
         has_open_dispute: input.has_open_dispute,
+        single_source_only: input.single_source_only,
+        longitudinal_observed: input.longitudinal_observed,
         last_recomputed_at: input.last_recomputed_at,
       },
     });
@@ -913,9 +918,14 @@ export class TalentTrustRepository {
     const rows = await this.prisma.$queryRawUnsafe<
       Array<{ subject_id: string; tenant_id: string }>
     >(
+      // TR-5 B2 (DDR §3.1) — the gate BROADENS from CLAIMS-only to ANY dimension.
+      // The one poll now feeds both the TR-4 detectors (CLAIMS) and the TR-5
+      // CONTINUITY derivers (which read IDENTITY contact + EMPLOYMENT evidence),
+      // so a new IDENTITY arrival must re-select the subject too. One poll, one
+      // watermark, detectors + derivers in a single per-subject pass.
       `SELECT DISTINCT ON (s.id) s.id AS subject_id, s.tenant_id AS tenant_id
          FROM "talent_trust"."ResolutionSubject" s
-         JOIN "talent_trust"."EvidenceRecord" e ON e.subject_id = s.id AND e.dimension = 'CLAIMS'
+         JOIN "talent_trust"."EvidenceRecord" e ON e.subject_id = s.id
         WHERE s.status = 'ACTIVE'
           AND e.created_at > COALESCE(s.last_consistency_at, TIMESTAMPTZ 'epoch')
           AND ($2::uuid IS NULL OR s.tenant_id = $2::uuid)

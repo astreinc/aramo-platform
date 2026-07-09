@@ -55,6 +55,7 @@ function detail(over: Partial<SubjectDetail> = {}): SubjectDetail {
       eligibility: null,
     },
     open_contradiction_count: 0,
+    trust_statements: [],
     evidence: [
       {
         id: 'e1',
@@ -188,6 +189,19 @@ describe('SourcingPoolView — subject drawer', () => {
     // No numeric strength leaked anywhere in the drawer.
     const drawer = screen.getByRole('dialog');
     expect(drawer.textContent ?? '').not.toMatch(/strength/i);
+  });
+
+  it('renders the named-thinness statements in the drawer (strings only, no numbers)', async () => {
+    vi.mocked(getPool).mockResolvedValue(oneRow);
+    vi.mocked(getSubjectDetail).mockResolvedValue(
+      detail({ trust_statements: ['Evidence from a single source', 'Observed over time'] }),
+    );
+    renderView(SOURCER);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
+    expect(await screen.findByText('Evidence from a single source')).toBeInTheDocument();
+    expect(screen.getByText('Observed over time')).toBeInTheDocument();
+    // The statement lines carry no digit.
+    expect(screen.getByText('Evidence from a single source').textContent ?? '').not.toMatch(/\d/);
   });
 
   it('Save to pool → deferral renders as guidance, not an error toast', async () => {

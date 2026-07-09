@@ -62,6 +62,9 @@ export {
 // Band-derivation core (pure) — exported for downstream explainability/tests.
 export {
   deriveTrustState,
+  deriveTrustStatements,
+  TRUST_STATEMENT_SINGLE_SOURCE,
+  TRUST_STATEMENT_LONGITUDINAL,
   type EvidenceForDerivation,
   type DerivedTrustState,
 } from './lib/band-derivation.js';

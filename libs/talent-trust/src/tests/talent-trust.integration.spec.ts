@@ -56,6 +56,7 @@ const LINK_UNIQUE_MIGRATION_PATH = resolve(
 const CONSISTENCY_WATERMARK_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
+  '../../prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
 );
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
