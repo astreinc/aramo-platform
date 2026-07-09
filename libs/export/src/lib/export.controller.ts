@@ -7,9 +7,10 @@ import {
   Param,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
 import {
@@ -62,8 +63,9 @@ export class ExportController {
   //   ?limit=<int>             (optional — default 5000, max 10000)
   //
   // Returns text/csv with the canonical ATS field-name header row.
-  // 200 → CSV body; the controller sets Content-Type + Content-
-  // Disposition so a browser download is named exports-<entity>.csv.
+  // 200 → CSV body; the controller sets Content-Type (declarative) +
+  // Content-Disposition (dynamic, set on the passthrough response) so a
+  // browser download is named "<entity_type>-<YYYY-MM-DD>.csv".
   @Get(':entity_type')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('export:read')
@@ -75,6 +77,7 @@ export class ExportController {
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<string> {
     // entity_type — validated by class-validator (@IsIn). Belt-and-
     // braces re-narrow here so the switch in the service is exhaustive.
@@ -92,6 +95,15 @@ export class ExportController {
         },
       );
     }
+
+    // Content-Disposition (dynamic — the @Header decorator is static, so the
+    // date-stamped download name is set on the passthrough response here,
+    // only after entity_type has validated). Server date, UTC (YYYY-MM-DD).
+    const downloadDate = new Date().toISOString().slice(0, 10);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${params.entity_type}-${downloadDate}.csv"`,
+    );
 
     const columns = parseColumns(query.columns, requestId);
     const limit = parseLimit(query.limit, requestId);
