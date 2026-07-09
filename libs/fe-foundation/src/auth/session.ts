@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 
 import { ApiError, apiClient } from '../api/client';
+
 import { authPath } from './consumer';
 
 export interface Session {
