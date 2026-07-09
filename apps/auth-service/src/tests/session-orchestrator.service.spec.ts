@@ -606,3 +606,75 @@ describe('SessionOrchestratorService — Invite-S2 sub-link safety + activation-
     expect(order).toEqual(['link', 'activate']);
   });
 });
+
+// Platform-Console Increment-2 PR-1.5 (Workstream B) — the tenant-status mint
+// gate (workstream E, PR-1) proven at the SessionOrchestrator decision layer.
+// This is a UNIT spec (no container, not ARAMO_RUN_INTEGRATION-gated), so it
+// runs in CI's test-unit job — CI-enforced coverage of the gate WIRING. The
+// gate's vocabulary (which statuses deny) is separately asserted in
+// libs/identity/src/tests/tenant-lifecycle.spec.ts; the auth /callback HTTP
+// mapping (reason → typed TENANT_SUSPENDED/TENANT_CLOSED 403) rides with the
+// deferred auth-service CI-enforcement follow-up.
+describe('SessionOrchestratorService — tenant-status mint gate (PR-1 workstream E)', () => {
+  function callbackWithTenantStatus(
+    status: string,
+    consumer: 'recruiter' | 'platform' = 'recruiter',
+  ): ReturnType<SessionOrchestratorService['handleCallback']> {
+    const mocks = makeMocks({
+      tenant: {
+        getTenantsByUser: vi.fn().mockResolvedValue([
+          {
+            id: TENANT_ID,
+            name: 'Tenant One',
+            is_active: true,
+            created_at: '',
+            updated_at: '',
+            status,
+          },
+        ]),
+      } as unknown as TenantService,
+    });
+    const svc = makeService(mocks);
+    return svc.handleCallback({
+      consumer,
+      code: 'c',
+      state: 'state-1',
+      cognitoError: undefined,
+      cognitoErrorDescription: undefined,
+      pkceStateCipher: 'cipher',
+    });
+  }
+
+  it('DENIES a tenant-consumer session for a SUSPENDED tenant (reason tenant_suspended)', async () => {
+    const result = await callbackWithTenantStatus('SUSPENDED');
+    expect(result.kind).toBe('auth_error');
+    if (result.kind !== 'auth_error') return;
+    expect(result.reason).toBe('tenant_suspended');
+  });
+
+  it('DENIES a tenant-consumer session for a CLOSED tenant (reason tenant_closed)', async () => {
+    const result = await callbackWithTenantStatus('CLOSED');
+    expect(result.kind).toBe('auth_error');
+    if (result.kind !== 'auth_error') return;
+    expect(result.reason).toBe('tenant_closed');
+  });
+
+  it.each(['PROVISIONED', 'ACTIVE', 'OFFBOARDING'])(
+    'MINTS a tenant-consumer session for a %s tenant (login-gate table: not denied)',
+    async (status) => {
+      const result = await callbackWithTenantStatus(status);
+      expect(result.kind).toBe('success');
+    },
+  );
+
+  it('does NOT gate the PLATFORM consumer even when the (sentinel) tenant status is SUSPENDED', async () => {
+    const result = await callbackWithTenantStatus('SUSPENDED', 'platform');
+    // The gate is tenant-consumer-only. The platform consumer's later flow has
+    // its own (unrelated) requirements the default mocks don't satisfy, so we
+    // assert the PRECISE claim: the status gate did NOT fire (no tenant_suspended
+    // denial) — proving the platform consumer is exempt from the lifecycle gate.
+    const gatedOut =
+      result.kind === 'auth_error' && result.reason === 'tenant_suspended';
+    expect(gatedOut).toBe(false);
+  });
+});
