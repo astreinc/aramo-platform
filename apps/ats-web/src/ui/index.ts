@@ -24,10 +24,10 @@ export {
   RadioGroup,
 } from '@aramo/fe-foundation';
 
-// ── DataTable (frozen Table, themed dense) ──
-export { DataTable, type TableColumn } from './DataTable';
+// ── DataTable — extracted to @aramo/fe-foundation (PR-1.6) ──
+export { DataTable, type TableColumn } from '@aramo/fe-foundation';
 
-// ── New: chrome ──
+// ── Chrome — extracted to @aramo/fe-foundation (PR-1.6) ──
 export {
   AppShell,
   ShellBrand,
@@ -40,13 +40,14 @@ export {
   CmdKSearch,
   NotificationButton,
   type BreadcrumbItem,
-} from './AppShell';
+} from '@aramo/fe-foundation';
 
 // ── New: surface + content atoms ──
 export { Card, CardHead } from './Card';
-export { Avatar, EntityCell, initialsOf, type AvatarSize } from './Avatar';
+// Avatar/EntityCell + UserMenu extracted to @aramo/fe-foundation (PR-1.6).
+export { Avatar, EntityCell, initialsOf, type AvatarSize } from '@aramo/fe-foundation';
 export { TitleCell } from './TitleCell';
-export { UserMenu } from './UserMenu';
+export { UserMenu } from '@aramo/fe-foundation';
 export {
   StatusPill,
   StagePill,
@@ -90,5 +91,7 @@ export {
   type FunnelBucketKey,
 } from './stage-map';
 
-// ── Icons ──
-export * as Icons from './icons';
+// ── Icons — extracted to @aramo/fe-foundation (PR-1.6); re-exported as the
+// same `Icons` namespace so `import { Icons } from '../ui'` call-sites are
+// untouched. ──
+export { Icons } from '@aramo/fe-foundation';

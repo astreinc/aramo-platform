@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
-
-import { IconSearch } from './icons';
+import { IconSearch } from '@aramo/fe-foundation';
 
 interface ToolbarProps {
   readonly children: ReactNode;

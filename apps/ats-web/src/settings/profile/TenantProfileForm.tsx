@@ -1,7 +1,7 @@
 import { ApiError, Combobox, useToast, type ComboboxItem } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState } from 'react';
+import { IconBuilding } from '@aramo/fe-foundation';
 
-import { IconBuilding } from '../../ui/icons';
 import { Button, Card, InlineAlert } from '../../ui';
 import { SettingCardHead, SettingHint } from '../components';
 

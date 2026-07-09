@@ -1,12 +1,12 @@
 import { InlineAlert, useSession, type Session } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { Tabs, type TabItem } from '@aramo/fe-foundation';
 
 import { listActivities } from '../activity/activity-api';
 import { ActivityTimeline } from '../activity/ActivityTimeline';
 import { LogNoteDialog } from '../activity/LogNoteDialog';
 import type { ActivityView } from '../activity/types';
-import { Tabs, type TabItem } from '../components/Tabs';
 import { getCompany } from '../companies/companies-api';
 import { getContact } from '../contacts/contacts-api';
 import { MoveToMenu } from '../pipeline/MoveToMenu';

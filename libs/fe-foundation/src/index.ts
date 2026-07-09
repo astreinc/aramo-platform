@@ -45,6 +45,7 @@ export {
   RadioGroup,
   Switch,
   Table,
+  Tabs,
   ToastProvider,
   useToast,
 } from './components';
@@ -53,8 +54,18 @@ export type {
   ComboboxProps,
   RadioOption,
   TableColumn,
+  TabItem,
 } from './components';
 
-// shell
+// shell (the thin frozen Shell — retained; superseded by ./ui AppShell)
 export { Shell } from './shell/Shell';
 export type { ShellNavItem } from './shell/Shell';
+
+// ui — the extracted app-chrome layer (PR-1.6): AppShell kit, UserMenu, Avatar,
+// DataTable. Side-effect-imports ./ui/ui.css.
+export * from './ui';
+// icons — both the named set (import { IconX }) and the Icons namespace
+// (import { Icons }; Icons.IconX), matching ats-web's two icon consumption
+// surfaces so the re-point is a pure import-path change.
+export * from './ui/icons';
+export * as Icons from './ui/icons';

@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
-
-import { IconClock, IconInfo } from '../ui/icons';
+import { IconClock, IconInfo } from '@aramo/fe-foundation';
 
 // Settings Rebuild Directive 1 — shared section primitives.
 //

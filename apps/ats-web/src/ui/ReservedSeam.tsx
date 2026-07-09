@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
-
-import { IconClock, IconLogo } from './icons';
+import { IconClock, IconLogo } from '@aramo/fe-foundation';
 
 interface ReservedSeamProps {
   readonly title?: string;
