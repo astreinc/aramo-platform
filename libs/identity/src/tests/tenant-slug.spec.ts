@@ -26,6 +26,29 @@ describe('tenant-slug — deriveSlugOrThrow (single-source provision gate)', () 
     expect(deriveSlugOrThrow('x', 'rq')).toBe('x');
   });
 
+  // Platform-Console Increment-2 PR-1 (workstream F) — reserved slugs.
+  it('refuses reserved/platform slugs with reason reserved_slug', () => {
+    for (const reserved of [
+      'admin', 'www', 'api', 'auth', 'app', 'platform',
+      'support', 'status', 'mail', 'docs', 'assets', 'ADMIN', ' Admin ',
+    ]) {
+      expect(() => deriveSlugOrThrow(reserved, 'rq')).toThrowError(
+        expect.objectContaining({
+          code: 'VALIDATION_ERROR',
+          context: expect.objectContaining({
+            details: expect.objectContaining({ reason: 'reserved_slug' }),
+          }),
+        }),
+      );
+    }
+  });
+
+  it('a normal tenant slug that merely contains a reserved word is allowed', () => {
+    // only the EXACT label is reserved — 'admin-corp' / 'wwwx' are fine.
+    expect(deriveSlugOrThrow('admin-corp', 'rq')).toBe('admin-corp');
+    expect(deriveSlugOrThrow('acme', 'rq')).toBe('acme');
+  });
+
   it('throws invalid_slug for an empty / whitespace-only slug', () => {
     for (const bad of ['', '   ']) {
       expect(() => deriveSlugOrThrow(bad, 'rq')).toThrowError(

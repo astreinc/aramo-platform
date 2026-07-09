@@ -60,6 +60,7 @@ const MIGRATIONS = [
   // does not exist". Missing since Subdomain-Identity B landed (gated behind
   // ARAMO_RUN_INTEGRATION, so it went unnoticed).
   '20260627000000_add_tenant_identity_provider',
+  '20260709130000_add_tenant_lifecycle_status',
 ];
 
 // The locked catalog shape (88 scopes / 14 roles / 474 grants — slice-A added
@@ -67,8 +68,8 @@ const MIGRATIONS = [
 // to sourcer too (+1 grant → 474)). These are the numbers
 // the scrub must keep byte-identical.
 const CATALOG_ROLE_COUNT = 14;
-const CATALOG_SCOPE_COUNT = 88;
-const CATALOG_ROLE_SCOPE_COUNT = 474;
+const CATALOG_SCOPE_COUNT = 89;
+const CATALOG_ROLE_SCOPE_COUNT = 475;
 
 // Naive DDL splitter — mirrors identity.integration.spec.ts.
 function splitDdl(sql: string): string[] {

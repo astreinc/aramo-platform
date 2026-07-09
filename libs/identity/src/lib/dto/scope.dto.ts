@@ -242,6 +242,11 @@ export const PLATFORM_SCOPE_KEYS = [
   'platform:tenant:provision',
   'platform:tenant:read',
   'platform:admin:invite',
+  // Platform-Console Increment-2 PR-1 — tenant lifecycle management, SEPARATE
+  // from provision (provisioning power ≠ lifecycle power). Gates the
+  // suspend/reactivate/start-offboarding/close operator endpoints. super_admin
+  // holds it; finer-grained platform roles are a future seed-only addition.
+  'platform:tenant:lifecycle:manage',
 ] as const;
 export type PlatformScopeKey = (typeof PLATFORM_SCOPE_KEYS)[number];
 

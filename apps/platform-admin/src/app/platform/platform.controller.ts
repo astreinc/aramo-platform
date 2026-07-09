@@ -26,6 +26,13 @@ import {
 import { ProvisionTenantRequestDto } from './dto/provision-tenant.request.dto.js';
 import type { ProvisionTenantResponseDto } from './dto/provision-tenant.response.dto.js';
 import type { PlatformTenantListResponseDto } from './dto/tenant-list.response.dto.js';
+import {
+  CloseTenantRequestDto,
+  ReactivateTenantRequestDto,
+  StartOffboardingRequestDto,
+  SuspendTenantRequestDto,
+  type TenantLifecycleActionResponseDto,
+} from './dto/tenant-lifecycle.request.dto.js';
 import { PlatformInvitationService } from './platform-invitation.service.js';
 
 // PlatformController — the apps/platform-admin HTTP surface (Lead ruling
@@ -108,6 +115,124 @@ export class PlatformController {
       request_id: requestId,
     });
     return result;
+  }
+
+  // Platform-Console Increment-2 PR-1 — tenant lifecycle read + operator actions.
+  // Detail read (platform:tenant:read); the four transitions each require the
+  // SEPARATE platform:tenant:lifecycle:manage scope (provision power ≠ lifecycle
+  // power). Reason codes/text + offboarding retention args are enforced by the
+  // DTO (400-shape) AND re-enforced authoritatively in TenantService. Illegal
+  // transitions hard-fail (422) and emit tenant.lifecycle_transition_rejected.
+
+  @Get('tenants/:tenant_id')
+  @RequireScopes('platform:tenant:read')
+  async getTenant(
+    @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ tenant: import('@aramo/identity').TenantDto }> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    const tenant = await this.tenantSvc.getTenantById(tenant_id);
+    if (tenant === null) {
+      throw new AramoError('NOT_FOUND', 'Tenant not found', 404, {
+        requestId,
+        details: { tenant_id },
+      });
+    }
+    return { tenant };
+  }
+
+  @Post('tenants/:tenant_id/suspend')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('platform:tenant:lifecycle:manage')
+  async suspendTenant(
+    @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
+    @Body() body: SuspendTenantRequestDto,
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<TenantLifecycleActionResponseDto> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    const r = await this.tenantSvc.transitionTenantStatus({
+      tenant_id,
+      to: 'SUSPENDED',
+      actor_id: authCtx.sub,
+      actor_type: 'user',
+      source: 'platform_console',
+      reason_code: body.reasonCode,
+      reason_text: body.reasonText,
+      request_id: requestId,
+    });
+    return { tenant_id, from: r.from, to: r.to, status: r.to, changed: r.changed };
+  }
+
+  @Post('tenants/:tenant_id/reactivate')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('platform:tenant:lifecycle:manage')
+  async reactivateTenant(
+    @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
+    @Body() body: ReactivateTenantRequestDto,
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<TenantLifecycleActionResponseDto> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    const r = await this.tenantSvc.transitionTenantStatus({
+      tenant_id,
+      to: 'ACTIVE',
+      actor_id: authCtx.sub,
+      actor_type: 'user',
+      source: 'platform_console',
+      reason_code: body.reasonCode,
+      request_id: requestId,
+    });
+    return { tenant_id, from: r.from, to: r.to, status: r.to, changed: r.changed };
+  }
+
+  @Post('tenants/:tenant_id/start-offboarding')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('platform:tenant:lifecycle:manage')
+  async startOffboarding(
+    @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
+    @Body() body: StartOffboardingRequestDto,
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<TenantLifecycleActionResponseDto> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    const r = await this.tenantSvc.transitionTenantStatus({
+      tenant_id,
+      to: 'OFFBOARDING',
+      actor_id: authCtx.sub,
+      actor_type: 'user',
+      source: 'platform_console',
+      reason_code: body.reasonCode,
+      reason_text: body.reasonText,
+      retention_policy_code: body.retentionPolicyCode,
+      close_at: new Date(body.closeAt),
+      request_id: requestId,
+    });
+    return { tenant_id, from: r.from, to: r.to, status: r.to, changed: r.changed };
+  }
+
+  @Post('tenants/:tenant_id/close')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('platform:tenant:lifecycle:manage')
+  async closeTenant(
+    @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
+    @Body() body: CloseTenantRequestDto,
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<TenantLifecycleActionResponseDto> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    const r = await this.tenantSvc.transitionTenantStatus({
+      tenant_id,
+      to: 'CLOSED',
+      actor_id: authCtx.sub,
+      actor_type: 'user',
+      source: 'platform_console',
+      reason_code: body.reasonCode,
+      reason_text: body.reasonText,
+      request_id: requestId,
+    });
+    return { tenant_id, from: r.from, to: r.to, status: r.to, changed: r.changed };
   }
 
   @Post('admins/invitations')

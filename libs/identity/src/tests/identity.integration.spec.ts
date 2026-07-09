@@ -78,6 +78,10 @@ const MIGRATION_PATHS = [
     __dirname,
     '../../prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
   ),
+  resolve(
+    __dirname,
+    '../../prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql',
+  ),
 ];
 
 const TENANT_KEYSET = '20000000-2222-7222-8222-200000000001';
@@ -385,7 +389,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   tenant_owner + tenant_admin; DOMAIN_ADMIN_SEED_BUNDLES @ 0x960).
       //   470 → 472 = +2 TR-2a-3 (identity:resolve × tenant_owner +
       //   tenant_admin; IDENTITY_RESOLVE_SEED_BUNDLES @ 0x970).
-      expect(roleScopes).toBe(474);
+      expect(roleScopes).toBe(475);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
