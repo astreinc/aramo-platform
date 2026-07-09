@@ -18,6 +18,9 @@ export type {
 } from './lib/talent-trust.service.js';
 export type {
   EvidenceRecordRow,
+  // TR-14 B1 (DDR §2.2) — the link-graph + event-timeline read shapes for the dossier.
+  EvidenceLinkRow,
+  EvidenceEventRow,
   ResolutionSubjectRow,
   ResolutionSubjectRefRow,
   ReconcileTargetRow,
