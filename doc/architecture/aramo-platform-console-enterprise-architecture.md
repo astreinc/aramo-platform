@@ -1,7 +1,7 @@
 # Aramo Platform Console Enterprise Architecture
 
 **Status:** ALIGNED-REFERENCE (north-star target architecture — not a build directive)
-**Version:** 1.0 · **Date:** 2026-07-09
+**Version:** 1.1 · **Date:** 2026-07-09
 **Provenance:** Deep-research reference architecture (2026-07-09) grounded against repository reconnaissance of `aramo-platform` @ `platform-console`, adjudicated by Lead/Architect, adopted by PO. Supersedes the ungrounded draft of the same date.
 **Governance relationship:** Implementation increments are governed by PO ruling instruments, repository reconnaissance, and LOCKED build directives filed to program canonical. This document informs those artifacts; it does not replace them.
 
@@ -74,7 +74,7 @@ Intentionally minimal. Five states:
 | `OFFBOARDING` | `CLOSED` | Effective date reached or operator close | Retention clock set |
 | `PROVISIONED` | `CLOSED` | Abandoned provision, duplicate, legal request | Cause recorded |
 
-**Activation trigger (normative, repository-grounded):** subscribe to `identity.invitation.accepted` (emitted by `acceptInvitationByToken`) and activate only when the invitation belongs to a `tenant_owner` membership AND the tenant is still `PROVISIONED`. Do **not** key activation to `activateAcceptedMembershipsForUser` — that path processes all of a user's accepted memberships and cannot distinguish the owner; it may serve only as a compensating fallback.
+**Activation trigger (normative, repository-grounded — v1.1 erratum, R9):** activation is invoked **inline** at the acceptance point (`InvitationLifecycleService.acceptInvitation`, immediately after `acceptInvitationByToken` commits), **not** via an event subscriber — no event bus exists for identity audit events and none is built (R9). The `identity.invitation.accepted` payload is enriched with `tenant_id` + `role_keys` (R10); activation fires only when `role_keys` includes `tenant_owner` AND the tenant is still `PROVISIONED`, and is idempotent (re-accept / non-owner / already-`ACTIVE` are no-ops). Because acceptance is pre-authentication, activation completes before first login. Do **not** key activation to `activateAcceptedMembershipsForUser` — that path processes all of a user's accepted memberships and cannot distinguish the owner; it may serve only as a compensating fallback.
 
 **Login gate (normative — prevents the PROVISIONED deadlock):**
 
@@ -166,6 +166,8 @@ Provisioning motions: the one-call provision-and-invite remains the default; **c
 | `aramo.ai` / `www` | Public commercial front door | **Future phase** — sales-assisted onboarding remains primary; no public checkout in the current phase |
 
 **Reserved slugs (enforced in `deriveSlugOrThrow` before any public provisioning):** `admin`, `www`, `api`, `auth`, `app`, `platform`, `support`, `status`, `mail`, `docs`, `assets`. The `ask` endpoint rejects reserved and unknown slugs.
+
+**Cert-eligibility (v1.1 erratum, R11):** `/v1/tenants/cert-eligible` (`findActiveBySlug`) remains satisfied for `SUSPENDED` (a suspended tenant's UX must still render over TLS) and refuses `CLOSED`; the `is_active` predicate is retained alongside `status` during migration (ADD-not-rename).
 
 ### Session and auth posture
 
