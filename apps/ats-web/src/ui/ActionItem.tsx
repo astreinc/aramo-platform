@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-
 import {
   IconAlert,
   IconBell,
@@ -8,7 +7,7 @@ import {
   IconShield,
   IconTasks,
   IconUser,
-} from './icons';
+} from '@aramo/fe-foundation';
 
 export type ActionKind =
   | 'due'

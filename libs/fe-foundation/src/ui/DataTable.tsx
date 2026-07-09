@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import type { TableColumn } from '@aramo/fe-foundation';
+
+import type { TableColumn } from '../components/Table';
 
 // DataTable — the app-layer, token-styled table (Phase 2A, per the Lead's
 // row-click ruling). Phase 1 wrapped the frozen Table; the frozen Table
@@ -117,5 +118,3 @@ export function DataTable<Row>({
     </div>
   );
 }
-
-export type { TableColumn };

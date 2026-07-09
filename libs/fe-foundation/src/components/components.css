@@ -969,3 +969,49 @@
   font-size: var(--fs-14);
   color: var(--c-text-muted);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Tabs — moved from apps/ats-web/src/index.css at Platform-Console Inc-2 PR-1.6
+ * (FE-Foundation Extraction). Hand-built ARIA tabs; token-based on the
+ * fe-foundation-native tokens (--sp-*, --c-border, --c-text, --c-text-muted,
+ * --c-accent, --fw-medium) already defined in ./design/tokens.css — so this
+ * block is self-sufficient in the lib. Move-not-fork: no longer in ats-web.
+ * ───────────────────────────────────────────────────────────────────────── */
+/* R3 Tabs — ats-web-local (ruling 4: hand-built; not in the
+ * frozen foundation). Token-based; the active tab is marked by an accent
+ * underline. */
+.tabs {
+  display: block;
+}
+
+.tabs__list {
+  display: flex;
+  gap: var(--sp-1);
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: var(--sp-4);
+}
+
+.tabs__tab {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--c-text-muted);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.tabs__tab:hover {
+  color: var(--c-text);
+}
+
+.tabs__tab[data-selected='true'] {
+  color: var(--c-text);
+  border-bottom-color: var(--c-accent);
+}
+
+.tabs__panel {
+  outline: none;
+}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ApiError, useToast } from '@aramo/fe-foundation';
+import { IconDownload, IconLock, IconShieldCheck } from '@aramo/fe-foundation';
 
-import { IconDownload, IconLock, IconShieldCheck } from '../../ui/icons';
 import { Button, Card } from '../../ui';
 import type { ExportEntityType } from '../admin-types';
 import { EXPORT_ENTITIES } from '../admin-types';

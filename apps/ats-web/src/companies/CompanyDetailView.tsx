@@ -6,10 +6,10 @@ import {
   useSession,
   type Session,
 } from '@aramo/fe-foundation';
+import { Tabs, type TabItem } from '@aramo/fe-foundation';
 
 import { listActivities } from '../activity/activity-api';
 import type { ActivityView } from '../activity/types';
-import { Tabs, type TabItem } from '../components/Tabs';
 import { listRequisitions } from '../requisitions/requisitions-api';
 import { isClosedStatus, type RequisitionView } from '../requisitions/types';
 import { useEntityCrumb } from '../shell/breadcrumb';

@@ -5,6 +5,18 @@ import {
 } from '@aramo/fe-foundation';
 import type { ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
+import {
+  IconCompanies,
+  IconContacts,
+  IconDesk,
+  IconLogout,
+  IconRequisitions,
+  IconSearch,
+  IconShield,
+  IconSourcing,
+  IconTalent,
+  IconTasks,
+} from '@aramo/fe-foundation';
 
 import { hasAdminScope } from '../admin/admin-access';
 import {
@@ -22,18 +34,6 @@ import {
   initialsOf,
   type BreadcrumbItem,
 } from '../ui';
-import {
-  IconCompanies,
-  IconContacts,
-  IconDesk,
-  IconLogout,
-  IconRequisitions,
-  IconSearch,
-  IconShield,
-  IconSourcing,
-  IconTalent,
-  IconTasks,
-} from '../ui/icons';
 
 import { BreadcrumbProvider, useBreadcrumbEntity } from './breadcrumb';
 import { useMe } from './me-api';

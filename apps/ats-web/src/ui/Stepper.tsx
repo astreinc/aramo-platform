@@ -1,4 +1,4 @@
-import { IconCheck } from './icons';
+import { IconCheck } from '@aramo/fe-foundation';
 
 interface StepperProps {
   /** Ordered step labels (e.g. the engagement-state progression). */

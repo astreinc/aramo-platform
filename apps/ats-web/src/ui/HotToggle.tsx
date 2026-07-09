@@ -1,4 +1,4 @@
-import { IconFlame } from './icons';
+import { IconFlame } from '@aramo/fe-foundation';
 
 interface HotToggleProps {
   /** Current hot state (the talent's is_hot flag). */

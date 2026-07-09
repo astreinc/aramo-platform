@@ -1,7 +1,7 @@
 import { ApiError, useToast } from '@aramo/fe-foundation';
 import { useEffect, useState } from 'react';
+import { IconLock } from '@aramo/fe-foundation';
 
-import { IconLock } from '../../ui/icons';
 import { Button, Card, InlineAlert, StatusPill, type PillTone } from '../../ui';
 import { SettingCardHead, SettingHint, SettingRow } from '../components';
 
