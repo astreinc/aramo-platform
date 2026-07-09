@@ -62,7 +62,9 @@ import { PromotionService } from './talent-identity/promotion.service.js';
 import { RecordReconcileOrchestrator } from './talent-identity/record-reconcile.orchestrator.js';
 import { IdentityMaintenanceModule } from './jobs/identity-maintenance.module.js';
 import { SourcingController } from './talent-identity/sourcing.controller.js';
+import { DossierController } from './talent-identity/dossier.controller.js';
 import { SourcingService } from './talent-identity/sourcing.service.js';
+import { DossierService } from './talent-identity/dossier.service.js';
 import { ExamineController } from './controllers/examine.controller.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
 import { AssignableUsersController } from './controllers/assignable-users.controller.js';
@@ -427,6 +429,7 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // Save to Pool). Both promote a sourced L2 subject → ATS TalentRecord behind
     // the identity gate, then associate. Gated on the talent:source scope.
     SourcingController,
+    DossierController,
     // TR-3 B2 — the AUTHENTICATED email-verification surface (request + status)
     // nested under the talent-record resource. Composes talent-record + consent +
     // trust ledger + mailer at the app boundary (above the I15 wall).
@@ -499,6 +502,7 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // PromotionService + PipelineRepository + SavedListRepository resolve via
     // their already-imported modules).
     SourcingService,
+    DossierService,
     // TR-3 B2 — the email-verification request orchestrator (deps
     // TalentRecordRepository + TalentTrustRepository + TalentTrustService +
     // ConsentService + MAILER_PORT resolve via their already-imported modules).
