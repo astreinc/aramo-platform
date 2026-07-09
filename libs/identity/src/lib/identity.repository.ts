@@ -189,6 +189,30 @@ export class IdentityRepository {
     return rows.map(toTenantUserView);
   }
 
+  // Platform-Console Increment-2 PR-1.5 (A2) — resolve a tenant's OWNER (the
+  // user holding an active tenant_owner-role membership) → { user_id, email }.
+  // Used by resend-owner-invite to address the Cognito re-send. findFirst
+  // ordered by joined_at asc so the original owner wins if (edge case) more than
+  // one tenant_owner membership ever exists. Null when the tenant has no
+  // tenant_owner membership (a data-integrity fault for a PROVISIONED tenant —
+  // the caller maps null to a clear error rather than silently no-op).
+  async findTenantOwner(
+    tenant_id: string,
+  ): Promise<{ user_id: string; email: string } | null> {
+    const row = await this.prisma.userTenantMembership.findFirst({
+      where: {
+        tenant_id,
+        is_active: true,
+        role_assignments: {
+          some: { role: { key: 'tenant_owner', is_active: true } },
+        },
+      },
+      select: { user_id: true, user: { select: { email: true } } },
+      orderBy: [{ joined_at: 'asc' }, { user_id: 'asc' }],
+    });
+    return row === null ? null : { user_id: row.user_id, email: row.user.email };
+  }
+
   // §5 Auth-Hardening D4 — the recruiter-scoped ASSIGNABLE roster (minimal).
   //
   // The LEAST-DATA counterpart to listTenantUsers: a deliberately narrow
