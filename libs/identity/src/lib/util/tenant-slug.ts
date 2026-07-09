@@ -25,6 +25,27 @@ const SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 // enforce it so a slug can never produce an invalid hostname.
 const SLUG_MAX_LENGTH = 63;
 
+// Platform-Console Increment-2 PR-1 (workstream F) — reserved subdomain labels
+// (doc Part III host architecture). These are platform/system hosts that a
+// tenant must never claim (admin.aramo.ai is the platform console; www/api/auth/
+// app/support/status/mail/docs/assets are platform-owned front doors). Enforced
+// HERE at the single-source slug gate, so the public cert-eligibility ask-
+// endpoint inherits it transitively — a reserved slug never enters Tenant.slug,
+// so findActiveBySlug returns null and the ask 404s it. No second list needed.
+export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
+  'admin',
+  'www',
+  'api',
+  'auth',
+  'app',
+  'platform',
+  'support',
+  'status',
+  'mail',
+  'docs',
+  'assets',
+]);
+
 // Canonical form: trim surrounding whitespace + lowercase. The single source of
 // the normalization rule — applied before validation AND before persistence so
 // the stored slug is exactly what an inbound host label (also lowercased by DNS)
@@ -56,6 +77,16 @@ export function deriveSlugOrThrow(rawSlug: string, requestId: string): string {
       'Tenant slug must be a DNS-safe label (lowercase letters, digits, and internal hyphens)',
       400,
       { requestId, details: { reason: 'invalid_slug' } },
+    );
+  }
+  // Platform-Console Increment-2 PR-1 (workstream F) — refuse reserved/platform
+  // subdomains (checked AFTER charset so the error is specific).
+  if (RESERVED_SLUGS.has(slug)) {
+    throw new AramoError(
+      'VALIDATION_ERROR',
+      `Tenant slug "${slug}" is reserved`,
+      400,
+      { requestId, details: { reason: 'reserved_slug' } },
     );
   }
   return slug;

@@ -44,6 +44,7 @@ const MIGRATIONS = [
   '20260619000000_add_tenant_profile',
   '20260620000000_add_site_hierarchy',
   '20260627000000_add_tenant_identity_provider',
+  '20260709130000_add_tenant_lifecycle_status',
 ];
 
 // Naive DDL splitter — mirrors identity.integration.spec.ts / seed-scrub.

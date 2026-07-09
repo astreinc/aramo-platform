@@ -78,6 +78,10 @@ const MIGRATION_PATHS = [
     __dirname,
     '../../prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
   ),
+  resolve(
+    __dirname,
+    '../../prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql',
+  ),
 ];
 
 const TENANT_KEYSET = '20000000-2222-7222-8222-200000000001';
@@ -270,6 +274,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:read',
         'pipeline:remove',
         'platform:admin:invite',
+        'platform:tenant:lifecycle:manage',
         'platform:tenant:provision',
         'platform:tenant:read',
         'portal:consent:read',
@@ -385,7 +390,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   tenant_owner + tenant_admin; DOMAIN_ADMIN_SEED_BUNDLES @ 0x960).
       //   470 → 472 = +2 TR-2a-3 (identity:resolve × tenant_owner +
       //   tenant_admin; IDENTITY_RESOLVE_SEED_BUNDLES @ 0x970).
-      expect(roleScopes).toBe(474);
+      expect(roleScopes).toBe(475);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -431,7 +436,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // added after D-AUTHZ-COMP-WRITE-1 contribute zero audit rows; the
       // count correctly stays 82. (This assertion was never reached before
       // — the stale scope-catalog list above aborted test 10 first.)
-      expect(auditRows.length).toBe(83);
+      expect(auditRows.length).toBe(84);
       // Every audit event uses actor_type 'system' and actor_id = SA id.
       for (const row of auditRows) {
         expect(row.actor_type).toBe('system');
@@ -494,6 +499,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(platformScopes.map((s) => s.key).sort()).toEqual([
         'platform:admin:invite',
+        'platform:tenant:lifecycle:manage',
         'platform:tenant:provision',
         'platform:tenant:read',
       ]);
@@ -508,6 +514,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .sort();
       expect(superAdminScopes).toEqual([
         'platform:admin:invite',
+        'platform:tenant:lifecycle:manage',
         'platform:tenant:provision',
         'platform:tenant:read',
       ]);
@@ -1836,6 +1843,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.tenant_user.role_removed',
         'identity.user_client_assignment.created',
         'identity.user_client_assignment.removed',
+        // Platform-Console Increment-2 PR-1 — 9 tenant-lifecycle events (sorted).
+        'tenant.activated',
+        'tenant.closed',
+        'tenant.lifecycle_transition_rejected',
+        'tenant.offboarding_started',
+        'tenant.owner_invite.accepted',
+        'tenant.owner_invite.sent',
+        'tenant.provisioned',
+        'tenant.reactivated',
+        'tenant.suspended',
       ]);
     });
   },

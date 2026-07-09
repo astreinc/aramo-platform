@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 
 // Closed sets per directive §6. Unknown value at write time → halt-and-surface
 // (AramoError INTERNAL_ERROR). Used by both seed and integration tests.
-export const ACTOR_TYPES = ['system', 'service_account', 'user'] as const;
+export const ACTOR_TYPES = ['system', 'service_account', 'user', 'provider'] as const;
 export type ActorType = (typeof ACTOR_TYPES)[number];
 
 export const EVENT_TYPES = [
@@ -108,6 +108,22 @@ export const EVENT_TYPES = [
   // is public but irrelevant to the audit trail).
   'identity.domain.verification.requested',
   'identity.domain.verified',
+  // Platform-Console Increment-2 PR-1 — tenant lifecycle state machine. All
+  // tenant-scoped (carry the tenant_id). `activated` is emitted by the inline
+  // activation hook with actor_type='system'; the operator transitions
+  // (suspended/reactivated/offboarding_started/closed) with actor_type='user';
+  // `lifecycle_transition_rejected` records an illegal transition attempt.
+  // Retention events (retention_scheduled/executed) are deferred with the
+  // counsel-gated retention policy.
+  'tenant.provisioned',
+  'tenant.owner_invite.sent',
+  'tenant.owner_invite.accepted',
+  'tenant.activated',
+  'tenant.suspended',
+  'tenant.reactivated',
+  'tenant.offboarding_started',
+  'tenant.closed',
+  'tenant.lifecycle_transition_rejected',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -159,6 +175,17 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   // Domain-Enforcement P2b — both verification events carry the writing tenant's id.
   'identity.domain.verification.requested',
   'identity.domain.verified',
+  // Platform-Console Increment-2 PR-1 — all tenant-lifecycle events carry the
+  // subject tenant's id (tenant-scoped).
+  'tenant.provisioned',
+  'tenant.owner_invite.sent',
+  'tenant.owner_invite.accepted',
+  'tenant.activated',
+  'tenant.suspended',
+  'tenant.reactivated',
+  'tenant.offboarding_started',
+  'tenant.closed',
+  'tenant.lifecycle_transition_rejected',
 ]);
 
 export interface WriteAuditEventInput {

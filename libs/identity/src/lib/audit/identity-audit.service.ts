@@ -23,7 +23,7 @@ export class IdentityAuditService {
 
   async writeEvent(params: {
     event_type: EventType;
-    actor_type: 'user';
+    actor_type: 'user' | 'system' | 'provider';
     actor_id: string;
     tenant_id: string;
     subject_id: string;
@@ -57,7 +57,7 @@ export class IdentityAuditService {
   // identity.external_identity.linked (both global per the mapping).
   async writeGlobalEvent(params: {
     event_type: EventType;
-    actor_type: 'user';
+    actor_type: 'user' | 'system' | 'provider';
     actor_id: string;
     subject_id: string;
     payload: Record<string, unknown>;

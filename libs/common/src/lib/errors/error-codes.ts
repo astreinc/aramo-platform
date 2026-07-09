@@ -338,6 +338,10 @@ export const ERROR_CODES = [
   // not CONTRADICTED (a resolve is meaningful only against a standing
   // contradiction). HTTP 422.
   'EVIDENCE_NOT_CONTRADICTED',
+  // Platform-Console Increment-2 PR-1 — tenant lifecycle mint-gate denials
+  // (tenant-consumer session mint only; platform-consumer mints unaffected).
+  'TENANT_SUSPENDED',  // 403 — a SUSPENDED tenant (reversible). New sessions refused; existing expire on the 15-min access TTL.
+  'TENANT_CLOSED',  // 403 — a CLOSED tenant (terminal; disposition per counsel-gated retention).
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

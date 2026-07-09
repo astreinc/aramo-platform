@@ -128,10 +128,43 @@ model Tenant {
   primary_contact_phone  String?
   logo_url               String?
 
+  // Platform-Console Increment-2 PR-1 — tenant lifecycle state machine
+  // (PROVISIONED / ACTIVE / SUSPENDED / OFFBOARDING / CLOSED). Follows the
+  // established string-status-enforced-in-app convention (like
+  // domain_verification_status / invite_status), NOT a Prisma enum — state
+  // additions stay code changes (TENANT_STATUSES + transition table in
+  // TenantService), never migrations. `is_active` above is retained unchanged
+  // during migration (ADD-not-rename compatibility; retired only after
+  // validation). status_reason_* carry the operator's mandatory reason for
+  // SUSPEND/CLOSE; status_changed_at is the last-transition stamp. The
+  // append-only IdentityAuditEvent ledger answers "how did we get here"; these
+  // snapshot columns answer "what is the current state" — both kept.
+  status                  String    @default("PROVISIONED")
+  status_reason_code      String?
+  status_reason_text      String?
+  status_changed_at       DateTime  @default(now()) @db.Timestamptz
+
+  // Milestone snapshot timestamps (current-state; the audit ledger is the history).
+  owner_accepted_at       DateTime? @db.Timestamptz
+  activated_at            DateTime? @db.Timestamptz
+  suspended_at            DateTime? @db.Timestamptz
+  offboarding_started_at  DateTime? @db.Timestamptz
+  closed_at               DateTime? @db.Timestamptz
+
+  // Retention ARCHITECTURE only — the columns exist; retention POLICIES
+  // (windows, purge behavior, data-class rules) are counsel-gated (P6) and NOT
+  // implemented here. retention_policy_code is an opaque string stored at
+  // offboarding; no policy semantics run. legal_hold=true is a future
+  // deletion-suspend marker; nothing purges pre-counsel-directive.
+  retention_policy_code   String?
+  retention_delete_after  DateTime? @db.Timestamptz
+  legal_hold              Boolean   @default(false)
+
   memberships  UserTenantMembership[]
   sites        Site[]
 
   @@index([is_active])
+  @@index([status])
   @@schema("identity")
 }
 

@@ -1618,6 +1618,8 @@ components:
         - VERIFICATION_CONSENT_REQUIRED
         - CLAIM_SHAPE_INVALID
         - EVIDENCE_NOT_CONTRADICTED
+        - TENANT_SUSPENDED
+        - TENANT_CLOSED
 
     ErrorObject:
       type: object

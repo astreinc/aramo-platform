@@ -231,6 +231,24 @@ export class SessionOrchestratorService {
     }
     const selectedTenant = tenants[0]!;
 
+    // Platform-Console Increment-2 PR-1 (workstream E) — tenant-status mint gate.
+    // TENANT-CONSUMER sessions only: the platform consumer's sentinel tenant has
+    // no lifecycle semantics and is never status-gated. SUSPENDED/CLOSED deny the
+    // mint with a typed 403; PROVISIONED/ACTIVE/OFFBOARDING mint normally (the
+    // login-gate table, doc Part II §A — PROVISIONED MUST mint so the owner's
+    // first-login flow proceeds; blocking it would deadlock activation). GATE
+    // LOGIC ONLY — the reconcile/link/PKCE/verifier spine above is untouched
+    // (§2-adjacent scope guard). Enforcement is mint-only: existing sessions
+    // expire on the 15-min access-token TTL (write-guard is a recorded follow-up).
+    if (input.consumer !== 'platform') {
+      if (selectedTenant.status === 'SUSPENDED') {
+        return { kind: 'auth_error', reason: 'tenant_suspended' };
+      }
+      if (selectedTenant.status === 'CLOSED') {
+        return { kind: 'auth_error', reason: 'tenant_closed' };
+      }
+    }
+
     // PR-A1a-3 Ruling 1 (auto-stamp): determine site_id from the user's
     // active membership in selectedTenant. Schema's @@unique([user_id,
     // tenant_id]) guarantees at most one membership row, so this is a

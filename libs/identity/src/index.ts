@@ -9,6 +9,17 @@ export { IdentityCoreModule } from './lib/identity-core.module.js';
 export { IdentityService } from './lib/identity.service.js';
 export { TenantService } from './lib/tenant.service.js';
 export { RoleService } from './lib/role.service.js';
+// Platform-Console Increment-2 PR-1 — tenant lifecycle vocabulary. Exported so
+// the auth-service mint gate + platform-admin action endpoints share the single
+// source of truth for statuses / transitions / mint-deny set.
+export {
+  TENANT_STATUSES,
+  type TenantStatus,
+  isTenantStatus,
+  TENANT_TRANSITIONS,
+  isLegalTransition,
+  MINT_DENYING_STATUSES,
+} from './lib/util/tenant-lifecycle.js';
 export { IdentityRepository } from './lib/identity.repository.js';
 export { TenantRepository } from './lib/tenant.repository.js';
 export { RoleRepository } from './lib/role.repository.js';
