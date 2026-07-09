@@ -68,6 +68,9 @@ export {
   deriveTrustStatements,
   TRUST_STATEMENT_SINGLE_SOURCE,
   TRUST_STATEMENT_LONGITUDINAL,
+  // TR-8 D2 — the staleness sentence + the engine constant.
+  TRUST_STATEMENT_VERIFICATION_STALE,
+  VERIFICATION_STALE_DAYS,
   type EvidenceForDerivation,
   type DerivedTrustState,
 } from './lib/band-derivation.js';

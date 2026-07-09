@@ -189,6 +189,7 @@ export class DossierService {
       statements: deriveTrustStatements({
         single_source_only: trustState?.single_source_only ?? false,
         longitudinal_observed: trustState?.longitudinal_observed ?? false,
+        verified_control_stale: trustState?.verified_control_stale ?? false,
       }),
       contradictions,
       verifications,

@@ -156,6 +156,8 @@ export interface TrustStateRow {
   // TR-5 B2 (DDR §4) — named thinness flags (surfaced as statements, never numbers).
   single_source_only: boolean;
   longitudinal_observed: boolean;
+  // TR-8 D2 (DDR) — a current platform-verification act has aged past 365d.
+  verified_control_stale: boolean;
   last_recomputed_at: Date;
 }
 
@@ -886,6 +888,7 @@ export class TalentTrustRepository {
         has_open_dispute: input.has_open_dispute,
         single_source_only: input.single_source_only,
         longitudinal_observed: input.longitudinal_observed,
+        verified_control_stale: input.verified_control_stale,
         last_recomputed_at: input.last_recomputed_at,
       },
     });

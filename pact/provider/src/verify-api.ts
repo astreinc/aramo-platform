@@ -601,6 +601,13 @@ const TALENT_TRUST_TR5_THINNESS_FLAGS_MIGRATION = resolve(
   ROOT,
   'libs/talent-trust/prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
 );
+// TR-8 D2 — TrustState.verified_control_stale. The regenerated client SELECTs it on
+// every trust-state read, so the column must exist or those provider states 500.
+// COUPLING FLAG: shared talent_trust list — second lander rebases.
+const TALENT_TRUST_TR8_VERIFIED_STALE_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
+);
 const SAVED_LIST_INIT_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
@@ -2657,6 +2664,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_TRUST_TR4_CONSISTENCY_WATERMARK_MIGRATION,
         // TR-5 B2 — TrustState thinness flags (regenerated client SELECTs them).
         TALENT_TRUST_TR5_THINNESS_FLAGS_MIGRATION,
+        // TR-8 D2 — TrustState.verified_control_stale (regenerated client SELECTs it).
+        TALENT_TRUST_TR8_VERIFIED_STALE_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,
         SAVED_LIST_LIST_KIND_MIGRATION,
         IMPORT_INIT_MIGRATION,

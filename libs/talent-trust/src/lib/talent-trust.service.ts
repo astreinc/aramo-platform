@@ -376,6 +376,50 @@ export class TalentTrustService {
         anchor_kind: claimed.anchor_kind,
         normalized_value: claimed.normalized_value,
       });
+    } else {
+      // TR-8 D1 (DDR) — RENEWAL of an already-verified slot: the anchor STANDS
+      // (dedup semantics unchanged — it asserts the identity linkage), but the
+      // verification ACT is re-made. Mint a FRESH EMAIL_CONTROL_VERIFIED evidence
+      // (fresh collected_at → the SLOW decay clock restarts) and SUPERSEDE the
+      // prior current verification evidence (the TR-5 replace pattern — one
+      // current verification truth; the superseded act stays in history). The
+      // superseded row's status change (via supersede) plus the fresh VALID row
+      // are what a recompute prices; verified_control_stale clears next recompute.
+      const assertionType =
+        claimed.anchor_kind === 'EMAIL' ? 'EMAIL_CONTROL_VERIFIED' : 'PHONE_CONTROL_VERIFIED';
+      const priorId = await this.findCurrentVerificationEvidence(
+        claimed.subject_id,
+        assertionType,
+        claimed.normalized_value,
+      );
+      const fresh = await this.repo.insertEvidence({
+        subject_id: claimed.subject_id,
+        tenant_id: claimed.tenant_id,
+        dimension: 'IDENTITY',
+        assertion_type: assertionType,
+        assertion_payload: {
+          normalized_value: claimed.normalized_value,
+          verification_request_id: claimed.id,
+        },
+        source_class: 'PLATFORM_VERIFIED',
+        method: 'CONTROL_ROUND_TRIP',
+        strength: deriveStrength('PLATFORM_VERIFIED', 'CONTROL_ROUND_TRIP'),
+        source_ref: null,
+        collected_at: now,
+        decay_profile: 'SLOW',
+        portability_class: 'TENANT_ONLY',
+        ai_derived: false,
+        current_status: EVENT_TO_STATUS.CREATED,
+        created_by: 'verification',
+      });
+      await this.repo.appendEvent({
+        evidence_id: fresh.id,
+        tenant_id: claimed.tenant_id,
+        event_type: 'CREATED',
+        actor: 'verification',
+        occurred_at: now,
+      });
+      if (priorId !== null) await this.supersede(priorId, fresh.id);
     }
 
     await this.recompute(claimed.subject_id, claimed.tenant_id, now);
@@ -384,6 +428,27 @@ export class TalentTrustService {
       subject_id: claimed.subject_id,
       tenant_id: claimed.tenant_id,
     };
+  }
+
+  // TR-8 D1 — the current (VALID, non-superseded) platform-verification evidence
+  // for a (subject, assertion_type, value), or null. Renewal supersedes it. There
+  // is at most one VALID such row (each renewal supersedes the last).
+  private async findCurrentVerificationEvidence(
+    subjectId: string,
+    assertionType: string,
+    normalizedValue: string,
+  ): Promise<string | null> {
+    const rows = await this.repo.listEvidenceBySubject(subjectId, {
+      dimension: 'IDENTITY',
+      current_status: 'VALID',
+    });
+    const match = rows.find(
+      (e) =>
+        e.assertion_type === assertionType &&
+        (e.assertion_payload as { normalized_value?: string } | null)?.normalized_value ===
+          normalizedValue,
+    );
+    return match?.id ?? null;
   }
 
   // TR-2a-B2 (DDR-2 §2 + Amendment §2.1 + Name-Wiring §1) — the arrival-time
@@ -1211,6 +1276,7 @@ export class TalentTrustService {
       has_open_dispute: false,
       single_source_only: false,
       longitudinal_observed: false,
+      verified_control_stale: false,
       last_recomputed_at: subject.created_at,
     };
   }
