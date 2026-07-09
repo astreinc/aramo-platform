@@ -31,6 +31,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
   '../../prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
   '../../prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
+  '../../prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
   // TR-2a-B1 — SubjectAnchor.source_class (regenerated client SELECTs it) + the
   // extended (…, source_class) unique key. Both required once tr2a1 exists.
   '../../prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',

@@ -127,6 +127,9 @@ export interface TrustStateRow {
   open_contradiction_count: number;
   stale_evidence_count: number;
   has_open_dispute: boolean;
+  // TR-5 B2 (DDR §4) — named thinness flags (surfaced as statements, never numbers).
+  single_source_only: boolean;
+  longitudinal_observed: boolean;
   last_recomputed_at: Date;
 }
 
@@ -781,6 +784,8 @@ export class TalentTrustRepository {
         open_contradiction_count: input.open_contradiction_count,
         stale_evidence_count: input.stale_evidence_count,
         has_open_dispute: input.has_open_dispute,
+        single_source_only: input.single_source_only,
+        longitudinal_observed: input.longitudinal_observed,
         last_recomputed_at: input.last_recomputed_at,
       },
     });
@@ -913,15 +918,60 @@ export class TalentTrustRepository {
     const rows = await this.prisma.$queryRawUnsafe<
       Array<{ subject_id: string; tenant_id: string }>
     >(
+      // TR-5 B2 (DDR §3.1) — the gate BROADENS from CLAIMS-only to ANY dimension.
+      // The one poll now feeds both the TR-4 detectors (CLAIMS) and the TR-5
+      // CONTINUITY derivers (which read IDENTITY contact + EMPLOYMENT evidence),
+      // so a new IDENTITY arrival must re-select the subject too. One poll, one
+      // watermark, detectors + derivers in a single per-subject pass.
       `SELECT DISTINCT ON (s.id) s.id AS subject_id, s.tenant_id AS tenant_id
          FROM "talent_trust"."ResolutionSubject" s
-         JOIN "talent_trust"."EvidenceRecord" e ON e.subject_id = s.id AND e.dimension = 'CLAIMS'
+         JOIN "talent_trust"."EvidenceRecord" e ON e.subject_id = s.id
         WHERE s.status = 'ACTIVE'
           AND e.created_at > COALESCE(s.last_consistency_at, TIMESTAMPTZ 'epoch')
           AND ($2::uuid IS NULL OR s.tenant_id = $2::uuid)
         ORDER BY s.id
         LIMIT $1`,
       limit,
+      tenantId ?? null,
+    );
+    return rows;
+  }
+
+  // TR-5 B1 (DDR §2) — the decay-recompute sweep gate. Selects ACTIVE subjects
+  // whose TrustState was last recomputed before `staleBefore` (= now −
+  // RECOMPUTE_STALENESS_DAYS) AND that carry ≥1 decaying evidence row — a
+  // subject whose every row is DURABLE (the only non-decaying profile) cannot
+  // drift, so it is skipped forever, cheaply. No watermark column: this is
+  // time-driven on the existing TrustState.last_recomputed_at, which the
+  // recompute itself advances, so a swept subject falls out of the gate
+  // (idempotent by construction). The EXISTS leg correlates on
+  // (tenant_id, subject_id) so it rides the existing composite index; the
+  // decay_profile inequality is a cheap residual over a subject's few rows.
+  // DISTINCT ON keeps the template shape (the TrustState join is 1:1, so no fan-out).
+  async listSubjectsToRecompute(
+    limit: number,
+    staleBefore: Date,
+    tenantId?: string,
+  ): Promise<Array<{ subject_id: string; tenant_id: string }>> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{ subject_id: string; tenant_id: string }>
+    >(
+      `SELECT DISTINCT ON (s.id) s.id AS subject_id, s.tenant_id AS tenant_id
+         FROM "talent_trust"."ResolutionSubject" s
+         JOIN "talent_trust"."TrustState" ts ON ts.subject_id = s.id
+        WHERE s.status = 'ACTIVE'
+          AND ts.last_recomputed_at < $2::timestamptz
+          AND EXISTS (
+            SELECT 1 FROM "talent_trust"."EvidenceRecord" e
+             WHERE e.tenant_id = s.tenant_id
+               AND e.subject_id = s.id
+               AND e.decay_profile <> 'DURABLE'
+          )
+          AND ($3::uuid IS NULL OR s.tenant_id = $3::uuid)
+        ORDER BY s.id
+        LIMIT $1`,
+      limit,
+      staleBefore,
       tenantId ?? null,
     );
     return rows;

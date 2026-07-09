@@ -81,6 +81,7 @@ const MIGRATIONS = [
   // talent_trust (TR-4 B3) — ResolutionSubject.last_consistency_at (the consistency
   // poll watermark). Same regenerated-client-selects-every-column ripple.
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql'),
+  resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql'),
   // talent_trust (TR-2a-B1) — SubjectAnchor.source_class (the resolver's anchor
   // write projects it) + the extended (…, source_class) unique key.
   resolve(ROOT, 'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql'),

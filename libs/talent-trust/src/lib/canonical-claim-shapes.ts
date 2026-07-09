@@ -232,9 +232,83 @@ const timelineGapShape: ClaimShape = (p) => {
   };
 };
 
+// LONGITUDINAL_PRESENCE (TR-5 B2, DDR §3.1): the positive CONTINUITY signal a
+// contact identifier proves by recurring across arrivals — "this identity
+// persisted". Deterministic derived payload (the consistency deriver is the only
+// writer): anchor_kind + the ISO window it spanned + an observation count + the
+// basis evidence ids. Dates are already ISO (computed from collected_at), so
+// ISO-or-reject (a non-ISO bound is a deriver bug). count ≥ 2 (a single arrival
+// is no persistence). basis_evidence_ids: a non-empty string list.
+const longitudinalPresenceShape: ClaimShape = (p) => {
+  const errors: string[] = [];
+  if (typeof p['anchor_kind'] !== 'string' || (p['anchor_kind'] as string).trim() === '') {
+    errors.push('anchor_kind must be a non-empty string');
+  }
+  if (typeof p['first_seen'] !== 'string' || !ISO_DATE.test(p['first_seen'] as string)) {
+    errors.push('first_seen must be an ISO calendar date (YYYY-MM-DD)');
+  }
+  if (typeof p['last_seen'] !== 'string' || !ISO_DATE.test(p['last_seen'] as string)) {
+    errors.push('last_seen must be an ISO calendar date (YYYY-MM-DD)');
+  }
+  if (typeof p['observation_count'] !== 'number' || !Number.isInteger(p['observation_count']) || (p['observation_count'] as number) < 2) {
+    errors.push('observation_count must be an integer ≥ 2');
+  }
+  const basis = p['basis_evidence_ids'];
+  if (!Array.isArray(basis) || basis.length < 2 || !basis.every((b) => typeof b === 'string' && b !== '')) {
+    errors.push('basis_evidence_ids must be a list of ≥ 2 non-empty strings');
+  }
+  if (errors.length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    canonical: {
+      anchor_kind: (p['anchor_kind'] as string).trim(),
+      first_seen: p['first_seen'] as string,
+      last_seen: p['last_seen'] as string,
+      observation_count: p['observation_count'] as number,
+      basis_evidence_ids: [...(basis as string[])].sort(),
+    },
+  };
+};
+
+// HISTORY_SPAN (TR-5 B2, DDR §3.2): fully-dated employment covering ≥ 24 months
+// with zero open gaps — the positive mirror of TIMELINE_GAP. span_months a
+// non-negative integer; earliest/latest ISO; open_gap_count present (the deriver
+// only writes it as 0, but the shape validates it as a non-negative integer).
+const historySpanShape: ClaimShape = (p) => {
+  const errors: string[] = [];
+  if (typeof p['span_months'] !== 'number' || !Number.isInteger(p['span_months']) || (p['span_months'] as number) < 0) {
+    errors.push('span_months must be a non-negative integer');
+  }
+  if (typeof p['earliest'] !== 'string' || !ISO_DATE.test(p['earliest'] as string)) {
+    errors.push('earliest must be an ISO calendar date (YYYY-MM-DD)');
+  }
+  if (typeof p['latest'] !== 'string' || !ISO_DATE.test(p['latest'] as string)) {
+    errors.push('latest must be an ISO calendar date (YYYY-MM-DD)');
+  }
+  if (typeof p['open_gap_count'] !== 'number' || !Number.isInteger(p['open_gap_count']) || (p['open_gap_count'] as number) < 0) {
+    errors.push('open_gap_count must be a non-negative integer');
+  }
+  if (errors.length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    canonical: {
+      span_months: p['span_months'] as number,
+      earliest: p['earliest'] as string,
+      latest: p['latest'] as string,
+      open_gap_count: p['open_gap_count'] as number,
+    },
+  };
+};
+
 // The registry: assertion_type → its canonical shape. Membership here IS the
 // "registered" predicate the write gate checks. Adding a type is a DDR-amendment-
 // level act (like AUTHORITATIVE_ASSERTION_TYPES), never a silent extension.
+//
+// TR-5 B2 (§1) — the two-registries distinction: LONGITUDINAL_PRESENCE and
+// HISTORY_SPAN register HERE (comparability — their payloads validate), but they
+// are DELIBERATELY absent from AUTHORITATIVE_ASSERTION_TYPES.CONTINUITY (which
+// stays ∅). Comparability is not elevation: the top CONTINUITY bands stay
+// honestly unreachable because nothing authoritative asserts continuity yet.
 export const CANONICAL_CLAIM_SHAPES: Record<string, ClaimShape> = {
   EMPLOYMENT: employmentShape,
   SKILL: skillShape,
@@ -243,6 +317,9 @@ export const CANONICAL_CLAIM_SHAPES: Record<string, ClaimShape> = {
   PROFILE_URL: contactShape,
   // TR-4 B3 — the consistency detector's CONTINUITY gap signal.
   TIMELINE_GAP: timelineGapShape,
+  // TR-5 B2 — the two positive CONTINUITY derivers' shapes.
+  LONGITUDINAL_PRESENCE: longitudinalPresenceShape,
+  HISTORY_SPAN: historySpanShape,
 };
 
 export function isRegisteredAssertionType(assertionType: string): boolean {
