@@ -1,0 +1,106 @@
+/* Aramo Platform Console — theme layer (Inc-2 PR-2, Workstream B / Instrument A3).
+ *
+ * SAME design system as ats-web (shared fe-foundation chrome), DISTINCT accent.
+ * ats-web is "Confident Blue"; the platform console is "Platform Violet" — an
+ * unmistakably different hue so an operator always knows they are in the
+ * god-console (the A3 anti-footgun; reinforced by the PLATFORM rail marker).
+ *
+ * TWO layers, exactly like ats-web/src/ui/theme.css:
+ *   1. Re-map fe-foundation's OWN tokens (--c-*, --font-*, --r-*, --sh-*) so the
+ *      frozen Button/Card/Table/Dialog/Combobox/FormField inherit the platform
+ *      accent with ZERO edits to libs/fe-foundation.
+ *   2. Define the structural NAMESPACE the extracted chrome consumes — this is
+ *      EXACTLY the token-variable contract enumerated in the fe-foundation
+ *      ui.css header (the acceptance test for the PR-1.6 carve's theming
+ *      contract, §8.6). Every variable in that header is defined below.
+ *
+ * Load order (main.tsx): imported AFTER the fe-foundation barrel (pulled in via
+ * App), so these :root rules win on equal specificity. libs/fe-foundation is
+ * untouched. Neutrals + semantics are held identical to ats-web on purpose — the
+ * accent is the sole differentiator (same system, different console).
+ */
+
+:root {
+  /* ── 1. fe-foundation token re-map (themes the frozen primitives) ── */
+
+  --c-bg: #f4f6fa; /* canvas */
+  --c-surface: #ffffff;
+  --c-surface-2: #fafbfc;
+  --c-border: #e5e9ed; /* line */
+  --c-border-strong: #d5dbe1; /* line-2 */
+  --c-text: #1b2730; /* ink */
+  --c-text-muted: #5c6770; /* muted */
+  --c-text-subtle: #93a0a8; /* faint */
+
+  /* Accent → Platform Violet */
+  --c-accent: #5b3fa0;
+  --c-accent-hover: #45307c;
+  --c-accent-active: #35245e;
+  --c-accent-soft: #efeafc; /* brand-tint */
+  --c-accent-fg: #ffffff;
+
+  /* States (semantics held identical to ats-web) */
+  --c-danger: #a8412f;
+  --c-danger-soft: #f7e9e6;
+  --c-danger-border: #e9ccc4;
+  --c-success: #1f7a4d;
+  --c-success-soft: #e6f2ea;
+  --c-success-border: #c5e2cf;
+  --c-focus-ring: #7c5cc9; /* brand-accent */
+
+  /* Type — same families as ats-web */
+  --font-sans: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* Radii — same mockup grammar */
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 13px;
+
+  /* Elevation → single violet-ink shadow (calm grammar) */
+  --sh-1: 0 1px 2px rgba(28, 20, 48, 0.05), 0 4px 16px rgba(28, 20, 48, 0.04);
+  --sh-2: 0 1px 2px rgba(28, 20, 48, 0.06), 0 6px 20px rgba(28, 20, 48, 0.06);
+  --sh-3: 0 8px 28px rgba(28, 20, 48, 0.12), 0 2px 6px rgba(28, 20, 48, 0.06);
+
+  /* ── 2. The fe-foundation ui.css token-variable CONTRACT (§8.6) ── */
+
+  /* accent/brand — Platform Violet */
+  --brand: #5b3fa0;
+  --brand-strong: #45307c;
+  --brand-accent: #7c5cc9;
+  --brand-tint: #efeafc;
+
+  /* rail — deep violet-charcoal (vs ats-web navy #122a47) */
+  --rail: #221a3a;
+  --rail-hover: #33285a;
+  --rail-text: #b6a8d6;
+  --rail-strong: #ffffff;
+  --rail-av-bg: #45307c;
+  --rail-av-text: #ddd0f5;
+
+  /* surfaces/ink — identical to ats-web */
+  --canvas: #f4f6fa;
+  --ink: #1b2730;
+  --muted: #5c6770;
+  --faint: #93a0a8;
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
+  --line: #e5e9ed;
+  --line-2: #d5dbe1;
+
+  /* semantics — identical to ats-web (red is danger in both consoles) */
+  --ok: #1f7a4d;
+  --ok-tint: #e6f2ea;
+  --info: #2c6fb3;
+  --info-tint: #e9f1f9;
+  --warn: #946011;
+  --warn-tint: #faefd8;
+  --danger: #a8412f;
+  --danger-tint: #f7e9e6;
+  --hot: #c0410c;
+  --hot-tint: #fbeadf;
+
+  --elev: 0 1px 2px rgba(28, 20, 48, 0.05), 0 4px 16px rgba(28, 20, 48, 0.04);
+
+  --tnum: 'tnum' 1;
+}
