@@ -88,6 +88,15 @@ TIER2_EXCLUDES=(
   "doc/04-risks.md"                   # PR-1: drift risks (D3, RL3) reference anti-terms by name
   "doc/05-conventions.md"             # PR-1: naming-conventions section uses anti-terms in "Never use" list
   "doc/06-lead-review-checklist.md"   # PR-1: review checks reference vocabulary anti-terms
+  # File-scoped (this exact file, NOT a doc/ blanket): the Enterprise Target
+  # Architecture is the one artifact whose explicit job is to draw the
+  # CRM/billing "customer" ≠ Tenant distinction (it says so outright: "Customer
+  # is the CRM concept, never the Tenant"). The vocab lock exists to stop
+  # `customer` standing in for `tenant`; this doc uses it correctly and would be
+  # damaged by renaming Stripe's Customer object / the CRM stage. Any future doc
+  # wanting the word earns its own line + its own ruling. When the commercial
+  # lane opens, `customer` in actual source is ruled then, per-path.
+  "doc/architecture/aramo-platform-console-enterprise-architecture.md"
   "doc/07-prompt-template.md"         # PR-1: prompt template uses anti-terms in worked examples
   "doc/adr/0010-verification-byte-fidelity-and-additive-index-maturation.md"  # PR-7.1: ADR codifies vocabulary check at verify-before-drafting tier; cites locked anti-terms in Decision A rationale
   "doc/adr/**"                        # PR-M0R-2 Amendment v1.0 §4.2 (Policy 1): ADRs may quote Charter when referencing refusal commitments
