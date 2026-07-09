@@ -81,8 +81,8 @@ const IDENTITY_SLUG_MIGRATION = resolve(
 const IDENTITY_IDP_MIGRATION = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
-  '../../../../libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql',
 );
+const IDENTITY_IDP_MIGRATION_LC = resolve(__dirname, '../../../../libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql');
 const IDENTITY_INVITATION_MIG = resolve(
   __dirname,
   '../../../../libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
@@ -379,7 +379,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ...splitDdl(readFileSync(IDENTITY_ALLOWED_DOMAIN_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_DOMAIN_VERIFICATION_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_SLUG_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_IDP_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_IDP_MIGRATION, IDENTITY_IDP_MIGRATION_LC, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_INVITATION_MIG, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_SITE_AXIS_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_D4A_MIGRATION, 'utf8')),

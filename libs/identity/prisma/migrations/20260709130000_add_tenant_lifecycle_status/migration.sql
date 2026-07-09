@@ -46,7 +46,10 @@ CREATE INDEX "Tenant_status_idx" ON "identity"."Tenant"("status");
 
 -- Backfill step 2 — ACTIVE for every active tenant; owner_accepted_at best-effort
 -- from the tenant_owner membership (NULL when the owner isn't tenant_owner-roled,
--- e.g. the sentinel/super_admin and dev/tenant_admin fixtures).
+-- e.g. the sentinel/super_admin and dev/tenant_admin fixtures). NB: this reads
+-- only init-era tables/columns (Membership, MembershipRole, Role) — deliberately
+-- NOT invite_status — so the migration is order-independent relative to
+-- add_invitation_and_invite_status in the hand-ordered curated test apply-lists.
 UPDATE "identity"."Tenant" t
 SET "status"            = 'ACTIVE',
     "status_changed_at" = t."updated_at",
@@ -58,7 +61,6 @@ SET "status"            = 'ACTIVE',
       JOIN "identity"."Role" r ON r."id" = mr."role_id"
       WHERE m."tenant_id" = t."id"
         AND r."key" = 'tenant_owner'
-        AND m."invite_status" IN ('ACCEPTED', 'ACTIVE')
       ORDER BY m."updated_at" ASC
       LIMIT 1
     )

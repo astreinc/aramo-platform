@@ -60,8 +60,8 @@ const IDENTITY_SLUG = resolve(
 const IDENTITY_IDP = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
-  'libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql',
 );
+const IDENTITY_IDP_LC = resolve(ROOT, 'libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql');
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-domain-verification-spec';
@@ -152,7 +152,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ENTITLEMENT_INIT,
         IDENTITY_INIT,
         IDENTITY_ALLOWED_DOMAIN,
-        IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG, IDENTITY_IDP,
+        IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG, IDENTITY_IDP, IDENTITY_IDP_LC,
       ]) {
         await db.query(readFileSync(p, 'utf8'));
       }
