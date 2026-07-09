@@ -331,6 +331,21 @@ export class AuthController {
           { requestId, details },
         );
       }
+      // Platform-Console Increment-2 PR-1 (workstream E) — tenant lifecycle
+      // mint-gate denials (tenant-consumer only). Typed 403s so the tenant
+      // console can render the suspended/closed UX distinctly.
+      if (result.reason === 'tenant_suspended') {
+        throw new AramoError('TENANT_SUSPENDED', 'Tenant is suspended', 403, {
+          requestId,
+          details,
+        });
+      }
+      if (result.reason === 'tenant_closed') {
+        throw new AramoError('TENANT_CLOSED', 'Tenant is closed', 403, {
+          requestId,
+          details,
+        });
+      }
       throw new AramoError(
         'INSUFFICIENT_PERMISSIONS',
         'Identity not provisioned',
