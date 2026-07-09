@@ -17,7 +17,11 @@ import {
   type AuthContextType,
 } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
-import { TenantService } from '@aramo/identity';
+import {
+  IdentityAuditRepository,
+  TenantService,
+  type AuditEventRow,
+} from '@aramo/identity';
 
 import {
   InvitePlatformAdminRequestDto,
@@ -27,6 +31,7 @@ import {
 import { ProvisionTenantRequestDto } from './dto/provision-tenant.request.dto.js';
 import type { ProvisionTenantResponseDto } from './dto/provision-tenant.response.dto.js';
 import type { PlatformTenantListResponseDto } from './dto/tenant-list.response.dto.js';
+import type { PlatformTenantAuditEventDto } from './dto/tenant-audit.response.dto.js';
 import {
   CloseTenantRequestDto,
   ReactivateTenantRequestDto,
@@ -55,6 +60,7 @@ export class PlatformController {
   constructor(
     private readonly invitations: PlatformInvitationService,
     private readonly tenantSvc: TenantService,
+    private readonly auditRepo: IdentityAuditRepository,
   ) {}
 
   @Post('tenants')
@@ -177,6 +183,32 @@ export class PlatformController {
       });
     }
     return { tenant };
+  }
+
+  // Platform-Console Increment-2 PR-2 (G1) — the tenant lifecycle audit timeline
+  // for the operator detail screen. Read-only (platform:tenant:read), :tenant_id
+  // from the URL (operator reads ANY tenant — the deliberate inverse of the
+  // tenant-self audit surface which pins tenant_id from the JWT). Returns the
+  // tenant's tenant.* events newest-first in a { events: [...] } envelope; the
+  // raw event_payload is included (before→after/reason lives there) for the FE
+  // timeline. 404 for an unknown tenant (mirrors getTenant).
+  @Get('tenants/:tenant_id/audit')
+  @RequireScopes('platform:tenant:read')
+  async getTenantAudit(
+    @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ events: PlatformTenantAuditEventDto[] }> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    const tenant = await this.tenantSvc.getTenantById(tenant_id);
+    if (tenant === null) {
+      throw new AramoError('NOT_FOUND', 'Tenant not found', 404, {
+        requestId,
+        details: { tenant_id },
+      });
+    }
+    const rows = await this.auditRepo.findTenantLifecycleAudit(tenant_id);
+    return { events: rows.map(toPlatformAuditEvent) };
   }
 
   @Post('tenants/:tenant_id/suspend')
@@ -314,4 +346,16 @@ export class PlatformController {
       );
     }
   }
+}
+
+// Platform-Console Increment-2 PR-2 (G1) — map an identity AuditEventRow to the
+// operator audit DTO (created_at → ISO string; raw event_payload preserved).
+function toPlatformAuditEvent(row: AuditEventRow): PlatformTenantAuditEventDto {
+  return {
+    event_type: row.event_type,
+    created_at: row.created_at.toISOString(),
+    actor_type: row.actor_type,
+    actor_id: row.actor_id,
+    event_payload: row.event_payload,
+  };
 }

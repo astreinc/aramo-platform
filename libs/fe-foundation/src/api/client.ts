@@ -20,6 +20,8 @@
 //    (S5a); S5b will need PATCH (role-assign); S5c will need DELETE
 //    (D4a clears).
 
+import { authPath } from '../auth/consumer';
+
 interface ApiErrorBody {
   error?: {
     code?: string;
@@ -50,12 +52,11 @@ export interface ApiClientOptions {
   baseUrl?: string;
 }
 
-// Re-mint path for the silent access-token refresh. Mirrors the `recruiter`
-// consumer of the other auth paths in auth/session.ts (LOGIN_PATH /
-// SESSION_PATH / LOGOUT_PATH) — all consoles route through the auth-service
-// `recruiter` consumer. Inlined here (not imported from session.ts) to avoid
-// a client.ts ↔ session.ts import cycle.
-const REFRESH_PATH = '/auth/recruiter/refresh';
+// Re-mint path for the silent access-token refresh. Inc-2 PR-2: derived from the
+// configured auth consumer (default 'recruiter') via auth/consumer.ts — the same
+// single bootstrap point the session.ts paths use — so platform-web refreshes at
+// /auth/platform/refresh while ats-web is unchanged. consumer.ts has no import
+// cycle with this module (it depends on nothing here).
 
 export class ApiClient {
   private readonly baseUrl: string;
@@ -124,7 +125,7 @@ export class ApiClient {
     if (
       response.status === 401 &&
       !alreadyRetried &&
-      path !== REFRESH_PATH
+      path !== authPath('refresh')
     ) {
       const refreshed = await this.refreshAccess();
       if (refreshed) {
@@ -167,7 +168,7 @@ export class ApiClient {
     if (this.refreshInFlight === null) {
       this.refreshInFlight = (async () => {
         try {
-          const res = await fetch(`${this.baseUrl}${REFRESH_PATH}`, {
+          const res = await fetch(`${this.baseUrl}${authPath('refresh')}`, {
             method: 'POST',
             credentials: 'include',
           });

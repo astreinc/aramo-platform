@@ -109,6 +109,10 @@ import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
     TenantService,
     RoleService,
     IdentityAuditService,
+    // Platform-Console Increment-2 PR-2 (G1) — exported so the platform-admin
+    // PlatformController can inject it for the tenant lifecycle audit read
+    // (GET /platform/tenants/:id/audit).
+    IdentityAuditRepository,
     IdentityRepository,
     TenantRepository,
     // AUTHZ-D4a — exported for cross-lib consumption (libs/company D4a writes

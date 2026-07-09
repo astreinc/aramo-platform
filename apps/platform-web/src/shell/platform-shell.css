@@ -1,0 +1,123 @@
+/* Platform console shell chrome (Inc-2 PR-2). Only the platform-specific bits:
+ * the PLATFORM marker (A3 anti-footgun) + content padding. The rail/topbar/nav
+ * structural rules all come from the fe-foundation ui.css (rc-*) via the barrel. */
+
+/* The rail PLATFORM marker — a bold violet pill at the top of the rail so the
+ * operator can never mistake this for a tenant console. */
+.pw-platform-mark {
+  display: block;
+  margin: 4px 12px 12px;
+  padding: 5px 10px;
+  border-radius: var(--r-sm);
+  background: var(--brand);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-align: center;
+}
+
+/* A second marker in the topbar, next to the brand — visible even when the rail
+ * is collapsed. */
+.pw-topbar-mark {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.pw-topbar-spacer {
+  flex: 1 1 auto;
+}
+
+/* Content wrapper padding (the rc-content host is structural; page padding is
+ * app-owned). */
+.pw-page {
+  padding: 24px 28px;
+  max-width: 1180px;
+}
+
+.pw-page__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.pw-page__title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.pw-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.pw-field-row {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.pw-facts {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 8px 18px;
+  font-size: 0.9rem;
+}
+.pw-facts dt {
+  color: var(--muted);
+}
+.pw-facts dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.pw-audit {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pw-audit__item {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  background: var(--surface);
+}
+.pw-audit__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.pw-audit__meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+.pw-audit__detail {
+  margin-top: 4px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.pw-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}

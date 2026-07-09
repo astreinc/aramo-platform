@@ -25,6 +25,10 @@ export {
   useSession,
 } from './auth/session';
 export type { Session, SessionState } from './auth/session';
+// Inc-2 PR-2 — single auth-consumer bootstrap point (default 'recruiter';
+// platform-web calls this with 'platform'). Parameterizes the /auth/:consumer/*
+// paths in session.ts + api/client.ts.
+export { configureAuthConsumer, getAuthConsumer } from './auth/consumer';
 export { hasScope } from './auth/scopes';
 export { RouteGuard } from './auth/RouteGuard';
 

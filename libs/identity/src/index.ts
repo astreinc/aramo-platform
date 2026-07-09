@@ -38,7 +38,11 @@ export {
   ACTOR_TYPES,
   EVENT_TYPES,
   TENANT_SCOPED_EVENT_TYPES,
+  // Platform-Console Increment-2 PR-2 (G1) — the tenant.* lifecycle event family
+  // + the audit row shape, exported for the platform-admin audit read endpoint.
+  TENANT_LIFECYCLE_EVENT_TYPES,
 } from './lib/audit/identity-audit.repository.js';
+export type { AuditEventRow } from './lib/audit/identity-audit.repository.js';
 export type {
   ActorType,
   EventType,
