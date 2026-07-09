@@ -26,7 +26,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
 
   prisma-validate:
     name: prisma:validate
@@ -38,7 +38,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run prisma:validate
 
   lint:
@@ -51,7 +51,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npx nx run-many --target=lint --all
 
   build:
@@ -64,7 +64,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run prisma:generate
       - run: npx nx run-many --target=build --all
 
@@ -129,7 +129,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run prisma:generate
       - run: npx nx run-many --target=test --all
 
@@ -143,7 +143,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run openapi:validate
 
   openapi-lint:
@@ -156,7 +156,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run openapi:lint
 
   lint-nx-boundaries:
@@ -169,7 +169,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run lint:nx-boundaries
 
   verify-vocabulary:
@@ -197,7 +197,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run openapi:drift-check
 
   portal-refusal-check:
@@ -210,7 +210,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run portal:refusal-check
 
   ats-refusal-check:
@@ -223,7 +223,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run ats:refusal-check
 
   ingestion-refusal-check:
@@ -236,7 +236,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run ingestion:refusal-check
 
   version-sync-check:
@@ -249,7 +249,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run version:sync-check
 
   error-codes-check:
@@ -262,7 +262,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run error-codes:check
 
   pact-consumer:
@@ -275,7 +275,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       # M6 PR-1 — bounded retry for the irreducible pact-rust mock-server
       # port-reuse race (~7% warm / ~17% cold per attempt at HEAD 9ac157e
       # after the afterEach setImmediate yield). k=3 projects job failure
@@ -316,7 +316,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run prisma:generate
       - name: Download pact files
         uses: actions/download-artifact@v4
@@ -337,7 +337,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run prisma:generate
       # M4 PR-2 §4.6 — extend tests-integration to the full 7 roots that
       # package.json's `tests:integration` AND-chain runs locally. Closes
@@ -489,7 +489,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci --omit=dev
+      - run: npm ci --omit=dev || npm ci --omit=dev || npm ci --omit=dev  # retry: transient free-email-domains postinstall ETIMEDOUT
       - run: bash scripts/audit-check.sh
 
   # ---------------------------------------------------------------------------
