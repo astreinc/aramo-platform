@@ -927,6 +927,46 @@ export class TalentTrustRepository {
     return rows;
   }
 
+  // TR-5 B1 (DDR §2) — the decay-recompute sweep gate. Selects ACTIVE subjects
+  // whose TrustState was last recomputed before `staleBefore` (= now −
+  // RECOMPUTE_STALENESS_DAYS) AND that carry ≥1 decaying evidence row — a
+  // subject whose every row is DURABLE (the only non-decaying profile) cannot
+  // drift, so it is skipped forever, cheaply. No watermark column: this is
+  // time-driven on the existing TrustState.last_recomputed_at, which the
+  // recompute itself advances, so a swept subject falls out of the gate
+  // (idempotent by construction). The EXISTS leg correlates on
+  // (tenant_id, subject_id) so it rides the existing composite index; the
+  // decay_profile inequality is a cheap residual over a subject's few rows.
+  // DISTINCT ON keeps the template shape (the TrustState join is 1:1, so no fan-out).
+  async listSubjectsToRecompute(
+    limit: number,
+    staleBefore: Date,
+    tenantId?: string,
+  ): Promise<Array<{ subject_id: string; tenant_id: string }>> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{ subject_id: string; tenant_id: string }>
+    >(
+      `SELECT DISTINCT ON (s.id) s.id AS subject_id, s.tenant_id AS tenant_id
+         FROM "talent_trust"."ResolutionSubject" s
+         JOIN "talent_trust"."TrustState" ts ON ts.subject_id = s.id
+        WHERE s.status = 'ACTIVE'
+          AND ts.last_recomputed_at < $2::timestamptz
+          AND EXISTS (
+            SELECT 1 FROM "talent_trust"."EvidenceRecord" e
+             WHERE e.tenant_id = s.tenant_id
+               AND e.subject_id = s.id
+               AND e.decay_profile <> 'DURABLE'
+          )
+          AND ($3::uuid IS NULL OR s.tenant_id = $3::uuid)
+        ORDER BY s.id
+        LIMIT $1`,
+      limit,
+      staleBefore,
+      tenantId ?? null,
+    );
+    return rows;
+  }
+
   // TR-4 B3 — watermark writer, set LAST on a per-subject consistency run so a
   // transient failure leaves it un-advanced and the next tick re-selects the subject.
   async setLastConsistencyAt(subjectId: string, at: Date): Promise<void> {

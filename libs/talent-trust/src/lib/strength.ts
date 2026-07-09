@@ -50,6 +50,13 @@ export function deriveStrength(sourceClass: SourceClass, method: Method): number
   return Math.max(0, Math.min(1, raw));
 }
 
+// TR-5 B1 (DDR §2) — the recompute-sweep staleness threshold: an ACTIVE
+// subject whose TrustState was last recomputed more than this many days ago is
+// re-priced by the daily sweep, so decay is charged on the clock's schedule and
+// a band can no longer outlive the evidence that earned it. An engine constant
+// (not tenant config), homed with the decay math it exists to keep honest.
+export const RECOMPUTE_STALENESS_DAYS = 30;
+
 // Approximate half-life (in days) per decay profile (§7). DURABLE never
 // decays; PER_STEP collapses to near-zero almost immediately after the step
 // it attested (so it must be re-established at each high-stakes step rather

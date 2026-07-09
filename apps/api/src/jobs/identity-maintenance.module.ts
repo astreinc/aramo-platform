@@ -17,6 +17,9 @@ import { IDENTITY_DETECTION_QUEUE_NAME } from '../talent-identity/identity-detec
 import { ConsistencyService } from '../talent-identity/consistency.service.js';
 import { ConsistencyProcessor } from '../talent-identity/consistency.processor.js';
 import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.constants.js';
+import { RecomputeSweepService } from '../talent-identity/recompute-sweep.service.js';
+import { RecomputeSweepProcessor } from '../talent-identity/recompute-sweep.processor.js';
+import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.queue.constants.js';
 
 // TR-6 B1 (DDR §2/§7) — the identity-maintenance job module: the hourly incremental
 // match sweep (D1) + the daily read-only integrity detection cron (D6). apps/api
@@ -64,6 +67,8 @@ import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.con
     BullModule.registerQueue({ name: IDENTITY_DETECTION_QUEUE_NAME }),
     // TR-4 B3 — the hourly consistency detector poll (same wiring as the others).
     BullModule.registerQueue({ name: CONSISTENCY_QUEUE_NAME }),
+    // TR-5 B1 — the daily decay-recompute sweep (same wiring as the others).
+    BullModule.registerQueue({ name: RECOMPUTE_SWEEP_QUEUE_NAME }),
   ],
   providers: [
     MatchSweepService,
@@ -72,6 +77,8 @@ import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.con
     IdentityDetectionProcessor,
     ConsistencyService,
     ConsistencyProcessor,
+    RecomputeSweepService,
+    RecomputeSweepProcessor,
     {
       provide: 'MatchSweepServiceLogger',
       useFactory: () => createAramoLogger(MatchSweepService.name),
@@ -96,7 +103,15 @@ import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.con
       provide: 'ConsistencyProcessorLogger',
       useFactory: () => createAramoLogger(ConsistencyProcessor.name),
     },
+    {
+      provide: 'RecomputeSweepServiceLogger',
+      useFactory: () => createAramoLogger(RecomputeSweepService.name),
+    },
+    {
+      provide: 'RecomputeSweepProcessorLogger',
+      useFactory: () => createAramoLogger(RecomputeSweepProcessor.name),
+    },
   ],
-  exports: [MatchSweepService, IdentityDetectionService, ConsistencyService],
+  exports: [MatchSweepService, IdentityDetectionService, ConsistencyService, RecomputeSweepService],
 })
 export class IdentityMaintenanceModule {}
