@@ -269,7 +269,34 @@ export class IdentityAuditRepository {
     });
     return rows as AuditEventRow[];
   }
+
+  // Platform-Console Increment-2 PR-2 (G1) — the tenant lifecycle audit read for
+  // the platform operator's detail screen. Returns this tenant's tenant.* events
+  // (the 9 lifecycle event_types), newest-first. Distinct from findByTenant: no
+  // cursor/pagination (a tenant's lifecycle history is short by construction) and
+  // it filters to the lifecycle family via an `event_type IN [...]` set — the
+  // `event_type` column is a closed union with no prefix-filter, so the set is
+  // derived from EVENT_TYPES (any future tenant.* event is included automatically).
+  // The caller is the platform controller (platform:tenant:read + consumer=platform
+  // assert); tenant_id comes from the URL, unlike the tenant-self audit surface.
+  async findTenantLifecycleAudit(tenant_id: string): Promise<AuditEventRow[]> {
+    const rows = await this.prisma.identityAuditEvent.findMany({
+      where: {
+        tenant_id,
+        event_type: { in: TENANT_LIFECYCLE_EVENT_TYPES as unknown as string[] },
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    });
+    return rows as AuditEventRow[];
+  }
 }
+
+// The tenant lifecycle event_type family (the `tenant.*` events), derived from
+// the closed EVENT_TYPES set so a newly-registered tenant.* event is picked up
+// with no edit here.
+export const TENANT_LIFECYCLE_EVENT_TYPES: readonly EventType[] = EVENT_TYPES.filter(
+  (e) => e.startsWith('tenant.'),
+);
 
 export interface FindByTenantParams {
   readonly tenant_id: string;

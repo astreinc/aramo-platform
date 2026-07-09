@@ -544,5 +544,70 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(res.status).toBe(404);
       expect(res.body?.error?.code).toBe('NOT_FOUND');
     });
+
+    // ------------------------------------------------ G1 AUDIT TIMELINE ---
+    it('audit — GET /platform/tenants/:id/audit returns tenant.* events newest-first with the 5 fields', async () => {
+      const token = await jwt(LIFECYCLE_SCOPES);
+      const id = await seedTenant({ name: 'Audit Timeline Co', status: 'ACTIVE' });
+      // Generate two lifecycle events: suspend (→ tenant.suspended) then
+      // reactivate (→ tenant.reactivated). Reactivate is newest.
+      await request(server())
+        .post(`/platform/tenants/${id}/suspend`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ reasonCode: 'ap_violation', reasonText: 'breach' });
+      await request(server())
+        .post(`/platform/tenants/${id}/reactivate`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ reasonCode: 'resolved' });
+
+      const res = await request(server())
+        .get(`/platform/tenants/${id}/audit`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.events)).toBe(true);
+      const types = res.body.events.map((e: { event_type: string }) => e.event_type);
+      // Both tenant.* events present; newest-first (reactivated before suspended).
+      expect(types).toEqual(['tenant.reactivated', 'tenant.suspended']);
+      const first = res.body.events[0];
+      expect(first).toEqual(
+        expect.objectContaining({
+          event_type: 'tenant.reactivated',
+          actor_type: 'user',
+        }),
+      );
+      expect(first).toHaveProperty('created_at');
+      expect(first).toHaveProperty('actor_id');
+      // Raw payload surfaced (before→after lives here).
+      expect(first.event_payload?.before?.status).toBe('SUSPENDED');
+      expect(first.event_payload?.after?.status).toBe('ACTIVE');
+    });
+
+    it('audit — read requires only platform:tenant:read (not lifecycle:manage)', async () => {
+      const token = await jwt(READ_ONLY_SCOPES);
+      const id = await seedTenant({ name: 'Audit ReadScope Co', status: 'ACTIVE' });
+      const res = await request(server())
+        .get(`/platform/tenants/${id}/audit`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.events).toEqual([]); // no lifecycle events yet
+    });
+
+    it('audit — unknown tenant → 404', async () => {
+      const token = await jwt(READ_ONLY_SCOPES);
+      const res = await request(server())
+        .get(`/platform/tenants/${uuidv7()}/audit`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(404);
+      expect(res.body?.error?.code).toBe('NOT_FOUND');
+    });
+
+    it('audit — wrong scope (no platform:tenant:read) → 403', async () => {
+      const token = await jwt(['platform:tenant:lifecycle:manage']);
+      const id = await seedTenant({ name: 'Audit WrongScope Co', status: 'ACTIVE' });
+      const res = await request(server())
+        .get(`/platform/tenants/${id}/audit`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status).toBe(403);
+    });
   },
 );
