@@ -76,12 +76,66 @@
 		reverse_proxy auth-service:3001
 	}
 
-	# Everything else: the ats-web static SPA baked into this image at /srv.
+	# Everything else: the ats-web static SPA baked into this image at /srv/ats
+	# (Inc-3 PR-3.3 re-path: was /srv; platform-web now occupies /srv/admin).
 	# The try_files …/index.html fallback gives client-side routing its SPA
-	# entry point (deep links like /admin/settings resolve to index.html and
-	# the React router takes over).
+	# entry point (deep links like /talent/123 resolve to index.html and the
+	# React router takes over).
 	handle {
-		root * /srv
+		root * /srv/ats
+		try_files {path} /index.html
+		file_server
+	}
+
+	encode gzip zstd
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Inc-3 PR-3.3 — the platform console site block (admin.aramo.ai), Ruling R14.
+#
+# A DEDICATED, explicit host block — NOT the on-demand wildcard. On the box the
+# explicit admin.aramo.ai block wins over the *.aramo.ai wildcard (Caddy routes
+# most-specific-host-first), so the platform console gets an ORDINARY ACME cert
+# provisioned the normal way (HTTP-01 at first request), with NO on_demand and
+# the tenant ask-endpoint NEVER involved (R14: the platform host must never
+# depend on — or be gated by — the tenant table's cert-eligibility check).
+#
+# TLS reuses {$CADDY_TLS} (local: `internal` → Caddy's local CA covers
+# admin.localhost; box: `admin@aramo.ai` → ordinary Let's Encrypt) but OMITS the
+# on_demand toggle — so admin.aramo.ai is a fixed, known host, not a per-request
+# mint.
+#
+#   CADDY_ADMIN_ADDRESS — the address the platform console answers on.
+#       local : admin.localhost   (distinct from the wildcard's `localhost`;
+#                                  Caddy's internal CA trusts *.localhost, so a
+#                                  local dual-root bring-up needs no public DNS)
+#       box   : admin.aramo.ai
+{$CADDY_ADMIN_ADDRESS:admin.localhost} {
+	tls {$CADDY_TLS:internal}
+
+	# Auth surface → auth-service (the platform console's OAuth/PKCE round-trip;
+	# host-derivation in PR-3.1 makes admin.aramo.ai its own redirect base).
+	handle /auth/* {
+		reverse_proxy auth-service:3001
+	}
+	# Platform API → platform-admin (the /platform/* surface, PR-3.2 contract).
+	handle /platform/* {
+		reverse_proxy platform-admin:3002
+	}
+	# JWKS document — exact path (see wildcard block for the acme-challenge note).
+	handle /.well-known/jwks.json {
+		reverse_proxy auth-service:3001
+	}
+
+	# NO `/v1` route — DELIBERATE (R14). The platform host cannot reach the
+	# tenant api even by misconfiguration: there is simply no reverse_proxy to
+	# api:3000 here, so a stray /v1 request falls through to the SPA fallback
+	# (index.html), never to tenant data.
+
+	# Everything else: the platform-web static SPA baked into this image at
+	# /srv/admin. Same SPA-fallback shape as the tenant console.
+	handle {
+		root * /srv/admin
 		try_files {path} /index.html
 		file_server
 	}

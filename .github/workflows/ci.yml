@@ -94,6 +94,7 @@ jobs:
         include:
           - { name: api, dockerfile: apps/api/Dockerfile }
           - { name: auth-service, dockerfile: apps/auth-service/Dockerfile }
+          - { name: platform-admin, dockerfile: apps/platform-admin/Dockerfile }
           - { name: caddy, dockerfile: deploy/caddy/Dockerfile }
     steps:
       - uses: actions/checkout@v4
