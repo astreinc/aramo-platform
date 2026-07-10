@@ -1,0 +1,883 @@
+openapi: 3.1.0
+info:
+  title: Aramo Platform Console API
+  version: 0.0.0
+  description: |
+    The platform-owner console surface (`apps/platform-admin`, served under
+    `/platform/*`). Increment-3 PR-3.2 gives the surface its written contract —
+    the console is about to be a production surface (PR-3.3).
+
+    Auth: every operation requires a platform session — a bearer JWT
+    (`Authorization: Bearer …`) or the `aramo_access_token` cookie — whose
+    `consumer_type` is `platform` AND which carries the per-operation
+    `platform:*` scope. A tenant-tier token (consumer_type ∈ {recruiter, portal,
+    ingestion}) is refused at every route with 403 `INSUFFICIENT_PERMISSIONS`
+    (the DDR §13.1 tier tripwire, app-side); a platform token missing the
+    required scope is refused at the scope guard, also 403.
+
+    Error envelope: the nested `{ error: { code, message, details? } }` shape,
+    with `code` drawn from the locked registry `ErrorCode` enum in
+    `common.yaml` (never duplicated here — error-codes:check enforces enum
+    parity against that file specifically).
+servers:
+  - url: https://admin.aramo.ai
+  - url: http://localhost:3002
+security:
+  - BearerAuth: []
+  - CookieAccessAuth: []
+tags:
+  - name: Platform Tenants
+    description: |
+      Tenant provisioning, read, and lifecycle management by the platform
+      operator. Reads require `platform:tenant:read`; provisioning +
+      owner-invitation require `platform:tenant:provision`; the four lifecycle
+      transitions require `platform:tenant:lifecycle:manage` (provisioning power
+      is deliberately separate from lifecycle power).
+  - name: Platform Admins
+    description: Platform-administrator invitation (the sentinel platform tenant).
+
+paths:
+  /platform/tenants:
+    get:
+      operationId: listTenants
+      tags: [Platform Tenants]
+      summary: List all tenants (every status).
+      description: |
+        The platform-operator estate view: EVERY tenant in EVERY status
+        (a suspended tenant is MORE visible to an operator, not less — this is
+        the deliberate inverse of the membership-gated session-mint read).
+        Optional exact `status` filter and `q` (case-insensitive contains on
+        name or slug). Ordered `created_at` descending. The sentinel platform
+        tenant appears like any row. No pagination yet (the `{ tenants: [...] }`
+        envelope reserves room for it without a breaking change).
+
+        Requires scope `platform:tenant:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Exact lifecycle status filter (one of the TenantStatus values).
+          schema:
+            $ref: '#/components/schemas/TenantStatus'
+        - name: q
+          in: query
+          required: false
+          description: Case-insensitive substring match on tenant name or slug.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The tenant list envelope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformTenantListResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+    post:
+      operationId: provisionTenant
+      tags: [Platform Tenants]
+      summary: Provision a tenant and invite its owner.
+      description: |
+        The existing provision-and-invite flow (the only provisioning path —
+        create-without-invite is not offered here): mints the Tenant, seeds its
+        entitlements, and invites the tenant owner via the Cognito Pattern-A
+        temp-password email as the singular first act. The owner's non-personal
+        email domain becomes the tenant's locked `allowed_domain`; a
+        personal/disposable domain is refused BEFORE any Cognito side-effect.
+        The new tenant lands in status `PROVISIONED`.
+
+        Requires scope `platform:tenant:provision`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvisionTenantRequest'
+      responses:
+        '201':
+          description: Tenant provisioned; owner invitation sent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvisionTenantResponse'
+        '400':
+          description: |
+            `VALIDATION_ERROR` — request-body invariant violated, e.g. a
+            personal/disposable owner email (`details.reason`
+            `personal_email_not_allowed`) or a missing/short tenant name.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '409':
+          description: '`TENANT_ALREADY_EXISTS` — a tenant with this name already exists (case-insensitive).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '502':
+          description: '`COGNITO_PROVISION_FAILED` — the Cognito AdminCreateUser call failed.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /platform/tenants/{tenant_id}:
+    get:
+      operationId: getTenant
+      tags: [Platform Tenants]
+      summary: Get a tenant's detail.
+      description: |
+        Single-tenant detail read (the identity `TenantDto` shape: id, name,
+        status, home-realm identity_provider, is_active, timestamps).
+
+        Requires scope `platform:tenant:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      responses:
+        '200':
+          description: The tenant detail envelope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantDetailResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+
+  /platform/tenants/{tenant_id}/audit:
+    get:
+      operationId: getTenantAudit
+      tags: [Platform Tenants]
+      summary: Get a tenant's lifecycle audit timeline.
+      description: |
+        The tenant's `tenant.*` lifecycle audit events, newest-first, in a
+        `{ events: [...] }` envelope. Unlike the tenant-self audit surface
+        (which pins tenant_id from the JWT), the operator reads ANY tenant by
+        URL id. The raw `event_payload` is surfaced (before→after/reason live
+        there) for the FE timeline.
+
+        Requires scope `platform:tenant:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      responses:
+        '200':
+          description: The audit event list envelope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformTenantAuditListResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+
+  /platform/tenants/{tenant_id}/invitations:
+    post:
+      operationId: inviteUserIntoTenant
+      tags: [Platform Tenants]
+      summary: Invite a user into a tenant.
+      description: |
+        Invite a user into an existing tenant with one or more AUTHZ-1 tenant
+        roles. Idempotency (Lead ruling 8): an existing user + existing
+        membership with the same role set → 409 `INVITATION_ALREADY_EXISTS`; a
+        different role set → the membership roles are reconciled (200-shaped
+        `roles_updated`); no membership → a new membership (`membership_added`);
+        drift (Cognito has the user, identity does not) → identity rows are
+        written against the existing sub (`invitation_sent`). An invertible role
+        union is refused (400 `VALIDATION_ERROR`, `details.reason`
+        `invertible_role_union`).
+
+        Requires scope `platform:tenant:provision`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteUserRequest'
+      responses:
+        '201':
+          description: User invited / membership reconciled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteUserResponse'
+        '400':
+          description: |
+            `VALIDATION_ERROR` — an unknown `role_key` (rejected at the DTO) or
+            an invertible role union (`details.reason` `invertible_role_union`).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '409':
+          description: '`INVITATION_ALREADY_EXISTS` — the user already holds this membership with the same role set.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '502':
+          description: '`COGNITO_PROVISION_FAILED` — the Cognito AdminCreateUser call failed.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /platform/tenants/{tenant_id}/resend-owner-invite:
+    post:
+      operationId: resendOwnerInvite
+      tags: [Platform Tenants]
+      summary: Re-send the tenant owner's invitation.
+      description: |
+        Re-issues the owner's Cognito Pattern-A invitation email
+        (MessageAction=RESEND) — nothing is recreated (same Cognito user, same
+        identity rows). Gated to status `PROVISIONED`: a PROVISIONED tenant's
+        owner has not yet accepted (acceptance activates the tenant → ACTIVE),
+        which is exactly the window Cognito RESEND is valid — so this refuses on
+        any other status with 422 `VALIDATION_ERROR` (`details.reason`
+        `tenant_not_provisioned`). Emits `tenant.owner_invite.sent`.
+
+        Requires scope `platform:tenant:provision`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      responses:
+        '200':
+          description: Owner invitation re-sent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResendOwnerInviteResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+        '422':
+          description: '`VALIDATION_ERROR` (`details.reason` `tenant_not_provisioned`) — the tenant is not in PROVISIONED status.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /platform/tenants/{tenant_id}/suspend:
+    post:
+      operationId: suspendTenant
+      tags: [Platform Tenants]
+      summary: Suspend a tenant (ACTIVE → SUSPENDED).
+      description: |
+        Suspends an ACTIVE tenant. Requires a `reasonCode` AND a `reasonText`
+        (both non-empty). Refuses an illegal transition with 422
+        `VALIDATION_ERROR` (`details.reason` `illegal_transition`) and emits
+        `tenant.lifecycle_transition_rejected`; a request for the current status
+        is an idempotent no-op (`changed: false`). New tenant sessions are then
+        refused at the mint gate (`TENANT_SUSPENDED`).
+
+        Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuspendTenantRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/LifecycleActionOk'
+        '400':
+          $ref: '#/components/responses/LifecycleReasonBadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+        '422':
+          $ref: '#/components/responses/IllegalTransition'
+
+  /platform/tenants/{tenant_id}/reactivate:
+    post:
+      operationId: reactivateTenant
+      tags: [Platform Tenants]
+      summary: Reactivate a tenant (SUSPENDED → ACTIVE).
+      description: |
+        Reactivates a SUSPENDED tenant. Requires a `reasonCode`. Illegal
+        transitions → 422 `VALIDATION_ERROR` (`illegal_transition`).
+
+        Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReactivateTenantRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/LifecycleActionOk'
+        '400':
+          $ref: '#/components/responses/LifecycleReasonBadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+        '422':
+          $ref: '#/components/responses/IllegalTransition'
+
+  /platform/tenants/{tenant_id}/start-offboarding:
+    post:
+      operationId: startOffboarding
+      tags: [Platform Tenants]
+      summary: Start offboarding a tenant (ACTIVE/SUSPENDED → OFFBOARDING).
+      description: |
+        Moves a tenant to OFFBOARDING. Requires a `retentionPolicyCode` (an
+        opaque string — NO retention policy semantics run; counsel-gated) AND a
+        `closeAt` (ISO-8601 date-time, the retention clock anchor). Illegal
+        transitions → 422 `VALIDATION_ERROR` (`illegal_transition`).
+
+        Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartOffboardingRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/LifecycleActionOk'
+        '400':
+          description: |
+            `VALIDATION_ERROR` — the DTO shape is invalid (missing/empty
+            `retentionPolicyCode`, or `closeAt` not ISO-8601).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+        '422':
+          $ref: '#/components/responses/IllegalTransition'
+
+  /platform/tenants/{tenant_id}/close:
+    post:
+      operationId: closeTenant
+      tags: [Platform Tenants]
+      summary: Close a tenant (PROVISIONED/OFFBOARDING → CLOSED, terminal).
+      description: |
+        Closes a tenant (terminal). Requires a `reasonCode`. Illegal
+        transitions → 422 `VALIDATION_ERROR` (`illegal_transition`). New tenant
+        sessions are then refused at the mint gate (`TENANT_CLOSED`).
+
+        Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloseTenantRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/LifecycleActionOk'
+        '400':
+          $ref: '#/components/responses/LifecycleReasonBadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+        '422':
+          $ref: '#/components/responses/IllegalTransition'
+
+  /platform/admins/invitations:
+    post:
+      operationId: invitePlatformAdmin
+      tags: [Platform Admins]
+      summary: Invite a platform administrator.
+      description: |
+        Invites another platform administrator against the PLATFORM Cognito
+        pool; the invitee is bound to the sentinel platform tenant with the
+        `super_admin` role. Idempotency mirrors the tenant-invite flow.
+
+        Requires scope `platform:admin:invite`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvitePlatformAdminRequest'
+      responses:
+        '201':
+          description: Platform administrator invited.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteUserResponse'
+        '400':
+          description: '`VALIDATION_ERROR` — invalid email.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '409':
+          description: '`INVITATION_ALREADY_EXISTS` — the admin already holds a platform membership.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '502':
+          description: '`COGNITO_PROVISION_FAILED` — the Cognito AdminCreateUser call failed.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    # Duplicated byte-for-byte from openapi/common.yaml per locked invariant 4
+    # (duplicate-not-$ref — no cross-document $ref for securitySchemes). If you
+    # change either definition, change both together and keep them identical.
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    CookieAccessAuth:
+      type: apiKey
+      in: cookie
+      name: aramo_access_token
+
+  parameters:
+    TenantIdParam:
+      name: tenant_id
+      in: path
+      required: true
+      description: The tenant's UUID.
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    # 403 for every platform route: a tenant-tier token (consumer_type ≠
+    # platform) or a platform token missing the operation's scope.
+    PlatformForbidden:
+      description: |
+        `INSUFFICIENT_PERMISSIONS` — the token is not a platform-tier token
+        (consumer_type ≠ platform, the DDR §13.1 tripwire) or lacks the
+        operation's required `platform:*` scope.
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    PlatformTenantNotFound:
+      description: '`NOT_FOUND` — no tenant with this id.'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    LifecycleActionOk:
+      description: The transition result (idempotent no-op when already in the target status).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TenantLifecycleActionResponse'
+    LifecycleReasonBadRequest:
+      description: |
+        `VALIDATION_ERROR` — the DTO shape is invalid (a required non-empty
+        `reasonCode`/`reasonText` is missing or empty).
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    IllegalTransition:
+      description: |
+        `VALIDATION_ERROR` (`details.reason` `illegal_transition`) — the
+        requested transition is not legal from the tenant's current status; or a
+        reason requirement was unmet (`reason_code_required` /
+        `reason_text_required` / `retention_policy_code_required` /
+        `close_at_required`).
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  schemas:
+    TenantStatus:
+      type: string
+      description: The tenant lifecycle status (enforced in app code, not a DB enum).
+      enum:
+        - PROVISIONED
+        - ACTIVE
+        - SUSPENDED
+        - OFFBOARDING
+        - CLOSED
+
+    ProvisionTenantRequest:
+      type: object
+      additionalProperties: false
+      required: [name, owner_email]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          description: The tenant (workspace) name; unique case-insensitively.
+        owner_email:
+          type: string
+          format: email
+          description: The owner's business email; its domain becomes the tenant's locked allowed_domain.
+        owner_display_name:
+          type: string
+          description: Optional owner display name (Cognito 'name' + identity display_name).
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: Optional capability set; defaults to {core, ats, portal} when omitted/empty.
+
+    ProvisionTenantResponse:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, tenant_name, owner_user_id, owner_email, membership_id, capabilities, invitation_sent]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        tenant_name:
+          type: string
+        owner_user_id:
+          type: string
+          format: uuid
+        owner_email:
+          type: string
+          format: email
+        membership_id:
+          type: string
+          format: uuid
+        capabilities:
+          type: array
+          items:
+            type: string
+        invitation_sent:
+          type: boolean
+          const: true
+
+    PlatformTenantSummary:
+      type: object
+      additionalProperties: false
+      required: [id, name, slug, status, status_reason_code, status_changed_at, is_active, created_at, activated_at, suspended_at]
+      description: The operator list-row shape (lifecycle-triage columns; capability summary lives on the detail read).
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          oneOf:
+            - type: string
+            - type: 'null'
+        status:
+          $ref: '#/components/schemas/TenantStatus'
+        status_reason_code:
+          oneOf:
+            - type: string
+            - type: 'null'
+        status_changed_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        activated_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        suspended_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+
+    PlatformTenantListResponse:
+      type: object
+      additionalProperties: false
+      required: [tenants]
+      properties:
+        tenants:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformTenantSummary'
+
+    TenantDetail:
+      type: object
+      additionalProperties: false
+      required: [id, name, is_active, created_at, updated_at, identity_provider, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        identity_provider:
+          oneOf:
+            - type: string
+            - type: 'null'
+          description: The tenant's pinned Cognito Home-Realm identity_provider, or null (chooser).
+        status:
+          $ref: '#/components/schemas/TenantStatus'
+
+    TenantDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [tenant]
+      properties:
+        tenant:
+          $ref: '#/components/schemas/TenantDetail'
+
+    PlatformTenantAuditEvent:
+      type: object
+      additionalProperties: false
+      required: [event_type, created_at, actor_type, actor_id, event_payload]
+      properties:
+        event_type:
+          type: string
+          description: The tenant.* lifecycle event type.
+        created_at:
+          type: string
+          format: date-time
+        actor_type:
+          type: string
+        actor_id:
+          oneOf:
+            - type: string
+            - type: 'null'
+        event_payload:
+          type: object
+          additionalProperties: true
+          description: The raw event payload (before/after status + reason).
+
+    PlatformTenantAuditListResponse:
+      type: object
+      additionalProperties: false
+      required: [events]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformTenantAuditEvent'
+
+    InviteUserRequest:
+      type: object
+      additionalProperties: false
+      required: [email, role_keys]
+      properties:
+        email:
+          type: string
+          format: email
+        role_keys:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: One or more AUTHZ-1 tenant role keys (constrained to the seed role catalog).
+        display_name:
+          type: string
+
+    InviteUserResponse:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, user_id, membership_id, role_keys, status]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        membership_id:
+          type: string
+          format: uuid
+        role_keys:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum:
+            - invitation_sent
+            - roles_updated
+            - membership_added
+
+    ResendOwnerInviteResponse:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, owner_user_id, owner_email, resent]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        owner_user_id:
+          type: string
+          format: uuid
+        owner_email:
+          type: string
+          format: email
+        resent:
+          type: boolean
+          const: true
+
+    SuspendTenantRequest:
+      type: object
+      additionalProperties: false
+      required: [reasonCode, reasonText]
+      properties:
+        reasonCode:
+          type: string
+          minLength: 1
+        reasonText:
+          type: string
+          minLength: 1
+
+    ReactivateTenantRequest:
+      type: object
+      additionalProperties: false
+      required: [reasonCode]
+      properties:
+        reasonCode:
+          type: string
+          minLength: 1
+
+    StartOffboardingRequest:
+      type: object
+      additionalProperties: false
+      required: [retentionPolicyCode, closeAt]
+      properties:
+        retentionPolicyCode:
+          type: string
+          minLength: 1
+          description: Opaque retention-policy string; NO policy semantics run (counsel-gated).
+        closeAt:
+          type: string
+          format: date-time
+          description: ISO-8601 effective close date (the retention clock anchor).
+        reasonCode:
+          type: string
+        reasonText:
+          type: string
+
+    CloseTenantRequest:
+      type: object
+      additionalProperties: false
+      required: [reasonCode]
+      properties:
+        reasonCode:
+          type: string
+          minLength: 1
+        reasonText:
+          type: string
+
+    TenantLifecycleActionResponse:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, from, to, status, changed]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        from:
+          $ref: '#/components/schemas/TenantStatus'
+        to:
+          $ref: '#/components/schemas/TenantStatus'
+        status:
+          $ref: '#/components/schemas/TenantStatus'
+        changed:
+          type: boolean
+          description: false when the request was an idempotent no-op (already in the target status).
+
+    InvitePlatformAdminRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
