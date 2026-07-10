@@ -19,6 +19,12 @@
 FROM node:24-bookworm-slim AS web-builder
 WORKDIR /app
 
+# Prisma's generator needs openssl/ca-certs present (see below — platform-web's
+# nx build graph pulls a Prisma-backed lib, so this image runs prisma:generate).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
 # Deterministic install first (cache layer keyed on the lockfile only).
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -26,11 +32,21 @@ RUN npm ci
 # Workspace source (.dockerignore keeps out node_modules/dist/.env/secrets).
 COPY . .
 
-# Build BOTH SPAs + their Nx lib graph (fe-foundation) → dist/apps/{ats-web,
-# platform-web}. Inc-3 PR-3.3: ONE Caddy image serves both consoles — a single
-# box has one :443, so two ingress containers cannot coexist. Both are pure FE
-# apps (no Prisma in their dependency graph), so — unlike the backend images —
-# no `prisma:generate` step is needed.
+# Per-module Prisma clients — REQUIRED before the platform-web build. Unlike
+# ats-web (whose graph is fe-foundation only), aramo-platform-web's nx project
+# graph includes @aramo/engagement (scope:ats, Prisma-backed) via its COMMITTED
+# Platform⊥ATS negative-control fixture — a deliberate graph edge (excluded from
+# platform-web's own compile, but present at graph-compute time so the boundary
+# lint can fire on it). nx therefore builds engagement + its Prisma-backed deps
+# as a prerequisite of the platform-web build, and those deps need the generated
+# clients. The generated code is NOT bundled into either SPA (Vite tree-shakes
+# from each app's entry); this is a build-time prerequisite only — the runtime
+# stage below still copies pure static dist.
+RUN npm run prisma:generate
+
+# Build BOTH SPAs → dist/apps/{ats-web,platform-web}. Inc-3 PR-3.3: ONE Caddy
+# image serves both consoles — a single box has one :443, so two ingress
+# containers cannot coexist.
 RUN npx nx build aramo-ats-web --skip-nx-cache
 RUN npx nx build aramo-platform-web --skip-nx-cache
 
