@@ -1622,7 +1622,7 @@ components:
     DossierHead:
       type: object
       additionalProperties: false
-      required: [talent_record_id, ledger_established, dimensions, statements, contradictions, verifications, merge_provenance, advisory_pointers]
+      required: [talent_record_id, ledger_established, dimensions, statements, contradictions, verifications, merge_provenance, advisory_pointers, proposal_pointers]
       properties:
         talent_record_id:
           type: string
@@ -1663,6 +1663,21 @@ components:
           items:
             type: string
             format: uuid
+        proposal_pointers:
+          type: array
+          items:
+            $ref: '#/components/schemas/DossierProposalPointer'
+    DossierProposalPointer:
+      type: object
+      additionalProperties: false
+      required: [id, kind]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [VERIFY_CONTACT, RENEW_VERIFICATION, RESOLVE_CONTRADICTION]
     DimensionAssessment:
       type: object
       additionalProperties: false

@@ -90,6 +90,14 @@ const WORK_NAV: readonly NavItem[] = [
     icon: <IconShield />,
     scope: 'identity:resolve',
   },
+  // TR-12 B2 — the caseworker's Trust Proposals queue. Gated on talent:read (the
+  // same scope as the route); the per-row ACTs carry their own scopes.
+  {
+    to: '/trust/proposals',
+    label: 'Trust Proposals',
+    icon: <IconTasks />,
+    scope: 'talent:read',
+  },
 ];
 
 // Admin-gated nav (FE Consolidation Phase 1). The section is shown only to a

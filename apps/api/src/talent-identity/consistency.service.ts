@@ -60,7 +60,12 @@ export class ConsistencyService {
         // generation failure must NOT undo the consistency bookkeeping above
         // (the subject stays checked; the proposal re-attempts next visit).
         try {
-          await this.trust.generateProposalsForSubject(s.subject_id, s.tenant_id);
+          await this.trust.generateProposalsForSubject(
+            s.subject_id,
+            s.tenant_id,
+            new Date(),
+            'consistency',
+          );
         } catch (genErr) {
           this.logger.warn({
             event: 'proposal_generation_failed',

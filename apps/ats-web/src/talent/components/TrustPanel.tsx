@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button, InlineAlert } from '@aramo/fe-foundation';
 
 import { BandPill } from '../../ui';
@@ -11,6 +12,13 @@ import {
 } from '../dossier-api';
 
 import { ContradictionResolveDialog } from './ContradictionResolveDialog';
+
+// Proposal kind → reader label for the pointer line (words, never numbers — R10).
+const PROPOSAL_POINTER_LABEL: Record<string, string> = {
+  VERIFY_CONTACT: 'Verify contact',
+  RENEW_VERIFICATION: 'Renew verification',
+  RESOLVE_CONTRADICTION: 'Resolve contradiction',
+};
 
 // The four trust dimensions, canonical order.
 const DIMENSIONS = [
@@ -111,6 +119,23 @@ export function TrustPanel({ talentId, canResolve }: Props) {
           </ul>
         ) : null}
       </section>
+
+      {/* TR-12 B2 — the pointer line toward the caseworker's queue. OPEN proposals
+          only; the KINDS render as words (R10 — no count number). The queue is the
+          source of truth; this is a pointer, not a duplicate. */}
+      {(head.proposal_pointers ?? []).length > 0 ? (
+        <section className="rc-trust__sec rc-trust-proposals-pointer">
+          <p className="rc-muted-line">
+            Open trust proposals:{' '}
+            {[
+              ...new Set(
+                (head.proposal_pointers ?? []).map((p) => PROPOSAL_POINTER_LABEL[p.kind] ?? p.kind),
+              ),
+            ].join(', ')}
+            . <Link to="/trust/proposals">Go to Trust Proposals →</Link>
+          </p>
+        </section>
+      ) : null}
 
       {head.contradictions.length > 0 ? (
         <section className="rc-trust__sec">

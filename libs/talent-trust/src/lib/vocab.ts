@@ -112,13 +112,23 @@ export const PROPOSAL_TRIGGER_KINDS = [
 ] as const;
 export type ProposalTriggerKind = (typeof PROPOSAL_TRIGGER_KINDS)[number];
 
-// ---- VerificationProposal.status — the proposal lifecycle (TR-12 B1) ----------
-// OPEN → { ACTED | DISMISSED } (both terminal). Regeneration (DDR §2): OPEN is
-// refreshed; a DISMISSED basis never re-mints (permanent no-op — a dismissed
-// proposal never nags); ACTED settles by the act itself (the trigger clears). B1
-// writes OPEN (generator) + DISMISSED (dismiss endpoint); ACTED is B2's wiring.
-export const PROPOSAL_STATUSES = ['OPEN', 'ACTED', 'DISMISSED'] as const;
+// ---- VerificationProposal.status — the proposal lifecycle (TR-12 B1/B2) --------
+// OPEN → { ACTED | DISMISSED | SETTLED } (all terminal). Regeneration (DDR §2):
+// OPEN is refreshed; a DISMISSED basis never re-mints (permanent no-op — a
+// dismissed proposal never nags). B1 wrote OPEN (generator) + DISMISSED (dismiss).
+// TR-12 B2 (§3.0/§3.1) adds:
+//   ACTED   — the mark-acted endpoint (the human invoked the real action; the
+//             proposal records it, executes nothing).
+//   SETTLED — the generator's drift-healer: any OPEN proposal whose trigger no
+//             longer holds is settled on the next pass (actor = the host's name,
+//             justification 'trigger cleared'). This is both the lingering-row
+//             answer AND the ACT-drift heal (an acted-but-unmarked row settles).
+// A String column with no DB CHECK, so adding SETTLED needs no migration.
+export const PROPOSAL_STATUSES = ['OPEN', 'ACTED', 'DISMISSED', 'SETTLED'] as const;
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
+
+// The justification the generator stamps when it settles a trigger-cleared row.
+export const PROPOSAL_SETTLED_JUSTIFICATION = 'trigger cleared';
 
 // ---- EvidenceRecord.source_class — the independence ladder (§5.2) ------
 // ORDERED worthless → authoritative. The ordering is fixed (R2); the index
