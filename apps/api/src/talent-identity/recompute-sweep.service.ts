@@ -58,11 +58,28 @@ export class RecomputeSweepService {
 
     for (const s of subjects) {
       try {
-        // Per subject: recompute ONLY. The recompute re-prices decay as of now
-        // and advances last_recomputed_at (via upsertTrustState) — so the
-        // subject leaves the gate. No other write.
+        // Per subject: recompute, then the caseworker. The recompute re-prices
+        // decay as of now and advances last_recomputed_at (via upsertTrustState)
+        // — so the subject leaves the gate.
         await this.trust.recomputeTrustState(s.subject_id, s.tenant_id);
         result.recomputed += 1;
+        // TR-12 B1 (DDR §3) — the time-driven host. REQUIRED here (not only in
+        // the consistency pass): verified_control_stale flips with ZERO new
+        // evidence, so the consistency watermark would never re-select the
+        // subject — only the daily recompute sees the clock cross 365d. Own
+        // try/catch so a generation failure never disturbs the sweep's recompute
+        // bookkeeping (the subject stays recomputed; the proposal re-attempts).
+        try {
+          await this.trust.generateProposalsForSubject(s.subject_id, s.tenant_id);
+        } catch (genErr) {
+          this.logger.warn({
+            event: 'proposal_generation_failed',
+            host: 'recompute_sweep',
+            tenant_id: s.tenant_id,
+            subject_id: s.subject_id,
+            error: genErr instanceof Error ? genErr.message : String(genErr),
+          });
+        }
       } catch (err) {
         result.failed += 1;
         this.logger.warn({

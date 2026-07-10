@@ -26,6 +26,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
   '../../prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
   '../../prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
+  '../../prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
   '../../prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
   '../../prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
   // TR-2a-3 added SubjectMatchAdvisory resolution columns; the regenerated client

@@ -55,6 +55,21 @@ export class ConsistencyService {
         // Watermark LAST — an un-advanced stamp on failure re-selects next tick.
         await this.repo.setLastConsistencyAt(s.subject_id, new Date());
         result.checked += 1;
+        // TR-12 B1 (DDR §3) — the caseworker, hosted post-recompute (the
+        // consistency run recomputes at its end). Own try/catch: a proposal-
+        // generation failure must NOT undo the consistency bookkeeping above
+        // (the subject stays checked; the proposal re-attempts next visit).
+        try {
+          await this.trust.generateProposalsForSubject(s.subject_id, s.tenant_id);
+        } catch (genErr) {
+          this.logger.warn({
+            event: 'proposal_generation_failed',
+            host: 'consistency',
+            tenant_id: s.tenant_id,
+            subject_id: s.subject_id,
+            error: genErr instanceof Error ? genErr.message : String(genErr),
+          });
+        }
       } catch (err) {
         result.failed += 1;
         this.logger.warn({
