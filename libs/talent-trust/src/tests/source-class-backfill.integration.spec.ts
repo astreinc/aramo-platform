@@ -23,6 +23,7 @@ const PRE_MIGRATIONS = [
   // TR-4 B3 — last_consistency_at (the regenerated client SELECTs it on subject reads).
   '20260710120000_tr4_b3_last_consistency_at',
   '20260711120000_tr5_b2_thinness_flags',
+  '20260712120000_tr8_b1_verified_control_stale',
 ];
 const SOURCE_CLASS_MIGRATION = '20260706170000_tr2a_b1_subject_anchor_source_class';
 

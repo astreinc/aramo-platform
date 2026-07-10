@@ -1507,6 +1507,83 @@ paths:
       security:
         - BearerAuth: []
 
+  # TR-14 B2 (DDR §2.1/§2.5) — the contracted trust dossier (read-only per record).
+  /v1/talent-records/{id}/dossier:
+    get:
+      operationId: getTalentRecordDossier
+      summary: The trust dossier head for a talent record (TR-14 B2).
+      description: |
+        The Trust Assessment form, contracted and read-only: per-dimension bands +
+        named-thinness statements, contradiction ITEMS with reasons (never counts),
+        verification state, merge provenance, advisory pointers. Assembled from the
+        cluster-union of the record's resolved subject (reverse lookup -> fixpoint).
+        A record with no subject returns ledger_established:false, never an error.
+        Gated: capability ats + scope talent:read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The dossier head.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DossierHead'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/talent-records/{id}/dossier/evidence:
+    get:
+      operationId: getTalentRecordDossierEvidence
+      summary: The dossier evidence timeline (keyset, TR-14 B2).
+      description: |
+        The lifecycle event story over the cluster-union, keyset-paged newest-first,
+        each item carrying its evidence summary (never strength) and the links that
+        touch it, inline.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        '200':
+          description: A keyset page of the evidence timeline.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DossierEvidencePage'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -1533,3 +1610,190 @@ components:
             $ref: 'common.yaml#/components/schemas/TalentJobExaminationSummary'
         pagination:
           $ref: 'common.yaml#/components/schemas/PaginationEnvelope'
+
+    # TR-14 B2 (DDR §2.1/§3.2) — the trust dossier head. THE NUMERIC RULE, HELD:
+    # NO top-level trust-ordinal numeric anywhere (no strength, no counts) —
+    # contradictions are ITEMS (not a count), thinness is STATEMENTS (not a score).
+    # The ONLY numbers that may appear are inside `assertion_payload`, which is the
+    # OPAQUE claim facts the evidence asserts (e.g. an employment window, a
+    # LONGITUDINAL_PRESENCE payload) — ledger-visible facts, never a platform
+    # ordinal. It is intentionally typeless (unconstrained passthrough) so the
+    # refusal walker does not treat it as an object schema.
+    DossierHead:
+      type: object
+      additionalProperties: false
+      required: [talent_record_id, ledger_established, dimensions, statements, contradictions, verifications, merge_provenance, advisory_pointers]
+      properties:
+        talent_record_id:
+          type: string
+          format: uuid
+        ledger_established:
+          type: boolean
+        dimensions:
+          type: object
+          additionalProperties: false
+          required: [identity, claims, continuity, eligibility]
+          properties:
+            identity:
+              $ref: '#/components/schemas/DimensionAssessment'
+            claims:
+              $ref: '#/components/schemas/DimensionAssessment'
+            continuity:
+              $ref: '#/components/schemas/DimensionAssessment'
+            eligibility:
+              $ref: '#/components/schemas/DimensionAssessment'
+        statements:
+          type: array
+          items:
+            type: string
+        contradictions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DossierContradictionItem'
+        verifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/DossierVerificationItem'
+        merge_provenance:
+          type: array
+          items:
+            $ref: '#/components/schemas/DossierMergeItem'
+        advisory_pointers:
+          type: array
+          items:
+            type: string
+            format: uuid
+    DimensionAssessment:
+      type: object
+      additionalProperties: false
+      required: [band]
+      properties:
+        band:
+          type: string
+          enum: [NOT_ESTABLISHED, SELF_ASSERTED, CORROBORATED, INDEPENDENTLY_VERIFIED, AUTHORITATIVE]
+    DossierContradictionItem:
+      type: object
+      additionalProperties: false
+      required: [evidence_id, dimension, assertion_type, reason, contradicting_evidence_id, assertion_payload]
+      properties:
+        evidence_id:
+          type: string
+          format: uuid
+        dimension:
+          type: string
+        assertion_type:
+          type: string
+        reason:
+          type: [string, 'null']
+        contradicting_evidence_id:
+          type: [string, 'null']
+          format: uuid
+        assertion_payload:
+          description: Opaque ledger claim facts the evidence asserts - never a platform trust ordinal. Intentionally unconstrained.
+    DossierVerificationItem:
+      type: object
+      additionalProperties: false
+      required: [anchor_kind, status]
+      properties:
+        anchor_kind:
+          type: string
+        status:
+          type: string
+          enum: [NONE, PENDING, CONFIRMED, EXPIRED]
+    DossierMergeItem:
+      type: object
+      additionalProperties: false
+      required: [operation_id, kind, role, completed_at]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        role:
+          type: string
+          enum: [survivor, merged]
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+    DossierEvidencePage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DossierEvidenceItem'
+        next_cursor:
+          type: [string, 'null']
+    DossierEvidenceItem:
+      type: object
+      additionalProperties: false
+      required: [event, evidence, links]
+      properties:
+        event:
+          $ref: '#/components/schemas/DossierEventSummary'
+        evidence:
+          $ref: '#/components/schemas/DossierEvidenceSummary'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/DossierLink'
+    DossierEventSummary:
+      type: object
+      additionalProperties: false
+      required: [id, event_type, actor, reason, linked_evidence_id, occurred_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        actor:
+          type: [string, 'null']
+        reason:
+          type: [string, 'null']
+        linked_evidence_id:
+          type: [string, 'null']
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+    DossierEvidenceSummary:
+      type: object
+      additionalProperties: false
+      required: [id, dimension, assertion_type, assertion_payload, source_class, method, current_status, collected_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        dimension:
+          type: string
+        assertion_type:
+          type: string
+        assertion_payload:
+          description: Opaque ledger claim facts - never a platform trust ordinal. Intentionally unconstrained.
+        source_class:
+          type: string
+        method:
+          type: string
+        current_status:
+          type: string
+        collected_at:
+          type: string
+          format: date-time
+    DossierLink:
+      type: object
+      additionalProperties: false
+      required: [from_evidence_id, to_evidence_id, relation]
+      properties:
+        from_evidence_id:
+          type: string
+          format: uuid
+        to_evidence_id:
+          type: string
+          format: uuid
+        relation:
+          type: string
+          enum: [CORROBORATES, CONTRADICTS, SUPERSEDES]

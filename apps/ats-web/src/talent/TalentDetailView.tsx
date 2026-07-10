@@ -22,6 +22,7 @@ import {
   type PipelineView,
 } from '../pipeline/types';
 
+import { TrustPanel } from './components/TrustPanel';
 import {
   getEmailVerificationStatus,
   getTalent,
@@ -132,6 +133,17 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
       content: <IdentityPanel talent={talent} canEdit={canEditIdentity} />,
     },
   ];
+  // TR-14 B2 — the Trust tab: the record's trust dossier (the assessment form).
+  // Gated on the record's base talent:read (trust is core to the record under
+  // ATS-as-Heart; no dedicated trust-read scope exists). The contradiction resolve
+  // action inside is separately gated on identity:resolve.
+  if (scopes.includes('talent:read')) {
+    tabs.push({
+      id: 'trust',
+      label: 'Trust',
+      content: <TrustPanel talentId={talent.id} canResolve={scopes.includes('identity:resolve')} />,
+    });
+  }
   if (scopes.includes('attachment:read')) {
     tabs.push({
       id: 'attachments',

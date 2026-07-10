@@ -314,6 +314,11 @@ model TrustState {
   single_source_only    Boolean @default(false)
   longitudinal_observed Boolean @default(false)
 
+  // TR-8 D2 (DDR) — a current platform-verification act has aged past 365d.
+  // Derived at recompute; the T5-B1 sweep flips it with zero writes. Surfaced as
+  // a statement, never a number.
+  verified_control_stale Boolean @default(false)
+
   last_recomputed_at DateTime @db.Timestamptz
 
   subject ResolutionSubject @relation(fields: [subject_id], references: [id])

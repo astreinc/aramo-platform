@@ -62,6 +62,11 @@ const THINNESS_FLAGS_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
 );
+// TR-8 D2 — TrustState.verified_control_stale (the regenerated client SELECTs it).
+const VERIFIED_STALE_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
+);
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const REF_A = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
@@ -133,7 +138,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const linkUniqueSql = readFileSync(LINK_UNIQUE_MIGRATION_PATH, 'utf8');
       const consistencyWatermarkSql = readFileSync(CONSISTENCY_WATERMARK_MIGRATION_PATH, 'utf8');
       const thinnessFlagsSql = readFileSync(THINNESS_FLAGS_MIGRATION_PATH, 'utf8');
-      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql, ...tr6Sqls, linkUniqueSql, consistencyWatermarkSql, thinnessFlagsSql]) {
+      const verifiedStaleSql = readFileSync(VERIFIED_STALE_MIGRATION_PATH, 'utf8');
+      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql, ...tr6Sqls, linkUniqueSql, consistencyWatermarkSql, thinnessFlagsSql, verifiedStaleSql]) {
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
           if (trimmed.length === 0) continue;

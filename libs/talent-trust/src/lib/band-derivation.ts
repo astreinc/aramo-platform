@@ -52,6 +52,9 @@ export interface DerivedTrustState {
   // persisted across arrivals).
   single_source_only: boolean;
   longitudinal_observed: boolean;
+  // TR-8 D2 (DDR) — a current platform-verification act has aged past
+  // VERIFICATION_STALE_DAYS. Surfaced as a statement, never a number.
+  verified_control_stale: boolean;
 }
 
 const bandRank = (b: PresentationBand): number => PRESENTATION_BANDS.indexOf(b);
@@ -61,6 +64,20 @@ const classRank = (c: SourceClass): number => SOURCE_CLASSES.indexOf(c);
 // longer counts toward raising a band. Keeps a PER_STEP/expired record from
 // propping up a band forever.
 const CONTRIBUTION_FLOOR = 0.01;
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+// TR-8 D2 (DDR) — a platform-verification act older than this many days is STALE
+// (verified_control_stale). Engine constant (age-based, deterministic); the SLOW
+// decay already prices the strength — this names the fact for TR-12 to consume.
+export const VERIFICATION_STALE_DAYS = 365;
+
+// The verification-act assertion types (the OPEN-6 IDENTITY registry names minted
+// by the TR-3 confirm at source_class PLATFORM_VERIFIED × method CONTROL_ROUND_TRIP).
+const VERIFICATION_ASSERTION_TYPES = new Set<string>([
+  'EMAIL_CONTROL_VERIFIED',
+  'PHONE_CONTROL_VERIFIED',
+]);
 
 // The independence key (§6.2). SELF is talent-controlled — ALL self
 // evidence collapses to a single weak signal regardless of source_ref ("five
@@ -221,6 +238,20 @@ export function deriveTrustState(
     (e) => e.current_status === 'VALID' && e.assertion_type === 'LONGITUDINAL_PRESENCE',
   );
 
+  // TR-8 D2 (DDR) — verified_control_stale: TRUE when ≥1 CURRENT (VALID, non-
+  // superseded) platform-verification act is older than VERIFICATION_STALE_DAYS.
+  // Age-based (deterministic, legible) — the decay math already prices the
+  // strength; this flag NAMES the fact so TR-12 can consume it. Derived at
+  // recompute; the T5-B1 daily sweep flips it with zero writes when the threshold
+  // passes (the verification evidence is SLOW → the subject is sweep-selected).
+  // Re-verification (D1) mints a fresh act → clears it on the next recompute.
+  const verified_control_stale = evidence.some(
+    (e) =>
+      e.current_status === 'VALID' &&
+      VERIFICATION_ASSERTION_TYPES.has(e.assertion_type) &&
+      now.getTime() - e.collected_at.getTime() > VERIFICATION_STALE_DAYS * MS_PER_DAY,
+  );
+
   return {
     identity_band: bandFor('IDENTITY'),
     claims_band: bandFor('CLAIMS'),
@@ -231,6 +262,7 @@ export function deriveTrustState(
     has_open_dispute: evidence.some((e) => e.current_status === 'DISPUTED'),
     single_source_only,
     longitudinal_observed,
+    verified_control_stale,
   };
 }
 
@@ -241,13 +273,17 @@ export function deriveTrustState(
 // the renderer TR-14's contracted assessment surface will consume by name.
 export const TRUST_STATEMENT_SINGLE_SOURCE = 'Evidence from a single source';
 export const TRUST_STATEMENT_LONGITUDINAL = 'Observed over time';
+// TR-8 D2 — the staleness sentence joins the fixed set (strings only, no number).
+export const TRUST_STATEMENT_VERIFICATION_STALE = 'Platform verification is stale';
 
 export function deriveTrustStatements(state: {
   single_source_only: boolean;
   longitudinal_observed: boolean;
+  verified_control_stale?: boolean;
 }): string[] {
   const statements: string[] = [];
   if (state.single_source_only) statements.push(TRUST_STATEMENT_SINGLE_SOURCE);
   if (state.longitudinal_observed) statements.push(TRUST_STATEMENT_LONGITUDINAL);
+  if (state.verified_control_stale) statements.push(TRUST_STATEMENT_VERIFICATION_STALE);
   return statements;
 }

@@ -156,6 +156,8 @@ export interface TrustStateRow {
   // TR-5 B2 (DDR §4) — named thinness flags (surfaced as statements, never numbers).
   single_source_only: boolean;
   longitudinal_observed: boolean;
+  // TR-8 D2 (DDR) — a current platform-verification act has aged past 365d.
+  verified_control_stale: boolean;
   last_recomputed_at: Date;
 }
 
@@ -830,6 +832,25 @@ export class TalentTrustRepository {
     return rows as EvidenceEventRow[];
   }
 
+  // TR-14 B2 — targeted event read for the dossier HEAD's contradiction items: the
+  // events (optionally one type) for a specific evidence-id set, newest-first. The
+  // contradiction REASON lives on the CONTRADICTED event (contradict() writes it
+  // there, not on the link), so the head reads reasons per contradicted evidence.
+  async listEventsForEvidence(
+    evidenceIds: string[],
+    eventType?: string,
+  ): Promise<EvidenceEventRow[]> {
+    if (evidenceIds.length === 0) return [];
+    const rows = await this.prisma.evidenceEvent.findMany({
+      where: {
+        evidence_id: { in: evidenceIds },
+        ...(eventType ? { event_type: eventType } : {}),
+      },
+      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+    });
+    return rows as EvidenceEventRow[];
+  }
+
   // TR-4 B2 (DDR §3.2) — the dual-write idempotence existence check: does an
   // EvidenceRecord already exist for this (subject, assertion_type) whose
   // source_ref points at the given talent_evidence row? Keyed on the STABLE typed
@@ -867,6 +888,7 @@ export class TalentTrustRepository {
         has_open_dispute: input.has_open_dispute,
         single_source_only: input.single_source_only,
         longitudinal_observed: input.longitudinal_observed,
+        verified_control_stale: input.verified_control_stale,
         last_recomputed_at: input.last_recomputed_at,
       },
     });

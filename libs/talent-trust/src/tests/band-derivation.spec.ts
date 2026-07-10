@@ -5,6 +5,8 @@ import {
   deriveTrustStatements,
   TRUST_STATEMENT_LONGITUDINAL,
   TRUST_STATEMENT_SINGLE_SOURCE,
+  TRUST_STATEMENT_VERIFICATION_STALE,
+  VERIFICATION_STALE_DAYS,
   type EvidenceForDerivation,
 } from '../lib/band-derivation.js';
 import { deriveStrength } from '../lib/strength.js';
@@ -98,9 +100,49 @@ describe('deriveTrustState — thinness flags (TR-5 B2 §4)', () => {
     );
     expect(superseded.longitudinal_observed).toBe(false);
   });
+
+  it('verified_control_stale (TR-8 D2): a CURRENT verification act older than 365d → true; fresh or superseded → false', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const verif = (over: Partial<EvidenceForDerivation>): EvidenceForDerivation =>
+      ev({
+        dimension: 'IDENTITY',
+        source_class: 'PLATFORM_VERIFIED',
+        method: 'CONTROL_ROUND_TRIP',
+        assertion_type: 'EMAIL_CONTROL_VERIFIED',
+        ...over,
+      });
+    // aged past the threshold → stale
+    const aged = deriveTrustState(
+      [verif({ collected_at: new Date(NOW.getTime() - (VERIFICATION_STALE_DAYS + 5) * DAY) })],
+      NOW,
+    );
+    expect(aged.verified_control_stale).toBe(true);
+    // fresh (renewed) → not stale
+    const fresh = deriveTrustState([verif({ collected_at: NOW })], NOW);
+    expect(fresh.verified_control_stale).toBe(false);
+    // just under the threshold → not stale
+    const almost = deriveTrustState(
+      [verif({ collected_at: new Date(NOW.getTime() - (VERIFICATION_STALE_DAYS - 5) * DAY) })],
+      NOW,
+    );
+    expect(almost.verified_control_stale).toBe(false);
+    // a SUPERSEDED aged act does NOT count (only the current truth ages)
+    const superseded = deriveTrustState(
+      [verif({ collected_at: new Date(NOW.getTime() - 800 * DAY), current_status: 'SUPERSEDED' })],
+      NOW,
+    );
+    expect(superseded.verified_control_stale).toBe(false);
+  });
 });
 
 describe('deriveTrustStatements — the why-path (β1, strings only)', () => {
+  it('TR-8 D2: verified_control_stale → the staleness sentence (strings only, no number)', () => {
+    expect(
+      deriveTrustStatements({ single_source_only: false, longitudinal_observed: false, verified_control_stale: true }),
+    ).toEqual([TRUST_STATEMENT_VERIFICATION_STALE]);
+    expect(/\d/.test(TRUST_STATEMENT_VERIFICATION_STALE)).toBe(false);
+  });
+
   it('maps each flag to its locked sentence; both off → no statements', () => {
     expect(deriveTrustStatements({ single_source_only: false, longitudinal_observed: false })).toEqual([]);
     expect(deriveTrustStatements({ single_source_only: true, longitudinal_observed: false })).toEqual([TRUST_STATEMENT_SINGLE_SOURCE]);
