@@ -9,8 +9,21 @@ export { IdentityCoreModule } from './lib/identity-core.module.js';
 export { IdentityService } from './lib/identity.service.js';
 export { TenantService } from './lib/tenant.service.js';
 export { RoleService } from './lib/role.service.js';
+// Platform-Console Increment-2 PR-1 — tenant lifecycle vocabulary. Exported so
+// the auth-service mint gate + platform-admin action endpoints share the single
+// source of truth for statuses / transitions / mint-deny set.
+export {
+  TENANT_STATUSES,
+  type TenantStatus,
+  isTenantStatus,
+  TENANT_TRANSITIONS,
+  isLegalTransition,
+  MINT_DENYING_STATUSES,
+} from './lib/util/tenant-lifecycle.js';
 export { IdentityRepository } from './lib/identity.repository.js';
 export { TenantRepository } from './lib/tenant.repository.js';
+// Platform-Console Increment-2 PR-1.5 (A1) — the platform-operator list row shape.
+export type { PlatformTenantListRow } from './lib/tenant.repository.js';
 export { RoleRepository } from './lib/role.repository.js';
 // AUTHZ-D4b — exported for consumption by libs/visibility (the D4b
 // resolver reads ManagementEdge for the Axis-1 transitive-reports walk
@@ -25,7 +38,11 @@ export {
   ACTOR_TYPES,
   EVENT_TYPES,
   TENANT_SCOPED_EVENT_TYPES,
+  // Platform-Console Increment-2 PR-2 (G1) — the tenant.* lifecycle event family
+  // + the audit row shape, exported for the platform-admin audit read endpoint.
+  TENANT_LIFECYCLE_EVENT_TYPES,
 } from './lib/audit/identity-audit.repository.js';
+export type { AuditEventRow } from './lib/audit/identity-audit.repository.js';
 export type {
   ActorType,
   EventType,

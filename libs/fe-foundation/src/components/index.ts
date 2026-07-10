@@ -13,4 +13,5 @@ export { PageHeader } from './PageHeader';
 export { RadioGroup, type RadioOption } from './RadioGroup';
 export { Switch } from './Switch';
 export { Table, type TableColumn } from './Table';
+export { Tabs, type TabItem } from './Tabs';
 export { ToastProvider, useToast } from './Toast';

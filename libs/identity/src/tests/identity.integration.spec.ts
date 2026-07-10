@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { v7 as uuidv7 } from 'uuid';
+import { resolveIdentityMigrations } from '@aramo/common';
 
 import {
   IdentityAuditRepository,
@@ -30,55 +31,16 @@ import {
   SEED_SERVICE_ACCOUNT_NAME,
 } from '../../prisma/seed.js';
 
-// PL-93 PR-A1a: integration spec applies the init migration + add_site_axis
-// + AUTHZ-D4a's add_authz_team_models so the test database matches the
-// post-D4a schema (Site model + UserTenantMembership.site_id +
-// ManagementEdge + Team + TeamMembership).
-const MIGRATION_PATHS = [
-  resolve(
-    __dirname,
-    '../../prisma/migrations/20260512000000_init_identity_model/migration.sql',
-  ),
-  // Domain-Enforcement P1 — additive Tenant.allowed_domain column.
-  resolve(
-    __dirname,
-    '../../prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
-  ),
-  resolve(
-    __dirname,
-    '../../prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql',
-  ),
-  resolve(
-    __dirname,
-    '../../prisma/migrations/20260626120000_add_tenant_slug/migration.sql',
-  ),
-  resolve(
-    __dirname,
-    '../../prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
-  ),
-  resolve(
-    __dirname,
-    '../../prisma/migrations/20260601000000_add_site_axis/migration.sql',
-  ),
-  // AUTHZ-D4a — PL-95 finally exercised (the first authz migration).
-  resolve(
-    __dirname,
-    '../../prisma/migrations/20260604000000_add_authz_team_models/migration.sql',
-  ),
-  // Settings Rebuild D3 — additive tenant-profile columns (the Prisma client
-  // now SELECTs them on every Tenant query, so the table must carry them).
-  resolve(
-    __dirname,
-    '../../prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
-  ),
-  // Subdomain-Identity B — the Tenant.identity_provider column (IdP routing).
-  // The generated client SELECTs/writes it on every Tenant query (the seed's
-  // tenant upsert), so the curated list must apply it (curated-list gotcha).
-  resolve(
-    __dirname,
-    '../../prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
-  ),
-];
+// PR-1.5 Workstream C — the identity migration set now comes from the single
+// shared ordered helper (@aramo/common). Previously this site hand-listed 10 of
+// the 11 identity migrations (it omitted add_site_hierarchy); consuming the full
+// ordered set is behavior-neutral (the extra table is additive) and removes the
+// curated-list bitrot the inline comments used to fight (allowed_domain /
+// identity_provider / tenant-profile column drift). Next identity migration =
+// one-line edit in the helper.
+const MIGRATION_PATHS = resolveIdentityMigrations(
+  resolve(__dirname, '../../../..'),
+);
 
 const TENANT_KEYSET = '20000000-2222-7222-8222-200000000001';
 
@@ -270,6 +232,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:read',
         'pipeline:remove',
         'platform:admin:invite',
+        'platform:tenant:lifecycle:manage',
         'platform:tenant:provision',
         'platform:tenant:read',
         'portal:consent:read',
@@ -385,7 +348,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   tenant_owner + tenant_admin; DOMAIN_ADMIN_SEED_BUNDLES @ 0x960).
       //   470 → 472 = +2 TR-2a-3 (identity:resolve × tenant_owner +
       //   tenant_admin; IDENTITY_RESOLVE_SEED_BUNDLES @ 0x970).
-      expect(roleScopes).toBe(474);
+      expect(roleScopes).toBe(475);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -431,7 +394,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // added after D-AUTHZ-COMP-WRITE-1 contribute zero audit rows; the
       // count correctly stays 82. (This assertion was never reached before
       // — the stale scope-catalog list above aborted test 10 first.)
-      expect(auditRows.length).toBe(83);
+      expect(auditRows.length).toBe(84);
       // Every audit event uses actor_type 'system' and actor_id = SA id.
       for (const row of auditRows) {
         expect(row.actor_type).toBe('system');
@@ -494,6 +457,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(platformScopes.map((s) => s.key).sort()).toEqual([
         'platform:admin:invite',
+        'platform:tenant:lifecycle:manage',
         'platform:tenant:provision',
         'platform:tenant:read',
       ]);
@@ -508,6 +472,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .sort();
       expect(superAdminScopes).toEqual([
         'platform:admin:invite',
+        'platform:tenant:lifecycle:manage',
         'platform:tenant:provision',
         'platform:tenant:read',
       ]);
@@ -1836,6 +1801,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.tenant_user.role_removed',
         'identity.user_client_assignment.created',
         'identity.user_client_assignment.removed',
+        // Platform-Console Increment-2 PR-1 — 9 tenant-lifecycle events (sorted).
+        'tenant.activated',
+        'tenant.closed',
+        'tenant.lifecycle_transition_rejected',
+        'tenant.offboarding_started',
+        'tenant.owner_invite.accepted',
+        'tenant.owner_invite.sent',
+        'tenant.provisioned',
+        'tenant.reactivated',
+        'tenant.suspended',
       ]);
     });
   },

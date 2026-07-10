@@ -149,6 +149,8 @@ export const SEED_IDS = {
     'platform:tenant:provision': '01900000-0000-7000-8000-000000000089',
     'platform:tenant:read': '01900000-0000-7000-8000-00000000008a',
     'platform:admin:invite': '01900000-0000-7000-8000-00000000008b',
+    // Platform-Console Increment-2 PR-1 — tenant lifecycle management scope.
+    'platform:tenant:lifecycle:manage': '01900000-0000-7000-8000-0000000000f0',
     // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6; Lead Gate-5 ruling 2
     // narrows company:read:all to TA+TO only — mirrors requisition:read:all).
     'company:assign': '01900000-0000-7000-8000-00000000008c',
@@ -381,6 +383,7 @@ export const SEED_IDS = {
     super_admin_platform_tenant_provision: '01900000-0000-7000-8000-000000000300',
     super_admin_platform_tenant_read: '01900000-0000-7000-8000-000000000301',
     super_admin_platform_admin_invite: '01900000-0000-7000-8000-000000000302',
+    super_admin_platform_tenant_lifecycle_manage: '01900000-0000-7000-8000-000000000307',
     // AUTHZ-D4a — 4 RoleScope rows for tenant_admin's new team-model
     // scopes (the other bundle holders go through AUTHZ1_ROLE_SCOPE_ROW_IDS
     // since they live in AUTHZ1_BUNDLES).
@@ -476,6 +479,7 @@ export const SEED_IDS = {
       '01900000-0000-7000-8000-000000000233',
     scope_platform_tenant_read_created: '01900000-0000-7000-8000-000000000234',
     scope_platform_admin_invite_created: '01900000-0000-7000-8000-000000000235',
+    scope_platform_tenant_lifecycle_manage_created: '01900000-0000-7000-8000-0000000002f0',
     // AUTHZ-D4a — 4 scope.created audit events for the new team-model scopes
     // (0x236..0x239). All global (no tenant_id) per the scope.created mapping.
     scope_company_assign_created: '01900000-0000-7000-8000-000000000236',
@@ -607,6 +611,7 @@ export const ROLE_SCOPE_ASSIGNMENTS = {
     'platform:tenant:provision',
     'platform:tenant:read',
     'platform:admin:invite',
+    'platform:tenant:lifecycle:manage',
   ],
 } as const;
 
@@ -709,6 +714,8 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
     SEED_IDS.role_scopes.super_admin_platform_tenant_read,
   'super_admin:platform:admin:invite':
     SEED_IDS.role_scopes.super_admin_platform_admin_invite,
+  'super_admin:platform:tenant:lifecycle:manage':
+    SEED_IDS.role_scopes.super_admin_platform_tenant_lifecycle_manage,
   // AUTHZ-D4a — 4 new tenant_admin RoleScope rows for the team-model scopes.
   'tenant_admin:company:assign': SEED_IDS.role_scopes.tenant_admin_company_assign,
   'tenant_admin:org:manage': SEED_IDS.role_scopes.tenant_admin_org_manage,
@@ -1867,6 +1874,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:provision'], 'platform:tenant:provision', 'Platform-tier: create a tenant + entitlement seed + Tenant-Owner invite (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:read'], 'platform:tenant:read', 'Platform-tier: list/read tenants for the platform-admin view (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:admin:invite'], 'platform:admin:invite', 'Platform-tier: invite another platform admin against the platform Cognito pool (super_admin only)');
+  await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:lifecycle:manage'], 'platform:tenant:lifecycle:manage', 'Platform-tier: manage tenant lifecycle — suspend/reactivate/offboard/close (super_admin only)');
   // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6). Lead Gate-5 ruling 2
   // narrowed company:read:all to TA+TO only (mirrors requisition:read:all).
   await upsertScope(prisma, SEED_IDS.scopes['company:assign'], 'company:assign', 'Assign / unassign a user to a client (account_manager + tenant_admin + tenant_owner; mirrors requisition:assign as the AM act)');
@@ -2549,6 +2557,16 @@ export async function runIdentitySeed(
     payload: {
       scope_id: SEED_IDS.scopes['platform:admin:invite'],
       key: 'platform:admin:invite',
+    },
+  });
+  await upsertAudit(prisma, {
+    id: SEED_IDS.audit_events.scope_platform_tenant_lifecycle_manage_created,
+    tenant_id: null,
+    event_type: 'identity.scope.created',
+    subject_id: SEED_IDS.scopes['platform:tenant:lifecycle:manage'],
+    payload: {
+      scope_id: SEED_IDS.scopes['platform:tenant:lifecycle:manage'],
+      key: 'platform:tenant:lifecycle:manage',
     },
   });
   await upsertAudit(prisma, {

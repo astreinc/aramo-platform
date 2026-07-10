@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
+import { IconSliders } from '@aramo/fe-foundation';
 
-import { IconSliders } from '../../ui/icons';
 import { Card } from '../../ui';
 import { CompensationDisplayPicker } from '../CompensationDisplayPicker';
 import { FinancialsToggle } from '../FinancialsToggle';

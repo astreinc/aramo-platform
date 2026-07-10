@@ -7,7 +7,8 @@ import {
   IconMail,
   IconPlug,
   IconSliders,
-} from '../../ui/icons';
+} from '@aramo/fe-foundation';
+
 import { SettingsSeam, SettingsSection } from '../components';
 
 // Settings Rebuild Directive 1 — the honest seams.

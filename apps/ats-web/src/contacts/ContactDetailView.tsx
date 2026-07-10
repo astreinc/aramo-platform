@@ -10,6 +10,7 @@ import {
 } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { Tabs, type TabItem } from '@aramo/fe-foundation';
 
 import { listActivities, createNote } from '../activity/activity-api';
 import type { ActivityView } from '../activity/types';
@@ -27,7 +28,6 @@ import {
   type ActivityFeedItem,
 } from '../ui';
 import { useEntityCrumb } from '../shell/breadcrumb';
-import { Tabs, type TabItem } from '../components/Tabs';
 import type { ContactView } from '../companies/types';
 
 import { getContact } from './contacts-api';

@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-
 import {
   IconBranch,
   IconBrowser,
@@ -17,7 +16,7 @@ import {
   IconSliders,
   IconUpload,
   IconUsers,
-} from '../ui/icons';
+} from '@aramo/fe-foundation';
 
 // Settings Rebuild Directive 1 — the settings shell.
 //

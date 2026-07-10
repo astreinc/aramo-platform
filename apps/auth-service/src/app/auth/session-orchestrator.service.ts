@@ -16,6 +16,7 @@ import {
 } from './cognito-verifier.service.js';
 import { JwtIssuerService } from './jwt-issuer.service.js';
 import { PkceService } from './pkce.service.js';
+import { deriveRedirectUri } from './redirect-uri.js';
 
 // PR-8.0a-Reground §8.2 callback orchestrator. Returns a discriminated
 // result; the controller maps each variant to HTTP response, cookies, and
@@ -39,6 +40,11 @@ export interface CallbackInput {
   cognitoError: string | undefined;
   cognitoErrorDescription: string | undefined;
   pkceStateCipher: string | undefined;
+  // PR-3.1 §3d.1: the base derived from the callback request's VALIDATED host
+  // (null for an unvalidated host → the exchange redirect_uri falls back to the
+  // env chain). The controller computes it (sharing one lookup) and threads it
+  // here so the exchange redirect_uri == the authorize redirect_uri.
+  derivedBase?: string | null;
 }
 
 export type CallbackResult =
@@ -125,7 +131,16 @@ export class SessionOrchestratorService {
 
     let idToken: string;
     try {
-      idToken = await this.exchangeCognitoCode(input.code, payload.verifier);
+      // Amendment v1.2 (Workstream D): derive the exchange redirect_uri from the
+      // consumer validated at callback (input.consumer === payload.consumer here,
+      // post consumer-compare) — identical to the login-time derivation, so
+      // OAuth's exchange==authorize redirect_uri invariant holds by construction.
+      idToken = await this.exchangeCognitoCode(
+        input.code,
+        payload.verifier,
+        input.consumer,
+        input.derivedBase,
+      );
     } catch (err) {
       this.logger.warn(`cognito exchange failed: ${(err as Error).message}`);
       return { kind: 'internal_error', reason: 'cognito_exchange_failed' };
@@ -222,6 +237,24 @@ export class SessionOrchestratorService {
     }
     const selectedTenant = tenants[0]!;
 
+    // Platform-Console Increment-2 PR-1 (workstream E) — tenant-status mint gate.
+    // TENANT-CONSUMER sessions only: the platform consumer's sentinel tenant has
+    // no lifecycle semantics and is never status-gated. SUSPENDED/CLOSED deny the
+    // mint with a typed 403; PROVISIONED/ACTIVE/OFFBOARDING mint normally (the
+    // login-gate table, doc Part II §A — PROVISIONED MUST mint so the owner's
+    // first-login flow proceeds; blocking it would deadlock activation). GATE
+    // LOGIC ONLY — the reconcile/link/PKCE/verifier spine above is untouched
+    // (§2-adjacent scope guard). Enforcement is mint-only: existing sessions
+    // expire on the 15-min access-token TTL (write-guard is a recorded follow-up).
+    if (input.consumer !== 'platform') {
+      if (selectedTenant.status === 'SUSPENDED') {
+        return { kind: 'auth_error', reason: 'tenant_suspended' };
+      }
+      if (selectedTenant.status === 'CLOSED') {
+        return { kind: 'auth_error', reason: 'tenant_closed' };
+      }
+    }
+
     // PR-A1a-3 Ruling 1 (auto-stamp): determine site_id from the user's
     // active membership in selectedTenant. Schema's @@unique([user_id,
     // tenant_id]) guarantees at most one membership row, so this is a
@@ -296,14 +329,23 @@ export class SessionOrchestratorService {
     };
   }
 
-  private async exchangeCognitoCode(code: string, verifier: string): Promise<string> {
+  private async exchangeCognitoCode(
+    code: string,
+    verifier: string,
+    consumer: CallbackInput['consumer'],
+    derivedBase?: string | null,
+  ): Promise<string> {
     const domain = process.env['AUTH_COGNITO_DOMAIN'];
     const clientId = process.env['AUTH_COGNITO_CLIENT_ID'];
-    const redirectUri = process.env['AUTH_COGNITO_REDIRECT_URI'];
+    // Amendment v1.2 (Workstream D): derive per-consumer, matching the authorize
+    // redirect_uri (same consumer, same base). OAuth requires the two be equal.
+    // PR-3.1 §3d.1: the validated-host base (threaded from the callback request)
+    // wins over the env chain — identical to the login host, so equal.
+    const redirectUri = deriveRedirectUri(consumer, derivedBase);
     if (
       domain === undefined ||
       clientId === undefined ||
-      redirectUri === undefined
+      redirectUri === null
     ) {
       throw new Error('cognito-exchange-env-missing');
     }

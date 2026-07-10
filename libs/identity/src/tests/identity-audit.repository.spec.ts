@@ -81,8 +81,8 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // Settings D3: +1 tenant_profile.updated (26 -> 27).
   // Settings D4: +3 site.created + site.updated + site.deactivated (27 -> 30).
   // Domain-Enforcement P2b: +2 domain.verification.requested + domain.verified (30 -> 32).
-  it('EVENT_TYPES contains 32 values (7 prereq + 4 session + 2 invitation + 9 D4a team-model + 1 settings + 3 user-lifecycle + 1 tenant-profile + 3 sites + 2 domain-verification) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(32);
+  it('EVENT_TYPES contains 41 values (32 + 9 PC-Inc2 tenant-lifecycle) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(41);
     const create = vi.fn().mockResolvedValue({ id: 'r' });
     const repo = new IdentityAuditRepository(makePrisma(create));
 
@@ -144,8 +144,18 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       // Domain-Enforcement P2b — DNS-TXT verification events.
       'identity.domain.verification.requested',
       'identity.domain.verified',
+      // Platform-Console Increment-2 PR-1 — 9 tenant-lifecycle events.
+      'tenant.provisioned',
+      'tenant.owner_invite.sent',
+      'tenant.owner_invite.accepted',
+      'tenant.activated',
+      'tenant.suspended',
+      'tenant.reactivated',
+      'tenant.offboarding_started',
+      'tenant.closed',
+      'tenant.lifecycle_transition_rejected',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(27);
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(36);
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

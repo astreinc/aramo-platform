@@ -7,6 +7,7 @@ import { AuthStorageModule } from '@aramo/auth-storage';
 import { AuthController } from './auth.controller.js';
 import { CognitoVerifierService } from './cognito-verifier.service.js';
 import { CookieVerifierService } from './cookie-verifier.service.js';
+import { HostBaseResolver } from './host-base-resolver.service.js';
 import { JwksController } from './jwks.controller.js';
 import { JwksService } from './jwks.service.js';
 import { JwtIssuerService } from './jwt-issuer.service.js';
@@ -36,6 +37,7 @@ import { SessionOrchestratorService } from './session-orchestrator.service.js';
     CognitoVerifierService,
     SessionOrchestratorService,
     RefreshOrchestratorService,
+    HostBaseResolver,
     { provide: APP_FILTER, useClass: AramoExceptionFilter },
   ],
 })

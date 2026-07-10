@@ -57,7 +57,12 @@ export class TenantRepository {
   // subdomain stops getting new certs (existing ones in Caddy's store persist).
   async findActiveBySlug(slug: string): Promise<TenantDto | null> {
     const row = await this.prisma.tenant.findFirst({
-      where: { slug, is_active: true },
+      // Platform-Console Increment-2 PR-1 (workstream F, R11): cert-eligibility
+      // refuses a CLOSED tenant but REMAINS satisfied for SUSPENDED (a suspended
+      // tenant's UX must still render over TLS). The is_active predicate stays
+      // during migration (ADD-not-rename). SUSPENDED/PROVISIONED/OFFBOARDING/
+      // ACTIVE all keep their subdomain cert; only CLOSED loses it.
+      where: { slug, is_active: true, status: { not: 'CLOSED' } },
     });
     return row === null ? null : toTenantDto(row);
   }
@@ -93,6 +98,94 @@ export class TenantRepository {
       where: { id: args.id },
       data: { is_active: false },
     });
+  }
+
+  // Platform-Console Increment-2 PR-1.5 (Workstream A1) — the platform-operator
+  // tenant list. DELIBERATELY UNGATED: no membership predicate and no is_active
+  // predicate — an operator must see EVERY tenant in EVERY status (a suspended
+  // tenant must be MORE visible to an operator, not less). This is the exact
+  // inverse of findActiveTenantsForUser (the session-mint read, which stays
+  // byte-untouched): that answers "which live tenants can THIS user act in";
+  // this answers "show me the whole estate". Optional filters: exact `status`
+  // and `q` (case-insensitive contains on name OR slug). Ordered created_at desc.
+  // No pagination yet (single-digit tenant counts) — the controller wraps the
+  // rows in a `{ tenants: [...] }` envelope so pagination metadata can be added
+  // later without a breaking shape change.
+  async listAllTenants(args: {
+    status?: string;
+    q?: string;
+  }): Promise<PlatformTenantListRow[]> {
+    const where: Record<string, unknown> = {};
+    if (args.status !== undefined && args.status.length > 0) {
+      where['status'] = args.status;
+    }
+    if (args.q !== undefined && args.q.length > 0) {
+      where['OR'] = [
+        { name: { contains: args.q, mode: 'insensitive' } },
+        { slug: { contains: args.q, mode: 'insensitive' } },
+      ];
+    }
+    const rows = await this.prisma.tenant.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        status: true,
+        status_reason_code: true,
+        status_changed_at: true,
+        is_active: true,
+        created_at: true,
+        activated_at: true,
+        suspended_at: true,
+      },
+    });
+    return rows.map(toPlatformTenantListRow);
+  }
+
+  // Platform-Console Increment-2 PR-1 — single-tenant read for the platform
+  // console detail endpoint (GET /platform/tenants/:id). Returns null for an
+  // unknown id (controller maps to NOT_FOUND).
+  async findById(id: string): Promise<TenantDto | null> {
+    const row = await this.prisma.tenant.findUnique({ where: { id } });
+    return row === null ? null : toTenantDto(row);
+  }
+
+  // Platform-Console Increment-2 PR-1 — the lifecycle status read used by the
+  // transition service to load the current state before validating a transition.
+  // Returns null for an unknown tenant (caller maps to NOT_FOUND).
+  async findLifecycleById(
+    id: string,
+  ): Promise<{ id: string; status: string; is_active: boolean } | null> {
+    const row = await this.prisma.tenant.findUnique({
+      where: { id },
+      select: { id: true, status: true, is_active: true },
+    });
+    return row === null ? null : row;
+  }
+
+  // Platform-Console Increment-2 PR-1 — the lifecycle status write. Sets status +
+  // status_changed_at + reason columns + whatever milestone/retention columns the
+  // caller computed for this transition. Transition legality is enforced by the
+  // TenantService (this is the persistence step only).
+  async updateStatus(
+    id: string,
+    patch: {
+      status: string;
+      status_reason_code: string | null;
+      status_reason_text: string | null;
+      status_changed_at: Date;
+      owner_accepted_at?: Date;
+      activated_at?: Date;
+      suspended_at?: Date;
+      offboarding_started_at?: Date;
+      closed_at?: Date;
+      retention_policy_code?: string | null;
+      retention_delete_after?: Date | null;
+    },
+  ): Promise<void> {
+    await this.prisma.tenant.update({ where: { id }, data: patch });
   }
 
   // Settings Rebuild Directive 3 — tenant-profile read/update. tenant_id is
@@ -169,6 +262,51 @@ export interface DomainVerificationRow {
   domain_token_issued_at: Date | null;
 }
 
+// Platform-Console Increment-2 PR-1.5 (A1) — the platform-operator list row.
+// Distinct from TenantDto: it carries the lifecycle-snapshot columns an operator
+// needs to triage the estate (status + reason + the activated/suspended
+// milestones) and the slug, but NOT the profile/domain fields. Capability
+// summary stays on the detail endpoint (PR-1), not the list. Timestamps are
+// serialized to ISO strings at the repository boundary (the DTO convention).
+export interface PlatformTenantListRow {
+  id: string;
+  name: string;
+  slug: string | null;
+  status: string;
+  status_reason_code: string | null;
+  status_changed_at: string;
+  is_active: boolean;
+  created_at: string;
+  activated_at: string | null;
+  suspended_at: string | null;
+}
+
+function toPlatformTenantListRow(row: {
+  id: string;
+  name: string;
+  slug: string | null;
+  status: string;
+  status_reason_code: string | null;
+  status_changed_at: Date;
+  is_active: boolean;
+  created_at: Date;
+  activated_at: Date | null;
+  suspended_at: Date | null;
+}): PlatformTenantListRow {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    status: row.status,
+    status_reason_code: row.status_reason_code,
+    status_changed_at: row.status_changed_at.toISOString(),
+    is_active: row.is_active,
+    created_at: row.created_at.toISOString(),
+    activated_at: row.activated_at === null ? null : row.activated_at.toISOString(),
+    suspended_at: row.suspended_at === null ? null : row.suspended_at.toISOString(),
+  };
+}
+
 type TenantRow = {
   id: string;
   name: string;
@@ -178,6 +316,8 @@ type TenantRow = {
   // Subdomain-Identity Directive B — carried so findActiveBySlug surfaces it to
   // the login redirect for Home Realm Discovery.
   identity_provider: string | null;
+  // Platform-Console Increment-2 PR-1 — the lifecycle status.
+  status: string;
 };
 
 export interface TenantProfileRow {
@@ -248,5 +388,6 @@ function toTenantDto(row: TenantRow): TenantDto {
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
     identity_provider: row.identity_provider,
+    status: row.status,
   };
 }

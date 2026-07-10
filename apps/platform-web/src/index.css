@@ -1,0 +1,39 @@
+/* Aramo Platform Console — base reset (Inc-2 PR-2). Generic reset/base only;
+ * all design tokens come from the @aramo/fe-foundation barrel + theme.css.
+ * Mirrors ats-web's index.css reset block (no feature CSS — platform-web's
+ * component styles arrive structurally via the fe-foundation barrel). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background-color: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}

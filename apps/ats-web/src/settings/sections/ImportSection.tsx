@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { IconCompanies, IconContacts, IconRequisitions, IconTalent, IconUpload } from '@aramo/fe-foundation';
 
-import { IconCompanies, IconContacts, IconRequisitions, IconTalent, IconUpload } from '../../ui/icons';
 import { Button, Card } from '../../ui';
 import type { ImportBatchStatus, ImportBatchView, ImportFailureView, ImportTargetEntity } from '../admin-types';
 import { IMPORT_ENTITY_LABEL } from '../admin-types';

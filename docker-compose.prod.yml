@@ -153,6 +153,45 @@ services:
       postgres:
         condition: service_healthy
 
+  platform-admin:
+    # Inc-3 PR-3.3 — the platform-console backend as a real prod service.
+    # Override ARAMO_PLATFORM_ADMIN_IMAGE to the GHCR tag on the box; defaults
+    # to the local build tag. Caddy-internal only (never port-published; the
+    # admin.aramo.ai site block is the sole ingress → platform-admin:3002).
+    image: ${ARAMO_PLATFORM_ADMIN_IMAGE:-aramo/platform-admin:local}
+    container_name: aramo-prod-platform-admin
+    restart: unless-stopped
+    environment:
+      # PORT 3002 matches main.ts's default (api=3000, auth=3001).
+      - PORT=3002
+      - NODE_ENV=production
+      # Same source as postgres/api → cannot drift.
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:-aramo}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
+      # Env delta vs api (Inc-3 PR-3.3): platform-admin's module graph consumes
+      # a strict subset of api's env PLUS the platform Cognito pool. It does NOT
+      # boot the cross-schema BullMQ worker (that lives in api's directly-imported
+      # CrossSchemaConsistencyModule), so NO REDIS_URL and no depends_on redis.
+      # It runs no DNS module / no canonicalization, so no DNS_PROVIDER /
+      # ARAMO_IDENTITY_PEPPER. It sends invites via Cognito AdminCreateUser (its
+      # own hosted email), so no mailer / INVITE_* / S3 vars.
+      #
+      # JWT verification (JwtAuthGuard):
+      - AUTH_AUDIENCE
+      - AUTH_PUBLIC_KEY
+      # Cognito admin invitations (CognitoAdminService). PLATFORM pool is NEW vs
+      # api — platform-admin invitations mint into the platform user pool; the
+      # TENANT pool is shared (tenant-owner invitations into a provisioned tenant).
+      - AUTH_COGNITO_PLATFORM_USER_POOL_ID
+      - AUTH_COGNITO_TENANT_USER_POOL_ID
+      - AUTH_COGNITO_ENDPOINT
+      # AWS SDK (Cognito-IDP client) — region + creds, same as api.
+      - AWS_REGION
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:17
     container_name: aramo-prod-postgres

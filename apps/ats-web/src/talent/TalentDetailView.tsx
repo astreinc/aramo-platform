@@ -8,9 +8,9 @@ import {
   useSession,
   type Session,
 } from '@aramo/fe-foundation';
+import { Tabs, type TabItem } from '@aramo/fe-foundation';
 
 import { Button, StatusPill, type PillTone } from '../ui';
-import { Tabs, type TabItem } from '../components/Tabs';
 import { EngagementsPanel } from '../engagement/EngagementsPanel';
 import { TasksPanel } from '../task/TasksPanel';
 import { listActivities } from '../activity/activity-api';

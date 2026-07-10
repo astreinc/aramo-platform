@@ -224,6 +224,53 @@ describe('SessionOrchestratorService.handleCallback', () => {
     );
   });
 
+  // PR-3.1 §3d.1 — the token-exchange redirect_uri is DERIVED from the callback
+  // request's validated host (threaded via input.derivedBase). Same host as the
+  // authorize leg (browser presents it on both via Caddy) ⇒ exchange==authorize.
+  function tokenExchangeRedirectUri(): string | null {
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    const call = fetchMock.mock.calls.find((c) =>
+      String(c[0]).includes('/oauth2/token'),
+    );
+    if (call === undefined) return null;
+    const body = new URLSearchParams((call[1] as { body: string }).body);
+    return body.get('redirect_uri');
+  }
+
+  it('exchange redirect_uri is DERIVED from the callback host (derivedBase wins the env)', async () => {
+    const mocks = makeMocks();
+    const svc = makeService(mocks);
+    await svc.handleCallback({
+      consumer: 'recruiter',
+      code: 'auth-code-123',
+      state: 'state-1',
+      cognitoError: undefined,
+      cognitoErrorDescription: undefined,
+      pkceStateCipher: 'cipher',
+      derivedBase: 'https://astre.aramo.ai',
+    });
+    expect(tokenExchangeRedirectUri()).toBe(
+      'https://astre.aramo.ai/auth/recruiter/callback',
+    );
+  });
+
+  it('exchange redirect_uri falls back to the env when no derivedBase (unvalidated host)', async () => {
+    const mocks = makeMocks();
+    const svc = makeService(mocks);
+    await svc.handleCallback({
+      consumer: 'recruiter',
+      code: 'auth-code-123',
+      state: 'state-1',
+      cognitoError: undefined,
+      cognitoErrorDescription: undefined,
+      pkceStateCipher: 'cipher',
+    });
+    // beforeAll set AUTH_COGNITO_REDIRECT_URI=https://x.example/cb → origin base.
+    expect(tokenExchangeRedirectUri()).toBe(
+      'https://x.example/auth/recruiter/callback',
+    );
+  });
+
   // Test 29: tenant_selection_required for >1 active membership.
   it('returns tenant_selection_required with tenants[] for multi-membership user', async () => {
     const mocks = makeMocks({
@@ -604,5 +651,77 @@ describe('SessionOrchestratorService — Invite-S2 sub-link safety + activation-
     expect(activateSpy).toHaveBeenCalledWith({ user_id: USER_ID });
     // The seam fires AFTER the sub-link (ACTIVE follows the link, never before).
     expect(order).toEqual(['link', 'activate']);
+  });
+});
+
+// Platform-Console Increment-2 PR-1.5 (Workstream B) — the tenant-status mint
+// gate (workstream E, PR-1) proven at the SessionOrchestrator decision layer.
+// This is a UNIT spec (no container, not ARAMO_RUN_INTEGRATION-gated), so it
+// runs in CI's test-unit job — CI-enforced coverage of the gate WIRING. The
+// gate's vocabulary (which statuses deny) is separately asserted in
+// libs/identity/src/tests/tenant-lifecycle.spec.ts; the auth /callback HTTP
+// mapping (reason → typed TENANT_SUSPENDED/TENANT_CLOSED 403) rides with the
+// deferred auth-service CI-enforcement follow-up.
+describe('SessionOrchestratorService — tenant-status mint gate (PR-1 workstream E)', () => {
+  function callbackWithTenantStatus(
+    status: string,
+    consumer: 'recruiter' | 'platform' = 'recruiter',
+  ): ReturnType<SessionOrchestratorService['handleCallback']> {
+    const mocks = makeMocks({
+      tenant: {
+        getTenantsByUser: vi.fn().mockResolvedValue([
+          {
+            id: TENANT_ID,
+            name: 'Tenant One',
+            is_active: true,
+            created_at: '',
+            updated_at: '',
+            status,
+          },
+        ]),
+      } as unknown as TenantService,
+    });
+    const svc = makeService(mocks);
+    return svc.handleCallback({
+      consumer,
+      code: 'c',
+      state: 'state-1',
+      cognitoError: undefined,
+      cognitoErrorDescription: undefined,
+      pkceStateCipher: 'cipher',
+    });
+  }
+
+  it('DENIES a tenant-consumer session for a SUSPENDED tenant (reason tenant_suspended)', async () => {
+    const result = await callbackWithTenantStatus('SUSPENDED');
+    expect(result.kind).toBe('auth_error');
+    if (result.kind !== 'auth_error') return;
+    expect(result.reason).toBe('tenant_suspended');
+  });
+
+  it('DENIES a tenant-consumer session for a CLOSED tenant (reason tenant_closed)', async () => {
+    const result = await callbackWithTenantStatus('CLOSED');
+    expect(result.kind).toBe('auth_error');
+    if (result.kind !== 'auth_error') return;
+    expect(result.reason).toBe('tenant_closed');
+  });
+
+  it.each(['PROVISIONED', 'ACTIVE', 'OFFBOARDING'])(
+    'MINTS a tenant-consumer session for a %s tenant (login-gate table: not denied)',
+    async (status) => {
+      const result = await callbackWithTenantStatus(status);
+      expect(result.kind).toBe('success');
+    },
+  );
+
+  it('does NOT gate the PLATFORM consumer even when the (sentinel) tenant status is SUSPENDED', async () => {
+    const result = await callbackWithTenantStatus('SUSPENDED', 'platform');
+    // The gate is tenant-consumer-only. The platform consumer's later flow has
+    // its own (unrelated) requirements the default mocks don't satisfy, so we
+    // assert the PRECISE claim: the status gate did NOT fire (no tenant_suspended
+    // denial) — proving the platform consumer is exempt from the lifecycle gate.
+    const gatedOut =
+      result.kind === 'auth_error' && result.reason === 'tenant_suspended';
+    expect(gatedOut).toBe(false);
   });
 });

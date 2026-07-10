@@ -1,14 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AramoError } from '@aramo/common';
-import type {
-  IdentityAuditService,
-  TenantDto,
-  TenantService,
-} from '@aramo/identity';
+import type { IdentityAuditService } from '@aramo/identity';
 import type { RefreshTokenDto, RefreshTokenService } from '@aramo/auth-storage';
 
 import { AuthController } from '../app/auth/auth.controller.js';
 import type { CookieVerifierService } from '../app/auth/cookie-verifier.service.js';
+import type { HostBaseResolver } from '../app/auth/host-base-resolver.service.js';
 import type { PkceService } from '../app/auth/pkce.service.js';
 import type { RefreshOrchestratorService } from '../app/auth/refresh-orchestrator.service.js';
 import type { SessionOrchestratorService } from '../app/auth/session-orchestrator.service.js';
@@ -42,9 +39,14 @@ function makeController(
     cookieVerifier: CookieVerifierService;
     refreshTokens: RefreshTokenService;
     audit: IdentityAuditService;
-    tenants: TenantService;
+    hostBase: HostBaseResolver;
   }> = {},
 ): AuthController {
+  // PR-3.1: default HostBaseResolver resolves to no derivation (env fallback),
+  // so tests that don't exercise host-derivation behave exactly as before.
+  const defaultHostBase = {
+    resolve: vi.fn().mockResolvedValue({ derivedBase: null, identityProvider: null }),
+  } as unknown as HostBaseResolver;
   return new AuthController(
     overrides.pkce ?? ({} as PkceService),
     overrides.sessionOrch ?? ({} as SessionOrchestratorService),
@@ -52,7 +54,7 @@ function makeController(
     overrides.cookieVerifier ?? ({} as CookieVerifierService),
     overrides.refreshTokens ?? ({} as RefreshTokenService),
     overrides.audit ?? ({} as IdentityAuditService),
-    overrides.tenants ?? ({} as TenantService),
+    overrides.hostBase ?? defaultHostBase,
   );
 }
 
@@ -116,7 +118,7 @@ describe('AuthController.session', () => {
       verify: vi.fn(),
     } as unknown as CookieVerifierService;
     const ctl = makeController({ cookieVerifier });
-    const req = { cookies: {}, requestId: 'r' } as never;
+    const req = { cookies: {}, requestId: 'r', get: () => undefined } as never;
     await expect(ctl.session('recruiter', req)).rejects.toMatchObject({
       code: 'INVALID_TOKEN',
       statusCode: 401,
@@ -136,7 +138,7 @@ describe('AuthController.logout (idempotent)', () => {
     } as unknown as IdentityAuditService;
     const ctl = makeController({ refreshTokens, audit });
     const res = makeRes();
-    const req = { cookies: {}, requestId: 'r' } as never;
+    const req = { cookies: {}, requestId: 'r', get: () => undefined } as never;
 
     await ctl.logout('recruiter', req, res as never);
 
@@ -255,7 +257,7 @@ describe('AuthController.logoutRedirect (§5 D3 — Cognito SSO logout)', () => 
       async () => {
         const ctl = makeController();
         const res = makeRes();
-        const req = { cookies: {}, requestId: 'r' } as never;
+        const req = { cookies: {}, requestId: 'r', get: () => undefined } as never;
 
         await ctl.logoutRedirect('recruiter', req, res as never);
 
@@ -291,6 +293,7 @@ describe('AuthController.logoutRedirect (§5 D3 — Cognito SSO logout)', () => 
           cookies: {},
           requestId: 'r',
           query: { logout_uri: 'https://evil.example.test/phish' },
+          get: () => undefined,
         } as never;
 
         await ctl.logoutRedirect('recruiter', req, res as never);
@@ -312,7 +315,7 @@ describe('AuthController.logoutRedirect (§5 D3 — Cognito SSO logout)', () => 
       async () => {
         const ctl = makeController();
         const res = makeRes();
-        const req = { cookies: {}, requestId: 'r' } as never;
+        const req = { cookies: {}, requestId: 'r', get: () => undefined } as never;
 
         await expect(
           ctl.logoutRedirect('recruiter', req, res as never),
@@ -335,7 +338,7 @@ describe('AuthController.logoutRedirect (§5 D3 — Cognito SSO logout)', () => 
       async () => {
         const ctl = makeController();
         const res = makeRes();
-        const req = { cookies: {}, requestId: 'r' } as never;
+        const req = { cookies: {}, requestId: 'r', get: () => undefined } as never;
 
         await expect(
           ctl.logoutRedirect('recruiter', req, res as never),
@@ -358,7 +361,7 @@ describe('AuthController.logoutRedirect (§5 D3 — Cognito SSO logout)', () => 
       async () => {
         const ctl = makeController();
         const res = makeRes();
-        const req = { cookies: {}, requestId: 'r' } as never;
+        const req = { cookies: {}, requestId: 'r', get: () => undefined } as never;
 
         await expect(
           ctl.logoutRedirect('not-a-consumer', req, res as never),
@@ -382,7 +385,7 @@ describe('AuthController.logoutRedirect (§5 D3 — Cognito SSO logout)', () => 
         const ctl = makeController({ refreshTokens });
         const res = makeRes();
         // No cookies at all — an already-logged-out browser.
-        const req = { cookies: {}, requestId: 'r' } as never;
+        const req = { cookies: {}, requestId: 'r', get: () => undefined } as never;
 
         await ctl.logoutRedirect('recruiter', req, res as never);
 
@@ -416,6 +419,7 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
       const req = {
         cookies: { aramo_pkce_state: 'cipher' },
         requestId: 'r',
+        get: () => undefined,
       } as never;
       await ctl.callback(
         'recruiter',
@@ -453,6 +457,7 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
       const req = {
         cookies: { aramo_pkce_state: 'cipher' },
         requestId: 'r',
+        get: () => undefined,
       } as never;
       await expect(
         ctl.callback('recruiter', 'code', 'state', undefined, undefined, req, res as never),
@@ -480,6 +485,7 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
     const req = {
       cookies: { aramo_pkce_state: 'cipher' },
       requestId: 'r',
+      get: () => undefined,
     } as never;
 
     await expect(
@@ -539,17 +545,15 @@ describe('AuthController.login (Subdomain-Identity B — Home Realm Discovery)',
     } as unknown as PkceService;
   }
 
-  // findActiveBySlug returns the full TenantDto shape; only identity_provider
-  // matters here.
-  function tenantWith(identity_provider: string | null): TenantDto {
+  // PR-3.1: the login IdP hint now comes from HostBaseResolver.resolve (which
+  // folds the slug parse + findActiveBySlug — those internals are covered in
+  // host-base-resolver.spec.ts). These controller tests verify only that login
+  // wires resolve()'s identityProvider into the authorize URL. `derivedBase:
+  // null` here → redirect_uri falls back to the legacy env (REDIRECT_URI).
+  function hostBaseYielding(identityProvider: string | null): HostBaseResolver {
     return {
-      id: TENANT_ID,
-      name: 'Astre',
-      is_active: true,
-      created_at: '',
-      updated_at: '',
-      identity_provider,
-    };
+      resolve: vi.fn().mockResolvedValue({ derivedBase: null, identityProvider }),
+    } as unknown as HostBaseResolver;
   }
 
   function reqWithHost(host: string | undefined): never {
@@ -567,109 +571,43 @@ describe('AuthController.login (Subdomain-Identity B — Home Realm Discovery)',
     return new URL(location);
   }
 
-  it('pins identity_provider when the host resolves to a tenant with one set', async () => {
-    const findActiveBySlug = vi.fn().mockResolvedValue(tenantWith('microsoft'));
-    const ctl = makeController({
-      pkce: fakePkce(),
-      tenants: { findActiveBySlug } as unknown as TenantService,
-    });
+  it('pins identity_provider from HostBaseResolver.resolve, passing the request host', async () => {
+    const hostBase = hostBaseYielding('microsoft');
+    const ctl = makeController({ pkce: fakePkce(), hostBase });
     const res = makeRes();
 
     await ctl.login('recruiter', reqWithHost('astre.aramo.ai'), res as never);
 
-    // Resolved the slug from the apex-anchored host, verbatim from the column.
-    expect(findActiveBySlug).toHaveBeenCalledWith('astre');
+    // The controller shares ONE resolve() call, keyed on the request host.
+    expect((hostBase.resolve as unknown as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith('astre.aramo.ai');
     const url = locationOf(res);
     expect(url.searchParams.get('identity_provider')).toBe('microsoft');
-    // The base authorize params are untouched by the additive hint.
+    // The base authorize params are untouched by the additive hint; derivedBase
+    // null → redirect_uri from the legacy env.
     expect(url.searchParams.get('client_id')).toBe(CLIENT_ID);
     expect(url.searchParams.get('redirect_uri')).toBe(REDIRECT_URI);
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
   });
 
-  it('shows the chooser (no param) when the resolved tenant has a null IdP', async () => {
-    const findActiveBySlug = vi.fn().mockResolvedValue(tenantWith(null));
-    const ctl = makeController({
-      pkce: fakePkce(),
-      tenants: { findActiveBySlug } as unknown as TenantService,
-    });
+  it('shows the chooser (no param) when resolve yields a null IdP', async () => {
+    const ctl = makeController({ pkce: fakePkce(), hostBase: hostBaseYielding(null) });
     const res = makeRes();
-
     await ctl.login('recruiter', reqWithHost('acme.aramo.ai'), res as never);
-
-    expect(findActiveBySlug).toHaveBeenCalledWith('acme');
     expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
   });
 
-  it('shows the chooser (no param) when the slug resolves to no active tenant', async () => {
-    const findActiveBySlug = vi.fn().mockResolvedValue(null);
-    const ctl = makeController({
-      pkce: fakePkce(),
-      tenants: { findActiveBySlug } as unknown as TenantService,
-    });
+  it('derivedBase from resolve WINS the redirect_uri (host-derived callback)', async () => {
+    const hostBase = {
+      resolve: vi.fn().mockResolvedValue({
+        derivedBase: 'https://admin.aramo.ai',
+        identityProvider: null,
+      }),
+    } as unknown as HostBaseResolver;
+    const ctl = makeController({ pkce: fakePkce(), hostBase });
     const res = makeRes();
-
-    await ctl.login('recruiter', reqWithHost('ghost.aramo.ai'), res as never);
-
-    expect(findActiveBySlug).toHaveBeenCalledWith('ghost');
-    expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
-  });
-
-  it('shows the chooser for the bare apex — no slug, no DB lookup', async () => {
-    const findActiveBySlug = vi.fn();
-    const ctl = makeController({
-      pkce: fakePkce(),
-      tenants: { findActiveBySlug } as unknown as TenantService,
-    });
-    const res = makeRes();
-
-    await ctl.login('recruiter', reqWithHost('aramo.ai'), res as never);
-
-    // Apex-anchored parse yields no slug → short-circuits before the DB.
-    expect(findActiveBySlug).not.toHaveBeenCalled();
-    expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
-  });
-
-  it('shows the chooser for a foreign host — cannot be tricked by <slug>.attacker.com', async () => {
-    const findActiveBySlug = vi.fn();
-    const ctl = makeController({
-      pkce: fakePkce(),
-      tenants: { findActiveBySlug } as unknown as TenantService,
-    });
-    const res = makeRes();
-
-    await ctl.login('recruiter', reqWithHost('astre.attacker.com'), res as never);
-
-    expect(findActiveBySlug).not.toHaveBeenCalled();
-    expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
-  });
-
-  it('shows the chooser when the Host header is absent', async () => {
-    const findActiveBySlug = vi.fn();
-    const ctl = makeController({
-      pkce: fakePkce(),
-      tenants: { findActiveBySlug } as unknown as TenantService,
-    });
-    const res = makeRes();
-
-    await ctl.login('recruiter', reqWithHost(undefined), res as never);
-
-    expect(findActiveBySlug).not.toHaveBeenCalled();
-    expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
-  });
-
-  it('FAILS OPEN to the chooser (still 302, no param) when the lookup throws', async () => {
-    const findActiveBySlug = vi.fn().mockRejectedValue(new Error('db down'));
-    const ctl = makeController({
-      pkce: fakePkce(),
-      tenants: { findActiveBySlug } as unknown as TenantService,
-    });
-    const res = makeRes();
-
-    await ctl.login('recruiter', reqWithHost('astre.aramo.ai'), res as never);
-
-    // A resolution failure never becomes an error page — the user still reaches
-    // a login, just the chooser.
-    expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
+    await ctl.login('platform', reqWithHost('admin.aramo.ai'), res as never);
+    expect(locationOf(res).searchParams.get('redirect_uri')).toBe(
+      'https://admin.aramo.ai/auth/platform/callback',
+    );
   });
 });

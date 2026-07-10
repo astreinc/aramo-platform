@@ -19,12 +19,21 @@ import importX from 'eslint-plugin-import-x';
 //   - scope:ats MAY import scope:cip       ← the allowed direction (ATS consumes Pipeline)
 //   - scope:boundary spans neither cluster's workflow (job-domain, consent)
 //   - scope:shared is leaf infra (depends only on shared)
+// Platform-Console Increment-1 (ADR-0017 R-TAGS) adds the platform tier:
+//   - scope:platform is the Platform Console cluster (apps/platform-admin, the
+//     future apps/platform-web FE). It MUST NOT import scope:ats or scope:cip —
+//     the platform tier operates on the identity/tenant substrate only, never a
+//     tenant's ATS or Pipeline workflow. Its dependency closure is verified
+//     scope:shared-only (Increment-1 pre-flight), so the leaf + boundary + self
+//     set below covers it with headroom and no ats/cip reach.
 // The trailing '*' rule leaves untagged sources (apps composition roots, the
 // pact provider harness) unconstrained — the wall governs the tagged libs.
-// Proven to fire by libs/matching/src/tests/i15-negative-control.spec.ts.
+// Proven to fire by libs/matching/src/tests/i15-negative-control.spec.ts (CIP⊥ATS)
+// and apps/platform-admin/src/tests/platform-negative-control.spec.ts (PLATFORM⊥ATS).
 const SCOPE_DEP_CONSTRAINTS = [
   { sourceTag: 'scope:cip', onlyDependOnLibsWithTags: ['scope:cip', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:ats', onlyDependOnLibsWithTags: ['scope:ats', 'scope:cip', 'scope:boundary', 'scope:shared'] },
+  { sourceTag: 'scope:platform', onlyDependOnLibsWithTags: ['scope:platform', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:boundary', onlyDependOnLibsWithTags: ['scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:shared', onlyDependOnLibsWithTags: ['scope:shared'] },
   { sourceTag: '*', onlyDependOnLibsWithTags: ['*'] },
@@ -47,6 +56,12 @@ export default [
       // explicitly with `eslint --no-ignore` to prove the boundary rule rejects
       // it. Also tsconfig.lib.json-excluded from the matching build.
       '**/i15-negative-control/**',
+      // Platform-Console Increment-1 negative control: a committed, deliberate
+      // scope:platform → scope:ats import that must NOT red the real gate. The
+      // wall-fires spec (apps/platform-admin/src/tests/platform-negative-control.spec.ts)
+      // lints it explicitly with `eslint --no-ignore` to prove the boundary rule
+      // rejects it. Also tsconfig.app.json-excluded from the platform-admin build.
+      '**/platform-negative-control/**',
     ],
   },
   ...nx.configs['flat/base'],

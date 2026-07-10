@@ -88,45 +88,6 @@ button {
   margin-top: var(--sp-4);
 }
 
-/* R3 Tabs — ats-web-local (ruling 4: hand-built; not in the
- * frozen foundation). Token-based; the active tab is marked by an accent
- * underline. */
-.tabs {
-  display: block;
-}
-
-.tabs__list {
-  display: flex;
-  gap: var(--sp-1);
-  border-bottom: 1px solid var(--c-border);
-  margin-bottom: var(--sp-4);
-}
-
-.tabs__tab {
-  appearance: none;
-  background: transparent;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  padding: var(--sp-2) var(--sp-3);
-  color: var(--c-text-muted);
-  font-weight: var(--fw-medium);
-  cursor: pointer;
-  margin-bottom: -1px;
-}
-
-.tabs__tab:hover {
-  color: var(--c-text);
-}
-
-.tabs__tab[data-selected='true'] {
-  color: var(--c-text);
-  border-bottom-color: var(--c-accent);
-}
-
-.tabs__panel {
-  outline: none;
-}
-
 /* PR-A2 — the requisition COCKPIT (dense, sectioned). Consumer-layer only;
  * fe-foundation is frozen. Token-based throughout. */
 .req-cockpit {

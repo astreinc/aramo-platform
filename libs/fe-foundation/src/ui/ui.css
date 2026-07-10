@@ -1,0 +1,815 @@
+/* Aramo FE foundation — extracted chrome + DataTable structural styles.
+ * Moved from apps/ats-web/src/ui/ui.css at Platform-Console Inc-2 PR-1.6
+ * (FE-Foundation Extraction). These are the STRUCTURAL rules for the chrome
+ * kit (AppShell/Rail/TopBar), UserMenu, Avatar/EntityCell, DataTable, plus the
+ * shared .mono/.num/.rc-link-strong helpers. Move-not-fork: these rules no
+ * longer exist in ats-web ui.css — ats-web re-inherits them via the
+ * @aramo/fe-foundation barrel (this sheet is side-effect-imported by
+ * ./index.ts, mirroring components.css).
+ *
+ * TOKEN-VARIABLE CONTRACT (the theming contract a consuming app's token layer
+ * MUST define — ats-web supplies it via ui/theme.css; platform-web supplies its
+ * own copy with the platform accent in PR-2). These CSS custom properties are
+ * consumed by the rules below and are NOT defined here (tokens stay per-app):
+ *   accent/brand : --brand, --brand-strong, --brand-accent, --brand-tint
+ *   surfaces/ink : --canvas, --ink, --muted, --faint, --elev,
+ *                  --surface, --surface-2, --line, --line-2
+ *   rail         : --rail, --rail-text, --rail-strong, --rail-hover,
+ *                  --rail-av-bg, --rail-av-text
+ *   semantics    : --hot/--hot-tint, --ok/--ok-tint, --warn/--warn-tint,
+ *                  --info/--info-tint, --danger/--danger-tint
+ *   type/radius  : --font-mono, --r-sm, --r-md, --r-lg
+ * (--font-mono and --r-{sm,md,lg} are also present in fe-foundation tokens.css.)
+ */
+
+/* Aramo Recruiter Console — Confident Blue component styles (Phase 1).
+ *
+ * App-layer presentational grammar for the new design-system components.
+ * Class prefix `rc-` keeps these distinct from the frozen `.tc-*` classes
+ * and the existing feature CSS (`.kanban`, `.req-*`, `.tabs`). Token-based
+ * throughout (theme.css is the single source of color/type/space). The
+ * frozen lib is untouched.
+ *
+ * The one place this file restyles a frozen component is `.tc-table` (the
+ * `DataTable` density pass) — an app-layer override, not a lib edit.
+ */
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Strong entity link (table primary cell) — inherits ink, brand on row hover. */
+
+.rc-link-strong {
+  color: inherit;
+  text-decoration: none;
+}
+
+.rc-row--clickable:hover .rc-link-strong .rc-ent__nm,
+.rc-row--clickable:hover .rc-link-strong .rc-jt__name {
+  color: var(--brand-strong);
+}
+
+.rc-link-strong:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-row-actions {
+  display: inline-flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* ─────────────── AppShell / Rail / TopBar ─────────────── */
+
+.rc-app {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+.rc-rail {
+  background: var(--rail);
+  color: var(--rail-text);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.rc-rail__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 22px;
+}
+
+.rc-rail__mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--brand-accent);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  flex: none;
+}
+
+.rc-rail__mark svg {
+  width: 18px;
+  height: 18px;
+}
+
+.rc-rail__name {
+  color: var(--rail-strong);
+  font-weight: 600;
+  font-size: 1.12rem;
+  letter-spacing: -0.01em;
+}
+
+.rc-rail__name small {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--rail-text);
+  opacity: 0.75;
+  margin-top: -1px;
+}
+
+.rc-nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.rc-nav__label {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--rail-text);
+  opacity: 0.55;
+  padding: 14px 10px 6px;
+}
+
+.rc-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  color: var(--rail-text);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 1px;
+  background: transparent;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.rc-nav__item svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  opacity: 0.85;
+}
+
+.rc-nav__item:hover {
+  background: var(--rail-hover);
+  color: var(--rail-strong);
+}
+
+.rc-nav__item[aria-current='page'] {
+  background: var(--brand);
+  color: var(--rail-strong);
+}
+
+.rc-nav__item[aria-current='page'] svg {
+  opacity: 1;
+}
+
+.rc-nav__count {
+  margin-left: auto;
+  font-size: 0.72rem;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 1px 7px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.rc-rail__foot {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.rc-rail__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+}
+
+.rc-rail__user-av {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--rail-av-bg);
+  color: var(--rail-av-text);
+  display: grid;
+  place-items: center;
+  font-size: 0.74rem;
+  font-weight: 600;
+  flex: none;
+}
+
+.rc-rail__who {
+  font-size: 0.82rem;
+  color: var(--rail-strong);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.rc-rail__who small {
+  display: block;
+  color: var(--rail-text);
+  font-size: 0.7rem;
+  font-weight: 400;
+}
+
+.rc-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rc-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: rgba(244, 246, 250, 0.86);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 11px 26px;
+}
+
+.rc-content {
+  padding: 24px 26px 48px;
+  width: 100%;
+  /* Full-bleed: fill the viewport at any resolution (mockup parity — the
+     list/board/jobs/tasks pages span the full canvas). Pages that should stay
+     narrow center themselves via their own max-width + margin auto
+     (.rc-dropwrap, .rc-success, the manual edit-grid, the submittal .rc-gate),
+     so removing the global cap doesn't stretch them. */
+}
+
+.rc-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.86rem;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.rc-crumbs a {
+  text-decoration: none;
+}
+
+.rc-crumbs a:hover {
+  color: var(--ink);
+}
+
+.rc-crumbs svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.5;
+  flex: none;
+}
+
+.rc-crumbs__here {
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rc-cmdk {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  padding: 7px 12px;
+  width: 280px;
+  color: var(--faint);
+  font-size: 0.84rem;
+  cursor: text;
+  transition: border-color 0.12s;
+}
+
+.rc-cmdk:hover {
+  border-color: var(--brand-accent);
+}
+
+.rc-cmdk svg {
+  width: 15px;
+  height: 15px;
+}
+
+.rc-cmdk kbd {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  background: var(--canvas);
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--muted);
+}
+
+.rc-iconbtn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  position: relative;
+  cursor: pointer;
+}
+
+.rc-iconbtn:hover {
+  color: var(--ink);
+}
+
+.rc-iconbtn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.rc-iconbtn__dot {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--hot);
+  border: 1.5px solid var(--surface);
+}
+
+.rc-usermenu {
+  position: relative;
+  flex: none;
+}
+
+.rc-usermenu__trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 4px 8px 4px 4px;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.rc-usermenu__trigger:hover {
+  border-color: var(--brand-accent);
+  color: var(--ink);
+}
+
+.rc-usermenu__trigger svg {
+  width: 16px;
+  height: 16px;
+}
+
+.rc-usermenu__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--elev);
+  padding: 6px;
+  z-index: 20;
+}
+
+.rc-usermenu__id {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+}
+
+.rc-usermenu__name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rc-usermenu__email {
+  font-size: 0.78rem;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.rc-usermenu__role {
+  font-size: 0.74rem;
+  color: var(--faint);
+  margin-top: 3px;
+}
+
+.rc-usermenu__item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  border-radius: var(--r-sm);
+  font-size: 0.84rem;
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.rc-usermenu__item:hover {
+  background: var(--canvas);
+}
+
+.rc-usermenu__item svg {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  flex: none;
+}
+
+/* ─────────────── Avatar ─────────────── */
+
+.rc-av {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-weight: 600;
+  color: #fff;
+  flex: none;
+  font-size: 0.78rem;
+}
+
+.rc-av--sm {
+  width: 24px;
+  height: 24px;
+  font-size: 0.64rem;
+}
+
+.rc-av--md {
+  width: 34px;
+  height: 34px;
+  font-size: 0.78rem;
+}
+
+.rc-av--lg {
+  width: 46px;
+  height: 46px;
+  font-size: 1rem;
+}
+
+.rc-ent {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.rc-ent__nm {
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rc-ent__nm svg {
+  width: 13px;
+  height: 13px;
+  color: var(--hot);
+}
+
+.rc-ent__rl {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+/* ─────────────── DataTable (app-layer token table — 2A) ───────────────
+ * Self-contained table in the mockup grammar (compact rows, hairline rules,
+ * clickable rows). Rendered by the app-layer DataTable so it can carry a
+ * per-row handler + class the frozen Table can't expose — still zero lib diff. */
+
+.rc-tablewrap {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--elev);
+  overflow-x: auto;
+}
+
+.rc-card .rc-tablewrap {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.rc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+
+.rc-table__caption {
+  text-align: left;
+  padding: 9px 18px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  caption-side: top;
+}
+
+.rc-table thead th {
+  text-align: left;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+  color: var(--faint);
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.rc-table tbody td {
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.rc-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.rc-table tbody tr.rc-row--clickable {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.rc-table tbody tr.rc-row--clickable:hover {
+  background: var(--surface-2);
+}
+
+.rc-table__row--muted td {
+  color: var(--faint);
+  background: var(--surface-2);
+}
+
+.rc-table__empty {
+  text-align: center;
+  padding: 28px 18px;
+  color: var(--muted);
+}
+
+/* Rail logout — light-on-dark control for the rail footer (the frozen
+ * Button's light-surface palette is invisible on the dark rail). */
+
+.rc-rail__logout {
+  margin-top: 8px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: var(--rail-text);
+  font-size: 0.84rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.rc-rail__logout:hover {
+  background: var(--rail-hover);
+  color: var(--rail-strong);
+}
+
+.rc-rail__logout svg {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 1080px) {
+.rc-app {
+    grid-template-columns: 64px 1fr;
+  }
+.rc-rail {
+    padding: 18px 8px;
+  }
+.rc-rail__name,
+  .rc-nav__label span,
+  .rc-nav__item span:not(.rc-nav__count),
+  .rc-nav__count,
+  .rc-rail__who {
+    display: none;
+  }
+.rc-nav__item {
+    justify-content: center;
+  }
+.rc-rail__brand {
+    justify-content: center;
+  }
+}
+
+/* ── Collapsible rail (user toggle) + brand-in-topbar ── */
+
+.rc-app {
+  transition: grid-template-columns 0.18s ease;
+}
+
+.rc-app--rail-collapsed {
+  grid-template-columns: 64px 1fr;
+}
+
+.rc-app--rail-collapsed .rc-rail {
+  padding: 18px 8px;
+}
+
+.rc-app--rail-collapsed .rc-nav__label,
+.rc-app--rail-collapsed .rc-nav__item span:not(.rc-nav__count),
+.rc-app--rail-collapsed .rc-nav__count,
+.rc-app--rail-collapsed .rc-rail__who,
+.rc-app--rail-collapsed .rc-rail__logout span {
+  display: none;
+}
+
+.rc-app--rail-collapsed .rc-nav__item,
+.rc-app--rail-collapsed .rc-rail__user,
+.rc-app--rail-collapsed .rc-rail__logout {
+  justify-content: center;
+}
+
+/* the edge toggle */
+
+.rc-rail-toggle {
+  position: fixed;
+  top: 16px;
+  left: 221px; /* rail width (232) − 11 (half the 22px control) */
+  z-index: 6;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  color: var(--brand);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(20, 30, 50, 0.15);
+  transition: left 0.18s ease, color 0.12s, border-color 0.12s;
+}
+
+.rc-rail-toggle svg {
+  width: 13px;
+  height: 13px;
+}
+
+.rc-rail-toggle:hover {
+  border-color: var(--brand-accent);
+  color: var(--brand-strong);
+}
+
+.rc-app--rail-collapsed .rc-rail-toggle {
+  left: 53px; /* 64 − 11 */
+}
+
+@media (max-width: 1080px) {
+/* the responsive auto-collapse owns the small-screen rail; hide the toggle */
+.rc-rail-toggle {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+.rc-app,
+  .rc-rail-toggle {
+    transition: none;
+  }
+}
+
+/* brand hosted in the top bar */
+
+.rc-topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-decoration: none;
+  padding-right: 14px;
+  margin-right: 2px;
+  border-right: 1px solid var(--line-2);
+  flex: none;
+}
+
+.rc-topbar__mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--brand-accent);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  flex: none;
+}
+
+.rc-topbar__mark svg {
+  width: 16px;
+  height: 16px;
+}
+
+.rc-topbar__name {
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+
+.rc-topbar__name small {
+  display: block;
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+.rc-topbar__brand:hover .rc-topbar__name {
+  color: var(--brand-strong);
+}
+
+@media (max-width: 720px) {
+.rc-topbar__name {
+    display: none;
+  }
+}
+
+.rc-table--compact tbody td { padding-top: 5px; padding-bottom: 5px; }
+
+.rc-table tbody tr.rc-row--sel { background: var(--brand-tint); }
+
+.rc-table tbody tr.rc-row--active { box-shadow: inset 3px 0 0 var(--brand); }
+
+.rc-ent__flame, .rc-drawer__flame { width: 12px; height: 12px; color: var(--hot); margin-left: 5px; vertical-align: -1px; }
+
+.rc-rowq { display: flex; gap: 3px; justify-content: flex-end; opacity: 0; transition: opacity .1s; }
+
+.rc-row--clickable:hover .rc-rowq { opacity: 1; }
+
+.rc-rowq button { width: 28px; height: 28px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--faint); display: grid; place-items: center; }
+
+.rc-rowq button:hover { background: var(--canvas); color: var(--ink); }
+
+.rc-rowq svg { width: 15px; height: 15px; }
+
+/* table cell atoms (Rate / Last activity / Owner) */
+
+.rc-table td .rate { font-weight: 600; }
+
+.rc-table td .last { color: var(--muted); font-size: 0.82rem; }
+
+.rc-table td .last .mono { font-size: 0.78rem; }
+
+.rc-table td .owner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.rc-av--dash {
+  background: var(--surface-2) !important;
+  color: var(--faint) !important;
+  border: 1px dashed var(--line-2);
+}
+
+.rc-rowactions { display: inline-flex; align-items: center; gap: 6px; }

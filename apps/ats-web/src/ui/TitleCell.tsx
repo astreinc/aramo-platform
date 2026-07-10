@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
-
-import { IconFlame } from './icons';
+import { IconFlame } from '@aramo/fe-foundation';
 
 interface TitleCellProps {
   readonly name: string;
