@@ -24,6 +24,7 @@ const PRE_MIGRATIONS = [
   '20260710120000_tr4_b3_last_consistency_at',
   '20260711120000_tr5_b2_thinness_flags',
   '20260712120000_tr8_b1_verified_control_stale',
+  '20260713120000_tr12_b1_verification_proposal',
 ];
 const SOURCE_CLASS_MIGRATION = '20260706170000_tr2a_b1_subject_anchor_source_class';
 

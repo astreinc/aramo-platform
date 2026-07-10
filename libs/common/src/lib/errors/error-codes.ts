@@ -342,6 +342,11 @@ export const ERROR_CODES = [
   // (tenant-consumer session mint only; platform-consumer mints unaffected).
   'TENANT_SUSPENDED',  // 403 — a SUSPENDED tenant (reversible). New sessions refused; existing expire on the 15-min access TTL.
   'TENANT_CLOSED',  // 403 — a CLOSED tenant (terminal; disposition per counsel-gated retention).
+  // TR-12 B1 (DDR §4) — the caseworker's dismiss-proposal refusal: dismissProposal
+  // was called on a VerificationProposal not in OPEN status (already ACTED or
+  // DISMISSED — a terminal proposal cannot be re-dismissed). HTTP 409 (the
+  // state-conflict class — mirrors ADVISORY_NOT_PENDING at the proposal surface).
+  'PROPOSAL_NOT_OPEN',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

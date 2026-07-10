@@ -63,6 +63,7 @@ import { RecordReconcileOrchestrator } from './talent-identity/record-reconcile.
 import { IdentityMaintenanceModule } from './jobs/identity-maintenance.module.js';
 import { SourcingController } from './talent-identity/sourcing.controller.js';
 import { DossierController } from './talent-identity/dossier.controller.js';
+import { VerificationProposalController } from './talent-identity/verification-proposal.controller.js';
 import { SourcingService } from './talent-identity/sourcing.service.js';
 import { DossierService } from './talent-identity/dossier.service.js';
 import { ExamineController } from './controllers/examine.controller.js';
@@ -425,6 +426,10 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // TR-4 B3 — the privileged resolve-contradiction surface (identity:resolve).
     // The one human arm on the contradiction machinery the detectors feed.
     ContradictionResolutionController,
+    // TR-12 B1 (DDR §4) — the caseworker's worklist surface (list OPEN proposals /
+    // dismiss). Reads at talent:read (capability ats — the dossier precedent); it
+    // executes nothing (no ACT endpoint this slice — propose-never-dispose).
+    VerificationProposalController,
     // Promotion-Trigger slice-A — the sourcer's two triggers (Add to Pipeline /
     // Save to Pool). Both promote a sourced L2 subject → ATS TalentRecord behind
     // the identity gate, then associate. Gated on the talent:source scope.

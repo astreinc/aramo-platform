@@ -43,7 +43,21 @@ export type {
   // TR-3 B2 — the VerificationRequest row + create input (the writer's shapes).
   VerificationRequestRow,
   CreateVerificationRequestInput,
+  // TR-12 B1 — the caseworker's proposal row + upsert input.
+  VerificationProposalRow,
+  UpsertProposalInput,
 } from './lib/talent-trust.repository.js';
+
+// TR-12 B1 (DDR §3) — the pure proposal generator (rules over Phase-2 signals),
+// exported for the acceptance suite (both-ways trigger proofs) mirroring the
+// band-derivation / consistency-detector cores.
+export {
+  generateProposals,
+  type ProposalSignals,
+  type OpenContradiction,
+  type VerificationSlot,
+  type DesiredProposal,
+} from './lib/proposal-generator.js';
 
 // TR-2a-3 advisory resolution — the merge action + reversal service input shapes
 // (the service itself is exported as a value above, parallel to the matcher).
@@ -119,6 +133,10 @@ export {
   MATCH_ADVISORY_STATUSES,
   MERGE_OPERATION_KINDS,
   MATCH_RESOLUTION_ACTIONS,
+  // TR-12 B1 — the caseworker's proposal vocabularies.
+  PROPOSAL_KINDS,
+  PROPOSAL_TRIGGER_KINDS,
+  PROPOSAL_STATUSES,
   SOURCE_CLASSES,
   METHODS,
   SEED_ASSERTION_TYPES,
@@ -141,6 +159,9 @@ export type {
   MatchAdvisoryStatus,
   MergeOperationKind,
   MatchResolutionAction,
+  ProposalKind,
+  ProposalTriggerKind,
+  ProposalStatus,
   SourceClass,
   Method,
   SeedAssertionType,

@@ -44,6 +44,7 @@ const MIGRATIONS = [
   'libs/talent-trust/prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
   'libs/talent-trust/prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
   'libs/talent-trust/prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
   // talent_record (column-set the client projects + the B3a supersession axis).
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
   'libs/talent-record/prisma/migrations/20260603020000_add_core_talent_link_to_talent_record/migration.sql',

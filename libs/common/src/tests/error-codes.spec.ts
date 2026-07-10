@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 53 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2 + 1 TR-4-B1 + 1 TR-4-B3 + 2 PC-Inc2-lifecycle)', () => {
+  it('ERROR_CODES contains the 54 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2 + 1 TR-4-B1 + 1 TR-4-B3 + 2 PC-Inc2-lifecycle + 1 TR-12-B1)', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -100,6 +100,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'EVIDENCE_NOT_CONTRADICTED',
       'TENANT_SUSPENDED',
       'TENANT_CLOSED',
+      // TR-12 B1 — 1 dismiss-proposal refusal (non-OPEN proposal → 409).
+      'PROPOSAL_NOT_OPEN',
     ]);
   });
 });
