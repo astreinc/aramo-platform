@@ -33,6 +33,7 @@ import {
 } from '@aramo/auth-storage';
 
 import { AuthController } from '../app/auth/auth.controller.js';
+import { HostBaseResolver } from '../app/auth/host-base-resolver.service.js';
 import { CognitoVerifierService } from '../app/auth/cognito-verifier.service.js';
 import { CookieVerifierService } from '../app/auth/cookie-verifier.service.js';
 import { JwksController } from '../app/auth/jwks.controller.js';
@@ -179,6 +180,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           CognitoVerifierService,
           SessionOrchestratorService,
           RefreshOrchestratorService,
+          HostBaseResolver,
         ],
       })
         .overrideProvider(IdentityService)

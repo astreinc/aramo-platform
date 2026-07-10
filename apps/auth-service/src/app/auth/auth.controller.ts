@@ -12,17 +12,18 @@ import {
 } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { CONSUMER_TYPES, type ConsumerType } from '@aramo/auth';
-import {
-  IdentityAuditService,
-  TenantService,
-  extractTenantSlugFromHost,
-} from '@aramo/identity';
+import { IdentityAuditService } from '@aramo/identity';
 import { RefreshTokenService } from '@aramo/auth-storage';
 import type { Request, Response } from 'express';
 
 import { CookieVerifierService } from './cookie-verifier.service.js';
+import { HostBaseResolver } from './host-base-resolver.service.js';
 import { PkceService } from './pkce.service.js';
-import { deriveRedirectUri } from './redirect-uri.js';
+import {
+  deriveRedirectUri,
+  derivePostLoginRedirect,
+  deriveSignoutRedirect,
+} from './redirect-uri.js';
 import {
   RefreshOrchestratorService,
 } from './refresh-orchestrator.service.js';
@@ -133,7 +134,7 @@ export class AuthController {
     private readonly cookieVerifier: CookieVerifierService,
     private readonly refreshTokens: RefreshTokenService,
     private readonly audit: IdentityAuditService,
-    private readonly tenants: TenantService,
+    private readonly hostBase: HostBaseResolver,
   ) {}
 
   // §8.1 — GET /auth/{consumer}/login → 302 + pkce_state cookie
@@ -147,10 +148,18 @@ export class AuthController {
     const c = parseConsumer(consumer, requestId);
     const domain = process.env['AUTH_COGNITO_DOMAIN'];
     const clientId = process.env['AUTH_COGNITO_CLIENT_ID'];
+    // PR-3.1 §3a: ONE host resolution yields BOTH the derived base (for the
+    // callback redirect_uri, §3d.1) AND the tenant's pinned IdP (HRD hint, §3a
+    // sharing choice). derivedBase is null for an unvalidated host → the redirect
+    // falls back to the env chain (never the raw host — the §2 invariant).
+    const { derivedBase, identityProvider } = await this.hostBase.resolve(
+      req.get('host'),
+    );
     // Amendment v1.2 (Workstream D): derive the callback URL from the login-path
     // consumer `c` (the same value sealed into the PKCE state cookie below), so
     // the login-time and callback-time consumers cannot diverge by construction.
-    const redirectUri = deriveRedirectUri(c);
+    // PR-3.1: derivedBase (the validated login host) wins over the env chain.
+    const redirectUri = deriveRedirectUri(c, derivedBase);
     if (
       domain === undefined ||
       clientId === undefined ||
@@ -181,44 +190,16 @@ export class AuthController {
     url.searchParams.set('code_challenge_method', 'S256');
     // Subdomain-Identity Directive B — Home Realm Discovery. If the requesting
     // host resolves to a tenant that has pinned an IdP, append the verbatim
-    // Cognito identity_provider hint so the Hosted UI skips the chooser and goes
-    // straight to that provider. Anything else (no tenant host, unknown/inactive
-    // slug, null IdP, lookup error) leaves the URL exactly as built above → the
-    // chooser shows. This is a purely additive front-door hint; it does NOT
-    // touch the callback/token-exchange/reconcile spine.
-    const identityProvider = await this.resolveIdentityProvider(req.get('host'));
+    // Cognito identity_provider hint so the Hosted UI skips the chooser. The
+    // value comes from the SAME hostBase.resolve lookup above (§3a sharing) —
+    // VERBATIM from the column, never hardcoded; null on any non-happy path
+    // (no tenant host, unknown/inactive slug, null IdP, lookup error) leaves the
+    // chooser showing. Purely additive front-door hint; does NOT touch the
+    // callback/token-exchange/reconcile spine.
     if (identityProvider !== null) {
       url.searchParams.set('identity_provider', identityProvider);
     }
     res.redirect(302, url.toString());
-  }
-
-  // Subdomain-Identity Directive B — resolve the requesting host to its tenant's
-  // pinned Cognito identity_provider string, or null = show the chooser. FAILS
-  // OPEN to null on every non-happy path: a user must always be able to reach a
-  // login. The slug parse is apex-anchored (extractTenantSlugFromHost requires
-  // the .aramo.ai suffix) so it can't be tricked by <slug>.attacker.com. The
-  // provider string is returned VERBATIM from the column — never hardcoded — so
-  // the logic stays tenant-agnostic (Astre's value happens to be 'microsoft').
-  private async resolveIdentityProvider(
-    host: string | undefined,
-  ): Promise<string | null> {
-    if (host === undefined || host.length === 0) {
-      return null;
-    }
-    try {
-      const rootDomain = process.env['APP_ROOT_DOMAIN'] ?? 'aramo.ai';
-      const slug = extractTenantSlugFromHost(host, rootDomain);
-      if (slug === null) {
-        return null;
-      }
-      const tenant = await this.tenants.findActiveBySlug(slug);
-      return tenant?.identity_provider ?? null;
-    } catch {
-      // Any resolution failure (lookup error, etc.) → fall back to the chooser,
-      // never an error page.
-      return null;
-    }
   }
 
   // §8.2 — GET /auth/{consumer}/callback
@@ -235,6 +216,11 @@ export class AuthController {
     const requestId = req.requestId ?? 'unknown';
     const c = parseConsumer(consumer, requestId);
     const pkceCookie = req.cookies?.[PKCE_COOKIE];
+    // PR-3.1 §3d.1: derive the base from THIS (callback) request's host and
+    // thread it into the exchange leg — same browser host as login (via Caddy),
+    // so the exchange redirect_uri == authorize redirect_uri by construction.
+    // The derivedBase is also used for the post-login redirect (§3d.2) below.
+    const { derivedBase } = await this.hostBase.resolve(req.get('host'));
     const result: CallbackResult = await this.sessionOrch.handleCallback({
       consumer: c,
       code,
@@ -242,6 +228,7 @@ export class AuthController {
       cognitoError,
       cognitoErrorDescription,
       pkceStateCipher: pkceCookie,
+      derivedBase,
     });
 
     // Always clear pkce_state on /callback completion (success or error).
@@ -264,8 +251,13 @@ export class AuthController {
       // when unset — NO hardcoded localhost fallback (which would silently
       // strand deployed users on a dev URL). Mirrors the throw-if-missing
       // posture of AUTH_COGNITO_REDIRECT_URI above and the cognito-verifier.
-      const postLogin = process.env['AUTH_POST_LOGIN_REDIRECT'];
-      if (postLogin === undefined || postLogin.length === 0) {
+      //
+      // PR-3.1 §3d.2: a VALIDATED host lands the user back on the originating
+      // host (${derivedBase}${AUTH_POST_LOGIN_PATH ?? '/'}); an unvalidated host
+      // falls back to the legacy full-URL AUTH_POST_LOGIN_REDIRECT (existing
+      // behavior). The throw survives when neither resolves.
+      const postLogin = derivePostLoginRedirect(derivedBase);
+      if (postLogin === null) {
         throw new AramoError(
           'INTERNAL_ERROR',
           'Post-login redirect not configured',
@@ -482,11 +474,15 @@ export class AuthController {
         { requestId, details: { reason: 'cognito_env_missing' } },
       );
     }
-    // The REGISTERED sign-out return URL (config, never input). Throws when
-    // unset — no hardcoded fallback (which would strand deployed users or, if
-    // it were ever derived from the request, open an open-redirect).
-    const signOutRedirect = process.env['AUTH_COGNITO_SIGNOUT_REDIRECT'];
-    if (signOutRedirect === undefined || signOutRedirect.length === 0) {
+    // The sign-out return URL. PR-3.1 §3d.3: a VALIDATED host derives
+    // ${derivedBase}${AUTH_SIGNOUT_PATH ?? '/'}; an unvalidated host falls back
+    // to the legacy registered AUTH_COGNITO_SIGNOUT_REDIRECT (config, never
+    // input). The §2 invariant holds: deriveSignoutRedirect returns the raw host
+    // NEVER — only a validated-host base or the registered env — so this can't
+    // become an open-redirect. Throws when neither resolves.
+    const { derivedBase } = await this.hostBase.resolve(req.get('host'));
+    const signOutRedirect = deriveSignoutRedirect(derivedBase);
+    if (signOutRedirect === null) {
       throw new AramoError(
         'INTERNAL_ERROR',
         'Post-logout redirect not configured',

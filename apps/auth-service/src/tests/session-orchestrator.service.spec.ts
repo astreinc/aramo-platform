@@ -224,6 +224,53 @@ describe('SessionOrchestratorService.handleCallback', () => {
     );
   });
 
+  // PR-3.1 §3d.1 — the token-exchange redirect_uri is DERIVED from the callback
+  // request's validated host (threaded via input.derivedBase). Same host as the
+  // authorize leg (browser presents it on both via Caddy) ⇒ exchange==authorize.
+  function tokenExchangeRedirectUri(): string | null {
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    const call = fetchMock.mock.calls.find((c) =>
+      String(c[0]).includes('/oauth2/token'),
+    );
+    if (call === undefined) return null;
+    const body = new URLSearchParams((call[1] as { body: string }).body);
+    return body.get('redirect_uri');
+  }
+
+  it('exchange redirect_uri is DERIVED from the callback host (derivedBase wins the env)', async () => {
+    const mocks = makeMocks();
+    const svc = makeService(mocks);
+    await svc.handleCallback({
+      consumer: 'recruiter',
+      code: 'auth-code-123',
+      state: 'state-1',
+      cognitoError: undefined,
+      cognitoErrorDescription: undefined,
+      pkceStateCipher: 'cipher',
+      derivedBase: 'https://astre.aramo.ai',
+    });
+    expect(tokenExchangeRedirectUri()).toBe(
+      'https://astre.aramo.ai/auth/recruiter/callback',
+    );
+  });
+
+  it('exchange redirect_uri falls back to the env when no derivedBase (unvalidated host)', async () => {
+    const mocks = makeMocks();
+    const svc = makeService(mocks);
+    await svc.handleCallback({
+      consumer: 'recruiter',
+      code: 'auth-code-123',
+      state: 'state-1',
+      cognitoError: undefined,
+      cognitoErrorDescription: undefined,
+      pkceStateCipher: 'cipher',
+    });
+    // beforeAll set AUTH_COGNITO_REDIRECT_URI=https://x.example/cb → origin base.
+    expect(tokenExchangeRedirectUri()).toBe(
+      'https://x.example/auth/recruiter/callback',
+    );
+  });
+
   // Test 29: tenant_selection_required for >1 active membership.
   it('returns tenant_selection_required with tenants[] for multi-membership user', async () => {
     const mocks = makeMocks({
