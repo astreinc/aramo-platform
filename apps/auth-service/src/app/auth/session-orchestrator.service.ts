@@ -40,6 +40,11 @@ export interface CallbackInput {
   cognitoError: string | undefined;
   cognitoErrorDescription: string | undefined;
   pkceStateCipher: string | undefined;
+  // PR-3.1 §3d.1: the base derived from the callback request's VALIDATED host
+  // (null for an unvalidated host → the exchange redirect_uri falls back to the
+  // env chain). The controller computes it (sharing one lookup) and threads it
+  // here so the exchange redirect_uri == the authorize redirect_uri.
+  derivedBase?: string | null;
 }
 
 export type CallbackResult =
@@ -134,6 +139,7 @@ export class SessionOrchestratorService {
         input.code,
         payload.verifier,
         input.consumer,
+        input.derivedBase,
       );
     } catch (err) {
       this.logger.warn(`cognito exchange failed: ${(err as Error).message}`);
@@ -327,12 +333,15 @@ export class SessionOrchestratorService {
     code: string,
     verifier: string,
     consumer: CallbackInput['consumer'],
+    derivedBase?: string | null,
   ): Promise<string> {
     const domain = process.env['AUTH_COGNITO_DOMAIN'];
     const clientId = process.env['AUTH_COGNITO_CLIENT_ID'];
     // Amendment v1.2 (Workstream D): derive per-consumer, matching the authorize
     // redirect_uri (same consumer, same base). OAuth requires the two be equal.
-    const redirectUri = deriveRedirectUri(consumer);
+    // PR-3.1 §3d.1: the validated-host base (threaded from the callback request)
+    // wins over the env chain — identical to the login host, so equal.
+    const redirectUri = deriveRedirectUri(consumer, derivedBase);
     if (
       domain === undefined ||
       clientId === undefined ||
