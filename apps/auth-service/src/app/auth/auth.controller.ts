@@ -23,6 +23,7 @@ import {
   deriveRedirectUri,
   derivePostLoginRedirect,
   deriveSignoutRedirect,
+  resolvePublicBaseUrl,
 } from './redirect-uri.js';
 import {
   RefreshOrchestratorService,
@@ -269,11 +270,15 @@ export class AuthController {
       return;
     }
     if (result.kind === 'tenant_selection_required') {
-      throw new AramoError(
-        'TENANT_SELECTION_REQUIRED',
-        'User has multiple active tenants; selection required',
-        409,
-        { requestId, details: { tenants: result.tenants } },
+      return this.redirectCallbackErrorOrJson(
+        res,
+        derivedBase,
+        new AramoError(
+          'TENANT_SELECTION_REQUIRED',
+          'User has multiple active tenants; selection required',
+          409,
+          { requestId, details: { tenants: result.tenants } },
+        ),
       );
     }
     if (result.kind === 'validation_error') {
@@ -284,11 +289,15 @@ export class AuthController {
       if (result.cognitoErrorDescription !== undefined) {
         details.cognito_error_description = result.cognitoErrorDescription;
       }
-      throw new AramoError(
-        'VALIDATION_ERROR',
-        'Callback validation failed',
-        400,
-        { requestId, details },
+      return this.redirectCallbackErrorOrJson(
+        res,
+        derivedBase,
+        new AramoError(
+          'VALIDATION_ERROR',
+          'Callback validation failed',
+          400,
+          { requestId, details },
+        ),
       );
     }
     if (result.kind === 'auth_error') {
@@ -310,48 +319,105 @@ export class AuthController {
       ]);
       const details = { reason: result.reason };
       if (TOKEN_REASONS.has(result.reason)) {
-        throw new AramoError('INVALID_TOKEN', 'IdP token rejected', 401, {
-          requestId,
-          details,
-        });
+        return this.redirectCallbackErrorOrJson(
+          res,
+          derivedBase,
+          new AramoError('INVALID_TOKEN', 'IdP token rejected', 401, {
+            requestId,
+            details,
+          }),
+        );
       }
       if (result.reason === 'no_active_tenant') {
-        throw new AramoError(
-          'TENANT_ACCESS_DENIED',
-          'No active tenant membership',
-          403,
-          { requestId, details },
+        return this.redirectCallbackErrorOrJson(
+          res,
+          derivedBase,
+          new AramoError(
+            'TENANT_ACCESS_DENIED',
+            'No active tenant membership',
+            403,
+            { requestId, details },
+          ),
         );
       }
       // Platform-Console Increment-2 PR-1 (workstream E) — tenant lifecycle
       // mint-gate denials (tenant-consumer only). Typed 403s so the tenant
       // console can render the suspended/closed UX distinctly.
       if (result.reason === 'tenant_suspended') {
-        throw new AramoError('TENANT_SUSPENDED', 'Tenant is suspended', 403, {
-          requestId,
-          details,
-        });
+        return this.redirectCallbackErrorOrJson(
+          res,
+          derivedBase,
+          new AramoError('TENANT_SUSPENDED', 'Tenant is suspended', 403, {
+            requestId,
+            details,
+          }),
+        );
       }
       if (result.reason === 'tenant_closed') {
-        throw new AramoError('TENANT_CLOSED', 'Tenant is closed', 403, {
-          requestId,
-          details,
-        });
+        return this.redirectCallbackErrorOrJson(
+          res,
+          derivedBase,
+          new AramoError('TENANT_CLOSED', 'Tenant is closed', 403, {
+            requestId,
+            details,
+          }),
+        );
       }
-      throw new AramoError(
-        'INSUFFICIENT_PERMISSIONS',
-        'Identity not provisioned',
-        403,
-        { requestId, details },
+      return this.redirectCallbackErrorOrJson(
+        res,
+        derivedBase,
+        new AramoError(
+          'INSUFFICIENT_PERMISSIONS',
+          'Identity not provisioned',
+          403,
+          { requestId, details },
+        ),
       );
     }
     // internal_error
-    throw new AramoError(
-      'INTERNAL_ERROR',
-      'Callback failed',
-      500,
-      { requestId, details: { reason: result.reason } },
+    return this.redirectCallbackErrorOrJson(
+      res,
+      derivedBase,
+      new AramoError('INTERNAL_ERROR', 'Callback failed', 500, {
+        requestId,
+        details: { reason: result.reason },
+      }),
     );
+  }
+
+  // Inc-3 PR-3.5 (Workstream A) — a callback error becomes a browser NAVIGATION
+  // (302 → ${base}/login?error=CODE) so ats-web / platform-web can render a
+  // humane page instead of raw JSON filling the browser (the Inc-1 lived
+  // experience). Response-SHAPE only: the AramoError's code / reason / status
+  // are byte-identical to before, and the gate logic that produced it is
+  // untouched — this changes the content-type of the answer, not any decision.
+  //
+  // SECURITY (PR-3.1 §2 invariant, verbatim): the redirect base comes ONLY from
+  // a validated derived base or the env chain (resolvePublicBaseUrl); a raw Host
+  // NEVER reaches the redirect. If no base resolves, the JSON response remains
+  // the final fallback (we re-throw) — never a redirect improvised from an
+  // unvalidated host. The path is the fixed literal `/login`; `error` is a code
+  // from the closed ErrorCode registry; `reason` (VALIDATION_ERROR subcodes
+  // only) is our own detail — no request input reaches the redirect target.
+  private redirectCallbackErrorOrJson(
+    res: Response,
+    derivedBase: string | null,
+    err: AramoError,
+  ): void {
+    const base = resolvePublicBaseUrl(derivedBase);
+    if (base === null) {
+      throw err; // no validated base → JSON fallback (invariant honored)
+    }
+    const url = new URL('/login', base);
+    url.searchParams.set('error', err.code);
+    if (err.code === 'VALIDATION_ERROR') {
+      const reason = (err.context.details as { reason?: unknown } | undefined)
+        ?.reason;
+      if (typeof reason === 'string') {
+        url.searchParams.set('reason', reason);
+      }
+    }
+    res.redirect(302, url.toString());
   }
 
   // §8.3 — POST /auth/{consumer}/refresh

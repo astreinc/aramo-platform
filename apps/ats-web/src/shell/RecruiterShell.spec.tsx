@@ -143,7 +143,7 @@ describe('RecruiterShell', () => {
   const ME = {
     user: { display_name: 'Purush Pichaimuthu', email: 'purush@astreinc.com' },
     roles: ['Tenant Admin', 'Recruiter'],
-    tenant: { display_name: 'Astre Consulting Services Inc' },
+    tenant: { display_name: 'Astre Consulting Services Inc', status: 'ACTIVE' },
   };
 
   it('renders the tenant org label and real rail identity from /me', async () => {
@@ -198,5 +198,25 @@ describe('RecruiterShell', () => {
     expect(
       screen.queryByText('Astre Consulting Services Inc'),
     ).not.toBeInTheDocument();
+  });
+
+  // Inc-3 PR-3.5 (Workstream C) — the OFFBOARDING winding-down banner.
+  const OFFBOARDING_COPY = /this workspace is winding down/i;
+
+  it('renders the OFFBOARDING banner when /me reports an offboarding tenant', async () => {
+    vi.spyOn(apiClient, 'get').mockResolvedValue({
+      ...ME,
+      tenant: { display_name: 'Astre Consulting Services Inc', status: 'OFFBOARDING' },
+    });
+    renderShell(makeSession(['requisition:read']));
+    expect(await screen.findByText(OFFBOARDING_COPY)).toBeInTheDocument();
+  });
+
+  it('renders NO banner for an ACTIVE tenant', async () => {
+    vi.spyOn(apiClient, 'get').mockResolvedValue(ME); // status: ACTIVE
+    renderShell(makeSession(['requisition:read']));
+    // Wait for /me to resolve (org label appears) before asserting absence.
+    await screen.findByText('Astre Consulting Services Inc');
+    expect(screen.queryByText(OFFBOARDING_COPY)).not.toBeInTheDocument();
   });
 });

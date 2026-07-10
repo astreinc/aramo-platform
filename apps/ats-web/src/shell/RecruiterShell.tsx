@@ -253,8 +253,24 @@ function RecruiterShellInner({
     </TopBar>
   );
 
+  // Inc-3 PR-3.5 (Workstream C) — OFFBOARDING winding-down banner. Persistent,
+  // dismissal-free (the state is not something a user should be able to hide).
+  // Driven by /me's tenant.status (loading-safe: `me` is null until /me resolves
+  // → no banner flicker). ACTIVE (and every other status) renders nothing;
+  // SUSPENDED/CLOSED users cannot be in-app past the mint gate, so the banner is
+  // the only in-app lifecycle treatment. No date is shown — the payload is not
+  // expanded for it in this PR; the copy degrades gracefully without it.
+  const offboarding = me?.tenant.status === 'OFFBOARDING';
+
   return (
     <AppShell rail={rail} topBar={topBar}>
+      {offboarding ? (
+        <div className="rc-offboarding-banner" role="status">
+          <strong>This workspace is winding down.</strong> Your organization is
+          being offboarded. Please contact your provider with any questions about
+          access or your data.
+        </div>
+      ) : null}
       {children}
     </AppShell>
   );
