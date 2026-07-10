@@ -193,6 +193,59 @@ const skillShape: ClaimShape = (p) => {
   return { ok: true, canonical: { value_raw: valueRaw, skill_id: deriveSkillIdCanonical(valueRaw) } };
 };
 
+// DEGREE (TR-7 D2): a declared academic credential. institution + degree are
+// required (a degree claim is meaningless without them); field of study is
+// optional; the conferred date parses ISO-or-null (NEVER guessed) with the raw
+// preserved beside it. No verification is implied by the shape — an unverified
+// DEGREE sits at its source_class ceiling (the elevation registry gates on class
+// AND type together). Mirrors EMPLOYMENT's date discipline exactly.
+const degreeShape: ClaimShape = (p) => {
+  const errors: string[] = [];
+  if (!nonEmptyString(p['institution_raw'])) errors.push('institution_raw must be a non-empty string');
+  if (!nonEmptyString(p['degree_raw'])) errors.push('degree_raw must be a non-empty string');
+  if (!optionalString(p['field_raw'])) errors.push('field_raw must be a string when present');
+  if (!optionalString(p['conferred_date_raw'])) errors.push('conferred_date_raw must be a string when present');
+  if (errors.length > 0) return { ok: false, errors };
+
+  const conferredRaw = p['conferred_date_raw'] as string | undefined;
+  const canonical: Record<string, unknown> = {
+    institution_raw: (p['institution_raw'] as string).trim(),
+    degree_raw: (p['degree_raw'] as string).trim(),
+    // ISO-or-null; the raw is ALWAYS preserved beside it (never a guessed date).
+    conferred_date: parseToIsoDateOrNull(conferredRaw),
+  };
+  if (nonEmptyString(p['field_raw'])) canonical['field_raw'] = (p['field_raw'] as string).trim();
+  if (conferredRaw !== undefined) canonical['conferred_date_raw'] = conferredRaw;
+  return { ok: true, canonical };
+};
+
+// CERTIFICATION (TR-7 D2): a declared professional certification. name is required;
+// issuer and credential reference are optional; issued + expiry dates parse
+// ISO-or-null (NEVER guessed) with the raw preserved beside each. Same source-class
+// honesty as DEGREE — richer captured claim, not a verified one.
+const certificationShape: ClaimShape = (p) => {
+  const errors: string[] = [];
+  if (!nonEmptyString(p['name_raw'])) errors.push('name_raw must be a non-empty string');
+  if (!optionalString(p['issuer_raw'])) errors.push('issuer_raw must be a string when present');
+  if (!optionalString(p['credential_ref_raw'])) errors.push('credential_ref_raw must be a string when present');
+  if (!optionalString(p['issued_date_raw'])) errors.push('issued_date_raw must be a string when present');
+  if (!optionalString(p['expiry_date_raw'])) errors.push('expiry_date_raw must be a string when present');
+  if (errors.length > 0) return { ok: false, errors };
+
+  const issuedRaw = p['issued_date_raw'] as string | undefined;
+  const expiryRaw = p['expiry_date_raw'] as string | undefined;
+  const canonical: Record<string, unknown> = {
+    name_raw: (p['name_raw'] as string).trim(),
+    issued_date: parseToIsoDateOrNull(issuedRaw),
+    expiry_date: parseToIsoDateOrNull(expiryRaw),
+  };
+  if (nonEmptyString(p['issuer_raw'])) canonical['issuer_raw'] = (p['issuer_raw'] as string).trim();
+  if (nonEmptyString(p['credential_ref_raw'])) canonical['credential_ref_raw'] = (p['credential_ref_raw'] as string).trim();
+  if (issuedRaw !== undefined) canonical['issued_date_raw'] = issuedRaw;
+  if (expiryRaw !== undefined) canonical['expiry_date_raw'] = expiryRaw;
+  return { ok: true, canonical };
+};
+
 // IDENTITY contact shapes (DDR §2.3): the canary — a single normalized identifier
 // under canonical key `value`. Required: `value` (non-empty). Provenance keys
 // (raw_source / source_channel / payload_id / raw) travel through untouched.
@@ -312,6 +365,11 @@ const historySpanShape: ClaimShape = (p) => {
 export const CANONICAL_CLAIM_SHAPES: Record<string, ClaimShape> = {
   EMPLOYMENT: employmentShape,
   SKILL: skillShape,
+  // TR-7 D2 — the credential-claim capture (already in AUTHORITATIVE_ASSERTION_
+  // TYPES.CLAIMS since the TR-3 seed; registered HERE now buys payload comparability.
+  // Today's captures are THIRD_PARTY_UNVERIFIED/DOCUMENT — they do NOT elevate).
+  DEGREE: degreeShape,
+  CERTIFICATION: certificationShape,
   EMAIL: contactShape,
   PHONE: contactShape,
   PROFILE_URL: contactShape,
