@@ -15,6 +15,9 @@ import type {
   MatchResolutionAction,
   MergeOperationKind,
   Method,
+  ProposalKind,
+  ProposalStatus,
+  ProposalTriggerKind,
   PortabilityClass,
   PresentationBand,
   SourceClass,
@@ -235,6 +238,37 @@ export interface UpsertMatchAdvisoryInput {
   // (e.g. ['NAME'] from a CONFIRMED-arm demotion). Merged into has_contradiction +
   // match_basis. A new corroborator conflict does NOT re-open a dismissed pair.
   corroborator_conflict_kinds?: CorroboratorConflictKind[];
+  created_by: string;
+}
+
+// TR-12 B1 — the caseworker's proposal row. PII-free (kinds + ids, never values).
+export interface VerificationProposalRow {
+  id: string;
+  tenant_id: string;
+  subject_id: string;
+  kind: ProposalKind;
+  trigger_kind: ProposalTriggerKind;
+  basis_ref_id: string;
+  // { anchor_kind } (verify/renew) | { assertion_type } (contradiction) — PII-free.
+  basis_snapshot: unknown;
+  status: ProposalStatus;
+  created_by: string;
+  created_at: Date;
+  updated_at: Date;
+  // Transition audit (nullable until resolved). status distinguishes ACTED/DISMISSED.
+  resolved_by: string | null;
+  resolved_at: Date | null;
+  justification: string | null;
+}
+
+// The upsert input for a proposal. Keyed by (tenant, kind, subject, basis_ref_id).
+export interface UpsertProposalInput {
+  tenant_id: string;
+  subject_id: string;
+  kind: ProposalKind;
+  trigger_kind: ProposalTriggerKind;
+  basis_ref_id: string;
+  basis_snapshot: Record<string, unknown>;
   created_by: string;
 }
 
@@ -1438,6 +1472,152 @@ export class TalentTrustRepository {
     const page = hasMore ? rows.slice(0, opts.limit) : rows;
     const nextCursor = hasMore ? (page[page.length - 1]!.id as string) : null;
     return { rows: page as SubjectMatchAdvisoryRow[], nextCursor };
+  }
+
+  // ---- VerificationProposal (TR-12 B1) ------------------------------------
+
+  // The generator's idempotent upsert (DDR §2 regeneration semantics, simpler
+  // than the advisory's): keyed on (tenant, kind, subject, basis_ref_id). No row
+  // → create OPEN. OPEN → refresh (trigger_kind + basis_snapshot; @updatedAt bumps
+  // updated_at). ACTED | DISMISSED → strict no-op (a dismissed basis never nags;
+  // an acted trigger settled itself). A materially new basis is a new basis_ref_id,
+  // hence a new row (a different unique key — reaches the create arm).
+  async upsertProposal(input: UpsertProposalInput): Promise<VerificationProposalRow> {
+    const existing = await this.findProposalByKey(
+      input.tenant_id,
+      input.kind,
+      input.subject_id,
+      input.basis_ref_id,
+    );
+
+    if (existing === null) {
+      const created = await this.prisma.verificationProposal.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: input.tenant_id,
+          subject_id: input.subject_id,
+          kind: input.kind,
+          trigger_kind: input.trigger_kind,
+          basis_ref_id: input.basis_ref_id,
+          basis_snapshot: input.basis_snapshot as never,
+          created_by: input.created_by,
+          // status defaults to OPEN.
+        },
+      });
+      return created as VerificationProposalRow;
+    }
+
+    if (existing.status === 'OPEN') {
+      const updated = await this.prisma.verificationProposal.update({
+        where: { id: existing.id },
+        data: {
+          trigger_kind: input.trigger_kind,
+          basis_snapshot: input.basis_snapshot as never,
+        },
+      });
+      return updated as VerificationProposalRow;
+    }
+
+    // ACTED | DISMISSED — terminal for this basis; never re-touched.
+    return existing;
+  }
+
+  // The unique-key fetch (the dedup key). Tenant-scoped by construction.
+  async findProposalByKey(
+    tenantId: string,
+    kind: ProposalKind,
+    subjectId: string,
+    basisRefId: string,
+  ): Promise<VerificationProposalRow | null> {
+    const row = await this.prisma.verificationProposal.findUnique({
+      where: {
+        tenant_id_kind_subject_id_basis_ref_id: {
+          tenant_id: tenantId,
+          kind,
+          subject_id: subjectId,
+          basis_ref_id: basisRefId,
+        },
+      },
+    });
+    return (row as VerificationProposalRow | null) ?? null;
+  }
+
+  // Tenant-scoped fetch by id — the dismiss endpoint loads-then-guards.
+  async findProposalById(
+    tenantId: string,
+    id: string,
+  ): Promise<VerificationProposalRow | null> {
+    const row = await this.prisma.verificationProposal.findFirst({
+      where: { id, tenant_id: tenantId },
+    });
+    return (row as VerificationProposalRow | null) ?? null;
+  }
+
+  // Per-subject proposals (the dossier pointer read — B2). Tenant-scoped.
+  async listProposalsForSubject(
+    tenantId: string,
+    subjectId: string,
+    opts?: { status?: ProposalStatus },
+  ): Promise<VerificationProposalRow[]> {
+    const rows = await this.prisma.verificationProposal.findMany({
+      where: {
+        tenant_id: tenantId,
+        subject_id: subjectId,
+        ...(opts?.status ? { status: opts.status } : {}),
+      },
+      orderBy: { created_at: 'asc' },
+    });
+    return rows as VerificationProposalRow[];
+  }
+
+  // The worklist keyset page — mirrors the advisory controller's conventions.
+  // Stable ordering (created_at ASC, id ASC — oldest-first, FIFO) so the cursor
+  // is deterministic on ties; cursor = last item's id; take limit+1 to detect a
+  // next page. Tenant-scoped + optional status/kind filters. R10: created_at is
+  // the ONLY ordering — no priority, no ordinal, ever.
+  async listProposalsKeyset(
+    tenantId: string,
+    opts: {
+      status?: ProposalStatus;
+      kind?: ProposalKind;
+      cursor?: string;
+      limit: number;
+    },
+  ): Promise<{ rows: VerificationProposalRow[]; nextCursor: string | null }> {
+    const rows = await this.prisma.verificationProposal.findMany({
+      where: {
+        tenant_id: tenantId,
+        ...(opts.status ? { status: opts.status } : {}),
+        ...(opts.kind ? { kind: opts.kind } : {}),
+      },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+      take: opts.limit + 1,
+      ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
+    });
+    const hasMore = rows.length > opts.limit;
+    const page = hasMore ? rows.slice(0, opts.limit) : rows;
+    const nextCursor = hasMore ? (page[page.length - 1]!.id as string) : null;
+    return { rows: page as VerificationProposalRow[], nextCursor };
+  }
+
+  // Apply a DISMISSED transition (the OPEN-only guard lives in the service). Sets
+  // the transition audit (actor/at/justification). Never deletes the row.
+  async applyProposalDismissal(input: {
+    id: string;
+    dismissed_by: string;
+    justification: string;
+    now: Date;
+  }): Promise<VerificationProposalRow> {
+    const updated = await this.prisma.verificationProposal.update({
+      where: { id: input.id },
+      data: {
+        status: 'DISMISSED',
+        resolved_by: input.dismissed_by,
+        resolved_at: input.now,
+        justification: input.justification,
+      },
+    });
+    return updated as VerificationProposalRow;
   }
 
   // ---- SubjectMatchAdvisory resolution (TR-2a-3) --------------------------

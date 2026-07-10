@@ -23,9 +23,15 @@ import {
 } from './continuity-derivers.js';
 import {
   deriveTrustState,
+  VERIFICATION_STALE_DAYS,
   type EvidenceForDerivation,
 } from './band-derivation.js';
 import { namesFlatlyConflict } from './name-guard.js';
+import {
+  generateProposals,
+  type OpenContradiction,
+  type VerificationSlot,
+} from './proposal-generator.js';
 import { deriveStrength } from './strength.js';
 import {
   SubjectMatcherService,
@@ -42,6 +48,7 @@ import {
   type SubjectMergeOperationRow,
   type TrustStateRow,
   type ResolutionSubjectRow,
+  type VerificationProposalRow,
 } from './talent-trust.repository.js';
 import {
   EVENT_TO_STATUS,
@@ -52,10 +59,16 @@ import {
   type EvidenceEventType,
   type Method,
   type PortabilityClass,
+  type ProposalKind,
+  type ProposalStatus,
   type SourceClass,
   type TrustDimension,
   type ResolutionSubjectRefType,
 } from './vocab.js';
+
+// TR-12 B1 — days→ms for the verification-staleness threshold (mirrors the
+// band-derivation constant; the flag uses the same 365d rule).
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 // TalentTrustService — the §8 interface and the ONLY public surface of TR-1.
 //
@@ -1451,6 +1464,163 @@ export class TalentTrustService {
   // reconcile writer is still absent (B3a is writer-less).
   async recomputeTrustState(subjectId: string, tenantId: string): Promise<void> {
     await this.recompute(subjectId, tenantId, new Date());
+  }
+
+  // ---- TR-12 B1 — the caseworker (DDR §3) ---------------------------------
+
+  // The impure host of the pure generator (proposal-generator.ts). Reads the
+  // three trigger signals for a subject (cluster-union, exactly as the dossier
+  // reads them so a proposal aligns with what a human sees), calls the pure
+  // policy engine, and upserts the desired proposals. READS + PROPOSAL WRITES
+  // ONLY — it never invokes an action endpoint or service (propose-never-dispose,
+  // structural). Invoked from BOTH sweep hosts post-recompute, each in its own
+  // per-item try/catch. Silent (writes nothing) when no trigger fires. `now` is
+  // injected so the time-driven RENEW is testable.
+  async generateProposalsForSubject(
+    subjectId: string,
+    tenantId: string,
+    now: Date = new Date(),
+  ): Promise<VerificationProposalRow[]> {
+    const trustState = await this.repo.findTrustStateBySubject(subjectId);
+    // No TrustState yet means no recompute has run — nothing derived to act on.
+    if (trustState === null) return [];
+
+    const members = await this.repo.clusterMembers(subjectId);
+    const evidence = await this.repo.listEvidenceBySubjects(members);
+
+    // Open contradictions (basis = the evidence id) — the same cluster-union
+    // CONTRADICTED set the dossier surfaces.
+    const openContradictions: OpenContradiction[] = evidence
+      .filter((e) => e.current_status === 'CONTRADICTED')
+      .map((e) => ({ evidence_id: e.id, assertion_type: e.assertion_type }));
+
+    // The cluster's EMAIL/PHONE anchors (a slot each), deduped by (kind, value);
+    // the representative basis is the EARLIEST-created row (append-only anchors
+    // are never mutated, so the earliest id is a stable basis across sweeps —
+    // a later higher-class append for the same value does not change it).
+    const anchorLists = await Promise.all(
+      members.map((m) => this.repo.listAnchorsBySubject(m)),
+    );
+    const anchors = anchorLists
+      .flat()
+      .filter((a) => a.anchor_kind === 'EMAIL' || a.anchor_kind === 'PHONE');
+    const bestAnchor = new Map<string, SubjectAnchorRow>();
+    for (const a of anchors) {
+      const key = `${a.anchor_kind} ${a.normalized_value}`;
+      const cur = bestAnchor.get(key);
+      const earlier =
+        cur === undefined ||
+        a.created_at.getTime() < cur.created_at.getTime() ||
+        (a.created_at.getTime() === cur.created_at.getTime() && a.id < cur.id);
+      if (earlier) bestAnchor.set(key, a);
+    }
+
+    // Current platform-verification acts (VALID EMAIL/PHONE_CONTROL_VERIFIED),
+    // keyed by (assertion_type, normalized_value). is_stale uses the SAME 365d
+    // threshold the flag derivation uses — the single source of the stale rule.
+    const staleThresholdMs = VERIFICATION_STALE_DAYS * MS_PER_DAY;
+    const verifByValue = new Map<string, Date>();
+    for (const e of evidence) {
+      if (e.current_status !== 'VALID') continue;
+      if (
+        e.assertion_type !== 'EMAIL_CONTROL_VERIFIED' &&
+        e.assertion_type !== 'PHONE_CONTROL_VERIFIED'
+      ) {
+        continue;
+      }
+      const value = (e.assertion_payload as { normalized_value?: string } | null)
+        ?.normalized_value;
+      if (value === undefined) continue;
+      verifByValue.set(`${e.assertion_type} ${value}`, e.collected_at);
+    }
+
+    const verificationSlots: VerificationSlot[] = [...bestAnchor.values()].map((a) => {
+      const verifType =
+        a.anchor_kind === 'EMAIL' ? 'EMAIL_CONTROL_VERIFIED' : 'PHONE_CONTROL_VERIFIED';
+      const collectedAt = verifByValue.get(`${verifType} ${a.normalized_value}`);
+      const has_current_verification = collectedAt !== undefined;
+      const is_stale =
+        collectedAt !== undefined &&
+        now.getTime() - collectedAt.getTime() > staleThresholdMs;
+      return {
+        anchor_id: a.id,
+        anchor_kind: a.anchor_kind,
+        has_current_verification,
+        is_stale,
+      };
+    });
+
+    const desired = generateProposals(
+      {
+        single_source_only: trustState.single_source_only,
+        verified_control_stale: trustState.verified_control_stale,
+      },
+      openContradictions,
+      verificationSlots,
+    );
+
+    const written: VerificationProposalRow[] = [];
+    for (const d of desired) {
+      written.push(
+        await this.repo.upsertProposal({
+          tenant_id: tenantId,
+          subject_id: subjectId,
+          kind: d.kind,
+          trigger_kind: d.trigger_kind,
+          basis_ref_id: d.basis_ref_id,
+          basis_snapshot: d.basis_snapshot,
+          created_by: 'caseworker',
+        }),
+      );
+    }
+    return written;
+  }
+
+  // Dismiss a proposal (DDR §4) — the OPEN-only guard. A dismissed proposal never
+  // nags (the upsert makes it a permanent no-op for that basis). Disposes of the
+  // proposal ROW only — no ledger effect, no evidence, no merge (propose-never-
+  // dispose). Tenant-scoped load-then-guard.
+  async dismissProposal(input: {
+    tenant_id: string;
+    id: string;
+    dismissed_by: string;
+    justification: string;
+    requestId: string;
+  }): Promise<VerificationProposalRow> {
+    const existing = await this.repo.findProposalById(input.tenant_id, input.id);
+    if (existing === null) {
+      throw new AramoError('NOT_FOUND', 'proposal not found', 404, {
+        requestId: input.requestId,
+      });
+    }
+    if (existing.status !== 'OPEN') {
+      throw new AramoError(
+        'PROPOSAL_NOT_OPEN',
+        `proposal is already ${existing.status} — cannot dismiss`,
+        409,
+        { requestId: input.requestId },
+      );
+    }
+    return this.repo.applyProposalDismissal({
+      id: existing.id,
+      dismissed_by: input.dismissed_by,
+      justification: input.justification,
+      now: new Date(),
+    });
+  }
+
+  // The worklist keyset page (the API's list). Tenant-scoped; default OPEN;
+  // optional kind/status filters; ordered by created_at only (R10).
+  async listProposals(
+    tenantId: string,
+    opts: {
+      status?: ProposalStatus;
+      kind?: ProposalKind;
+      cursor?: string;
+      limit: number;
+    },
+  ): Promise<{ rows: VerificationProposalRow[]; nextCursor: string | null }> {
+    return this.repo.listProposalsKeyset(tenantId, opts);
   }
 
   // Recompute the materialized TrustState from the full ledger. Never

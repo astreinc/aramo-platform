@@ -483,6 +483,84 @@ model SubjectMatchAdvisory {
   @@schema("talent_trust")
 }
 
+// VerificationProposal — TR-12 B1 (DDR §2). The caseworker's output: a row that
+// says "this subject deserves attention next", minted by a deterministic policy
+// engine over Phase-2's signals. It JUDGES nothing (bands derive), FUSES nothing
+// (resolution owns merges), EXECUTES nothing (every ACT is a human invoking an
+// existing gated endpoint — B2). It only decides WHAT deserves attention, in rows.
+//
+// PII-FREE like the advisory (kinds and ids, never values): basis_snapshot holds
+// kinds only; the value lives in SubjectAnchor / the evidence payload.
+//
+// KIND — closed vocab PROPOSAL_KINDS (VERIFY_CONTACT | RENEW_VERIFICATION |
+// RESOLVE_CONTRADICTION). No advisory-review kind: the advisory worklist IS its
+// own queue (no duplication).
+//
+// BASIS — structured provenance: trigger_kind (the signal that fired) +
+// basis_ref_id (the triggering row's id: the SubjectAnchor row for verify/renew,
+// the EvidenceRecord id for contradiction) + a PII-free basis_snapshot (kinds).
+//
+// DEDUP — @@unique([tenant_id, kind, subject_id, basis_ref_id]): the advisory's
+// idempotency mechanism with the proposal's own key. Regeneration is SIMPLER than
+// the advisory's (DDR §2, by ruling): an OPEN row is refreshed; a DISMISSED row
+// stays dismissed for the same basis (a dismissed proposal never nags); ACTED is
+// settled by the act itself (the underlying trigger clears — renewal clears the
+// flag, resolution clears the contradiction — so regeneration naturally stops); a
+// materially new basis is a new basis_ref_id, hence a new row.
+//
+// RELATION-LESS (bare-UUID subject_id, no FK) — the SubjectMergeOperation
+// precedent for operational/worklist tables. basis_ref_id may point at an anchor
+// homed on a merged cluster member (anchors are never re-homed), so no single FK
+// fits; subject_id is the processed (surviving) subject the proposal is filed on.
+//
+// WALL — tenant-scoped, talent_trust-internal (cip). Deterministic, no LLM
+// (Decision 10): the generator is pure rules over signals, no @aramo/ai-draft edge.
+model VerificationProposal {
+  id String @id @db.Uuid
+
+  tenant_id  String @db.Uuid
+  subject_id String @db.Uuid
+
+  /// ProposalKind closed vocabulary (TR-12 B1):
+  ///   VERIFY_CONTACT | RENEW_VERIFICATION | RESOLVE_CONTRADICTION
+  kind String
+
+  /// ProposalTriggerKind closed vocabulary — the signal that fired:
+  ///   SINGLE_SOURCE_ONLY | VERIFIED_CONTROL_STALE | OPEN_CONTRADICTION
+  trigger_kind String
+
+  // The triggering row's id (bare UUID, no FK): SubjectAnchor for verify/renew,
+  // EvidenceRecord for contradiction. Part of the dedup key.
+  basis_ref_id String @db.Uuid
+
+  // PII-FREE basis snapshot — kinds only (never a normalized_value). Shape:
+  //   verify/renew: { anchor_kind }        contradiction: { assertion_type }
+  basis_snapshot Json
+
+  /// ProposalStatus closed vocabulary: OPEN | ACTED | DISMISSED (both terminal).
+  /// B1 writes OPEN (generator) and DISMISSED (the dismiss endpoint); ACTED is
+  /// B2's wiring of the existing action endpoints (no ACT endpoint this slice).
+  status String @default("OPEN")
+
+  created_by String
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @updatedAt @db.Timestamptz
+
+  // ---- Transition audit (actor/at/justification) — nullable until first
+  // resolved. status distinguishes ACTED (B2) from DISMISSED (B1). justification
+  // is REQUIRED on dismiss (the reviewer's reason a proposal is not worth acting).
+  resolved_by   String?
+  resolved_at   DateTime? @db.Timestamptz
+  justification String?
+
+  // One proposal per (tenant, kind, subject, basis) — the idempotency key. The
+  // generator upserts, never duplicates; a new basis is a new row.
+  @@unique([tenant_id, kind, subject_id, basis_ref_id])
+  @@index([tenant_id, status])
+  @@index([subject_id])
+  @@schema("talent_trust")
+}
+
 // SubjectMergeOperation — TR-2a-B3b (DDR-3 §6). The durable record of a
 // record-reconcile (phase 2 of a both-/one-promoted merge). It is THREE things
 // at once: (a) the resumable checkpoint (a crash mid-sweep leaves a PENDING

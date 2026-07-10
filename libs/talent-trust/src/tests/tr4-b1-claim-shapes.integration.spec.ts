@@ -30,6 +30,7 @@ const MIGRATIONS = [
   '20260710120000_tr4_b3_last_consistency_at',
   '20260711120000_tr5_b2_thinness_flags',
   '20260712120000_tr8_b1_verified_control_stale',
+  '20260713120000_tr12_b1_verification_proposal',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 // $$-aware DDL splitter (trigger bodies carry semicolons inside $$ … $$).

@@ -1564,6 +1564,8 @@ components:
         payload; unregistered types stay passthrough).
         TR-4 B3 adds EVIDENCE_NOT_CONTRADICTED (422, resolveContradiction called
         on a record whose current_status is not CONTRADICTED).
+        TR-12 B1 adds PROPOSAL_NOT_OPEN (409, dismissProposal called on a
+        VerificationProposal not in OPEN status — already ACTED or DISMISSED).
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1618,6 +1620,7 @@ components:
         - VERIFICATION_CONSENT_REQUIRED
         - CLAIM_SHAPE_INVALID
         - EVIDENCE_NOT_CONTRADICTED
+        - PROPOSAL_NOT_OPEN
 
     ErrorObject:
       type: object

@@ -90,6 +90,36 @@ export type MergeOperationKind = (typeof MERGE_OPERATION_KINDS)[number];
 export const MATCH_RESOLUTION_ACTIONS = ['MERGE', 'DISMISS', 'REVERSE'] as const;
 export type MatchResolutionAction = (typeof MATCH_RESOLUTION_ACTIONS)[number];
 
+// ---- VerificationProposal.kind — the caseworker's action kinds (TR-12 B1) ----
+// Closed vocab (DDR §2). Deliberately absent: any advisory-review kind — the
+// SubjectMatchAdvisory worklist IS its own queue (no duplication). Each kind maps
+// to an existing gated ACT endpoint a human invokes in B2 (the generator never
+// invokes one). NOT a priority or an ordinal — proposals order by created_at only (R10).
+export const PROPOSAL_KINDS = [
+  'VERIFY_CONTACT', // an unverified contact slot on a single-source subject
+  'RENEW_VERIFICATION', // a platform-verification act aged past the stale threshold
+  'RESOLVE_CONTRADICTION', // an open contradiction awaiting a human's resolve
+] as const;
+export type ProposalKind = (typeof PROPOSAL_KINDS)[number];
+
+// ---- VerificationProposal.trigger_kind — the originating signal (TR-12 B1) ----
+// The deterministic Phase-2 signal that fired the proposal (DDR §3). Closed vocab;
+// kinds only, never a number or an ordinal.
+export const PROPOSAL_TRIGGER_KINDS = [
+  'SINGLE_SOURCE_ONLY', // TrustState.single_source_only ∧ a never-verified slot → VERIFY_CONTACT
+  'VERIFIED_CONTROL_STALE', // TrustState.verified_control_stale → RENEW_VERIFICATION
+  'OPEN_CONTRADICTION', // a CONTRADICTED evidence row → RESOLVE_CONTRADICTION
+] as const;
+export type ProposalTriggerKind = (typeof PROPOSAL_TRIGGER_KINDS)[number];
+
+// ---- VerificationProposal.status — the proposal lifecycle (TR-12 B1) ----------
+// OPEN → { ACTED | DISMISSED } (both terminal). Regeneration (DDR §2): OPEN is
+// refreshed; a DISMISSED basis never re-mints (permanent no-op — a dismissed
+// proposal never nags); ACTED settles by the act itself (the trigger clears). B1
+// writes OPEN (generator) + DISMISSED (dismiss endpoint); ACTED is B2's wiring.
+export const PROPOSAL_STATUSES = ['OPEN', 'ACTED', 'DISMISSED'] as const;
+export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
+
 // ---- EvidenceRecord.source_class — the independence ladder (§5.2) ------
 // ORDERED worthless → authoritative. The ordering is fixed (R2); the index
 // in this array IS the ladder position used by strength + band derivation.
