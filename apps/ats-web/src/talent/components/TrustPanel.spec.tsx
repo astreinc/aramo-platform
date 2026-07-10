@@ -28,6 +28,7 @@ function head(over: Partial<DossierHead> = {}): DossierHead {
     verifications: [],
     merge_provenance: [],
     advisory_pointers: [],
+    proposal_pointers: [],
     ...over,
   };
 }

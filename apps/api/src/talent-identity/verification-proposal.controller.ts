@@ -12,59 +12,69 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
-import { RequestId } from '@aramo/common';
+import { normalizeEmail, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
+import { TalentRecordRepository } from '@aramo/talent-record';
 import {
   PROPOSAL_KINDS,
   PROPOSAL_STATUSES,
+  TalentTrustRepository,
   TalentTrustService,
   type ProposalKind,
   type ProposalStatus,
   type VerificationProposalRow,
 } from '@aramo/talent-trust';
 
-import { DismissProposalRequestDto } from './dto/verification-proposal.dto.js';
+import {
+  DismissProposalRequestDto,
+  MarkActedRequestDto,
+} from './dto/verification-proposal.dto.js';
 
-// TR-12 B1 (DDR §4) — the caseworker's worklist HTTP surface. Lives in apps/api
-// (ABOVE the I15 wall) and calls the cip TalentTrustService; talent_trust imports
-// NO ats. The queue is the recruiter's "what deserves attention next": it LISTS
-// proposals and DISMISSES them — it can EXECUTE nothing (no ACT endpoint exists
-// this slice; ACT is B2's wiring of the existing gated action endpoints). The
-// caseworker's hands stay off the levers by construction (propose-never-dispose).
+// TR-12 B1/B2 (DDR §4 + B2 §3.1/§3.2) — the caseworker's worklist HTTP surface.
+// Lives in apps/api (ABOVE the I15 wall) and calls the cip TalentTrustService;
+// talent_trust imports NO ats. The queue LISTS proposals, DISMISSES them, and
+// MARKS them ACTED — it can EXECUTE nothing. Every real action is a human click
+// into an existing gated endpoint (the FE wires it); this surface only records
+// participation. The caseworker's hands stay off the levers by construction.
 //
-// GATING (DDR §4): the queue reads at `talent:read`, capability `ats` — viewing
-// one's trust worklist is reading the records it points at (the dossier
-// precedent; no dedicated trust-read scope exists). Dismiss is ALSO `talent:read`:
-// it disposes of the proposal ROW only — no ledger effect, no evidence, no merge —
-// so it is a curation of the recruiter's own queue, not a privileged trust action.
-// The ACTs a proposal points at (B2) each carry their own action scope
-// (`talent:edit` for verify/renew, `identity:resolve` for resolve-contradiction).
+// ACT-TARGET ENRICHMENT (B2 §3.2, Option A ruling): so the FE can one-click a
+// VERIFY/RENEW into the existing STORED-SLOT request endpoint, the list resolves,
+// SERVER-INTERNALLY, the record pointer (subject → ATS_TALENT_RECORD ref) and — for
+// an EMAIL anchor — the email slot (the anchor's normalized_value matched against
+// the record's normalized email1/email2 using the SAME normalizer the anchors use,
+// byte-equality, no fuzzy match). The anchor VALUE never crosses the wire — only
+// the slot NAME + record id ride the response (R10 + PII-lean held). A PHONE anchor,
+// an email matching neither slot (record edited since), or an unresolvable ref
+// leaves `slot` absent → the FE renders the honest "Open record to verify" deep
+// link. record_id/slot are OPTIONAL fields.
 //
-// PII-LEAN (R10): list items carry the kind, the subject/basis pointers (UUIDs),
-// the basis KINDS (anchor_kind / assertion_type — never a normalized value), and
-// timestamps. NEVER a value, NEVER a number — ordering is created_at, nothing else.
+// GATING (DDR §4): list + dismiss + mark-acted at `talent:read` (capability `ats`,
+// the dossier precedent) — the queue disposes/annotates its OWN rows, never the
+// ledger. The real ACTs the rows point at carry their own scope (the FE gates the
+// button): `talent:edit` (verify/renew) / `identity:resolve` (resolve-contradiction).
 interface ProposalListItem {
   id: string;
   tenant_id: string;
   subject_id: string;
   kind: ProposalKind;
   trigger_kind: string;
-  // The triggering row's id (anchor for verify/renew, evidence for contradiction)
-  // — a UUID pointer B2's ACT resolves; never a value.
   basis_ref_id: string;
-  // The basis snapshot's kinds only (anchor_kind | assertion_type) — never a value.
   basis_kinds: string[];
   status: ProposalStatus;
   created_at: string;
+  // Act-target enrichment (optional). record_id = the ATS_TALENT_RECORD the
+  // proposal is filed on (the row's pointer link + the deep-link target). slot =
+  // the email slot for a one-click VERIFY/RENEW (email anchors with a resolvable
+  // slot only). NEVER a value — server-internal matching yields the slot NAME.
+  record_id?: string;
+  slot?: 'email1' | 'email2';
 }
 
-// Bounded keyset page size (the advisory-worklist precedent — "bounded default").
 const PROPOSAL_PAGE_DEFAULT_LIMIT = 25;
 const PROPOSAL_PAGE_MAX_LIMIT = 100;
+const VERIFY_KINDS = new Set<ProposalKind>(['VERIFY_CONTACT', 'RENEW_VERIFICATION']);
 
-// Flatten the PII-free basis snapshot ({ anchor_kind } | { assertion_type }) to
-// its kind strings. Only string leaves are surfaced — no numbers, no ids.
 function basisKinds(snapshot: unknown): string[] {
   if (snapshot === null || typeof snapshot !== 'object') return [];
   const out: string[] = [];
@@ -74,7 +84,7 @@ function basisKinds(snapshot: unknown): string[] {
   return [...new Set(out)];
 }
 
-function toListItem(row: VerificationProposalRow): ProposalListItem {
+function toBaseItem(row: VerificationProposalRow): ProposalListItem {
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -92,12 +102,41 @@ function toListItem(row: VerificationProposalRow): ProposalListItem {
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
 export class VerificationProposalController {
-  constructor(private readonly trust: TalentTrustService) {}
+  constructor(
+    private readonly trust: TalentTrustService,
+    private readonly repo: TalentTrustRepository,
+    private readonly records: TalentRecordRepository,
+  ) {}
 
-  // The worklist. Keyset-paginated (cursor + bounded limit), PII-lean. Default
-  // status is OPEN (the queue); ?status= selects a resolved tab; ?kind= filters by
-  // proposal kind. `next_cursor` is null on the last page. Ordered by created_at
-  // only (R10 — no priority, no ordinal).
+  // Resolve the record pointer + (for an email VERIFY/RENEW) the email slot,
+  // SERVER-INTERNALLY. The anchor's normalized_value is read here only to match a
+  // slot; it is never returned. Any unresolvable step simply omits the field →
+  // the FE deep-links instead of one-clicking.
+  private async enrich(
+    tenantId: string,
+    row: VerificationProposalRow,
+  ): Promise<ProposalListItem> {
+    const item = toBaseItem(row);
+    const refs = await this.repo.listRefsBySubject(row.subject_id);
+    const recordRef = refs.find((r) => r.ref_type === 'ATS_TALENT_RECORD');
+    if (recordRef === undefined) return item;
+    item.record_id = recordRef.ref_id;
+
+    if (!VERIFY_KINDS.has(row.kind)) return item;
+    const anchor = await this.repo.findAnchorById(tenantId, row.basis_ref_id);
+    if (anchor === null || anchor.anchor_kind !== 'EMAIL') return item; // PHONE → deep-link
+    const record = await this.records.findById({ tenant_id: tenantId, id: recordRef.ref_id });
+    if (record === null) return item;
+    // Byte-equality on the SAME normalized form the anchors use — no fuzzy match.
+    const target = anchor.normalized_value;
+    if (record.email1 !== null && normalizeEmail(record.email1) === target) item.slot = 'email1';
+    else if (record.email2 !== null && normalizeEmail(record.email2) === target) item.slot = 'email2';
+    return item;
+  }
+
+  // The worklist. Keyset-paginated, PII-lean, act-target enriched. Default status
+  // OPEN; ?status= selects a tab (incl. SETTLED); ?kind= filters. Ordered by
+  // created_at only (R10). next_cursor is null on the last page.
   @Get()
   @HttpCode(HttpStatus.OK)
   @RequireScopes('talent:read')
@@ -108,7 +147,6 @@ export class VerificationProposalController {
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
   ): Promise<{ items: ProposalListItem[]; next_cursor: string | null }> {
-    // Default to the OPEN queue; an explicit ?status= selects a tab.
     let statusFilter: ProposalStatus = 'OPEN';
     if (status !== undefined && status.length > 0) {
       if (!(PROPOSAL_STATUSES as readonly string[]).includes(status)) {
@@ -134,12 +172,12 @@ export class VerificationProposalController {
       ...(kindFilter !== undefined ? { kind: kindFilter } : {}),
       ...(cursor !== undefined && cursor.length > 0 ? { cursor } : {}),
     });
-    return { items: rows.map(toListItem), next_cursor: nextCursor };
+    const items = await Promise.all(rows.map((r) => this.enrich(authContext.tenant_id, r)));
+    return { items, next_cursor: nextCursor };
   }
 
-  // Dismiss a proposal (the OPEN-only guard → PROPOSAL_NOT_OPEN 409 for a terminal
-  // row). Justification is required (DTO-enforced). Disposes of the proposal ROW
-  // only — no ledger effect (propose-never-dispose).
+  // Dismiss a proposal (OPEN-only guard → PROPOSAL_NOT_OPEN 409). Justification
+  // required (DTO). Disposes of the proposal ROW only — no ledger effect.
   @Post(':id/dismiss')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('talent:read')
@@ -156,6 +194,29 @@ export class VerificationProposalController {
       justification: body.justification,
       requestId,
     });
-    return toListItem(row);
+    return this.enrich(authContext.tenant_id, row);
+  }
+
+  // Mark a proposal ACTED (TR-12 B2 §3.1) — bookkeeping only. The human already
+  // fired the real action through its own gated endpoint; this records it (actor =
+  // JWT sub, optional note). OPEN-only guard (PROPOSAL_NOT_OPEN 409). Executes
+  // nothing — no action endpoint or service is invoked here.
+  @Post(':id/act')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:read')
+  async act(
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: MarkActedRequestDto,
+  ): Promise<ProposalListItem> {
+    const row = await this.trust.markProposalActed({
+      tenant_id: authContext.tenant_id,
+      id,
+      acted_by: authContext.sub,
+      note: body.note ?? null,
+      requestId,
+    });
+    return this.enrich(authContext.tenant_id, row);
   }
 }

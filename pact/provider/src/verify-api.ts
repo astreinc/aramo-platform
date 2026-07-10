@@ -818,6 +818,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // is a logical UUID ref), so the CASCADE above does not clear it; truncate
       // explicitly so a prior email-verification interaction's row does not leak.
       await c.query('TRUNCATE TABLE talent_trust."VerificationRequest" CASCADE');
+      // TR-12 B2 — VerificationProposal is relation-less (subject_id is a logical
+      // UUID ref), so the ResolutionSubject CASCADE above does not clear it;
+      // truncate explicitly so a prior proposal interaction's row does not leak.
+      await c.query('TRUNCATE TABLE talent_trust."VerificationProposal" CASCADE');
       await c.query('TRUNCATE TABLE saved_list."SavedList" CASCADE');
       // PC-7b — identity + settings. TRUNCATE Tenant CASCADE clears Site (FK) +
       // memberships/teams; IdentityAuditEvent (nullable tenant_id, no FK) and
@@ -1565,6 +1569,40 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_CONTRA_REF_ID = '00000000-0000-7000-8000-d05000000021';
     const ATSW_CONTRA_RECORD_ID = '00000000-0000-7000-8000-d05000000022';
     const ATSW_CONTRA_EVIDENCE_ID = '00000000-0000-7000-8000-d05000000023';
+    // TR-12 B2 — the Trust Proposals worklist states.
+    const ATSW_PROP_OPEN_ID = '00000000-0000-7000-8000-d12000000001';
+    const ATSW_PROP_TERMINAL_ID = '00000000-0000-7000-8000-d12000000002';
+    const ATSW_PROP_SUBJECT_ID = '00000000-0000-7000-8000-d12000000005';
+    const ATSW_PROP_RECORD_ID = '00000000-0000-7000-8000-d12000000010';
+    const ATSW_PROP_REF_ID = '00000000-0000-7000-8000-d12000000011';
+    const ATSW_PROP_EVIDENCE_ID = '00000000-0000-7000-8000-d12000000020';
+
+    // TR-12 B2 — seed a VerificationProposal (talent_trust worklist row). All
+    // vocab is TEXT (no enum casts); basis_snapshot is jsonb (kinds only).
+    async function seedAtsWebVerificationProposal(
+      c: Client,
+      params: { id: string; subjectId: string; status?: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO talent_trust."VerificationProposal"
+           (id, tenant_id, subject_id, kind, trigger_kind, basis_ref_id, basis_snapshot, status,
+            created_by, created_at, updated_at, resolved_by, resolved_at, justification)
+         VALUES ($1,$2,$3,'RESOLVE_CONTRADICTION','OPEN_CONTRADICTION',$4,$5::jsonb,$6,
+            'caseworker', now(), now(), $7, $8, $9)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          params.id,
+          TENANT_ID,
+          params.subjectId,
+          ATSW_PROP_EVIDENCE_ID,
+          JSON.stringify({ assertion_type: 'EMPLOYMENT' }),
+          params.status ?? 'OPEN',
+          params.status !== undefined && params.status !== 'OPEN' ? 'prior-actor' : null,
+          params.status !== undefined && params.status !== 'OPEN' ? new Date() : null,
+          params.status !== undefined && params.status !== 'OPEN' ? 'prior resolution' : null,
+        ],
+      );
+    }
 
     // COMPOSABLE (PC-4b+): seed a ResolutionSubject (talent_trust L2 anchor).
     // All talent_trust vocab is TEXT (no enum casts). status defaults ACTIVE.
@@ -4979,6 +5017,48 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             dimension: 'CLAIMS',
             currentStatus: 'CONTRADICTED',
             assertionPayload: { employer_norm: 'acme' },
+          });
+        });
+      },
+
+      // -- TR-12 B2: an OPEN trust proposal (list / dismiss / mark-acted happy).
+      // Subject + ATS_TALENT_RECORD ref (so the list enriches the record pointer)
+      // + a RESOLVE_CONTRADICTION proposal in OPEN. The value never seeds a wire
+      // field — record_id/basis_kinds only.
+      'an open trust proposal exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebResolutionSubject(c, { id: ATSW_PROP_SUBJECT_ID });
+          await seedAtsWebResolutionSubjectRef(c, {
+            id: ATSW_PROP_REF_ID,
+            subjectId: ATSW_PROP_SUBJECT_ID,
+            refType: 'ATS_TALENT_RECORD',
+            refId: ATSW_PROP_RECORD_ID,
+          });
+          await seedAtsWebVerificationProposal(c, {
+            id: ATSW_PROP_OPEN_ID,
+            subjectId: ATSW_PROP_SUBJECT_ID,
+            status: 'OPEN',
+          });
+        });
+      },
+
+      // -- TR-12 B2: a TERMINAL (DISMISSED) trust proposal — the OPEN-only guard
+      // refuses dismiss/act with PROPOSAL_NOT_OPEN 409.
+      'a terminal trust proposal exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebResolutionSubject(c, { id: ATSW_PROP_SUBJECT_ID });
+          await seedAtsWebResolutionSubjectRef(c, {
+            id: ATSW_PROP_REF_ID,
+            subjectId: ATSW_PROP_SUBJECT_ID,
+            refType: 'ATS_TALENT_RECORD',
+            refId: ATSW_PROP_RECORD_ID,
+          });
+          await seedAtsWebVerificationProposal(c, {
+            id: ATSW_PROP_TERMINAL_ID,
+            subjectId: ATSW_PROP_SUBJECT_ID,
+            status: 'DISMISSED',
           });
         });
       },

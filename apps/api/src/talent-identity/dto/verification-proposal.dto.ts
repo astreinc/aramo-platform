@@ -1,8 +1,8 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
-// TR-12 B1 — request DTO for the caseworker's dismiss endpoint. The global
-// ValidationPipe runs whitelist + forbidNonWhitelisted, so this class (not an
-// interface) gates the body shape: unknown props are rejected.
+// TR-12 B1/B2 — request DTOs for the caseworker's dismiss + mark-acted endpoints.
+// The global ValidationPipe runs whitelist + forbidNonWhitelisted, so these
+// classes (not interfaces) gate the body shape: unknown props are rejected.
 
 const JUSTIFICATION_MAX = 2000;
 
@@ -15,4 +15,15 @@ export class DismissProposalRequestDto {
   @IsNotEmpty()
   @MaxLength(JUSTIFICATION_MAX)
   justification!: string;
+}
+
+// POST /v1/talent/identity/proposals/:id/act (TR-12 B2 §3.1) — bookkeeping only.
+// The human already invoked the real action through its own gated endpoint; this
+// records that they did. An OPTIONAL note (the actor is the JWT sub). Executes
+// nothing.
+export class MarkActedRequestDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(JUSTIFICATION_MAX)
+  note?: string;
 }

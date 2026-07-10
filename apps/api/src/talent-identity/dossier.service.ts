@@ -63,6 +63,15 @@ export interface DossierHead {
   merge_provenance: MergeProvenanceItem[];
   // Pointers (ids) toward the TR-6 worklist — NO advisory data duplicated.
   advisory_pointers: string[];
+  // TR-12 B2 (§3.3) — pointers (id + kind) toward the caseworker's Trust Proposals
+  // queue; OPEN proposals only. Kinds are words (R10 — no number). NO proposal data
+  // beyond the pointer is duplicated here (the queue is the source of truth).
+  proposal_pointers: ProposalPointerItem[];
+}
+
+export interface ProposalPointerItem {
+  id: string;
+  kind: string;
 }
 
 export interface DossierEvidenceItem {
@@ -123,6 +132,7 @@ export class DossierService {
       verifications: [],
       merge_provenance: [],
       advisory_pointers: [],
+      proposal_pointers: [],
     };
   }
 
@@ -131,11 +141,13 @@ export class DossierService {
     if (subject === null) return this.emptyHead(recordId);
 
     const members = await this.repo.clusterMembers(subject.id);
-    const [trustState, evidence, advisories, mergeOps] = await Promise.all([
+    const [trustState, evidence, advisories, mergeOps, proposals] = await Promise.all([
       this.repo.findTrustStateBySubject(subject.id),
       this.repo.listEvidenceBySubjects(members),
       this.repo.listMatchAdvisories(tenant_id, { subjectId: subject.id }),
       this.repo.listCompletedMergeOperationsForSubject(tenant_id, subject.id),
+      // TR-12 B2 — OPEN proposals for this subject (the pointer line to the queue).
+      this.repo.listProposalsForSubject(tenant_id, subject.id, { status: 'OPEN' }),
     ]);
 
     const evidenceIds = evidence.map((e) => e.id);
@@ -200,6 +212,7 @@ export class DossierService {
         completed_at: op.completed_at ? op.completed_at.toISOString() : null,
       })),
       advisory_pointers: advisories.map((a) => a.id),
+      proposal_pointers: proposals.map((p) => ({ id: p.id, kind: p.kind })),
     };
   }
 

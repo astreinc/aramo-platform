@@ -23,6 +23,18 @@ describe('TR-14 B2 — the dossier wire carries no trust-ordinal numeric', () =>
   it('registers the dossier schemas', () => {
     expect(dossierSchemaNames).toContain('DossierHead');
     expect(dossierSchemaNames).toContain('DossierEvidencePage');
+    // TR-12 B2 — the proposal-pointer schema joins the contracted head.
+    expect(dossierSchemaNames).toContain('DossierProposalPointer');
+  });
+
+  it('DossierHead requires proposal_pointers (TR-12 B2 pointer line)', () => {
+    const head = schemas['DossierHead']!;
+    expect(head['required']).toContain('proposal_pointers');
+    const pointer = schemas['DossierProposalPointer']!;
+    // kinds are WORDS (an enum of the three proposal kinds) — never a number.
+    const kind = (pointer['properties'] as Node)['kind'] as Node;
+    expect(kind['type']).toBe('string');
+    expect(Array.isArray(kind['enum'])).toBe(true);
   });
 
   // Recursively assert no `type: integer|number` appears — EXCEPT under an
