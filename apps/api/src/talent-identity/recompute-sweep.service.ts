@@ -70,7 +70,12 @@ export class RecomputeSweepService {
         // try/catch so a generation failure never disturbs the sweep's recompute
         // bookkeeping (the subject stays recomputed; the proposal re-attempts).
         try {
-          await this.trust.generateProposalsForSubject(s.subject_id, s.tenant_id);
+          await this.trust.generateProposalsForSubject(
+            s.subject_id,
+            s.tenant_id,
+            new Date(),
+            'recompute_sweep',
+          );
         } catch (genErr) {
           this.logger.warn({
             event: 'proposal_generation_failed',

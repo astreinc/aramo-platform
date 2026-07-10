@@ -50,6 +50,7 @@ describe('ats-web → GET /v1/talent-records/:id/dossier (head)', () => {
           verifications: like([]),
           merge_provenance: like([]),
           advisory_pointers: like([]),
+          proposal_pointers: like([]),
         });
       })
       .executeTest(async (mock) => {
@@ -85,6 +86,7 @@ describe('ats-web → GET /v1/talent-records/:id/dossier (head)', () => {
           verifications: like([]),
           merge_provenance: like([]),
           advisory_pointers: like([]),
+          proposal_pointers: like([]),
         });
       })
       .executeTest(async (mock) => {

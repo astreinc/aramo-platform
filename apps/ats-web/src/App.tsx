@@ -17,6 +17,7 @@ import { ContactEditView } from './contacts/ContactEditView';
 import { ContactsListView } from './contacts/ContactsListView';
 import { EngagementDetailView } from './engagement/EngagementDetailView';
 import { IdentityAdvisoriesView } from './identity-advisories/IdentityAdvisoriesView';
+import { TrustProposalsView } from './trust-proposals/TrustProposalsView';
 import { IndexRoute } from './dashboard/IndexRoute';
 import { InvitationAcceptPage } from './routes/InvitationAcceptPage';
 import { VerifyEmailConfirmPage } from './routes/VerifyEmailConfirmPage';
@@ -219,6 +220,21 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <IdentityAdvisoriesView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* TR-12 B2 — the caseworker's Trust Proposals queue. A
+                        route-level surface (the IdentityAdvisories pattern);
+                        reads at talent:read, per-row ACT gated by each action's
+                        own scope. */}
+                    <Route
+                      path="trust/proposals"
+                      element={
+                        <RouteGuard
+                          requireScope="talent:read"
+                          sessionStateOverride={state}
+                        >
+                          <TrustProposalsView />
                         </RouteGuard>
                       }
                     />

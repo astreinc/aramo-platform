@@ -41,6 +41,12 @@ export interface DossierHead {
   readonly verifications: readonly VerificationStateItem[];
   readonly merge_provenance: readonly MergeProvenanceItem[];
   readonly advisory_pointers: readonly string[];
+  // TR-12 B2 — pointers (id + kind) toward the Trust Proposals queue; OPEN only.
+  readonly proposal_pointers: readonly ProposalPointer[];
+}
+export interface ProposalPointer {
+  readonly id: string;
+  readonly kind: string;
 }
 
 // One evidence-timeline item. NOTE (R10): the evidence carries no `strength` — it

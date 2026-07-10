@@ -1620,6 +1620,60 @@ export class TalentTrustRepository {
     return updated as VerificationProposalRow;
   }
 
+  // TR-12 B2 §3.1 — apply the ACTED transition (the OPEN-only guard lives in the
+  // service). Bookkeeping only: records the actor + optional note; executes
+  // nothing. justification carries the optional note.
+  async applyProposalAct(input: {
+    id: string;
+    acted_by: string;
+    note: string | null;
+    now: Date;
+  }): Promise<VerificationProposalRow> {
+    const updated = await this.prisma.verificationProposal.update({
+      where: { id: input.id },
+      data: {
+        status: 'ACTED',
+        resolved_by: input.acted_by,
+        resolved_at: input.now,
+        justification: input.note,
+      },
+    });
+    return updated as VerificationProposalRow;
+  }
+
+  // TR-12 B2 §3.0 — settle a trigger-cleared OPEN proposal (the generator's
+  // drift-healer). actor = the host's name; justification = 'trigger cleared'.
+  async settleProposal(input: {
+    id: string;
+    settled_by: string;
+    justification: string;
+    now: Date;
+  }): Promise<VerificationProposalRow> {
+    const updated = await this.prisma.verificationProposal.update({
+      where: { id: input.id },
+      data: {
+        status: 'SETTLED',
+        resolved_by: input.settled_by,
+        resolved_at: input.now,
+        justification: input.justification,
+      },
+    });
+    return updated as VerificationProposalRow;
+  }
+
+  // TR-12 B2 — a SubjectAnchor by its id (tenant-scoped). The proposal-list
+  // enrichment reads the anchor's normalized_value SERVER-INTERNALLY to derive the
+  // email slot; the value never crosses the wire (R10 + PII-lean).
+  async findAnchorById(
+    tenantId: string,
+    id: string,
+  ): Promise<SubjectAnchorRow | null> {
+    const row = await this.prisma.subjectAnchor.findFirst({
+      where: { id, tenant_id: tenantId },
+    });
+    return (row as SubjectAnchorRow | null) ?? null;
+  }
+
   // ---- SubjectMatchAdvisory resolution (TR-2a-3) --------------------------
 
   // Tenant-scoped fetch by id — the resolution service loads-then-guards.

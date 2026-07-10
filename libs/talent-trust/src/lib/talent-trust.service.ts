@@ -52,6 +52,7 @@ import {
 } from './talent-trust.repository.js';
 import {
   EVENT_TO_STATUS,
+  PROPOSAL_SETTLED_JUSTIFICATION,
   SOURCE_CLASSES,
   type AnchorKind,
   type CorroboratorConflictKind,
@@ -1480,6 +1481,9 @@ export class TalentTrustService {
     subjectId: string,
     tenantId: string,
     now: Date = new Date(),
+    // TR-12 B2 §3.0 — the host's name; stamped as the actor when a trigger-cleared
+    // OPEN row is SETTLED. Defaults to the generator's own label off-host.
+    hostActor = 'caseworker',
   ): Promise<VerificationProposalRow[]> {
     const trustState = await this.repo.findTrustStateBySubject(subjectId);
     // No TrustState yet means no recompute has run — nothing derived to act on.
@@ -1573,7 +1577,60 @@ export class TalentTrustService {
         }),
       );
     }
+
+    // TR-12 B2 §3.0 — SETTLE the drift. Any OPEN proposal for this subject whose
+    // (kind, basis) is NOT in the freshly-derived desired set means its trigger no
+    // longer holds — the contradiction was resolved, the flag cleared, the slot got
+    // verified, or the row was acted-but-unmarked. Settle it (terminal), so the
+    // queue stays honest. Proposal-writes only — still executes nothing.
+    const desiredKeys = new Set(desired.map((d) => `${d.kind}::${d.basis_ref_id}`));
+    const openRows = await this.repo.listProposalsForSubject(tenantId, subjectId, {
+      status: 'OPEN',
+    });
+    for (const row of openRows) {
+      if (desiredKeys.has(`${row.kind}::${row.basis_ref_id}`)) continue;
+      await this.repo.settleProposal({
+        id: row.id,
+        settled_by: hostActor,
+        justification: PROPOSAL_SETTLED_JUSTIFICATION,
+        now,
+      });
+    }
     return written;
+  }
+
+  // TR-12 B2 §3.1 — mark a proposal ACTED (bookkeeping only). The human already
+  // invoked the real action through its own gated endpoint; this records that they
+  // did, with the actor + an optional note. OPEN-only guard (reuse PROPOSAL_NOT_OPEN).
+  // It EXECUTES NOTHING — no action endpoint, no service, no ledger write beyond the
+  // proposal row's own transition (propose-never-dispose holds).
+  async markProposalActed(input: {
+    tenant_id: string;
+    id: string;
+    acted_by: string;
+    note: string | null;
+    requestId: string;
+  }): Promise<VerificationProposalRow> {
+    const existing = await this.repo.findProposalById(input.tenant_id, input.id);
+    if (existing === null) {
+      throw new AramoError('NOT_FOUND', 'proposal not found', 404, {
+        requestId: input.requestId,
+      });
+    }
+    if (existing.status !== 'OPEN') {
+      throw new AramoError(
+        'PROPOSAL_NOT_OPEN',
+        `proposal is already ${existing.status} — cannot mark acted`,
+        409,
+        { requestId: input.requestId },
+      );
+    }
+    return this.repo.applyProposalAct({
+      id: existing.id,
+      acted_by: input.acted_by,
+      note: input.note,
+      now: new Date(),
+    });
   }
 
   // Dismiss a proposal (DDR §4) — the OPEN-only guard. A dismissed proposal never

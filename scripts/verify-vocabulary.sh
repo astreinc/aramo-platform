@@ -405,6 +405,12 @@ TIER2_EXCLUDES=(
   # M3 PR-9 portal-refusal / M4 submittal negative-shape specs above. Product
   # source (IdentityAdvisoriesView.tsx / types.ts) stays clean — never excluded.
   "apps/ats-web/src/identity-advisories/IdentityAdvisoriesView.spec.tsx"
+  # TR-12 B2 — the Trust Proposals queue R10-enforcement spec. Same negative-shape
+  # anti-token pattern as the Identity Advisories spec above: it enumerates the
+  # forbidden vocabulary (score/rank/tier/rating) to assert the rendered DOM
+  # contains NONE of it. Product source (TrustProposalsView.tsx / types.ts) stays
+  # clean — never excluded.
+  "apps/ats-web/src/trust-proposals/TrustProposalsView.spec.tsx"
 )
 
 # =============================================================================
