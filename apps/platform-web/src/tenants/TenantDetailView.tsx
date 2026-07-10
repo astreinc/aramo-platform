@@ -88,10 +88,11 @@ export function TenantDetailView({ session }: { readonly session: Session }) {
     void load();
   }, [load]);
 
-  const resend = async (): Promise<void> => {
+  const sendOwnerInvite = async (): Promise<void> => {
     try {
       await platformApi.resendOwnerInvite(id);
-      toast.show('Owner invite re-sent.');
+      toast.show('Owner invite sent.');
+      void load(); // refresh the timeline so the send is reflected
     } catch (e) {
       const reason =
         e instanceof ApiError
@@ -110,6 +111,14 @@ export function TenantDetailView({ session }: { readonly session: Session }) {
   if (!tenant) return <div className="pw-page">Loading…</div>;
 
   const actions = ACTIONS_BY_STATUS[tenant.status] ?? [];
+  // Inc-3 PR-3.4 (B4) — "owner not yet invited" is derived from the audit
+  // timeline the page already loads: no tenant.owner_invite.sent means the
+  // create-now-invite-later path was taken and no invite has gone out yet.
+  const ownerInvited = events.some(
+    (e) => e.event_type === 'tenant.owner_invite.sent',
+  );
+  const ownerNotYetInvited =
+    tenant.status === 'PROVISIONED' && !ownerInvited;
 
   const overview = (
     <dl className="pw-facts">
@@ -145,11 +154,19 @@ export function TenantDetailView({ session }: { readonly session: Session }) {
           </span>
         )}
         {tenant.status === 'PROVISIONED' ? (
-          <Button variant="ghost" onClick={() => void resend()}>
-            Resend owner invite
+          <Button variant="ghost" onClick={() => void sendOwnerInvite()}>
+            Send owner invite
           </Button>
         ) : null}
       </div>
+
+      {ownerNotYetInvited ? (
+        <p className="pw-notice" role="status">
+          <strong>Owner not yet invited.</strong> This tenant was provisioned
+          without sending the owner’s invitation. Use “Send owner invite” when the
+          owner is ready to onboard.
+        </p>
+      ) : null}
 
       <h3 className="pw-page__title" style={{ fontSize: '1.05rem' }}>
         Audit timeline
