@@ -70,7 +70,7 @@ export function ProposalDismissDialog({ proposalId, onClose, onDismissed }: Prop
         </>
       }
     >
-      <InlineAlert variant="info">
+      <InlineAlert variant="success">
         Dismissing removes this from the queue. It won’t come back for the same
         reason. Say why for the record.
       </InlineAlert>

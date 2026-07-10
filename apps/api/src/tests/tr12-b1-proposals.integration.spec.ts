@@ -417,23 +417,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // PII-lean shape: kinds + pointers + timestamps only.
       expect(item['kind']).toBe('RESOLVE_CONTRADICTION');
       expect(Array.isArray(item['basis_kinds'])).toBe(true);
-      // No value, no number anywhere on the wire. A positive allowlist: the item
-      // is EXACTLY these fields — no ordering ordinal of any name, no raw snapshot.
+      // No value, no number anywhere on the wire. A positive allowlist: every key
+      // is in the allowed set — no ordering ordinal of any name, no raw snapshot.
+      // record_id/slot are the B2 act-target enrichment (optional; UUID pointer +
+      // slot NAME, never a value or a number).
       const wire = JSON.stringify(body);
       expect(wire).not.toContain(EMAIL);
-      expect(Object.keys(item).sort()).toEqual(
-        [
-          'basis_kinds',
-          'basis_ref_id',
-          'created_at',
-          'id',
-          'kind',
-          'status',
-          'subject_id',
-          'tenant_id',
-          'trigger_kind',
-        ].sort(),
-      );
+      const ALLOWED = new Set([
+        'basis_kinds',
+        'basis_ref_id',
+        'created_at',
+        'id',
+        'kind',
+        'status',
+        'subject_id',
+        'tenant_id',
+        'trigger_kind',
+        'record_id',
+        'slot',
+      ]);
+      for (const k of Object.keys(item)) expect(ALLOWED.has(k)).toBe(true);
       // Every field is a string or an array of strings — never a number.
       for (const v of Object.values(item)) {
         if (Array.isArray(v)) for (const e of v) expect(typeof e).toBe('string');
