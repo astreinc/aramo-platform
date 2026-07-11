@@ -73,4 +73,6 @@ export {
 export {
   IDENTITY_MIGRATIONS,
   resolveIdentityMigrations,
+  AUTH_STORAGE_MIGRATIONS,
+  resolveAuthStorageMigrations,
 } from './lib/testing/identity-migrations.js';

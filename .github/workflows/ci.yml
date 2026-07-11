@@ -9,7 +9,10 @@ name: ci
 
 on:
   push:
-    branches: [main, platform-console]
+    # Inc-3 PR-3.6 (R15): the platform-console integration branch's self-gating
+    # era ended with the M merge; its push trigger is retired now that Track B
+    # targets main directly.
+    branches: [main]
   pull_request:
 
 concurrency:
@@ -371,6 +374,12 @@ jobs:
       # the latent readFileSync bug in platform.integration.spec.ts and routes
       # its migration bootstrap through the shared identity-migrations helper.
       - run: npx vitest run --root apps/platform-admin
+      # Inc-3 PR-3.6 — the LAST app to gain CI-enforced integration coverage
+      # (completing PR-1.5's rider). Its two integration specs (auth.integration +
+      # auth.site-axis) were RED under CI conditions — the readFileSync(IDP, LC)
+      # bug — and are retrofitted to the shared identity-migrations helper in the
+      # SAME PR (fix-then-add, R13), so this root is green from its first run.
+      - run: npx vitest run --root apps/auth-service
 
   # ---------------------------------------------------------------------------
   # M4 PR-8 — Terraform IaC foundation gates (no AWS credentials required).

@@ -59,3 +59,22 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
 export function resolveIdentityMigrations(repoRoot: string): string[] {
   return IDENTITY_MIGRATIONS.map((relPath) => resolve(repoRoot, relPath));
 }
+
+// ── auth-storage migration set (Inc-3 PR-3.6). ────────────────────────────────
+// The libs/auth-storage schema (refresh-token store) is a DIFFERENT schema set
+// from identity, applied ALONGSIDE it by the auth-service integration specs (the
+// pact provider hand-lists it too). It has a single migration today; carrying it
+// here as its own ordered export — the trivial extension the PR-3.6 directive
+// invited — makes the NEXT auth-storage migration a one-line edit HERE rather
+// than a per-spec hand-list, and keeps it cleanly SEPARATE from the identity set
+// (never interleaved). Append order-safely (same Invariant 1 as above).
+export const AUTH_STORAGE_MIGRATIONS: readonly string[] = [
+  'libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
+];
+
+// Resolve the ordered auth-storage migration .sql paths against a repo root
+// (same repoRoot contract as resolveIdentityMigrations). Apply AFTER the
+// identity set — the auth-service specs seed identity first, then auth-storage.
+export function resolveAuthStorageMigrations(repoRoot: string): string[] {
+  return AUTH_STORAGE_MIGRATIONS.map((relPath) => resolve(repoRoot, relPath));
+}
