@@ -48,6 +48,7 @@ import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
+import { TenantWriteFreezeInterceptor } from './tenant-write-freeze/tenant-write-freeze.interceptor.js';
 import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
 import { TalentAnchorProducerService } from './talent-anchor/talent-anchor-producer.service.js';
 import { AdvisoryResolutionController } from './talent-identity/advisory-resolution.controller.js';
@@ -445,6 +446,19 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     PublicVerificationController,
   ],
   providers: [
+    // Inc-3 PR-3.7 (R12) — the tenant WRITE-freeze. Registered FIRST among the
+    // APP_INTERCEPTORs so this blocking policy check runs before any response-
+    // shaping or enrichment work is spent: a still-valid session (within the
+    // ≤15-min TTL) that writes to a SUSPENDED/CLOSED tenant is refused 403 before
+    // the request reaches a handler. Interceptors run post-guards, so
+    // request.authContext is populated (JwtAuthGuard). Ordering is load-bearing —
+    // Nest runs APP_INTERCEPTORs in provider-registration order; this MUST stay
+    // above VisibilityInterceptor. TenantRepository resolves via the already-
+    // imported IdentityCoreModule; Reflector is Nest-core (@AllowWhenSuspended).
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantWriteFreezeInterceptor,
+    },
     // AUTHZ-D4b Gate 6 — register the VisibilityInterceptor as a global
     // interceptor (APP_INTERCEPTOR). Runs after JwtAuthGuard so the
     // AuthContext is available on the request when the interceptor

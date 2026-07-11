@@ -1566,6 +1566,15 @@ components:
         on a record whose current_status is not CONTRADICTED).
         TR-12 B1 adds PROPOSAL_NOT_OPEN (409, dismissProposal called on a
         VerificationProposal not in OPEN status — already ACTED or DISMISSED).
+        Inc-3 PR-3.7 — TENANT_SUSPENDED / TENANT_CLOSED (already registered for
+        the auth-service mint gate) become CROSS-CUTTING write-freeze codes: a
+        still-valid session (within the ≤15-min access-token TTL) that attempts a
+        MUTATION (non-GET/HEAD/OPTIONS) against a SUSPENDED or CLOSED tenant is
+        refused 403 by the apps/api TenantWriteFreezeInterceptor (global, first).
+        Reads (GET) and the platform consumer are exempt; PROVISIONED/ACTIVE/
+        OFFBOARDING write normally. This is a policy applied uniformly across every
+        authenticated tenant mutation, so it is documented here rather than on each
+        path's responses.
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
