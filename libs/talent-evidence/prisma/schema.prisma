@@ -65,6 +65,25 @@ enum TalentWorkHistorySource {
   @@schema("talent_evidence")
 }
 
+// TR-7 B1 — TalentEducationEntry.source. Résumé-derived credential capture; the
+// extraction writes 'resume', manual entry / import are the other honest arrivals.
+enum TalentEducationSource {
+  resume
+  manual
+  import
+
+  @@schema("talent_evidence")
+}
+
+// TR-7 B1 — TalentCertificationEntry.source. Same arrivals as education.
+enum TalentCertificationSource {
+  resume
+  manual
+  import
+
+  @@schema("talent_evidence")
+}
+
 // §2.2 TalentContactMethod.type — "email" | "phone" | "linkedin" | "github" | "portfolio" | "other"
 enum TalentContactType {
   email
@@ -221,6 +240,53 @@ model TalentWorkHistoryEntry {
 
   is_authoritative    Boolean?
   created_at          DateTime                @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+// TR-7 B1 — TalentEducationEntry. A declared academic credential extracted from
+// the résumé (the TalentWorkHistoryEntry precedent). institution_name + degree_name
+// are NOT-NULL (so the pure DEGREE mapper's required fields are always present —
+// the write-gate conformance property). Dates are @db.Date (calendar granularity).
+model TalentEducationEntry {
+  id               String                @id @db.Uuid
+  talent_id        String                @db.Uuid
+  tenant_id        String                @db.Uuid
+
+  institution_name String
+  degree_name      String
+  field_of_study   String?
+  conferred_date   DateTime?             @db.Date
+
+  // The verbatim source excerpt the extraction copied (constrained-to-source).
+  evidence_text    String?
+  source           TalentEducationSource
+  created_at       DateTime              @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([tenant_id, talent_id])
+  @@schema("talent_evidence")
+}
+
+// TR-7 B1 — TalentCertificationEntry. A declared professional certification.
+// certification_name is NOT-NULL (the CERTIFICATION mapper's required field always
+// present). issuer/credential_ref and issued/expiry dates are optional.
+model TalentCertificationEntry {
+  id                 String                    @id @db.Uuid
+  talent_id          String                    @db.Uuid
+  tenant_id          String                    @db.Uuid
+
+  certification_name String
+  issuer_name        String?
+  credential_ref     String?
+  issued_date        DateTime?                 @db.Date
+  expiry_date        DateTime?                 @db.Date
+
+  evidence_text      String?
+  source             TalentCertificationSource
+  created_at         DateTime                  @db.Timestamptz
 
   @@index([tenant_id])
   @@index([tenant_id, talent_id])

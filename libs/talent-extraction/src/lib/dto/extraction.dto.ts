@@ -40,9 +40,32 @@ export interface ExtractedWorkHistory {
   description?: string;
 }
 
+// TR-7 B1 — declared academic credential + professional certification. Same
+// constrained-to-source contract: institution+degree / name are required, dates
+// only when explicitly stated, every item carries a verbatim source_excerpt.
+export interface ExtractedEducation {
+  institution_name: string;
+  degree_name: string;
+  source_excerpt: string;
+  field_of_study?: string;
+  conferred_date?: string;
+}
+
+export interface ExtractedCertification {
+  certification_name: string;
+  source_excerpt: string;
+  issuer_name?: string;
+  credential_ref?: string;
+  issued_date?: string;
+  expiry_date?: string;
+}
+
 export interface ExtractionCompletion {
   skills: ExtractedSkill[];
   work_history: ExtractedWorkHistory[];
+  // TR-7 B1 — the two new declared-evidence classes.
+  education: ExtractedEducation[];
+  certifications: ExtractedCertification[];
 }
 
 // What TalentExtractionService persisted (declared evidence rows). Ids of the
@@ -50,6 +73,9 @@ export interface ExtractionCompletion {
 export interface ExtractDeclaredEvidenceResult {
   skill_evidence_ids: string[];
   work_history_ids: string[];
+  // TR-7 B1 — the education/certification typed-row ids.
+  education_ids: string[];
+  certification_ids: string[];
   // Items the LLM proposed but the constrained-to-source guardrail rejected
   // (no valid source_excerpt). Surfaced for observability, never persisted.
   rejected_count: number;

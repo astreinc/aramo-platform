@@ -147,7 +147,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const ev = await service.recordEvidence({
         subjectRef: refFor(uuidv7()),
         dimension: 'CLAIMS',
-        assertion_type: 'DEGREE', // not in CANONICAL_CLAIM_SHAPES
+        assertion_type: 'RIGHT_TO_WORK', // not in CANONICAL_CLAIM_SHAPES (DEGREE is now registered — TR-7 B1)
         assertion_payload: { whatever: 'free form', nested: { x: 1 } },
         source_class: 'SELF',
         method: 'SELF_DECLARED',

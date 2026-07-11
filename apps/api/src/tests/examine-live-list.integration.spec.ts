@@ -80,6 +80,7 @@ const MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
   // talent-evidence
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
+  'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
   // talent-trust — TR-4 B2: examine Step-4b now routes declared CLAIMS into the
   // trust ledger, so the examine flow needs the talent_trust schema present.
   'libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql',
