@@ -160,6 +160,40 @@ describe('ats-web → GET /v1/consent/decision-log/:talent_record_id', () => {
         expect(body.entries.length).toBeGreaterThan(0);
       });
   });
+
+  // TR-15 B1 (DDR §3) — the forensic decision log is no longer a general
+  // authenticated read. A principal WITHOUT consent:decision-log:read now
+  // refuses with 403 INSUFFICIENT_PERMISSIONS (the provider rewrites this fake
+  // token to a real session that lacks the scope). Pinned so the gate can never
+  // silently regress to open.
+  it('returns 403 INSUFFICIENT_PERMISSIONS when the caller lacks consent:decision-log:read', async () => {
+    await provider
+      .addInteraction()
+      .given('a session without the consent decision-log scope')
+      .uponReceiving('an ats-web consent decision-log read without the scope')
+      .withRequest('GET', `/v1/consent/decision-log/${TALENT_ID}`, (b) => {
+        b.headers({ Authorization: 'Bearer eyJfake.noscopes.token' });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: like('Required scopes not granted'),
+            request_id: uuid(),
+            details: like({}),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/consent/decision-log/${TALENT_ID}`,
+          { headers: { Authorization: 'Bearer eyJfake.noscopes.token' } },
+        );
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
 });
 
 beforeAll(() => undefined);

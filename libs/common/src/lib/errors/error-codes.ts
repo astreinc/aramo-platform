@@ -347,6 +347,19 @@ export const ERROR_CODES = [
   // DISMISSED — a terminal proposal cannot be re-dismissed). HTTP 409 (the
   // state-conflict class — mirrors ADVISORY_NOT_PENDING at the proposal surface).
   'PROPOSAL_NOT_OPEN',
+  // TR-15 B1 (DDR §2) — the dispute machinery's operational refusals.
+  // EVIDENCE_NOT_DISPUTABLE: dispute() on a record that is neither VALID (the
+  // only disputable status) nor already DISPUTED (a repeat is a no-op, not a
+  // refusal) — e.g. STALE / CONTRADICTED / REVOKED / SUPERSEDED. HTTP 422.
+  'EVIDENCE_NOT_DISPUTABLE',
+  // EVIDENCE_NOT_DISPUTED: resolveDispute() on a record whose current_status is
+  // not DISPUTED (a resolve is meaningful only against a standing dispute —
+  // mirrors EVIDENCE_NOT_CONTRADICTED at the DISPUTED axis). HTTP 422.
+  'EVIDENCE_NOT_DISPUTED',
+  // DISPUTE_OUTCOME_INVALID: resolveDispute() outcome is neither 'upheld' nor
+  // 'rejected' (the lenient DTO admits any string; the service is the gate).
+  // HTTP 422.
+  'DISPUTE_OUTCOME_INVALID',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

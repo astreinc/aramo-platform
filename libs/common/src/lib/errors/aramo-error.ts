@@ -76,6 +76,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   TENANT_CLOSED: 403,
   // TR-12 B1 — dismissProposal on a non-OPEN proposal (already terminal).
   PROPOSAL_NOT_OPEN: 409,
+  // TR-15 B1 — the dispute machinery's operational refusals (all 422).
+  EVIDENCE_NOT_DISPUTABLE: 422,
+  EVIDENCE_NOT_DISPUTED: 422,
+  DISPUTE_OUTCOME_INVALID: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response
