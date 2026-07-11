@@ -835,6 +835,18 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // memberships/teams; IdentityAuditEvent (nullable tenant_id, no FK) and
       // settings.TenantSetting are standalone.
       await c.query('TRUNCATE TABLE identity."Tenant" CASCADE');
+      // Inc-3 PR-3.7 (Lead scope amendment — the write-freeze retrofit extends to
+      // the pact provider harness) — the global TenantWriteFreezeInterceptor reads
+      // identity.Tenant.status on EVERY authenticated mutation. Ensure the status
+      // column exists (no-op once the pre-lifecycle-status list carries it) so
+      // findLifecycleById can read it; a state handler's own tenant seed then
+      // defaults to PROVISIONED (which writes normally), and the requestFilter
+      // backfills an ACTIVE tenant for interactions that seed none. NOT seeded
+      // here — seeding in resetAllRows would pre-empt a state handler's tenant
+      // row (its ON CONFLICT DO NOTHING would skip, dropping e.g. allowed_domain).
+      await c.query(
+        `ALTER TABLE identity."Tenant" ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'PROVISIONED'`,
+      );
       await c.query('TRUNCATE TABLE identity."IdentityAuditEvent" CASCADE');
       await c.query('TRUNCATE TABLE settings."TenantSetting" CASCADE');
       // PC-7c — User + Role are global (no tenant FK); CASCADE clears
@@ -5600,11 +5612,35 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     //     invitation-accept + email-verification confirms) — the cookie
     //     branch is conditional on the literal substring, so it's a
     //     no-op for those.
-    function requestFilter(
+    async function requestFilter(
       req: { headers: Record<string, string | string[] | undefined> },
       _res: unknown,
       next: () => void,
-    ): void {
+    ): Promise<void> {
+      // Inc-3 PR-3.7 — runs AFTER the state handler's own seeds (on a fresh
+      // withClient connection — the state handlers use short-lived clients, there
+      // is no persistent one here). Backfills an ACTIVE tenant ONLY when the
+      // interaction seeded none (ON CONFLICT DO NOTHING never clobbers a
+      // state-seeded tenant — that row stays PROVISIONED, which the write-freeze
+      // interceptor lets write). Closes the null-tenant fail-closed (403
+      // TENANT_CLOSED) on mutation interactions with no tenant. The ALTER guards
+      // interactions with no `given` state (resetAllRows never ran).
+      try {
+        await withClient(async (client) => {
+          await client.query(
+            `ALTER TABLE identity."Tenant" ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'PROVISIONED'`,
+          );
+          await client.query(
+            `INSERT INTO identity."Tenant" (id, name, status, is_active, updated_at)
+               VALUES ($1, 'pact-write-freeze', 'ACTIVE', true, now())
+             ON CONFLICT (id) DO NOTHING`,
+            [TENANT_ID],
+          );
+        });
+      } catch {
+        // best-effort; a read interaction that never touches identity.Tenant is
+        // unaffected either way.
+      }
       const cookieHeader = req.headers['cookie'] ?? req.headers['Cookie'];
       if (
         typeof cookieHeader === 'string' &&

@@ -21,6 +21,8 @@ import {
 
 import { AppModule } from '../app.module.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // PR-A2 Gate 5 — ATS Batch 1 (company + contact) HTTP integration spec.
 //
 // This is THE pattern-setter test (Ruling 6). Every later ATS-domain batch
@@ -198,6 +200,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_ATS);
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_NOT_ATS);
 
       // Seed the `ats` entitlement for TENANT_ATS. The bootstrap seed in
       // the entitlement init migration already inserts it for the same

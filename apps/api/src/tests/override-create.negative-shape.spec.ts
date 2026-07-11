@@ -22,6 +22,8 @@ import {
 
 import { AppModule } from '../app.module.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // M4 PR-5 §4.11 — companion negative-shape integration test for POST
 // /v1/examinations/{examination_id}/overrides.
 //
@@ -189,6 +191,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_ID);
 
       await setup.query(
         `INSERT INTO job_domain."Requisition" (id, tenant_id, job_id, recruiter_id, state)

@@ -21,6 +21,8 @@ import {
 
 import { AppModule } from '../app.module.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // AUTHZ-D4b — the composed visibility predicate + 6-entity cascade
 // (READ-SIDE). Proves the over/under-restriction matrix from the D4b
 // directive §7 + the commit plan §4.1: 8 rows, both directions per actor.
@@ -478,6 +480,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_ATS);
 
       await setupClient.query(
         `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)

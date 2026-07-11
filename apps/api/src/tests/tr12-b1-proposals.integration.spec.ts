@@ -25,6 +25,8 @@ import { AppModule } from '../app.module.js';
 import { ConsistencyService } from '../talent-identity/consistency.service.js';
 import { RecomputeSweepService } from '../talent-identity/recompute-sweep.service.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // TR-12 B1 (DDR §3/§4 + §5) — the caseworker's proposal substrate, end-to-end on
 // real Postgres 17. Proves: (b) dedup + lifecycle (OPEN refresh / DISMISSED
 // permanent no-op / new-basis new-row / dismiss guard); (c) BOTH hosts (the
@@ -200,6 +202,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           [TENANT, cap],
         );
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => db.query(s), TENANT);
       const kp = await generateKeyPair(ALG);
       const publicPem = await exportSPKI(kp.publicKey as never);
       privateKey = kp.privateKey as SignKey;

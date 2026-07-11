@@ -21,6 +21,8 @@ import {
 
 import { AppModule } from '../app.module.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // PR-A3 Gate 5 — ATS Batch 2 (requisition + assignment-visibility) integration spec.
 //
 // Proof matrix:
@@ -190,6 +192,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_ATS);
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_NOT_ATS);
 
       // Idempotent ats entitlement for TENANT_ATS (the bootstrap seed
       // already covers this; re-asserting makes the spec self-contained).

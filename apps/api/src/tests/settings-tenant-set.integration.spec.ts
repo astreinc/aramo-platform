@@ -21,6 +21,8 @@ import {
 
 import { AppModule } from '../app.module.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // Settings S2 — the endpoint-level §4.1 proofs (the four-axis closed-set-at-
 // write security property + the audit two-call seam).
 //
@@ -143,6 +145,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const p of [IDENTITY_INIT, IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG, IDENTITY_IDP, IDENTITY_IDP_LC, IDENTITY_INVITATION_MIG, IDENTITY_PROFILE, ENTITLEMENT_INIT, SETTINGS_INIT]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_A);
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_B);
 
       // Entitle both tenants with `core` (the baseline tenant capability).
       for (const tenant of [TENANT_A, TENANT_B]) {

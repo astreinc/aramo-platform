@@ -22,6 +22,7 @@ import {
 
 import { AppModule } from '../../../../apps/api/src/app.module.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import {
   applyTalentRecordMigrations,
   seedTalentRecord,
@@ -150,6 +151,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           await setupClient.query(trimmed);
         }
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for the forged tenant_id.
+      // Every request (incl. the Pattern-C refusal, which uses a ghost talent under
+      // TENANT_A) forges TENANT_A, so the handler's 422 is reached, not write-frozen.
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_A);
+
       // 4e-engagement-key — TalentRecord substrate (engagement.talent_id).
       // TENANT_A only; TENANT_B has no TalentRecord → Pattern C refusal 422.
       await applyTalentRecordMigrations(setupClient);

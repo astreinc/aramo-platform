@@ -22,6 +22,8 @@ import {
 
 import { AppModule } from '../app.module.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // M4 PR-3 §4.7 — Companion negative-shape integration test for the new
 // POST /v1/submittals endpoint. F23 standing pattern: a Vitest end-to-end
 // test that boots AppModule + posts a real create request + walks the
@@ -219,6 +221,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_ID);
 
       // Seed an active requisition + an Entrustable examination so the
       // builder happy-path completes.

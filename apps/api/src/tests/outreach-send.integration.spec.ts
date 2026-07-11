@@ -27,6 +27,7 @@ import {
   applyTalentRecordMigrations,
   seedTalentRecord,
 } from './talent-record-fixtures.js';
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
 // M5 PR-6 §4.16 — POST /v1/engagements/{id}/outreach HTTP integration spec.
 //
@@ -158,6 +159,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           await setup.query(t);
         }
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_A);
       // 4e-engagement-key — engagement.talent_id now references TalentRecord.
       await applyTalentRecordMigrations(setup);
 

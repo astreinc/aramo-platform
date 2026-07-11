@@ -21,6 +21,8 @@ import {
 
 import { AppModule } from '../app.module.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // PR-A7 Gate 5 — ATS-INTERNAL reporting + dashboard integration spec.
 //
 // Proof matrix:
@@ -303,6 +305,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_ATS);
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_NOT_ATS);
 
       await setupClient.query(
         `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
