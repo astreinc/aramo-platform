@@ -695,6 +695,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // ("an ingestion-consumer token (non-portal)"); the controller's
     // per-route consumer_type check rejects it with 403.
     let ingestionJwt: string;
+    // TR-15 B1 — a recruiter-tenant session that LACKS consent:decision-log:read
+    // (a general authenticated principal), for the decision-log 403 refusal pact.
+    let insufficientJwt: string;
     // Assigned in beforeAll before any state handler runs; initialized empty
     // for strict null-checks compliance.
     let dbUrl = '';
@@ -2911,6 +2914,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'report:read',
           'export:read',
           'import:read',
+          // TR-15 B1 — the decision-log route is now scope-gated
+          // (consent:decision-log:read). Recruiter is a valid holder (seed), so
+          // the existing decision-log happy-path interaction stays green under
+          // the new gate. Additive; inert for prior interactions. COUPLING FLAG.
+          'consent:decision-log:read',
         ],
       })
         .setProtectedHeader({ alg: ALG })
@@ -2960,6 +2968,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         actor_kind: 'service_account',
         tenant_id: TENANT_ID,
         scopes: ['ingestion:write'],
+      })
+        .setProtectedHeader({ alg: ALG })
+        .setIssuedAt()
+        .setIssuer(ISSUER)
+        .setAudience(AUDIENCE)
+        .setExpirationTime('1h')
+        .sign(privateKey);
+
+      // TR-15 B1 — a valid recruiter-tenant session that holds an unrelated
+      // scope but NOT consent:decision-log:read. JwtAuthGuard accepts it;
+      // RolesGuard on the newly-gated decision-log route rejects with 403
+      // INSUFFICIENT_PERMISSIONS — the general-authenticated-principal refusal.
+      insufficientJwt = await new SignJWT({
+        sub: RECRUITER_ID,
+        consumer_type: 'recruiter',
+        actor_kind: 'user',
+        tenant_id: TENANT_ID,
+        scopes: ['talent:read'],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -3164,6 +3190,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             payload: { scope: 'profile_storage' },
             createdAt: '2026-04-29T00:00:00.000Z',
           });
+        });
+      },
+      // TR-15 B1 — the decision-log 403 refusal. RolesGuard rejects on the
+      // missing consent:decision-log:read scope BEFORE any repository read, so
+      // the state only needs a clean slate (the audit row is never reached).
+      'a session without the consent decision-log scope': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
         });
       },
       // PC-7a — 2 consent events so that a ?limit=1 read returns 1 event AND a
@@ -5683,6 +5717,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // M3 PR-9 §4.8 — portal-thin 403 interaction (ingestion token
         // hitting /v1/portal/consent).
         req.headers['authorization'] = `Bearer ${ingestionJwt}`;
+      } else if (
+        typeof authHeader === 'string' &&
+        authHeader === 'Bearer eyJfake.noscopes.token'
+      ) {
+        // TR-15 B1 — the decision-log 403 refusal interaction ships a fake
+        // token → rewrite to insufficientJwt (a valid session WITHOUT
+        // consent:decision-log:read). RolesGuard returns 403 INSUFFICIENT_PERMISSIONS.
+        req.headers['authorization'] = `Bearer ${insufficientJwt}`;
       }
       next();
     }

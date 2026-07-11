@@ -58,6 +58,7 @@ import {
   type CorroboratorConflictKind,
   type DecayProfile,
   type EvidenceEventType,
+  type EvidenceStatus,
   type Method,
   type PortabilityClass,
   type ProposalKind,
@@ -872,12 +873,96 @@ export class TalentTrustService {
     await this.applyLifecycle(oldId, 'SUPERSEDED', { linked_evidence_id: newId, evidence: ev });
   }
 
-  async dispute(evidenceId: string, reason: string): Promise<void> {
-    await this.applyLifecycle(evidenceId, 'DISPUTED', { reason });
+  // TR-15 B1 (DDR §2) — dispute completed to the resolveContradiction standard.
+  // v1 disputes are recruiter/admin-raised on a talent's communicated objection
+  // (the talent-raised surface is TR-15-B). Status-guarded: only a VALID record
+  // disputes; a repeat (already DISPUTED) is a no-op returning current state
+  // (idempotent re-raise); any other status refuses with a domain code. Full
+  // actor + grounds audit event. requestId threads into the refusal envelope
+  // (defaults to the lib sentinel off-HTTP).
+  async dispute(
+    evidenceId: string,
+    actor: string,
+    grounds: string,
+    requestId: string = CLAIM_SHAPE_REQUEST_ID,
+  ): Promise<{ status: EvidenceStatus }> {
+    const ev = await this.requireEvidence(evidenceId);
+    if (ev.current_status === 'DISPUTED') {
+      // Repeat raise on an already-open dispute → no-op returning current state.
+      return { status: ev.current_status };
+    }
+    if (ev.current_status !== 'VALID') {
+      // Only a live (VALID) record can be disputed — a dispute against a STALE/
+      // CONTRADICTED/REVOKED/SUPERSEDED row is meaningless. Domain-coded 422.
+      throw new AramoError(
+        'EVIDENCE_NOT_DISPUTABLE',
+        `dispute requires a VALID record (evidence ${evidenceId} is ${ev.current_status})`,
+        422,
+        { requestId, details: { evidence_id: evidenceId, current_status: ev.current_status } },
+      );
+    }
+    await this.applyLifecycle(evidenceId, 'DISPUTED', {
+      reason: grounds,
+      actor,
+      evidence: ev,
+    });
+    return { status: 'DISPUTED' };
   }
 
-  async resolveDispute(evidenceId: string, outcome: string): Promise<void> {
-    await this.applyLifecycle(evidenceId, 'DISPUTE_RESOLVED', { reason: outcome });
+  // TR-15 B1 (DDR §2) — resolveDispute with outcomes made real inside the
+  // existing closed vocab. Guarded: only a DISPUTED record resolves. rejected →
+  // DISPUTE_RESOLVED → VALID (the existing path, now with actor + justification);
+  // upheld → DISPUTE_RESOLVED atomically chained with REVOKED (two events, ONE
+  // tx — the honest trail: the dispute resolved, and the evidence retired because
+  // it was wrong). Recompute rides both. The DTO is lenient (IsString), so the
+  // outcome is validated HERE → DISPUTE_OUTCOME_INVALID for anything else.
+  async resolveDispute(
+    evidenceId: string,
+    actor: string,
+    outcome: string,
+    justification: string,
+    requestId: string = CLAIM_SHAPE_REQUEST_ID,
+  ): Promise<{ status: EvidenceStatus }> {
+    const ev = await this.requireEvidence(evidenceId);
+    if (ev.current_status !== 'DISPUTED') {
+      // A resolve is meaningful only against a standing dispute (mirrors the
+      // contradiction template's not-CONTRADICTED refusal). Domain-coded 422.
+      throw new AramoError(
+        'EVIDENCE_NOT_DISPUTED',
+        `resolveDispute requires a DISPUTED record (evidence ${evidenceId} is ${ev.current_status})`,
+        422,
+        { requestId, details: { evidence_id: evidenceId, current_status: ev.current_status } },
+      );
+    }
+    if (outcome !== 'upheld' && outcome !== 'rejected') {
+      throw new AramoError(
+        'DISPUTE_OUTCOME_INVALID',
+        `resolveDispute outcome must be 'upheld' or 'rejected' (got ${JSON.stringify(outcome)})`,
+        422,
+        { requestId, details: { evidence_id: evidenceId, outcome } },
+      );
+    }
+    if (outcome === 'rejected') {
+      // The dispute did not hold → the record returns to VALID and re-accrues.
+      await this.applyLifecycle(evidenceId, 'DISPUTE_RESOLVED', {
+        reason: justification,
+        actor,
+        evidence: ev,
+      });
+      return { status: 'VALID' };
+    }
+    // upheld → the evidence was wrong: resolve the dispute AND retire the
+    // evidence, atomically (DISPUTE_RESOLVED then REVOKED in one transaction —
+    // a mid-tx failure leaves neither event and no status change). REVOKED is
+    // excluded from accrual, so the retirement is permanent for this row.
+    await this.repo.appendResolvedThenRevoked({
+      evidence_id: evidenceId,
+      tenant_id: ev.tenant_id,
+      actor,
+      justification,
+    });
+    await this.recompute(ev.subject_id, ev.tenant_id, new Date());
+    return { status: 'REVOKED' };
   }
 
   // TR-4 B1 (DDR §2.4) — the CLOSURE ARM the contradiction machinery has lacked

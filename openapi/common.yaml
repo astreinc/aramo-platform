@@ -636,7 +636,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '403':
-          description: Tenant access denied (caller-blocked)
+          description: |
+            Tenant access denied (caller-blocked), or INSUFFICIENT_PERMISSIONS
+            (TR-15 B1 — the caller lacks the consent:decision-log:read scope; the
+            forensic decision log is not a general authenticated read).
           content:
             application/json:
               schema:
@@ -1566,6 +1569,10 @@ components:
         on a record whose current_status is not CONTRADICTED).
         TR-12 B1 adds PROPOSAL_NOT_OPEN (409, dismissProposal called on a
         VerificationProposal not in OPEN status — already ACTED or DISMISSED).
+        TR-15 B1 adds the dispute-machinery refusals: EVIDENCE_NOT_DISPUTABLE
+        (422, dispute() on a record neither VALID nor already DISPUTED),
+        EVIDENCE_NOT_DISPUTED (422, resolveDispute() on a non-DISPUTED record),
+        DISPUTE_OUTCOME_INVALID (422, resolveDispute() outcome not upheld/rejected).
         Inc-3 PR-3.7 — TENANT_SUSPENDED / TENANT_CLOSED (already registered for
         the auth-service mint gate) become CROSS-CUTTING write-freeze codes: a
         still-valid session (within the ≤15-min access-token TTL) that attempts a
@@ -1632,6 +1639,9 @@ components:
         - TENANT_SUSPENDED
         - TENANT_CLOSED
         - PROPOSAL_NOT_OPEN
+        - EVIDENCE_NOT_DISPUTABLE
+        - EVIDENCE_NOT_DISPUTED
+        - DISPUTE_OUTCOME_INVALID
 
     ErrorObject:
       type: object
