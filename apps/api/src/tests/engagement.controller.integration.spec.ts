@@ -60,6 +60,7 @@ const EXAM_LIVE_LIST = resolve(ROOT, 'libs/examination/prisma/migrations/2026052
 const JOB_DOMAIN_INIT = resolve(ROOT, 'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql');
 const TALENT_INIT = resolve(ROOT, 'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql');
 const TALENT_EVIDENCE_INIT = resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql');
+const TALENT_EVIDENCE_TR7 = resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql');
 const EVIDENCE_INIT = resolve(ROOT, 'libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql');
 const SUBMITTAL_INIT = resolve(ROOT, 'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql');
 const SUBMITTAL_REVOKE = resolve(ROOT, 'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql');
@@ -132,6 +133,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         JOB_DOMAIN_INIT,
         TALENT_INIT,
         TALENT_EVIDENCE_INIT,
+        TALENT_EVIDENCE_TR7,
         EVIDENCE_INIT,
         SUBMITTAL_INIT,
         SUBMITTAL_REVOKE,

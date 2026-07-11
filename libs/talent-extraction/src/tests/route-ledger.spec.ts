@@ -25,6 +25,9 @@ function makeService(opts: {
   const evidence = {
     listSkillEvidenceForLedger: vi.fn().mockResolvedValue(opts.skills),
     listWorkHistoryForLedger: vi.fn().mockResolvedValue(opts.work),
+    // TR-7 B1 — the two new credential reads (empty for these control-flow cases).
+    listEducationForLedger: vi.fn().mockResolvedValue([]),
+    listCertificationForLedger: vi.fn().mockResolvedValue([]),
   };
   const record = vi.fn(opts.record);
   const trust = { recordDeclaredClaimIfAbsent: record };
@@ -51,7 +54,7 @@ describe('routeDeclaredEvidenceToLedger — idempotence (§5c)', () => {
       record: () => Promise.resolve({ written: false }),
     });
     const r = await service.routeDeclaredEvidenceToLedger({ tenant_id: 't', talent_id: 'tr' });
-    expect(r).toEqual({ skills_written: 0, work_history_written: 0, skipped: 2 });
+    expect(r).toEqual({ skills_written: 0, work_history_written: 0, education_written: 0, certification_written: 0, skipped: 2 });
     expect(record).toHaveBeenCalledTimes(2);
   });
 
@@ -62,7 +65,7 @@ describe('routeDeclaredEvidenceToLedger — idempotence (§5c)', () => {
       record: (input) => Promise.resolve({ written: input.source_ref.talent_evidence_id === 's2' }),
     });
     const r = await service.routeDeclaredEvidenceToLedger({ tenant_id: 't', talent_id: 'tr' });
-    expect(r).toEqual({ skills_written: 1, work_history_written: 0, skipped: 1 });
+    expect(r).toEqual({ skills_written: 1, work_history_written: 0, education_written: 0, certification_written: 0, skipped: 1 });
   });
 });
 
@@ -86,6 +89,8 @@ describe('routeDeclaredEvidenceToLedger — loud fail then exactly-once on retry
     const evidence = {
       listSkillEvidenceForLedger: vi.fn().mockResolvedValue(SKILLS),
       listWorkHistoryForLedger: vi.fn().mockResolvedValue([]),
+      listEducationForLedger: vi.fn().mockResolvedValue([]),
+      listCertificationForLedger: vi.fn().mockResolvedValue([]),
     };
     const trust = { recordDeclaredClaimIfAbsent: vi.fn(record) };
     const service = new TalentExtractionService(
@@ -104,7 +109,7 @@ describe('routeDeclaredEvidenceToLedger — loud fail then exactly-once on retry
     // Retry — s1 already present (skip), s2 now writes → exactly once.
     failNext = false;
     const r = await service.routeDeclaredEvidenceToLedger({ tenant_id: 't', talent_id: 'tr' });
-    expect(r).toEqual({ skills_written: 1, work_history_written: 0, skipped: 1 });
+    expect(r).toEqual({ skills_written: 1, work_history_written: 0, education_written: 0, certification_written: 0, skipped: 1 });
     expect(written.has('s2')).toBe(true);
     // s1 was written exactly once (run 1), s2 exactly once (retry).
     expect([...written].sort()).toEqual(['s1', 's2']);

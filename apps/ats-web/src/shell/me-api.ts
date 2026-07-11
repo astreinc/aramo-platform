@@ -24,7 +24,9 @@ export const ME_PATH = '/v1/me';
 export interface Me {
   readonly user: { readonly display_name: string | null; readonly email: string };
   readonly roles: readonly string[];
-  readonly tenant: { readonly display_name: string };
+  // Inc-3 PR-3.5 (Workstream C) — `status` is the tenant lifecycle state; the
+  // shell renders the OFFBOARDING winding-down banner from it.
+  readonly tenant: { readonly display_name: string; readonly status: string };
 }
 
 export function fetchMe(): Promise<Me> {

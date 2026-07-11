@@ -27,6 +27,8 @@ function makeService(completion: string) {
   const evidence = {
     createTalentSkillEvidence: vi.fn().mockResolvedValue({}),
     createTalentWorkHistoryEntry: vi.fn().mockResolvedValue({}),
+    createTalentEducationEntry: vi.fn().mockResolvedValue({}),
+    createTalentCertificationEntry: vi.fn().mockResolvedValue({}),
   };
   const svc = new TalentExtractionService(aiDraft as never, evidence as never);
   return { svc, aiDraft, evidence };
@@ -166,9 +168,68 @@ describe('TalentExtractionService.extractDeclaredEvidence', () => {
   it('no-ops (no LLM call) when there is no declared source text', async () => {
     const { svc, aiDraft, evidence } = makeService('{}');
     const out = await svc.extractDeclaredEvidence({ tenant_id: TENANT, talent_id: TALENT });
-    expect(out).toEqual({ skill_evidence_ids: [], work_history_ids: [], rejected_count: 0 });
+    expect(out).toEqual({
+      skill_evidence_ids: [],
+      work_history_ids: [],
+      education_ids: [],
+      certification_ids: [],
+      rejected_count: 0,
+    });
     expect(aiDraft.generateDraft).not.toHaveBeenCalled();
     expect(evidence.createTalentSkillEvidence).not.toHaveBeenCalled();
+  });
+
+  // TR-7 B1 — the education/certification extraction path: same constrained-to-
+  // source guardrail; sourced rows persist as 'resume' with the verbatim excerpt.
+  it('persists sourced education + certifications (constrained-to-source)', async () => {
+    const resume =
+      'BSc Computer Science, MIT, 2018. Certified Kubernetes Administrator (CKA), issued 2021.';
+    const completion = JSON.stringify({
+      skills: [],
+      work_history: [],
+      education: [
+        {
+          institution_name: 'MIT',
+          degree_name: 'BSc',
+          field_of_study: 'Computer Science',
+          conferred_date: '2018',
+          source_excerpt: 'BSc Computer Science, MIT, 2018',
+        },
+        // Not in source → rejected.
+        { institution_name: 'Fake U', degree_name: 'PhD', source_excerpt: 'never written' },
+      ],
+      certifications: [
+        {
+          certification_name: 'CKA',
+          issued_date: '2021',
+          source_excerpt: 'Certified Kubernetes Administrator (CKA), issued 2021',
+        },
+      ],
+    });
+    const { svc, evidence } = makeService(completion);
+
+    const out = await svc.extractDeclaredEvidence({
+      tenant_id: TENANT,
+      talent_id: TALENT,
+      resume_text: resume,
+    });
+
+    expect(out.education_ids).toHaveLength(1);
+    expect(out.certification_ids).toHaveLength(1);
+    expect(out.rejected_count).toBe(1); // the un-sourced PhD
+    expect(evidence.createTalentEducationEntry).toHaveBeenCalledTimes(1);
+    expect(evidence.createTalentEducationEntry.mock.calls[0]![0]).toMatchObject({
+      talent_id: TALENT,
+      institution_name: 'MIT',
+      degree_name: 'BSc',
+      field_of_study: 'Computer Science',
+      source: 'resume',
+      evidence_text: 'BSc Computer Science, MIT, 2018',
+    });
+    expect(evidence.createTalentCertificationEntry.mock.calls[0]![0]).toMatchObject({
+      certification_name: 'CKA',
+      source: 'resume',
+    });
   });
 });
 

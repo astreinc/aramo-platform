@@ -114,6 +114,17 @@
   font-size: 0.85rem;
   color: var(--muted);
 }
+/* Inc-3 PR-3.4 — "owner not yet invited" notice on the tenant detail page. */
+.pw-notice {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--r-sm);
+  background: var(--brand-tint);
+  color: var(--ink);
+  font-size: 0.9rem;
+}
 
 .pw-actions {
   display: flex;

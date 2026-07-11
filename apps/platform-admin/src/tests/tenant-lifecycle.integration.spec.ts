@@ -514,11 +514,66 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(cognitoMock.adminResendInvite).toHaveBeenCalledWith(
         expect.objectContaining({ pool: 'tenant', email: 'owner@resend.co' }),
       );
-      const audit = await identityPrisma.identityAuditEvent.findFirst({
+      // Inc-3 PR-3.4: provisioning with invite_owner defaulting true emits a
+      // tenant.owner_invite.sent(first_send) at provision; this resend adds a
+      // second with reason `resend` (prior send exists). Newest-first → resend.
+      const sends = await identityPrisma.identityAuditEvent.findMany({
+        where: { event_type: 'tenant.owner_invite.sent', tenant_id: tenantId },
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      });
+      expect(sends.map((e) => (e.event_payload as { reason?: string })?.reason)).toEqual([
+        'resend',
+        'first_send',
+      ]);
+    });
+
+    it('create-now-invite-later — provision invite_owner=false: PROVISIONED, Cognito SUPPRESSed, NO owner_invite.sent; then send-when-ready emits first_send', async () => {
+      const token = await jwt(LIFECYCLE_SCOPES);
+      cognitoMock.adminCreateUser.mockClear();
+      const prov = await request(server())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          name: 'Invite Later Co',
+          owner_email: 'owner@invitelater.co',
+          invite_owner: false,
+        });
+      expect(prov.status).toBe(201);
+      expect(prov.body.invitation_sent).toBe(false);
+      const tenantId = prov.body.tenant_id;
+
+      // Cognito user was created SUPPRESSed (no invitation email at creation).
+      expect(cognitoMock.adminCreateUser).toHaveBeenCalledWith(
+        expect.objectContaining({ pool: 'tenant', email: 'owner@invitelater.co', suppress: true }),
+      );
+      // Tenant landed PROVISIONED.
+      const tenant = await identityPrisma.tenant.findUnique({ where: { id: tenantId } });
+      expect(tenant?.status).toBe('PROVISIONED');
+      // The provision event records invitation_sent:false and NO owner_invite.sent yet.
+      const provEvent = await identityPrisma.identityAuditEvent.findFirst({
+        where: { event_type: 'identity.tenant.created', tenant_id: tenantId },
+      });
+      expect((provEvent?.event_payload as { invitation_sent?: boolean })?.invitation_sent).toBe(false);
+      const before = await identityPrisma.identityAuditEvent.findMany({
         where: { event_type: 'tenant.owner_invite.sent', tenant_id: tenantId },
       });
-      expect(audit).not.toBeNull();
-      expect((audit?.event_payload as { reason?: string })?.reason).toBe('resend');
+      expect(before).toHaveLength(0);
+
+      // Send-when-ready via the existing endpoint → RESEND + first_send audit.
+      cognitoMock.adminResendInvite.mockClear();
+      const send = await request(server())
+        .post(`/platform/tenants/${tenantId}/resend-owner-invite`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({});
+      expect(send.status).toBe(200);
+      expect(cognitoMock.adminResendInvite).toHaveBeenCalledWith(
+        expect.objectContaining({ pool: 'tenant', email: 'owner@invitelater.co' }),
+      );
+      const after = await identityPrisma.identityAuditEvent.findMany({
+        where: { event_type: 'tenant.owner_invite.sent', tenant_id: tenantId },
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      });
+      expect(after.map((e) => (e.event_payload as { reason?: string })?.reason)).toEqual(['first_send']);
     });
 
     it('resend-owner-invite — non-PROVISIONED tenant → 422 tenant_not_provisioned, no Cognito call', async () => {

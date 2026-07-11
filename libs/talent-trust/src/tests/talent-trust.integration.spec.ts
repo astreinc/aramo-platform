@@ -300,7 +300,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         subjectRef: subjectRefB,
         dimension: 'CLAIMS',
         assertion_type: 'CERTIFICATION',
-        assertion_payload: { cert: 'AWS-SAA' },
+        assertion_payload: { name_raw: 'AWS-SAA' }, // conforms to certificationShape (registered — TR-7 B1)
         source_class: 'AUTHORITATIVE_ISSUER',
         method: 'API_REGISTRY',
         portability_class: 'TENANT_ONLY',

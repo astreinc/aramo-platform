@@ -72,6 +72,9 @@ export class PlatformController {
     @RequestId() requestId: string,
   ): Promise<ProvisionTenantResponseDto> {
     this.assertConsumerIsPlatform(authCtx, requestId);
+    // Inc-3 PR-3.4 (B1) — default true byte-preserves the pre-3.4 provision
+    // path for every existing caller that omits the field.
+    const invite_owner = body.invite_owner ?? true;
     const result = await this.invitations.provisionTenantAndInviteOwner({
       name: body.name,
       owner_email: body.owner_email,
@@ -79,6 +82,7 @@ export class PlatformController {
       capabilities: body.capabilities,
       actor_user_id: authCtx.sub,
       request_id: requestId,
+      invite_owner,
     });
     return {
       tenant_id: result.tenant_id,
@@ -87,7 +91,7 @@ export class PlatformController {
       owner_email: result.owner_email,
       membership_id: result.membership_id,
       capabilities: result.capabilities,
-      invitation_sent: true,
+      invitation_sent: result.invitation_sent,
     };
   }
 

@@ -39,15 +39,20 @@ describe('validateClaimShape — registered vs unregistered posture (§5a)', () 
   });
 
   it('an UNREGISTERED type with any object passes through untouched (admission open)', () => {
-    expect(isRegisteredAssertionType('DEGREE')).toBe(false);
+    // DEGREE/CERTIFICATION are now registered (TR-7 B1); use a genuinely
+    // unregistered type to exercise the passthrough posture.
+    expect(isRegisteredAssertionType('RIGHT_TO_WORK')).toBe(false);
     const payload = { anything: 'goes', nested: { x: 1 } };
-    const r = validateClaimShape('DEGREE', payload);
+    const r = validateClaimShape('RIGHT_TO_WORK', payload);
     expect(r.ok).toBe(true);
     expect(r.canonical).toEqual(payload);
   });
 
   it('the registry membership IS the registered predicate', () => {
     expect(Object.keys(CANONICAL_CLAIM_SHAPES).sort()).toEqual([
+      // TR-7 B1 — the credential-claim capture.
+      'CERTIFICATION',
+      'DEGREE',
       'EMAIL',
       'EMPLOYMENT',
       // TR-5 B2 — the positive CONTINUITY derivers' comparability shapes (NOT in
@@ -60,6 +65,55 @@ describe('validateClaimShape — registered vs unregistered posture (§5a)', () 
       // TR-4 B3 — the consistency detector's CONTINUITY gap signal.
       'TIMELINE_GAP',
     ]);
+  });
+});
+
+// TR-7 B1 (§5b) — the DEGREE/CERTIFICATION shape validators: required fields,
+// dates deterministic-parse (ISO-or-null, NEVER guessed), raw preserved beside.
+describe('DEGREE / CERTIFICATION shapes (TR-7 B1)', () => {
+  it('DEGREE requires institution + degree; parses conferred_date; preserves raw', () => {
+    const bad = validateClaimShape('DEGREE', { degree_raw: 'BSc' }); // no institution_raw
+    expect(bad.ok).toBe(false);
+
+    const ok = validateClaimShape('DEGREE', {
+      institution_raw: 'MIT',
+      degree_raw: 'BSc',
+      field_raw: 'CS',
+      conferred_date_raw: 'May 2018',
+    });
+    expect(ok.ok).toBe(true);
+    expect(ok.canonical?.['conferred_date']).toBe('2018-05-01');
+    expect(ok.canonical?.['conferred_date_raw']).toBe('May 2018'); // raw preserved
+    expect(ok.canonical?.['field_raw']).toBe('CS');
+  });
+
+  it('DEGREE with an UNPARSEABLE date → conferred_date null, raw preserved (never guessed)', () => {
+    const r = validateClaimShape('DEGREE', {
+      institution_raw: 'State U',
+      degree_raw: 'MA',
+      conferred_date_raw: 'sometime in the spring', // ambiguous → null
+    });
+    expect(r.ok).toBe(true);
+    expect(r.canonical?.['conferred_date']).toBeNull();
+    expect(r.canonical?.['conferred_date_raw']).toBe('sometime in the spring');
+  });
+
+  it('CERTIFICATION requires name; parses issued/expiry; preserves raw', () => {
+    const bad = validateClaimShape('CERTIFICATION', { issuer_raw: 'AWS' }); // no name_raw
+    expect(bad.ok).toBe(false);
+
+    const ok = validateClaimShape('CERTIFICATION', {
+      name_raw: 'CKA',
+      issuer_raw: 'CNCF',
+      credential_ref_raw: 'LF-123',
+      issued_date_raw: '2021-03',
+      expiry_date_raw: 'not a date',
+    });
+    expect(ok.ok).toBe(true);
+    expect(ok.canonical?.['issued_date']).toBe('2021-03-01');
+    expect(ok.canonical?.['expiry_date']).toBeNull(); // unparseable → null
+    expect(ok.canonical?.['expiry_date_raw']).toBe('not a date'); // raw preserved
+    expect(ok.canonical?.['issuer_raw']).toBe('CNCF');
   });
 });
 

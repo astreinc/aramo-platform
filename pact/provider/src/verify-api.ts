@@ -292,6 +292,13 @@ const TALENT_EVIDENCE_INIT_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
 );
+// TR-7 B1 — TalentEducationEntry + TalentCertificationEntry. The regenerated
+// talent-evidence client knows these models; the examine reconcile (Step 4b) reads
+// them, so the tables must exist or examine-exercising provider states 500.
+const TALENT_EVIDENCE_TR7_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
+);
 // M5 PR-1 + PR-2 — engagement schema migrations: TalentJobEngagement
 // init + TalentEngagementEvent event-log + absolute-immutability trigger.
 // Required for M5 PR-4 engagement-* pact interactions.
@@ -2577,6 +2584,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // migrations applied so the submittal-create pact verification
         // can build the evidence package + persist the workflow record.
         TALENT_EVIDENCE_INIT_MIGRATION,
+        TALENT_EVIDENCE_TR7_MIGRATION,
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,
         // M4 PR-7 §4.9 — submittal-revoke schema extension (enum +

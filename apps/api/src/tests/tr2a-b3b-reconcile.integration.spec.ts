@@ -68,6 +68,7 @@ const MIGRATIONS = [
   'libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql',
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
+  'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
   'libs/attachment/prisma/migrations/20260602120000_init_attachment_model/migration.sql',
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',

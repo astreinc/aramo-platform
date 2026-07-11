@@ -474,3 +474,35 @@ describe('deriveTrustState — TR-3 (PLATFORM_VERIFIED class + OPEN-6 registry �
     expect(s.identity_band).toBe('SELF_ASSERTED');
   });
 });
+
+// TR-7 B1 (§5f) — the elevation truth: the CLAIMS elevation registry lists DEGREE/
+// CERTIFICATION, but elevation gates on CLASS *and* TYPE together. A declared
+// (THIRD_PARTY_UNVERIFIED / DOCUMENT) credential — exactly what the producer writes
+// — must NOT lift CLAIMS past its class ceiling.
+describe('TR-7 §5f — an unverified DEGREE/CERTIFICATION does not elevate CLAIMS', () => {
+  it('THIRD_PARTY_UNVERIFIED DEGREE stays SELF_ASSERTED (registry-listed type, sub-floor class)', () => {
+    const s = deriveTrustState(
+      [ev({ dimension: 'CLAIMS', source_class: 'THIRD_PARTY_UNVERIFIED', method: 'DOCUMENT', assertion_type: 'DEGREE' })],
+      NOW,
+    );
+    expect(s.claims_band).toBe('SELF_ASSERTED');
+    expect(s.claims_band).not.toBe('INDEPENDENTLY_VERIFIED');
+    expect(s.claims_band).not.toBe('AUTHORITATIVE');
+  });
+
+  it('THIRD_PARTY_UNVERIFIED CERTIFICATION likewise stays SELF_ASSERTED', () => {
+    const s = deriveTrustState(
+      [ev({ dimension: 'CLAIMS', source_class: 'THIRD_PARTY_UNVERIFIED', method: 'DOCUMENT', assertion_type: 'CERTIFICATION' })],
+      NOW,
+    );
+    expect(s.claims_band).toBe('SELF_ASSERTED');
+  });
+
+  it('the SAME DEGREE type at an AUTHORITATIVE_ISSUER class DOES elevate (type is registry-eligible)', () => {
+    const s = deriveTrustState(
+      [ev({ dimension: 'CLAIMS', source_class: 'AUTHORITATIVE_ISSUER', method: 'API_REGISTRY', assertion_type: 'DEGREE' })],
+      NOW,
+    );
+    expect(s.claims_band).toBe('AUTHORITATIVE');
+  });
+});

@@ -84,6 +84,9 @@ export const platformApi = {
     owner_email: string;
     owner_display_name?: string;
     capabilities?: string[];
+    // Inc-3 PR-3.4 — omit/true invites the owner now; false defers the invite
+    // (create-now-invite-later). Response carries invitation_sent.
+    invite_owner?: boolean;
   }): Promise<ProvisionTenantResult> {
     return apiClient.post('/platform/tenants', body);
   },

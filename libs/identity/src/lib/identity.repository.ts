@@ -371,7 +371,7 @@ export class IdentityRepository {
       },
       include: {
         user: { select: { email: true, display_name: true } },
-        tenant: { select: { name: true, display_name: true } },
+        tenant: { select: { name: true, display_name: true, status: true } },
         role_assignments: {
           where: { role: { is_active: true } },
           include: { role: { select: { key: true, description: true } } },
@@ -388,6 +388,7 @@ export class IdentityRepository {
       })),
       tenant_name: row.tenant.name,
       tenant_display_name: row.tenant.display_name,
+      tenant_status: row.tenant.status,
     };
   }
 
@@ -989,6 +990,10 @@ export interface MeContextRow {
   roles: { key: string; description: string | null }[];
   tenant_name: string;
   tenant_display_name: string | null;
+  // Inc-3 PR-3.5 (Workstream C) — the tenant lifecycle status, so the shell can
+  // render the OFFBOARDING banner. Sourced from the existing Tenant.status
+  // column (no migration).
+  tenant_status: string;
 }
 
 type TenantUserRow = {
