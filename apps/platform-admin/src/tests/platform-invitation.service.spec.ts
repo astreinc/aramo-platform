@@ -30,6 +30,8 @@ interface Mocks {
     findByNameCaseInsensitive: ReturnType<typeof vi.fn>;
     provisionTenant: ReturnType<typeof vi.fn>;
     deactivateTenant: ReturnType<typeof vi.fn>;
+    recordOwnerInviteSent: ReturnType<typeof vi.fn>;
+    hasOwnerInviteBeenSent: ReturnType<typeof vi.fn>;
   };
   identitySvc: {
     resolveRoleIdsByKeys: ReturnType<typeof vi.fn>;
@@ -56,6 +58,8 @@ function makeMocks(): Mocks {
       findByNameCaseInsensitive: vi.fn(),
       provisionTenant: vi.fn(),
       deactivateTenant: vi.fn(),
+      recordOwnerInviteSent: vi.fn(),
+      hasOwnerInviteBeenSent: vi.fn(),
     },
     identitySvc: {
       resolveRoleIdsByKeys: vi.fn(),
@@ -107,15 +111,26 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
       owner_display_name: 'Acme Owner',
       actor_user_id: 'super-admin-1',
       request_id: TEST_REQUEST_ID,
+      invite_owner: true,
     });
 
-    // Pattern A: Cognito is called BEFORE identity-tx.
+    // Pattern A: Cognito is called BEFORE identity-tx. invite_owner=true → the
+    // invitation email is sent at creation (suppress:false — byte-equivalent to
+    // the pre-3.4 default path).
     expect(mocks.cognito.adminCreateUser).toHaveBeenCalledWith({
       pool: 'tenant',
       email: 'owner@acme.io',
       display_name: 'Acme Owner',
+      suppress: false,
     });
-    expect(mocks.tenantSvc.provisionTenant).toHaveBeenCalled();
+    // B2 — the provision event records invitation_sent:true.
+    expect(mocks.tenantSvc.provisionTenant).toHaveBeenCalledWith(
+      expect.objectContaining({ invitation_sent: true }),
+    );
+    // B2 — mail went, so tenant.owner_invite.sent(first_send) is emitted.
+    expect(mocks.tenantSvc.recordOwnerInviteSent).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'first_send', tenant_id: 'tenant-x' }),
+    );
     // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded so the
     // in-service D5 union check has its inputs. tenant_owner is a see-
     // all-tier role (validator's see-all bypass).
@@ -149,7 +164,49 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
       owner_email: 'owner@acme.io',
       membership_id: 'mem-1',
       capabilities: ['core', 'ats', 'portal'],
+      invitation_sent: true,
     });
+  });
+
+  it('invite_owner=false (create-now-invite-later): Cognito SUPPRESSed, no owner_invite.sent, invitation_sent=false; tenant still provisioned', async () => {
+    const mocks = makeMocks();
+    mocks.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);
+    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['role-id-tenant-owner']);
+    mocks.cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'cog-sub-999' });
+    mocks.tenantSvc.provisionTenant.mockResolvedValue({
+      id: 'tenant-later',
+      name: 'LaterCo',
+      is_active: true,
+      created_at: '',
+      updated_at: '',
+    });
+    mocks.identitySvc.createUserFromInvitation.mockResolvedValue({
+      user: { id: 'owner-later', email: 'owner@later.co', display_name: null, is_active: true, deactivated_at: null, created_at: '', updated_at: '' },
+      membership_id: 'mem-later',
+    });
+    mocks.entitlementRepo.grantCapabilities.mockResolvedValue(undefined);
+
+    const svc = buildService(mocks);
+    const out = await svc.provisionTenantAndInviteOwner({
+      name: 'LaterCo',
+      owner_email: 'owner@later.co',
+      actor_user_id: 'super-admin-1',
+      request_id: TEST_REQUEST_ID,
+      invite_owner: false,
+    });
+
+    // SUPPRESS: the Cognito user is created but NO invitation email is sent.
+    expect(mocks.cognito.adminCreateUser).toHaveBeenCalledWith(
+      expect.objectContaining({ pool: 'tenant', email: 'owner@later.co', suppress: true }),
+    );
+    // Tenant still provisioned (identity-tx + entitlement-tx unchanged).
+    expect(mocks.tenantSvc.provisionTenant).toHaveBeenCalledWith(
+      expect.objectContaining({ invitation_sent: false }),
+    );
+    expect(mocks.entitlementRepo.grantCapabilities).toHaveBeenCalled();
+    // B2 — no mail went, so NO tenant.owner_invite.sent is emitted at provision.
+    expect(mocks.tenantSvc.recordOwnerInviteSent).not.toHaveBeenCalled();
+    expect(out.invitation_sent).toBe(false);
   });
 
   it('name collision: TENANT_ALREADY_EXISTS raised BEFORE Cognito (no AdminCreateUser side effect)', async () => {
@@ -169,6 +226,7 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
         owner_email: 'owner@acme.io',
         actor_user_id: 'a',
         request_id: TEST_REQUEST_ID,
+        invite_owner: true,
       }),
     ).rejects.toMatchObject({ code: 'TENANT_ALREADY_EXISTS', statusCode: 409 });
 
@@ -190,6 +248,7 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
         owner_email: 'o@new.co',
         actor_user_id: 'a',
         request_id: TEST_REQUEST_ID,
+        invite_owner: true,
       }),
     ).rejects.toThrow('db down');
 
@@ -225,6 +284,7 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
         owner_email: 'o@new.co',
         actor_user_id: 'a',
         request_id: TEST_REQUEST_ID,
+        invite_owner: true,
       }),
     ).rejects.toBeInstanceOf(AramoError);
 
@@ -251,6 +311,7 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
         owner_email: 'o@new.co',
         actor_user_id: 'a',
         request_id: TEST_REQUEST_ID,
+        invite_owner: true,
       }),
     ).rejects.toMatchObject({
       code: 'COGNITO_PROVISION_FAILED',

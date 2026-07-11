@@ -260,15 +260,19 @@ paths:
     post:
       operationId: resendOwnerInvite
       tags: [Platform Tenants]
-      summary: Re-send the tenant owner's invitation.
+      summary: Send (or re-send) the tenant owner's invitation.
       description: |
-        Re-issues the owner's Cognito Pattern-A invitation email
+        Sends the owner's Cognito Pattern-A invitation email
         (MessageAction=RESEND) — nothing is recreated (same Cognito user, same
-        identity rows). Gated to status `PROVISIONED`: a PROVISIONED tenant's
-        owner has not yet accepted (acceptance activates the tenant → ACTIVE),
-        which is exactly the window Cognito RESEND is valid — so this refuses on
-        any other status with 422 `VALIDATION_ERROR` (`details.reason`
-        `tenant_not_provisioned`). Emits `tenant.owner_invite.sent`.
+        identity rows). This is also the send-when-ready path for a tenant
+        provisioned with `invite_owner=false` (create-now-invite-later): RESEND
+        delivers the first invitation and mints a fresh temporary password.
+        Gated to status `PROVISIONED`: a PROVISIONED tenant's owner has not yet
+        accepted (acceptance activates the tenant → ACTIVE), which is exactly the
+        window Cognito RESEND is valid — so this refuses on any other status with
+        422 `VALIDATION_ERROR` (`details.reason` `tenant_not_provisioned`). Emits
+        `tenant.owner_invite.sent` with payload `reason` `first_send` (no prior
+        send) or `resend` (a send already occurred).
 
         Requires scope `platform:tenant:provision`.
       security:
@@ -599,6 +603,15 @@ components:
           items:
             type: string
           description: Optional capability set; defaults to {core, ats, portal} when omitted/empty.
+        invite_owner:
+          type: boolean
+          default: true
+          description: >-
+            Send the owner's invitation email now (default true — provision-and-invite).
+            When false, create-now-invite-later: the owner's Cognito user is created
+            suppressed (no email) and the tenant still lands PROVISIONED; the operator
+            sends the invite when ready via POST .../resend-owner-invite. Omitting the
+            field preserves the pre-3.4 behavior exactly.
 
     ProvisionTenantResponse:
       type: object
@@ -625,7 +638,10 @@ components:
             type: string
         invitation_sent:
           type: boolean
-          const: true
+          description: >-
+            Whether the owner's invitation email was sent during provisioning
+            (true when invite_owner is omitted/true; false on the
+            create-now-invite-later path).
 
     PlatformTenantSummary:
       type: object

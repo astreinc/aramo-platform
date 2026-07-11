@@ -50,6 +50,24 @@ export class IdentityAuditService {
     }
   }
 
+  // Inc-3 PR-3.4 — existence probe over the tenant's audit ledger for a given
+  // event_type. Read-only (no new endpoint/scope/migration): used to derive the
+  // owner-invite send reason (first_send vs resend) from history — whether a
+  // `tenant.owner_invite.sent` has ever been recorded for the tenant. Unlike
+  // writeEvent this does NOT swallow errors — a read failure here would silently
+  // mislabel the audit reason, so it surfaces to the caller.
+  async hasTenantEvent(
+    tenant_id: string,
+    event_type: EventType,
+  ): Promise<boolean> {
+    const rows = await this.auditRepo.findByTenant({
+      tenant_id,
+      limit: 1,
+      filters: { event_type },
+    });
+    return rows.length > 0;
+  }
+
   // AUTHZ-2: global-event emission (tenant_id=null). The repository's
   // assertMappingObeyed enforces that the event_type is NOT in
   // TENANT_SCOPED_EVENT_TYPES (directive §6 closed mapping). Used by
