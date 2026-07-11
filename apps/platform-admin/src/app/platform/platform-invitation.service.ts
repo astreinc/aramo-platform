@@ -53,6 +53,9 @@ export interface ProvisionResult {
   owner_email: string;
   membership_id: string;
   capabilities: Capability[];
+  // Inc-3 PR-3.4 (B2) — whether the owner invitation email was sent at
+  // provision (mirrors the request's invite_owner). Surfaced to the response.
+  invitation_sent: boolean;
 }
 
 export interface InviteResult {
@@ -81,6 +84,11 @@ export class PlatformInvitationService {
     capabilities?: readonly string[];
     actor_user_id: string;
     request_id: string;
+    // Inc-3 PR-3.4 (R16, B1) — send the owner invitation now (true, default =
+    // the pre-3.4 behavior) or defer it (false = create-now-invite-later: the
+    // Cognito owner is created SUPPRESSed, no email; the send happens later via
+    // the resend-owner-invite endpoint). Either way the tenant lands PROVISIONED.
+    invite_owner: boolean;
   }): Promise<ProvisionResult> {
     // 0. Validate capability set (default = core,ats,portal).
     const desired: readonly Capability[] =
@@ -129,6 +137,10 @@ export class PlatformInvitationService {
         pool: 'tenant',
         email: args.owner_email,
         display_name: args.owner_display_name ?? null,
+        // invite_owner=false → SUPPRESS the invitation email at creation
+        // (create-now-invite-later). The user is still created in
+        // FORCE_CHANGE_PASSWORD; the resend endpoint (RESEND) sends later.
+        suppress: !args.invite_owner,
       });
       cognito_sub = out.cognito_sub;
     } catch (err) {
@@ -160,6 +172,8 @@ export class PlatformInvitationService {
         name: args.name,
         owner_email: args.owner_email,
         actor_user_id: args.actor_user_id,
+        // B2 — record on the provision event whether the invite went out.
+        invitation_sent: args.invite_owner,
       });
       tenant_id = tenant.id;
       // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded so the
@@ -220,6 +234,20 @@ export class PlatformInvitationService {
       );
     }
 
+    // B2 — emit tenant.owner_invite.sent ONLY when mail actually went (the
+    // invite_owner=true path; the Cognito email was sent above without SUPPRESS).
+    // reason=first_send: this is the owner's first invitation. On the deferred
+    // path (invite_owner=false) nothing is emitted — the send happens later via
+    // the resend-owner-invite endpoint, which emits its own first_send there.
+    if (args.invite_owner) {
+      await this.tenantSvc.recordOwnerInviteSent({
+        tenant_id,
+        owner_user_id,
+        actor_id: args.actor_user_id,
+        reason: 'first_send',
+      });
+    }
+
     return {
       tenant_id,
       tenant_name: args.name,
@@ -227,6 +255,7 @@ export class PlatformInvitationService {
       owner_email: args.owner_email,
       membership_id,
       capabilities: [...desired],
+      invitation_sent: args.invite_owner,
     };
   }
 
@@ -469,12 +498,19 @@ export class PlatformInvitationService {
         },
       );
     }
+    // Inc-3 PR-3.4 (B3) — first_send vs resend, derived from invite history:
+    // a tenant provisioned with invite_owner=false has no prior
+    // tenant.owner_invite.sent, so THIS is the first send (first_send); a tenant
+    // already invited (at provision or a prior resend) → resend. The Cognito
+    // call is identical (RESEND re-delivers + resets the temp password whether
+    // or not a message was sent at creation).
+    const priorSent = await this.tenantSvc.hasOwnerInviteBeenSent(args.tenant_id);
     await this.cognito.adminResendInvite({ pool: 'tenant', email: owner.email });
     await this.tenantSvc.recordOwnerInviteSent({
       tenant_id: args.tenant_id,
       owner_user_id: owner.user_id,
       actor_id: args.actor_user_id,
-      reason: 'resend',
+      reason: priorSent ? 'resend' : 'first_send',
     });
     return {
       tenant_id: args.tenant_id,

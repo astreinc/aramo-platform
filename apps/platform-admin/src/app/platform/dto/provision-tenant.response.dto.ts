@@ -5,5 +5,7 @@ export interface ProvisionTenantResponseDto {
   owner_email: string;
   membership_id: string;
   capabilities: string[];
-  invitation_sent: true;
+  // Inc-3 PR-3.4 — true when the owner invitation email was sent at provision
+  // (invite_owner omitted/true); false on the create-now-invite-later path.
+  invitation_sent: boolean;
 }

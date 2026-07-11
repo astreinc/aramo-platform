@@ -26,6 +26,11 @@ describe('TalentEvidenceRepository — surface', () => {
     'listWorkHistoryForLedger',
     'listTalentIdsWithEvidenceByTenant',
     'listTenantIdsWithEvidence',
+    // TR-7 B1 (DDR §4.2) — the credential ledger reads: the CLAIMS dual-write +
+    // backfill consume declared degree/certification typed rows. Same bounded,
+    // tenant-scoped, single-purpose shape as the TR-4 B2 reads above.
+    'listEducationForLedger',
+    'listCertificationForLedger',
   ];
 
   it('exposes the 14 create/find methods + the Gate-1 by-talent reads + the TR-4 B2 ledger reads', () => {
@@ -56,6 +61,13 @@ describe('TalentEvidenceRepository — surface', () => {
         // TR-2a-B3b (DDR-3 §4) — the reconcile re-point of talent_id across all
         // seven talent_evidence holders (loser→survivor, idempotent).
         'repointTalentRecordRefs',
+        // TR-7 B1 (DDR §4.2) — the two new credential typed-row homes (declared
+        // academic degrees + professional certifications), create/find per the
+        // TalentWorkHistoryEntry precedent.
+        'createTalentEducationEntry',
+        'findTalentEducationEntryById',
+        'createTalentCertificationEntry',
+        'findTalentCertificationEntryById',
         ...TR4_B2_LEDGER_READS,
       ].sort(),
     );

@@ -94,6 +94,15 @@ export class TenantService {
     });
   }
 
+  // Inc-3 PR-3.4 (create-now-invite-later, B3) — has the owner invite EVER been
+  // sent for this tenant? Derives the send reason at the resend endpoint:
+  // no prior `tenant.owner_invite.sent` → `first_send` (the tenant was
+  // provisioned with invite_owner=false and this is the first mail); otherwise
+  // → `resend`. History-derived (not a stored column) — no migration.
+  async hasOwnerInviteBeenSent(tenant_id: string): Promise<boolean> {
+    return this.audit.hasTenantEvent(tenant_id, 'tenant.owner_invite.sent');
+  }
+
   // AUTHZ-2: the guarded tenant-provisioning surface. Raises
   // TENANT_ALREADY_EXISTS (409) when the name collides case-
   // insensitively. The caller (platform-admin's PlatformInvitationService)
@@ -123,6 +132,13 @@ export class TenantService {
     // NULL) — exactly the pre-A behavior. Astre's slug is set by the seed, not
     // this path.
     slug?: string;
+    // Inc-3 PR-3.4 (B2, audit honesty) — whether the owner's invitation email
+    // was sent as part of this provision. Recorded in the `identity.tenant.created`
+    // payload so an operator can distinguish "invited, waiting" from "created,
+    // not yet invited" from the provision event alone. Optional: omitted by
+    // non-platform callers (e.g. the seed) → the field is absent and the payload
+    // is byte-equivalent to the pre-3.4 shape.
+    invitation_sent?: boolean;
   }): Promise<TenantDto> {
     const existing = await this.tenantRepo.findByNameCaseInsensitive(args.name);
     if (existing !== null) {
@@ -174,6 +190,9 @@ export class TenantService {
         source: 'platform.provision',
         allowed_domain,
         ...(slug === undefined ? {} : { slug }),
+        ...(args.invitation_sent === undefined
+          ? {}
+          : { invitation_sent: args.invitation_sent }),
       },
     });
     return tenant;

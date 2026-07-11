@@ -67,10 +67,19 @@ export class CognitoAdminService {
   // DesiredDeliveryMediums=['EMAIL'] is the medium for the temp-password
   // delivery; the email is verified (email_verified=true) since the
   // platform-admin owns the invite and trusts the recipient.
+  //
+  // Inc-3 PR-3.4 (R16, create-now-invite-later): `suppress` sets
+  // MessageAction='SUPPRESS' — Cognito still creates the user in
+  // FORCE_CHANGE_PASSWORD (temp password minted) but sends NO invitation
+  // email. A later adminResendInvite (MessageAction='RESEND') delivers the
+  // invite AND resets the temp-password duration with a fresh password, so the
+  // send-when-ready path works even after the original temp password would have
+  // expired. Omitted/false → today's send-on-create behavior (byte-preserved).
   async adminCreateUser(args: {
     pool: CognitoPool;
     email: string;
     display_name?: string | null;
+    suppress?: boolean;
   }): Promise<AdminCreateUserResult> {
     const UserPoolId = this.userPoolIdForPool(args.pool);
     const userAttributes: Array<{ Name: string; Value: string }> = [
@@ -86,6 +95,7 @@ export class CognitoAdminService {
         Username: args.email,
         UserAttributes: userAttributes,
         DesiredDeliveryMediums: ['EMAIL'],
+        ...(args.suppress === true ? { MessageAction: 'SUPPRESS' as const } : {}),
       }),
     );
     const sub = out.User?.Attributes?.find((a) => a.Name === 'sub')?.Value;

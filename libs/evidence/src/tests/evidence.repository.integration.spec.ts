@@ -79,6 +79,10 @@ const TALENT_EVIDENCE_MIGRATION_PATH = resolve(
   __dirname,
   '../../../talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
 );
+const TALENT_EVIDENCE_TR7_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../../talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
+);
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
 const TENANT_B = '22222222-2222-7222-8222-222222222222';
@@ -212,6 +216,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(EXAMINATION_INIT_MIGRATION_PATH, 'utf8'),
         readFileSync(EXAMINATION_LIVE_LIST_MIGRATION_PATH, 'utf8'),
         readFileSync(TALENT_EVIDENCE_MIGRATION_PATH, 'utf8'),
+        readFileSync(TALENT_EVIDENCE_TR7_MIGRATION_PATH, 'utf8'),
       ];
 
       setupClient = new PrismaService(url);
