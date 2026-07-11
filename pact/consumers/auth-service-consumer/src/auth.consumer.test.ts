@@ -136,6 +136,16 @@ describe('auth-service-consumer → GET /auth/{consumer}/login', () => {
 // ----------------------------------------------------------------------
 // Interaction 3 — GET /auth/{consumer}/callback — 400 VALIDATION_ERROR
 // (missing pkce_state cookie; avoids Cognito mock dependency)
+//
+// Inc-3 PR-3.5 (Workstream A) made callback ERRORS a browser NAVIGATION (302 →
+// ${base}/login?error=CODE) WHEN a redirect base resolves; when none does, the
+// JSON response remains the final fallback. This contract asserts that JSON
+// fallback (400 VALIDATION_ERROR, reason pkce_state_missing) — the base-
+// independent shape — because the Pact verifier's HTTP client follows 302s (the
+// same reason the /login nominal 302 is deferred, above). The provider harness
+// (pact/provider/src/verify.ts) neutralizes the base so this interaction takes
+// the fallback; the redirect path itself is covered by the auth.controller unit
+// redirect matrix.
 // ----------------------------------------------------------------------
 
 describe('auth-service-consumer → GET /auth/{consumer}/callback', () => {
