@@ -28,6 +28,8 @@ import {
 import { AppModule } from '../app.module.js';
 import { DossierService } from '../talent-identity/dossier.service.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // TR-15 B1 (DDR §2 / directive §5) — the dispute machinery, completed. Proves
 // the arms against real Postgres: the VALID-only raise guard + idempotent repeat
 // (a); DISPUTED excluded from accrual + has_open_dispute flipped, the existing
@@ -160,6 +162,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       db = new Client({ connectionString: url });
       await db.connect();
       for (const p of MIGRATIONS) await db.query(readFileSync(p, 'utf8'));
+      // Inc-3 PR-3.7 — the global TenantWriteFreezeInterceptor reads
+      // identity.Tenant.status on every mutation; seed an ACTIVE row so this
+      // spec's writes pass the freeze gate (shared retrofit helper).
+      await ensureWriteFreezeTenant((sql) => db.query(sql), TENANT, 'ACTIVE');
       await db.query(
         `INSERT INTO identity."Tenant" (id, name, updated_at) VALUES ($1::uuid, 'TR15B1', now()) ON CONFLICT DO NOTHING`,
         [TENANT],

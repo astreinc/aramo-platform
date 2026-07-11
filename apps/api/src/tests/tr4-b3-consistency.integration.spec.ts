@@ -24,6 +24,8 @@ import { TalentTrustService } from '@aramo/talent-trust';
 import { AppModule } from '../app.module.js';
 import { ConsistencyService } from '../talent-identity/consistency.service.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 type SignKey = CryptoKey | KeyObject;
 const ROOT = resolve(__dirname, '../../../..');
 const M = (p: string): string => resolve(ROOT, p);
@@ -152,6 +154,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         `INSERT INTO identity."Tenant" (id, name, updated_at) VALUES ($1::uuid, 'TR4B3', now()) ON CONFLICT DO NOTHING`,
         [TENANT],
       );
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for the forged tenant_id.
+      await ensureWriteFreezeTenant((s) => db.query(s), TENANT);
       await db.query(
         `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid, 'core') ON CONFLICT DO NOTHING`,
         [TENANT],

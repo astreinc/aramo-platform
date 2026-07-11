@@ -107,7 +107,7 @@ export class ConsistencyService {
       gaps_opened: 0,
       gaps_healed: 0,
     };
-    // eslint-disable-next-line no-constant-condition
+     
     while (true) {
       const batch = await this.drainBatch({ batchSize: CONSISTENCY_BATCH_SIZE, tenantId });
       total.attempted += batch.attempted;

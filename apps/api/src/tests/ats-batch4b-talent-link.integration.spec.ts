@@ -22,6 +22,8 @@ import { IdentityIndexRepository } from '@aramo/identity-index';
 
 import { AppModule } from '../app.module.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // ATS Batch 4b (TalentRecord ↔ PERSON_CLUSTER link) integration spec.
 // THE keystone of the ATS↔identity seam.
 //
@@ -330,6 +332,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const p of MIGRATIONS) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_ATS);
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_OTHER);
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_NOT_ATS);
 
       // Entitle TENANT_ATS + TENANT_OTHER to `ats` so the cross-tenant
       // assertions pass JwtAuthGuard → EntitlementGuard → RolesGuard.

@@ -21,6 +21,8 @@ import {
 
 import { AppModule } from '../app.module.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // PR-A8-2 Gate 5 — suggest-mapping integration spec.
 //
 // Proofs (the §4 load-bearing assertions for the integration layer;
@@ -227,6 +229,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const p of MIGRATIONS) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_ATS);
+      await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_NOT_ATS);
 
       await setupClient.query(
         `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)

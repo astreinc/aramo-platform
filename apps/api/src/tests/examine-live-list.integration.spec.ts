@@ -21,6 +21,8 @@ import {
 
 import { AppModule } from '../app.module.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // Gate-1 G1-B keying correction — the FE-VISIBILITY end-to-end proof G1-B
 // deferred (shared-UUID alignment: Job.id = GoldenProfile.job_id =
 // examination.job_id = the ATS requisition id R). End-to-end against a
@@ -140,6 +142,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const migrationPath of MIGRATIONS) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_ID);
 
       // Seed the post-confirmProfile state under shared-UUID keying.
       // job_domain.Job(id = R)

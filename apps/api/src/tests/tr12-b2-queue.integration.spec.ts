@@ -26,6 +26,8 @@ import { ConsistencyService } from '../talent-identity/consistency.service.js';
 import { RecomputeSweepService } from '../talent-identity/recompute-sweep.service.js';
 import { DossierService } from '../talent-identity/dossier.service.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // TR-12 B2 (§5) — the queue, the pointers, the ACT bookkeeping, end-to-end on real
 // Postgres 17. Proves: (a) SETTLED both ways in both hosts (actor + justification);
 // (b) the drift-heal (act without mark → settled next pass); (c) mark-acted's
@@ -203,6 +205,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const cap of ['ats', 'core']) {
         await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid,$2) ON CONFLICT DO NOTHING`, [TENANT, cap]);
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => db.query(s), TENANT);
       const kp = await generateKeyPair(ALG);
       const publicPem = await exportSPKI(kp.publicKey as never);
       privateKey = kp.privateKey as SignKey;

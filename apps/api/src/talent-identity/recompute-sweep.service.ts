@@ -111,7 +111,7 @@ export class RecomputeSweepService {
   // shrinks and an empty batch ends the loop.
   async runToCompletion(tenantId?: string): Promise<RecomputeSweepResult> {
     const total: RecomputeSweepResult = { attempted: 0, recomputed: 0, failed: 0 };
-    // eslint-disable-next-line no-constant-condition
+     
     while (true) {
       const batch = await this.drainBatch({ batchSize: RECOMPUTE_SWEEP_BATCH_SIZE, tenantId });
       total.attempted += batch.attempted;

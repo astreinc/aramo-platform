@@ -22,6 +22,8 @@ import {
 
 import { AppModule } from '../app.module.js';
 
+import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+
 // M4 PR-6 §4.7 — F23 negative-shape integration test for GET
 // /v1/submittals/{submittal_id}. Standing F23 pattern: boot the
 // AppModule, seed an Entrustable examination + draft submittal pinned
@@ -212,6 +214,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
+
+      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
+      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
+      await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_ID);
 
       // Seed the active requisition + the Entrustable examination pinned
       // by the draft submittal we'll create at request time.
