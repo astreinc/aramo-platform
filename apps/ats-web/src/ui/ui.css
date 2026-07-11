@@ -3618,3 +3618,17 @@ select.rc-input { appearance: none; padding-right: 28px; }
 @media (prefers-reduced-motion: reduce) {
 .rc-drawer.rc-sourcing-drawer { transition: none; }
 }
+
+/* Inc-3 PR-3.5 (Workstream C) — OFFBOARDING winding-down banner. Persistent,
+   full-width, dismissal-free; sits above the routed content inside AppShell. */
+.rc-offboarding-banner {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--warn-line, #f0c36d);
+  border-left: 4px solid var(--warn, #b54708);
+  border-radius: var(--r-sm, 6px);
+  background: var(--warn-tint, #fdf6ec);
+  color: var(--ink, #1a1a1a);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}

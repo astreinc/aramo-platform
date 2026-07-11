@@ -146,7 +146,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       process.env['AUTH_PKCE_STATE_KEY'] = randomBytes(32).toString('base64url');
       process.env['AUTH_COGNITO_DOMAIN'] = 'auth.example.com';
       process.env['AUTH_COGNITO_CLIENT_ID'] = 'pact-test-client';
-      process.env['AUTH_COGNITO_REDIRECT_URI'] = 'https://app.example/cb';
+      // Inc-3 PR-3.5 (Workstream A) made callback ERRORS a browser NAVIGATION
+      // (302 → ${base}/login?error=CODE) instead of JSON. The Pact verifier's
+      // HTTP client FOLLOWS 302s (the same reason the /login nominal 302 pact was
+      // deferred — see auth.consumer.test.ts), so a redirect here would be
+      // followed to a non-existent /login and mismatch. This provider is
+      // therefore configured to exercise the callback error's base-independent
+      // JSON FALLBACK: no base resolves (the requestFilter below makes the host
+      // non-derivable, and the legacy AUTH_COGNITO_REDIRECT_URI origin is
+      // neutralized here), so the callback re-throws JSON — exactly the recorded
+      // contract (400 VALIDATION_ERROR, reason pkce_state_missing).
+      process.env['AUTH_COGNITO_REDIRECT_URI'] = '';
       process.env['AUTH_REFRESH_GRACE_SECONDS'] = '0';
       process.env['AUTH_ALLOW_INSECURE_COOKIES'] = 'true';
 
@@ -218,6 +228,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           pactUrls: [PACT_FILE],
           stateHandlers,
           logLevel: 'warn',
+          // Rewrite the Host to a reserved, non-derivable value (.invalid, RFC
+          // 2606) BEFORE the request reaches the provider. HostBaseResolver then
+          // yields derivedBase=null (not localhost/tenant/platform), so together
+          // with the neutralized legacy env above, no redirect base resolves and
+          // callback errors take their JSON fallback (see the env comment). This
+          // affects only host-derivation — the callback is the sole recorded
+          // interaction that reads the host.
+          requestFilter: (req: Request, _res: Response, next: NextFunction) => {
+            req.headers.host = 'pact-provider.invalid';
+            next();
+          },
         });
         await verifier.verifyProvider();
       },

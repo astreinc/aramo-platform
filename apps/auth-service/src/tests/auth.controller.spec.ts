@@ -473,23 +473,42 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
     }
   });
 
-  it('on tenant_selection_required: throws 409 TENANT_SELECTION_REQUIRED with tenants in details', async () => {
-    const sessionOrch = {
-      handleCallback: vi.fn().mockResolvedValue({
-        kind: 'tenant_selection_required',
-        tenants: [{ id: TENANT_ID, name: 'T1' }],
-      }),
-    } as unknown as SessionOrchestratorService;
-    const ctl = makeController({ sessionOrch });
-    const res = makeRes();
-    const req = {
-      cookies: { aramo_pkce_state: 'cipher' },
-      requestId: 'r',
-      get: () => undefined,
-    } as never;
-
-    await expect(
-      ctl.callback(
+  // Inc-3 PR-3.5 (Workstream A) — callback errors become NAVIGATIONS (302 →
+  // ${base}/login?error=CODE) when a validated base resolves, and fall back to
+  // JSON (throw) when none does. Response-shape only: the codes are byte-
+  // identical to the pre-3.5 throws.
+  describe('callback errors → 302 /login?error= (Workstream A)', () => {
+    const BASE = 'https://acme.aramo.ai';
+    function validatedHostBase(): HostBaseResolver {
+      return {
+        resolve: vi
+          .fn()
+          .mockResolvedValue({ derivedBase: BASE, identityProvider: null }),
+      } as unknown as HostBaseResolver;
+    }
+    function nullHostBase(): HostBaseResolver {
+      return {
+        resolve: vi
+          .fn()
+          .mockResolvedValue({ derivedBase: null, identityProvider: null }),
+      } as unknown as HostBaseResolver;
+    }
+    async function run(
+      result: unknown,
+      hostBase: HostBaseResolver,
+      host = 'acme.aramo.ai',
+    ): Promise<FakeResponse> {
+      const sessionOrch = {
+        handleCallback: vi.fn().mockResolvedValue(result),
+      } as unknown as SessionOrchestratorService;
+      const ctl = makeController({ sessionOrch, hostBase });
+      const res = makeRes();
+      const req = {
+        cookies: { aramo_pkce_state: 'cipher' },
+        requestId: 'r',
+        get: () => host,
+      } as never;
+      await ctl.callback(
         'recruiter',
         'code',
         'state',
@@ -497,10 +516,107 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
         undefined,
         req,
         res as never,
-      ),
-    ).rejects.toMatchObject({
-      code: 'TENANT_SELECTION_REQUIRED',
-      statusCode: 409,
+      );
+      return res;
+    }
+
+    const CASES: ReadonlyArray<readonly [string, unknown, string]> = [
+      [
+        'tenant_selection_required',
+        { kind: 'tenant_selection_required', tenants: [{ id: TENANT_ID, name: 'T1' }] },
+        'TENANT_SELECTION_REQUIRED',
+      ],
+      ['tenant_suspended', { kind: 'auth_error', reason: 'tenant_suspended' }, 'TENANT_SUSPENDED'],
+      ['tenant_closed', { kind: 'auth_error', reason: 'tenant_closed' }, 'TENANT_CLOSED'],
+      ['email_not_verified', { kind: 'auth_error', reason: 'email_not_verified' }, 'INVALID_TOKEN'],
+      ['no_active_tenant', { kind: 'auth_error', reason: 'no_active_tenant' }, 'TENANT_ACCESS_DENIED'],
+      ['user_not_provisioned', { kind: 'auth_error', reason: 'user_not_provisioned' }, 'INSUFFICIENT_PERMISSIONS'],
+      ['internal_error', { kind: 'internal_error', reason: 'boom' }, 'INTERNAL_ERROR'],
+    ];
+
+    it.each(CASES)(
+      'validated base: %s → 302 /login?error=%s',
+      async (_label, result, code) => {
+        const res = await run(result, validatedHostBase());
+        expect(res.redirect).toHaveBeenCalledWith(
+          302,
+          `${BASE}/login?error=${code}`,
+        );
+      },
+    );
+
+    it('VALIDATION_ERROR carries the reason subcode on the query', async () => {
+      const res = await run(
+        { kind: 'validation_error', reason: 'state_mismatch' },
+        validatedHostBase(),
+      );
+      expect(res.redirect).toHaveBeenCalledWith(
+        302,
+        `${BASE}/login?error=VALIDATION_ERROR&reason=state_mismatch`,
+      );
+    });
+
+    it('no base resolves → JSON fallback (throws, never a redirect)', async () => {
+      const prevPub = process.env['AUTH_PUBLIC_BASE_URL'];
+      const prevLegacy = process.env['AUTH_COGNITO_REDIRECT_URI'];
+      delete process.env['AUTH_PUBLIC_BASE_URL'];
+      delete process.env['AUTH_COGNITO_REDIRECT_URI'];
+      try {
+        const sessionOrch = {
+          handleCallback: vi
+            .fn()
+            .mockResolvedValue({ kind: 'auth_error', reason: 'tenant_suspended' }),
+        } as unknown as SessionOrchestratorService;
+        const ctl = makeController({ sessionOrch, hostBase: nullHostBase() });
+        const res = makeRes();
+        const req = {
+          cookies: { aramo_pkce_state: 'c' },
+          requestId: 'r',
+          get: () => undefined,
+        } as never;
+        await expect(
+          ctl.callback('recruiter', 'code', 'state', undefined, undefined, req, res as never),
+        ).rejects.toMatchObject({ code: 'TENANT_SUSPENDED', statusCode: 403 });
+        expect(res.redirect).not.toHaveBeenCalled();
+      } finally {
+        if (prevPub === undefined) delete process.env['AUTH_PUBLIC_BASE_URL'];
+        else process.env['AUTH_PUBLIC_BASE_URL'] = prevPub;
+        if (prevLegacy === undefined) delete process.env['AUTH_COGNITO_REDIRECT_URI'];
+        else process.env['AUTH_COGNITO_REDIRECT_URI'] = prevLegacy;
+      }
+    });
+
+    it('hostile/unvalidated host never derives a redirect base (PR-3.1 §2 → JSON)', async () => {
+      // HostBaseResolver returns derivedBase=null for an unvalidated host
+      // (evil.com); with the env chain cleared, no base resolves → JSON. A raw
+      // Host never reaches the redirect.
+      const prevPub = process.env['AUTH_PUBLIC_BASE_URL'];
+      const prevLegacy = process.env['AUTH_COGNITO_REDIRECT_URI'];
+      delete process.env['AUTH_PUBLIC_BASE_URL'];
+      delete process.env['AUTH_COGNITO_REDIRECT_URI'];
+      try {
+        const sessionOrch = {
+          handleCallback: vi
+            .fn()
+            .mockResolvedValue({ kind: 'auth_error', reason: 'tenant_suspended' }),
+        } as unknown as SessionOrchestratorService;
+        const ctl = makeController({ sessionOrch, hostBase: nullHostBase() });
+        const res = makeRes();
+        const req = {
+          cookies: { aramo_pkce_state: 'c' },
+          requestId: 'r',
+          get: () => 'evil.com',
+        } as never;
+        await expect(
+          ctl.callback('recruiter', 'code', 'state', undefined, undefined, req, res as never),
+        ).rejects.toMatchObject({ code: 'TENANT_SUSPENDED' });
+        expect(res.redirect).not.toHaveBeenCalled();
+      } finally {
+        if (prevPub === undefined) delete process.env['AUTH_PUBLIC_BASE_URL'];
+        else process.env['AUTH_PUBLIC_BASE_URL'] = prevPub;
+        if (prevLegacy === undefined) delete process.env['AUTH_COGNITO_REDIRECT_URI'];
+        else process.env['AUTH_COGNITO_REDIRECT_URI'] = prevLegacy;
+      }
     });
   });
 });

@@ -35,6 +35,7 @@ function ctx(over: Partial<MeContextRow> = {}): MeContextRow {
     roles: [{ key: 'recruiter', description: null }],
     tenant_name: 'Astre',
     tenant_display_name: 'Astre Consulting Services Inc',
+    tenant_status: 'ACTIVE',
     ...over,
   };
 }
@@ -111,5 +112,13 @@ describe('IdentityService.getMe', () => {
     );
     const view = await svc.getMe(ARGS);
     expect(view?.tenant.display_name).toBe('Astre');
+  });
+
+  // Inc-3 PR-3.5 (Workstream C) — the tenant lifecycle status rides /me so the
+  // shell can render the OFFBOARDING banner (the session JWT stays lean).
+  it('surfaces the tenant lifecycle status on the view', async () => {
+    const { svc } = makeService(ctx({ tenant_status: 'OFFBOARDING' }));
+    const view = await svc.getMe(ARGS);
+    expect(view?.tenant.status).toBe('OFFBOARDING');
   });
 });

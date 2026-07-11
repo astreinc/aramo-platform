@@ -34,7 +34,11 @@ import {
 export interface MeView {
   user: { display_name: string | null; email: string };
   roles: string[];
-  tenant: { display_name: string };
+  // Inc-3 PR-3.5 (Workstream C) — `status` is the tenant lifecycle state
+  // (ACTIVE / OFFBOARDING / …), added so the shell can render the OFFBOARDING
+  // winding-down banner. It is a DISPLAY signal on the display companion; the
+  // session JWT stays frozen at 6 fields (the mint gate remains the authority).
+  tenant: { display_name: string; status: string };
 }
 
 // IdentityService — at AUTHZ-1, this surface was resolve-only (the original
@@ -151,7 +155,10 @@ export class IdentityService {
     return {
       user: { display_name: ctx.display_name, email: ctx.email },
       roles,
-      tenant: { display_name: ctx.tenant_display_name ?? ctx.tenant_name },
+      tenant: {
+        display_name: ctx.tenant_display_name ?? ctx.tenant_name,
+        status: ctx.tenant_status,
+      },
     };
   }
 
