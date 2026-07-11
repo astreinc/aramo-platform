@@ -27,6 +27,7 @@ import {
 
 import { AppModule } from '../app.module.js';
 import { DossierService } from '../talent-identity/dossier.service.js';
+
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
 // TR-15 B1 (DDR §2 / directive §5) — the dispute machinery, completed. Proves
