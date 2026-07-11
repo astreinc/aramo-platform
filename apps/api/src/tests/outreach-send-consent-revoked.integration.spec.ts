@@ -67,6 +67,7 @@ const MIGRATIONS = [
   M('libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql'),
   M('libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql'),
   M('libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql'),
+  M('libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql'),
   M('libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql'),

@@ -7,12 +7,19 @@ import { TalentTrustService } from '@aramo/talent-trust';
 import type {
   ExtractDeclaredEvidenceInput,
   ExtractDeclaredEvidenceResult,
+  ExtractedCertification,
+  ExtractedEducation,
   ExtractedSkill,
   ExtractedWorkHistory,
   ExtractionCompletion,
 } from './dto/extraction.dto.js';
 import { deriveSkillId } from './skill-id.js';
-import { mapSkillToClaim, mapWorkHistoryToClaim } from './ledger-mapper.js';
+import {
+  mapCertificationToClaim,
+  mapEducationToClaim,
+  mapSkillToClaim,
+  mapWorkHistoryToClaim,
+} from './ledger-mapper.js';
 
 // Gate-1 G1-A — TalentExtractionService.
 //
@@ -30,11 +37,12 @@ import { mapSkillToClaim, mapWorkHistoryToClaim } from './ledger-mapper.js';
 const EXTRACTION_MAX_TOKENS = 2048;
 
 const SYSTEM_MESSAGE =
-  'You are a résumé-structuring assistant. Extract ONLY skills and work-history ' +
-  'entries that are EXPLICITLY present in the provided text. Do NOT infer, ' +
-  'enrich, normalize, or add anything not literally stated. For every item, ' +
-  'include a "source_excerpt" copied VERBATIM from the provided text that ' +
-  'contains the claim. Respond with STRICT JSON only, no prose, no code fences.';
+  'You are a résumé-structuring assistant. Extract ONLY skills, work-history ' +
+  'entries, education, and certifications that are EXPLICITLY present in the ' +
+  'provided text. Do NOT infer, enrich, normalize, or add anything not literally ' +
+  'stated. For every item, include a "source_excerpt" copied VERBATIM from the ' +
+  'provided text that contains the claim. Respond with STRICT JSON only, no prose, ' +
+  'no code fences.';
 
 @Injectable()
 export class TalentExtractionService {
@@ -53,7 +61,13 @@ export class TalentExtractionService {
     const sourceText = buildSourceText(input);
     // Nothing declared to extract from → no-op (no LLM call).
     if (sourceText.trim() === '') {
-      return { skill_evidence_ids: [], work_history_ids: [], rejected_count: 0 };
+      return {
+        skill_evidence_ids: [],
+        work_history_ids: [],
+        education_ids: [],
+        certification_ids: [],
+        rejected_count: 0,
+      };
     }
 
     const draft = await this.aiDraft.generateDraft({
@@ -69,6 +83,8 @@ export class TalentExtractionService {
 
     const skill_evidence_ids: string[] = [];
     const work_history_ids: string[] = [];
+    const education_ids: string[] = [];
+    const certification_ids: string[] = [];
     let rejected_count = 0;
     const createdAt = new Date();
 
@@ -135,16 +151,83 @@ export class TalentExtractionService {
       work_history_ids.push(id);
     }
 
+    for (const edu of parsed.education) {
+      const institution = edu.institution_name.trim();
+      const degree = edu.degree_name.trim();
+      if (institution === '' || degree === '' || !isExcerptInSource(edu.source_excerpt, corpus)) {
+        rejected_count += 1;
+        continue;
+      }
+      const id = uuidv7();
+      await this.evidence.createTalentEducationEntry({
+        id,
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        institution_name: institution,
+        degree_name: degree,
+        // Education is extracted from the résumé body → 'resume' is the honest source.
+        source: 'resume',
+        evidence_text: edu.source_excerpt.trim(),
+        ...(typeof edu.field_of_study === 'string' && edu.field_of_study.trim() !== ''
+          ? { field_of_study: edu.field_of_study.trim() }
+          : {}),
+        ...(typeof edu.conferred_date === 'string' && edu.conferred_date.trim() !== ''
+          ? { conferred_date: new Date(edu.conferred_date) }
+          : {}),
+        created_at: createdAt,
+      });
+      education_ids.push(id);
+    }
+
+    for (const cert of parsed.certifications) {
+      const name = cert.certification_name.trim();
+      if (name === '' || !isExcerptInSource(cert.source_excerpt, corpus)) {
+        rejected_count += 1;
+        continue;
+      }
+      const id = uuidv7();
+      await this.evidence.createTalentCertificationEntry({
+        id,
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        certification_name: name,
+        source: 'resume',
+        evidence_text: cert.source_excerpt.trim(),
+        ...(typeof cert.issuer_name === 'string' && cert.issuer_name.trim() !== ''
+          ? { issuer_name: cert.issuer_name.trim() }
+          : {}),
+        ...(typeof cert.credential_ref === 'string' && cert.credential_ref.trim() !== ''
+          ? { credential_ref: cert.credential_ref.trim() }
+          : {}),
+        ...(typeof cert.issued_date === 'string' && cert.issued_date.trim() !== ''
+          ? { issued_date: new Date(cert.issued_date) }
+          : {}),
+        ...(typeof cert.expiry_date === 'string' && cert.expiry_date.trim() !== ''
+          ? { expiry_date: new Date(cert.expiry_date) }
+          : {}),
+        created_at: createdAt,
+      });
+      certification_ids.push(id);
+    }
+
     this.logger.log({
       event: 'talent_declared_evidence_extracted',
       tenant_id: input.tenant_id,
       talent_id: input.talent_id,
       skills_persisted: skill_evidence_ids.length,
       work_history_persisted: work_history_ids.length,
+      education_persisted: education_ids.length,
+      certifications_persisted: certification_ids.length,
       rejected_count,
     });
 
-    return { skill_evidence_ids, work_history_ids, rejected_count };
+    return {
+      skill_evidence_ids,
+      work_history_ids,
+      education_ids,
+      certification_ids,
+      rejected_count,
+    };
   }
 
   // TR-4 B2 (DDR §3.1-§3.3) — route this talent's typed EMPLOYMENT/SKILL rows into
@@ -168,7 +251,13 @@ export class TalentExtractionService {
   async routeDeclaredEvidenceToLedger(input: {
     tenant_id: string;
     talent_id: string;
-  }): Promise<{ skills_written: number; work_history_written: number; skipped: number }> {
+  }): Promise<{
+    skills_written: number;
+    work_history_written: number;
+    education_written: number;
+    certification_written: number;
+    skipped: number;
+  }> {
     // talent_id IS the ATS TalentRecord.id (ATS-as-heart) — the subject resolves
     // via the ATS_TALENT_RECORD ref.
     const subjectRef = {
@@ -180,6 +269,8 @@ export class TalentExtractionService {
 
     let skills_written = 0;
     let work_history_written = 0;
+    let education_written = 0;
+    let certification_written = 0;
     let skipped = 0;
 
     const skills = await this.evidence.listSkillEvidenceForLedger({
@@ -216,17 +307,64 @@ export class TalentExtractionService {
       else skipped += 1;
     }
 
-    if (skills_written > 0 || work_history_written > 0) {
+    const education = await this.evidence.listEducationForLedger({
+      tenant_id: input.tenant_id,
+      talent_id: input.talent_id,
+    });
+    for (const row of education) {
+      const claim = mapEducationToClaim(row);
+      const result = await this.trust.recordDeclaredClaimIfAbsent({
+        subjectRef,
+        assertion_type: claim.assertion_type,
+        assertion_payload: claim.payload,
+        source_ref: claim.source_ref,
+        created_by: 'talent-extraction',
+      });
+      if (result.written) education_written += 1;
+      else skipped += 1;
+    }
+
+    const certifications = await this.evidence.listCertificationForLedger({
+      tenant_id: input.tenant_id,
+      talent_id: input.talent_id,
+    });
+    for (const row of certifications) {
+      const claim = mapCertificationToClaim(row);
+      const result = await this.trust.recordDeclaredClaimIfAbsent({
+        subjectRef,
+        assertion_type: claim.assertion_type,
+        assertion_payload: claim.payload,
+        source_ref: claim.source_ref,
+        created_by: 'talent-extraction',
+      });
+      if (result.written) certification_written += 1;
+      else skipped += 1;
+    }
+
+    if (
+      skills_written > 0 ||
+      work_history_written > 0 ||
+      education_written > 0 ||
+      certification_written > 0
+    ) {
       this.logger.log({
         event: 'talent_claims_routed_to_ledger',
         tenant_id: input.tenant_id,
         talent_id: input.talent_id,
         skills_written,
         work_history_written,
+        education_written,
+        certification_written,
         skipped,
       });
     }
-    return { skills_written, work_history_written, skipped };
+    return {
+      skills_written,
+      work_history_written,
+      education_written,
+      certification_written,
+      skipped,
+    };
   }
 
   // TR-4 B2 (DDR §3.4) — the one-time backfill: reconcile every talent in a tenant
@@ -236,19 +374,32 @@ export class TalentExtractionService {
     talents: number;
     skills_written: number;
     work_history_written: number;
+    education_written: number;
+    certification_written: number;
     skipped: number;
   }> {
     const talentIds = await this.evidence.listTalentIdsWithEvidenceByTenant(tenant_id);
     let skills_written = 0;
     let work_history_written = 0;
+    let education_written = 0;
+    let certification_written = 0;
     let skipped = 0;
     for (const talent_id of talentIds) {
       const r = await this.routeDeclaredEvidenceToLedger({ tenant_id, talent_id });
       skills_written += r.skills_written;
       work_history_written += r.work_history_written;
+      education_written += r.education_written;
+      certification_written += r.certification_written;
       skipped += r.skipped;
     }
-    return { talents: talentIds.length, skills_written, work_history_written, skipped };
+    return {
+      talents: talentIds.length,
+      skills_written,
+      work_history_written,
+      education_written,
+      certification_written,
+      skipped,
+    };
   }
 
   // TR-4 B2 (DDR §3.4) — the --all-tenants enumeration for the backfill CLI.
@@ -267,13 +418,18 @@ function buildSourceText(input: ExtractDeclaredEvidenceInput): string {
 
 function buildPrompt(sourceText: string): string {
   return (
-    'Extract skills and work history from the following talent-declared text. ' +
-    'Return STRICT JSON of shape ' +
+    'Extract skills, work history, education, and certifications from the ' +
+    'following talent-declared text. Return STRICT JSON of shape ' +
     '{"skills":[{"surface_form":string,"source_excerpt":string,' +
     '"proficiency_claim"?:string,"years_claimed"?:number}],' +
     '"work_history":[{"employer_name":string,"role_title":string,' +
     '"source_excerpt":string,"start_date"?:string,"end_date"?:string,' +
-    '"employment_type"?:string,"description"?:string}]}. ' +
+    '"employment_type"?:string,"description"?:string}],' +
+    '"education":[{"institution_name":string,"degree_name":string,' +
+    '"source_excerpt":string,"field_of_study"?:string,"conferred_date"?:string}],' +
+    '"certifications":[{"certification_name":string,"source_excerpt":string,' +
+    '"issuer_name"?:string,"credential_ref"?:string,"issued_date"?:string,' +
+    '"expiry_date"?:string}]}. ' +
     'Every source_excerpt MUST be copied verbatim from the text below.\n\n' +
     '---\n' +
     sourceText +
@@ -284,7 +440,12 @@ function buildPrompt(sourceText: string): string {
 // Strip optional ```json fences and parse; a malformed completion yields an
 // empty result (deterministic — never throws on bad model output).
 export function parseCompletion(completion: string): ExtractionCompletion {
-  const empty: ExtractionCompletion = { skills: [], work_history: [] };
+  const empty: ExtractionCompletion = {
+    skills: [],
+    work_history: [],
+    education: [],
+    certifications: [],
+  };
   const stripped = completion
     .replace(/^\s*```(?:json)?/i, '')
     .replace(/```\s*$/i, '')
@@ -303,7 +464,13 @@ export function parseCompletion(completion: string): ExtractionCompletion {
   const work_history = Array.isArray(obj['work_history'])
     ? (obj['work_history'] as unknown[]).filter(isWorkHistoryShape)
     : [];
-  return { skills, work_history };
+  const education = Array.isArray(obj['education'])
+    ? (obj['education'] as unknown[]).filter(isEducationShape)
+    : [];
+  const certifications = Array.isArray(obj['certifications'])
+    ? (obj['certifications'] as unknown[]).filter(isCertificationShape)
+    : [];
+  return { skills, work_history, education, certifications };
 }
 
 function isSkillShape(v: unknown): v is ExtractedSkill {
@@ -320,6 +487,22 @@ function isWorkHistoryShape(v: unknown): v is ExtractedWorkHistory {
     typeof o['role_title'] === 'string' &&
     typeof o['source_excerpt'] === 'string'
   );
+}
+
+function isEducationShape(v: unknown): v is ExtractedEducation {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o['institution_name'] === 'string' &&
+    typeof o['degree_name'] === 'string' &&
+    typeof o['source_excerpt'] === 'string'
+  );
+}
+
+function isCertificationShape(v: unknown): v is ExtractedCertification {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return typeof o['certification_name'] === 'string' && typeof o['source_excerpt'] === 'string';
 }
 
 function normalizeForMatch(s: string): string {

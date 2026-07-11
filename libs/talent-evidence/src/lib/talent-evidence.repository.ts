@@ -35,6 +35,9 @@ type JsonInput = unknown;
 export type TalentSkillEvidenceSourceValue = 'declared' | 'ingested' | 'derived';
 
 export type TalentWorkHistorySourceValue = 'resume' | 'linkedin' | 'manual' | 'import';
+// TR-7 B1 — the education/certification source vocabularies (résumé/manual/import).
+export type TalentEducationSourceValue = 'resume' | 'manual' | 'import';
+export type TalentCertificationSourceValue = 'resume' | 'manual' | 'import';
 
 export type TalentContactTypeValue =
   | 'email'
@@ -152,6 +155,62 @@ export interface TalentWorkHistoryEntryRow {
   source: TalentWorkHistorySourceValue;
   source_document_id: string | null;
   is_authoritative: boolean | null;
+  created_at: Date;
+}
+
+// ---- TR-7 B1 — TalentEducationEntry / TalentCertificationEntry ----------
+
+export interface CreateTalentEducationEntryInput {
+  id: string;
+  talent_id: string;
+  tenant_id: string;
+  institution_name: string;
+  degree_name: string;
+  field_of_study?: string;
+  conferred_date?: Date;
+  evidence_text?: string;
+  source: TalentEducationSourceValue;
+  created_at: Date;
+}
+
+export interface TalentEducationEntryRow {
+  id: string;
+  talent_id: string;
+  tenant_id: string;
+  institution_name: string;
+  degree_name: string;
+  field_of_study: string | null;
+  conferred_date: Date | null;
+  evidence_text: string | null;
+  source: TalentEducationSourceValue;
+  created_at: Date;
+}
+
+export interface CreateTalentCertificationEntryInput {
+  id: string;
+  talent_id: string;
+  tenant_id: string;
+  certification_name: string;
+  issuer_name?: string;
+  credential_ref?: string;
+  issued_date?: Date;
+  expiry_date?: Date;
+  evidence_text?: string;
+  source: TalentCertificationSourceValue;
+  created_at: Date;
+}
+
+export interface TalentCertificationEntryRow {
+  id: string;
+  talent_id: string;
+  tenant_id: string;
+  certification_name: string;
+  issuer_name: string | null;
+  credential_ref: string | null;
+  issued_date: Date | null;
+  expiry_date: Date | null;
+  evidence_text: string | null;
+  source: TalentCertificationSourceValue;
   created_at: Date;
 }
 
@@ -427,6 +486,59 @@ export class TalentEvidenceRepository {
     return (row as TalentWorkHistoryEntryRow | null) ?? null;
   }
 
+  // ---- TR-7 B1 — education + certification typed rows (the WorkHistory precedent) --
+
+  async createTalentEducationEntry(
+    input: CreateTalentEducationEntryInput,
+  ): Promise<TalentEducationEntryRow> {
+    const created = await this.prisma.talentEducationEntry.create({
+      data: {
+        id: input.id,
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        institution_name: input.institution_name,
+        degree_name: input.degree_name,
+        field_of_study: input.field_of_study,
+        conferred_date: input.conferred_date,
+        evidence_text: input.evidence_text,
+        source: input.source,
+        created_at: input.created_at,
+      },
+    });
+    return created as TalentEducationEntryRow;
+  }
+
+  async findTalentEducationEntryById(id: string): Promise<TalentEducationEntryRow | null> {
+    const row = await this.prisma.talentEducationEntry.findUnique({ where: { id } });
+    return (row as TalentEducationEntryRow | null) ?? null;
+  }
+
+  async createTalentCertificationEntry(
+    input: CreateTalentCertificationEntryInput,
+  ): Promise<TalentCertificationEntryRow> {
+    const created = await this.prisma.talentCertificationEntry.create({
+      data: {
+        id: input.id,
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        certification_name: input.certification_name,
+        issuer_name: input.issuer_name,
+        credential_ref: input.credential_ref,
+        issued_date: input.issued_date,
+        expiry_date: input.expiry_date,
+        evidence_text: input.evidence_text,
+        source: input.source,
+        created_at: input.created_at,
+      },
+    });
+    return created as TalentCertificationEntryRow;
+  }
+
+  async findTalentCertificationEntryById(id: string): Promise<TalentCertificationEntryRow | null> {
+    const row = await this.prisma.talentCertificationEntry.findUnique({ where: { id } });
+    return (row as TalentCertificationEntryRow | null) ?? null;
+  }
+
   // ---- TR-4 B2 ledger-routing reads (the dual-write + backfill source) --------
   // Distinct from findTalentSkillEvidenceByTalent (the matching-derivation read,
   // deliberately minimal): these carry the row `id` (→ the ledger source_ref) plus
@@ -470,16 +582,82 @@ export class TalentEvidenceRepository {
     });
   }
 
-  // Backfill enumeration: the distinct talent_ids that own ANY typed skill or
-  // work-history evidence in a tenant (the union — a talent may have only one kind).
+  // TR-7 B1 — the education/certification ledger-routing reads (the WorkHistory
+  // precedent): row `id` (→ ledger source_ref) + exactly the fields the pure DEGREE/
+  // CERTIFICATION mappers need. Tenant-scoped, id-ordered (stable dual-write order).
+  async listEducationForLedger(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<
+    Array<{
+      id: string;
+      institution_name: string;
+      degree_name: string;
+      field_of_study: string | null;
+      conferred_date: Date | null;
+    }>
+  > {
+    return this.prisma.talentEducationEntry.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      select: {
+        id: true,
+        institution_name: true,
+        degree_name: true,
+        field_of_study: true,
+        conferred_date: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  async listCertificationForLedger(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<
+    Array<{
+      id: string;
+      certification_name: string;
+      issuer_name: string | null;
+      credential_ref: string | null;
+      issued_date: Date | null;
+      expiry_date: Date | null;
+    }>
+  > {
+    return this.prisma.talentCertificationEntry.findMany({
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      select: {
+        id: true,
+        certification_name: true,
+        issuer_name: true,
+        credential_ref: true,
+        issued_date: true,
+        expiry_date: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  // Backfill enumeration: the distinct talent_ids that own ANY typed skill,
+  // work-history, education, or certification evidence in a tenant (the union — a
+  // talent may have only one kind).
   async listTalentIdsWithEvidenceByTenant(tenant_id: string): Promise<string[]> {
-    const [skills, work] = await Promise.all([
+    const [skills, work, education, certification] = await Promise.all([
       this.prisma.talentSkillEvidence.findMany({
         where: { tenant_id },
         select: { talent_id: true },
         distinct: ['talent_id'],
       }),
       this.prisma.talentWorkHistoryEntry.findMany({
+        where: { tenant_id },
+        select: { talent_id: true },
+        distinct: ['talent_id'],
+      }),
+      this.prisma.talentEducationEntry.findMany({
+        where: { tenant_id },
+        select: { talent_id: true },
+        distinct: ['talent_id'],
+      }),
+      this.prisma.talentCertificationEntry.findMany({
         where: { tenant_id },
         select: { talent_id: true },
         distinct: ['talent_id'],
@@ -488,12 +666,15 @@ export class TalentEvidenceRepository {
     const ids = new Set<string>();
     for (const r of skills) ids.add(r.talent_id);
     for (const r of work) ids.add(r.talent_id);
+    for (const r of education) ids.add(r.talent_id);
+    for (const r of certification) ids.add(r.talent_id);
     return [...ids].sort();
   }
 
-  // Backfill --all-tenants: every tenant owning any typed skill/work-history row.
+  // Backfill --all-tenants: every tenant owning any typed skill/work-history/
+  // education/certification row.
   async listTenantIdsWithEvidence(): Promise<string[]> {
-    const [skills, work] = await Promise.all([
+    const [skills, work, education, certification] = await Promise.all([
       this.prisma.talentSkillEvidence.findMany({
         select: { tenant_id: true },
         distinct: ['tenant_id'],
@@ -502,10 +683,20 @@ export class TalentEvidenceRepository {
         select: { tenant_id: true },
         distinct: ['tenant_id'],
       }),
+      this.prisma.talentEducationEntry.findMany({
+        select: { tenant_id: true },
+        distinct: ['tenant_id'],
+      }),
+      this.prisma.talentCertificationEntry.findMany({
+        select: { tenant_id: true },
+        distinct: ['tenant_id'],
+      }),
     ]);
     const ids = new Set<string>();
     for (const r of skills) ids.add(r.tenant_id);
     for (const r of work) ids.add(r.tenant_id);
+    for (const r of education) ids.add(r.tenant_id);
+    for (const r of certification) ids.add(r.tenant_id);
     return [...ids].sort();
   }
 

@@ -28,6 +28,12 @@ const MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
 );
+// TR-7 B1 — TalentEducationEntry + TalentCertificationEntry (the regenerated
+// client knows these models).
+const TR7_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
+);
 
 // All test UUIDs use hex-only characters per RFC 4122. Tags chosen for
 // mnemonic clarity within the hex set: 1=tenant, 2=skill, 3=source-record,
@@ -52,10 +58,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
       const migrationSql = readFileSync(MIGRATION_PATH, 'utf8');
+      const tr7MigrationSql = readFileSync(TR7_MIGRATION_PATH, 'utf8');
 
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const stmt of migrationSql.split(';')) {
+      for (const stmt of [...migrationSql.split(';'), ...tr7MigrationSql.split(';')]) {
         const trimmed = stmt.trim();
         if (trimmed.length === 0) continue;
         await setupClient.$executeRawUnsafe(trimmed);

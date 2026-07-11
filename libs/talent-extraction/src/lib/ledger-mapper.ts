@@ -16,13 +16,17 @@
 // skill_id is byte-identical to the typed row's skill_id.
 
 export interface LedgerClaim {
-  assertion_type: 'EMPLOYMENT' | 'SKILL';
+  assertion_type: 'EMPLOYMENT' | 'SKILL' | 'DEGREE' | 'CERTIFICATION';
   // The recordEvidence input payload; the write gate canonicalizes it (adds
   // employer_norm / ISO dates / skill_id, preserves raw).
   payload: Record<string, unknown>;
   // Stable provenance key: the talent_evidence row id backs the ledger's
   // source_ref and the idempotence existence check (source_ref → the typed row).
-  source_ref: { talent_evidence_id: string; kind: 'work_history' | 'skill'; store: 'talent_evidence' };
+  source_ref: {
+    talent_evidence_id: string;
+    kind: 'work_history' | 'skill' | 'education' | 'certification';
+    store: 'talent_evidence';
+  };
 }
 
 function toIsoDate(d: Date): string {
@@ -65,5 +69,57 @@ export function mapSkillToClaim(row: {
     assertion_type: 'SKILL',
     payload: { value_raw: row.surface_form },
     source_ref: { talent_evidence_id: row.id, kind: 'skill', store: 'talent_evidence' },
+  };
+}
+
+// TR-7 B1 — DEGREE mapper. institution_name + degree_name are NOT-NULL columns, so
+// the DEGREE shape's required fields (institution_raw, degree_raw) are ALWAYS
+// present → the write gate never fires on this path (conformance property).
+// conferred_date is a stored @db.Date → its ISO is the honest raw for the gate.
+export function mapEducationToClaim(row: {
+  id: string;
+  institution_name: string;
+  degree_name: string;
+  field_of_study: string | null;
+  conferred_date: Date | null;
+}): LedgerClaim {
+  const payload: Record<string, unknown> = {
+    institution_raw: row.institution_name,
+    degree_raw: row.degree_name,
+  };
+  if (row.field_of_study !== null && row.field_of_study.trim() !== '') {
+    payload['field_raw'] = row.field_of_study;
+  }
+  if (row.conferred_date !== null) payload['conferred_date_raw'] = toIsoDate(row.conferred_date);
+  return {
+    assertion_type: 'DEGREE',
+    payload,
+    source_ref: { talent_evidence_id: row.id, kind: 'education', store: 'talent_evidence' },
+  };
+}
+
+// TR-7 B1 — CERTIFICATION mapper. certification_name is NOT-NULL → name_raw always
+// present (conformance property). issuer/credential and the two dates are optional.
+export function mapCertificationToClaim(row: {
+  id: string;
+  certification_name: string;
+  issuer_name: string | null;
+  credential_ref: string | null;
+  issued_date: Date | null;
+  expiry_date: Date | null;
+}): LedgerClaim {
+  const payload: Record<string, unknown> = { name_raw: row.certification_name };
+  if (row.issuer_name !== null && row.issuer_name.trim() !== '') {
+    payload['issuer_raw'] = row.issuer_name;
+  }
+  if (row.credential_ref !== null && row.credential_ref.trim() !== '') {
+    payload['credential_ref_raw'] = row.credential_ref;
+  }
+  if (row.issued_date !== null) payload['issued_date_raw'] = toIsoDate(row.issued_date);
+  if (row.expiry_date !== null) payload['expiry_date_raw'] = toIsoDate(row.expiry_date);
+  return {
+    assertion_type: 'CERTIFICATION',
+    payload,
+    source_ref: { talent_evidence_id: row.id, kind: 'certification', store: 'talent_evidence' },
   };
 }
