@@ -827,7 +827,7 @@ export class ConsentRepository {
       return {
         talent_record_id: input.talent_record_id,
         tenant_id: input.tenant_id,
-        is_anonymized: false,
+        is_anonymized: await this.hasErasureMarker(input.tenant_id, input.talent_record_id),
         computed_at: computedAt.toISOString(),
         scopes,
       };
@@ -935,7 +935,7 @@ export class ConsentRepository {
       return {
         events,
         next_cursor,
-        is_anonymized: false,
+        is_anonymized: await this.hasErasureMarker(input.tenant_id, input.talent_record_id),
       };
     });
   }
@@ -986,6 +986,22 @@ export class ConsentRepository {
    * Per ADR-0007 Decision F (PR-5 precedent): is_anonymized hardcoded
    * `false` until the talent module ships RTBF detection.
    */
+  // TR-15 B2 (DDR §5 — ADR-0007 Decision-F amendment) — is_anonymized stops
+  // being hardcoded false: it flips TRUE once the erase-talent CLI has appended
+  // the retained `consent.erased` audit marker for this talent. This EXISTS read
+  // is the ONLY thing that flips it (there is no other writer of the marker), so
+  // a live talent always reads false and an erased one reads true.
+  async hasErasureMarker(tenantId: string, talentRecordId: string): Promise<boolean> {
+    const n = await this.prisma.consentAuditEvent.count({
+      where: {
+        tenant_id: tenantId,
+        subject_id: talentRecordId,
+        event_type: 'consent.erased',
+      },
+    });
+    return n > 0;
+  }
+
   async resolveDecisionLog(
     input: ResolveDecisionLogInput,
   ): Promise<ConsentDecisionLogResponseDto> {
@@ -1046,7 +1062,7 @@ export class ConsentRepository {
       return {
         entries,
         next_cursor,
-        is_anonymized: false,
+        is_anonymized: await this.hasErasureMarker(input.tenant_id, input.talent_record_id),
       };
     });
   }

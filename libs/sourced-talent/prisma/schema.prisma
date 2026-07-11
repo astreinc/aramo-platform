@@ -67,7 +67,16 @@ model SourcedTalent {
 
   /// Legal-basis record (Spec §4 — basis + source + provenance; NOT a
   /// create-time yes/no). The lawful basis under which this arrival may be
-  /// processed; reconciled to the L3 TalentRecord consent on promotion. JSONB.
+  /// processed. JSONB.
+  /// TR-15 B2 (DDR §4) — CORRECTION of the earlier "reconciled to the L3
+  /// TalentRecord consent on promotion" note: this field is written only by the
+  /// (un-ratified, unbuilt) ADR-0019 sourcing service and is currently NOT read
+  /// anywhere. Promotion does NOT consume it — the SOURCED_TALENT ref resolves to
+  /// the ingestion RawPayload arrival (a name collision), and promotion carries
+  /// THAT arrival's basis provenance (source channel + server-derived source_class)
+  /// VERBATIM into the L3 consent-grant metadata (source_basis). When the sourcing
+  /// service lands and this row is populated, its reconcile into consent is the
+  /// bridge that has not yet been built.
   legal_basis Json
 
   /// When the arrival occurred at the channel (caller-supplied — the sourcing

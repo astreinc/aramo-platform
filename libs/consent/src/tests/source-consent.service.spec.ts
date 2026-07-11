@@ -231,4 +231,66 @@ describe('SourceConsentService — Group 2 v2.3a source-consent mapping', () => 
       }
     });
   });
+
+  // TR-15 B2 (DDR §4 / directive §5a) — the lawful-basis carry. The arrival's
+  // basis provenance (source channel + server-derived source_class) rides into
+  // every grant's metadata under `source_basis`, VERBATIM and UNINTERPRETED,
+  // additive beside the existing static per-scope metadata.
+  describe('the lawful-basis carry — source_basis (TR-15 B2)', () => {
+    it('carries channel + source_class + captured_at verbatim into every grant', async () => {
+      const repo = makeRepoMock();
+      const service = new SourceConsentService(repo);
+      await service.registerSourceDerivedConsent({
+        tenant_id: TENANT_ID,
+        talent_record_id: TALENT_ID,
+        source: 'indeed',
+        source_class: 'THIRD_PARTY_UNVERIFIED',
+        occurred_at: OCCURRED_AT,
+        requestId: REQUEST_ID,
+      });
+      const events = writtenEvents(repo);
+      expect(events).toHaveLength(4);
+      for (const e of events) {
+        expect(e.metadata['source_basis']).toEqual({
+          channel: 'indeed',
+          source_class: 'THIRD_PARTY_UNVERIFIED',
+          captured_at: OCCURRED_AT,
+        });
+      }
+    });
+
+    it('omits source_class from the block when the caller supplies none (never invented)', async () => {
+      const repo = makeRepoMock();
+      const service = new SourceConsentService(repo);
+      await service.registerSourceDerivedConsent({
+        tenant_id: TENANT_ID,
+        talent_record_id: TALENT_ID,
+        source: 'talent_direct',
+        occurred_at: OCCURRED_AT,
+        requestId: REQUEST_ID,
+      });
+      for (const e of writtenEvents(repo)) {
+        const basis = e.metadata['source_basis'] as Record<string, unknown>;
+        expect(basis['channel']).toBe('talent_direct');
+        expect(basis['captured_at']).toBe(OCCURRED_AT);
+        expect('source_class' in basis).toBe(false);
+      }
+    });
+
+    it('is additive — the R5 permitted_channels + astre lawful_basis survive beside source_basis', async () => {
+      const repo = makeRepoMock();
+      const service = new SourceConsentService(repo);
+      await service.registerSourceDerivedConsent({
+        tenant_id: TENANT_ID,
+        talent_record_id: TALENT_ID,
+        source: 'indeed',
+        source_class: 'THIRD_PARTY_UNVERIFIED',
+        occurred_at: OCCURRED_AT,
+        requestId: REQUEST_ID,
+      });
+      const contacting = writtenEvents(repo).find((e) => e.scope === 'contacting');
+      expect(contacting?.metadata['permitted_channels']).toEqual(['indeed']); // unchanged
+      expect(contacting?.metadata['source_basis']).toBeDefined(); // added beside it
+    });
+  });
 });
