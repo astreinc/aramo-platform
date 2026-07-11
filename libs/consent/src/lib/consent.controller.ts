@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
+import { RequireScopes, RolesGuard } from '@aramo/authorization';
 
 import { ConsentService } from './consent.service.js';
 import { ConsentCheckRequestDto } from './dto/consent-check-request.dto.js';
@@ -40,8 +41,13 @@ import {
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// TR-15 B1 (DDR §3) — RolesGuard is added to the class chain so the decision-log
+// route can carry a scope gate. RolesGuard is a NO-OP on any route without a
+// @RequireScopes decorator, so grant/revoke/check/state/history keep their
+// exact JwtAuthGuard-only behavior (their contracts are unchanged); only
+// getTalentConsentDecisionLog gains the gate below.
 @Controller('v1/consent')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ConsentController {
   constructor(private readonly consentService: ConsentService) {}
 
@@ -148,8 +154,15 @@ export class ConsentController {
   // validated against the closed set per PR-7 §7 + ADR-0009 §4. limit and
   // cursor parsing reuse the PR-6 helpers; cursor decode errors mapped to
   // HTTP 400 VALIDATION_ERROR per PR-6 §3 pattern; never propagate as 500.
+  // TR-15 B1 (DDR §3) — the forensic consent decision log is NOT a general
+  // authenticated read. Gated on the consent surface's own purpose-built scope
+  // `consent:decision-log:read` (the strictest existing applicable scope; already
+  // seeded + granted to the admin/operational tiers). A principal lacking it now
+  // refuses with 403 INSUFFICIENT_PERMISSIONS (RolesGuard), where before ANY
+  // authenticated tenant principal could read any talent's log.
   @Get('decision-log/:talent_record_id')
   @HttpCode(HttpStatus.OK)
+  @RequireScopes('consent:decision-log:read')
   async getTalentConsentDecisionLog(
     @Param('talent_record_id') talent_record_id: string,
     @Query('event_type') eventTypeRaw: string | undefined,

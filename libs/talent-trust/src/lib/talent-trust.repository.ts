@@ -773,6 +773,51 @@ export class TalentTrustRepository {
     });
   }
 
+  // TR-15 B1 (DDR §2) — the upheld-dispute atomic pair. Appends DISPUTE_RESOLVED
+  // then REVOKED and flips current_status to REVOKED in ONE transaction (array
+  // form, the insertAnchor precedent): a mid-tx failure leaves NEITHER event and
+  // no status change (§5c atomicity). occurred_at is monotonic (REVOKED 1ms after
+  // RESOLVED) so the timeline reads the honest order resolved-then-revoked. Both
+  // events carry the actor + justification. current_status projects to REVOKED
+  // (the last event) — the record is retired and drops out of accrual.
+  async appendResolvedThenRevoked(input: {
+    evidence_id: string;
+    tenant_id: string;
+    actor: string;
+    justification: string;
+  }): Promise<void> {
+    const resolvedAt = new Date();
+    const revokedAt = new Date(resolvedAt.getTime() + 1);
+    await this.prisma.$transaction([
+      this.prisma.evidenceEvent.create({
+        data: {
+          id: uuidv7(),
+          evidence_id: input.evidence_id,
+          tenant_id: input.tenant_id,
+          event_type: 'DISPUTE_RESOLVED',
+          reason: input.justification,
+          actor: input.actor,
+          occurred_at: resolvedAt,
+        },
+      }),
+      this.prisma.evidenceEvent.create({
+        data: {
+          id: uuidv7(),
+          evidence_id: input.evidence_id,
+          tenant_id: input.tenant_id,
+          event_type: 'REVOKED',
+          reason: input.justification,
+          actor: input.actor,
+          occurred_at: revokedAt,
+        },
+      }),
+      this.prisma.evidenceRecord.update({
+        where: { id: input.evidence_id },
+        data: { current_status: 'REVOKED' },
+      }),
+    ]);
+  }
+
   // ---- EvidenceLink (append-only) ------------------------------------
 
   async appendLink(input: {
