@@ -26,3 +26,11 @@ export {
 export { UserMenu } from './UserMenu';
 export { Avatar, EntityCell, initialsOf, type AvatarSize } from './Avatar';
 export { DataTable } from './DataTable';
+// Dashboard tiles — moved from apps/ats-web at Platform-Console Inc-3 PR-3.8 so
+// platform-web's operator dashboard can import them across the Platform⊥ATS wall
+// (same move-not-fork discipline as the PR-1.6 chrome carve). Domain-neutral
+// (react-only); their structural styles ride ./ui.css (the rc-metric/rc-kpi/
+// rc-spark/rc-pace rules carved alongside).
+export { MetricCard } from './MetricCard';
+export { KpiCard, type KpiDelta, type KpiPace } from './KpiCard';
+export { Sparkline, type SparkTone } from './Sparkline';

@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { MetricCard } from '@aramo/fe-foundation';
 
 import { ActionItem } from './ActionItem';
-import { MetricCard } from './MetricCard';
 import { ProgressMini } from './ProgressMini';
 import { ReservedSeam } from './ReservedSeam';
 

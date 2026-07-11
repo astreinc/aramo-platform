@@ -813,3 +813,167 @@
 }
 
 .rc-rowactions { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ─────────────── Dashboard tiles (moved from ats-web ui.css at Inc-3 PR-3.8) ───
+ * Structural rules for MetricCard / KpiCard / Sparkline / pace bar. Move-not-fork:
+ * these no longer exist in ats-web ui.css — both ats-web and platform-web
+ * re-inherit them via the @aramo/fe-foundation barrel. Token vars consumed
+ * (--surface/--line/--muted/--faint/--ok/--hot/--warn/--brand-accent/--surface-2/
+ * --r-lg/--elev) are in the token contract above; each consuming app supplies them.
+ * The tiles' GRID WRAPPERS (.rc-metrics, .rc-metrics--6, .rc-metrics--spaced) are
+ * view-layout, not tile structure, and stay in ats-web. */
+
+/* ─────────────── MetricCard ─────────────── */
+
+.rc-metric {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 15px 17px;
+  box-shadow: var(--elev);
+}
+
+.rc-metric__k {
+  font-size: 0.74rem;
+  color: var(--muted);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.rc-metric__k svg {
+  width: 15px;
+  height: 15px;
+  color: var(--faint);
+}
+
+.rc-metric__n {
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-top: 7px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-metric__hint {
+  font-size: 0.76rem;
+  font-weight: 600;
+  margin-top: 6px;
+  color: var(--faint);
+}
+
+/* ─────────────── KpiCard (My Desk header: number + delta + spark + pace) ─── */
+
+.rc-kpi {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 14px 15px;
+  box-shadow: var(--elev);
+  min-width: 0;
+}
+
+.rc-kpi__k {
+  font-size: 0.74rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.rc-kpi__v {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-top: 5px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-kpi__v small {
+  font-size: 0.85rem;
+  color: var(--faint);
+  font-weight: 600;
+  margin-left: 1px;
+}
+
+.rc-kpi__d {
+  font-size: 0.74rem;
+  margin-top: 4px;
+}
+
+.rc-kpi__delta {
+  font-weight: 600;
+}
+
+.rc-kpi__delta--up {
+  color: var(--ok);
+}
+
+.rc-kpi__delta--down {
+  color: var(--hot);
+}
+
+.rc-kpi__delta--flat {
+  color: var(--muted);
+}
+
+/* Sparkline */
+
+.rc-spark {
+  height: 22px;
+  width: 100%;
+  margin-top: 8px;
+  display: block;
+}
+
+.rc-spark--up {
+  color: var(--ok);
+}
+
+.rc-spark--down {
+  color: var(--hot);
+}
+
+.rc-spark--flat {
+  color: var(--faint);
+}
+
+/* Goal-progress (pace) bar */
+
+.rc-pace {
+  margin-top: 9px;
+}
+
+.rc-pace__track {
+  height: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.rc-pace__fill {
+  height: 100%;
+  border-radius: 20px;
+  background: var(--brand-accent);
+}
+
+.rc-pace--ok .rc-pace__fill {
+  background: var(--ok);
+}
+
+.rc-pace--warn .rc-pace__fill {
+  background: var(--warn);
+}
+
+.rc-pace--hot .rc-pace__fill {
+  background: var(--hot);
+}
+
+.rc-pace__l {
+  font-size: 0.68rem;
+  color: var(--faint);
+  margin-top: 4px;
+  font-weight: 600;
+}
