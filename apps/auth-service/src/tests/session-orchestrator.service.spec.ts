@@ -149,10 +149,43 @@ function makeService(mocks: Mocks): SessionOrchestratorService {
   );
 }
 
+// Inc-3 PR-3.6 (Workstream C) — env-pollution hygiene. This spec both LEAKED
+// (it set AUTH_COGNITO_* in beforeAll with no restore → polluted later files in
+// the same vitest worker) and was a VICTIM (it never cleared AUTH_PUBLIC_BASE_URL,
+// so a prior file's leak of it won the resolvePublicBaseUrl chain over this
+// spec's AUTH_COGNITO_REDIRECT_URI → the `exchange redirect_uri falls back to
+// env` test intermittently saw localhost:4201). Snapshot + CLEAR the full
+// redirect-env set at file start, set only what this spec needs, and restore on
+// teardown → order-independent, leak-free.
+const REDIRECT_ENV_KEYS = [
+  'AUTH_COGNITO_DOMAIN',
+  'AUTH_COGNITO_CLIENT_ID',
+  'AUTH_COGNITO_REDIRECT_URI',
+  'AUTH_PUBLIC_BASE_URL',
+  'AUTH_ALLOW_INSECURE_COOKIES',
+  'AUTH_POST_LOGIN_PATH',
+  'AUTH_POST_LOGIN_REDIRECT',
+  'AUTH_PLATFORM_HOSTS',
+  'NODE_ENV',
+] as const;
+let savedRedirectEnv: Partial<Record<string, string | undefined>> = {};
+
 beforeAll(() => {
+  savedRedirectEnv = {};
+  for (const k of REDIRECT_ENV_KEYS) {
+    savedRedirectEnv[k] = process.env[k];
+    delete process.env[k];
+  }
   process.env['AUTH_COGNITO_DOMAIN'] = 'auth.example.com';
   process.env['AUTH_COGNITO_CLIENT_ID'] = 'cid';
   process.env['AUTH_COGNITO_REDIRECT_URI'] = 'https://x.example/cb';
+});
+
+afterAll(() => {
+  for (const k of REDIRECT_ENV_KEYS) {
+    if (savedRedirectEnv[k] === undefined) delete process.env[k];
+    else process.env[k] = savedRedirectEnv[k];
+  }
 });
 
 beforeEach(() => {

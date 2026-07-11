@@ -38,7 +38,12 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { v7 as uuidv7 } from 'uuid';
 import { decodeJwt } from 'jose';
-import { AramoExceptionFilter, CommonModule } from '@aramo/common';
+import {
+  AramoExceptionFilter,
+  CommonModule,
+  resolveIdentityMigrations,
+  resolveAuthStorageMigrations,
+} from '@aramo/common';
 import {
   IdentityCoreModule,
   PrismaService as IdentityPrismaService,
@@ -77,59 +82,14 @@ class SiteAxisProofController {
   }
 }
 
-const IDENTITY_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
-);
-// Domain-Enforcement P1 — additive Tenant.allowed_domain column.
-const IDENTITY_ALLOWED_DOMAIN_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
-);
-// Domain-Enforcement P2b — additive Tenant domain-verification columns.
-const IDENTITY_DOMAIN_VERIFICATION_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql',
-);
-const IDENTITY_SLUG_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql',
-);
-// Subdomain-Identity Directive B — additive Tenant.identity_provider column.
-const IDENTITY_IDP_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
-);
-const IDENTITY_IDP_MIGRATION_LC = resolve(__dirname, '../../../../libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql');
-const IDENTITY_INVITATION_MIG = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
-);
-const IDENTITY_SITE_AXIS_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
-);
-// AUTHZ-D4a — team-model tables (chronologically between site-axis and the
-// profile/hierarchy migrations; applied so the DB matches the generated client).
-const IDENTITY_TEAM_MODELS_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql',
-);
-// Settings Rebuild D3 — additive tenant-profile columns (Prisma SELECTs them).
-const IDENTITY_PROFILE_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
-);
-// Settings Rebuild D4 — Site.parent_site_id self-FK hierarchy (Prisma SELECTs
-// it on every site row, so the seed's site.upsert requires the column).
-const IDENTITY_SITE_HIERARCHY_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260620000000_add_site_hierarchy/migration.sql',
-);
-const AUTH_STORAGE_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
-);
+// Inc-3 PR-3.6 (Workstream A) — identity migrations from the single ordered
+// source (@aramo/common), retiring the hand-listed consts and eliminating the
+// readFileSync(IDP, LC, 'utf8') bug (the lifecycle-status path jammed in as a
+// bogus encoding argument). auth-storage stays SEPARATE via its own helper.
+// repoRoot is 4 levels up from apps/auth-service/src/tests.
+const REPO_ROOT = resolve(__dirname, '../../../..');
+const IDENTITY_MIGRATIONS = resolveIdentityMigrations(REPO_ROOT);
+const AUTH_STORAGE_MIGRATIONS = resolveAuthStorageMigrations(REPO_ROOT);
 
 function splitDdl(sql: string): string[] {
   return sql.replace(/--[^\n]*$/gm, '').split(/;\s*\n/);
@@ -161,22 +121,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       const setup = new IdentityPrismaService(url);
       await setup.$connect();
-      for (const stmt of [
-        ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_ALLOWED_DOMAIN_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_DOMAIN_VERIFICATION_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_SLUG_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_IDP_MIGRATION, IDENTITY_IDP_MIGRATION_LC, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_INVITATION_MIG, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_SITE_AXIS_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_TEAM_MODELS_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_PROFILE_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_SITE_HIERARCHY_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
+      for (const migrationPath of [
+        ...IDENTITY_MIGRATIONS,
+        ...AUTH_STORAGE_MIGRATIONS,
       ]) {
-        const t = stmt.trim();
-        if (t.length === 0) continue;
-        await setup.$executeRawUnsafe(t);
+        for (const stmt of splitDdl(readFileSync(migrationPath, 'utf8'))) {
+          const t = stmt.trim();
+          if (t.length === 0) continue;
+          await setup.$executeRawUnsafe(t);
+        }
       }
       await setup.$disconnect();
 

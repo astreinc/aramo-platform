@@ -635,6 +635,21 @@ describe('AuthController.login (Subdomain-Identity B — Home Realm Discovery)',
     AUTH_COGNITO_REDIRECT_URI: REDIRECT_URI,
     APP_ROOT_DOMAIN: 'aramo.ai',
   } as const;
+  // Inc-3 PR-3.6 (Workstream C): also snapshot + CLEAR the higher-priority
+  // redirect-base env this block does NOT want set. Without this, a prior file
+  // in the same vitest worker that leaked AUTH_PUBLIC_BASE_URL (it wins the
+  // resolvePublicBaseUrl chain over AUTH_COGNITO_REDIRECT_URI) made the
+  // `pins identity_provider` login redirect resolve to localhost:4201 instead of
+  // REDIRECT_URI's origin — the intermittent isolation failure. Cleared here and
+  // restored on teardown so the block is order-independent.
+  const CLEARED_ENV_KEYS = [
+    'AUTH_PUBLIC_BASE_URL',
+    'AUTH_ALLOW_INSECURE_COOKIES',
+    'AUTH_POST_LOGIN_PATH',
+    'AUTH_POST_LOGIN_REDIRECT',
+    'AUTH_PLATFORM_HOSTS',
+    'NODE_ENV',
+  ] as const;
   const savedEnv: Partial<Record<string, string | undefined>> = {};
 
   beforeAll(() => {
@@ -642,9 +657,16 @@ describe('AuthController.login (Subdomain-Identity B — Home Realm Discovery)',
       savedEnv[k] = process.env[k];
       process.env[k] = ENV[k];
     }
+    for (const k of CLEARED_ENV_KEYS) {
+      savedEnv[k] = process.env[k];
+      delete process.env[k];
+    }
   });
   afterAll(() => {
-    for (const k of Object.keys(ENV) as (keyof typeof ENV)[]) {
+    for (const k of [
+      ...(Object.keys(ENV) as string[]),
+      ...CLEARED_ENV_KEYS,
+    ]) {
       if (savedEnv[k] === undefined) delete process.env[k];
       else process.env[k] = savedEnv[k];
     }

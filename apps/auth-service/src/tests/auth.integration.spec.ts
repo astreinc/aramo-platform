@@ -19,7 +19,11 @@ import type { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { v7 as uuidv7 } from 'uuid';
-import { CommonModule } from '@aramo/common';
+import {
+  CommonModule,
+  resolveIdentityMigrations,
+  resolveAuthStorageMigrations,
+} from '@aramo/common';
 import {
   IdentityCoreModule,
   IdentityService,
@@ -45,52 +49,17 @@ import { SessionOrchestratorService } from '../app/auth/session-orchestrator.ser
 
 import { generateTestKeyPair } from './test-keys.js';
 
-const IDENTITY_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
-);
-// Domain-Enforcement P1 — additive Tenant.allowed_domain column (the Prisma
-// client SELECTs it on every Tenant read, incl. the auth tenant-resolution path).
-const IDENTITY_ALLOWED_DOMAIN_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
-);
-// Domain-Enforcement P2b — additive Tenant domain-verification columns.
-const IDENTITY_DOMAIN_VERIFICATION_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql',
-);
-const IDENTITY_SLUG_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql',
-);
-// Subdomain-Identity Directive B — additive Tenant.identity_provider column.
-const IDENTITY_IDP_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
-);
-const IDENTITY_IDP_MIGRATION_LC = resolve(__dirname, '../../../../libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql');
-const IDENTITY_INVITATION_MIG = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
-);
-// PL-93 PR-A1a: apply the add_site_axis migration alongside the init so the
-// auth-service integration spec sees the post-A1a identity schema (Site +
-// UserTenantMembership.site_id). Migration is additive and idempotent.
-const IDENTITY_SITE_AXIS_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
-);
-// Settings Rebuild D3 — additive tenant-profile columns (the Prisma client now
-// SELECTs them on every Tenant read, incl. the auth tenant-resolution path).
-const IDENTITY_PROFILE_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
-);
-const AUTH_STORAGE_MIGRATION = resolve(
-  __dirname,
-  '../../../../libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
-);
+// Inc-3 PR-3.6 (Workstream A) — the identity migration set comes from the single
+// ordered source of truth (@aramo/common resolveIdentityMigrations), retiring
+// the hand-listed consts. This eliminates the readFileSync(IDP, LC, 'utf8') bug
+// that jammed the lifecycle-status migration path in as a bogus second
+// readFileSync argument (a named-const dup corruption — tsc-invisible, caught
+// only when the spec actually runs under ARAMO_RUN_INTEGRATION=1). The
+// auth-storage set stays SEPARATE (different schema) via its own helper, applied
+// after identity. repoRoot is 4 levels up from apps/auth-service/src/tests.
+const REPO_ROOT = resolve(__dirname, '../../../..');
+const IDENTITY_MIGRATIONS = resolveIdentityMigrations(REPO_ROOT);
+const AUTH_STORAGE_MIGRATIONS = resolveAuthStorageMigrations(REPO_ROOT);
 
 function splitDdl(sql: string): string[] {
   return sql.replace(/--[^\n]*$/gm, '').split(/;\s*\n/);
@@ -115,20 +84,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       const setup = new IdentityPrismaService(url);
       await setup.$connect();
-      for (const stmt of [
-        ...splitDdl(readFileSync(IDENTITY_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_ALLOWED_DOMAIN_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_DOMAIN_VERIFICATION_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_SLUG_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_IDP_MIGRATION, IDENTITY_IDP_MIGRATION_LC, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_INVITATION_MIG, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_SITE_AXIS_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_PROFILE_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
+      for (const migrationPath of [
+        ...IDENTITY_MIGRATIONS,
+        ...AUTH_STORAGE_MIGRATIONS,
       ]) {
-        const t = stmt.trim();
-        if (t.length === 0) continue;
-        await setup.$executeRawUnsafe(t);
+        for (const stmt of splitDdl(readFileSync(migrationPath, 'utf8'))) {
+          const t = stmt.trim();
+          if (t.length === 0) continue;
+          await setup.$executeRawUnsafe(t);
+        }
       }
       await setup.$disconnect();
 
@@ -285,7 +249,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // beforeAll now sets AUTH_POST_LOGIN_REDIRECT so this no longer 500s
       // off-CI — §5 D5 Part A.)
       expect(res.status).toBe(302);
-      expect(res.headers['location']).toBe('https://app.example/');
+      // Inc-3 PR-3.6 (Workstream B): PR-3.1 host-derivation now wins over the
+      // legacy AUTH_POST_LOGIN_REDIRECT env. The request host (127.0.0.1:<port>)
+      // is a dev-posture localhost (a VALIDATED host under AUTH_ALLOW_INSECURE_
+      // COOKIES), so the post-login redirect derives to that host + the post-
+      // login path ('/'), NOT the env's https://app.example/. This spec never
+      // ran (the readFileSync bug retired in Workstream A) so it never caught
+      // the 3.1 behavior change; the derived-host redirect is the correct
+      // production path (a real tenant host derives https://<tenant>/…).
+      expect(res.headers['location']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
       const cookies = res.headers['set-cookie'] as unknown as string[];
       expect(cookies.some((c) => c.startsWith('aramo_access_token='))).toBe(true);
       expect(cookies.some((c) => c.startsWith('aramo_refresh_token='))).toBe(true);
@@ -387,8 +359,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(url.origin).toBe('https://auth.example.com');
       expect(url.pathname).toBe('/logout');
       expect(url.searchParams.get('client_id')).toBe('test-client');
-      expect(url.searchParams.get('logout_uri')).toBe(
-        'https://app.example/login',
+      // Inc-3 PR-3.6 (Workstream B): PR-3.1 host-derivation makes the post-
+      // signout landing (logout_uri) derive from the VALIDATED request host
+      // (dev-posture 127.0.0.1:<port>) rather than the legacy
+      // AUTH_COGNITO_SIGNOUT_REDIRECT env. Still open-redirect-safe — the base
+      // comes from the dev allowlist, never the raw Host (PR-3.1 §2). The
+      // never-run spec asserted the pre-3.1 env value.
+      expect(url.searchParams.get('logout_uri')).toMatch(
+        /^http:\/\/127\.0\.0\.1:\d+\/$/,
       );
     });
 
