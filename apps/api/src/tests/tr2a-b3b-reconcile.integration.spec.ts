@@ -236,6 +236,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       return id;
     }
+    // TR-15 B2R — the two TR-7 B1 credential holders (talent_id-keyed), added to
+    // the reconcile repoint set so a merge re-points them like every other holder
+    // (the defect the T15-B2 erasure inventory surfaced).
+    async function mkEducation(recordId: string): Promise<string> {
+      const id = uuidv7();
+      await db.query(
+        `INSERT INTO talent_evidence."TalentEducationEntry"
+           (id, talent_id, tenant_id, institution_name, degree_name, source, created_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 'MIT', 'BSc', 'resume', CURRENT_TIMESTAMP)`,
+        [id, recordId, TENANT],
+      );
+      return id;
+    }
+    async function mkCertification(recordId: string): Promise<string> {
+      const id = uuidv7();
+      await db.query(
+        `INSERT INTO talent_evidence."TalentCertificationEntry"
+           (id, talent_id, tenant_id, certification_name, source, created_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 'CKA', 'resume', CURRENT_TIMESTAMP)`,
+        [id, recordId, TENANT],
+      );
+      return id;
+    }
     async function talentIdOf(qualifiedTable: string, id: string): Promise<string> {
       const r = await db.query(`SELECT talent_id FROM ${qualifiedTable} WHERE id = $1::uuid`, [id]);
       return r.rows[0].talent_id;
@@ -284,6 +307,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const exam = await mkExamination(recordL);
       const sub = await mkSubmittal(recordL);
       const ev = await mkEvidence(recordL);
+      // TR-15 B2R — the two credential holders must sweep like the rest.
+      const edu = await mkEducation(recordL);
+      const cert = await mkCertification(recordL);
       await grantConsent(recordL, 'contacting');
       await mergePointer(survivor, merged);
 
@@ -307,6 +333,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await talentIdOf('examination."TalentJobExamination"', exam)).toBe(recordS);
       expect(await talentIdOf('engagement."TalentSubmittalRecord"', sub)).toBe(recordS);
       expect(await talentIdOf('evidence."TalentJobEvidencePackage"', ev)).toBe(recordS);
+      // TR-15 B2R — the credential holders re-point to R_S like every other holder.
+      expect(await talentIdOf('talent_evidence."TalentEducationEntry"', edu)).toBe(recordS);
+      expect(await talentIdOf('talent_evidence."TalentCertificationEntry"', cert)).toBe(recordS);
       // Consent made under R_L is now effective under R_S (send-gate visible).
       expect(await effectiveGrantExists(recordS, 'contacting')).toBe(true);
       // Audit reconcile event appended (never rewrites, never re-points).
@@ -435,6 +464,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const eng = await mkEngagement(recordL, reqId);
       await mkPipeline(recordS, reqId);
       const loserPipeline = await mkPipeline(recordL, reqId); // collides
+      // TR-15 B2R — a credential holder must re-point back on reversal too.
+      const edu = await mkEducation(recordL);
+      const cert = await mkCertification(recordL);
       await grantConsent(recordL, 'contacting');
       await mergePointer(survivor, merged);
 
@@ -442,6 +474,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT, advisory_id: null,
         surviving_subject_id: survivor, merged_subject_id: merged, actor_id: ACTOR,
       });
+      // After the merge they moved to R_S (proven in (a)); here we drive the reverse.
+      expect(await talentIdOf('talent_evidence."TalentEducationEntry"', edu)).toBe(recordS);
       // A post-merge accretion: a NEW engagement created against R_S after reconcile.
       const accretionEng = await mkEngagement(recordS, uuidv7());
       // Un-merge phase 1 (mirror reverseMerge) then reverse phase 2.
@@ -457,6 +491,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // R_L back to live; the recorded engagement re-pointed back to R_L.
       expect(await recordStatus(recordL)).toBe('live');
       expect(await engagementRecordOf(eng)).toBe(recordL);
+      // TR-15 B2R — the credential holders re-point BACK to R_L on reversal.
+      expect(await talentIdOf('talent_evidence."TalentEducationEntry"', edu)).toBe(recordL);
+      expect(await talentIdOf('talent_evidence."TalentCertificationEntry"', cert)).toBe(recordL);
       // The removed collision pipeline row re-created (id restored).
       const restored = await db.query(`SELECT id FROM pipeline."Pipeline" WHERE id = $1::uuid`, [loserPipeline]);
       expect(restored.rowCount).toBe(1);
