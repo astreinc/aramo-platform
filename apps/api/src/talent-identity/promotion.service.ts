@@ -206,10 +206,16 @@ export class PromotionService {
     }
 
     // 8. Reconcile legal basis → L3 TalentConsentEvent keyed to the new record.
+    //    TR-15 B2 (DDR §4) — carry the arrival's basis provenance VERBATIM into
+    //    the grant metadata (source channel + the server-derived source_class),
+    //    stopping the flatten. The basis dimension survives promotion; counsel
+    //    assigns meaning later. Read from the ingestion arrival (the actual basis
+    //    at this path) — NOT sourced_talent.legal_basis (unreachable here).
     await this.sourceConsent.registerSourceDerivedConsent({
       tenant_id,
       talent_record_id: record.id,
       source,
+      source_class: arrival.source_class,
       occurred_at: arrival.captured_at.toISOString(),
       requestId,
     });

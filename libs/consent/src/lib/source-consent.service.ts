@@ -38,6 +38,13 @@ export interface RegisterSourceDerivedConsentInput {
   // its occurred_at. Caller provides; typically the ingestion
   // captured_at value or "now".
   occurred_at: string;
+  // TR-15 B2 (DDR §4 — the lawful-basis carry) — the arrival's server-derived
+  // attestation level ('SELF' | 'THIRD_PARTY_UNVERIFIED'), carried VERBATIM and
+  // UNINTERPRETED into the grant metadata so the basis dimension survives
+  // promotion instead of being flattened. Optional so non-promotion callers (if
+  // any) need not supply it; zero taxonomy is assigned here — counsel interprets
+  // it later (the brief question). See the source-basis block below.
+  source_class?: string;
   // Caller's request id, threaded through for audit + outbox.
   requestId: string;
 }
@@ -125,6 +132,23 @@ export class SourceConsentService {
       const idempotencyKey = uuidv7();
       const metadata: Record<string, unknown> = {
         source_consent_origin: input.source,
+        // TR-15 B2 (DDR §4) — the lawful-basis carry: the arrival's basis
+        // provenance recorded VERBATIM and UNINTERPRETED, so the dimension is
+        // preserved on-ledger and counsel can assign meaning later without a
+        // backfill. `channel` is the source (already in source_consent_origin,
+        // repeated here so the block is self-contained); `source_class` is the
+        // arrival's server-derived attestation, carried through only when the
+        // caller supplied it (promotion does). NO taxonomy, NO new vocabulary —
+        // raw values only. (The aspirational SourcedTalent.legal_basis JSONB is
+        // NOT the carry source: promotion reads the ingestion arrival, not that
+        // row — see the corrected comment there.)
+        source_basis: {
+          channel: input.source,
+          ...(input.source_class !== undefined
+            ? { source_class: input.source_class }
+            : {}),
+          captured_at: input.occurred_at,
+        },
         ...(grant.metadata ?? {}),
       };
       await this.consentRepo.recordConsentEvent({
