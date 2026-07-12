@@ -14,6 +14,9 @@ import type { EvidenceStatus, SourceClass } from './vocab.js';
 
 export const REASON_IMPOSSIBLE_RANGE = 'IMPOSSIBLE_RANGE';
 export const REASON_EMPLOYER_CONFLICT_SAME_WINDOW = 'EMPLOYER_CONFLICT_SAME_WINDOW';
+// TR-9 B1 (D4) — the ring's cheapest tell: a reference whose attester email is a
+// talent's own identity anchor in the tenant. Contradicted-by-construction.
+export const REASON_ATTESTER_IDENTITY_OVERLAP = 'ATTESTER_IDENTITY_OVERLAP';
 
 // Engine constants (§3.2).
 export const OVERLAP_THRESHOLD_DAYS = 30;
@@ -27,6 +30,15 @@ export interface EmploymentClaim {
   start_date: string | null; // ISO calendar date or null
   end_date: string | null;
   collected_at: Date;
+  current_status: EvidenceStatus;
+}
+
+// TR-9 B1 (D4) — a reference-attestation reduced to the overlap detector's view:
+// its evidence id + the attester's normalized email (null when the reference
+// carried no email — the detector stays SILENT on it).
+export interface AttestationClaim {
+  evidence_id: string;
+  attester_email_norm: string | null;
   current_status: EvidenceStatus;
 }
 
@@ -76,6 +88,25 @@ function detectImpossibleRanges(claims: EmploymentClaim[]): string[] {
     if (c.current_status === 'CONTRADICTED') continue;
     if (c.start_date === null || c.end_date === null) continue;
     if (epochDay(c.end_date) < epochDay(c.start_date)) out.push(c.evidence_id);
+  }
+  return out;
+}
+
+// TR-9 B1 (D4) — the ATTESTER_IDENTITY_OVERLAP detector, PURE. An attestation
+// whose attester email matches a subject anchor value in the tenant (supplied by
+// the service via the matcher's findAnchorsByValue) is contradicted: a "referee"
+// who is a talent's own identity is the fabricated network's cheapest move,
+// and it dies deterministically. Null/absent email → SILENT (no anchor to match;
+// the silence discipline). Already-CONTRADICTED rows are skipped.
+export function detectAttesterIdentityOverlap(
+  attestations: AttestationClaim[],
+  overlappingEmails: ReadonlySet<string>,
+): string[] {
+  const out: string[] = [];
+  for (const a of attestations) {
+    if (a.current_status === 'CONTRADICTED') continue;
+    if (a.attester_email_norm === null) continue; // silent on absent email
+    if (overlappingEmails.has(a.attester_email_norm)) out.push(a.evidence_id);
   }
   return out;
 }

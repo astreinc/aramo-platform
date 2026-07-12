@@ -56,6 +56,8 @@ import { ContradictionResolutionController } from './talent-identity/contradicti
 import { DisputeResolutionController } from './talent-identity/dispute-resolution.controller.js';
 import { EmailVerificationController } from './talent-identity/email-verification.controller.js';
 import { EmailVerificationService } from './talent-identity/email-verification.service.js';
+import { ReferenceAttestationController } from './talent-identity/reference-attestation.controller.js';
+import { ReferenceAttestationService } from './talent-identity/reference-attestation.service.js';
 import {
   PublicVerificationController,
   VerificationConfirmBudget,
@@ -442,6 +444,7 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // nested under the talent-record resource. Composes talent-record + consent +
     // trust ledger + mailer at the app boundary (above the I15 wall).
     EmailVerificationController,
+    ReferenceAttestationController,
     // TR-3 B2 — the PUBLIC (un-guarded) confirm endpoint (POST
     // /v1/email-verifications/confirm). No JwtAuthGuard — the talent has no
     // session; authority is the single-use token. Oracle-resistant (§3.2).
@@ -528,6 +531,7 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // TalentRecordRepository + TalentTrustRepository + TalentTrustService +
     // ConsentService + MAILER_PORT resolve via their already-imported modules).
     EmailVerificationService,
+    ReferenceAttestationService,
     // TR-3 B2 — the public confirm route's per-IP fixed-window budget (a shared
     // singleton the PublicVerificationController injects).
     VerificationConfirmBudget,

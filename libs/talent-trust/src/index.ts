@@ -103,6 +103,13 @@ export {
   isRegisteredAssertionType,
   parseToIsoDateOrNull,
   deriveSkillIdCanonical,
+  // TR-9 B1 — the reference-attestation shape's public seam: the statement-class
+  // vocab + its dimension map (the capture service picks CLAIMS/CONTINUITY) and
+  // the attester independence-collapse key helper (D3).
+  STATEMENT_CLASSES,
+  STATEMENT_CLASS_DIMENSION,
+  attesterDescriptorKey,
+  type StatementClass,
   type ClaimShapeResult,
 } from './lib/canonical-claim-shapes.js';
 
@@ -114,6 +121,11 @@ export {
   REASON_EMPLOYER_CONFLICT_SAME_WINDOW,
   OVERLAP_THRESHOLD_DAYS,
   GAP_THRESHOLD_DAYS,
+  // TR-9 B1 (D4) — the attester-identity-overlap detector + its reason, for the
+  // acceptance suite (both-ways: match → id, absent email → silent).
+  detectAttesterIdentityOverlap,
+  REASON_ATTESTER_IDENTITY_OVERLAP,
+  type AttestationClaim,
   type EmploymentClaim,
   type ExistingGap,
   type ConsistencyPlan,

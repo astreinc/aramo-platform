@@ -23,6 +23,7 @@ import {
 } from '../pipeline/types';
 
 import { TrustPanel } from './components/TrustPanel';
+import { RecordReferenceForm } from './RecordReferenceForm';
 import {
   getEmailVerificationStatus,
   getTalent,
@@ -141,7 +142,13 @@ export function TalentDetailView({ sessionOverride }: TalentDetailViewProps) {
     tabs.push({
       id: 'trust',
       label: 'Trust',
-      content: <TrustPanel talentId={talent.id} canResolve={scopes.includes('identity:resolve')} />,
+      content: (
+        <>
+          <TrustPanel talentId={talent.id} canResolve={scopes.includes('identity:resolve')} />
+          {/* TR-9 B1 (D5) — record a reference the recruiter already holds (talent:edit). */}
+          {canEditIdentity && <RecordReferenceForm recordId={talent.id} />}
+        </>
+      ),
     });
   }
   if (scopes.includes('attachment:read')) {

@@ -353,6 +353,111 @@ const historySpanShape: ClaimShape = (p) => {
   };
 };
 
+// TR-9 B1 (DDR §D2) — the reference-attestation shape (web-of-trust v1). A
+// recruiter records a reference they already lawfully hold; the platform
+// contacts no one (attester contact/verification is TR-9-B, counsel-gated). The
+// attester DESCRIPTOR is the load-bearing key — the independence-collapse group
+// (D3) and the future verified-attester axis both key on it, captured from day
+// one. R10 STRUCTURAL: there is NO rating field — a reference with a number
+// is a review, not evidence; the shape cannot hold the concept. Named
+// ATTESTATION as the assertion_type (the web-of-trust evidence type); distinct
+// from the recruiter submittal "attestations" (a different domain).
+
+// The statement's class — chosen by the recruiter, closed vocab. SKILL/WORK
+// accrue in CLAIMS; TENURE in CONTINUITY (the capture service maps it).
+export const STATEMENT_CLASSES = ['SKILL', 'WORK', 'TENURE'] as const;
+export type StatementClass = (typeof STATEMENT_CLASSES)[number];
+export const STATEMENT_CLASS_DIMENSION: Record<StatementClass, 'CLAIMS' | 'CONTINUITY'> = {
+  SKILL: 'CLAIMS',
+  WORK: 'CLAIMS',
+  TENURE: 'CONTINUITY',
+};
+
+// Email normalization — the matcher's convention exactly (trim + lowercase), so
+// an attester email_norm keys against SubjectAnchor.normalized_value (D4).
+function normalizeEmailForAttester(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
+const attestationShape: ClaimShape = (p) => {
+  const errors: string[] = [];
+  const attesterIn = (p['attester'] ?? {}) as Record<string, unknown>;
+  if (!nonEmptyString(attesterIn['name_raw']))
+    errors.push('attester.name_raw must be a non-empty string');
+  if (!optionalString(attesterIn['email_raw']))
+    errors.push('attester.email_raw must be a string when present');
+  if (!optionalString(attesterIn['company_raw']))
+    errors.push('attester.company_raw must be a string when present');
+  if (!optionalString(attesterIn['role_raw']))
+    errors.push('attester.role_raw must be a string when present');
+  if (!nonEmptyString(p['relationship_raw']))
+    errors.push('relationship_raw must be a non-empty string');
+  if (!nonEmptyString(p['statement_raw']))
+    errors.push('statement_raw must be a non-empty string');
+  const statementClass = p['statement_class'];
+  if (
+    typeof statementClass !== 'string' ||
+    !(STATEMENT_CLASSES as readonly string[]).includes(statementClass)
+  ) {
+    errors.push(`statement_class must be one of ${STATEMENT_CLASSES.join('|')}`);
+  }
+  const periodIn = (p['period'] ?? {}) as Record<string, unknown>;
+  if (!optionalString(periodIn['start_raw']))
+    errors.push('period.start_raw must be a string when present');
+  if (!optionalString(periodIn['end_raw']))
+    errors.push('period.end_raw must be a string when present');
+  if (errors.length > 0) return { ok: false, errors };
+
+  const emailRaw = optionalString(attesterIn['email_raw'])
+    ? (attesterIn['email_raw'] as string)
+    : undefined;
+  const attester: Record<string, unknown> = { name_raw: (attesterIn['name_raw'] as string).trim() };
+  if (emailRaw !== undefined && emailRaw.trim().length > 0)
+    attester['email_norm'] = normalizeEmailForAttester(emailRaw);
+  if (typeof attesterIn['company_raw'] === 'string')
+    attester['company_raw'] = attesterIn['company_raw'].trim();
+  if (typeof attesterIn['role_raw'] === 'string')
+    attester['role_raw'] = attesterIn['role_raw'].trim();
+
+  const startRaw = optionalString(periodIn['start_raw'])
+    ? (periodIn['start_raw'] as string)
+    : undefined;
+  const endRaw = optionalString(periodIn['end_raw']) ? (periodIn['end_raw'] as string) : undefined;
+
+  return {
+    ok: true,
+    canonical: {
+      attester,
+      relationship_raw: (p['relationship_raw'] as string).trim(),
+      statement_class: statementClass as string,
+      statement_raw: (p['statement_raw'] as string).trim(),
+      // Dates null-never-guessed; the raw is preserved beside the parsed ISO.
+      period: {
+        start_raw: startRaw ?? null,
+        end_raw: endRaw ?? null,
+        start: parseToIsoDateOrNull(startRaw),
+        end: parseToIsoDateOrNull(endRaw),
+      },
+    },
+  };
+};
+
+// TR-9 B1 (D3) — the attester independence-collapse key. Deterministic: the
+// normalized email where present, else normalized name+company. Attestations
+// sharing this key collapse to ONE independence group (five references from one
+// person are one signal, not five). Computed at capture, stored in
+// source_ref.attester_key, read by the derivation's independenceKey — so the
+// band derivation needs no assertion_payload.
+export function attesterDescriptorKey(attesterCanonical: Record<string, unknown>): string {
+  const email = attesterCanonical['email_norm'];
+  if (typeof email === 'string' && email.length > 0) return `email:${email}`;
+  const name = typeof attesterCanonical['name_raw'] === 'string' ? attesterCanonical['name_raw'] : '';
+  const company =
+    typeof attesterCanonical['company_raw'] === 'string' ? attesterCanonical['company_raw'] : '';
+  const norm = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, ' ');
+  return `nameco:${norm(name)}|${norm(company)}`;
+}
+
 // The registry: assertion_type → its canonical shape. Membership here IS the
 // "registered" predicate the write gate checks. Adding a type is a DDR-amendment-
 // level act (like AUTHORITATIVE_ASSERTION_TYPES), never a silent extension.
@@ -378,6 +483,11 @@ export const CANONICAL_CLAIM_SHAPES: Record<string, ClaimShape> = {
   // TR-5 B2 — the two positive CONTINUITY derivers' shapes.
   LONGITUDINAL_PRESENCE: longitudinalPresenceShape,
   HISTORY_SPAN: historySpanShape,
+  // TR-9 B1 (D2) — reference-attestation. Registered HERE for payload
+  // comparability; DELIBERATELY ABSENT from AUTHORITATIVE_ASSERTION_TYPES — a v1
+  // attestation is THIRD_PARTY_UNVERIFIED and MUST NOT elevate. The verified-
+  // attester elevation is TR-9-B, by amendment, never by drift.
+  ATTESTATION: attestationShape,
 };
 
 export function isRegisteredAssertionType(assertionType: string): boolean {

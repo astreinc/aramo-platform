@@ -50,6 +50,9 @@ describe('validateClaimShape — registered vs unregistered posture (§5a)', () 
 
   it('the registry membership IS the registered predicate', () => {
     expect(Object.keys(CANONICAL_CLAIM_SHAPES).sort()).toEqual([
+      // TR-9 B1 — reference-attestation (registered for comparability; NOT in
+      // AUTHORITATIVE_ASSERTION_TYPES — a v1 attestation must not elevate).
+      'ATTESTATION',
       // TR-7 B1 — the credential-claim capture.
       'CERTIFICATION',
       'DEGREE',

@@ -4860,6 +4860,21 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
+      // TR-9 B1 (D5) — reference-attestation capture: a live record at the
+      // consumer's URL id (PACT_TALENT_ID) so the capture's record-exists guard
+      // passes and the reference records as ATTESTATION evidence. No email/consent
+      // needed — capture contacts no one, rides the tenant's existing basis.
+      'an ats-web recruiter and a live talent record for reference capture': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTalentRecord(c, {
+            id: PACT_TALENT_ID,
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+          });
+        });
+      },
+
       // -- detail: a superseded talent record (DDR-3 — record_status=
       // 'superseded', superseded_by_record_id + superseded_at non-null).
       'an ats-web recruiter and a superseded talent record exist': async () => {
