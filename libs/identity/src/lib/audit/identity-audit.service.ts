@@ -68,6 +68,17 @@ export class IdentityAuditService {
     return rows.length > 0;
   }
 
+  // Inc-3 PR-3.8 (A) — the dashboard recent-activity read: the most recent
+  // tenant.* lifecycle events across ALL tenants, capped. Read-only, cross-estate
+  // (the operator view); errors surface (unlike writeEvent) so a failed read is
+  // not silently rendered as an empty feed. Delegates to the repository's
+  // cross-tenant query.
+  async getRecentTenantLifecycleActivity(
+    limit: number,
+  ): Promise<import('./identity-audit.repository.js').AuditEventRow[]> {
+    return this.auditRepo.findRecentTenantLifecycleActivity(limit);
+  }
+
   // AUTHZ-2: global-event emission (tenant_id=null). The repository's
   // assertMappingObeyed enforces that the event_type is NOT in
   // TENANT_SCOPED_EVENT_TYPES (directive §6 closed mapping). Used by

@@ -64,9 +64,17 @@ export {
   bandLabel,
   type PresentationBand,
 } from './band-map';
-export { MetricCard } from './MetricCard';
-export { KpiCard, type KpiDelta, type KpiPace } from './KpiCard';
-export { Sparkline, type SparkTone } from './Sparkline';
+// MetricCard/KpiCard/Sparkline moved to @aramo/fe-foundation at Inc-3 PR-3.8
+// (move-not-fork; the tiles now serve platform-web's dashboard too). ats-web
+// re-inherits them through the barrel — call-sites (../ui) are unchanged.
+export {
+  MetricCard,
+  KpiCard,
+  type KpiDelta,
+  type KpiPace,
+  Sparkline,
+  type SparkTone,
+} from '@aramo/fe-foundation';
 export { HotToggle } from './HotToggle';
 export {
   ActionItem,

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
+import { PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 import { v7 as uuidv7 } from 'uuid';
 
 import { IdentityAuditService } from './audit/identity-audit.service.js';
@@ -11,6 +12,7 @@ import { deriveSlugOrThrow } from './util/tenant-slug.js';
 import {
   isLegalTransition,
   isTenantStatus,
+  TENANT_STATUSES,
   type TenantStatus,
 } from './util/tenant-lifecycle.js';
 
@@ -101,6 +103,80 @@ export class TenantService {
   // → `resend`. History-derived (not a stored column) — no migration.
   async hasOwnerInviteBeenSent(tenant_id: string): Promise<boolean> {
     return this.audit.hasTenantEvent(tenant_id, 'tenant.owner_invite.sent');
+  }
+
+  // Inc-3 PR-3.8 (A) — the operator dashboard summary, assembled read-only from
+  // existing tenant + audit rows (no new event types, no new columns, no
+  // migration). Three sections:
+  //   status_counts — tenants per lifecycle status, zero-filled across the full
+  //     TENANT_STATUSES set (a status with no tenants still reports 0), with the
+  //     platform SENTINEL EXCLUDED (it is infrastructure, not estate; excluded by
+  //     its fixed UUID — there is no flag/column for it).
+  //   onboarding — PROVISIONED tenants oldest-first (the "who is stuck" list),
+  //     capped, each carrying its age anchor (created_at) and the audit-derived
+  //     invited-vs-not-yet-invited signal (a `tenant.owner_invite.sent` probe —
+  //     the same signal the detail screen derives; PR-3.4).
+  //   recent_activity — the most recent tenant.* lifecycle events across ALL
+  //     tenants, capped, with tenant names resolved and the reason code lifted
+  //     out of the event payload for the FE feed.
+  // R10 discipline: this returns counts, ages, statuses, and events — never a
+  // numeric rating/health of any tenant.
+  async getPlatformDashboard(args?: {
+    onboardingLimit?: number;
+    activityLimit?: number;
+  }): Promise<PlatformDashboardData> {
+    const onboardingLimit = args?.onboardingLimit ?? 10;
+    const activityLimit = args?.activityLimit ?? 15;
+
+    // status_counts — sentinel-excluded, zero-filled across every status.
+    const rawCounts = await this.tenantRepo.countTenantsByStatus(
+      PLATFORM_TENANT_SENTINEL_ID,
+    );
+    const byStatus = new Map(rawCounts.map((c) => [c.status, c.count]));
+    const status_counts = TENANT_STATUSES.map((status) => ({
+      status,
+      count: byStatus.get(status) ?? 0,
+    }));
+
+    // onboarding — PROVISIONED, oldest-first, invited-state derived per row.
+    const provisioned = await this.tenantRepo.findOnboardingProvisioned(
+      PLATFORM_TENANT_SENTINEL_ID,
+      onboardingLimit,
+    );
+    const onboarding = await Promise.all(
+      provisioned.map(async (t) => ({
+        tenant_id: t.id,
+        name: t.name,
+        created_at: t.created_at,
+        invited: await this.audit.hasTenantEvent(
+          t.id,
+          'tenant.owner_invite.sent',
+        ),
+      })),
+    );
+
+    // recent_activity — cross-tenant tenant.* events, names resolved in one read.
+    const events = await this.audit.getRecentTenantLifecycleActivity(
+      activityLimit,
+    );
+    const ids = [
+      ...new Set(
+        events
+          .map((e) => e.tenant_id)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    const names = await this.tenantRepo.findNamesByIds(ids);
+    const recent_activity = events.map((e) => ({
+      event_type: e.event_type,
+      tenant_id: e.tenant_id,
+      tenant_name: e.tenant_id === null ? null : names.get(e.tenant_id) ?? null,
+      actor_type: e.actor_type,
+      reason_code: extractReasonCode(e.event_payload),
+      created_at: e.created_at.toISOString(),
+    }));
+
+    return { status_counts, onboarding, recent_activity };
   }
 
   // AUTHZ-2: the guarded tenant-provisioning surface. Raises
@@ -378,4 +454,49 @@ function invalidReason(requestId: string, reason: string): AramoError {
     requestId,
     details: { reason },
   });
+}
+
+// Inc-3 PR-3.8 (A) — lift a human-facing reason code out of a lifecycle event's
+// payload for the dashboard feed. Lifecycle transitions carry `reason: {code,
+// text}`; the owner-invite event carries `reason: '<first_send|resend>'`; other
+// events may omit it. Returns null when no code is present (never guesses).
+function extractReasonCode(payload: Record<string, unknown>): string | null {
+  const reason = payload['reason'];
+  if (typeof reason === 'string') return reason.length > 0 ? reason : null;
+  if (reason !== null && typeof reason === 'object' && 'code' in reason) {
+    const code = (reason as { code?: unknown }).code;
+    return typeof code === 'string' && code.length > 0 ? code : null;
+  }
+  return null;
+}
+
+// Inc-3 PR-3.8 (A) — the operator dashboard payload shape (returned by
+// getPlatformDashboard, rendered by platform-web). Counts / ages / statuses /
+// events only (R10): no numeric rating of any tenant.
+export interface PlatformDashboardStatusCount {
+  readonly status: TenantStatus;
+  readonly count: number;
+}
+
+export interface PlatformDashboardOnboardingRow {
+  readonly tenant_id: string;
+  readonly name: string;
+  readonly created_at: string;
+  /** Audit-derived: has a `tenant.owner_invite.sent` ever been recorded. */
+  readonly invited: boolean;
+}
+
+export interface PlatformDashboardActivityRow {
+  readonly event_type: string;
+  readonly tenant_id: string | null;
+  readonly tenant_name: string | null;
+  readonly actor_type: string;
+  readonly reason_code: string | null;
+  readonly created_at: string;
+}
+
+export interface PlatformDashboardData {
+  readonly status_counts: readonly PlatformDashboardStatusCount[];
+  readonly onboarding: readonly PlatformDashboardOnboardingRow[];
+  readonly recent_activity: readonly PlatformDashboardActivityRow[];
 }

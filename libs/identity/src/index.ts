@@ -8,6 +8,13 @@ export { IdentityModule } from './lib/identity.module.js';
 export { IdentityCoreModule } from './lib/identity-core.module.js';
 export { IdentityService } from './lib/identity.service.js';
 export { TenantService } from './lib/tenant.service.js';
+// Inc-3 PR-3.8 (A) — the operator dashboard payload shape.
+export type {
+  PlatformDashboardData,
+  PlatformDashboardStatusCount,
+  PlatformDashboardOnboardingRow,
+  PlatformDashboardActivityRow,
+} from './lib/tenant.service.js';
 export { RoleService } from './lib/role.service.js';
 // Platform-Console Increment-2 PR-1 — tenant lifecycle vocabulary. Exported so
 // the auth-service mint gate + platform-admin action endpoints share the single

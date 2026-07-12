@@ -38,6 +38,35 @@ export interface PlatformAuditEvent {
   event_payload: Record<string, unknown>;
 }
 
+// Inc-3 PR-3.8 (A/C) — the operator dashboard summary (GET /platform/dashboard).
+// Counts / ages / statuses / events only (R10) — no numeric rating of a tenant.
+export interface PlatformDashboardStatusCount {
+  status: string;
+  count: number;
+}
+
+export interface PlatformDashboardOnboardingRow {
+  tenant_id: string;
+  name: string;
+  created_at: string;
+  invited: boolean;
+}
+
+export interface PlatformDashboardActivityRow {
+  event_type: string;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  actor_type: string;
+  reason_code: string | null;
+  created_at: string;
+}
+
+export interface PlatformDashboard {
+  status_counts: PlatformDashboardStatusCount[];
+  onboarding: PlatformDashboardOnboardingRow[];
+  recent_activity: PlatformDashboardActivityRow[];
+}
+
 export interface ProvisionTenantResult {
   tenant_id: string;
   tenant_name: string;
@@ -61,6 +90,11 @@ export type Capability = (typeof CAPABILITIES)[number];
 export const ALL_CAPABILITIES: readonly Capability[] = CAPABILITIES;
 
 export const platformApi = {
+  // Inc-3 PR-3.8 — the operator dashboard summary (default screen).
+  getDashboard(): Promise<PlatformDashboard> {
+    return apiClient.get('/platform/dashboard');
+  },
+
   listTenants(params?: { status?: string; q?: string }): Promise<{
     tenants: PlatformTenantSummary[];
   }> {
