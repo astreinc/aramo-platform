@@ -37,6 +37,46 @@ tags:
     description: Platform-administrator invitation (the sentinel platform tenant).
 
 paths:
+  /platform/dashboard:
+    get:
+      operationId: getPlatformDashboard
+      tags: [Platform Tenants]
+      summary: Operator dashboard summary.
+      description: |
+        The platform console's default screen: a single read-only aggregation
+        over existing tenant and audit rows — no new event types, columns, or
+        migration. Three sections:
+          - `status_counts`: tenants per lifecycle status, zero-filled across the
+            full status set (a status with no tenants still reports `0`). The
+            SENTINEL platform tenant is EXCLUDED — it is infrastructure, not
+            estate; the exclusion is by its fixed UUID (there is no flag/column
+            for it).
+          - `onboarding`: PROVISIONED tenants oldest-first (the "who is stuck"
+            list), capped, each with its age anchor (`created_at`) and the
+            audit-derived `invited` signal (whether a `tenant.owner_invite.sent`
+            has ever been recorded — the not-yet-invited distinction).
+          - `recent_activity`: the most recent `tenant.*` lifecycle events across
+            ALL tenants, capped, with tenant names resolved and the reason code
+            lifted from the event payload.
+        Counts, ages, statuses, and events only — never a numeric rating of a
+        tenant.
+
+        Requires scope `platform:tenant:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The dashboard summary envelope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformDashboardResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
   /platform/tenants:
     get:
       operationId: listTenants
@@ -758,6 +798,87 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PlatformTenantAuditEvent'
+
+    PlatformDashboardStatusCount:
+      type: object
+      additionalProperties: false
+      required: [status, count]
+      description: A lifecycle status and how many (non-sentinel) tenants hold it.
+      properties:
+        status:
+          $ref: '#/components/schemas/TenantStatus'
+        count:
+          type: integer
+          minimum: 0
+
+    PlatformDashboardOnboardingRow:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, name, created_at, invited]
+      description: A PROVISIONED tenant in the onboarding funnel (aged, oldest-first).
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        invited:
+          type: boolean
+          description: Audit-derived — whether a `tenant.owner_invite.sent` has ever been recorded (false = not yet invited).
+
+    PlatformDashboardActivityRow:
+      type: object
+      additionalProperties: false
+      required: [event_type, tenant_id, tenant_name, actor_type, reason_code, created_at]
+      description: A recent tenant.* lifecycle event across the estate.
+      properties:
+        event_type:
+          type: string
+        tenant_id:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+        tenant_name:
+          oneOf:
+            - type: string
+            - type: 'null'
+          description: Resolved tenant display name, or null if the tenant row is gone.
+        actor_type:
+          type: string
+        reason_code:
+          oneOf:
+            - type: string
+            - type: 'null'
+          description: Reason code lifted from the event payload, or null when absent.
+        created_at:
+          type: string
+          format: date-time
+
+    PlatformDashboardResponse:
+      type: object
+      additionalProperties: false
+      required: [status_counts, onboarding, recent_activity]
+      description: |
+        The operator dashboard summary. Counts / ages / statuses / events only
+        (R10) — no numeric rating of any tenant. The sentinel platform tenant is
+        excluded from `status_counts` (by its fixed UUID).
+      properties:
+        status_counts:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformDashboardStatusCount'
+        onboarding:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformDashboardOnboardingRow'
+        recent_activity:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformDashboardActivityRow'
 
     InviteUserRequest:
       type: object

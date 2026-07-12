@@ -289,6 +289,25 @@ export class IdentityAuditRepository {
     });
     return rows as AuditEventRow[];
   }
+
+  // Inc-3 PR-3.8 (A) — the platform dashboard's recent-activity feed: the most
+  // recent tenant.* lifecycle events ACROSS ALL tenants (no tenant_id pin — the
+  // operator's cross-estate view, the deliberate inverse of the tenant-scoped
+  // findByTenant/findTenantLifecycleAudit). Rides the global (created_at DESC,
+  // id DESC) index; capped by the caller (this is an operator page, not a hot
+  // path — no keyset, no count).
+  async findRecentTenantLifecycleActivity(
+    limit: number,
+  ): Promise<AuditEventRow[]> {
+    const rows = await this.prisma.identityAuditEvent.findMany({
+      where: {
+        event_type: { in: TENANT_LIFECYCLE_EVENT_TYPES as unknown as string[] },
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+    return rows as AuditEventRow[];
+  }
 }
 
 // The tenant lifecycle event_type family (the `tenant.*` events), derived from

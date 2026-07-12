@@ -165,6 +165,58 @@ export class TenantRepository {
     return row === null ? null : row;
   }
 
+  // Inc-3 PR-3.8 (A) — dashboard status counts. Groups tenants by lifecycle
+  // status, EXCLUDING the platform sentinel tenant (infrastructure, not estate).
+  // The sentinel has no flag/column — its fixed UUID is the sole identifier, so
+  // exclusion is `id != <sentinel>` (the caller passes PLATFORM_TENANT_SENTINEL_ID).
+  // Returns only the statuses that actually occur; the service zero-fills the full
+  // TENANT_STATUSES set so a status with no tenants still reports a count of 0.
+  async countTenantsByStatus(
+    excludeId: string,
+  ): Promise<{ status: string; count: number }[]> {
+    const groups = await this.prisma.tenant.groupBy({
+      by: ['status'],
+      where: { id: { not: excludeId } },
+      _count: { _all: true },
+    });
+    return groups.map((g) => ({ status: g.status, count: g._count._all }));
+  }
+
+  // Inc-3 PR-3.8 (A) — the onboarding funnel: PROVISIONED tenants (created but
+  // not yet activated), oldest-first so the most-stuck sit at the top, capped.
+  // Sentinel excluded for symmetry with the counts (it is ACTIVE, so already out).
+  // created_at is the age anchor the FE renders; invited-state is derived
+  // separately (audit-ledger probe) by the service.
+  async findOnboardingProvisioned(
+    excludeId: string,
+    limit: number,
+  ): Promise<{ id: string; name: string; created_at: string }[]> {
+    const rows = await this.prisma.tenant.findMany({
+      where: { status: 'PROVISIONED', id: { not: excludeId } },
+      orderBy: { created_at: 'asc' },
+      take: limit,
+      select: { id: true, name: true, created_at: true },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      created_at: r.created_at.toISOString(),
+    }));
+  }
+
+  // Inc-3 PR-3.8 (A) — resolve tenant display names for a set of ids. The
+  // recent-activity feed shows the tenant name, but audit rows carry only
+  // tenant_id; this is one indexed IN read returning an id→name map. Empty in →
+  // empty map (no query).
+  async findNamesByIds(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.prisma.tenant.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true },
+    });
+    return new Map(rows.map((r) => [r.id, r.name]));
+  }
+
   // Platform-Console Increment-2 PR-1 — the lifecycle status write. Sets status +
   // status_changed_at + reason columns + whatever milestone/retention columns the
   // caller computed for this transition. Transition legality is enforced by the

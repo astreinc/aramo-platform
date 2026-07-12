@@ -21,6 +21,7 @@ import {
   IdentityAuditRepository,
   TenantService,
   type AuditEventRow,
+  type PlatformDashboardData,
 } from '@aramo/identity';
 
 import {
@@ -112,6 +113,23 @@ export class PlatformController {
     this.assertConsumerIsPlatform(authCtx, requestId);
     const tenants = await this.tenantSvc.listTenantsForPlatform({ status, q });
     return { tenants };
+  }
+
+  // Inc-3 PR-3.8 (A) — the operator dashboard summary (the platform console's
+  // default screen). One read-only aggregation over existing tenant + audit
+  // rows: status_counts (sentinel-excluded, zero-filled), the onboarding funnel
+  // (PROVISIONED oldest-first + invited-state), and recent tenant.* activity
+  // across the estate. Same platform:tenant:read scope as the estate list — no
+  // new scope; no new event types/columns/migration. R10: counts, ages, statuses
+  // and events only — never a numeric rating of a tenant.
+  @Get('dashboard')
+  @RequireScopes('platform:tenant:read')
+  async getDashboard(
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PlatformDashboardData> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    return this.tenantSvc.getPlatformDashboard();
   }
 
   @Post('tenants/:tenant_id/invitations')
