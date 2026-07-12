@@ -28,6 +28,30 @@ export async function listTalent(): Promise<TalentRecordListResponse> {
   return apiClient.get<TalentRecordListResponse>('/v1/talent-records');
 }
 
+// TR-9 B1 (D5) — record a reference the recruiter already lawfully holds. The
+// platform contacts no one. NO rating/rating field exists (R10: a reference with
+// a number is a review, not evidence). SKILL/WORK → CLAIMS; TENURE → CONTINUITY.
+export interface RecordReferenceRequest {
+  attester: { name: string; email?: string; company?: string; role?: string };
+  relationship: string;
+  statement_class: 'SKILL' | 'WORK' | 'TENURE';
+  statement: string;
+  period?: { start?: string; end?: string };
+}
+export interface RecordReferenceResult {
+  recorded: boolean; // false on an idempotent re-record
+  evidence_id: string;
+}
+export async function recordReferenceAttestation(
+  recordId: string,
+  body: RecordReferenceRequest,
+): Promise<RecordReferenceResult> {
+  return apiClient.post<RecordReferenceResult>(
+    `/v1/talent-records/${encodeURIComponent(recordId)}/reference-attestations`,
+    body,
+  );
+}
+
 // Segment 4d — the SERVER-SIDE faceted + keyset-paginated path (?paged=true).
 // Filters, sort, presets (?preset=), the My-team scope (?scope=my_team) and the
 // keyset cursor are all resolved on the BE (4a native / 4b cross-facet counts /

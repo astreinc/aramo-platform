@@ -86,8 +86,27 @@ const VERIFICATION_ASSERTION_TYPES = new Set<string>([
 // treated as its own independent signal.
 function independenceKey(e: EvidenceForDerivation, index: number): string {
   if (e.source_class === 'SELF') return 'SELF';
+  // TR-9 B1 (D3) — reference-attestations collapse by ATTESTER, not by their
+  // per-reference content-hash source_ref: five references from one person are
+  // ONE independence signal, not five (without this, v1 capture would inflate
+  // bands on day one). The capture service stamps source_ref.attester_key (the
+  // normalized descriptor — email_norm else name+company) precisely so the
+  // derivation collapses same-attester attestations here, with no payload read.
+  if (e.assertion_type === 'ATTESTATION') {
+    const key = attesterKeyOfSourceRef(e.source_ref);
+    return key !== null ? `attester:${key}` : `__independent__:${index}`;
+  }
   if (e.source_ref === null || e.source_ref === undefined) return `__independent__:${index}`;
   return `ref:${stableStringify(e.source_ref)}`;
+}
+
+// TR-9 B1 (D3) — pull the attester independence key out of an attestation's
+// source_ref ({content_hash, attester_key}). Null when absent (older/foreign
+// rows) → the caller treats it as its own independent signal.
+function attesterKeyOfSourceRef(sourceRef: unknown | null): string | null {
+  if (sourceRef === null || typeof sourceRef !== 'object') return null;
+  const k = (sourceRef as Record<string, unknown>)['attester_key'];
+  return typeof k === 'string' && k.length > 0 ? k : null;
 }
 
 // TR-4 B3 — do two evidence rows share an ultimate source (i.e. collapse to ONE

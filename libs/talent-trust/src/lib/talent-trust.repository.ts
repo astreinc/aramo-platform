@@ -951,6 +951,25 @@ export class TalentTrustRepository {
     return row !== null;
   }
 
+  // TR-9 B1 (D5) — the reference-attestation idempotence read: the same reference
+  // recorded twice is one row. Keys on the content-hash carried in source_ref
+  // (mirrors claimEvidenceExistsBySourceRef, content_hash instead of the typed-row
+  // id). Returns the existing evidence id for an idempotent-return.
+  async findAttestationByContentHash(
+    subjectId: string,
+    contentHash: string,
+  ): Promise<string | null> {
+    const row = await this.prisma.evidenceRecord.findFirst({
+      where: {
+        subject_id: subjectId,
+        assertion_type: 'ATTESTATION',
+        source_ref: { path: ['content_hash'], equals: contentHash },
+      },
+      select: { id: true },
+    });
+    return row?.id ?? null;
+  }
+
   // ---- TrustState (projection — recomputed on every write) -----------
 
   async upsertTrustState(input: TrustStateRow): Promise<TrustStateRow> {

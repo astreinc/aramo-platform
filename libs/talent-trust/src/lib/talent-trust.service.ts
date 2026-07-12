@@ -1,12 +1,15 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { AramoError } from '@aramo/common';
+import { AramoError, hashCanonicalizedBody } from '@aramo/common';
 
 import { isConfirmingAnchor } from './anchor-confirmation.js';
-import { validateClaimShape } from './canonical-claim-shapes.js';
+import { validateClaimShape, attesterDescriptorKey } from './canonical-claim-shapes.js';
 import {
   computeConsistencyPlan,
+  detectAttesterIdentityOverlap,
+  REASON_ATTESTER_IDENTITY_OVERLAP,
   REASON_EMPLOYER_CONFLICT_SAME_WINDOW,
   REASON_IMPOSSIBLE_RANGE,
+  type AttestationClaim,
   type EmploymentClaim,
   type ExistingGap,
 } from './consistency-detectors.js';
@@ -811,6 +814,60 @@ export class TalentTrustService {
     return { written: true, evidence_id: ev.id };
   }
 
+  // TR-9 B1 (D5) — the reference-attestation capture, idempotent. A recruiter
+  // records a reference they already lawfully hold; the platform contacts no one.
+  // Fixed by D2: source_class THIRD_PARTY_UNVERIFIED (the honest floor — the
+  // attester is unverified) × method HUMAN_ATTESTED (the reserved hook's FIRST
+  // producer). The write gate canonicalizes here first so the descriptor + the
+  // content-hash are derived from the SAME canonical the ledger stores: the
+  // descriptor keys D3 independence-collapse (source_ref.attester_key), the
+  // content-hash keys idempotence (the same reference twice is one row). Recompute
+  // rides recordEvidence; the D4 overlap detector fires on the next consistency pass.
+  async recordReferenceAttestationIfAbsent(input: {
+    subjectRef: SubjectRef;
+    dimension: TrustDimension;
+    assertion_payload: Record<string, unknown>;
+    requestId?: string;
+  }): Promise<{ written: boolean; evidence_id: string }> {
+    const shape = validateClaimShape('ATTESTATION', input.assertion_payload);
+    if (!shape.ok || shape.canonical === undefined) {
+      throw new AramoError(
+        'CLAIM_SHAPE_INVALID',
+        `ATTESTATION payload invalid: ${(shape.errors ?? []).join('; ')}`,
+        422,
+        { requestId: input.requestId ?? CLAIM_SHAPE_REQUEST_ID },
+      );
+    }
+    const canonical = shape.canonical;
+    const attester = (canonical['attester'] ?? {}) as Record<string, unknown>;
+    const attester_key = attesterDescriptorKey(attester);
+    const content_hash = hashCanonicalizedBody(canonical);
+
+    const subjectId = await this.repo.resolveOrCreateSubject(
+      input.subjectRef.tenant_id,
+      input.subjectRef.ref_type,
+      input.subjectRef.ref_id,
+      input.subjectRef.link_source ?? 'reference-capture',
+    );
+    const existing = await this.repo.findAttestationByContentHash(subjectId, content_hash);
+    if (existing !== null) return { written: false, evidence_id: existing };
+
+    const ev = await this.recordEvidence({
+      subjectRef: input.subjectRef,
+      dimension: input.dimension,
+      assertion_type: 'ATTESTATION',
+      assertion_payload: input.assertion_payload,
+      source_class: 'THIRD_PARTY_UNVERIFIED',
+      method: 'HUMAN_ATTESTED',
+      source_ref: { content_hash, attester_key },
+      ai_derived: false,
+      portability_class: 'TENANT_ONLY',
+      decay_profile: 'MODERATE',
+      created_by: 'reference-capture',
+    });
+    return { written: true, evidence_id: ev.id };
+  }
+
   // ---- Writes: lifecycle ops (§8) ------------------------------------
   // Each appends an EvidenceEvent (+ EvidenceLink where relational), projects
   // the new current_status, and recomputes TrustState.
@@ -1114,6 +1171,35 @@ export class TalentTrustService {
     for (const c of plan.employerConflicts) {
       await this.contradict(c.a_id, c.b_id, REASON_EMPLOYER_CONFLICT_SAME_WINDOW);
     }
+
+    // TR-9 B1 (D4) — the ring's cheapest tell, in the same pass. Reduce the
+    // cluster's ATTESTATION evidence to (id, attester email); for each distinct
+    // email, ask the matcher's shared-value lookup whether it is a subject anchor
+    // value in the tenant (a "referee" who is a talent's own identity). The
+    // pure detector flips the overlaps; absent-email attestations stay silent.
+    const attestations: AttestationClaim[] = claimsEvidence
+      .filter((e) => e.assertion_type === 'ATTESTATION')
+      .map((e) => {
+        const p = (e.assertion_payload ?? {}) as Record<string, unknown>;
+        const attester = (p['attester'] ?? {}) as Record<string, unknown>;
+        const email = attester['email_norm'];
+        return {
+          evidence_id: e.id,
+          attester_email_norm: typeof email === 'string' && email.length > 0 ? email : null,
+          current_status: e.current_status,
+        };
+      });
+    const overlappingEmails = new Set<string>();
+    for (const email of new Set(
+      attestations.map((a) => a.attester_email_norm).filter((e): e is string => e !== null),
+    )) {
+      const anchors = await this.repo.findAnchorsByValue(tenantId, 'EMAIL', email);
+      if (anchors.length > 0) overlappingEmails.add(email);
+    }
+    const attesterOverlapIds = detectAttesterIdentityOverlap(attestations, overlappingEmails);
+    for (const id of attesterOverlapIds) {
+      await this.contradictRecord(id, REASON_ATTESTER_IDENTITY_OVERLAP);
+    }
     let gaps_opened = 0;
     for (const g of plan.gapsToOpen) {
       const r = await this.recordTimelineGapIfAbsent({
@@ -1141,7 +1227,10 @@ export class TalentTrustService {
 
     await this.recompute(subjectId, tenantId, new Date());
     return {
-      contradictions: plan.impossibleRangeIds.length + plan.employerConflicts.length,
+      contradictions:
+        plan.impossibleRangeIds.length +
+        plan.employerConflicts.length +
+        attesterOverlapIds.length,
       gaps_opened,
       gaps_healed: plan.gapsToHeal.length,
     };
