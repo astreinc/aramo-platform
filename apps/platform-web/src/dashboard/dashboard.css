@@ -1,0 +1,53 @@
+/* Inc-3 PR-3.8 (Workstream C) — operator dashboard layout. Token-driven
+ * (Platform Violet theme.css supplies every color/radius/shadow); no hardcoded
+ * hex. The KpiCard/pw-audit structural styles come from the fe-foundation
+ * barrel (rc-kpi) + platform-shell.css (pw-audit); this sheet is layout only. */
+
+.pw-dashboard {
+  max-width: 1180px;
+}
+
+/* Status-count tiles — a responsive row of KpiCards. */
+.pw-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+/* Two-column split: onboarding funnel + recent activity. Collapses to one
+ * column on narrow viewports so the page body never scrolls sideways. */
+.pw-dashboard__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 22px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .pw-dashboard__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pw-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  padding: 18px 18px 20px;
+  box-shadow: var(--sh-1);
+  min-width: 0;
+}
+
+.pw-panel__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.pw-panel__sub {
+  margin: 4px 0 14px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}

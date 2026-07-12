@@ -24,7 +24,14 @@ import './platform-shell.css';
 // available; the identity panel is intentionally minimal.
 
 function crumbsFor(pathname: string): BreadcrumbItem[] {
-  const crumbs: BreadcrumbItem[] = [{ label: 'Tenants', href: '/tenants' }];
+  // Inc-3 PR-3.8 — the dashboard is the home crumb; tenant routes hang off it.
+  if (pathname === '/' || pathname === '') {
+    return [{ label: 'Dashboard' }];
+  }
+  const crumbs: BreadcrumbItem[] = [
+    { label: 'Dashboard', href: '/' },
+    { label: 'Tenants', href: '/tenants' },
+  ];
   const m = /^\/tenants\/([^/]+)/.exec(pathname);
   if (pathname.startsWith('/tenants/new')) {
     crumbs.push({ label: 'Provision' });
@@ -46,6 +53,7 @@ export function PlatformShell({ children }: { readonly children: ReactNode }) {
         PLATFORM
       </span>
       <RailNavLabel>Operations</RailNavLabel>
+      <RailNavItem to="/" end label="Dashboard" icon={<Icons.IconDesk />} />
       <RailNavItem
         to="/tenants"
         label="Tenants"
@@ -56,7 +64,7 @@ export function PlatformShell({ children }: { readonly children: ReactNode }) {
 
   const topBar = (
     <TopBar>
-      <ShellBrand brand="Aramo" brandSub="Platform Console" to="/tenants" />
+      <ShellBrand brand="Aramo" brandSub="Platform Console" to="/" />
       <span className="pw-topbar-mark" aria-hidden="true">
         PLATFORM
       </span>

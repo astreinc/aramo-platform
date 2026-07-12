@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   ApiError,
   Button,
@@ -63,6 +63,11 @@ function auditSummary(e: PlatformAuditEvent): string {
 
 export function TenantDetailView({ session }: { readonly session: Session }) {
   const { id = '' } = useParams();
+  // Inc-3 PR-3.8 — the dashboard's activity feed deep-links to `?tab=lifecycle`
+  // so a lifecycle event opens straight on the audit tab. Only the two known
+  // tab ids are honored (Tabs falls back to the first tab otherwise).
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') ?? undefined;
   const toast = useToast();
   const [tenant, setTenant] = useState<PlatformTenantDetail | null>(null);
   const [events, setEvents] = useState<PlatformAuditEvent[]>([]);
@@ -207,7 +212,7 @@ export function TenantDetailView({ session }: { readonly session: Session }) {
         <h1 className="pw-page__title">{tenant.name}</h1>
         <StatusBadge status={tenant.status} />
       </div>
-      <Tabs items={tabs} ariaLabel="Tenant detail" />
+      <Tabs items={tabs} ariaLabel="Tenant detail" initialId={tabParam} />
 
       {dialog ? (
         <LifecycleDialog

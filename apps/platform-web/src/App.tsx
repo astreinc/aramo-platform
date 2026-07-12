@@ -3,6 +3,7 @@ import { RouteGuard, ToastProvider, useSession } from '@aramo/fe-foundation';
 
 import { LoginPage } from './LoginPage';
 import { PlatformShell } from './shell/PlatformShell';
+import { DashboardView } from './dashboard/DashboardView';
 import { TenantsListView } from './tenants/TenantsListView';
 import { TenantDetailView } from './tenants/TenantDetailView';
 import { ProvisionTenantView } from './tenants/ProvisionTenantView';
@@ -37,13 +38,16 @@ export function App() {
         {state.status === 'authenticated' ? (
           <PlatformShell>
             <Routes>
+              {/* Inc-3 PR-3.8 — the operator dashboard is the default post-login
+                  screen; the tenant list is one click away in the rail. */}
+              <Route path="/" element={<DashboardView />} />
               <Route path="/tenants" element={<TenantsListView />} />
               <Route path="/tenants/new" element={<ProvisionTenantView />} />
               <Route
                 path="/tenants/:id"
                 element={<TenantDetailView session={state.session} />}
               />
-              <Route path="*" element={<Navigate to="/tenants" replace />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </PlatformShell>
         ) : null}
