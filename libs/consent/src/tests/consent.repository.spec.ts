@@ -52,6 +52,10 @@ function makeTx(): MockTx {
 function makePrisma(tx: MockTx): PrismaService {
   return {
     $transaction: vi.fn().mockImplementation(async (fn: (t: MockTx) => Promise<unknown>) => fn(tx)),
+    // TR-15 B2 — the reads now derive is_anonymized from a `consent.erased`
+    // audit marker via consentAuditEvent.count. A non-erased talent counts 0 →
+    // is_anonymized stays false (the existing Decision-F assertions still hold).
+    consentAuditEvent: { count: vi.fn().mockResolvedValue(0) },
   } as unknown as PrismaService;
 }
 

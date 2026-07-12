@@ -1,21 +1,87 @@
-# Runbook — Manual Talent RTBF / Erasure (résumé object + attachment)
+# Runbook — Talent RTBF / Erasure (complete chain-erase)
 
 **Status:** operator procedure (go-live). **Owner:** platform/compliance on-call.
-**Why this exists:** a verified right-to-be-forgotten request cannot be fully
-honored by the product alone today. Deleting a `TalentRecord` cascades the
-résumé **text** row but does **not** delete the résumé **file** in S3 and does
-**not** clean up the `Attachment` rows (they reference the talent by `owner_id`,
-a cross-schema UUID with no FK — Architecture §7.3). This runbook closes that
-gap manually. See the register entry in
+**Why this exists:** a verified right-to-be-forgotten request must reach EVERY
+place a talent's data lives — not just the résumé. Deleting a `TalentRecord`
+cascades only its same-schema children (résumé **text**, field provenance,
+reconcile-contradiction); it does **not** touch the S3 résumé **file**, the
+`Attachment` rows, the ~20 cross-schema operational holders, the trust-side PII
+(anchors, evidence payloads, verification rows), or the person's superseded
+**husks** — all cross-schema UUID refs with no FK (Architecture §7.3). This
+runbook closes the full gap. See the register entry in
 [../go-live-known-limitations.md](../go-live-known-limitations.md) (Talent →
 "RTBF / talent erasure") and [ADR-0007](../adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md).
 
-> Scope: this erases the ATS-side résumé artifacts + ATS TalentRecord + the
-> (now TalentRecord-keyed) consent-event ledger for a verified request. The Core
-> Talent identity anonymization (ADR-0007 state machine) remains **out of scope**
-> (a deferred build) — note it in the erasure record.
+> **Preferred path — the `erase-talent` CLI (TR-15 B2).** This procedure is now
+> automated by an admin command that runs the exact delete-pass below,
+> child-before-parent, over the whole human:
+> ```sh
+> # DRY-RUN (default) — prints the per-table would-delete inventory, ZERO writes:
+> node dist/apps/api/src/talent-anchor/erase-talent.command.js <TENANT_ID> <TALENT_ID>
+> # LIVE — requires --execute AND re-typing the id as a confirmation string:
+> node dist/apps/api/src/talent-anchor/erase-talent.command.js <TENANT_ID> <TALENT_ID> --execute <TALENT_ID>
+> ```
+> The CLI performs the DB deletes + appends the retained consent erasure marker +
+> flips `is_anonymized`. It STUBS the S3 deletion (the app has no DeleteObject
+> IAM): it prints the object keys; you still run Step 2 below with elevated creds.
+> The manual SQL steps below remain the authoritative reference + the S3 procedure.
+
+> Scope: this erases the ATS-side résumé artifacts, every operational + trust-side
+> PII holder, the person's husk chain, and the (TalentRecord-keyed) consent-event
+> ledger. RETAINED as the append-only **record of process**: the consent audit
+> stream (`audit."ConsentAuditEvent"`) and the merge-operation audit
+> (`talent_trust."SubjectMergeOperation"`) — see the audit-retention note.
 
 ---
+
+## The erasure inventory (what the delete-pass covers)
+
+Two keys: the **record id** (ATS `TalentRecord.id`, plus every husk) and the
+**subject id** (trust `ResolutionSubject.id`, plus every merged-cluster member).
+Resolve them first (husk chain via `superseded_by_record_id`; cluster via
+`ResolutionSubjectRef` + `merged_into_subject_id`), then delete in this order —
+**child-before-parent** (Group B has real FKs and no cascades, so the order is
+DB-enforced):
+
+**Group A — operational holders (keyed by the record id):**
+`engagement."TalentSubmittalEvent"` → `engagement."TalentEngagementEvent"` →
+`examination."ExaminationOverride"` (event children first) → `pipeline."Pipeline"`
+(cascades its status history) → `engagement."TalentSubmittalRecord"` →
+`evidence."TalentJobEvidencePackage"` → `engagement."TalentJobEngagement"` →
+`examination."TalentJobExamination"` → the seven `talent_evidence.*` tables
+(`TalentSkillEvidence`, `TalentWorkHistoryEntry`, `TalentContactMethod`,
+`TalentRateExpectation`, `TalentWorkAuthorization`, `TalentDocument` [S3],
+`TalentDerivedSnapshot`) → **`talent_evidence."TalentEducationEntry"` +
+`"TalentCertificationEntry"`** (⚠ TR-15 B2 ADDITION — TR-7 B1 PII holders that are
+NOT in the reconcile repoint set; a repoint-mirroring erase would leak them) →
+`saved_list."SavedListEntry"` (`item_type='talent_record'`) →
+`attachment."Attachment"` (`owner_type='talent'`, S3) → `activity."Activity"`
+(`subject_type='talent_record'`) → `task."Task"` (`owner_type='talent_record'`) →
+`consent."TalentConsentEvent"`. **Polymorphic discriminators are mandatory** —
+note the drift: attachment uses `owner_type='talent'`, task/activity/saved-list
+use `'talent_record'`.
+
+**Group B — trust-side PII (keyed by the subject id; delete child-before-parent):**
+`talent_trust."EvidenceEvent"` → `"EvidenceLink"` → `"EvidenceRecord"` →
+`"SubjectAnchor"` (`normalized_value` is raw email/phone PII) → `"TrustState"` →
+`"SubjectMatchAdvisory"` (match on either side) → `"VerificationRequest"` →
+`"VerificationProposal"` → `"ResolutionSubjectRef"` → `"ResolutionSubject"` (LAST).
+
+**Group C — the husk records (keyed by the record id):**
+`talent_record."TalentRecord"` (every husk) — cascades `talent_resume_text` [S3],
+`talent_record_field_provenance`, `talent_record_reconcile_contradiction`.
+
+**S3 objects:** `attachment."Attachment".storage_key`,
+`talent_evidence."TalentDocument".file_storage_ref`,
+`talent_record."talent_resume_text".storage_key`.
+
+**Then:** append the consent erasure marker (`audit."ConsentAuditEvent"`,
+`event_type='consent.erased'`) — the retained record that erasure happened;
+`is_anonymized` reads it and flips true.
+
+---
+
+## Manual SQL procedure (the CLI automates this; kept as the reference)
 
 ## Preconditions
 
@@ -160,14 +226,34 @@ SELECT count(*) FROM consent."TalentConsentEvent"       WHERE talent_record_id =
 
 And re-run the Step-2 verify for each key (empty `Versions` + `DeleteMarkers`).
 
-## Step 7 — Record what remains out of scope
+## Step 7 — The retained audit (record of process) + what remains out of scope
 
-In the erasure record, note the deferred items NOT cleared by this procedure:
+**Retained by design — the append-only record that erasure happened + why.**
+These two audit streams are NOT deleted by this procedure (nor by the CLI). Their
+PII scope is enumerated honestly so a reviewer knows exactly what persists:
+
+- **`audit."ConsentAuditEvent"`** — the consent decision/process log, keyed by
+  `subject_id = TALENT_ID`. After erasure it holds the historical
+  grant/revoke/check rows (their `event_payload` JSONB carries scope + reason
+  codes, and reconcile rows carry from/to record ids — no name/email/résumé) PLUS
+  the new `consent.erased` marker row (payload: the record + subject id sets and
+  the tables cleared). **PII scope: identifiers (UUIDs) + consent decisions, no
+  résumé/name/contact content.** `is_anonymized` reads the marker and returns true.
+- **`talent_trust."SubjectMergeOperation"`** — the merge/reversal audit, keyed by
+  `surviving_/merged_subject_id` + `surviving_/superseded_record_id`. Its JSONB
+  (`sweep_steps` / `ref_actions` / `collision_records`) may embed **row content
+  captured at merge time** (potentially name/contact fields of a collided row).
+  **PII scope: MAY contain contact-field content in `collision_records`** — if the
+  order demands zero residual PII, delete the operation rows for these subjects
+  explicitly; otherwise retain as the reversal/audit record.
+
+Delete either stream explicitly **only** when the compliance order requires zero
+residual identifiers — they are the forensic proof the erasure was performed.
+
+**Deferred / out of scope:**
 
 - **Core Talent identity** (if `core_talent_id` was ever linked) — anonymization
   is the deferred ADR-0007 state machine; not erased here.
-- **Consent audit trail** (`audit."ConsentAuditEvent"`) — retained under the
-  audit-retention policy (see Step 5); erase only when the order requires it.
 
 ---
 

@@ -20,6 +20,7 @@ The **build of this state machine is deferred** to a future milestone. At ratifi
 ## Current state (as of this anchor)
 
 - `is_anonymized` is a **hardcoded `false` placeholder** in the consent repository — the flag exists; the machine that would set it does not.
+  - **Amendment (TR-15 B2, 2026-07-11):** `is_anonymized` is no longer hardcoded — the consent reads now derive it from a retained `audit."ConsentAuditEvent"` marker (`event_type='consent.erased'`) written **only** by the `erase-talent` CLI (a real chain-erase over the full holder inventory, not the deferred anonymization state machine). The Decision-F *anonymization* state machine remains deferred; the flag now flips true on this erasure path. See [doc/runbooks/talent-rtbf-erasure.md](../runbooks/talent-rtbf-erasure.md).
 - The only erasure actually implemented is a **narrow purge-on-delete cascade for the résumé-text blob** (`ON DELETE CASCADE` on the résumé-text table, ADR-0015 résumé-text decision). This covers one PII blob, not the talent.
 - There is **no talent-delete cascade and no general anonymization hook**; the résumé *file* (Attachment, cross-schema UUID-only/no-FK) still orphans on talent-delete.
 - **A verified deletion request cannot be fully honored today.**
