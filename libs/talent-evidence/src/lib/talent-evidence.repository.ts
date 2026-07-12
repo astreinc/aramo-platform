@@ -889,6 +889,13 @@ export class TalentEvidenceRepository {
       'TalentWorkAuthorization',
       'TalentDocument',
       'TalentDerivedSnapshot',
+      // TR-15 B2R — the two TR-7 B1 credential holders were born without their
+      // reconcile-repoint membership (the defect the T15-B2 erasure inventory
+      // surfaced). Same talent_id/tenant_id shape as the seven above → the
+      // generic UPDATE re-points them loser→survivor, and their ids ride back in
+      // repointed_ids so the reversal (only_ids) re-points them exactly.
+      'TalentEducationEntry',
+      'TalentCertificationEntry',
     ];
     const base: unknown[] = [args.to_record_id, args.from_record_id, args.tenant_id];
     let idFilter = '';
