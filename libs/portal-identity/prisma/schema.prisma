@@ -1,0 +1,86 @@
+// Per-module Prisma schema for the `portal_identity` module — Portal P1
+// (Aramo-Portal-P1-Directive-v1_0-LOCKED, P-R1). The passwordless portal
+// front-door identity + login-token substrate.
+//
+// Per Architecture v2.x §7 (Schema-per-Module) and doc/05-conventions.md. Cross-
+// schema references are UUID-only without FK constraints (§7.3).
+//
+// ===========================================================================
+// CONTROLLER-RAIL PII BY DESIGN — this schema sits OUTSIDE the I14 wall.
+// ===========================================================================
+// Unlike identity_index (the PII-free cross-tenant index), portal_identity
+// deliberately holds a normalized email — it IS the login front door, and a
+// passwordless flow must look a portal up by the address they type. This
+// schema is therefore NOT added to the identity-index privacy-wall spec; its
+// wall is the portal refusal regime + closed envelopes + oracle-resistant
+// responses, never a no-PII rule. cluster_id is a UUID-only pointer INTO the
+// PII-free index (no FK); the raw email never crosses into identity_index.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["portal_identity"]
+}
+
+// PortalUser — one passwordless portal identity, keyed by normalized email.
+// Minted LAZILY at first successful login-token consumption (Portal P1 ruling 3),
+// never at request-link time.
+model PortalUser {
+  id String @id @db.Uuid
+
+  /// The normalized (trim + lowercase, via @aramo/common normalizeEmail) email —
+  /// the login key. Unique: one portal identity per address.
+  email_normalized String @unique
+
+  /// The PERSON_CLUSTER id this portal resolves to in the PII-free index,
+  /// set at lazy-mint from the eligibility lookup's cluster (Portal P1 ruling 3).
+  /// UUID-only cross-schema ref, NO FK (§7.3). Nullable: a portal with no
+  /// admitted verified email has no cluster yet — a valid state.
+  ///
+  /// FORWARD CONTRACT (registered here, implemented in TR-2b B2): purgeCluster
+  /// MUST null PortalUser.cluster_id for every purged cluster — this pointer
+  /// dies with the cluster it references.
+  cluster_id String? @db.Uuid
+
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  updated_at    DateTime  @updatedAt @db.Timestamptz
+  /// Stamped at each successful token consumption (login).
+  last_login_at DateTime? @db.Timestamptz
+
+  @@schema("portal_identity")
+}
+
+// PortalLoginToken — a single-use passwordless magic-link token. Modeled on the
+// TR-3 VerificationRequest conventions verbatim: only the sha256.base64url hash
+// is stored (the raw travels only in the emailed link), single-use via
+// consumed_at under an atomic replay-guarded updateMany, app-side 15-minute TTL.
+// Keyed on the normalized EMAIL, not on PortalUser — the user may not exist
+// yet at request-link time (lazy mint).
+model PortalLoginToken {
+  id String @id @db.Uuid
+
+  /// The normalized email this token authorizes a login for (NOT a PortalUser
+  /// ref — the user is minted only on successful consumption).
+  email_normalized String
+
+  /// sha256(raw).base64url — the raw token is NEVER stored (it lives only in the
+  /// magic link). The @@unique is the replay-guard serialization point.
+  token_hash String @unique
+
+  /// App-side TTL: 15 minutes from mint/rotate. No DB default — the app supplies
+  /// it (mirrors TR-3's app-computed window).
+  expires_at DateTime @db.Timestamptz
+
+  /// Single-use marker: set once by the atomic consume. A second consume of the
+  /// same token matches zero rows (consumed_at IS NOT NULL) and returns nothing.
+  consumed_at DateTime? @db.Timestamptz
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  @@index([email_normalized])
+  @@schema("portal_identity")
+}

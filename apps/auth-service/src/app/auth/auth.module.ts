@@ -3,6 +3,9 @@ import { APP_FILTER } from '@nestjs/core';
 import { AramoExceptionFilter, CommonModule } from '@aramo/common';
 import { IdentityCoreModule } from '@aramo/identity';
 import { AuthStorageModule } from '@aramo/auth-storage';
+import { PortalIdentityModule } from '@aramo/portal-identity';
+import { IdentityIndexModule } from '@aramo/identity-index';
+import { MailerModule } from '@aramo/mailer';
 
 import { AuthController } from './auth.controller.js';
 import { CognitoVerifierService } from './cognito-verifier.service.js';
@@ -12,6 +15,8 @@ import { JwksController } from './jwks.controller.js';
 import { JwksService } from './jwks.service.js';
 import { JwtIssuerService } from './jwt-issuer.service.js';
 import { PkceService } from './pkce.service.js';
+import { PortalLoginBudget } from './portal-login-budget.js';
+import { PortalLoginService } from './portal-login.service.js';
 import { RefreshOrchestratorService } from './refresh-orchestrator.service.js';
 import { SessionOrchestratorService } from './session-orchestrator.service.js';
 
@@ -27,7 +32,17 @@ import { SessionOrchestratorService } from './session-orchestrator.service.js';
 // invite-port surface; importing the slim IdentityModule statically would
 // re-create the second stub-bound instance the split removes.
 @Module({
-  imports: [CommonModule, IdentityCoreModule, AuthStorageModule],
+  imports: [
+    CommonModule,
+    IdentityCoreModule,
+    AuthStorageModule,
+    // Portal P1 — passwordless portal login deps: the portal identity +
+    // login-token store, the PII-free index (eligibility fingerprint lookup,
+    // aperture 1), and the mailer (magic-link send via the standing mail path).
+    PortalIdentityModule,
+    IdentityIndexModule,
+    MailerModule,
+  ],
   controllers: [AuthController, JwksController],
   providers: [
     PkceService,
@@ -38,6 +53,8 @@ import { SessionOrchestratorService } from './session-orchestrator.service.js';
     SessionOrchestratorService,
     RefreshOrchestratorService,
     HostBaseResolver,
+    PortalLoginService,
+    PortalLoginBudget,
     { provide: APP_FILTER, useClass: AramoExceptionFilter },
   ],
 })

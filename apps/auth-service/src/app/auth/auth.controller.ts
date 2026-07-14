@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
 
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
+  Ip,
   Param,
   Post,
   Query,
@@ -20,11 +22,13 @@ import { CookieVerifierService } from './cookie-verifier.service.js';
 import { HostBaseResolver } from './host-base-resolver.service.js';
 import { PkceService } from './pkce.service.js';
 import {
+  deriveBaseFromHost,
   deriveRedirectUri,
   derivePostLoginRedirect,
   deriveSignoutRedirect,
   resolvePublicBaseUrl,
 } from './redirect-uri.js';
+import { PortalLoginService } from './portal-login.service.js';
 import {
   RefreshOrchestratorService,
 } from './refresh-orchestrator.service.js';
@@ -60,6 +64,32 @@ function parseConsumer(value: string, requestId: string): ConsumerType {
     );
   }
   return value as ConsumerType;
+}
+
+// Portal P1 — the ONE neutral request-link response (rulings 1 & 2): byte-
+// identical whether the email is eligible, ineligible, or malformed-but-parseable.
+const PORTAL_REQUEST_LINK_NEUTRAL_RESPONSE = {
+  message: 'If this address is known to Aramo, a sign-in link has been sent.',
+} as const;
+
+// Portal P1 — assert the consumer path segment is 'portal'. The magic-link flow
+// is portal-only; any other consumer on these routes is rejected uniformly.
+function assertPortalConsumer(consumer: string, requestId: string): void {
+  const c = parseConsumer(consumer, requestId);
+  if (c !== 'portal') {
+    throw new AramoError('VALIDATION_ERROR', 'portal login is portal-only', 400, {
+      requestId,
+      details: { reason: 'invalid_consumer' },
+    });
+  }
+}
+
+// Portal P1 — the portal base for the magic-link URL + the consume redirect.
+// Derived from the request host via the portal host class (exact-match
+// allowlist); falls back to PORTAL_LOGIN_BASE_URL (dev), never the raw Host.
+function portalBaseUrl(req: Request): string {
+  const derived = deriveBaseFromHost(req.get('host'), { isTenantHost: false });
+  return derived ?? process.env['PORTAL_LOGIN_BASE_URL'] ?? 'http://localhost:4203';
 }
 
 function setAccessCookie(res: Response, value: string): void {
@@ -136,7 +166,57 @@ export class AuthController {
     private readonly refreshTokens: RefreshTokenService,
     private readonly audit: IdentityAuditService,
     private readonly hostBase: HostBaseResolver,
+    private readonly portalLogin: PortalLoginService,
   ) {}
+
+  // ── Portal P1 — passwordless portal login ──────────────────────────────
+  // A dedicated magic-link flow at /auth/portal/{request-link,consume} (the
+  // consumer path segment is 'portal'). NOT the Cognito flow — portals have no
+  // Cognito pool. Oracle-resistant end to end (rulings 1 & 2).
+
+  // POST /auth/portal/request-link — body {email}. Always the identical neutral
+  // response; the side effect (mail or none) is invisible to the caller.
+  @Post('request-link')
+  @HttpCode(200)
+  async portalRequestLink(
+    @Param('consumer') consumer: string,
+    @Body() body: { email?: unknown } | undefined,
+    @Ip() ip: string,
+    @Req() req: RequestWithCookies,
+  ): Promise<{ message: string }> {
+    const requestId = req.requestId ?? 'unknown';
+    assertPortalConsumer(consumer, requestId);
+    await this.portalLogin.requestLink({
+      email: body?.email,
+      ip: ip ?? 'unknown',
+      baseUrl: portalBaseUrl(req),
+    });
+    return PORTAL_REQUEST_LINK_NEUTRAL_RESPONSE;
+  }
+
+  // GET /auth/portal/consume?token=… — the magic-link click. On success set the
+  // session cookies; ALWAYS 302 to the portal base (the SPA reads the session,
+  // P3). A failure sets no cookies — indistinguishable to a third party.
+  @Get('consume')
+  async portalConsume(
+    @Param('consumer') consumer: string,
+    @Query('token') token: string | undefined,
+    @Ip() ip: string,
+    @Req() req: RequestWithCookies,
+    @Res() res: Response,
+  ): Promise<void> {
+    const requestId = req.requestId ?? 'unknown';
+    assertPortalConsumer(consumer, requestId);
+    const result = await this.portalLogin.consume({
+      rawToken: token,
+      ip: ip ?? 'unknown',
+    });
+    if (result.kind === 'success') {
+      setAccessCookie(res, result.accessJwt);
+      setRefreshCookie(res, result.refreshTokenPlaintext);
+    }
+    res.redirect(302, portalBaseUrl(req));
+  }
 
   // §8.1 — GET /auth/{consumer}/login → 302 + pkce_state cookie
   @Get('login')

@@ -70,7 +70,20 @@ function isDevHostname(hostname: string): boolean {
 // lowercased + port-stripped (consistent with tenant matching). Prod default is
 // supplied via env (admin.aramo.ai); empty when unset.
 function platformHostSet(): ReadonlySet<string> {
-  const raw = process.env['AUTH_PLATFORM_HOSTS'];
+  return hostSetFromEnv(process.env['AUTH_PLATFORM_HOSTS']);
+}
+
+// Portal P1 — the portal host class (candidate.aramo.ai), mirroring the
+// platform class exactly: an exact-match allowlist from AUTH_PORTAL_HOSTS, so
+// a raw Host header NEVER reaches a redirect unless it validates against the
+// allowlist. Empty when unset.
+function portalHostSet(): ReadonlySet<string> {
+  return hostSetFromEnv(process.env['AUTH_PORTAL_HOSTS']);
+}
+
+// Shared parse for an exact-match host allowlist env var: comma-split, trim,
+// lowercase, strip port, drop empties; empty set when unset.
+function hostSetFromEnv(raw: string | undefined): ReadonlySet<string> {
   if (raw === undefined || raw.length === 0) return new Set();
   return new Set(
     raw
@@ -90,6 +103,7 @@ function platformHostSet(): ReadonlySet<string> {
 // pure, unit-testable function.
 //   - dev host (localhost/127.0.0.1) under dev posture → http://<host:port>
 //   - platform host (AUTH_PLATFORM_HOSTS exact match)  → https://<hostname>
+//   - portal host (AUTH_PORTAL_HOSTS exact match) → https://<hostname>
 //   - tenant host (caller-validated)                   → https://<hostname>
 //   - anything else                                    → null (env fallback)
 export function deriveBaseFromHost(
@@ -102,6 +116,10 @@ export function deriveBaseFromHost(
     return isDevPosture() ? `http://${parsed.raw}` : null;
   }
   if (platformHostSet().has(parsed.hostname)) {
+    return `https://${parsed.hostname}`;
+  }
+  // Portal P1 — portal host class, sibling to platform (exact-match allowlist).
+  if (portalHostSet().has(parsed.hostname)) {
     return `https://${parsed.hostname}`;
   }
   if (opts.isTenantHost) {

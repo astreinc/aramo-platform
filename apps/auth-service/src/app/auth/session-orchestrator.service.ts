@@ -8,6 +8,7 @@ import {
   TenantService,
 } from '@aramo/identity';
 import { RefreshTokenService } from '@aramo/auth-storage';
+import { PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 
 import type { TenantSelectionTenantDto } from './dto/tenant-selection-error.dto.js';
 import {
@@ -26,6 +27,11 @@ import { deriveRedirectUri } from './redirect-uri.js';
 const PKCE_TTL_SECONDS = 600;
 const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 const REFRESH_TOKEN_BYTES = 32;
+
+// Portal P1 — the scope set stamped on a portal portal session. The two read
+// scopes the portal role catalog carries (libs/identity seed); P2's consent-write
+// rides its own scope when that surface lands.
+const PORTAL_SESSION_SCOPES: string[] = ['portal:profile:read', 'portal:consent:read'];
 
 export interface CallbackInput {
   // AUTHZ-2: 'platform' is the 4th consumer_type (Lead ruling 3 —
@@ -377,6 +383,40 @@ export class SessionOrchestratorService {
       throw new Error('cognito-token-missing-id-token');
     }
     return json.id_token;
+  }
+
+  /**
+   * Portal P1 — establish a passwordless PORTAL session for an already-resolved
+   * PortalUser (the caller consumes the login token + finds/mints the user).
+   * Platform-STYLE keying (Portal ruling 4): the access JWT and refresh token
+   * carry `consumer_type='portal'` and the PLATFORM_TENANT_SENTINEL_ID as
+   * tenant_id — portal sessions have NO real tenant, so the sentinel satisfies the
+   * required-string tenant contract; consumer_type='portal' is the distinguishing
+   * axis, and the real tenant is resolved per-record by the OPEN-4 chain in P2.
+   * Reuses the exact JWT + refresh-token keying the Cognito callback uses (same
+   * constants, same hashing). No Cognito, no PKCE, and no identity audit — this is
+   * a portal-rail event, not an identity-rail one.
+   */
+  async establishPortalSession(input: {
+    portal_user_id: string;
+  }): Promise<{ accessJwt: string; refreshTokenPlaintext: string }> {
+    const accessJwt = await this.jwtIssuer.sign({
+      sub: input.portal_user_id,
+      consumer_type: 'portal',
+      tenant_id: PLATFORM_TENANT_SENTINEL_ID,
+      scopes: PORTAL_SESSION_SCOPES,
+    });
+    const refreshTokenPlaintext = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
+    const refreshTokenHash = sha256Base64Url(refreshTokenPlaintext);
+    const expires_at = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
+    await this.refreshTokens.create({
+      user_id: input.portal_user_id,
+      tenant_id: PLATFORM_TENANT_SENTINEL_ID,
+      consumer_type: 'portal',
+      token_hash: refreshTokenHash,
+      expires_at,
+    });
+    return { accessJwt, refreshTokenPlaintext };
   }
 }
 

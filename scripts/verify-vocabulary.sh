@@ -503,6 +503,19 @@ for entry in "${TIER2_TERMS_REGEX[@]}"; do
     "${TIER2_GLOBS[@]}" \
     "$pattern" . || true)"
   matches="$(printf '%s\n' "$matches" | sed '/^[[:space:]]*$/d')"
+  # Portal P1 Amendment v1.1 — ONE narrow exemption scoped to the literal PUBLIC
+  # host string `candidate.aramo.ai`. The human-facing domain keeps the human
+  # word; every internal artifact uses `portal` (PortalUser / portal_identity /
+  # AUTH_PORTAL_HOSTS). Drop lines whose ONLY `candidate` occurrence is that host
+  # literal; any other `candidate` still fails. NOT a file-level exclude.
+  if [[ "$term" == "candidate" ]]; then
+    matches="$(printf '%s\n' "$matches" | while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      stripped="$(printf '%s' "$line" | sed 's/candidate\.aramo\.ai//g')"
+      if printf '%s' "$stripped" | grep -qi 'candidate'; then printf '%s\n' "$line"; fi
+    done)"
+    matches="$(printf '%s\n' "$matches" | sed '/^[[:space:]]*$/d')"
+  fi
   if [[ -n "$matches" ]]; then
     echo "ERROR (Tier 2): forbidden vocabulary '${term}' found:" >&2
     printf '%s\n' "$matches" >&2
