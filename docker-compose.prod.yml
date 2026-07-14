@@ -115,10 +115,13 @@ services:
       - IMPORT_FAILURE_THRESHOLD_PCT
       # identity fingerprint pepper (Step 4b / ADR-0016): the platform secret
       # keying the cross-tenant email fingerprint, held SEPARATE from the DB.
-      # REQUIRED — loadIdentityPepper fails LOUD if unset, so canonicalization
-      # STOPS rather than mis-resolving with an unkeyed fingerprint. api-only
-      # (auth-service does not run canonicalization). Migrate to KMS/HSM later.
-      - ARAMO_IDENTITY_PEPPER
+      # REQUIRED — loadIdentityPepper fails LOUD if unset (api canonicalization
+      # STOPS rather than mis-resolving with an unkeyed fingerprint). SHARED with
+      # auth-service (Portal P1 eligibility fingerprint) — the value MUST match, so
+      # this is the SINGLE SOURCE: the YAML anchor below is referenced by
+      # auth-service (*identity_pepper) so the two passthroughs cannot drift.
+      # Migrate to KMS/HSM later.
+      - &identity_pepper ARAMO_IDENTITY_PEPPER
       # identity index admission policy (TR-2b B1 / Ruling D15): PORTABLE_ONLY |
       # ALL_ARRIVALS — the platform-global switch gating the aperture-1
       # fingerprint mint. REQUIRED — loadIdentityAdmissionPolicy fails LOUD on the
@@ -155,6 +158,20 @@ services:
       - AUTH_TRUSTED_IDP_NAMES
       - AUTH_ALLOW_INSECURE_COOKIES
       - AUTH_REFRESH_GRACE_SECONDS
+      # Portal P1 — passwordless portal login. The portal host class
+      # (exact-match allowlist for candidate.aramo.ai) + the magic-link base.
+      - AUTH_PORTAL_HOSTS
+      - PORTAL_LOGIN_BASE_URL
+      # Eligibility rides aperture 1 (the PII-free fingerprint → ClusterFingerprint
+      # lookup), so auth-service needs the SAME pepper as api. Single-sourced via
+      # the *identity_pepper YAML anchor (defined on api's entry) — one var name,
+      # one shell-.env value, cannot drift. loadIdentityAdmissionPolicy is NOT
+      # needed here (auth-service reads the index, never mints into it).
+      - *identity_pepper
+      # Portal login mail rides the standing SES mailer path (SPF/DMARC/sandbox-exit
+      # release-blocking, exactly as for TR-3).
+      - MAILER_PROVIDER
+      - SES_FROM_ADDRESS
     depends_on:
       postgres:
         condition: service_healthy
