@@ -41,6 +41,7 @@
     "ingestion:refusal-check": "node --import jiti/register ci/scripts/verify-ingestion-refusal.ts",
     "version:sync-check": "node --import jiti/register ci/scripts/check-version-sync.ts",
     "error-codes:check": "node --import jiti/register ci/scripts/verify-error-codes.ts",
+    "identity-index:privacy-wall": "vitest run --root libs/identity-index privacy-wall",
     "verify:vocabulary": "bash scripts/verify-vocabulary.sh"
   },
   "dependencies": {

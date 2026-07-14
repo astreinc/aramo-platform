@@ -12,9 +12,15 @@ import { SourcedTalentRepository } from '../lib/sourced-talent.repository.js';
 // record (the dedup memory, §4), distinct arrivals, and the raw-immutability
 // trigger (a sourced arrival is immutable — Spec §2).
 
-const MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260704000000_init_sourced_talent/migration.sql',
+// Ordered curated migration list (standing curated-list rule) — every
+// sourced_talent migration, applied in filename order, so the integration boot
+// provisions the schema at HEAD. TR-2b B1 (DDR R3) appended the
+// normalized-contact columns migration.
+const MIGRATION_PATHS = [
+  '20260704000000_init_sourced_talent',
+  '20260713160000_add_sourced_talent_normalized_contact',
+].map((name) =>
+  resolve(__dirname, `../../prisma/migrations/${name}/migration.sql`),
 );
 
 // A fixed tenant UUID (L1 is tenant-scoped). Date.now()/Math.random() are not
@@ -57,14 +63,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
-      const migrationSql = readFileSync(MIGRATION_PATH, 'utf8');
-
       const setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const stmt of splitDdl(migrationSql)) {
-        const trimmed = stmt.trim();
-        if (trimmed.length === 0) continue;
-        await setupClient.$executeRawUnsafe(trimmed);
+      for (const migrationPath of MIGRATION_PATHS) {
+        const migrationSql = readFileSync(migrationPath, 'utf8');
+        for (const stmt of splitDdl(migrationSql)) {
+          const trimmed = stmt.trim();
+          if (trimmed.length === 0) continue;
+          await setupClient.$executeRawUnsafe(trimmed);
+        }
       }
       await setupClient.$disconnect();
 

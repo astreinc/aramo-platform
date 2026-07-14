@@ -214,6 +214,13 @@ export default defineConfig({
       // green and preserves fail-loud for real boots (prod sets a real secret).
       // The pepper fail-loud proof save/restores this key for its one assertion.
       ARAMO_IDENTITY_PEPPER: 'vitest-shared-test-pepper',
+      // TR-2b B1 — the canonicalization mint is now gated by the fail-loud
+      // IdentityIndexAdmissionPolicy (loadIdentityAdmissionPolicy throws if
+      // ARAMO_IDENTITY_ADMISSION_POLICY is unset/unknown). A test-only default
+      // keeps specs that boot the canonicalization graph green and preserves
+      // fail-loud for real boots (the box sets it explicitly). The loader's own
+      // fail-loud unit tests save/restore this key for their assertions.
+      ARAMO_IDENTITY_ADMISSION_POLICY: 'PORTABLE_ONLY',
     },
     coverage: {
       provider: 'v8',

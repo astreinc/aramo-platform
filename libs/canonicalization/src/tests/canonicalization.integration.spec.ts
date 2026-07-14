@@ -479,6 +479,108 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // -----------------------------------------------------------------------
+    // TR-2b B1 (Directive §6; DDR R1) — ADMISSION POLICY fail-loud. The mint is
+    // now gated by ARAMO_IDENTITY_ADMISSION_POLICY (loadIdentityAdmissionPolicy).
+    // The policy is loaded BEFORE the pepper at the mint seam, so an unset policy
+    // on a verified-email arrival STOPS the whole canonicalize atomically —
+    // resolved_subject_id stays NULL, no outbox event — exactly like the pepper
+    // fail-loud (proof 4). Mirrors the pepper proof's save/restore.
+    // -----------------------------------------------------------------------
+    it('TR-2b B1 — ADMISSION POLICY fail-loud: unset ARAMO_IDENTITY_ADMISSION_POLICY on a verified-email arrival rejects atomically (no subject, no outbox)', async () => {
+      const payloadId = uuidv7();
+      const email = `tr2b-policy-unset-${randomUUID()}@example.com`;
+      await insertPayload(dbClient, {
+        id: payloadId,
+        tenant_id: TENANT_ID,
+        source: 'talent_direct',
+        storage_ref: 's3://bucket/tr2b-policy',
+        sha256: 'tr2b-policy-' + 'e'.repeat(52),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: email,
+        profile_url: null,
+      });
+
+      const outboxBefore = (await outbox.findUnpublishedEvents({ limit: 1000 })).length;
+      const saved = process.env['ARAMO_IDENTITY_ADMISSION_POLICY'];
+      delete process.env['ARAMO_IDENTITY_ADMISSION_POLICY'];
+      try {
+        await expect(
+          service.canonicalize({
+            payload_id: payloadId,
+            source_channel: 'self_signup',
+            authContext: { tenant_id: TENANT_ID },
+            requestId: randomUUID(),
+          }),
+        ).rejects.toThrow(/ARAMO_IDENTITY_ADMISSION_POLICY/);
+      } finally {
+        if (saved !== undefined) process.env['ARAMO_IDENTITY_ADMISSION_POLICY'] = saved;
+      }
+
+      const row = await payloadRow(payloadId);
+      expect(row.resolved_subject_id).toBeNull();
+      const outboxAfter = (await outbox.findUnpublishedEvents({ limit: 1000 })).length;
+      expect(outboxAfter).toBe(outboxBefore);
+    });
+
+    // -----------------------------------------------------------------------
+    // TR-2b B1 (Directive §6; DDR R2) — the PORTABLE_ONLY arm (the ratified live
+    // behavior), now asserted AGAINST the policy: a verified-email arrival stamps
+    // a cluster (resolved_cluster_id non-null); an arrival WITHOUT a verified
+    // email leaves it NULL (no D5-portable anchor → no admission). The shared
+    // test env pins the policy to PORTABLE_ONLY.
+    // -----------------------------------------------------------------------
+    it('TR-2b B1 — PORTABLE_ONLY arm: verified email stamps a cluster; no verified email leaves resolved_cluster_id NULL', async () => {
+      expect(process.env['ARAMO_IDENTITY_ADMISSION_POLICY']).toBe('PORTABLE_ONLY');
+
+      // (a) verified email → admitted → cluster stamped.
+      const withEmailId = uuidv7();
+      await insertPayload(dbClient, {
+        id: withEmailId,
+        tenant_id: TENANT_ID,
+        source: 'talent_direct',
+        storage_ref: 's3://bucket/tr2b-portable-yes',
+        sha256: 'tr2b-portable-yes-' + 'a'.repeat(46),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: `tr2b-portable-${randomUUID()}@example.com`,
+        profile_url: null,
+      });
+      await service.canonicalize({
+        payload_id: withEmailId,
+        source_channel: 'self_signup',
+        authContext: { tenant_id: TENANT_ID },
+        requestId: randomUUID(),
+      });
+      const withEmailRow = await payloadRow(withEmailId);
+      expect(withEmailRow.resolved_cluster_id).not.toBeNull();
+
+      // (b) no verified email → not admitted → cluster NULL (subject still forms
+      // via profile_url, but no cross-tenant key is minted).
+      const noEmailId = uuidv7();
+      await insertPayload(dbClient, {
+        id: noEmailId,
+        tenant_id: TENANT_ID,
+        source: 'talent_direct',
+        storage_ref: 's3://bucket/tr2b-portable-no',
+        sha256: 'tr2b-portable-no-' + 'b'.repeat(47),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: null,
+        profile_url: 'https://github.com/tr2b-no-email',
+      });
+      const noEmailResult = await service.canonicalize({
+        payload_id: noEmailId,
+        source_channel: 'self_signup',
+        authContext: { tenant_id: TENANT_ID },
+        requestId: randomUUID(),
+      });
+      expect(noEmailResult.subject_id).toMatch(/^[0-9a-f-]{36}$/);
+      const noEmailRow = await payloadRow(noEmailId);
+      expect(noEmailRow.resolved_cluster_id).toBeNull();
+    });
+
+    // -----------------------------------------------------------------------
     // Cross-tenant access → CANONICALIZATION_PAYLOAD_NOT_FOUND (no enumeration).
     // -----------------------------------------------------------------------
     it('cross-tenant access is absorbed into CANONICALIZATION_PAYLOAD_NOT_FOUND', async () => {
