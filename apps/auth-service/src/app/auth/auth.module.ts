@@ -15,6 +15,7 @@ import { JwksController } from './jwks.controller.js';
 import { JwksService } from './jwks.service.js';
 import { JwtIssuerService } from './jwt-issuer.service.js';
 import { PkceService } from './pkce.service.js';
+import { PortalAuthController } from './portal-auth.controller.js';
 import { PortalLoginBudget } from './portal-login-budget.js';
 import { PortalLoginService } from './portal-login.service.js';
 import { RefreshOrchestratorService } from './refresh-orchestrator.service.js';
@@ -43,7 +44,7 @@ import { SessionOrchestratorService } from './session-orchestrator.service.js';
     IdentityIndexModule,
     MailerModule,
   ],
-  controllers: [AuthController, JwksController],
+  controllers: [AuthController, JwksController, PortalAuthController],
   providers: [
     PkceService,
     JwtIssuerService,
