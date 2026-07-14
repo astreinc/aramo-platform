@@ -5,6 +5,7 @@ import {
   type AramoLogger,
   computeEmailFingerprint,
   loadIdentityPepper,
+  loadIdentityAdmissionPolicy,
 } from '@aramo/common';
 import { IdentityIndexRepository } from '@aramo/identity-index';
 import { TalentTrustService, type SourceClass } from '@aramo/talent-trust';
@@ -283,15 +284,39 @@ export class CanonicalizationRepository {
         // computed TENANT-SIDE; only the opaque fingerprint crosses into
         // identity_index (I14 — no raw email leaves the tenant wall).
         // resolve-or-create is race-safe via the fingerprint @@unique. No
-        // verified email ⇒ no cross-tenant key ⇒ resolvedClusterId stays NULL.
+        // admitted email ⇒ no cross-tenant key ⇒ resolvedClusterId stays NULL.
         // Runs on identityIndex's OWN client (cross-connection, orphan-safe).
+        //
+        // TR-2b B1 (Directive §2; DDR R1/R2) — ADMISSION POLICY GATE (Ruling
+        // D15). The mint is wrapped by the platform-global, fail-loud
+        // IdentityIndexAdmissionPolicy switch, loaded inline at the seam exactly
+        // as the pepper is (no new config-injection pattern). Unset/garbage →
+        // fail-loud 500, STOPPING the mint rather than minting under an
+        // undeclared gate. Flipping the switch never retro-ingests: this path
+        // only ever reads the CURRENT arrival (history enters solely via the
+        // audited B2 backfill command, DDR R7).
+        const admissionPolicy = loadIdentityAdmissionPolicy();
+        let admittedEmail: string | null = null;
+        if (admissionPolicy === 'PORTABLE_ONLY') {
+          // The ratified live behavior (DDR R2): admit iff a VERIFIED email is
+          // present — the only D5-portable anchor built today. Byte-for-byte the
+          // pre-B1 condition, now policy-attributed.
+          admittedEmail = payload.verified_email;
+        } else {
+          // ALL_ARRIVALS — admit any arrival carrying normalized anchor material
+          // regardless of verified status. SUBSTRATE NOTE (Directive §2 →
+          // Gate-6): the canonicalization payload (LockedPayloadRow) carries NO
+          // unverified-email field at HEAD, so the only index-admissible material
+          // is still the verified email — this arm is structurally identical to
+          // PORTABLE_ONLY until the TR-2b B2 L1 writer / ADR-0019 sourcing
+          // service supplies unverified normalized anchors. THIS branch is that
+          // expansion seam; no payload field is invented here (never guess PII).
+          admittedEmail = payload.verified_email;
+        }
         let resolvedClusterId: string | null = null;
-        if (payload.verified_email !== null) {
+        if (admittedEmail !== null) {
           const pepper = loadIdentityPepper();
-          const fingerprint = computeEmailFingerprint(
-            payload.verified_email,
-            pepper,
-          );
+          const fingerprint = computeEmailFingerprint(admittedEmail, pepper);
           const cluster =
             await this.identityIndex.findOrCreateClusterByFingerprint(
               fingerprint,

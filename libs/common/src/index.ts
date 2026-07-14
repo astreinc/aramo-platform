@@ -12,6 +12,15 @@ export {
 } from './lib/util/identity-fingerprint.js';
 // TR-2a-1 — deterministic within-tenant phone normalizer (digit-strip, no LLM).
 export { normalizePhone } from './lib/util/normalize-phone.js';
+// TR-2b B1 (Ruling D15; DDR R1) — the platform-global identity-index admission
+// policy switch (PORTABLE_ONLY | ALL_ARRIVALS), sibling to the pepper. Gates the
+// aperture-1 fingerprint mint in the canonicalization path; fail-loud like the
+// pepper.
+export {
+  IDENTITY_ADMISSION_POLICIES,
+  loadIdentityAdmissionPolicy,
+} from './lib/util/identity-admission-policy.js';
+export type { IdentityAdmissionPolicy } from './lib/util/identity-admission-policy.js';
 export {
   AramoError,
   AramoExceptionFilter,

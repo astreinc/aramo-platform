@@ -61,6 +61,17 @@ model SourcedTalent {
   /// idempotency key — the dedup-memory anchor.
   external_source_id String
 
+  /// TR-2b B1 (DDR R3) — normalized contact material for Decision 15's backfill
+  /// path. Nullable; set AT ARRIVAL-WRITE by the future L1 writer (the ADR-0019
+  /// sourcing service) via the @aramo/common normalizers (normalizeEmail /
+  /// normalizePhone). TENANT-WALLED L1 material — L1 is tenant-scoped, this is
+  /// NOT identity_index material and is NEVER fingerprinted at rest.
+  /// Fingerprinting happens only at ADMISSION (the canonicalization mint, gated
+  /// by ARAMO_IDENTITY_ADMISSION_POLICY). Raw contact values remain in
+  /// `provenance`. Set at INSERT only; never UPDATE'd (the immutability trigger).
+  normalized_email String?
+  normalized_phone String?
+
   /// Provenance — how/where this arrival was obtained (pull query, actor, raw
   /// payload ref, fetched-at). JSONB; raw, immutable.
   provenance Json

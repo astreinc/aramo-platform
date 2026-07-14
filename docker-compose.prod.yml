@@ -119,6 +119,12 @@ services:
       # STOPS rather than mis-resolving with an unkeyed fingerprint. api-only
       # (auth-service does not run canonicalization). Migrate to KMS/HSM later.
       - ARAMO_IDENTITY_PEPPER
+      # identity index admission policy (TR-2b B1 / Ruling D15): PORTABLE_ONLY |
+      # ALL_ARRIVALS — the platform-global switch gating the aperture-1
+      # fingerprint mint. REQUIRED — loadIdentityAdmissionPolicy fails LOUD on the
+      # mint path if unset/unknown, so canonicalization STOPS rather than minting
+      # under an undeclared gate. api-only. Launch value: PORTABLE_ONLY.
+      - ARAMO_IDENTITY_ADMISSION_POLICY
     depends_on:
       postgres:
         condition: service_healthy

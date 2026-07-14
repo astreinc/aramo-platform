@@ -269,6 +269,25 @@ jobs:
       - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run error-codes:check
 
+  # TR-2b B1 (DDR R8) — the I14 cross-tenant privacy wall promoted to a
+  # first-class named gate at parity with the refusal checks. Invokes the
+  # EXISTING vitest spec (libs/identity-index/src/tests/privacy-wall.spec.ts) —
+  # no logic duplication; the spec stays the single enforcement source. The wall
+  # that enforces Ruling D2's "apertures are the exclusive enforcement surface"
+  # must be visible in the required-checks list, not folded inside test-unit.
+  identity-index-privacy-wall:
+    name: identity-index:privacy-wall
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm run identity-index:privacy-wall
+
   pact-consumer:
     name: pact:consumer
     runs-on: ubuntu-latest
@@ -549,6 +568,7 @@ jobs:
       - ingestion-refusal-check
       - version-sync-check
       - error-codes-check
+      - identity-index-privacy-wall
       - pact-consumer
       - pact-provider
       - test-unit
