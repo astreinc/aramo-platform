@@ -115,6 +115,32 @@ export class RecordReconcileOrchestrator {
     ];
   }
 
+  // TR-2b B1 PR-2 (DDR R4) — survivor cluster-carry (birth-certificate rule).
+  // After a reconcile settles a surviving record, ensure that record holds the
+  // surviving SUBJECT's PERSON_CLUSTER id. cluster_id is a column ON talent_record
+  // itself (not a foreign holder keyed by talent_record_id), so this is a
+  // survivor-write — NOT an operationalHolders() repoint (recorded for Gate-6:
+  // the repoint set re-points foreign FKs from the husk to the survivor; an
+  // own-column identity link carries via the single cluster writer instead).
+  // Uses repo.setLink — the same tenant-scoped cluster writer promotion and the
+  // manual-link path use; idempotent (re-writing the resolved cluster is a
+  // no-op-equivalent, so resuming a reconcile is safe). No PERSON_CLUSTER ref on
+  // the surviving subject → nothing to carry. cluster_id stays OFF THE WIRE.
+  private async carrySurvivorCluster(
+    tenant_id: string,
+    surviving_subject_id: string,
+    survivor_record_id: string,
+  ): Promise<void> {
+    const refs = await this.trust.listSubjectRefs(tenant_id, surviving_subject_id);
+    const clusterRef = refs.find((r) => r.ref_type === 'PERSON_CLUSTER');
+    if (clusterRef === undefined) return;
+    await this.talentRecords.setLink({
+      tenant_id,
+      id: survivor_record_id,
+      cluster_id: clusterRef.ref_id,
+    });
+  }
+
   // ---- Phase 2: reconcile (DDR-3 §2 three cases + §4 sweep) -----------------
 
   async reconcile(input: ReconcileInput): Promise<SubjectMergeOperationRow> {
@@ -176,6 +202,9 @@ export class RecordReconcileOrchestrator {
           await this.trustRepo.updateMergeOperation(op.id, { ref_actions: refActions });
         }
       }
+      // TR-2b B1 PR-2 — the surviving record now belongs to the surviving
+      // subject; carry that subject's PERSON_CLUSTER onto it (birth-certificate).
+      await this.carrySurvivorCluster(tenant_id, surviving_subject_id, theRecordId);
       await this.trust.recomputeTrustState(surviving_subject_id, tenant_id);
       return this.trustRepo.completeMergeOperation(op.id, new Date());
     }
@@ -253,6 +282,12 @@ export class RecordReconcileOrchestrator {
         collision_records: collisions,
       });
     }
+
+    // Step 3.5 (TR-2b B1 PR-2) — carry the surviving subject's PERSON_CLUSTER
+    // onto the survivor record R_S (birth-certificate rule): the husk chain must
+    // leave the survivor holding the cluster id. Own-column write via the single
+    // cluster writer, not a foreign-holder repoint (see carrySurvivorCluster).
+    await this.carrySurvivorCluster(tenant_id, surviving_subject_id, recordS);
 
     // Step 4 — recompute the survivor's cluster-union trust (B3a).
     await this.trust.recomputeTrustState(surviving_subject_id, tenant_id);

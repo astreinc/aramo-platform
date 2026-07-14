@@ -177,6 +177,24 @@ export class PromotionService {
       link_source: PROMOTION_LINK_SOURCE,
     });
 
+    // 7.25. TR-2b B1 PR-2 (DDR R4) — carry the subject's PERSON_CLUSTER onto the
+    //    new record. When the resolved subject carries a PERSON_CLUSTER ref (its
+    //    ref_id IS the identity_index cluster id, written at admission), populate
+    //    TalentRecord.cluster_id through the single cluster writer (repo.setLink —
+    //    the same tenant-scoped column writer the manual-link path uses). This is
+    //    the record-level pointer INTO the index (server-only; cluster_id is OFF
+    //    THE WIRE — never on TalentRecordView / any response). Idempotent: a
+    //    re-promotion no-ops at step 2 before reaching here. `refs` was read at
+    //    step 2, so no extra fetch.
+    const clusterRef = refs.find((r) => r.ref_type === 'PERSON_CLUSTER');
+    if (clusterRef !== undefined) {
+      await this.talentRecords.setLink({
+        tenant_id,
+        id: record.id,
+        cluster_id: clusterRef.ref_id,
+      });
+    }
+
     // 7.5. Create-path provenance (Slice-B2 back-fill invariant) — record which
     //    EvidenceRecord each set field projects, so B2's pending → provenance →
     //    incumbent join always resolves (a field set here and later contradicted

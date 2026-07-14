@@ -348,6 +348,11 @@ export class CanonicalizationRepository {
           // TR-2a-B2 (Name-Wiring §1) — the declared name claim for the NAME guard.
           declared_name: payload.declared_name,
           created_by: 'canonicalization',
+          // TR-2b B1 PR-2 (DDR R4) — the admitted PERSON_CLUSTER id (non-null only
+          // when the admission-policy gate above minted/resolved a cluster). Drives
+          // the PERSON_CLUSTER ResolutionSubjectRef write inside recordSourcedArrival
+          // — reverse linkage, no ref without a mint.
+          cluster_id: resolvedClusterId,
         });
         const subjectId = arrival.subject_id;
         const resolvedMethod: ResolutionMethodValue = arrival.resolution_method;

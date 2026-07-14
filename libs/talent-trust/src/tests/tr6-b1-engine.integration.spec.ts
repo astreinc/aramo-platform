@@ -144,6 +144,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         source_class: 'THIRD_PARTY_UNVERIFIED',
         declared_name: null,
         created_by: ACTOR,
+        // TR-2b B1 PR-2 — no cluster admitted by default (this spec exercises the
+        // within-tenant dedup engine, not the cross-tenant index path).
+        cluster_id: null,
         ...o,
       };
     }

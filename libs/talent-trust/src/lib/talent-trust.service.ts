@@ -169,6 +169,14 @@ export interface RecordSourcedArrivalInput {
   declared_name: string | null;
   // The writing slice — 'canonicalization'.
   created_by: string;
+  // TR-2b B1 PR-2 (DDR R4) — the PERSON_CLUSTER id this arrival was admitted to
+  // (the cross-tenant index cluster), or null when nothing was admitted (no
+  // verified email under PORTABLE_ONLY, or the policy gate did not admit). When
+  // non-null, a PERSON_CLUSTER ResolutionSubjectRef is written to the resolved
+  // subject — the tenant-side, queryable pointer INTO identity_index (the I14
+  // wall governs what is IN the index, not what points AT it). Ref only when a
+  // cluster was actually admitted — no ref without a mint.
+  cluster_id: string | null;
 }
 
 export interface RecordSourcedArrivalResult {
@@ -582,6 +590,29 @@ export class TalentTrustService {
     if (input.profile_url !== null) {
       await this.attachContactEvidence(subjectId, input, 'PROFILE_URL', input.profile_url, now);
       contactWritten += 1;
+    }
+
+    // TR-2b B1 PR-2 (DDR R4) — REVERSE LINKAGE. When the arrival was admitted to
+    // a PERSON_CLUSTER (cluster_id non-null, set by the canonicalization mint
+    // AFTER the admission-policy gate), attach a PERSON_CLUSTER ResolutionSubjectRef
+    // to the resolved subject — the queryable, tenant-carrying pointer INTO
+    // identity_index. Reuses the standing idempotent ref-writer (attachSubjectRef
+    // → repo.attachRef dedupes on the [tenant_id, ref_type, ref_id] unique), so a
+    // second arrival resolving to the same cluster is a no-op, not an error. No
+    // ref without a mint (the guard is the admission gate, upstream). CONSISTENCY
+    // POSTURE (recorded for Gate-6): recordSourcedArrival has no outer tx — the
+    // subject + SOURCED_TALENT ref + this PERSON_CLUSTER ref are separate
+    // idempotent repo writes on talent-trust's own client, matching the existing
+    // cross-connection posture of the resolved_cluster_id stamp (no shared tx
+    // exists across these schemas today; a re-run re-resolves idempotently).
+    if (input.cluster_id !== null) {
+      await this.attachSubjectRef({
+        tenant_id: input.tenant_id,
+        subject_id: subjectId,
+        ref_type: 'PERSON_CLUSTER',
+        ref_id: input.cluster_id,
+        link_source: input.created_by,
+      });
     }
 
     await this.recompute(subjectId, input.tenant_id, now);
