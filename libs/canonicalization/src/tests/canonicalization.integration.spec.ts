@@ -581,6 +581,105 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // -----------------------------------------------------------------------
+    // TR-2b B1 PR-2 (DDR R4) — REVERSE LINKAGE: an admitted arrival writes a
+    // PERSON_CLUSTER ResolutionSubjectRef on its subject (the queryable tenant-
+    // side pointer INTO identity_index); idempotent on re-arrival; absent when
+    // no cluster was admitted.
+    // -----------------------------------------------------------------------
+    it('TR-2b B1 PR-2 — writes a PERSON_CLUSTER ref for an admitted arrival, idempotent on re-arrival, absent without a cluster', async () => {
+      // (a) verified email (talent_direct → SELF, confirming) → cluster + a
+      //     PERSON_CLUSTER ref on the resolved subject, ref_id == the cluster.
+      const email = `tr2b-ref-${randomUUID()}@example.com`;
+      const p1 = uuidv7();
+      await insertPayload(dbClient, {
+        id: p1,
+        tenant_id: TENANT_ID,
+        source: 'talent_direct',
+        storage_ref: 's3://bucket/tr2b-ref-1',
+        sha256: 'tr2b-ref-1-' + 'a'.repeat(53),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: email,
+        profile_url: null,
+      });
+      const r1 = await service.canonicalize({
+        payload_id: p1,
+        source_channel: 'self_signup',
+        authContext: { tenant_id: TENANT_ID },
+        requestId: randomUUID(),
+      });
+      const row1 = await payloadRow(p1);
+      expect(row1.resolved_cluster_id).not.toBeNull();
+      const refs1 = await dbClient.query(
+        `SELECT ref_id FROM "talent_trust"."ResolutionSubjectRef"
+           WHERE subject_id = $1 AND ref_type = 'PERSON_CLUSTER'`,
+        [r1.subject_id],
+      );
+      expect(refs1.rows.length).toBe(1);
+      expect(refs1.rows[0].ref_id).toBe(row1.resolved_cluster_id);
+
+      // (b) idempotence — a second arrival, same email, resolves to the SAME
+      //     cluster (one fingerprint); the PERSON_CLUSTER ref is NOT duplicated:
+      //     exactly one row for (tenant, cluster) via the [tenant_id, ref_type,
+      //     ref_id] unique, regardless of whether the arrival confirm-matched or
+      //     split into a new subject.
+      const p2 = uuidv7();
+      await insertPayload(dbClient, {
+        id: p2,
+        tenant_id: TENANT_ID,
+        source: 'talent_direct',
+        storage_ref: 's3://bucket/tr2b-ref-2',
+        sha256: 'tr2b-ref-2-' + 'b'.repeat(53),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: email,
+        profile_url: null,
+      });
+      await service.canonicalize({
+        payload_id: p2,
+        source_channel: 'self_signup',
+        authContext: { tenant_id: TENANT_ID },
+        requestId: randomUUID(),
+      });
+      const row2 = await payloadRow(p2);
+      // same email → same fingerprint → SAME cluster.
+      expect(row2.resolved_cluster_id).toBe(row1.resolved_cluster_id);
+      // the PERSON_CLUSTER ref is not duplicated for (tenant, cluster).
+      const dupCheck = await dbClient.query(
+        `SELECT COUNT(*)::int AS c FROM "talent_trust"."ResolutionSubjectRef"
+           WHERE tenant_id = $1 AND ref_type = 'PERSON_CLUSTER' AND ref_id = $2`,
+        [TENANT_ID, row1.resolved_cluster_id],
+      );
+      expect(dupCheck.rows[0].c).toBe(1);
+
+      // (c) no verified email → no cluster admitted → no PERSON_CLUSTER ref.
+      const p3 = uuidv7();
+      await insertPayload(dbClient, {
+        id: p3,
+        tenant_id: TENANT_ID,
+        source: 'talent_direct',
+        storage_ref: 's3://bucket/tr2b-ref-3',
+        sha256: 'tr2b-ref-3-' + 'c'.repeat(53),
+        content_type: 'application/json',
+        captured_at: new Date(),
+        verified_email: null,
+        profile_url: 'https://github.com/tr2b-ref-noemail',
+      });
+      const r3 = await service.canonicalize({
+        payload_id: p3,
+        source_channel: 'self_signup',
+        authContext: { tenant_id: TENANT_ID },
+        requestId: randomUUID(),
+      });
+      const refs3 = await dbClient.query(
+        `SELECT ref_id FROM "talent_trust"."ResolutionSubjectRef"
+           WHERE subject_id = $1 AND ref_type = 'PERSON_CLUSTER'`,
+        [r3.subject_id],
+      );
+      expect(refs3.rows.length).toBe(0);
+    });
+
+    // -----------------------------------------------------------------------
     // Cross-tenant access → CANONICALIZATION_PAYLOAD_NOT_FOUND (no enumeration).
     // -----------------------------------------------------------------------
     it('cross-tenant access is absorbed into CANONICALIZATION_PAYLOAD_NOT_FOUND', async () => {

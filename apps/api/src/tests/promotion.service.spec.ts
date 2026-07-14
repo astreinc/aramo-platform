@@ -52,7 +52,10 @@ function makeService(over: {
   const trustRepo = { listMatchAdvisories } as never;
 
   const create = vi.fn().mockResolvedValue({ id: RECORD_ID });
-  const talentRecords = { create } as never;
+  // TR-2b B1 PR-2 — the single cluster writer (repo.setLink). Present on the
+  // mock so the PERSON_CLUSTER-ref carry can be asserted; a no-op resolve.
+  const setLink = vi.fn().mockResolvedValue({ id: RECORD_ID, cluster_id: null });
+  const talentRecords = { create, setLink } as never;
 
   // Slice-B2 — the create-path provenance writer.
   const upsertFieldProvenance = vi.fn().mockResolvedValue(undefined);
@@ -71,7 +74,7 @@ function makeService(over: {
   const ingestion = { findById } as never;
 
   const service = new PromotionService(trust, trustRepo, talentRecords, reconcileRepo, sourceConsent, ingestion);
-  return { service, resolveSubjectRef, listSubjectRefs, getEvidence, attachSubjectRef, getTrustState, listMatchAdvisories, create, upsertFieldProvenance, registerSourceDerivedConsent, findById };
+  return { service, resolveSubjectRef, listSubjectRefs, getEvidence, attachSubjectRef, getTrustState, listMatchAdvisories, create, setLink, upsertFieldProvenance, registerSourceDerivedConsent, findById };
 }
 
 describe('PromotionService.promoteSubject — create branch', () => {
@@ -140,6 +143,42 @@ describe('PromotionService.promoteSubject — create branch', () => {
         { field_name: 'city', evidence_id: 'ev-ADDRESS', talent_record_id: RECORD_ID },
       ]),
     );
+  });
+
+  it('TR-2b B1 PR-2: a subject carrying a PERSON_CLUSTER ref → cluster_id written onto the new record via setLink', async () => {
+    const CLUSTER_ID = 'dddddddd-dddd-7ddd-8ddd-ddddddddd001';
+    const { service, create, setLink } = makeService({
+      refs: [
+        { ref_type: 'SOURCED_TALENT', ref_id: PAYLOAD_ID, link_source: 'canonicalization' },
+        { ref_type: 'PERSON_CLUSTER', ref_id: CLUSTER_ID, link_source: 'canonicalization' },
+      ],
+      evidence: [ev('FULL_NAME', { first_name: 'Ada', last_name: 'Lovelace' })],
+    });
+
+    const result = await service.promoteSubject(sourcedRef);
+
+    expect(result).toMatchObject({ status: 'promoted', talent_record_id: RECORD_ID });
+    expect(create).toHaveBeenCalledTimes(1);
+    // The single cluster writer is called with the record + the cluster from the
+    // PERSON_CLUSTER ref (server-only column; OFF THE WIRE).
+    expect(setLink).toHaveBeenCalledWith({
+      tenant_id: TENANT,
+      id: RECORD_ID,
+      cluster_id: CLUSTER_ID,
+    });
+  });
+
+  it('TR-2b B1 PR-2: a subject WITHOUT a PERSON_CLUSTER ref → cluster_id left NULL (setLink not called)', async () => {
+    const { service, create, setLink } = makeService({
+      refs: [{ ref_type: 'SOURCED_TALENT', ref_id: PAYLOAD_ID, link_source: 'canonicalization' }],
+      evidence: [ev('FULL_NAME', { first_name: 'Ada', last_name: 'Lovelace' })],
+    });
+
+    const result = await service.promoteSubject(sourcedRef);
+
+    expect(result).toMatchObject({ status: 'promoted', talent_record_id: RECORD_ID });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(setLink).not.toHaveBeenCalled();
   });
 
   it('already_promoted: subject already carrying an ATS_TALENT_RECORD ref → no-op returns the existing record, no create', async () => {

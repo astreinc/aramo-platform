@@ -155,6 +155,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return r.rows[0]?.record_status ?? null;
     }
 
+    // TR-2b B1 PR-2 — attach a PERSON_CLUSTER ref (the identity_index pointer) to
+    // a subject. ref_id is UUID-only, no FK (the cross-schema rule), so no
+    // identity_index row is needed to exercise the reverse-linkage carry.
+    async function attachClusterRef(subjectId: string, clusterId: string): Promise<void> {
+      await db.query(
+        `INSERT INTO talent_trust."ResolutionSubjectRef"
+           (id, subject_id, tenant_id, ref_type, ref_id, link_source, linked_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 'PERSON_CLUSTER', $4::uuid, 'seed', CURRENT_TIMESTAMP)`,
+        [uuidv7(), subjectId, TENANT, clusterId],
+      );
+    }
+
+    async function recordClusterId(recordId: string): Promise<string | null> {
+      const r = await db.query(
+        `SELECT cluster_id FROM talent_record."TalentRecord" WHERE id = $1::uuid`,
+        [recordId],
+      );
+      return r.rows[0]?.cluster_id ?? null;
+    }
+
     async function mkEngagement(recordId: string, reqId: string): Promise<string> {
       const id = uuidv7();
       await db.query(
@@ -345,6 +365,37 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [recordS],
       );
       expect(audit.rows[0].n).toBe(1);
+    });
+
+    // ---- (g) TR-2b B1 PR-2 — survivor carries the surviving subject's cluster -
+
+    it('(g) TR-2b B1 PR-2 — both-promoted merge: survivor record carries the surviving subject PERSON_CLUSTER cluster_id (birth-certificate)', async () => {
+      const survivor = await mkSubject();
+      const merged = await mkSubject();
+      const recordS = await promote(survivor);
+      const recordL = await promote(merged);
+      const clusterId = uuidv7();
+      // The surviving subject holds the cluster; recordS was promoted by the seed
+      // helper WITHOUT a cluster_id (promote() sets none), so this proves the
+      // reconcile carry, not a promotion-time write.
+      await attachClusterRef(survivor, clusterId);
+      await mergePointer(survivor, merged);
+      expect(await recordClusterId(recordS)).toBeNull();
+
+      const op = await orchestrator.reconcile({
+        tenant_id: TENANT,
+        advisory_id: null,
+        surviving_subject_id: survivor,
+        merged_subject_id: merged,
+        actor_id: ACTOR,
+      });
+
+      expect(op.status).toBe('COMPLETED');
+      expect(await recordStatus(recordL)).toBe('superseded');
+      expect(await recordStatus(recordS)).toBe('live');
+      // Birth-certificate: the survivor record now holds the surviving subject's
+      // cluster id (own-column carry via the single cluster writer, not a repoint).
+      expect(await recordClusterId(recordS)).toBe(clusterId);
     });
 
     // ---- (c) collision rows removed-and-recorded --------------------------

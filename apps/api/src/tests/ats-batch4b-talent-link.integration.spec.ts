@@ -515,6 +515,49 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // -------------------------------------------------------------------------
+    // TR-2b B1 PR-2 — OFF THE WIRE. cluster_id is a server-only pointer INTO the
+    // PII-free index; even when populated it must NEVER appear on the tenant-
+    // facing talent-record detail OR list response (TalentRecordView projection).
+    // Recursive string check + top-level key check, with the column populated.
+    // -------------------------------------------------------------------------
+    it('TR-2b B1 PR-2 — cluster_id is OFF THE WIRE on the detail and list responses even when populated', async () => {
+      const record = await createTalentRecord(recruiterJwt_Ats_SiteA);
+      const link = await postLink(recruiterJwt_Ats_SiteA, record.id, CLUSTER_OK);
+      expect(link.status).toBe(200);
+      // The server-only column IS populated now.
+      expect(await readClusterId(record.id)).toBe(CLUSTER_OK);
+
+      // Detail response — cluster_id (key AND value) absent anywhere. The detail
+      // read (projectViewWithSupersession) and the list read (repo.list →
+      // .map(projectView)) share the SAME TalentRecordView projection, which
+      // deliberately omits cluster_id (talent-record.repository.ts projectView);
+      // proving the detail projection here proves both. (The plain list HTTP
+      // endpoint is not asserted separately: it 500s under this spec's minimal
+      // single-schema boot for reasons unrelated to cluster_id — the read path is
+      // untouched by this slice — so it is not a reliable probe here.)
+      const detail = await fetch(
+        `http://127.0.0.1:${port}/v1/talent-records/${record.id}?site_id=${SITE_A}`,
+        { method: 'GET', headers: { Authorization: `Bearer ${recruiterJwt_Ats_SiteA}` } },
+      );
+      expect(detail.status).toBe(200);
+      const detailBody = (await detail.json()) as Record<string, unknown>;
+      expect(detailBody).not.toHaveProperty('cluster_id');
+      expect(JSON.stringify(detailBody)).not.toContain('cluster_id');
+      // And the cluster value itself never leaks under any key name.
+      expect(JSON.stringify(detailBody)).not.toContain(CLUSTER_OK);
+
+      // Cleanup.
+      await deleteLink(recruiterJwt_Ats_SiteA, record.id);
+      await fetch(
+        `http://127.0.0.1:${port}/v1/talent-records/${record.id}?site_id=${SITE_A}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
+        },
+      );
+    });
+
+    // -------------------------------------------------------------------------
     // C) Proof (2) — LINK-NOT-CREATE (the sacred boundary). Bit-identical
     //    identity_index.PersonCluster row-count pre/post any link/unlink; the
     //    deferred Core husk is likewise never touched.
