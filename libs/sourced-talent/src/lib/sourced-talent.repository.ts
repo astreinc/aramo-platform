@@ -108,4 +108,51 @@ export class SourcedTalentRepository {
     const row = await this.prisma.sourcedTalent.findUnique({ where: { id } });
     return (row as SourcedTalentRow | null) ?? null;
   }
+
+  /**
+   * TR-2b B2b (Directive §PR-2.2, R7) — keyset-paginated read of L1 arrivals that
+   * carry a normalized_email, for the admit-arrivals backfill CLI. Returns only
+   * the minimal admission material (id, tenant, channel, normalized_email) — no
+   * PII beyond the email the fingerprint is derived from. L1 has no writer yet
+   * (the ADR-0019 sourcing service is future), so this reads an empty table today
+   * (dry-run reports 0) — the mechanism precedes the history (D15).
+   */
+  async listArrivalsWithEmail(input: {
+    batchSize: number;
+    afterId?: string;
+  }): Promise<SourcedArrivalWithEmail[]> {
+    const rows = await this.prisma.sourcedTalent.findMany({
+      where: {
+        normalized_email: { not: null },
+        ...(input.afterId === undefined ? {} : { id: { gt: input.afterId } }),
+      },
+      orderBy: { id: 'asc' },
+      take: input.batchSize,
+      select: {
+        id: true,
+        tenant_id: true,
+        source_channel: true,
+        normalized_email: true,
+      },
+    });
+    return rows.flatMap((r) =>
+      r.normalized_email === null
+        ? []
+        : [
+            {
+              id: r.id,
+              tenant_id: r.tenant_id,
+              source_channel: r.source_channel,
+              normalized_email: r.normalized_email,
+            },
+          ],
+    );
+  }
+}
+
+export interface SourcedArrivalWithEmail {
+  id: string;
+  tenant_id: string;
+  source_channel: string;
+  normalized_email: string;
 }

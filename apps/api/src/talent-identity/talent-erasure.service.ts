@@ -1,4 +1,9 @@
 import { Logger } from '@nestjs/common';
+import {
+  purgeClusterViaExec,
+  type ClusterPurgeExec,
+  type PurgeClusterResult,
+} from '@aramo/identity-index';
 
 // TR-15 B2 (DDR §5 — erasure made real) — the delete-pass engine behind the
 // `erase-talent` CLI. NO HTTP surface. It automates doc/runbooks/talent-rtbf-
@@ -110,6 +115,18 @@ export interface ErasureStepResult {
   error?: string;
 }
 
+// TR-2b B2b (Directive §PR-2.1) — the cluster last-reference section. The erased
+// subjects' PERSON_CLUSTER ref_ids are captured BEFORE the delete pass (they die
+// in the generic ResolutionSubjectRef delete). After the inventory, each captured
+// cluster is R4-liveness-checked EXCLUDING the erased subjects; an orphaned
+// cluster is purged (purgeCluster, caller 'erasure', NO grace — RTBF intent is
+// explicit, D11). Dry-run reports would_purge without purging.
+export interface ErasureClusterPurge {
+  captured_cluster_ids: string[]; // PERSON_CLUSTER refs of the erased subjects
+  orphaned_cluster_ids: string[]; // of those, orphaned post-erasure (would-purge)
+  purged: PurgeClusterResult[]; // execute only — the actual purge results
+}
+
 export interface ErasureReport {
   tenant_id: string;
   record_id: string;
@@ -121,6 +138,7 @@ export interface ErasureReport {
   erasure_marker_appended: boolean;
   is_anonymized_flipped: boolean;
   total_rows: number;
+  cluster_purge: ErasureClusterPurge;
 }
 
 export class TalentErasureService {
@@ -199,8 +217,98 @@ export class TalentErasureService {
       : [scope.record_ids];
   }
 
+  // TR-2b B2b — the distinct PERSON_CLUSTER ref_ids the erased subjects hold.
+  // Captured BEFORE the delete pass (they die in the generic ResolutionSubjectRef
+  // delete). PII-free (a cluster id is an opaque index key).
+  private async capturePersonClusterRefs(
+    pg: PgExec,
+    subjectIds: string[],
+  ): Promise<string[]> {
+    if (subjectIds.length === 0) return [];
+    const rows = await pg.query<{ ref_id: string }>(
+      `SELECT DISTINCT ref_id FROM talent_trust."ResolutionSubjectRef"
+        WHERE ref_type = 'PERSON_CLUSTER' AND subject_id = ANY($1::uuid[])`,
+      [subjectIds],
+    );
+    return rows.rows.map((r) => r.ref_id);
+  }
+
+  // TR-2b B2b — the R4 liveness rule as a husk-aware raw SQL, EXCLUDING the erased
+  // subjects (so a dry-run predicts the POST-erasure state, and execute is correct
+  // whether run before or after the delete). Mirrors the DI lifecycle-sweep
+  // liveTenants: a cluster is live iff some NON-erased holder of a PERSON_CLUSTER
+  // ref resolves (following merged_into_subject_id) to an ACTIVE survivor that
+  // still holds an ATS_TALENT_RECORD ref.
+  private async isClusterLiveExcluding(
+    pg: PgExec,
+    clusterId: string,
+    excludedSubjectIds: string[],
+  ): Promise<boolean> {
+    const rows = await pg.query<{ live: boolean }>(
+      `WITH RECURSIVE follow(id, merged_into, status) AS (
+         SELECT s.id, s.merged_into_subject_id, s.status
+           FROM talent_trust."ResolutionSubject" s
+          WHERE s.id IN (
+            SELECT subject_id FROM talent_trust."ResolutionSubjectRef"
+             WHERE ref_type = 'PERSON_CLUSTER' AND ref_id = $1::uuid
+               AND subject_id <> ALL($2::uuid[])
+          )
+         UNION
+         SELECT s2.id, s2.merged_into_subject_id, s2.status
+           FROM talent_trust."ResolutionSubject" s2
+           JOIN follow f ON s2.id = f.merged_into
+       )
+       SELECT EXISTS (
+         SELECT 1 FROM follow f
+          WHERE f.status = 'ACTIVE'
+            AND EXISTS (
+              SELECT 1 FROM talent_trust."ResolutionSubjectRef" ats
+               WHERE ats.subject_id = f.id AND ats.ref_type = 'ATS_TALENT_RECORD'
+            )
+       ) AS live`,
+      [clusterId, excludedSubjectIds],
+    );
+    return rows.rows[0]?.live ?? false;
+  }
+
+  // TR-2b B2b — per captured cluster: R4 liveness (excluding the erased subjects);
+  // orphaned → purgeCluster (caller 'erasure', NO grace). Dry-run reports the
+  // would-purge ids without purging. The purge reuses the ONE shared primitive
+  // (purgeClusterViaExec over the erase pass's PgExec — the same statement array
+  // the DI ClusterPurgeService runs, pinned by the tripwire).
+  private async purgeOrphanedClusters(
+    pg: PgExec,
+    clusterIds: string[],
+    excludedSubjectIds: string[],
+    dryRun: boolean,
+  ): Promise<ErasureClusterPurge> {
+    const orphaned: string[] = [];
+    const purged: PurgeClusterResult[] = [];
+    for (const clusterId of clusterIds) {
+      const live = await this.isClusterLiveExcluding(pg, clusterId, excludedSubjectIds);
+      if (live) continue;
+      orphaned.push(clusterId);
+      if (!dryRun) {
+        const exec: ClusterPurgeExec = pg;
+        purged.push(
+          await purgeClusterViaExec(exec, clusterId, 'erasure', (e) =>
+            this.logger.log(JSON.stringify(e)),
+          ),
+        );
+      }
+    }
+    return {
+      captured_cluster_ids: clusterIds,
+      orphaned_cluster_ids: orphaned,
+      purged,
+    };
+  }
+
   async dryRun(pg: PgExec, tenantId: string, recordId: string): Promise<ErasureReport> {
     const scope = await this.resolveScope(pg, tenantId, recordId);
+    // Capture the PERSON_CLUSTER refs while they still exist (dry-run deletes
+    // nothing, but the preview must show which clusters WOULD be purged).
+    const capturedClusters = await this.capturePersonClusterRefs(pg, scope.subject_ids);
     const steps: ErasureStepResult[] = [];
     let total = 0;
     for (const step of INVENTORY) {
@@ -216,6 +324,14 @@ export class TalentErasureService {
         steps.push({ table: step.label, count: 0, status: 'failed', error: msg(err) });
       }
     }
+    // Would-purge preview: liveness EXCLUDING the erased subjects predicts the
+    // post-erasure orphan state. dryRun=true → report ids, purge nothing.
+    const clusterPurge = await this.purgeOrphanedClusters(
+      pg,
+      capturedClusters,
+      scope.subject_ids,
+      true,
+    );
     return {
       tenant_id: tenantId,
       record_id: recordId,
@@ -227,6 +343,7 @@ export class TalentErasureService {
       erasure_marker_appended: false,
       is_anonymized_flipped: false,
       total_rows: total,
+      cluster_purge: clusterPurge,
     };
   }
 
@@ -240,6 +357,9 @@ export class TalentErasureService {
     s3Delete: S3Deleter,
   ): Promise<ErasureReport> {
     const scope = await this.resolveScope(pg, tenantId, recordId);
+    // Capture the PERSON_CLUSTER refs BEFORE the delete pass — they die in the
+    // generic ResolutionSubjectRef delete (INVENTORY, subject keyspace).
+    const capturedClusters = await this.capturePersonClusterRefs(pg, scope.subject_ids);
     const steps: ErasureStepResult[] = [];
     let total = 0;
     for (const step of INVENTORY) {
@@ -291,6 +411,15 @@ export class TalentErasureService {
       markerAppended = true;
     }
 
+    // AFTER the inventory: per captured cluster, R4 liveness (excluding the now-
+    // erased subjects) → orphaned → purgeCluster (caller 'erasure', NO grace).
+    const clusterPurge = await this.purgeOrphanedClusters(
+      pg,
+      capturedClusters,
+      scope.subject_ids,
+      false,
+    );
+
     return {
       tenant_id: tenantId,
       record_id: recordId,
@@ -304,6 +433,7 @@ export class TalentErasureService {
       // marker) — the flip is effective the moment the marker exists.
       is_anonymized_flipped: true,
       total_rows: total,
+      cluster_purge: clusterPurge,
     };
   }
 }

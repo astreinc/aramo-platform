@@ -13,4 +13,5 @@ export { PrismaService } from './lib/prisma/prisma.service.js';
 export type {
   SourcedTalentRow,
   RecordArrivalInput,
+  SourcedArrivalWithEmail,
 } from './lib/sourced-talent.repository.js';

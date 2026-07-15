@@ -112,6 +112,16 @@ function printReport(logger: Logger, report: ErasureReport): void {
     logger.log(`  ${s.table}: ${s.count} ${verb}${s.error ? ` [error: ${s.error}]` : ''}`);
   }
   logger.log(`  RETAINED (audit, not deleted): ${report.retained.join(', ')}`);
+  // TR-2b B2b — the identity-cluster last-reference section.
+  const cp = report.cluster_purge;
+  const clusterVerb = report.mode === 'dry-run' ? 'would-purge' : 'purged';
+  logger.log(
+    `  clusters: ${cp.captured_cluster_ids.length} referenced, ` +
+      `${cp.orphaned_cluster_ids.length} orphaned → ${clusterVerb}` +
+      (cp.orphaned_cluster_ids.length > 0
+        ? ` [${cp.orphaned_cluster_ids.join(', ')}]`
+        : ''),
+  );
 }
 
 void main();

@@ -2,28 +2,56 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 
-// TR-2b B2a (Directive ruling 4) — purgeCluster, the ONE cluster-teardown
+// TR-2b B2a/B2b (Directive ruling 4) — purgeCluster, the ONE cluster-teardown
 // primitive. Three callers: the daily identity-index lifecycle sweep (orphan
 // purge, B2a), the erasure engine (last-reference, B2b), and a future P4 RTBF
-// surface. It runs FIVE ordered mutations, RESTRICT-safe and atomic (one tx):
+// surface. It runs FIVE ordered mutations, RESTRICT-safe:
 //
-//   1. DELETE platform_trust."DormantLink"        WHERE cluster_id = $
-//   2. DELETE identity_index."ClusterFingerprint" WHERE cluster_id = $   (child)
-//   3. DELETE identity_index."PersonCluster"       WHERE id = $           (parent)
+//   1. DELETE platform_trust."DormantLink"        WHERE cluster_id = $1
+//   2. DELETE identity_index."ClusterFingerprint" WHERE cluster_id = $1   (child)
+//   3. DELETE identity_index."PersonCluster"       WHERE id = $1           (parent)
 //   4. UPDATE ingestion."RawPayloadReference" SET resolved_cluster_id = NULL …
 //   5. UPDATE portal_identity."PortalUser"    SET cluster_id = NULL …
 //
 // The ClusterFingerprint → PersonCluster FK is ON DELETE RESTRICT, so the child
-// delete MUST precede the parent (both inside the tx). Steps 4-5 null UUID-only
-// cross-schema pointers (no FK) — the arrival stamp and the portal linkage die
-// with the cluster (the PortalUser forward contract registered in Portal P1a).
+// delete MUST precede the parent. Steps 4-5 null UUID-only cross-schema pointers
+// (no FK) — the arrival stamp and the portal linkage die with the cluster (the
+// PortalUser forward contract registered in Portal P1a).
 //
-// CONVENTION (Directive §PR-1.2 escape clause, reported in Gate-6): this matches
-// the TR-15 B2 erasure engine — CENTRALIZED raw SQL over schema-qualified tables
-// via one executor — NOT cross-lib repo delegation. Raw SQL reaches every schema
-// on the shared connection, so identity-index (scope:cip) opens NO new nx edge to
-// ingestion / portal-identity / platform-trust. A structured line is logged per
-// purge (cluster id, per-table ref-count evidence, caller).
+// TR-2b B2b (Directive §PR-2.1) — the SQL now lives in ONE exported ordered array
+// (CLUSTER_PURGE_STATEMENTS) consumed by BOTH the Prisma `$transaction` path
+// (ClusterPurgeService, the sweep) AND the raw PgExec path (purgeClusterViaExec,
+// the erasure engine) — one primitive, two executor bindings, pinned identical by
+// the cluster-purge tripwire spec.
+//
+// CONVENTION (reported in Gate-6): centralized raw SQL over schema-qualified
+// tables, NOT cross-lib repo delegation — so identity-index (scope:cip) opens NO
+// new nx edge to ingestion / portal-identity / platform-trust.
+
+// The result field each statement's affected-row count maps to (order = exec order).
+export const CLUSTER_PURGE_STATEMENTS = [
+  {
+    key: 'dormant_links_deleted',
+    sql: `DELETE FROM platform_trust."DormantLink" WHERE cluster_id = $1::uuid`,
+  },
+  {
+    key: 'fingerprints_deleted',
+    sql: `DELETE FROM identity_index."ClusterFingerprint" WHERE cluster_id = $1::uuid`,
+  },
+  {
+    key: 'clusters_deleted',
+    sql: `DELETE FROM identity_index."PersonCluster" WHERE id = $1::uuid`,
+  },
+  {
+    key: 'arrival_stamps_nulled',
+    sql: `UPDATE ingestion."RawPayloadReference" SET resolved_cluster_id = NULL WHERE resolved_cluster_id = $1::uuid`,
+  },
+  {
+    key: 'portal_users_nulled',
+    sql: `UPDATE portal_identity."PortalUser" SET cluster_id = NULL WHERE cluster_id = $1::uuid`,
+  },
+] as const;
+
 export interface PurgeClusterResult {
   cluster_id: string;
   dormant_links_deleted: number;
@@ -31,6 +59,54 @@ export interface PurgeClusterResult {
   clusters_deleted: number;
   arrival_stamps_nulled: number;
   portal_users_nulled: number;
+}
+
+// The minimal executor abstraction both bindings satisfy: run one parameterized
+// statement, return the affected row count. (Prisma adapter wraps
+// $executeRawUnsafe; PgExec adapter wraps pg.query().rowCount.)
+export interface ClusterPurgeExec {
+  query(sql: string, params: unknown[]): Promise<{ rowCount: number | null }>;
+}
+
+type PurgeLog = (entry: Record<string, unknown>) => void;
+
+// The shared core: run CLUSTER_PURGE_STATEMENTS in order over the given executor.
+async function runPurgeStatements(
+  exec: ClusterPurgeExec,
+  clusterId: string,
+): Promise<PurgeClusterResult> {
+  const counts: Record<string, number> = {};
+  for (const stmt of CLUSTER_PURGE_STATEMENTS) {
+    const res = await exec.query(stmt.sql, [clusterId]);
+    counts[stmt.key] = res.rowCount ?? 0;
+  }
+  return {
+    cluster_id: clusterId,
+    dormant_links_deleted: counts['dormant_links_deleted'] ?? 0,
+    fingerprints_deleted: counts['fingerprints_deleted'] ?? 0,
+    clusters_deleted: counts['clusters_deleted'] ?? 0,
+    arrival_stamps_nulled: counts['arrival_stamps_nulled'] ?? 0,
+    portal_users_nulled: counts['portal_users_nulled'] ?? 0,
+  };
+}
+
+/**
+ * The raw-PgExec binding of purgeCluster (TR-2b B2b) — for the erasure engine,
+ * which is PgExec-only (no DI, no Prisma). Runs the SAME ordered statement array
+ * over the caller's executor (the erase pass's pg.Client). The caller owns the
+ * transaction boundary (the erasure engine's per-step convention); the ordered
+ * child-before-parent deletes are RESTRICT-safe run sequentially. `log` emits the
+ * structured per-purge line if supplied.
+ */
+export async function purgeClusterViaExec(
+  exec: ClusterPurgeExec,
+  clusterId: string,
+  caller: string,
+  log?: PurgeLog,
+): Promise<PurgeClusterResult> {
+  const result = await runPurgeStatements(exec, clusterId);
+  log?.({ event: 'cluster_purged', caller, ...result });
+  return result;
 }
 
 @Injectable()
@@ -43,38 +119,16 @@ export class ClusterPurgeService {
     clusterId: string,
     caller: string,
   ): Promise<PurgeClusterResult> {
-    const counts = await this.prisma.$transaction(async (tx) => {
-      // 1. Dormant links (UUID-only ref, no FK) — delete first so a purge of a
-      //    dormant cluster leaves no orphaned notice-lifecycle row.
-      const dormant = await tx.$executeRaw`
-        DELETE FROM platform_trust."DormantLink" WHERE cluster_id = ${clusterId}::uuid`;
-      // 2. Fingerprints (child of PersonCluster, RESTRICT FK) — before the parent.
-      const fingerprints = await tx.$executeRaw`
-        DELETE FROM identity_index."ClusterFingerprint" WHERE cluster_id = ${clusterId}::uuid`;
-      // 3. The cluster itself (now childless).
-      const clusters = await tx.$executeRaw`
-        DELETE FROM identity_index."PersonCluster" WHERE id = ${clusterId}::uuid`;
-      // 4. Ingestion arrival stamps (UUID-only ref, no FK).
-      const arrivals = await tx.$executeRaw`
-        UPDATE ingestion."RawPayloadReference"
-           SET resolved_cluster_id = NULL
-         WHERE resolved_cluster_id = ${clusterId}::uuid`;
-      // 5. Portal linkage (UUID-only ref, no FK — the Portal P1a forward contract).
-      const portals = await tx.$executeRaw`
-        UPDATE portal_identity."PortalUser"
-           SET cluster_id = NULL
-         WHERE cluster_id = ${clusterId}::uuid`;
-      return { dormant, fingerprints, clusters, arrivals, portals };
+    // The Prisma binding: one $transaction (atomic), the same statement array via
+    // $executeRawUnsafe adapted to the shared executor shape.
+    const result = await this.prisma.$transaction(async (tx) => {
+      const exec: ClusterPurgeExec = {
+        query: async (sql, params) => ({
+          rowCount: await tx.$executeRawUnsafe(sql, ...params),
+        }),
+      };
+      return runPurgeStatements(exec, clusterId);
     });
-
-    const result: PurgeClusterResult = {
-      cluster_id: clusterId,
-      dormant_links_deleted: counts.dormant,
-      fingerprints_deleted: counts.fingerprints,
-      clusters_deleted: counts.clusters,
-      arrival_stamps_nulled: counts.arrivals,
-      portal_users_nulled: counts.portals,
-    };
     this.logger.log({ event: 'cluster_purged', caller, ...result });
     return result;
   }
