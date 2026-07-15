@@ -119,6 +119,16 @@ const FORBIDDEN = [
   'source_recruiter_id',
 ];
 
+// PR-2b §PR-2.4 — grep-assert the new DTOs against the D3 trust vocab: NO
+// trust/verification/attestation origin data on any P1 surface (Portal DDR
+// P-R4/P-R5). tenant_name/verifier/verified_by/verifying_*/origin_* are the
+// origin-secrecy fields; tenant_id is P-R5-legal on this ENGAGEMENT surface, so
+// it is deliberately NOT in this list (see verify-portal-refusal.ts trust-class).
+const TRUST_VOCAB_FORBIDDEN = [
+  'tenant_name', 'verifier', 'verified_by', 'verifying_tenant', 'origin_tenant',
+  'attestation', 'trust_statement', 'verification_state',
+];
+
 describe('PortalController — GET /v1/portal/records', () => {
   it('returns 403 INSUFFICIENT_PERMISSIONS when consumer_type !== "portal"', async () => {
     const resolverCalls = { resolveRecords: [] as ResolveRecordsCall[], resolveMember: [] as ResolveMemberCall[] };
@@ -199,6 +209,8 @@ describe('PortalController — GET /v1/portal/records', () => {
       created_at: '2026-05-01T12:00:00.000Z',
     });
     for (const f of FORBIDDEN) expect(result.records[0]).not.toHaveProperty(f);
+    // §PR-2.4 — no trust/verification/attestation origin data on the surface.
+    for (const f of TRUST_VOCAB_FORBIDDEN) expect(result.records[0]).not.toHaveProperty(f);
   });
 });
 

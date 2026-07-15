@@ -20,6 +20,25 @@
 //                  recruiter_* (recruiter-only fields must not bleed into
 //                               talent-facing endpoints — PR-M0R-2 §4)
 //
+//   3. Portal P1 PR-2b — the D3 TRUST-CLASS rule (Portal DDR P-R4 / P-R5).
+//      Schemas named in the declared TRUST_CLASS_SCHEMAS allowlist (verification,
+//      attestation, trust-statement, dispute-subject shapes) must NOT carry a
+//      tenant-identifying or verifier-identifying field: tenant_name, tenant_id,
+//      verifier, verified_by, or a verifying_* / origin_* prefix. This encodes
+//      P-R5's origin-secrecy ruling — no candidate-facing surface ever renders a
+//      verification joined to its producing tenant ("verified on Aramo", never
+//      "verified by <tenant>"). The forbidden JOIN is made structurally
+//      impossible because trust shapes carry no tenant field.
+//
+//      Scope is by SCHEMA NAME, deliberately: tenant_id is base-LEGAL on an
+//      ENGAGEMENT surface (P-R5 — a candidate MAY see the counterparty they
+//      knowingly engaged; PortalProfile.tenant_id is such a field) but FORBIDDEN
+//      on a trust surface. The two regimes coexist; membership is the switch.
+//
+//      P1 ships NO trust surface, so TRUST_CLASS_SCHEMAS is EMPTY here — the
+//      mechanism precedes the first surface per P-R4 ("becomes code the same day
+//      the first trust surface exists"). P2+ adds members alongside their schemas.
+//
 // The exact-match list is a backstop, not the definition of safe: Portal
 // response schemas are allowlist-shaped — every exposed field must be
 // affirmatively justified against R10 as candidate-facing-safe (PR-A0 §2
@@ -65,6 +84,30 @@ export const FORBIDDEN_PREFIXES: ReadonlyArray<string> = [
   'recruiter_',
 ];
 
+// Portal P1 PR-2b — the D3 trust-class allowlist (Portal DDR P-R4 / P-R5).
+// Schema NAMES of trust-surface shapes (verification, attestation,
+// trust-statement, dispute-subject). EMPTY in P1: no trust surface exists yet;
+// the origin-secrecy wall is code before the first surface it will ever guard.
+// P2+ adds a member in the SAME commit as the schema it names — e.g.
+// 'VerificationState', 'AttestationRecord', 'TrustStatement', 'DisputeSubject'.
+export const TRUST_CLASS_SCHEMAS: ReadonlySet<string> = new Set<string>([
+  // (intentionally empty in P1 — see the header note)
+]);
+
+// The tenant-/verifier-identifying fields forbidden ONLY within a trust-class
+// schema (they are base-legal on engagement surfaces per P-R5).
+export const TRUST_CLASS_FORBIDDEN_EXACT: ReadonlyArray<string> = [
+  'tenant_name',
+  'tenant_id',
+  'verifier',
+  'verified_by',
+];
+
+export const TRUST_CLASS_FORBIDDEN_PREFIXES: ReadonlyArray<string> = [
+  'verifying_',
+  'origin_',
+];
+
 type Issue = { path: string; reason: string };
 
 export function isObjectSchema(node: unknown): node is Record<string, unknown> {
@@ -79,6 +122,44 @@ export function isForbiddenPropertyName(name: string): { hit: boolean; reason?: 
     if (name.startsWith(p)) return { hit: true, reason: `forbidden prefix ${p}*: ${name}` };
   }
   return { hit: false };
+}
+
+// Portal P1 PR-2b — the trust-class (origin-secrecy) predicate. Applied ONLY to
+// schemas whose name is in TRUST_CLASS_SCHEMAS.
+export function isTrustClassForbidden(name: string): { hit: boolean; reason?: string } {
+  if (TRUST_CLASS_FORBIDDEN_EXACT.includes(name)) {
+    return { hit: true, reason: `trust-class origin-secrecy forbidden field: ${name}` };
+  }
+  for (const p of TRUST_CLASS_FORBIDDEN_PREFIXES) {
+    if (name.startsWith(p)) return { hit: true, reason: `trust-class forbidden prefix ${p}*: ${name}` };
+  }
+  return { hit: false };
+}
+
+// Recurse a trust-class schema (and its nested sub-schemas) enforcing the
+// origin-secrecy field rule. Runs IN ADDITION to checkSchema's base rules — a
+// trust-class schema is still a closed envelope with no R10 fields; it ALSO may
+// carry no tenant-/verifier-identifying field.
+export function checkTrustClassSchema(schema: unknown, path: string, issues: Issue[]): void {
+  if (!isObjectSchema(schema)) return;
+
+  const properties = schema['properties'];
+  if (isObjectSchema(properties)) {
+    for (const [name, sub] of Object.entries(properties)) {
+      const hit = isTrustClassForbidden(name);
+      if (hit.hit) issues.push({ path: `${path}.properties.${name}`, reason: hit.reason! });
+      checkTrustClassSchema(sub, `${path}.properties.${name}`, issues);
+    }
+  }
+  for (const key of ['items', 'additionalProperties'] as const) {
+    if (isObjectSchema(schema[key])) checkTrustClassSchema(schema[key], `${path}.${key}`, issues);
+  }
+  for (const key of ['oneOf', 'anyOf', 'allOf'] as const) {
+    const arr = schema[key];
+    if (Array.isArray(arr)) {
+      arr.forEach((s, i) => checkTrustClassSchema(s, `${path}.${key}[${i}]`, issues));
+    }
+  }
 }
 
 export function checkSchema(schema: unknown, path: string, issues: Issue[]): void {
@@ -139,13 +220,22 @@ function walkResponses(doc: Record<string, unknown>, issues: Issue[]): void {
   }
 }
 
-function walkComponents(doc: Record<string, unknown>, issues: Issue[]): void {
+function walkComponents(
+  doc: Record<string, unknown>,
+  issues: Issue[],
+  trustClass: ReadonlySet<string> = TRUST_CLASS_SCHEMAS,
+): void {
   const components = doc['components'];
   if (!isObjectSchema(components)) return;
   const schemas = components['schemas'];
   if (!isObjectSchema(schemas)) return;
   for (const [name, schema] of Object.entries(schemas)) {
     checkSchema(schema, `components.schemas.${name}`, issues);
+    // D3 trust-class rule: a named trust-surface schema also gets the
+    // origin-secrecy field check. Membership is by schema name (P-R4/P-R5).
+    if (trustClass.has(name)) {
+      checkTrustClassSchema(schema, `components.schemas.${name}`, issues);
+    }
   }
 }
 
@@ -233,7 +323,69 @@ function runSelfTest(): void {
     throw new Error('self-test: inline response forbidden field not flagged');
   }
 
-  console.log('self-test ok: portal-refusal-check catches forbidden fields and open envelopes');
+  // 6. D3 trust-class — a trust-class member carrying tenant_id is flagged
+  //    (the origin-secrecy join is forbidden on trust surfaces).
+  const trustSet = new Set<string>(['TrustStatement']);
+  const trustLeak = {
+    components: {
+      schemas: {
+        TrustStatement: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { tenant_id: { type: 'string' } },
+        },
+      },
+    },
+  };
+  const trustLeakIssues: Issue[] = [];
+  walkComponents(trustLeak, trustLeakIssues, trustSet);
+  if (!trustLeakIssues.some((i) => i.reason.includes('trust-class') && i.reason.includes('tenant_id'))) {
+    throw new Error('self-test: trust-class tenant_id not flagged');
+  }
+
+  // 7. D3 trust-class — a verifying_* / origin_* prefix on a member is flagged.
+  for (const name of ['verifying_tenant', 'origin_workflow_id', 'verified_by']) {
+    const doc = {
+      components: {
+        schemas: {
+          TrustStatement: {
+            type: 'object',
+            additionalProperties: false,
+            properties: { [name]: { type: 'string' } },
+          },
+        },
+      },
+    };
+    const issues: Issue[] = [];
+    walkComponents(doc, issues, trustSet);
+    if (!issues.some((i) => i.reason.includes('trust-class') && i.reason.includes(name))) {
+      throw new Error(`self-test: trust-class field not flagged: ${name}`);
+    }
+  }
+
+  // 8. D3 SCOPING — the SAME tenant_id on a NON-trust-class (engagement) schema
+  //    is NOT flagged. This pins P-R5: PortalProfile.tenant_id stays legal.
+  const engagementOk = {
+    components: {
+      schemas: {
+        PortalProfile: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { tenant_id: { type: 'string' } },
+        },
+      },
+    },
+  };
+  const engagementIssues: Issue[] = [];
+  walkComponents(engagementOk, engagementIssues, trustSet); // 'PortalProfile' ∉ trustSet
+  if (engagementIssues.length !== 0) {
+    throw new Error(`self-test: engagement tenant_id wrongly flagged: ${JSON.stringify(engagementIssues)}`);
+  }
+
+  console.log(
+    'self-test ok: portal-refusal-check catches forbidden fields, open envelopes, ' +
+      'and D3 trust-class origin-secrecy leaks (scoped to declared trust schemas)',
+  );
 }
 
 function main(): void {
