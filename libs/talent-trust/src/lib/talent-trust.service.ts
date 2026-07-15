@@ -1562,6 +1562,17 @@ export class TalentTrustService {
     return this.resolveSubjectForRead(subjectRef);
   }
 
+  // Portal P1 PR-2 (OPEN-4) — the cross-tenant holders of a PERSON_CLUSTER id:
+  // every {tenant_id, subject_id} whose ResolutionSubjectRef points at the given
+  // cluster (the same human across firms). The portal chain's first hop after
+  // PortalUser.cluster_id. Platform-rail index-ref graph only — no PII, no
+  // cross-tenant tenant-rail read.
+  async findClusterHolders(
+    clusterId: string,
+  ): Promise<{ tenant_id: string; subject_id: string }[]> {
+    return this.repo.findSubjectRefsByRef('PERSON_CLUSTER', clusterId);
+  }
+
   // TR-2a-B3a (DDR-3 §2.3/§5) — INTENTIONAL NON-FOLLOWER (origin-keyed by
   // design): refs are keyed to the subject that owns them, not to a merge
   // fixpoint. Do NOT switch this to resolveActiveFixpoint — the promotion no-op

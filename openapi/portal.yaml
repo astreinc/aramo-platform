@@ -11,29 +11,52 @@ info:
     Future PRs populate the remaining 10 Phase 3 endpoints under F26/F27/
     F28/F29.
 paths:
-  /v1/portal/profile:
+  # Portal P1 PR-2a — the OPEN-4 chain surface. The prior singleton
+  # /v1/portal/profile + /v1/portal/consent are REMOVED (the placeholder-era
+  # sub-passthrough); the portal session's `sub` (PortalUser.id) now resolves to
+  # the portal user's records ACROSS tenants.
+  /v1/portal/records:
     get:
-      operationId: getPortalProfile
-      summary: Returns the authenticated portal talent's own profile (R10-filtered).
+      operationId: getPortalRecords
+      summary: The authenticated portal user's records across tenants (engagement surface).
       description: |
-        Talent-self-view. Returns only the per-tenant context fields the
-        talent should see about themselves: their id, the tenant scope,
-        lifecycle/tenant statuses, source channel (how they entered),
-        and overlay creation timestamp. Excludes any recruiter-internal
-        data (source_recruiter_id), any examination/match data, any
-        operational metadata not in API Contracts Phase 3 Profile group.
-
-        Talent identity comes from the JWT `sub` claim — there is no
-        path/query parameter to address another talent. The portal session
-        embodies the talent it represents.
-
-        Returns 404 (not 200 with empty body) when no overlay exists for
-        (sub, tenant_id) — distinct from the PR-8 match-list
-        empty-list-on-no-active-req posture, because /portal/profile is a
-        singleton resource.
+        The OPEN-4 chain resolves the portal session's `sub` (PortalUser.id) to
+        the portal user's live TalentRecords across every tenant that holds them
+        (P-R5 engagement surface). Returns a closed envelope of per-record
+        R10-filtered profiles. A portal user with no cluster / no live records
+        gets an EMPTY list (200), never an error.
       responses:
         '200':
-          description: The talent's own portal profile.
+          description: The portal user's records (possibly empty).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalRecordsResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
+  /v1/portal/records/{id}/profile:
+    get:
+      operationId: getPortalRecordProfile
+      summary: One record's R10-filtered profile.
+      description: |
+        `id` must be reachable through the caller's OPEN-4 chain. An id not in the
+        chain (or unknown, or malformed) is a UNIFORM 404 — no "exists but not
+        yours" oracle.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The record's portal profile.
           content:
             application/json:
               schema:
@@ -47,24 +70,23 @@ paths:
       security:
         - BearerAuth: []
 
-  /v1/portal/consent:
+  /v1/portal/records/{id}/consent:
     get:
-      operationId: getPortalOwnConsent
-      summary: Returns the authenticated portal talent's own consent state.
+      operationId: getPortalRecordConsent
+      summary: One record's consent state (all 5 scopes).
       description: |
-        Talent-self-view of consent. Wraps the existing
-        ConsentService.getState surface — returns the same
-        TalentConsentStateResponse shape the recruiter-facing
-        /v1/consent/state/{talent_record_id} returns, but the
-        talent_record_id is derived from the JWT `sub` claim (no path
-        parameter — the portal session embodies the talent).
-
-        Includes all 5 consent scopes (always-5-scopes deterministic
-        shape per PR-5 Decision D). No is_stale field (excluded per
-        PR-5 Decision E, ADR-0006).
+        Consent state for a record reachable through the caller's chain, scoped to
+        that record's tenant. An unreachable/unknown/malformed id is a UNIFORM 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
-          description: The talent's own consent state, all 5 scopes.
+          description: The record's consent state, all 5 scopes.
           content:
             application/json:
               schema:
@@ -73,6 +95,8 @@ paths:
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
           $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
 
@@ -125,3 +149,22 @@ components:
           format: date-time
           description: |
             When the talent's TalentRecord was created in this tenant.
+
+    # Portal P1 PR-2a — the records-list envelope (closed). Each entry is the
+    # R10-filtered PortalProfile; the array MAY be empty (a portal user with no
+    # cluster / no live records). additionalProperties:false per the refusal gate.
+    PortalRecordsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - records
+      properties:
+        records:
+          type: array
+          description: |
+            The portal user's per-record R10-filtered profiles across tenants
+            (possibly empty). Tenant counterparty NAMING is permitted by P-R5 but
+            deferred; tenant_id (the counterparty id) carries no origin-secrecy
+            concern here — a portal user's own engagements, not a verification origin.
+          items:
+            $ref: '#/components/schemas/PortalProfile'

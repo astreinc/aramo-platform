@@ -668,6 +668,15 @@ const TENANT_ID = '11111111-1111-7111-8111-111111111111';
 // pact/consumers/portal-thin/src/portal-*.consumer.test.ts constant.
 const PORTAL_TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 
+// Portal P1 PR-2a — the portal_identity schema (PortalUser) so the OPEN-4 chain
+// (portalJwt.sub = PortalUser.id → cluster_id) resolves in the provider. The
+// portal-thin records/consent interactions seed a PortalUser via
+// seedPortalUserFixture below.
+const PORTAL_IDENTITY_MIGRATION = resolve(
+  ROOT,
+  'libs/portal-identity/prisma/migrations/20260714120000_init_portal_identity/migration.sql',
+);
+
 // Constants used by the consent-read given-states (and formerly the retired
 // thin consumer). The talent uuid matches the value the consumer tests
 // use; the recruiter actor uuid matches the audit-row value the pacts
@@ -873,13 +882,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // (the pact matches both as non-null). Both states ("profile P" and
     // "consent grants G") use the same fixture; consent grants are seeded
     // separately via seedConsentEvent.
-    async function seedPortalTalentFixture(c: Client): Promise<void> {
+    // Portal P1 PR-2a — seed a PortalUser whose id IS the portalJwt sub, with
+    // cluster_id NULL, so the OPEN-4 chain resolves to an EMPTY record set (the
+    // minimal-green portal-thin interactions: records 200-empty + consent
+    // out-of-chain 404). PR-2b's deeper pact seeds the full chain.
+    async function seedPortalUserWithNoRecords(c: Client): Promise<void> {
       await c.query(
-        `INSERT INTO talent_record."TalentRecord"
-           (id, tenant_id, first_name, last_name, tenant_status, source_channel,
-            created_at, updated_at)
-         VALUES ($1, $2, 'Portal', 'Talent', 'active', 'self_signup', NOW(), NOW())`,
-        [PORTAL_TALENT_ID, TENANT_ID],
+        `INSERT INTO portal_identity."PortalUser"
+           (id, email_normalized, cluster_id, created_at, updated_at)
+         VALUES ($1, 'portal-thin@example.com', NULL, NOW(), NOW())`,
+        [PORTAL_TALENT_ID],
       );
     }
 
@@ -2737,6 +2749,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_TRUST_TR8_VERIFIED_STALE_MIGRATION,
         // TR-12 B1 — the VerificationProposal table (regenerated client knows it).
         TALENT_TRUST_TR12_PROPOSAL_MIGRATION,
+        // Portal P1 PR-2a — portal_identity (PortalUser) for the OPEN-4 chain.
+        PORTAL_IDENTITY_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,
         SAVED_LIST_LIST_KIND_MIGRATION,
         IMPORT_INIT_MIGRATION,
@@ -3723,43 +3737,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // assertion fires before any repository call.
         await withClient((c) => resetAllRows(c));
       },
-      // ===== M3 PR-9 §4.8 portal-thin (5 interactions) =====
-      'a portal talent with profile P exists': async () => {
-        // PR-9 §4.8 — happy /v1/portal/profile interaction. 4e-rest-b: seed a
-        // TalentRecord so the re-homed findSelfProfile returns a projection.
+      // ===== Portal P1 PR-2a portal-thin (OPEN-4 chain, minimal-green) =====
+      'a portal user with no records exists': async () => {
+        // Portal P1 PR-2a — seed a PortalUser (id = portalJwt sub) with cluster_id
+        // NULL. The OPEN-4 chain resolves to an EMPTY record set:
+        //   GET /v1/portal/records            → 200 { records: [] }
+        //   GET /v1/portal/records/{id}/consent → 404 (id not in the chain)
+        // The full-chain positive shape is PR-2b's deeper pact.
         await withClient(async (c) => {
           await resetAllRows(c);
-          await seedPortalTalentFixture(c);
-        });
-      },
-      'a portal talent with consent grants G exists': async () => {
-        // PR-9 §4.8 — happy /v1/portal/consent interaction. 4e-rest-b: seed a
-        // TalentRecord AND a grant for each of the 5 ConsentScope values so
-        // every scope in the always-5-scopes response (PR-5 Decision D)
-        // carries a non-null granted_at. The consumer pact uses
-        // eachLike() with a date-string matcher on granted_at; if any
-        // scope's granted_at is null the matcher rejects the array.
-        // Mirrors the consent-read "a recruiter session and
-        // a talent with consent state" handler's per-scope-grant pattern.
-        const SCOPES = [
-          'profile_storage',
-          'resume_processing',
-          'matching',
-          'contacting',
-          'cross_tenant_visibility',
-        ] as const;
-        await withClient(async (c) => {
-          await resetAllRows(c);
-          await seedPortalTalentFixture(c);
-          for (let i = 0; i < SCOPES.length; i++) {
-            await seedConsentEvent(c, {
-              id: `00000000-0000-7000-8000-0000000000a${i + 1}`,
-              scope: SCOPES[i] as string,
-              action: 'granted',
-              occurredAt: '2026-04-01T10:00:00.000Z',
-              expiresAt: null,
-            });
-          }
+          await seedPortalUserWithNoRecords(c);
         });
       },
       'a recruiter token (non-portal consumer)': async () => {
