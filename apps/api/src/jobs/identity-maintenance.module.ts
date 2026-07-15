@@ -7,6 +7,8 @@ import {
 } from '@aramo/common';
 import { TalentTrustModule } from '@aramo/talent-trust';
 import { TalentRecordModule } from '@aramo/talent-record';
+import { IdentityIndexModule } from '@aramo/identity-index';
+import { PlatformTrustModule } from '@aramo/platform-trust';
 
 import { MatchSweepService } from '../talent-anchor/match-sweep.service.js';
 import { MatchSweepProcessor } from '../talent-anchor/match-sweep.processor.js';
@@ -20,6 +22,9 @@ import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.con
 import { RecomputeSweepService } from '../talent-identity/recompute-sweep.service.js';
 import { RecomputeSweepProcessor } from '../talent-identity/recompute-sweep.processor.js';
 import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.queue.constants.js';
+import { IdentityLifecycleSweepService } from '../talent-identity/identity-lifecycle-sweep.service.js';
+import { IdentityLifecycleSweepProcessor } from '../talent-identity/identity-lifecycle-sweep.processor.js';
+import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity-lifecycle-sweep.queue.constants.js';
 
 // TR-6 B1 (DDR §2/§7) — the identity-maintenance job module: the hourly incremental
 // match sweep (D1) + the daily read-only integrity detection cron (D6). apps/api
@@ -37,6 +42,12 @@ import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.q
     CommonModule,
     TalentTrustModule,
     TalentRecordModule,
+    // TR-2b B2a — the identity-index lifecycle sweep needs the cluster index
+    // (IdentityIndexRepository + ClusterPurgeService) and the DormantLink store
+    // (PlatformTrustRepository). apps/api is untagged, so these imports open no
+    // nx boundary edge (the wall governs the tagged libs).
+    IdentityIndexModule,
+    PlatformTrustModule,
     BullModule.forRootAsync({
       extraOptions: { manualRegistration: true },
       useFactory: (cfg: RedisConnectionConfig) => {
@@ -69,6 +80,8 @@ import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.q
     BullModule.registerQueue({ name: CONSISTENCY_QUEUE_NAME }),
     // TR-5 B1 — the daily decay-recompute sweep (same wiring as the others).
     BullModule.registerQueue({ name: RECOMPUTE_SWEEP_QUEUE_NAME }),
+    // TR-2b B2a — the daily identity-index lifecycle sweep (same wiring).
+    BullModule.registerQueue({ name: IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME }),
   ],
   providers: [
     MatchSweepService,
@@ -79,6 +92,8 @@ import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.q
     ConsistencyProcessor,
     RecomputeSweepService,
     RecomputeSweepProcessor,
+    IdentityLifecycleSweepService,
+    IdentityLifecycleSweepProcessor,
     {
       provide: 'MatchSweepServiceLogger',
       useFactory: () => createAramoLogger(MatchSweepService.name),
@@ -111,7 +126,21 @@ import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.q
       provide: 'RecomputeSweepProcessorLogger',
       useFactory: () => createAramoLogger(RecomputeSweepProcessor.name),
     },
+    {
+      provide: 'IdentityLifecycleSweepServiceLogger',
+      useFactory: () => createAramoLogger(IdentityLifecycleSweepService.name),
+    },
+    {
+      provide: 'IdentityLifecycleSweepProcessorLogger',
+      useFactory: () => createAramoLogger(IdentityLifecycleSweepProcessor.name),
+    },
   ],
-  exports: [MatchSweepService, IdentityDetectionService, ConsistencyService, RecomputeSweepService],
+  exports: [
+    MatchSweepService,
+    IdentityDetectionService,
+    ConsistencyService,
+    RecomputeSweepService,
+    IdentityLifecycleSweepService,
+  ],
 })
 export class IdentityMaintenanceModule {}

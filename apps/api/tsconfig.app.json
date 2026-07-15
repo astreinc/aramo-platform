@@ -48,6 +48,8 @@
       "@aramo/talent-reconcile": ["../../dist/libs/talent-reconcile/src/index.d.ts"],
       "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"],
       "@aramo/talent-trust": ["../../dist/libs/talent-trust/src/index.d.ts"],
+      "@aramo/identity-index": ["../../dist/libs/identity-index/src/index.d.ts"],
+      "@aramo/platform-trust": ["../../dist/libs/platform-trust/src/index.d.ts"],
       "@aramo/task": ["../../dist/libs/task/src/index.d.ts"],
       "@aramo/visibility": ["../../dist/libs/visibility/src/index.d.ts"]
     }

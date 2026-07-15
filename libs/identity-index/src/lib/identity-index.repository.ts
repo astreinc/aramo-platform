@@ -93,6 +93,29 @@ export class IdentityIndexRepository {
   }
 
   /**
+   * TR-2b B2a — keyset-paginated cluster enumeration for the daily lifecycle
+   * sweep. Ordered by `id` (uuidv7 → roughly creation order), `id > afterId` for
+   * the cursor, `LIMIT batchSize`. The sweep applies the R4 liveness rule + the
+   * ORPHAN_GRACE age gate per row (both need cross-schema reads identity-index
+   * does not own), so this is a plain bounded page — no liveness/age filter here.
+   */
+  async listClustersForSweep(input: {
+    batchSize: number;
+    afterId?: string;
+  }): Promise<PersonClusterRow[]> {
+    const rows = await this.prisma.personCluster.findMany({
+      where: input.afterId === undefined ? {} : { id: { gt: input.afterId } },
+      orderBy: { id: 'asc' },
+      take: input.batchSize,
+    });
+    return rows.map((c) => ({
+      id: c.id,
+      created_at: c.created_at,
+      updated_at: c.updated_at,
+    }));
+  }
+
+  /**
    * Mint a new PersonCluster and attach the given fingerprint to it, atomically.
    * Returns the new cluster. Caller is responsible for having checked
    * findClusterByFingerprint first (the @@unique([fingerprint]) is the

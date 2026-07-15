@@ -46,6 +46,10 @@ export default defineConfig({
       // login tokens). Imported by auth-service (login flow) and apps/api
       // (portal reads, P2). Mirrors tsconfig.base.json; the add-alias-in-same-PR lesson.
       '@aramo/portal-identity': resolve(root, 'libs/portal-identity/src/index.ts'),
+      // TR-2b B2a — platform-trust leaf (DormantLink substrate). Imported by
+      // apps/api (the identity-index lifecycle sweep's flag-gated dormant mint).
+      // Mirrors tsconfig.base.json; the add-alias-in-same-PR lesson.
+      '@aramo/platform-trust': resolve(root, 'libs/platform-trust/src/index.ts'),
       // Cold-Ingest Extraction — the resolved-arrival → declared-evidence poll
       // (scope:cip). Mirrors tsconfig.base.json @aramo/cold-ingest-extraction so
       // vitest resolves the apps/api AppModule import + the lib's unit/integration

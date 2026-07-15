@@ -9,6 +9,11 @@
 export { IdentityIndexModule } from './lib/identity-index.module.js';
 export { IdentityIndexRepository } from './lib/identity-index.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
+// TR-2b B2a — the cluster-teardown primitive (purgeCluster) + its result shape.
+export {
+  ClusterPurgeService,
+  type PurgeClusterResult,
+} from './lib/cluster-purge.service.js';
 
 export type {
   PersonClusterRow,
