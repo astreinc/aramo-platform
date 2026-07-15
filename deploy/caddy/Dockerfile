@@ -1,10 +1,11 @@
 # Aramo — Single-Box prod front-door image (Directive 1).
 #
 # Self-contained (matches D1's containerized philosophy): a multi-stage build
-# compiles BOTH static SPAs (ats-web → /srv/ats, platform-web → /srv/admin) and
-# bakes them into ONE Caddy image, so the front-door ships as a single artifact
-# (no mounted static volume to manage on the box). Caddy serves the tenant SPA on
-# the *.aramo.ai wildcard host and the platform SPA on admin.aramo.ai, and
+# compiles ALL THREE static SPAs (ats-web → /srv/ats, platform-web → /srv/admin,
+# portal-web → /srv/portal) and bakes them into ONE Caddy image, so the
+# front-door ships as a single artifact (no mounted static volume to manage on
+# the box). Caddy serves the tenant SPA on the *.aramo.ai wildcard host, the
+# platform SPA on admin.aramo.ai, and the portal SPA on candidate.aramo.ai, and
 # path-routes /v1→api, /auth→auth-service, /platform→platform-admin;
 # TLS + domain are RUNTIME-parameterized via the Caddyfile env vars (see
 # docker-compose.prod.yml / .env.prod.example).
@@ -44,19 +45,22 @@ COPY . .
 # stage below still copies pure static dist.
 RUN npm run prisma:generate
 
-# Build BOTH SPAs → dist/apps/{ats-web,platform-web}. Inc-3 PR-3.3: ONE Caddy
-# image serves both consoles — a single box has one :443, so two ingress
-# containers cannot coexist.
+# Build ALL THREE SPAs → dist/apps/{ats-web,platform-web,portal-web}. Inc-3
+# PR-3.3 + Portal P1 PR-3: ONE Caddy image serves every console — a single box
+# has one :443, so multiple ingress containers cannot coexist.
 RUN npx nx build aramo-ats-web --skip-nx-cache
 RUN npx nx build aramo-platform-web --skip-nx-cache
+RUN npx nx build aramo-portal-web --skip-nx-cache
 
-# ---------- Stage 2: Caddy front-door (both SPAs baked in) ----------
+# ---------- Stage 2: Caddy front-door (all SPAs baked in) ----------
 FROM caddy:2-alpine AS runtime
 # The compiled SPAs — the only application artifacts this image carries.
 # ats-web serves the tenant/recruiter consoles (the *.aramo.ai wildcard host);
-# platform-web serves the platform console (the admin.aramo.ai site block).
+# platform-web serves the platform console (the admin.aramo.ai site block);
+# portal-web serves the talent-facing portal (the candidate.aramo.ai block).
 COPY --from=web-builder /app/dist/apps/ats-web /srv/ats
 COPY --from=web-builder /app/dist/apps/platform-web /srv/admin
+COPY --from=web-builder /app/dist/apps/portal-web /srv/portal
 # The parameterized front-door config (copied from the build context).
 COPY deploy/caddy/Caddyfile /etc/caddy/Caddyfile
 

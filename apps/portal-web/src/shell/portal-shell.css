@@ -1,0 +1,88 @@
+/* Portal shell chrome (Portal P1 PR-3). Only the portal-specific bits: the
+ * PORTAL marker + content padding. The rail/topbar/nav structural rules all come
+ * from the fe-foundation ui.css (rc-*) via the barrel. */
+
+/* Loading splash before the session resolves (outside the AppShell). */
+.po-splash {
+  padding: 8vh 28px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/* The rail PORTAL marker — a bold teal pill so the talent knows this is their
+ * own portal, not a recruiter/operator console. */
+.po-portal-mark {
+  display: block;
+  margin: 4px 12px 12px;
+  padding: 5px 10px;
+  border-radius: var(--r-sm);
+  background: var(--brand);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-align: center;
+}
+
+/* A second marker in the topbar, next to the brand. */
+.po-topbar-mark {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.po-topbar-spacer {
+  flex: 1 1 auto;
+}
+
+/* Content wrapper padding (the rc-content host is structural; page padding is
+ * app-owned). */
+.po-page {
+  padding: 24px 28px;
+  max-width: 1100px;
+}
+
+.po-page__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.po-page__title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.po-page__lede {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.po-facts {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 8px 18px;
+  font-size: 0.9rem;
+}
+.po-facts dt {
+  color: var(--muted);
+}
+.po-facts dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.po-mono {
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+}

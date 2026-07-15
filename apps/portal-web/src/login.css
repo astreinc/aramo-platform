@@ -1,0 +1,15 @@
+/* Portal login landing (Portal P1 PR-3). Centered single-card layout — the
+ * unauthenticated surface renders outside the AppShell chrome. */
+
+.po-auth {
+  max-width: 440px;
+  margin: 8vh auto 0;
+  padding: 24px;
+}
+
+.po-auth__lede {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
