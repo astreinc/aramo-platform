@@ -100,6 +100,99 @@ paths:
       security:
         - BearerAuth: []
 
+  # Portal P2 P2a — portal-actor consent grant/revoke. Engagement-class
+  # (the recipient tenant is named); NOT trust-class. Membership through the
+  # OPEN-4 chain first — an unreachable/unknown/malformed id is a UNIFORM 404.
+  /v1/portal/records/{id}/consent/grant:
+    post:
+      operationId: grantPortalRecordConsent
+      summary: Grant consent for one scope on a record the caller holds.
+      description: |
+        The portal user grants consent for a single scope on a record reachable
+        through their chain. Records the D7 consent-evidence object (the hash of
+        the rendered consent text). Term defaults to 12 months (read-derived).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalConsentGrantRequest'
+      responses:
+        '201':
+          description: The consent grant was recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalConsentMutation'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/portal/records/{id}/consent/revoke:
+    post:
+      operationId: revokePortalRecordConsent
+      summary: Revoke consent for one scope on a record the caller holds.
+      description: |
+        Immediate + idempotent (revoking a non-active grant is a no-op success).
+        Records the D7 consent-evidence object. Unreachable/unknown/malformed id
+        is a UNIFORM 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalConsentRevokeRequest'
+      responses:
+        '201':
+          description: The consent revoke was recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalConsentMutation'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -168,3 +261,60 @@ components:
             concern here — a portal user's own engagements, not a verification origin.
           items:
             $ref: '#/components/schemas/PortalProfile'
+
+    # Portal P2 P2a — portal-actor consent mutation schemas (closed). Declared
+    # LOCALLY (not cross-$ref'd) so verify-portal-refusal.ts walks them. ENGAGEMENT-
+    # class — NOT in TRUST_CLASS_SCHEMAS (a consent flow names its recipient tenant,
+    # ruling 1). The record id is a path param resolved through the chain, never a
+    # body field (no "who" oracle); the actor + term are server-derived.
+    PortalConsentGrantRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - scope
+      properties:
+        scope:
+          $ref: 'common.yaml#/components/schemas/ConsentScope'
+        consent_text_version:
+          type: string
+          description: |
+            The consent-text version the portal user saw (the D7 hash preimage).
+            Optional — defaults to the current version server-side.
+
+    PortalConsentRevokeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - scope
+      properties:
+        scope:
+          $ref: 'common.yaml#/components/schemas/ConsentScope'
+        consent_text_version:
+          type: string
+
+    PortalConsentMutation:
+      type: object
+      additionalProperties: false
+      required:
+        - scope
+        - action
+        - occurred_at
+        - expires_at
+      properties:
+        scope:
+          $ref: 'common.yaml#/components/schemas/ConsentScope'
+        action:
+          type: string
+          enum:
+            - granted
+            - revoked
+        occurred_at:
+          type: string
+          format: date-time
+        expires_at:
+          # OpenAPI 3.1 nullable idiom (type array), matching ats.yaml:1702 —
+          # `nullable: true` is a 3.0 keyword the 3.1 struct rule rejects.
+          type: [string, 'null']
+          format: date-time
+          description: |
+            The grant's 12-month term expiry (read-derived). null on revoke.

@@ -23,6 +23,12 @@ export const CONSENT_CAPTURED_METHODS = [
   'recruiter_capture',
   'upload_flow',
   'import',
+  // Portal P2 P2a (Directive ruling 2) — the portal-actor capture method: a
+  // portal user self-servicing their own consent through the passwordless portal.
+  // ADD-not-rename to the closed ledger actor vocab. Audit actor_type derives to
+  // 'self' (self-directed, like self_signup); the portal specificity lives in this
+  // method + the D7 evidence channel='portal'.
+  'portal_self_service',
 ] as const;
 export type ConsentCapturedMethodValue = (typeof CONSENT_CAPTURED_METHODS)[number];
 

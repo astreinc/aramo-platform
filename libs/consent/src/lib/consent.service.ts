@@ -3,6 +3,10 @@ import { hashCanonicalizedBody } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 
 import { ConsentRepository } from './consent.repository.js';
+import {
+  CONSENT_TEXT_CURRENT_VERSION,
+  hashPortalConsentText,
+} from './consent-texts.js';
 import type { ConsentCheckRequestDto } from './dto/consent-check-request.dto.js';
 import type { ConsentDecisionDto } from './dto/consent-decision.dto.js';
 import type { ConsentGrantRequestDto } from './dto/consent-grant-request.dto.js';
@@ -15,6 +19,11 @@ import type { ConsentDecisionLogEventType } from './dto/consent-decision-log-ent
 import type { ConsentDecisionLogResponseDto } from './dto/consent-decision-log-response.dto.js';
 import type { ConsentScopeValue } from './dto/consent-grant-request.dto.js';
 import type { HistoryCursorPayload } from './util/history-cursor.js';
+
+// Portal P2 P2a (Directive ruling 4) — the default consent term. Engine constant,
+// NOT tenant config; NO cron. A grant records expires_at = occurred_at + this;
+// the state read derives expiry. Renewal = a fresh grant (append-only).
+export const CONSENT_DEFAULT_TERM_MONTHS = 12;
 
 // Service trusts the controller boundary's class-validator pass.
 // Tenant id and (when applicable) actor id come from the JWT, not the body.
@@ -182,5 +191,106 @@ export class ConsentService {
 
   private deriveActorId(authContext: AuthContextType): string | null {
     return authContext.consumer_type === 'recruiter' ? authContext.sub : null;
+  }
+
+  // ===========================================================================
+  // Portal P2 P2a (Directive rulings 2/4/5/6) — the PORTAL-ACTOR parallel
+  // entry. These are ADD-not-rename: the tenant-actor grant/revoke above are
+  // untouched (byte-identical guards). The portal record id comes from the
+  // OPEN-4 chain (the controller's resolveMemberOr404), never a request body —
+  // no "who" oracle. The actor is the portal principal (authContext.sub =
+  // PortalUser.id, captured_method 'portal_self_service'). Every grant AND revoke
+  // records the D7 consent-evidence object (channel 'portal') on the audit stream.
+  // ===========================================================================
+
+  async grantAsPortal(input: {
+    talent_record_id: string; // resolved from the OPEN-4 chain
+    scope: ConsentScopeValue;
+    authContext: AuthContextType; // record-tenant scoped, portal principal
+    idempotencyKey: string;
+    requestId: string;
+    consentTextVersion?: string;
+    now?: Date;
+  }): Promise<ConsentGrantResponseDto> {
+    const now = input.now ?? new Date();
+    const evidence = hashPortalConsentText(
+      input.consentTextVersion ?? CONSENT_TEXT_CURRENT_VERSION,
+      { recipient_tenant_id: input.authContext.tenant_id, scope: input.scope },
+    );
+    // Read-derived term: record expires_at = now + CONSENT_DEFAULT_TERM_MONTHS.
+    const expiresAt = new Date(now);
+    expiresAt.setMonth(expiresAt.getMonth() + CONSENT_DEFAULT_TERM_MONTHS);
+    return this.consentRepo.recordConsentEvent({
+      action: 'granted',
+      tenant_id: input.authContext.tenant_id,
+      talent_record_id: input.talent_record_id,
+      scope: input.scope,
+      captured_method: 'portal_self_service',
+      captured_by_actor_id: input.authContext.sub,
+      consent_version: evidence.version,
+      occurred_at: now.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      idempotencyKey: input.idempotencyKey,
+      // Idempotency: stable across replays of the same (record, scope, action) —
+      // server-generated timestamps are deliberately excluded so a re-submit
+      // under the same key is a replay, not a 409 conflict.
+      requestHash: hashCanonicalizedBody({
+        portal_consent_grant: {
+          talent_record_id: input.talent_record_id,
+          scope: input.scope,
+        },
+      }),
+      requestId: input.requestId,
+      consent_evidence: {
+        consent_text_hash: evidence.hash,
+        consent_text_version: evidence.version,
+        // P4 forward contract: versioned platform notices ship in P4; null until then.
+        notice_version: null,
+        channel: 'portal',
+      },
+    });
+  }
+
+  async revokeAsPortal(input: {
+    talent_record_id: string;
+    scope: ConsentScopeValue;
+    authContext: AuthContextType;
+    idempotencyKey: string;
+    requestId: string;
+    consentTextVersion?: string;
+    now?: Date;
+  }): Promise<ConsentRevokeResponseDto> {
+    const now = input.now ?? new Date();
+    const evidence = hashPortalConsentText(
+      input.consentTextVersion ?? CONSENT_TEXT_CURRENT_VERSION,
+      { recipient_tenant_id: input.authContext.tenant_id, scope: input.scope },
+    );
+    // Revocation is immediate + idempotent (revoking a non-active grant is a
+    // no-op success — the append-only ledger records the revoke; state stays
+    // inactive). No expires_at (grant-only).
+    return this.consentRepo.recordConsentEvent({
+      action: 'revoked',
+      tenant_id: input.authContext.tenant_id,
+      talent_record_id: input.talent_record_id,
+      scope: input.scope,
+      captured_method: 'portal_self_service',
+      captured_by_actor_id: input.authContext.sub,
+      consent_version: evidence.version,
+      occurred_at: now.toISOString(),
+      idempotencyKey: input.idempotencyKey,
+      requestHash: hashCanonicalizedBody({
+        portal_consent_revoke: {
+          talent_record_id: input.talent_record_id,
+          scope: input.scope,
+        },
+      }),
+      requestId: input.requestId,
+      consent_evidence: {
+        consent_text_hash: evidence.hash,
+        consent_text_version: evidence.version,
+        notice_version: null,
+        channel: 'portal',
+      },
+    });
   }
 }

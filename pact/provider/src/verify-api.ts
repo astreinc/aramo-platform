@@ -3017,7 +3017,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         consumer_type: 'portal',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: ['portal:profile:read', 'portal:consent:read'],
+        scopes: [
+          'portal:profile:read',
+          'portal:consent:read',
+          // Portal P2 P2a — the candidate-actor consent write scope (grant/revoke).
+          'portal:consent:write',
+        ],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()

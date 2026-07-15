@@ -1,9 +1,12 @@
 import {
+  Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
+  Post,
   UseGuards,
 } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
@@ -13,6 +16,11 @@ import { ConsentService, type TalentConsentStateResponseDto } from '@aramo/conse
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { TalentRecordService } from '@aramo/talent-record';
 
+import {
+  PortalConsentGrantRequestDto,
+  PortalConsentRevokeRequestDto,
+  type PortalConsentMutationDto,
+} from './dto/portal-consent.dto.js';
 import type { PortalProfileDto } from './dto/portal-profile.dto.js';
 import type { PortalRecordsResponseDto } from './dto/portal-records.dto.js';
 import { PortalTalentResolverService } from './portal-talent-resolver.service.js';
@@ -130,6 +138,97 @@ export class PortalController {
       { ...authContext, tenant_id: member.tenant_id },
       requestId,
     );
+  }
+
+  // POST /v1/portal/records/:id/consent/grant — portal-actor consent grant
+  // (Portal P2 P2a). Membership through the OPEN-4 chain first (uniform 404); the
+  // record id is the chain-resolved id, never the body. The tenant context is
+  // rescoped to the record's tenant (the portal JWT carries the platform
+  // sentinel); the actor is the portal principal. 201 on record.
+  @Post('records/:id/consent/grant')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('portal:consent:write')
+  async grantRecordConsent(
+    @Param('id') id: string,
+    @Body() body: PortalConsentGrantRequestDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PortalConsentMutationDto> {
+    this.assertConsumerIsPortal(authContext, requestId);
+    const sub = this.assertSubIsUuid(authContext, requestId);
+    const key = this.assertIdempotencyKey(idempotencyKey, requestId);
+    const member = await this.resolveMemberOr404(sub, id, requestId);
+    const result = await this.consentService.grantAsPortal({
+      talent_record_id: member.record_id,
+      scope: body.scope,
+      authContext: { ...authContext, tenant_id: member.tenant_id },
+      idempotencyKey: key,
+      requestId,
+      consentTextVersion: body.consent_text_version,
+    });
+    return {
+      scope: result.scope,
+      action: 'granted',
+      occurred_at: result.occurred_at,
+      expires_at: result.expires_at ?? null,
+    };
+  }
+
+  // POST /v1/portal/records/:id/consent/revoke — portal-actor consent revoke
+  // (Portal P2 P2a). Immediate + idempotent (revoking a non-active grant is a
+  // no-op success). Same membership gate + tenant rescoping as grant.
+  @Post('records/:id/consent/revoke')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('portal:consent:write')
+  async revokeRecordConsent(
+    @Param('id') id: string,
+    @Body() body: PortalConsentRevokeRequestDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PortalConsentMutationDto> {
+    this.assertConsumerIsPortal(authContext, requestId);
+    const sub = this.assertSubIsUuid(authContext, requestId);
+    const key = this.assertIdempotencyKey(idempotencyKey, requestId);
+    const member = await this.resolveMemberOr404(sub, id, requestId);
+    const result = await this.consentService.revokeAsPortal({
+      talent_record_id: member.record_id,
+      scope: body.scope,
+      authContext: { ...authContext, tenant_id: member.tenant_id },
+      idempotencyKey: key,
+      requestId,
+      consentTextVersion: body.consent_text_version,
+    });
+    return {
+      scope: result.scope,
+      action: 'revoked',
+      occurred_at: result.occurred_at,
+      expires_at: null,
+    };
+  }
+
+  private assertIdempotencyKey(
+    key: string | undefined,
+    requestId: string,
+  ): string {
+    if (key === undefined || key.length === 0) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'Idempotency-Key header is required',
+        400,
+        { requestId, details: { missing_field: 'Idempotency-Key' } },
+      );
+    }
+    if (!UUID_REGEX.test(key)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'Idempotency-Key must be a UUID',
+        400,
+        { requestId, details: { invalid_field: 'Idempotency-Key' } },
+      );
+    }
+    return key;
   }
 
   // Resolve a per-record membership or throw the uniform 404. Also rejects a

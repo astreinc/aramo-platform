@@ -795,13 +795,15 @@ components:
     ConsentCapturedMethod:
       type: string
       description: |
-        Closed enum (Group 2 §2.2): four capture methods, mapping to the
-        flow that produced the consent decision.
+        Closed enum (Group 2 §2.2): the capture methods, mapping to the
+        flow that produced the consent decision. Portal P2 adds
+        portal_self_service (a portal user self-servicing via the portal).
       enum:
         - self_signup
         - recruiter_capture
         - upload_flow
         - import
+        - portal_self_service
 
     ContactChannel:
       type: string
