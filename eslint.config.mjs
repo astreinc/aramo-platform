@@ -26,14 +26,24 @@ import importX from 'eslint-plugin-import-x';
 //     tenant's ATS or Pipeline workflow. Its dependency closure is verified
 //     scope:shared-only (Increment-1 pre-flight), so the leaf + boundary + self
 //     set below covers it with headroom and no ats/cip reach.
+// Portal P1 PR-3 (§PR-3.1 boundary-tag rider) adds the portal tier:
+//   - scope:portal is the talent-facing Portal cluster (apps/portal-web). Like
+//     the platform tier it MUST NOT import scope:ats or scope:cip (a tenant's
+//     ATS/Pipeline workflow) — AND, being a distinct cluster, it does not reach
+//     scope:platform either. It is HTTP-only against /v1/portal (no backend-lib
+//     import); its closure is scope:shared (fe-foundation) + boundary + self.
+//     A dedicated tag (over reusing scope:platform) walls it from BOTH the ATS
+//     and the console clusters and keeps the portal its own architectural unit.
 // The trailing '*' rule leaves untagged sources (apps composition roots, the
 // pact provider harness) unconstrained — the wall governs the tagged libs.
-// Proven to fire by libs/matching/src/tests/i15-negative-control.spec.ts (CIP⊥ATS)
-// and apps/platform-admin/src/tests/platform-negative-control.spec.ts (PLATFORM⊥ATS).
+// Proven to fire by libs/matching/src/tests/i15-negative-control.spec.ts (CIP⊥ATS),
+// apps/platform-admin/src/tests/platform-negative-control.spec.ts (PLATFORM⊥ATS),
+// and apps/portal-web/src/tests/portal-web-negative-control.spec.ts (PORTAL⊥ATS).
 const SCOPE_DEP_CONSTRAINTS = [
   { sourceTag: 'scope:cip', onlyDependOnLibsWithTags: ['scope:cip', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:ats', onlyDependOnLibsWithTags: ['scope:ats', 'scope:cip', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:platform', onlyDependOnLibsWithTags: ['scope:platform', 'scope:boundary', 'scope:shared'] },
+  { sourceTag: 'scope:portal', onlyDependOnLibsWithTags: ['scope:portal', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:boundary', onlyDependOnLibsWithTags: ['scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:shared', onlyDependOnLibsWithTags: ['scope:shared'] },
   { sourceTag: '*', onlyDependOnLibsWithTags: ['*'] },
@@ -62,6 +72,12 @@ export default [
       // lints it explicitly with `eslint --no-ignore` to prove the boundary rule
       // rejects it. Also tsconfig.app.json-excluded from the platform-admin build.
       '**/platform-negative-control/**',
+      // Portal P1 PR-3 negative control: a committed, deliberate scope:portal →
+      // scope:ats import that must NOT red the real gate. The wall-fires spec
+      // (apps/portal-web/src/tests/portal-web-negative-control.spec.ts) lints it
+      // explicitly with `eslint --no-ignore` to prove the boundary rule rejects
+      // it. Also tsconfig.app.json-excluded from the portal-web build.
+      '**/portal-negative-control/**',
     ],
   },
   ...nx.configs['flat/base'],
@@ -385,6 +401,15 @@ export default [
       // TIER2_EXCLUDES entries.
       'apps/ats-web/src/engagement/OutreachComposer.tsx',
       'apps/ats-web/src/engagement/OutreachComposer.spec.tsx',
+      // Portal P1 PR-3 §PR-3.3 — the reserved-slug gate lists 'candidate' as a
+      // reserved subdomain LABEL precisely because candidate.aramo.ai is the
+      // portal host that a tenant must never claim. The bare 'candidate' literal
+      // is the host-string reservation, not talent-entity vocabulary. File-scoped
+      // (the rule still applies everywhere else); paired in lockstep with the
+      // scripts/verify-vocabulary.sh TIER2_EXCLUDES entries (Amendment v1.1:
+      // the host word is exempt via the standing lockstep mechanism).
+      'libs/identity/src/lib/util/tenant-slug.ts',
+      'libs/identity/src/tests/tenant-slug.spec.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',

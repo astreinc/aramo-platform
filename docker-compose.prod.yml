@@ -62,6 +62,13 @@ services:
       - CADDY_TLS
       - CADDY_TLS_ONDEMAND
       - CADDY_ASK_URL
+      # Dedicated-host address vars for the explicit site blocks. Without these
+      # in the passthrough the container falls back to the Caddyfile *.localhost
+      # defaults, so the prod hosts never bind. CADDY_ADMIN_ADDRESS (admin.aramo.ai)
+      # was omitted when Inc-3 PR-3.3 shipped; Portal P1 PR-3 adds
+      # CADDY_PORTAL_ADDRESS (candidate.aramo.ai) and closes the admin gap alongside.
+      - CADDY_ADMIN_ADDRESS
+      - CADDY_PORTAL_ADDRESS
     ports:
       - '80:80'
       - '443:443'

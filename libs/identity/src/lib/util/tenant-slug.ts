@@ -32,12 +32,22 @@ const SLUG_MAX_LENGTH = 63;
 // HERE at the single-source slug gate, so the public cert-eligibility ask-
 // endpoint inherits it transitively — a reserved slug never enters Tenant.slug,
 // so findActiveBySlug returns null and the ask 404s it. No second list needed.
+//
+// Portal P1 PR-3 (§PR-3.3, Portal DDR reserved-slug rider) — 'candidate' (the
+// portal host candidate.aramo.ai) and 'portal' join the canonical set. This IS
+// the canonical list from this merge; the platform-console integration branch
+// carries its own reserved-slug guard and reconciles forward on its next R-SYNC
+// (no divergent duplicate). The directive's minimum tuple {candidate, admin,
+// www, api, auth, portal, platform} is a subset of this set (the extra
+// platform-owned front doors are retained — the DDR list is "at minimum").
 export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
+  'candidate',
   'admin',
   'www',
   'api',
   'auth',
   'app',
+  'portal',
   'platform',
   'support',
   'status',

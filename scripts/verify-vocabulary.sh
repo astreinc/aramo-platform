@@ -151,6 +151,15 @@ TIER2_EXCLUDES=(
   # entries.
   "apps/api/src/tests/portal-refusal.negative-shape.spec.ts"
   "libs/portal/src/tests/portal.controller.spec.ts"
+  # Portal P1 PR-3 §PR-3.3 — the reserved-slug gate lists 'candidate' as a
+  # reserved subdomain LABEL (candidate.aramo.ai is the portal host a tenant must
+  # never claim). The bare 'candidate' literal is the host-string reservation,
+  # NOT talent-entity vocabulary; the host-strip below only covers the full
+  # 'candidate.aramo.ai' literal, so the bare label needs a file exclude. Paired
+  # in lockstep with the eslint.config.mjs no-restricted-syntax entries
+  # (Amendment v1.1 host-word exemption via the standing lockstep mechanism).
+  "libs/identity/src/lib/util/tenant-slug.ts"
+  "libs/identity/src/tests/tenant-slug.spec.ts"
   # M4 PR-3: submittal-create negative-shape spec (F23 standing pattern)
   # legitimately enumerates the forbidden Match-Class vocabulary as part
   # of its leakage-detection logic. Same structural pattern as the M3

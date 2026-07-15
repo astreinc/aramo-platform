@@ -1,0 +1,39 @@
+/* Aramo Portal — base reset (Portal P1 PR-3). Generic reset/base only; all
+ * design tokens come from the @aramo/fe-foundation barrel + theme.css. Mirrors
+ * platform-web/ats-web index.css (no feature CSS — portal-web's component styles
+ * arrive structurally via the fe-foundation barrel). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background-color: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}

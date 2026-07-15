@@ -27,10 +27,13 @@ describe('tenant-slug — deriveSlugOrThrow (single-source provision gate)', () 
   });
 
   // Platform-Console Increment-2 PR-1 (workstream F) — reserved slugs.
+  // Portal P1 PR-3 (§PR-3.3) — 'candidate' (candidate.aramo.ai) + 'portal' join
+  // the canonical reserved set.
   it('refuses reserved/platform slugs with reason reserved_slug', () => {
     for (const reserved of [
-      'admin', 'www', 'api', 'auth', 'app', 'platform',
+      'candidate', 'admin', 'www', 'api', 'auth', 'app', 'portal', 'platform',
       'support', 'status', 'mail', 'docs', 'assets', 'ADMIN', ' Admin ',
+      'Candidate', 'PORTAL',
     ]) {
       expect(() => deriveSlugOrThrow(reserved, 'rq')).toThrowError(
         expect.objectContaining({

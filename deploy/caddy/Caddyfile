@@ -142,3 +142,54 @@
 
 	encode gzip zstd
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Portal P1 PR-3 — the talent-facing portal site block (candidate.aramo.ai).
+#
+# A DEDICATED, explicit host block modeled on admin.aramo.ai — NOT the on-demand
+# wildcard. The explicit block wins over *.aramo.ai (most-specific-host-first),
+# so the portal host gets an ORDINARY ACME cert (HTTP-01 at first request), with
+# NO on_demand and the tenant ask-endpoint NEVER involved (same R14 posture as
+# the admin block: a platform-owned front door is never gated by the tenant
+# cert-eligibility check). TLS reuses {$CADDY_TLS} (local `internal`; box
+# `admin@aramo.ai` → Let's Encrypt) and OMITS the on_demand toggle.
+#
+#   CADDY_PORTAL_ADDRESS — the address the portal answers on.
+#       local : portal.localhost   (Caddy's internal CA trusts *.localhost; the
+#                                   local default uses the internal name per
+#                                   Amendment v1.1 — only the PUBLIC host keeps
+#                                   the human word)
+#       box   : candidate.aramo.ai
+{$CADDY_PORTAL_ADDRESS:portal.localhost} {
+	tls {$CADDY_TLS:internal}
+
+	# Portal API → api. SCOPED to /v1/portal/* ONLY (the R14 discipline, portal
+	# direction): the block exposes just the portal prefix, never a general /v1/*
+	# proxy, so no other tenant-api surface is reachable from this host.
+	handle /v1/portal/* {
+		reverse_proxy api:3000
+	}
+	# Auth surface → auth-service (the passwordless request-link / consume round
+	# trip; host-derivation makes candidate.aramo.ai its own redirect base).
+	handle /auth/* {
+		reverse_proxy auth-service:3001
+	}
+	# JWKS document — exact path (see wildcard block for the acme-challenge note).
+	handle /.well-known/jwks.json {
+		reverse_proxy auth-service:3001
+	}
+
+	# NO general `/v1/*` route — DELIBERATE. Only /v1/portal/* above is proxied;
+	# a stray /v1/<other> request falls through to the SPA fallback (index.html),
+	# never to tenant data.
+
+	# Everything else: the portal-web static SPA baked into this image at
+	# /srv/portal. Same SPA-fallback shape as the other consoles.
+	handle {
+		root * /srv/portal
+		try_files {path} /index.html
+		file_server
+	}
+
+	encode gzip zstd
+}

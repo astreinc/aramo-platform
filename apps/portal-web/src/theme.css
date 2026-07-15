@@ -1,0 +1,105 @@
+/* Aramo Portal — theme layer (Portal P1 PR-3).
+ *
+ * SAME design system as ats-web / platform-web (shared fe-foundation chrome),
+ * DISTINCT accent. ats-web is "Confident Blue" (#1f4e8c); platform-web is
+ * "Platform Violet" (#5b3fa0); the portal is "Portal Teal" (#0f766e) — an
+ * unmistakably different hue so a talent always knows they are in their own
+ * portal, not a recruiter/operator console.
+ *
+ * TWO layers, exactly like platform-web/src/theme.css:
+ *   1. Re-map fe-foundation's OWN tokens (--c-*, --font-*, --r-*, --sh-*) so the
+ *      frozen primitives inherit the portal accent with ZERO edits to
+ *      libs/fe-foundation.
+ *   2. Define the structural NAMESPACE the extracted chrome consumes (the
+ *      fe-foundation ui.css token-variable contract).
+ *
+ * Load order (main.tsx): imported AFTER the fe-foundation barrel (pulled in via
+ * App), so these :root rules win on equal specificity. libs/fe-foundation is
+ * untouched. Neutrals + semantics are held identical to the other consoles on
+ * purpose — the accent (+ rail) is the sole differentiator.
+ */
+
+:root {
+  /* ── 1. fe-foundation token re-map (themes the frozen primitives) ── */
+
+  --c-bg: #f4f6fa; /* canvas */
+  --c-surface: #ffffff;
+  --c-surface-2: #fafbfc;
+  --c-border: #e5e9ed; /* line */
+  --c-border-strong: #d5dbe1; /* line-2 */
+  --c-text: #1b2730; /* ink */
+  --c-text-muted: #5c6770; /* muted */
+  --c-text-subtle: #93a0a8; /* faint */
+
+  /* Accent → Portal Teal */
+  --c-accent: #0f766e;
+  --c-accent-hover: #0b5a54;
+  --c-accent-active: #08443f;
+  --c-accent-soft: #e4f3f0; /* brand-tint */
+  --c-accent-fg: #ffffff;
+
+  /* States (semantics held identical to the other consoles) */
+  --c-danger: #a8412f;
+  --c-danger-soft: #f7e9e6;
+  --c-danger-border: #e9ccc4;
+  --c-success: #1f7a4d;
+  --c-success-soft: #e6f2ea;
+  --c-success-border: #c5e2cf;
+  --c-focus-ring: #17a398; /* brand-accent */
+
+  /* Type — same families as the other consoles */
+  --font-sans: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* Radii — same mockup grammar */
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 13px;
+
+  /* Elevation → single teal-ink shadow (calm grammar) */
+  --sh-1: 0 1px 2px rgba(12, 44, 40, 0.05), 0 4px 16px rgba(12, 44, 40, 0.04);
+  --sh-2: 0 1px 2px rgba(12, 44, 40, 0.06), 0 6px 20px rgba(12, 44, 40, 0.06);
+  --sh-3: 0 8px 28px rgba(12, 44, 40, 0.12), 0 2px 6px rgba(12, 44, 40, 0.06);
+
+  /* ── 2. The fe-foundation ui.css token-variable CONTRACT ── */
+
+  /* accent/brand — Portal Teal */
+  --brand: #0f766e;
+  --brand-strong: #0b5a54;
+  --brand-accent: #17a398;
+  --brand-tint: #e4f3f0;
+
+  /* rail — deep teal-charcoal (vs ats-web navy #122a47, platform violet #221a3a) */
+  --rail: #123430;
+  --rail-hover: #1c4a44;
+  --rail-text: #9cc7c1;
+  --rail-strong: #ffffff;
+  --rail-av-bg: #0b5a54;
+  --rail-av-text: #cdeae6;
+
+  /* surfaces/ink — identical to the other consoles */
+  --canvas: #f4f6fa;
+  --ink: #1b2730;
+  --muted: #5c6770;
+  --faint: #93a0a8;
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
+  --line: #e5e9ed;
+  --line-2: #d5dbe1;
+
+  /* semantics — identical to the other consoles */
+  --ok: #1f7a4d;
+  --ok-tint: #e6f2ea;
+  --info: #2c6fb3;
+  --info-tint: #e9f1f9;
+  --warn: #946011;
+  --warn-tint: #faefd8;
+  --danger: #a8412f;
+  --danger-tint: #f7e9e6;
+  --hot: #c0410c;
+  --hot-tint: #fbeadf;
+
+  --elev: 0 1px 2px rgba(12, 44, 40, 0.05), 0 4px 16px rgba(12, 44, 40, 0.04);
+
+  --tnum: 'tnum' 1;
+}
