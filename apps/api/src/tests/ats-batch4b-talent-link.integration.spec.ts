@@ -770,12 +770,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       protoMethods.sort();
 
       // EXPECTED surface: id lookup + opaque-fingerprint (PII-free) resolution
-      // + race-safe create. NO PII-keyed resolution method anywhere.
+      // + race-safe create + the TR-2b B2a keyset cluster enumeration for the
+      // lifecycle sweep (id/created_at only — PII-free, NOT a resolver). NO
+      // PII-keyed resolution method anywhere.
       expect(protoMethods).toEqual([
         'createClusterWithFingerprint',
         'findClusterByFingerprint',
         'findClusterById',
         'findOrCreateClusterByFingerprint',
+        'listClustersForSweep',
       ]);
 
       // The forbidden-name probes — a PII-keyed resolver landing here would

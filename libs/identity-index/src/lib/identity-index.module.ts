@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { IdentityIndexRepository } from './identity-index.repository.js';
+import { ClusterPurgeService } from './cluster-purge.service.js';
 
 // libs/identity-index module — Step 4a (Architecture Realignment, ADR-0016).
 // Wires the identity-index-owned PrismaService and the resolution-store
@@ -11,8 +12,11 @@ import { IdentityIndexRepository } from './identity-index.repository.js';
 // surface, NO wiring into the canonicalization resolver (that is step 4b).
 // Downstream (4b) imports @aramo/identity-index and calls
 // IdentityIndexRepository with a tenant-side-computed fingerprint.
+// TR-2b B2a — ClusterPurgeService (purgeCluster) joins the module. It uses the
+// identity-index PrismaService to run cross-schema raw SQL (the erasure-engine
+// convention), so no cross-lib provider is injected here.
 @Module({
-  providers: [PrismaService, IdentityIndexRepository],
-  exports: [IdentityIndexRepository],
+  providers: [PrismaService, IdentityIndexRepository, ClusterPurgeService],
+  exports: [IdentityIndexRepository, ClusterPurgeService],
 })
 export class IdentityIndexModule {}

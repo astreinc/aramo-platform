@@ -12,6 +12,7 @@ import { MATCH_SWEEP_QUEUE_NAME } from '../talent-anchor/match-sweep.queue.const
 import { IDENTITY_DETECTION_QUEUE_NAME } from '../talent-identity/identity-detection.queue.constants.js';
 import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.constants.js';
 import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.queue.constants.js';
+import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity-lifecycle-sweep.queue.constants.js';
 
 // M5 PR-11 §4.6 — application bootstrap registration for the 4 Aramo Core
 // BullMQ jobs (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6;
@@ -102,6 +103,17 @@ const SCHEDULES = [
     job_name: 'tick',
     job_id: 'trust-recompute-sweep-daily',
     repeat: { pattern: '0 7 * * *', tz: 'UTC' as const },
+  },
+  // TR-2b B2a (Directive §PR-1.3) — the daily identity-index lifecycle sweep.
+  // Orphan purge (LIVE: clusters failing R4 liveness past ORPHAN_GRACE_DAYS) +
+  // dormant detection (DARK: report-only behind DORMANT_LINK_MINTING_ENABLED).
+  // Runs at 05:00 UTC, BEFORE the 06:00 detection report and 07:00 recompute
+  // (engine cadence, not tenant config). The manual CLI is the escape hatch.
+  {
+    queue_name: IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'identity-index-lifecycle-daily',
+    repeat: { pattern: '0 5 * * *', tz: 'UTC' as const },
   },
 ] as const;
 

@@ -1,0 +1,68 @@
+// Per-module Prisma schema for the `platform_trust` module — TR-2b B2a
+// (Aramo-TR2b-B2-Directive-v1_0-LOCKED, R5). The dormant-link substrate: a
+// PII-free record that a cluster has become dormant (its live PERSON_CLUSTER
+// refs span 2+ tenants) and is awaiting the P4 notice-delivery lifecycle.
+//
+// Per Architecture v2.x §7 (Schema-per-Module) and doc/05-conventions.md. Cross-
+// schema references are UUID-only without FK constraints (§7.3).
+//
+// ===========================================================================
+// THE WALL (D3 applied to this table's shape) — CI-ENFORCED, joins the I14 job.
+// ===========================================================================
+// platform_trust holds NO tenant_id, NO PII, NO tenant-identifying value, EVER.
+// A DormantLink names only a PERSON_CLUSTER id (a UUID-only pointer INTO the
+// PII-free index, no FK) + a lifecycle status; it never records which tenants a
+// cluster spans (that would re-introduce the origin join D3 forbids). The
+// platform-trust privacy-wall spec (src/tests/privacy-wall.spec.ts) enforces
+// this by schema-parse + migration scan + allowlist, and runs in the SAME CI job
+// as the identity-index wall (the `identity-index:privacy-wall` npm script).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["platform_trust"]
+}
+
+// DormantLink — one dormant-cluster record awaiting the P4 notice lifecycle.
+//
+// In B2a NO code path mints a row in production: dormant DETECTION is report-only
+// behind DORMANT_LINK_MINTING_ENABLED=false; the vocab + table exist so P4 does
+// not migrate (Directive ruling 3). The closed status vocab
+// (PENDING_NOTICE | NOTICED | EXPIRED) and the NOTICED-requires-notice invariant
+// are DB CHECK constraints (see the migration). One open (non-EXPIRED) link per
+// cluster is a partial-unique index.
+model DormantLink {
+  id String @id @db.Uuid
+
+  /// The PERSON_CLUSTER id this dormant record is about — a UUID-only pointer
+  /// INTO the PII-free identity_index, NO FK (§7.3; identity_index owns the
+  /// cluster). purgeCluster deletes DormantLink rows for a purged cluster.
+  cluster_id String @db.Uuid
+
+  /// When the sweep detected the dormant condition (app-supplied at mint).
+  detected_at DateTime @db.Timestamptz
+
+  /// Closed vocab PENDING_NOTICE | NOTICED | EXPIRED (DB CHECK). Default
+  /// PENDING_NOTICE. NOTICED requires notice_version + notice_delivered_at
+  /// non-null (a second DB CHECK) — enforced structurally for P4.
+  status String @default("PENDING_NOTICE")
+
+  /// The notice template version delivered (P4). Null until NOTICED.
+  notice_version String?
+
+  /// When the dormant notice was delivered (P4). Null until NOTICED.
+  notice_delivered_at DateTime? @db.Timestamptz
+
+  /// The expiry horizon, set at NOTICED + 12 months (P4's job). Null until then.
+  expires_at DateTime? @db.Timestamptz
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @updatedAt @db.Timestamptz
+
+  @@index([cluster_id])
+  @@schema("platform_trust")
+}
