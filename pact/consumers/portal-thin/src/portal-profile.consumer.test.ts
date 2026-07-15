@@ -3,15 +3,18 @@ import { resolve } from 'node:path';
 import { PactV4, MatchersV3 } from '@pact-foundation/pact';
 import { describe, expect, it } from 'vitest';
 
-const { like, uuid } = MatchersV3;
+const { like, uuid, eachLike } = MatchersV3;
 
-// Portal P1 PR-2a — Pact consumer test for the portal-thin client on the OPEN-4
-// records surface (the old singleton /v1/portal/profile is removed). Provider:
-// aramo-core (apps/api). Three interactions for GET /v1/portal/records: 200
-// empty-list (a portal user with no records — the empty-state-valid contract),
-// 403 INSUFFICIENT_PERMISSIONS (non-portal consumer), 401 (unauthenticated).
-// The full-chain positive shape is PR-2b's deeper pact (minimal pact rides with
-// 2a per the boundary ruling).
+// Portal P1 PR-2a/2b — Pact consumer test for the portal-thin client on the
+// OPEN-4 records surface (the old singleton /v1/portal/profile is removed).
+// Provider: aramo-core (apps/api). Interactions for GET /v1/portal/records:
+//   - 200 empty-list (a portal user with no records — the empty-state contract);
+//   - 200 one-record POSITIVE SHAPE (PR-2b — the deferred full-chain residue:
+//     the closed PortalProfile envelope, R10-clean);
+//   - 403 INSUFFICIENT_PERMISSIONS (non-portal consumer);
+//   - 401 (unauthenticated).
+// The 200-empty and 200-one-record cases share the request; the provider STATE
+// (given) disambiguates them at verification.
 
 const provider = new PactV4({
   consumer: 'portal-thin',
@@ -43,6 +46,49 @@ describe('portal-thin consumer → GET /v1/portal/records', () => {
         const body = (await res.json()) as { records: unknown[] };
         expect(Array.isArray(body.records)).toBe(true);
         expect(body.records).toHaveLength(0);
+      });
+  });
+
+  it('returns 200 with the PortalProfile envelope for a portal user with one record', async () => {
+    await provider
+      .addInteraction()
+      .given('a portal user with one record exists')
+      .uponReceiving('a portal records request resolving one record')
+      .withRequest('GET', '/v1/portal/records', (b) => {
+        b.headers({ Authorization: 'Bearer eyJfake.portal.token' });
+      })
+      .willRespondWith(200, (b) => {
+        // The closed PortalProfile envelope — exactly the 5 R10-safe fields.
+        b.jsonBody({
+          records: eachLike({
+            talent_id: uuid(),
+            tenant_id: uuid(),
+            tenant_status: like('active'),
+            source_channel: like('self_signup'),
+            created_at: like('2026-05-01T12:00:00.000Z'),
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/portal/records`, {
+          method: 'GET',
+          headers: { Authorization: 'Bearer eyJfake.portal.token' },
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          records: Array<Record<string, unknown>>;
+        };
+        expect(Array.isArray(body.records)).toBe(true);
+        expect(body.records.length).toBeGreaterThanOrEqual(1);
+        const rec = body.records[0]!;
+        // Positive shape: the 5 fields present …
+        for (const f of ['talent_id', 'tenant_id', 'tenant_status', 'source_channel', 'created_at']) {
+          expect(rec).toHaveProperty(f);
+        }
+        // … and NO trust/verification origin data (D3 / P-R4).
+        for (const f of ['tenant_name', 'verifier', 'verified_by', 'attestation']) {
+          expect(rec).not.toHaveProperty(f);
+        }
       });
   });
 

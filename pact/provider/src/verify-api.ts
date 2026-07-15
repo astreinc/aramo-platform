@@ -668,6 +668,15 @@ const TENANT_ID = '11111111-1111-7111-8111-111111111111';
 // pact/consumers/portal-thin/src/portal-*.consumer.test.ts constant.
 const PORTAL_TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 
+// Portal P1 PR-2b — the OPEN-4 chain's positive-shape ids (the deferred 2a
+// residue). A PortalUser at PORTAL_TALENT_ID points at PORTAL_CLUSTER_ID; an
+// ACTIVE ResolutionSubject in TENANT_ID holds that PERSON_CLUSTER ref plus an
+// ATS_TALENT_RECORD ref → PORTAL_RECORD_ID, a live talent_record row. The
+// full-chain positive interaction resolves exactly one record.
+const PORTAL_CLUSTER_ID = 'cccccccc-cccc-7ccc-8ccc-ccccccccccc1';
+const PORTAL_SUBJECT_ID = 'dddddddd-dddd-7ddd-8ddd-ddddddddddd1';
+const PORTAL_RECORD_ID = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeee1';
+
 // Portal P1 PR-2a — the portal_identity schema (PortalUser) so the OPEN-4 chain
 // (portalJwt.sub = PortalUser.id → cluster_id) resolves in the provider. The
 // portal-thin records/consent interactions seed a PortalUser via
@@ -842,6 +851,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // UUID ref), so the ResolutionSubject CASCADE above does not clear it;
       // truncate explicitly so a prior proposal interaction's row does not leak.
       await c.query('TRUNCATE TABLE talent_trust."VerificationProposal" CASCADE');
+      // Portal P1 PR-2b — portal_identity.PortalUser (id = portalJwt sub) is
+      // seeded by BOTH the no-records and one-record states; truncate so the
+      // second state to run does not conflict on the primary key. UUID-only
+      // cluster ref, no FK dependents.
+      await c.query('TRUNCATE TABLE portal_identity."PortalUser" CASCADE');
       await c.query('TRUNCATE TABLE saved_list."SavedList" CASCADE');
       // PC-7b — identity + settings. TRUNCATE Tenant CASCADE clears Site (FK) +
       // memberships/teams; IdentityAuditEvent (nullable tenant_id, no FK) and
@@ -892,6 +906,47 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
            (id, email_normalized, cluster_id, created_at, updated_at)
          VALUES ($1, 'portal-thin@example.com', NULL, NOW(), NOW())`,
         [PORTAL_TALENT_ID],
+      );
+    }
+
+    // Portal P1 PR-2b — the full OPEN-4 chain (the deferred 2a positive shape).
+    // PortalUser → PORTAL_CLUSTER_ID → an ACTIVE ResolutionSubject in TENANT_ID
+    // holding PERSON_CLUSTER(cluster) + ATS_TALENT_RECORD(record) → a live
+    // talent_record row. resolveRecords returns exactly one record; the
+    // GET /v1/portal/records interaction asserts the PortalProfile envelope.
+    // Single-tenant / no-husk: the husk→survivor and cross-tenant legs are
+    // proven by the apps/api chain integration spec; the pact pins the shape.
+    async function seedPortalUserWithOneRecord(c: Client): Promise<void> {
+      await c.query(
+        `INSERT INTO talent_record."TalentRecord"
+           (id, tenant_id, first_name, last_name, tenant_status, source_channel,
+            created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, 'Portal', 'Talent', 'active', 'self_signup',
+            NOW(), NOW())`,
+        [PORTAL_RECORD_ID, TENANT_ID],
+      );
+      await c.query(
+        `INSERT INTO talent_trust."ResolutionSubject" (id, tenant_id, status, created_at)
+         VALUES ($1::uuid, $2::uuid, 'ACTIVE', NOW())`,
+        [PORTAL_SUBJECT_ID, TENANT_ID],
+      );
+      await c.query(
+        `INSERT INTO talent_trust."ResolutionSubjectRef"
+           (id, subject_id, tenant_id, ref_type, ref_id, link_source, linked_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 'PERSON_CLUSTER', $4::uuid, 'seed', NOW())`,
+        ['00000000-0000-7000-8000-0000000000b1', PORTAL_SUBJECT_ID, TENANT_ID, PORTAL_CLUSTER_ID],
+      );
+      await c.query(
+        `INSERT INTO talent_trust."ResolutionSubjectRef"
+           (id, subject_id, tenant_id, ref_type, ref_id, link_source, linked_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 'ATS_TALENT_RECORD', $4::uuid, 'seed', NOW())`,
+        ['00000000-0000-7000-8000-0000000000b2', PORTAL_SUBJECT_ID, TENANT_ID, PORTAL_RECORD_ID],
+      );
+      await c.query(
+        `INSERT INTO portal_identity."PortalUser"
+           (id, email_normalized, cluster_id, created_at, updated_at)
+         VALUES ($1::uuid, 'portal-onerecord@example.com', $2::uuid, NOW(), NOW())`,
+        [PORTAL_TALENT_ID, PORTAL_CLUSTER_ID],
       );
     }
 
@@ -3747,6 +3802,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         await withClient(async (c) => {
           await resetAllRows(c);
           await seedPortalUserWithNoRecords(c);
+        });
+      },
+      // ===== Portal P1 PR-2b portal-thin positive shape (OPEN-4 full chain) =====
+      'a portal user with one record exists': async () => {
+        // Portal P1 PR-2b — seed the full OPEN-4 chain (PortalUser → cluster →
+        // ACTIVE subject holding PERSON_CLUSTER + ATS_TALENT_RECORD → live
+        // talent_record). GET /v1/portal/records → 200 { records: [ <profile> ] }.
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedPortalUserWithOneRecord(c);
         });
       },
       'a recruiter token (non-portal consumer)': async () => {
