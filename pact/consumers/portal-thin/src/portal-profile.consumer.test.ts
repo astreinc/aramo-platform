@@ -3,17 +3,15 @@ import { resolve } from 'node:path';
 import { PactV4, MatchersV3 } from '@pact-foundation/pact';
 import { describe, expect, it } from 'vitest';
 
-const { like, uuid, regex } = MatchersV3;
+const { like, uuid } = MatchersV3;
 
-// M3 PR-9 §4.7 — Pact consumer test for the portal-thin client.
-// Provider: aramo-core (apps/api). Three interactions for GET
-// /v1/portal/profile: happy 200, 403 INSUFFICIENT_PERMISSIONS on
-// non-portal consumer, 401 AUTH_REQUIRED on unauthenticated.
-//
-// Strict jsonBody listing exactly the PortalProfile fields with no
-// like() wrapper around the outer response object — the positive R10
-// contract. Companion negative-shape integration test at
-// apps/api/src/tests/portal-refusal.negative-shape.spec.ts (F23 pattern).
+// Portal P1 PR-2a — Pact consumer test for the portal-thin client on the OPEN-4
+// records surface (the old singleton /v1/portal/profile is removed). Provider:
+// aramo-core (apps/api). Three interactions for GET /v1/portal/records: 200
+// empty-list (a portal user with no records — the empty-state-valid contract),
+// 403 INSUFFICIENT_PERMISSIONS (non-portal consumer), 401 (unauthenticated).
+// The full-chain positive shape is PR-2b's deeper pact (minimal pact rides with
+// 2a per the boundary ruling).
 
 const provider = new PactV4({
   consumer: 'portal-thin',
@@ -22,48 +20,29 @@ const provider = new PactV4({
   logLevel: 'warn',
 });
 
-const TENANT_ID = '11111111-1111-7111-8111-111111111111';
-const TALENT_SUB = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
-
-describe('portal-thin consumer → GET /v1/portal/profile', () => {
-  it('returns 200 with the PortalProfile shape for the authenticated talent', async () => {
+describe('portal-thin consumer → GET /v1/portal/records', () => {
+  it('returns 200 with an empty records envelope for a portal user with no records', async () => {
     await provider
       .addInteraction()
-      .given('a portal talent with profile P exists')
-      .uponReceiving('a portal profile request')
-      .withRequest('GET', '/v1/portal/profile', (b) => {
-        b.headers({
-          // Exact (not like()) so this interaction is distinct from the
-          // 403 (recruiter token) one — Pact V4 fingerprint dedup
-          // collapses identical-shape requests, the PR-8 JOB_ID_EMPTY
-          // workaround pattern.
-          Authorization: 'Bearer eyJfake.portal.token',
-        });
+      .given('a portal user with no records exists')
+      .uponReceiving('a portal records request')
+      .withRequest('GET', '/v1/portal/records', (b) => {
+        // Exact (not like()) so the fingerprint differs from the 403/401 cases.
+        b.headers({ Authorization: 'Bearer eyJfake.portal.token' });
       })
       .willRespondWith(200, (b) => {
-        b.jsonBody({
-          // Strict — exactly the PortalProfile fields, no like() wrapper
-          // on the outer object. 4e-rest-b: lifecycle_status DROPPED (Core-
-          // only field, re-homed off Core); tenant_status is the status field.
-          talent_id: uuid(TALENT_SUB),
-          tenant_id: uuid(TENANT_ID),
-          tenant_status: regex('active|inactive|archived', 'active'),
-          source_channel: regex('self_signup|recruiter_capture|referral|import', 'self_signup'),
-          created_at: regex(
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/,
-            '2026-05-01T12:00:00Z',
-          ),
-        });
+        // Empty-state-valid: the closed envelope with an empty records array.
+        b.jsonBody({ records: [] });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/portal/profile`, {
+        const res = await fetch(`${mock.url}/v1/portal/records`, {
           method: 'GET',
           headers: { Authorization: 'Bearer eyJfake.portal.token' },
         });
         expect(res.status).toBe(200);
-        const body = (await res.json()) as { talent_id: string; tenant_id: string };
-        expect(body.talent_id).toBeTruthy();
-        expect(body.tenant_id).toBeTruthy();
+        const body = (await res.json()) as { records: unknown[] };
+        expect(Array.isArray(body.records)).toBe(true);
+        expect(body.records).toHaveLength(0);
       });
   });
 
@@ -71,23 +50,16 @@ describe('portal-thin consumer → GET /v1/portal/profile', () => {
     await provider
       .addInteraction()
       .given('a recruiter token (non-portal consumer)')
-      .uponReceiving('a portal profile request from a recruiter')
-      .withRequest('GET', '/v1/portal/profile', (b) => {
-        // Exact distinct value so the fingerprint differs from the
-        // happy-path portal token.
+      .uponReceiving('a portal records request from a recruiter')
+      .withRequest('GET', '/v1/portal/records', (b) => {
         b.headers({ Authorization: 'Bearer eyJfake.recruiter.token' });
       })
       .willRespondWith(403, (b) => {
         b.jsonBody({
+          // INSUFFICIENT_PERMISSIONS is a superset envelope (RolesGuard OR the
+          // controller consumer_type check); the thin consumer depends only on
+          // 403 + code + a details object (subset-asserted via like({})).
           error: {
-            // PR-A1a-4 Ruling 1: INSUFFICIENT_PERMISSIONS is a superset
-            // envelope. A non-portal token may be rejected by RolesGuard
-            // (details:{required_scopes, missing_scopes}) before the
-            // controller-body consumer_type check (details:{consumer_type})
-            // ever runs. The portal-thin consumer only depends on the
-            // 403 + code + the presence of a details object — not on a
-            // specific key set — so details is subset-asserted as
-            // "an object" via like({}).
             code: 'INSUFFICIENT_PERMISSIONS',
             message: like('insufficient permissions for portal endpoint'),
             request_id: uuid(),
@@ -96,7 +68,7 @@ describe('portal-thin consumer → GET /v1/portal/profile', () => {
         });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/portal/profile`, {
+        const res = await fetch(`${mock.url}/v1/portal/records`, {
           method: 'GET',
           headers: { Authorization: 'Bearer eyJfake.recruiter.token' },
         });
@@ -106,12 +78,12 @@ describe('portal-thin consumer → GET /v1/portal/profile', () => {
       });
   });
 
-  it('returns 401 AUTH_REQUIRED when unauthenticated', async () => {
+  it('returns 401 when unauthenticated', async () => {
     await provider
       .addInteraction()
       .given('no valid token')
-      .uponReceiving('an unauthenticated portal profile request')
-      .withRequest('GET', '/v1/portal/profile', (b) => {
+      .uponReceiving('an unauthenticated portal records request')
+      .withRequest('GET', '/v1/portal/records', (b) => {
         b.headers({ Authorization: 'Bearer not-a-jwt' });
       })
       .willRespondWith(401, (b) => {
@@ -125,7 +97,7 @@ describe('portal-thin consumer → GET /v1/portal/profile', () => {
         });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/portal/profile`, {
+        const res = await fetch(`${mock.url}/v1/portal/records`, {
           method: 'GET',
           headers: { Authorization: 'Bearer not-a-jwt' },
         });

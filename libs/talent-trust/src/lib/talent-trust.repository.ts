@@ -387,6 +387,24 @@ export class TalentTrustRepository {
     return (row as ResolutionSubjectRow | null) ?? null;
   }
 
+  /**
+   * Portal P1 PR-2 (OPEN-4) — find EVERY ResolutionSubjectRef for a (ref_type,
+   * ref_id) ACROSS tenants. `findSubjectByRef` is tenant-scoped (the unique
+   * compound); this enumerates the holders of a shared ref — a PERSON_CLUSTER id
+   * referenced by subjects in multiple tenants (the same human across firms).
+   * Platform-rail index-ref graph only: no PII, no cross-tenant tenant-rail read.
+   */
+  async findSubjectRefsByRef(
+    refType: ResolutionSubjectRefType,
+    refId: string,
+  ): Promise<{ tenant_id: string; subject_id: string }[]> {
+    const rows = await this.prisma.resolutionSubjectRef.findMany({
+      where: { ref_type: refType, ref_id: refId },
+      select: { tenant_id: true, subject_id: true },
+    });
+    return rows.map((r) => ({ tenant_id: r.tenant_id, subject_id: r.subject_id }));
+  }
+
   // TR-2a-B2 (DDR-2 §2 pre-step) — follow merged_into_subject_id iteratively to
   // the subject's ACTIVE fixpoint. Bounded (guard limit) + cycle-guarded (seen
   // set). An arrival must never attach to a MERGED husk, and must not stop one

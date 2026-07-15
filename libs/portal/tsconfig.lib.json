@@ -13,7 +13,9 @@
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
       "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
-      "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"]
+      "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"],
+      "@aramo/portal-identity": ["../../dist/libs/portal-identity/src/index.d.ts"],
+      "@aramo/talent-trust": ["../../dist/libs/talent-trust/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

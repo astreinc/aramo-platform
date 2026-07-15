@@ -46,6 +46,16 @@ export class PortalIdentityRepository {
   }
 
   /**
+   * Look a portal up by id — the JWT `sub` on a portal session IS the PortalUser
+   * id (Portal P1 ruling 4). The OPEN-4 chain (PR-2) starts here: `sub` →
+   * PortalUser → `cluster_id`. Null if unknown (a valid empty state).
+   */
+  async findPortalById(id: string): Promise<PortalUserRow | null> {
+    const row = await this.prisma.portalUser.findUnique({ where: { id } });
+    return row === null ? null : toPortalRow(row);
+  }
+
+  /**
    * Find-or-mint the PortalUser for a successful login (Portal P1 ruling 3 —
    * lazy mint at first token consumption). If the user exists, stamp
    * `last_login_at`; else mint with `cluster_id` from the eligibility lookup +

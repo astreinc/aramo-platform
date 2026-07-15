@@ -3,6 +3,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   UseGuards,
 } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
@@ -13,105 +14,92 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { TalentRecordService } from '@aramo/talent-record';
 
 import type { PortalProfileDto } from './dto/portal-profile.dto.js';
+import type { PortalRecordsResponseDto } from './dto/portal-records.dto.js';
+import { PortalTalentResolverService } from './portal-talent-resolver.service.js';
 
-// M3 PR-9 Portal Controller — the foundation slice surface.
+// Portal P1 PR-2a — Portal Controller (OPEN-4 chain). The placeholder
+// `sub`-passthrough is GONE: the portal session's JWT `sub` (= PortalUser.id)
+// resolves to the portal user's ATS records ACROSS tenants via
+// PortalTalentResolverService (sub → PortalUser → cluster → PERSON_CLUSTER
+// holders → survivor subjects → live TalentRecords).
 //
-// Two endpoints:
-//   GET /v1/portal/profile  — talent's own profile (R10-filtered projection)
-//   GET /v1/portal/consent  — talent's own consent state (reuses
-//                              ConsentService.getState; the existing
-//                              recruiter-facing surface is unchanged)
+// Three reads (the old GET /v1/portal/profile + /consent are REMOVED, not
+// aliased — nothing runtime consumed them; the portal-thin pact is repointed
+// in-slice):
+//   GET /v1/portal/records                 — the portal user's records across
+//                                            tenants (engagement surface, P-R5)
+//   GET /v1/portal/records/:id/profile     — one record's R10-filtered profile
+//   GET /v1/portal/records/:id/consent     — one record's consent state
 //
-// Auth posture (directive §2 Ruling 5): the portal session embodies the
-// talent it represents — both endpoints DERIVE the talent identity from the
-// JWT rather than accepting it as a path/body parameter (structural
-// enforcement: a portal talent can only see their own data; no surface to
-// pass another talent_id).
+// Auth posture: `sub` derives identity from the JWT (never a path/body param for
+// WHO the caller is). Every per-record read validates membership through the
+// chain — a record id not reachable is a UNIFORM 404 (oracle-resistant: no
+// "exists but not yours"). A portal user with no cluster / no live records is a
+// VALID EMPTY state (200 with an empty list), never an error.
 //
-// 4d-2 (ADR-0016): that derivation now routes through the single
-// resolvePortalTalentRecordId() seam. The portal JWT `sub` is the
-// identity.User id (NOT a TalentRecord id), and there is no user→TalentRecord
-// linkage yet — so the seam returns `sub` as a TRANSITIONAL PLACEHOLDER (same
-// behaviour as before) until OPEN-4 supplies the real resolution. The former
-// silent `talent_id = sub` conflation is now explicit + named (see the seam).
-//
-// Per-route consumer_type === 'portal' assertion mirrors the PR-8
-// recruiter-only pattern; non-portal consumers (recruiter, ingestion)
-// are 403'd at the route, not just authenticated.
-//
-// R10 refusal enforcement is structural, not runtime: this controller
-// emits only PortalProfileDto + TalentConsentStateResponseDto. Both
-// shapes are openapi-bound with additionalProperties: false, and
-// ci/scripts/verify-portal-refusal.ts walks openapi/portal.yaml on
-// every CI build to confirm zero R10-class fields exist in the schemas.
+// R10 refusal enforcement stays structural: this controller emits only
+// PortalProfileDto (+ list) + TalentConsentStateResponseDto — all openapi-bound
+// with additionalProperties:false, walked by ci/scripts/verify-portal-refusal.ts.
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// PR-A1a-4 §2 — route enforcement applied to portal routes.
-// JwtAuthGuard runs first (AuthN); RolesGuard runs second (AuthZ) and is
-// a no-op on any handler without metadata. @RequireScopes added per the
-// directive §1 mapping: GET /profile → portal:profile:read,
-// GET /consent → portal:consent:read. The portal-user role's seed
-// catalog (libs/identity/prisma/seed.ts) carries both scopes.
-//
-// Rejection envelope is a superset (PR-A1a-4 Ruling 1):
-// INSUFFICIENT_PERMISSIONS may carry details:{consumer_type} from the
-// controller-body assertConsumerIsPortal OR details:{required_scopes,
-// missing_scopes} from RolesGuard. Both are valid 403 paths. The
-// portal-thin consumer pact subset-asserts only the stable contract
-// (status 403 + code INSUFFICIENT_PERMISSIONS).
-//
-// PR-A1b §4 proof-point — EntitlementGuard slots BETWEEN JwtAuthGuard
-// and RolesGuard per Ruling 1 (tenant-axis gate runs BEFORE scope-axis
-// gate). @RequireCapability('portal') at class level applies the
-// tenant-capability check to both GET /profile and GET /consent: a
-// tenant that is not entitled to `portal` is rejected with 403
-// TENANT_CAPABILITY_NOT_ENTITLED before either scope check runs. This
-// proves the two axes are independent — a properly-scoped portal user
-// in an unentitled tenant is still rejected.
 @Controller('v1/portal')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('portal')
 export class PortalController {
   constructor(
+    private readonly resolver: PortalTalentResolverService,
     private readonly talentRecordService: TalentRecordService,
     private readonly consentService: ConsentService,
   ) {}
 
-  @Get('profile')
+  // GET /v1/portal/records — the portal user's records across tenants.
+  @Get('records')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('portal:profile:read')
-  async getProfile(
+  async getRecords(
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PortalRecordsResponseDto> {
+    this.assertConsumerIsPortal(authContext, requestId);
+    const sub = this.assertSubIsUuid(authContext, requestId);
+    const refs = await this.resolver.resolveRecords(sub);
+    const records: PortalProfileDto[] = [];
+    for (const ref of refs) {
+      const projection = await this.talentRecordService.findSelfProfile({
+        tenant_id: ref.tenant_id,
+        talent_id: ref.record_id,
+      });
+      if (projection === null) continue; // defensive — record vanished
+      records.push({
+        talent_id: projection.talent_id,
+        tenant_id: projection.tenant_id,
+        tenant_status: projection.tenant_status,
+        source_channel: projection.source_channel,
+        created_at: projection.created_at,
+      });
+    }
+    return { records };
+  }
+
+  // GET /v1/portal/records/:id/profile — one record's R10-filtered profile.
+  @Get('records/:id/profile')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('portal:profile:read')
+  async getRecordProfile(
+    @Param('id') id: string,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<PortalProfileDto> {
-    // Step 1 — auth: consumer_type === 'portal'.
     this.assertConsumerIsPortal(authContext, requestId);
-    // Step 2 — resolve the portal user to their TalentRecord id (4d-2 seam —
-    // a transitional placeholder returning sub until OPEN-4; see the method).
-    const talent_id = this.resolvePortalTalentRecordId(authContext, requestId);
-    // Step 3 — tenant_id from auth context (JWT claim).
-    const tenant_id = authContext.tenant_id;
-    // Step 4 — repository call (TalentRecordService.findSelfProfile, reading
-    // the talent's own TalentRecord — the ATS heart; 4e-rest-b re-home).
+    const sub = this.assertSubIsUuid(authContext, requestId);
+    const member = await this.resolveMemberOr404(sub, id, requestId);
     const projection = await this.talentRecordService.findSelfProfile({
-      tenant_id,
-      talent_id,
+      tenant_id: member.tenant_id,
+      talent_id: member.record_id,
     });
-    // Step 5 — 404 on null (no TalentRecord in this tenant, or an un-statused
-    // record → no presentable self-profile → resource absent).
-    if (projection === null) {
-      throw new AramoError(
-        'NOT_FOUND',
-        'No portal profile exists for this talent in this tenant',
-        404,
-        { requestId, details: { talent_id, tenant_id } },
-      );
-    }
-    // Step 6 — return DTO (structurally identical to PortalProfileProjection).
-    // 4e-rest-b: no lifecycle_status (Core-only field, dropped in the re-home);
-    // tenant_status is the profile's status field.
+    if (projection === null) throw this.uniformNotFound(requestId);
     return {
       talent_id: projection.talent_id,
       tenant_id: projection.tenant_id,
@@ -121,51 +109,45 @@ export class PortalController {
     };
   }
 
-  @Get('consent')
+  // GET /v1/portal/records/:id/consent — one record's consent state.
+  @Get('records/:id/consent')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('portal:consent:read')
-  async getOwnConsent(
+  async getRecordConsent(
+    @Param('id') id: string,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<TalentConsentStateResponseDto> {
-    // Step 1 — auth: consumer_type === 'portal'.
     this.assertConsumerIsPortal(authContext, requestId);
-    // Step 2 — resolve the portal user to their TalentRecord id (4d-2 seam —
-    // a transitional placeholder returning sub until OPEN-4; see the method).
-    const talent_id = this.resolvePortalTalentRecordId(authContext, requestId);
-    // Step 3 — call existing ConsentService.getState (resolves all 5 scopes
-    // from the consent event ledger; same path used by the recruiter-facing
-    // /v1/consent/state/{talent_id} endpoint).
-    // Step 4 — return TalentConsentStateResponseDto verbatim (no re-shaping;
-    // the existing DTO already carries the R10-safe fields).
-    return this.consentService.getState(talent_id, authContext, requestId);
+    const sub = this.assertSubIsUuid(authContext, requestId);
+    const member = await this.resolveMemberOr404(sub, id, requestId);
+    // ConsentService.getState reads under authContext.tenant_id — but the portal
+    // session carries the platform sentinel, not the record's tenant. The chain
+    // resolved the record's tenant; scope the read to THAT tenant (getState uses
+    // only tenant_id from the context for the read).
+    return this.consentService.getState(
+      member.record_id,
+      { ...authContext, tenant_id: member.tenant_id },
+      requestId,
+    );
   }
 
-  // ===========================================================================
-  // 4d-2 (ADR-0016) — the portal talent-identity resolution SEAM.
-  // ===========================================================================
-  // HONEST BOUNDARY, not a resolution. The portal JWT `sub` is the
-  // identity.User id (the auth subject), NOT a talent_record.TalentRecord id —
-  // and there is NO user→TalentRecord linkage in the data model yet (recon
-  // 4d-2: identity.User carries no talent field; ExternalIdentity maps only
-  // provider→user_id). The pre-realignment code silently assumed
-  // `talent_id = sub`, conflating two distinct entities (an identity.User is
-  // not a TalentRecord). This seam makes that conflation EXPLICIT + NAMED so it
-  // cannot be inherited unnoticed.
-  //
-  // TRANSITIONAL PLACEHOLDER: it returns `sub` verbatim, preserving the exact
-  // pre-realignment behaviour (and keeping the portal-thin pact green — the
-  // portal surface is structure-only, no live users). When the first-party
-  // portal engagement surface (OPEN-4) is built, THIS is the single place that
-  // must be replaced with a real authenticated-user → tenant-TalentRecord
-  // resolution (a user→record linkage OPEN-4 will introduce). Do not scatter
-  // `authContext.sub`-as-talent_id elsewhere — route portal identity through
-  // here.
-  private resolvePortalTalentRecordId(
-    authContext: AuthContextType,
+  // Resolve a per-record membership or throw the uniform 404. Also rejects a
+  // malformed record id as the SAME 404 (no format-vs-membership oracle).
+  private async resolveMemberOr404(
+    sub: string,
+    recordId: string,
     requestId: string,
-  ): string {
-    return this.assertSubIsUuid(authContext, requestId);
+  ): Promise<{ tenant_id: string; record_id: string }> {
+    if (!UUID_REGEX.test(recordId)) throw this.uniformNotFound(requestId);
+    const member = await this.resolver.resolveMemberRecord(sub, recordId);
+    if (member === null) throw this.uniformNotFound(requestId);
+    return member;
+  }
+
+  private uniformNotFound(requestId: string): AramoError {
+    // Uniform: no details that distinguish "unknown" from "not yours".
+    return new AramoError('NOT_FOUND', 'record not found', 404, { requestId });
   }
 
   private assertConsumerIsPortal(
@@ -177,10 +159,7 @@ export class PortalController {
         'INSUFFICIENT_PERMISSIONS',
         'portal endpoints are portal-consumer only',
         403,
-        {
-          requestId,
-          details: { consumer_type: authContext.consumer_type },
-        },
+        { requestId, details: { consumer_type: authContext.consumer_type } },
       );
     }
   }
