@@ -235,5 +235,63 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await tokenRowCount(UNKNOWN_EMAIL)).toBe(0);
       expect(mailer.send).not.toHaveBeenCalled();
     });
+
+    // TR-2b B2b (Directive §PR-2.3, ruling 2) — login-time cluster re-link, the
+    // full circle: a portal user whose orphaned cluster was purged (B2a/B2b) has a
+    // PortalUser with cluster_id NULL. When their cluster re-appears in the index
+    // (a fresh arrival re-mints it), the NEXT consume fills cluster_id — one write,
+    // same user, monotonic fill (never overwrites a non-null cluster).
+    it('re-links a NULL-cluster PortalUser at next consume (purged → re-linked)', async () => {
+      const RELINK_EMAIL = 'relink@example.com';
+      const portalId = uuidv7();
+      // The purged-cluster portal user: an existing PortalUser with cluster_id NULL.
+      await db.$executeRawUnsafe(
+        `INSERT INTO "portal_identity"."PortalUser" (id, email_normalized, cluster_id, updated_at)
+         VALUES ($1, $2, NULL, NOW())`,
+        portalId,
+        RELINK_EMAIL,
+      );
+      // The fresh cluster re-appears in the PII-free index (the eligibility hit).
+      const clusterId = uuidv7();
+      await db.$executeRawUnsafe(
+        `INSERT INTO "identity_index"."PersonCluster" (id, updated_at) VALUES ($1, NOW())`,
+        clusterId,
+      );
+      const fp = computeEmailFingerprint(RELINK_EMAIL, TEST_PEPPER);
+      await db.$executeRawUnsafe(
+        `INSERT INTO "identity_index"."ClusterFingerprint" (id, cluster_id, fingerprint, kind)
+         VALUES ($1, $2, $3, 'email')`,
+        uuidv7(),
+        clusterId,
+        fp,
+      );
+
+      const before = await db.$queryRawUnsafe<{ cluster_id: string | null }[]>(
+        `SELECT cluster_id FROM "portal_identity"."PortalUser" WHERE id = $1`,
+        portalId,
+      );
+      expect(before[0]!.cluster_id).toBeNull();
+
+      // request-link + consume for the re-linkable portal user.
+      mailer.send.mockClear();
+      await request(app.getHttpServer())
+        .post('/auth/portal/request-link')
+        .send({ email: RELINK_EMAIL });
+      const sent = mailer.send.mock.calls[0]![0] as { text: string };
+      const raw = /token=([^&\s"]+)/.exec(sent.text)?.[1];
+      const res = await request(app.getHttpServer()).get(
+        `/auth/portal/consume?token=${raw}`,
+      );
+      expect(res.status).toBe(302);
+
+      // The SAME PortalUser now carries the fresh cluster (re-linked, one write).
+      const after = await db.$queryRawUnsafe<{ id: string; cluster_id: string | null }[]>(
+        `SELECT id, cluster_id FROM "portal_identity"."PortalUser" WHERE email_normalized = $1`,
+        RELINK_EMAIL,
+      );
+      expect(after).toHaveLength(1);
+      expect(after[0]!.id).toBe(portalId); // re-linked, NOT a new mint
+      expect(after[0]!.cluster_id).toBe(clusterId);
+    });
   },
 );

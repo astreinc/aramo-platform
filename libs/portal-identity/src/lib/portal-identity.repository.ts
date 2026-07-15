@@ -72,7 +72,18 @@ export class PortalIdentityRepository {
       return toPortalRow(
         await this.prisma.portalUser.update({
           where: { id: existing.id },
-          data: { last_login_at: input.now },
+          data: {
+            last_login_at: input.now,
+            // TR-2b B2b (Directive ruling 2) — login-time cluster re-link. A
+            // MONOTONIC fill-once: set cluster_id ONLY when it is currently NULL
+            // and the eligibility lookup now carries a hit. Never overwrite an
+            // existing non-null cluster, never clear it (split-bias). This is how
+            // a portal user whose orphaned cluster was purged (B2a/B2b) re-links
+            // to the fresh cluster at their next login, no manual step.
+            ...(existing.cluster_id === null && input.cluster_id !== null
+              ? { cluster_id: input.cluster_id }
+              : {}),
+          },
         }),
       );
     }
@@ -95,7 +106,14 @@ export class PortalIdentityRepository {
       return toPortalRow(
         await this.prisma.portalUser.update({
           where: { id: afterRace.id },
-          data: { last_login_at: input.now },
+          data: {
+            last_login_at: input.now,
+            // Same monotonic fill-once as the happy path (the lost-race winner
+            // may equally have a NULL cluster to re-link).
+            ...(afterRace.cluster_id === null && input.cluster_id !== null
+              ? { cluster_id: input.cluster_id }
+              : {}),
+          },
         }),
       );
     }

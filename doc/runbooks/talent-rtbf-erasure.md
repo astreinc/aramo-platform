@@ -79,6 +79,21 @@ use `'talent_record'`.
 `event_type='consent.erased'`) — the retained record that erasure happened;
 `is_anonymized` reads it and flips true.
 
+**Identity-cluster last-reference purge (TR-2b B2b):** BEFORE the Group B delete,
+the CLI captures the distinct `ref_id`s of the erased subjects'
+`ref_type='PERSON_CLUSTER'` `ResolutionSubjectRef`s (they die in the generic
+subject-keyed delete). AFTER the inventory, each captured `identity_index`
+cluster is R4-liveness-checked **excluding** the erased subjects — a cluster still
+referenced by another live tenant's subject SURVIVES; an **orphaned** cluster is
+torn down by the one `purgeCluster` primitive (caller `erasure`): delete
+`platform_trust."DormantLink"` → `identity_index."ClusterFingerprint"` →
+`"PersonCluster"`, then null `ingestion."RawPayloadReference".resolved_cluster_id`
+and `portal_identity."PortalUser".cluster_id`. **NO grace period on the erasure
+path** (RTBF intent is explicit; D11) — unlike the daily lifecycle sweep's 30-day
+orphan grace. A purged portal user re-links to a fresh cluster at their next
+login (the login-time re-link). The dry-run reports the would-purge cluster
+ids without purging.
+
 ---
 
 ## Manual SQL procedure (the CLI automates this; kept as the reference)

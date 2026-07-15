@@ -9,9 +9,14 @@
 export { IdentityIndexModule } from './lib/identity-index.module.js';
 export { IdentityIndexRepository } from './lib/identity-index.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
-// TR-2b B2a — the cluster-teardown primitive (purgeCluster) + its result shape.
+// TR-2b B2a/B2b — the cluster-teardown primitive (purgeCluster): the DI Prisma
+// binding (sweep), the raw-PgExec binding (erasure engine), and the ONE shared
+// ordered statement array both consume.
 export {
   ClusterPurgeService,
+  purgeClusterViaExec,
+  CLUSTER_PURGE_STATEMENTS,
+  type ClusterPurgeExec,
   type PurgeClusterResult,
 } from './lib/cluster-purge.service.js';
 
