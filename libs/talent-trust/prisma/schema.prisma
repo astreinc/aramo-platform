@@ -784,9 +784,15 @@ model PortalDisputeWorkItem {
   // VerificationRequest.id). Server-side only — never on the wire (Q4).
   underlying_ref_id String @db.Uuid
 
-  /// PortalDisputeState closed vocabulary (tenant disposition, P3b advances it):
-  /// OPEN | UNDER_REVIEW | RESOLVED_CORRECTED | RESOLVED_UPHELD | WITHDRAWN
+  /// PortalDisputeWorkItemState closed vocabulary (tenant disposition, P3b advances
+  /// it): OPEN | UNDER_REVIEW | RESOLVED_CORRECTED | RESOLVED_UPHELD | WITHDRAWN |
+  /// RESOLVED_NO_TRANSITION (Amendment v1.2 Pin B — evidence not disputable).
   status String @default("OPEN")
+
+  // Portal P3b (Pin B) — the reason a disposition fired NO TR-15 transition for
+  // this item (the backing evidence was SUPERSEDED/CONTRADICTED/STALE). Null
+  // unless status is RESOLVED_NO_TRANSITION.
+  no_transition_reason String?
 
   created_at DateTime @default(now()) @db.Timestamptz
   updated_at DateTime @updatedAt @db.Timestamptz

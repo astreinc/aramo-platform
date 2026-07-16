@@ -285,8 +285,25 @@ export const PORTAL_DISPUTE_STATES = [
 ] as const;
 export type PortalDisputeState = (typeof PORTAL_DISPUTE_STATES)[number];
 
+// Portal P3b (Amendment v1.2 Pin B) — the WORK-ITEM status vocab. A tenant work
+// item shares the talent-visible states PLUS a distinct terminal
+// RESOLVED_NO_TRANSITION: the human disposed the dispute but this item's backing
+// evidence was not disputable (SUPERSEDED/CONTRADICTED/STALE), so no TR-15
+// transition fired. Durable + closed-vocab (never a log line); the parent still
+// resolves and the audit shows which items moved.
+export const PORTAL_DISPUTE_WORK_ITEM_STATES = [
+  'OPEN',
+  'UNDER_REVIEW',
+  'RESOLVED_CORRECTED',
+  'RESOLVED_UPHELD',
+  'WITHDRAWN',
+  'RESOLVED_NO_TRANSITION',
+] as const;
+export type PortalDisputeWorkItemState = (typeof PORTAL_DISPUTE_WORK_ITEM_STATES)[number];
+
 // The non-terminal states — the open-idempotency guard blocks a second dispute on
-// the same item only while an existing one is still in one of these.
+// the same item only while an existing one is still in one of these. Also the
+// tenant-worklist "open" filter (OPEN = untriaged, UNDER_REVIEW = triaged).
 export const PORTAL_DISPUTE_OPEN_STATES = ['OPEN', 'UNDER_REVIEW'] as const;
 
 // The kinds of verification-view item a dispute may target (ruling 2). Surrogates
@@ -294,8 +311,9 @@ export const PORTAL_DISPUTE_OPEN_STATES = ['OPEN', 'UNDER_REVIEW'] as const;
 export const PORTAL_DISPUTE_ITEM_TYPES = ['ANCHOR', 'VERIFICATION'] as const;
 export type PortalDisputeItemType = (typeof PORTAL_DISPUTE_ITEM_TYPES)[number];
 
-// Statement author — the talent only, in P3a (P3b may add a tenant note axis).
-export const PORTAL_DISPUTE_STATEMENT_AUTHORS = ['TALENT'] as const;
+// Statement author — TALENT (P3a talent statements) + TENANT (P3b: the
+// reviewer's request-info note, a recorded human action on the dispute thread).
+export const PORTAL_DISPUTE_STATEMENT_AUTHORS = ['TALENT', 'TENANT'] as const;
 export type PortalDisputeStatementAuthor = (typeof PORTAL_DISPUTE_STATEMENT_AUTHORS)[number];
 
 // ---- Portal dispute SLA clocks (ruling 5) — ENGINE CONSTANTS ----------------

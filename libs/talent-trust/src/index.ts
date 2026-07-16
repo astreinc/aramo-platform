@@ -11,9 +11,15 @@ export {
   type PortalCallerSubject,
   type PortalVerificationItem,
 } from './lib/talent-trust.service.js';
+// Portal P3b — the §2 outcome map (tripwire) + disposition types (apps/api).
+export {
+  PORTAL_DISPUTE_OUTCOME_MAP,
+  PORTAL_DISPUTE_WITHDRAWAL_JUSTIFICATION,
+} from './lib/talent-trust.service.js';
 export type {
   PortalDisputeRow,
   PortalDisputeStatementRow,
+  PortalDisputeWorkItemRow,
 } from './lib/talent-trust.repository.js';
 export { SubjectMatcherService } from './lib/subject-matcher.service.js';
 export { SubjectResolutionService } from './lib/subject-resolution.service.js';

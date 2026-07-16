@@ -54,6 +54,10 @@ const MIGRATIONS = [
   'libs/talent-trust/prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
   'libs/talent-trust/prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
   'libs/talent-trust/prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
+  // Portal P3a/P3b — the PortalDispute substrate + disposition column; the TR-6
+  // daily report's SLA-breach detector queries PortalDispute, so its DB needs both.
+  'libs/talent-trust/prisma/migrations/20260715120000_p3a_portal_dispute_substrate/migration.sql',
+  'libs/talent-trust/prisma/migrations/20260716120000_p3b_dispute_disposition/migration.sql',
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
   'libs/talent-record/prisma/migrations/20260603020000_add_core_talent_link_to_talent_record/migration.sql',
   'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',

@@ -26,6 +26,9 @@ export interface DetectionReport {
   stale_pending_operations: number;
   stale_pending_advisories: number;
   merged_subjects_receiving_writes: number;
+  // Portal P3b (ruling 5) — the 5th detector: non-terminal PortalDisputes past
+  // any recorded SLA due-timestamp. REPORT-ONLY (humans act); no auto-escalation.
+  overdue_portal_disputes: number;
 }
 
 @Injectable()
@@ -45,9 +48,27 @@ export class IdentityDetectionService {
       stale_pending_operations: await this.detectStalePendingOperations(now),
       stale_pending_advisories: await this.detectStalePendingAdvisories(now),
       merged_subjects_receiving_writes: await this.detectMergedSubjectsReceivingWrites(now),
+      overdue_portal_disputes: await this.detectOverduePortalDisputes(now),
     };
     this.logger.log({ event: 'identity_detection_run_completed', ...report });
     return report;
+  }
+
+  // Portal P3b (ruling 5) — SLA-breach detector. A non-terminal PortalDispute
+  // past ANY of its stored due-timestamps (triage/summary/reinvestigation/CCPA)
+  // is a breach. REPORT-ONLY: one structured warn line per row + the count. The
+  // due-timestamps are absolute (baked at open from PORTAL_DISPUTE_SLA), so no
+  // age constant is needed. Logs cluster_id (PortalDispute is cluster-keyed).
+  private async detectOverduePortalDisputes(now: Date): Promise<number> {
+    const rows = await this.trustRepo.findOverduePortalDisputes(now);
+    for (const r of rows) {
+      this.logger.warn({
+        event: 'detection_overdue_portal_dispute',
+        cluster_id: r.cluster_id,
+        dispute_id: r.id,
+      });
+    }
+    return rows.length;
   }
 
   private async detectTwoLiveRecordClusters(_now: Date): Promise<number> {

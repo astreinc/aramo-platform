@@ -39,6 +39,10 @@ export interface ContradictionItem {
 export interface VerificationStateItem {
   anchor_kind: string;
   status: string; // PENDING | CONFIRMED | EXPIRED | NONE — never a value (PII)
+  // Portal P3b (ruling 4 / Q1) — DERIVED from the anchor's backing EvidenceRecord
+  // being current_status === 'DISPUTED'; never a parallel-stored field. While an
+  // item is disputed, any tenant-facing consumption of it surfaces this here.
+  disputed: boolean;
 }
 export interface MergeProvenanceItem {
   operation_id: string;
@@ -151,13 +155,18 @@ export class DossierService {
     ]);
 
     const evidenceIds = evidence.map((e) => e.id);
+    // Ruling 4 — the DISPUTED evidence set, derived from the already-loaded
+    // cluster evidence; the per-item disputed flag reads from it (no extra query).
+    const disputedEvidenceIds = new Set(
+      evidence.filter((e) => e.current_status === 'DISPUTED').map((e) => e.id),
+    );
     const [links, contradictionEvents, verifications] = await Promise.all([
       this.repo.listEvidenceLinksForEvidence(evidenceIds),
       this.repo.listEventsForEvidence(
         evidence.filter((e) => e.current_status === 'CONTRADICTED').map((e) => e.id),
         'CONTRADICTED',
       ),
-      this.assembleVerifications(tenant_id, members),
+      this.assembleVerifications(tenant_id, members, disputedEvidenceIds),
     ]);
 
     // Latest CONTRADICTED event per evidence (events are newest-first).
@@ -222,6 +231,7 @@ export class DossierService {
   private async assembleVerifications(
     tenant_id: string,
     members: string[],
+    disputedEvidenceIds: ReadonlySet<string>,
   ): Promise<VerificationStateItem[]> {
     const anchorLists = await Promise.all(members.map((m) => this.repo.listAnchorsBySubject(m)));
     const anchors = anchorLists
@@ -240,7 +250,12 @@ export class DossierService {
         a.anchor_kind,
         a.normalized_value,
       );
-      out.push({ anchor_kind: a.anchor_kind, status: vr?.status ?? 'NONE' });
+      out.push({
+        anchor_kind: a.anchor_kind,
+        status: vr?.status ?? 'NONE',
+        // Ruling 4 — DERIVED from the anchor's backing evidence being DISPUTED.
+        disputed: disputedEvidenceIds.has(a.source_evidence_id),
+      });
     }
     return out;
   }

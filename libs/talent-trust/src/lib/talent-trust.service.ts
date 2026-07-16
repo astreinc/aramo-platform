@@ -57,6 +57,7 @@ import {
   type VerificationRequestRow,
   type PortalDisputeRow,
   type PortalDisputeStatementRow,
+  type PortalDisputeWorkItemRow,
 } from './talent-trust.repository.js';
 import {
   mintPortalVerificationItemId,
@@ -66,6 +67,7 @@ import {
   EVENT_TO_STATUS,
   PORTAL_DISPUTE_OPEN_STATES,
   PORTAL_DISPUTE_SLA,
+  PORTAL_DISPUTE_WORK_ITEM_STATES,
   PROPOSAL_SETTLED_JUSTIFICATION,
   SOURCE_CLASSES,
   type AnchorKind,
@@ -2117,9 +2119,15 @@ export class TalentTrustService {
   }
 
   // Withdraw: terminal talent action. Already-terminal is an idempotent no-op.
+  // W-2 (Amendment v1.2): end-state-conditional — a work item currently DISPUTED
+  // (post-triage) is resolveDispute('rejected') back to VALID; a pre-triage
+  // (still-OPEN) item needs no TR-15 call. Pin A: the withdrawal-fired resolve
+  // records the PORTAL PRINCIPAL as actor + a talent-withdrawal justification —
+  // the audit must read as a withdrawal, never a resolver disposition.
   async withdrawPortalDispute(input: {
     clusterId: string;
     disputeId: string;
+    actor: string; // the portal principal (Pin A)
     now: Date;
     requestId: string;
   }): Promise<PortalDisputeRow> {
@@ -2130,7 +2138,227 @@ export class TalentTrustService {
     if (!(PORTAL_DISPUTE_OPEN_STATES as readonly string[]).includes(dispute.status)) {
       return dispute; // idempotent: already terminal
     }
+    const items = await this.repo.findAllWorkItemsForDispute(input.disputeId);
+    for (const wi of items) {
+      // Only UNDER_REVIEW items had trust.dispute() fired at triage (evidence
+      // DISPUTED); OPEN items never left VALID (the §2 end-state) — no call.
+      if (wi.status !== 'UNDER_REVIEW') continue;
+      const evidenceId = await this.resolveWorkItemEvidenceId(wi);
+      if (evidenceId === null) continue;
+      try {
+        await this.resolveDispute(
+          evidenceId,
+          input.actor,
+          'rejected',
+          PORTAL_DISPUTE_WITHDRAWAL_JUSTIFICATION,
+          input.requestId,
+        );
+      } catch {
+        // best-effort: not DISPUTED / not disputable — the item is already safe.
+      }
+    }
     return this.repo.withdrawPortalDispute(input.disputeId, input.now);
+  }
+
+  // =========================================================================
+  // Portal P3b — TENANT-side disposition (§PR-2 + Amendment v1.2). The tenant
+  // acts on their work items (subject-keyed) for a dispute; each disposition is
+  // a recorded human action (PROPOSE/DISPOSE). The §2 outcome→TR-15 mapping is
+  // PORTAL_DISPUTE_OUTCOME_MAP (asserted verbatim by the mandatory tripwire).
+  // =========================================================================
+
+  // The VR→evidence bridge (Amendment v1.2). Returns the backing EvidenceRecord
+  // id for a work item, or null if it cannot be resolved (defensive).
+  private async resolveWorkItemEvidenceId(
+    wi: PortalDisputeWorkItemRow,
+  ): Promise<string | null> {
+    if (wi.item_type === 'ANCHOR') {
+      const anchor = await this.repo.findAnchorById(wi.tenant_id, wi.underlying_ref_id);
+      return anchor?.source_evidence_id ?? null;
+    }
+    // VERIFICATION: VR.id → the PLATFORM_VERIFIED anchor for its (subject,kind,value).
+    const vr = await this.repo.findVerificationRequestById(wi.underlying_ref_id);
+    if (vr === null) return null;
+    const anchor = await this.repo.findSubjectAnchor(
+      vr.tenant_id,
+      vr.subject_id,
+      vr.anchor_kind,
+      vr.normalized_value,
+      'PLATFORM_VERIFIED',
+    );
+    return anchor?.source_evidence_id ?? null;
+  }
+
+  // Triage (W-1): fire trust.dispute() per OPEN work item → UNDER_REVIEW. A work
+  // item whose backing evidence is not disputable lands RESOLVED_NO_TRANSITION
+  // (Pin B). The parent goes UNDER_REVIEW (or rolls up if every item is terminal).
+  async triagePortalDispute(input: {
+    tenantId: string;
+    disputeId: string;
+    actor: string;
+    requestId: string;
+  }): Promise<PortalDisputeRow> {
+    const items = await this.repo.findTenantWorkItemsForDispute(input.tenantId, input.disputeId);
+    if (items.length === 0) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: input.requestId });
+    }
+    for (const wi of items) {
+      if (wi.status !== 'OPEN') continue;
+      const evidenceId = await this.resolveWorkItemEvidenceId(wi);
+      if (evidenceId === null) {
+        await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'backing evidence not resolvable');
+        continue;
+      }
+      try {
+        await this.dispute(evidenceId, input.actor, 'talent dispute — triaged for review', input.requestId);
+        await this.repo.advancePortalWorkItemStatus(wi.id, 'UNDER_REVIEW');
+      } catch (err) {
+        if (err instanceof AramoError && err.code === 'EVIDENCE_NOT_DISPUTABLE') {
+          await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'evidence not disputable');
+        } else {
+          throw err;
+        }
+      }
+    }
+    return this.rollupParentDispute(input.disputeId, 'UNDER_REVIEW');
+  }
+
+  // Request-info: a recorded reviewer note on the dispute thread (author TENANT).
+  // No status/TR-15 change — the dispute stays UNDER_REVIEW awaiting the talent.
+  async requestInfoPortalDispute(input: {
+    tenantId: string;
+    disputeId: string;
+    note: string;
+    requestId: string;
+  }): Promise<PortalDisputeRow> {
+    const items = await this.repo.findTenantWorkItemsForDispute(input.tenantId, input.disputeId);
+    if (items.length === 0) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: input.requestId });
+    }
+    await this.repo.appendPortalDisputeStatement(
+      input.disputeId,
+      input.note,
+      this.hashPortalStatement(input.note),
+      'TENANT',
+    );
+    const dispute = await this.repo.findPortalDisputeById(input.disputeId);
+    return dispute!;
+  }
+
+  // Dispose (correct | uphold): resolveDispute per UNDER_REVIEW work item per the
+  // §2 map, then roll up. RESOLVED_CORRECTED→'upheld'→REVOKED;
+  // RESOLVED_UPHELD→'rejected'→VALID. Non-DISPUTED items → RESOLVED_NO_TRANSITION.
+  async disposePortalDispute(input: {
+    tenantId: string;
+    disputeId: string;
+    outcome: 'RESOLVED_CORRECTED' | 'RESOLVED_UPHELD';
+    note: string;
+    actor: string;
+    requestId: string;
+  }): Promise<PortalDisputeRow> {
+    const items = await this.repo.findTenantWorkItemsForDispute(input.tenantId, input.disputeId);
+    if (items.length === 0) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: input.requestId });
+    }
+    const tr15Outcome = PORTAL_DISPUTE_OUTCOME_MAP[input.outcome].tr15Outcome;
+    for (const wi of items) {
+      if (wi.status !== 'UNDER_REVIEW') continue; // only triaged items are disposable
+      const evidenceId = await this.resolveWorkItemEvidenceId(wi);
+      if (evidenceId === null) {
+        await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'backing evidence not resolvable');
+        continue;
+      }
+      try {
+        await this.resolveDispute(evidenceId, input.actor, tr15Outcome, input.note, input.requestId);
+        await this.repo.advancePortalWorkItemStatus(wi.id, input.outcome);
+      } catch (err) {
+        if (err instanceof AramoError && err.code === 'EVIDENCE_NOT_DISPUTED') {
+          await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'evidence not in DISPUTED state');
+        } else {
+          throw err;
+        }
+      }
+    }
+    return this.rollupParentDispute(input.disputeId, 'UNDER_REVIEW', input.note);
+  }
+
+  // The single reinvestigation extension (+15d, ruling 5), recorded when taken.
+  async extendPortalDisputeReinvestigation(input: {
+    tenantId: string;
+    disputeId: string;
+    now: Date;
+    requestId: string;
+  }): Promise<PortalDisputeRow> {
+    const items = await this.repo.findTenantWorkItemsForDispute(input.tenantId, input.disputeId);
+    if (items.length === 0) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: input.requestId });
+    }
+    const dispute = await this.repo.findPortalDisputeById(input.disputeId);
+    if (dispute === null) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: input.requestId });
+    }
+    if (dispute.reinvestigation_extended_at !== null) {
+      throw new AramoError(
+        'PORTAL_DISPUTE_EXTENSION_USED',
+        'the single reinvestigation extension has already been taken',
+        422,
+        { requestId: input.requestId },
+      );
+    }
+    const newDue = new Date(
+      dispute.reinvestigation_due_at.getTime() +
+        PORTAL_DISPUTE_SLA.reinvestigationExtensionDays * 86_400_000,
+    );
+    return this.repo.extendPortalDisputeReinvestigation(input.disputeId, newDue, input.now);
+  }
+
+  // The tenant worklist: distinct disputes with a work item in this tenant.
+  async listTenantDisputeWorkItems(
+    tenantId: string,
+    opts: { open: boolean; limit: number },
+  ): Promise<PortalDisputeWorkItemRow[]> {
+    const statuses = opts.open
+      ? PORTAL_DISPUTE_OPEN_STATES
+      : PORTAL_DISPUTE_WORK_ITEM_STATES;
+    return this.repo.findTenantDisputeWorkItems(tenantId, { statuses, limit: opts.limit });
+  }
+
+  // One dispute the tenant holds a work item for (membership via the work item).
+  async getTenantDispute(input: {
+    tenantId: string;
+    disputeId: string;
+    requestId: string;
+  }): Promise<{ dispute: PortalDisputeRow; workItems: PortalDisputeWorkItemRow[]; statements: PortalDisputeStatementRow[] }> {
+    const workItems = await this.repo.findTenantWorkItemsForDispute(input.tenantId, input.disputeId);
+    if (workItems.length === 0) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: input.requestId });
+    }
+    const dispute = await this.repo.findPortalDisputeById(input.disputeId);
+    if (dispute === null) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: input.requestId });
+    }
+    const statements = await this.repo.listPortalDisputeStatements(input.disputeId);
+    return { dispute, workItems, statements };
+  }
+
+  // Parent rollup: if EVERY work item (across all tenants) is terminal, set the
+  // parent to RESOLVED_CORRECTED (if any item corrected) else RESOLVED_UPHELD,
+  // stamping the resolution note. Otherwise the parent sits at `interim`.
+  private async rollupParentDispute(
+    disputeId: string,
+    interim: string,
+    resolutionNote?: string,
+  ): Promise<PortalDisputeRow> {
+    const all = await this.repo.findAllWorkItemsForDispute(disputeId);
+    const terminal = (s: string): boolean =>
+      !(PORTAL_DISPUTE_OPEN_STATES as readonly string[]).includes(s);
+    if (all.every((wi) => terminal(wi.status))) {
+      const parentStatus = all.some((wi) => wi.status === 'RESOLVED_CORRECTED')
+        ? 'RESOLVED_CORRECTED'
+        : 'RESOLVED_UPHELD';
+      return this.repo.setPortalDisputeParentStatus(disputeId, parentStatus, resolutionNote);
+    }
+    return this.repo.setPortalDisputeParentStatus(disputeId, interim, resolutionNote);
   }
 
   // Enumerate the caller's view items WITH the server-side fan-out (tenant/
@@ -2309,3 +2537,24 @@ function isoMinDate(dates: (Date | null)[]): string | null {
   }
   return best === null ? null : best.toISOString();
 }
+
+// ===========================================================================
+// Portal P3b — the Amendment v1.1 §2 outcome-mapping table, ENCODED. The tenant
+// disposition (disposePortalDispute) + candidate withdraw wire to TR-15 through
+// this map. The mandatory tripwire (portal-dispute-mapping.spec.ts) asserts all
+// three rows VERBATIM — the "upheld" inversion (candidate-visible = the ITEM
+// upheld; TR-15 = the DISPUTE upheld) goes red if a sense is flipped.
+// ===========================================================================
+export const PORTAL_DISPUTE_OUTCOME_MAP = {
+  // The candidate was right; the item was wrong → the DISPUTE is upheld → REVOKED.
+  RESOLVED_CORRECTED: { tr15Outcome: 'upheld' as const, itemEndState: 'REVOKED' as const },
+  // The item stands; the dispute is rejected → DISPUTE_RESOLVED → VALID.
+  RESOLVED_UPHELD: { tr15Outcome: 'rejected' as const, itemEndState: 'VALID' as const },
+  // The talent withdraws → treated as rejected → DISPUTE_RESOLVED → VALID.
+  WITHDRAWN: { tr15Outcome: 'rejected' as const, itemEndState: 'VALID' as const },
+} as const;
+
+// Pin A — the justification stamped on a withdrawal-fired resolveDispute so the
+// audit event reads as a talent withdrawal, never a resolver disposition.
+export const PORTAL_DISPUTE_WITHDRAWAL_JUSTIFICATION =
+  'talent withdrawal — dispute withdrawn by the portal principal';

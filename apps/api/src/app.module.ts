@@ -54,6 +54,7 @@ import { TalentAnchorProducerService } from './talent-anchor/talent-anchor-produ
 import { AdvisoryResolutionController } from './talent-identity/advisory-resolution.controller.js';
 import { ContradictionResolutionController } from './talent-identity/contradiction-resolution.controller.js';
 import { DisputeResolutionController } from './talent-identity/dispute-resolution.controller.js';
+import { PortalDisputeDispositionController } from './talent-identity/portal-dispute-disposition.controller.js';
 import { EmailVerificationController } from './talent-identity/email-verification.controller.js';
 import { EmailVerificationService } from './talent-identity/email-verification.service.js';
 import { ReferenceAttestationController } from './talent-identity/reference-attestation.controller.js';
@@ -431,6 +432,7 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // The one human arm on the contradiction machinery the detectors feed.
     ContradictionResolutionController,
     DisputeResolutionController,
+    PortalDisputeDispositionController,
     // TR-12 B1 (DDR §4) — the caseworker's worklist surface (list OPEN proposals /
     // dismiss). Reads at talent:read (capability ats — the dossier precedent); it
     // executes nothing (no ACT endpoint this slice — propose-never-dispose).

@@ -129,6 +129,8 @@ const TALENT_TRUST_MIGRATIONS = [
   '20260713120000_tr12_b1_verification_proposal',
   // Portal P3a — the dispute substrate (verification view + dispute routes).
   '20260715120000_p3a_portal_dispute_substrate',
+  // Portal P3b — the tenant-side disposition column (no_transition_reason).
+  '20260716120000_p3b_dispute_disposition',
 ].map((n) => resolve(ROOT, `libs/talent-trust/prisma/migrations/${n}/migration.sql`));
 const PORTAL_IDENTITY_MIGRATION = resolve(
   ROOT,

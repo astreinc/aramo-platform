@@ -82,6 +82,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   DISPUTE_OUTCOME_INVALID: 422,
   // Portal P3a — respond on a closed talent dispute.
   PORTAL_DISPUTE_NOT_OPEN: 422,
+  // Portal P3b — reinvestigation extension already used.
+  PORTAL_DISPUTE_EXTENSION_USED: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response
