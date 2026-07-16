@@ -623,6 +623,12 @@ const TALENT_TRUST_TR12_PROPOSAL_MIGRATION = resolve(
   ROOT,
   'libs/talent-trust/prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
 );
+// Portal P3a — the dispute substrate (PortalDispute + WorkItem + Statement); the
+// provider states for the verification/dispute pact interactions query it.
+const TALENT_TRUST_P3A_DISPUTE_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260715120000_p3a_portal_dispute_substrate/migration.sql',
+);
 const SAVED_LIST_INIT_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
@@ -2812,6 +2818,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_TRUST_TR8_VERIFIED_STALE_MIGRATION,
         // TR-12 B1 — the VerificationProposal table (regenerated client knows it).
         TALENT_TRUST_TR12_PROPOSAL_MIGRATION,
+        // Portal P3a — the dispute substrate tables (verification/dispute pacts).
+        TALENT_TRUST_P3A_DISPUTE_MIGRATION,
         // Portal P1 PR-2a — portal_identity (PortalUser) for the OPEN-4 chain.
         PORTAL_IDENTITY_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,
@@ -3030,6 +3038,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'portal:consent:read',
           // Portal P2 P2a — the candidate-actor consent write scope (grant/revoke).
           'portal:consent:write',
+          // Portal P3a — verification view + dispute rights.
+          'portal:verification:read',
+          'portal:dispute:read',
+          'portal:dispute:write',
         ],
       })
         .setProtectedHeader({ alg: ALG })

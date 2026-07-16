@@ -80,6 +80,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   EVIDENCE_NOT_DISPUTABLE: 422,
   EVIDENCE_NOT_DISPUTED: 422,
   DISPUTE_OUTCOME_INVALID: 422,
+  // Portal P3a — respond on a closed talent dispute.
+  PORTAL_DISPUTE_NOT_OPEN: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

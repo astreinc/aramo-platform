@@ -360,6 +360,10 @@ export const ERROR_CODES = [
   // 'rejected' (the lenient DTO admits any string; the service is the gate).
   // HTTP 422.
   'DISPUTE_OUTCOME_INVALID',
+  // Portal P3a — respond/act on a candidate PortalDispute that is no longer in a
+  // non-terminal state (RESOLVED_* / WITHDRAWN); a closed dispute takes no
+  // further talent statement. HTTP 422.
+  'PORTAL_DISPUTE_NOT_OPEN',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

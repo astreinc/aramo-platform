@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 57 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2 + 1 TR-4-B1 + 1 TR-4-B3 + 2 PC-Inc2-lifecycle + 1 TR-12-B1 + 3 TR-15-B1)', () => {
+  it('ERROR_CODES contains the 58 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2 + 1 TR-4-B1 + 1 TR-4-B3 + 2 PC-Inc2-lifecycle + 1 TR-12-B1 + 3 TR-15-B1 + 1 Portal-P3a)', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -106,6 +106,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'EVIDENCE_NOT_DISPUTABLE',
       'EVIDENCE_NOT_DISPUTED',
       'DISPUTE_OUTCOME_INVALID',
+      // Portal P3a — respond on a closed talent dispute (422).
+      'PORTAL_DISPUTE_NOT_OPEN',
     ]);
   });
 });

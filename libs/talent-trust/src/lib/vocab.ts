@@ -269,6 +269,48 @@ export const EVENT_TO_STATUS: Record<EvidenceEventType, EvidenceStatus> = {
   CONTRADICTION_RESOLVED: 'VALID',
 };
 
+// ---- Portal P3a dispute substrate (Directive §PR-1, rulings 2–4) -------------
+// The portal-actor (talent) dispute state machine, DB-CHECK closed vocab (D12).
+// Terminal: RESOLVED_CORRECTED | RESOLVED_UPHELD | WITHDRAWN. Amendment §2 pins
+// how each terminal maps to a TR-15 resolveDispute() disposition (WIRED IN P3b):
+//   RESOLVED_CORRECTED → resolveDispute('upheld')   → item REVOKED
+//   RESOLVED_UPHELD    → resolveDispute('rejected') → item DISPUTE_RESOLVED→VALID
+//   WITHDRAWN          → resolveDispute('rejected') (withdrawal recorded)
+export const PORTAL_DISPUTE_STATES = [
+  'OPEN',
+  'UNDER_REVIEW',
+  'RESOLVED_CORRECTED',
+  'RESOLVED_UPHELD',
+  'WITHDRAWN',
+] as const;
+export type PortalDisputeState = (typeof PORTAL_DISPUTE_STATES)[number];
+
+// The non-terminal states — the open-idempotency guard blocks a second dispute on
+// the same item only while an existing one is still in one of these.
+export const PORTAL_DISPUTE_OPEN_STATES = ['OPEN', 'UNDER_REVIEW'] as const;
+
+// The kinds of verification-view item a dispute may target (ruling 2). Surrogates
+// are minted over SubjectAnchor.id (ANCHOR) / VerificationRequest.id (VERIFICATION).
+export const PORTAL_DISPUTE_ITEM_TYPES = ['ANCHOR', 'VERIFICATION'] as const;
+export type PortalDisputeItemType = (typeof PORTAL_DISPUTE_ITEM_TYPES)[number];
+
+// Statement author — the talent only, in P3a (P3b may add a tenant note axis).
+export const PORTAL_DISPUTE_STATEMENT_AUTHORS = ['TALENT'] as const;
+export type PortalDisputeStatementAuthor = (typeof PORTAL_DISPUTE_STATEMENT_AUTHORS)[number];
+
+// ---- Portal dispute SLA clocks (ruling 5) — ENGINE CONSTANTS ----------------
+// Recorded as due-timestamps on the dispute row at open; a P3b report-only
+// detector derives breach by comparing now() to these. NEVER enforcement
+// automation (no auto-escalation, no auto-resolution). Days from opened_at.
+export const PORTAL_DISPUTE_SLA = {
+  triageDueDays: 3,
+  summaryDueDays: 5,
+  reinvestigationDueDays: 30,
+  reinvestigationExtensionDays: 15, // the single extendable-once grant (P3b)
+  ccpaInitialDays: 45, // CCPA 45+45 pair, where applicable
+  ccpaExtensionDays: 45,
+} as const;
+
 // ---- OPEN-6: the per-dimension authoritative-assertion-type registry --------
 // TR-3 (DDR §3) — a PURE engine map (the EVENT_TO_STATUS pattern): the closed
 // set of assertion_types that may LIFT a dimension into the top two bands. It

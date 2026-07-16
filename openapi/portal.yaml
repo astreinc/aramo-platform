@@ -284,6 +284,210 @@ paths:
       security:
         - BearerAuth: []
 
+  # Portal P3a — talent verification view + dispute rights. The verification
+  # view is the FIRST TRUST-CLASS surface: its schemas join TRUST_CLASS_SCHEMAS
+  # (ci/scripts/verify-portal-refusal.ts) in this same commit. Talent-level
+  # (aggregated across the OPEN-4 chain), NOT per-record.
+  /v1/portal/verifications:
+    get:
+      operationId: getPortalVerifications
+      summary: The caller's verifications across their chain (trust-class).
+      description: |
+        Aggregates the talent's verifications across every subject in their
+        OPEN-4 chain, deduped by anchor identity, rendered as kind + status +
+        dates ONLY — the "verified on Aramo" form. NO verifier, NO tenant
+        attribution, NO strength/tier numbers. A caller with no cluster gets an
+        EMPTY list (200).
+      responses:
+        '200':
+          description: The caller's verification items (possibly empty).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalVerifications'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
+  /v1/portal/disputes:
+    get:
+      operationId: listPortalDisputes
+      summary: The caller's disputes (cluster-scoped).
+      description: |
+        The talent's own disputes, newest-first. Cluster-scoped — never another
+        caller's disputes. Empty list (200) for a caller with no disputes.
+      responses:
+        '200':
+          description: The caller's disputes (possibly empty).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalDisputeList'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+    post:
+      operationId: openPortalDispute
+      summary: Open a dispute against a verification-view item.
+      description: |
+        The talent disputes an item shown on their verification view,
+        identified by its opaque item id (a server-minted surrogate — never a raw
+        PK / PII). A free-text statement is captured. Fans out to N tenant-scoped
+        work items server-side (never on the wire). One-open-per-item: a still-
+        open dispute on the same item is returned unchanged. An item id not in
+        the caller's current view is a UNIFORM 404.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalDisputeOpenRequest'
+      responses:
+        '201':
+          description: The dispute was opened (or the existing open one returned).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalDisputeMutation'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/portal/disputes/{id}:
+    get:
+      operationId: getPortalDispute
+      summary: One dispute the caller owns.
+      description: |
+        A dispute id not in the caller's cluster (or unknown/malformed) is a
+        UNIFORM 404 — no reviewer/tenant/queue identities are ever revealed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The dispute detail (status + resolution note + statements).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalDisputeDetail'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/portal/disputes/{id}/respond:
+    post:
+      operationId: respondPortalDispute
+      summary: Append a talent statement to an open dispute.
+      description: |
+        Appends a free-text statement while the dispute is non-terminal. Replaying
+        the identical latest statement is an idempotent no-op. A closed dispute is
+        422 PORTAL_DISPUTE_NOT_OPEN; an out-of-chain id is a UNIFORM 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalDisputeRespondRequest'
+      responses:
+        '200':
+          description: The statement was appended (idempotent on identical replay).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalDisputeMutation'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
+  /v1/portal/disputes/{id}/withdraw:
+    post:
+      operationId: withdrawPortalDispute
+      summary: Withdraw a dispute (terminal; idempotent).
+      description: |
+        The talent withdraws their dispute (terminal). Already-terminal is an
+        idempotent no-op. An out-of-chain/unknown/malformed id is a UNIFORM 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The dispute is WITHDRAWN (idempotent if already terminal).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalDisputeMutation'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -454,3 +658,158 @@ components:
         text:
           type: string
           description: The exact rendered consent text for this scope.
+
+    # ── Portal P3a — verification view + dispute schemas ──
+    # The verification-view schemas are the trust-class wall's FIRST live members
+    # (registered in ci/scripts/verify-portal-refusal.ts THIS commit). They carry
+    # NO tenant/verifier/number field — the origin-secrecy JOIN is structurally
+    # impossible. The dispute response schemas are armed the same way.
+    PortalVerifications:
+      type: object
+      additionalProperties: false
+      required:
+        - verifications
+      properties:
+        verifications:
+          type: array
+          description: The caller's verification items (possibly empty).
+          items:
+            $ref: '#/components/schemas/PortalVerificationItem'
+
+    PortalVerificationItem:
+      type: object
+      additionalProperties: false
+      required:
+        - item_id
+        - kind
+        - status
+        - verified_at
+        - first_seen_at
+      properties:
+        item_id:
+          type: string
+          description: |
+            The opaque, per-talent item surrogate (a server-minted HMAC digest,
+            never a raw PK / PII). Submitted back to open a dispute.
+        kind:
+          type: string
+          description: The verification kind (e.g. EMAIL | PHONE | PROFILE_URL).
+        status:
+          type: string
+          enum:
+            - CONFIRMED
+            - PENDING
+            - NONE
+          description: The verification status. No tier/strength/number.
+        verified_at:
+          type: [string, 'null']
+          format: date-time
+        first_seen_at:
+          type: [string, 'null']
+          format: date-time
+
+    PortalDisputeOpenRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - item_id
+        - statement
+      properties:
+        item_id:
+          type: string
+          description: The opaque verification-view item id (64-char hex).
+        statement:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: The talent's free-text statement (no reason taxonomy).
+
+    PortalDisputeRespondRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - statement
+      properties:
+        statement:
+          type: string
+          minLength: 1
+          maxLength: 4000
+
+    PortalDisputeMutation:
+      type: object
+      additionalProperties: false
+      required:
+        - dispute_id
+        - status
+        - opened_at
+      properties:
+        dispute_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - OPEN
+            - UNDER_REVIEW
+            - RESOLVED_CORRECTED
+            - RESOLVED_UPHELD
+            - WITHDRAWN
+        opened_at:
+          type: string
+          format: date-time
+
+    PortalDisputeStatement:
+      type: object
+      additionalProperties: false
+      required:
+        - statement
+        - created_at
+      properties:
+        statement:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    PortalDisputeDetail:
+      type: object
+      additionalProperties: false
+      required:
+        - dispute_id
+        - status
+        - opened_at
+        - resolution_note
+        - statements
+      properties:
+        dispute_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - OPEN
+            - UNDER_REVIEW
+            - RESOLVED_CORRECTED
+            - RESOLVED_UPHELD
+            - WITHDRAWN
+        opened_at:
+          type: string
+          format: date-time
+        resolution_note:
+          type: [string, 'null']
+          description: Plain-language resolution note, set on close (P3b). null while open.
+        statements:
+          type: array
+          items:
+            $ref: '#/components/schemas/PortalDisputeStatement'
+
+    PortalDisputeList:
+      type: object
+      additionalProperties: false
+      required:
+        - disputes
+      properties:
+        disputes:
+          type: array
+          items:
+            $ref: '#/components/schemas/PortalDisputeMutation'

@@ -25,6 +25,7 @@ import type {
   ResolutionSubjectRefType,
   ResolutionSubjectStatus,
 } from './vocab.js';
+import { PORTAL_DISPUTE_OPEN_STATES } from './vocab.js';
 
 // TR-2a-B2 (DDR-2 §2 pre-step) — the outcome of following merged_into pointers
 // to a subject's ACTIVE fixpoint. CYCLE/LIMIT are anomalies → the resolver
@@ -2229,4 +2230,204 @@ export class TalentTrustRepository {
       },
     });
   }
+
+  // ===========================================================================
+  // Portal P3a — dispute persistence (talent_trust). The talent-visible
+  // PortalDispute (cluster-keyed) + the tenant-scoped PortalDisputeWorkItem
+  // fan-out (subject-keyed, advanced by P3b) + the append-only
+  // PortalDisputeStatement. P3a fires NO TR-15 transition — these tables are the
+  // dispute intake; the DISPUTED/DISPUTE_RESOLVED wiring is P3b (Amendment v1.1).
+  // ===========================================================================
+
+  // One-open-per-item idempotency read: is there a NON-TERMINAL dispute for this
+  // (cluster, item)? A closed dispute does not block a fresh objection.
+  async findOpenPortalDisputeForItem(
+    clusterId: string,
+    itemType: string,
+    itemIdDigest: string,
+  ): Promise<PortalDisputeRow | null> {
+    const row = await this.prisma.portalDispute.findFirst({
+      where: {
+        cluster_id: clusterId,
+        item_type: itemType,
+        item_id_digest: itemIdDigest,
+        status: { in: [...PORTAL_DISPUTE_OPEN_STATES] },
+      },
+    });
+    return (row as PortalDisputeRow | null) ?? null;
+  }
+
+  // Open a dispute: the talent-visible parent + N subject-scoped work items +
+  // the first talent statement, atomically.
+  async createPortalDispute(input: {
+    cluster_id: string;
+    item_type: string;
+    item_id_digest: string;
+    triage_due_at: Date;
+    summary_due_at: Date;
+    reinvestigation_due_at: Date;
+    ccpa_due_at: Date | null;
+    ccpa_extended_due_at: Date | null;
+    work_items: { tenant_id: string; subject_id: string; underlying_ref_id: string }[];
+    statement: string;
+    statement_hash: string;
+  }): Promise<PortalDisputeRow> {
+    const disputeId = uuidv7();
+    return this.prisma.$transaction(async (tx) => {
+      const dispute = await tx.portalDispute.create({
+        data: {
+          id: disputeId,
+          cluster_id: input.cluster_id,
+          item_type: input.item_type,
+          item_id_digest: input.item_id_digest,
+          // status defaults to 'OPEN'; opened_at/created_at/updated_at default.
+          triage_due_at: input.triage_due_at,
+          summary_due_at: input.summary_due_at,
+          reinvestigation_due_at: input.reinvestigation_due_at,
+          ccpa_due_at: input.ccpa_due_at,
+          ccpa_extended_due_at: input.ccpa_extended_due_at,
+        },
+      });
+      for (const wi of input.work_items) {
+        await tx.portalDisputeWorkItem.create({
+          data: {
+            id: uuidv7(),
+            dispute_id: disputeId,
+            tenant_id: wi.tenant_id,
+            subject_id: wi.subject_id,
+            item_type: input.item_type,
+            underlying_ref_id: wi.underlying_ref_id,
+            // status defaults to 'OPEN'.
+          },
+        });
+      }
+      await tx.portalDisputeStatement.create({
+        data: {
+          id: uuidv7(),
+          dispute_id: disputeId,
+          author: 'TALENT',
+          statement: input.statement,
+          statement_hash: input.statement_hash,
+          // channel defaults to 'portal'.
+        },
+      });
+      return dispute as PortalDisputeRow;
+    });
+  }
+
+  // A single dispute the caller owns (cluster-scoped — the uniform-404 gate).
+  async findPortalDisputeInCluster(
+    clusterId: string,
+    disputeId: string,
+  ): Promise<PortalDisputeRow | null> {
+    const row = await this.prisma.portalDispute.findFirst({
+      where: { id: disputeId, cluster_id: clusterId },
+    });
+    return (row as PortalDisputeRow | null) ?? null;
+  }
+
+  // The caller's disputes, newest-first, optionally status-filtered. Bounded;
+  // per-talent volume is small (no cursor in P3a).
+  async listPortalDisputesByCluster(
+    clusterId: string,
+    opts: { status?: string; limit: number },
+  ): Promise<PortalDisputeRow[]> {
+    const rows = await this.prisma.portalDispute.findMany({
+      where: {
+        cluster_id: clusterId,
+        ...(opts.status === undefined ? {} : { status: opts.status }),
+      },
+      orderBy: [{ opened_at: 'desc' }, { id: 'desc' }],
+      take: opts.limit,
+    });
+    return rows as PortalDisputeRow[];
+  }
+
+  async listPortalDisputeStatements(
+    disputeId: string,
+  ): Promise<PortalDisputeStatementRow[]> {
+    const rows = await this.prisma.portalDisputeStatement.findMany({
+      where: { dispute_id: disputeId },
+      orderBy: { created_at: 'asc' },
+    });
+    return rows as PortalDisputeStatementRow[];
+  }
+
+  // Append a talent statement to an existing dispute (respond). Idempotency +
+  // open-state guard live in the service.
+  async appendPortalDisputeStatement(
+    disputeId: string,
+    statement: string,
+    statementHash: string,
+  ): Promise<void> {
+    await this.prisma.portalDisputeStatement.create({
+      data: {
+        id: uuidv7(),
+        dispute_id: disputeId,
+        author: 'TALENT',
+        statement,
+        statement_hash: statementHash,
+      },
+    });
+  }
+
+  // Withdraw: terminal talent state. Sets WITHDRAWN + withdrawn_at on the
+  // parent AND cascades the terminal state to the open work items (so the tenant
+  // worklist drops them). NO TR-15 transition (P3b owns trust-item state).
+  async withdrawPortalDispute(disputeId: string, now: Date): Promise<PortalDisputeRow> {
+    return this.prisma.$transaction(async (tx) => {
+      const dispute = await tx.portalDispute.update({
+        where: { id: disputeId },
+        data: { status: 'WITHDRAWN', withdrawn_at: now },
+      });
+      await tx.portalDisputeWorkItem.updateMany({
+        where: { dispute_id: disputeId, status: { in: [...PORTAL_DISPUTE_OPEN_STATES] } },
+        data: { status: 'WITHDRAWN' },
+      });
+      return dispute as PortalDisputeRow;
+    });
+  }
+}
+
+// Portal P3a — dispute row shapes (server-side; the wire projection strips the
+// tenant/subject/underlying identifiers per the Q4 forbidden list).
+export interface PortalDisputeRow {
+  id: string;
+  cluster_id: string;
+  item_type: string;
+  item_id_digest: string;
+  status: string;
+  resolution_note: string | null;
+  opened_at: Date;
+  triage_due_at: Date;
+  summary_due_at: Date;
+  reinvestigation_due_at: Date;
+  reinvestigation_extended_at: Date | null;
+  ccpa_due_at: Date | null;
+  ccpa_extended_due_at: Date | null;
+  withdrawn_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface PortalDisputeStatementRow {
+  id: string;
+  dispute_id: string;
+  author: string;
+  statement: string;
+  statement_hash: string;
+  channel: string;
+  created_at: Date;
+}
+
+export interface PortalDisputeWorkItemRow {
+  id: string;
+  dispute_id: string;
+  tenant_id: string;
+  subject_id: string;
+  item_type: string;
+  underlying_ref_id: string;
+  status: string;
+  created_at: Date;
+  updated_at: Date;
 }

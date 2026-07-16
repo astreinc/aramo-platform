@@ -5,6 +5,16 @@
 export { TalentTrustModule } from './lib/talent-trust.module.js';
 export { TalentTrustService } from './lib/talent-trust.service.js';
 export { TalentTrustRepository } from './lib/talent-trust.repository.js';
+// Portal P3a — verification-view + dispute wire types (consumed by libs/portal).
+export {
+  VERIFICATION_VIEW_FORBIDDEN_FIELDS,
+  type PortalCallerSubject,
+  type PortalVerificationItem,
+} from './lib/talent-trust.service.js';
+export type {
+  PortalDisputeRow,
+  PortalDisputeStatementRow,
+} from './lib/talent-trust.repository.js';
 export { SubjectMatcherService } from './lib/subject-matcher.service.js';
 export { SubjectResolutionService } from './lib/subject-resolution.service.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';

@@ -1644,6 +1644,7 @@ components:
         - EVIDENCE_NOT_DISPUTABLE
         - EVIDENCE_NOT_DISPUTED
         - DISPUTE_OUTCOME_INVALID
+        - PORTAL_DISPUTE_NOT_OPEN
 
     ErrorObject:
       type: object
