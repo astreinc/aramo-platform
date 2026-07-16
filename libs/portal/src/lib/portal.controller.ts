@@ -445,6 +445,7 @@ export class PortalController {
     const dispute = await this.trustService.withdrawPortalDispute({
       clusterId,
       disputeId: id,
+      actor: sub, // Pin A — the portal principal on the withdrawal-fired resolve
       now: new Date(),
       requestId,
     });

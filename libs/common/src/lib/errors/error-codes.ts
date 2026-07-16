@@ -364,6 +364,9 @@ export const ERROR_CODES = [
   // non-terminal state (RESOLVED_* / WITHDRAWN); a closed dispute takes no
   // further talent statement. HTTP 422.
   'PORTAL_DISPUTE_NOT_OPEN',
+  // Portal P3b — the single reinvestigation extension (+15d) was already taken.
+  // HTTP 422.
+  'PORTAL_DISPUTE_EXTENSION_USED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

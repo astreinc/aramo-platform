@@ -1708,13 +1708,18 @@ components:
     DossierVerificationItem:
       type: object
       additionalProperties: false
-      required: [anchor_kind, status]
+      required: [anchor_kind, status, disputed]
       properties:
         anchor_kind:
           type: string
         status:
           type: string
           enum: [NONE, PENDING, CONFIRMED, EXPIRED]
+        disputed:
+          type: boolean
+          description: >-
+            Portal P3b (ruling 4) — derived: the anchor's backing evidence is
+            currently DISPUTED. Surfaced on the tenant dossier consumption read.
     DossierMergeItem:
       type: object
       additionalProperties: false

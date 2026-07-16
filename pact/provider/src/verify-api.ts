@@ -629,6 +629,12 @@ const TALENT_TRUST_P3A_DISPUTE_MIGRATION = resolve(
   ROOT,
   'libs/talent-trust/prisma/migrations/20260715120000_p3a_portal_dispute_substrate/migration.sql',
 );
+// Portal P3b — the tenant-side disposition column (no_transition_reason) the
+// regenerated client SELECTs; without it the dispute provider states 500.
+const TALENT_TRUST_P3B_DISPUTE_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20260716120000_p3b_dispute_disposition/migration.sql',
+);
 const SAVED_LIST_INIT_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
@@ -2820,6 +2826,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_TRUST_TR12_PROPOSAL_MIGRATION,
         // Portal P3a — the dispute substrate tables (verification/dispute pacts).
         TALENT_TRUST_P3A_DISPUTE_MIGRATION,
+        TALENT_TRUST_P3B_DISPUTE_MIGRATION,
         // Portal P1 PR-2a — portal_identity (PortalUser) for the OPEN-4 chain.
         PORTAL_IDENTITY_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,

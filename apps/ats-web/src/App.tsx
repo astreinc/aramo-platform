@@ -17,6 +17,7 @@ import { ContactEditView } from './contacts/ContactEditView';
 import { ContactsListView } from './contacts/ContactsListView';
 import { EngagementDetailView } from './engagement/EngagementDetailView';
 import { IdentityAdvisoriesView } from './identity-advisories/IdentityAdvisoriesView';
+import { PortalDisputesView } from './portal-disputes/PortalDisputesView';
 import { TrustProposalsView } from './trust-proposals/TrustProposalsView';
 import { IndexRoute } from './dashboard/IndexRoute';
 import { InvitationAcceptPage } from './routes/InvitationAcceptPage';
@@ -220,6 +221,19 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <IdentityAdvisoriesView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* Portal P3b — the tenant dispute-disposition worklist.
+                        identity:resolve. */}
+                    <Route
+                      path="identity/portal-disputes"
+                      element={
+                        <RouteGuard
+                          requireScope="identity:resolve"
+                          sessionStateOverride={state}
+                        >
+                          <PortalDisputesView />
                         </RouteGuard>
                       }
                     />

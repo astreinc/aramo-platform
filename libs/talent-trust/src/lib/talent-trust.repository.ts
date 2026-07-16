@@ -2359,12 +2359,13 @@ export class TalentTrustRepository {
     disputeId: string,
     statement: string,
     statementHash: string,
+    author = 'TALENT',
   ): Promise<void> {
     await this.prisma.portalDisputeStatement.create({
       data: {
         id: uuidv7(),
         dispute_id: disputeId,
-        author: 'TALENT',
+        author,
         statement,
         statement_hash: statementHash,
       },
@@ -2386,6 +2387,132 @@ export class TalentTrustRepository {
       });
       return dispute as PortalDisputeRow;
     });
+  }
+
+  // ===========================================================================
+  // Portal P3b — tenant disposition reads/writes (Amendment v1.2). The tenant
+  // acts on the subject-keyed PortalDisputeWorkItem (their view of a dispute);
+  // the parent PortalDispute is rolled up. VR→evidence bridge reads below.
+  // ===========================================================================
+
+  // The VR→evidence bridge (Amendment v1.2 "Bridge ratified"): a VERIFICATION
+  // work item's underlying_ref_id is a VerificationRequest.id; the confirming
+  // evidence is on the PLATFORM_VERIFIED SubjectAnchor for its (subject, kind,
+  // value). This is the missing by-id read.
+  async findVerificationRequestById(id: string): Promise<VerificationRequestRow | null> {
+    const row = await this.prisma.verificationRequest.findUnique({ where: { id } });
+    return (row as VerificationRequestRow | null) ?? null;
+  }
+
+  // The parent dispute by id (tenant membership is proven via the caller's work
+  // item — the parent is cluster-keyed, not tenant-keyed).
+  async findPortalDisputeById(disputeId: string): Promise<PortalDisputeRow | null> {
+    const row = await this.prisma.portalDispute.findUnique({ where: { id: disputeId } });
+    return (row as PortalDisputeRow | null) ?? null;
+  }
+
+  // The tenant worklist: the tenant's work items in the given statuses,
+  // newest-first (uses @@index([tenant_id, status])). Bounded.
+  async findTenantDisputeWorkItems(
+    tenantId: string,
+    opts: { statuses: readonly string[]; limit: number },
+  ): Promise<PortalDisputeWorkItemRow[]> {
+    const rows = await this.prisma.portalDisputeWorkItem.findMany({
+      where: { tenant_id: tenantId, status: { in: [...opts.statuses] } },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: opts.limit,
+    });
+    return rows as PortalDisputeWorkItemRow[];
+  }
+
+  async findPortalWorkItemById(id: string): Promise<PortalDisputeWorkItemRow | null> {
+    const row = await this.prisma.portalDisputeWorkItem.findUnique({ where: { id } });
+    return (row as PortalDisputeWorkItemRow | null) ?? null;
+  }
+
+  // A tenant's work items for one dispute (the disposition fan-out unit — W-3).
+  async findTenantWorkItemsForDispute(
+    tenantId: string,
+    disputeId: string,
+  ): Promise<PortalDisputeWorkItemRow[]> {
+    const rows = await this.prisma.portalDisputeWorkItem.findMany({
+      where: { tenant_id: tenantId, dispute_id: disputeId },
+    });
+    return rows as PortalDisputeWorkItemRow[];
+  }
+
+  // All work items of a dispute (across tenants) — for the parent-rollup check.
+  async findAllWorkItemsForDispute(disputeId: string): Promise<PortalDisputeWorkItemRow[]> {
+    const rows = await this.prisma.portalDisputeWorkItem.findMany({
+      where: { dispute_id: disputeId },
+    });
+    return rows as PortalDisputeWorkItemRow[];
+  }
+
+  // Advance a work item's terminal/interim status (+ Pin B skip reason).
+  async advancePortalWorkItemStatus(
+    id: string,
+    status: string,
+    noTransitionReason?: string,
+  ): Promise<void> {
+    await this.prisma.portalDisputeWorkItem.update({
+      where: { id },
+      data: {
+        status,
+        ...(noTransitionReason === undefined ? {} : { no_transition_reason: noTransitionReason }),
+      },
+    });
+  }
+
+  // Set the parent dispute status (+ resolution note on terminal rollup).
+  async setPortalDisputeParentStatus(
+    disputeId: string,
+    status: string,
+    resolutionNote?: string,
+  ): Promise<PortalDisputeRow> {
+    const row = await this.prisma.portalDispute.update({
+      where: { id: disputeId },
+      data: {
+        status,
+        ...(resolutionNote === undefined ? {} : { resolution_note: resolutionNote }),
+      },
+    });
+    return row as PortalDisputeRow;
+  }
+
+  // Record the single reinvestigation extension (+15d, ruling 5) — stamps
+  // reinvestigation_extended_at and pushes reinvestigation_due_at out.
+  async extendPortalDisputeReinvestigation(
+    disputeId: string,
+    newDueAt: Date,
+    extendedAt: Date,
+  ): Promise<PortalDisputeRow> {
+    const row = await this.prisma.portalDispute.update({
+      where: { id: disputeId },
+      data: { reinvestigation_due_at: newDueAt, reinvestigation_extended_at: extendedAt },
+    });
+    return row as PortalDisputeRow;
+  }
+
+  // Portal P3b (ruling 5 SLA detector, TR-6 host) — non-terminal disputes past
+  // ANY SLA due-timestamp. REPORT-ONLY (the detector logs + counts; humans act).
+  async findOverduePortalDisputes(
+    now: Date,
+  ): Promise<{ id: string; cluster_id: string }[]> {
+    const rows = await this.prisma.portalDispute.findMany({
+      where: {
+        status: { in: [...PORTAL_DISPUTE_OPEN_STATES] },
+        OR: [
+          { triage_due_at: { lt: now } },
+          { summary_due_at: { lt: now } },
+          { reinvestigation_due_at: { lt: now } },
+          { ccpa_due_at: { lt: now } },
+          { ccpa_extended_due_at: { lt: now } },
+        ],
+      },
+      select: { id: true, cluster_id: true },
+    });
+    return rows;
   }
 }
 
@@ -2428,6 +2555,7 @@ export interface PortalDisputeWorkItemRow {
   item_type: string;
   underlying_ref_id: string;
   status: string;
+  no_transition_reason: string | null;
   created_at: Date;
   updated_at: Date;
 }
