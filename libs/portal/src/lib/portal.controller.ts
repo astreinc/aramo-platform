@@ -7,13 +7,20 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
-import { ConsentService, type TalentConsentStateResponseDto } from '@aramo/consent';
+import {
+  ConsentService,
+  type ConsentHistoryResponseDto,
+  type PortalConsentTextResponseDto,
+  type TalentConsentStateResponseDto,
+} from '@aramo/consent';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
+import { TenantService } from '@aramo/identity';
 import { TalentRecordService } from '@aramo/talent-record';
 
 import {
@@ -60,7 +67,18 @@ export class PortalController {
     private readonly resolver: PortalTalentResolverService,
     private readonly talentRecordService: TalentRecordService,
     private readonly consentService: ConsentService,
+    // Portal P2 P2b — tenant_name enrichment (scope:ats → scope:shared, legal).
+    private readonly tenantService: TenantService,
   ) {}
+
+  // Portal P2 P2b — resolve the engagement counterparty's human name. The
+  // always-present workspace name (Tenant.name); null (defensive) only if the
+  // tenant row vanished. One indexed read; the callers already loop/await
+  // per-record service calls, so this adds no new N+1 shape.
+  private async resolveTenantName(tenantId: string): Promise<string | null> {
+    const tenant = await this.tenantService.getTenantById(tenantId);
+    return tenant?.name ?? null;
+  }
 
   // GET /v1/portal/records — the portal user's records across tenants.
   @Get('records')
@@ -83,6 +101,7 @@ export class PortalController {
       records.push({
         talent_id: projection.talent_id,
         tenant_id: projection.tenant_id,
+        tenant_name: await this.resolveTenantName(projection.tenant_id),
         tenant_status: projection.tenant_status,
         source_channel: projection.source_channel,
         created_at: projection.created_at,
@@ -111,6 +130,7 @@ export class PortalController {
     return {
       talent_id: projection.talent_id,
       tenant_id: projection.tenant_id,
+      tenant_name: await this.resolveTenantName(projection.tenant_id),
       tenant_status: projection.tenant_status,
       source_channel: projection.source_channel,
       created_at: projection.created_at,
@@ -138,6 +158,57 @@ export class PortalController {
       { ...authContext, tenant_id: member.tenant_id },
       requestId,
     );
+  }
+
+  // GET /v1/portal/records/:id/consent/text — the EXACT versioned consent text
+  // (Portal P2 P2b §PR-2) the portal user must see before granting. Rendered by
+  // the consent lib (same renderer that hashes the D7 preimage), named by the
+  // record's tenant_id. All 5 scopes; the UI shows the one being granted. A
+  // read (portal:consent:read); membership through the chain (uniform 404).
+  @Get('records/:id/consent/text')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('portal:consent:read')
+  async getRecordConsentText(
+    @Param('id') id: string,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PortalConsentTextResponseDto> {
+    this.assertConsumerIsPortal(authContext, requestId);
+    const sub = this.assertSubIsUuid(authContext, requestId);
+    const member = await this.resolveMemberOr404(sub, id, requestId);
+    // The consent text names the recipient by the RECORD's tenant (the chain
+    // resolved it), not the portal session's platform sentinel.
+    return this.consentService.getPortalConsentTexts(member.tenant_id);
+  }
+
+  // GET /v1/portal/records/:id/consent/history — the append-only consent history
+  // (Portal P2 P2b §PR-2). Delegates to the consent lib's engagement-class
+  // ConsentHistoryEvent projection (5 closed fields, no actor/trust leak).
+  // Query params (scope, limit, cursor) optional; the service parses + clamps
+  // them (decode errors → 400). A read; membership through the chain (uniform
+  // 404); tenant rescoped to the record's tenant.
+  @Get('records/:id/consent/history')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('portal:consent:read')
+  async getRecordConsentHistory(
+    @Param('id') id: string,
+    @Query('scope') scopeRaw: string | undefined,
+    @Query('limit') limitRaw: string | undefined,
+    @Query('cursor') cursorRaw: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ConsentHistoryResponseDto> {
+    this.assertConsumerIsPortal(authContext, requestId);
+    const sub = this.assertSubIsUuid(authContext, requestId);
+    const member = await this.resolveMemberOr404(sub, id, requestId);
+    return this.consentService.getPortalHistory({
+      talent_record_id: member.record_id,
+      scopeRaw,
+      limitRaw,
+      cursorRaw,
+      authContext: { ...authContext, tenant_id: member.tenant_id },
+      requestId,
+    });
   }
 
   // POST /v1/portal/records/:id/consent/grant — portal-actor consent grant

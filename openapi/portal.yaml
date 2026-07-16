@@ -100,6 +100,97 @@ paths:
       security:
         - BearerAuth: []
 
+  # Portal P2 P2b — the EXACT versioned consent text (the D7 hash preimage) the
+  # portal user must see before granting. Rendered server-side (the wall blocks
+  # importing the renderer into portal-web); the UI displays the bytes verbatim.
+  /v1/portal/records/{id}/consent/text:
+    get:
+      operationId: getPortalRecordConsentText
+      summary: The current versioned consent text for each scope on a record.
+      description: |
+        Returns the current consent-text version and the rendered text for all 5
+        scopes, named by the record's tenant. The grant flow displays the text
+        for the scope being granted; the version is echoed back on grant.
+        Unreachable/unknown/malformed id is a UNIFORM 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The current consent text per scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalConsentText'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  # Portal P2 P2b — the append-only consent history for the management UI. Reuses
+  # the engagement-class ConsentHistoryResponse (5 closed event fields, no
+  # actor/trust leak). Keyset-paginated (scope/limit/cursor optional).
+  /v1/portal/records/{id}/consent/history:
+    get:
+      operationId: getPortalRecordConsentHistory
+      summary: The append-only consent event history for a record.
+      description: |
+        A keyset-paginated page of consent ledger events (granted | revoked |
+        expired) for a record reachable through the caller's chain, scoped to
+        that record's tenant. Engagement-class fields only. Unreachable/unknown/
+        malformed id is a UNIFORM 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: scope
+          in: query
+          required: false
+          schema:
+            $ref: 'common.yaml#/components/schemas/ConsentScope'
+        - name: limit
+          in: query
+          required: false
+          description: Page size, default 50, max 200.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque keyset cursor from a prior page's next_cursor.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A page of consent history events (possibly empty).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ConsentHistoryResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
   # Portal P2 P2a — portal-actor consent grant/revoke. Engagement-class
   # (the recipient tenant is named); NOT trust-class. Membership through the
   # OPEN-4 chain first — an unreachable/unknown/malformed id is a UNIFORM 404.
@@ -214,6 +305,7 @@ components:
       required:
         - talent_id
         - tenant_id
+        - tenant_name
         - tenant_status
         - source_channel
         - created_at
@@ -226,6 +318,15 @@ components:
           type: string
           format: uuid
           description: The tenant context (from JWT tenant_id claim).
+        tenant_name:
+          # Portal P2 P2b — the engagement counterparty NAMED (P-R5; the
+          # P1-deferred MAY is now MUST). The always-present workspace name;
+          # null only if the tenant row vanished (defensive). 3.1 nullable idiom
+          # (type array), NOT `nullable:true` (redocly struct rule).
+          type: [string, 'null']
+          description: |
+            The human-readable name of the tenant that holds this record. null
+            only if the tenant row is missing (defensive).
         tenant_status:
           type: string
           description: |
@@ -318,3 +419,38 @@ components:
           format: date-time
           description: |
             The grant's 12-month term expiry (read-derived). null on revoke.
+
+    # Portal P2 P2b — the versioned consent text per scope (closed, engagement-
+    # class). Declared LOCALLY so verify-portal-refusal.ts walks it. `text` names
+    # the recipient by tenant_id (the canonical legal clause); no R10/trust field.
+    # NOT in TRUST_CLASS_SCHEMAS.
+    PortalConsentText:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - texts
+      properties:
+        version:
+          type: string
+          description: |
+            The current consent-text version shown to the portal user; echoed
+            back on grant (the version whose hash the ledger records).
+        texts:
+          type: array
+          description: One rendered consent-text entry per scope (all 5).
+          items:
+            $ref: '#/components/schemas/PortalConsentTextEntry'
+
+    PortalConsentTextEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - scope
+        - text
+      properties:
+        scope:
+          $ref: 'common.yaml#/components/schemas/ConsentScope'
+        text:
+          type: string
+          description: The exact rendered consent text for this scope.

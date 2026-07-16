@@ -14,10 +14,28 @@ import { RecordDetailView } from './RecordDetailView';
 const PROFILE: PortalRecordProfile = {
   talent_id: 'a1a1a1a1-a1a1-7a1a-8a1a-a1a1a1a1a1a1',
   tenant_id: '11111111-1111-7111-8111-111111111111',
+  tenant_name: 'Acme Corp',
   tenant_status: 'active',
   source_channel: 'self_signup',
   created_at: '2026-05-01T12:00:00.000Z',
 };
+
+// P2b — the profile view now mounts ConsentPanel, which reads consent state +
+// history on mount. Stub those so the profile-focused assertions are isolated.
+function stubConsentReads() {
+  vi.spyOn(portalApi, 'getRecordConsent').mockResolvedValue({
+    talent_record_id: PROFILE.talent_id,
+    tenant_id: PROFILE.tenant_id,
+    is_anonymized: false,
+    computed_at: '2026-07-15T00:00:00.000Z',
+    scopes: [],
+  });
+  vi.spyOn(portalApi, 'getConsentHistory').mockResolvedValue({
+    events: [],
+    next_cursor: null,
+    is_anonymized: false,
+  });
+}
 
 function renderAt(id: string) {
   return render(
@@ -32,11 +50,14 @@ function renderAt(id: string) {
 describe('RecordDetailView', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders the profile facts for a record in the chain', async () => {
+  it('renders the profile facts (tenant NAMED) for a record in the chain', async () => {
     vi.spyOn(portalApi, 'getRecordProfile').mockResolvedValue(PROFILE);
+    stubConsentReads();
     renderAt(PROFILE.talent_id);
 
-    expect(await screen.findByText(PROFILE.tenant_id)).toBeInTheDocument();
+    // P2b — the counterparty is shown by name, not its id.
+    expect(await screen.findByText('Acme Corp')).toBeInTheDocument();
+    expect(screen.queryByText(PROFILE.tenant_id)).not.toBeInTheDocument();
     expect(screen.getByText('self_signup')).toBeInTheDocument();
     expect(screen.getByText('active')).toBeInTheDocument();
   });

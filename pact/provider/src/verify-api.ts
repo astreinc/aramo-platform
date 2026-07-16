@@ -917,6 +917,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // Single-tenant / no-husk: the husk→survivor and cross-tenant legs are
     // proven by the apps/api chain integration spec; the pact pins the shape.
     async function seedPortalUserWithOneRecord(c: Client): Promise<void> {
+      // Portal P2 P2b — the records read enriches tenant_name via
+      // TenantService.getTenantById, so the engagement tenant must exist with a
+      // name (the contract's tenant_name matcher expects a string, not null).
+      await c.query(
+        `INSERT INTO identity."Tenant" (id, name, updated_at)
+         VALUES ($1::uuid, 'Acme Corp', NOW()) ON CONFLICT DO NOTHING`,
+        [TENANT_ID],
+      );
       await c.query(
         `INSERT INTO talent_record."TalentRecord"
            (id, tenant_id, first_name, last_name, tenant_status, source_channel,

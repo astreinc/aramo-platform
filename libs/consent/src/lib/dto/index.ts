@@ -21,6 +21,10 @@ export type { TalentConsentScopeStateDto } from './talent-consent-scope-state.dt
 export type { TalentConsentStateResponseDto } from './talent-consent-state-response.dto.js';
 export type { ConsentHistoryEventDto } from './consent-history-event.dto.js';
 export type { ConsentHistoryResponseDto } from './consent-history-response.dto.js';
+export type {
+  PortalConsentTextEntryDto,
+  PortalConsentTextResponseDto,
+} from './portal-consent-text.dto.js';
 export {
   CONSENT_DECISION_LOG_EVENT_TYPES,
 } from './consent-decision-log-entry.dto.js';

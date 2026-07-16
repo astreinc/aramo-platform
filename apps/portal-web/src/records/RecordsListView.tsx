@@ -23,15 +23,16 @@ function fmtDate(iso: string): string {
   });
 }
 
-// tenant_name is deferred (PR-2a, P2 ledger) — the envelope carries tenant_id
-// only, so the counterparty is shown as its id until the name lands.
+// Portal P2 P2b — tenant_name landed (the P1-deferred MAY → MUST). The
+// counterparty is NAMED; the id remains the defensive fallback if the name is
+// missing (a vanished tenant row).
 const COLUMNS: ReadonlyArray<TableColumn<PortalRecordProfile>> = [
   {
     key: 'organization',
     header: 'Organization',
     render: (r) => (
       <Link className="rc-link-strong" to={`/records/${r.talent_id}`}>
-        <span className="po-mono">{r.tenant_id}</span>
+        {r.tenant_name ?? <span className="po-mono">{r.tenant_id}</span>}
       </Link>
     ),
   },
