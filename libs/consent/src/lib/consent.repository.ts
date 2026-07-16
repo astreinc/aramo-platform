@@ -51,6 +51,15 @@ export interface RecordConsentEventInput {
   // grant-only field; revoke ignores
   expires_at?: string;
   metadata?: Record<string, unknown>;
+  // Portal P2 P2a (Directive ruling 6) — the D7 consent-evidence object, recorded
+  // on every portal-actor grant AND revoke. Rides the append-only audit stream
+  // (event_payload). Absent for tenant-actor recruiter flows (unchanged).
+  consent_evidence?: {
+    consent_text_hash: string; // sha256 of the exact rendered versioned text
+    consent_text_version: string; // the text version id (reproducible preimage)
+    notice_version: string | null; // nullable until P4 ships versioned notices
+    channel: string; // 'portal'
+  };
   idempotencyKey: string;
   requestHash: string;
   requestId: string;
@@ -392,7 +401,7 @@ export class ConsentRepository {
       // 4. Insert ConsentAuditEvent. Action-specific event_payload:
       //    granted → { event_id, scope }
       //    revoked → §2.7 canonical audit structure (Decisions A/B/C)
-      const auditPayload = isGrant
+      const auditPayloadBase = isGrant
         ? { event_id: eventId, scope: input.scope }
         : {
             event_id: eventId,
@@ -401,13 +410,26 @@ export class ConsentRepository {
             in_flight_operations_halted: [],          // Decision B
             propagation_completed_at: null,           // Decision C
           };
+      // Portal P2 P2a (Directive ruling 6) — the D7 consent-evidence object rides
+      // the audit payload on portal-actor grant AND revoke (consent_text_hash,
+      // consent_text_version, notice_version, channel). Absent for tenant flows.
+      const auditPayload =
+        input.consent_evidence === undefined
+          ? auditPayloadBase
+          : { ...auditPayloadBase, consent_evidence: input.consent_evidence };
       await tx.consentAuditEvent.create({
         data: {
           id: uuidv7(),
           tenant_id: input.tenant_id,
           actor_id: input.captured_by_actor_id,
+          // self_signup + portal_self_service are self-directed (actor_type 'self');
+          // everything else is recruiter-captured. (Directive ruling 2 — the portal
+          // specificity is carried by captured_method + the D7 channel.)
           actor_type:
-            input.captured_method === 'self_signup' ? 'self' : 'recruiter',
+            input.captured_method === 'self_signup' ||
+            input.captured_method === 'portal_self_service'
+              ? 'self'
+              : 'recruiter',
           event_type: isGrant
             ? 'consent.grant.recorded'
             : 'consent.revoke.recorded',
@@ -1387,6 +1409,20 @@ function deriveScopeStateForReadEndpoint(
 
   const latestGrant = findLatestForAction(scopeEvents, 'granted');
   const latestRevoke = findLatestForAction(scopeEvents, 'revoked');
+
+  // Portal P2 P2a (Directive ruling 4) — read-derived term/expiry: active =
+  // granted ∧ ¬revoked ∧ ¬expired. A still-granted scope whose controlling grant
+  // carries an `expires_at` in the past is derived INACTIVE ('expired') at READ
+  // time — no cron writes an 'expired' event. `null` expires_at (every existing
+  // tenant grant) means no term → status unchanged, so the tenant read is
+  // byte-identical. Renewal = a fresh grant (append-only history).
+  if (
+    status === 'granted' &&
+    latestGrant?.expires_at != null &&
+    latestGrant.expires_at.getTime() <= Date.now()
+  ) {
+    status = 'expired';
+  }
 
   return {
     scope,

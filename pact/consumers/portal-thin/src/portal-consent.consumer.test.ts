@@ -21,6 +21,10 @@ const provider = new PactV4({
 
 // A well-formed record id that is NOT in the (empty) chain → uniform 404.
 const RECORD_ID = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
+// Portal P2 P2a — the IN-CHAIN record id (the provider's seedPortalUserWithOneRecord
+// PORTAL_RECORD_ID) for the grant/revoke happy path.
+const IN_CHAIN_RECORD_ID = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeee1';
+const IDEMPOTENCY_KEY = 'cccccccc-cccc-7ccc-8ccc-ccccccccccc9';
 
 describe('portal-thin consumer → GET /v1/portal/records/{id}/consent', () => {
   it('returns a uniform 404 for a record not in the caller chain', async () => {
@@ -78,6 +82,89 @@ describe('portal-thin consumer → GET /v1/portal/records/{id}/consent', () => {
         expect(res.status).toBe(403);
         const body = (await res.json()) as { error: { code: string } };
         expect(body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+});
+
+// Portal P2 P2a — the portal-actor consent grant/revoke mutations.
+describe('portal-thin consumer → POST /v1/portal/records/{id}/consent/{grant,revoke}', () => {
+  it('grants consent for an in-chain record (201, closed mutation envelope)', async () => {
+    await provider
+      .addInteraction()
+      .given('a portal user with one record exists')
+      .uponReceiving('a portal consent grant for an in-chain record')
+      .withRequest('POST', `/v1/portal/records/${IN_CHAIN_RECORD_ID}/consent/grant`, (b) => {
+        b.headers({
+          Authorization: 'Bearer eyJfake.portal.token',
+          'Idempotency-Key': IDEMPOTENCY_KEY,
+          'Content-Type': 'application/json',
+        });
+        b.jsonBody({ scope: 'matching' });
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          scope: 'matching',
+          action: 'granted',
+          occurred_at: like('2026-07-15T00:00:00.000Z'),
+          expires_at: like('2027-07-15T00:00:00.000Z'),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/portal/records/${IN_CHAIN_RECORD_ID}/consent/grant`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer eyJfake.portal.token',
+              'Idempotency-Key': IDEMPOTENCY_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ scope: 'matching' }),
+          },
+        );
+        expect(res.status).toBe(201);
+        const body = (await res.json()) as { action: string };
+        expect(body.action).toBe('granted');
+      });
+  });
+
+  it('revokes consent for an in-chain record (201; expires_at null)', async () => {
+    await provider
+      .addInteraction()
+      .given('a portal user with one record exists')
+      .uponReceiving('a portal consent revoke for an in-chain record')
+      .withRequest('POST', `/v1/portal/records/${IN_CHAIN_RECORD_ID}/consent/revoke`, (b) => {
+        b.headers({
+          Authorization: 'Bearer eyJfake.portal.token',
+          'Idempotency-Key': IDEMPOTENCY_KEY,
+          'Content-Type': 'application/json',
+        });
+        b.jsonBody({ scope: 'matching' });
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          scope: 'matching',
+          action: 'revoked',
+          occurred_at: like('2026-07-15T00:00:00.000Z'),
+          expires_at: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/portal/records/${IN_CHAIN_RECORD_ID}/consent/revoke`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer eyJfake.portal.token',
+              'Idempotency-Key': IDEMPOTENCY_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ scope: 'matching' }),
+          },
+        );
+        expect(res.status).toBe(201);
+        const body = (await res.json()) as { action: string };
+        expect(body.action).toBe('revoked');
       });
   });
 });
