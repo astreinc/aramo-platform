@@ -25,6 +25,19 @@ export interface PortalRecordRef {
   record_id: string;
 }
 
+// Portal P3a (Directive §PR-1, amendment §3) — the survivor subject the resolver
+// already computes (merge-followed via resolveSubjectRef) per tenant, exposed for
+// the talent-level verification-view aggregation (ruling 1: aggregate across
+// ALL subjects of the OPEN-4 chain, deduped). `resolveRecords` discards this after
+// extracting the ATS ref; the verification view needs the subject_id itself to read
+// SubjectAnchor / VerificationRequest. A subject WITHOUT a promoted ATS_TALENT_RECORD
+// ref is still a real trust subject and is INCLUDED here (unlike resolveRecords,
+// which requires the ATS ref) — its anchors/verifications are still the talent's.
+export interface PortalSubjectRef {
+  tenant_id: string;
+  subject_id: string;
+}
+
 @Injectable()
 export class PortalTalentResolverService {
   constructor(
@@ -65,6 +78,48 @@ export class PortalTalentResolverService {
       out.push({ tenant_id: holder.tenant_id, record_id: ats.ref_id });
     }
     return out;
+  }
+
+  /**
+   * The portal user's SURVIVOR trust subjects across tenants (empty = valid).
+   * Same OPEN-4 walk as `resolveRecords`, but returns the merge-followed
+   * `survivor.id` per tenant instead of the ATS record ref — the aggregation
+   * source for the talent-level verification view (amendment §3). A subject is
+   * included whether or not it has a promoted ATS_TALENT_RECORD ref (the anchors /
+   * verifications belong to the subject, not the record).
+   */
+  async resolveSubjects(portalUserId: string): Promise<PortalSubjectRef[]> {
+    const user = await this.portalIdentity.findPortalById(portalUserId);
+    if (user === null || user.cluster_id === null) return [];
+    const clusterId = user.cluster_id;
+
+    const holders = await this.trust.findClusterHolders(clusterId);
+    const out: PortalSubjectRef[] = [];
+    const seenTenants = new Set<string>();
+    for (const holder of holders) {
+      if (seenTenants.has(holder.tenant_id)) continue;
+      seenTenants.add(holder.tenant_id);
+
+      const survivor = await this.trust.resolveSubjectRef({
+        tenant_id: holder.tenant_id,
+        ref_type: 'PERSON_CLUSTER',
+        ref_id: clusterId,
+      });
+      if (survivor === null) continue;
+      out.push({ tenant_id: holder.tenant_id, subject_id: survivor.id });
+    }
+    return out;
+  }
+
+  /**
+   * Portal P3a — the caller's person-cluster id (the key of the talent-visible
+   * PortalDispute). null when the portal user has no cluster (a valid empty state
+   * — no verifications, no disputes). The dispute surface pairs this with
+   * resolveSubjects() (the per-tenant survivor fan-out).
+   */
+  async resolveClusterId(portalUserId: string): Promise<string | null> {
+    const user = await this.portalIdentity.findPortalById(portalUserId);
+    return user?.cluster_id ?? null;
   }
 
   /**

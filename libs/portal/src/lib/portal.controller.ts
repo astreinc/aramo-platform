@@ -22,12 +22,24 @@ import {
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { TenantService } from '@aramo/identity';
 import { TalentRecordService } from '@aramo/talent-record';
+import {
+  TalentTrustService,
+  type PortalDisputeRow,
+} from '@aramo/talent-trust';
 
 import {
   PortalConsentGrantRequestDto,
   PortalConsentRevokeRequestDto,
   type PortalConsentMutationDto,
 } from './dto/portal-consent.dto.js';
+import {
+  PortalDisputeOpenRequestDto,
+  PortalDisputeRespondRequestDto,
+  type PortalDisputeDetailDto,
+  type PortalDisputeListResponseDto,
+  type PortalDisputeMutationDto,
+  type PortalVerificationsResponseDto,
+} from './dto/portal-dispute.dto.js';
 import type { PortalProfileDto } from './dto/portal-profile.dto.js';
 import type { PortalRecordsResponseDto } from './dto/portal-records.dto.js';
 import { PortalTalentResolverService } from './portal-talent-resolver.service.js';
@@ -69,7 +81,18 @@ export class PortalController {
     private readonly consentService: ConsentService,
     // Portal P2 P2b — tenant_name enrichment (scope:ats → scope:shared, legal).
     private readonly tenantService: TenantService,
+    // Portal P3a — verification view + dispute intake.
+    private readonly trustService: TalentTrustService,
   ) {}
+
+  // Portal P3a — talent-level (NOT per-record) dispute id → wire envelope.
+  private toDisputeMutation(row: PortalDisputeRow): PortalDisputeMutationDto {
+    return {
+      dispute_id: row.id,
+      status: row.status,
+      opened_at: row.opened_at.toISOString(),
+    };
+  }
 
   // Portal P2 P2b — resolve the engagement counterparty's human name. The
   // always-present workspace name (Tenant.name); null (defensive) only if the
@@ -277,6 +300,155 @@ export class PortalController {
       occurred_at: result.occurred_at,
       expires_at: null,
     };
+  }
+
+  // ===========================================================================
+  // Portal P3a — talent verification view + dispute rights (§PR-2). These are
+  // TALENT-LEVEL (aggregated across the OPEN-4 chain), NOT per-record — no
+  // `:id` record path. The verification view is the trust-class wall's first live
+  // surface (re-projected to kind + status + dates). Disputes are cluster-scoped:
+  // a dispute id not in the caller's cluster is a UNIFORM 404. P3a fires NO TR-15
+  // transition (Amendment v1.1).
+  // ===========================================================================
+
+  // GET /v1/portal/verifications — the caller's verifications across their chain.
+  @Get('verifications')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('portal:verification:read')
+  async getVerifications(
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PortalVerificationsResponseDto> {
+    this.assertConsumerIsPortal(authContext, requestId);
+    const sub = this.assertSubIsUuid(authContext, requestId);
+    const clusterId = await this.resolver.resolveClusterId(sub);
+    if (clusterId === null) return { verifications: [] }; // valid empty state
+    const subjects = await this.resolver.resolveSubjects(sub);
+    return { verifications: await this.trustService.aggregateVerifications(subjects, clusterId) };
+  }
+
+  // POST /v1/portal/disputes — open a dispute against a verification-view item.
+  @Post('disputes')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('portal:dispute:write')
+  async openDispute(
+    @Body() body: PortalDisputeOpenRequestDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PortalDisputeMutationDto> {
+    this.assertConsumerIsPortal(authContext, requestId);
+    const sub = this.assertSubIsUuid(authContext, requestId);
+    this.assertIdempotencyKey(idempotencyKey, requestId);
+    const clusterId = await this.resolver.resolveClusterId(sub);
+    // No cluster ⇒ no items ⇒ the item id cannot resolve: uniform 404.
+    if (clusterId === null) throw this.uniformNotFound(requestId);
+    const subjects = await this.resolver.resolveSubjects(sub);
+    const dispute = await this.trustService.openPortalDispute({
+      clusterId,
+      callerSubjects: subjects,
+      itemId: body.item_id,
+      statement: body.statement,
+      now: new Date(),
+      requestId,
+    });
+    return this.toDisputeMutation(dispute);
+  }
+
+  // GET /v1/portal/disputes — the caller's disputes (cluster-scoped).
+  @Get('disputes')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('portal:dispute:read')
+  async listDisputes(
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PortalDisputeListResponseDto> {
+    this.assertConsumerIsPortal(authContext, requestId);
+    const sub = this.assertSubIsUuid(authContext, requestId);
+    const clusterId = await this.resolver.resolveClusterId(sub);
+    if (clusterId === null) return { disputes: [] };
+    const rows = await this.trustService.listPortalDisputes(clusterId, { limit: 100 });
+    return { disputes: rows.map((r) => this.toDisputeMutation(r)) };
+  }
+
+  // GET /v1/portal/disputes/:id — one dispute the caller owns (uniform 404).
+  @Get('disputes/:id')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('portal:dispute:read')
+  async getDispute(
+    @Param('id') id: string,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PortalDisputeDetailDto> {
+    this.assertConsumerIsPortal(authContext, requestId);
+    const sub = this.assertSubIsUuid(authContext, requestId);
+    const clusterId = await this.resolver.resolveClusterId(sub);
+    if (clusterId === null) throw this.uniformNotFound(requestId);
+    if (!UUID_REGEX.test(id)) throw this.uniformNotFound(requestId);
+    const { dispute, statements } = await this.trustService.getPortalDispute(
+      clusterId,
+      id,
+      requestId,
+    );
+    return {
+      dispute_id: dispute.id,
+      status: dispute.status,
+      opened_at: dispute.opened_at.toISOString(),
+      resolution_note: dispute.resolution_note,
+      statements: statements.map((s) => ({
+        statement: s.statement,
+        created_at: s.created_at.toISOString(),
+      })),
+    };
+  }
+
+  // POST /v1/portal/disputes/:id/respond — append a talent statement (open only).
+  @Post('disputes/:id/respond')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('portal:dispute:write')
+  async respondDispute(
+    @Param('id') id: string,
+    @Body() body: PortalDisputeRespondRequestDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PortalDisputeMutationDto> {
+    this.assertConsumerIsPortal(authContext, requestId);
+    const sub = this.assertSubIsUuid(authContext, requestId);
+    this.assertIdempotencyKey(idempotencyKey, requestId);
+    const clusterId = await this.resolver.resolveClusterId(sub);
+    if (clusterId === null || !UUID_REGEX.test(id)) throw this.uniformNotFound(requestId);
+    const dispute = await this.trustService.respondPortalDisputeStatement({
+      clusterId,
+      disputeId: id,
+      statement: body.statement,
+      requestId,
+    });
+    return this.toDisputeMutation(dispute);
+  }
+
+  // POST /v1/portal/disputes/:id/withdraw — terminal talent action.
+  @Post('disputes/:id/withdraw')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('portal:dispute:write')
+  async withdrawDispute(
+    @Param('id') id: string,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PortalDisputeMutationDto> {
+    this.assertConsumerIsPortal(authContext, requestId);
+    const sub = this.assertSubIsUuid(authContext, requestId);
+    this.assertIdempotencyKey(idempotencyKey, requestId);
+    const clusterId = await this.resolver.resolveClusterId(sub);
+    if (clusterId === null || !UUID_REGEX.test(id)) throw this.uniformNotFound(requestId);
+    const dispute = await this.trustService.withdrawPortalDispute({
+      clusterId,
+      disputeId: id,
+      now: new Date(),
+      requestId,
+    });
+    return this.toDisputeMutation(dispute);
   }
 
   private assertIdempotencyKey(

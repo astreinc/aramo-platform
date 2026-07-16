@@ -88,6 +88,10 @@ const INVENTORY: ErasureStep[] = [
   { label: 'talent_trust."SubjectMatchAdvisory"', keyspace: 'subject', where: `subject_a_id = ANY($1::uuid[]) OR subject_b_id = ANY($1::uuid[])` },
   { label: 'talent_trust."VerificationRequest"', keyspace: 'subject', where: `subject_id = ANY($1::uuid[])` },
   { label: 'talent_trust."VerificationProposal"', keyspace: 'subject', where: `subject_id = ANY($1::uuid[])` },
+  // Portal P3a (F-1 ruling: subject-keyed ⇒ erasure INVENTORY only). ONE parent
+  // entry — PortalDisputeWorkItem + PortalDisputeStatement CASCADE from it. Reached
+  // via the subject-keyed work items (a dispute of an erased subject dies whole).
+  { label: 'talent_trust."PortalDispute"', keyspace: 'evidence-set', where: `id IN (SELECT dispute_id FROM talent_trust."PortalDisputeWorkItem" WHERE subject_id = ANY($1::uuid[]))` },
   { label: 'talent_trust."ResolutionSubjectRef"', keyspace: 'subject', where: `subject_id = ANY($1::uuid[])` },
   { label: 'talent_trust."ResolutionSubject"', keyspace: 'subject', where: `id = ANY($1::uuid[])` }, // LAST trust row (parent)
   // ---- GROUP C the husk records (record keyspace) — cascades resume_text (S3) + provenance + contradiction ----

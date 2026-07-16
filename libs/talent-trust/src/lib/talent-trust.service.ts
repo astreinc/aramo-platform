@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AramoError, hashCanonicalizedBody } from '@aramo/common';
 
@@ -52,13 +54,23 @@ import {
   type TrustStateRow,
   type ResolutionSubjectRow,
   type VerificationProposalRow,
+  type VerificationRequestRow,
+  type PortalDisputeRow,
+  type PortalDisputeStatementRow,
 } from './talent-trust.repository.js';
 import {
+  mintPortalVerificationItemId,
+  portalVerificationItemIdMatches,
+} from './portal-verification-item-id.js';
+import {
   EVENT_TO_STATUS,
+  PORTAL_DISPUTE_OPEN_STATES,
+  PORTAL_DISPUTE_SLA,
   PROPOSAL_SETTLED_JUSTIFICATION,
   SOURCE_CLASSES,
   type AnchorKind,
   type CorroboratorConflictKind,
+  type PortalDisputeItemType,
   type DecayProfile,
   type EvidenceEventType,
   type EvidenceStatus,
@@ -1985,6 +1997,233 @@ export class TalentTrustService {
     }
     return subject;
   }
+
+  // ==========================================================================
+  // Portal P3a — talent verification view + dispute intake (§PR-1, rulings
+  // 1-5 + Amendment v1.1). The caller's OPEN-4 subjects + cluster are supplied
+  // by the portal resolver. NOTHING here touches TR-15 evidence state (P3a fires
+  // NO transition). The wire projection strips every field on the ratified Q4
+  // forbidden list (VERIFICATION_VIEW_FORBIDDEN_FIELDS) — enforced by a unit test.
+  // ==========================================================================
+
+  // Ruling 1 — the talent verification view: aggregate the caller's
+  // verifications across their OPEN-4 chain, one item per DEDUPED contact anchor,
+  // projected to kind + status + dates ONLY (an opaque item id, no verifier/
+  // tenant/number/PII).
+  async aggregateVerifications(
+    callerSubjects: PortalCallerSubject[],
+    clusterId: string,
+  ): Promise<PortalVerificationItem[]> {
+    const items = await this.enumerateVerificationItems(callerSubjects, clusterId);
+    return items.map((it) => ({
+      item_id: it.item_id,
+      kind: it.kind,
+      status: it.status,
+      verified_at: it.verified_at,
+      first_seen_at: it.first_seen_at,
+    }));
+  }
+
+  // Ruling 2 — open a dispute against a view item. The opaque item id is resolved
+  // by RE-ENUMERATING the caller's items and matching (one-way HMAC; nothing is
+  // reversed); an id not in the caller's current view is a UNIFORM 404. Fans out
+  // to N subject-scoped work items (ruling 3). One-open-per-item idempotency: a
+  // still-open dispute on the same item is returned unchanged. NO TR-15
+  // transition (Amendment v1.1 — disposition is P3b).
+  async openPortalDispute(input: {
+    clusterId: string;
+    callerSubjects: PortalCallerSubject[];
+    itemId: string;
+    statement: string;
+    now: Date;
+    requestId: string;
+  }): Promise<PortalDisputeRow> {
+    const items = await this.enumerateVerificationItems(input.callerSubjects, input.clusterId);
+    const target = items.find((it) =>
+      portalVerificationItemIdMatches(input.itemId, it.item_id),
+    );
+    if (target === undefined) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: input.requestId });
+    }
+    const existing = await this.repo.findOpenPortalDisputeForItem(
+      input.clusterId,
+      target.item_type,
+      target.item_id,
+    );
+    if (existing !== null) return existing; // one-open-per-item (idempotent)
+    const sla = this.computePortalDisputeSla(input.now);
+    return this.repo.createPortalDispute({
+      cluster_id: input.clusterId,
+      item_type: target.item_type,
+      item_id_digest: target.item_id,
+      triage_due_at: sla.triage_due_at,
+      summary_due_at: sla.summary_due_at,
+      reinvestigation_due_at: sla.reinvestigation_due_at,
+      ccpa_due_at: sla.ccpa_due_at,
+      ccpa_extended_due_at: sla.ccpa_extended_due_at,
+      work_items: target.fanout,
+      statement: input.statement,
+      statement_hash: this.hashPortalStatement(input.statement),
+    });
+  }
+
+  async listPortalDisputes(
+    clusterId: string,
+    opts: { status?: string; limit: number },
+  ): Promise<PortalDisputeRow[]> {
+    return this.repo.listPortalDisputesByCluster(clusterId, opts);
+  }
+
+  async getPortalDispute(
+    clusterId: string,
+    disputeId: string,
+    requestId: string,
+  ): Promise<{ dispute: PortalDisputeRow; statements: PortalDisputeStatementRow[] }> {
+    const dispute = await this.repo.findPortalDisputeInCluster(clusterId, disputeId);
+    if (dispute === null) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId });
+    }
+    const statements = await this.repo.listPortalDisputeStatements(disputeId);
+    return { dispute, statements };
+  }
+
+  // Respond: append a talent statement while the dispute is still open. Replaying
+  // the identical latest statement is an idempotent no-op.
+  async respondPortalDisputeStatement(input: {
+    clusterId: string;
+    disputeId: string;
+    statement: string;
+    requestId: string;
+  }): Promise<PortalDisputeRow> {
+    const dispute = await this.repo.findPortalDisputeInCluster(input.clusterId, input.disputeId);
+    if (dispute === null) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: input.requestId });
+    }
+    if (!(PORTAL_DISPUTE_OPEN_STATES as readonly string[]).includes(dispute.status)) {
+      throw new AramoError(
+        'PORTAL_DISPUTE_NOT_OPEN',
+        'this dispute is closed and can no longer be responded to',
+        422,
+        { requestId: input.requestId },
+      );
+    }
+    const hash = this.hashPortalStatement(input.statement);
+    const existing = await this.repo.listPortalDisputeStatements(input.disputeId);
+    const last = existing[existing.length - 1];
+    if (last === undefined || last.statement_hash !== hash) {
+      await this.repo.appendPortalDisputeStatement(input.disputeId, input.statement, hash);
+    }
+    return dispute;
+  }
+
+  // Withdraw: terminal talent action. Already-terminal is an idempotent no-op.
+  async withdrawPortalDispute(input: {
+    clusterId: string;
+    disputeId: string;
+    now: Date;
+    requestId: string;
+  }): Promise<PortalDisputeRow> {
+    const dispute = await this.repo.findPortalDisputeInCluster(input.clusterId, input.disputeId);
+    if (dispute === null) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: input.requestId });
+    }
+    if (!(PORTAL_DISPUTE_OPEN_STATES as readonly string[]).includes(dispute.status)) {
+      return dispute; // idempotent: already terminal
+    }
+    return this.repo.withdrawPortalDispute(input.disputeId, input.now);
+  }
+
+  // Enumerate the caller's view items WITH the server-side fan-out (tenant/
+  // subject/underlying ids) both the wire projection and dispute-open resolve.
+  private async enumerateVerificationItems(
+    callerSubjects: PortalCallerSubject[],
+    clusterId: string,
+  ): Promise<EnumeratedVerificationItem[]> {
+    type Hit = {
+      tenant_id: string;
+      subject_id: string;
+      anchor: SubjectAnchorRow;
+      vr: VerificationRequestRow | null;
+    };
+    const hits: Hit[] = [];
+    for (const s of callerSubjects) {
+      const anchors = (await this.repo.listAnchorsBySubject(s.subject_id)).filter((a) =>
+        (CONTACT_ANCHOR_KINDS as readonly string[]).includes(a.anchor_kind),
+      );
+      for (const a of anchors) {
+        const vr = await this.repo.findLatestVerificationRequest(
+          s.tenant_id,
+          a.subject_id,
+          a.anchor_kind,
+          a.normalized_value,
+        );
+        hits.push({ tenant_id: s.tenant_id, subject_id: s.subject_id, anchor: a, vr });
+      }
+    }
+    // Group by DEDUP identity (kind + normalized value). The value is PII — used
+    // ONLY as a grouping key here, never emitted or persisted on the wire.
+    const groups = new Map<string, Hit[]>();
+    for (const h of hits) {
+      const key = `${h.anchor.anchor_kind} ${h.anchor.normalized_value}`;
+      const g = groups.get(key);
+      if (g === undefined) groups.set(key, [h]);
+      else g.push(h);
+    }
+    const out: EnumeratedVerificationItem[] = [];
+    for (const g of groups.values()) {
+      const kind = g[0]!.anchor.anchor_kind;
+      const confirmed = g.filter((h) => h.vr?.status === 'CONFIRMED');
+      const itemType: PortalDisputeItemType = confirmed.length > 0 ? 'VERIFICATION' : 'ANCHOR';
+      const rows = itemType === 'VERIFICATION' ? confirmed : g;
+      const fanout = rows.map((h) => ({
+        tenant_id: h.tenant_id,
+        subject_id: h.subject_id,
+        underlying_ref_id: itemType === 'VERIFICATION' ? h.vr!.id : h.anchor.id,
+      }));
+      const item_id = mintPortalVerificationItemId({
+        clusterId,
+        itemType,
+        underlyingRefIds: fanout.map((f) => f.underlying_ref_id),
+      });
+      const status =
+        confirmed.length > 0
+          ? 'CONFIRMED'
+          : g.some((h) => h.vr?.status === 'PENDING')
+            ? 'PENDING'
+            : 'NONE';
+      const verified_at =
+        confirmed.length > 0 ? isoMaxDate(confirmed.map((h) => h.vr!.consumed_at)) : null;
+      const first_seen_at = isoMinDate(g.map((h) => h.anchor.created_at));
+      out.push({ item_id, item_type: itemType, kind, status, verified_at, first_seen_at, fanout });
+    }
+    // Stable order (by item_id) so the wire list is deterministic.
+    out.sort((a, b) => (a.item_id < b.item_id ? -1 : a.item_id > b.item_id ? 1 : 0));
+    return out;
+  }
+
+  private computePortalDisputeSla(now: Date): {
+    triage_due_at: Date;
+    summary_due_at: Date;
+    reinvestigation_due_at: Date;
+    ccpa_due_at: Date | null;
+    ccpa_extended_due_at: Date | null;
+  } {
+    const day = 86_400_000;
+    const t = now.getTime();
+    return {
+      triage_due_at: new Date(t + PORTAL_DISPUTE_SLA.triageDueDays * day),
+      summary_due_at: new Date(t + PORTAL_DISPUTE_SLA.summaryDueDays * day),
+      reinvestigation_due_at: new Date(t + PORTAL_DISPUTE_SLA.reinvestigationDueDays * day),
+      // CCPA 45+45: the initial clock starts at open; the +45 extension is taken
+      // (recorded) tenant-side in P3b, never at open.
+      ccpa_due_at: new Date(t + PORTAL_DISPUTE_SLA.ccpaInitialDays * day),
+      ccpa_extended_due_at: null,
+    };
+  }
+
+  private hashPortalStatement(statement: string): string {
+    return createHash('sha256').update(statement, 'utf8').digest('hex');
+  }
 }
 
 // TR-2a-B2 — strongest source_class among a target's anchors for a value
@@ -1998,4 +2237,75 @@ function strongestAnchorClass(anchors: readonly SubjectAnchorRow[]): SourceClass
     }
   }
   return best;
+}
+
+// ===========================================================================
+// Portal P3a — verification-view + dispute wire types (talent-facing).
+// ===========================================================================
+
+// The caller's OPEN-4 subjects (from the portal resolver's resolveSubjects).
+export interface PortalCallerSubject {
+  tenant_id: string;
+  subject_id: string;
+}
+
+// The re-projected verification-view item (ruling 1): kind + status + dates +
+// an opaque server-minted item id. NOTHING else crosses.
+export interface PortalVerificationItem {
+  item_id: string;
+  kind: string; // anchor_kind (EMAIL | PHONE | PROFILE_URL) — never a value
+  status: string; // CONFIRMED | PENDING | NONE — no tier/strength/number
+  verified_at: string | null;
+  first_seen_at: string | null;
+}
+
+// The server-side enumeration (item + fan-out). NEVER emitted whole — the wire
+// projection (aggregateVerifications) drops item_type + fanout.
+export interface EnumeratedVerificationItem {
+  item_id: string;
+  item_type: PortalDisputeItemType;
+  kind: string;
+  status: string;
+  verified_at: string | null;
+  first_seen_at: string | null;
+  fanout: { tenant_id: string; subject_id: string; underlying_ref_id: string }[];
+}
+
+// The ratified Q4 re-projection forbidden list (Amendment v1.1 §3, binding). A
+// unit test asserts no PortalVerificationItem key intersects this set — a future
+// field addition that leaks origin/verifier/number/PII goes red.
+export const VERIFICATION_VIEW_FORBIDDEN_FIELDS: readonly string[] = [
+  'tenant_id',
+  'tenant_name',
+  'subject_id',
+  'created_by',
+  'resolved_by',
+  'verifier',
+  'verified_by',
+  'strength',
+  'source_class',
+  'normalized_value',
+  'token_hash',
+  'talent_record_id',
+  'open_contradiction_count',
+  'stale_evidence_count',
+  'underlying_ref_id',
+];
+
+function isoMaxDate(dates: (Date | null)[]): string | null {
+  let best: Date | null = null;
+  for (const d of dates) {
+    if (d === null) continue;
+    if (best === null || d.getTime() > best.getTime()) best = d;
+  }
+  return best === null ? null : best.toISOString();
+}
+
+function isoMinDate(dates: (Date | null)[]): string | null {
+  let best: Date | null = null;
+  for (const d of dates) {
+    if (d === null) continue;
+    if (best === null || d.getTime() < best.getTime()) best = d;
+  }
+  return best === null ? null : best.toISOString();
 }

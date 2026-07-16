@@ -691,3 +691,140 @@ model VerificationRequest {
   @@index([subject_id])
   @@schema("talent_trust")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Portal P3a (Aramo-Portal-P3-Directive-v1_0 §PR-1, rulings 2–5; Amendment v1.1)
+// — the portal-actor dispute substrate. From the re-projected verification view,
+// the talent objects to a verification/anchor item they can see. ONE portal-
+// visible dispute (PortalDispute, cluster-scoped) fans out to N tenant-scoped
+// work items (PortalDisputeWorkItem, subject keyspace) — one per owning subject
+// of the disputed item across the OPEN-4 chain (ruling 3).
+//
+// SUBSTRATE ONLY (P3a): open persists these rows in OPEN. The TR-15 DISPUTED
+// transition, the disputed-flag surfacing, and resolveDispute() wiring are P3b
+// (PR-2). No lifecycle event fires here — the talent PROPOSES; humans DISPOSE.
+//
+// BIRTH-CERTIFICATE (F-1 ruling, this arc): subject-keyed ⇒ erasure INVENTORY
+// registration only. Reconcile-following is the standing merged_into mechanic
+// (dispute reads route through the survivor resolver) — the EvidenceRecord /
+// SubjectAnchor precedent; there is no reconcile-repoint site for subject-keyed
+// talent_trust tables. WorkItem + Statement CASCADE from PortalDispute, so the
+// erasure inventory lists only the parent (the pipeline-cascade convention).
+//
+// Closed vocabularies are TEXT (PO Ruling 2), enforced at the DTO/service layer.
+model PortalDispute {
+  id String @id @db.Uuid
+
+  // The person-cluster of the disputing talent (OPEN-4). Per-actor scoping: a
+  // dispute is resolvable ONLY within its own cluster's chain (uniform 404 out-
+  // of-chain). Cross-schema UUID ref into identity_index (no FK, I1).
+  cluster_id String @db.Uuid
+
+  /// PortalDisputeItemType closed vocabulary: ANCHOR | VERIFICATION
+  item_type String
+
+  // The opaque item-id shown on the verification view (domain-separated HMAC over
+  // cluster_id + type + the sorted underlying ids). Stored for the one-open-
+  // dispute-per-item idempotency guard; never a raw PK / PII (Q4).
+  item_id_digest String
+
+  /// PortalDisputeState closed vocabulary (D12, DB-CHECK precedent):
+  /// OPEN | UNDER_REVIEW | RESOLVED_CORRECTED | RESOLVED_UPHELD | WITHDRAWN
+  status String @default("OPEN")
+
+  // Plain-language resolution note shown to the talent on close (set in P3b).
+  resolution_note String?
+
+  // ── SLA clocks (ruling 5): recorded timestamps + derived breach status, engine
+  // constants — NEVER enforcement automation. Breach detection is the P3b daily
+  // report (report-only, humans act). ──
+  opened_at              DateTime @default(now()) @db.Timestamptz
+  triage_due_at          DateTime @db.Timestamptz
+  summary_due_at         DateTime @db.Timestamptz
+  reinvestigation_due_at DateTime @db.Timestamptz
+  // The single +15d extension (ruling 5), recorded when taken (P3b).
+  reinvestigation_extended_at DateTime? @db.Timestamptz
+  // The CCPA 45+45 pair, where applicable (ruling 5).
+  ccpa_due_at          DateTime? @db.Timestamptz
+  ccpa_extended_due_at DateTime? @db.Timestamptz
+
+  withdrawn_at DateTime? @db.Timestamptz
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @updatedAt @db.Timestamptz
+
+  work_items PortalDisputeWorkItem[]
+  statements PortalDisputeStatement[]
+
+  // The talent's dispute list, status-filtered.
+  @@index([cluster_id, status])
+  // The open-idempotency read: one non-terminal dispute per (cluster, item). The
+  // terminal-vs-open guard is enforced in the service (a closed dispute does not
+  // block a fresh objection).
+  @@index([cluster_id, item_type, item_id_digest])
+  @@schema("talent_trust")
+}
+
+// PortalDisputeWorkItem — the tenant-scoped fan-out (ruling 3), one per underlying
+// disputed item across the OPEN-4 chain. Subject keyspace ⇒ erasure INVENTORY.
+// Relation-less bare-UUID subject_id (the VerificationProposal worklist precedent
+// — the survivor subject is live, but merge mechanics stay merged_into-follow).
+model PortalDisputeWorkItem {
+  id String @id @db.Uuid
+
+  dispute_id String @db.Uuid
+
+  tenant_id  String @db.Uuid
+  subject_id String @db.Uuid
+
+  /// PortalDisputeItemType closed vocabulary: ANCHOR | VERIFICATION
+  item_type String
+
+  // The underlying trust row this work item is about (SubjectAnchor.id or
+  // VerificationRequest.id). Server-side only — never on the wire (Q4).
+  underlying_ref_id String @db.Uuid
+
+  /// PortalDisputeState closed vocabulary (tenant disposition, P3b advances it):
+  /// OPEN | UNDER_REVIEW | RESOLVED_CORRECTED | RESOLVED_UPHELD | WITHDRAWN
+  status String @default("OPEN")
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @updatedAt @db.Timestamptz
+
+  dispute PortalDispute @relation(fields: [dispute_id], references: [id], onDelete: Cascade)
+
+  // The tenant worklist surface (P3b): open work items per tenant.
+  @@index([tenant_id, status])
+  // The per-subject read (dossier / erasure inventory keyspace).
+  @@index([subject_id])
+  @@index([dispute_id])
+  @@schema("talent_trust")
+}
+
+// PortalDisputeStatement — the append-only free-text statements (open + respond).
+// The free text is PII (erased on RTBF via the parent cascade). The D7-style
+// evidence envelope rides the row itself (statement_hash + channel): the append-
+// only row IS the audit event (the consent-event precedent).
+model PortalDisputeStatement {
+  id String @id @db.Uuid
+
+  dispute_id String @db.Uuid
+
+  /// PortalDisputeStatementAuthor closed vocabulary: TALENT
+  author String
+
+  // The free-text talent statement (PII).
+  statement String
+
+  // sha256(statement).hex — the D7 hash-preimage evidence of the exact bytes.
+  statement_hash String
+  /// PortalDisputeStatementChannel closed vocabulary: portal
+  channel String @default("portal")
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  dispute PortalDispute @relation(fields: [dispute_id], references: [id], onDelete: Cascade)
+
+  @@index([dispute_id, created_at])
+  @@schema("talent_trust")
+}

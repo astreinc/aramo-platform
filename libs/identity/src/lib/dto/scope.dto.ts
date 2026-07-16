@@ -42,6 +42,10 @@ export const SEED_SCOPE_KEYS = [
   'portal:profile:edit',
   'portal:consent:read',
   'portal:consent:write',
+  // Portal P3a — candidate verification view + dispute rights (3).
+  'portal:verification:read',
+  'portal:dispute:read',
+  'portal:dispute:write',
   // PR-A1a-2 ATS expansion (27 scopes; Ruling 1 uniform divergence).
   // talent domain (6)
   'talent:read',                // recruiter+ (assigned)

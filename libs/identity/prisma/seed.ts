@@ -99,6 +99,10 @@ export const SEED_IDS = {
     'portal:profile:edit': '01900000-0000-7000-8000-000000000065',
     'portal:consent:read': '01900000-0000-7000-8000-000000000066',
     'portal:consent:write': '01900000-0000-7000-8000-000000000067',
+    // Portal P3a — candidate verification view + dispute rights (3).
+    'portal:verification:read': '01900000-0000-7000-8000-0000000000b2',
+    'portal:dispute:read': '01900000-0000-7000-8000-0000000000b3',
+    'portal:dispute:write': '01900000-0000-7000-8000-0000000000b4',
     // PR-A1a-2 full ATS expansion (27 scopes; Ruling 1 uniform divergence).
     // talent (5)
     'talent:read': '01900000-0000-7000-8000-000000000068',
@@ -312,6 +316,10 @@ export const SEED_IDS = {
     candidate_portal_profile_edit: '01900000-0000-7000-8000-000000000109',
     candidate_portal_consent_read: '01900000-0000-7000-8000-00000000010a',
     candidate_portal_consent_write: '01900000-0000-7000-8000-00000000010b',
+    // Portal P3a — 3 candidate grants (reuse the freed viewer ids 0x13a-0x13c).
+    candidate_portal_verification_read: '01900000-0000-7000-8000-00000000013a',
+    candidate_portal_dispute_read: '01900000-0000-7000-8000-00000000013b',
+    candidate_portal_dispute_write: '01900000-0000-7000-8000-00000000013c',
     // PR-A1a-2 — RoleScope rows (27 tenant_admin + 19 recruiter; the 6
     // viewer ids 0x13a..0x13f were freed at AUTHZ-1b when viewer was retired).
     // tenant_admin gets the full 27 new scopes (incl. all :delete + :read:all + tenant:admin:*).
@@ -603,6 +611,10 @@ export const ROLE_SCOPE_ASSIGNMENTS = {
     'portal:profile:edit',
     'portal:consent:read',
     'portal:consent:write',
+    // Portal P3a — verification view + dispute rights.
+    'portal:verification:read',
+    'portal:dispute:read',
+    'portal:dispute:write',
   ],
   // AUTHZ-2 — platform-tier super_admin role bundle. The 3 platform:*
   // scopes; NO tenant scopes. The DDR §13.1 tripwire (a platform token
@@ -642,6 +654,9 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   'candidate:portal:profile:edit': SEED_IDS.role_scopes.candidate_portal_profile_edit,
   'candidate:portal:consent:read': SEED_IDS.role_scopes.candidate_portal_consent_read,
   'candidate:portal:consent:write': SEED_IDS.role_scopes.candidate_portal_consent_write,
+  'candidate:portal:verification:read': SEED_IDS.role_scopes.candidate_portal_verification_read,
+  'candidate:portal:dispute:read': SEED_IDS.role_scopes.candidate_portal_dispute_read,
+  'candidate:portal:dispute:write': SEED_IDS.role_scopes.candidate_portal_dispute_write,
   // PR-A1a-2 — 52 new role_scope rows.
   // tenant_admin: 27 (full catalog)
   'tenant_admin:talent:read': SEED_IDS.role_scopes.tenant_admin_talent_read,

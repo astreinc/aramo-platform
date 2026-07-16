@@ -5,18 +5,26 @@ import { PrismaService } from './prisma/prisma.service.js';
 // TR-2b B2a/B2b (Directive ruling 4) — purgeCluster, the ONE cluster-teardown
 // primitive. Three callers: the daily identity-index lifecycle sweep (orphan
 // purge, B2a), the erasure engine (last-reference, B2b), and a future P4 RTBF
-// surface. It runs FIVE ordered mutations, RESTRICT-safe:
+// surface. It runs SIX ordered mutations, RESTRICT-safe:
 //
 //   1. DELETE platform_trust."DormantLink"        WHERE cluster_id = $1
-//   2. DELETE identity_index."ClusterFingerprint" WHERE cluster_id = $1   (child)
-//   3. DELETE identity_index."PersonCluster"       WHERE id = $1           (parent)
-//   4. UPDATE ingestion."RawPayloadReference" SET resolved_cluster_id = NULL …
-//   5. UPDATE portal_identity."PortalUser"    SET cluster_id = NULL …
+//   2. DELETE talent_trust."PortalDispute"         WHERE cluster_id = $1   (cascades)
+//   3. DELETE identity_index."ClusterFingerprint" WHERE cluster_id = $1   (child)
+//   4. DELETE identity_index."PersonCluster"       WHERE id = $1           (parent)
+//   5. UPDATE ingestion."RawPayloadReference" SET resolved_cluster_id = NULL …
+//   6. UPDATE portal_identity."PortalUser"    SET cluster_id = NULL …
 //
 // The ClusterFingerprint → PersonCluster FK is ON DELETE RESTRICT, so the child
-// delete MUST precede the parent. Steps 4-5 null UUID-only cross-schema pointers
-// (no FK) — the arrival stamp and the portal linkage die with the cluster (the
-// PortalUser forward contract registered in Portal P1a).
+// delete MUST precede the parent. Step 2 (Portal P3a) is a cluster-keyed cross-
+// schema delete with NO FK to PersonCluster — the daily orphan-purge (B2a) can
+// tear a cluster down independently of the talent_trust erasure flow, so a
+// dispute keyed to it must die here or its cluster_id would dangle; its
+// WorkItem + Statement children CASCADE. GENERAL RULE: a cluster-keyed table
+// registers in CLUSTER_PURGE_STATEMENTS at birth (the third keyspace class,
+// beside subject-keyed erasure-inventory and record-keyed reconcile-repoint).
+// Steps 5-6 null UUID-only cross-schema pointers (no FK) — the arrival stamp and
+// the portal linkage die with the cluster (the PortalUser forward contract
+// registered in Portal P1a).
 //
 // TR-2b B2b (Directive §PR-2.1) — the SQL now lives in ONE exported ordered array
 // (CLUSTER_PURGE_STATEMENTS) consumed by BOTH the Prisma `$transaction` path
@@ -33,6 +41,11 @@ export const CLUSTER_PURGE_STATEMENTS = [
   {
     key: 'dormant_links_deleted',
     sql: `DELETE FROM platform_trust."DormantLink" WHERE cluster_id = $1::uuid`,
+  },
+  {
+    // Portal P3a — cluster-keyed dispute rows; WorkItem + Statement cascade.
+    key: 'portal_disputes_deleted',
+    sql: `DELETE FROM talent_trust."PortalDispute" WHERE cluster_id = $1::uuid`,
   },
   {
     key: 'fingerprints_deleted',
@@ -55,6 +68,7 @@ export const CLUSTER_PURGE_STATEMENTS = [
 export interface PurgeClusterResult {
   cluster_id: string;
   dormant_links_deleted: number;
+  portal_disputes_deleted: number;
   fingerprints_deleted: number;
   clusters_deleted: number;
   arrival_stamps_nulled: number;
@@ -83,6 +97,7 @@ async function runPurgeStatements(
   return {
     cluster_id: clusterId,
     dormant_links_deleted: counts['dormant_links_deleted'] ?? 0,
+    portal_disputes_deleted: counts['portal_disputes_deleted'] ?? 0,
     fingerprints_deleted: counts['fingerprints_deleted'] ?? 0,
     clusters_deleted: counts['clusters_deleted'] ?? 0,
     arrival_stamps_nulled: counts['arrival_stamps_nulled'] ?? 0,

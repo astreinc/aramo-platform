@@ -35,9 +35,10 @@ function recordingExec(): {
 }
 
 describe('cluster-purge tripwire — both bindings run the shared array verbatim', () => {
-  it('CLUSTER_PURGE_STATEMENTS is the RESTRICT-safe 5-statement order', () => {
+  it('CLUSTER_PURGE_STATEMENTS is the RESTRICT-safe 6-statement order', () => {
     expect(CLUSTER_PURGE_STATEMENTS.map((s) => s.key)).toEqual([
       'dormant_links_deleted',
+      'portal_disputes_deleted', // Portal P3a — cluster-keyed, cascades children
       'fingerprints_deleted', // child — before the parent
       'clusters_deleted', // parent
       'arrival_stamps_nulled',

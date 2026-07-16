@@ -127,6 +127,8 @@ const TALENT_TRUST_MIGRATIONS = [
   '20260711120000_tr5_b2_thinness_flags',
   '20260712120000_tr8_b1_verified_control_stale',
   '20260713120000_tr12_b1_verification_proposal',
+  // Portal P3a — the dispute substrate (verification view + dispute routes).
+  '20260715120000_p3a_portal_dispute_substrate',
 ].map((n) => resolve(ROOT, `libs/talent-trust/prisma/migrations/${n}/migration.sql`));
 const PORTAL_IDENTITY_MIGRATION = resolve(
   ROOT,
@@ -342,6 +344,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ['00000000-0000-7000-8000-0000000000f2', SUBJECT_ID, TENANT_ID, PORTAL_TALENT_ID],
       );
 
+      // Portal P3a — a CONFIRMED email verification on the survivor subject, so
+      // the verification view has one VERIFICATION item to render + dispute.
+      await setup.query(
+        `INSERT INTO talent_trust."SubjectAnchor"
+           (id, subject_id, tenant_id, anchor_kind, normalized_value, source_evidence_id, source_class, created_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,'EMAIL','p3a@example.com',$4::uuid,'SELF_ATTESTED',NOW())`,
+        ['00000000-0000-7000-8000-0000000000fa', SUBJECT_ID, TENANT_ID, '00000000-0000-7000-8000-0000000000fe'],
+      );
+      await setup.query(
+        `INSERT INTO talent_trust."VerificationRequest"
+           (id, tenant_id, talent_record_id, subject_id, anchor_kind, normalized_value,
+            token_hash, status, created_by, created_at, expires_at, consumed_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,'EMAIL','p3a@example.com',
+            'seed-hash','CONFIRMED','seed',NOW(),NOW() + INTERVAL '1 day',NOW())`,
+        ['00000000-0000-7000-8000-0000000000fb', TENANT_ID, PORTAL_TALENT_ID, SUBJECT_ID],
+      );
+
       // TENANT B — cross-tenant: same cluster, a distinct live record.
       await setup.query(
         `INSERT INTO talent_record."TalentRecord"
@@ -407,7 +426,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'portal',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        scopes: ['portal:profile:read', 'portal:consent:read'],
+        scopes: [
+          'portal:profile:read',
+          'portal:consent:read',
+          // Portal P3a — verification view + dispute rights.
+          'portal:verification:read',
+          'portal:dispute:read',
+          'portal:dispute:write',
+        ],
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -640,6 +666,129 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(body.error.code).toBe('TENANT_CAPABILITY_NOT_ENTITLED');
       expect(body.error.details?.tenant_id).toBe(UNENTITLED_TENANT_ID);
       expect(body.error.details?.missing_capabilities).toEqual(['portal']);
+    });
+
+    // ── Portal P3a — verification view + dispute rights ──
+    const P3A_IDEM = 'cccccccc-cccc-7ccc-8ccc-ccccccccccca';
+    const SEED_VR_ID = '00000000-0000-7000-8000-0000000000fb';
+    let p3aItemId = '';
+    let p3aDisputeId = '';
+
+    it('GET /v1/portal/verifications — 200: re-projected item (kind+status+dates), NO trust-class field', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/portal/verifications`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${portalJwt}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { verifications: Record<string, unknown>[] };
+      assertNoR10OrMatchClass(body, '/v1/portal/verifications.response');
+      expect(new Set(Object.keys(body))).toEqual(new Set(['verifications']));
+      expect(body.verifications.length).toBeGreaterThanOrEqual(1);
+      const item = body.verifications.find((v) => v.kind === 'EMAIL')!;
+      expect(new Set(Object.keys(item))).toEqual(
+        new Set(['item_id', 'kind', 'status', 'verified_at', 'first_seen_at']),
+      );
+      expect(item.status).toBe('CONFIRMED');
+      // Trust-class origin-secrecy: no tenant/verifier/number/PII on the wire.
+      for (const f of ['tenant_id', 'tenant_name', 'verifier', 'verified_by', 'subject_id', 'strength', 'source_class', 'normalized_value']) {
+        expect(item).not.toHaveProperty(f);
+      }
+      p3aItemId = item.item_id as string;
+    });
+
+    it('POST /v1/portal/disputes — 201: opens a dispute; the work item persists the RESOLVED underlying id', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/portal/disputes`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${portalJwt}`,
+          'Idempotency-Key': P3A_IDEM,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ item_id: p3aItemId, statement: 'this verification is not mine' }),
+      });
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as { dispute_id: string; status: string; opened_at: string };
+      expect(new Set(Object.keys(body))).toEqual(new Set(['dispute_id', 'status', 'opened_at']));
+      expect(body.status).toBe('OPEN');
+      p3aDisputeId = body.dispute_id;
+
+      // CONFIRM (Gate-6): the work item stores the resolved underlying id (the VR id,
+      // since the item is a VERIFICATION) — the wire-only pin's other half.
+      const c = new Client({ connectionString: container!.getConnectionUri() });
+      await c.connect();
+      const wi = await c.query(
+        `SELECT underlying_ref_id, tenant_id, subject_id, item_type
+           FROM talent_trust."PortalDisputeWorkItem" WHERE dispute_id = $1::uuid`,
+        [p3aDisputeId],
+      );
+      const parent = await c.query(
+        `SELECT cluster_id, item_id_digest FROM talent_trust."PortalDispute" WHERE id = $1::uuid`,
+        [p3aDisputeId],
+      );
+      await c.end();
+      expect(wi.rows).toHaveLength(1);
+      expect(wi.rows[0].underlying_ref_id).toBe(SEED_VR_ID);
+      expect(wi.rows[0].item_type).toBe('VERIFICATION');
+      expect(parent.rows[0].item_id_digest).toBe(p3aItemId); // the digest is the item id
+    });
+
+    it('GET /v1/portal/disputes — 200: the caller sees their dispute', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/portal/disputes`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${portalJwt}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { disputes: { dispute_id: string }[] };
+      expect(body.disputes.some((d) => d.dispute_id === p3aDisputeId)).toBe(true);
+    });
+
+    it('GET /v1/portal/disputes/:id — 200: detail with the talent statement', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/portal/disputes/${p3aDisputeId}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${portalJwt}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        dispute_id: string; status: string; resolution_note: string | null;
+        statements: { statement: string }[];
+      };
+      assertNoR10OrMatchClass(body, '/v1/portal/disputes/:id.response');
+      expect(body.status).toBe('OPEN');
+      expect(body.resolution_note).toBeNull();
+      expect(body.statements[0].statement).toBe('this verification is not mine');
+    });
+
+    it('POST /v1/portal/disputes/:id/respond — 200 then withdraw — 200 (terminal)', async () => {
+      const r1 = await fetch(`http://127.0.0.1:${port}/v1/portal/disputes/${p3aDisputeId}/respond`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${portalJwt}`, 'Idempotency-Key': P3A_IDEM, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statement: 'adding more detail' }),
+      });
+      expect(r1.status).toBe(200);
+      const r2 = await fetch(`http://127.0.0.1:${port}/v1/portal/disputes/${p3aDisputeId}/withdraw`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${portalJwt}`, 'Idempotency-Key': P3A_IDEM },
+      });
+      expect(r2.status).toBe(200);
+      expect(((await r2.json()) as { status: string }).status).toBe('WITHDRAWN');
+    });
+
+    it('GET /v1/portal/disputes/:id — uniform 404 for a dispute NOT in the caller cluster', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/portal/disputes/${UNKNOWN_RECORD_ID}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${portalJwt}` },
+      });
+      expect(res.status).toBe(404);
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('NOT_FOUND');
+    });
+
+    it('POST /v1/portal/disputes — 404 for an item id not in the caller view', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/portal/disputes`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${portalJwt}`, 'Idempotency-Key': P3A_IDEM, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: 'f'.repeat(64), statement: 'x' }),
+      });
+      expect(res.status).toBe(404);
     });
   },
 );

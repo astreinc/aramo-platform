@@ -91,7 +91,17 @@ export const FORBIDDEN_PREFIXES: ReadonlyArray<string> = [
 // P2+ adds a member in the SAME commit as the schema it names — e.g.
 // 'VerificationState', 'AttestationRecord', 'TrustStatement', 'DisputeSubject'.
 export const TRUST_CLASS_SCHEMAS: ReadonlySet<string> = new Set<string>([
-  // (intentionally empty in P1 — see the header note)
+  // Portal P3a — the FIRST live members. The candidate verification view + the
+  // dispute response envelopes are trust-class: origin-secrecy forbids any
+  // tenant/verifier field on them (the aggregation shape is the only D3-consistent
+  // one — a per-record list would structurally join a verification to its tenant).
+  // Added in the SAME commit as their openapi schemas (directive ruling 1).
+  'PortalVerifications',
+  'PortalVerificationItem',
+  'PortalDisputeMutation',
+  'PortalDisputeStatement',
+  'PortalDisputeDetail',
+  'PortalDisputeList',
 ]);
 
 // The tenant-/verifier-identifying fields forbidden ONLY within a trust-class
