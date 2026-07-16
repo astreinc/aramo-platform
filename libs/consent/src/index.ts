@@ -64,6 +64,8 @@ export type {
   TalentConsentStateResponseDto,
   ConsentHistoryEventDto,
   ConsentHistoryResponseDto,
+  PortalConsentTextEntryDto,
+  PortalConsentTextResponseDto,
   ConsentDecisionLogEntryDto,
   ConsentDecisionLogEventType,
   ConsentDecisionLogActorType,

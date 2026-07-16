@@ -58,11 +58,13 @@ describe('portal-thin consumer → GET /v1/portal/records', () => {
         b.headers({ Authorization: 'Bearer eyJfake.portal.token' });
       })
       .willRespondWith(200, (b) => {
-        // The closed PortalProfile envelope — exactly the 5 R10-safe fields.
+        // The closed PortalProfile envelope. Portal P2 P2b — tenant_name is now
+        // a MUST (the engagement counterparty is NAMED, ruling 2); still R10-safe.
         b.jsonBody({
           records: eachLike({
             talent_id: uuid(),
             tenant_id: uuid(),
+            tenant_name: like('Acme Corp'),
             tenant_status: like('active'),
             source_channel: like('self_signup'),
             created_at: like('2026-05-01T12:00:00.000Z'),
@@ -81,12 +83,14 @@ describe('portal-thin consumer → GET /v1/portal/records', () => {
         expect(Array.isArray(body.records)).toBe(true);
         expect(body.records.length).toBeGreaterThanOrEqual(1);
         const rec = body.records[0]!;
-        // Positive shape: the 5 fields present …
-        for (const f of ['talent_id', 'tenant_id', 'tenant_status', 'source_channel', 'created_at']) {
+        // Positive shape: the 6 engagement-class fields present (P2b adds the
+        // NAMED counterparty tenant_name) …
+        for (const f of ['talent_id', 'tenant_id', 'tenant_name', 'tenant_status', 'source_channel', 'created_at']) {
           expect(rec).toHaveProperty(f);
         }
-        // … and NO trust/verification origin data (D3 / P-R4).
-        for (const f of ['tenant_name', 'verifier', 'verified_by', 'attestation']) {
+        // … and NO trust/verification ORIGIN data (D3 / P-R4). tenant_name is an
+        // engagement counterparty label, NOT an origin field, so it is legit here.
+        for (const f of ['verifier', 'verified_by', 'attestation']) {
           expect(rec).not.toHaveProperty(f);
         }
       });

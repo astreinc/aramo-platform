@@ -88,6 +88,21 @@ const ENTITLEMENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
 );
+// Portal P2 P2b — the portal reads now enrich tenant_name via TenantService
+// (@aramo/identity), so the identity.Tenant table must exist + carry every
+// column the regenerated Tenant client SELECTs. Same Tenant-relevant subset the
+// settings-d3 tenant-profile spec applies (init + the additive Tenant ALTERs;
+// the site/team tables Tenant findUnique does not need are skipped).
+const IDENTITY_TENANT_MIGRATIONS = [
+  '20260512000000_init_identity_model',
+  '20260625000000_add_tenant_allowed_domain',
+  '20260626000000_add_tenant_domain_verification',
+  '20260626120000_add_tenant_slug',
+  '20260627000000_add_tenant_identity_provider',
+  '20260709130000_add_tenant_lifecycle_status',
+  '20260624000000_add_invitation_and_invite_status',
+  '20260619000000_add_tenant_profile',
+].map((n) => resolve(ROOT, `libs/identity/prisma/migrations/${n}/migration.sql`));
 // Portal P1 PR-2a — the OPEN-4 chain provisions talent_trust (ResolutionSubject +
 // ResolutionSubjectRef, the PERSON_CLUSTER → ATS_TALENT_RECORD graph) and
 // portal_identity (PortalUser). Full talent_trust set so the regenerated client's
@@ -234,6 +249,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         JOB_DOMAIN_INIT_MIGRATION,
         TALENT_INIT_MIGRATION,
         ENTITLEMENT_INIT_MIGRATION,
+        // Portal P2 P2b — identity.Tenant for the tenant_name enrichment read.
+        ...IDENTITY_TENANT_MIGRATIONS,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -256,6 +273,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
          VALUES ($1::uuid, 'portal') ON CONFLICT DO NOTHING`,
         [TENANT_ID],
+      );
+
+      // Portal P2 P2b — seed the two engagement tenants so the tenant_name
+      // enrichment (TenantService.getTenantById) resolves a human name. Only
+      // id/name/updated_at are NOT-NULL-without-default on identity.Tenant.
+      await setup.query(
+        `INSERT INTO identity."Tenant" (id, name, updated_at)
+         VALUES ($1::uuid, 'Acme Corp', NOW()), ($2::uuid, 'Globex', NOW())
+         ON CONFLICT DO NOTHING`,
+        [TENANT_ID, TENANT_B_ID],
       );
 
       // 4e-rest-b — seed the portal talent's TalentRecord (findSelfProfile
@@ -454,6 +481,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const PORTAL_PROFILE_KEYS = new Set([
       'talent_id',
       'tenant_id',
+      // Portal P2 P2b — the engagement counterparty is now NAMED (ruling 2).
+      'tenant_name',
       'tenant_status',
       'source_channel',
       'created_at',
@@ -477,6 +506,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(talentIds).toEqual([PORTAL_TALENT_ID, RECORD_B_ID].sort());
       const tenantIds = new Set(body.records.map((r) => r.tenant_id));
       expect(tenantIds).toEqual(new Set([TENANT_ID, TENANT_B_ID]));
+      // Portal P2 P2b — the counterparty is named from identity.Tenant.
+      const namesByTenant = new Map(
+        body.records.map((r) => [r.tenant_id, r.tenant_name]),
+      );
+      expect(namesByTenant.get(TENANT_ID)).toBe('Acme Corp');
+      expect(namesByTenant.get(TENANT_B_ID)).toBe('Globex');
       for (const rec of body.records) {
         expect(new Set(Object.keys(rec))).toEqual(PORTAL_PROFILE_KEYS);
         expect(rec).not.toHaveProperty('source_recruiter_id');
@@ -506,6 +541,50 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(new Set(Object.keys(body))).toEqual(
         new Set(['talent_record_id', 'tenant_id', 'is_anonymized', 'computed_at', 'scopes']),
       );
+    });
+
+    it('GET /v1/portal/records/:id/consent/text — 200: the versioned text, named by the record tenant (P2b)', async () => {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/portal/records/${PORTAL_TALENT_ID}/consent/text`,
+        { method: 'GET', headers: { Authorization: `Bearer ${portalJwt}` } },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        version: string;
+        texts: { scope: string; text: string }[];
+      };
+      assertNoR10OrMatchClass(body, '/v1/portal/records/:id/consent/text.response');
+      expect(new Set(Object.keys(body))).toEqual(new Set(['version', 'texts']));
+      expect(body.texts).toHaveLength(5);
+      // Canonical clause names the recipient by tenant_id (the D7 preimage).
+      for (const entry of body.texts) {
+        expect(entry.text).toContain(TENANT_ID);
+      }
+    });
+
+    it('GET /v1/portal/records/:id/consent/history — 200: append-only events, engagement-class only (P2b)', async () => {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/portal/records/${PORTAL_TALENT_ID}/consent/history`,
+        { method: 'GET', headers: { Authorization: `Bearer ${portalJwt}` } },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        events: Record<string, unknown>[];
+        next_cursor: string | null;
+        is_anonymized: boolean;
+      };
+      assertNoR10OrMatchClass(body, '/v1/portal/records/:id/consent/history.response');
+      expect(new Set(Object.keys(body))).toEqual(
+        new Set(['events', 'next_cursor', 'is_anonymized']),
+      );
+      // The seeded 'matching' grant is present, and each event carries ONLY the
+      // 5 engagement-class fields — no actor/recruiter/trust leak.
+      expect(body.events.length).toBeGreaterThanOrEqual(1);
+      for (const ev of body.events) {
+        expect(new Set(Object.keys(ev))).toEqual(
+          new Set(['event_id', 'scope', 'action', 'created_at', 'expires_at']),
+        );
+      }
     });
 
     it('GET /v1/portal/records/:id/profile — uniform 404 for a record NOT in the caller chain', async () => {

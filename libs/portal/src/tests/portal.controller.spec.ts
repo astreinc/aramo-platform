@@ -94,7 +94,11 @@ const sampleConsentState = {
   scopes: [],
 };
 
-function makeConsentService(calls: { consent: ConsentCall[] }) {
+function makeConsentService(calls: {
+  consent: ConsentCall[];
+  texts?: string[];
+  history?: { talent_record_id: string; authTenant: string }[];
+}) {
   return {
     getState: async (
       talent_id: string,
@@ -104,6 +108,44 @@ function makeConsentService(calls: { consent: ConsentCall[] }) {
       calls.consent.push({ talent_id, authContext, requestId });
       return sampleConsentState;
     },
+    // Portal P2 P2b — text render (per record tenant) + history (rescoped).
+    getPortalConsentTexts: (recipientTenantId: string) => {
+      calls.texts?.push(recipientTenantId);
+      return {
+        version: 'portal-consent-v1',
+        texts: [{ scope: 'matching', text: `authorize ${recipientTenantId}` }],
+      };
+    },
+    getPortalHistory: async (input: {
+      talent_record_id: string;
+      authContext: { tenant_id: string };
+    }) => {
+      calls.history?.push({
+        talent_record_id: input.talent_record_id,
+        authTenant: input.authContext.tenant_id,
+      });
+      return { events: [], next_cursor: null, is_anonymized: false };
+    },
+  };
+}
+
+// Portal P2 P2b — the tenant_name enrichment dependency. Maps the seeded tenant
+// ids to human names; an unseeded id resolves to null (defensive fallback).
+const TENANT_NAMES: Record<string, string> = {
+  [TENANT_A]: 'Acme Corp',
+  [TENANT_B]: 'Globex',
+};
+function makeTenantService() {
+  return {
+    getTenantById: async (id: string) => ({
+      id,
+      name: TENANT_NAMES[id] ?? null,
+      is_active: true,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+      identity_provider: null,
+      status: 'active',
+    }),
   };
 }
 
@@ -119,13 +161,15 @@ const FORBIDDEN = [
   'source_recruiter_id',
 ];
 
-// PR-2b §PR-2.4 — grep-assert the new DTOs against the D3 trust vocab: NO
-// trust/verification/attestation origin data on any P1 surface (Portal DDR
-// P-R4/P-R5). tenant_name/verifier/verified_by/verifying_*/origin_* are the
-// origin-secrecy fields; tenant_id is P-R5-legal on this ENGAGEMENT surface, so
-// it is deliberately NOT in this list (see verify-portal-refusal.ts trust-class).
+// PR-2b §PR-2.4 / P2b — grep-assert the surface against the D3 trust vocab: NO
+// trust/verification/attestation ORIGIN data on this ENGAGEMENT surface (Portal
+// DDR P-R4/P-R5). verifier/verified_by/verifying_*/origin_* are the origin-
+// secrecy fields. Both tenant_id AND tenant_name are P-R5-legal here (a portal
+// user's own engagements, named — ruling 2), so they are deliberately NOT in
+// this list; they remain forbidden ONLY inside trust-class schemas (empty),
+// which verify-portal-refusal.ts enforces.
 const TRUST_VOCAB_FORBIDDEN = [
-  'tenant_name', 'verifier', 'verified_by', 'verifying_tenant', 'origin_tenant',
+  'verifier', 'verified_by', 'verifying_tenant', 'origin_tenant',
   'attestation', 'trust_statement', 'verification_state',
 ];
 
@@ -137,6 +181,7 @@ describe('PortalController — GET /v1/portal/records', () => {
       makeResolver([REF_A], resolverCalls) as never,
       makeTalentRecordService('project', profileCalls) as never,
       makeConsentService({ consent: [] }) as never,
+      makeTenantService() as never,
     );
     await expect(
       controller.getRecords(portalAuth({ consumer_type: 'recruiter' }), 'req-1'),
@@ -150,6 +195,7 @@ describe('PortalController — GET /v1/portal/records', () => {
       makeResolver([REF_A], resolverCalls) as never,
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
+      makeTenantService() as never,
     );
     await expect(
       controller.getRecords(portalAuth({ sub: 'not-a-uuid' }), 'req-1'),
@@ -168,6 +214,7 @@ describe('PortalController — GET /v1/portal/records', () => {
       makeResolver([REF_A, REF_B], resolverCalls) as never,
       makeTalentRecordService('project', profileCalls) as never,
       makeConsentService({ consent: [] }) as never,
+      makeTenantService() as never,
     );
     const result = await controller.getRecords(portalAuth(), 'req-1');
     // WHO comes from sub only.
@@ -188,6 +235,7 @@ describe('PortalController — GET /v1/portal/records', () => {
       makeResolver([], resolverCalls) as never,
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
+      makeTenantService() as never,
     );
     const result = await controller.getRecords(portalAuth(), 'req-1');
     expect(result).toEqual({ records: [] });
@@ -198,18 +246,22 @@ describe('PortalController — GET /v1/portal/records', () => {
       makeResolver([REF_A], { resolveRecords: [], resolveMember: [] }) as never,
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
+      makeTenantService() as never,
     );
     const result = await controller.getRecords(portalAuth(), 'req-1');
     expect(Object.keys(result)).toEqual(['records']);
     expect(result.records[0]).toEqual({
       talent_id: RECORD_A,
       tenant_id: TENANT_A,
+      // Portal P2 P2b — the engagement counterparty is now NAMED (ruling 2).
+      tenant_name: 'Acme Corp',
       tenant_status: 'active',
       source_channel: 'self_signup',
       created_at: '2026-05-01T12:00:00.000Z',
     });
     for (const f of FORBIDDEN) expect(result.records[0]).not.toHaveProperty(f);
-    // §PR-2.4 — no trust/verification/attestation origin data on the surface.
+    // §PR-2.4 — no trust/verification/attestation ORIGIN data on the surface.
+    // (tenant_name is NOT here — P2b makes it a MUST on this engagement surface.)
     for (const f of TRUST_VOCAB_FORBIDDEN) expect(result.records[0]).not.toHaveProperty(f);
   });
 });
@@ -221,12 +273,14 @@ describe('PortalController — GET /v1/portal/records/:id/profile', () => {
       makeResolver([REF_A], { resolveRecords: [], resolveMember: [] }) as never,
       makeTalentRecordService('project', profileCalls) as never,
       makeConsentService({ consent: [] }) as never,
+      makeTenantService() as never,
     );
     const result = await controller.getRecordProfile(RECORD_A, portalAuth(), 'req-1');
     expect(profileCalls.profile).toEqual([{ tenant_id: TENANT_A, talent_id: RECORD_A }]);
     expect(result).toEqual({
       talent_id: RECORD_A,
       tenant_id: TENANT_A,
+      tenant_name: 'Acme Corp',
       tenant_status: 'active',
       source_channel: 'self_signup',
       created_at: '2026-05-01T12:00:00.000Z',
@@ -240,6 +294,7 @@ describe('PortalController — GET /v1/portal/records/:id/profile', () => {
       makeResolver([REF_A], resolverCalls) as never,
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
+      makeTenantService() as never,
     );
     await expect(
       controller.getRecordProfile(UNKNOWN_RECORD, portalAuth(), 'req-1'),
@@ -254,6 +309,7 @@ describe('PortalController — GET /v1/portal/records/:id/profile', () => {
       makeResolver([REF_A], resolverCalls) as never,
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
+      makeTenantService() as never,
     );
     await expect(
       controller.getRecordProfile(MALFORMED_RECORD, portalAuth(), 'req-1'),
@@ -267,6 +323,7 @@ describe('PortalController — GET /v1/portal/records/:id/profile', () => {
       makeResolver([REF_A], { resolveRecords: [], resolveMember: [] }) as never,
       makeTalentRecordService('null', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
+      makeTenantService() as never,
     );
     await expect(
       controller.getRecordProfile(RECORD_A, portalAuth(), 'req-1'),
@@ -279,6 +336,7 @@ describe('PortalController — GET /v1/portal/records/:id/profile', () => {
       makeResolver([REF_A], resolverCalls) as never,
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
+      makeTenantService() as never,
     );
     await expect(
       controller.getRecordProfile(RECORD_A, portalAuth({ consumer_type: 'recruiter' }), 'req-1'),
@@ -294,6 +352,7 @@ describe('PortalController — GET /v1/portal/records/:id/consent', () => {
       makeResolver([REF_A], { resolveRecords: [], resolveMember: [] }) as never,
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService(consentCalls) as never,
+      makeTenantService() as never,
     );
     const result = await controller.getRecordConsent(RECORD_A, portalAuth(), 'req-7');
     expect(consentCalls.consent).toHaveLength(1);
@@ -315,6 +374,7 @@ describe('PortalController — GET /v1/portal/records/:id/consent', () => {
       makeResolver([REF_A], { resolveRecords: [], resolveMember: [] }) as never,
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService(consentCalls) as never,
+      makeTenantService() as never,
     );
     // A record id the caller does not hold resolves to nothing → uniform 404;
     // there is no surface to read another portal user's record.
@@ -330,6 +390,7 @@ describe('PortalController — GET /v1/portal/records/:id/consent', () => {
       makeResolver([REF_A], { resolveRecords: [], resolveMember: [] }) as never,
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService(consentCalls) as never,
+      makeTenantService() as never,
     );
     await expect(
       controller.getRecordConsent(RECORD_A, portalAuth({ sub: 'not-a-uuid' }), 'req-1'),
@@ -343,10 +404,88 @@ describe('PortalController — GET /v1/portal/records/:id/consent', () => {
       makeResolver([REF_A], { resolveRecords: [], resolveMember: [] }) as never,
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService(consentCalls) as never,
+      makeTenantService() as never,
     );
     await expect(
       controller.getRecordConsent(RECORD_A, portalAuth({ consumer_type: 'ingestion' }), 'req-1'),
     ).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
     expect(consentCalls.consent).toEqual([]);
+  });
+});
+
+describe('PortalController — GET /v1/portal/records/:id/consent/text (P2b)', () => {
+  it('renders text named by the RECORD tenant (from the chain), for an in-chain id', async () => {
+    const calls = { consent: [] as ConsentCall[], texts: [] as string[] };
+    const controller = new PortalController(
+      makeResolver([REF_A], { resolveRecords: [], resolveMember: [] }) as never,
+      makeTalentRecordService('project', { profile: [] }) as never,
+      makeConsentService(calls) as never,
+      makeTenantService() as never,
+    );
+    const result = await controller.getRecordConsentText(RECORD_A, portalAuth(), 'req-1');
+    // Recipient is the record's tenant, NOT the portal session sentinel.
+    expect(calls.texts).toEqual([TENANT_A]);
+    expect(result.version).toBe('portal-consent-v1');
+  });
+
+  it('returns the uniform 404 for an out-of-chain id (no text rendered)', async () => {
+    const calls = { consent: [] as ConsentCall[], texts: [] as string[] };
+    const controller = new PortalController(
+      makeResolver([REF_A], { resolveRecords: [], resolveMember: [] }) as never,
+      makeTalentRecordService('project', { profile: [] }) as never,
+      makeConsentService(calls) as never,
+      makeTenantService() as never,
+    );
+    await expect(
+      controller.getRecordConsentText(UNKNOWN_RECORD, portalAuth(), 'req-1'),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    expect(calls.texts).toEqual([]);
+  });
+
+  it('returns 403 for a non-portal consumer', async () => {
+    const calls = { consent: [] as ConsentCall[], texts: [] as string[] };
+    const controller = new PortalController(
+      makeResolver([REF_A], { resolveRecords: [], resolveMember: [] }) as never,
+      makeTalentRecordService('project', { profile: [] }) as never,
+      makeConsentService(calls) as never,
+      makeTenantService() as never,
+    );
+    await expect(
+      controller.getRecordConsentText(RECORD_A, portalAuth({ consumer_type: 'recruiter' }), 'req-1'),
+    ).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    expect(calls.texts).toEqual([]);
+  });
+});
+
+describe('PortalController — GET /v1/portal/records/:id/consent/history (P2b)', () => {
+  it('rescopes history to the RECORD tenant (from the chain) for an in-chain id', async () => {
+    const calls = { consent: [] as ConsentCall[], history: [] as { talent_record_id: string; authTenant: string }[] };
+    const controller = new PortalController(
+      makeResolver([REF_A], { resolveRecords: [], resolveMember: [] }) as never,
+      makeTalentRecordService('project', { profile: [] }) as never,
+      makeConsentService(calls) as never,
+      makeTenantService() as never,
+    );
+    const result = await controller.getRecordConsentHistory(
+      RECORD_A, undefined, undefined, undefined, portalAuth(), 'req-9',
+    );
+    expect(calls.history).toEqual([{ talent_record_id: RECORD_A, authTenant: TENANT_A }]);
+    expect(result).toEqual({ events: [], next_cursor: null, is_anonymized: false });
+  });
+
+  it('returns the uniform 404 for an out-of-chain id (no history read)', async () => {
+    const calls = { consent: [] as ConsentCall[], history: [] as { talent_record_id: string; authTenant: string }[] };
+    const controller = new PortalController(
+      makeResolver([REF_A], { resolveRecords: [], resolveMember: [] }) as never,
+      makeTalentRecordService('project', { profile: [] }) as never,
+      makeConsentService(calls) as never,
+      makeTenantService() as never,
+    );
+    await expect(
+      controller.getRecordConsentHistory(
+        UNKNOWN_RECORD, undefined, undefined, undefined, portalAuth(), 'req-1',
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    expect(calls.history).toEqual([]);
   });
 });

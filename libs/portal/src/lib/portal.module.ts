@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { ConsentModule } from '@aramo/consent';
 import { EntitlementModule } from '@aramo/entitlement';
+import { IdentityCoreModule } from '@aramo/identity';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { PortalIdentityModule } from '@aramo/portal-identity';
 import { TalentTrustModule } from '@aramo/talent-trust';
@@ -26,6 +27,12 @@ import { PortalTalentResolverService } from './portal-talent-resolver.service.js
     TalentRecordModule,
     ConsentModule,
     EntitlementModule,
+    // Portal P2 P2b (§PR-2 ruling 2) — TenantService for tenant_name enrichment.
+    // libs/portal is scope:ats; @aramo/identity is scope:shared, so this edge is
+    // boundary-legal (scope:ats MAY depend on scope:shared). IdentityCoreModule
+    // exports TenantService; it is already in apps/api's graph, so no new app
+    // wiring. NO prisma enters libs/portal — data still flows through services.
+    IdentityCoreModule,
     // Portal P1 PR-2a — the OPEN-4 chain deps: PortalUser lookup (sub → cluster)
     // + the platform-rail index-ref graph (cluster → subjects → ATS refs). Still
     // no prisma in libs/portal; all data access flows through injected services.

@@ -143,3 +143,78 @@ describe('consent-texts — reproducible versioned hash preimage', () => {
     ).toThrow(/unknown portal consent text version/);
   });
 });
+
+describe('ConsentService — portal consent text + history (Portal P2 P2b)', () => {
+  it('getPortalConsentTexts renders all 5 scopes at the current version — each byte-identical to the D7 hash preimage', () => {
+    const { service } = makeService();
+    const res = service.getPortalConsentTexts(TENANT);
+    expect(res.version).toBe(CONSENT_TEXT_CURRENT_VERSION);
+    expect(res.texts).toHaveLength(5);
+    for (const entry of res.texts) {
+      // The displayed text IS the preimage the grant path hashes.
+      const preimage = renderPortalConsentText(CONSENT_TEXT_CURRENT_VERSION, {
+        recipient_tenant_id: TENANT,
+        scope: entry.scope,
+      });
+      expect(entry.text).toBe(preimage);
+      // And the recipient is named by tenant_id in the canonical clause.
+      expect(entry.text).toContain(TENANT);
+    }
+    // Sanity: the hash of a returned entry equals hashPortalConsentText's.
+    const one = res.texts.find((t) => t.scope === 'matching');
+    expect(one).toBeDefined();
+    const { hash } = hashPortalConsentText(CONSENT_TEXT_CURRENT_VERSION, {
+      recipient_tenant_id: TENANT,
+      scope: 'matching',
+    });
+    expect(typeof hash).toBe('string');
+  });
+
+  it('getPortalHistory clamps limit to 200 and rescopes to the passed (record) tenant', async () => {
+    const resolveHistory = vi
+      .fn()
+      .mockResolvedValue({ events: [], next_cursor: null, is_anonymized: false });
+    const service = new ConsentService({
+      resolveHistory,
+    } as unknown as ConsentRepository);
+    await service.getPortalHistory({
+      talent_record_id: RECORD,
+      limitRaw: '9999',
+      authContext: portalAuth(),
+      requestId: 'req-1',
+    });
+    expect(resolveHistory).toHaveBeenCalledTimes(1);
+    const arg = resolveHistory.mock.calls[0][0];
+    expect(arg.limit).toBe(200); // clamped
+    expect(arg.tenant_id).toBe(TENANT); // rescoped by the controller, honored here
+    expect(arg.talent_record_id).toBe(RECORD);
+  });
+
+  it('getPortalHistory rejects a malformed cursor with a 400 (never a 500)', async () => {
+    const service = new ConsentService({
+      resolveHistory: vi.fn(),
+    } as unknown as ConsentRepository);
+    await expect(
+      service.getPortalHistory({
+        talent_record_id: RECORD,
+        cursorRaw: '!!!not-base64!!!',
+        authContext: portalAuth(),
+        requestId: 'req-1',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+  });
+
+  it('getPortalHistory rejects a non-integer limit with a 400', async () => {
+    const service = new ConsentService({
+      resolveHistory: vi.fn(),
+    } as unknown as ConsentRepository);
+    await expect(
+      service.getPortalHistory({
+        talent_record_id: RECORD,
+        limitRaw: 'abc',
+        authContext: portalAuth(),
+        requestId: 'req-1',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+  });
+});

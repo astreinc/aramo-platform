@@ -13,6 +13,7 @@ import { RecordsListView } from './RecordsListView';
 const REC_A: PortalRecordProfile = {
   talent_id: 'a1a1a1a1-a1a1-7a1a-8a1a-a1a1a1a1a1a1',
   tenant_id: '11111111-1111-7111-8111-111111111111',
+  tenant_name: 'Acme Corp',
   tenant_status: 'active',
   source_channel: 'self_signup',
   created_at: '2026-05-01T12:00:00.000Z',
@@ -20,6 +21,7 @@ const REC_A: PortalRecordProfile = {
 const REC_B: PortalRecordProfile = {
   talent_id: 'b1b1b1b1-b1b1-7b1b-8b1b-b1b1b1b1b1b1',
   tenant_id: '22222222-2222-7222-8222-222222222222',
+  tenant_name: 'Globex',
   tenant_status: 'active',
   source_channel: 'referral',
   created_at: '2026-05-02T12:00:00.000Z',
@@ -41,10 +43,10 @@ describe('RecordsListView', () => {
     vi.spyOn(portalApi, 'listRecords').mockResolvedValue({ records: RECORDS });
     renderView();
 
-    const first = await screen.findByRole('link', { name: REC_A.tenant_id });
+    const first = await screen.findByRole('link', { name: 'Acme Corp' });
     expect(first).toHaveAttribute('href', `/records/${REC_A.talent_id}`);
     expect(
-      screen.getByRole('link', { name: REC_B.tenant_id }),
+      screen.getByRole('link', { name: 'Globex' }),
     ).toHaveAttribute('href', `/records/${REC_B.talent_id}`);
     expect(screen.getByText('self_signup')).toBeInTheDocument();
   });
