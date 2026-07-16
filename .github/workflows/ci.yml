@@ -1,25 +1,83 @@
-# Aramo Core CI — PR-1 baseline.
+# Aramo Core CI — CI-Velocity lanes (Aramo-CI-Velocity-Directive-v1_0-LOCKED §PR-2).
 #
-# Wired gates run against the empty scaffolding. Placeholder gates print a
-# GitHub Actions ::notice:: and exit 0 — they are reserved slots that future
-# PRs will fill in without restructuring this workflow (per PR-1 Acceptance
-# Criteria).
+# THREE lanes, ONE workflow:
+#   • pull_request  — the FAST lane: nx `affected` for test/lint/build + affected
+#                     integration roots; terraform + docker path-filtered; the
+#                     cheap walls stay UNCONDITIONAL required checks (byte-for-byte).
+#   • merge_group   — the FULL gate: run-many --all unit/lint/build + full serial
+#                     integration + full pact + all walls, on the queued merge
+#                     result before it lands on main. deployment-gate requires it.
+#   • schedule      — nightly full-serial drift run on main (never blocks a PR).
+#
+# Invariant: no job is skipped-to-blocked. Affected/path-filtered work NO-OPS
+# INTERNALLY (exits 0) when not applicable, so every required check still reports
+# success/failure — never "skipped" — keeping branch protection + deployment-gate
+# valid. Walls are NEVER affected-scoped (Charter).
 
 name: ci
 
 on:
   push:
-    # Inc-3 PR-3.6 (R15): the platform-console integration branch's self-gating
-    # era ended with the M merge; its push trigger is retired now that Track B
-    # targets main directly.
     branches: [main]
   pull_request:
+  merge_group:
+  schedule:
+    - cron: '0 7 * * *' # nightly full-serial drift detector (07:00 UTC)
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Path-filter helper (PR lane only). Non-PR events run everything full, so its
+  # outputs are read solely under `github.event_name == 'pull_request'` guards.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      terraform: ${{ steps.filter.outputs.terraform }}
+      docker: ${{ steps.dockerjson.outputs.json }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            terraform:
+              - 'infrastructure/**'
+            api:
+              - 'apps/api/**'
+              - 'libs/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.base.json'
+            auth-service:
+              - 'apps/auth-service/**'
+              - 'libs/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.base.json'
+            platform-admin:
+              - 'apps/platform-admin/**'
+              - 'libs/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.base.json'
+            caddy:
+              - 'deploy/caddy/**'
+      - id: dockerjson
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            printf 'json={"api":"%s","auth-service":"%s","platform-admin":"%s","caddy":"%s"}\n' \
+              "${{ steps.filter.outputs.api }}" \
+              "${{ steps.filter.outputs.auth-service }}" \
+              "${{ steps.filter.outputs.platform-admin }}" \
+              "${{ steps.filter.outputs.caddy }}" >> "$GITHUB_OUTPUT"
+          else
+            echo 'json={"api":"true","auth-service":"true","platform-admin":"true","caddy":"true"}' >> "$GITHUB_OUTPUT"
+          fi
+
   install:
     name: install
     runs-on: ubuntu-latest
@@ -29,7 +87,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
 
   prisma-validate:
     name: prisma:validate
@@ -41,7 +99,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run prisma:validate
 
   lint:
@@ -50,12 +108,22 @@ jobs:
     needs: install
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # nx affected needs history
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npx nx run-many --target=lint --all
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - uses: nrwl/nx-set-shas@v4
+        if: github.event_name == 'pull_request'
+      - name: lint (affected on PR, all otherwise)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npx nx affected -t lint
+          else
+            npx nx run-many -t lint --all
+          fi
 
   build:
     name: build
@@ -63,31 +131,34 @@ jobs:
     needs: install
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run prisma:generate
-      - run: npx nx run-many --target=build --all
+      - uses: nrwl/nx-set-shas@v4
+        if: github.event_name == 'pull_request'
+      - name: build (affected on PR, all otherwise)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npx nx affected -t build
+          else
+            npx nx run-many -t build --all
+          fi
 
-  # Builds every deployable image through its real Dockerfile — the artifact
-  # that actually ships. The host `build` job above (nx run-many) is a fast,
-  # non-required compile signal; it does NOT exercise the Dockerfiles, so a
-  # break that only shows up in a clean image build (e.g. a missing ^build
-  # dependsOn) passed CI green until now. This job closes that gap and is a
-  # REQUIRED gate (wired into deployment-gate `needs`).
-  #
-  # On a PR: build only (push:false) — proves each image compiles end-to-end.
-  # On push to main: also push SHA-tagged + :latest images to GHCR, so deploys
-  # pull a CI-built artifact with provenance instead of rebuilding on the box.
-  # Registry = GHCR (ghcr.io) via the built-in GITHUB_TOKEN (packages:write) —
-  # no extra cloud-auth dance. The box-pull cutover (GHCR login / package
-  # visibility) is a deliberate, separately-tested deploy step — see PR body.
+  # Builds every deployable image through its real Dockerfile — the artifact that
+  # actually ships. On a PR the images are PATH-FILTERED to their contexts (the
+  # standalone caddy image skips unless deploy/caddy changed; the app images
+  # rebuild on any apps/libs change since they bundle the monorepo). On
+  # merge_group / push / schedule ALL images build. On push to main they are also
+  # pushed SHA-tagged + :latest to GHCR (deploy provenance).
   docker-build:
     name: docker-build
     runs-on: ubuntu-latest
-    needs: install
+    needs: [install, changes]
     permissions:
       contents: read
       packages: write
@@ -102,16 +173,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      # Push only on push-to-main; PRs (incl. forks, where GITHUB_TOKEN is
-      # read-only) build without pushing.
+        if: ${{ fromJSON(needs.changes.outputs.docker)[matrix.name] == 'true' }}
       - name: Log in to GHCR (main only)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && fromJSON(needs.changes.outputs.docker)[matrix.name] == 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build image (and push on main)
+        if: ${{ fromJSON(needs.changes.outputs.docker)[matrix.name] == 'true' }}
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -122,6 +193,9 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/aramo-${{ matrix.name }}:latest
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      - name: No-op (context unchanged on PR)
+        if: ${{ fromJSON(needs.changes.outputs.docker)[matrix.name] != 'true' }}
+        run: echo "::notice::${{ matrix.name }} image context unchanged on this PR — build skipped (merge queue rebuilds it)."
 
   test-unit:
     name: test:unit
@@ -129,13 +203,23 @@ jobs:
     needs: install
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run prisma:generate
-      - run: npx nx run-many --target=test --all
+      - uses: nrwl/nx-set-shas@v4
+        if: github.event_name == 'pull_request'
+      - name: test:unit (affected on PR, all otherwise)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npx nx affected -t test
+          else
+            npx nx run-many -t test --all
+          fi
 
   openapi-validate:
     name: openapi:validate
@@ -147,7 +231,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run openapi:validate
 
   openapi-lint:
@@ -160,7 +244,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run openapi:lint
 
   lint-nx-boundaries:
@@ -173,7 +257,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run lint:nx-boundaries
 
   verify-vocabulary:
@@ -186,9 +270,8 @@ jobs:
       - run: bash scripts/verify-vocabulary.sh
 
   # ---------------------------------------------------------------------------
-  # Refusal enforcement + drift detection (PR-M0R-2). Scripts live in
-  # ci/scripts/ and exit 0 against the current PR-1 paths: {} scaffolding;
-  # enforcement coverage grows as M2-M7 populate Portal/ATS schemas.
+  # Refusal enforcement + drift detection. Scripts live in ci/scripts/. These
+  # walls are UNCONDITIONAL required checks on every lane (never affected-scoped).
   # ---------------------------------------------------------------------------
 
   openapi-drift-check:
@@ -201,7 +284,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run openapi:drift-check
 
   portal-refusal-check:
@@ -214,7 +297,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run portal:refusal-check
 
   ats-refusal-check:
@@ -227,7 +310,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run ats:refusal-check
 
   ingestion-refusal-check:
@@ -240,7 +323,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run ingestion:refusal-check
 
   version-sync-check:
@@ -253,7 +336,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run version:sync-check
 
   error-codes-check:
@@ -266,15 +349,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run error-codes:check
 
-  # TR-2b B1 (DDR R8) — the I14 cross-tenant privacy wall promoted to a
-  # first-class named gate at parity with the refusal checks. Invokes the
-  # EXISTING vitest spec (libs/identity-index/src/tests/privacy-wall.spec.ts) —
-  # no logic duplication; the spec stays the single enforcement source. The wall
-  # that enforces Ruling D2's "apertures are the exclusive enforcement surface"
-  # must be visible in the required-checks list, not folded inside test-unit.
   identity-index-privacy-wall:
     name: identity-index:privacy-wall
     runs-on: ubuntu-latest
@@ -285,7 +362,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run identity-index:privacy-wall
 
   pact-consumer:
@@ -298,16 +375,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       # M6 PR-1 — bounded retry for the irreducible pact-rust mock-server
-      # port-reuse race (~7% warm / ~17% cold per attempt at HEAD 9ac157e
-      # after the afterEach setImmediate yield). k=3 projects job failure
-      # to < 0.5% (cold 17%³ ≈ 0.5%; warm 6.7%³ ≈ 0.03%). Wraps the
-      # umbrella `pact:consumer` (all 5 suites; the retry covers any
-      # consumer suite that exhibits the same pact-rust signature).
-      # HK-M6 carry-forward for upstream fix in
-      # pact-foundation/pact-core or pact-rust (cleanupMockServer should
-      # await listener unbind synchronously).
+      # port-reuse race. k=3 projects job failure to < 0.5%.
       - name: Run pact:consumer (with bounded retry for pact-rust race)
         run: |
           set -e
@@ -339,7 +409,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run prisma:generate
       - name: Download pact files
         uses: actions/download-artifact@v4
@@ -348,80 +418,56 @@ jobs:
           path: pact/pacts/
       - run: npm run pact:provider
 
+  # Integration: SERIAL always (harness hardening). On a PR, only the AFFECTED
+  # roots run (ci-integration.sh reads nx affected); on merge_group / push /
+  # schedule, ALL 16 roots run. An affected-empty PR runs zero roots → exits 0
+  # (success, not skipped).
   tests-integration:
     name: tests:integration
     runs-on: ubuntu-latest
     needs: install
-    env:
-      ARAMO_RUN_INTEGRATION: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci || npm ci || npm ci  # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run prisma:generate
-      # M4 PR-2 §4.6 — extend tests-integration to the full 7 roots that
-      # package.json's `tests:integration` AND-chain runs locally. Closes
-      # M4 PR-1's oversight (libs/evidence in package.json chain but not
-      # the CI workflow) AND the audit-discovered additional gaps
-      # (libs/job-domain, libs/talent-evidence, apps/api were also missing
-      # from the workflow despite being in the package.json chain). Order
-      # mirrors the directive verbatim.
-      - run: npx vitest run --root libs/consent
-      - run: npx vitest run --root libs/examination
-      - run: npx vitest run --root libs/job-domain
-      - run: npx vitest run --root libs/matching
-      - run: npx vitest run --root libs/talent-evidence
-      - run: npx vitest run --root libs/evidence
-      - run: npx vitest run --root libs/submittal
-      - run: npx vitest run --root apps/api
-      - run: npx vitest run --root libs/engagement
-      - run: npx vitest run --root libs/ai-draft
-      - run: npx vitest run --root libs/identity-index
-      # TR-2a-B1 — the resolution-substrate roots. Their integration specs (the
-      # source_class acceptance tests + the R1.3 resolve-unchanged proof) were
-      # absent from this job, so observed-CI-green never observed them. Added so
-      # the slice's own acceptance surface runs in CI.
-      - run: npx vitest run --root libs/ingestion
-      - run: npx vitest run --root libs/talent-trust
-      - run: npx vitest run --root libs/canonicalization
-      # Platform-Console Inc-2 PR-1.5 — the platform-admin integration specs
-      # (tenant lifecycle actions/detail/list/resend-owner-invite + the existing
-      # provisioning/invite proofs) now run in CI. Safe because the same PR fixes
-      # the latent readFileSync bug in platform.integration.spec.ts and routes
-      # its migration bootstrap through the shared identity-migrations helper.
-      - run: npx vitest run --root apps/platform-admin
-      # Inc-3 PR-3.6 — the LAST app to gain CI-enforced integration coverage
-      # (completing PR-1.5's rider). Its two integration specs (auth.integration +
-      # auth.site-axis) were RED under CI conditions — the readFileSync(IDP, LC)
-      # bug — and are retrofitted to the shared identity-migrations helper in the
-      # SAME PR (fix-then-add, R13), so this root is green from its first run.
-      - run: npx vitest run --root apps/auth-service
+      - uses: nrwl/nx-set-shas@v4
+        if: github.event_name == 'pull_request'
+      - name: integration (affected serial on PR, full serial otherwise)
+        env:
+          CI_AFFECTED: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+        run: bash ci/scripts/ci-integration.sh
 
   # ---------------------------------------------------------------------------
-  # M4 PR-8 — Terraform IaC foundation gates (no AWS credentials required).
-  # `terraform-fmt` and `terraform-validate` enforce formatting + per-env
-  # validity for the `infrastructure/` workspace introduced at PR-8.
-  # Deeper gates (tflint, tfsec, terraform plan PR-comment) deferred to
-  # PR-9 / PR-10 per ADR-0012 Decision 6.
+  # Terraform IaC gates — PATH-FILTERED to infrastructure/ on a PR (no-op when
+  # unchanged, so the required check still reports success); full on other lanes.
   # ---------------------------------------------------------------------------
 
   terraform-fmt:
     name: terraform:fmt
     runs-on: ubuntu-latest
+    needs: changes
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: ">= 1.6.0"
+          terraform_version: '>= 1.6.0'
       - name: Terraform fmt check
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.terraform == 'true' }}
         run: terraform fmt -check -recursive infrastructure/
+      - name: No-op (infrastructure/ unchanged on PR)
+        if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.terraform != 'true' }}
+        run: echo "::notice::infrastructure/ unchanged on this PR — terraform:fmt skipped (merge queue runs it)."
 
   terraform-validate:
     name: terraform:validate
     runs-on: ubuntu-latest
+    needs: changes
     strategy:
       matrix:
         environment: [dev, staging, prod]
@@ -429,73 +475,46 @@ jobs:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: ">= 1.6.0"
-      - name: Terraform init (no backend)
-        run: cd infrastructure/environments/${{ matrix.environment }} && terraform init -backend=false
-      - name: Terraform validate
-        run: cd infrastructure/environments/${{ matrix.environment }} && terraform validate
-
-  # ---------------------------------------------------------------------------
-  # M4 PR-9 — tflint extension (deferred from PR-8 per ADR-0012:92).
-  # Catches the next class of Terraform errors above fmt + validate:
-  # unused variables, deprecated syntax, AWS-provider-specific naming /
-  # lifecycle anti-patterns. No AWS credentials required.
-  # ---------------------------------------------------------------------------
+          terraform_version: '>= 1.6.0'
+      - name: Terraform init + validate
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.terraform == 'true' }}
+        run: |
+          cd infrastructure/environments/${{ matrix.environment }}
+          terraform init -backend=false
+          terraform validate
+      - name: No-op (infrastructure/ unchanged on PR)
+        if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.terraform != 'true' }}
+        run: echo "::notice::infrastructure/ unchanged on this PR — terraform:validate (${{ matrix.environment }}) skipped."
 
   terraform-lint:
     name: terraform:lint
     runs-on: ubuntu-latest
+    needs: changes
     defaults:
       run:
         working-directory: infrastructure
     steps:
       - uses: actions/checkout@v4
       - uses: terraform-linters/setup-tflint@v4
-      - name: tflint init
-        run: tflint --init
-      - name: tflint recursive
-        run: tflint --recursive --minimum-failure-severity=warning
-
-  # ---------------------------------------------------------------------------
-  # M4 PR-10 — CVE / security scanning gates (deferred from PR-8 / PR-9 per
-  # ADR-0012:92 + ADR-0013:227-229). Two gates: `terraform-sec` enforces a
-  # HIGH-minimum threshold against the `infrastructure/` Terraform substrate
-  # via tfsec; `npm-audit` enforces a HIGH-minimum threshold against the
-  # production dependency tree (`--omit=dev`) via an allow-list-aware
-  # wrapper script. No AWS credentials required for either gate.
-  # See ADR-0014 for the eight CVE-scanning conventions locked at PR-10.
-  # ---------------------------------------------------------------------------
+      - name: tflint
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.terraform == 'true' }}
+        run: |
+          tflint --init
+          tflint --recursive --minimum-failure-severity=warning
+      - name: No-op (infrastructure/ unchanged on PR)
+        if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.terraform != 'true' }}
+        run: echo "::notice::infrastructure/ unchanged on this PR — terraform:lint skipped."
 
   terraform-sec:
     name: terraform:sec
     runs-on: ubuntu-latest
+    needs: changes
     steps:
       - uses: actions/checkout@v4
-      # ---------------------------------------------------------------------
-      # tfsec via direct binary install (M5 HK-M5; replaces
-      # aquasecurity/tfsec-action@v1.0.3 which fails because the action
-      # calls api.github.com/repos/aquasecurity/tfsec/releases/latest to
-      # discover its binary, and the aquasecurity GitHub organization has
-      # an IP allow list that rejects all GitHub-hosted runner IPs from
-      # this api.github.com surface. The release-asset CDN at
-      # release-assets.githubusercontent.com (Azure blob backend) is not
-      # subject to the org-level allow list, so direct binary download
-      # bypasses the rejection layer.
-      #
-      # Version pinned to v1.28.14 per ADR-0014 convention #2 (action/
-      # binary versions pinned by tag, not floating). Future bumps via
-      # explicit Lead-elected PRs.
-      #
-      # Checksum verification provides supply-chain integrity defense:
-      # the release-assets CDN is GitHub-served but not GitHub-signed; a
-      # compromised CDN delivery would be detected at sha256 mismatch.
-      #
-      # tfsec itself is now part of Trivy (upstream deprecation notice
-      # at github.com/aquasecurity/tfsec); a future M5 or M6 housekeeping
-      # PR may migrate this step to trivy. Until then, tfsec v1.28.14
-      # is the locked baseline.
-      # ---------------------------------------------------------------------
-      - name: tfsec install + verify
+      # tfsec via direct binary install (M5 HK-M5). Version pinned v1.28.14
+      # (ADR-0014 #2); checksum-verified.
+      - name: tfsec install + verify + scan
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.terraform == 'true' }}
         run: |
           set -euo pipefail
           TFSEC_VERSION=v1.28.14
@@ -510,10 +529,10 @@ jobs:
             exit 1
           fi
           chmod +x tfsec
-          echo "tfsec ${TFSEC_VERSION} installed; sha256 verified"
-      - name: tfsec scan infrastructure/
-        run: |
           ./tfsec infrastructure --minimum-severity=HIGH
+      - name: No-op (infrastructure/ unchanged on PR)
+        if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.terraform != 'true' }}
+        run: echo "::notice::infrastructure/ unchanged on this PR — terraform:sec skipped."
 
   npm-audit:
     name: npm:audit
@@ -524,37 +543,16 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci --omit=dev || npm ci --omit=dev || npm ci --omit=dev  # retry: transient free-email-domains postinstall ETIMEDOUT
+      - run: npm ci --omit=dev || npm ci --omit=dev || npm ci --omit=dev # retry: transient free-email-domains postinstall ETIMEDOUT
       - run: bash scripts/audit-check.sh
 
   # ---------------------------------------------------------------------------
-  # Deployment-gate aggregator (PR-M0R-3 §4.1, VARIANT B — in-ci.yml).
-  #
-  # Single aggregator job wiring the named CI gates from Plan v1.5 §4
-  # Stage 4 as `needs:` dependencies. Provides one PASS/FAIL status check
-  # that GitHub branch-protection rules can require to block invalid
-  # deployments (Plan v1.5 §6 DoD #6 — "CI blocks invalid deployments
-  # (deployment-gate.yml enforcing all checks)").
-  #
-  # VARIANT choice: aggregator-in-ci.yml. The directive's §4.1 first
-  # preference was a separate deployment-gate.yml file with cross-workflow
-  # `needs:` references; GitHub Actions does not support cross-workflow
-  # `needs:` natively (only `workflow_run` async). Directive §4.1
-  # explicitly authorizes the in-ci.yml aggregator as functionally
-  # identical and cleaner; chosen here.
-  #
-  # `if: always()` is required so this job runs even when needed jobs
-  # fail — the override-label step (per §4.2) can then decide whether
-  # to pass anyway. Without `if: always()`, a failing needed job would
-  # skip this aggregator and the override could never apply.
-  #
-  # Override-label discipline per Plan v1.5 §4 Stage 4.
-  # Use of `override:ok-to-merge` label requires a written
-  # `Override-Justification: <≥40 chars>` line in the PR body.
-  # Override usage should be rare and explicit; pattern is recorded
-  # in milestone closure records for audit trail.
+  # Deployment-gate aggregator (PR-M0R-3 §4.1, VARIANT B). One PASS/FAIL check
+  # that branch protection requires. On merge_group it is the FULL-suite gate; on
+  # a PR it aggregates the fast lane (affected/path-filtered jobs report success
+  # even when they no-op internally — no "skipped" ever reaches this grep).
+  # Override-label discipline (Plan v1.5 §4 Stage 4) preserved.
   # ---------------------------------------------------------------------------
-
   deployment-gate:
     name: deployment-gate
     runs-on: ubuntu-latest
@@ -586,9 +584,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            // Override applies only on pull_request events. For push to main,
-            // skip the override path entirely (the needs-status check below
-            // is the sole gate).
+            // Override applies only on pull_request events.
             if (context.eventName !== 'pull_request') {
               core.setOutput('override_active', 'false');
               core.info('Not a pull_request event; override path skipped.');
