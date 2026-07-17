@@ -49,6 +49,7 @@
       "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"],
       "@aramo/talent-trust": ["../../dist/libs/talent-trust/src/index.d.ts"],
       "@aramo/identity-index": ["../../dist/libs/identity-index/src/index.d.ts"],
+      "@aramo/auth-storage": ["../../dist/libs/auth-storage/src/index.d.ts"],
       "@aramo/platform-trust": ["../../dist/libs/platform-trust/src/index.d.ts"],
       "@aramo/portal-identity": ["../../dist/libs/portal-identity/src/index.d.ts"],
       "@aramo/sourced-talent": ["../../dist/libs/sourced-talent/src/index.d.ts"],

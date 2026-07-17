@@ -211,6 +211,20 @@ export const portalApi = {
     return apiClient.get('/v1/portal/notice');
   },
 
+  // Portal P4b — RTBF: erase the caller's OWN platform identity. `confirmation` is
+  // the user's own email re-typed (the server compares it). On success the backend
+  // has revoked all sessions + cleared the cookies (the session is destroyed).
+  eraseSelf(
+    confirmation: string,
+    idempotencyKey: string,
+  ): Promise<{ erased: boolean }> {
+    return apiClient.post(
+      '/v1/portal/rights/erase',
+      { confirmation },
+      { headers: { 'Idempotency-Key': idempotencyKey } },
+    );
+  },
+
   // Portal P3c — the talent-level verification view ("verified on Aramo").
   // Aggregated across the caller's chain, deduped by anchor/claim identity. No
   // cluster ⇒ a VALID empty list, not an error.

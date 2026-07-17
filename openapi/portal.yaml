@@ -33,6 +33,49 @@ paths:
                 $ref: '#/components/schemas/PortalNotice'
       security: []
 
+  # Portal P4 P4b (§PR-2, D-2/D-3) — the talent RTBF surface: a signed-in portal
+  # user permanently erases their OWN platform identity + sign-in. Self-service
+  # self-deletion (keyed off the session sub only — no dedicated scope, Option A).
+  /v1/portal/rights/erase:
+    post:
+      operationId: erasePortalIdentity
+      summary: Permanently erase the caller's own platform identity (RTBF).
+      description: |
+        Erases the caller's platform identity: purges the platform-rail cluster
+        data, deletes the portal identity residue (notice-delivery records, login
+        tokens, the portal user), and destroys the session. Tenant-rail records
+        are NOT touched — each organization is a separate controller. GRAVE
+        type-to-confirm: the caller re-types their own email in `confirmation`;
+        a mismatch is a 400. Idempotent.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalRtbfRequest'
+      responses:
+        '200':
+          description: The identity was erased and the session destroyed (terminal).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalRtbfResult'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
   # Portal P1 PR-2a — the OPEN-4 chain surface. The prior singleton
   # /v1/portal/profile + /v1/portal/consent are REMOVED (the placeholder-era
   # sub-passthrough); the portal session's `sub` (PortalUser.id) now resolves to
@@ -665,6 +708,32 @@ components:
         text:
           type: string
           description: The rendered notice text (the same bytes the email delivers).
+
+    # Portal P4 P4b (D-3) — the RTBF grave-confirm request. `confirmation` is the
+    # caller's own email re-typed; the server byte-compares it (normalized).
+    PortalRtbfRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - confirmation
+      properties:
+        confirmation:
+          type: string
+          minLength: 1
+          maxLength: 320
+          description: The caller's own email address, re-typed to confirm.
+
+    # The terminal RTBF result. `erased` is always true on 200 (the identity is
+    # gone and the session destroyed).
+    PortalRtbfResult:
+      type: object
+      additionalProperties: false
+      required:
+        - erased
+      properties:
+        erased:
+          type: boolean
+          description: Terminal — the platform identity is erased.
 
     PortalConsentText:
       type: object

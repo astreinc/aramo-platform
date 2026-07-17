@@ -264,6 +264,46 @@ export class PortalIdentityRepository {
     });
     return rows.map(toNoticeDeliveryRow);
   }
+
+  // ===========================================================================
+  // RTBF (Portal P4 P4b) — erase ALL portal_identity residue for one identity
+  // ===========================================================================
+
+  /**
+   * Portal P4 P4b (D-2) — delete every portal_identity row for one portal user:
+   * its NoticeDelivery records (keyed on portal_user_id), its PortalLoginToken
+   * rows (keyed on email_normalized — tokens have no PortalUser FK), and the
+   * PortalUser itself. Atomic (single $transaction). This runs AFTER purgeCluster
+   * (which only NULLs PortalUser.cluster_id, never deletes the row) — it is the
+   * platform-rail RTBF's portal_identity leg. Idempotent at the caller level (a
+   * re-run over an already-erased identity deletes zero rows). Tenant-rail records
+   * are NOT touched (D-2 — each tenant is a separate controller).
+   */
+  async eraseByPortalUser(input: {
+    portalUserId: string;
+    emailNormalized: string;
+  }): Promise<{
+    notice_deliveries_deleted: number;
+    login_tokens_deleted: number;
+    portal_user_deleted: number;
+  }> {
+    return this.prisma.$transaction(async (tx) => {
+      const nd = await tx.noticeDelivery.deleteMany({
+        where: { portal_user_id: input.portalUserId },
+      });
+      const lt = await tx.portalLoginToken.deleteMany({
+        where: { email_normalized: input.emailNormalized },
+      });
+      const pu = await tx.portalUser.deleteMany({
+        where: { id: input.portalUserId },
+      });
+      return {
+        notice_deliveries_deleted: nd.count,
+        login_tokens_deleted: lt.count,
+        portal_user_deleted: pu.count,
+      };
+    });
+  }
 }
 
 function toPortalRow(row: {
