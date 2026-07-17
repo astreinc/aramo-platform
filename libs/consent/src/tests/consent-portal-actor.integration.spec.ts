@@ -171,7 +171,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(rows.rows[0]!.actor_type).toBe('self'); // portal is self-directed
       const ev = rows.rows[0]!.event_payload.consent_evidence!;
       expect(ev.channel).toBe('portal');
-      expect(ev.notice_version).toBeNull(); // P4 forward contract
+      expect(ev.notice_version).toBe('portal-notice-v1'); // P4a closed the forward contract
       expect(ev.consent_text_hash).toMatch(/^[0-9a-f]{64}$/); // sha256 hex
     });
 

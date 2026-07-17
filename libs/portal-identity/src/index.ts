@@ -7,6 +7,7 @@ export {
   PortalIdentityRepository,
   type PortalUserRow,
   type PortalLoginTokenRow,
+  type NoticeDeliveryRow,
 } from './lib/portal-identity.repository.js';
 export {
   generatePortalLoginToken,

@@ -6,6 +6,7 @@ import {
 import { PlatformTrustRepository } from '@aramo/platform-trust';
 import { TalentTrustService } from '@aramo/talent-trust';
 
+import { DormantNoticeService } from './dormant-notice.service.js';
 import {
   DORMANT_LINK_MINTING_ENABLED,
   IDENTITY_INDEX_LIFECYCLE_BATCH_SIZE,
@@ -43,6 +44,8 @@ export interface LifecycleSweepResult {
   orphans_purged: number;
   dormant_detected: number;
   dormant_minted: number;
+  /** Portal P4a — links delivered a notice + transitioned PENDING_NOTICE→NOTICED. */
+  dormant_noticed: number;
   failed: number;
   last_id: string | null;
 }
@@ -64,6 +67,7 @@ export class IdentityLifecycleSweepService {
     private readonly trust: TalentTrustService,
     private readonly purge: ClusterPurgeService,
     private readonly platformTrust: PlatformTrustRepository,
+    private readonly dormantNotice: DormantNoticeService,
     @Inject('IdentityLifecycleSweepServiceLogger')
     private readonly logger: LoggerService,
   ) {}
@@ -109,6 +113,7 @@ export class IdentityLifecycleSweepService {
       orphans_purged: 0,
       dormant_detected: 0,
       dormant_minted: 0,
+      dormant_noticed: 0,
       failed: 0,
       last_id: null,
     };
@@ -143,11 +148,22 @@ export class IdentityLifecycleSweepService {
             minting_enabled: mintingEnabled,
           });
           if (mintingEnabled) {
-            await this.platformTrust.mintDormantLink({
+            const link = await this.platformTrust.mintDormantLink({
               cluster_id: cluster.id,
               detected_at: now,
             });
             result.dormant_minted += 1;
+            // P4a: a freshly-minted (PENDING_NOTICE) link gets the full lawful
+            // path — deliver → record → NOTICED. A re-observed link already past
+            // PENDING_NOTICE is left alone (idempotent; no re-delivery).
+            if (link.status === 'PENDING_NOTICE') {
+              const delivered = await this.dormantNotice.deliverForCluster({
+                dormantLinkId: link.id,
+                clusterId: cluster.id,
+                now,
+              });
+              if (delivered.delivered) result.dormant_noticed += 1;
+            }
           }
         }
         // live.size === 1 → normal, skip
@@ -184,6 +200,7 @@ export class IdentityLifecycleSweepService {
       orphans_purged: 0,
       dormant_detected: 0,
       dormant_minted: 0,
+      dormant_noticed: 0,
       failed: 0,
       last_id: null,
     };
@@ -198,6 +215,7 @@ export class IdentityLifecycleSweepService {
       total.orphans_purged += batch.orphans_purged;
       total.dormant_detected += batch.dormant_detected;
       total.dormant_minted += batch.dormant_minted;
+      total.dormant_noticed += batch.dormant_noticed;
       total.failed += batch.failed;
       if (batch.last_id !== null) total.last_id = batch.last_id;
       // A short batch (fewer than the bound) means the keyset reached the end.

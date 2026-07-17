@@ -63,6 +63,7 @@ import {
   PublicVerificationController,
   VerificationConfirmBudget,
 } from './controllers/public-verification.controller.js';
+import { PortalNoticeController } from './talent-identity/portal-notice.controller.js';
 import { PromotionService } from './talent-identity/promotion.service.js';
 import { RecordReconcileOrchestrator } from './talent-identity/record-reconcile.orchestrator.js';
 import { IdentityMaintenanceModule } from './jobs/identity-maintenance.module.js';
@@ -433,6 +434,11 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     ContradictionResolutionController,
     DisputeResolutionController,
     PortalDisputeDispositionController,
+    // Portal P4a (§PR-1.1, D-5) — the PUBLIC platform-notice read (GET
+    // /v1/portal/notice). Unguarded by construction (a sibling of PortalController,
+    // not a method on it — its class guards are unconditional); always available,
+    // no session. Serves the same notice bytes the dormant-notice email delivers.
+    PortalNoticeController,
     // TR-12 B1 (DDR §4) — the caseworker's worklist surface (list OPEN proposals /
     // dismiss). Reads at talent:read (capability ats — the dossier precedent); it
     // executes nothing (no ACT endpoint this slice — propose-never-dispose).

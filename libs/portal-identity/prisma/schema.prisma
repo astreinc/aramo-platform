@@ -84,3 +84,42 @@ model PortalLoginToken {
   @@index([email_normalized])
   @@schema("portal_identity")
 }
+
+// NoticeDelivery — Portal P4 P4a (Aramo-Portal-P4-Directive-v1_0-LOCKED §PR-1.2,
+// D-4). The DURABLE record that a versioned platform notice was delivered to a
+// portal user on a channel. Talent-rail (PII-adjacent: it references a
+// portal_user_id), so it lives HERE in portal_identity, NEVER in platform_trust
+// (which keeps its no-PII wall). Append-only: a delivery is a fact, never mutated.
+//
+// This is the portal_identity "durable record" the platform_trust DormantLink's
+// notice_version/notice_delivered_at columns are populated FROM (app-layer
+// provenance; the DB CHECK on DormantLink guarantees only column co-population).
+// The join back is UUID-only, NO FK (§7.3): portal_user_id → PortalUser.id, and
+// PortalUser.cluster_id → DormantLink.cluster_id.
+//
+// Keyspace: portal_user-keyed (portal-rail). NOT cluster-keyed → NOT a
+// CLUSTER_PURGE_STATEMENTS entry; it survives a plain cluster purge alongside its
+// PortalUser (which is nulled, not deleted). Its erasure binding is the talent
+// RTBF surface (P4b, D-2), which deletes it explicitly with the PortalUser.
+model NoticeDelivery {
+  id String @id @db.Uuid
+
+  /// The portal user the notice was delivered to (UUID-only ref to PortalUser.id,
+  /// NO FK — the portal_identity cross-ref convention).
+  portal_user_id String @db.Uuid
+
+  /// The platform-notice version delivered (the notice-texts.ts version id) — the
+  /// reproducible preimage anchor.
+  notice_version String
+
+  /// The delivery channel (e.g. 'email').
+  channel String
+
+  /// When delivery was effected (app-supplied).
+  delivered_at DateTime @db.Timestamptz
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  @@index([portal_user_id])
+  @@schema("portal_identity")
+}

@@ -66,6 +66,42 @@ export class PlatformTrustRepository {
     }
   }
 
+  /**
+   * Portal P4 P4a — transition PENDING_NOTICE → NOTICED, co-populating the notice
+   * columns (D-4 records the FACT of delivery). The D14 DB CHECK enforces that
+   * NOTICED carries both notice_version + notice_delivered_at; APP-layer
+   * provenance is the caller's invariant — this MUST be called only AFTER a
+   * durable `portal_identity.NoticeDelivery` row is written (platform_trust never
+   * learns the portal_user_id/email — only the version string + timestamp cross
+   * the wall). Guarded to PENDING_NOTICE so a re-run is a no-op (idempotent): a
+   * second call matches zero rows and returns the already-NOTICED row unchanged.
+   * `expires_at` is supplied by the caller (delivered + 12mo — the business rule
+   * lives in the orchestration).
+   */
+  async recordNoticeDelivered(input: {
+    id: string;
+    notice_version: string;
+    notice_delivered_at: Date;
+    expires_at: Date;
+  }): Promise<DormantLinkRow> {
+    await this.prisma.dormantLink.updateMany({
+      where: { id: input.id, status: 'PENDING_NOTICE' },
+      data: {
+        status: 'NOTICED',
+        notice_version: input.notice_version,
+        notice_delivered_at: input.notice_delivered_at,
+        expires_at: input.expires_at,
+      },
+    });
+    const row = await this.prisma.dormantLink.findUnique({
+      where: { id: input.id },
+    });
+    if (row === null) {
+      throw new Error(`dormant link not found: ${input.id}`);
+    }
+    return toRow(row);
+  }
+
   /** Count all dormant links for a cluster (test/inspection helper). */
   async countByCluster(clusterId: string): Promise<number> {
     return this.prisma.dormantLink.count({ where: { cluster_id: clusterId } });

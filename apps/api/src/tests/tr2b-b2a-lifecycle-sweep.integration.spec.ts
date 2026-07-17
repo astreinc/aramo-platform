@@ -141,6 +141,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       count(`SELECT count(*)::int AS n FROM portal_identity."PortalUser" WHERE cluster_id = $1::uuid`, [id]);
     const dormantCount = (id: string) =>
       count(`SELECT count(*)::int AS n FROM platform_trust."DormantLink" WHERE cluster_id = $1::uuid`, [id]);
+    // Portal P4a — NoticeDelivery rows for a cluster's portal user(s).
+    const noticeDeliveryCount = (clusterId: string) =>
+      count(
+        `SELECT count(*)::int AS n FROM portal_identity."NoticeDelivery" nd
+           JOIN portal_identity."PortalUser" pu ON pu.id = nd.portal_user_id
+          WHERE pu.cluster_id = $1::uuid`,
+        [clusterId],
+      );
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
@@ -179,6 +187,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.query(`TRUNCATE TABLE identity_index."PersonCluster" CASCADE`);
       await db.query(`TRUNCATE TABLE talent_trust."ResolutionSubject" CASCADE`);
       await db.query(`TRUNCATE TABLE ingestion."RawPayloadReference" CASCADE`);
+      await db.query(`TRUNCATE TABLE portal_identity."NoticeDelivery" CASCADE`);
       await db.query(`TRUNCATE TABLE portal_identity."PortalUser" CASCADE`);
       await db.query(`TRUNCATE TABLE platform_trust."DormantLink" CASCADE`);
     });
@@ -237,7 +246,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await dormantCount(cluster)).toBe(0); // report-only — no row
     });
 
-    it('mints exactly one PENDING_NOTICE DormantLink for a dormant cluster with the flag ON (test only)', async () => {
+    it('mints a PENDING_NOTICE DormantLink but delivers NOTHING when the dormant cluster has no portal identity (flag ON)', async () => {
+      // No seedPortalUser: nobody ever signed in for this cluster, so there is no
+      // deliverable portal identity — the link is minted PENDING_NOTICE and STAYS
+      // there (P4a: no NOTICED without a delivery; a later login is picked up next
+      // sweep). This is the D-4 "cluster_id nullable/absent on PortalUser" branch.
       const cluster = uuidv7();
       await seedCluster(cluster, 60);
       await seedLiveHolder(cluster, TENANT_A);
@@ -246,6 +259,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const r = await sweep.drainBatch({ now: new Date(), mintingEnabled: true });
       expect(r.dormant_detected).toBe(1);
       expect(r.dormant_minted).toBe(1);
+      expect(r.dormant_noticed).toBe(0); // no portal identity → no delivery
       expect(await dormantCount(cluster)).toBe(1);
 
       const row = await db.query<{ status: string }>(
@@ -253,11 +267,64 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [cluster],
       );
       expect(row.rows[0]!.status).toBe('PENDING_NOTICE');
+      expect(await noticeDeliveryCount(cluster)).toBe(0);
 
       // Idempotent: a second flag-on pass does not double-mint (partial-unique).
       const r2 = await sweep.drainBatch({ now: new Date(), mintingEnabled: true });
       expect(r2.dormant_detected).toBe(1);
       expect(await dormantCount(cluster)).toBe(1);
+    });
+
+    it('runs the FULL lawful path (flag ON) for a dormant cluster WITH a portal identity — deliver → record → NOTICED + expires_at', async () => {
+      // Portal P4a (D-1/D-4/D-14): mint PENDING_NOTICE → deliver the versioned
+      // notice (stub mailer) → write a durable portal_identity NoticeDelivery →
+      // transition NOTICED with notice_version + notice_delivered_at + expires_at
+      // (delivered + 12mo). The DB CHECK guarantees NOTICED co-populates the notice
+      // columns; the durable record is the app-layer provenance.
+      const cluster = uuidv7();
+      await seedCluster(cluster, 60);
+      await seedLiveHolder(cluster, TENANT_A);
+      await seedLiveHolder(cluster, TENANT_B);
+      await seedPortalUser(cluster); // a deliverable portal identity exists
+
+      const now = new Date('2026-07-17T00:00:00.000Z');
+      const r = await sweep.drainBatch({ now, mintingEnabled: true });
+      expect(r.dormant_detected).toBe(1);
+      expect(r.dormant_minted).toBe(1);
+      expect(r.dormant_noticed).toBe(1);
+
+      const row = await db.query<{
+        status: string;
+        notice_version: string | null;
+        notice_delivered_at: Date | null;
+        expires_at: Date | null;
+      }>(
+        `SELECT status, notice_version, notice_delivered_at, expires_at
+           FROM platform_trust."DormantLink" WHERE cluster_id = $1::uuid`,
+        [cluster],
+      );
+      expect(row.rows[0]!.status).toBe('NOTICED');
+      expect(row.rows[0]!.notice_version).toBe('portal-notice-v1');
+      expect(row.rows[0]!.notice_delivered_at).not.toBeNull();
+      // expires_at = delivered + 12 months.
+      expect(row.rows[0]!.expires_at?.toISOString()).toBe('2027-07-17T00:00:00.000Z');
+
+      // The durable portal_identity delivery record (D-4).
+      expect(await noticeDeliveryCount(cluster)).toBe(1);
+      const nd = await db.query<{ notice_version: string; channel: string }>(
+        `SELECT nd.notice_version, nd.channel FROM portal_identity."NoticeDelivery" nd
+           JOIN portal_identity."PortalUser" pu ON pu.id = nd.portal_user_id
+          WHERE pu.cluster_id = $1::uuid`,
+        [cluster],
+      );
+      expect(nd.rows[0]!.notice_version).toBe('portal-notice-v1');
+      expect(nd.rows[0]!.channel).toBe('email');
+
+      // Idempotent: a re-sweep sees the link already NOTICED (mint returns it,
+      // not PENDING_NOTICE) → no re-delivery, no duplicate record.
+      const r2 = await sweep.drainBatch({ now, mintingEnabled: true });
+      expect(r2.dormant_noticed).toBe(0);
+      expect(await noticeDeliveryCount(cluster)).toBe(1);
     });
   },
 );

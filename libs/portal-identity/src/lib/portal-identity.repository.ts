@@ -27,6 +27,16 @@ export interface PortalLoginTokenRow {
   created_at: Date;
 }
 
+// Portal P4 P4a — a durable notice-delivery record (portal_user-keyed).
+export interface NoticeDeliveryRow {
+  id: string;
+  portal_user_id: string;
+  notice_version: string;
+  channel: string;
+  delivered_at: Date;
+  created_at: Date;
+}
+
 @Injectable()
 export class PortalIdentityRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -200,6 +210,60 @@ export class PortalIdentityRepository {
     });
     return row === null ? null : toTokenRow(row);
   }
+
+  // ===========================================================================
+  // NoticeDelivery (Portal P4 P4a)
+  // ===========================================================================
+
+  /**
+   * The portal user(s) resolving to a cluster — the dormant-notice delivery
+   * target. `cluster_id` is nullable + non-unique on PortalUser, so a dormant
+   * cluster may map to zero portals (nobody ever signed in → nothing to deliver)
+   * or, in principle, more than one. Ordered by created_at for a deterministic
+   * primary target. The join the D-4 chain walks: DormantLink.cluster_id →
+   * PortalUser.cluster_id → PortalUser.id.
+   */
+  async findPortalsByClusterId(clusterId: string): Promise<PortalUserRow[]> {
+    const rows = await this.prisma.portalUser.findMany({
+      where: { cluster_id: clusterId },
+      orderBy: { created_at: 'asc' },
+    });
+    return rows.map(toPortalRow);
+  }
+
+  /**
+   * Append a durable notice-delivery record. This is the portal_identity "durable
+   * record" whose existence licenses the DormantLink → NOTICED transition
+   * (app-layer provenance for the D14 invariant). Append-only.
+   */
+  async insertNoticeDelivery(input: {
+    portal_user_id: string;
+    notice_version: string;
+    channel: string;
+    delivered_at: Date;
+  }): Promise<NoticeDeliveryRow> {
+    const row = await this.prisma.noticeDelivery.create({
+      data: {
+        id: uuidv7(),
+        portal_user_id: input.portal_user_id,
+        notice_version: input.notice_version,
+        channel: input.channel,
+        delivered_at: input.delivered_at,
+      },
+    });
+    return toNoticeDeliveryRow(row);
+  }
+
+  /** All notice-delivery records for a portal user (audit / test read). */
+  async findNoticeDeliveriesByPortal(
+    portalUserId: string,
+  ): Promise<NoticeDeliveryRow[]> {
+    const rows = await this.prisma.noticeDelivery.findMany({
+      where: { portal_user_id: portalUserId },
+      orderBy: { created_at: 'asc' },
+    });
+    return rows.map(toNoticeDeliveryRow);
+  }
 }
 
 function toPortalRow(row: {
@@ -234,6 +298,24 @@ function toTokenRow(row: {
     token_hash: row.token_hash,
     expires_at: row.expires_at,
     consumed_at: row.consumed_at,
+    created_at: row.created_at,
+  };
+}
+
+function toNoticeDeliveryRow(row: {
+  id: string;
+  portal_user_id: string;
+  notice_version: string;
+  channel: string;
+  delivered_at: Date;
+  created_at: Date;
+}): NoticeDeliveryRow {
+  return {
+    id: row.id,
+    portal_user_id: row.portal_user_id,
+    notice_version: row.notice_version,
+    channel: row.channel,
+    delivered_at: row.delivered_at,
     created_at: row.created_at,
   };
 }

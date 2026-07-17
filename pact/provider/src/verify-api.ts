@@ -3846,6 +3846,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await seedPortalUserWithOneRecord(c);
         });
       },
+      'the platform notice registry is available': async () => {
+        // Portal P4a (§PR-1.1, D-5) — GET /v1/portal/notice is PUBLIC + STATIC
+        // (a guardless sibling controller rendering the current notice-texts
+        // version). No auth, no DB: nothing to seed. The registry is compiled in.
+      },
       'a recruiter token (non-portal consumer)': async () => {
         // PR-9 §4.8 — 403 INSUFFICIENT_PERMISSIONS via recruiter token
         // hitting portal endpoint. No data seeding required; the
