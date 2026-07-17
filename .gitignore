@@ -32,6 +32,9 @@ coverage/
 .DS_Store
 *.swp
 
+# Claude Code — personal/local settings (checked-in harness is .claude/settings.json)
+.claude/settings.local.json
+
 # Local working artifacts (not program history)
 doc/prompts/
 
