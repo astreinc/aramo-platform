@@ -4,7 +4,9 @@ import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { Test, type TestingModule } from '@nestjs/testing';
-import type { INestApplication } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import type { ExecutionContext, INestApplication } from '@nestjs/common';
+import { RolesGuard, RequireScopes } from '@aramo/authorization';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { decodeJwt } from 'jose';
@@ -61,6 +63,56 @@ const UNKNOWN_EMAIL = 'nobody@example.com';
 
 function splitDdl(sql: string): string[] {
   return sql.replace(/--[^\n]*$/gm, '').split(/;\s*\n/);
+}
+
+// FIX-PORTAL-SCOPES-1 (D3) — dummy handlers carrying the SAME @RequireScopes a real
+// portal surface class declares, so the REAL RolesGuard (the production 403/pass
+// gate) evaluates a REAL-session JWT against each surface class:
+//   READ  = portal:verification:read   (absent from the pre-fix 2-scope stamp)
+//   WRITE = portal:consent:write        (absent from the pre-fix 2-scope stamp)
+//   RTBF  = no @RequireScopes           (Option A — scope-free)
+// The pre-fix PORTAL_SESSION_SCOPES would leave READ + WRITE unsatisfied → 403.
+class PortalReadSurface {
+  @RequireScopes('portal:verification:read')
+  read(): void {
+    /* handler body is irrelevant — RolesGuard runs before it */
+  }
+}
+class PortalWriteSurface {
+  @RequireScopes('portal:consent:write')
+  write(): void {
+    /* handler body is irrelevant — RolesGuard runs before it */
+  }
+}
+class PortalRtbfSurface {
+  erase(): void {
+    /* scope-free (Option A) — RolesGuard adds no constraint */
+  }
+}
+
+function ctxFor(
+  cls: new () => object,
+  method: string,
+  scopes: string[],
+): ExecutionContext {
+  const handler = (cls.prototype as Record<string, unknown>)[method];
+  return {
+    getHandler: () => handler,
+    getClass: () => cls,
+    switchToHttp: () => ({
+      getRequest: () => ({
+        authContext: {
+          sub: 'd3-portal-sub',
+          consumer_type: 'portal',
+          tenant_id: 'd3-tenant',
+          scopes,
+          iat: 0,
+          exp: 0,
+        },
+        requestId: 'req-d3',
+      }),
+    }),
+  } as unknown as ExecutionContext;
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
@@ -292,6 +344,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(after).toHaveLength(1);
       expect(after[0]!.id).toBe(portalId); // re-linked, NOT a new mint
       expect(after[0]!.cluster_id).toBe(clusterId);
+    });
+
+    // FIX-PORTAL-SCOPES-1 (D3) — real-session-mint authorization coverage: the path
+    // production takes. Mint a portal session via the REAL establishPortalSession,
+    // then gate it through the REAL RolesGuard for each surface class. Pre-fix
+    // (PORTAL_SESSION_SCOPES = the 2-read-scope stale list) BOTH the READ and the
+    // WRITE would 403 here — this test was RED against the unfixed constant and is
+    // GREEN after the D1 backfill (the fail-then-green in the Gate-5 evidence). It
+    // also stands as a permanent regression guard: revert the backfill and it reddens.
+    it('a REAL portal session (establishPortalSession) authorizes read + write + RTBF surfaces', async () => {
+      const orchestrator = module.get(SessionOrchestratorService);
+      const { accessJwt } = await orchestrator.establishPortalSession({
+        portal_user_id: uuidv7(),
+      });
+      const scopes = (decodeJwt(accessJwt).scopes as string[]) ?? [];
+      const guard = new RolesGuard(new Reflector());
+
+      // (a) scoped READ — portal:verification:read (absent pre-fix → was 403).
+      expect(guard.canActivate(ctxFor(PortalReadSurface, 'read', scopes))).toBe(true);
+      // (b) scoped WRITE — portal:consent:write (absent pre-fix → was 403).
+      expect(guard.canActivate(ctxFor(PortalWriteSurface, 'write', scopes))).toBe(true);
+      // (c) RTBF — scope-free (Option A): authorized on any valid portal session.
+      expect(guard.canActivate(ctxFor(PortalRtbfSurface, 'erase', scopes))).toBe(true);
     });
   },
 );
