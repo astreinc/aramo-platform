@@ -28,10 +28,25 @@ const PKCE_TTL_SECONDS = 600;
 const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 const REFRESH_TOKEN_BYTES = 32;
 
-// Portal P1 — the scope set stamped on a portal portal session. The two read
-// scopes the portal role catalog carries (libs/identity seed); P2's consent-write
-// rides its own scope when that surface lands.
-const PORTAL_SESSION_SCOPES: string[] = ['portal:profile:read', 'portal:consent:read'];
+// FIX-PORTAL-SCOPES-1 (D1) — the scope set stamped on a portal session. This is
+// the SINGLE SOURCE OF TRUTH for a real portal JWT's scopes; RolesGuard checks the
+// JWT claim, so this list MUST carry every portal:* scope any portal surface
+// demands (reads AND writes), or that surface 403s against a real session (the
+// F-P4b-1 bug: this was a stale 2-read-scope list while P2/P3 shipped write
+// surfaces). It must stay ≡ the portal:* scopes the portal role is granted in the
+// libs/identity seed — a structural parity test
+// (session-scope-parity.spec) asserts that, derived programmatically, so it can
+// never silently drift again. ADD-not-rename: a new seed portal:* scope (once its
+// role grant lands) is added here + the parity test keeps the two in lockstep.
+export const PORTAL_SESSION_SCOPES: string[] = [
+  'portal:profile:read',
+  'portal:profile:edit',
+  'portal:consent:read',
+  'portal:consent:write',
+  'portal:verification:read',
+  'portal:dispute:read',
+  'portal:dispute:write',
+];
 
 export interface CallbackInput {
   // AUTHZ-2: 'platform' is the 4th consumer_type (Lead ruling 3 —
