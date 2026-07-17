@@ -5,6 +5,9 @@ import { LoginPage } from './LoginPage';
 import { PortalShell } from './shell/PortalShell';
 import { RecordsListView } from './records/RecordsListView';
 import { RecordDetailView } from './records/RecordDetailView';
+import { VerificationsView } from './verifications/VerificationsView';
+import { DisputesListView } from './disputes/DisputesListView';
+import { DisputeDetailView } from './disputes/DisputeDetailView';
 
 // Portal P1 PR-3 — the portal app root.
 //
@@ -43,6 +46,9 @@ export function App() {
         <Routes>
           <Route path="/" element={<RecordsListView />} />
           <Route path="/records/:id" element={<RecordDetailView />} />
+          <Route path="/verifications" element={<VerificationsView />} />
+          <Route path="/disputes" element={<DisputesListView />} />
+          <Route path="/disputes/:id" element={<DisputeDetailView />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </PortalShell>

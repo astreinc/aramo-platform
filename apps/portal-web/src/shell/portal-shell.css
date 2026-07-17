@@ -149,3 +149,31 @@
 .po-consent-history__when {
   color: var(--muted);
 }
+
+/* Portal P3c — verification view + dispute flows. */
+.po-verification-status {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.po-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--ink);
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.16));
+  border-radius: 6px;
+  resize: vertical;
+}
+.po-dispute-respond {
+  margin-top: 16px;
+}
+.po-dispute-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}

@@ -80,6 +80,59 @@ export interface PortalConsentMutation {
   expires_at: string | null;
 }
 
+// Portal P3c (§PR-3) — the talent-facing verification view + dispute flows.
+// Wire shapes mirror openapi/portal.yaml's CLOSED envelopes by hand (the
+// scope:portal wall forbids importing the backend DTOs). Trust-class discipline:
+// the verification item carries kind + status + dates ONLY — no verifier, no
+// tenant, no strength/tier/band (D3 aggregation, directive ruling 1). The item
+// id is an opaque server digest resolved server-side (never a raw PK).
+export interface PortalVerificationItem {
+  item_id: string; // 64-char hex digest — submitted back to open a dispute
+  kind: string; // EMAIL | PHONE | PROFILE_URL
+  status: string; // CONFIRMED | PENDING | NONE
+  verified_at: string | null;
+  first_seen_at: string | null;
+}
+
+export interface PortalVerificationsResponse {
+  verifications: PortalVerificationItem[];
+}
+
+// The talent-visible dispute lifecycle (directive ruling 4). Terminal states
+// carry the resolution the talent sees; the underlying TR-15 item states never
+// reach the wire.
+export type PortalDisputeStatus =
+  | 'OPEN'
+  | 'UNDER_REVIEW'
+  | 'RESOLVED_CORRECTED'
+  | 'RESOLVED_UPHELD'
+  | 'WITHDRAWN';
+
+// The shared mutation/list envelope — talent-facing only (no SLA clocks, no
+// item digest, no tenant/subject/work-item ids: those are stripped server-side).
+export interface PortalDisputeMutation {
+  dispute_id: string;
+  status: PortalDisputeStatus;
+  opened_at: string;
+}
+
+export interface PortalDisputeListResponse {
+  disputes: PortalDisputeMutation[];
+}
+
+export interface PortalDisputeStatement {
+  statement: string;
+  created_at: string;
+}
+
+export interface PortalDisputeDetail {
+  dispute_id: string;
+  status: PortalDisputeStatus;
+  opened_at: string;
+  resolution_note: string | null; // plain-language note on close; null while open
+  statements: PortalDisputeStatement[];
+}
+
 export const portalApi = {
   // Passwordless sign-in: request a magic link. The response is byte-identical
   // whether the address is eligible, ineligible, or malformed (oracle-resistance,
@@ -142,6 +195,64 @@ export const portalApi = {
     return apiClient.post(
       `/v1/portal/records/${id}/consent/revoke`,
       { scope },
+      { headers: { 'Idempotency-Key': idempotencyKey } },
+    );
+  },
+
+  // Portal P3c — the talent-level verification view ("verified on Aramo").
+  // Aggregated across the caller's chain, deduped by anchor/claim identity. No
+  // cluster ⇒ a VALID empty list, not an error.
+  getVerifications(): Promise<PortalVerificationsResponse> {
+    return apiClient.get('/v1/portal/verifications');
+  },
+
+  // Portal P3c — open a dispute on a verification item (open-from-item). The
+  // item_id is the opaque digest from the view; a fresh UUID Idempotency-Key
+  // rides the contract. An item not in the current view is a uniform 404.
+  openDispute(
+    itemId: string,
+    statement: string,
+    idempotencyKey: string,
+  ): Promise<PortalDisputeMutation> {
+    return apiClient.post(
+      '/v1/portal/disputes',
+      { item_id: itemId, statement },
+      { headers: { 'Idempotency-Key': idempotencyKey } },
+    );
+  },
+
+  // Portal P3c — the talent's own disputes. No cluster ⇒ a VALID empty list.
+  listDisputes(): Promise<PortalDisputeListResponse> {
+    return apiClient.get('/v1/portal/disputes');
+  },
+
+  // Portal P3c — one dispute reachable through the caller's chain (uniform 404
+  // otherwise — no exists-vs-not-yours oracle).
+  getDispute(id: string): Promise<PortalDisputeDetail> {
+    return apiClient.get(`/v1/portal/disputes/${id}`);
+  },
+
+  // Portal P3c — append a talent statement while the dispute is open.
+  respondDispute(
+    id: string,
+    statement: string,
+    idempotencyKey: string,
+  ): Promise<PortalDisputeMutation> {
+    return apiClient.post(
+      `/v1/portal/disputes/${id}/respond`,
+      { statement },
+      { headers: { 'Idempotency-Key': idempotencyKey } },
+    );
+  },
+
+  // Portal P3c — withdraw an open dispute (terminal talent action; no body).
+  withdrawDispute(
+    id: string,
+    idempotencyKey: string,
+  ): Promise<PortalDisputeMutation> {
+    return apiClient.post(
+      `/v1/portal/disputes/${id}/withdraw`,
+      {},
       { headers: { 'Idempotency-Key': idempotencyKey } },
     );
   },
