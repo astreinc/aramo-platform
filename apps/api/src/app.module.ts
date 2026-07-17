@@ -21,6 +21,9 @@ import { EngagementModule } from '@aramo/engagement';
 import { EntitlementModule } from '@aramo/entitlement';
 import { ExportModule } from '@aramo/export';
 import { IdentityModule, IdentityCoreModule } from '@aramo/identity';
+import { IdentityIndexModule } from '@aramo/identity-index';
+import { PortalIdentityModule } from '@aramo/portal-identity';
+import { AuthStorageModule } from '@aramo/auth-storage';
 import { ImportModule } from '@aramo/import';
 import { IngestionModule } from '@aramo/ingestion';
 import { JobDomainModule } from '@aramo/job-domain';
@@ -64,6 +67,8 @@ import {
   VerificationConfirmBudget,
 } from './controllers/public-verification.controller.js';
 import { PortalNoticeController } from './talent-identity/portal-notice.controller.js';
+import { PortalRightsController } from './talent-identity/portal-rights.controller.js';
+import { PortalRtbfService } from './talent-identity/portal-rtbf.service.js';
 import { PromotionService } from './talent-identity/promotion.service.js';
 import { RecordReconcileOrchestrator } from './talent-identity/record-reconcile.orchestrator.js';
 import { IdentityMaintenanceModule } from './jobs/identity-maintenance.module.js';
@@ -143,6 +148,12 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // forRoot) so MAILER_PORT binds once and EmailVerificationService resolves it.
     MailerModule,
     PortalModule,
+    // Portal P4b — the talent RTBF surface composes purgeCluster
+    // (IdentityIndexModule), the portal identity store (PortalIdentityModule),
+    // and refresh-token revoke (AuthStorageModule) at the composition root.
+    IdentityIndexModule,
+    PortalIdentityModule,
+    AuthStorageModule,
     // PR-A3 Gate 5 — second ATS-domain leaf. RequisitionModule carries
     // the requisition CRUD + the assignment-visibility filter (Ruling 2:
     // a query predicate, not a guard rejection — recruiters see only
@@ -439,6 +450,9 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // not a method on it — its class guards are unconditional); always available,
     // no session. Serves the same notice bytes the dormant-notice email delivers.
     PortalNoticeController,
+    // Portal P4b (§PR-2, D-2/D-3) — the talent RTBF surface (erase own platform
+    // identity; Option A gate — no scope, self-service self-deletion).
+    PortalRightsController,
     // TR-12 B1 (DDR §4) — the caseworker's worklist surface (list OPEN proposals /
     // dismiss). Reads at talent:read (capability ats — the dossier precedent); it
     // executes nothing (no ACT endpoint this slice — propose-never-dispose).
@@ -540,6 +554,9 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // ConsentService + MAILER_PORT resolve via their already-imported modules).
     EmailVerificationService,
     ReferenceAttestationService,
+    // Portal P4b — the talent RTBF orchestration (purgeCluster → delete residue →
+    // revoke sessions), injected by PortalRightsController.
+    PortalRtbfService,
     // TR-3 B2 — the public confirm route's per-IP fixed-window budget (a shared
     // singleton the PublicVerificationController injects).
     VerificationConfirmBudget,

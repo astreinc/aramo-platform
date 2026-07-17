@@ -186,3 +186,15 @@
 .po-notice-para:last-child {
   margin-bottom: 0;
 }
+.po-input {
+  width: 100%;
+  max-width: 360px;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.16));
+  border-radius: 6px;
+}
