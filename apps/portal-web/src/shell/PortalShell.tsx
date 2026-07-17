@@ -33,6 +33,9 @@ function crumbsFor(pathname: string): BreadcrumbItem[] {
   if (/^\/disputes/.test(pathname)) {
     return [{ label: 'Disputes' }];
   }
+  if (/^\/notice/.test(pathname)) {
+    return [{ label: 'Notice' }];
+  }
   const crumbs: BreadcrumbItem[] = [{ label: 'Your records', href: '/' }];
   if (/^\/records\/[^/]+/.test(pathname)) {
     crumbs.push({ label: 'Record' });
@@ -59,6 +62,7 @@ export function PortalShell({ children }: { readonly children: ReactNode }) {
         icon={<Icons.IconShieldCheck />}
       />
       <RailNavItem to="/disputes" label="Disputes" icon={<Icons.IconMessage />} />
+      <RailNavItem to="/notice" label="Notice" icon={<Icons.IconInfo />} />
     </Rail>
   );
 

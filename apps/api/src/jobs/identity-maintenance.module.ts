@@ -9,6 +9,8 @@ import { TalentTrustModule } from '@aramo/talent-trust';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { IdentityIndexModule } from '@aramo/identity-index';
 import { PlatformTrustModule } from '@aramo/platform-trust';
+import { PortalIdentityModule } from '@aramo/portal-identity';
+import { MailerModule } from '@aramo/mailer';
 
 import { MatchSweepService } from '../talent-anchor/match-sweep.service.js';
 import { MatchSweepProcessor } from '../talent-anchor/match-sweep.processor.js';
@@ -23,6 +25,7 @@ import { RecomputeSweepService } from '../talent-identity/recompute-sweep.servic
 import { RecomputeSweepProcessor } from '../talent-identity/recompute-sweep.processor.js';
 import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.queue.constants.js';
 import { IdentityLifecycleSweepService } from '../talent-identity/identity-lifecycle-sweep.service.js';
+import { DormantNoticeService } from '../talent-identity/dormant-notice.service.js';
 import { IdentityLifecycleSweepProcessor } from '../talent-identity/identity-lifecycle-sweep.processor.js';
 import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity-lifecycle-sweep.queue.constants.js';
 
@@ -48,6 +51,11 @@ import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity
     // nx boundary edge (the wall governs the tagged libs).
     IdentityIndexModule,
     PlatformTrustModule,
+    // Portal P4a — the dormant-notice delivery orchestration needs the portal
+    // identity store (PortalIdentityRepository, the D-4 portal-rail join +
+    // NoticeDelivery record) and the standing mail port (MAILER_PORT).
+    PortalIdentityModule,
+    MailerModule,
     BullModule.forRootAsync({
       extraOptions: { manualRegistration: true },
       useFactory: (cfg: RedisConnectionConfig) => {
@@ -94,6 +102,11 @@ import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity
     RecomputeSweepProcessor,
     IdentityLifecycleSweepService,
     IdentityLifecycleSweepProcessor,
+    DormantNoticeService,
+    {
+      provide: 'DormantNoticeServiceLogger',
+      useFactory: () => createAramoLogger(DormantNoticeService.name),
+    },
     {
       provide: 'MatchSweepServiceLogger',
       useFactory: () => createAramoLogger(MatchSweepService.name),

@@ -8,6 +8,12 @@ export {
   hashPortalConsentText,
   type ConsentTextContext,
 } from './lib/consent-texts.js';
+export {
+  NOTICE_TEXT_CURRENT_VERSION,
+  renderPlatformNotice,
+  hashPlatformNotice,
+  renderPlatformNoticeEmail,
+} from './lib/notice-texts.js';
 export { ConsentController } from './lib/consent.controller.js';
 export { ConsentService } from './lib/consent.service.js';
 export {

@@ -8,6 +8,7 @@ import { RecordDetailView } from './records/RecordDetailView';
 import { VerificationsView } from './verifications/VerificationsView';
 import { DisputesListView } from './disputes/DisputesListView';
 import { DisputeDetailView } from './disputes/DisputeDetailView';
+import { NoticeView } from './notice/NoticeView';
 
 // Portal P1 PR-3 — the portal app root.
 //
@@ -49,6 +50,7 @@ export function App() {
           <Route path="/verifications" element={<VerificationsView />} />
           <Route path="/disputes" element={<DisputesListView />} />
           <Route path="/disputes/:id" element={<DisputeDetailView />} />
+          <Route path="/notice" element={<NoticeView />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </PortalShell>

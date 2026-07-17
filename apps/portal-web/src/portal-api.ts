@@ -133,6 +133,12 @@ export interface PortalDisputeDetail {
   statements: PortalDisputeStatement[];
 }
 
+// Portal P4a — the public platform notice (version + rendered text).
+export interface PortalNotice {
+  version: string;
+  text: string;
+}
+
 export const portalApi = {
   // Passwordless sign-in: request a magic link. The response is byte-identical
   // whether the address is eligible, ineligible, or malformed (oracle-resistance,
@@ -197,6 +203,12 @@ export const portalApi = {
       { scope },
       { headers: { 'Idempotency-Key': idempotencyKey } },
     );
+  },
+
+  // Portal P4a — the current platform notice (public read; no session required —
+  // the endpoint ignores auth). Rendered version + text.
+  getNotice(): Promise<PortalNotice> {
+    return apiClient.get('/v1/portal/notice');
   },
 
   // Portal P3c — the talent-level verification view ("verified on Aramo").

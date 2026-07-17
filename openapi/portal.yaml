@@ -11,6 +11,28 @@ info:
     Future PRs populate the remaining 10 Phase 3 endpoints under F26/F27/
     F28/F29.
 paths:
+  # Portal P4 P4a (§PR-1.1, D-5) — the PUBLIC platform-notice read. Always
+  # available, NO session (a person must be able to read the notice before or
+  # without signing in). Served by a guardless sibling controller (never
+  # PortalController). The same bytes the dormant-notice email delivers.
+  /v1/portal/notice:
+    get:
+      operationId: getPortalNotice
+      summary: The current versioned platform notice (public — no session).
+      description: |
+        Returns the current platform-notice version and its rendered text. Public:
+        no authentication is required. The bytes are identical to those delivered
+        by the dormant-notice email channel (a reproducible preimage anchored by
+        the version id).
+      responses:
+        '200':
+          description: The current platform notice.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalNotice'
+      security: []
+
   # Portal P1 PR-2a — the OPEN-4 chain surface. The prior singleton
   # /v1/portal/profile + /v1/portal/consent are REMOVED (the placeholder-era
   # sub-passthrough); the portal session's `sub` (PortalUser.id) now resolves to
@@ -628,6 +650,22 @@ components:
     # class). Declared LOCALLY so verify-portal-refusal.ts walks it. `text` names
     # the recipient by tenant_id (the canonical legal clause); no R10/trust field.
     # NOT in TRUST_CLASS_SCHEMAS.
+    # Portal P4 P4a (D-5) — the public platform notice. version + rendered text
+    # only; no PII, no session-derived field. Not a trust-class schema.
+    PortalNotice:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - text
+      properties:
+        version:
+          type: string
+          description: The current platform-notice version id (the preimage anchor).
+        text:
+          type: string
+          description: The rendered notice text (the same bytes the email delivers).
+
     PortalConsentText:
       type: object
       additionalProperties: false

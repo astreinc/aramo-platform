@@ -7,6 +7,7 @@ import {
   hashPortalConsentText,
   renderPortalConsentText,
 } from '../lib/consent-texts.js';
+import { NOTICE_TEXT_CURRENT_VERSION } from '../lib/notice-texts.js';
 
 // Portal P2 P2a — unit coverage of the portal-actor consent path: the portal
 // actor stamping, the read-derived 12-month term, the D7 evidence completeness,
@@ -75,14 +76,15 @@ describe('ConsentService — portal-actor grant/revoke (Portal P2 P2a)', () => {
     const expected = new Date(now);
     expected.setMonth(expected.getMonth() + CONSENT_DEFAULT_TERM_MONTHS);
     expect(expires.toISOString()).toBe(expected.toISOString());
-    // D7 evidence completeness (channel portal, reproducible hash, null notice).
+    // D7 evidence completeness (channel portal, reproducible hash, notice version
+    // in force — P4a closed the forward contract).
     expect(input.consent_evidence).toEqual({
       consent_text_hash: hashPortalConsentText(CONSENT_TEXT_CURRENT_VERSION, {
         recipient_tenant_id: TENANT,
         scope: 'matching',
       }).hash,
       consent_text_version: CONSENT_TEXT_CURRENT_VERSION,
-      notice_version: null,
+      notice_version: NOTICE_TEXT_CURRENT_VERSION,
       channel: 'portal',
     });
   });

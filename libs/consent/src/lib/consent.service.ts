@@ -8,6 +8,7 @@ import {
   hashPortalConsentText,
   renderPortalConsentText,
 } from './consent-texts.js';
+import { NOTICE_TEXT_CURRENT_VERSION } from './notice-texts.js';
 import type { ConsentCheckRequestDto } from './dto/consent-check-request.dto.js';
 import type { ConsentDecisionDto } from './dto/consent-decision.dto.js';
 import type { ConsentGrantRequestDto } from './dto/consent-grant-request.dto.js';
@@ -251,8 +252,10 @@ export class ConsentService {
       consent_evidence: {
         consent_text_hash: evidence.hash,
         consent_text_version: evidence.version,
-        // P4 forward contract: versioned platform notices ship in P4; null until then.
-        notice_version: null,
+        // P4a closes the P2a forward contract: the platform-notice version in
+        // force at the moment of grant (the notice the person is deemed to have
+        // received when they act in the portal).
+        notice_version: NOTICE_TEXT_CURRENT_VERSION,
         channel: 'portal',
       },
     });
@@ -295,7 +298,8 @@ export class ConsentService {
       consent_evidence: {
         consent_text_hash: evidence.hash,
         consent_text_version: evidence.version,
-        notice_version: null,
+        // P4a closes the P2a forward contract (see grantAsPortal).
+        notice_version: NOTICE_TEXT_CURRENT_VERSION,
         channel: 'portal',
       },
     });
