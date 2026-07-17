@@ -24,6 +24,15 @@ function crumbsFor(pathname: string): BreadcrumbItem[] {
   if (pathname === '/' || pathname === '') {
     return [{ label: 'Your records' }];
   }
+  if (/^\/verifications/.test(pathname)) {
+    return [{ label: 'Verified identity' }];
+  }
+  if (/^\/disputes\/[^/]+/.test(pathname)) {
+    return [{ label: 'Disputes', href: '/disputes' }, { label: 'Dispute' }];
+  }
+  if (/^\/disputes/.test(pathname)) {
+    return [{ label: 'Disputes' }];
+  }
   const crumbs: BreadcrumbItem[] = [{ label: 'Your records', href: '/' }];
   if (/^\/records\/[^/]+/.test(pathname)) {
     crumbs.push({ label: 'Record' });
@@ -44,6 +53,12 @@ export function PortalShell({ children }: { readonly children: ReactNode }) {
       </span>
       <RailNavLabel>You</RailNavLabel>
       <RailNavItem to="/" end label="Your records" icon={<Icons.IconBuilding />} />
+      <RailNavItem
+        to="/verifications"
+        label="Verified identity"
+        icon={<Icons.IconShieldCheck />}
+      />
+      <RailNavItem to="/disputes" label="Disputes" icon={<Icons.IconMessage />} />
     </Rail>
   );
 
