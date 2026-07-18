@@ -49,13 +49,14 @@ import {
 const REPO_ROOT = resolve(__dirname, '../../../..');
 const MIGRATION_SQL_PATHS = resolveIdentityMigrations(REPO_ROOT);
 
-// The locked catalog shape (88 scopes / 14 roles / 474 grants — slice-A added
-// talent:source (+1 scope, +1 sourcer grant); slice B-api grants identity:resolve
-// to sourcer too (+1 grant → 474)). These are the numbers
+// The locked catalog shape (92 scopes / 14 roles / 478 grants). D-SEED-SCOPES-1
+// added the 3 Portal P3a portal-role scopes (portal:{verification:read,
+// dispute:read,dispute:write}) that were declared + granted but never CREATED —
+// +3 scopes (89→92) and +3 portal-role grants (475→478). These are the numbers
 // the scrub must keep byte-identical.
 const CATALOG_ROLE_COUNT = 14;
-const CATALOG_SCOPE_COUNT = 89;
-const CATALOG_ROLE_SCOPE_COUNT = 475;
+const CATALOG_SCOPE_COUNT = 92;
+const CATALOG_ROLE_SCOPE_COUNT = 478;
 
 // Naive DDL splitter — mirrors identity.integration.spec.ts.
 function splitDdl(sql: string): string[] {

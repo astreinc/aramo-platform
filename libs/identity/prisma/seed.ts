@@ -1844,6 +1844,12 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['portal:profile:edit'], 'portal:profile:edit', 'Edit own portal profile');
   await upsertScope(prisma, SEED_IDS.scopes['portal:consent:read'], 'portal:consent:read', 'Read own portal consent state');
   await upsertScope(prisma, SEED_IDS.scopes['portal:consent:write'], 'portal:consent:write', 'Grant or revoke own portal consent');
+  // Portal P3a — candidate verification view + dispute rights (3). Declared in
+  // SEED_IDS.scopes (0xb2-0xb4) and granted to the candidate role, but the
+  // creation calls were missing (D-SEED-SCOPES-1) → RoleScope_scope_id_fkey.
+  await upsertScope(prisma, SEED_IDS.scopes['portal:verification:read'], 'portal:verification:read', 'Read own portal verification state');
+  await upsertScope(prisma, SEED_IDS.scopes['portal:dispute:read'], 'portal:dispute:read', 'Read own portal disputes');
+  await upsertScope(prisma, SEED_IDS.scopes['portal:dispute:write'], 'portal:dispute:write', 'Open or withdraw own portal disputes');
   // PR-A1a-2 — full ATS catalog (27 new scopes; Ruling 1 uniform divergence applied at role-mapping level).
   await upsertScope(prisma, SEED_IDS.scopes['talent:read'], 'talent:read', 'Read a talent record (assigned by default)');
   await upsertScope(prisma, SEED_IDS.scopes['talent:create'], 'talent:create', 'Create a talent record');
