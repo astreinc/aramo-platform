@@ -165,6 +165,11 @@ services:
       - AUTH_TRUSTED_IDP_NAMES
       - AUTH_ALLOW_INSECURE_COOKIES
       - AUTH_REFRESH_GRACE_SECONDS
+      # Platform console — the platform host class (exact-match allowlist for
+      # admin.aramo.ai). Without it the container reads AUTH_PLATFORM_HOSTS empty
+      # → admin.aramo.ai fails the platform-host match → derives an unregistered
+      # callback → console login 400s on redirect_uri (D-AUTH-PLATFORM-HOSTS-1).
+      - AUTH_PLATFORM_HOSTS
       # Portal P1 — passwordless portal login. The portal host class
       # (exact-match allowlist for candidate.aramo.ai) + the magic-link base.
       - AUTH_PORTAL_HOSTS
