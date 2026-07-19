@@ -3,10 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PortalLoginService } from '../app/auth/portal-login.service.js';
 
 // Portal P1 — passwordless login orchestration unit coverage. The three
-// eligibility cases (fingerprint-hit / PortalUser-hit / miss) and the neutral
+// eligibility cases (eligibility-hit / PortalUser-hit / miss) and the neutral
 // request-link contract, plus the consume success/failure modes, with all
-// collaborators stubbed. ARAMO_IDENTITY_PEPPER is set by vitest.shared so
-// computeEmailFingerprint works.
+// collaborators stubbed.
+//
+// Auth-Decoupling PR-2/3 (§3.1): PortalLoginService now depends on the auth-owned
+// EmailSender / EligibilityPolicy ports, so the identity-index + mailer mocks are
+// substituted by an EligibilityPolicy mock (`resolve`) and an EmailSender mock
+// (`send`, same shape). PROVIDER SUBSTITUTION ONLY — every assertion is unchanged
+// (subject_ref IS the former cluster id, so `cluster_id: CLUSTER_ID` still holds).
 
 const CLUSTER_ID = 'cccccccc-cccc-7ccc-8ccc-ccccccccc001';
 const PORTAL_ID = 'dddddddd-dddd-7ddd-8ddd-ddddddddd001';
@@ -18,10 +23,13 @@ function makeService(over: {
   consumeResult?: { email_normalized: string } | null;
   budgetAllows?: boolean;
 } = {}) {
-  const findClusterByFingerprint = vi
+  // EligibilityPolicy.resolve mirrors the former index lookup: a cluster hit maps
+  // to an opaque { subject_ref }, a miss to null (over.cluster == null covers both
+  // the `undefined` default and an explicit null).
+  const resolve = vi
     .fn()
-    .mockResolvedValue(over.cluster === undefined ? null : over.cluster);
-  const identityIndex = { findClusterByFingerprint } as never;
+    .mockResolvedValue(over.cluster == null ? null : { subject_ref: over.cluster.id });
+  const eligibility = { resolve } as never;
 
   const findPortalByEmail = vi
     .fn()
@@ -49,7 +57,7 @@ function makeService(over: {
   } as never;
 
   const send = vi.fn().mockResolvedValue({ message_id: 'm1' });
-  const mailer = { send } as never;
+  const email = { send } as never;
 
   const establishPortalSession = vi
     .fn()
@@ -59,10 +67,10 @@ function makeService(over: {
   const allow = vi.fn().mockReturnValue(over.budgetAllows ?? true);
   const budget = { allow } as never;
 
-  const service = new PortalLoginService(portals, identityIndex, mailer, session, budget);
+  const service = new PortalLoginService(portals, eligibility, email, session, budget);
   return {
     service,
-    findClusterByFingerprint,
+    resolve,
     findPortalByEmail,
     createLoginToken,
     rotateLoginToken,
@@ -136,12 +144,12 @@ describe('PortalLoginService.requestLink — eligibility (ruling 1) + neutrality
   });
 
   it('over-budget: uniform limiter fires first — no eligibility check, no mail', async () => {
-    const { service, findClusterByFingerprint, send } = makeService({
+    const { service, resolve, send } = makeService({
       cluster: { id: CLUSTER_ID },
       budgetAllows: false,
     });
     await service.requestLink({ email: 'known@example.com', ...REQ });
-    expect(findClusterByFingerprint).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
   });
 });

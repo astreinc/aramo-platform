@@ -10,7 +10,11 @@ import { MailerModule } from '@aramo/mailer';
 import { AuthController } from './auth.controller.js';
 import { CognitoVerifierService } from './cognito-verifier.service.js';
 import { CookieVerifierService } from './cookie-verifier.service.js';
+import { EMAIL_SENDER } from './email-sender.port.js';
+import { ELIGIBILITY_POLICY } from './eligibility-policy.port.js';
 import { HostAuthProfileService } from './host-auth-profile.service.js';
+import { IdentityIndexEligibilityAdapter } from './identity-index-eligibility.adapter.js';
+import { MailerEmailSenderAdapter } from './mailer-email-sender.adapter.js';
 import { HostBaseResolver } from './host-base-resolver.service.js';
 import { JwksController } from './jwks.controller.js';
 import { JwksService } from './jwks.service.js';
@@ -41,6 +45,11 @@ import { SessionOrchestratorService } from './session-orchestrator.service.js';
     // Portal P1 — passwordless portal login deps: the portal identity +
     // login-token store, the PII-free index (eligibility fingerprint lookup,
     // aperture 1), and the mailer (magic-link send via the standing mail path).
+    //
+    // Auth-Decoupling PR-2/3 (§2.4): IdentityIndexModule + MailerModule remain
+    // imported at the MODULE level to supply the adapters below — that residual
+    // module-level coupling is PR-5's to remove. The SERVICE-level coupling
+    // (PortalLoginService importing them directly) is gone, which is this PR's point.
     PortalIdentityModule,
     IdentityIndexModule,
     MailerModule,
@@ -58,6 +67,11 @@ import { SessionOrchestratorService } from './session-orchestrator.service.js';
     HostBaseResolver,
     PortalLoginService,
     PortalLoginBudget,
+    // Auth-Decoupling PR-2/3 — bind auth's ports to the Aramo adapters. The
+    // adapters are the ONLY code that imports @aramo/mailer / @aramo/identity-index /
+    // computeEmailFingerprint; PortalLoginService depends only on the ports.
+    { provide: EMAIL_SENDER, useClass: MailerEmailSenderAdapter },
+    { provide: ELIGIBILITY_POLICY, useClass: IdentityIndexEligibilityAdapter },
     { provide: APP_FILTER, useClass: AramoExceptionFilter },
   ],
 })
