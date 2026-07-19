@@ -68,6 +68,12 @@ services:
       # was omitted when Inc-3 PR-3.3 shipped; Portal P1 PR-3 adds
       # CADDY_PORTAL_ADDRESS (candidate.aramo.ai) and closes the admin gap alongside.
       - CADDY_ADMIN_ADDRESS
+      # D-CADDY-WILDCARD-SKIP-1 — the admin block's tls arg. Box sets
+      # `force_automate` so admin.aramo.ai is eagerly issued despite the
+      # *.aramo.ai wildcard-coverage skip; unset locally → `internal` CA. A var
+      # absent from THIS passthrough never reaches the container and the fix is
+      # inert (the D-AUTH-PLATFORM-HOSTS-1 defect class).
+      - CADDY_ADMIN_TLS
       - CADDY_PORTAL_ADDRESS
     ports:
       - '80:80'
