@@ -82,6 +82,14 @@ const AUTH_STORAGE_MIGRATION = resolve(
   ROOT,
   'libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
 );
+// Auth-Decoupling PR-1 — host auth-profile registry. The booted auth-service now
+// SELECTs auth_storage."HostAuthProfile" on host resolution (HostBaseResolver →
+// HostAuthProfileService), so the table must exist even when the registry is
+// empty (an empty read → fail-open miss → legacy path).
+const AUTH_STORAGE_HOST_PROFILE_MIGRATION = resolve(
+  ROOT,
+  'libs/auth-storage/prisma/migrations/20260719000000_add_host_auth_profile/migration.sql',
+);
 const PACT_FILE = resolve(
   ROOT,
   'pact/pacts/auth-service-consumer-aramo-auth-service.json',
@@ -118,6 +126,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ...splitDdl(readFileSync(IDENTITY_D4A_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_PROFILE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(AUTH_STORAGE_HOST_PROFILE_MIGRATION, 'utf8')),
       ]) {
         const t = stmt.trim();
         if (t.length === 0) continue;

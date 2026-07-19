@@ -30,6 +30,7 @@
     "prisma:seed-identity": "node --import jiti/register libs/identity/prisma/seed.ts",
     "prisma:seed-astre": "node --import jiti/register libs/identity/prisma/seed-astre.ts",
     "prisma:seed-platform-owner": "node --import jiti/register libs/identity/prisma/seed-platform-owner.ts",
+    "prisma:seed-auth-storage": "node --import jiti/register libs/auth-storage/prisma/seed.ts",
     "db:sync:local": "bash tools/db-sync-local.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

@@ -70,6 +70,9 @@ export function resolveIdentityMigrations(repoRoot: string): string[] {
 // (never interleaved). Append order-safely (same Invariant 1 as above).
 export const AUTH_STORAGE_MIGRATIONS: readonly string[] = [
   'libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
+  // Auth-Decoupling PR-1 — host auth-profile registry (additive: a new table in
+  // the SAME schema, independent of RefreshToken). Applied AFTER init.
+  'libs/auth-storage/prisma/migrations/20260719000000_add_host_auth_profile/migration.sql',
 ];
 
 // Resolve the ordered auth-storage migration .sql paths against a repo root

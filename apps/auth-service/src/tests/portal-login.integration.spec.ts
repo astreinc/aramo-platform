@@ -24,6 +24,7 @@ import { IdentityIndexModule } from '@aramo/identity-index';
 import { MailerModule, MAILER_PORT } from '@aramo/mailer';
 
 import { PortalAuthController } from '../app/auth/portal-auth.controller.js';
+import { HostAuthProfileService } from '../app/auth/host-auth-profile.service.js';
 import { HostBaseResolver } from '../app/auth/host-base-resolver.service.js';
 import { CognitoVerifierService } from '../app/auth/cognito-verifier.service.js';
 import { CookieVerifierService } from '../app/auth/cookie-verifier.service.js';
@@ -188,6 +189,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           CognitoVerifierService,
           SessionOrchestratorService,
           RefreshOrchestratorService,
+          HostAuthProfileService,
           HostBaseResolver,
           PortalLoginService,
           PortalLoginBudget,
