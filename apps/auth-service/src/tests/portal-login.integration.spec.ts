@@ -24,7 +24,11 @@ import { IdentityIndexModule } from '@aramo/identity-index';
 import { MailerModule, MAILER_PORT } from '@aramo/mailer';
 
 import { PortalAuthController } from '../app/auth/portal-auth.controller.js';
+import { EMAIL_SENDER } from '../app/auth/email-sender.port.js';
+import { ELIGIBILITY_POLICY } from '../app/auth/eligibility-policy.port.js';
 import { HostAuthProfileService } from '../app/auth/host-auth-profile.service.js';
+import { IdentityIndexEligibilityAdapter } from '../app/auth/identity-index-eligibility.adapter.js';
+import { MailerEmailSenderAdapter } from '../app/auth/mailer-email-sender.adapter.js';
 import { HostBaseResolver } from '../app/auth/host-base-resolver.service.js';
 import { CognitoVerifierService } from '../app/auth/cognito-verifier.service.js';
 import { CookieVerifierService } from '../app/auth/cookie-verifier.service.js';
@@ -193,6 +197,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           HostBaseResolver,
           PortalLoginService,
           PortalLoginBudget,
+          // Auth-Decoupling PR-2/3 — the port bindings (DI ripple, §4 D-1). The
+          // MAILER_PORT override below still reaches the send via the adapter.
+          MailerEmailSenderAdapter,
+          IdentityIndexEligibilityAdapter,
+          { provide: EMAIL_SENDER, useClass: MailerEmailSenderAdapter },
+          { provide: ELIGIBILITY_POLICY, useClass: IdentityIndexEligibilityAdapter },
         ],
       })
         .overrideProvider(MAILER_PORT)

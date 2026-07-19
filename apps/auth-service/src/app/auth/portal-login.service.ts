@@ -1,14 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { computeEmailFingerprint, normalizeEmail } from '@aramo/common';
+import { normalizeEmail } from '@aramo/common';
 import {
   PortalIdentityRepository,
   generatePortalLoginToken,
   hashPortalLoginToken,
   portalLoginExpiresAt,
 } from '@aramo/portal-identity';
-import { IdentityIndexRepository } from '@aramo/identity-index';
-import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
 
+import { EMAIL_SENDER, type EmailSender } from './email-sender.port.js';
+import { ELIGIBILITY_POLICY, type EligibilityPolicy } from './eligibility-policy.port.js';
 import { PortalLoginBudget } from './portal-login-budget.js';
 import { buildPortalLoginUrl, renderPortalLoginEmail } from './portal-login-email.js';
 import { SessionOrchestratorService } from './session-orchestrator.service.js';
@@ -19,9 +19,16 @@ import { SessionOrchestratorService } from './session-orchestrator.service.js';
 //
 // ORACLE-RESISTANCE (Portal rulings 1 & 2): request-link NEVER reveals whether an
 // email is eligible — it returns the same neutral response and the same (possibly
-// no) side effect regardless. Eligibility resolves ONLY through governed aperture
-// 1 (the one-way, PII-free fingerprint → ClusterFingerprint lookup) OR an existing
+// no) side effect regardless. Eligibility resolves ONLY through the governed
+// EligibilityPolicy port (aperture 1, opaque subject_ref) OR an existing
 // PortalUser — NEVER a cross-tenant SubjectAnchor scan.
+//
+// Auth-Decoupling PR-2/3 (ADR-0021 §2): this service depends on the auth-owned
+// EmailSender / EligibilityPolicy PORTS, not on @aramo/mailer, @aramo/identity-index,
+// or computeEmailFingerprint. The fingerprint computation (and the pepper) now
+// live in IdentityIndexEligibilityAdapter; the mail send in
+// MailerEmailSenderAdapter. Method bodies, ordering, and control flow are
+// otherwise unchanged (behaviour-preserving, R-P23-5).
 
 export type PortalConsumeResult =
   | { kind: 'success'; accessJwt: string; refreshTokenPlaintext: string }
@@ -33,8 +40,8 @@ export class PortalLoginService {
 
   constructor(
     private readonly portals: PortalIdentityRepository,
-    private readonly identityIndex: IdentityIndexRepository,
-    @Inject(MAILER_PORT) private readonly mailer: MailerPort,
+    @Inject(ELIGIBILITY_POLICY) private readonly eligibility: EligibilityPolicy,
+    @Inject(EMAIL_SENDER) private readonly email: EmailSender,
     private readonly session: SessionOrchestratorService,
     private readonly budget: PortalLoginBudget,
   ) {}
@@ -59,9 +66,9 @@ export class PortalLoginService {
     // unknown one — no distinct error, no branch observable to the requester.
     if (normalized.length === 0 || !normalized.includes('@')) return;
 
-    const clusterId = await this.resolveClusterId(normalized);
+    const resolved = await this.eligibility.resolve(normalized);
     const eligible =
-      clusterId !== null ||
+      resolved !== null ||
       (await this.portals.findPortalByEmail(normalized)) !== null;
     if (!eligible) return; // unknown → NO mail (ruling 2)
 
@@ -78,9 +85,9 @@ export class PortalLoginService {
 
     const confirmUrl = buildPortalLoginUrl(input.baseUrl, rawToken);
     const rendered = renderPortalLoginEmail({ confirmUrl });
-    // `to` is the address as typed (the mailer never templates; origin secrecy
+    // `to` is the address as typed (the sender never templates; origin secrecy
     // holds — the email names no tenant).
-    await this.mailer.send({ to: raw, subject: rendered.subject, html: rendered.html, text: rendered.text });
+    await this.email.send({ to: raw, subject: rendered.subject, html: rendered.html, text: rendered.text });
   }
 
   /**
@@ -99,28 +106,16 @@ export class PortalLoginService {
     const token = await this.portals.consumeLoginToken(hashPortalLoginToken(raw), now);
     if (token === null) return { kind: 'failure' };
 
-    // Lazy mint (ruling 3): cluster_id re-derived from the eligibility lookup for
-    // this email (deterministic — same fingerprint the request-link path used).
-    const clusterId = await this.resolveClusterId(token.email_normalized);
+    // Lazy mint (ruling 3): the opaque subject_ref re-derived from the eligibility
+    // lookup for this email (deterministic — the same resolution the request-link
+    // path used). Passed through to the portal store unread as cluster_id.
+    const resolved = await this.eligibility.resolve(token.email_normalized);
     const user = await this.portals.findOrCreatePortalOnLogin({
       email_normalized: token.email_normalized,
-      cluster_id: clusterId,
+      cluster_id: resolved?.subject_ref ?? null,
       now,
     });
     const sess = await this.session.establishPortalSession({ portal_user_id: user.id });
     return { kind: 'success', accessJwt: sess.accessJwt, refreshTokenPlaintext: sess.refreshTokenPlaintext };
-  }
-
-  /**
-   * Ruling 1 — eligibility through the index ONLY: normalized email →
-   * computeEmailFingerprint (one-way, PII-free, aperture 1) → ClusterFingerprint
-   * lookup. Returns the cluster id when a fingerprint exists (under PORTABLE_ONLY,
-   * that IS "a verified email admitted somewhere"), else null. NEVER scans
-   * SubjectAnchor across tenants.
-   */
-  private async resolveClusterId(emailNormalized: string): Promise<string | null> {
-    const fingerprint = computeEmailFingerprint(emailNormalized);
-    const cluster = await this.identityIndex.findClusterByFingerprint(fingerprint);
-    return cluster?.id ?? null;
   }
 }
