@@ -20,6 +20,44 @@ datasource db {
   schemas  = ["auth_storage"]
 }
 
+// Auth-Decoupling PR-1 (ADR-0021 §3, ADR-0020 rule 2) — the host auth-profile
+// registry. ONE row per host CLASS (R-A1-7: TENANT | PLATFORM | PORTAL), NOT
+// per-tenant: `host_class` is UNIQUE. Resolves a request host to its Cognito
+// profile + redirect configuration, replacing (behaviour-preservingly, R-A1-1)
+// the split of env allow-lists + per-request tenant DB lookup.
+//
+// The Cognito profile columns (pool_id/client_id/issuer/domain) are seeded to
+// today's single-pool values and are INERT in this PR (R-A1-5: NO multi-pool
+// selection logic). Making pool_id a ROW VALUE is the delivered capability —
+// pool separation becomes a later DATA operation at class level, not a code
+// change. `default_idp` carries the class-default IdP hint; TENANT rows are
+// overridden per-request by `tenant.identity_provider` from findActiveBySlug.
+model HostAuthProfile {
+  id               String   @id @db.Uuid
+  // Closed vocabulary: TENANT | PLATFORM | PORTAL. Unique — the class key.
+  host_class       String   @unique
+  // PLATFORM/PORTAL: the exact host. TENANT: the wildcard/root-domain pattern.
+  host_pattern     String
+  // Cognito profile — seeded to current values, inert in PR-1 (R-A1-5).
+  pool_id          String
+  client_id        String
+  issuer           String
+  domain           String
+  // Class-default IdP hint (Home Realm Discovery); null = no hint. TENANT rows
+  // are overridden per-request by tenant.identity_provider.
+  default_idp      String?
+  // Post-login / signout targets — default '/' (current AUTH_POST_LOGIN_PATH /
+  // AUTH_SIGNOUT_PATH defaults).
+  post_login_path  String   @default("/")
+  signout_path     String   @default("/")
+  // Soft-disable without deletion.
+  is_active        Boolean  @default(true)
+  created_at       DateTime @default(now()) @db.Timestamptz
+  updated_at       DateTime @updatedAt @db.Timestamptz
+
+  @@schema("auth_storage")
+}
+
 model RefreshToken {
   id              String    @id @db.Uuid
   user_id         String    @db.Uuid

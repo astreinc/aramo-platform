@@ -1,10 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TenantService } from '@aramo/identity';
 
+import type { HostAuthProfileService } from '../app/auth/host-auth-profile.service.js';
 import { HostBaseResolver } from '../app/auth/host-base-resolver.service.js';
 
 // PR-3.1 §3a — the resolver folds the tenant-host validation AND the HRD IdP
 // hint into ONE findActiveBySlug (the sharing choice), and fails open.
+//
+// Auth-Decoupling PR-1 — these specs assert the LEGACY derivation (the fall-
+// through path). A registry that always MISSES (returns null) forces that path,
+// so their intent is unchanged; the registry-active path is covered by the
+// host-auth-profile.* specs. (An empty registry misses without touching
+// findActiveBySlug, so the "ONE lookup" invariant below still holds.)
+const missingRegistry = {
+  resolve: async (): Promise<null> => null,
+} as unknown as HostAuthProfileService;
 
 const ENV = ['AUTH_PLATFORM_HOSTS', 'AUTH_ALLOW_INSECURE_COOKIES', 'NODE_ENV', 'APP_ROOT_DOMAIN'] as const;
 let saved: Partial<Record<string, string | undefined>> = {};
@@ -29,7 +39,7 @@ function make(findActiveBySlug: ReturnType<typeof vi.fn>): {
   findActiveBySlug: ReturnType<typeof vi.fn>;
 } {
   const tenants = { findActiveBySlug } as unknown as TenantService;
-  return { resolver: new HostBaseResolver(tenants), findActiveBySlug };
+  return { resolver: new HostBaseResolver(tenants, missingRegistry), findActiveBySlug };
 }
 
 describe('HostBaseResolver.resolve', () => {

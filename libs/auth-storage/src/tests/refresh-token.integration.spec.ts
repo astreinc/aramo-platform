@@ -15,10 +15,20 @@ import {
 } from '../lib/refresh-token.repository.js';
 import { RefreshTokenService } from '../lib/refresh-token.service.js';
 
-const MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260512100000_init_auth_storage/migration.sql',
-);
+// Auth-Decoupling PR-1 — the auth_storage schema now carries two migrations;
+// apply both so the schema this spec provisions matches the generated client
+// (which now includes the HostAuthProfile model). RefreshToken behaviour is
+// unaffected — the new table is independent and unread here.
+const MIGRATION_PATHS = [
+  resolve(
+    __dirname,
+    '../../prisma/migrations/20260512100000_init_auth_storage/migration.sql',
+  ),
+  resolve(
+    __dirname,
+    '../../prisma/migrations/20260719000000_add_host_auth_profile/migration.sql',
+  ),
+];
 
 function splitDdl(sql: string): string[] {
   const noLineComments = sql.replace(/--[^\n]*$/gm, '');
@@ -36,13 +46,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
-      const sql = readFileSync(MIGRATION_PATH, 'utf8');
       const setup = new PrismaService(url);
       await setup.$connect();
-      for (const stmt of splitDdl(sql)) {
-        const t = stmt.trim();
-        if (t.length === 0) continue;
-        await setup.$executeRawUnsafe(t);
+      for (const path of MIGRATION_PATHS) {
+        for (const stmt of splitDdl(readFileSync(path, 'utf8'))) {
+          const t = stmt.trim();
+          if (t.length === 0) continue;
+          await setup.$executeRawUnsafe(t);
+        }
       }
       await setup.$disconnect();
 

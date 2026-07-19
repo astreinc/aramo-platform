@@ -30,14 +30,14 @@ import type { ConsumerType } from '@aramo/auth';
 // not imported to avoid touching the §2-adjacent cookie helper). shouldSetSecure
 // = NODE_ENV==='production' ? true : AUTH_ALLOW_INSECURE_COOKIES !== 'true';
 // so the dev (insecure) posture is its negation.
-function isDevPosture(): boolean {
+export function isDevPosture(): boolean {
   return (
     process.env['NODE_ENV'] !== 'production' &&
     process.env['AUTH_ALLOW_INSECURE_COOKIES'] === 'true'
   );
 }
 
-interface ParsedHost {
+export interface ParsedHost {
   /** lowercased hostname, port stripped (for matching + prod base). */
   readonly hostname: string;
   /** the port, or null. */
@@ -46,7 +46,12 @@ interface ParsedHost {
   readonly raw: string;
 }
 
-function parseHost(rawHost: string | undefined): ParsedHost | null {
+// Auth-Decoupling PR-1 — exported (additive; behaviour-neutral) so the host
+// auth-profile registry classifier REUSES this exact normalisation rather than
+// re-implementing it (§2.1: "reuse the existing helper"). The registry
+// classification also mirrors deriveBaseFromHost's order, so isDevPosture /
+// isDevHostname are exported for the same reason.
+export function parseHost(rawHost: string | undefined): ParsedHost | null {
   if (rawHost === undefined) return null;
   const raw = rawHost.trim().toLowerCase();
   if (raw.length === 0) return null;
@@ -62,7 +67,7 @@ function parseHost(rawHost: string | undefined): ParsedHost | null {
   return { hostname, port, raw };
 }
 
-function isDevHostname(hostname: string): boolean {
+export function isDevHostname(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1';
 }
 

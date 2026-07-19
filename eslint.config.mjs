@@ -410,6 +410,16 @@ export default [
       // the host word is exempt via the standing lockstep mechanism).
       'libs/identity/src/lib/util/tenant-slug.ts',
       'libs/identity/src/tests/tenant-slug.spec.ts',
+      // Auth-Decoupling PR-1 — the host auth-profile seed carries the PORTAL
+      // host string as the §2.4 default (the exact host-string reservation the
+      // tenant-slug.ts entry above covers, not talent-entity vocabulary). It is
+      // the SINGLE literal home for that host word — every spec derives from the
+      // exported DEFAULT_PORTAL_HOST rather than re-typing it, so this one
+      // file-scoped exemption covers the whole PR. ESLint has no host-strip, so
+      // it needs this file exclude; scripts/verify-vocabulary.sh needs NONE — its
+      // host-strip already tolerates the full 'candidate.aramo.ai' literal and
+      // this file has no bare label (the lockstep is satisfied natively there).
+      'libs/auth-storage/src/lib/host-auth-profile.seed.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',
