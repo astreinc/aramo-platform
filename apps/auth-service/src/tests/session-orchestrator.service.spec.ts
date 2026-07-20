@@ -17,9 +17,18 @@ import type {
 import type { RefreshTokenService } from '@aramo/auth-storage';
 
 import type { CognitoVerifierService } from '../app/auth/cognito-verifier.service.js';
+import { IdentityAuditSinkAdapter } from '../app/auth/identity-audit-sink.adapter.js';
+import { IdentityPrincipalDirectoryAdapter } from '../app/auth/identity-principal-directory.adapter.js';
 import type { JwtIssuerService } from '../app/auth/jwt-issuer.service.js';
 import type { PkceService, PkceStatePayload } from '../app/auth/pkce.service.js';
 import { SessionOrchestratorService } from '../app/auth/session-orchestrator.service.js';
+
+// Auth-Decoupling PR-4 (§3.1) — PROVIDER SUBSTITUTION ONLY. The orchestrator now
+// depends on the PrincipalDirectory + AuditSink ports; makeService wraps the SAME
+// identity/tenant/role/audit mocks in the REAL adapters and injects those. Every
+// existing assertion — on the mocks' calls AND on the CallbackResult — is
+// unchanged, which proves the orchestrator+adapter composition preserves the
+// pre-port behaviour byte-for-byte.
 
 const USER_ID = '01900000-0000-7000-8000-000000000001';
 const TENANT_ID = '01900000-0000-7000-8000-0000000000aa';
@@ -137,15 +146,20 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
 }
 
 function makeService(mocks: Mocks): SessionOrchestratorService {
-  return new SessionOrchestratorService(
-    mocks.pkce,
-    mocks.cognito,
+  const principals = new IdentityPrincipalDirectoryAdapter(
     mocks.identity,
     mocks.tenant,
     mocks.role,
+    mocks.audit,
+  );
+  const auditSink = new IdentityAuditSinkAdapter(mocks.audit);
+  return new SessionOrchestratorService(
+    mocks.pkce,
+    mocks.cognito,
+    principals,
     mocks.refreshTokens,
     mocks.jwtIssuer,
-    mocks.audit,
+    auditSink,
   );
 }
 

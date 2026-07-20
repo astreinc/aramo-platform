@@ -5,6 +5,7 @@ import type { RefreshTokenDto, RefreshTokenService } from '@aramo/auth-storage';
 
 import { AuthController } from '../app/auth/auth.controller.js';
 import type { CookieVerifierService } from '../app/auth/cookie-verifier.service.js';
+import { IdentityAuditSinkAdapter } from '../app/auth/identity-audit-sink.adapter.js';
 import type { HostBaseResolver } from '../app/auth/host-base-resolver.service.js';
 import type { PkceService } from '../app/auth/pkce.service.js';
 import type { RefreshOrchestratorService } from '../app/auth/refresh-orchestrator.service.js';
@@ -47,13 +48,19 @@ function makeController(
   const defaultHostBase = {
     resolve: vi.fn().mockResolvedValue({ derivedBase: null, identityProvider: null }),
   } as unknown as HostBaseResolver;
+  // PR-4 §3.1 provider substitution: the controller now depends on the AuditSink
+  // port; wrap the SAME audit mock in the REAL adapter so `audit.writeEvent`
+  // assertions (logout session.revoked) fire through it unchanged.
+  const auditSink = new IdentityAuditSinkAdapter(
+    overrides.audit ?? ({} as IdentityAuditService),
+  );
   return new AuthController(
     overrides.pkce ?? ({} as PkceService),
     overrides.sessionOrch ?? ({} as SessionOrchestratorService),
     overrides.refreshOrch ?? ({} as RefreshOrchestratorService),
     overrides.cookieVerifier ?? ({} as CookieVerifierService),
     overrides.refreshTokens ?? ({} as RefreshTokenService),
-    overrides.audit ?? ({} as IdentityAuditService),
+    auditSink,
     overrides.hostBase ?? defaultHostBase,
   );
 }

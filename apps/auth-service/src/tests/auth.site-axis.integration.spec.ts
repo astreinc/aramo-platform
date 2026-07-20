@@ -65,6 +65,10 @@ import { JwksController } from '../app/auth/jwks.controller.js';
 import { JwksService } from '../app/auth/jwks.service.js';
 import { JwtIssuerService } from '../app/auth/jwt-issuer.service.js';
 import { PkceService } from '../app/auth/pkce.service.js';
+import { AUDIT_SINK } from '../app/auth/audit-sink.port.js';
+import { IdentityAuditSinkAdapter } from '../app/auth/identity-audit-sink.adapter.js';
+import { IdentityPrincipalDirectoryAdapter } from '../app/auth/identity-principal-directory.adapter.js';
+import { PRINCIPAL_DIRECTORY } from '../app/auth/principal-directory.port.js';
 import { RefreshOrchestratorService } from '../app/auth/refresh-orchestrator.service.js';
 import { SessionOrchestratorService } from '../app/auth/session-orchestrator.service.js';
 
@@ -183,6 +187,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           CognitoVerifierService,
           SessionOrchestratorService,
           RefreshOrchestratorService,
+          // PR-4 — PrincipalDirectory + AuditSink bindings (DI ripple, §4).
+          IdentityPrincipalDirectoryAdapter,
+          IdentityAuditSinkAdapter,
+          { provide: PRINCIPAL_DIRECTORY, useClass: IdentityPrincipalDirectoryAdapter },
+          { provide: AUDIT_SINK, useClass: IdentityAuditSinkAdapter },
           HostAuthProfileService,
           HostBaseResolver,
           // Mirror AuthModule's APP_FILTER wiring so AramoError → the

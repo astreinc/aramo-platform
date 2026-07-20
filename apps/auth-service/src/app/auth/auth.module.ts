@@ -7,14 +7,18 @@ import { PortalIdentityModule } from '@aramo/portal-identity';
 import { IdentityIndexModule } from '@aramo/identity-index';
 import { MailerModule } from '@aramo/mailer';
 
+import { AUDIT_SINK } from './audit-sink.port.js';
 import { AuthController } from './auth.controller.js';
 import { CognitoVerifierService } from './cognito-verifier.service.js';
 import { CookieVerifierService } from './cookie-verifier.service.js';
 import { EMAIL_SENDER } from './email-sender.port.js';
 import { ELIGIBILITY_POLICY } from './eligibility-policy.port.js';
 import { HostAuthProfileService } from './host-auth-profile.service.js';
+import { IdentityAuditSinkAdapter } from './identity-audit-sink.adapter.js';
 import { IdentityIndexEligibilityAdapter } from './identity-index-eligibility.adapter.js';
+import { IdentityPrincipalDirectoryAdapter } from './identity-principal-directory.adapter.js';
 import { MailerEmailSenderAdapter } from './mailer-email-sender.adapter.js';
+import { PRINCIPAL_DIRECTORY } from './principal-directory.port.js';
 import { HostBaseResolver } from './host-base-resolver.service.js';
 import { JwksController } from './jwks.controller.js';
 import { JwksService } from './jwks.service.js';
@@ -72,6 +76,15 @@ import { SessionOrchestratorService } from './session-orchestrator.service.js';
     // computeEmailFingerprint; PortalLoginService depends only on the ports.
     { provide: EMAIL_SENDER, useClass: MailerEmailSenderAdapter },
     { provide: ELIGIBILITY_POLICY, useClass: IdentityIndexEligibilityAdapter },
+    // Auth-Decoupling PR-4 — PrincipalDirectory + AuditSink. The adapters are the
+    // ONLY code importing IdentityService/TenantService/RoleService/IdentityAuditService
+    // for session resolution + audit; the orchestrators + controller depend only on
+    // the ports. IdentityCoreModule stays imported (module-level) to supply them —
+    // that residual coupling is PR-5's to remove.
+    IdentityPrincipalDirectoryAdapter,
+    IdentityAuditSinkAdapter,
+    { provide: PRINCIPAL_DIRECTORY, useClass: IdentityPrincipalDirectoryAdapter },
+    { provide: AUDIT_SINK, useClass: IdentityAuditSinkAdapter },
     { provide: APP_FILTER, useClass: AramoExceptionFilter },
   ],
 })
