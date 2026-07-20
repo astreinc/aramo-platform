@@ -304,13 +304,14 @@ describe('JwtAuthGuard', () => {
   // controller source via filesystem and asserts byte-equality of the
   // literal. Failure means the two literals have drifted; HALT and surface
   // — do NOT modify either literal to "fix" this test.
-  it('keeps the cookie-name literal byte-equal between libs/auth and apps/auth-service', async () => {
+  it('keeps the cookie-name literal byte-equal between libs/auth and the auth callback controller', async () => {
     const here = dirname(fileURLToPath(import.meta.url));
-    const authServiceController = resolve(
+    // PR-5b: auth.controller.ts moved from apps/auth-service to libs/auth-core.
+    const authController = resolve(
       here,
-      '../../../../apps/auth-service/src/app/auth/auth.controller.ts',
+      '../../../../libs/auth-core/src/lib/auth.controller.ts',
     );
-    const source = await readFile(authServiceController, 'utf8');
+    const source = await readFile(authController, 'utf8');
     expect(source).toContain("'aramo_access_token'");
   });
 });

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-import { PkceService } from '../app/auth/pkce.service.js';
+import { PkceService } from '../lib/pkce.service.js';
 
 const KEY_B64URL = randomBytes(32).toString('base64url');
 

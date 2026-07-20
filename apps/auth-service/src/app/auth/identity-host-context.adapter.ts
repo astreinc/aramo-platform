@@ -1,10 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { TenantService, extractTenantSlugFromHost } from '@aramo/identity';
-
 import type {
   HostContext,
   HostContextDirectory,
-} from './host-context-directory.port.js';
+} from '@aramo/auth-core';
 
 // Auth-Decoupling PR-5a (ADR-0021 §2) — the Aramo-side adapter implementing auth's
 // HostContextDirectory. It OWNS slug extraction (R-P5a-1): extractTenantSlugFromHost

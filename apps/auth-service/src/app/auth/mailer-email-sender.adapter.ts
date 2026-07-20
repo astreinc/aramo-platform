@@ -1,11 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
-
 import type {
   EmailSender,
   EmailSenderInput,
   EmailSenderResult,
-} from './email-sender.port.js';
+} from '@aramo/auth-core';
 
 // Auth-Decoupling PR-2 (ADR-0021 §2) — the Aramo-side adapter that implements
 // auth's EmailSender by delegating to @aramo/mailer's MailerPort. This is the

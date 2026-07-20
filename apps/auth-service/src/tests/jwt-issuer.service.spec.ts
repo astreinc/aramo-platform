@@ -3,8 +3,7 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { decodeJwt, decodeProtectedHeader } from 'jose';
-
-import { ISSUER, JwtIssuerService } from '../app/auth/jwt-issuer.service.js';
+import { ISSUER, JwtIssuerService } from '@aramo/auth-core';
 
 import { generateTestKeyPair } from './test-keys.js';
 

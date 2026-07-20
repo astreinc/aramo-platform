@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TenantService } from '@aramo/identity';
+import type { HostAuthProfileService } from '@aramo/auth-core';
+import { HostBaseResolver } from '@aramo/auth-core';
 
-import type { HostAuthProfileService } from '../app/auth/host-auth-profile.service.js';
-import { HostBaseResolver } from '../app/auth/host-base-resolver.service.js';
 import { IdentityHostContextAdapter } from '../app/auth/identity-host-context.adapter.js';
 
 // Auth-Decoupling PR-5a (§4.1) — HostBaseResolver now depends on the

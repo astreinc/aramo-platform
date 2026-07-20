@@ -5,7 +5,7 @@ import {
   derivePostLoginRedirect,
   deriveRedirectUri,
   deriveSignoutRedirect,
-} from '../app/auth/redirect-uri.js';
+} from '../lib/redirect-uri.js';
 
 // Increment-1 Amendment v1.2 (Workstream D) + Increment-3 PR-3.1 (host-derived
 // base). The Amendment-v1.2 invariants (env precedence, legacy origin fallback,

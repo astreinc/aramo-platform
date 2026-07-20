@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { JwksController } from '../app/auth/jwks.controller.js';
-import type { JwksService } from '../app/auth/jwks.service.js';
+import { JwksController } from '../lib/jwks.controller.js';
+import type { JwksService } from '../lib/jwks.service.js';
 
 describe('JwksController.getJwks', () => {
   it('delegates to JwksService.getJwks and returns the JWKS document', async () => {

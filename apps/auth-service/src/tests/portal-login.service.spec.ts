@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PortalLoginService } from '@aramo/auth-core';
 
 import { PortalIdentityRepositoryAdapter } from '../app/auth/portal-identity-repository.adapter.js';
-import { PortalLoginService } from '../app/auth/portal-login.service.js';
 
 // Portal P1 — passwordless login orchestration unit coverage. The three
 // eligibility cases (eligibility-hit / PortalUser-hit / miss) and the neutral

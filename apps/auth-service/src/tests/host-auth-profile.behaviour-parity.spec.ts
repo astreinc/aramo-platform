@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CONSUMER_TYPES } from '@aramo/auth';
 import { DEFAULT_PLATFORM_HOST, DEFAULT_PORTAL_HOST } from '@aramo/auth-storage';
-
-import { deriveRedirectUri } from '../app/auth/redirect-uri.js';
+import { deriveRedirectUri } from '@aramo/auth-core';
 
 import {
   fakeTenantService,

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SEED_SCOPE_KEYS } from '@aramo/identity';
-
-import { PORTAL_SESSION_SCOPES } from '../app/auth/session-orchestrator.service.js';
+import { PORTAL_SESSION_SCOPES } from '@aramo/auth-core';
 
 // FIX-PORTAL-SCOPES-1 (D2, part 1 of 2) — the STRUCTURAL parity guard that keeps
 // PORTAL_SESSION_SCOPES from silently going stale again (the F-P4b-1 root cause).

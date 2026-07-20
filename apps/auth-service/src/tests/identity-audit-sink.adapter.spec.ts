@@ -6,16 +6,16 @@ import type {
   TenantService,
 } from '@aramo/identity';
 import type { RefreshTokenDto, RefreshTokenService } from '@aramo/auth-storage';
+import { AuthController } from '@aramo/auth-core';
+import type { CookieVerifierService } from '@aramo/auth-core';
+import type { HostBaseResolver } from '@aramo/auth-core';
+import type { JwtIssuerService } from '@aramo/auth-core';
+import type { PkceService } from '@aramo/auth-core';
+import { RefreshOrchestratorService } from '@aramo/auth-core';
+import { SessionOrchestratorService } from '@aramo/auth-core';
 
-import { AuthController } from '../app/auth/auth.controller.js';
-import type { CookieVerifierService } from '../app/auth/cookie-verifier.service.js';
-import type { HostBaseResolver } from '../app/auth/host-base-resolver.service.js';
-import { IdentityAuditSinkAdapter } from '../app/auth/identity-audit-sink.adapter.js';
 import { IdentityPrincipalDirectoryAdapter } from '../app/auth/identity-principal-directory.adapter.js';
-import type { JwtIssuerService } from '../app/auth/jwt-issuer.service.js';
-import type { PkceService } from '../app/auth/pkce.service.js';
-import { RefreshOrchestratorService } from '../app/auth/refresh-orchestrator.service.js';
-import { SessionOrchestratorService } from '../app/auth/session-orchestrator.service.js';
+import { IdentityAuditSinkAdapter } from '../app/auth/identity-audit-sink.adapter.js';
 
 // Auth-Decoupling PR-4 §3.3 — AuditSink MUST NEVER THROW (R-P4-2). Unit mapping +
 // the load-bearing case: an audit failure must NOT break login / refresh / logout.

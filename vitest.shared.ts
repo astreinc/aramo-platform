@@ -21,6 +21,10 @@ export default defineConfig({
       '@aramo/activity': resolve(root, 'libs/activity/src/index.ts'),
       '@aramo/common': resolve(root, 'libs/common/src/index.ts'),
       '@aramo/auth': resolve(root, 'libs/auth/src/index.ts'),
+      // Auth-Decoupling PR-5b — the portable identity core (scope:auth). Mirrors
+      // the tsconfig.base.json @aramo/auth-core alias so vitest resolves the moved
+      // classes/ports imported by auth.module.ts + the adapters + the app specs.
+      '@aramo/auth-core': resolve(root, 'libs/auth-core/src/index.ts'),
       // Amendment v1.3 §3.2 (engineering Lead/Architect, 2026-05-15):
       // mirrors the tsconfig.base.json @aramo/auth-service alias so vitest
       // runtime resolves the test-bootstrap import in pact/provider/src/

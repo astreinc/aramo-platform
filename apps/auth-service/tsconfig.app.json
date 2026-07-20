@@ -11,6 +11,7 @@
     "paths": {
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
+      "@aramo/auth-core": ["../../dist/libs/auth-core/src/index.d.ts"],
       "@aramo/identity": ["../../dist/libs/identity/src/index.d.ts"],
       "@aramo/auth-storage": ["../../dist/libs/auth-storage/src/index.d.ts"],
       "@aramo/portal-identity": ["../../dist/libs/portal-identity/src/index.d.ts"],

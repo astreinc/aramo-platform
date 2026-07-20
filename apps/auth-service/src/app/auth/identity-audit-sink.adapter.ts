@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { IdentityAuditService } from '@aramo/identity';
-
-import type { AuditRecord, AuditSink } from './audit-sink.port.js';
+import type { AuditRecord, AuditSink } from '@aramo/auth-core';
 
 // The event_type strings auth emits are members of the identity audit EventType
 // enum; the port carries them as opaque strings, so the adapter casts at the seam.

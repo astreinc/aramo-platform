@@ -31,8 +31,8 @@ const ALG = 'RS256';
 // JwtAuthGuard accepts a Bearer header (precedence) or, when absent, the
 // `aramo_access_token` cookie. The cookie name is inlined below at its
 // single use site (per locked invariant 6 — no shared constant, no
-// barrel export); drift versus the auth-service cookie setter
-// (apps/auth-service/src/app/auth/auth.controller.ts) is caught by the
+// barrel export); drift versus the auth cookie setter
+// (libs/auth-core/src/lib/auth.controller.ts) is caught by the
 // Path-B filesystem-read test (§9 case 9, HC.16).
 
 interface AramoJwtPayload extends JWTPayload {
