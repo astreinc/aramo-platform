@@ -5,14 +5,13 @@ import {
   RoleService,
   TenantService,
 } from '@aramo/identity';
-
 import type {
   PrincipalDirectory,
   ResolveScopesInput,
   ResolveScopesResult,
   ResolveSessionInput,
   ResolveSessionResult,
-} from './principal-directory.port.js';
+} from '@aramo/auth-core';
 
 type AuditEventType = Parameters<IdentityAuditService['writeGlobalEvent']>[0]['event_type'];
 

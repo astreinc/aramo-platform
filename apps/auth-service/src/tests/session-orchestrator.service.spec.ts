@@ -15,13 +15,13 @@ import type {
   TenantService,
 } from '@aramo/identity';
 import type { RefreshTokenService } from '@aramo/auth-storage';
+import type { CognitoVerifierService } from '@aramo/auth-core';
+import type { JwtIssuerService } from '@aramo/auth-core';
+import type { PkceService, PkceStatePayload } from '@aramo/auth-core';
+import { SessionOrchestratorService } from '@aramo/auth-core';
 
-import type { CognitoVerifierService } from '../app/auth/cognito-verifier.service.js';
-import { IdentityAuditSinkAdapter } from '../app/auth/identity-audit-sink.adapter.js';
 import { IdentityPrincipalDirectoryAdapter } from '../app/auth/identity-principal-directory.adapter.js';
-import type { JwtIssuerService } from '../app/auth/jwt-issuer.service.js';
-import type { PkceService, PkceStatePayload } from '../app/auth/pkce.service.js';
-import { SessionOrchestratorService } from '../app/auth/session-orchestrator.service.js';
+import { IdentityAuditSinkAdapter } from '../app/auth/identity-audit-sink.adapter.js';
 
 // Auth-Decoupling PR-4 (§3.1) — PROVIDER SUBSTITUTION ONLY. The orchestrator now
 // depends on the PrincipalDirectory + AuditSink ports; makeService wraps the SAME

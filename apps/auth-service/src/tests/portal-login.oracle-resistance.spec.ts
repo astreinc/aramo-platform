@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PortalLoginService } from '@aramo/auth-core';
 
 import { PortalIdentityRepositoryAdapter } from '../app/auth/portal-identity-repository.adapter.js';
-import { PortalLoginService } from '../app/auth/portal-login.service.js';
 
 // Auth-Decoupling PR-2/3 §3.2 — ORACLE-RESISTANCE across the port hop (R-P23-5).
 // The port must not introduce a distinguishable branch, error, or side effect

@@ -5,9 +5,9 @@ import {
   type HostClass,
   type HostAuthProfileSeedRow,
 } from '@aramo/auth-storage';
+import { HostAuthProfileService } from '@aramo/auth-core';
+import { HostBaseResolver } from '@aramo/auth-core';
 
-import { HostAuthProfileService } from '../app/auth/host-auth-profile.service.js';
-import { HostBaseResolver } from '../app/auth/host-base-resolver.service.js';
 import { IdentityHostContextAdapter } from '../app/auth/identity-host-context.adapter.js';
 
 // Auth-Decoupling PR-5a (§4.1) — both HostAuthProfileService and HostBaseResolver

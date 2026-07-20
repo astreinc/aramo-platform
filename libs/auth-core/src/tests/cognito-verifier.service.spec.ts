@@ -4,7 +4,7 @@ import { jwtVerify as mockedJwtVerify } from 'jose';
 import {
   CognitoVerifierService,
   CognitoVerificationError,
-} from '../app/auth/cognito-verifier.service.js';
+} from '../lib/cognito-verifier.service.js';
 
 // jose is mocked so the verifier can be unit-tested without a real
 // Cognito IdP. Production behavior is covered by the integration suite.

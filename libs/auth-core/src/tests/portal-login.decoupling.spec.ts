@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 // stripped first — the class docstring legitimately NAMES the removed deps to
 // explain the decoupling, so a raw substring check would false-fail.
 
-const SERVICE_SRC = resolve(__dirname, '../app/auth/portal-login.service.ts');
+const SERVICE_SRC = resolve(__dirname, '../lib/portal-login.service.ts');
 
 function codeWithoutComments(path: string): string {
   return readFileSync(path, 'utf8')

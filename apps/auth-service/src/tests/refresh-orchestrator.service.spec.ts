@@ -7,11 +7,11 @@ import type {
 } from '@aramo/identity';
 import type { RefreshTokenDto, RefreshTokenService } from '@aramo/auth-storage';
 import { RotationRaceError } from '@aramo/auth-storage';
+import type { JwtIssuerService } from '@aramo/auth-core';
+import { RefreshOrchestratorService } from '@aramo/auth-core';
 
 import { IdentityAuditSinkAdapter } from '../app/auth/identity-audit-sink.adapter.js';
 import { IdentityPrincipalDirectoryAdapter } from '../app/auth/identity-principal-directory.adapter.js';
-import type { JwtIssuerService } from '../app/auth/jwt-issuer.service.js';
-import { RefreshOrchestratorService } from '../app/auth/refresh-orchestrator.service.js';
 
 // Auth-Decoupling PR-4 (§3.1) — PROVIDER SUBSTITUTION ONLY. Refresh now depends on
 // PrincipalDirectory.resolveScopes + AuditSink; makeSvc wraps the SAME role + audit

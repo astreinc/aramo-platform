@@ -25,7 +25,7 @@ const FORBIDDEN = [
 ];
 
 function codeWithoutComments(basename: string): string {
-  const path = resolve(__dirname, '../app/auth', basename);
+  const path = resolve(__dirname, '../lib', basename);
   return readFileSync(path, 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '') // block + JSDoc comments
     .replace(/\/\/[^\n]*/g, ''); // line comments

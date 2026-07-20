@@ -44,6 +44,12 @@ const SCOPE_DEP_CONSTRAINTS = [
   { sourceTag: 'scope:ats', onlyDependOnLibsWithTags: ['scope:ats', 'scope:cip', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:platform', onlyDependOnLibsWithTags: ['scope:platform', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:portal', onlyDependOnLibsWithTags: ['scope:portal', 'scope:boundary', 'scope:shared'] },
+  // Auth-Decoupling PR-5b (ADR-0021 §4) — scope:auth is the portable identity core
+  // (libs/auth-core). It must NOT reach scope:ats, scope:cip, scope:platform, or
+  // scope:portal; its legal closure is scope:auth + scope:boundary + scope:shared
+  // (common/auth/auth-storage are all scope:shared). The adapters + composition root
+  // stay in the untagged apps/auth-service, unconstrained by design.
+  { sourceTag: 'scope:auth', onlyDependOnLibsWithTags: ['scope:auth', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:boundary', onlyDependOnLibsWithTags: ['scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:shared', onlyDependOnLibsWithTags: ['scope:shared'] },
   { sourceTag: '*', onlyDependOnLibsWithTags: ['*'] },
@@ -78,6 +84,12 @@ export default [
       // explicitly with `eslint --no-ignore` to prove the boundary rule rejects
       // it. Also tsconfig.app.json-excluded from the portal-web build.
       '**/portal-negative-control/**',
+      // Auth-Decoupling PR-5b negative control: a committed, deliberate
+      // scope:auth → scope:ats import that must NOT red the real gate. The
+      // wall-fires spec (libs/auth-core/src/tests/auth-negative-control.spec.ts)
+      // lints it explicitly with `eslint --no-ignore` to prove the boundary rule
+      // rejects it. Also tsconfig.lib.json-excluded from the auth-core build.
+      '**/auth-negative-control/**',
     ],
   },
   ...nx.configs['flat/base'],

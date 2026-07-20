@@ -5,12 +5,11 @@ import {
   hashPortalLoginToken,
   portalLoginExpiresAt,
 } from '@aramo/portal-identity';
-
 import type {
   PortalIdentityStore,
   PortalLoginToken,
   PortalUser,
-} from './portal-identity-store.port.js';
+} from '@aramo/auth-core';
 
 // Auth-Decoupling PR-5a (ADR-0021 §2) — the Aramo-side adapter implementing auth's
 // PortalIdentityStore. Pure pass-through: the 6 repository methods delegate to

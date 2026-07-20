@@ -29,6 +29,7 @@
       "@aramo/audit": ["libs/audit/src/index.ts"],
       "@aramo/ai-draft": ["libs/ai-draft/src/index.ts"],
       "@aramo/auth": ["libs/auth/src/index.ts"],
+      "@aramo/auth-core": ["libs/auth-core/src/index.ts"],
       "@aramo/auth-service": ["apps/auth-service/src/app/auth/auth.module.ts"],
       "@aramo/auth-storage": ["libs/auth-storage/src/index.ts"],
       "@aramo/authorization": ["libs/authorization/src/index.ts"],

@@ -2,14 +2,14 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AramoError } from '@aramo/common';
 import type { IdentityAuditService } from '@aramo/identity';
 import type { RefreshTokenDto, RefreshTokenService } from '@aramo/auth-storage';
+import { AuthController } from '@aramo/auth-core';
+import type { CookieVerifierService } from '@aramo/auth-core';
+import type { HostBaseResolver } from '@aramo/auth-core';
+import type { PkceService } from '@aramo/auth-core';
+import type { RefreshOrchestratorService } from '@aramo/auth-core';
+import type { SessionOrchestratorService } from '@aramo/auth-core';
 
-import { AuthController } from '../app/auth/auth.controller.js';
-import type { CookieVerifierService } from '../app/auth/cookie-verifier.service.js';
 import { IdentityAuditSinkAdapter } from '../app/auth/identity-audit-sink.adapter.js';
-import type { HostBaseResolver } from '../app/auth/host-base-resolver.service.js';
-import type { PkceService } from '../app/auth/pkce.service.js';
-import type { RefreshOrchestratorService } from '../app/auth/refresh-orchestrator.service.js';
-import type { SessionOrchestratorService } from '../app/auth/session-orchestrator.service.js';
 
 const USER_ID = '01900000-0000-7000-8000-000000000001';
 const TENANT_ID = '01900000-0000-7000-8000-0000000000aa';

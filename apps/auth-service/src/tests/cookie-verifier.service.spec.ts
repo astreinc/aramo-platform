@@ -1,8 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SignJWT, importPKCS8 } from 'jose';
-
-import { CookieVerifierService } from '../app/auth/cookie-verifier.service.js';
-import { JwtIssuerService } from '../app/auth/jwt-issuer.service.js';
+import { CookieVerifierService } from '@aramo/auth-core';
+import { JwtIssuerService } from '@aramo/auth-core';
 
 import { generateTestKeyPair } from './test-keys.js';
 

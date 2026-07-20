@@ -1,8 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { computeEmailFingerprint } from '@aramo/common';
 import { IdentityIndexRepository } from '@aramo/identity-index';
-
-import type { EligibilityPolicy } from './eligibility-policy.port.js';
+import type { EligibilityPolicy } from '@aramo/auth-core';
 
 // Auth-Decoupling PR-3 (ADR-0021 §2) — the Aramo-side adapter that implements
 // auth's EligibilityPolicy. It OWNS the fingerprint computation (R-P23-3):

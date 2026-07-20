@@ -35,24 +35,24 @@ import {
   AuthStorageModule,
   RefreshTokenService,
 } from '@aramo/auth-storage';
+import { AuthController } from '@aramo/auth-core';
+import { HostAuthProfileService } from '@aramo/auth-core';
+import { HostBaseResolver } from '@aramo/auth-core';
+import { CognitoVerifierService } from '@aramo/auth-core';
+import { CookieVerifierService } from '@aramo/auth-core';
+import { JwksController } from '@aramo/auth-core';
+import { JwksService } from '@aramo/auth-core';
+import { JwtIssuerService } from '@aramo/auth-core';
+import { PkceService } from '@aramo/auth-core';
+import { AUDIT_SINK } from '@aramo/auth-core';
+import { HOST_CONTEXT_DIRECTORY } from '@aramo/auth-core';
+import { PRINCIPAL_DIRECTORY } from '@aramo/auth-core';
+import { RefreshOrchestratorService } from '@aramo/auth-core';
+import { SessionOrchestratorService } from '@aramo/auth-core';
 
-import { AuthController } from '../app/auth/auth.controller.js';
-import { HostAuthProfileService } from '../app/auth/host-auth-profile.service.js';
-import { HostBaseResolver } from '../app/auth/host-base-resolver.service.js';
-import { CognitoVerifierService } from '../app/auth/cognito-verifier.service.js';
-import { CookieVerifierService } from '../app/auth/cookie-verifier.service.js';
-import { JwksController } from '../app/auth/jwks.controller.js';
-import { JwksService } from '../app/auth/jwks.service.js';
-import { JwtIssuerService } from '../app/auth/jwt-issuer.service.js';
-import { PkceService } from '../app/auth/pkce.service.js';
-import { AUDIT_SINK } from '../app/auth/audit-sink.port.js';
-import { HOST_CONTEXT_DIRECTORY } from '../app/auth/host-context-directory.port.js';
 import { IdentityAuditSinkAdapter } from '../app/auth/identity-audit-sink.adapter.js';
 import { IdentityHostContextAdapter } from '../app/auth/identity-host-context.adapter.js';
 import { IdentityPrincipalDirectoryAdapter } from '../app/auth/identity-principal-directory.adapter.js';
-import { PRINCIPAL_DIRECTORY } from '../app/auth/principal-directory.port.js';
-import { RefreshOrchestratorService } from '../app/auth/refresh-orchestrator.service.js';
-import { SessionOrchestratorService } from '../app/auth/session-orchestrator.service.js';
 
 import { generateTestKeyPair } from './test-keys.js';
 

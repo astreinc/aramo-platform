@@ -1,8 +1,7 @@
 import { createHash, createPrivateKey, createPublicKey } from 'node:crypto';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-
-import { JwksService } from '../app/auth/jwks.service.js';
+import { JwksService } from '@aramo/auth-core';
 
 import { generateTestKeyPair } from './test-keys.js';
 
