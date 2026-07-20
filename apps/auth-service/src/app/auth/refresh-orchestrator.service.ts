@@ -1,10 +1,14 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { Injectable, Logger } from '@nestjs/common';
-import { IdentityAuditService, RoleService } from '@aramo/identity';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { RefreshTokenService, RotationRaceError } from '@aramo/auth-storage';
 
+import { AUDIT_SINK, type AuditSink } from './audit-sink.port.js';
 import { JwtIssuerService } from './jwt-issuer.service.js';
+import {
+  PRINCIPAL_DIRECTORY,
+  type PrincipalDirectory,
+} from './principal-directory.port.js';
 
 // PR-8.0a-Reground §8.3 refresh orchestrator. Returns a discriminated
 // result; the controller maps to HTTP and cookie writes (clearing both
@@ -35,9 +39,10 @@ export class RefreshOrchestratorService {
 
   constructor(
     private readonly refreshTokens: RefreshTokenService,
-    private readonly role: RoleService,
+    @Inject(PRINCIPAL_DIRECTORY)
+    private readonly principals: PrincipalDirectory,
     private readonly jwtIssuer: JwtIssuerService,
-    private readonly audit: IdentityAuditService,
+    @Inject(AUDIT_SINK) private readonly auditSink: AuditSink,
   ) {}
 
   async handleRefresh(input: RefreshInput): Promise<RefreshResult> {
@@ -71,11 +76,10 @@ export class RefreshOrchestratorService {
       } catch (err) {
         this.logger.warn(`R.2 cascade revoke failed: ${(err as Error).message}`);
       }
-      await this.audit.writeEvent({
+      await this.auditSink.record({
         event_type: 'identity.session.reuse_detected',
-        actor_type: 'user',
         actor_id: found.user_id,
-        tenant_id: found.tenant_id,
+        context_id: found.tenant_id,
         subject_id: found.user_id,
         payload: { presented_token_id: found.id },
       });
@@ -84,33 +88,17 @@ export class RefreshOrchestratorService {
 
     // Normal refresh: re-derive scopes, generate new plaintext, rotate.
     //
-    // PR-A1a-3 Ruling 1: re-derive site_id from the user's active
-    // membership in tenant. The directive's "thread the existing claim
-    // rather than recomputing" intent is preserved by schema: with
-    // @@unique([user_id, tenant_id]) the membership is the SAME row at
-    // session-time and refresh-time, so the auto-stamp function is
-    // deterministic over (user_id, tenant_id) and the recomputed site_id
-    // matches what session issuance stamped. This mirrors the existing
-    // scope re-derivation pattern (already recomputed at refresh) and
-    // avoids a RefreshToken schema migration (out of scope per Gate-5
-    // prompt §5 Cat 1 / §7). Edge case: if an admin changes the
-    // membership's site_id mid-session, the next refresh reflects the
-    // new authority — same authority semantics as the scope path.
-    const stampedSiteId = await this.role.findActiveMembershipSite({
-      user_id: found.user_id,
-      tenant_id: found.tenant_id,
+    // Auth-Decoupling PR-4 (§7.4 Ruling 2): the site-stamp + scope resolution
+    // shares the SAME logic session issuance uses, so it moves behind
+    // PrincipalDirectory.resolveScopes. site_id is re-derived deterministically
+    // from the (user_id, tenant_id) membership (schema @@unique) and rides in
+    // claims — byte-identical to the pre-port refresh (PR-A1a-3 Ruling 1/2).
+    const resolved = await this.principals.resolveScopes({
+      principal_id: found.user_id,
+      context_id: found.tenant_id,
     });
-    const scopes =
-      stampedSiteId === null
-        ? await this.role.getScopesByUserAndTenant({
-            user_id: found.user_id,
-            tenant_id: found.tenant_id,
-          })
-        : await this.role.getScopesByUserTenantAndSite({
-            user_id: found.user_id,
-            tenant_id: found.tenant_id,
-            site_id: stampedSiteId,
-          });
+    const scopes = resolved.scopes;
+    const stampedSiteId = resolved.claims?.['site_id'] ?? null;
 
     const newPlaintext = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
     const newHash = sha256Base64Url(newPlaintext);
@@ -145,11 +133,10 @@ export class RefreshOrchestratorService {
       return { kind: 'internal_error', reason: 'jwt_sign_failed' };
     }
 
-    await this.audit.writeEvent({
+    await this.auditSink.record({
       event_type: 'identity.session.refreshed',
-      actor_type: 'user',
       actor_id: found.user_id,
-      tenant_id: found.tenant_id,
+      context_id: found.tenant_id,
       subject_id: found.user_id,
       payload: {
         old_refresh_token_id: found.id,

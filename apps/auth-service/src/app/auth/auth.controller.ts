@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  Inject,
   Param,
   Post,
   Query,
@@ -12,10 +13,10 @@ import {
 } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { CONSUMER_TYPES, type ConsumerType } from '@aramo/auth';
-import { IdentityAuditService } from '@aramo/identity';
 import { RefreshTokenService } from '@aramo/auth-storage';
 import type { Request, Response } from 'express';
 
+import { AUDIT_SINK, type AuditSink } from './audit-sink.port.js';
 import { CookieVerifierService } from './cookie-verifier.service.js';
 import { HostBaseResolver } from './host-base-resolver.service.js';
 import { PkceService } from './pkce.service.js';
@@ -134,7 +135,7 @@ export class AuthController {
     private readonly refreshOrch: RefreshOrchestratorService,
     private readonly cookieVerifier: CookieVerifierService,
     private readonly refreshTokens: RefreshTokenService,
-    private readonly audit: IdentityAuditService,
+    @Inject(AUDIT_SINK) private readonly auditSink: AuditSink,
     private readonly hostBase: HostBaseResolver,
   ) {}
 
@@ -476,11 +477,11 @@ export class AuthController {
       const found = await this.refreshTokens.findByHash({ token_hash: tokenHash });
       if (found !== null && found.consumer_type === c) {
         await this.refreshTokens.revoke({ id: found.id });
-        await this.audit.writeEvent({
+        // session.revoked — emitted by AUTH via AuditSink (PR-4 §7.4 Ruling 3).
+        await this.auditSink.record({
           event_type: 'identity.session.revoked',
-          actor_type: 'user',
           actor_id: found.user_id,
-          tenant_id: found.tenant_id,
+          context_id: found.tenant_id,
           subject_id: found.user_id,
           payload: { reason: 'logout' },
         });

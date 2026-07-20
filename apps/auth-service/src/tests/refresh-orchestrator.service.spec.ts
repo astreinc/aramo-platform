@@ -1,10 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { IdentityAuditService, RoleService } from '@aramo/identity';
+import type {
+  IdentityAuditService,
+  IdentityService,
+  RoleService,
+  TenantService,
+} from '@aramo/identity';
 import type { RefreshTokenDto, RefreshTokenService } from '@aramo/auth-storage';
 import { RotationRaceError } from '@aramo/auth-storage';
 
+import { IdentityAuditSinkAdapter } from '../app/auth/identity-audit-sink.adapter.js';
+import { IdentityPrincipalDirectoryAdapter } from '../app/auth/identity-principal-directory.adapter.js';
 import type { JwtIssuerService } from '../app/auth/jwt-issuer.service.js';
 import { RefreshOrchestratorService } from '../app/auth/refresh-orchestrator.service.js';
+
+// Auth-Decoupling PR-4 (§3.1) — PROVIDER SUBSTITUTION ONLY. Refresh now depends on
+// PrincipalDirectory.resolveScopes + AuditSink; makeSvc wraps the SAME role + audit
+// mocks in the REAL adapters (resolveScopes touches only role; identity/tenant are
+// unreached stubs). Every assertion — role calls, audit calls, result — is unchanged.
 
 const USER_ID = '01900000-0000-7000-8000-000000000001';
 const TENANT_ID = '01900000-0000-7000-8000-0000000000aa';
@@ -73,11 +85,18 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
 }
 
 function makeSvc(mocks: Mocks): RefreshOrchestratorService {
+  const principals = new IdentityPrincipalDirectoryAdapter(
+    {} as IdentityService, // resolveScopes never touches identity/tenant/audit
+    {} as TenantService,
+    mocks.role,
+    {} as IdentityAuditService,
+  );
+  const auditSink = new IdentityAuditSinkAdapter(mocks.audit);
   return new RefreshOrchestratorService(
     mocks.refreshTokens,
-    mocks.role,
+    principals,
     mocks.jwtIssuer,
-    mocks.audit,
+    auditSink,
   );
 }
 

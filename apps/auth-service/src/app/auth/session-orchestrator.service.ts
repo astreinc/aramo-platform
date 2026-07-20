@@ -1,15 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { Injectable, Logger } from '@nestjs/common';
-import {
-  IdentityAuditService,
-  IdentityService,
-  RoleService,
-  TenantService,
-} from '@aramo/identity';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { RefreshTokenService } from '@aramo/auth-storage';
 import { PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 
+import { AUDIT_SINK, type AuditSink } from './audit-sink.port.js';
 import type { TenantSelectionTenantDto } from './dto/tenant-selection-error.dto.js';
 import {
   CognitoVerifierService,
@@ -17,6 +12,10 @@ import {
 } from './cognito-verifier.service.js';
 import { JwtIssuerService } from './jwt-issuer.service.js';
 import { PkceService } from './pkce.service.js';
+import {
+  PRINCIPAL_DIRECTORY,
+  type PrincipalDirectory,
+} from './principal-directory.port.js';
 import { deriveRedirectUri } from './redirect-uri.js';
 
 // PR-8.0a-Reground §8.2 callback orchestrator. Returns a discriminated
@@ -106,12 +105,11 @@ export class SessionOrchestratorService {
   constructor(
     private readonly pkce: PkceService,
     private readonly cognito: CognitoVerifierService,
-    private readonly identity: IdentityService,
-    private readonly tenant: TenantService,
-    private readonly role: RoleService,
+    @Inject(PRINCIPAL_DIRECTORY)
+    private readonly principals: PrincipalDirectory,
     private readonly refreshTokens: RefreshTokenService,
     private readonly jwtIssuer: JwtIssuerService,
-    private readonly audit: IdentityAuditService,
+    @Inject(AUDIT_SINK) private readonly auditSink: AuditSink,
   ) {}
 
   async handleCallback(input: CallbackInput): Promise<CallbackResult> {
@@ -181,126 +179,33 @@ export class SessionOrchestratorService {
       return { kind: 'internal_error', reason: 'cognito_verification_failed' };
     }
 
-    // §5 D2: resolve by federated sub; on miss, reconcile-by-verified-email.
-    let user = await this.identity.resolveUser({
+    // Auth-Decoupling PR-4 (ADR-0021 §2): ONE call resolves the verified identity
+    // into a session context (R-P4-1). The adapter performs reconcile-by-sub,
+    // reconcile-by-verified-email + sub-link, membership activation, tenant
+    // selection, status gating, site stamping, and scope resolution — auth no
+    // longer knows what a tenant, a site, or a SUSPENDED status is. `consumer`
+    // goes TO the port; the adapter decides the platform status-gate exemption.
+    // The mapping below is mechanical — CallbackResult + every HTTP response are
+    // UNCHANGED (behaviour-preserving, R-P4-3).
+    const resolution = await this.principals.resolveSession({
       provider: 'cognito',
       provider_subject: cognito.sub,
+      verified_email: cognito.email,
+      consumer: input.consumer,
     });
-    if (user === null) {
-      // The federated newcomer / sub-mismatch case. Reconcile by the IdP-
-      // VERIFIED email (cognito.verify already enforced email_verified, fail-
-      // closed) — normalized-exact (lowercase + trim) — to an EXISTING
-      // identity, then LINK the federated sub so a second login resolves by
-      // sub via the normal path. NO open JIT: a non-matching email returns a
-      // clean 403 (P4) and creates nothing.
-      //
-      // SAFETY (§5 D2 §B — the account-takeover guard): linkExternalIdentity
-      // delegates to the repository NO-OP (update: {}), which REFUSES to
-      // re-point an already-linked sub. This call is reached ONLY on a
-      // resolveUser-by-sub MISS, so the (cognito, sub) row is absent and only
-      // the upsert's create branch runs — the link is created, never moved.
-      const normalizedEmail = cognito.email.trim().toLowerCase();
-      const existing = await this.identity.findUserByEmail(normalizedEmail);
-      if (existing === null) {
-        return { kind: 'auth_error', reason: 'user_not_provisioned' };
-      }
-      await this.identity.linkExternalIdentity({
-        user_id: existing.id,
-        provider: 'cognito',
-        provider_subject: cognito.sub,
-        email_snapshot: cognito.email,
-      });
-      // Canonical audit event for sub-linking (global; best-effort — the
-      // wrapper swallows failures). actor = the self-authenticating user.
-      await this.audit.writeGlobalEvent({
-        event_type: 'identity.external_identity.linked',
-        actor_type: 'user',
-        actor_id: existing.id,
-        subject_id: existing.id,
-        payload: {
-          provider: 'cognito',
-          provider_subject: cognito.sub,
-          reason: 'reconcile_by_verified_email',
-        },
-      });
-      user = existing;
+    if (resolution.kind === 'denied') {
+      // user_not_provisioned · no_active_tenant · tenant_suspended · tenant_closed
+      return { kind: 'auth_error', reason: resolution.reason };
     }
-
-    // People&Access activation-on-sign-in fix — THE SINGLE membership-activation
-    // seam. It runs on EVERY authenticated session for the resolved user, on
-    // BOTH the by-sub HIT and MISS paths, and idempotently flips ACCEPTED →
-    // ACTIVE (ONLY that: never INVITED, never a disabled membership, never a
-    // downgrade). This replaces the original link-coupled ACTIVE-hook, which
-    // fired ONLY on the one-time sub-link (by-sub MISS) and so left every user
-    // whose Cognito sub was already linked at sign-in stuck at ACCEPTED — the
-    // observed bug. Placed after the reconcile block so it covers the just-
-    // linked MISS user too. Best-effort: an activation write must not break an
-    // otherwise-valid sign-in.
-    try {
-      await this.identity.activateAcceptedMembershipsOnSession({
-        user_id: user.id,
-      });
-    } catch (err) {
-      this.logger.warn(
-        `accepted-membership activation failed (non-blocking): ${(err as Error).message}`,
-      );
+    if (resolution.kind === 'ambiguous') {
+      return { kind: 'tenant_selection_required', tenants: resolution.choices };
     }
-
-    const tenants = await this.tenant.getTenantsByUser({ user_id: user.id });
-    if (tenants.length === 0) {
-      return { kind: 'auth_error', reason: 'no_active_tenant' };
-    }
-    if (tenants.length > 1) {
-      return {
-        kind: 'tenant_selection_required',
-        tenants: tenants.map((t) => ({ id: t.id, name: t.name })),
-      };
-    }
-    const selectedTenant = tenants[0]!;
-
-    // Platform-Console Increment-2 PR-1 (workstream E) — tenant-status mint gate.
-    // TENANT-CONSUMER sessions only: the platform consumer's sentinel tenant has
-    // no lifecycle semantics and is never status-gated. SUSPENDED/CLOSED deny the
-    // mint with a typed 403; PROVISIONED/ACTIVE/OFFBOARDING mint normally (the
-    // login-gate table, doc Part II §A — PROVISIONED MUST mint so the owner's
-    // first-login flow proceeds; blocking it would deadlock activation). GATE
-    // LOGIC ONLY — the reconcile/link/PKCE/verifier spine above is untouched
-    // (§2-adjacent scope guard). Enforcement is mint-only: existing sessions
-    // expire on the 15-min access-token TTL (write-guard is a recorded follow-up).
-    if (input.consumer !== 'platform') {
-      if (selectedTenant.status === 'SUSPENDED') {
-        return { kind: 'auth_error', reason: 'tenant_suspended' };
-      }
-      if (selectedTenant.status === 'CLOSED') {
-        return { kind: 'auth_error', reason: 'tenant_closed' };
-      }
-    }
-
-    // PR-A1a-3 Ruling 1 (auto-stamp): determine site_id from the user's
-    // active membership in selectedTenant. Schema's @@unique([user_id,
-    // tenant_id]) guarantees at most one membership row, so this is a
-    // deterministic single-row read — no ambiguity, no picker (Ruling 4).
-    // Ruling 5: a stamped site_id always corresponds to a real active
-    // membership (findActiveMembershipSite returns null otherwise).
-    const stampedSiteId = await this.role.findActiveMembershipSite({
-      user_id: user.id,
-      tenant_id: selectedTenant.id,
-    });
-
-    // Scope resolution: site-aware when stamping (returns tenant-wide
-    // ∪ site-X scopes); existing tenant-wide path when not stamping
-    // (Ruling 2: byte-identical to today for tenant-wide memberships).
-    const scopes =
-      stampedSiteId === null
-        ? await this.role.getScopesByUserAndTenant({
-            user_id: user.id,
-            tenant_id: selectedTenant.id,
-          })
-        : await this.role.getScopesByUserTenantAndSite({
-            user_id: user.id,
-            tenant_id: selectedTenant.id,
-            site_id: stampedSiteId,
-          });
+    // resolved → mint. principal_id/context_id are opaque (a user id / tenant id);
+    // site_id rides in claims when a site-scoped membership stamped one.
+    const principalId = resolution.principal_id;
+    const contextId = resolution.context_id;
+    const scopes = resolution.scopes;
+    const siteId = resolution.claims?.['site_id'] ?? null;
 
     const refreshTokenPlaintext = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
     const refreshTokenHash = sha256Base64Url(refreshTokenPlaintext);
@@ -309,8 +214,8 @@ export class SessionOrchestratorService {
     let stored;
     try {
       stored = await this.refreshTokens.create({
-        user_id: user.id,
-        tenant_id: selectedTenant.id,
+        user_id: principalId,
+        tenant_id: contextId,
         consumer_type: input.consumer,
         token_hash: refreshTokenHash,
         expires_at,
@@ -323,23 +228,23 @@ export class SessionOrchestratorService {
     let accessJwt: string;
     try {
       accessJwt = await this.jwtIssuer.sign({
-        sub: user.id,
+        sub: principalId,
         consumer_type: input.consumer,
-        tenant_id: selectedTenant.id,
+        tenant_id: contextId,
         scopes,
-        ...(stampedSiteId !== null ? { site_id: stampedSiteId } : {}),
+        ...(siteId !== null ? { site_id: siteId } : {}),
       });
     } catch (err) {
       this.logger.warn(`jwt sign failed: ${(err as Error).message}`);
       return { kind: 'internal_error', reason: 'jwt_sign_failed' };
     }
 
-    await this.audit.writeEvent({
+    // session.issued — emitted by AUTH (auth issued the session) via AuditSink.
+    await this.auditSink.record({
       event_type: 'identity.session.issued',
-      actor_type: 'user',
-      actor_id: user.id,
-      tenant_id: selectedTenant.id,
-      subject_id: user.id,
+      actor_id: principalId,
+      context_id: contextId,
+      subject_id: principalId,
       payload: { refresh_token_id: stored.id },
     });
 
