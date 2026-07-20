@@ -3,6 +3,12 @@ import type { TenantService } from '@aramo/identity';
 
 import type { HostAuthProfileService } from '../app/auth/host-auth-profile.service.js';
 import { HostBaseResolver } from '../app/auth/host-base-resolver.service.js';
+import { IdentityHostContextAdapter } from '../app/auth/identity-host-context.adapter.js';
+
+// Auth-Decoupling PR-5a (§4.1) — HostBaseResolver now depends on the
+// HostContextDirectory port; `make` wraps the SAME tenants mock in the REAL
+// IdentityHostContextAdapter, so every findActiveBySlug assertion still fires from
+// the far side of the boundary (provider-substitution-only, zero assertion changes).
 
 // PR-3.1 §3a — the resolver folds the tenant-host validation AND the HRD IdP
 // hint into ONE findActiveBySlug (the sharing choice), and fails open.
@@ -39,7 +45,8 @@ function make(findActiveBySlug: ReturnType<typeof vi.fn>): {
   findActiveBySlug: ReturnType<typeof vi.fn>;
 } {
   const tenants = { findActiveBySlug } as unknown as TenantService;
-  return { resolver: new HostBaseResolver(tenants, missingRegistry), findActiveBySlug };
+  const hostContext = new IdentityHostContextAdapter(tenants);
+  return { resolver: new HostBaseResolver(hostContext, missingRegistry), findActiveBySlug };
 }
 
 describe('HostBaseResolver.resolve', () => {

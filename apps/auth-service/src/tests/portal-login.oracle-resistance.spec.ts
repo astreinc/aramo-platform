@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { PortalIdentityRepositoryAdapter } from '../app/auth/portal-identity-repository.adapter.js';
 import { PortalLoginService } from '../app/auth/portal-login.service.js';
 
 // Auth-Decoupling PR-2/3 §3.2 — ORACLE-RESISTANCE across the port hop (R-P23-5).
@@ -29,7 +30,13 @@ function makeService(opts: {
   const session = { establishPortalSession: vi.fn() } as never;
   const budget = { allow: vi.fn().mockReturnValue(true) } as never;
 
-  const service = new PortalLoginService(portals, eligibility, email, session, budget);
+  const service = new PortalLoginService(
+    new PortalIdentityRepositoryAdapter(portals),
+    eligibility,
+    email,
+    session,
+    budget,
+  );
   return { service, resolve, findPortalByEmail, send };
 }
 
@@ -86,7 +93,7 @@ describe('consume — ADAPTER-THROWS propagates as before', () => {
       findOrCreatePortalOnLogin: vi.fn(),
     } as never;
     const service = new PortalLoginService(
-      portals,
+      new PortalIdentityRepositoryAdapter(portals),
       { resolve } as never,
       { send: vi.fn() } as never,
       { establishPortalSession: vi.fn() } as never,

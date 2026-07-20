@@ -1,6 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { TenantService, extractTenantSlugFromHost } from '@aramo/identity';
+import { Inject, Injectable } from '@nestjs/common';
 
+import {
+  HOST_CONTEXT_DIRECTORY,
+  type HostContextDirectory,
+} from './host-context-directory.port.js';
 import { HostAuthProfileService } from './host-auth-profile.service.js';
 import { deriveBaseFromHost } from './redirect-uri.js';
 
@@ -16,19 +19,24 @@ import { deriveBaseFromHost } from './redirect-uri.js';
 // each does its own single lookup — unavoidable; the OAuth exchange==authorize
 // invariant holds because the browser presents the same Host on both legs.)
 //
-// Auth-Decoupling PR-1 (ADR-0021 §3, §2.3) — the resolver now CONSULTS the host
+// Auth-Decoupling PR-1 (ADR-0021 §3, §2.3) — the resolver CONSULTS the host
 // auth-profile registry FIRST (registry row → this existing derivation → env
 // chain, R-A1-3). On a registry MISS or ERROR it falls through to the unchanged
 // path below (R-A1-2, fail-open). The return shape { derivedBase,
-// identityProvider } is unchanged — no caller changes (§2.3), so the live
-// recruiter login path is behaviour-preserving (R-A1-1).
+// identityProvider } is unchanged — no caller changes (§2.3).
+//
+// Auth-Decoupling PR-5a — the fall-through host→context lookup now goes through
+// the HostContextDirectory port (the adapter owns slug extraction + the tenant
+// read); this file no longer imports @aramo/identity. A non-null HostContext IS
+// the isTenantHost predicate. Behaviour is byte-identical (R-P5a-1/4).
 //
 // Fail-open on every non-happy path (a user must always reach a login): errors
 // yield isTenantHost=false; dev/platform hosts still derive without the DB.
 @Injectable()
 export class HostBaseResolver {
   constructor(
-    private readonly tenants: TenantService,
+    @Inject(HOST_CONTEXT_DIRECTORY)
+    private readonly hostContext: HostContextDirectory,
     private readonly hostAuthProfiles: HostAuthProfileService,
   ) {}
 
@@ -51,14 +59,10 @@ export class HostBaseResolver {
     let identityProvider: string | null = null;
     try {
       if (host !== undefined && host.length > 0) {
-        const rootDomain = process.env['APP_ROOT_DOMAIN'] ?? 'aramo.ai';
-        const slug = extractTenantSlugFromHost(host, rootDomain);
-        if (slug !== null) {
-          const tenant = await this.tenants.findActiveBySlug(slug);
-          if (tenant !== null) {
-            isTenantHost = true;
-            identityProvider = tenant.identity_provider ?? null;
-          }
+        const ctx = await this.hostContext.resolveByHost(host);
+        if (ctx !== null) {
+          isTenantHost = true;
+          identityProvider = ctx.identity_provider;
         }
       }
     } catch {

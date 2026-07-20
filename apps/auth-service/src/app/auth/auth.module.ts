@@ -13,11 +13,15 @@ import { CognitoVerifierService } from './cognito-verifier.service.js';
 import { CookieVerifierService } from './cookie-verifier.service.js';
 import { EMAIL_SENDER } from './email-sender.port.js';
 import { ELIGIBILITY_POLICY } from './eligibility-policy.port.js';
+import { HOST_CONTEXT_DIRECTORY } from './host-context-directory.port.js';
 import { HostAuthProfileService } from './host-auth-profile.service.js';
 import { IdentityAuditSinkAdapter } from './identity-audit-sink.adapter.js';
+import { IdentityHostContextAdapter } from './identity-host-context.adapter.js';
 import { IdentityIndexEligibilityAdapter } from './identity-index-eligibility.adapter.js';
 import { IdentityPrincipalDirectoryAdapter } from './identity-principal-directory.adapter.js';
 import { MailerEmailSenderAdapter } from './mailer-email-sender.adapter.js';
+import { PORTAL_IDENTITY_STORE } from './portal-identity-store.port.js';
+import { PortalIdentityRepositoryAdapter } from './portal-identity-repository.adapter.js';
 import { PRINCIPAL_DIRECTORY } from './principal-directory.port.js';
 import { HostBaseResolver } from './host-base-resolver.service.js';
 import { JwksController } from './jwks.controller.js';
@@ -85,6 +89,14 @@ import { SessionOrchestratorService } from './session-orchestrator.service.js';
     IdentityAuditSinkAdapter,
     { provide: PRINCIPAL_DIRECTORY, useClass: IdentityPrincipalDirectoryAdapter },
     { provide: AUDIT_SINK, useClass: IdentityAuditSinkAdapter },
+    // Auth-Decoupling PR-5a — HostContextDirectory + PortalIdentityStore. The
+    // adapters are the ONLY code importing @aramo/identity (host slug→tenant) /
+    // @aramo/portal-identity; the pure host resolvers + portal-login depend only on
+    // the ports.
+    IdentityHostContextAdapter,
+    PortalIdentityRepositoryAdapter,
+    { provide: HOST_CONTEXT_DIRECTORY, useClass: IdentityHostContextAdapter },
+    { provide: PORTAL_IDENTITY_STORE, useClass: PortalIdentityRepositoryAdapter },
     { provide: APP_FILTER, useClass: AramoExceptionFilter },
   ],
 })

@@ -1,15 +1,13 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { normalizeEmail } from '@aramo/common';
-import {
-  PortalIdentityRepository,
-  generatePortalLoginToken,
-  hashPortalLoginToken,
-  portalLoginExpiresAt,
-} from '@aramo/portal-identity';
 
 import { EMAIL_SENDER, type EmailSender } from './email-sender.port.js';
 import { ELIGIBILITY_POLICY, type EligibilityPolicy } from './eligibility-policy.port.js';
 import { PortalLoginBudget } from './portal-login-budget.js';
+import {
+  PORTAL_IDENTITY_STORE,
+  type PortalIdentityStore,
+} from './portal-identity-store.port.js';
 import { buildPortalLoginUrl, renderPortalLoginEmail } from './portal-login-email.js';
 import { SessionOrchestratorService } from './session-orchestrator.service.js';
 
@@ -23,12 +21,11 @@ import { SessionOrchestratorService } from './session-orchestrator.service.js';
 // EligibilityPolicy port (aperture 1, opaque subject_ref) OR an existing
 // PortalUser — NEVER a cross-tenant SubjectAnchor scan.
 //
-// Auth-Decoupling PR-2/3 (ADR-0021 §2): this service depends on the auth-owned
-// EmailSender / EligibilityPolicy PORTS, not on @aramo/mailer, @aramo/identity-index,
-// or computeEmailFingerprint. The fingerprint computation (and the pepper) now
-// live in IdentityIndexEligibilityAdapter; the mail send in
-// MailerEmailSenderAdapter. Method bodies, ordering, and control flow are
-// otherwise unchanged (behaviour-preserving, R-P23-5).
+// Auth-Decoupling PR-2/3 + PR-5a (ADR-0021 §2): this service depends ONLY on
+// auth-owned PORTS — EmailSender, EligibilityPolicy, and now PortalIdentityStore
+// (the portal-identity repository + login-token helpers). It imports no
+// @aramo/mailer, @aramo/identity-index, or @aramo/portal-identity. Method bodies,
+// ordering, and control flow are otherwise unchanged (behaviour-preserving).
 
 export type PortalConsumeResult =
   | { kind: 'success'; accessJwt: string; refreshTokenPlaintext: string }
@@ -39,7 +36,7 @@ export class PortalLoginService {
   private readonly logger = new Logger(PortalLoginService.name);
 
   constructor(
-    private readonly portals: PortalIdentityRepository,
+    @Inject(PORTAL_IDENTITY_STORE) private readonly portals: PortalIdentityStore,
     @Inject(ELIGIBILITY_POLICY) private readonly eligibility: EligibilityPolicy,
     @Inject(EMAIL_SENDER) private readonly email: EmailSender,
     private readonly session: SessionOrchestratorService,
@@ -74,8 +71,8 @@ export class PortalLoginService {
 
     // Mint or rotate-in-place (TR-3 idempotency-read pattern).
     const now = new Date();
-    const { raw: rawToken, hash } = generatePortalLoginToken();
-    const expiresAt = portalLoginExpiresAt(now);
+    const { raw: rawToken, hash } = this.portals.generatePortalLoginToken();
+    const expiresAt = this.portals.portalLoginExpiresAt(now);
     const open = await this.portals.findOpenLoginToken(normalized, now);
     if (open !== null) {
       await this.portals.rotateLoginToken({ id: open.id, token_hash: hash, expires_at: expiresAt });
@@ -103,7 +100,7 @@ export class PortalLoginService {
     if (raw.length === 0) return { kind: 'failure' };
 
     const now = new Date();
-    const token = await this.portals.consumeLoginToken(hashPortalLoginToken(raw), now);
+    const token = await this.portals.consumeLoginToken(this.portals.hashPortalLoginToken(raw), now);
     if (token === null) return { kind: 'failure' };
 
     // Lazy mint (ruling 3): the opaque subject_ref re-derived from the eligibility
