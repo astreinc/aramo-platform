@@ -44,6 +44,12 @@ datasource db {
 // ResolutionSubject that references this row by a SOURCED_TALENT
 // ResolutionSubjectRef (talent_trust), BEFORE any TalentRecord exists
 // (pre-promotion attachment, Spec §3.2).
+// SRC-1 R1/R2/R3: this staging table is the CHANNEL DEDUP MEMORY, keyed by
+// (tenant, source_channel, external_source_id) — NOT the document-arrival
+// surface. The live SOURCED_TALENT ref_id targets ingestion.RawPayloadReference.id
+// (the document arrival); the sourced_talent row is referenced by its dedup key,
+// not by a subject ref, until a staging-only ref type lands (SRC-3). The first
+// production writer of recordArrival is the SRC-1 apply webhook (PR-2).
 model SourcedTalent {
   id String @id @db.Uuid
 

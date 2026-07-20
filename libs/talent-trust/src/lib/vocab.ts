@@ -19,6 +19,13 @@ export type ResolutionSubjectStatus = (typeof RESOLUTION_SUBJECT_STATUSES)[numbe
 // keyed to a raw channel arrival BEFORE any TalentRecord exists (Lifecycle
 // Spec v1.1 §3.2 / §5). Ref value is the sourced_talent arrival UUID
 // (cross-schema, UUID-only, no FK — I1).
+// SRC-1 R1/R2 (two-surface layering — resolves the audited name overload):
+// the SOURCED_TALENT ref_id targets ingestion.RawPayloadReference.id (the
+// DOCUMENT-arrival surface, the live promotion source). The sourced_talent
+// staging table is the CHANNEL DEDUP MEMORY, referenced by its
+// (tenant, channel, external_source_id) key — NOT by a subject ref — until a
+// distinct staging-only ref type lands (deferred to SRC-3, where preview-only
+// staging subjects with no document first exist).
 export const RESOLUTION_SUBJECT_REF_TYPES = [
   'ATS_TALENT_RECORD',
   'PERSON_CLUSTER',
