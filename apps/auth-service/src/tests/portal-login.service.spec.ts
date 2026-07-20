@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { PortalIdentityRepositoryAdapter } from '../app/auth/portal-identity-repository.adapter.js';
 import { PortalLoginService } from '../app/auth/portal-login.service.js';
 
 // Portal P1 — passwordless login orchestration unit coverage. The three
@@ -67,7 +68,16 @@ function makeService(over: {
   const allow = vi.fn().mockReturnValue(over.budgetAllows ?? true);
   const budget = { allow } as never;
 
-  const service = new PortalLoginService(portals, eligibility, email, session, budget);
+  // PR-5a §4.1 — wrap the repository mock in the REAL PortalIdentityRepositoryAdapter
+  // (the service now depends on PortalIdentityStore); the 6 method assertions still
+  // fire through the adapter, and the 3 token helpers use the real functions as before.
+  const service = new PortalLoginService(
+    new PortalIdentityRepositoryAdapter(portals),
+    eligibility,
+    email,
+    session,
+    budget,
+  );
   return {
     service,
     resolve,

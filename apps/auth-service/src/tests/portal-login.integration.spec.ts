@@ -39,8 +39,12 @@ import { PkceService } from '../app/auth/pkce.service.js';
 import { PortalLoginBudget } from '../app/auth/portal-login-budget.js';
 import { PortalLoginService } from '../app/auth/portal-login.service.js';
 import { AUDIT_SINK } from '../app/auth/audit-sink.port.js';
+import { HOST_CONTEXT_DIRECTORY } from '../app/auth/host-context-directory.port.js';
 import { IdentityAuditSinkAdapter } from '../app/auth/identity-audit-sink.adapter.js';
+import { IdentityHostContextAdapter } from '../app/auth/identity-host-context.adapter.js';
 import { IdentityPrincipalDirectoryAdapter } from '../app/auth/identity-principal-directory.adapter.js';
+import { PORTAL_IDENTITY_STORE } from '../app/auth/portal-identity-store.port.js';
+import { PortalIdentityRepositoryAdapter } from '../app/auth/portal-identity-repository.adapter.js';
 import { PRINCIPAL_DIRECTORY } from '../app/auth/principal-directory.port.js';
 import { RefreshOrchestratorService } from '../app/auth/refresh-orchestrator.service.js';
 import { SessionOrchestratorService } from '../app/auth/session-orchestrator.service.js';
@@ -202,6 +206,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           IdentityAuditSinkAdapter,
           { provide: PRINCIPAL_DIRECTORY, useClass: IdentityPrincipalDirectoryAdapter },
           { provide: AUDIT_SINK, useClass: IdentityAuditSinkAdapter },
+          // PR-5a — HostContextDirectory + PortalIdentityStore bindings (DI ripple).
+          IdentityHostContextAdapter,
+          PortalIdentityRepositoryAdapter,
+          { provide: HOST_CONTEXT_DIRECTORY, useClass: IdentityHostContextAdapter },
+          { provide: PORTAL_IDENTITY_STORE, useClass: PortalIdentityRepositoryAdapter },
           HostAuthProfileService,
           HostBaseResolver,
           PortalLoginService,

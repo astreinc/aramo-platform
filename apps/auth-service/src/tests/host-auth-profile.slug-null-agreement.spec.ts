@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { extractTenantSlugFromHost, type TenantService } from '@aramo/identity';
 import { DEFAULT_PLATFORM_HOST, DEFAULT_PORTAL_HOST } from '@aramo/auth-storage';
 
+import { IdentityHostContextAdapter } from '../app/auth/identity-host-context.adapter.js';
+
 import { HostAuthProfileService, fakeStore } from './host-auth-profile.test-fixtures.js';
 
 // Auth-Decoupling PR-1 §3.4 — the registry classifier must AGREE with
@@ -21,7 +23,10 @@ const permissiveTenants = {
 } as unknown as TenantService;
 
 function classifier(): HostAuthProfileService {
-  return new HostAuthProfileService(fakeStore({}) as never, permissiveTenants);
+  // PR-5a §4.1 — wrap the tenants mock in the REAL adapter (the classifier now
+  // depends on HostContextDirectory); findActiveBySlug still runs from the adapter.
+  const hostContext = new IdentityHostContextAdapter(permissiveTenants);
+  return new HostAuthProfileService(fakeStore({}) as never, hostContext);
 }
 
 const NULL_CASES: ReadonlyArray<{ label: string; host: string }> = [

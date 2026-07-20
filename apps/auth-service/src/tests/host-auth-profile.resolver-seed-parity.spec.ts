@@ -7,6 +7,8 @@ import {
 } from '@aramo/auth-storage';
 import type { TenantService } from '@aramo/identity';
 
+import { IdentityHostContextAdapter } from '../app/auth/identity-host-context.adapter.js';
+
 import { HostAuthProfileService, fakeStore } from './host-auth-profile.test-fixtures.js';
 
 // Auth-Decoupling PR-1 §3.3 (resolver side) — every host_class the CLASSIFIER can
@@ -50,7 +52,10 @@ describe('Auth-Decoupling PR-1 §3.3 — resolver ≡ seed reachability', () => 
   });
 
   const classifier = () =>
-    new HostAuthProfileService(fakeStore({}) as never, permissiveTenants);
+    new HostAuthProfileService(
+      fakeStore({}) as never,
+      new IdentityHostContextAdapter(permissiveTenants),
+    );
 
   it('every seeded class is reachable by the classifier', async () => {
     const reached = new Set<HostClass>();

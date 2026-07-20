@@ -8,6 +8,13 @@ import {
 
 import { HostAuthProfileService } from '../app/auth/host-auth-profile.service.js';
 import { HostBaseResolver } from '../app/auth/host-base-resolver.service.js';
+import { IdentityHostContextAdapter } from '../app/auth/identity-host-context.adapter.js';
+
+// Auth-Decoupling PR-5a (§4.1) — both HostAuthProfileService and HostBaseResolver
+// now depend on the HostContextDirectory port. These fixtures wrap the SAME
+// tenants mock in the REAL IdentityHostContextAdapter (one per tenants, shared by
+// the classifier + the resolver), so findActiveBySlug still runs from the far side
+// of the boundary — provider-substitution-only, zero assertion changes.
 
 // Auth-Decoupling PR-1 — shared unit fixtures for the §3 host auth-profile
 // verification specs (behaviour-parity, fail-open, slug null-case). ONE helper
@@ -63,24 +70,27 @@ export function resolverWithRegistry(
   tenants: TenantService,
   env?: Record<string, string | undefined>,
 ): HostBaseResolver {
+  const hostContext = new IdentityHostContextAdapter(tenants);
   const store = fakeStore({ env }) as never;
-  const classifier = new HostAuthProfileService(store, tenants);
-  return new HostBaseResolver(tenants, classifier);
+  const classifier = new HostAuthProfileService(store, hostContext);
+  return new HostBaseResolver(hostContext, classifier);
 }
 
 // HostBaseResolver whose registry always MISSES (empty) — i.e. the pre-PR-1
 // legacy path, reached by fall-through. This is the "before" oracle.
 export function resolverLegacy(tenants: TenantService): HostBaseResolver {
+  const hostContext = new IdentityHostContextAdapter(tenants);
   const store = fakeStore({ empty: true }) as never;
-  const classifier = new HostAuthProfileService(store, tenants);
-  return new HostBaseResolver(tenants, classifier);
+  const classifier = new HostAuthProfileService(store, hostContext);
+  return new HostBaseResolver(hostContext, classifier);
 }
 
 // HostBaseResolver whose registry always THROWS — proves fail-open fall-through.
 export function resolverFaulting(tenants: TenantService): HostBaseResolver {
+  const hostContext = new IdentityHostContextAdapter(tenants);
   const store = fakeStore({ throws: true }) as never;
-  const classifier = new HostAuthProfileService(store, tenants);
-  return new HostBaseResolver(tenants, classifier);
+  const classifier = new HostAuthProfileService(store, hostContext);
+  return new HostBaseResolver(hostContext, classifier);
 }
 
 export { HostAuthProfileService };

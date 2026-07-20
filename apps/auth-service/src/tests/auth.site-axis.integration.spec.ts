@@ -66,7 +66,9 @@ import { JwksService } from '../app/auth/jwks.service.js';
 import { JwtIssuerService } from '../app/auth/jwt-issuer.service.js';
 import { PkceService } from '../app/auth/pkce.service.js';
 import { AUDIT_SINK } from '../app/auth/audit-sink.port.js';
+import { HOST_CONTEXT_DIRECTORY } from '../app/auth/host-context-directory.port.js';
 import { IdentityAuditSinkAdapter } from '../app/auth/identity-audit-sink.adapter.js';
+import { IdentityHostContextAdapter } from '../app/auth/identity-host-context.adapter.js';
 import { IdentityPrincipalDirectoryAdapter } from '../app/auth/identity-principal-directory.adapter.js';
 import { PRINCIPAL_DIRECTORY } from '../app/auth/principal-directory.port.js';
 import { RefreshOrchestratorService } from '../app/auth/refresh-orchestrator.service.js';
@@ -192,6 +194,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           IdentityAuditSinkAdapter,
           { provide: PRINCIPAL_DIRECTORY, useClass: IdentityPrincipalDirectoryAdapter },
           { provide: AUDIT_SINK, useClass: IdentityAuditSinkAdapter },
+          // PR-5a — HostContextDirectory binding (host resolvers, DI ripple).
+          IdentityHostContextAdapter,
+          { provide: HOST_CONTEXT_DIRECTORY, useClass: IdentityHostContextAdapter },
           HostAuthProfileService,
           HostBaseResolver,
           // Mirror AuthModule's APP_FILTER wiring so AramoError → the

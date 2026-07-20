@@ -1,11 +1,14 @@
-import { Injectable } from '@nestjs/common';
-import { TenantService, extractTenantSlugFromHost } from '@aramo/identity';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   HostAuthProfileStore,
   type HostAuthProfileDto,
   type HostClass,
 } from '@aramo/auth-storage';
 
+import {
+  HOST_CONTEXT_DIRECTORY,
+  type HostContextDirectory,
+} from './host-context-directory.port.js';
 import { isDevHostname, parseHost } from './redirect-uri.js';
 
 // Auth-Decoupling PR-1 §2.2 (ADR-0021 §3, ADR-0020 rule 2) — the host
@@ -47,7 +50,8 @@ function normalizePattern(pattern: string): string {
 export class HostAuthProfileService {
   constructor(
     private readonly store: HostAuthProfileStore,
-    private readonly tenants: TenantService,
+    @Inject(HOST_CONTEXT_DIRECTORY)
+    private readonly hostContext: HostContextDirectory,
   ) {}
 
   async resolve(host: string | undefined): Promise<HostAuthResolution | null> {
@@ -76,24 +80,20 @@ export class HostAuthProfileService {
         return this.hit('PORTAL', portal, parsed.hostname, portal.default_idp);
       }
 
-      // TENANT (slug-validated). Composes the class row with the tenant's own
-      // identity_provider from the EXISTING findActiveBySlug read (R-A1-7). The
-      // root domain source is APP_ROOT_DOMAIN — byte-identical to the legacy
-      // HostBaseResolver (env chain retained, R-A1-3) — so classification agrees
-      // with extractTenantSlugFromHost on every host.
+      // TENANT (context-validated). Composes the class row with the tenant's own
+      // identity_provider from the HostContextDirectory port (PR-5a: the adapter
+      // owns slug extraction + the tenant read; byte-identical to the prior inline
+      // extractTenantSlugFromHost → findActiveBySlug). A non-null HostContext means
+      // the host resolves to an active tenant context.
       const tenantRow = byClass.get('TENANT');
       if (tenantRow !== undefined) {
-        const rootDomain = process.env['APP_ROOT_DOMAIN'] ?? 'aramo.ai';
-        const slug = extractTenantSlugFromHost(host as string, rootDomain);
-        if (slug !== null) {
-          const tenant = await this.tenants.findActiveBySlug(slug);
-          if (tenant !== null) {
-            // TENANT default_idp is OVERRIDDEN per-request by the tenant's own
-            // provider (§2.1); with a null class default this is exactly the
-            // legacy `tenant.identity_provider ?? null`.
-            const idp = tenant.identity_provider ?? tenantRow.default_idp ?? null;
-            return this.hit('TENANT', tenantRow, parsed.hostname, idp);
-          }
+        const ctx = await this.hostContext.resolveByHost(host as string);
+        if (ctx !== null) {
+          // TENANT default_idp is OVERRIDDEN per-request by the tenant's own
+          // provider (§2.1); with a null class default this is exactly the
+          // legacy `tenant.identity_provider ?? null`.
+          const idp = ctx.identity_provider ?? tenantRow.default_idp ?? null;
+          return this.hit('TENANT', tenantRow, parsed.hostname, idp);
         }
       }
 
