@@ -3,6 +3,10 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+// SRC-1 PR-1 (R8) — normalize via @aramo/common (NOT the @aramo/identity twin at
+// libs/identity/src/lib/util/email-domain.ts). Exercising R8's disambiguation in
+// code, not just prose: fixtures pre-normalize with these exact imports.
+import { normalizeEmail, normalizePhone } from '@aramo/common';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { SourcedTalentRepository } from '../lib/sourced-talent.repository.js';
@@ -142,6 +146,79 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         arrived_at: ARRIVED_AT,
       });
       expect(a.id).not.toBe(b.id);
+    });
+
+    it('persists normalized_email / normalized_phone when supplied and reads them back (R8)', async () => {
+      const email = normalizeEmail('  Ada.Lovelace@Example.COM ');
+      const phone = normalizePhone('+1 (415) 555-0100');
+      const arrival = await repo.recordArrival({
+        tenant_id: TENANT,
+        source_channel: 'INDEED',
+        external_source_id: 'indeed-norm-001',
+        provenance: { pull_query: 'analytical engines' },
+        legal_basis: { basis: 'LEGITIMATE_INTEREST' },
+        arrived_at: ARRIVED_AT,
+        normalized_email: email,
+        normalized_phone: phone,
+      });
+      expect(arrival.normalized_email).toBe(email);
+      expect(arrival.normalized_phone).toBe(phone);
+
+      const byId = await repo.findById(arrival.id);
+      expect(byId?.normalized_email).toBe(email);
+      expect(byId?.normalized_phone).toBe(phone);
+    });
+
+    it('leaves normalized_email / normalized_phone NULL when the caller omits them', async () => {
+      const arrival = await repo.recordArrival({
+        tenant_id: TENANT,
+        source_channel: 'INDEED',
+        external_source_id: 'indeed-nonorm-002',
+        provenance: {},
+        legal_basis: { basis: 'LEGITIMATE_INTEREST' },
+        arrived_at: ARRIVED_AT,
+      });
+      expect(arrival.normalized_email).toBeNull();
+      expect(arrival.normalized_phone).toBeNull();
+
+      const byId = await repo.findById(arrival.id);
+      expect(byId?.normalized_email).toBeNull();
+      expect(byId?.normalized_phone).toBeNull();
+    });
+
+    it('idempotent re-record with DIFFERENT normalized values returns the ORIGINAL row (immutable — no silent update)', async () => {
+      const originalEmail = normalizeEmail('grace.hopper@navy.mil');
+      const originalPhone = normalizePhone('202-555-0143');
+      const first = await repo.recordArrival({
+        tenant_id: TENANT,
+        source_channel: 'INDEED',
+        external_source_id: 'indeed-immut-norm-003',
+        provenance: { attempt: 1 },
+        legal_basis: { basis: 'CONSENT' },
+        arrived_at: ARRIVED_AT,
+        normalized_email: originalEmail,
+        normalized_phone: originalPhone,
+      });
+
+      const second = await repo.recordArrival({
+        tenant_id: TENANT,
+        source_channel: 'INDEED',
+        external_source_id: 'indeed-immut-norm-003',
+        provenance: { attempt: 2 },
+        legal_basis: { basis: 'CONSENT' },
+        arrived_at: ARRIVED_AT,
+        normalized_email: normalizeEmail('mutated@example.com'),
+        normalized_phone: normalizePhone('999-999-9999'),
+      });
+
+      // Same row, ORIGINAL normalized values — the re-record never updates.
+      expect(second.id).toBe(first.id);
+      expect(second.normalized_email).toBe(originalEmail);
+      expect(second.normalized_phone).toBe(originalPhone);
+
+      const byId = await repo.findById(first.id);
+      expect(byId?.normalized_email).toBe(originalEmail);
+      expect(byId?.normalized_phone).toBe(originalPhone);
     });
 
     it('rejects any UPDATE — a sourced arrival is immutable (Spec §2 / the trigger)', async () => {

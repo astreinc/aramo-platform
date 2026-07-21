@@ -124,6 +124,10 @@ model ResolutionSubject {
 // evidence can accrue against a raw channel arrival before any TalentRecord
 // exists; Fix-Slice-1 / Lifecycle Spec §3.2). ref_type is a plain TEXT column
 // (no DB CHECK) — a new value is additive at the vocab/DTO layer, no migration.
+// SRC-1 R1/R2: a SOURCED_TALENT ref_id targets ingestion.RawPayloadReference.id
+// (the document-arrival surface); the sourced_talent staging table is the
+// channel dedup memory, keyed by (tenant, channel, external_source_id), not by
+// this ref, until a staging-only ref type lands (SRC-3).
 model ResolutionSubjectRef {
   id String @id @db.Uuid
 

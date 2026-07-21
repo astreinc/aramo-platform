@@ -18,6 +18,10 @@ export interface SourcedTalentRow {
   tenant_id: string;
   source_channel: string;
   external_source_id: string;
+  // Normalized contact material the arrival carries (nullable — NULL when the
+  // caller supplied none). Reads expose exactly what the schema holds.
+  normalized_email: string | null;
+  normalized_phone: string | null;
   provenance: unknown;
   legal_basis: unknown;
   arrived_at: Date;
@@ -32,6 +36,14 @@ export interface RecordArrivalInput {
   legal_basis: unknown;
   // The channel-side arrival time (caller-supplied — the sourcing pull time).
   arrived_at: Date;
+  // SRC-1 PR-1 (R8) — optional normalized contact material. The caller MUST
+  // supply these ALREADY normalized via `normalizeEmail` / `normalizePhone`
+  // from `@aramo/common` (libs/common/src/lib/util/…) — NOT the `@aramo/identity`
+  // twin at libs/identity/src/lib/util/email-domain.ts. The repository writes
+  // them verbatim at INSERT only (never UPDATE — the immutability trigger
+  // stands); undefined → the column stays NULL.
+  normalized_email?: string;
+  normalized_phone?: string;
 }
 
 @Injectable()
@@ -60,6 +72,9 @@ export class SourcedTalentRepository {
           tenant_id: input.tenant_id,
           source_channel: input.source_channel,
           external_source_id: input.external_source_id,
+          // SRC-1 PR-1 (R8): written at INSERT only. undefined → NULL column.
+          normalized_email: input.normalized_email,
+          normalized_phone: input.normalized_phone,
           provenance: input.provenance as never,
           legal_basis: input.legal_basis as never,
           arrived_at: input.arrived_at,
