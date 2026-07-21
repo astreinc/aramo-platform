@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Inject, Injectable } from '@nestjs/common';
 import {
   GetObjectCommand,
@@ -14,7 +16,11 @@ import {
   ORPHAN_SWEEP_TAG_VALUE_PENDING,
   assertExpiryWithinCap,
 } from './object-storage.config.js';
-import { buildResumeObjectKey, parseResumeObjectKey } from './key-convention.js';
+import {
+  buildIngestionObjectKey,
+  buildResumeObjectKey,
+  parseResumeObjectKey,
+} from './key-convention.js';
 import { hashIdentifierForLog } from './log-redaction.js';
 import { S3ClientFactory } from './s3-client.factory.js';
 import type {
@@ -117,6 +123,82 @@ export class ObjectStorageService {
     });
 
     return { storage_key, presigned_url, expires_at };
+  }
+
+  /**
+   * SRC-1 PR-2 (R13.1/R13.3) — server-side ingestion object write.
+   *
+   * The résumé surface above is presigned (the browser PUTs bytes). A webhook
+   * arrival ORIGINATES the bytes server-side (Indeed POSTs the full signed
+   * payload — there is no browser and no prior presigned upload), so this method
+   * performs the PUT itself with the platform's existing S3 client + credentials
+   * (no second adapter — R13.1). The stored bytes are the RAW signed request body
+   * verbatim (the forensic artifact the signature covered). Returns the reference
+   * + the SERVER-computed sha256 (hex) so the caller can present them to the
+   * ingestion front door, which continues to store BY REFERENCE (Invariant 7):
+   * what changes is who performs the upload, not the reference model.
+   */
+  async putIngestionObject(input: {
+    tenant_id: string;
+    channel: string;
+    external_source_id: string;
+    body: Buffer;
+    content_type: string;
+    requestId: string;
+  }): Promise<{ storage_ref: string; sha256: string }> {
+    const storage_key = buildIngestionObjectKey({
+      tenant_id: input.tenant_id,
+      channel: input.channel,
+      external_source_id: input.external_source_id,
+      requestId: input.requestId,
+    });
+
+    const { bucket } = this.s3Factory.getConfig();
+    const client = this.s3Factory.getClient();
+
+    // Server-side sha256 over the EXACT stored bytes (R13.3), hex-encoded — passes
+    // the ingestion DTO's ^[a-f0-9]{64}$ contract unchanged. Computed here, not
+    // client-supplied, because the arrival originates the bytes server-side.
+    const sha256 = createHash('sha256').update(input.body).digest('hex');
+
+    try {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: storage_key,
+          Body: input.body,
+          ContentType: input.content_type,
+        }),
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new AramoError(
+        'OBJECT_STORAGE_UPLOAD_FAILED',
+        `ingestion object put failed: ${message}`,
+        502,
+        {
+          requestId: input.requestId,
+          details: { kind: 'put_ingestion_object_failed', bucket, storage_key },
+        },
+      );
+    }
+
+    // PII-floor access-log: the external_source_id is an applicant identifier →
+    // HASHED (never raw); the sha256 is a content hash (not PII).
+    this.logger.log({
+      event: 'object_storage.ingestion_object_put',
+      requestId: input.requestId,
+      bucket,
+      storage_key,
+      tenant_id: input.tenant_id,
+      channel: input.channel.toLowerCase(),
+      external_source_id_hash: hashIdentifierForLog(input.external_source_id),
+      content_type: input.content_type,
+      byte_length: input.body.length,
+      sha256,
+    });
+
+    return { storage_ref: `s3://${bucket}/${storage_key}`, sha256 };
   }
 
   async createPresignedGet(

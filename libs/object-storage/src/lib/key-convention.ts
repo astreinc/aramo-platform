@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { v7 as uuidv7 } from 'uuid';
 import { AramoError } from '@aramo/common';
 
 // A8-3a — tenant-scoped S3 key convention.
@@ -83,6 +84,51 @@ export function buildResumeObjectKey(input: {
   const uuid = randomUUID();
   const safe = sanitizeFilenameForKey(input.filename);
   return `${input.tenant_id}/talent/${input.talent_record_id}/${RESUME_KEY_DOCUMENT_TYPE}/${uuid}-${safe}`;
+}
+
+// SRC-1 PR-2 (R13.2) — ingestion object key convention.
+//
+// Shape:
+//   {tenant_id}/ingestion/{channel}/{external_source_id}/{receipt_uuid}.json
+//
+// Distinct from the résumé key ('/talent/...') by the `/ingestion/` segment;
+// the bucket is shared (R13.2 — one platform document bucket, env name retained
+// ADD-not-rename). `channel` is lowercased; `receipt_uuid` is a v7 UUID minted
+// PER DELIVERY, so webhook redeliveries of the same external_source_id land as
+// distinct forensic objects while `recordArrival` remains the idempotency point
+// (the (tenant, channel, external_source_id) dedup key). The stored bytes are the
+// RAW signed request body, verbatim — the artifact is the exact byte sequence the
+// signature covered.
+export const INGESTION_KEY_SEGMENT = 'ingestion';
+
+export function buildIngestionObjectKey(input: {
+  tenant_id: string;
+  channel: string;
+  external_source_id: string;
+  requestId: string;
+}): string {
+  assertUuid(input.tenant_id, 'tenant_id', input.requestId);
+  if (input.channel.length === 0) {
+    throw new AramoError('VALIDATION_ERROR', 'channel must be non-empty', 400, {
+      requestId: input.requestId,
+      details: { field: 'channel' },
+    });
+  }
+  if (input.external_source_id.length === 0) {
+    throw new AramoError(
+      'VALIDATION_ERROR',
+      'external_source_id must be non-empty',
+      400,
+      { requestId: input.requestId, details: { field: 'external_source_id' } },
+    );
+  }
+  const channel = input.channel.toLowerCase();
+  // Path-safety only — the authoritative id lives in the (tenant, channel,
+  // external_source_id) dedup key in Postgres; the sanitized form here is for
+  // the storage key path. receipt_uuid keeps distinct deliveries collision-free.
+  const safeExternalId = sanitizeFilenameForKey(input.external_source_id);
+  const receiptUuid = uuidv7();
+  return `${input.tenant_id}/${INGESTION_KEY_SEGMENT}/${channel}/${safeExternalId}/${receiptUuid}.json`;
 }
 
 export function parseResumeObjectKey(

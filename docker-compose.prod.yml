@@ -141,6 +141,11 @@ services:
       # mint path if unset/unknown, so canonicalization STOPS rather than minting
       # under an undeclared gate. api-only. Launch value: PORTABLE_ONLY.
       - ARAMO_IDENTITY_ADMISSION_POLICY
+      # Indeed Apply inbound webhook secret (SRC-1 PR-2 / R9). Bare-name
+      # passthrough — a var read by container code but ABSENT here never reaches
+      # the container, so the fix is inert (the D-AUTH-PLATFORM-HOSTS-1 defect
+      # class). api-only. UNSET → the webhook refuses all traffic (503, dark).
+      - ARAMO_INDEED_APPLY_WEBHOOK_SECRET
     depends_on:
       postgres:
         condition: service_healthy

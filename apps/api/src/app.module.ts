@@ -30,6 +30,7 @@ import { JobDomainModule } from '@aramo/job-domain';
 import { MailerModule } from '@aramo/mailer';
 import { MatchingModule } from '@aramo/matching';
 import { ObjectStorageModule } from '@aramo/object-storage';
+import { SourcedTalentModule } from '@aramo/sourced-talent';
 import { OutboxPublisherModule } from '@aramo/outbox-publisher';
 import { PipelineModule } from '@aramo/pipeline';
 import { PortalModule } from '@aramo/portal';
@@ -95,6 +96,9 @@ import { AuditFinancialsGateAdapter } from './settings/audit-financials-gate.ada
 // Tasks backend — live TASK_ASSIGNEE_VALIDATOR adapter (validates an
 // assignee is an active within-tenant member via IdentityService).
 import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
+// SRC-1 PR-2 — the Indeed Apply inbound webhook (composition root; R13.5).
+import { IndeedApplyController } from './webhooks/indeed-apply.controller.js';
+import { IndeedApplyWebhookService } from './webhooks/indeed-apply.service.js';
 
 @Module({
   imports: [
@@ -338,6 +342,11 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // upload; later A4 owner_types) consume ObjectStorageService at
     // the cross-lib boundary.
     ObjectStorageModule,
+    // SRC-1 PR-2 — SourcedTalentModule provides SourcedTalentRepository so the
+    // Indeed apply webhook can write the channel dedup-memory arrival. The
+    // apps/api → @aramo/sourced-talent nx edge already exists (admit-arrivals),
+    // so this is ZERO new edges (R13.5).
+    SourcedTalentModule,
     // M6 PR-2 §4 — OutboxPublisherModule (new leaf lib). Hosts the
     // relocated outbox-publisher BullMQ queue + processor; drains
     // consent + engagement + submittal OutboxEvent tables. Imported
@@ -471,6 +480,10 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // /v1/email-verifications/confirm). No JwtAuthGuard — the talent has no
     // session; authority is the single-use token. Oracle-resistant (§3.2).
     PublicVerificationController,
+    // SRC-1 PR-2 — the PUBLIC (un-guarded) Indeed Apply webhook (POST
+    // /v1/webhooks/indeed/apply). No JwtAuthGuard — Indeed has no session;
+    // authority is the X-Indeed-Signature HMAC (R5). Wildcard tenant host only.
+    IndeedApplyController,
   ],
   providers: [
     // Inc-3 PR-3.7 (R12) — the tenant WRITE-freeze. Registered FIRST among the
@@ -560,6 +573,10 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
     // TR-3 B2 — the public confirm route's per-IP fixed-window budget (a shared
     // singleton the PublicVerificationController injects).
     VerificationConfirmBudget,
+    // SRC-1 PR-2 — the Indeed apply webhook processing service (R4 order over
+    // object-storage + ingestion + sourced-talent; deps resolve via their
+    // already-imported modules — SourcedTalentModule added above).
+    IndeedApplyWebhookService,
     // Segment 4c — Views presets + "My team" scope. The resolver injects the
     // four read-only cross-schema accessors (activity / pipeline / tasks /
     // teams); the interceptor (global, PRE-handler, route-guarded to the paged
