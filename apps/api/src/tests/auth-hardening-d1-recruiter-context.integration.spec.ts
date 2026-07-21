@@ -172,6 +172,10 @@ const REQUISITION_RATE_TYPE_SUBK = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260618120000_add_rate_type_subk_runmatch/migration.sql',
 );
+const REQUISITION_PUBLISH_SURFACE_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260721000000_add_publish_surface/migration.sql',
+);
 const TASK_INIT = resolve(
   ROOT,
   'libs/task/prisma/migrations/20260609140000_init_task_model/migration.sql',
@@ -524,6 +528,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         REQUISITION_COMPENSATION_FIELDS,
         REQUISITION_JOB_MODULE_FIELDS,
         REQUISITION_RATE_TYPE_SUBK,
+        REQUISITION_PUBLISH_SURFACE_MIGRATION,
         TASK_INIT,
         TASK_WORKSPACE_FIELDS,
       ]) {

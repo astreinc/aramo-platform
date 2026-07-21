@@ -1,0 +1,68 @@
+// SRC-2 R2 — the `job_distribution` schema (schema-per-module convention).
+// Distribution is requisition-OUTBOUND (ATS-side, R1): it posts a tenant's own
+// requisitions to external channels. Cross-schema references are UUID-only, no FK
+// (Architecture §7.3 / the ADR-0019 wall — this schema never reaches into the
+// talent graph). The substrate ships INERT at PR-2: no writer, no sweep, no
+// connector (those are PR-3/PR-4).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["job_distribution"]
+}
+
+// ChannelPostingState — per (tenant × requisition × channel) posting state: the
+// R4 sync sweep's memory of what is live on each channel and the content hash it
+// was last synced at. `sync_status` is a closed TS union (SYNC_STATUSES) stored
+// as TEXT (convention R7 — not a DB enum; the vocabulary evolves without a
+// migration). `channel` is lowercase (the storage-key convention). The
+// (tenant, requisition, channel) triple is the identity — one posting state per
+// channel per requisition per tenant.
+model ChannelPostingState {
+  id                  String    @id @default(uuid()) @db.Uuid
+  tenant_id           String    @db.Uuid
+  // Cross-schema logical reference to requisition.Requisition.id — UUID-only,
+  // no FK (§7.3). The sweep keys freshness on requisition.updated_at.
+  requisition_id      String    @db.Uuid
+  channel             String
+  // Null until the first channel create succeeds and returns the external id.
+  external_posting_id String?
+  // Stable hash over the allowlist posting payload — the sweep's change detector.
+  content_hash        String
+  last_synced_at      DateTime? @db.Timestamptz
+  // SYNC_STATUSES closed union (see channel-posting.types.ts).
+  sync_status         String
+  // Set when the posting is expired/removed (state-row tombstone; explicit
+  // expiry always — jobs never age out silently).
+  tombstoned_at       DateTime? @db.Timestamptz
+  created_at          DateTime  @default(now()) @db.Timestamptz
+  updated_at          DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  @@unique([tenant_id, requisition_id, channel])
+  @@index([tenant_id])
+  @@index([tenant_id, channel])
+  @@schema("job_distribution")
+}
+
+// TenantChannelConfig — per (tenant × channel) opt-in + channel config. A channel
+// is swept for a tenant ONLY when enabled. `config` holds channel-specific
+// settings; it carries NO secrets (partner OAuth credentials are platform-level,
+// R5/R7 — env/secrets-path custody, never per-tenant-config).
+model TenantChannelConfig {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenant_id  String    @db.Uuid
+  channel    String
+  enabled    Boolean   @default(false)
+  enabled_at DateTime? @db.Timestamptz
+  config     Json      @default("{}")
+  created_at DateTime  @default(now()) @db.Timestamptz
+  updated_at DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  @@unique([tenant_id, channel])
+  @@index([tenant_id])
+  @@schema("job_distribution")
+}

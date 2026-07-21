@@ -154,6 +154,10 @@ const REQUISITION_RATE_TYPE_SUBK = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260618120000_add_rate_type_subk_runmatch/migration.sql',
 );
+const REQUISITION_PUBLISH_SURFACE_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260721000000_add_publish_surface/migration.sql',
+);
 const TALENT_RECORD_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',
@@ -288,7 +292,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         CONTACT_LIST_SURFACE_FIELDS,
         REQUISITION_INIT,
         REQUISITION_IMPORT_BACK_REF,
-        REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_RATE_TYPE_SUBK,
+        REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION,
         TALENT_RECORD_INIT,
         TALENT_RECORD_LINK_ADD,
         TALENT_RECORD_IMPORT_BACK_REF,

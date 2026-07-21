@@ -87,6 +87,13 @@ export interface RequisitionView {
   allow_subcontractors: boolean;
   run_match_on_create: boolean;
 
+  // ---- SRC-2 R3 — publish surface (additive, UN-gated authored statements) ----
+  public_listing: boolean;
+  advertised_pay_min: string | null;
+  advertised_pay_max: string | null;
+  advertised_pay_period: RatePeriod | null;
+  advertised_pay_currency: string | null;
+
   // ---- Gated financial-planning fields (🔒 requisition:view:financials) -
   // Masked on read by the field-masking financials map (LB-4) when the
   // actor lacks requisition:view:financials — omitted from the JSON, NOT

@@ -235,6 +235,21 @@ model Requisition {
   min_pay_rate          Decimal? @db.Decimal(12, 2)
   max_pay_rate          Decimal? @db.Decimal(12, 2)
 
+  // ---- SRC-2 R3 — publish surface (authored, not derived; D5 by construction)
+  // These are UNGATED public statements the recruiter WRITES. They are NEVER
+  // derived from, defaulted from, or validated against the gated pay_rate_* /
+  // salary_* / financials fields — no code path reads a gated field to populate
+  // them. public_listing is the recruiter's deliberate publication intent; the
+  // advertised_* quartet is the comp the recruiter chooses to advertise (distinct
+  // from the gated actuals). They are NOT in the compensation map (13 keys) or
+  // the financials map (7 keys), carry no comp/financials scope, and the posting
+  // payload builder reads ONLY these — never projectView's gated output.
+  public_listing          Boolean     @default(false)
+  advertised_pay_min      Decimal?    @db.Decimal(12, 2)
+  advertised_pay_max      Decimal?    @db.Decimal(12, 2)
+  advertised_pay_period   RatePeriod?
+  advertised_pay_currency String?
+
   // ---- The seam (Job-Module LB-2 / R3, Amendment v1.1) ----------------
   // Cross-schema UUID-only reference (no FK, §7.3) to job_domain.
   // GoldenProfile. NULL until an explicit Generate-profile/confirm action

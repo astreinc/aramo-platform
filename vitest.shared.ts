@@ -104,6 +104,7 @@ export default defineConfig({
       // integration spec.
       '@aramo/import': resolve(root, 'libs/import/src/index.ts'),
       '@aramo/ingestion': resolve(root, 'libs/ingestion/src/index.ts'),
+      '@aramo/job-distribution': resolve(root, 'libs/job-distribution/src/index.ts'),
       '@aramo/job-domain': resolve(root, 'libs/job-domain/src/index.ts'),
       '@aramo/matching': resolve(root, 'libs/matching/src/index.ts'),
       // PR-A1c §2 — new leaf lib hosting the recordUsage helper. Mirrors

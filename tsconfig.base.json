@@ -54,6 +54,7 @@
       "@aramo/platform-trust": ["libs/platform-trust/src/index.ts"],
       "@aramo/import": ["libs/import/src/index.ts"],
       "@aramo/ingestion": ["libs/ingestion/src/index.ts"],
+      "@aramo/job-distribution": ["libs/job-distribution/src/index.ts"],
       "@aramo/job-domain": ["libs/job-domain/src/index.ts"],
       "@aramo/mailer": ["libs/mailer/src/index.ts"],
       "@aramo/matching": ["libs/matching/src/index.ts"],

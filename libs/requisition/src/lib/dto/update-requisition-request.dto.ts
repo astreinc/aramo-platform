@@ -66,6 +66,15 @@ export interface UpdateRequisitionRequestDto {
   allow_subcontractors?: boolean;
   run_match_on_create?: boolean;
 
+  // ---- SRC-2 R3 — publish surface (additive, UN-gated authored statements) ----
+  // Editable under ordinary requisition:edit (the status-only gate blocks a
+  // status-only editor). NOT comp/financials — never derived from a gated field.
+  public_listing?: boolean;
+  advertised_pay_min?: string | null;
+  advertised_pay_max?: string | null;
+  advertised_pay_period?: RatePeriod | null;
+  advertised_pay_currency?: string | null;
+
   // ---- Gated financial-planning fields (🔒 requisition:edit:financials) -
   target_margin_percent?: string | null;
   markup_percent_target?: string | null;

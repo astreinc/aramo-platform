@@ -223,6 +223,12 @@ interface RequisitionRow {
   max_bill_rate: Prisma.Decimal | null;
   min_pay_rate: Prisma.Decimal | null;
   max_pay_rate: Prisma.Decimal | null;
+  // SRC-2 R3 — publish surface (UN-gated authored statements).
+  public_listing: boolean;
+  advertised_pay_min: Prisma.Decimal | null;
+  advertised_pay_max: Prisma.Decimal | null;
+  advertised_pay_period: RatePeriod | null;
+  advertised_pay_currency: string | null;
   // Job-Module LB-2 — the seam.
   golden_profile_id: string | null;
 }
@@ -316,6 +322,12 @@ function projectView(row: RequisitionRow): RequisitionView {
     max_bill_rate: decimalToFixed2(row.max_bill_rate),
     min_pay_rate: decimalToFixed2(row.min_pay_rate),
     max_pay_rate: decimalToFixed2(row.max_pay_rate),
+    // SRC-2 R3 — publish surface (UN-gated; never masked, never derived).
+    public_listing: row.public_listing,
+    advertised_pay_min: decimalToFixed2(row.advertised_pay_min),
+    advertised_pay_max: decimalToFixed2(row.advertised_pay_max),
+    advertised_pay_period: row.advertised_pay_period,
+    advertised_pay_currency: row.advertised_pay_currency,
     // Job-Module LB-2 — the seam (read-only).
     golden_profile_id: row.golden_profile_id,
   };
@@ -574,6 +586,13 @@ export class RequisitionRepository {
     if (i.rate_type !== undefined) data['rate_type'] = i.rate_type;
     if (i.allow_subcontractors !== undefined) data['allow_subcontractors'] = i.allow_subcontractors;
     if (i.run_match_on_create !== undefined) data['run_match_on_create'] = i.run_match_on_create;
+    // SRC-2 R3 — publish surface (UN-gated; no assert*EditScopes entry — same
+    // PATCH semantics; editable under ordinary requisition:edit).
+    if (i.public_listing !== undefined) data['public_listing'] = i.public_listing;
+    if (i.advertised_pay_min !== undefined) data['advertised_pay_min'] = i.advertised_pay_min;
+    if (i.advertised_pay_max !== undefined) data['advertised_pay_max'] = i.advertised_pay_max;
+    if (i.advertised_pay_period !== undefined) data['advertised_pay_period'] = i.advertised_pay_period;
+    if (i.advertised_pay_currency !== undefined) data['advertised_pay_currency'] = i.advertised_pay_currency;
     // Job-Module §1 Part 1 — gated financial-planning (write-gated above).
     if (i.target_margin_percent !== undefined) data['target_margin_percent'] = i.target_margin_percent;
     if (i.markup_percent_target !== undefined) data['markup_percent_target'] = i.markup_percent_target;

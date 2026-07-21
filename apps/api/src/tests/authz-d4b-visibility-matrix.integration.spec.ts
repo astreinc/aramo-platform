@@ -153,6 +153,10 @@ const REQUISITION_RATE_TYPE_SUBK = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260618120000_add_rate_type_subk_runmatch/migration.sql',
 );
+const REQUISITION_PUBLISH_SURFACE_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260721000000_add_publish_surface/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-authz-d4b-spec';
@@ -476,7 +480,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         COMPANY_D4A,
         REQUISITION_INIT,
         REQUISITION_IMPORT_BACK_REF,
-        REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_RATE_TYPE_SUBK,
+        REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
