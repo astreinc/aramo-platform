@@ -146,6 +146,14 @@ services:
       # the container, so the fix is inert (the D-AUTH-PLATFORM-HOSTS-1 defect
       # class). api-only. UNSET → the webhook refuses all traffic (503, dark).
       - ARAMO_INDEED_APPLY_WEBHOOK_SECRET
+      # SRC-2 PR-3 (R7) — Indeed Job Sync partner OAuth credentials + connector
+      # config. Bare-name passthroughs (the D-AUTH-PLATFORM-HOSTS-1 defect class).
+      # api-only. UNSET client id/secret → the freshness sweep is fail-closed
+      # (disabled, skips every tick). Scope/base default in code when unset.
+      - ARAMO_INDEED_CLIENT_ID
+      - ARAMO_INDEED_CLIENT_SECRET
+      - ARAMO_INDEED_OAUTH_SCOPE
+      - ARAMO_INDEED_GRAPHQL_BASE
     depends_on:
       postgres:
         condition: service_healthy

@@ -73,6 +73,7 @@ import { PortalRtbfService } from './talent-identity/portal-rtbf.service.js';
 import { PromotionService } from './talent-identity/promotion.service.js';
 import { RecordReconcileOrchestrator } from './talent-identity/record-reconcile.orchestrator.js';
 import { IdentityMaintenanceModule } from './jobs/identity-maintenance.module.js';
+import { JobDistributionSyncModule } from './job-distribution/job-distribution.module.js';
 import { SourcingController } from './talent-identity/sourcing.controller.js';
 import { DossierController } from './talent-identity/dossier.controller.js';
 import { VerificationProposalController } from './talent-identity/verification-proposal.controller.js';
@@ -332,6 +333,8 @@ import { IndeedApplyWebhookService } from './webhooks/indeed-apply.service.js';
     // boundary layer; imports {talent-trust (cip), talent-record (ats)} — both edges
     // pre-exist. The SCHEDULES registrar (jobs/registration.ts) enqueues its ticks.
     IdentityMaintenanceModule,
+    // SRC-2 PR-3 — the Indeed Job Sync freshness sweep (5-min BullMQ tick).
+    JobDistributionSyncModule,
     // A8-3a — ObjectStorageModule (new leaf lib). The platform's first
     // live S3 substrate: presigned PUT/GET helpers + tenant-scoped key
     // convention + PII floor (≤ 300s expiry cap + access-log emission).
