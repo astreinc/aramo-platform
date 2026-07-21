@@ -66,6 +66,7 @@ const MIGRATIONS = [
   'libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql',
   'libs/requisition/prisma/migrations/20260612120000_drop_legacy_requisition_comp/migration.sql',
   'libs/requisition/prisma/migrations/20260618120000_add_rate_type_subk_runmatch/migration.sql',
+  'libs/requisition/prisma/migrations/20260721000000_add_publish_surface/migration.sql',
   // job-domain
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
   // talent-record
