@@ -38,6 +38,10 @@ export class IngestionPayloadRequestDto {
   @MaxLength(2048)
   // S3 storage reference. PR-12 stores the reference; not the bytes
   // (Phase 4 Invariant 7: "Raw payloads are stored by reference").
+  // SRC-1 PR-2 (R13.4): Invariant 7 stands. Server-originated arrivals (the
+  // Indeed Apply webhook) perform their OWN upload first (ObjectStorageService
+  // .putIngestionObject) and then present the resulting reference here — what
+  // changed is who uploads, not the reference model.
   storage_ref!: string;
 
   @IsString()

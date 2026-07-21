@@ -6,8 +6,10 @@ export { ObjectStorageService } from './lib/object-storage.service.js';
 export { S3ClientFactory } from './lib/s3-client.factory.js';
 export {
   buildResumeObjectKey,
+  buildIngestionObjectKey,
   parseResumeObjectKey,
   RESUME_KEY_DOCUMENT_TYPE,
+  INGESTION_KEY_SEGMENT,
 } from './lib/key-convention.js';
 export type { ParsedResumeObjectKey } from './lib/key-convention.js';
 export { hashIdentifierForLog } from './lib/log-redaction.js';

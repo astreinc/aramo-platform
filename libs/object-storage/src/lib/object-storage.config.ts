@@ -12,6 +12,15 @@ import { AramoError } from '@aramo/common';
 //   S3_RESUME_BUCKET  — bucket name (provisioned by the terraform
 //                       module infrastructure/modules/s3-resume-bucket).
 //                       Format: aramo-<env>-resumes.
+//                       SRC-1 PR-2 (R13.2): this ONE platform document bucket now
+//                       holds tenant talent-document PII broadly — résumés (the
+//                       '/talent/…' key prefix) AND server-originated ingestion
+//                       payloads (the '/ingestion/{channel}/…' prefix, e.g. Indeed
+//                       Apply). The env var's résumé-specific NAME is retained
+//                       (ADD-not-rename: renaming a live env var is deploy-path
+//                       risk for zero benefit). A dedicated ingestion bucket is a
+//                       forcing-function decision (counsel-mandated divergent
+//                       retention/encryption posture), not a tidiness one.
 //   AWS_REGION        — region (matches the M5 secret-cache pattern).
 //                       Default 'us-east-1' (ADR-0012 Decision 1).
 //   S3_ENDPOINT       — optional. LocalStack endpoint URL for integration
