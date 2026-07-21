@@ -1,6 +1,9 @@
 export { RequisitionModule } from './lib/requisition.module.js';
 export { RequisitionController } from './lib/requisition.controller.js';
-export { RequisitionRepository } from './lib/requisition.repository.js';
+export {
+  RequisitionRepository,
+  type PublishableRequisitionRow,
+} from './lib/requisition.repository.js';
 export { RequisitionAssignmentRepository } from './lib/requisition-assignment.repository.js';
 export { PrismaService as RequisitionPrismaService } from './lib/prisma/prisma.service.js';
 

@@ -333,6 +333,32 @@ function projectView(row: RequisitionRow): RequisitionView {
   };
 }
 
+// SRC-2 PR-3 (DEV-E) — the narrow projection returned by
+// listPublishableForChannelSync. Only the publish-allowlist columns: the gated
+// compensation actuals + financial-planning keys are NEVER selected, so a gated
+// value never enters the distribution sweep's memory. D5-by-construction extended
+// one layer up from the payload builder into the read itself. Serialized shapes
+// (Decimal→fixed-2 string, enum→string, Date→ISO) so the sweep maps 1:1 to
+// ChannelPostingInput with no further projectView pass (projectView emits gated
+// fields UNMASKED and must never touch a publish egress).
+export interface PublishableRequisitionRow {
+  id: string;
+  tenant_id: string;
+  title: string;
+  description: string | null;
+  city: string | null;
+  state_code: string | null;
+  job_type: string | null;
+  work_arrangement: string | null;
+  openings: number;
+  advertised_pay_min: string | null;
+  advertised_pay_max: string | null;
+  advertised_pay_period: string | null;
+  advertised_pay_currency: string | null;
+  public_listing: boolean;
+  updated_at: string;
+}
+
 @Injectable()
 export class RequisitionRepository {
   private readonly logger = new Logger(RequisitionRepository.name);
@@ -744,6 +770,62 @@ export class RequisitionRepository {
       where: { tenant_id: args.tenant_id, id: args.id },
     });
     return row === null ? null : projectView(row as RequisitionRow);
+  }
+
+  // SRC-2 PR-3 (DEV-E) — the distribution sweep's publishable read. SYSTEM-class
+  // (no actor/visibility filter — the sweep is a tenant-agnostic background job),
+  // mirroring findByIdAdmin's admin posture but for a list, filtered to the
+  // publishable predicate (status active AND public_listing). The `select` is a
+  // strict allowlist: gated comp/financials columns are NOT selected, so they
+  // cannot enter the sweep's memory (D5-by-construction). Ordered by updated_at so
+  // a large first-tick backlog drains oldest-first; `limit` bounds the batch.
+  async listPublishableForChannelSync(args: {
+    tenant_id: string;
+    limit?: number;
+  }): Promise<PublishableRequisitionRow[]> {
+    const rows = await this.prisma.requisition.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        status: 'active',
+        public_listing: true,
+      },
+      select: {
+        id: true,
+        tenant_id: true,
+        title: true,
+        description: true,
+        city: true,
+        state: true,
+        job_type: true,
+        work_arrangement: true,
+        openings: true,
+        advertised_pay_min: true,
+        advertised_pay_max: true,
+        advertised_pay_period: true,
+        advertised_pay_currency: true,
+        public_listing: true,
+        updated_at: true,
+      },
+      orderBy: { updated_at: 'asc' },
+      ...(args.limit === undefined ? {} : { take: args.limit }),
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      tenant_id: r.tenant_id,
+      title: r.title,
+      description: r.description,
+      city: r.city,
+      state_code: r.state,
+      job_type: r.job_type,
+      work_arrangement: r.work_arrangement,
+      openings: r.openings,
+      advertised_pay_min: decimalToFixed2(r.advertised_pay_min),
+      advertised_pay_max: decimalToFixed2(r.advertised_pay_max),
+      advertised_pay_period: r.advertised_pay_period,
+      advertised_pay_currency: r.advertised_pay_currency,
+      public_listing: r.public_listing,
+      updated_at: r.updated_at.toISOString(),
+    }));
   }
 
   // PR-A7 — actor-scoped count for the reporting aggregator. Applies

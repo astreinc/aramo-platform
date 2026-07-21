@@ -14,16 +14,17 @@ import { IDENTITY_DETECTION_QUEUE_NAME } from '../talent-identity/identity-detec
 import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.constants.js';
 import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.queue.constants.js';
 import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity-lifecycle-sweep.queue.constants.js';
+import { JOB_DISTRIBUTION_SYNC_QUEUE_NAME } from '../job-distribution/job-distribution-sync.queue.constants.js';
 
 // Application bootstrap registration for the repeating Aramo BullMQ jobs
 // (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6; doc/01 §13 anchor).
 // Per Ruling 3 + ADR-0018 Decision 6, all repeating schedules use BullMQ-native
 // `repeat` options (no @nestjs/schedule dependency).
 //
-// SRC-2 PR-1 — header count corrected: 11 repeat-scheduled queues here, of 15
+// SRC-2 PR-3 — header count corrected: 12 repeat-scheduled queues here, of 16
 // distinct BullMQ queues total (the other 4 — match, talent-reconcile,
 // contradiction-detection, canonicalization-trigger — are enqueue/event-driven,
-// not repeat-scheduled). The prior "4 Aramo Core BullMQ jobs" text was stale.
+// not repeat-scheduled). The job-distribution-sync 300s tick is the 12th.
 //
 // Idempotent jobId on each `queue.add` prevents duplicate scheduling
 // across pod restarts: BullMQ deduplicates repeat jobs by jobId.
@@ -131,6 +132,17 @@ const SCHEDULES = [
     job_name: 'tick',
     job_id: 'identity-index-lifecycle-daily',
     repeat: { pattern: '0 5 * * *', tz: 'UTC' as const },
+  },
+  // SRC-2 PR-3 (R4) — the Indeed Job Sync freshness sweep. Every 300s: per enabled
+  // tenant×'indeed', diff the publishable requisition set against ChannelPostingState
+  // and drive create/update/expire mutations (bounded per-tick, fail-closed when
+  // Indeed credentials are unset). Registered here so an enabled tenant is actually
+  // swept; the worker itself is silent without Redis (CI / local dev).
+  {
+    queue_name: JOB_DISTRIBUTION_SYNC_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'job-distribution-sync-300s',
+    repeat: { every: 300_000 },
   },
 ] as const;
 
