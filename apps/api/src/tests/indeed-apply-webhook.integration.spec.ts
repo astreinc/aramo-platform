@@ -132,7 +132,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const sha256 = createHash('sha256').update(input.body).digest('hex');
         const key = `${input.tenant_id}/ingestion/${input.channel.toLowerCase()}/${input.external_source_id}/${stored.length}.json`;
         stored.push({ key, body: input.body });
-        return { storage_ref: `s3://fake-bucket/${key}`, sha256 };
+        // SRC-2 R11.1 — storage_ref is the BARE key (no s3://).
+        return { storage_ref: key, sha256 };
       },
     };
     const fakeTenants = {
@@ -261,6 +262,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       expect(payload.rows.length).toBe(1);
       const payloadId = payload.rows[0].id as string;
+      // SRC-2 R11.1 — storage_ref is the BARE S3 key (no s3:// scheme, no bucket)
+      // so the extraction reader can presign a GET with it directly.
+      expect(payload.rows[0].storage_ref).not.toMatch(/^s3:\/\//);
+      expect(payload.rows[0].storage_ref).toMatch(
+        new RegExp(`^${TENANT_ID}/ingestion/indeed/`),
+      );
       expect(arrival.rows[0].provenance.ingestion_payload_id).toBe(payloadId);
       expect(arrival.rows[0].provenance.signature_header).toBe('x-indeed-signature');
 

@@ -7,6 +7,7 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from '@aramo/outbox-publisher';
 import { CROSS_SCHEMA_CONSISTENCY_QUEUE_NAME } from '@aramo/common';
 import { SKILL_CANONICALIZATION_QUEUE_NAME } from '@aramo/skills-taxonomy';
 import { RESUME_REINDEX_QUEUE_NAME } from '@aramo/talent-record';
+import { COLD_INGEST_EXTRACTION_QUEUE_NAME } from '@aramo/cold-ingest-extraction';
 
 import { MATCH_SWEEP_QUEUE_NAME } from '../talent-anchor/match-sweep.queue.constants.js';
 import { IDENTITY_DETECTION_QUEUE_NAME } from '../talent-identity/identity-detection.queue.constants.js';
@@ -14,11 +15,15 @@ import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.con
 import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.queue.constants.js';
 import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity-lifecycle-sweep.queue.constants.js';
 
-// M5 PR-11 §4.6 — application bootstrap registration for the 4 Aramo Core
-// BullMQ jobs (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6;
-// doc/01 §13 anchor). Per Ruling 3 + ADR-0018 Decision 6, all repeating
-// schedules use BullMQ-native `repeat` options (no @nestjs/schedule
-// dependency).
+// Application bootstrap registration for the repeating Aramo BullMQ jobs
+// (Architecture v2.1 §9.2 / Plan v1.5 §M5 Track A item 6; doc/01 §13 anchor).
+// Per Ruling 3 + ADR-0018 Decision 6, all repeating schedules use BullMQ-native
+// `repeat` options (no @nestjs/schedule dependency).
+//
+// SRC-2 PR-1 — header count corrected: 11 repeat-scheduled queues here, of 15
+// distinct BullMQ queues total (the other 4 — match, talent-reconcile,
+// contradiction-detection, canonicalization-trigger — are enqueue/event-driven,
+// not repeat-scheduled). The prior "4 Aramo Core BullMQ jobs" text was stale.
 //
 // Idempotent jobId on each `queue.add` prevents duplicate scheduling
 // across pod restarts: BullMQ deduplicates repeat jobs by jobId.
@@ -61,6 +66,18 @@ const SCHEDULES = [
     queue_name: RESUME_REINDEX_QUEUE_NAME,
     job_name: 'tick',
     job_id: 'resume-reindex-60s',
+    repeat: { every: 60_000 },
+  },
+  // SRC-2 PR-1 — the cold-ingest extraction sweep. Drains resolved arrivals whose
+  // résumé still needs extraction (identity evidence for promotion). Every 60s,
+  // matching resume-reindex — the two are sibling résumé-extraction drains; a
+  // large first-tick backlog processes by design (the deploy note reports the
+  // count). Registered here so the SRC-1-webhook-originated arrivals are actually
+  // swept (the worker existed but was never scheduled — SRC-2 recon finding).
+  {
+    queue_name: COLD_INGEST_EXTRACTION_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'cold-ingest-extraction-60s',
     repeat: { every: 60_000 },
   },
   // TR-6 B1 (DDR §2) — the scheduled incremental match sweep. HOURLY (an engine

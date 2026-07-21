@@ -61,6 +61,10 @@ export interface ArrivalNeedingExtraction {
   tenant_id: string;
   storage_ref: string;
   resolved_subject_id: string;
+  // SRC-2 PR-1 — the content-type discriminator: 'application/json' arrivals
+  // (the SRC-1 apply webhook) carry a JSON envelope with the résumé base64 INSIDE
+  // it; every other content_type is a bare résumé object (the existing path).
+  content_type: string;
 }
 
 @Injectable()
@@ -122,6 +126,7 @@ export class IngestionRepository {
         tenant_id: true,
         storage_ref: true,
         resolved_subject_id: true,
+        content_type: true,
       },
     });
     return rows.map((r) => ({
@@ -130,6 +135,7 @@ export class IngestionRepository {
       storage_ref: r.storage_ref,
       // Non-null by the where-filter; narrow for the caller.
       resolved_subject_id: r.resolved_subject_id as string,
+      content_type: r.content_type,
     }));
   }
 

@@ -114,8 +114,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: string;
       }): Promise<{ storage_ref: string; sha256: string }> => {
         const sha256 = createHash('sha256').update(input.body).digest('hex');
+        // SRC-2 R11.1 — storage_ref is the BARE key (no s3://).
         return {
-          storage_ref: `s3://fake/${input.tenant_id}/ingestion/${input.channel}/${input.external_source_id}.json`,
+          storage_ref: `${input.tenant_id}/ingestion/${input.channel.toLowerCase()}/${input.external_source_id}.json`,
           sha256,
         };
       },

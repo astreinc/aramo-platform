@@ -198,7 +198,13 @@ export class ObjectStorageService {
       sha256,
     });
 
-    return { storage_ref: `s3://${bucket}/${storage_key}`, sha256 };
+    // SRC-2 R11.1 (D-SRC1-STORAGEREF-1) — storage_ref is the BARE S3 key, the
+    // single platform-wide meaning: exactly the key the presigned-GET path
+    // (createPresignedGet → GetObjectCommand.Key) consumes, matching the A8-3b
+    // résumé convention (Attachment.storage_key). SRC-1 PR-2 returned an
+    // `s3://bucket/key` URL, which the reader mis-keyed → 404; that was the
+    // latent defect this fix closes. No `s3://` scheme, no bucket, in a stored ref.
+    return { storage_ref: storage_key, sha256 };
   }
 
   async createPresignedGet(

@@ -1,9 +1,16 @@
 import { createHash } from 'node:crypto';
 
 import { describe, it, expect, vi } from 'vitest';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import { ObjectStorageService } from '../lib/object-storage.service.js';
 import type { S3ClientFactory } from '../lib/s3-client.factory.js';
+
+// SRC-2 R11.3 — mock the presigner so createPresignedGet's GetObjectCommand is
+// capturable at the command level (getSignedUrl never touches the network).
+vi.mock('@aws-sdk/s3-request-presigner', () => ({
+  getSignedUrl: vi.fn(async () => 'https://signed.example/get'),
+}));
 
 // SRC-1 PR-2 (R13 added specs) — putIngestionObject unit coverage: key shape,
 // server-side sha256 correctness, and raw-byte fidelity of the stored object.
@@ -32,7 +39,7 @@ function buildService(send: ReturnType<typeof vi.fn>): ObjectStorageService {
 }
 
 describe('ObjectStorageService.putIngestionObject', () => {
-  it('writes the raw bytes verbatim under the ingestion key convention and returns s3:// ref + hex sha256', async () => {
+  it('writes the raw bytes verbatim under the ingestion key convention and returns the BARE-key ref + hex sha256', async () => {
     const send = vi.fn().mockResolvedValue({});
     const service = buildService(send);
     const body = Buffer.from('{"id":"apply-abc-123","applicant":{"email":"a@b.co"}}', 'utf8');
@@ -70,8 +77,9 @@ describe('ObjectStorageService.putIngestionObject', () => {
     expect(result.sha256).toBe(expectedSha);
     expect(result.sha256).toMatch(/^[a-f0-9]{64}$/);
 
-    // storage_ref is the s3:// reference the ingestion front door stores.
-    expect(result.storage_ref).toBe(`s3://${BUCKET}/${input['Key'] as string}`);
+    // SRC-2 R11.1 — storage_ref is the BARE S3 key (== the PutObjectCommand Key),
+    // exactly what createPresignedGet consumes. No s3:// scheme, no bucket.
+    expect(result.storage_ref).toBe(input['Key'] as string);
   });
 
   it('preserves non-UTF8 / binary bytes exactly (raw-byte fidelity)', async () => {
@@ -92,6 +100,37 @@ describe('ObjectStorageService.putIngestionObject', () => {
       .input;
     expect(Buffer.compare(input['Body'] as Buffer, body)).toBe(0);
     expect(result.sha256).toBe(createHash('sha256').update(body).digest('hex'));
+  });
+
+  // SRC-2 R11.3 (D-SRC1-STORAGEREF-1, defect-CLASS fix) — the PUT key and the key
+  // a reader presigns a GET with (storage_ref) MUST be equal. This asserts it at
+  // the S3-command level so a PUT/GET convention split can never again pass both
+  // unit gates while failing between them (the mocked-parser blind spot that hid
+  // the original defect).
+  it('PUT key === createPresignedGet GET key (round-trip convention guard)', async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const service = buildService(send);
+    const body = Buffer.from('{"id":"rt-1"}', 'utf8');
+
+    const { storage_ref } = await service.putIngestionObject({
+      tenant_id: TENANT,
+      channel: 'indeed',
+      external_source_id: 'rt-1',
+      body,
+      content_type: 'application/json',
+      requestId: 'r',
+    });
+    const putKey = (send.mock.calls[0][0] as { input: Record<string, unknown> })
+      .input['Key'] as string;
+    // storage_ref is exactly the PUT key (bare, per R11.1).
+    expect(storage_ref).toBe(putKey);
+
+    // A reader presigns a GET with storage_ref as the Key — capture the command.
+    (getSignedUrl as unknown as ReturnType<typeof vi.fn>).mockClear();
+    await service.createPresignedGet({ storage_key: storage_ref, requestId: 'r' });
+    const getCmd = (getSignedUrl as unknown as ReturnType<typeof vi.fn>).mock
+      .calls[0][1] as { input: Record<string, unknown> };
+    expect(getCmd.input['Key']).toBe(putKey);
   });
 
   it('mints a distinct receipt_uuid per call — redeliveries land as distinct objects', async () => {
