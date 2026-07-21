@@ -40,6 +40,18 @@ export class ResumeParserService {
   async parseFromStorageKey(
     input: ParseResumeInput,
   ): Promise<ParseResumeResult> {
+    // Byte-identical to the pre-SRC-2 flow: fetch the object bytes, then run the
+    // magic-byte extractor. Both halves are factored out (SRC-2 PR-1) so a
+    // content-type-aware caller (the cold-ingest JSON-envelope path) can reuse
+    // the SAME storage fetch and hand the extractor ALREADY-DECODED résumé bytes.
+    const buffer = await this.fetchBytes(input);
+    return this.parseBytes(buffer, input);
+  }
+
+  // SRC-2 PR-1 — the presigned-GET + fetch, factored out for reuse (do not
+  // duplicate the fetch). Throws OBJECT_STORAGE_UPLOAD_FAILED (502) on a missing
+  // key / presign / network failure — the caller maps that to transient_retry.
+  async fetchBytes(input: ParseResumeInput): Promise<Buffer> {
     if (input.storage_key.length === 0) {
       throw new AramoError(
         'VALIDATION_ERROR',
@@ -54,14 +66,13 @@ export class ResumeParserService {
       requestId: input.requestId,
     });
 
-    let buffer: Buffer;
     try {
       const response = await fetch(presigned_url);
       if (!response.ok) {
         throw new Error(`fetch returned status ${response.status}`);
       }
       const arrayBuffer = await response.arrayBuffer();
-      buffer = Buffer.from(arrayBuffer);
+      return Buffer.from(arrayBuffer);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       throw new AramoError(
@@ -77,7 +88,15 @@ export class ResumeParserService {
         },
       );
     }
+  }
 
+  // SRC-2 PR-1 — the magic-byte extraction, factored out so the JSON-envelope
+  // path can hand it decoded résumé bytes. Never throws on a parse failure
+  // (returns { prefill: {}, parse_status: 'failed' } — the non-blocking contract).
+  async parseBytes(
+    buffer: Buffer,
+    input: ParseResumeInput,
+  ): Promise<ParseResumeResult> {
     const text = await extractResumeText(buffer);
     if (text === null) {
       // Parse-failure is NON-BLOCKING (proof §4.4): return failed with

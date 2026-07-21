@@ -3,7 +3,7 @@ import { AramoError, type AramoLogger } from '@aramo/common';
 import type { ArrivalNeedingExtraction } from '@aramo/ingestion';
 import { IngestionRepository } from '@aramo/ingestion';
 import { ResumeParserService } from '@aramo/resume-parse';
-import type { TalentRecordPrefill } from '@aramo/resume-parse';
+import type { TalentRecordPrefill, ParseResumeResult } from '@aramo/resume-parse';
 import { TalentTrustService } from '@aramo/talent-trust';
 import type { DeclaredEvidenceEntry } from '@aramo/talent-trust';
 
@@ -106,6 +106,25 @@ export function buildDeclaredIdentityEntries(
   return entries;
 }
 
+// SRC-2 PR-1 — the Indeed apply résumé field path. Per Indeed's application-data
+// docs, an UPLOADED résumé's base64 bytes live at `applicant.resume.file.data`
+// (with sibling fileName/contentType). The résumé is OPTIONAL. The structured
+// "Indeed Resume" variants (applicant.resume.{json,text,html}) carry no file
+// BYTES for the deterministic parser and are NOT decoded here. Returns the base64
+// string, or null when absent — a null is a résumé-less envelope (permanent
+// done_no_identity, the 'unknown'→done_no_identity analogue). Exported for the
+// unit test (the field-path shape is asserted without standing up the poll).
+export function extractIndeedResumeBase64(envelope: unknown): string | null {
+  const obj = (v: unknown): Record<string, unknown> | null =>
+    typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null;
+  const root = obj(envelope);
+  const applicant = root === null ? null : obj(root['applicant']);
+  const resume = applicant === null ? null : obj(applicant['resume']);
+  const file = resume === null ? null : obj(resume['file']);
+  const data = file === null ? undefined : file['data'];
+  return typeof data === 'string' && data.length > 0 ? data : null;
+}
+
 function nonEmpty(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
   const trimmed = value.trim();
@@ -140,10 +159,16 @@ export class ColdIngestExtractionService {
 
     let parseResult;
     try {
-      parseResult = await this.resumeParser.parseFromStorageKey({
-        storage_key: arrival.storage_ref,
-        requestId,
-      });
+      // SRC-2 PR-1 (R8) — content-type discriminator. 'application/json' (the SRC-1
+      // apply webhook) stores a JSON envelope with the résumé base64 INSIDE it;
+      // every other content_type is a bare résumé object (existing path, unchanged).
+      parseResult =
+        arrival.content_type === 'application/json'
+          ? await this.parseJsonEnvelope(arrival.storage_ref, requestId)
+          : await this.resumeParser.parseFromStorageKey({
+              storage_key: arrival.storage_ref,
+              requestId,
+            });
     } catch (err) {
       // Transient — S3 presign / network fetch failure. Leave the gate NULL,
       // bump the attempt counter; a later tick re-picks (bounded by the cap).
@@ -196,5 +221,38 @@ export class ColdIngestExtractionService {
       entry_count: entries.length,
     });
     return { payload_id: arrival.id, outcome: 'extracted', entry_count: entries.length };
+  }
+
+  // SRC-2 PR-1 (R8) — the content-type-aware JSON-envelope path. A webhook arrival
+  // (content_type application/json) stores a JSON envelope, not a bare résumé; the
+  // résumé bytes are base64 at applicant.resume.file.data. REUSE the SAME storage
+  // fetch (ResumeParserService.fetchBytes — no duplicate presign), parse the
+  // envelope, decode the résumé, and hand the DECODED bytes to the EXISTING
+  // magic-byte extractor (parseBytes). Failure taxonomy mirrors the non-JSON path:
+  //   - fetch throw OR malformed-JSON throw → propagate → extractArrival maps to
+  //     transient_retry (bounded by attempts < cap);
+  //   - a parsed envelope with NO résumé field → empty prefill → the caller's
+  //     entries.length === 0 branch → permanent done_no_identity (the
+  //     'unknown'→done_no_identity analogue).
+  private async parseJsonEnvelope(
+    storageRef: string,
+    requestId: string,
+  ): Promise<ParseResumeResult> {
+    const bytes = await this.resumeParser.fetchBytes({
+      storage_key: storageRef,
+      requestId,
+    });
+    // Malformed JSON throws → caught by extractArrival → transient_retry (the
+    // attempts<cap budget bounds a persistently-malformed envelope).
+    const envelope: unknown = JSON.parse(bytes.toString('utf8'));
+    const resumeBase64 = extractIndeedResumeBase64(envelope);
+    if (resumeBase64 === null) {
+      // Envelope parsed, no résumé to read — permanent (never gains one on retry).
+      return { prefill: {}, parse_status: 'failed' };
+    }
+    return this.resumeParser.parseBytes(Buffer.from(resumeBase64, 'base64'), {
+      storage_key: storageRef,
+      requestId,
+    });
   }
 }

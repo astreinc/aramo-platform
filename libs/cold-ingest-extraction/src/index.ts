@@ -2,6 +2,7 @@ export { ColdIngestExtractionModule } from './lib/cold-ingest-extraction.module.
 export {
   ColdIngestExtractionService,
   buildDeclaredIdentityEntries,
+  extractIndeedResumeBase64,
   type ExtractOutcome,
   type ExtractResult,
 } from './lib/cold-ingest-extraction.service.js';
