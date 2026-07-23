@@ -1,11 +1,47 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import LegalLayout from '../../layouts/LegalLayout.astro';
 ---
 
-<BaseLayout
-  title="Subprocessors — Aramo"
-  description="Aramo subprocessors."
+<LegalLayout
+  title="Subprocessor List — Aramo"
+  description="The vendors that process personal data on Aramo's behalf, with their role and region. Infrastructure that touches no personal data is not listed."
+  heading="Subprocessor List"
 >
-  <h1>Subprocessors</h1>
-  <p>Placeholder page. Legal text is authored under PUB-4.</p>
-</BaseLayout>
+  <p>
+    These are the vendors that process personal data on Aramo’s behalf, with
+    their role and region. Infrastructure tools that do not touch personal data —
+    for example, code hosting — are not listed.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Subprocessor</th>
+        <th scope="col">Role</th>
+        <th scope="col">Region</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Amazon Web Services</td>
+        <td>Hosting, storage, email delivery, and identity services</td>
+        <td>United States</td>
+      </tr>
+      <tr>
+        <td>Anthropic</td>
+        <td>AI-assisted processing</td>
+        <td>United States</td>
+      </tr>
+      <tr>
+        <td>Google</td>
+        <td>Location and places services</td>
+        <td>United States</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    We will update this page before adding subprocessors that process personal
+    data.
+  </p>
+</LegalLayout>
