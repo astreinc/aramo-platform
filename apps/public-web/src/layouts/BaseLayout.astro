@@ -1,16 +1,46 @@
 ---
-// PUB-1a — shared base layout for the public marketing site scaffold.
-// Static-first: zero client JS. This is a minimal titled shell only — the
-// design system is PUB-2, page copy is PUB-3, legal text is PUB-4. Placeholder
-// text is vocabulary-clean on its own merits (it does not lean on the
-// apps/public-web Tier-2 exclude, per PUB-1 §2.1 / PUB-0 R-PUB-5).
+// PUB-2 — shared shell for the public marketing site. CSS-only (zero client
+// JS): design tokens (§1), self-hosted Geist (§2), header/footer/skip-link
+// shell (§3), OG/meta framework (§4). Page COPY is still PUB-3 — page bodies
+// carry placeholder text, vocabulary-clean on their own merits.
+import '../styles/tokens.css';
+import '../styles/fonts.css';
+import '../styles/global.css';
+// The critical sans weight, preloaded. `?url` yields the same hashed asset
+// Vite emits for the fonts.css @font-face (no runtime node_modules path). The
+// path is relative (not a bare `geist/...` specifier) so it bypasses the geist
+// package's `exports` map — the same resolution fonts.css uses.
+import geistSans from '../../../../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2?url';
+
 interface Props {
   title: string;
   description?: string;
+  ogType?: string;
 }
 
-const { title, description = 'Aramo — the trust layer for hiring.' } =
-  Astro.props;
+const {
+  title,
+  description = 'Aramo — trust infrastructure for the staffing industry.',
+  ogType = 'website',
+} = Astro.props;
+
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const ogImage = new URL('/og-placeholder.svg', Astro.site);
+
+const NAV = [
+  { href: '/product', label: 'Product' },
+  { href: '/how-it-works', label: 'How it works' },
+  { href: '/security', label: 'Security' },
+  { href: '/company', label: 'Company' },
+  { href: '/contact', label: 'Contact' },
+];
+
+const LEGAL = [
+  { href: '/legal/privacy', label: 'Privacy' },
+  { href: '/legal/platform-privacy', label: 'Platform privacy' },
+  { href: '/legal/terms', label: 'Terms' },
+  { href: '/legal/subprocessors', label: 'Subprocessors' },
+];
 ---
 
 <!doctype html>
@@ -19,12 +49,49 @@ const { title, description = 'Aramo — the trust layer for hiring.' } =
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
-    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+    <link rel="canonical" href={canonical} />
+    <link
+      rel="preload"
+      href={geistSans}
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+
     <title>{title}</title>
   </head>
   <body>
-    <main>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="container site-header__inner">
+        <a class="wordmark" href="/">Aramo</a>
+        <nav class="site-nav" aria-label="Primary">
+          {NAV.map((item) => <a href={item.href}>{item.label}</a>)}
+          <a class="cta" href="/get-started">Get started</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main" class="container">
       <slot />
     </main>
+
+    <footer class="site-footer">
+      <div class="container site-footer__inner">
+        <nav class="footer-legal" aria-label="Legal">
+          {LEGAL.map((item) => <a href={item.href}>{item.label}</a>)}
+        </nav>
+        <p class="footer-company">
+          © Aramo — trust infrastructure for the staffing industry.
+        </p>
+      </div>
+    </footer>
   </body>
 </html>
