@@ -1,0 +1,46 @@
+/* Aramo public-site — self-hosted Geist (PUB-2 §2).
+ *
+ * The woff2 assets come from the `geist` npm package (devDependencies, present
+ * at Astro build time). The relative paths resolve into node_modules and Vite
+ * emits hashed copies into the build output — NO CDN, NO runtime node_modules
+ * path in the shipped HTML/CSS. Variable axes (one file per family covers every
+ * weight); `font-display: swap` so text paints immediately. The critical sans
+ * weight is preloaded from BaseLayout (the `?url` import there yields the same
+ * hashed asset).
+ *
+ * R-PUB2-3 — PATH FRAGILITY: the `../../../../node_modules/geist/...` specifier
+ * is DELIBERATELY relative (not the bare `geist/...` specifier — that hits the
+ * geist package's `exports` map and fails to resolve the raw woff2). It assumes
+ * (a) this file sits at apps/public-web/src/styles/ (four levels above the
+ * workspace root) and (b) `geist` is hoisted to the ROOT node_modules. Both hold
+ * today and match the libs/fe-foundation/src/design/fonts.css precedent; if
+ * either the file depth or npm's hoisting changes, these paths — and the
+ * matching BaseLayout `?url` import — must move together. The `nx build
+ * public-web` gate fails loud if they break. */
+
+@font-face {
+  font-family: 'Geist';
+  src: url('../../../../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2')
+    format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geist';
+  src: url('../../../../node_modules/geist/dist/fonts/geist-sans/Geist-Italic[wght].woff2')
+    format('woff2-variations');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('../../../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2')
+    format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}

@@ -1,0 +1,211 @@
+/* Aramo public-site — global styles + shell (PUB-2 §3/§5/§7).
+ * CSS-only: no framework, no client JS. Mobile-first with one breakpoint. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+  font-size: var(--fs-16);
+  line-height: var(--lh-normal);
+  font-weight: var(--fw-regular);
+  color: var(--c-text);
+  background: var(--c-bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--c-accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* ---- Layout ---- */
+.container {
+  width: 100%;
+  max-width: var(--w-content);
+  margin-inline: auto;
+  padding-inline: var(--sp-6);
+}
+
+/* ---- Skip link (a11y floor) ---- */
+.skip-link {
+  position: absolute;
+  left: var(--sp-4);
+  top: -100%;
+  z-index: 100;
+  background: var(--c-surface);
+  color: var(--c-text);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-4);
+  box-shadow: var(--sh-2);
+}
+.skip-link:focus {
+  top: var(--sp-4);
+  text-decoration: none;
+}
+
+/* ---- Header ---- */
+.site-header {
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+}
+.site-header__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding-block: var(--sp-4);
+}
+.wordmark {
+  font-size: var(--fs-20);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.01em;
+  color: var(--c-text);
+}
+.wordmark:hover {
+  text-decoration: none;
+}
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+}
+.site-nav a {
+  font-size: var(--fs-14);
+  color: var(--c-text-muted);
+}
+.site-nav a:hover {
+  color: var(--c-text);
+  text-decoration: none;
+}
+.site-nav .cta {
+  font-weight: var(--fw-medium);
+  color: var(--c-accent-fg);
+  background: var(--c-accent);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-1);
+}
+.site-nav .cta:hover {
+  background: var(--c-accent-hover);
+  color: var(--c-accent-fg);
+  text-decoration: none;
+}
+
+/* ---- Main / page bodies ---- */
+main {
+  flex: 1 0 auto;
+  padding-block: var(--sp-16);
+}
+main :where(h1) {
+  font-size: var(--fs-48);
+  line-height: var(--lh-display);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.02em;
+  color: var(--c-text);
+  margin: 0 0 var(--sp-4);
+  max-width: var(--w-prose);
+}
+main :where(h2) {
+  font-size: var(--fs-36);
+  line-height: var(--lh-tight);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.01em;
+  margin: var(--sp-12) 0 var(--sp-4);
+  max-width: var(--w-prose);
+}
+main :where(p) {
+  font-size: var(--fs-20);
+  color: var(--c-text-muted);
+  margin: 0 0 var(--sp-4);
+  max-width: var(--w-prose);
+}
+
+/* Error / 404 shell treatment */
+.error-page {
+  text-align: center;
+  padding-block: var(--sp-20);
+}
+.error-page :where(h1) {
+  margin-inline: auto;
+}
+.error-page :where(p) {
+  margin-inline: auto;
+}
+
+/* ---- Footer ---- */
+.site-footer {
+  flex-shrink: 0;
+  background: var(--c-surface-2);
+  border-top: 1px solid var(--c-border);
+  padding-block: var(--sp-12);
+}
+.site-footer__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+.footer-legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5);
+}
+.footer-legal a {
+  font-size: var(--fs-14);
+  color: var(--c-text-muted);
+}
+.footer-company {
+  font-size: var(--fs-14);
+  color: var(--c-text-subtle);
+  margin: 0;
+}
+
+/* ---- Breakpoint (mobile-first; this is the one desktop step) ---- */
+@media (max-width: 640px) {
+  main :where(h1) {
+    font-size: var(--fs-36);
+  }
+  main :where(h2) {
+    font-size: var(--fs-24);
+  }
+  main :where(p) {
+    font-size: var(--fs-16);
+  }
+  .site-header__inner {
+    padding-block: var(--sp-3);
+  }
+  main {
+    padding-block: var(--sp-12);
+  }
+}

@@ -1,8 +1,25 @@
-/* PUB-1 PR-1b — brand-safe holding-page styling. Same-origin stylesheet so the
-   `default-src 'self'` CSP holds with no inline-style relaxation. Placeholder
-   only; the visual system is PUB-2 and the copy is PUB-3. */
+/* Aramo holding page — restyled onto the brand tokens (PUB-2 §6). Same-origin
+   stylesheet so the `default-src 'self'` CSP holds with no inline-style
+   relaxation.
+
+   This page is served standalone by nginx (outside the Astro/Vite build), so it
+   carries a SMALL scoped copy of the brand-core tokens rather than importing
+   apps/public-web/src/styles/tokens.css. Values mirror that file (warm-stone
+   spine + deep-teal accent) so the holding page reads as one brand with the
+   site from the first public pixel; it uses a system font stack (no bundled
+   Geist here — that is the site build's job). Brand-core parity is on the PUB-6
+   launch checklist. Copy stays the ratified single line. */
+
 :root {
-  color-scheme: light dark;
+  --c-bg: #fafaf9;
+  --c-surface: #ffffff;
+  --c-border: #e7e5e4;
+  --c-text: #1c1917;
+  --c-text-muted: #57534e;
+  --c-accent: #0f766e;
+  --c-accent-hover: #115e59;
+  --r-lg: 8px;
+  --sh-2: 0 2px 8px rgba(28, 25, 23, 0.06), 0 1px 2px rgba(28, 25, 23, 0.04);
 }
 
 * {
@@ -29,21 +46,42 @@ body {
     Arial,
     sans-serif;
   line-height: 1.5;
-  background: #0b0d10;
-  color: #f5f6f7;
+  background: var(--c-bg);
+  color: var(--c-text);
+  -webkit-font-smoothing: antialiased;
 }
 
 main {
   max-width: 40rem;
+  padding: 3rem 2.5rem;
   text-align: center;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-top: 4px solid var(--c-accent);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
 }
 
 h1 {
   font-size: clamp(1.25rem, 4vw, 2rem);
   font-weight: 600;
-  margin: 0 0 1rem;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  margin: 0 0 1.25rem;
+  color: var(--c-text);
+}
+
+p {
+  margin: 0;
+  color: var(--c-text-muted);
 }
 
 a {
-  color: inherit;
+  color: var(--c-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--c-accent-hover);
+  text-decoration: underline;
 }
