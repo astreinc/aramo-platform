@@ -1,0 +1,138 @@
+---
+// EvidenceLadder (R-PUB3-5) — public-friendly diagram of evidence strength.
+// Strongest at the top; only anchors confirm identity, hints only narrow.
+const RUNGS = [
+  {
+    label: 'Identity anchors',
+    note: 'Verified email, working relationships — these confirm who someone is.',
+    strength: 100,
+  },
+  {
+    label: 'Working relationships',
+    note: 'People and placements that vouch for real, shared history.',
+    strength: 78,
+  },
+  {
+    label: 'Corroborating sources',
+    note: 'Independent records that agree with the claims on the profile.',
+    strength: 54,
+  },
+  {
+    label: 'Hints',
+    note: 'Weak signals that can narrow a match — never confirm one.',
+    strength: 28,
+  },
+];
+---
+
+<figure class="ladder">
+  <ul class="ladder__list">
+    {
+      RUNGS.map((r, i) => (
+        <li class="ladder__rung">
+          <div class="ladder__meta">
+            <span class="ladder__index" aria-hidden="true">
+              {i + 1}
+            </span>
+            <div>
+              <p class="ladder__label">{r.label}</p>
+              <p class="ladder__note">{r.note}</p>
+            </div>
+          </div>
+          <div class="ladder__bar" aria-hidden="true">
+            <span class="ladder__fill" style={`width:${r.strength}%`} />
+          </div>
+        </li>
+      ))
+    }
+  </ul>
+  <figcaption class="ladder__caption">
+    Only anchors confirm identity; hints only narrow.
+  </figcaption>
+</figure>
+
+<style>
+  .ladder {
+    margin: 0;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-2);
+    padding: var(--sp-6);
+  }
+  .ladder__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-5);
+  }
+  .ladder__rung {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: var(--sp-4);
+    align-items: center;
+  }
+  .ladder__meta {
+    display: flex;
+    gap: var(--sp-3);
+    align-items: flex-start;
+    min-width: 0;
+  }
+  .ladder__index {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    background: var(--c-surface-2);
+    border: 1px solid var(--c-border);
+    color: var(--c-text-subtle);
+    font-size: var(--fs-14);
+    font-weight: var(--fw-semibold);
+    flex: none;
+  }
+  .ladder__label {
+    margin: 0;
+    font-weight: var(--fw-semibold);
+    color: var(--c-text);
+  }
+  .ladder__note {
+    margin: 2px 0 0;
+    font-size: var(--fs-14);
+    line-height: var(--lh-normal);
+    color: var(--c-text-muted);
+    max-width: 42ch;
+  }
+  .ladder__bar {
+    width: 96px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--c-surface-2);
+    overflow: hidden;
+  }
+  .ladder__fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--c-accent);
+  }
+  .ladder__caption {
+    margin: var(--sp-5) 0 0;
+    padding-top: var(--sp-4);
+    border-top: 1px solid var(--c-border);
+    font-size: var(--fs-14);
+    color: var(--c-text-subtle);
+  }
+  @media (max-width: 480px) {
+    .ladder__rung {
+      grid-template-columns: 1fr;
+      gap: var(--sp-2);
+    }
+    .ladder__bar {
+      width: 100%;
+    }
+  }
+</style>

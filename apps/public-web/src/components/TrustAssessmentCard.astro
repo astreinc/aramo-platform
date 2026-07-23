@@ -1,0 +1,206 @@
+---
+// TrustAssessmentCard (R-PUB3-5) — the product's face. Renders the four
+// assessment dimensions, each with a status mark and a one-line "why" receipt.
+// GUARDRAIL (R-PUB3-8): dimensions-with-receipts ONLY — never a grade, letter,
+// score, rank, or number attached to the person.
+interface Props {
+  subject?: { name: string; role: string };
+  variant?: 'full' | 'compact';
+}
+const { subject, variant = 'full' } = Astro.props;
+
+const DIMENSIONS = [
+  {
+    dim: 'Identity',
+    status: 'Independently Verified',
+    why: 'Anchored to working relationships and a platform-verified email.',
+  },
+  {
+    dim: 'Claims',
+    status: 'Corroborated',
+    why: 'Roles confirmed by independent sources, not self-reported.',
+  },
+  {
+    dim: 'Continuity',
+    status: 'Established',
+    why: 'A consistent record over time, with no gaps asserted.',
+  },
+  {
+    dim: 'Eligibility',
+    status: 'Authoritative',
+    why: 'Work authorization confirmed at the source of record.',
+  },
+];
+---
+
+<article class:list={['tac', variant === 'compact' && 'tac--compact']}>
+  <header class="tac__head">
+    <div>
+      <p class="tac__eyebrow">Trust assessment</p>
+      {
+        subject && (
+          <p class="tac__subject">
+            <span class="tac__name">{subject.name}</span>
+            <span class="tac__role">{subject.role}</span>
+          </p>
+        )
+      }
+    </div>
+    <span class="tac__seal" aria-hidden="true">
+      <svg viewBox="0 0 16 16" width="16" height="16">
+        <path
+          d="M13 4.5 6.5 11 3 7.5"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"></path>
+      </svg>
+    </span>
+  </header>
+
+  <ul class="tac__list">
+    {
+      DIMENSIONS.map((d) => (
+        <li class="tac__row">
+          <span class="tac__mark" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="14" height="14">
+              <path
+                d="M13 4.5 6.5 11 3 7.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </span>
+          <div class="tac__text">
+            <p class="tac__line">
+              <span class="tac__dim">{d.dim}</span>
+              <span class="tac__status">{d.status}</span>
+            </p>
+            {variant === 'full' && <p class="tac__why">{d.why}</p>}
+          </div>
+        </li>
+      ))
+    }
+  </ul>
+
+  <p class="tac__foot">Evidence, graded. Never a score.</p>
+</article>
+
+<style>
+  .tac {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-3);
+    padding: var(--sp-6);
+    max-width: 30rem;
+  }
+  .tac__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--sp-4);
+    padding-bottom: var(--sp-4);
+    border-bottom: 1px solid var(--c-border);
+  }
+  .tac__eyebrow {
+    font-size: var(--fs-14);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--c-text-subtle);
+    margin: 0;
+  }
+  .tac__subject {
+    margin: var(--sp-2) 0 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .tac__name {
+    font-weight: var(--fw-semibold);
+    color: var(--c-text);
+  }
+  .tac__role {
+    font-size: var(--fs-14);
+    color: var(--c-text-muted);
+  }
+  .tac__seal {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: var(--c-accent-soft);
+    color: var(--c-accent);
+    flex: none;
+  }
+  .tac__list {
+    list-style: none;
+    margin: var(--sp-4) 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+  }
+  .tac__row {
+    display: flex;
+    gap: var(--sp-3);
+    align-items: flex-start;
+  }
+  .tac__mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--c-accent-soft);
+    color: var(--c-accent);
+    flex: none;
+    margin-top: 1px;
+  }
+  .tac__text {
+    min-width: 0;
+  }
+  .tac__line {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--sp-2);
+  }
+  .tac__dim {
+    font-weight: var(--fw-semibold);
+    color: var(--c-text);
+  }
+  .tac__status {
+    font-size: var(--fs-14);
+    color: var(--c-accent-active);
+  }
+  .tac__why {
+    margin: 2px 0 0;
+    font-size: var(--fs-14);
+    line-height: var(--lh-normal);
+    color: var(--c-text-muted);
+  }
+  .tac__foot {
+    margin: var(--sp-5) 0 0;
+    padding-top: var(--sp-4);
+    border-top: 1px solid var(--c-border);
+    font-size: var(--fs-14);
+    font-weight: var(--fw-medium);
+    color: var(--c-text-subtle);
+  }
+  .tac--compact {
+    padding: var(--sp-5);
+    box-shadow: var(--sh-2);
+  }
+  .tac--compact .tac__list {
+    gap: var(--sp-3);
+  }
+</style>

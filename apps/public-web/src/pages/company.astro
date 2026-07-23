@@ -2,7 +2,124 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 ---
 
-<BaseLayout title="Company — Aramo" description="About Aramo.">
-  <h1>Company</h1>
-  <p>Placeholder page. Copy is authored under PUB-3.</p>
+<BaseLayout
+  title="Company — Aramo"
+  description="Aramo is built by Astre Consulting Services, which runs its own staffing desk on Aramo every day. We built the system we needed and could not buy."
+>
+  <!-- Hero -->
+  <section class="section hero">
+    <div class="container">
+      <span class="eyebrow">Company</span>
+      <h1 class="hero__display">Built inside a staffing firm.</h1>
+      <p class="hero__sub">
+        Aramo is built by Astre Consulting Services — and Astre runs its own
+        staffing desk on Aramo every day.
+      </p>
+    </div>
+  </section>
+
+  <!-- Story -->
+  <section class="section section--bleed section--alt">
+    <div class="container">
+      <div class="prose-block">
+        <p class="prose-block__lead">
+          We built the system we needed and could not buy: one where trust is
+          infrastructure, not a claim.
+        </p>
+        <p>
+          Every day, our recruiters submit real people to real clients. We felt
+          the cost of resumes that could not be verified, profiles that could not
+          be trusted, and claims no system had a place to prove. So we built the
+          proof in — first for ourselves, now for every firm that runs a desk
+          like ours.
+        </p>
+        <p>
+          Aramo is what a staffing platform looks like when the people building it
+          are on the desk too.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Mission -->
+  <section class="section">
+    <div class="container">
+      <div class="split">
+        <div class="split__body">
+          <span class="eyebrow">Our mission</span>
+          <h2 class="section-title">Make trust the infrastructure of hiring.</h2>
+          <p class="lead">
+            Not a badge, not a promise — a system where every submittal carries
+            its evidence, and every decision can be traced to the proof behind
+            it.
+          </p>
+        </div>
+        <div class="split__visual">
+          <div class="mission-card">
+            <p class="mission-card__k">On the desk, every day</p>
+            <p class="mission-card__v">We run Aramo ourselves</p>
+            <p class="mission-card__note">
+              Real submittals, real clients — the proof is that we depend on it
+              too.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contact invite -->
+  <section class="section section--bleed section--deep cta-band">
+    <div class="container">
+      <h2 class="section-title">Come see the desk we run.</h2>
+      <div class="cluster">
+        <a class="btn btn--primary" href="/get-started">Get started</a>
+        <a class="btn btn--ghost" href="/contact">Talk to us</a>
+      </div>
+    </div>
+  </section>
 </BaseLayout>
+
+<style>
+  .prose-block {
+    max-width: var(--w-prose);
+  }
+  .prose-block__lead {
+    font-size: var(--fs-24);
+    line-height: var(--lh-tight);
+    font-weight: var(--fw-medium);
+    color: var(--c-text);
+    margin: 0 0 var(--sp-6);
+  }
+  .prose-block p {
+    font-size: var(--fs-20);
+    line-height: var(--lh-normal);
+    color: var(--c-text-muted);
+    margin: 0 0 var(--sp-5);
+  }
+  .mission-card {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-top: 4px solid var(--c-accent);
+    border-radius: var(--r-lg);
+    padding: var(--sp-6);
+    box-shadow: var(--sh-2);
+  }
+  .mission-card__k {
+    margin: 0;
+    font-size: var(--fs-14);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--c-text-subtle);
+  }
+  .mission-card__v {
+    margin: var(--sp-2) 0 0;
+    font-size: var(--fs-24);
+    font-weight: var(--fw-semibold);
+    color: var(--c-text);
+  }
+  .mission-card__note {
+    margin: var(--sp-3) 0 0;
+    color: var(--c-text-muted);
+  }
+</style>

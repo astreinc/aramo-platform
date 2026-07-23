@@ -1,8 +1,142 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import ProductFrame from '../components/ProductFrame.astro';
+import TrustAssessmentCard from '../components/TrustAssessmentCard.astro';
+import PackagingTiers from '../components/PackagingTiers.astro';
+import ClaimStrip from '../components/ClaimStrip.astro';
 ---
 
-<BaseLayout title="Product — Aramo" description="What Aramo does.">
-  <h1>Product</h1>
-  <p>Placeholder product page. Copy is authored under PUB-3.</p>
+<BaseLayout
+  title="Product — Aramo"
+  description="One platform, two engines: an ATS that runs the whole desk and an intelligence pipeline that resolves, verifies, and continuously assesses every arrival."
+>
+  <!-- Intro + ProductFrame hero -->
+  <section class="section hero">
+    <div class="container">
+      <span class="eyebrow">Product</span>
+      <h1 class="hero__display">One platform, two engines.</h1>
+      <p class="hero__sub">
+        An ATS that runs the whole desk, and an intelligence pipeline that
+        resolves, verifies, and continuously assesses every arrival. Talent that
+        reaches your clients has already been proven.
+      </p>
+      <div class="frame-wrap">
+        <ProductFrame />
+      </div>
+    </div>
+  </section>
+
+  <!-- #ats -->
+  <section id="ats" class="section section--bleed section--alt">
+    <div class="container">
+      <div class="split">
+        <div class="split__body">
+          <span class="eyebrow">The ATS</span>
+          <h2 class="section-title">Run the desk.</h2>
+          <p class="lead">
+            Client relationships, requisitions, submittals, interviews,
+            placements, billing-ready records. Built for IT staffing workflows,
+            not adapted to them.
+          </p>
+          <ClaimStrip
+            claims={[
+              'Clients & requisitions',
+              'Submittals & interviews',
+              'Placements & billing-ready records',
+            ]}
+          />
+        </div>
+        <div class="split__visual">
+          <ul class="feature-list">
+            <li>One desk for every client relationship and open requisition.</li>
+            <li>
+              Submittals that carry their evidence, from first touch to
+              placement.
+            </li>
+            <li>
+              Records ready for billing — the workflow ends where the invoice
+              begins.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- #intelligence -->
+  <section id="intelligence" class="section">
+    <div class="container">
+      <div class="split split--reverse">
+        <div class="split__body">
+          <span class="eyebrow">The intelligence pipeline</span>
+          <h2 class="section-title">Know who you're submitting.</h2>
+          <p class="lead">
+            Multi-channel arrivals resolved to one person. Independent channels
+            raise genuineness. Platform-run verification. Consistency checks
+            across sources. Continuity that must be earned, not asserted.
+          </p>
+          <p class="section__after">
+            <a class="deeper-link" href="/how-it-works"
+              >Follow an arrival end to end</a
+            >
+          </p>
+        </div>
+        <div class="split__visual">
+          <TrustAssessmentCard variant="compact" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- #packaging -->
+  <section id="packaging" class="section section--bleed section--alt">
+    <div class="container">
+      <span class="eyebrow">Packaging</span>
+      <h2 class="section-title">Three ways to adopt Aramo.</h2>
+      <p class="lead">
+        Start where it fits your desk today; grow into the full platform when it
+        does.
+      </p>
+      <div class="tiers-wrap">
+        <PackagingTiers full={true} />
+      </div>
+    </div>
+  </section>
+
+  <!-- Closing CTA -->
+  <section class="section section--bleed section--deep cta-band">
+    <div class="container">
+      <h2 class="section-title">See the whole desk, backed by evidence.</h2>
+      <div class="cluster">
+        <a class="btn btn--primary" href="/get-started">Get started</a>
+        <a class="btn btn--ghost" href="/how-it-works">See how it works</a>
+      </div>
+    </div>
+  </section>
 </BaseLayout>
+
+<style>
+  .frame-wrap,
+  .tiers-wrap {
+    margin-top: var(--sp-8);
+  }
+  .section__after {
+    margin: var(--sp-5) 0 0;
+  }
+  .feature-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+  }
+  .feature-list li {
+    background: var(--c-bg);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-md);
+    padding: var(--sp-4) var(--sp-5);
+    color: var(--c-text);
+    box-shadow: var(--sh-1);
+  }
+</style>

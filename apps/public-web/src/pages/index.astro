@@ -1,11 +1,164 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import TrustAssessmentCard from '../components/TrustAssessmentCard.astro';
+import ContrastPanel from '../components/ContrastPanel.astro';
+import ProductFrame from '../components/ProductFrame.astro';
+import PackagingTiers from '../components/PackagingTiers.astro';
+import ClaimStrip from '../components/ClaimStrip.astro';
 ---
 
 <BaseLayout
-  title="Aramo"
-  description="Aramo — the trust layer for hiring."
+  title="Aramo — trust infrastructure for staffing"
+  description="Aramo is trust infrastructure for staffing — an ATS and candidate intelligence platform that grades every profile by evidence, so every submittal carries proof, not claims."
 >
-  <h1>Aramo</h1>
-  <p>Placeholder home page. Copy is authored under PUB-3.</p>
+  <!-- Hero -->
+  <section class="section hero">
+    <div class="container">
+      <div class="split">
+        <div class="split__body">
+          <h1 class="hero__display">The resume is not the candidate.</h1>
+          <p class="hero__sub">
+            Aramo is trust infrastructure for staffing — an ATS and candidate
+            intelligence platform that grades every profile by evidence, so
+            every submittal carries proof, not claims.
+          </p>
+          <div class="cluster">
+            <a class="btn btn--primary" href="/get-started">Get started</a>
+            <a class="btn btn--ghost" href="/how-it-works">See how it works</a>
+          </div>
+        </div>
+        <div class="split__visual">
+          <TrustAssessmentCard />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Problem -->
+  <section class="section section--bleed section--alt">
+    <div class="container">
+      <span class="eyebrow">The problem</span>
+      <h2 class="section-title">Fewer bad submittals start here.</h2>
+      <p class="lead">
+        Ghost candidates, recycled profiles, unverifiable claims. Legacy systems
+        store the resume as if it were the person — they have no place to put
+        proof.
+      </p>
+      <div class="problem__panel">
+        <ContrastPanel />
+      </div>
+      <a class="deeper-link" href="/how-it-works">See how the evidence is built</a>
+    </div>
+  </section>
+
+  <!-- Assessment -->
+  <section class="section">
+    <div class="container">
+      <div class="split">
+        <div class="split__body">
+          <span class="eyebrow">Assessment</span>
+          <h2 class="section-title">Evidence, graded. Never a score.</h2>
+          <p class="lead">
+            Each dimension is answered with receipts — the reason behind the
+            result, not a verdict you have to trust. Trust decisions in minutes,
+            not reference-chasing weeks.
+          </p>
+          <ClaimStrip
+            claims={[
+              'Your recruiters see why',
+              'Your clients get proof',
+              'Candidates are never reduced to a number',
+            ]}
+          />
+          <p class="section__after">
+            <a class="deeper-link" href="/how-it-works"
+              >How the four dimensions work</a
+            >
+          </p>
+        </div>
+        <div class="split__visual">
+          <TrustAssessmentCard variant="compact" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Product split -->
+  <section class="section section--bleed section--alt">
+    <div class="container">
+      <span class="eyebrow">One platform, two engines</span>
+      <h2 class="section-title">One system running the whole desk.</h2>
+      <p class="lead">
+        The ATS is the heart — clients, requisitions, submittals, placements. The
+        intelligence pipeline is the bloodstream — every arrival resolved,
+        verified, and continuously assessed. One system; each makes the other
+        better.
+      </p>
+      <div class="frame-wrap">
+        <ProductFrame />
+      </div>
+      <a class="deeper-link" href="/product">Explore the product</a>
+    </div>
+  </section>
+
+  <!-- Proof -->
+  <section class="section section--bleed section--deep">
+    <div class="container">
+      <span class="eyebrow">Proof</span>
+      <h2 class="section-title">Built inside a staffing firm.</h2>
+      <p class="lead">
+        Astre runs its own desk on Aramo every day. We built the system we needed
+        and could not buy — one where trust is infrastructure, not a claim.
+      </p>
+      <a class="deeper-link" href="/company">Why we built Aramo</a>
+    </div>
+  </section>
+
+  <!-- Packaging teaser -->
+  <section class="section">
+    <div class="container">
+      <span class="eyebrow">Packaging</span>
+      <h2 class="section-title">Adopt the way that fits your desk.</h2>
+      <p class="lead">
+        Run the full platform, start with the ATS, or add intelligence to the
+        ATS you already have.
+      </p>
+      <PackagingTiers />
+      <a class="deeper-link" href="/product#packaging">Compare the packages</a>
+    </div>
+  </section>
+
+  <!-- Stance -->
+  <section class="section section--bleed section--alt">
+    <div class="container">
+      <span class="eyebrow">Where the machine stops</span>
+      <h2 class="section-title">AI proposes, people decide.</h2>
+      <p class="lead">
+        Every assessment is auditable — built for compliance reviews, not around
+        them.
+      </p>
+      <a class="deeper-link" href="/security">Our stance on trust and AI</a>
+    </div>
+  </section>
+
+  <!-- Closing CTA -->
+  <section class="section section--bleed section--deep cta-band">
+    <div class="container">
+      <h2 class="section-title">Put proof behind your next submittal.</h2>
+      <div class="cluster">
+        <a class="btn btn--primary" href="/get-started">Get started</a>
+        <a class="btn btn--ghost" href="/product">See the product</a>
+      </div>
+    </div>
+  </section>
 </BaseLayout>
+
+<style>
+  .problem__panel,
+  .frame-wrap {
+    margin: var(--sp-8) 0;
+  }
+  .section__after {
+    margin: var(--sp-5) 0 0;
+  }
+</style>

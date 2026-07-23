@@ -1,0 +1,276 @@
+---
+// ProductFrame (R-PUB3-8) — a composed, idealized Aramo product surface in the
+// site's own design language (CSS on tokens; NOT a screenshot). A requisition
+// workspace: header, aggregate pipeline stage counts, an evidence-graded talent
+// list, with the TrustAssessmentCard open on one person.
+//
+// HARD GUARDRAIL (Charter-backed): NO per-person grade, letter, score, rank, or
+// number. Rows show dimensions-as-marks only; the counts are AGGREGATE stage
+// totals, not per-person. All names are obviously fictional.
+import TrustAssessmentCard from './TrustAssessmentCard.astro';
+
+const STAGES = [
+  { label: 'New', count: 6 },
+  { label: 'Screening', count: 4 },
+  { label: 'Submitted', count: 3 },
+  { label: 'Interview', count: 2 },
+];
+
+const DIMS = ['Identity', 'Claims', 'Continuity', 'Eligibility'];
+
+const TALENT = [
+  { name: 'Priya Nair', role: 'Senior Platform Engineer', selected: true },
+  { name: 'Marcus Bell', role: 'Backend Engineer', selected: false },
+  { name: 'Lena Fischer', role: 'Site Reliability Engineer', selected: false },
+  { name: 'Diego Santos', role: 'Data Engineer', selected: false },
+];
+
+const initials = (n: string) =>
+  n
+    .split(' ')
+    .map((p) => p[0])
+    .join('');
+---
+
+<div class="frame" role="img" aria-label="Aramo requisition workspace — an evidence-graded talent list with one assessment open. Illustrative; names are fictional.">
+  <div class="frame__chrome" aria-hidden="true">
+    <span class="frame__dots"><i></i><i></i><i></i></span>
+    <span class="frame__crumb">Requisition · Senior Platform Engineer</span>
+  </div>
+
+  <div class="frame__body">
+    <div class="frame__main">
+      <div class="frame__reqhead">
+        <p class="frame__reqtitle">Senior Platform Engineer</p>
+        <p class="frame__reqmeta">Northwind Robotics · 3 openings</p>
+        <ul class="frame__stages">
+          {
+            STAGES.map((s) => (
+              <li class="frame__stage">
+                <span class="frame__stagecount">{s.count}</span>
+                <span class="frame__stagelabel">{s.label}</span>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+
+      <ul class="frame__talent">
+        {
+          TALENT.map((t) => (
+            <li class:list={['frame__row', t.selected && 'frame__row--selected']}>
+              <span class="frame__avatar" aria-hidden="true">
+                {initials(t.name)}
+              </span>
+              <span class="frame__person">
+                <span class="frame__name">{t.name}</span>
+                <span class="frame__role">{t.role}</span>
+              </span>
+              <span
+                class="frame__dims"
+                aria-label="All four dimensions assessed"
+              >
+                {DIMS.map((d) => (
+                  <span class="frame__dim" title={d}>
+                    <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+                      <path
+                        d="M13 4.5 6.5 11 3 7.5"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </span>
+                ))}
+              </span>
+            </li>
+          ))
+        }
+      </ul>
+      <p class="frame__legend">
+        Every profile is assessed across four dimensions — Identity, Claims,
+        Continuity, Eligibility. People are never scored or ranked.
+      </p>
+    </div>
+
+    <div class="frame__aside">
+      <TrustAssessmentCard
+        subject={{ name: 'Priya Nair', role: 'Senior Platform Engineer' }}
+        variant="compact"
+      />
+    </div>
+  </div>
+</div>
+
+<style>
+  .frame {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border-strong);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-3);
+    overflow: hidden;
+  }
+  .frame__chrome {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--c-surface-2);
+    border-bottom: 1px solid var(--c-border);
+  }
+  .frame__dots {
+    display: inline-flex;
+    gap: 6px;
+  }
+  .frame__dots i {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--c-border-strong);
+  }
+  .frame__crumb {
+    font-size: var(--fs-14);
+    color: var(--c-text-subtle);
+  }
+  .frame__body {
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 0;
+  }
+  .frame__main {
+    padding: var(--sp-5);
+    border-right: 1px solid var(--c-border);
+    min-width: 0;
+  }
+  .frame__reqtitle {
+    margin: 0;
+    font-size: var(--fs-20);
+    font-weight: var(--fw-semibold);
+    color: var(--c-text);
+  }
+  .frame__reqmeta {
+    margin: 2px 0 var(--sp-4);
+    font-size: var(--fs-14);
+    color: var(--c-text-muted);
+  }
+  .frame__stages {
+    list-style: none;
+    margin: 0 0 var(--sp-5);
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+  }
+  .frame__stage {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    background: var(--c-surface-2);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-md);
+    padding: 4px var(--sp-3);
+  }
+  .frame__stagecount {
+    font-weight: var(--fw-semibold);
+    color: var(--c-text);
+  }
+  .frame__stagelabel {
+    font-size: var(--fs-14);
+    color: var(--c-text-subtle);
+  }
+  .frame__talent {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .frame__row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3);
+    border-radius: var(--r-md);
+    border: 1px solid transparent;
+  }
+  .frame__row--selected {
+    background: var(--c-accent-soft);
+    border-color: var(--c-accent);
+  }
+  .frame__avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    background: var(--c-surface-2);
+    border: 1px solid var(--c-border);
+    font-size: var(--fs-14);
+    font-weight: var(--fw-semibold);
+    color: var(--c-text-muted);
+    flex: none;
+  }
+  .frame__person {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+  .frame__name {
+    font-weight: var(--fw-medium);
+    color: var(--c-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .frame__role {
+    font-size: var(--fs-14);
+    color: var(--c-text-subtle);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .frame__dims {
+    display: inline-flex;
+    gap: 4px;
+    flex: none;
+  }
+  .frame__dim {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--c-accent-soft);
+    color: var(--c-accent);
+  }
+  .frame__legend {
+    margin: var(--sp-4) 0 0;
+    font-size: var(--fs-14);
+    line-height: var(--lh-normal);
+    color: var(--c-text-subtle);
+  }
+  .frame__aside {
+    padding: var(--sp-5);
+    background: var(--c-bg);
+    display: flex;
+    align-items: flex-start;
+  }
+  .frame__aside :global(.tac) {
+    max-width: none;
+    width: 100%;
+  }
+  @media (max-width: 820px) {
+    .frame__body {
+      grid-template-columns: 1fr;
+    }
+    .frame__main {
+      border-right: none;
+      border-bottom: 1px solid var(--c-border);
+    }
+  }
+</style>
