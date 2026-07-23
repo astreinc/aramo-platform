@@ -42,6 +42,18 @@ export default defineConfig({
       // the named exports), OR Astro stops externalizing its bundled cookie.
       // Verify removal by deleting this alias and confirming `nx build
       // public-web` still exits 0. See PUB-1a Gate-5 report (R-S1-1 / R-S2-2).
+      //
+      // ─── SIBLING NOTE — vitest toolchain override (R-FIX-1) ───
+      // Adding astro also bumped the vitest-SHARED chain via npm dedup (rolldown
+      // rc.17 → 1.1.5, vite 8.0.10 → 8.1.5); rolldown 1.1.5 rejects TS
+      // constructor parameter decorators (`@Inject()`), breaking DI/integration
+      // specs across libs/mailer, libs/identity, libs/task, apps/api. That is
+      // pinned OUT-OF-BAND in the root package.json `overrides` block:
+      //   "vitest": { "vite": "8.0.10" }   (JSON carries no comments, so the
+      // REMOVE-WHEN lives here). REMOVE WHEN: upstream rolldown parses TS param
+      // decorators again; RETEST on every vitest/vite upgrade. Astro keeps its
+      // own nested vite@8.1.5/rolldown@1.1.5 — this override touches only the
+      // vitest subtree, so the alias above and the astro build are unaffected.
       alias: { cookie: astroCookie },
     },
   },
