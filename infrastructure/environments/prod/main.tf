@@ -67,3 +67,18 @@ module "resume_bucket" {
   retention_days_extended = var.resume_bucket_retention_days_extended
   tags                    = local.common_tags
 }
+
+# Front-Door Migration PR-0 (ADR-0023) — the apex A record for aramo.ai + the
+# least-privilege certbot DNS-01 principal. Prod-only (Ruling 6): DNS for
+# aramo.ai is singular reality, not a per-env matrix concern. Both ship inert
+# relative to the running front door; they unblock PR-2's certbot sidecar.
+module "route53_apex" {
+  source  = "../../modules/route53-apex"
+  apex_ip = var.apex_ip
+}
+
+module "certbot_dns" {
+  source  = "../../modules/iam-certbot-dns"
+  zone_id = module.route53_apex.zone_id
+  tags    = local.common_tags
+}
