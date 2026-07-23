@@ -1,0 +1,30 @@
+---
+// PUB-1a — shared base layout for the public marketing site scaffold.
+// Static-first: zero client JS. This is a minimal titled shell only — the
+// design system is PUB-2, page copy is PUB-3, legal text is PUB-4. Placeholder
+// text is vocabulary-clean on its own merits (it does not lean on the
+// apps/public-web Tier-2 exclude, per PUB-1 §2.1 / PUB-0 R-PUB-5).
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = 'Aramo — the trust layer for hiring.' } =
+  Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>
