@@ -70,7 +70,6 @@
     "cookie-parser": "~1.4.7",
     "disposable-email-domains-js": "^1.25.0",
     "free-email-domains": "^1.9.47",
-    "geist": "~1.7.2",
     "jose": "~6.2.3",
     "mammoth": "~1.12.0",
     "pdf-parse": "~1.1.1",
@@ -122,6 +121,7 @@
     "eslint": "~10.4.1",
     "eslint-config-prettier": "~10.1.0",
     "eslint-plugin-import-x": "~4.16.2",
+    "geist": "~1.7.2",
     "globals": "~16.4.0",
     "jsdom": "~29.1.1",
     "nx": "~22.7.5",
@@ -137,7 +137,7 @@
     "yaml": "~2.9.0"
   },
   "overrides": {
-    "fast-uri": "3.1.2",
+    "fast-uri": "3.1.4",
     "hono": "4.12.25",
     "multer": "2.2.0",
     "vitest": {
