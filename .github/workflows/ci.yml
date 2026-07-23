@@ -477,7 +477,7 @@ jobs:
     needs: changes
     strategy:
       matrix:
-        environment: [dev, staging, prod]
+        environment: [dev, staging, prod, public-site]
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v4
