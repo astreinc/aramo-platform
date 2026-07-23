@@ -1,8 +1,175 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import EvidenceLadder from '../components/EvidenceLadder.astro';
+
+const STOPS = [
+  {
+    n: 1,
+    id: 'arrive',
+    title: 'Arrive',
+    body: 'Every channel arrival is kept as evidence, provenance intact. Nothing is flattened into a resume on the way in.',
+  },
+  {
+    n: 3,
+    id: 'verify',
+    title: 'Verify',
+    body: 'Independent, platform-run checks. Verification the candidate carries forward with consent — proven once, reusable with permission.',
+  },
+  {
+    n: 4,
+    id: 'assess',
+    title: 'Assess',
+    body: 'Four dimensions, each answered with receipts. Assessments decay — trust must stay current, so it is continuously re-checked.',
+  },
+  {
+    n: 5,
+    id: 'submit',
+    title: 'Submit with proof',
+    body: 'The submittal carries the assessment. Clients see why — submittals they stop second-guessing.',
+  },
+];
 ---
 
-<BaseLayout title="How it works — Aramo" description="How Aramo works.">
-  <h1>How it works</h1>
-  <p>Placeholder page. Copy is authored under PUB-3.</p>
+<BaseLayout
+  title="How it works — Aramo"
+  description="A candidate arrives, resolves to one person, is verified and assessed across four dimensions, and reaches your client already backed by evidence."
+>
+  <!-- Hero -->
+  <section class="section hero">
+    <div class="container">
+      <span class="eyebrow">How it works</span>
+      <h1 class="hero__display">From arrival to proof, in five stops.</h1>
+      <p class="hero__sub">
+        Talent arrives already resolved and verified. Here is the journey every
+        profile takes before it ever reaches your client.
+      </p>
+    </div>
+  </section>
+
+  <!-- Stop 1: Arrive -->
+  <section id={STOPS[0].id} class="section section--bleed section--alt">
+    <div class="container">
+      <div class="stop">
+        <span class="stop__n" aria-hidden="true">{STOPS[0].n}</span>
+        <div class="stop__body">
+          <h2 class="section-title">{STOPS[0].title}</h2>
+          <p class="lead">{STOPS[0].body}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stop 2: Resolve (EvidenceLadder) -->
+  <section id="resolve" class="section">
+    <div class="container">
+      <div class="split">
+        <div class="split__body">
+          <div class="stop">
+            <span class="stop__n" aria-hidden="true">2</span>
+            <div class="stop__body">
+              <h2 class="section-title">Resolve</h2>
+              <p class="lead">
+                Arrivals collapse to one person only when identity anchors say
+                so. Evidence has a strength order — anchors confirm, hints only
+                narrow.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="split__visual">
+          <EvidenceLadder />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stops 3-5 -->
+  {
+    STOPS.slice(1).map((s) => (
+      <section id={s.id} class="section section--bleed section--alt">
+        <div class="container">
+          <div class="stop">
+            <span class="stop__n" aria-hidden="true">
+              {s.n}
+            </span>
+            <div class="stop__body">
+              <h2 class="section-title">{s.title}</h2>
+              <p class="lead">{s.body}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    ))
+  }
+
+  <!-- Stance callout -->
+  <section class="section">
+    <div class="container">
+      <aside class="stance">
+        <span class="eyebrow">A design choice, stated plainly</span>
+        <p class="stance__text">
+          False merges are catastrophic — mixing two people is worse than
+          keeping them apart. So the engine splits when unsure. Precision over
+          convenience, on purpose.
+        </p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- Closing CTA -->
+  <section class="section section--bleed section--deep cta-band">
+    <div class="container">
+      <h2 class="section-title">Every submittal, backed by evidence.</h2>
+      <div class="cluster">
+        <a class="btn btn--primary" href="/get-started">Get started</a>
+        <a class="btn btn--ghost" href="/product">See the product</a>
+      </div>
+    </div>
+  </section>
 </BaseLayout>
+
+<style>
+  .stop {
+    display: flex;
+    gap: var(--sp-5);
+    align-items: flex-start;
+  }
+  .stop__n {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 999px;
+    background: var(--c-accent-soft);
+    color: var(--c-accent-active);
+    font-size: var(--fs-20);
+    font-weight: var(--fw-semibold);
+    flex: none;
+  }
+  .stop__body .section-title {
+    margin-top: 2px;
+  }
+  .stance {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-left: 4px solid var(--c-accent);
+    border-radius: var(--r-md);
+    padding: var(--sp-6);
+    box-shadow: var(--sh-1);
+  }
+  .stance__text {
+    margin: var(--sp-2) 0 0;
+    font-size: var(--fs-20);
+    line-height: var(--lh-normal);
+    color: var(--c-text);
+    max-width: var(--w-prose);
+  }
+  @media (max-width: 640px) {
+    .stop__n {
+      width: 40px;
+      height: 40px;
+      font-size: var(--fs-16);
+    }
+  }
+</style>

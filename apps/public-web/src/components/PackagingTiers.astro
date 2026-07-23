@@ -1,0 +1,164 @@
+---
+// PackagingTiers (R-PUB3-5) — three ways to adopt Aramo. `full` adds the detail
+// list; the teaser variant is the home surface that links to /product#packaging.
+interface Props {
+  full?: boolean;
+}
+const { full = false } = Astro.props;
+
+const TIERS = [
+  {
+    name: 'Full platform',
+    tag: 'The way Aramo is meant to run',
+    line: 'The ATS and the intelligence pipeline together — one system, every submittal backed by evidence.',
+    points: [
+      'Run the whole desk: clients, requisitions, submittals, placements',
+      'Every arrival resolved, verified, and continuously assessed',
+      'Proof travels with the submittal',
+    ],
+    featured: true,
+  },
+  {
+    name: 'ATS',
+    tag: 'Start with the desk',
+    line: 'The applicant tracking system built for IT staffing workflows — adopt the desk first, add intelligence when you are ready.',
+    points: [
+      'Client relationships, requisitions, submittals, placements',
+      'Built for staffing workflows, not adapted to them',
+      'Ready for the intelligence pipeline when you are',
+    ],
+    featured: false,
+  },
+  {
+    name: 'Intelligence for your existing ATS',
+    tag: 'Keep your system of record',
+    line: 'Works with the ATS you have; better with ours. Add evidence-graded assessment without leaving your current desk.',
+    points: [
+      'Resolution, verification, and assessment as a layer',
+      'Keep your current system of record',
+      'A path to the full platform when it fits',
+    ],
+    featured: false,
+  },
+];
+---
+
+<ul class:list={['tiers', full && 'tiers--full']}>
+  {
+    TIERS.map((t) => (
+      <li class:list={['tier', t.featured && 'tier--featured']}>
+        {t.featured && <span class="tier__badge">Recommended</span>}
+        <p class="tier__name">{t.name}</p>
+        <p class="tier__tag">{t.tag}</p>
+        <p class="tier__line">{t.line}</p>
+        {full && (
+          <ul class="tier__points">
+            {t.points.map((p) => (
+              <li>
+                <span class="tier__check" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" width="13" height="13">
+                    <path
+                      d="M13 4.5 6.5 11 3 7.5"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                {p}
+              </li>
+            ))}
+          </ul>
+        )}
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .tiers {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--sp-5);
+  }
+  .tier {
+    position: relative;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-1);
+    padding: var(--sp-6);
+    display: flex;
+    flex-direction: column;
+  }
+  .tier--featured {
+    border-color: var(--c-accent);
+    box-shadow: var(--sh-2);
+  }
+  .tier__badge {
+    position: absolute;
+    top: calc(-1 * var(--sp-3));
+    left: var(--sp-6);
+    font-size: var(--fs-14);
+    font-weight: var(--fw-medium);
+    color: var(--c-accent-fg);
+    background: var(--c-accent);
+    padding: 2px var(--sp-3);
+    border-radius: 999px;
+  }
+  .tier__name {
+    margin: 0;
+    font-size: var(--fs-20);
+    font-weight: var(--fw-semibold);
+    color: var(--c-text);
+  }
+  .tier__tag {
+    margin: var(--sp-1) 0 0;
+    font-size: var(--fs-14);
+    font-weight: var(--fw-medium);
+    color: var(--c-accent-active);
+  }
+  .tier__line {
+    margin: var(--sp-3) 0 0;
+    font-size: var(--fs-16);
+    line-height: var(--lh-normal);
+    color: var(--c-text-muted);
+  }
+  .tier__points {
+    list-style: none;
+    margin: var(--sp-5) 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+  }
+  .tier__points li {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: flex-start;
+    font-size: var(--fs-14);
+    color: var(--c-text);
+  }
+  .tier__check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--c-accent-soft);
+    color: var(--c-accent);
+    flex: none;
+    margin-top: 1px;
+  }
+  @media (max-width: 900px) {
+    .tiers {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

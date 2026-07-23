@@ -1,8 +1,164 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+
+const COMMITMENTS = [
+  {
+    title: 'Tenant isolation by design',
+    body: 'Your data never trains or feeds another firm’s pipeline. What happens on your desk stays on your desk.',
+  },
+  {
+    title: 'Consent gates every cross-firm signal',
+    body: 'Nothing about a candidate activates across firms without their consent. Consent is the switch, not the fine print.',
+  },
+  {
+    title: 'No numeric scoring of people, ever',
+    body: 'Assessment is always dimensions with receipts. We never reduce a person to a grade, a rank, or a number.',
+  },
+  {
+    title: 'No pooling of government identifiers',
+    body: 'Sensitive identifiers are never gathered into a shared pool. Verification confirms; it does not hoard.',
+  },
+  {
+    title: 'You control your data',
+    body: 'Clear processor and controller lines. Export is honored — your records are yours to take with you.',
+  },
+  {
+    title: 'Every assessment carries its trail',
+    body: 'Each result keeps the evidence behind it. Nothing is asserted that cannot be shown.',
+  },
+];
 ---
 
-<BaseLayout title="Security — Aramo" description="Security at Aramo.">
-  <h1>Security</h1>
-  <p>Placeholder page. Copy is authored under PUB-3.</p>
+<BaseLayout
+  title="Security & Trust — Aramo"
+  description="Tenant isolation by design, consent-gated signals, no numeric scoring of people, and an evidence trail behind every assessment. AI proposes; people decide."
+>
+  <!-- Hero -->
+  <section class="section hero">
+    <div class="container">
+      <span class="eyebrow">Security & Trust</span>
+      <h1 class="hero__display">Trust you can audit.</h1>
+      <p class="hero__sub">
+        Aramo handles the most sensitive part of hiring — who a person really is.
+        These are the commitments that govern how we do it.
+      </p>
+    </div>
+  </section>
+
+  <!-- Commitments -->
+  <section class="section section--bleed section--alt">
+    <div class="container">
+      <span class="eyebrow">Commitments</span>
+      <h2 class="section-title">What we hold ourselves to.</h2>
+      <ul class="commit-grid">
+        {
+          COMMITMENTS.map((c) => (
+            <li class="commit">
+              <h3 class="commit__title">{c.title}</h3>
+              <p class="commit__body">{c.body}</p>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <!-- Responsible AI -->
+  <section class="section">
+    <div class="container">
+      <div class="split">
+        <div class="split__body">
+          <span class="eyebrow">Responsible AI</span>
+          <h2 class="section-title">Where the machine stops.</h2>
+          <p class="lead">
+            Aramo surfaces evidence and flags what needs a look. It does not make
+            the call. Every assessment is auditable — built for compliance
+            reviews, not around them.
+          </p>
+        </div>
+        <div class="split__visual">
+          <ul class="principle-list">
+            <li><strong>Propose, not dispose.</strong> The engine advises; a person acts.</li>
+            <li><strong>Human decisions.</strong> Hiring judgment stays with your team.</li>
+            <li><strong>Auditability.</strong> Every result can be traced to its evidence.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Invite -->
+  <section class="section section--bleed section--deep cta-band">
+    <div class="container">
+      <h2 class="section-title">Security questions?</h2>
+      <p class="lead cta-band__lead">
+        Write to us at
+        <a href="mailto:hello@aramo.ai">hello@aramo.ai</a>. The formal
+        subprocessor list and legal detail live in
+        <a href="/legal/subprocessors">our legal pages</a>.
+      </p>
+      <div class="cluster">
+        <a class="btn btn--primary" href="/get-started">Get started</a>
+      </div>
+    </div>
+  </section>
 </BaseLayout>
+
+<style>
+  .commit-grid {
+    list-style: none;
+    margin: var(--sp-6) 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--sp-5);
+  }
+  .commit {
+    background: var(--c-bg);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-6);
+    box-shadow: var(--sh-1);
+  }
+  .commit__title {
+    margin: 0;
+    font-size: var(--fs-20);
+    font-weight: var(--fw-semibold);
+    color: var(--c-text);
+  }
+  .commit__body {
+    margin: var(--sp-3) 0 0;
+    font-size: var(--fs-16);
+    line-height: var(--lh-normal);
+    color: var(--c-text-muted);
+  }
+  .principle-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+  }
+  .principle-list li {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-md);
+    padding: var(--sp-4) var(--sp-5);
+    color: var(--c-text-muted);
+    box-shadow: var(--sh-1);
+  }
+  .principle-list strong {
+    color: var(--c-text);
+    font-weight: var(--fw-semibold);
+  }
+  .cta-band__lead {
+    margin-inline: auto;
+    text-align: center;
+  }
+  @media (max-width: 900px) {
+    .commit-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

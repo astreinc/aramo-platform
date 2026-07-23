@@ -1,0 +1,205 @@
+/* Aramo public-site — marketing section primitives (PUB-3). Tokens-only, CSS
+   only (zero client JS). Generous rhythm on the --sp-16/-20/-24 scale, confident
+   display type on --fs-48/-64, alternating full-width sections. */
+
+/* ---- Section rhythm ---- */
+.section {
+  padding-block: var(--sp-20);
+}
+.section--tight {
+  padding-block: var(--sp-12);
+}
+/* Full-bleed background: breaks out of main's max-width, re-centers content in
+   an inner .container. Used for alternating alt-surface sections. */
+.section--bleed {
+  width: 100vw;
+  margin-inline: calc(50% - 50vw);
+  padding-inline: var(--sp-6);
+}
+.section--alt {
+  background: var(--c-surface);
+  border-block: 1px solid var(--c-border);
+}
+.section--deep {
+  background: var(--c-text);
+  color: var(--c-bg);
+  border-block: 1px solid var(--c-text);
+}
+.section--deep :where(h2, h3) {
+  color: var(--c-bg);
+}
+
+/* ---- Section headings / leads ---- */
+.eyebrow {
+  display: block;
+  font-size: var(--fs-14);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-accent);
+  margin: 0 0 var(--sp-3);
+}
+.section--deep .eyebrow {
+  color: var(--c-accent-soft);
+}
+.section-title {
+  font-size: var(--fs-36);
+  line-height: var(--lh-tight);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--sp-4);
+  max-width: 22ch;
+}
+.lead {
+  font-size: var(--fs-20);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+  margin: 0 0 var(--sp-6);
+  max-width: var(--w-prose);
+}
+.section--deep .lead {
+  color: var(--c-surface-2);
+}
+
+/* ---- Hero ---- */
+.hero {
+  padding-block: var(--sp-24) var(--sp-20);
+}
+.hero__display {
+  font-size: var(--fs-64);
+  line-height: var(--lh-display);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.03em;
+  margin: 0 0 var(--sp-5);
+  max-width: 16ch;
+}
+.hero__sub {
+  font-size: var(--fs-20);
+  line-height: var(--lh-normal);
+  color: var(--c-text-muted);
+  margin: 0 0 var(--sp-8);
+  max-width: 58ch;
+}
+
+/* ---- Buttons / CTA cluster ---- */
+.cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  align-items: center;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-16);
+  font-weight: var(--fw-medium);
+  padding: var(--sp-3) var(--sp-5);
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+.btn:hover {
+  text-decoration: none;
+}
+.btn--primary {
+  background: var(--c-accent);
+  color: var(--c-accent-fg);
+  box-shadow: var(--sh-1);
+}
+.btn--primary:hover {
+  background: var(--c-accent-hover);
+  color: var(--c-accent-fg);
+}
+.btn--ghost {
+  background: transparent;
+  color: var(--c-text);
+  border-color: var(--c-border-strong);
+}
+.btn--ghost:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+.section--deep .btn--ghost {
+  color: var(--c-bg);
+  border-color: var(--c-text-muted);
+}
+
+/* "Links deeper" — every block ends in a link into its full page. */
+.deeper-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-weight: var(--fw-medium);
+  margin-top: var(--sp-2);
+}
+.deeper-link::after {
+  content: '\2192'; /* → */
+  transition: transform 120ms ease;
+}
+.deeper-link:hover {
+  text-decoration: none;
+}
+.deeper-link:hover::after {
+  transform: translateX(3px);
+}
+
+/* ---- Two-column split (content + visual) ---- */
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-12);
+  align-items: center;
+}
+.split--reverse .split__visual {
+  order: -1;
+}
+.split__body {
+  min-width: 0;
+}
+.split__visual {
+  min-width: 0;
+}
+
+/* ---- Closing CTA band ---- */
+.cta-band {
+  text-align: center;
+}
+.cta-band .section-title {
+  margin-inline: auto;
+  max-width: 24ch;
+}
+.cta-band .cluster {
+  justify-content: center;
+}
+
+/* ---- Anchor offset (in-page #ats etc. under no sticky header, but safe) ---- */
+:where([id]) {
+  scroll-margin-top: var(--sp-8);
+}
+
+/* ---- Breakpoints ---- */
+@media (max-width: 900px) {
+  .split {
+    grid-template-columns: 1fr;
+    gap: var(--sp-8);
+  }
+  .split--reverse .split__visual {
+    order: 0;
+  }
+}
+@media (max-width: 640px) {
+  .section {
+    padding-block: var(--sp-16);
+  }
+  .hero {
+    padding-block: var(--sp-16) var(--sp-12);
+  }
+  .hero__display {
+    font-size: var(--fs-48);
+  }
+  .section-title {
+    font-size: var(--fs-28, 1.75rem);
+  }
+}

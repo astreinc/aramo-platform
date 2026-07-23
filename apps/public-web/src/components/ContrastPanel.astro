@@ -1,0 +1,187 @@
+---
+// ContrastPanel (R-PUB3-5) — the problem-section split: a flat resume of claims
+// vs the same person as an evidence-graded profile. GUARDRAIL: the graded side
+// shows dimensions-with-marks, never a grade/score/rank.
+const CLAIMS = [
+  'Senior Platform Engineer',
+  'Led a cloud migration',
+  'Open to new roles now',
+];
+const EVIDENCE = [
+  { dim: 'Identity', status: 'Independently Verified' },
+  { dim: 'Claims', status: 'Corroborated' },
+  { dim: 'Continuity', status: 'Established' },
+];
+---
+
+<div class="contrast">
+  <section class="contrast__panel contrast__panel--plain" aria-label="A resume">
+    <header class="contrast__head">
+      <p class="contrast__kicker">A resume</p>
+      <p class="contrast__sub">Claims, taken on faith</p>
+    </header>
+    <ul class="contrast__claims">
+      {
+        CLAIMS.map((c) => (
+          <li>
+            <span class="contrast__dot" aria-hidden="true" />
+            {c}
+          </li>
+        ))
+      }
+    </ul>
+    <p class="contrast__tag contrast__tag--muted">Self-reported</p>
+  </section>
+
+  <span class="contrast__vs" aria-hidden="true">vs</span>
+
+  <section
+    class="contrast__panel contrast__panel--graded"
+    aria-label="An evidence-graded profile"
+  >
+    <header class="contrast__head">
+      <p class="contrast__kicker contrast__kicker--accent">
+        An evidence-graded profile
+      </p>
+      <p class="contrast__sub">The same person, backed by proof</p>
+    </header>
+    <ul class="contrast__evidence">
+      {
+        EVIDENCE.map((e) => (
+          <li>
+            <span class="contrast__check" aria-hidden="true">
+              <svg viewBox="0 0 16 16" width="13" height="13">
+                <path
+                  d="M13 4.5 6.5 11 3 7.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
+            <span class="contrast__dim">{e.dim}</span>
+            <span class="contrast__status">{e.status}</span>
+          </li>
+        ))
+      }
+    </ul>
+    <p class="contrast__tag contrast__tag--accent">Evidence, graded — never a score</p>
+  </section>
+</div>
+
+<style>
+  .contrast {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: var(--sp-4);
+    align-items: stretch;
+  }
+  .contrast__panel {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-6);
+    display: flex;
+    flex-direction: column;
+  }
+  .contrast__panel--plain {
+    background: var(--c-surface-2);
+  }
+  .contrast__panel--graded {
+    border-color: var(--c-accent);
+    box-shadow: var(--sh-2);
+  }
+  .contrast__head {
+    padding-bottom: var(--sp-4);
+    border-bottom: 1px solid var(--c-border);
+  }
+  .contrast__kicker {
+    margin: 0;
+    font-weight: var(--fw-semibold);
+    color: var(--c-text);
+  }
+  .contrast__kicker--accent {
+    color: var(--c-accent-active);
+  }
+  .contrast__sub {
+    margin: 2px 0 0;
+    font-size: var(--fs-14);
+    color: var(--c-text-subtle);
+  }
+  .contrast__claims,
+  .contrast__evidence {
+    list-style: none;
+    margin: var(--sp-4) 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    flex: 1;
+  }
+  .contrast__claims li {
+    display: flex;
+    gap: var(--sp-3);
+    align-items: center;
+    color: var(--c-text-muted);
+  }
+  .contrast__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    border: 1px solid var(--c-border-strong);
+    flex: none;
+  }
+  .contrast__evidence li {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: baseline;
+    flex-wrap: wrap;
+    color: var(--c-text);
+  }
+  .contrast__check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--c-accent-soft);
+    color: var(--c-accent);
+    flex: none;
+    align-self: center;
+  }
+  .contrast__dim {
+    font-weight: var(--fw-semibold);
+  }
+  .contrast__status {
+    font-size: var(--fs-14);
+    color: var(--c-accent-active);
+  }
+  .contrast__tag {
+    margin: 0;
+    font-size: var(--fs-14);
+    font-weight: var(--fw-medium);
+  }
+  .contrast__tag--muted {
+    color: var(--c-text-subtle);
+  }
+  .contrast__tag--accent {
+    color: var(--c-accent-active);
+  }
+  .contrast__vs {
+    align-self: center;
+    font-size: var(--fs-14);
+    color: var(--c-text-subtle);
+    font-style: italic;
+  }
+  @media (max-width: 760px) {
+    .contrast {
+      grid-template-columns: 1fr;
+    }
+    .contrast__vs {
+      justify-self: center;
+    }
+  }
+</style>

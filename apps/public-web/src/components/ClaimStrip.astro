@@ -1,0 +1,60 @@
+---
+// ClaimStrip (R-PUB3-5) — a horizontal strip of short, load-bearing claims
+// (used, not decorative). Truth-bounded qualitative statements only.
+interface Props {
+  claims: string[];
+}
+const { claims } = Astro.props;
+---
+
+<ul class="claimstrip">
+  {
+    claims.map((c) => (
+      <li class="claimstrip__item">
+        <span class="claimstrip__mark" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="13" height="13">
+            <path
+              d="M13 4.5 6.5 11 3 7.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        {c}
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .claimstrip {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-3) var(--sp-6);
+  }
+  .claimstrip__item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-size: var(--fs-16);
+    font-weight: var(--fw-medium);
+    color: var(--c-text);
+  }
+  .claimstrip__mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--c-accent-soft);
+    color: var(--c-accent);
+    flex: none;
+  }
+</style>

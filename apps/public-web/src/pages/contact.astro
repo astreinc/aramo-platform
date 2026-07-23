@@ -2,7 +2,95 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 ---
 
-<BaseLayout title="Contact — Aramo" description="Contact Aramo.">
-  <h1>Contact</h1>
-  <p>Placeholder page. Copy is authored under PUB-3.</p>
+<BaseLayout
+  title="Contact — Aramo"
+  description="Talk to the team building Aramo. Write to hello@aramo.ai, or start a workspace request."
+>
+  <!-- Hero -->
+  <section class="section hero">
+    <div class="container">
+      <span class="eyebrow">Contact</span>
+      <h1 class="hero__display">Talk to us.</h1>
+      <p class="hero__sub">
+        The people building Aramo run a staffing desk too. Reach us directly —
+        no phone tree, no queue.
+      </p>
+    </div>
+  </section>
+
+  <!-- Direct lines -->
+  <section class="section section--bleed section--alt">
+    <div class="container">
+      <ul class="contact-grid">
+        <li class="contact-card">
+          <p class="contact-card__k">General</p>
+          <p class="contact-card__v">
+            <a href="mailto:hello@aramo.ai">hello@aramo.ai</a>
+          </p>
+          <p class="contact-card__note">
+            Questions about the product, security, or a partnership.
+          </p>
+        </li>
+        <li class="contact-card">
+          <p class="contact-card__k">Get started</p>
+          <p class="contact-card__v">
+            <a href="/get-started">Request a workspace</a>
+          </p>
+          <p class="contact-card__note">
+            Ready to run your desk on Aramo? Start here.
+          </p>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="section section--bleed section--deep cta-band">
+    <div class="container">
+      <h2 class="section-title">Put proof behind your next submittal.</h2>
+      <div class="cluster">
+        <a class="btn btn--primary" href="/get-started">Get started</a>
+      </div>
+    </div>
+  </section>
 </BaseLayout>
+
+<style>
+  .contact-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--sp-5);
+    max-width: 52rem;
+  }
+  .contact-card {
+    background: var(--c-bg);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-6);
+    box-shadow: var(--sh-1);
+  }
+  .contact-card__k {
+    margin: 0;
+    font-size: var(--fs-14);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--c-text-subtle);
+  }
+  .contact-card__v {
+    margin: var(--sp-2) 0 0;
+    font-size: var(--fs-20);
+    font-weight: var(--fw-semibold);
+  }
+  .contact-card__note {
+    margin: var(--sp-3) 0 0;
+    color: var(--c-text-muted);
+  }
+  @media (max-width: 640px) {
+    .contact-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

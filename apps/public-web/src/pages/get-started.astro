@@ -2,7 +2,117 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 ---
 
-<BaseLayout title="Get started — Aramo" description="Get started with Aramo.">
-  <h1>Get started</h1>
-  <p>Placeholder page. Copy is authored under PUB-3.</p>
+<BaseLayout
+  title="Get started — Aramo"
+  description="Request a workspace on Aramo. The workspace request form is on the way; until then, write to hello@aramo.ai and we will set you up."
+>
+  <!-- Hero -->
+  <section class="section hero">
+    <div class="container">
+      <span class="eyebrow">Get started</span>
+      <h1 class="hero__display">Put proof behind your next submittal.</h1>
+      <p class="hero__sub">
+        Tell us about your desk and we will set up a workspace. The self-serve
+        request form is on the way — until it lands, one email gets you started.
+      </p>
+      <div class="cluster">
+        <a class="btn btn--primary" href="mailto:hello@aramo.ai"
+          >Email hello@aramo.ai</a
+        >
+        <a class="btn btn--ghost" href="/how-it-works">See how it works</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- What's coming -->
+  <section class="section section--bleed section--alt">
+    <div class="container">
+      <span class="eyebrow">What to expect</span>
+      <h2 class="section-title">Getting set up.</h2>
+      <ol class="steps">
+        <li class="steps__item">
+          <span class="steps__n" aria-hidden="true">1</span>
+          <div>
+            <p class="steps__title">Tell us about your desk</p>
+            <p class="steps__body">
+              Write to <a href="mailto:hello@aramo.ai">hello@aramo.ai</a> with
+              how your team works today.
+            </p>
+          </div>
+        </li>
+        <li class="steps__item">
+          <span class="steps__n" aria-hidden="true">2</span>
+          <div>
+            <p class="steps__title">We set up your workspace</p>
+            <p class="steps__body">
+              Isolated to your firm from the first day — your data never feeds
+              another desk.
+            </p>
+          </div>
+        </li>
+        <li class="steps__item">
+          <span class="steps__n" aria-hidden="true">3</span>
+          <div>
+            <p class="steps__title">Submit with proof</p>
+            <p class="steps__body">
+              Your first submittals carry their evidence — clients see why.
+            </p>
+          </div>
+        </li>
+      </ol>
+      <p class="note">
+        A self-serve workspace request form arrives soon. For now, the email
+        above reaches us directly.
+      </p>
+    </div>
+  </section>
 </BaseLayout>
+
+<style>
+  .steps {
+    list-style: none;
+    counter-reset: none;
+    margin: var(--sp-6) 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-5);
+    max-width: 46rem;
+  }
+  .steps__item {
+    display: flex;
+    gap: var(--sp-4);
+    align-items: flex-start;
+    background: var(--c-bg);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-5);
+    box-shadow: var(--sh-1);
+  }
+  .steps__n {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    background: var(--c-accent-soft);
+    color: var(--c-accent-active);
+    font-weight: var(--fw-semibold);
+    flex: none;
+  }
+  .steps__title {
+    margin: 0;
+    font-weight: var(--fw-semibold);
+    color: var(--c-text);
+  }
+  .steps__body {
+    margin: 2px 0 0;
+    color: var(--c-text-muted);
+  }
+  .note {
+    margin: var(--sp-6) 0 0;
+    font-size: var(--fs-14);
+    color: var(--c-text-subtle);
+  }
+</style>
