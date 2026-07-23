@@ -429,6 +429,18 @@ TIER2_EXCLUDES=(
   # contains NONE of it. Product source (TrustProposalsView.tsx / types.ts) stays
   # clean — never excluded.
   "apps/ats-web/src/trust-proposals/TrustProposalsView.spec.tsx"
+  # PUB-1 PR-1a — the public marketing site (apps/public-web, Astro). Per
+  # Aramo-PUB-0-PublicSite-Track-Charter-Directive-v1_1-LOCKED.md R-PUB-5
+  # (Charter-level ruling of record): marketing prose must speak the market's
+  # language to be found and understood ("candidates", "customers", and the
+  # anti-scoring stance itself). The Tier-2 lock exists to stop entity-vocabulary
+  # DRIFT in product source; public marketing prose is not product entity naming.
+  # Directory-wide glob (the whole app is marketing surface). Paired in lockstep
+  # with the matching eslint.config.mjs exemption block. NOTE: Tier-1 (R7) is NOT
+  # relaxed — the `linkedin` token remains forbidden in apps/public-web +
+  # deploy/public (any future occurrence needs its own R7 allowlist + Architect
+  # approval).
+  "apps/public-web/**"
 )
 
 # =============================================================================

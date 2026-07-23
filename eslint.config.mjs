@@ -50,6 +50,13 @@ const SCOPE_DEP_CONSTRAINTS = [
   // (common/auth/auth-storage are all scope:shared). The adapters + composition root
   // stay in the untagged apps/auth-service, unconstrained by design.
   { sourceTag: 'scope:auth', onlyDependOnLibsWithTags: ['scope:auth', 'scope:boundary', 'scope:shared'] },
+  // PUB-1 PR-1a (§2.2 + Amendment v1.1 G0-R1) — scope:public is the public
+  // marketing site (apps/public-web, Astro). It is a fully self-contained static
+  // site with no workspace-lib dependency: its legal closure is EMPTY (may
+  // depend on nothing). Tighter-first — if PUB-2 rules a fe-foundation token
+  // edge, it opens the wall then, by its own ruling. Proven to fire by
+  // apps/public-web/src/tests/public-web-negative-control.spec.ts (PUBLIC⊥ATS).
+  { sourceTag: 'scope:public', onlyDependOnLibsWithTags: [] },
   { sourceTag: 'scope:boundary', onlyDependOnLibsWithTags: ['scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:shared', onlyDependOnLibsWithTags: ['scope:shared'] },
   { sourceTag: '*', onlyDependOnLibsWithTags: ['*'] },
@@ -66,6 +73,11 @@ export default [
       '**/prisma/generated/**',
       '**/playwright-report/**',
       '**/test-results/**',
+      // PUB-1a — Astro's generated type surface (apps/public-web/.astro:
+      // content.d.ts / types.d.ts, emitted by `astro sync`/build). Generated
+      // output, gitignored; never hand-edited, never linted (mirrors the
+      // prisma/generated + dist treatment above).
+      '**/.astro/**',
       // I15 negative-control fixture: a committed, deliberate scope:cip →
       // scope:ats import that must NOT red the real gate. The wall-fires spec
       // (libs/matching/src/tests/i15-negative-control.spec.ts) lints it
@@ -90,6 +102,12 @@ export default [
       // lints it explicitly with `eslint --no-ignore` to prove the boundary rule
       // rejects it. Also tsconfig.lib.json-excluded from the auth-core build.
       '**/auth-negative-control/**',
+      // PUB-1 PR-1a negative control: a committed, deliberate scope:public →
+      // scope:ats import that must NOT red the real gate. The wall-fires spec
+      // (apps/public-web/src/tests/public-web-negative-control.spec.ts) lints it
+      // explicitly with `eslint --no-ignore` to prove the boundary rule rejects
+      // it. Also tsconfig.json-excluded from the public-web build.
+      '**/public-negative-control/**',
     ],
   },
   ...nx.configs['flat/base'],
@@ -432,6 +450,15 @@ export default [
       // host-strip already tolerates the full 'candidate.aramo.ai' literal and
       // this file has no bare label (the lockstep is satisfied natively there).
       'libs/auth-storage/src/lib/host-auth-profile.seed.ts',
+      // PUB-1 PR-1a — the public marketing site (apps/public-web, Astro). Per
+      // Aramo-PUB-0-PublicSite-Track-Charter-Directive-v1_1-LOCKED.md R-PUB-5:
+      // marketing prose speaks the market's language (candidates/customers/the
+      // anti-scoring stance). The Tier-2 lock stops entity-vocabulary DRIFT in
+      // product source; marketing copy is not product entity naming. Whole-app
+      // glob; paired in lockstep with the scripts/verify-vocabulary.sh
+      // TIER2_EXCLUDES "apps/public-web/**" entry. Tier-1 R7 (`linkedin`) is NOT
+      // relaxed — it has its own gate and is unaffected by this exemption.
+      'apps/public-web/**/*',
     ],
     rules: {
       'no-restricted-syntax': 'off',

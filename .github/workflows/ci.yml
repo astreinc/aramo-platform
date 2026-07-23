@@ -66,16 +66,22 @@ jobs:
               - 'tsconfig.base.json'
             caddy:
               - 'deploy/caddy/**'
+            public-web:
+              - 'apps/public-web/**'
+              - 'deploy/public/**'
+              - 'package.json'
+              - 'package-lock.json'
       - id: dockerjson
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            printf 'json={"api":"%s","auth-service":"%s","platform-admin":"%s","caddy":"%s"}\n' \
+            printf 'json={"api":"%s","auth-service":"%s","platform-admin":"%s","caddy":"%s","public-web":"%s"}\n' \
               "${{ steps.filter.outputs.api }}" \
               "${{ steps.filter.outputs.auth-service }}" \
               "${{ steps.filter.outputs.platform-admin }}" \
-              "${{ steps.filter.outputs.caddy }}" >> "$GITHUB_OUTPUT"
+              "${{ steps.filter.outputs.caddy }}" \
+              "${{ steps.filter.outputs.public-web }}" >> "$GITHUB_OUTPUT"
           else
-            echo 'json={"api":"true","auth-service":"true","platform-admin":"true","caddy":"true"}' >> "$GITHUB_OUTPUT"
+            echo 'json={"api":"true","auth-service":"true","platform-admin":"true","caddy":"true","public-web":"true"}' >> "$GITHUB_OUTPUT"
           fi
 
   install:
@@ -170,6 +176,7 @@ jobs:
           - { name: auth-service, dockerfile: apps/auth-service/Dockerfile }
           - { name: platform-admin, dockerfile: apps/platform-admin/Dockerfile }
           - { name: caddy, dockerfile: deploy/caddy/Dockerfile }
+          - { name: public-web, dockerfile: deploy/public/Dockerfile }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
