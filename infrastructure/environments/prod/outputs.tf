@@ -39,3 +39,15 @@ output "auth_task_role_arn" {
   description = "auth-service ECS task role ARN."
   value       = module.ecs_service_auth.task_role_arn
 }
+
+# Front-Door Migration PR-0 (ADR-0023).
+
+output "frontdoor_zone_id" {
+  description = "The aramo.ai hosted-zone id (read via data source; feeds PR-2/PR-3 DNS wiring)."
+  value       = module.route53_apex.zone_id
+}
+
+output "certbot_user_name" {
+  description = "certbot DNS-01 IAM user name — generate its access key out-of-band per doc/runbooks/frontdoor-pr0-apply.md (Ruling 3); never surface the secret."
+  value       = module.certbot_dns.user_name
+}

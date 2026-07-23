@@ -44,3 +44,10 @@ variable "resume_bucket_retention_days_extended" {
   type        = number
   default     = 2555
 }
+
+# Front-Door Migration PR-0 (ADR-0023) — the apex A record target.
+
+variable "apex_ip" {
+  description = "IPv4 the aramo.ai apex A record resolves to — the box's Lightsail static IP. Supplied via real tfvars (terraform.tfvars.example carries the placeholder)."
+  type        = string
+}
