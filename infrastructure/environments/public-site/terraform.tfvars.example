@@ -1,0 +1,10 @@
+# Aramo PUB-1 PR-1b — example variables for the public-site environment.
+# Copy to terraform.tfvars (gitignored) before `terraform init`. Every value
+# below is already the module default; override only if the account/region
+# convention differs.
+
+aws_region        = "us-east-1"
+environment       = "public-site"
+availability_zone = "us-east-1a"
+blueprint_id      = "ubuntu_24_04"
+bundle_id         = "nano_3_0"

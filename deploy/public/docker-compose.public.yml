@@ -1,0 +1,27 @@
+# deploy/public/docker-compose.public.yml — Aramo public-site host composition
+# (PUB-1 PR-1b, §3.1). One nginx service serving the apex holding page, the
+# www→apex redirect, and the basic-auth-gated staging Astro site.
+#
+# The image is BAKED (site + holding page + nginx.conf). Certs and the staging
+# htpasswd are the ONLY runtime inputs, supplied as host bind mounts:
+#   /etc/letsencrypt          — certbot cert store (host); mounted read-only
+#   /srv/aramo-public/certbot — ACME HTTP-01 webroot; certbot (host) writes,
+#                               nginx serves — shared so renewals never stop nginx
+#   /srv/aramo-public/auth    — the staging .htpasswd (host); mounted read-only
+#
+# Bring-up, cert issuance, renewal, and the landed-proof assertion live in
+# README.md — that runbook is the deploy path until Terraform user-data
+# automates it.
+
+services:
+  public-web:
+    image: ghcr.io/astreinc/aramo-public-web:latest
+    container_name: aramo-public-web
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /srv/aramo-public/certbot:/var/www/certbot
+      - /srv/aramo-public/auth:/etc/nginx/auth:ro
