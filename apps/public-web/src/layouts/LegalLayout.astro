@@ -1,0 +1,152 @@
+---
+// LegalLayout (PUB-4) — shared frame for the four legal documents. Renders the
+// R-PUB4-3 DRAFT band (unmissable, above the fold), the document heading, the
+// slotted sections in a readable legal register, and the footer version line.
+// Tokens-only, zero client JS.
+import BaseLayout from './BaseLayout.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  heading: string;
+}
+const { title, description, heading } = Astro.props;
+const lastUpdated = '2026-07-23';
+---
+
+<BaseLayout title={title} description={description}>
+  <div class="legal">
+    <!-- R-PUB4-3 DRAFT band -->
+    <div class="legal-draft" role="note" aria-label="Draft notice">
+      <span class="legal-draft__tag">Draft</span>
+      <p class="legal-draft__text">
+        <strong>Pending legal review.</strong> This document is a draft prepared
+        for counsel review. It has not been reviewed or approved by counsel, is
+        not legal advice, and is not yet in effect.
+      </p>
+    </div>
+
+    <article class="legal-doc">
+      <h1 class="legal-doc__title">{heading}</h1>
+      <slot />
+      <p class="legal-doc__version">
+        Last updated: {lastUpdated} · Version 1.0-draft
+      </p>
+    </article>
+  </div>
+</BaseLayout>
+
+<style is:global>
+  /* Global (not scoped) so the built legal HTML carries no `[data-astro-cid]`
+     attribute selectors — keeps the R-PUB4 bracket-enumeration grep clean. The
+     .legal-* classes are legal-page-only, so global scope leaks nothing. */
+  .legal {
+    padding-block: var(--sp-8) var(--sp-16);
+    max-width: var(--w-prose);
+  }
+  /* DRAFT band — above the fold, unmissable. */
+  .legal-draft {
+    display: flex;
+    gap: var(--sp-3);
+    align-items: flex-start;
+    background: var(--c-danger-soft);
+    border: 1px solid var(--c-danger-border);
+    border-left: 4px solid var(--c-danger);
+    border-radius: var(--r-md);
+    padding: var(--sp-4) var(--sp-5);
+    margin-bottom: var(--sp-8);
+  }
+  .legal-draft__tag {
+    flex: none;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: var(--fs-14);
+    font-weight: var(--fw-semibold);
+    color: var(--c-danger);
+    background: var(--c-surface);
+    border: 1px solid var(--c-danger-border);
+    border-radius: var(--r-sm);
+    padding: 2px var(--sp-2);
+    margin-top: 2px;
+  }
+  .legal-draft__text {
+    margin: 0;
+    font-size: var(--fs-16);
+    line-height: var(--lh-normal);
+    color: var(--c-danger);
+  }
+  .legal-draft__text strong {
+    color: var(--c-danger);
+    font-weight: var(--fw-semibold);
+  }
+
+  /* Document typography — readable legal register. */
+  .legal-doc__title {
+    font-size: var(--fs-36);
+    line-height: var(--lh-tight);
+    font-weight: var(--fw-semibold);
+    letter-spacing: -0.02em;
+    color: var(--c-text);
+    margin: 0 0 var(--sp-6);
+  }
+  .legal-doc h2 {
+    font-size: var(--fs-20);
+    line-height: var(--lh-tight);
+    font-weight: var(--fw-semibold);
+    color: var(--c-text);
+    margin: var(--sp-8) 0 var(--sp-3);
+  }
+  .legal-doc p {
+    font-size: var(--fs-16);
+    line-height: var(--lh-normal);
+    color: var(--c-text-muted);
+    margin: 0 0 var(--sp-4);
+    max-width: none;
+  }
+  .legal-doc ul {
+    margin: 0 0 var(--sp-4);
+    padding-left: var(--sp-5);
+    color: var(--c-text-muted);
+  }
+  .legal-doc li {
+    margin-bottom: var(--sp-2);
+    line-height: var(--lh-normal);
+  }
+  .legal-doc strong {
+    color: var(--c-text);
+    font-weight: var(--fw-semibold);
+  }
+  .legal-doc a {
+    color: var(--c-accent);
+  }
+  .legal-doc table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: var(--sp-4) 0;
+    font-size: var(--fs-16);
+  }
+  .legal-doc th,
+  .legal-doc td {
+    text-align: left;
+    padding: var(--sp-3) var(--sp-4);
+    border-bottom: 1px solid var(--c-border);
+    vertical-align: top;
+  }
+  .legal-doc th {
+    font-size: var(--fs-14);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--c-text-subtle);
+    border-bottom: 1px solid var(--c-border-strong);
+  }
+  .legal-doc td {
+    color: var(--c-text-muted);
+  }
+  .legal-doc__version {
+    margin: var(--sp-10) 0 0 !important;
+    padding-top: var(--sp-4);
+    border-top: 1px solid var(--c-border);
+    font-size: var(--fs-14) !important;
+    color: var(--c-text-subtle) !important;
+  }
+</style>

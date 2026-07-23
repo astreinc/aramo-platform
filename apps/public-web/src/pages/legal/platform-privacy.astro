@@ -1,11 +1,105 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import LegalLayout from '../../layouts/LegalLayout.astro';
 ---
 
-<BaseLayout
-  title="Platform privacy — Aramo"
-  description="Aramo platform privacy notice."
+<LegalLayout
+  title="Platform & Candidate-Data Privacy Notice — Aramo"
+  description="How the Aramo platform handles candidate and client data: our controller/processor roles, the data we handle and why, consent-gated portability, assessments with reasons (never a score), retention, security, and your rights."
+  heading="Platform & Candidate-Data Privacy Notice"
 >
-  <h1>Platform privacy</h1>
-  <p>Placeholder page. Legal text is authored under PUB-4.</p>
-</BaseLayout>
+  <h2>Who we are and our role</h2>
+  <p>
+    The Aramo platform is operated by Astre Consulting Services Inc. Our role
+    depends on how data reaches us:
+  </p>
+  <ul>
+    <li>
+      When a staffing firm uses Aramo to run its hiring, that firm decides how
+      candidate data is used. The firm is the <strong>data controller</strong>,
+      and Aramo acts as its <strong>processor</strong>.
+    </li>
+    <li>
+      When a candidate provides information directly to the platform under their
+      own consent — for verification or portable credentials — Aramo is the
+      <strong>controller</strong> of that relationship.
+    </li>
+  </ul>
+
+  <h2>What data the platform handles</h2>
+  <ul>
+    <li><strong>Identification and contact details.</strong></li>
+    <li>
+      <strong>Professional history and work product</strong> — roles,
+      submittals, resumes, and related records.
+    </li>
+    <li>
+      <strong>Verification and evidence artifacts</strong> — the records that
+      stand behind an assessment.
+    </li>
+    <li><strong>Consent and preference records.</strong></li>
+  </ul>
+
+  <h2>Why we handle it</h2>
+  <p>
+    To operate the staffing firm’s hiring workflow, to resolve and verify
+    identity, and to produce evidence-graded assessments.
+  </p>
+
+  <h2>Consent and portability</h2>
+  <p>
+    This is the part that makes Aramo different. Signals about a candidate
+    activate across firms <strong>only with that candidate’s consent</strong>.
+    Verification a candidate has earned is portable only where the candidate
+    chooses to carry it. When a candidate consents to share, that consent is
+    specific to the destination, written in plain language, and can be withdrawn
+    up to the moment of transfer.
+  </p>
+
+  <h2>Assessments, not scores</h2>
+  <p>
+    Aramo assesses evidence across dimensions and shows the reasons behind each
+    result. People are <strong>never</strong> given a numeric score, a grade, or
+    a rank. Automated processing proposes; a person decides every submittal and
+    hiring action.
+  </p>
+
+  <h2>Retention and deletion</h2>
+  <p>
+    We keep platform data under the staffing firm’s direction and applicable law,
+    and we honor candidate rights — including deletion requests — as the law
+    provides.
+  </p>
+
+  <h2>Security commitments</h2>
+  <p>
+    Tenant isolation so one firm’s data never feeds another’s, encryption in
+    transit, and least-privilege access. We describe our commitments here without
+    disclosing internal architecture.
+  </p>
+
+  <h2>Subprocessors</h2>
+  <p>
+    We use a short, vetted list of vendors to run the platform. See our current
+    <a href="/legal/subprocessors">Subprocessor List</a>.
+  </p>
+
+  <h2>Your rights and how to exercise them</h2>
+  <p>
+    Where your staffing firm is the controller, exercise your rights through that
+    firm — we help them respond. Where Aramo is the controller (data you gave us
+    directly), write to <a href="mailto:hello@aramo.ai">hello@aramo.ai</a>.
+  </p>
+
+  <h2>Changes</h2>
+  <p>We update this page and the version line below when this notice changes.</p>
+
+  <h2>Governing law</h2>
+  <p>This notice is governed by the laws of [STATE — counsel].</p>
+
+  <h2>Contact</h2>
+  <p>
+    Questions about platform data? Write to <a href="mailto:hello@aramo.ai"
+      >hello@aramo.ai</a
+    >.
+  </p>
+</LegalLayout>
