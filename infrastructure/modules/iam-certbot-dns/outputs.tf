@@ -7,3 +7,8 @@ output "user_arn" {
   description = "certbot-dns IAM user ARN."
   value       = aws_iam_user.this.arn
 }
+
+output "zone_id" {
+  description = "The aramo.ai hosted-zone id (read via the module's data source; for ops reference)."
+  value       = data.aws_route53_zone.this.zone_id
+}

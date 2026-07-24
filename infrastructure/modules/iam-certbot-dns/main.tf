@@ -33,6 +33,16 @@ terraform {
   }
 }
 
+# PR-0b (R2) — the hosted-zone lookup lives HERE, with its only consumer (the
+# certbot policy needs the zone ARN). Read-only data source; greenfield posture
+# unchanged (no managed zone — the zone predates IaC). The `aramo.ai` apex belongs
+# to the PublicSite track and is out of scope for this migration; this module reads
+# the zone solely to scope the ChangeResourceRecordSets ARN.
+data "aws_route53_zone" "this" {
+  name         = var.zone_name
+  private_zone = false
+}
+
 # Ruling 2 — the certbot policy, two statements.
 data "aws_iam_policy_document" "certbot" {
   # Ruling 2 (ADR-0023 / PR-0 directive): route53:ListHostedZones + route53:GetChange
@@ -54,7 +64,7 @@ data "aws_iam_policy_document" "certbot" {
     sid       = "WriteAcmeChallengeTxtOnly"
     effect    = "Allow"
     actions   = ["route53:ChangeResourceRecordSets"]
-    resources = ["arn:aws:route53:::hostedzone/${var.zone_id}"]
+    resources = ["arn:aws:route53:::hostedzone/${data.aws_route53_zone.this.zone_id}"]
 
     condition {
       test     = "ForAllValues:StringEquals"
