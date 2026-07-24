@@ -7,6 +7,7 @@ import '../styles/tokens.css';
 import '../styles/fonts.css';
 import '../styles/global.css';
 import '../styles/marketing.css';
+import '../styles/forms.css';
 // The critical sans weight, preloaded. `?url` yields the same hashed asset
 // Vite emits for the fonts.css @font-face (no runtime node_modules path). The
 // path is relative (not a bare `geist/...` specifier) so it bypasses the geist
@@ -17,12 +18,14 @@ interface Props {
   title: string;
   description?: string;
   ogType?: string;
+  noindex?: boolean;
 }
 
 const {
   title,
   description = 'Aramo — trust infrastructure for the staffing industry.',
   ogType = 'website',
+  noindex = false,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site);
@@ -50,6 +53,7 @@ const LEGAL = [
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex" />}
     <link rel="canonical" href={canonical} />
     <link
       rel="preload"

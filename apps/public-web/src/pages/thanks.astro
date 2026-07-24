@@ -1,0 +1,43 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Thanks — Aramo"
+  description="Thanks for reaching out to Aramo."
+  noindex={true}
+>
+  <section class="section hero">
+    <div class="container">
+      <div class="thanks">
+        <span class="eyebrow">Thanks</span>
+        <h1 class="hero__display">Message received.</h1>
+        <p class="hero__sub">
+          Thanks for reaching out — if you sent us a form, it’s on its way and
+          we’ll be in touch.
+        </p>
+        <p class="thanks__note">
+          If something looked off along the way, email&#32;
+          <a href="mailto:hello@aramo.ai">hello@aramo.ai</a> and we’ll pick it up
+          directly.
+        </p>
+        <div class="cluster">
+          <a class="btn btn--primary" href="/">Back to home</a>
+          <a class="btn btn--ghost" href="/product">See the product</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .thanks {
+    max-width: var(--w-prose);
+  }
+  .thanks__note {
+    font-size: var(--fs-16);
+    color: var(--c-text-subtle);
+    margin: 0 0 var(--sp-6);
+    max-width: 52ch;
+  }
+</style>

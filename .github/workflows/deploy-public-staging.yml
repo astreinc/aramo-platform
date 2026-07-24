@@ -19,9 +19,17 @@ permissions:
   packages: write
 
 jobs:
+  # PUB-5 PR-5b: build + push BOTH public-site images (public-web + the intake
+  # handler) from the dispatched ref. The `ref` input contract is unchanged.
   build-push:
-    name: build + push public-web (staging)
+    name: build + push ${{ matrix.name }} (staging)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: public-web, dockerfile: deploy/public/Dockerfile }
+          - { name: public-intake, dockerfile: apps/public-intake/Dockerfile }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,10 +47,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: deploy/public/Dockerfile
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/aramo-public-web:staging
-            ghcr.io/${{ github.repository_owner }}/aramo-public-web:${{ steps.sha.outputs.sha }}
-          cache-from: type=gha,scope=public-web
-          cache-to: type=gha,mode=max,scope=public-web
+            ghcr.io/${{ github.repository_owner }}/aramo-${{ matrix.name }}:staging
+            ghcr.io/${{ github.repository_owner }}/aramo-${{ matrix.name }}:${{ steps.sha.outputs.sha }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}

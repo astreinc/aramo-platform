@@ -25,3 +25,34 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /srv/aramo-public/certbot:/var/www/certbot
       - /srv/aramo-public/auth:/etc/nginx/auth:ro
+
+  # PUB-5 — intake handler (form → SES). Compose-network only (NO published
+  # ports); nginx proxies /intake/ to public-intake:3000. Every env var is
+  # passed BY NAME — each MUST also exist in the host .env (deploy-path defect
+  # class: a compose line without the matching host .env entry silently ships an
+  # empty value). The runbook enumerates all seven. AWS creds are the narrow
+  # SES-send key (TF-created user, PO-created key — R-PUB5-3), never the box's.
+  public-intake:
+    image: ghcr.io/astreinc/aramo-public-intake:latest
+    container_name: aramo-public-intake
+    restart: unless-stopped
+    environment:
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_REGION
+      - INTAKE_FROM_ADDRESS
+      - INTAKE_TO_ADDRESS
+      - PUBLIC_SITE_BASE_URL
+      - INTAKE_RATE_LIMIT_PER_HOUR
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3000/intake/healthz',(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s

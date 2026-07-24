@@ -21,6 +21,17 @@ export default defineConfig({
   site: 'https://aramo.ai',
   output: 'static',
   integrations: [react(), sitemap()],
+  // CSP-completeness (R-PUB5-7 / D-PUB5-CSP-STYLE-1): the hardened CSP has a
+  // strict `script-src` (hash-allowlisted) and NO `style-src`, so inline styles
+  // fall back to `default-src 'self'` and are blocked. Astro's default
+  // `inlineStylesheets: 'auto'` inlines the small per-page scoped `<style>`
+  // blocks and the `astro-island{display:contents}` runtime style — both then
+  // blocked, dropping scoped presentation (e.g. the get-started steps rendered
+  // doubled list markers). `'never'` emits ALL CSS as external, same-origin
+  // stylesheets that `default-src 'self'` already permits — so the CSP stays
+  // strict (no `unsafe-inline`, no style hashes to maintain) and nothing inline
+  // is blocked. The two inline hydration SCRIPTS are unaffected (still hashed).
+  build: { inlineStylesheets: 'never' },
   vite: {
     resolve: {
       // ─── Cookie-resolution workaround (RATIFIED: In-Session Ruling R-S2-2) ───
