@@ -27,3 +27,9 @@ variable "bundle_id" {
   type        = string
   default     = "nano_3_0"
 }
+
+variable "ses_identity_domain" {
+  description = "The verified SES identity (domain) the intake-mailer IAM user may send from. Its ARN is scoped in the least-privilege policy."
+  type        = string
+  default     = "aramo.ai"
+}

@@ -40,6 +40,12 @@ RUN npm run prisma:generate
 # Build the Astro site → apps/public-web/dist (+ the upstream build tasks).
 RUN npx nx build public-web --skip-nx-cache
 
+# CSP HASH DRIFT GATE (R-PUB5-7): assert the built inline-script hashes equal the
+# nginx CSP script-src allow-list EXACTLY. dist/ and nginx.conf are both present
+# here, so the image build IS the gate — an Astro upgrade that changes the inline
+# hydration bootstrap fails the build until nginx.conf's hashes are updated.
+RUN node deploy/public/verify-csp-hashes.mjs
+
 # ---------- Stage 2: nginx front-door (site + holding page baked) ----------
 FROM nginx:alpine AS runtime
 

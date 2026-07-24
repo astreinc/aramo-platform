@@ -1,30 +1,36 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import WorkspaceRequestForm from '../components/WorkspaceRequestForm.tsx';
 ---
 
 <BaseLayout
   title="Get started — Aramo"
-  description="Request a workspace on Aramo. The workspace request form is on the way; until then, write to hello@aramo.ai and we will set you up."
+  description="Request a workspace on Aramo. Tell us about your desk and we will set you up — or email hello@aramo.ai."
 >
-  <!-- Hero -->
+  <!-- Hero + form -->
   <section class="section hero">
     <div class="container">
-      <span class="eyebrow">Get started</span>
-      <h1 class="hero__display">Put proof behind your next submittal.</h1>
-      <p class="hero__sub">
-        Tell us about your desk and we will set up a workspace. The self-serve
-        request form is on the way — until it lands, one email gets you started.
-      </p>
-      <div class="cluster">
-        <a class="btn btn--primary" href="mailto:hello@aramo.ai"
-          >Email hello@aramo.ai</a
-        >
-        <a class="btn btn--ghost" href="/how-it-works">See how it works</a>
+      <div class="split">
+        <div class="split__body">
+          <span class="eyebrow">Get started</span>
+          <h1 class="hero__display">Put proof behind your next submittal.</h1>
+          <p class="hero__sub">
+            Tell us about your desk and we will set up a workspace — isolated to
+            your firm from the first day.
+          </p>
+          <p class="secondary-line">
+            Prefer email? Write to&#32;
+            <a href="mailto:hello@aramo.ai">hello@aramo.ai</a>.
+          </p>
+        </div>
+        <div class="split__visual">
+          <WorkspaceRequestForm client:visible />
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- What's coming -->
+  <!-- What to expect -->
   <section class="section section--bleed section--alt">
     <div class="container">
       <span class="eyebrow">What to expect</span>
@@ -33,10 +39,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <li class="steps__item">
           <span class="steps__n" aria-hidden="true">1</span>
           <div>
-            <p class="steps__title">Tell us about your desk</p>
+            <p class="steps__title">Send the request</p>
             <p class="steps__body">
-              Write to <a href="mailto:hello@aramo.ai">hello@aramo.ai</a> with
-              how your team works today.
+              Fill in the form with your name, work email, firm, and a line
+              about how your team works today.
             </p>
           </div>
         </li>
@@ -60,18 +66,18 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           </div>
         </li>
       </ol>
-      <p class="note">
-        A self-serve workspace request form arrives soon. For now, the email
-        above reaches us directly.
-      </p>
     </div>
   </section>
 </BaseLayout>
 
 <style>
+  .secondary-line {
+    font-size: var(--fs-14);
+    color: var(--c-text-subtle);
+    margin: var(--sp-4) 0 0;
+  }
   .steps {
     list-style: none;
-    counter-reset: none;
     margin: var(--sp-6) 0 0;
     padding: 0;
     display: flex;
@@ -109,10 +115,5 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   .steps__body {
     margin: 2px 0 0;
     color: var(--c-text-muted);
-  }
-  .note {
-    margin: var(--sp-6) 0 0;
-    font-size: var(--fs-14);
-    color: var(--c-text-subtle);
   }
 </style>

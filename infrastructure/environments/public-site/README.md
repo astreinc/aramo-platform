@@ -28,8 +28,24 @@ box** — the same posture as `environments/{dev,staging,prod}`. CI only runs
 3. **Confirm no apex/www/staging A records already exist** — if `aramo.ai`,
    `www.aramo.ai`, or `staging.aramo.ai` already have A records, Terraform will
    want to overwrite them; reconcile before applying.
-4. `terraform init` (S3 backend `aramo-terraform-state-prod`, key
+4. **Confirm the SES identity is verified** — the intake-mailer policy scopes
+   `ses:SendEmail`/`ses:SendRawEmail` to the `aramo.ai` SES identity ARN
+   (`ses_identity_domain`). The domain identity must exist and be verified in
+   this account/region for sending to work (verification is separate PO/SES
+   work; the policy references the ARN whether or not it is verified yet).
+5. `terraform init` (S3 backend `aramo-terraform-state-prod`, key
    `public-site/terraform.tfstate`), then `terraform plan`, review, `apply`.
+
+## After apply — intake-mailer credential (R-PUB5-3)
+
+Terraform creates the IAM user `aramo-public-intake-mailer` and its
+least-privilege SES-send policy, but **NOT** an access key (the secret must
+never enter TF state). Create the key MANUALLY and place it in the host `.env`
+for the `public-intake` container (see `deploy/public/README.md`):
+
+```sh
+aws iam create-access-key --user-name "$(terraform output -raw intake_mailer_user_name)"
+```
 
 ## Serving posture (G0-R3)
 

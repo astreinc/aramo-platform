@@ -1,0 +1,100 @@
+/* Aramo public-site — intake form styling (PUB-5 PR-5b). Tokens-only. Shared by
+   the WorkspaceRequestForm + ContactForm React islands and their no-JS markup. */
+
+.intake-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 34rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+  padding: var(--sp-6);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.field__label {
+  font-size: var(--fs-14);
+  font-weight: var(--fw-medium);
+  color: var(--c-text);
+}
+
+.field__control {
+  font-family: inherit;
+  font-size: var(--fs-16);
+  color: var(--c-text);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+  width: 100%;
+}
+
+.field__control:focus-visible {
+  outline: 2px solid var(--c-focus-ring);
+  outline-offset: 1px;
+  border-color: var(--c-accent);
+}
+
+.field__textarea {
+  resize: vertical;
+  min-height: 6rem;
+}
+
+.field__control[aria-invalid='true'] {
+  border-color: var(--c-danger);
+}
+
+.field__error {
+  margin: 0;
+  font-size: var(--fs-14);
+  color: var(--c-danger);
+}
+
+/* Honeypot — off-screen, non-interactive; never shown to a real user. */
+.honeypot {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.form-status {
+  margin: 0;
+  border-radius: var(--r-md);
+  padding: var(--sp-4) var(--sp-5);
+  font-size: var(--fs-16);
+}
+
+.form-status--success {
+  background: var(--c-success-soft);
+  border: 1px solid var(--c-success-border);
+  color: var(--c-success);
+}
+
+.form-status__title {
+  margin: 0 0 var(--sp-1);
+  font-weight: var(--fw-semibold);
+}
+
+.form-status__body {
+  margin: 0;
+  color: var(--c-text-muted);
+}
+
+.form-status--error {
+  background: var(--c-danger-soft);
+  border: 1px solid var(--c-danger-border);
+  color: var(--c-danger);
+}
+
+.intake-form .btn {
+  align-self: flex-start;
+}

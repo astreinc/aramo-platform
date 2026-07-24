@@ -1,24 +1,36 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import ContactForm from '../components/ContactForm.tsx';
 ---
 
 <BaseLayout
   title="Contact — Aramo"
-  description="Talk to the team building Aramo. Write to hello@aramo.ai, or start a workspace request."
+  description="Talk to the team building Aramo. Send a message, or write to hello@aramo.ai."
 >
-  <!-- Hero -->
+  <!-- Hero + form -->
   <section class="section hero">
     <div class="container">
-      <span class="eyebrow">Contact</span>
-      <h1 class="hero__display">Talk to us.</h1>
-      <p class="hero__sub">
-        The people building Aramo run a staffing desk too. Reach us directly —
-        no phone tree, no queue.
-      </p>
+      <div class="split">
+        <div class="split__body">
+          <span class="eyebrow">Contact</span>
+          <h1 class="hero__display">Talk to us.</h1>
+          <p class="hero__sub">
+            The people building Aramo run a staffing desk too. Send a message and
+            we’ll get back to you — no phone tree, no queue.
+          </p>
+          <p class="secondary-line">
+            Prefer email? Write to&#32;
+            <a href="mailto:hello@aramo.ai">hello@aramo.ai</a>.
+          </p>
+        </div>
+        <div class="split__visual">
+          <ContactForm client:visible />
+        </div>
+      </div>
     </div>
   </section>
 
-  <!-- Direct lines -->
+  <!-- Direct lines (alternatives) -->
   <section class="section section--bleed section--alt">
     <div class="container">
       <ul class="contact-grid">
@@ -56,6 +68,11 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 </BaseLayout>
 
 <style>
+  .secondary-line {
+    font-size: var(--fs-14);
+    color: var(--c-text-subtle);
+    margin: var(--sp-4) 0 0;
+  }
   .contact-grid {
     list-style: none;
     margin: 0;
