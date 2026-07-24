@@ -66,6 +66,8 @@ jobs:
               - 'tsconfig.base.json'
             caddy:
               - 'deploy/caddy/**'
+            nginx:
+              - 'deploy/nginx/**'
       - id: dockerjson
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -170,6 +172,7 @@ jobs:
           - { name: auth-service, dockerfile: apps/auth-service/Dockerfile }
           - { name: platform-admin, dockerfile: apps/platform-admin/Dockerfile }
           - { name: caddy, dockerfile: deploy/caddy/Dockerfile }
+          - { name: nginx, dockerfile: deploy/nginx/Dockerfile }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -325,6 +328,23 @@ jobs:
           cache: npm
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run ingestion:refusal-check
+
+  # Front-Door PR-2 (Ruling 6) — the nginx front-door conf-semantics wall
+  # (constant/conf parity, R14 negatives, header contract, wildcard-only cert,
+  # inertness invariant). Always-run wall (refusal-check family). Invoked directly
+  # (no package.json script) to hold the directive's exact 9-file delta.
+  frontdoor-conf-check:
+    name: frontdoor:conf-check
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: node --import jiti/register ci/scripts/verify-frontdoor-conf.ts
 
   version-sync-check:
     name: version:sync-check
@@ -564,6 +584,7 @@ jobs:
       - portal-refusal-check
       - ats-refusal-check
       - ingestion-refusal-check
+      - frontdoor-conf-check
       - version-sync-check
       - error-codes-check
       - identity-index-privacy-wall
