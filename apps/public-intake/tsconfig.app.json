@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/apps/public-intake",
+    "rootDir": "src",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "declaration": false,
+    "tsBuildInfoFile": "../../dist/apps/public-intake/.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "src/tests/**/*",
+    "**/*.spec.ts",
+    "src/public-negative-control/**"
+  ]
+}

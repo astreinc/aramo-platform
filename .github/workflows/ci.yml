@@ -71,17 +71,22 @@ jobs:
               - 'deploy/public/**'
               - 'package.json'
               - 'package-lock.json'
+            public-intake:
+              - 'apps/public-intake/**'
+              - 'package.json'
+              - 'package-lock.json'
       - id: dockerjson
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            printf 'json={"api":"%s","auth-service":"%s","platform-admin":"%s","caddy":"%s","public-web":"%s"}\n' \
+            printf 'json={"api":"%s","auth-service":"%s","platform-admin":"%s","caddy":"%s","public-web":"%s","public-intake":"%s"}\n' \
               "${{ steps.filter.outputs.api }}" \
               "${{ steps.filter.outputs.auth-service }}" \
               "${{ steps.filter.outputs.platform-admin }}" \
               "${{ steps.filter.outputs.caddy }}" \
-              "${{ steps.filter.outputs.public-web }}" >> "$GITHUB_OUTPUT"
+              "${{ steps.filter.outputs.public-web }}" \
+              "${{ steps.filter.outputs.public-intake }}" >> "$GITHUB_OUTPUT"
           else
-            echo 'json={"api":"true","auth-service":"true","platform-admin":"true","caddy":"true","public-web":"true"}' >> "$GITHUB_OUTPUT"
+            echo 'json={"api":"true","auth-service":"true","platform-admin":"true","caddy":"true","public-web":"true","public-intake":"true"}' >> "$GITHUB_OUTPUT"
           fi
 
   install:
@@ -177,6 +182,7 @@ jobs:
           - { name: platform-admin, dockerfile: apps/platform-admin/Dockerfile }
           - { name: caddy, dockerfile: deploy/caddy/Dockerfile }
           - { name: public-web, dockerfile: deploy/public/Dockerfile }
+          - { name: public-intake, dockerfile: apps/public-intake/Dockerfile }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
