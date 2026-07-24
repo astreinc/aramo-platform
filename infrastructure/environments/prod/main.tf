@@ -68,17 +68,12 @@ module "resume_bucket" {
   tags                    = local.common_tags
 }
 
-# Front-Door Migration PR-0 (ADR-0023) — the apex A record for aramo.ai + the
-# least-privilege certbot DNS-01 principal. Prod-only (Ruling 6): DNS for
-# aramo.ai is singular reality, not a per-env matrix concern. Both ship inert
-# relative to the running front door; they unblock PR-2's certbot sidecar.
-module "route53_apex" {
-  source  = "../../modules/route53-apex"
-  apex_ip = var.apex_ip
-}
-
+# Front-Door Migration PR-0/PR-0b (ADR-0023) — the least-privilege certbot DNS-01
+# principal. Prod-only; ships inert until PR-2's certbot sidecar consumes it. The
+# module discovers the aramo.ai hosted zone internally (PR-0b R2), so no zone_id
+# argument is passed. This track writes NO DNS: the apex belongs to the PublicSite
+# track, and the manual *.aramo.ai wildcard record stays untouched.
 module "certbot_dns" {
-  source  = "../../modules/iam-certbot-dns"
-  zone_id = module.route53_apex.zone_id
-  tags    = local.common_tags
+  source = "../../modules/iam-certbot-dns"
+  tags   = local.common_tags
 }

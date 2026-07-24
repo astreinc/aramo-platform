@@ -13,10 +13,6 @@ resume_bucket_cors_allowed_origins    = ["https://aramo.app"]
 resume_bucket_retention_days_default  = 365
 resume_bucket_retention_days_extended = 2555
 
-# Front-Door Migration PR-0 (ADR-0023) — the aramo.ai apex A target.
-# Replace with the box's real Lightsail static IP in terraform.tfvars.
-apex_ip = "203.0.113.10"
-
 # ---------------------------------------------------------------------------
 # Step-4 Directive 2 — compute / run layer.
 # Sizing defaults are modest (compute-variables.tf); bump for prod here.

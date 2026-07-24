@@ -37,6 +37,15 @@ Two statements:
 Net: the principal can write **exactly one record name, of exactly one type, in
 exactly one zone**. Tighter than the charter shorthand, not looser.
 
+## Zone discovery (PR-0b R2)
+
+The module discovers the hosted zone **internally** via a read-only
+`data "aws_route53_zone"` on `var.zone_name` (default `"aramo.ai"`) and derives the
+`ChangeResourceRecordSets` ARN from it — no `zone_id` input is passed in. The zone
+predates IaC and stays unmanaged (greenfield posture). The `aramo.ai` apex and the
+manual `*.aramo.ai` wildcard record are out of scope and owned elsewhere; this
+module never writes DNS — it only reads the zone id to scope the policy.
+
 ## Access keys (Ruling 3)
 
 This module creates the user + inline policy **only** — it does **not** create
@@ -55,3 +64,5 @@ PR-2's compose passes through — Ruling 7). Never commit the secret.
 
 - `user_name` — the IAM user name (key-generation target).
 - `user_arn` — the IAM user ARN.
+- `zone_id` — the `aramo.ai` hosted-zone id (read via the module's own data
+  source; for ops reference).

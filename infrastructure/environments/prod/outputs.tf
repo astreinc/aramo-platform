@@ -43,8 +43,8 @@ output "auth_task_role_arn" {
 # Front-Door Migration PR-0 (ADR-0023).
 
 output "frontdoor_zone_id" {
-  description = "The aramo.ai hosted-zone id (read via data source; feeds PR-2/PR-3 DNS wiring)."
-  value       = module.route53_apex.zone_id
+  description = "The aramo.ai hosted-zone id (read via the certbot-dns module's data source; for ops reference. This track writes no DNS)."
+  value       = module.certbot_dns.zone_id
 }
 
 output "certbot_user_name" {

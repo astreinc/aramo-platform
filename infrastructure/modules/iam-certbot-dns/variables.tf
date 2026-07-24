@@ -9,9 +9,10 @@ variable "name" {
   }
 }
 
-variable "zone_id" {
-  description = "The aramo.ai hosted-zone id (passed from route53-apex.zone_id). Scopes the ChangeResourceRecordSets statement to this zone's ARN."
+variable "zone_name" {
+  description = "The public hosted-zone name to read (PR-0b R2 — the module discovers the zone internally via a data source). Scopes the ChangeResourceRecordSets statement to this zone's ARN."
   type        = string
+  default     = "aramo.ai"
 }
 
 variable "record_name" {
