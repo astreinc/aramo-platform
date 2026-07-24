@@ -1,11 +1,13 @@
 import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 
 import { AppModule } from './app.module.js';
 import { registerBackgroundJobSchedules } from './jobs/registration.js';
+import { applyTrustProxy } from './trust-proxy.js';
 import {
   INDEED_APPLY_MAX_BODY_BYTES,
   INDEED_APPLY_WEBHOOK_ROUTE,
@@ -19,7 +21,13 @@ async function bootstrap(): Promise<void> {
   // stream in registration order, so a route-scoped raw parser must be mounted
   // BEFORE the JSON parser. Every OTHER route keeps the default JSON+urlencoded
   // behaviour (re-added explicitly below), untouched.
-  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
+  // Front-Door PR-1 (D-PROXY-IP-1 / Ruling 3): trust exactly one proxy hop
+  // BEFORE any middleware, so req.ip resolves to the proxy-observed client IP
+  // and the per-IP budgets key per-client (not the single proxy socket peer).
+  applyTrustProxy(app);
   // PR-8.0b directive §8.4: parse cookies so JwtAuthGuard can read the
   // `aramo_access_token` access cookie when the Authorization header is
   // absent. No signed cookies (directive §3 Topic 3).
