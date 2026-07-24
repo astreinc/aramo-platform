@@ -1,0 +1,56 @@
+name: deploy-public-staging
+
+# PUB-1 PR-1a (§2.4) — MANUAL staging image build + push for the public
+# marketing site (apps/public-web). Manual-trigger ONLY: no schedule, no push
+# trigger. It checks out the requested ref, builds deploy/public/Dockerfile (a
+# PR-1a placeholder until PR-1b lands the real multi-stage build), and pushes it
+# to GHCR tagged `:staging` and `:<built-commit-sha>`. Deploy/apply is a PO-lane
+# action; this workflow only produces the image.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref (branch/tag/SHA) to build the public-web image from
+        required: true
+        default: public-site
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # PUB-5 PR-5b: build + push BOTH public-site images (public-web + the intake
+  # handler) from the dispatched ref. The `ref` input contract is unchanged.
+  build-push:
+    name: build + push ${{ matrix.name }} (staging)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: public-web, dockerfile: deploy/public/Dockerfile }
+          - { name: public-intake, dockerfile: apps/public-intake/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build + push (staging + sha)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/aramo-${{ matrix.name }}:staging
+            ghcr.io/${{ github.repository_owner }}/aramo-${{ matrix.name }}:${{ steps.sha.outputs.sha }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
