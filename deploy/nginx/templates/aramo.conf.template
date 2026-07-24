@@ -1,0 +1,160 @@
+# Aramo — nginx front-door server blocks (Front-Door Migration PR-2, ADR-0023).
+#
+# Walls translated VERBATIM from deploy/caddy/Caddyfile (three host classes). The
+# official nginx image runs envsubst over this template at container start; ONLY
+# the four ${NGINX_*} vars are substituted (NGINX_ENVSUBST_FILTER=^NGINX_ at
+# runtime; explicit var-list envsubst at build time) — every nginx runtime var
+# ($host, $uri, $scheme, $proxy_add_x_forwarded_for, …) is left literal.
+#
+# Parameterization (Ruling 1) — defaults are the LOCAL posture (env-less = local),
+# mirroring the Caddyfile's local defaults:
+#   NGINX_TENANT_SERVER_NAME  (default localhost;       box *.aramo.ai)
+#   NGINX_ADMIN_SERVER_NAME   (default admin.localhost; box admin.aramo.ai)
+#   NGINX_PORTAL_SERVER_NAME  (default portal.localhost;box candidate.aramo.ai)
+#   NGINX_CERT_DIR            (default /etc/letsencrypt/live/aramo.ai; local: a
+#                             mounted mkcert dir). One shared WILDCARD cert
+#                             (*.aramo.ai, no apex SAN — PR-0b R4) serves all three
+#                             443 blocks. Upstreams are the compose service names,
+#                             hardcoded exactly as the Caddyfile hardcodes them.
+#
+# TLS termination stays at the front door; nginx→backend is plain HTTP on the
+# compose network (the Caddy posture). DNS-01 only — no /.well-known/acme-challenge
+# location (certbot solves the challenge via Route53, not HTTP-01).
+
+# ── Tenant / wildcard host (Caddyfile {$CADDY_SITE_ADDRESS} block) ──────────────
+server {
+  listen 443 ssl;
+  server_name ${NGINX_TENANT_SERVER_NAME};
+
+  ssl_certificate     ${NGINX_CERT_DIR}/fullchain.pem;
+  ssl_certificate_key ${NGINX_CERT_DIR}/privkey.pem;
+  ssl_protocols       TLSv1.2 TLSv1.3;
+
+  # Ruling 3 — header contract, server-scoped so it applies to every proxied
+  # location below (no location redefines proxy_set_header, so nginx inheritance
+  # holds). Each line has a named consumer:
+  #   Host                → tenant resolution by host across all three backends
+  #   X-Forwarded-For     → the three per-IP budgets via PR-1 trust proxy = 1
+  #                         ($proxy_add_x_forwarded_for appends the peer; the
+  #                         rightmost entry is the proxy-observed client — the
+  #                         PR-1 spoof-containment spec is the proof)
+  #   X-Forwarded-Host    → the Indeed webhook (x-forwarded-host tenant slug)
+  #   X-Forwarded-Proto   → Express req.secure/req.protocol (Secure-cookie)
+  proxy_set_header Host              $host;
+  proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Host  $host;
+  proxy_set_header X-Forwarded-Proto $scheme;
+
+  # Indeed Apply webhook — exact-match so it wins over the /v1/ prefix (ordered
+  # ahead of /v1/ for readability). Route literal inlined from
+  # apps/api/src/webhooks/indeed-apply.constants.ts INDEED_APPLY_WEBHOOK_ROUTE;
+  # verify-frontdoor-conf.ts enforces constant/conf parity thereafter. The larger
+  # body cap carries the base64 résumé payload (nginx default is 1m).
+  location = /v1/webhooks/indeed/apply {
+    client_max_body_size 3m;
+    proxy_pass http://api:3000;
+  }
+
+  # API + auth surfaces → container-internal backends (paths reach the services
+  # unchanged; proxy_pass carries no URI part).
+  location /v1/ {
+    proxy_pass http://api:3000;
+  }
+  location /auth/ {
+    proxy_pass http://auth-service:3001;
+  }
+  # JWKS — exact match (NOT /.well-known/*), per the Caddyfile.
+  location = /.well-known/jwks.json {
+    proxy_pass http://auth-service:3001;
+  }
+
+  # Everything else: the ats-web SPA baked at /srv/ats, client-side routing via
+  # the index.html fallback.
+  location / {
+    root /srv/ats;
+    try_files $uri /index.html;
+  }
+}
+
+# ── Admin / platform host (Caddyfile {$CADDY_ADMIN_ADDRESS} block, R14) ─────────
+server {
+  listen 443 ssl;
+  server_name ${NGINX_ADMIN_SERVER_NAME};
+
+  ssl_certificate     ${NGINX_CERT_DIR}/fullchain.pem;
+  ssl_certificate_key ${NGINX_CERT_DIR}/privkey.pem;
+  ssl_protocols       TLSv1.2 TLSv1.3;
+
+  proxy_set_header Host              $host;
+  proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Host  $host;
+  proxy_set_header X-Forwarded-Proto $scheme;
+
+  location /auth/ {
+    proxy_pass http://auth-service:3001;
+  }
+  location /platform/ {
+    proxy_pass http://platform-admin:3002;
+  }
+  location = /.well-known/jwks.json {
+    proxy_pass http://auth-service:3001;
+  }
+
+  # NO `/v1` location of any kind — DELIBERATE (R14). The platform host cannot
+  # reach the tenant api even by misconfiguration: there is simply no proxy_pass
+  # to api:3000 here, so a stray /v1/* request falls through to the SPA fallback
+  # (index.html), never to tenant data — exactly as under Caddy.
+
+  location / {
+    root /srv/admin;
+    try_files $uri /index.html;
+  }
+}
+
+# ── Portal / talent host (Caddyfile {$CADDY_PORTAL_ADDRESS} block, R14) ─────────
+server {
+  listen 443 ssl;
+  server_name ${NGINX_PORTAL_SERVER_NAME};
+
+  ssl_certificate     ${NGINX_CERT_DIR}/fullchain.pem;
+  ssl_certificate_key ${NGINX_CERT_DIR}/privkey.pem;
+  ssl_protocols       TLSv1.2 TLSv1.3;
+
+  proxy_set_header Host              $host;
+  proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Host  $host;
+  proxy_set_header X-Forwarded-Proto $scheme;
+
+  # SCOPED to /v1/portal/ ONLY (R14, portal direction) — never a general /v1/*
+  # proxy, so no other tenant-api surface is reachable from this host. A stray
+  # /v1/<other> falls through to the SPA fallback, never to tenant data.
+  location /v1/portal/ {
+    proxy_pass http://api:3000;
+  }
+  location /auth/ {
+    proxy_pass http://auth-service:3001;
+  }
+  location = /.well-known/jwks.json {
+    proxy_pass http://auth-service:3001;
+  }
+
+  location / {
+    root /srv/portal;
+    try_files $uri /index.html;
+  }
+}
+
+# ── Port-80: healthcheck target then blanket HTTPS redirect ─────────────────────
+# No ACME HTTP-01 provisions (DNS-01 only). /healthz answers before the redirect
+# so the container healthcheck (busybox wget) gets a 200 without following a 301.
+server {
+  listen 80 default_server;
+  server_name _;
+
+  location = /healthz {
+    return 200;
+  }
+  location / {
+    return 301 https://$host$request_uri;
+  }
+}

@@ -88,6 +88,78 @@ services:
       - api
       - auth-service
 
+  # ── Front-Door Migration PR-2 (ADR-0023) — nginx + certbot, built INERT ───────
+  # Both carry profiles: ["frontdoor"], so a plain `docker compose up -d` starts
+  # NEITHER — caddy keeps 80/443. The PR-3 flip removes the profiles and moves the
+  # 80/443 publications from caddy to nginx in ONE reviewed diff. nginx publishes
+  # NO ports here — port publication is itself part of the flip (doubly inert even
+  # if profiles were mis-handled). The caddy service above is byte-untouched.
+  nginx:
+    build:
+      context: .
+      dockerfile: deploy/nginx/Dockerfile
+    image: aramo/nginx:local
+    container_name: aramo-prod-nginx
+    profiles: ["frontdoor"]
+    restart: unless-stopped
+    environment:
+      # The four ${NGINX_*} vars (Ruling 1), bare-name passthrough. Unset → the
+      # template's local defaults (D-AUTH-PLATFORM-HOSTS-1 defect class: an
+      # unpassed var silently reverts to local on the box).
+      - NGINX_TENANT_SERVER_NAME
+      - NGINX_ADMIN_SERVER_NAME
+      - NGINX_PORTAL_SERVER_NAME
+      - NGINX_CERT_DIR
+    # NO ports: — port publication is the PR-3 flip diff.
+    volumes:
+      # The certbot-owned wildcard cert, READ-ONLY to nginx.
+      - aramo-prod-letsencrypt:/etc/letsencrypt:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1/healthz || exit 1']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      # FULL set — corrects the grounded gap where caddy omits platform-admin.
+      - api
+      - auth-service
+      - platform-admin
+    # Reload loop (Ruling 4): pick up a renewed cert every 6h without a restart.
+    # NO docker socket mounted anywhere (rejected: root-equivalent surface).
+    command:
+      - /bin/sh
+      - -c
+      - |
+        trap exit TERM
+        while :; do sleep 6h & wait $${!}; nginx -s reload; done &
+        exec nginx -g 'daemon off;'
+
+  # certbot DNS-01 sidecar — owns the *.aramo.ai WILDCARD cert (no apex SAN,
+  # PR-0b R4). Renew-loop ONLY; INITIAL issuance is a cutover-runbook step (PR-3):
+  #   certbot certonly --dns-route53 -d '*.aramo.ai' \
+  #     --agree-tos -m admin@aramo.ai --non-interactive
+  # Credentials are PR-0's certbot IAM principal (CERTBOT_AWS_*, PR-0 Ruling 7),
+  # mapped onto the AWS_* the plugin reads — kept SEPARATE from the box-wide AWS_*
+  # app credentials.
+  certbot:
+    image: certbot/dns-route53:v3.1.0
+    container_name: aramo-prod-certbot
+    profiles: ["frontdoor"]
+    restart: unless-stopped
+    environment:
+      - AWS_ACCESS_KEY_ID=${CERTBOT_AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${CERTBOT_AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+    volumes:
+      - aramo-prod-letsencrypt:/etc/letsencrypt
+    # 12h renew loop, TERM-trapped. No initial issuance here (PR-3 cutover step).
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        trap exit TERM
+        while :; do certbot renew --non-interactive; sleep 12h & wait $${!}; done
+
   api:
     # D1 image, UNCHANGED — referenced, not rebuilt. Override ARAMO_API_IMAGE
     # to point at the ECR tag (D2) on the box; defaults to the local D1 tag.
@@ -278,3 +350,5 @@ volumes:
   aramo-prod-pgdata:
   aramo-prod-caddy-data:
   aramo-prod-caddy-config:
+  # Front-Door PR-2 — the certbot-owned wildcard cert store (certbot rw, nginx ro).
+  aramo-prod-letsencrypt:

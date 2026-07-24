@@ -80,6 +80,7 @@ const openapiTouched = anyTouched(/^openapi\/.*\.ya?ml$/);
 // contract. This is the path-computed provider-state-feeding rule.
 const pactFires = anyTouched(/^pact\//) || affected.has('api');
 const caddyTouched = anyTouched(/^deploy\/caddy\//);
+const nginxTouched = anyTouched(/^deploy\/nginx\//);
 
 const integrationRoots = INTEGRATION_ROOTS.filter((r) => affected.has(projectName(r)));
 const touchedLintable = [...touched].filter(
@@ -105,6 +106,7 @@ console.log(
   `▸ pact walls: ${pactFires ? 'consumer+provider (pact/ touched or api affected)' : 'skipped (no pact/api change)'}`,
 );
 console.log(`▸ caddy check: ${caddyTouched ? 'deploy/caddy touched — validate' : 'skipped'}`);
+console.log(`▸ nginx check: ${nginxTouched ? 'deploy/nginx touched — docker-build gate pointer' : 'skipped'} · frontdoor:conf-check always`);
 console.log('═══════════════════════════════════════════\n');
 
 // ── Build the step list ──────────────────────────────────────────────────────
@@ -130,6 +132,12 @@ steps.push(['portal:refusal-check', () => run('npm run --silent portal:refusal-c
 steps.push(['ats:refusal-check', () => run('npm run --silent ats:refusal-check')]);
 steps.push(['ingestion:refusal-check', () => run('npm run --silent ingestion:refusal-check')]);
 steps.push(['version:sync-check', () => run('npm run --silent version:sync-check')]);
+// Front-Door PR-2 (Ruling 6) — the nginx conf-semantics wall. Unconditional
+// (refusal-check family): reads the template + compose + webhook constant fresh.
+steps.push([
+  'frontdoor:conf-check',
+  () => run('node --import jiti/register ci/scripts/verify-frontdoor-conf.ts'),
+]);
 if (touchedLintable.length > 0) {
   steps.push([
     'eslint(touched)',
@@ -160,6 +168,21 @@ if (caddyTouched) {
           '  (caddy CLI absent — deploy/caddy is gated by CI docker-build(caddy); `docker build -f deploy/caddy/Dockerfile deploy/caddy` to check locally)',
         );
     },
+  ]);
+}
+
+if (nginxTouched) {
+  // deploy/nginx is a runtime artifact — no nx project consumes it. Its
+  // authoritative gate is the CI docker-build(nginx) matrix leg (the in-image
+  // `nginx -t` §2.7 gate). Locally we point at that build (nginx isn't on the Mac
+  // PATH and the build needs the workspace); frontdoor:conf-check (above) covers
+  // the conf SEMANTICS unconditionally.
+  steps.push([
+    'nginx:build-check',
+    () =>
+      console.log(
+        '  (deploy/nginx gated by CI docker-build(nginx) with an in-image `nginx -t`; `docker build -f deploy/nginx/Dockerfile -t aramo/nginx:local .` to check locally)',
+      ),
   ]);
 }
 
