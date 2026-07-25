@@ -64,20 +64,18 @@ jobs:
               - 'package.json'
               - 'package-lock.json'
               - 'tsconfig.base.json'
-            caddy:
-              - 'deploy/caddy/**'
             nginx:
               - 'deploy/nginx/**'
       - id: dockerjson
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            printf 'json={"api":"%s","auth-service":"%s","platform-admin":"%s","caddy":"%s"}\n' \
+            printf 'json={"api":"%s","auth-service":"%s","platform-admin":"%s","nginx":"%s"}\n' \
               "${{ steps.filter.outputs.api }}" \
               "${{ steps.filter.outputs.auth-service }}" \
               "${{ steps.filter.outputs.platform-admin }}" \
-              "${{ steps.filter.outputs.caddy }}" >> "$GITHUB_OUTPUT"
+              "${{ steps.filter.outputs.nginx }}" >> "$GITHUB_OUTPUT"
           else
-            echo 'json={"api":"true","auth-service":"true","platform-admin":"true","caddy":"true"}' >> "$GITHUB_OUTPUT"
+            echo 'json={"api":"true","auth-service":"true","platform-admin":"true","nginx":"true"}' >> "$GITHUB_OUTPUT"
           fi
 
   install:
@@ -153,8 +151,8 @@ jobs:
 
   # Builds every deployable image through its real Dockerfile — the artifact that
   # actually ships. On a PR the images are PATH-FILTERED to their contexts (the
-  # standalone caddy image skips unless deploy/caddy changed; the app images
-  # rebuild on any apps/libs change since they bundle the monorepo). On
+  # standalone nginx front-door image skips unless deploy/nginx changed; the app
+  # images rebuild on any apps/libs change since they bundle the monorepo). On
   # merge_group / push / schedule ALL images build. On push to main they are also
   # pushed SHA-tagged + :latest to GHCR (deploy provenance).
   docker-build:
@@ -171,7 +169,6 @@ jobs:
           - { name: api, dockerfile: apps/api/Dockerfile }
           - { name: auth-service, dockerfile: apps/auth-service/Dockerfile }
           - { name: platform-admin, dockerfile: apps/platform-admin/Dockerfile }
-          - { name: caddy, dockerfile: deploy/caddy/Dockerfile }
           - { name: nginx, dockerfile: deploy/nginx/Dockerfile }
     steps:
       - uses: actions/checkout@v4

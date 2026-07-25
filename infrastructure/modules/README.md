@@ -11,6 +11,9 @@
   policy doc.
 - `iam-app-principal` — legacy scoped IAM **user** for the résumé bucket
   (superseded by the ECS task role once compute lands; retire follow-up).
+- `iam-certbot-dns` — least-privilege IAM **user** for certbot DNS-01 challenges
+  (Front-Door ADR-0023): TXT / `_acme-challenge.aramo.ai`-only Route53 write,
+  self-discovers the zone. Keys generated out-of-band (never in TF state).
 
 ## Compute / run-layer modules (Step-4 Directive 2)
 

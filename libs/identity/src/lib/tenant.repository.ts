@@ -47,14 +47,14 @@ export class TenantRepository {
     return row === null ? null : toTenantDto(row);
   }
 
-  // Subdomain-Identity Directive A — the cert-eligibility lookup. Returns the
-  // tenant that owns this subdomain slug AND is active, or null. Both conditions
-  // are in the WHERE so a single indexed query (slug is @unique) answers "is
-  // <slug>.aramo.ai a real, active tenant?" — the question the public ask-
-  // endpoint asks before Caddy issues an on-demand cert. Slug is stored
-  // normalized (lowercase); the caller passes a lowercased host label, so this
-  // is an exact match. A disabled tenant (is_active=false) is NOT eligible — its
-  // subdomain stops getting new certs (existing ones in Caddy's store persist).
+  // Subdomain-Identity Directive A — the active-slug lookup. Returns the tenant
+  // that owns this subdomain slug AND is active, or null. Both conditions are in
+  // the WHERE so a single indexed query (slug is @unique) answers "is
+  // <slug>.aramo.ai a real, active tenant?" — the question the Indeed webhook and
+  // the auth host-context adapter ask. (The on-demand-cert ask-endpoint that once
+  // also used this retired with the nginx wildcard-cert front door, ADR-0023.)
+  // Slug is stored normalized (lowercase); the caller passes a lowercased host
+  // label, so this is an exact match. A disabled tenant (is_active=false) → null.
   async findActiveBySlug(slug: string): Promise<TenantDto | null> {
     const row = await this.prisma.tenant.findFirst({
       // Platform-Console Increment-2 PR-1 (workstream F, R11): cert-eligibility

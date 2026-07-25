@@ -273,7 +273,7 @@ describe('SessionOrchestratorService.handleCallback', () => {
 
   // PR-3.1 §3d.1 — the token-exchange redirect_uri is DERIVED from the callback
   // request's validated host (threaded via input.derivedBase). Same host as the
-  // authorize leg (browser presents it on both via Caddy) ⇒ exchange==authorize.
+  // authorize leg (browser presents it on both via the front door) ⇒ exchange==authorize.
   function tokenExchangeRedirectUri(): string | null {
     const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
     const call = fetchMock.mock.calls.find((c) =>

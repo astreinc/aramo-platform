@@ -12,7 +12,7 @@ import { resolve } from 'node:path';
 // Contract: print the computed plan FIRST (auditable — Gate-6 cites it), then run
 // (a) nx affected build/test/lint, (b) affected integration roots (serial —
 // harness hardening kills the Docker-saturation flake), (c) the unconditional
-// cheap walls, (d) path-computed openapi + pact + caddy walls. Non-zero exit on
+// cheap walls, (d) path-computed openapi + pact + nginx walls. Non-zero exit on
 // any failure. Walls are NEVER affected-scoped (Charter invariant).
 
 const BASE = 'origin/main';
@@ -79,7 +79,6 @@ const openapiTouched = anyTouched(/^openapi\/.*\.ya?ml$/);
 // any change nx propagates to `api` — or a direct pact/ edit — can break a
 // contract. This is the path-computed provider-state-feeding rule.
 const pactFires = anyTouched(/^pact\//) || affected.has('api');
-const caddyTouched = anyTouched(/^deploy\/caddy\//);
 const nginxTouched = anyTouched(/^deploy\/nginx\//);
 
 const integrationRoots = INTEGRATION_ROOTS.filter((r) => affected.has(projectName(r)));
@@ -105,7 +104,6 @@ console.log(
 console.log(
   `▸ pact walls: ${pactFires ? 'consumer+provider (pact/ touched or api affected)' : 'skipped (no pact/api change)'}`,
 );
-console.log(`▸ caddy check: ${caddyTouched ? 'deploy/caddy touched — validate' : 'skipped'}`);
 console.log(`▸ nginx check: ${nginxTouched ? 'deploy/nginx touched — docker-build gate pointer' : 'skipped'} · frontdoor:conf-check always`);
 console.log('═══════════════════════════════════════════\n');
 
@@ -154,23 +152,6 @@ if (pactFires) {
   steps.push(['pact:consumer', () => run('npm run --silent pact:consumer')]);
   steps.push(['pact:provider', () => run('npm run --silent pact:provider')]);
 }
-if (caddyTouched) {
-  // deploy/caddy is a runtime artifact — no nx project consumes it, so `affected`
-  // cannot mis-map it. Its authoritative gate is CI docker-build(caddy); locally
-  // we `caddy validate` when the binary is present, else print the pointer.
-  steps.push([
-    'caddy:validate',
-    () => {
-      const hasCaddy = capture('command -v caddy') !== '';
-      if (hasCaddy) run('caddy validate --config deploy/caddy/Caddyfile --adapter caddyfile');
-      else
-        console.log(
-          '  (caddy CLI absent — deploy/caddy is gated by CI docker-build(caddy); `docker build -f deploy/caddy/Dockerfile deploy/caddy` to check locally)',
-        );
-    },
-  ]);
-}
-
 if (nginxTouched) {
   // deploy/nginx is a runtime artifact — no nx project consumes it. Its
   // authoritative gate is the CI docker-build(nginx) matrix leg (the in-image

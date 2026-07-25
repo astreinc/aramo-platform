@@ -7,8 +7,8 @@ import { INDEED_SIGNATURE_HEADER } from './indeed-signature.js';
 
 // SRC-1 PR-2 — the Indeed Apply inbound webhook (POST /v1/webhooks/indeed/apply).
 //
-// DELIBERATELY UN-GUARDED (mirrors PublicTenantCertController / the public-token
-// controllers): Indeed calls this endpoint with NO Aramo session — there can be
+// DELIBERATELY UN-GUARDED (like the platform's other public, unauthenticated
+// endpoints): Indeed calls this endpoint with NO Aramo session — there can be
 // no JWT — so there is NO @UseGuards here. The SOLE authority is the
 // `X-Indeed-Signature` HMAC over the raw request body, verified in
 // IndeedApplyWebhookService against the partner-provisioned secret (R5). Every
@@ -19,8 +19,8 @@ import { INDEED_SIGNATURE_HEADER } from './indeed-signature.js';
 //   404 — unknown/inactive tenant slug (Host → slug, RECON-3a primitives)
 //   400 — malformed payload (not JSON / no apply_id)
 //
-// R6 — wildcard tenant host only. The Caddyfile proxies `/v1/*` on the wildcard
-// tenant site (audit E3) so this route is reachable there with ZERO Caddy change;
+// R6 — wildcard tenant host only. The nginx front door proxies `/v1/*` on the wildcard
+// tenant site (audit E3) so this route is reachable there with ZERO front-door change;
 // the admin and portal hosts have no `/v1/*` (or only `/v1/portal/*`) route, so
 // they cannot reach it. Tenant is resolved from the request Host slug.
 //
@@ -41,7 +41,7 @@ export class IndeedApplyController {
   ): Promise<{ received: boolean } | undefined> {
     const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
     const signatureHeader = firstHeader(req.headers[INDEED_SIGNATURE_HEADER]);
-    // Caddy forwards the original host; prefer the forwarded header, fall back to
+    // The front door forwards the original host; prefer the forwarded header, fall back to
     // Host. Both are lowercased by Node's HTTP layer.
     const host =
       firstHeader(req.headers['x-forwarded-host']) ??

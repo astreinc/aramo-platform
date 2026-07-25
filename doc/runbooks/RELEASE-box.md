@@ -19,7 +19,7 @@ declaration.]*
   split. (Substrate audit baseline `a6ef61f`; F-P4b-1 session lessons.)
 - **Deliberately NOT folded** (recorded so the omissions are conscious): per-env secret name
   enumeration (belongs to the *provisioning* path, not steady-state deploy; `bootstrap-anthropic-secret.md`
-  owns the Anthropic secret) and the Caddy R14 host nuance (out of v2.0's current smoke scope —
+  owns the Anthropic secret) and the nginx R14 host nuance (out of v2.0's current smoke scope —
   STEP 9 smokes the tenant front door, which carries on-demand TLS).
 - The on-box procedure (PRE-FLIGHT, STEP 1–9, ROLLBACK, HARD STOPS, REPORT, Backlog) is **unchanged
   from v2.0**.
@@ -37,8 +37,8 @@ assumed; everything is verified.
 ```
 ═══ FILL IN BEFORE RUNNING ═══
 TARGET_SHA   = <exact commit to deploy, e.g. bb1954e>   ← what main should be at
-SERVICES     = <which to rebuild/recreate, e.g. api auth-service>   ← NOT caddy unless a UI/SPA
-                 change requires it (the SPA is baked into the caddy image — see note in STEP 4)
+SERVICES     = <which to rebuild/recreate, e.g. api auth-service>   ← NOT nginx unless a UI/SPA
+                 change requires it (the SPA is baked into the nginx image — see note in STEP 4)
 RUN_MIGRATE  = <yes/no>   ← yes if this batch includes new DB migrations
 RUN_SEED     = <yes/no>   ← yes if this batch needs seed backfills/assertions
 NOTES        = <anything special for THIS deploy, or "none">   ← e.g. the specific proof to run
@@ -136,11 +136,11 @@ for each S in SERVICES:
 **GATE:** each exits 0 (zero TS2307 — the `^build` fix is in-tree on any recent SHA). If any fails,
 **STOP** — do NOT recreate. Report the failure.
 
-**SPA / UI note:** `ats-web` (the frontend SPA) is **baked into the caddy image** (`/srv`), not a
-standalone service. So a **UI-only change requires rebuilding the caddy image** and recreating caddy.
-If your deploy includes a UI change, SERVICES must include `caddy`, and you accept a caddy recreate
+**SPA / UI note:** `ats-web` (the frontend SPA) is **baked into the nginx image** (`/srv`), not a
+standalone service. So a **UI-only change requires rebuilding the nginx image** and recreating nginx.
+If your deploy includes a UI change, SERVICES must include `nginx`, and you accept a nginx recreate
 (safe — env/TLS config unchanged, only the baked static files change). If you did NOT intend to touch
-caddy but the batch contains a UI change, **STOP and confirm scope** before rebuilding caddy.
+nginx but the batch contains a UI change, **STOP and confirm scope** before rebuilding nginx.
 
 ### STEP 6 — RECREATE the rebuilt SERVICES (only those listed — NOT postgres/redis)
 ```
@@ -201,7 +201,7 @@ endpoint, a routing change, a UI element). Prove the *change*, not just that the
 - **NEVER** run bare `npx nx` on the box (rewrites `nx.json`, EACCES on root-owned generated files).
   Containers only.
 - Do **NOT** touch Terraform / Route53 / the firewall in a routine deploy — separate deliberate ops.
-- Do **NOT** touch Caddy unless a UI/SPA change requires the caddy rebuild (STEP 5 note) — and then
+- Do **NOT** touch nginx unless a UI/SPA change requires the nginx rebuild (STEP 5 note) — and then
   only with that scope confirmed.
 - Do **NOT** `git reset --hard` / `git clean` (nukes `.env` + backups). If the tree has tracked
   changes, STOP and report the specific file.

@@ -1,6 +1,6 @@
 # Aramo — nginx front-door image (Front-Door Migration PR-2, ADR-0023). Built
 # INERT: CI-gated + cutover-ready, but profile-gated in compose with no published
-# ports until the PR-3 flip. Mirrors deploy/caddy/Dockerfile's shape — identical
+# ports until the PR-3 flip. Mirrors the retired front-door image's shape — identical
 # web-builder stage (3 SPAs + the prisma:generate prerequisite), SPAs baked to
 # /srv/{ats,admin,portal}, front-door config + template copied in.
 #
@@ -9,7 +9,7 @@
 #
 # NO secrets baked in: the FE calls same-origin RELATIVE paths.
 
-# ---------- Stage 1: build ALL THREE static SPAs (mirrors the Caddy image) ------
+# ---------- Stage 1: build ALL THREE static SPAs (mirrors the retired front-door image) ------
 FROM node:24-bookworm-slim AS web-builder
 WORKDIR /app
 
@@ -25,7 +25,7 @@ RUN npm ci
 COPY . .
 
 # Per-module Prisma clients — REQUIRED before the platform-web build (same graph
-# prerequisite as the Caddy image; generated code is NOT bundled into any SPA).
+# prerequisite as the retired front-door image; generated code is NOT bundled into any SPA).
 RUN npm run prisma:generate
 
 # Build ALL THREE SPAs → dist/apps/{ats-web,platform-web,portal-web}.
@@ -33,7 +33,7 @@ RUN npx nx build aramo-ats-web --skip-nx-cache
 RUN npx nx build aramo-platform-web --skip-nx-cache
 RUN npx nx build aramo-portal-web --skip-nx-cache
 
-# ---------- Stage 2: config validation gate (§2.7 — mirrors `caddy validate`) ---
+# ---------- Stage 2: config validation gate (§2.7 — mirrors the retired front door's config validate) ---
 # Materialize the template with DEFAULT env against an EPHEMERAL self-signed cert
 # and run `nginx -t`. A malformed template fails the docker build, so the check
 # rides the new CI matrix entry at zero extra jobs. Everything here is discarded —
@@ -54,7 +54,7 @@ RUN set -eux; \
       -keyout "$NGINX_CERT_DIR/privkey.pem" -out "$NGINX_CERT_DIR/fullchain.pem"; \
     envsubst '${NGINX_TENANT_SERVER_NAME} ${NGINX_ADMIN_SERVER_NAME} ${NGINX_PORTAL_SERVER_NAME} ${NGINX_CERT_DIR}' \
       < /tmp/aramo.conf.template > /tmp/aramo.materialized.conf; \
-    # nginx (unlike Caddy) resolves literal-hostname upstreams at config-test time;
+    # nginx (unlike the retired front door) resolves literal-hostname upstreams at config-test time;
     # this build stage has no compose DNS and BuildKit mounts /etc/hosts read-only.
     # Validate a COPY with the known upstream service names rewritten to loopback:
     # the full config SYNTAX/structure (server_names, locations, headers, ssl,

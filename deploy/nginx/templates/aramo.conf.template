@@ -1,13 +1,13 @@
 # Aramo — nginx front-door server blocks (Front-Door Migration PR-2, ADR-0023).
 #
-# Walls translated VERBATIM from deploy/caddy/Caddyfile (three host classes). The
+# Walls translated VERBATIM from the retired front door's config (ADR-0023) (three host classes). The
 # official nginx image runs envsubst over this template at container start; ONLY
 # the four ${NGINX_*} vars are substituted (NGINX_ENVSUBST_FILTER=^NGINX_ at
 # runtime; explicit var-list envsubst at build time) — every nginx runtime var
 # ($host, $uri, $scheme, $proxy_add_x_forwarded_for, …) is left literal.
 #
 # Parameterization (Ruling 1) — defaults are the LOCAL posture (env-less = local),
-# mirroring the Caddyfile's local defaults:
+# mirroring the retired front door's local defaults:
 #   NGINX_TENANT_SERVER_NAME  (default localhost;       box *.aramo.ai)
 #   NGINX_ADMIN_SERVER_NAME   (default admin.localhost; box admin.aramo.ai)
 #   NGINX_PORTAL_SERVER_NAME  (default portal.localhost;box candidate.aramo.ai)
@@ -15,13 +15,13 @@
 #                             mounted mkcert dir). One shared WILDCARD cert
 #                             (*.aramo.ai, no apex SAN — PR-0b R4) serves all three
 #                             443 blocks. Upstreams are the compose service names,
-#                             hardcoded exactly as the Caddyfile hardcodes them.
+#                             hardcoded exactly as the retired front door hardcoded them.
 #
 # TLS termination stays at the front door; nginx→backend is plain HTTP on the
-# compose network (the Caddy posture). DNS-01 only — no /.well-known/acme-challenge
+# compose network (the retired front door's posture). DNS-01 only — no /.well-known/acme-challenge
 # location (certbot solves the challenge via Route53, not HTTP-01).
 
-# ── Tenant / wildcard host (Caddyfile {$CADDY_SITE_ADDRESS} block) ──────────────
+# ── Tenant / wildcard host (tenant / wildcard host) ──────────────
 server {
   listen 443 ssl;
   server_name ${NGINX_TENANT_SERVER_NAME};
@@ -63,7 +63,7 @@ server {
   location /auth/ {
     proxy_pass http://auth-service:3001;
   }
-  # JWKS — exact match (NOT /.well-known/*), per the Caddyfile.
+  # JWKS — exact match (NOT /.well-known/*), per the retired front door.
   location = /.well-known/jwks.json {
     proxy_pass http://auth-service:3001;
   }
@@ -76,7 +76,7 @@ server {
   }
 }
 
-# ── Admin / platform host (Caddyfile {$CADDY_ADMIN_ADDRESS} block, R14) ─────────
+# ── Admin / platform host (admin / platform host, R14) ─────────
 server {
   listen 443 ssl;
   server_name ${NGINX_ADMIN_SERVER_NAME};
@@ -103,7 +103,7 @@ server {
   # NO `/v1` location of any kind — DELIBERATE (R14). The platform host cannot
   # reach the tenant api even by misconfiguration: there is simply no proxy_pass
   # to api:3000 here, so a stray /v1/* request falls through to the SPA fallback
-  # (index.html), never to tenant data — exactly as under Caddy.
+  # (index.html), never to tenant data — exactly as under the retired front door.
 
   location / {
     root /srv/admin;
@@ -111,7 +111,7 @@ server {
   }
 }
 
-# ── Portal / talent host (Caddyfile {$CADDY_PORTAL_ADDRESS} block, R14) ─────────
+# ── Portal / talent host (portal / talent host, R14) ─────────
 server {
   listen 443 ssl;
   server_name ${NGINX_PORTAL_SERVER_NAME};

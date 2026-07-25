@@ -16,7 +16,7 @@
 #   journalctl -u aramo-singlebox.service -f     # bring-up logs
 #   sudo systemctl restart aramo-singlebox.service
 # Reboot survival: `sudo reboot`, then after boot `systemctl status …` shows
-# active and `docker ps` shows caddy/api/auth/postgres/redis running.
+# active and `docker ps` shows nginx/api/auth/postgres/redis running.
 
 [Unit]
 Description=Aramo single-box production stack (docker-compose.prod.yml)

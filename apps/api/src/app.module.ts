@@ -84,7 +84,6 @@ import { TenantSettingsController } from './controllers/tenant-settings.controll
 import { AssignableUsersController } from './controllers/assignable-users.controller.js';
 import { MeController } from './controllers/me.controller.js';
 import { PublicInvitationController } from './controllers/public-invitation.controller.js';
-import { PublicTenantCertController } from './controllers/public-tenant-cert.controller.js';
 import { CompensationFieldMaskInterceptor } from './interceptors/compensation-field-mask.interceptor.js';
 import { TalentRecordEnrichmentInterceptor } from './talent-enrichment/talent-record-enrichment.interceptor.js';
 import { TalentRecordEnrichmentService } from './talent-enrichment/talent-record-enrichment.service.js';
@@ -441,12 +440,10 @@ import { IndeedApplyWebhookService } from './webhooks/indeed-apply.service.js';
     // has no session yet; authority is the single-use token in the body.
     // Delegates to InvitationLifecycleService (exported by IdentityModule).
     PublicInvitationController,
-    // Subdomain-Identity Directive A — the PUBLIC (un-guarded) cert-eligibility
-    // ask-endpoint (GET /v1/tenants/cert-eligible?domain=). Caddy's on-demand
-    // TLS calls it before issuing a per-host cert; 200 iff a real active tenant
-    // owns the host's slug, 404 otherwise. No JwtAuthGuard — Caddy calls it
-    // pre-TLS, before any session exists. Delegates to TenantService.
-    PublicTenantCertController,
+    // (Front-Door ADR-0023) The public cert-eligibility ask-endpoint was retired
+    // with on-demand TLS — the nginx front door uses a single wildcard cert
+    // (*.aramo.ai via certbot DNS-01), so no per-host issuance gate exists.
+    // TenantService.findActiveBySlug survives for its other callers.
     // TR-2a-3 — the privileged advisory-resolution surface (approve-merge /
     // dismiss / reverse / list). Lives here (not libs/talent-trust) because it is
     // the composition-root HTTP edge ABOVE the I15 wall calling the cip resolution

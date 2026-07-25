@@ -2,7 +2,7 @@
 // mount, the controller, and the processing service).
 
 // R6 — mount point. Wildcard tenant host only (audit E3: reachable today with
-// zero Caddy change; admin/portal hosts stay walled).
+// zero front-door change; admin/portal hosts stay walled).
 export const INDEED_APPLY_WEBHOOK_ROUTE = '/v1/webhooks/indeed/apply';
 
 // RECON-3c — the route-scoped raw parser's size cap. Indeed apply payloads carry

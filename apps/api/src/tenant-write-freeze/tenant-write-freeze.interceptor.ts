@@ -55,8 +55,8 @@ export class TenantWriteFreezeInterceptor implements NestInterceptor {
       >();
 
     // Rung 1 — no authContext → skip. Public routes carry their own single-use-
-    // token authority (invitation accept, cert-eligible, verification confirm);
-    // they have no session and no tenant lifecycle to gate.
+    // token authority (invitation accept, verification confirm); they have no
+    // session and no tenant lifecycle to gate.
     const authContext = req.authContext;
     if (authContext === undefined) {
       return next.handle();

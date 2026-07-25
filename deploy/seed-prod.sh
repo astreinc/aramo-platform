@@ -23,7 +23,7 @@
 #   1. git pull --ff-only                # new code + new migration + new schema
 #   2. deploy/migrate-prod.sh            # apply migrations + GATE on zero-pending
 #   3. >>> deploy/seed-prod.sh <<<       # regen client + seed + ASSERT  (THIS)
-#   4. docker build … (api [+ caddy])    # only reached if both gates passed
+#   4. docker build … (api [+ nginx])    # only reached if both gates passed
 #   5. systemctl restart aramo-singlebox.service  (compose up -d --force-recreate)
 #   6. health checks
 # Runs AFTER migrate-prod.sh: generate reads only the schema files (no DB), and

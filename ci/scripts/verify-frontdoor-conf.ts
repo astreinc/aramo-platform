@@ -1,9 +1,10 @@
-// Front-Door PR-2 (Ruling 6) — the deploy-path wall for nginx front-door conf
+// Front-Door (Ruling 6) — the deploy-path wall for nginx front-door conf
 // semantics. Modeled on the refusal-check family. Asserts, against the template
 // and compose AS TEXT, the walls that keep the nginx front door faithful to the
-// Caddy one, plus the PR-2 inertness invariant.
+// retired front door's three host classes (ADR-0023), plus the post-flip
+// front-door invariant.
 //
-// Assertions (directive §2.6):
+// Assertions:
 //   (a) the webhook route literal from apps/api/src/webhooks/indeed-apply.constants.ts
 //       appears in the TENANT block as an exact-match location with
 //       `client_max_body_size 3m` — constant/conf parity, both read fresh here.
@@ -12,9 +13,9 @@
 //   (d) all four Ruling-3 header lines are present in each proxied (443) server block.
 //   (e) the certbot issuance documentation is WILDCARD-ONLY (contains `-d '*.aramo.ai'`,
 //       NOT a bare `-d aramo.ai`) per Ruling 4 / PR-0b R4.
-//   (f) both new compose services carry `profiles: ["frontdoor"]` and nginx has no
-//       `ports:` — the inertness invariant as an executable check. RETIRES at PR-3
-//       (the flip removes the profiles and adds nginx ports); update (f) then.
+//   (f') post-flip front-door invariant (PR-3, inverting PR-2's inertness (f)):
+//       nginx is the live front door — it HAS ports 80/443, NO `profiles:` entry
+//       remains anywhere in compose, and no retired-front-door service exists.
 //
 // PATH-COUPLING (standing lesson): this script references files by literal path.
 // Any future move of deploy/nginx/** or the constants file must grep for it.
@@ -159,19 +160,29 @@ function checkRepo(): Issue[] {
     issues.push({ where: COMPOSE, reason: '(e) certbot issuance docs contain a bare -d aramo.ai (apex SAN forbidden — PR-0b R4)' });
   }
 
-  // (f) inertness invariant — both new services profile-gated; nginx has no ports.
+  // (f') post-flip front-door invariant — nginx is the live front door (HAS
+  // 80/443), NO profiles remain, and the retired front door's service is gone.
   const nginxSvc = extractComposeService(compose, 'nginx');
   const certbotSvc = extractComposeService(compose, 'certbot');
-  if (nginxSvc === null) issues.push({ where: COMPOSE, reason: '(f) nginx service not found' });
-  if (certbotSvc === null) issues.push({ where: COMPOSE, reason: '(f) certbot service not found' });
-  for (const [name, svc] of [['nginx', nginxSvc], ['certbot', certbotSvc]] as const) {
-    if (svc && !/profiles:\s*\[\s*["']frontdoor["']\s*\]/.test(svc)) {
-      issues.push({ where: COMPOSE, reason: `(f) ${name} service missing profiles: ["frontdoor"]` });
-    }
+  if (nginxSvc === null) issues.push({ where: COMPOSE, reason: '(f′) nginx service not found' });
+  if (certbotSvc === null) issues.push({ where: COMPOSE, reason: '(f′) certbot service not found' });
+  if (nginxSvc && !/-\s*['"]80:80['"]/.test(nginxSvc)) {
+    issues.push({ where: COMPOSE, reason: "(f′) nginx service missing published port 80:80 (nginx is the live front door)" });
   }
-  if (nginxSvc && /^\s*ports:/m.test(nginxSvc)) {
-    issues.push({ where: COMPOSE, reason: '(f) nginx service has ports: — inertness invariant violated (port publication is the PR-3 flip)' });
+  if (nginxSvc && !/-\s*['"]443:443['"]/.test(nginxSvc)) {
+    issues.push({ where: COMPOSE, reason: "(f′) nginx service missing published port 443:443" });
   }
+  if (/^\s*profiles:/m.test(compose)) {
+    issues.push({ where: COMPOSE, reason: "(f′) a profiles: entry remains — the flip retires all frontdoor profiles" });
+  }
+  // The retired front door is gone: exactly ONE service publishes each ingress
+  // port (nginx). A lingering second front door would double the count. Asserted
+  // by port count rather than by a retired service name (keeps this file itself
+  // free of the retired-front-door term).
+  const p80 = (compose.match(/-\s*['"]80:80['"]/g) ?? []).length;
+  const p443 = (compose.match(/-\s*['"]443:443['"]/g) ?? []).length;
+  if (p80 !== 1) issues.push({ where: COMPOSE, reason: `(f′) expected exactly one service publishing 80:80, found ${p80}` });
+  if (p443 !== 1) issues.push({ where: COMPOSE, reason: `(f′) expected exactly one service publishing 443:443, found ${p443}` });
 
   return issues;
 }
