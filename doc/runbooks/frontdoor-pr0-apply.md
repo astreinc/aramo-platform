@@ -1,15 +1,22 @@
 # Front-Door PR-0 — Apply Runbook
 
-**Directive:** `Aramo-FrontDoor-PR-0-Directive-v1_0-LOCKED` + `…PR-0b…` (ADR-0023).
+**Directive:** `Aramo-FrontDoor-PR-0-Directive-v1_0-LOCKED` + `…PR-0b…` + `…PR-0c…`
+(ADR-0023). PR-0c re-homed the certbot IAM principal from the dormant
+`infrastructure/environments/prod` root to the LIVE `infrastructure-lightsail/`
+root (E13) — this runbook applies from there.
 **Posture:** `terraform plan`/`apply` run **from the Mac only** (infra-account
 identity — the box gets 403 on the state bucket; never run Terraform from the
 box). Apply runs **AFTER merge** (the merge is an apply precondition, not the
-reverse). This track writes **NO DNS** — it provisions the certbot IAM principal
-only (PR-0b removed the apex record; the apex belongs to the PublicSite track).
+reverse). This apply **adds only the certbot IAM principal** — it writes **no
+DNS**; the root's existing DNS records (and every other existing resource) must
+plan **clean** (§2).
 
-**Wildcard preservation:** the manual `*.aramo.ai` wildcard `A` record (pre-IaC,
-what tenant routing rides on) is **out of scope** — it is not managed by this
-track's Terraform and must not be touched.
+**Wildcard custody (E14):** the `*.aramo.ai` wildcard `A` record is **Terraform-
+managed by this root** (`aws_route53_record.wildcard` in
+`infrastructure-lightsail/main.tf`) — it is NOT a manual/pre-IaC record. The
+preservation posture is unchanged: this procedure adds only the certbot IAM
+resources and touches nothing existing, so the wildcard (like all existing
+resources) must show **no change** in the plan.
 
 Each step is gated on the previous. HALT means stop and report — never improvise.
 
@@ -27,20 +34,31 @@ Each step is gated on the previous. HALT means stop and report — never improvi
 ## 2. Plan · **HALT gate**
 
 ```
-cd infrastructure/environments/prod
+cd infrastructure-lightsail
 terraform init
 terraform plan
 ```
 
-Expected plan: **2 to add, 0 to change, 0 to destroy** — exactly these two
-resources:
+Expected plan: **exactly `2 to add, 0 to change, 0 to destroy`** — exactly these
+two resources added:
 
 - `module.certbot_dns.aws_iam_user.this`
 - `module.certbot_dns.aws_iam_user_policy.acme_challenge`
 
 (The `aws_route53_zone` and `aws_iam_policy_document` data sources are reads, not
-adds — no DNS record is created.) **HALT if the plan shows anything beyond exactly
-these 2 adds.**
+adds — no DNS record is created.)
+
+**Existing-resource guard — HALT on ANY change/replace/destroy** to the root's
+already-applied resources; the plan must show them untouched:
+
+- `aws_lightsail_instance.this`, `aws_lightsail_static_ip.this`,
+  `aws_lightsail_static_ip_attachment.this`
+- `aws_lightsail_instance_public_ports.this` (the public 80/443 ports)
+- `aws_route53_record.app` **and** `aws_route53_record.wildcard`
+- `aws_iam_user.backup` / `aws_iam_user_policy.backup` (if backup IAM is enabled)
+
+Any `~ update`, `-/+ replace`, or `- destroy` on the above is **provider drift**
+— **HALT and paste the plan verbatim.** Do not apply.
 
 ## 3. Apply
 

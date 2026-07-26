@@ -152,3 +152,10 @@ resource "aws_iam_user_policy" "backup" {
     ]
   })
 }
+
+# Front-door wildcard-TLS DNS-01 principal (ADR-0023 / PR-0c). Same
+# state-secret rule as the backup user: NO access keys in Terraform —
+# generate out-of-band per doc/runbooks/frontdoor-pr0-apply.md.
+module "certbot_dns" {
+  source = "../infrastructure/modules/iam-certbot-dns"
+}
