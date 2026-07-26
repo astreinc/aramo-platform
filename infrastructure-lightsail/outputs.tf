@@ -26,3 +26,8 @@ output "backup_iam_user_name" {
   description = "The scoped backup IAM user, if provisioned (else null). Generate its access key out-of-band; it is never in state."
   value       = var.create_backup_iam_user ? aws_iam_user.backup[0].name : null
 }
+
+output "certbot_user_name" {
+  description = "Front-door wildcard-TLS DNS-01 IAM user name (ADR-0023 / PR-0c) — generate its access key out-of-band per doc/runbooks/frontdoor-pr0-apply.md; the secret never enters state."
+  value       = module.certbot_dns.user_name
+}

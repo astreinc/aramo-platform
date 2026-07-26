@@ -67,13 +67,3 @@ module "resume_bucket" {
   retention_days_extended = var.resume_bucket_retention_days_extended
   tags                    = local.common_tags
 }
-
-# Front-Door Migration PR-0/PR-0b (ADR-0023) — the least-privilege certbot DNS-01
-# principal. Prod-only; ships inert until PR-2's certbot sidecar consumes it. The
-# module discovers the aramo.ai hosted zone internally (PR-0b R2), so no zone_id
-# argument is passed. This track writes NO DNS: the apex belongs to the PublicSite
-# track, and the manual *.aramo.ai wildcard record stays untouched.
-module "certbot_dns" {
-  source = "../../modules/iam-certbot-dns"
-  tags   = local.common_tags
-}
