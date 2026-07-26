@@ -1,5 +1,13 @@
 {
   "version": "1.0",
-  "description": "Allow-list of HIGH/CRITICAL npm-audit advisory IDs known and accepted at the workspace HEAD. Each entry must specify id (GHSA-*), package, severity, reason, expected_resolution. The CI gate (scripts/audit-check.sh, .github/workflows/ci.yml `npm:audit`) fails when `npm audit --audit-level=high --omit=dev --json` surfaces any HIGH/CRITICAL advisory whose id is not present here. Allow-list entries are time-bounded per ADR-0014 Decision 7. As of M4-close HK-PR-2, the 3 baseline GHSA IDs from PR-10 (GHSA-2w69-qvjg-hvjx / GHSA-q3j6-qgpj-74h6 / GHSA-v39h-62p7-jpjc) have been resolved via react-router-dom 6.22.0 → 6.30.3 (exact-pin) + fast-uri override 3.1.2; allow-list is empty going forward. CI gate fires only on NEW HIGH/CRITICAL findings.",
-  "advisories": []
+  "description": "Allow-list of HIGH/CRITICAL npm-audit advisory IDs known and accepted at the workspace HEAD. Each entry must specify id (GHSA-*), package, severity, reason, expected_resolution. The CI gate (scripts/audit-check.sh, .github/workflows/ci.yml `npm:audit`) fails when `npm audit --audit-level=high --omit=dev --json` surfaces any HIGH/CRITICAL advisory whose id is not present here. Allow-list entries are time-bounded per ADR-0014 Decision 7. The 3 baseline PR-10 GHSA IDs (GHSA-2w69-qvjg-hvjx / GHSA-q3j6-qgpj-74h6 / GHSA-v39h-62p7-jpjc) were resolved via react-router-dom exact-pin (now 7.18.1) + fast-uri override. As of D-NPM-AUDIT-UPSTREAM-2 (2026-07-25) the list carries ONE entry, GHSA-qwww-vcr4-c8h2 — a fixless RSC-mode advisory not reachable in this client-only-SPA repo (see the entry's reason). CI gate fires on any NEW unlisted HIGH/CRITICAL finding.",
+  "advisories": [
+    {
+      "id": "GHSA-qwww-vcr4-c8h2",
+      "package": "react-router",
+      "severity": "high",
+      "reason": "RSC Mode CSRF bypass — RSC mode is not in use anywhere in this repo: all three FE apps (ats/admin/portal-web) are client-only Vite SPAs; no createStaticHandler / StaticRouterProvider / RSC / server-component usage (verified by repo grep 2026-07-25). No forward fix exists: 7.18.1 is the latest published; npm's only fixAvailable is a breaking downgrade to 7.11.0 which reintroduces GHSA-chx6-hx7r-mcp5.",
+      "expected_resolution": "Upgrade when upstream publishes a fixed release (>7.18.1 or fixed 8.x). Review by 2026-10-25; if still unfixed upstream, re-ratify or remediate."
+    }
+  ]
 }
