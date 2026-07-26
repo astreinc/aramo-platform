@@ -1,46 +1,29 @@
-/* Aramo public-site — self-hosted Geist (PUB-2 §2).
+/* Aramo public-site — self-hosted fonts (PUB-3.5 PR-A §5 / R-PUB35-4).
  *
- * The woff2 assets come from the `geist` npm package (devDependencies, present
- * at Astro build time). The relative paths resolve into node_modules and Vite
- * emits hashed copies into the build output — NO CDN, NO runtime node_modules
- * path in the shipped HTML/CSS. Variable axes (one file per family covers every
- * weight); `font-display: swap` so text paints immediately. The critical sans
- * weight is preloaded from BaseLayout (the `?url` import there yields the same
- * hashed asset).
- *
- * R-PUB2-3 — PATH FRAGILITY: the `../../../../node_modules/geist/...` specifier
- * is DELIBERATELY relative (not the bare `geist/...` specifier — that hits the
- * geist package's `exports` map and fails to resolve the raw woff2). It assumes
- * (a) this file sits at apps/public-web/src/styles/ (four levels above the
- * workspace root) and (b) `geist` is hoisted to the ROOT node_modules. Both hold
- * today and match the libs/fe-foundation/src/design/fonts.css precedent; if
- * either the file depth or npm's hoisting changes, these paths — and the
- * matching BaseLayout `?url` import — must move together. The `nx build
- * public-web` gate fails loud if they break. */
+ * Three families, self-hosted via @fontsource (npm devDependencies, present at
+ * Astro build time — NO Google Fonts CDN, NO external font URL, per the CSP +
+ * zero-third-party posture). Each `@import` pulls one weight's latin subset;
+ * Vite resolves the bare specifier, inlines the @font-face, and emits the woff2
+ * as a hashed same-origin asset into the build output. Weights are subset to
+ * exactly those the DDR §3 type system uses — nothing more:
+ *   Space Grotesk (display) — 400, 500, 600, 700
+ *   IBM Plex Sans (body)    — 400, 500, 600
+ *   IBM Plex Mono (labels)  — 500, 600
+ * `@fontsource` sets `font-display: swap` in each face, so text paints
+ * immediately. Adding/removing a weight here changes the built asset set — keep
+ * it aligned with actual usage in tokens.css / the components. */
 
-@font-face {
-  font-family: 'Geist';
-  src: url('../../../../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2')
-    format('woff2-variations');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
+/* Space Grotesk — display */
+@import '@fontsource/space-grotesk/latin-400.css';
+@import '@fontsource/space-grotesk/latin-500.css';
+@import '@fontsource/space-grotesk/latin-600.css';
+@import '@fontsource/space-grotesk/latin-700.css';
 
-@font-face {
-  font-family: 'Geist';
-  src: url('../../../../node_modules/geist/dist/fonts/geist-sans/Geist-Italic[wght].woff2')
-    format('woff2-variations');
-  font-weight: 100 900;
-  font-style: italic;
-  font-display: swap;
-}
+/* IBM Plex Sans — body */
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-sans/latin-500.css';
+@import '@fontsource/ibm-plex-sans/latin-600.css';
 
-@font-face {
-  font-family: 'Geist Mono';
-  src: url('../../../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2')
-    format('woff2-variations');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
+/* IBM Plex Mono — eyebrows / labels */
+@import '@fontsource/ibm-plex-mono/latin-500.css';
+@import '@fontsource/ibm-plex-mono/latin-600.css';

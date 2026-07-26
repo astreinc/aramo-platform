@@ -1,0 +1,508 @@
+---
+// /platform (PUB-3.5 PR-C) — ported verbatim from the ratified prototype export
+// (Platform.dc.html). Zero client JS: scroll-reveal dropped by ruling; the
+// dashed-line / badge animations are re-expressed as real CSS @keyframes; every
+// inline style is tokenized in the scoped <style> below. The prototype header
+// and footer are supplied by BaseLayout and are NOT ported.
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Platform — Aramo"
+  description="Aramo is a layered enterprise platform: shared knowledge, orchestration, governance, and open APIs — so every agent acts with full context and full accountability."
+>
+  <section class="pf-hero">
+    <div class="pf-container">
+      <div class="pf-hero__pill">PLATFORM</div>
+      <h1 class="pf-hero__title">The infrastructure underneath the intelligence.</h1>
+      <p class="pf-hero__sub">Aramo is a layered enterprise platform: shared knowledge, orchestration, governance, and open APIs — so every agent acts with full context and full accountability.</p>
+    </div>
+  </section>
+
+  <section id="layers" class="pf-section pf-section--white">
+    <div class="pf-container">
+      <div class="pf-eyebrow pf-eyebrow--blue">ARCHITECTURE</div>
+      <h2 class="pf-h2 pf-h2--38 pf-h2--w560 pf-mb44">Five layers. One system of action.</h2>
+      <div class="pf-layers">
+        <div class="pf-layer pf-layer--experience">
+          <div class="pf-layer__tag pf-tag--experience">EXPERIENCE</div>
+          <div><div class="pf-layer__title">Mission Control · Recruiter Copilot · Analytics</div><div class="pf-layer__desc pf-layer__desc--darksoft">Where humans direct, approve, and observe every agent.</div></div>
+        </div>
+        <div class="pf-layer pf-layer--agents">
+          <div class="pf-layer__tag pf-tag--agents">AGENTS</div>
+          <div><div class="pf-layer__title">Specialized agents · open connectors</div><div class="pf-layer__desc pf-layer__desc--agents">Reason, plan, and act across the full recruiting lifecycle.</div></div>
+        </div>
+        <div class="pf-layer pf-layer--knowledge">
+          <div class="pf-layer__tag pf-tag--magenta">KNOWLEDGE</div>
+          <div><div class="pf-layer__title">Verified Talent Graph · RAG · embeddings</div><div class="pf-layer__desc pf-layer__desc--muted">Shared context: every candidate, client, req, and interaction.</div></div>
+        </div>
+        <div class="pf-layer pf-layer--orchestration">
+          <div class="pf-layer__tag pf-tag--blue">ORCHESTRATION</div>
+          <div><div class="pf-layer__title">Workflow engine · LLM platform · MCP · observability</div><div class="pf-layer__desc pf-layer__desc--muted">Routes work between agents, humans, and external systems.</div></div>
+        </div>
+        <div class="pf-layer pf-layer--foundation">
+          <div class="pf-layer__tag pf-tag--teal">FOUNDATION</div>
+          <div><div class="pf-layer__title">Multi-tenant cloud · RBAC · audit · encryption · SSO</div><div class="pf-layer__desc pf-layer__desc--muted">Enterprise-grade isolation, governance, and compliance.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="knowledge" class="pf-section pf-section--bg pf-section--bordertop">
+    <div class="pf-two-col">
+      <div>
+        <div class="pf-eyebrow pf-eyebrow--magenta">TALENT GRAPH</div>
+        <h2 class="pf-h2 pf-mb16">Your database becomes a brain.</h2>
+        <p class="pf-lead pf-mb22">Aramo continuously enriches and connects every entity in your talent universe. Agents don't search records — they traverse relationships: who worked where, with whom, on what, for which client.</p>
+        <div class="pf-arrowlist">
+          <div class="pf-arrowlist__row"><span class="pf-arrow">→</span>Continuous enrichment from every connected source</div>
+          <div class="pf-arrowlist__row"><span class="pf-arrow">→</span>Retrieval-augmented context for every agent action</div>
+          <div class="pf-arrowlist__row"><span class="pf-arrow">→</span>Explainable matching — every assessment cites its evidence</div>
+        </div>
+      </div>
+      <div class="pf-graphcard">
+        <svg viewBox="0 0 400 360" class="pf-graph">
+          <line x1="200" y1="180" x2="90" y2="80" class="pf-graph__edge pf-graph__edge--dashed"></line>
+          <line x1="200" y1="180" x2="320" y2="70" class="pf-graph__edge pf-graph__edge--dashed"></line>
+          <line x1="200" y1="180" x2="70" y2="270" class="pf-graph__edge pf-graph__edge--dashed"></line>
+          <line x1="200" y1="180" x2="330" y2="280" class="pf-graph__edge pf-graph__edge--dashed"></line>
+          <line x1="90" y1="80" x2="320" y2="70" class="pf-graph__edge pf-graph__edge--solid"></line>
+          <line x1="70" y1="270" x2="330" y2="280" class="pf-graph__edge pf-graph__edge--solid"></line>
+          <circle cx="200" cy="180" r="34" class="pf-graph__node-center"></circle>
+          <text x="200" y="185" text-anchor="middle" class="pf-graph__label-center">candidate</text>
+          <circle cx="90" cy="80" r="26" class="pf-graph__node"></circle>
+          <text x="90" y="84" text-anchor="middle" class="pf-graph__label">skills</text>
+          <circle cx="320" cy="70" r="26" class="pf-graph__node"></circle>
+          <text x="320" y="74" text-anchor="middle" class="pf-graph__label">clients</text>
+          <circle cx="70" cy="270" r="26" class="pf-graph__node"></circle>
+          <text x="70" y="274" text-anchor="middle" class="pf-graph__label">reqs</text>
+          <circle cx="330" cy="280" r="26" class="pf-graph__node"></circle>
+          <text x="330" y="284" text-anchor="middle" class="pf-graph__label">history</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section id="workflow" class="pf-section pf-section--white pf-section--bordertop">
+    <div class="pf-container">
+      <div class="pf-eyebrow pf-eyebrow--blue">WORKFLOW ENGINE</div>
+      <h2 class="pf-h2 pf-h2--w560 pf-mb16">Agents and humans in one flow.</h2>
+      <p class="pf-lead pf-lead--w580 pf-mb40">Compose recruiting processes from agents, human approvals, and external systems — with escalation built in.</p>
+      <div class="pf-flow">
+        <div class="pf-flow__node pf-flow__node--blue"><div class="pf-flow__tag pf-tag--blue">AGENT</div><div class="pf-flow__title">Source long-list</div></div>
+        <div class="pf-flow__conn"></div>
+        <div class="pf-flow__node pf-flow__node--blue"><div class="pf-flow__tag pf-tag--blue">AGENT</div><div class="pf-flow__title">Assess + shortlist</div></div>
+        <div class="pf-flow__conn"></div>
+        <div class="pf-flow__node pf-flow__node--human"><div class="pf-flow__tag pf-tag--success">HUMAN ✓</div><div class="pf-flow__title">Recruiter review</div></div>
+        <div class="pf-flow__conn"></div>
+        <div class="pf-flow__node pf-flow__node--magenta"><div class="pf-flow__tag pf-tag--magenta">AGENT</div><div class="pf-flow__title">Engage + screen</div></div>
+        <div class="pf-flow__conn"></div>
+        <div class="pf-flow__node pf-flow__node--teal"><div class="pf-flow__tag pf-tag--teal">SYSTEM</div><div class="pf-flow__title">Submit to VMS</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="llm" class="pf-section pf-section--dark">
+    <div class="pf-container">
+      <div class="pf-eyebrow pf-eyebrow--linkdark">LLM PLATFORM + MCP</div>
+      <h2 class="pf-h2 pf-h2--w600 pf-mb16">Model-agnostic. Tool-native. Fully observable.</h2>
+      <p class="pf-lead pf-lead--w600 pf-lead--dark pf-mb44">Route each task to the best model. Expose your systems as MCP tools. Trace every token, action, and cost across the fleet.</p>
+      <div class="pf-grid-3">
+        <div class="pf-darkcard"><div class="pf-darkcard__title">Model routing</div><div class="pf-darkcard__desc">Frontier models for reasoning, fast models for volume — per task, per tenant.</div></div>
+        <div class="pf-darkcard"><div class="pf-darkcard__title">MCP tool layer</div><div class="pf-darkcard__desc">Every integration is a governed tool agents can discover and call safely.</div></div>
+        <div class="pf-darkcard"><div class="pf-darkcard__title">Evals + observability</div><div class="pf-darkcard__desc">Continuous quality evals, full traces, cost and latency visibility.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="governance" class="pf-section pf-section--white">
+    <div class="pf-container">
+      <div class="pf-eyebrow pf-eyebrow--magenta">GOVERNANCE</div>
+      <h2 class="pf-h2 pf-h2--w560 pf-mb44">Autonomy with accountability.</h2>
+      <div class="pf-grid-4">
+        <div class="pf-govcard"><div class="pf-govcard__title">Multi-tenant</div><div class="pf-govcard__desc">Hard isolation for every firm's workspace.</div></div>
+        <div class="pf-govcard"><div class="pf-govcard__title">RBAC</div><div class="pf-govcard__desc">Role-scoped permissions for humans and agents alike.</div></div>
+        <div class="pf-govcard"><div class="pf-govcard__title">Complete audit</div><div class="pf-govcard__desc">Every agent action logged, attributable, reviewable.</div></div>
+        <div class="pf-govcard"><div class="pf-govcard__title">Approval gates</div><div class="pf-govcard__desc">Define exactly what agents may do without a human.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="developers" class="pf-section pf-section--bg pf-section--bordertop">
+    <div class="pf-two-col">
+      <div>
+        <div class="pf-eyebrow pf-eyebrow--blue">DEVELOPER PLATFORM</div>
+        <h2 class="pf-h2 pf-mb16">API-first, from day one.</h2>
+        <p class="pf-lead pf-mb22">Everything Mission Control can do, your systems can do. Build on open APIs, publish connectors, and integrate Aramo into any stack.</p>
+        <a href="/contact" class="pf-btn-dark">Get API access</a>
+      </div>
+      <div class="pf-codecard">
+        <div class="pf-codecard__bar"><span class="pf-codecard__dot"></span><span class="pf-codecard__dot"></span><span class="pf-codecard__dot"></span><span class="pf-codecard__route">POST /v1/agents/sourcing/runs</span></div>
+        <div class="pf-codecard__scroll"><pre class="pf-codecard__pre">&#123;
+  <span class="pf-tok-key">"req_id"</span>: <span class="pf-tok-str">"req_8842"</span>,
+  <span class="pf-tok-key">"strategy"</span>: <span class="pf-tok-str">"rediscovery_first"</span>,
+  <span class="pf-tok-key">"channels"</span>: [<span class="pf-tok-str">"internal_db"</span>, <span class="pf-tok-str">"networks"</span>],
+  <span class="pf-tok-key">"approval"</span>: &#123; <span class="pf-tok-key">"outreach"</span>: <span class="pf-tok-gate">"human_gate"</span> &#125;
+&#125;</pre></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pf-cta">
+    <h2 class="pf-cta__title">See the platform live.</h2>
+    <p class="pf-cta__sub">A 30-minute architecture walkthrough with our engineers.</p>
+    <div class="pf-cta__actions">
+      <a href="/contact" class="pf-cta__btn pf-cta__btn--light">Request demo</a>
+      <a href="/agents" class="pf-cta__btn pf-cta__btn--ghost">Meet the agents</a>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  /* ── @keyframes ported from the prototype helmet <style> ───────────────── */
+  @keyframes dashflow { to { stroke-dashoffset: -24; } }
+  @keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+  @keyframes gradshift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  /* ── Layout primitives ─────────────────────────────────────────────────── */
+  .pf-container { max-width: 1080px; margin: 0 auto; }
+  .pf-two-col {
+    max-width: 1080px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+    gap: 60px;
+    align-items: center;
+  }
+
+  .pf-section { padding: 90px var(--pad-x); scroll-margin-top: 72px; }
+  .pf-section--white { background: var(--c-surface); }
+  .pf-section--bg { background: var(--c-bg); }
+  .pf-section--dark { background: var(--c-dark-bg-deep); color: var(--c-dark-text); }
+  .pf-section--bordertop { border-top: 1px solid var(--c-border); }
+
+  /* ── Eyebrows ──────────────────────────────────────────────────────────── */
+  .pf-eyebrow {
+    font: var(--fw-semibold) 12px var(--font-mono);
+    letter-spacing: var(--ls-eyebrow);
+    margin-bottom: 14px;
+  }
+  .pf-eyebrow--blue { color: var(--c-accent); }
+  .pf-eyebrow--magenta { color: var(--c-accent-2); }
+  .pf-eyebrow--linkdark { color: var(--c-link-dark); }
+
+  /* ── Headings ──────────────────────────────────────────────────────────── */
+  .pf-h2 {
+    margin: 0;
+    font: var(--fw-bold) 36px/1.12 var(--font-display);
+    letter-spacing: -0.02em;
+  }
+  .pf-h2--38 { font: var(--fw-bold) 38px/1.1 var(--font-display); }
+  .pf-h2--w560 { max-width: 560px; }
+  .pf-h2--w600 { max-width: 600px; }
+  .pf-mb16 { margin-bottom: 16px; }
+  .pf-mb22 { margin-bottom: 22px; }
+  .pf-mb40 { margin-bottom: 40px; }
+  .pf-mb44 { margin-bottom: 44px; }
+
+  /* ── Lead paragraph ────────────────────────────────────────────────────── */
+  .pf-lead {
+    margin: 0;
+    font: var(--fw-regular) 16.5px/1.6 var(--font-sans);
+    color: var(--c-text-muted);
+    text-wrap: pretty;
+  }
+  .pf-lead--w580 { max-width: 580px; }
+  .pf-lead--w600 { max-width: 600px; }
+  .pf-lead--dark { color: var(--c-dark-text-soft); }
+
+  /* ── Hero ──────────────────────────────────────────────────────────────── */
+  .pf-hero {
+    padding: 96px var(--pad-x) 70px;
+    background: linear-gradient(180deg, var(--c-bg), var(--c-surface-2));
+    border-bottom: 1px solid var(--c-border);
+  }
+  .pf-hero__pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--c-border-badge);
+    background: #ffffffcc; /* alpha-tint overlay — kept literal */
+    font: var(--fw-medium) 12px var(--font-mono);
+    color: var(--c-accent-2);
+    margin-bottom: 24px;
+  }
+  .pf-hero__title {
+    margin: 0 0 18px;
+    font: var(--fw-bold) var(--fs-hero)/1.05 var(--font-display);
+    letter-spacing: -0.03em;
+    max-width: 760px;
+    text-wrap: balance;
+  }
+  .pf-hero__sub {
+    margin: 0;
+    max-width: 600px;
+    font: var(--fw-regular) 18px/1.6 var(--font-sans);
+    color: var(--c-text-muted);
+    text-wrap: pretty;
+  }
+
+  /* ── Layers ────────────────────────────────────────────────────────────── */
+  .pf-layers { display: flex; flex-direction: column; gap: 0; }
+  .pf-layer {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    gap: 20px;
+    align-items: center;
+    padding: 20px 24px;
+    min-width: 0;
+  }
+  .pf-layer > * { min-width: 0; }
+  .pf-layer__tag { font: var(--fw-semibold) 12px var(--font-mono); }
+  .pf-layer__title {
+    font: var(--fw-semibold) 15.5px var(--font-display);
+    margin-bottom: 3px;
+  }
+  .pf-layer__desc { font: var(--fw-regular) 13px var(--font-sans); }
+  .pf-layer__desc--darksoft { color: var(--c-dark-text-soft); }
+  .pf-layer__desc--agents { color: #e6e4ff; } /* kept literal per token map */
+  .pf-layer__desc--muted { color: var(--c-text-muted); }
+
+  .pf-layer--experience {
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    background: var(--c-text);
+    color: var(--c-dark-text);
+  }
+  .pf-layer--agents { background: var(--grad-cta); color: var(--c-dark-text); }
+  .pf-layer--knowledge {
+    background: var(--c-surface-2);
+    border: 1px solid var(--c-border-soft);
+    border-top: none;
+  }
+  .pf-layer--orchestration {
+    background: var(--c-bg);
+    border: 1px solid var(--c-border-soft);
+    border-top: none;
+  }
+  .pf-layer--foundation {
+    border-radius: 0 0 var(--r-lg) var(--r-lg);
+    background: var(--c-surface);
+    border: 1px solid var(--c-border-soft);
+    border-top: none;
+  }
+
+  /* Mono tags (shared across layers + flow) */
+  .pf-tag--experience { color: var(--c-link-dark); }
+  .pf-tag--agents { color: #d9d4ff; } /* kept literal per token map */
+  .pf-tag--magenta { color: var(--c-accent-2); }
+  .pf-tag--blue { color: var(--c-accent); }
+  .pf-tag--teal { color: var(--c-accent-3-deep); }
+  .pf-tag--success { color: var(--c-success-dark); }
+
+  /* ── Arrow list (knowledge) ────────────────────────────────────────────── */
+  .pf-arrowlist {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font: var(--fw-regular) 14px var(--font-sans);
+    color: var(--c-text-muted);
+  }
+  .pf-arrowlist__row { display: flex; gap: 10px; }
+  .pf-arrow { color: var(--c-accent-2); font-weight: var(--fw-semibold); }
+
+  /* ── Graph card (knowledge) ────────────────────────────────────────────── */
+  .pf-graphcard {
+    position: relative;
+    height: 360px;
+    border-radius: var(--r-xl);
+    background: var(--c-dark-bg-deep);
+    overflow: hidden;
+    border: 1px solid var(--c-dark-surface);
+    min-width: 0;
+    max-width: 100%;
+  }
+  .pf-graph { width: 100%; height: 100%; }
+  .pf-graph__edge--dashed {
+    stroke: var(--c-accent-active);
+    stroke-width: 1;
+    stroke-dasharray: 4 3;
+    animation: dashflow 2s linear infinite;
+  }
+  .pf-graph__edge--solid { stroke: var(--c-dark-surface); stroke-width: 1; }
+  .pf-graph__node-center { fill: var(--c-accent); }
+  .pf-graph__node { fill: var(--c-dark-bg); stroke: var(--c-accent-active); }
+  .pf-graph__label-center {
+    fill: var(--c-dark-text);
+    font: var(--fw-semibold) 11px var(--font-mono);
+  }
+  .pf-graph__label {
+    fill: var(--c-link-dark);
+    font: var(--fw-medium) 10px var(--font-mono);
+  }
+
+  /* ── Workflow flow ─────────────────────────────────────────────────────── */
+  .pf-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    padding: 26px;
+    border-radius: 16px;
+    background: var(--c-bg);
+    border: 1px solid var(--c-border);
+  }
+  .pf-flow__node {
+    flex: none;
+    padding: 16px 18px;
+    border-radius: 12px;
+    background: var(--c-surface);
+    min-width: 130px;
+  }
+  .pf-flow__node--blue { border: 1px solid #004fcb44; } /* alpha-tint — literal */
+  .pf-flow__node--magenta { border: 1px solid #9d2b6b44; } /* alpha-tint — literal */
+  .pf-flow__node--teal { border: 1px solid #1fb6cd55; } /* alpha-tint — literal */
+  .pf-flow__node--human {
+    background: var(--c-text);
+    color: var(--c-dark-text);
+    box-shadow: 0 10px 26px -10px rgba(16, 19, 34, 0.4);
+  }
+  .pf-flow__tag { font: var(--fw-medium) 10px var(--font-mono); margin-bottom: 5px; }
+  .pf-flow__title { font: var(--fw-semibold) 13.5px var(--font-display); }
+  .pf-flow__conn {
+    flex: none;
+    width: 36px;
+    height: 2px;
+    background: repeating-linear-gradient(90deg, #b9bdd6 0 5px, transparent 5px 9px); /* line colour not tokenized — literal */
+  }
+
+  /* ── Dark cards (llm) ──────────────────────────────────────────────────── */
+  .pf-grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .pf-darkcard {
+    padding: 24px;
+    border-radius: var(--r-lg);
+    background: var(--c-dark-bg);
+    border: 1px solid var(--c-dark-surface);
+  }
+  .pf-darkcard__title {
+    font: var(--fw-semibold) 15px var(--font-display);
+    margin-bottom: 6px;
+  }
+  .pf-darkcard__desc {
+    font: var(--fw-regular) 13px/1.55 var(--font-sans);
+    color: var(--c-dark-text-soft);
+  }
+
+  /* ── Governance cards ──────────────────────────────────────────────────── */
+  .pf-grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  .pf-govcard {
+    padding: 22px 20px;
+    border-radius: var(--r-lg);
+    border: 1px solid var(--c-border);
+    background: var(--c-bg);
+  }
+  .pf-govcard__title {
+    font: var(--fw-semibold) 14.5px var(--font-display);
+    margin-bottom: 5px;
+  }
+  .pf-govcard__desc {
+    font: var(--fw-regular) 12.5px/1.5 var(--font-sans);
+    color: var(--c-text-muted);
+  }
+
+  /* ── Developer platform ────────────────────────────────────────────────── */
+  .pf-btn-dark {
+    display: inline-block;
+    padding: 12px 24px;
+    border-radius: var(--r-md);
+    background: var(--c-text);
+    color: var(--c-dark-text);
+    font: var(--fw-semibold) 14px var(--font-sans);
+  }
+  .pf-btn-dark:hover { background: #424242; color: var(--c-dark-text); } /* hover ink not tokenized — literal */
+
+  .pf-codecard {
+    border-radius: 16px;
+    background: var(--c-dark-bg-deep);
+    border: 1px solid var(--c-dark-surface);
+    overflow: hidden;
+    box-shadow: 0 30px 70px -30px rgba(11, 16, 34, 0.5);
+  }
+  .pf-codecard__bar {
+    display: flex;
+    gap: 7px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--c-dark-surface);
+  }
+  .pf-codecard__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--c-dark-surface-2);
+  }
+  .pf-codecard__route {
+    margin-left: 8px;
+    font: var(--fw-medium) 11px var(--font-mono);
+    color: var(--c-dark-text-muted);
+  }
+  .pf-codecard__scroll { overflow-x: auto; }
+  .pf-codecard__pre {
+    margin: 0;
+    padding: 20px 22px;
+    font: var(--fw-regular) 12.5px/1.7 var(--font-mono);
+    color: #c6cce4; /* kept literal per token map */
+  }
+  .pf-tok-key { color: var(--c-link-dark); }
+  .pf-tok-str { color: var(--c-success-dark); }
+  .pf-tok-gate { color: #e08ab8; } /* kept literal per token map */
+
+  /* ── CTA band ──────────────────────────────────────────────────────────── */
+  .pf-cta {
+    padding: 96px var(--pad-x);
+    background: linear-gradient(135deg, var(--c-dark-bg-deep) 0%, #171a4a 55%, #31207a 100%); /* mid/end stops not tokenized — literal */
+    color: var(--c-dark-text);
+    text-align: center;
+  }
+  .pf-cta__title {
+    margin: 0 0 12px;
+    font: var(--fw-bold) clamp(36px, 4vw, 52px)/1.08 var(--font-display);
+    letter-spacing: -0.03em;
+  }
+  .pf-cta__sub {
+    margin: 0 0 30px;
+    font: var(--fw-regular) 16.5px var(--font-sans);
+    color: var(--c-dark-text-cta);
+  }
+  .pf-cta__actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .pf-cta__btn {
+    padding: 14px 30px;
+    border-radius: 11px;
+    font: var(--fw-semibold) 15px var(--font-sans);
+  }
+  .pf-cta__btn--light { background: var(--c-surface); color: var(--c-text); }
+  .pf-cta__btn--light:hover { color: var(--c-accent); }
+  .pf-cta__btn--ghost {
+    padding: 14px 28px;
+    border: 1px solid #ffffff44; /* alpha-tint overlay — kept literal */
+    color: var(--c-dark-text);
+  }
+  .pf-cta__btn--ghost:hover { border-color: var(--c-dark-text); color: var(--c-dark-text); }
+
+  /* ── Responsive ────────────────────────────────────────────────────────── */
+  @media (max-width: 860px) {
+    .pf-section { padding: 64px 24px; }
+    .pf-hero { padding: 72px 24px 56px; }
+    .pf-cta { padding: 72px 24px; }
+    .pf-two-col { grid-template-columns: 1fr; gap: 40px; }
+    .pf-grid-3 { grid-template-columns: 1fr; }
+    .pf-grid-4 { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 520px) {
+    .pf-grid-4 { grid-template-columns: 1fr; }
+    .pf-layer { grid-template-columns: 110px 1fr; gap: 14px; }
+  }
+</style>

@@ -41,8 +41,9 @@ const lastUpdated = '2026-07-23';
      attribute selectors — keeps the R-PUB4 bracket-enumeration grep clean. The
      .legal-* classes are legal-page-only, so global scope leaks nothing. */
   .legal {
-    padding-block: var(--sp-8) var(--sp-16);
     max-width: var(--w-prose);
+    margin-inline: auto;
+    padding: var(--sp-16) var(--sp-6) var(--sp-20);
   }
   /* DRAFT band — above the fold, unmissable. */
   .legal-draft {

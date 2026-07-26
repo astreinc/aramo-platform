@@ -1,18 +1,14 @@
 ---
-// PUB-2 — shared shell for the public marketing site. CSS-only (zero client
-// JS): design tokens (§1), self-hosted Geist (§2), header/footer/skip-link
-// shell (§3), OG/meta framework (§4). Page COPY is still PUB-3 — page bodies
-// carry placeholder text, vocabulary-clean on their own merits.
+// PUB-3.5 PR-A — shared shell for the public marketing site, "Verified" v2.0.
+// CSS-only (zero client JS): design tokens, self-hosted @fontsource families,
+// sticky blurred header + four-column footer, OG/meta framework. Page bodies
+// carry their own copy; this frame is the design shell (DDR §3 header/footer).
 import '../styles/tokens.css';
 import '../styles/fonts.css';
 import '../styles/global.css';
 import '../styles/marketing.css';
 import '../styles/forms.css';
-// The critical sans weight, preloaded. `?url` yields the same hashed asset
-// Vite emits for the fonts.css @font-face (no runtime node_modules path). The
-// path is relative (not a bare `geist/...` specifier) so it bypasses the geist
-// package's `exports` map — the same resolution fonts.css uses.
-import geistSans from '../../../../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2?url';
+import LogoMark from '../components/LogoMark.astro';
 
 interface Props {
   title: string;
@@ -23,7 +19,7 @@ interface Props {
 
 const {
   title,
-  description = 'Aramo — trust infrastructure for the staffing industry.',
+  description = 'Aramo — the system of record for verified talent. Enterprise ATS, Verified Talent Graph, and AI agents on one platform.',
   ogType = 'website',
   noindex = false,
 } = Astro.props;
@@ -31,19 +27,49 @@ const {
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const ogImage = new URL('/og-placeholder.svg', Astro.site);
 
+// Primary nav (R-PUB35-2). /platform + /agents are new pages built in PR-C —
+// they 404 in-branch until then (accepted per the PR-A directive note). The
+// /#industries + /#pricing anchors resolve once the new home lands (PR-B).
 const NAV = [
-  { href: '/product', label: 'Product' },
-  { href: '/how-it-works', label: 'How it works' },
-  { href: '/security', label: 'Security' },
-  { href: '/company', label: 'Company' },
-  { href: '/contact', label: 'Contact' },
+  { href: '/platform', label: 'Platform' },
+  { href: '/agents', label: 'AI Agents' },
+  { href: '/#industries', label: 'Solutions' },
+  { href: '/#pricing', label: 'Pricing' },
 ];
 
-const LEGAL = [
-  { href: '/legal/privacy', label: 'Privacy' },
-  { href: '/legal/platform-privacy', label: 'Platform privacy' },
-  { href: '/legal/terms', label: 'Terms' },
-  { href: '/legal/subprocessors', label: 'Subprocessors' },
+// Footer columns (DDR §3 footer + R-PUB35-2 LEGAL column with real routes).
+const FOOTER = [
+  {
+    heading: 'Product',
+    links: [
+      { href: '/platform', label: 'Platform' },
+      { href: '/agents', label: 'AI Agents' },
+      { href: '/#pricing', label: 'Pricing' },
+      { href: '/#security', label: 'Security' },
+    ],
+  },
+  {
+    heading: 'Solutions',
+    links: [
+      { href: '/#industries', label: 'IT Staffing' },
+      { href: '/#industries', label: 'Healthcare' },
+      { href: '/#industries', label: 'Government' },
+      { href: '/#industries', label: 'MSP / RPO' },
+    ],
+  },
+  {
+    heading: 'Company',
+    links: [{ href: '/contact', label: 'Contact' }],
+  },
+  {
+    heading: 'Legal',
+    links: [
+      { href: '/legal/privacy', label: 'Privacy Policy' },
+      { href: '/legal/platform-privacy', label: 'Platform Privacy Notice' },
+      { href: '/legal/terms', label: 'Terms of Use' },
+      { href: '/legal/subprocessors', label: 'Subprocessors' },
+    ],
+  },
 ];
 ---
 
@@ -55,13 +81,6 @@ const LEGAL = [
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex" />}
     <link rel="canonical" href={canonical} />
-    <link
-      rel="preload"
-      href={geistSans}
-      as="font"
-      type="font/woff2"
-      crossorigin
-    />
 
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
@@ -75,27 +94,47 @@ const LEGAL = [
     <a class="skip-link" href="#main">Skip to content</a>
 
     <header class="site-header">
-      <div class="container site-header__inner">
-        <a class="wordmark" href="/">Aramo</a>
+      <div class="site-header__inner">
+        <a class="brand" href="/" aria-label="Aramo — home">
+          <LogoMark size={34} strokeWidth={6} />
+          <span class="brand__word">aramo.ai</span>
+        </a>
         <nav class="site-nav" aria-label="Primary">
           {NAV.map((item) => <a href={item.href}>{item.label}</a>)}
-          <a class="cta" href="/get-started">Get started</a>
         </nav>
+        <div class="site-actions">
+          <a class="site-actions__signin" href="/signin">Sign in</a>
+          <a class="btn btn--primary" href="/contact">Request demo</a>
+        </div>
       </div>
     </header>
 
-    <main id="main" class="container">
+    <main id="main">
       <slot />
     </main>
 
     <footer class="site-footer">
-      <div class="container site-footer__inner">
-        <nav class="footer-legal" aria-label="Legal">
-          {LEGAL.map((item) => <a href={item.href}>{item.label}</a>)}
-        </nav>
-        <p class="footer-company">
-          © Aramo — trust infrastructure for the staffing industry.
-        </p>
+      <div class="site-footer__inner">
+        <div class="site-footer__brand">
+          <a class="brand brand--footer" href="/" aria-label="Aramo — home">
+            <LogoMark size={24} strokeWidth={5} />
+            <span class="brand__word">aramo.ai</span>
+          </a>
+          <p class="site-footer__tagline">
+            Talent intelligence, built on verified identity.
+          </p>
+        </div>
+        {
+          FOOTER.map((col) => (
+            <nav class="footer-col" aria-label={col.heading}>
+              <p class="footer-col__heading">{col.heading}</p>
+              {col.links.map((item) => <a href={item.href}>{item.label}</a>)}
+            </nav>
+          ))
+        }
+      </div>
+      <div class="site-footer__legalbar">
+        <span>© 2026 Aramo.ai — All rights reserved.</span>
       </div>
     </footer>
   </body>

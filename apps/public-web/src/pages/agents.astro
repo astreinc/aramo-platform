@@ -1,0 +1,431 @@
+---
+// /agents (PUB-3.5 PR-C) — ported verbatim from the ratified prototype export
+// (Agents.dc.html). Copy is byte-for-byte from the source; the prototype's own
+// header/footer are dropped (BaseLayout provides the shell). Zero client JS:
+// scroll-reveal / hover behaviours re-expressed as static CSS below.
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="AI Agents — Aramo"
+  description="Each Aramo agent owns a discipline — with its own skills, tools, and guardrails. Together they operate as a coordinated team under human command."
+>
+  <section class="agents-hero">
+    <div class="agents-hero__inner">
+      <div class="agents-hero__badge">
+        <span class="agents-hero__badge-dot"></span>SPECIALIZED AGENTS · ONE SYSTEM
+      </div>
+      <h1 class="agents-hero__title">A specialist for every step of the hire.</h1>
+      <p class="agents-hero__sub">
+        Each Aramo agent owns a discipline — with its own skills, tools, and
+        guardrails. Together they operate as a coordinated team under human
+        command.
+      </p>
+      <p class="agents-hero__note">
+        Rolling out progressively — sourcing, assessment, and verification
+        first.
+      </p>
+    </div>
+  </section>
+
+  <section class="agents-roster">
+    <div class="agents-roster__list">
+
+      <div id="sourcing" class="agent-card agent-card--blue">
+        <div class="agent-card__icon agent-card__icon--blue">So</div>
+        <div>
+          <div class="agent-card__name">Sourcing Agent</div>
+          <div class="agent-card__desc">Runs always-on talent discovery across your database, job boards, and professional networks. Builds prioritized long-lists the moment a req opens — and keeps them fresh.</div>
+          <div class="agent-card__chips">
+            <span class="agent-chip">Multi-channel search</span><span class="agent-chip">Boolean-free intent queries</span><span class="agent-chip">Auto-refresh pipelines</span>
+          </div>
+        </div>
+        <div class="agent-card__status agent-card__status--on">ALWAYS-ON</div>
+      </div>
+
+      <div id="matching" class="agent-card agent-card--magenta">
+        <div class="agent-card__icon agent-card__icon--magenta">As</div>
+        <div>
+          <div class="agent-card__name">Assessment Agent</div>
+          <div class="agent-card__desc">Assesses every candidate against role, team, client, and market context using the Talent Graph. Every assessment cites the evidence behind it.</div>
+          <div class="agent-card__chips">
+            <span class="agent-chip">Graph-based assessment</span><span class="agent-chip">Evidence-backed</span><span class="agent-chip">Auditable by design</span>
+          </div>
+        </div>
+        <div class="agent-card__status agent-card__status--on">ALWAYS-ON</div>
+      </div>
+
+      <div id="interview" class="agent-card agent-card--teal">
+        <div class="agent-card__icon agent-card__icon--teal">In</div>
+        <div>
+          <div class="agent-card__name">Interview Agent</div>
+          <div class="agent-card__desc">Handles the full interview lifecycle: structured phone screens, panel scheduling across calendars, prep briefs for interviewers, and synthesized structured summaries after.</div>
+          <div class="agent-card__chips">
+            <span class="agent-chip">AI screens</span><span class="agent-chip">Panel scheduling</span><span class="agent-chip">Interview summaries</span>
+          </div>
+        </div>
+        <div class="agent-card__status agent-card__status--demand">ON-DEMAND</div>
+      </div>
+
+      <div id="compliance" class="agent-card agent-card--blue">
+        <div class="agent-card__icon agent-card__icon--blue">Co</div>
+        <div>
+          <div class="agent-card__name">Compliance Agent</div>
+          <div class="agent-card__desc">Gates every submission against credentialing, right-to-work, licensure, and client-specific rules. Flags violations before they ship — and documents everything.</div>
+          <div class="agent-card__chips">
+            <span class="agent-chip">Credential verification</span><span class="agent-chip">Client rule engine</span><span class="agent-chip">Audit trail</span>
+          </div>
+        </div>
+        <div class="agent-card__status agent-card__status--on">ALWAYS-ON</div>
+      </div>
+
+      <div id="submission" class="agent-card agent-card--magenta">
+        <div class="agent-card__icon agent-card__icon--magenta">Su</div>
+        <div>
+          <div class="agent-card__name">Submission Agent</div>
+          <div class="agent-card__desc">Formats, packages, and submits candidates to client portals and VMS systems — with pay/bill validation and follow-up tracking until a decision lands.</div>
+          <div class="agent-card__chips">
+            <span class="agent-chip">VMS automation</span><span class="agent-chip">Rate validation</span><span class="agent-chip">Decision tracking</span>
+          </div>
+        </div>
+        <div class="agent-card__status agent-card__status--demand">ON-DEMAND</div>
+      </div>
+
+      <div id="rediscovery" class="agent-card agent-card--teal">
+        <div class="agent-card__icon agent-card__icon--teal">Re</div>
+        <div>
+          <div class="agent-card__name">Rediscovery Agent</div>
+          <div class="agent-card__desc">Your database is your best sourcing channel. This agent resurfaces silver-medalists, past contractors, and dormant profiles the instant they fit a new req.</div>
+          <div class="agent-card__chips">
+            <span class="agent-chip">Silver-medalist mining</span><span class="agent-chip">Profile refresh</span><span class="agent-chip">Re-engagement</span>
+          </div>
+        </div>
+        <div class="agent-card__status agent-card__status--on">ALWAYS-ON</div>
+      </div>
+
+      <div id="delivery" class="agent-card agent-card--blue">
+        <div class="agent-card__icon agent-card__icon--blue">De</div>
+        <div>
+          <div class="agent-card__name">Delivery Manager Agent</div>
+          <div class="agent-card__desc">Watches every req's health: coverage, aging, deadline risk. Rebalances recruiter and agent workloads, and escalates before a client ever notices a gap.</div>
+          <div class="agent-card__chips">
+            <span class="agent-chip">Deadline monitoring</span><span class="agent-chip">Workload balancing</span><span class="agent-chip">Risk escalation</span>
+          </div>
+        </div>
+        <div class="agent-card__status agent-card__status--on">ALWAYS-ON</div>
+      </div>
+
+      <div id="sales" class="agent-card agent-card--magenta">
+        <div class="agent-card__icon agent-card__icon--magenta">Sa</div>
+        <div>
+          <div class="agent-card__name">Sales Agent</div>
+          <div class="agent-card__desc">Detects buying signals — new funding, hiring sprees, contract renewals — and drafts targeted outreach with proof points from your delivery history.</div>
+          <div class="agent-card__chips">
+            <span class="agent-chip">Signal detection</span><span class="agent-chip">Outreach drafting</span><span class="agent-chip">Pipeline hygiene</span>
+          </div>
+        </div>
+        <div class="agent-card__status agent-card__status--demand">ON-DEMAND</div>
+      </div>
+
+      <div id="account" class="agent-card agent-card--teal">
+        <div class="agent-card__icon agent-card__icon--teal">Ac</div>
+        <div>
+          <div class="agent-card__name">Account Manager Agent</div>
+          <div class="agent-card__desc">Keeps clients informed without the busywork: automated status reports, fill-rate summaries, renewal reminders, and early warnings on at-risk accounts.</div>
+          <div class="agent-card__chips">
+            <span class="agent-chip">Client reporting</span><span class="agent-chip">Renewal tracking</span><span class="agent-chip">Churn signals</span>
+          </div>
+        </div>
+        <div class="agent-card__status agent-card__status--on">ALWAYS-ON</div>
+      </div>
+
+      <div id="executive" class="agent-card agent-card--blue">
+        <div class="agent-card__icon agent-card__icon--blue">Ex</div>
+        <div>
+          <div class="agent-card__name">Executive Intelligence Agent</div>
+          <div class="agent-card__desc">Answers leadership questions in plain language: margin by client, recruiter productivity, market trends. A briefing every Monday, a query bar every day.</div>
+          <div class="agent-card__chips">
+            <span class="agent-chip">Natural-language BI</span><span class="agent-chip">Weekly briefings</span><span class="agent-chip">Forecasting</span>
+          </div>
+        </div>
+        <div class="agent-card__status agent-card__status--demand">ON-DEMAND</div>
+      </div>
+
+      <div id="copilot" class="agent-card agent-card--dark">
+        <div class="agent-card__icon agent-card__icon--cta">Cp</div>
+        <div>
+          <div class="agent-card__name">Recruiter Copilot</div>
+          <div class="agent-card__desc agent-card__desc--dark">The conversational front door to every agent. Ask, draft, decide, and delegate — the Copilot routes work to the right agent and brings back results.</div>
+          <div class="agent-card__chips">
+            <span class="agent-chip agent-chip--dark">Conversational commands</span><span class="agent-chip agent-chip--dark">Agent delegation</span><span class="agent-chip agent-chip--dark">Inbox zero mode</span>
+          </div>
+        </div>
+        <div class="agent-card__status agent-card__status--included">INCLUDED</div>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="agents-cta">
+    <h2 class="agents-cta__title">Put the agents to work.</h2>
+    <p class="agents-cta__sub">Watch the agents run one of your real reqs, end to end.</p>
+    <div class="agents-cta__actions">
+      <a class="agents-cta__btn agents-cta__btn--solid" href="/contact">Request demo</a>
+      <a class="agents-cta__btn agents-cta__btn--ghost" href="/platform">Explore the platform</a>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  /* Hero badge dot — re-expressed from the prototype's @keyframes pulse. */
+  @keyframes agents-pulse {
+    0%,
+    100% {
+      opacity: 0.35;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  /* ── Hero ─────────────────────────────────────────────────────────────── */
+  .agents-hero {
+    padding: 96px var(--pad-x) 70px;
+    background: linear-gradient(180deg, var(--c-bg), var(--c-surface-2));
+    border-bottom: 1px solid var(--c-border);
+  }
+  .agents-hero__inner {
+    max-width: 1080px;
+    margin: 0 auto;
+  }
+  .agents-hero__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--c-border-badge);
+    background: #ffffffcc; /* alpha-tint overlay — kept literal */
+    font: 500 12px var(--font-mono);
+    color: var(--c-accent);
+    margin-bottom: 24px;
+  }
+  .agents-hero__badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--c-accent);
+    animation: agents-pulse 2.4s infinite;
+  }
+  .agents-hero__title {
+    margin: 0 0 18px;
+    font: 700 clamp(42px, 4.6vw, 64px) / 1.05 var(--font-display);
+    letter-spacing: -0.03em;
+    max-width: 780px;
+    text-wrap: balance;
+  }
+  .agents-hero__sub {
+    margin: 0;
+    max-width: 600px;
+    font: 400 18px / 1.6 var(--font-sans);
+    color: var(--c-text-muted);
+    text-wrap: pretty;
+  }
+  .agents-hero__note {
+    margin: 14px 0 0;
+    font: 500 14px var(--font-mono);
+    color: var(--c-accent);
+  }
+
+  /* ── Roster ───────────────────────────────────────────────────────────── */
+  .agents-roster {
+    padding: 70px var(--pad-x) 100px;
+    background: var(--c-surface);
+  }
+  .agents-roster__list {
+    max-width: 1080px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  /* ── Agent card ───────────────────────────────────────────────────────── */
+  .agent-card {
+    scroll-margin-top: 20px;
+    display: grid;
+    grid-template-columns: 64px 1fr auto;
+    gap: 22px;
+    padding: 28px 30px;
+    border-radius: var(--r-xl);
+    border: 1px solid var(--c-border);
+    background: var(--c-bg);
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+  /* Body cell (unclassed 2nd grid child): allow long text to wrap, not push width. */
+  .agent-card > div:not([class]) {
+    min-width: 0;
+  }
+  .agent-card--blue:hover {
+    border-color: #004fcb44; /* alpha-tint overlay — kept literal */
+    box-shadow: 0 18px 44px -20px rgba(16, 19, 34, 0.16);
+  }
+  .agent-card--magenta:hover {
+    border-color: #9d2b6b44; /* alpha-tint overlay — kept literal */
+    box-shadow: 0 18px 44px -20px rgba(16, 19, 34, 0.16);
+  }
+  .agent-card--teal:hover {
+    border-color: #1fb6cd44; /* alpha-tint overlay — kept literal */
+    box-shadow: 0 18px 44px -20px rgba(16, 19, 34, 0.16);
+  }
+
+  .agent-card__icon {
+    width: 52px;
+    height: 52px;
+    border-radius: var(--r-lg);
+    display: grid;
+    place-items: center;
+    font: 600 17px var(--font-mono);
+  }
+  .agent-card__icon--blue {
+    background: #004fcb12; /* alpha-tint overlay — kept literal */
+    color: var(--c-accent);
+  }
+  .agent-card__icon--magenta {
+    background: #9d2b6b12; /* alpha-tint overlay — kept literal */
+    color: var(--c-accent-2);
+  }
+  .agent-card__icon--teal {
+    background: #1fb6cd14; /* alpha-tint overlay — kept literal */
+    color: var(--c-accent-3-deep);
+  }
+  .agent-card__icon--cta {
+    background: var(--grad-cta);
+    color: var(--c-dark-text);
+  }
+
+  .agent-card__name {
+    font: 600 20px var(--font-display);
+    margin-bottom: 6px;
+  }
+  .agent-card__desc {
+    font: 400 14.5px / 1.6 var(--font-sans);
+    color: var(--c-text-muted);
+    max-width: 560px;
+    margin-bottom: 12px;
+  }
+  .agent-card__desc--dark {
+    color: var(--c-dark-text-cta);
+  }
+  .agent-card__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+  }
+
+  .agent-chip {
+    padding: 4px 11px;
+    border-radius: var(--r-pill);
+    background: var(--c-surface);
+    border: 1px solid var(--c-border-soft);
+    font: 500 11.5px var(--font-sans);
+    color: var(--c-text-muted);
+  }
+  .agent-chip--dark {
+    background: #ffffff14; /* alpha-tint overlay — kept literal */
+    border: 1px solid #ffffff22; /* alpha-tint overlay — kept literal */
+    color: #d5daf0; /* kept literal per token map */
+  }
+
+  .agent-card__status {
+    text-align: right;
+    font: 500 11px var(--font-mono);
+  }
+  .agent-card__status--on {
+    color: var(--c-success);
+  }
+  .agent-card__status--demand {
+    color: var(--c-text-subtle);
+  }
+  .agent-card__status--included {
+    color: var(--c-success-dark);
+  }
+
+  /* Recruiter Copilot — dark gradient card. */
+  .agent-card--dark {
+    border: none;
+    background: var(--grad-dark-card);
+    color: var(--c-dark-text);
+    box-shadow: 0 24px 60px -24px rgba(16, 19, 34, 0.5);
+  }
+  .agent-card--dark .agent-card__name {
+    color: var(--c-dark-text);
+  }
+
+  /* ── Closing CTA band ─────────────────────────────────────────────────── */
+  .agents-cta {
+    padding: 96px var(--pad-x);
+    /* signature closing-band gradient — kept literal (three-stop, per directive) */
+    background: linear-gradient(135deg, #0b1022 0%, #171a4a 55%, #31207a 100%);
+    color: var(--c-dark-text);
+    text-align: center;
+  }
+  .agents-cta__title {
+    margin: 0 0 12px;
+    font: 700 clamp(36px, 4vw, 52px) / 1.08 var(--font-display);
+    letter-spacing: -0.03em;
+  }
+  .agents-cta__sub {
+    margin: 0 0 30px;
+    font: 400 16.5px var(--font-sans);
+    color: var(--c-dark-text-cta);
+  }
+  .agents-cta__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+  }
+  .agents-cta__btn {
+    padding: 14px 30px;
+    border-radius: var(--r-md);
+    font: 600 15px var(--font-sans);
+    max-width: 100%;
+  }
+  .agents-cta__btn--solid {
+    background: var(--c-surface);
+    color: var(--c-text);
+  }
+  .agents-cta__btn--solid:hover {
+    color: var(--c-accent);
+  }
+  .agents-cta__btn--ghost {
+    padding: 14px 28px;
+    border: 1px solid #ffffff44; /* alpha-tint overlay — kept literal */
+    color: var(--c-dark-text);
+  }
+  .agents-cta__btn--ghost:hover {
+    border-color: var(--c-dark-text);
+    color: var(--c-dark-text);
+  }
+
+  /* ── Responsive: collapse the 3-column card grid so nothing overflows ──── */
+  /* Section horizontal padding is governed by var(--pad-x) (clamp down to 20px),
+     so no per-breakpoint padding override is needed here. */
+  @media (max-width: 720px) {
+    .agent-card {
+      grid-template-columns: 52px 1fr;
+      gap: 16px;
+    }
+    .agent-card__status {
+      grid-column: 1 / -1;
+      text-align: left;
+    }
+    .agents-cta__actions {
+      flex-direction: column;
+      align-items: center;
+    }
+  }
+</style>
