@@ -219,7 +219,7 @@ export class AuthController {
     const c = parseConsumer(consumer, requestId);
     const pkceCookie = req.cookies?.[PKCE_COOKIE];
     // PR-3.1 §3d.1: derive the base from THIS (callback) request's host and
-    // thread it into the exchange leg — same browser host as login (via Caddy),
+    // thread it into the exchange leg — same browser host as login (via the front door),
     // so the exchange redirect_uri == authorize redirect_uri by construction.
     // The derivedBase is also used for the post-login redirect (§3d.2) below.
     const { derivedBase } = await this.hostBase.resolve(req.get('host'));

@@ -12,7 +12,7 @@
 # POSITION in the deploy flow (singlebox-ops.md "Update / redeploy the stack"):
 #   1. git pull --ff-only           # new code + new migration files
 #   2. >>> deploy/migrate-prod.sh <<<   # apply + GATE  (THIS script)
-#   3. docker build … (api [+ caddy])   # only reached if the gate passed
+#   3. docker build … (api [+ nginx])   # only reached if the gate passed
 #   4. systemctl restart aramo-singlebox.service  (compose up -d --force-recreate)
 #   5. health checks
 # Runs AFTER pull (so the new migration.sql files are present) and BEFORE

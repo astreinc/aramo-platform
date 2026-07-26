@@ -6,7 +6,7 @@ backups + a **proven** restore, firewall posture, TLS renewal, secrets hygiene,
 and the **§5 Cognito checklist** to run against the real pool on the box.
 
 This is the last repo piece before the box is deployable. It builds on:
-- **Directive 1** — `docker-compose.prod.yml` (Caddy front-door + D1 containers +
+- **Directive 1** — `docker-compose.prod.yml` (nginx front-door + D1 containers +
   persisted Postgres + Redis); see [`run-layer.md`](run-layer.md).
 - **Directive 2** — `seed-astre.ts` (catalog + Astre tenant + owner).
 - The **dev-fixtures scrub** (Directive 3 §F, PR #298) — lands **before** the box
@@ -86,12 +86,12 @@ sudo systemctl restart aramo-singlebox.service
 sudo reboot
 # … after boot:
 systemctl status aramo-singlebox.service        # active
-docker ps                                       # caddy/api/auth/postgres/redis Up
+docker ps                                       # nginx/api/auth/postgres/redis Up
 ```
 
 The launcher uses an **isolated compose project name** (`aramo-singlebox`,
 override `ARAMO_COMPOSE_PROJECT`) so it never collides with any other compose
-project sharing the checkout. The Caddy cert volume persists across restarts, so
+project sharing the checkout. The nginx cert volume persists across restarts, so
 a reboot does **not** re-request a Let's Encrypt cert (avoids the rate limit).
 
 **Locally provable:** `ARAMO_DIR=$PWD ARAMO_ENV_FILE=$PWD/.env
@@ -194,12 +194,12 @@ The data is small (fresh start) but it's Astre's live system — backups are
 
 ## C. Firewall (Lightsail posture)
 
-- **Inbound: only 80/443** (Caddy). `docker ps` shows **only Caddy** publishing
+- **Inbound: only 80/443** (nginx). `docker ps` shows **only nginx** publishing
   ports; Postgres (`5432/tcp`) and Redis (`6379/tcp`) are **container-internal —
   never host-published** (confirmed in `docker-compose.prod.yml`: neither has a
   `ports:` mapping). Verify on the box:
   ```bash
-  docker ps --format '{{.Names}}\t{{.Ports}}'   # only aramo-prod-caddy has 0.0.0.0:80/443
+  docker ps --format '{{.Names}}\t{{.Ports}}'   # only aramo-prod-nginx has 0.0.0.0:80/443
   sudo ss -ltnp | grep -E ':(5432|6379)\b' || echo "DB/Redis NOT host-exposed (correct)"
   ```
 - **Lightsail firewall:** allow **TCP 80 + 443** from anywhere; **SSH (22)
@@ -212,26 +212,26 @@ The data is small (fresh start) but it's Astre's live system — backups are
 
 ## D. TLS renewal confidence
 
-Caddy auto-provisions **and auto-renews** the Let's Encrypt cert (renews ~30 days
-before expiry) when `CADDY_TLS` is an ACME email (box: `admin@aramo.ai`;
-`CADDY_SITE_ADDRESS=astre.aramo.ai`). The cert/ACME state lives in the persisted
-`caddy-data` volume, so renewals survive restarts.
+The certbot sidecar obtains **and auto-renews** the `*.aramo.ai` Let's Encrypt
+wildcard cert via DNS-01/Route53 (12h renew loop; nginx reloads every 6h to pick
+up a renewed cert). The cert lives in the persisted `aramo-prod-letsencrypt`
+volume (certbot rw, nginx ro), so renewals survive restarts.
 
 The `/.well-known/acme-challenge/*` path stays free for the HTTP-01 challenge:
-the Caddyfile matches JWKS by the **exact path** `/.well-known/jwks.json`, not
-`/.well-known/*` (confirmed in `deploy/caddy/Caddyfile`).
+the nginx config matches JWKS by the **exact path** `/.well-known/jwks.json`, not
+`/.well-known/*` (confirmed in `deploy/nginx/templates/aramo.conf.template`).
 
 ```bash
 # Check cert + renewal (ON THE BOX)
-docker exec aramo-prod-caddy caddy list-certificates 2>/dev/null   # if available
+docker exec aramo-prod-nginx nginx list-certificates 2>/dev/null   # if available
 journalctl -u aramo-singlebox.service | grep -i 'certificate\|acme\|renew'
-docker logs aramo-prod-caddy 2>&1 | grep -i 'certificate obtained\|renew'
+docker logs aramo-prod-nginx 2>&1 | grep -i 'certificate obtained\|renew'
 echo | openssl s_client -connect astre.aramo.ai:443 -servername astre.aramo.ai 2>/dev/null \
   | openssl x509 -noout -issuer -dates    # issuer=Let's Encrypt; notAfter ~90d out
 ```
 
 **Box-only** (real LE needs the public domain + reachable :80 for HTTP-01).
-Locally Caddy uses its internal CA (`CADDY_TLS=internal`) — same config, no public cert.
+Locally there is no public cert — mount an mkcert pair at `NGINX_CERT_DIR` (same config, laptop-trusted).
 
 ---
 

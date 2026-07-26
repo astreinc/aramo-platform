@@ -17,7 +17,7 @@
 import { AramoError } from '@aramo/common';
 
 // A DNS label: lowercase alphanumerics + internal hyphens, no leading/trailing
-// hyphen (RFC 1123). The subdomain charset; the same shape Caddy will see as the
+// hyphen (RFC 1123). The subdomain charset; the same shape the front door will see as the
 // host label. Single-char labels (e.g. a one-letter tenant) are allowed.
 const SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
@@ -123,7 +123,7 @@ export function extractTenantSlugFromHost(
   host: string,
   rootDomain: string,
 ): string | null {
-  // DNS is case-insensitive and Caddy may include the listening port — strip it.
+  // DNS is case-insensitive and the front door may include the listening port — strip it.
   // split() always yields ≥1 element; the ?? '' satisfies noUncheckedIndexedAccess.
   const hostname = host.trim().toLowerCase().split(':')[0] ?? '';
   const suffix = `.${rootDomain.trim().toLowerCase()}`;

@@ -74,7 +74,7 @@ export class IndeedApplyWebhookService {
     }
 
     // R6 / RECON-3a — tenant from the Host slug (reused primitives). Unknown or
-    // inactive slug → 404, no detail. Caddy forwards the original host; prefer the
+    // inactive slug → 404, no detail. The front door forwards the original host; prefer the
     // forwarded header, fall back to Host.
     const slug =
       input.host === undefined

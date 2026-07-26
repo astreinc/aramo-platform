@@ -65,6 +65,27 @@ R7_ALLOWLIST_GLOB=(
 )
 
 # =============================================================================
+# Front-Door retirement — the retired-front-door term allowlist (sealed)
+# =============================================================================
+# ADR-0023 retired the previous front door; the repo is now zero-outside-allowlist
+# for its name (comments included). The ONLY paths permitted to name it are filed
+# history + the ADR/architecture records that must name it to supersede it. New
+# entries require Architect approval (as with R7). The check traverses hidden
+# paths (--hidden) — the inventory's own correction, made permanent (E9). The
+# check EXCLUDES this script from its own scan (it defines the pattern), so the
+# sealed array below stays exactly the ratified allowlist.
+FRONTDOOR_LEGACY_ALLOWLIST=(
+  "doc/adr/0020-build-for-tenant-50-governing-principle.md"                 # LOCKED ADR — names the retired front door as filed history
+  "doc/adr/0023-frontdoor-nginx-wildcard-tls.md"                           # this migration's ADR — names it to record the supersession
+  "doc/architecture/aramo-platform-console-enterprise-architecture.md"     # architecture record (historical)
+  "doc/architecture/aramo-enterprise-context-v2_1.md"                      # architecture record (historical)
+  "doc/platform-console/platform-console-architecture-inventory.md"        # architecture inventory (historical)
+  "infrastructure-lightsail/main.tf"                                       # the separate Lightsail track's box description
+  "infrastructure-lightsail/outputs.tf"                                    # the separate Lightsail track's box description
+  "doc/runbooks/frontdoor-cutover.md"                                      # PR-3 E8 ruling (Architect-approved): the one operational doc that PERFORMS the retirement — names the retired container in the flip step (must-name-to-supersede, same as the ADR)
+)
+
+# =============================================================================
 # Tier 2 — Vocabulary-discipline exclusions
 # =============================================================================
 # Paths/globs where Tier 2 forbidden vocabulary is permitted to appear.
@@ -498,6 +519,33 @@ if [[ -n "$filtered" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
+# Front-Door retirement — the retired-front-door term gate (--hidden traversal)
+# -----------------------------------------------------------------------------
+# Scans ALL paths incl. hidden (.github, .env.prod.example). Excludes this script
+# from its own scan (it defines the search pattern), so the sealed allowlist above
+# stays exactly the ratified set.
+frontdoor_matches="$(rg -i --hidden --no-heading --line-number --color=never \
+  "${COMMON_GLOBS[@]}" \
+  --glob '!scripts/verify-vocabulary.sh' \
+  'caddy' . || true)"
+
+frontdoor_filtered="$frontdoor_matches"
+for path in "${FRONTDOOR_LEGACY_ALLOWLIST[@]}"; do
+  frontdoor_filtered="$(printf '%s\n' "$frontdoor_filtered" | grep -v -F "./${path}:" || true)"
+done
+frontdoor_filtered="$(printf '%s\n' "$frontdoor_filtered" | sed '/^[[:space:]]*$/d')"
+
+if [[ -n "$frontdoor_filtered" ]]; then
+  echo "ERROR (Front-Door retirement, ADR-0023): the retired front door's name appears at non-allowlisted location(s):" >&2
+  printf '%s\n' "$frontdoor_filtered" >&2
+  echo "" >&2
+  echo "ADR-0023 retired the previous front door — its name may appear ONLY at the allowlisted" >&2
+  echo "paths (filed history / ADR / architecture). If a path legitimately requires it, add it to" >&2
+  echo "FRONTDOOR_LEGACY_ALLOWLIST in this script with a per-entry comment AND escalate to Architect." >&2
+  EXIT=1
+fi
+
+# -----------------------------------------------------------------------------
 # Tier 2 — broader vocabulary discipline
 # -----------------------------------------------------------------------------
 TIER2_GLOBS=()
@@ -542,6 +590,7 @@ if [[ "$EXIT" -eq 0 ]]; then
   echo "OK: vocabulary discipline verified."
   echo "  Tier 1 (R7 LinkedIn refusal): clean — no occurrences outside sealed allowlist."
   echo "  Tier 2 (locked vocabulary): clean — no anti-term matches in product source."
+  echo "  Front-Door retirement (ADR-0023): clean — retired front door named only at allowlisted paths."
 fi
 
 exit "$EXIT"

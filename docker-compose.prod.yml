@@ -6,9 +6,10 @@
 # dev compose (docker-compose.yml / docker-compose.images.yml all still work).
 #
 # Services:
-#   caddy          the ONLY service publishing ports (80/443) — TLS + static +
+#   nginx          the ONLY service publishing ports (80/443) — TLS + static +
 #                  path routing. Self-contained image with the ats-web SPA baked
-#                  in (deploy/caddy/Dockerfile).
+#                  in (deploy/nginx/Dockerfile).
+#   certbot        the DNS-01 sidecar owning the *.aramo.ai wildcard cert.
 #   api            apps/api — the D1 image, UNCHANGED (referenced, not rebuilt).
 #   auth-service   apps/auth-service — the D1 image, UNCHANGED.
 #   postgres       persisted named volume (the fresh-start DB survives restarts).
@@ -22,13 +23,13 @@
 #   # 0) Build the D1 backend images + this front-door image (first time / on change):
 #   docker build -f apps/api/Dockerfile          -t aramo/api:local          .
 #   docker build -f apps/auth-service/Dockerfile -t aramo/auth-service:local .
-#   docker build -f deploy/caddy/Dockerfile      -t aramo/caddy:local        .
+#   docker build -f deploy/nginx/Dockerfile      -t aramo/nginx:local        .
 #
 #   # 1) Load the env contract into the shell, then bring the stack up:
 #   set -a && source .env && set +a
 #   docker compose --env-file /dev/null -f docker-compose.prod.yml up -d
 #
-#   # 2) Smoke THROUGH Caddy (local CA over https; -k trusts the local cert):
+#   # 2) Smoke THROUGH nginx (over https; -k trusts the local mkcert cert):
 #   curl -ik https://localhost/.well-known/jwks.json   # auth-service → 200 JWKS
 #   curl -ik https://localhost/v1/tenant/settings      # api          → 401 AUTH_REQUIRED
 #   #   open https://localhost                          # ats-web SPA loads
@@ -44,63 +45,17 @@
 # service, so they cannot drift. See .env.prod.example for the full env surface.
 
 services:
-  caddy:
-    build:
-      context: .
-      dockerfile: deploy/caddy/Dockerfile
-    image: aramo/caddy:local
-    container_name: aramo-prod-caddy
-    restart: unless-stopped
-    environment:
-      # TLS/domain parameterization (Caddyfile defaults to localhost/internal,
-      # no on-demand, when unset — local just works; the box sets the wildcard
-      # *.aramo.ai + an ACME email + on_demand for Subdomain-Identity A's
-      # tenant-validated per-host certs). CADDY_ASK_URL is optional (Caddyfile
-      # defaults it to the compose-internal api ask-endpoint). Bare-name
-      # passthrough so the box can override via .env.
-      - CADDY_SITE_ADDRESS
-      - CADDY_TLS
-      - CADDY_TLS_ONDEMAND
-      - CADDY_ASK_URL
-      # Dedicated-host address vars for the explicit site blocks. Without these
-      # in the passthrough the container falls back to the Caddyfile *.localhost
-      # defaults, so the prod hosts never bind. CADDY_ADMIN_ADDRESS (admin.aramo.ai)
-      # was omitted when Inc-3 PR-3.3 shipped; Portal P1 PR-3 adds
-      # CADDY_PORTAL_ADDRESS (candidate.aramo.ai) and closes the admin gap alongside.
-      - CADDY_ADMIN_ADDRESS
-      # D-CADDY-WILDCARD-SKIP-1 — the admin block's tls arg. Box sets
-      # `force_automate` so admin.aramo.ai is eagerly issued despite the
-      # *.aramo.ai wildcard-coverage skip; unset locally → `internal` CA. A var
-      # absent from THIS passthrough never reaches the container and the fix is
-      # inert (the D-AUTH-PLATFORM-HOSTS-1 defect class).
-      - CADDY_ADMIN_TLS
-      - CADDY_PORTAL_ADDRESS
-    ports:
-      - '80:80'
-      - '443:443'
-    volumes:
-      # Persist issued certs + ACME state across restarts (on the box this
-      # avoids re-requesting Let's Encrypt certs — and its rate limits — on
-      # every reboot; pairs with the Directive-3 systemd unit).
-      - aramo-prod-caddy-data:/data
-      - aramo-prod-caddy-config:/config
-    depends_on:
-      - api
-      - auth-service
-
-  # ── Front-Door Migration PR-2 (ADR-0023) — nginx + certbot, built INERT ───────
-  # Both carry profiles: ["frontdoor"], so a plain `docker compose up -d` starts
-  # NEITHER — caddy keeps 80/443. The PR-3 flip removes the profiles and moves the
-  # 80/443 publications from caddy to nginx in ONE reviewed diff. nginx publishes
-  # NO ports here — port publication is itself part of the flip (doubly inert even
-  # if profiles were mis-handled). The caddy service above is byte-untouched.
+  # ── Front-Door Migration (ADR-0023) — nginx front door + certbot DNS-01 ───────
+  # nginx is the single ingress on 80/443 (it replaced the retired front door at
+  # the PR-3 cutover). certbot owns the *.aramo.ai wildcard cert via DNS-01/Route53
+  # (renew loop; initial issuance is the cutover-runbook step). Backends are never
+  # published to the host — nginx is the only public peer.
   nginx:
     build:
       context: .
       dockerfile: deploy/nginx/Dockerfile
     image: aramo/nginx:local
     container_name: aramo-prod-nginx
-    profiles: ["frontdoor"]
     restart: unless-stopped
     environment:
       # The four ${NGINX_*} vars (Ruling 1), bare-name passthrough. Unset → the
@@ -110,7 +65,9 @@ services:
       - NGINX_ADMIN_SERVER_NAME
       - NGINX_PORTAL_SERVER_NAME
       - NGINX_CERT_DIR
-    # NO ports: — port publication is the PR-3 flip diff.
+    ports:
+      - '80:80'
+      - '443:443'
     volumes:
       # The certbot-owned wildcard cert, READ-ONLY to nginx.
       - aramo-prod-letsencrypt:/etc/letsencrypt:ro
@@ -120,7 +77,7 @@ services:
       timeout: 3s
       retries: 20
     depends_on:
-      # FULL set — corrects the grounded gap where caddy omits platform-admin.
+      # FULL set — corrects the grounded gap where the retired front door omitted platform-admin.
       - api
       - auth-service
       - platform-admin
@@ -144,7 +101,6 @@ services:
   certbot:
     image: certbot/dns-route53:v3.1.0
     container_name: aramo-prod-certbot
-    profiles: ["frontdoor"]
     restart: unless-stopped
     environment:
       - AWS_ACCESS_KEY_ID=${CERTBOT_AWS_ACCESS_KEY_ID}
@@ -282,7 +238,7 @@ services:
   platform-admin:
     # Inc-3 PR-3.3 — the platform-console backend as a real prod service.
     # Override ARAMO_PLATFORM_ADMIN_IMAGE to the GHCR tag on the box; defaults
-    # to the local build tag. Caddy-internal only (never port-published; the
+    # to the local build tag. Container-internal only (never port-published; the
     # admin.aramo.ai site block is the sole ingress → platform-admin:3002).
     image: ${ARAMO_PLATFORM_ADMIN_IMAGE:-aramo/platform-admin:local}
     container_name: aramo-prod-platform-admin
@@ -348,7 +304,5 @@ services:
 
 volumes:
   aramo-prod-pgdata:
-  aramo-prod-caddy-data:
-  aramo-prod-caddy-config:
-  # Front-Door PR-2 — the certbot-owned wildcard cert store (certbot rw, nginx ro).
+  # Front-Door (ADR-0023) — the certbot-owned wildcard cert store (certbot rw, nginx ro).
   aramo-prod-letsencrypt:

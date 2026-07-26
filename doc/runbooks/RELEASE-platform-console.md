@@ -7,8 +7,8 @@ pass signal. This complements — does not replace — the general redeploy gram
 in [singlebox-ops.md](singlebox-ops.md) (§ "Redeploy: the ordered sequence").
 
 The platform console adds ONE backend (`platform-admin`) and a second SPA baked
-into the SAME Caddy image (`platform-web` → `/srv/admin`); it introduces no new
-database and no new migration. The admin host is served by a DEDICATED Caddy
+into the SAME nginx image (`platform-web` → `/srv/admin`); it introduces no new
+database and no new migration. The admin host is served by a DEDICATED nginx
 site block with ordinary ACME (never the tenant on-demand / ask path — Ruling
 R14) and has NO `/v1` route.
 
@@ -22,7 +22,7 @@ R14) and has NO `/v1` route.
 - [ ] **Images published from `main`.** GHCR holds `:latest` (and the commit-SHA
       tag) for all four images built on the `main` push — confirm the new ones:
       - `ghcr.io/<owner>/aramo-platform-admin`
-      - `ghcr.io/<owner>/aramo-caddy` (now fattened: contains BOTH SPAs)
+      - `ghcr.io/<owner>/aramo-nginx` (now fattened: contains BOTH SPAs)
       - (unchanged: `aramo-api`, `aramo-auth-service`)
       Publish is main-ref-gated in `ci.yml`; nothing publishes off a branch.
 - [ ] **DNS resolves `admin.aramo.ai`.** The existing `*.aramo.ai` wildcard record
@@ -50,7 +50,7 @@ platform-console-specific keys:
 
 ```sh
 # The platform console host (dedicated block, ordinary ACME — R14).
-CADDY_ADMIN_ADDRESS=admin.aramo.ai
+NGINX_ADMIN_SERVER_NAME=admin.aramo.ai
 
 # The platform-admin image (defaults to the local build tag; on the box point
 # it at the published GHCR tag).
@@ -66,8 +66,8 @@ AUTH_COGNITO_PLATFORM_USER_POOL_ID=us-east-1_XXXXXXXXX
 - **`AUTH_PUBLIC_BASE_URL` stays UNSET.** Host-derivation (PR-3.1) governs the
   redirect base for both consoles concurrently; the env is only the escape hatch
   for unvalidated hosts. Setting it would pin every consumer to one origin.
-- **`CADDY_TLS`** is unchanged (`admin@aramo.ai` on the box) — the admin block
-  reuses it for ordinary Let's Encrypt issuance.
+- **The `*.aramo.ai` wildcard cert** covers the admin host too — certbot's
+  DNS-01 wildcard serves `admin.aramo.ai` with no per-host issuance.
 
 ## 2. Pull + bring up (on the box)
 
@@ -84,13 +84,13 @@ sudo systemctl restart aramo-singlebox.service   # compose up -d, recreates cont
 ```
 
 The restart recreates the stack from `docker-compose.prod.yml`, which now
-includes the `platform-admin` service and pulls the fattened `caddy` image.
+includes the `platform-admin` service and pulls the fattened `nginx` image.
 
-Confirm the new container is healthy and Caddy has both roots:
+Confirm the new container is healthy and nginx has both roots:
 
 ```sh
 docker ps --format '{{.Names}}\t{{.Status}}' | grep platform-admin   # Up (healthy)
-docker exec aramo-prod-caddy ls /srv                                 # ats  admin
+docker exec aramo-prod-nginx ls /srv                                 # ats  admin
 ```
 
 ## 3. Smoke (the release is DONE when all pass)
@@ -112,7 +112,7 @@ docker exec aramo-prod-caddy ls /srv                                 # ats  admi
 ## 4. Rollback
 
 The change is deploy-surface only. To revert: restore the prior image tags
-(`ARAMO_PLATFORM_ADMIN_IMAGE` / caddy) in `.env` and
+(`ARAMO_PLATFORM_ADMIN_IMAGE` / nginx) in `.env` and
 `sudo systemctl restart aramo-singlebox.service`. The `platform-admin` service
 and the admin site block simply stop being served; the tenant console
 (`api` + `auth-service` + the ats-web root) is untouched. No DB rollback (no
