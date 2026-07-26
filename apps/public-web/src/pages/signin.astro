@@ -1,0 +1,76 @@
+---
+// /signin (PUB-3.5 PR-A, R-PUB35-3) — a static instruction page, zero JS. No
+// dynamic tenant lookup at this stage (F-PUB35-6 tracks the SaaS-console
+// version). The ratified instruction line is "Your workspace lives at
+// your-firm.aramo.ai"; the surrounding copy is minimal functional guidance
+// (the prototype carries no sign-in page) — PO-reviewed at the R-PUB35-8
+// click-through before Gate-6.
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Sign in — Aramo"
+  description="Sign in to your Aramo workspace. Each firm runs on its own subdomain — your-firm.aramo.ai."
+>
+  <section class="section hero">
+    <div class="container">
+      <div class="signin">
+        <span class="eyebrow">Sign in</span>
+        <h1 class="hero__display">Sign in to your workspace.</h1>
+        <p class="hero__sub">
+          Aramo runs each firm on its own workspace. Yours lives at a subdomain
+          we set up during onboarding.
+        </p>
+
+        <div class="signin__address" role="note" aria-label="Workspace address">
+          <span class="signin__prefix">your-firm</span><span
+            class="signin__suffix">.aramo.ai</span
+          >
+        </div>
+
+        <p class="signin__help">
+          Go to your workspace address to sign in. Don’t know it? Ask your
+          workspace admin, or email&#32;
+          <a href="mailto:hello@aramo.ai">hello@aramo.ai</a> and we’ll point you
+          to the right place.
+        </p>
+
+        <div class="cluster">
+          <a class="btn btn--primary" href="/get-started">Request a workspace</a>
+          <a class="btn btn--ghost" href="/contact">Contact us</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .signin {
+    max-width: 44rem;
+  }
+  .signin__address {
+    display: inline-flex;
+    align-items: baseline;
+    margin: 0 0 var(--sp-6);
+    padding: var(--sp-4) var(--sp-5);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-lg);
+    background: var(--c-surface);
+    box-shadow: var(--sh-1);
+    font-family: var(--font-mono);
+    font-size: var(--fs-20);
+  }
+  .signin__prefix {
+    color: var(--c-accent);
+    font-weight: var(--fw-semibold);
+  }
+  .signin__suffix {
+    color: var(--c-text);
+  }
+  .signin__help {
+    font-size: var(--fs-16);
+    color: var(--c-text-muted);
+    max-width: 52ch;
+    margin: 0 0 var(--sp-6);
+  }
+</style>

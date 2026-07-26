@@ -61,6 +61,7 @@ pact/pacts/
 *.tfvars
 # Note: .terraform.lock.hcl files ARE committed (per Ruling 6).
 # Note: *.tfvars.example files ARE committed (per §4.6).
+*.tfplan
 
 # Recruiter-console live e2e (real session artifacts + Playwright output — never commit)
 apps/ats-web/e2e/.auth/
@@ -69,4 +70,5 @@ apps/ats-web/playwright-report/
 
 # Uncommitted recon/report scratch (non-product)
 scratch/
+scratchpad/
 

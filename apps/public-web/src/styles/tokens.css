@@ -1,90 +1,133 @@
-/* Aramo public-site — design tokens (PUB-2 §1).
+/* Aramo public-site — design tokens (PUB-3.5 PR-A, "Verified" v2.0).
  *
- * ── Provenance (R-PUB2-1, resolves PUB-0 R-PUB-7) ─────────────────────────
- *   Brand core below is a DELIBERATE COPY from:
- *     source path : libs/fe-foundation/src/design/tokens.css
- *     source SHA  : 28f8c21   (git blob hash, verified current at authoring)
- *   Copied scope  : color palette (neutral spine, accent, states), font
- *                   stacks, radii, shadows.
- *   NOT copied    : control heights, the console type scale, --shell-nav-w,
- *                   density tokens (console-only concerns).
- *   Drift note    : this is a copy, NOT an nx/CSS import (a cross-lib CSS
- *                   import is invisible to the boundary wall and therefore
- *                   forbidden). The two files can drift; a brand-core PARITY
- *                   CHECK against the source is on the PUB-6 launch checklist.
+ * ── Provenance ────────────────────────────────────────────────────────────
+ *   Source of truth: Aramo-DDR-PublicSite-Design-Language-v2_0-LOCKED §3,
+ *   values extracted programmatically from the ratified prototype export
+ *   (aramo-prototype-FINAL-verified-2026-07-25.zip). This SUPERSEDES the v1
+ *   brand-core copy from libs/fe-foundation (PUB-2) for apps/public-web only;
+ *   the console keeps DDR-UI v1.0.
  *
- * Raw hex/px outside this token file is a drift signal (same rule as the
- * source file's header). The marketing-scale extensions (display type, section
- * rhythm, content widths) are new here, in the same var grammar.
+ *   Raw hex/px outside this token file is a drift signal. Variable NAMES are
+ *   stable across the v1→v2 refresh (components consume tokens only) — the
+ *   VALUES change here and every consuming surface reskins. New v2 tokens
+ *   (display font, magenta accent, dark-section set, signature gradients, pill
+ *   radius) are added in the same grammar.
  * ──────────────────────────────────────────────────────────────────────────
  */
 
 :root {
-  /* ===== BRAND CORE (copied @ 28f8c21) ===== */
+  /* ===== COLOR (DDR §3) ===== */
 
-  /* Neutral spine — warm stone */
-  --c-bg: #FAFAF9;
-  --c-surface: #FFFFFF;
-  --c-surface-2: #F5F5F4;
-  --c-border: #E7E5E4;
-  --c-border-strong: #D6D3D1;
-  --c-text: #1C1917;
-  --c-text-muted: #57534E;
-  --c-text-subtle: #78716C;
+  /* Grounds + surfaces */
+  --c-bg: #fbfbfc; /* ground */
+  --c-surface: #ffffff;
+  --c-surface-2: #f3f4fb; /* section alt */
+  --c-border: #ececf2; /* light border */
+  --c-border-strong: #d5d5e2; /* control / button border */
+  --c-hover-fill: #eeeef3; /* nav/hover fill */
 
-  /* Accent — deep teal */
-  --c-accent: #0F766E;
-  --c-accent-hover: #115E59;
-  --c-accent-active: #134E4A;
-  --c-accent-soft: #CCFBF1;
-  --c-accent-fg: #FFFFFF;
+  /* Text */
+  --c-text: #2d2d2d; /* ink — headings */
+  --c-text-muted: #595959; /* body */
+  --c-text-subtle: #767676; /* muted */
+  --c-text-faint: #9aa0b0; /* marquee / faintest */
 
-  /* States */
-  --c-danger: #B91C1C;
-  --c-danger-soft: #FEF2F2;
-  --c-danger-border: #FECACA;
-  --c-success: #15803D;
-  --c-success-soft: #F0FDF4;
-  --c-success-border: #BBF7D0;
-  --c-focus-ring: #0F766E;
+  /* Primary blue */
+  --c-accent: #004fcb;
+  --c-accent-hover: #003da0; /* link hover */
+  --c-accent-active: #3d49a0; /* primary-hover family */
+  --c-accent-soft: #e9eefc; /* soft blue fill */
+  --c-accent-fg: #ffffff;
 
-  /* Font stacks */
-  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
+  /* Accent magenta (eyebrows, highlights — used sparingly) */
+  --c-accent-2: #9d2b6b;
+  --c-accent-2-soft: #f6e9f1;
 
-  /* Radius — restrained */
-  --r-sm: 4px;
-  --r-md: 6px;
-  --r-lg: 8px;
+  /* Accent teal — third agent-accent in the export rotation (Interview /
+     Rediscovery cards, integration flow). Extracted from the ratified export. */
+  --c-accent-3: #1fb6cd;
+  --c-accent-3-deep: #149bb0;
 
-  /* Shadow — paper-thin */
-  --sh-1: 0 1px 2px rgba(28, 25, 23, 0.04);
-  --sh-2: 0 2px 8px rgba(28, 25, 23, 0.06), 0 1px 2px rgba(28, 25, 23, 0.04);
-  --sh-3: 0 8px 24px rgba(28, 25, 23, 0.08), 0 2px 4px rgba(28, 25, 23, 0.04);
+  /* Logo mark — the single coral ray (DDR §3 burst/kolam motif) */
+  --c-logo-coral: #d97757;
 
-  /* ===== MARKETING-SCALE EXTENSIONS (new; same grammar) ===== */
+  /* Link tint for dark contexts */
+  --c-link-dark: #7fb0ff;
 
-  /* Marketing type ramp — body 16px + a display ramp (NOT the console scale).
-     Larger, airier steps for a landing page rather than dense admin UI. */
+  /* Dark sections ("mission control") */
+  --c-dark-bg: #10162e;
+  --c-dark-bg-deep: #0b1022;
+  --c-dark-surface: #232b4d;
+  --c-dark-surface-2: #2c3560;
+  --c-dark-text: #ffffff;
+  --c-dark-text-muted: #6b76a8;
+  --c-dark-text-soft: #9aa3c0; /* dark-section body copy */
+  --c-dark-text-cta: #b7bede; /* dark CTA-band sub */
+
+  /* Soft borders inside cards/chips (export uses a slightly cooler line here) */
+  --c-border-soft: #e4e4f0;
+  --c-border-badge: #dcdcf0;
+
+  /* States — success (dark-context mono chips) + danger (legal DRAFT band,
+     form errors) kept as the established red so the DRAFT band stays
+     unmissable across the reskin (DDR §4.4: band mechanics unchanged). */
+  --c-success: #12a150;
+  --c-success-dark: #79ffb0;
+  --c-success-soft: #eafaf0;
+  --c-success-border: #b9ecca;
+  --c-danger: #b91c1c;
+  --c-danger-soft: #fef2f2;
+  --c-danger-border: #fecaca;
+  --c-focus-ring: #004fcb;
+
+  /* ===== SIGNATURE GRADIENTS (DDR §3) ===== */
+  --grad-cta: linear-gradient(120deg, #004fcb, #9d2b6b);
+  --grad-dark-card: linear-gradient(120deg, #2d2d2d, #1c1f45);
+
+  /* ===== TYPE (DDR §3) ===== */
+  --font-display: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* Type ramp — marketing display + body. Hero H1 clamp per DDR §3. */
+  --fs-12: 0.75rem;
   --fs-14: 0.875rem;
-  --fs-16: 1rem; /* marketing body */
+  --fs-16: 1rem; /* body */
+  --fs-18: 1.125rem;
   --fs-20: 1.25rem;
   --fs-24: 1.5rem;
   --fs-36: 2.25rem;
+  --fs-42: 2.625rem;
   --fs-48: 3rem;
   --fs-64: 4rem;
+  --fs-hero: clamp(2.625rem, 4.6vw, 4rem); /* DDR H1 clamp(42px,4.6vw,64px) */
+
+  /* Mono eyebrow treatment (DDR §3) */
+  --ls-eyebrow: 0.14em;
 
   /* Line heights + weights */
-  --lh-display: 1.1; /* tight display line-height */
+  --lh-display: 1.05;
   --lh-tight: 1.25;
-  --lh-normal: 1.5;
+  --lh-normal: 1.55;
   --fw-regular: 400;
   --fw-medium: 500;
   --fw-semibold: 600;
   --fw-bold: 700;
 
-  /* Space — 4px grammar. Base steps share the source grammar; the 16/20/24
-     steps are the marketing section rhythm (64/80/96px). */
+  /* ===== SHAPE & DEPTH (DDR §3) ===== */
+  /* radii — chips 8, buttons 9–11, cards 14–18, pills 99 */
+  --r-sm: 8px; /* chips */
+  --r-md: 10px; /* buttons */
+  --r-lg: 14px; /* cards */
+  --r-xl: 18px; /* large cards */
+  --r-pill: 99px;
+
+  /* shadows — soft, large-blur, low-alpha over an ink-navy */
+  --sh-1: 0 1px 2px rgba(16, 19, 34, 0.05);
+  --sh-2: 0 14px 34px -16px rgba(16, 19, 34, 0.16);
+  --sh-3: 0 16px 40px -16px rgba(16, 19, 34, 0.22);
+
+  /* ===== SPACE — 4px grammar; 16–24 steps = marketing section rhythm ===== */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
@@ -97,8 +140,11 @@
   --sp-16: 64px;
   --sp-20: 80px;
   --sp-24: 96px;
+  --sp-28: 112px;
 
   /* Layout widths */
-  --w-content: 1120px;
+  --w-content: 1180px;
   --w-prose: 68ch;
+  /* Responsive section horizontal padding (mobile-first): 20px floor → 64px cap. */
+  --pad-x: clamp(20px, 5vw, 64px);
 }

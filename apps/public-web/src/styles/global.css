@@ -1,5 +1,6 @@
-/* Aramo public-site — global styles + shell (PUB-2 §3/§5/§7).
- * CSS-only: no framework, no client JS. Mobile-first with one breakpoint. */
+/* Aramo public-site — global styles + shell (PUB-3.5 PR-A, "Verified" v2.0).
+ * CSS-only: no framework, no client JS. Sticky blurred header + four-column
+ * footer per DDR §3; tokens-only. Mobile-first with focused breakpoints. */
 
 *,
 *::before,
@@ -9,10 +10,16 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  max-width: 100%;
+  /* `clip` (not `hidden`) prevents horizontal scroll WITHOUT creating a scroll
+     container — so `position: sticky` on the header keeps working. */
+  overflow-x: clip;
 }
 
 body {
   margin: 0;
+  max-width: 100%;
+  overflow-x: clip;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -31,7 +38,7 @@ a {
   text-decoration: none;
 }
 a:hover {
-  text-decoration: underline;
+  color: var(--c-accent-hover);
 }
 
 img {
@@ -45,12 +52,20 @@ img {
   border-radius: var(--r-sm);
 }
 
+/* Display type for headings across the site (DDR §3 — Space Grotesk). */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+}
+
 /* ---- Layout ---- */
 .container {
   width: 100%;
-  max-width: var(--w-content);
+  /* Gutter outside the content width so padding doesn't reduce the max-width. */
+  max-width: calc(var(--w-content) + 2 * var(--pad-x));
   margin-inline: auto;
-  padding-inline: var(--sp-6);
+  padding-inline: var(--pad-x);
 }
 
 /* ---- Skip link (a11y floor) ---- */
@@ -71,127 +86,182 @@ img {
   text-decoration: none;
 }
 
-/* ---- Header ---- */
+/* ---- Header (sticky, blurred) ---- */
 .site-header {
-  background: var(--c-surface);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--c-bg);
+  background: color-mix(in srgb, var(--c-bg) 82%, transparent);
+  backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--c-border);
 }
+/* Full-width header with a fixed ~40px gutter (prototype `padding:0 40px`), so
+   the logo hugs the top-left instead of pulling inward with a centered
+   max-width on wide screens. */
 .site-header__inner {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: var(--sp-4);
-  padding-block: var(--sp-4);
+  padding: var(--sp-2) clamp(16px, 4vw, 40px);
+  min-height: 60px;
+  box-sizing: border-box;
 }
-.wordmark {
-  font-size: var(--fs-20);
-  font-weight: var(--fw-semibold);
-  letter-spacing: -0.01em;
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
   color: var(--c-text);
 }
-.wordmark:hover {
-  text-decoration: none;
+/* Logo SVG must not shrink as a flex item (replaces an inline style="flex:none"
+   so the CSP style-src needs no 'unsafe-inline' for element style attributes). */
+.logo-mark {
+  flex: none;
+}
+.brand:hover {
+  color: var(--c-text);
+}
+.brand__word {
+  font-family: var(--font-display);
+  font-size: var(--fs-20);
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.01em;
+  color: var(--c-accent);
 }
 .site-nav {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-5);
+  gap: var(--sp-1);
+  margin-left: var(--sp-3);
 }
 .site-nav a {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
   font-size: var(--fs-14);
+  font-weight: var(--fw-medium);
   color: var(--c-text-muted);
 }
 .site-nav a:hover {
+  background: var(--c-hover-fill);
   color: var(--c-text);
-  text-decoration: none;
 }
-.site-nav .cta {
+.site-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.site-actions__signin {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-14);
   font-weight: var(--fw-medium);
-  color: var(--c-accent-fg);
-  background: var(--c-accent);
-  padding: var(--sp-2) var(--sp-4);
-  border-radius: var(--r-md);
-  box-shadow: var(--sh-1);
+  color: var(--c-text-muted);
 }
-.site-nav .cta:hover {
-  background: var(--c-accent-hover);
-  color: var(--c-accent-fg);
-  text-decoration: none;
+.site-actions__signin:hover {
+  background: var(--c-hover-fill);
+  color: var(--c-text);
 }
 
-/* ---- Main / page bodies ---- */
+/* ---- Main ---- */
 main {
   flex: 1 0 auto;
-  padding-block: var(--sp-16);
+  min-width: 0;
 }
 main :where(h1) {
   font-size: var(--fs-48);
   line-height: var(--lh-display);
-  font-weight: var(--fw-semibold);
-  letter-spacing: -0.02em;
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.03em;
   color: var(--c-text);
   margin: 0 0 var(--sp-4);
-  max-width: var(--w-prose);
 }
 main :where(h2) {
   font-size: var(--fs-36);
   line-height: var(--lh-tight);
-  font-weight: var(--fw-semibold);
-  letter-spacing: -0.01em;
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.02em;
   margin: var(--sp-12) 0 var(--sp-4);
-  max-width: var(--w-prose);
 }
 main :where(p) {
-  font-size: var(--fs-20);
   color: var(--c-text-muted);
   margin: 0 0 var(--sp-4);
-  max-width: var(--w-prose);
 }
 
 /* Error / 404 shell treatment */
 .error-page {
   text-align: center;
-  padding-block: var(--sp-20);
+  padding: var(--sp-24) var(--sp-6);
 }
 .error-page :where(h1) {
   margin-inline: auto;
+  max-width: var(--w-prose);
 }
 .error-page :where(p) {
   margin-inline: auto;
+  max-width: var(--w-prose);
 }
 
-/* ---- Footer ---- */
+/* ---- Footer (four columns + brand) ---- */
 .site-footer {
   flex-shrink: 0;
-  background: var(--c-surface-2);
+  background: var(--c-bg);
   border-top: 1px solid var(--c-border);
-  padding-block: var(--sp-12);
+  padding: var(--sp-12) var(--pad-x) var(--sp-10);
 }
 .site-footer__inner {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-4);
+  max-width: var(--w-content);
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--sp-8);
 }
-.footer-legal {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-5);
+.site-footer__brand {
+  min-width: 0;
 }
-.footer-legal a {
+.brand--footer .brand__word {
+  font-size: var(--fs-16);
+}
+.site-footer__tagline {
+  margin: var(--sp-3) 0 0;
+  font-size: var(--fs-14);
+  line-height: var(--lh-normal);
+  color: var(--c-text-subtle);
+  max-width: 24ch;
+}
+.footer-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.footer-col__heading {
+  margin: 0 0 var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-text-subtle);
+}
+.footer-col a {
   font-size: var(--fs-14);
   color: var(--c-text-muted);
 }
-.footer-company {
-  font-size: var(--fs-14);
+.footer-col a:hover {
+  color: var(--c-text);
+}
+.site-footer__legalbar {
+  max-width: var(--w-content);
+  margin: var(--sp-8) auto 0;
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--c-border);
+  font-size: var(--fs-12);
   color: var(--c-text-subtle);
-  margin: 0;
 }
 
-/* ---- Breakpoint (mobile-first; this is the one desktop step) ---- */
+/* ---- Breakpoints ---- */
 @media (max-width: 640px) {
   main :where(h1) {
     font-size: var(--fs-36);
@@ -199,13 +269,12 @@ main :where(p) {
   main :where(h2) {
     font-size: var(--fs-24);
   }
-  main :where(p) {
-    font-size: var(--fs-16);
+  .site-nav {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
   }
-  .site-header__inner {
-    padding-block: var(--sp-3);
-  }
-  main {
-    padding-block: var(--sp-12);
+  .site-actions {
+    margin-left: auto;
   }
 }

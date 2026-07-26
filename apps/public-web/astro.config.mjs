@@ -20,6 +20,17 @@ const astroCookie = require.resolve('cookie', { paths: [astroDir] });
 export default defineConfig({
   site: 'https://aramo.ai',
   output: 'static',
+  // Retired v1 routes fold into the new IA (R-PUB35-1). Astro emits a static
+  // redirect page (canonical + meta-refresh) for each. Target /platform is the
+  // new page built in PR-C — it 404s in-branch until then (accepted per the
+  // PR-A directive note).
+  redirects: {
+    '/product': '/platform',
+    '/how-it-works': '/platform',
+    '/trust': '/platform',
+    // R-PUB35-9: /company retires into /contact.
+    '/company': '/contact',
+  },
   integrations: [react(), sitemap()],
   // CSP-completeness (R-PUB5-7 / D-PUB5-CSP-STYLE-1): the hardened CSP has a
   // strict `script-src` (hash-allowlisted) and NO `style-src`, so inline styles

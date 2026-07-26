@@ -432,14 +432,16 @@ TIER2_EXCLUDES=(
   # PUB-1 PR-1a — the public marketing site (apps/public-web, Astro). Per
   # Aramo-PUB-0-PublicSite-Track-Charter-Directive-v1_1-LOCKED.md R-PUB-5
   # (Charter-level ruling of record): marketing prose must speak the market's
-  # language to be found and understood ("candidates", "customers", and the
-  # anti-scoring stance itself). The Tier-2 lock exists to stop entity-vocabulary
-  # DRIFT in product source; public marketing prose is not product entity naming.
-  # Directory-wide glob (the whole app is marketing surface). Paired in lockstep
-  # with the matching eslint.config.mjs exemption block. NOTE: Tier-1 (R7) is NOT
-  # relaxed — the `linkedin` token remains forbidden in apps/public-web +
-  # deploy/public (any future occurrence needs its own R7 allowlist + Architect
-  # approval).
+  # language to be found and understood ("candidates", "customers"). The Tier-2
+  # lock exists to stop entity-vocabulary DRIFT in product source; public
+  # marketing prose is not product entity naming. Directory-wide glob (the whole
+  # app is marketing surface). Paired in lockstep with the matching
+  # eslint.config.mjs exemption block. NOTE (narrowed, PUB-3.5 R-PUB35-6 /
+  # DDR-PublicSite-v2.0 Ruling 2): the "anti-scoring stance" is NO LONGER a
+  # Tier-2 carve-out — the v2 marketing copy drops the score/rank framing
+  # entirely, and Tier 3 below now ENFORCES the DDR §2 marketing-vocabulary ban
+  # (score/rank/etc.) across apps/public-web/src. Tier-1 (R7) is likewise NOT
+  # relaxed — `linkedin` remains forbidden in apps/public-web + deploy/public.
   "apps/public-web/**"
 )
 
@@ -550,10 +552,52 @@ for entry in "${TIER2_TERMS_REGEX[@]}"; do
   fi
 done
 
+# -----------------------------------------------------------------------------
+# Tier 3 — Public-web marketing vocabulary (PUB-3.5 R-PUB35-6 / DDR §2)
+# -----------------------------------------------------------------------------
+# The DDR §2 greppable banned terms + the fabricated placeholder client names,
+# scoped to apps/public-web/src ONLY and EXCLUDING src/pages/legal/**. The legal
+# pages are the ratified source of the anti-scoring and security commitments,
+# reviewed under the PUB-4 / counsel regime — not the marketing-vocabulary
+# regime — so they are structurally out of scope here. R7 (linkedin) is already
+# enforced site-wide by Tier 1; it is repeated below as a redundant belt. The
+# seven real founding-firm marquee names are a ratified exception and are NOT
+# checked. Escape valve: a line carrying the inline annotation `vocab-allow-pub35`
+# is dropped — Lead-ruled use only.
+PUB35_ROOT="apps/public-web/src"
+PUB35_TERMS=(
+  '\bscores?\b' '\bscored\b' '\bscoring\b' '\bscorecards?\b'
+  '\brank\b' '\branked\b' '\branking\b'
+  '\bautonomous\b' '\bworkforce\b' '\bSOC\b' '\bmarketplace\b'
+  '\bimmutable\b' '\bSLAs?\b' '\bAES\b' 'bias monitoring' 'custom agents'
+  'linkedin'
+  'Helix Health' 'Corebank' 'Northwind' 'Vantage Federal'
+  'Atlas Staffing' 'Meridian MSP' 'Polaris Defense' 'Crestline'
+)
+if [[ -d "$PUB35_ROOT" ]]; then
+  for pattern in "${PUB35_TERMS[@]}"; do
+    matches="$(rg -i --no-heading --line-number --color=never \
+      --glob '!**/pages/legal/**' \
+      "$pattern" "$PUB35_ROOT" || true)"
+    matches="$(printf '%s\n' "$matches" | grep -v -F 'vocab-allow-pub35' || true)"
+    matches="$(printf '%s\n' "$matches" | sed '/^[[:space:]]*$/d')"
+    if [[ -n "$matches" ]]; then
+      echo "ERROR (Tier 3 — R-PUB35-6 public-web vocabulary): '${pattern}' found:" >&2
+      printf '%s\n' "$matches" >&2
+      echo "" >&2
+      echo "Per DDR-PublicSite-v2.0 §2, this term is banned in apps/public-web/src" >&2
+      echo "(legal pages excluded). Fix the copy, or — only by Lead ruling — annotate" >&2
+      echo "the line with 'vocab-allow-pub35'. (Edit PUB35_TERMS in scripts/verify-vocabulary.sh.)" >&2
+      EXIT=1
+    fi
+  done
+fi
+
 if [[ "$EXIT" -eq 0 ]]; then
   echo "OK: vocabulary discipline verified."
   echo "  Tier 1 (R7 LinkedIn refusal): clean — no occurrences outside sealed allowlist."
   echo "  Tier 2 (locked vocabulary): clean — no anti-term matches in product source."
+  echo "  Tier 3 (R-PUB35-6 public-web marketing vocabulary): clean — no DDR §2 terms in apps/public-web/src (legal excluded)."
 fi
 
 exit "$EXIT"

@@ -1,164 +1,674 @@
 ---
+// PUB-3.5 (combined) — the new home / landing page, ported from the ratified
+// prototype Home.dc.html. Copy is VERBATIM from the export except the
+// mission-control dashboard + hero agent cards, whose fabricated metrics /
+// roster counts are GENERICIZED (directive item 1 "genericized entries" + the
+// DDR §2 invented-metrics ban): specific numbers ("142", "38 candidates",
+// "9 agents live") are removed, never replaced with new invented values.
+// Zero client JS — the hero network is a static inline SVG, motion is CSS
+// keyframes, scroll-reveal is dropped (R-PUB35-5). Tokens-only.
 import BaseLayout from '../layouts/BaseLayout.astro';
-import TrustAssessmentCard from '../components/TrustAssessmentCard.astro';
-import ContrastPanel from '../components/ContrastPanel.astro';
-import ProductFrame from '../components/ProductFrame.astro';
-import PackagingTiers from '../components/PackagingTiers.astro';
-import ClaimStrip from '../components/ClaimStrip.astro';
+
+const AGENTS = [
+  { id: 'sourcing', ic: 'So', tone: 'a', title: 'Sourcing Agent', body: 'Continuously scans your database and every connected sourcing channel, builds prioritized long-lists, and surfaces matched candidates before a req goes stale.' },
+  { id: 'matching', ic: 'Ma', tone: 'm', title: 'Assessment Agent', body: 'Assesses talent against role, team, and client context using the Talent Graph — every assessment shows the evidence behind it.' },
+  { id: 'interview', ic: 'In', tone: 't', title: 'Interview Agent', body: 'Coordinates panels, runs structured screens, and delivers prep briefs and structured interview summaries automatically.' },
+  { id: 'compliance', ic: 'Co', tone: 'a', title: 'Compliance Agent', body: 'Checks credentialing, right-to-work, and client rules on every submission — flags issues before they ship, with a full audit trail.' },
+  { id: 'rediscovery', ic: 'Re', tone: 'm', title: 'Rediscovery Agent', body: 'Mines your existing database first — resurfacing silver-medalists and past contractors for new reqs.' },
+  { id: 'copilot', ic: 'Cp', tone: 't', title: 'Recruiter Copilot', body: 'A conversational command center for every recruiter — draft, decide, and delegate to agents in one place. Agents propose; your team decides.' },
+];
+
+const MARQUEE = ['Urbane Systems', 'TalTeam', 'QualiZeal', 'Salem Infotech', 'T Ventures', 'Curate Partners', 'Drivestream'];
+
+const CAPABILITIES = [
+  { t: 'AI Agents', b: 'Agentic, auditable, human-supervised.' },
+  { t: 'Workflow Automation', b: 'Orchestration with approvals and a full audit trail.' },
+  { t: 'Talent Graph', b: 'Every candidate, client, and req — connected.' },
+  { t: 'Verified Identity', b: 'Multi-channel resolution, independent verification, evidence-graded assessments.' },
+  { t: 'Multi-Tenant', b: 'Isolated tenants for MSP and RPO scale.' },
+  { t: 'RBAC + Audit', b: 'Fine-grained roles, complete action logs.' },
+  { t: 'Observability', b: 'Trace every agent action end-to-end.' },
+  { t: 'API-First', b: 'Open APIs, MCP, and versioned connector contracts.' },
+];
+
+const WHY = [
+  { k: 'Trust', legacy: 'Self-reported resumes', aramo: 'Verified, evidence-backed profiles ✓' },
+  { k: 'Automation', legacy: 'Manual workflows', aramo: 'AI agents ✓' },
+  { k: 'Intelligence', legacy: 'Keyword search', aramo: 'Talent Graph + RAG ✓' },
+  { k: 'Platform', legacy: 'Closed system', aramo: 'API-first + open connectors ✓' },
+  { k: 'Scalability', legacy: 'Per-seat licensing', aramo: 'Scales with your desk ✓' },
+];
+
+const INDUSTRIES = [
+  { t: 'IT Staffing', b: 'Speed-to-submit at MSP scale — where Aramo runs today.' },
+  { t: 'Healthcare', b: 'Credential evidence attached to every submittal.' },
+  { t: 'Government', b: 'Clearance-aware submittals with a full audit trail.' },
+  { t: 'Defense', b: 'Eligibility evidence and audit trails for controlled programs.' },
+  { t: 'Banking', b: 'Compliance-grade audit trails on every action.' },
+  { t: 'Insurance', b: 'Licensed-role evidence, verified before submittal.' },
+  { t: 'Enterprise HR', b: 'Internal mobility + rediscovery.' },
+  { t: 'RPO', b: 'Multi-client delivery, one platform.' },
+];
+
+const SECURITY = ['Tenant isolation', 'Least-privilege access', 'SSO / SAML', 'RBAC', 'Encryption in transit', 'Audit Logs'];
 ---
 
 <BaseLayout
-  title="Aramo — trust infrastructure for staffing"
-  description="Aramo is trust infrastructure for staffing — an ATS and candidate intelligence platform that grades every profile by evidence, so every submittal carries proof, not claims."
+  title="Aramo — the system of record for verified talent"
+  description="Aramo unifies your ATS and every sourcing channel into one evidence-backed Talent Graph, with AI agents that do the legwork. Your team makes every call."
 >
-  <!-- Hero -->
-  <section class="section hero">
-    <div class="container">
-      <div class="split">
-        <div class="split__body">
-          <h1 class="hero__display">The resume is not the candidate.</h1>
-          <p class="hero__sub">
-            Aramo is trust infrastructure for staffing — an ATS and candidate
-            intelligence platform that grades every profile by evidence, so
-            every submittal carries proof, not claims.
-          </p>
-          <div class="cluster">
-            <a class="btn btn--primary" href="/get-started">Get started</a>
-            <a class="btn btn--ghost" href="/how-it-works">See how it works</a>
+  <!-- HERO -->
+  <section class="hp-hero">
+    <div class="hp-hero__glow" aria-hidden="true"></div>
+    <div class="hp-container hp-container--wide hp-hero__grid">
+      <div>
+        <div class="hp-badge"><span class="hp-badge__dot" aria-hidden="true"></span>Enterprise ATS · Verified Talent Graph · AI Agents</div>
+        <h1 class="hp-hero__h1">The system of record for verified talent.</h1>
+        <p class="hp-hero__sub">Aramo unifies your ATS and every sourcing channel into one evidence-backed Talent Graph — each profile resolved, verified, and richer with every engagement. AI agents do the legwork: sourcing, qualifying, engaging, preparing submittals. Your team makes every call.</p>
+        <div class="hp-cta-row">
+          <a class="hp-btn hp-btn--primary" href="/contact">Request demo</a>
+          <a class="hp-btn hp-btn--ghost" href="/platform">Watch platform tour</a>
+        </div>
+        <div class="hp-stats">
+          <div><div class="hp-stats__n">One graph</div><div class="hp-stats__l">every source unified</div></div>
+          <div class="hp-stats__div" aria-hidden="true"></div>
+          <div><div class="hp-stats__n">Verified</div><div class="hp-stats__l">every profile evidence-backed</div></div>
+          <div class="hp-stats__div" aria-hidden="true"></div>
+          <div><div class="hp-stats__n">Human-led</div><div class="hp-stats__l">your team makes every call</div></div>
+        </div>
+      </div>
+      <div class="hp-hero__visual">
+        <svg class="hp-net" viewBox="0 0 620 520" aria-hidden="true" preserveAspectRatio="xMidYMid slice">
+          <g class="hp-net__lines">
+            <line x1="90" y1="60" x2="200" y2="110"></line>
+            <line x1="200" y1="110" x2="330" y2="70"></line>
+            <line x1="330" y1="70" x2="470" y2="120"></line>
+            <line x1="470" y1="120" x2="560" y2="60"></line>
+            <line x1="200" y1="110" x2="150" y2="200"></line>
+            <line x1="150" y1="200" x2="300" y2="180"></line>
+            <line x1="300" y1="180" x2="330" y2="70"></line>
+            <line x1="300" y1="180" x2="430" y2="230"></line>
+            <line x1="430" y1="230" x2="470" y2="120"></line>
+            <line x1="430" y1="230" x2="540" y2="190"></line>
+            <line x1="540" y1="190" x2="560" y2="60"></line>
+            <line x1="150" y1="200" x2="200" y2="300"></line>
+            <line x1="200" y1="300" x2="300" y2="180"></line>
+            <line x1="300" y1="180" x2="360" y2="250"></line>
+            <line x1="360" y1="250" x2="430" y2="230"></line>
+            <line x1="360" y1="250" x2="350" y2="320"></line>
+            <line x1="350" y1="320" x2="470" y2="340"></line>
+            <line x1="470" y1="340" x2="430" y2="230"></line>
+            <line x1="470" y1="340" x2="580" y2="300"></line>
+            <line x1="580" y1="300" x2="540" y2="190"></line>
+            <line x1="80" y1="320" x2="200" y2="300"></line>
+            <line x1="200" y1="300" x2="250" y2="250"></line>
+            <line x1="250" y1="250" x2="300" y2="180"></line>
+            <line x1="80" y1="320" x2="130" y2="430"></line>
+            <line x1="130" y1="430" x2="250" y2="410"></line>
+            <line x1="250" y1="410" x2="200" y2="300"></line>
+            <line x1="250" y1="410" x2="200" y2="470"></line>
+            <line x1="200" y1="470" x2="300" y2="450"></line>
+            <line x1="300" y1="450" x2="250" y2="410"></line>
+            <line x1="300" y1="450" x2="350" y2="320"></line>
+            <line x1="300" y1="450" x2="420" y2="440"></line>
+            <line x1="420" y1="440" x2="470" y2="340"></line>
+            <line x1="420" y1="440" x2="520" y2="430"></line>
+            <line x1="520" y1="430" x2="580" y2="300"></line>
+            <line x1="130" y1="430" x2="200" y2="470"></line>
+          </g>
+          <g class="hp-net__nodes">
+            <circle cx="90" cy="60" r="4"></circle>
+            <circle cx="200" cy="110" r="4.5"></circle>
+            <circle cx="330" cy="70" r="3.5"></circle>
+            <circle cx="470" cy="120" r="4"></circle>
+            <circle cx="560" cy="60" r="3"></circle>
+            <circle cx="150" cy="200" r="4.5"></circle>
+            <circle cx="300" cy="180" r="6"></circle>
+            <circle cx="430" cy="230" r="4.5"></circle>
+            <circle cx="540" cy="190" r="3.5"></circle>
+            <circle cx="80" cy="320" r="4"></circle>
+            <circle cx="200" cy="300" r="5"></circle>
+            <circle cx="350" cy="320" r="4"></circle>
+            <circle cx="470" cy="340" r="4.5"></circle>
+            <circle cx="580" cy="300" r="3.5"></circle>
+            <circle cx="250" cy="250" r="3.5"></circle>
+            <circle cx="360" cy="250" r="4"></circle>
+            <circle cx="130" cy="430" r="4"></circle>
+            <circle cx="250" cy="410" r="4.5"></circle>
+            <circle cx="200" cy="470" r="3.5"></circle>
+            <circle cx="300" cy="450" r="4.5"></circle>
+            <circle cx="420" cy="440" r="4"></circle>
+            <circle cx="520" cy="430" r="3.5"></circle>
+          </g>
+        </svg>
+        <div class="hp-glass hp-glass--1">
+          <div class="hp-glass__head"><span class="hp-glass__ic hp-glass__ic--a">S</span><span class="hp-glass__name">Sourcing Agent</span><span class="hp-glass__tag hp-glass__tag--on">ACTIVE</span></div>
+          <div class="hp-glass__body">Found matched candidates for <strong>Sr. Cloud Engineer</strong> — engaging the shortlist.</div>
+        </div>
+        <div class="hp-glass hp-glass--2">
+          <div class="hp-glass__head"><span class="hp-glass__ic hp-glass__ic--m">I</span><span class="hp-glass__name">Interview Agent</span></div>
+          <div class="hp-glass__body">Interviews scheduled · prep briefs delivered to hiring panel.</div>
+        </div>
+        <div class="hp-glass hp-glass--chip">submission → <span class="hp-glass__ok">accepted</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MARQUEE -->
+  <section class="hp-marquee">
+    <div class="hp-marquee__label"><strong>TRUSTED BY ENTERPRISES THAT HIRE AT SCALE</strong></div>
+    <div class="hp-marquee__track">
+      {[0, 1].map(() => (
+        <div class="hp-marquee__set" aria-hidden="true">
+          {MARQUEE.map((name) => (
+            <span class="hp-firm"><span class="hp-firm__mark" aria-hidden="true"></span><span class="hp-firm__name">{name}</span></span>
+          ))}
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <!-- PROBLEM -->
+  <section class="hp-section">
+    <div class="hp-container hp-split">
+      <div>
+        <div class="hp-eyebrow hp-eyebrow--m">THE PROBLEM</div>
+        <h2 class="hp-h2">Talent data you can finally trust.</h2>
+        <p class="hp-lead">Recruiting runs on disconnected tools and unverified data. Legacy ATS platforms store records — duplicated, stale, and impossible to verify — while recruiters stitch together a dozen rented tools by hand. The result: slow pipelines, missed talent, and records nobody believes.</p>
+      </div>
+      <div class="hp-collapse">
+        <div class="hp-dashed">Traditional ATS — a database, not a teammate</div>
+        <div class="hp-dashed">Manual sourcing, screening, scheduling</div>
+        <div class="hp-dashed">Disconnected point tools &amp; spreadsheets</div>
+        <div class="hp-collapse__arrow" aria-hidden="true">↓</div>
+        <div class="hp-punch">
+          <div class="hp-punch__t">Aramo — one system of intelligence</div>
+          <div class="hp-punch__b">Your ATS, every sourcing channel, and AI agents on one verified Talent Graph — one process, one platform, end to end.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AGENTS GRID -->
+  <section id="agents" class="hp-section hp-section--alt">
+    <div class="hp-container">
+      <div class="hp-agents__head">
+        <div>
+          <div class="hp-eyebrow hp-eyebrow--b">AI AGENTS</div>
+          <h2 class="hp-h2 hp-h2--wide">Agents for every step. Intelligence under every agent.</h2>
+          <p class="hp-lead">Each agent works from the same verified Talent Graph — and every action they take is evidence-backed, auditable, and yours to approve.</p>
+        </div>
+        <a class="hp-deeper" href="/agents">Meet the agents →</a>
+      </div>
+      <div class="hp-agents__grid">
+        {AGENTS.map((a) => (
+          <a class={`hp-agent hp-agent--${a.tone}`} href={`/agents#${a.id}`}>
+            <div class={`hp-agent__ic hp-agent__ic--${a.tone}`}>{a.ic}</div>
+            <div class="hp-agent__t">{a.title}</div>
+            <div class="hp-agent__b">{a.body}</div>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- MISSION CONTROL (dark, genericized dashboard) -->
+  <section id="mission-control" class="hp-mc">
+    <div class="hp-mc__glow" aria-hidden="true"></div>
+    <div class="hp-container">
+      <div class="hp-mc__head">
+        <div class="hp-eyebrow hp-eyebrow--l">MISSION CONTROL</div>
+        <h2 class="hp-h2 hp-h2--light">One command center for your talent operation.</h2>
+        <p class="hp-lead hp-lead--light">Direct agents, approve actions, and watch every pipeline move in real time — humans stay in command.</p>
+      </div>
+      <div class="hp-dash">
+        <div class="hp-dash__bar">
+          <span class="hp-dot"></span><span class="hp-dot"></span><span class="hp-dot"></span>
+          <span class="hp-dash__title">aramo · mission control</span>
+          <span class="hp-dash__live"><span class="hp-dash__pulse" aria-hidden="true"></span>agents live</span>
+        </div>
+        <div class="hp-dash__grid">
+          <div class="hp-dash__left">
+            <div class="hp-tiles">
+              <div class="hp-tile"><div class="hp-tile__k">OPEN REQS</div><div class="hp-tile__skel" aria-hidden="true"></div></div>
+              <div class="hp-tile"><div class="hp-tile__k">IN PIPELINE</div><div class="hp-tile__skel" aria-hidden="true"></div></div>
+              <div class="hp-tile"><div class="hp-tile__k">SUBMITS TODAY</div><div class="hp-tile__skel" aria-hidden="true"></div></div>
+            </div>
+            <div class="hp-dash__cap">PIPELINE VELOCITY · LAST 14 DAYS</div>
+            <div class="hp-chart" aria-hidden="true">
+              {Array.from({ length: 14 }).map((_, i) => (
+                <div class={`hp-bar hp-bar--${i < 3 ? 'a' : i < 6 ? 'b' : i < 9 ? 'c' : i < 11 ? 'd' : 'e'} hp-bar--h${i}`}></div>
+              ))}
+            </div>
+          </div>
+          <div class="hp-dash__right">
+            <div class="hp-dash__cap">AGENT ACTIVITY</div>
+            <div class="hp-feed">
+              <div class="hp-feed__row"><span class="hp-feed__ic hp-feed__ic--a">So</span><div class="hp-feed__txt">Sourcing Agent added candidates to an open pipeline<div class="hp-feed__time">just now</div></div></div>
+              <div class="hp-feed__row"><span class="hp-feed__ic hp-feed__ic--m">Cm</span><div class="hp-feed__txt">Compliance Agent checked submissions — no flags<div class="hp-feed__time">moments ago</div></div></div>
+              <div class="hp-feed__row"><span class="hp-feed__ic hp-feed__ic--t">In</span><div class="hp-feed__txt">Interview Agent scheduled panels — briefs sent to interviewers<div class="hp-feed__time">earlier</div></div></div>
+              <div class="hp-feed__row"><span class="hp-feed__ic hp-feed__ic--g">Su</span><div class="hp-feed__txt">Submission Agent — offer <strong class="hp-feed__ok">accepted</strong><div class="hp-feed__time">earlier</div></div></div>
+            </div>
           </div>
         </div>
-        <div class="split__visual">
-          <TrustAssessmentCard />
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHITECTURE -->
+  <section id="architecture" class="hp-section">
+    <div class="hp-container">
+      <div class="hp-center">
+        <div class="hp-eyebrow hp-eyebrow--m">ENTERPRISE ARCHITECTURE</div>
+        <h2 class="hp-h2 hp-h2--center">Built like an operating system, not an app.</h2>
+        <p class="hp-lead hp-lead--center">A layered platform: agents on top of shared knowledge, workflow, and governance — connected to everything you already use.</p>
+      </div>
+      <div class="hp-arch">
+        <div class="hp-arch__row"><div class="hp-arch__mc">Mission Control <span>— humans in command</span></div></div>
+        <svg class="hp-flow" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><line x1="50" y1="0" x2="50" y2="8" class="hp-flow__l hp-flow__l--m"></line></svg>
+        <div class="hp-arch__agents">
+          <div class="hp-arch__agent hp-arch__agent--b">Sourcing</div>
+          <div class="hp-arch__agent hp-arch__agent--b">Assessment</div>
+          <div class="hp-arch__agent hp-arch__agent--m">Interview</div>
+          <div class="hp-arch__agent hp-arch__agent--m">Compliance</div>
+          <div class="hp-arch__agent hp-arch__agent--t">Submission</div>
+          <div class="hp-arch__agent hp-arch__agent--t">+ more</div>
+        </div>
+        <svg class="hp-flow" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><line x1="30" y1="0" x2="30" y2="8" class="hp-flow__l hp-flow__l--b"></line><line x1="70" y1="0" x2="70" y2="8" class="hp-flow__l hp-flow__l--b"></line></svg>
+        <div class="hp-arch__layers">
+          <div class="hp-arch__layer"><div class="hp-arch__lt">Knowledge Layer</div><div class="hp-arch__lb">Verified Talent Graph · evidence ledger · RAG</div></div>
+          <div class="hp-arch__layer"><div class="hp-arch__lt">Workflow Engine</div><div class="hp-arch__lb">Orchestration · approvals · audit trail</div></div>
+          <div class="hp-arch__layer"><div class="hp-arch__lt">LLM Platform + MCP</div><div class="hp-arch__lb">Model routing · tools · evals</div></div>
+        </div>
+        <svg class="hp-flow" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><line x1="50" y1="0" x2="50" y2="8" class="hp-flow__l hp-flow__l--t"></line></svg>
+        <div class="hp-arch__int">
+          <span class="hp-arch__intlabel">INTEGRATIONS</span>
+          {['ATS / CRM', 'Email', 'Professional networks', 'Job boards', 'VMS', 'Teams / Slack', 'Calendar', 'Developer profiles'].map((i) => (
+            <span class="hp-chip">{i}</span>
+          ))}
+        </div>
+      </div>
+      <div class="hp-center hp-center--link"><a class="hp-deeper" href="/platform">Explore the platform →</a></div>
+    </div>
+  </section>
+
+  <!-- CAPABILITIES + WHY TABLE -->
+  <section id="capabilities" class="hp-section hp-section--alt">
+    <div class="hp-container">
+      <div class="hp-eyebrow hp-eyebrow--b">PLATFORM CAPABILITIES</div>
+      <h2 class="hp-h2 hp-h2--wide hp-mb">Everything an enterprise talent OS needs.</h2>
+      <div class="hp-cap__grid">
+        {CAPABILITIES.map((c) => (
+          <div class="hp-cap"><div class="hp-cap__t">{c.t}</div><div class="hp-cap__b">{c.b}</div></div>
+        ))}
+      </div>
+      <div class="hp-why-scroll">
+        <div class="hp-why">
+          <div class="hp-why__head">
+            <div class="hp-why__hk">WHY ARAMO</div>
+            <div class="hp-why__hl">Legacy ATS</div>
+            <div class="hp-why__ha">Aramo</div>
+          </div>
+          {WHY.map((r) => (
+            <div class="hp-why__row">
+              <div class="hp-why__k">{r.k}</div>
+              <div class="hp-why__legacy">{r.legacy}</div>
+              <div class="hp-why__aramo">{r.aramo}</div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Problem -->
-  <section class="section section--bleed section--alt">
-    <div class="container">
-      <span class="eyebrow">The problem</span>
-      <h2 class="section-title">Fewer bad submittals start here.</h2>
-      <p class="lead">
-        Ghost candidates, recycled profiles, unverifiable claims. Legacy systems
-        store the resume as if it were the person — they have no place to put
-        proof.
-      </p>
-      <div class="problem__panel">
-        <ContrastPanel />
+  <!-- INDUSTRIES + FOUNDER QUOTE -->
+  <section id="industries" class="hp-section">
+    <div class="hp-container">
+      <div class="hp-eyebrow hp-eyebrow--m">INDUSTRY SOLUTIONS</div>
+      <h2 class="hp-h2 hp-h2--wide hp-mb">Tuned for regulated, high-volume hiring.</h2>
+      <div class="hp-ind__grid">
+        {INDUSTRIES.map((i) => (
+          <div class="hp-ind"><div class="hp-ind__t">{i.t}</div><div class="hp-ind__b">{i.b}</div></div>
+        ))}
       </div>
-      <a class="deeper-link" href="/how-it-works">See how the evidence is built</a>
+      <div class="hp-quote__wrap">
+        <figure class="hp-quote">
+          <blockquote class="hp-quote__q">“We run a staffing desk ourselves. Aramo is the system we always wanted: every profile verified, every action auditable, and our recruiters spending their day with people — not tabs.”</blockquote>
+          <figcaption class="hp-quote__cap">
+            <span class="hp-quote__av" aria-hidden="true"></span>
+            <span><span class="hp-quote__name">Purush Pichaimuthu</span><span class="hp-quote__role">Founder, Aramo · Astre Consulting</span></span>
+          </figcaption>
+        </figure>
+      </div>
     </div>
   </section>
 
-  <!-- Assessment -->
-  <section class="section">
-    <div class="container">
-      <div class="split">
-        <div class="split__body">
-          <span class="eyebrow">Assessment</span>
-          <h2 class="section-title">Evidence, graded. Never a score.</h2>
-          <p class="lead">
-            Each dimension is answered with receipts — the reason behind the
-            result, not a verdict you have to trust. Trust decisions in minutes,
-            not reference-chasing weeks.
-          </p>
-          <ClaimStrip
-            claims={[
-              'Your recruiters see why',
-              'Your clients get proof',
-              'Candidates are never reduced to a number',
-            ]}
-          />
-          <p class="section__after">
-            <a class="deeper-link" href="/how-it-works"
-              >How the four dimensions work</a
-            >
-          </p>
+  <!-- SECURITY BAND (dark) -->
+  <section id="security" class="hp-sec">
+    <div class="hp-container hp-split">
+      <div>
+        <div class="hp-eyebrow hp-eyebrow--l">ENTERPRISE SECURITY</div>
+        <h2 class="hp-h2 hp-h2--light">Agentic AI your security team will approve.</h2>
+        <p class="hp-lead hp-lead--light">Every agent action is permissioned, logged, and auditable. Your data never trains shared models. Every tenant fully isolated.</p>
+      </div>
+      <div class="hp-sec__grid">
+        {SECURITY.map((s) => (
+          <div class="hp-sec__chip">{s}</div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section id="pricing" class="hp-section">
+    <div class="hp-container">
+      <div class="hp-center">
+        <div class="hp-eyebrow hp-eyebrow--b">PRICING</div>
+        <h2 class="hp-h2 hp-h2--center">Scale your desk, not your tool stack.</h2>
+      </div>
+      <div class="hp-price">
+        <div class="hp-tier">
+          <div class="hp-tier__name">Aramo ATS</div>
+          <div class="hp-tier__desc">The core system of record for your firm</div>
+          <div class="hp-tier__price"><span class="hp-tier__amt">Free</span><span class="hp-tier__per"> during early access</span></div>
+          <div class="hp-tier__list"><div>✓ Requisitions</div><div>✓ Submittals</div><div>✓ Placements</div><div>✓ Clients</div></div>
+          <a class="hp-tier__cta hp-tier__cta--ghost" href="/get-started">Request workspace</a>
         </div>
-        <div class="split__visual">
-          <TrustAssessmentCard variant="compact" />
+        <div class="hp-tier hp-tier--featured">
+          <div class="hp-tier__flag">MOST COMPLETE</div>
+          <div class="hp-tier__name">Aramo Platform</div>
+          <div class="hp-tier__desc">ATS + Verified Talent Graph + AI agents</div>
+          <div class="hp-tier__price"><span class="hp-tier__amt">Free</span><span class="hp-tier__per"> during early access</span></div>
+          <div class="hp-tier__list"><div>✓ Everything in Aramo ATS</div><div>✓ Every sourcing channel unified</div><div>✓ Every profile resolved, evidence-backed</div><div>✓ AI agents on top</div></div>
+          <a class="hp-tier__cta hp-tier__cta--solid" href="/get-started">Request workspace</a>
+        </div>
+        <div class="hp-tier">
+          <div class="hp-tier__name">Aramo Intelligence</div>
+          <div class="hp-tier__desc">Graph + agents on the ATS you already run</div>
+          <div class="hp-tier__price"><span class="hp-tier__amt">Talk to us</span></div>
+          <div class="hp-tier__list"><div>✓ Verified Talent Graph</div><div>✓ AI agents</div><div>✓ Connects to your existing ATS</div></div>
+          <a class="hp-tier__cta hp-tier__cta--ghost" href="/contact">Request demo</a>
         </div>
       </div>
+      <div class="hp-price__note">Early-access workspaces are free while we onboard founding firms. Paid plans announced before general availability.</div>
     </div>
   </section>
 
-  <!-- Product split -->
-  <section class="section section--bleed section--alt">
-    <div class="container">
-      <span class="eyebrow">One platform, two engines</span>
-      <h2 class="section-title">One system running the whole desk.</h2>
-      <p class="lead">
-        The ATS is the heart — clients, requisitions, submittals, placements. The
-        intelligence pipeline is the bloodstream — every arrival resolved,
-        verified, and continuously assessed. One system; each makes the other
-        better.
-      </p>
-      <div class="frame-wrap">
-        <ProductFrame />
-      </div>
-      <a class="deeper-link" href="/product">Explore the product</a>
-    </div>
-  </section>
-
-  <!-- Proof -->
-  <section class="section section--bleed section--deep">
-    <div class="container">
-      <span class="eyebrow">Proof</span>
-      <h2 class="section-title">Built inside a staffing firm.</h2>
-      <p class="lead">
-        Astre runs its own desk on Aramo every day. We built the system we needed
-        and could not buy — one where trust is infrastructure, not a claim.
-      </p>
-      <a class="deeper-link" href="/company">Why we built Aramo</a>
-    </div>
-  </section>
-
-  <!-- Packaging teaser -->
-  <section class="section">
-    <div class="container">
-      <span class="eyebrow">Packaging</span>
-      <h2 class="section-title">Adopt the way that fits your desk.</h2>
-      <p class="lead">
-        Run the full platform, start with the ATS, or add intelligence to the
-        ATS you already have.
-      </p>
-      <PackagingTiers />
-      <a class="deeper-link" href="/product#packaging">Compare the packages</a>
-    </div>
-  </section>
-
-  <!-- Stance -->
-  <section class="section section--bleed section--alt">
-    <div class="container">
-      <span class="eyebrow">Where the machine stops</span>
-      <h2 class="section-title">AI proposes, people decide.</h2>
-      <p class="lead">
-        Every assessment is auditable — built for compliance reviews, not around
-        them.
-      </p>
-      <a class="deeper-link" href="/security">Our stance on trust and AI</a>
-    </div>
-  </section>
-
-  <!-- Closing CTA -->
-  <section class="section section--bleed section--deep cta-band">
-    <div class="container">
-      <h2 class="section-title">Put proof behind your next submittal.</h2>
-      <div class="cluster">
-        <a class="btn btn--primary" href="/get-started">Get started</a>
-        <a class="btn btn--ghost" href="/product">See the product</a>
+  <!-- CLOSING CTA -->
+  <section class="hp-closing">
+    <div class="hp-closing__glow" aria-hidden="true"></div>
+    <div class="hp-closing__inner">
+      <h2 class="hp-closing__h2">Hire on evidence, not resumes.</h2>
+      <p class="hp-closing__sub">Join the founding firms running their desks on Aramo.</p>
+      <div class="hp-cta-row hp-cta-row--center">
+        <a class="hp-btn hp-btn--white" href="/contact">Request demo</a>
+        <a class="hp-btn hp-btn--outline" href="/platform">Explore the platform</a>
       </div>
     </div>
   </section>
 </BaseLayout>
 
 <style>
-  .problem__panel,
-  .frame-wrap {
-    margin: var(--sp-8) 0;
+  /* PUB-3.5 home — scoped styles (externalised by inlineStylesheets:'never';
+     no inline style ships → no CSP hash change). Motion is CSS-only. */
+  @keyframes hp-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @keyframes hp-floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+  @keyframes hp-floaty2 { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-16px); } }
+  @keyframes hp-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+  @keyframes hp-net-drift { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-12px, 9px) scale(1.025); } }
+  @keyframes hp-twinkle { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.95; } }
+  @keyframes hp-dashflow { to { stroke-dashoffset: -24; } }
+  @media (prefers-reduced-motion: reduce) {
+    .hp-net, .hp-net circle, .hp-badge__dot, .hp-dash__pulse, .hp-glass, .hp-marquee__track, .hp-flow__l { animation: none !important; }
   }
-  .section__after {
-    margin: var(--sp-5) 0 0;
+
+  /* Gutter OUTSIDE the content width (prototype pattern) so the padding doesn't
+     eat into the max-width — content is a full ~1200px on wide screens (was
+     ~1052px), matching the prototype's fuller sections / less side margin. */
+  .hp-container { width: 100%; max-width: calc(1200px + 2 * var(--pad-x)); margin-inline: auto; padding-inline: var(--pad-x); }
+  .hp-container--wide { max-width: calc(1240px + 2 * var(--pad-x)); }
+  .hp-section { padding-block: var(--sp-24); }
+  .hp-section--alt { background: var(--c-surface); border-block: 1px solid var(--c-border); }
+  .hp-eyebrow { font-family: var(--font-mono); font-size: var(--fs-12); font-weight: var(--fw-semibold); letter-spacing: var(--ls-eyebrow); margin-bottom: var(--sp-3); }
+  .hp-eyebrow--b { color: var(--c-accent); }
+  .hp-eyebrow--m { color: var(--c-accent-2); }
+  .hp-eyebrow--l { color: var(--c-link-dark); }
+  .hp-h2 { font-family: var(--font-display); font-size: var(--fs-42); line-height: 1.1; font-weight: var(--fw-bold); letter-spacing: -0.02em; color: var(--c-text); margin: 0 0 var(--sp-4); }
+  .hp-h2--wide { max-width: 18ch; }
+  .hp-h2--center { margin-inline: auto; }
+  .hp-h2--light { color: var(--c-dark-text); }
+  .hp-mb { margin-bottom: var(--sp-12); }
+  .hp-lead { font-size: var(--fs-18); line-height: var(--lh-normal); color: var(--c-text-muted); margin: 0; max-width: 52ch; text-wrap: pretty; }
+  .hp-lead--light { color: var(--c-dark-text-soft); }
+  .hp-lead--center { margin-inline: auto; }
+  .hp-center { text-align: center; max-width: 44rem; margin: 0 auto var(--sp-12); }
+  .hp-center--link { margin: var(--sp-8) auto 0; }
+  .hp-deeper { flex: none; font-weight: var(--fw-semibold); font-size: var(--fs-14); color: var(--c-accent); white-space: nowrap; }
+  .hp-mb { margin-bottom: var(--sp-10); }
+
+  /* Buttons */
+  .hp-cta-row { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; }
+  .hp-cta-row--center { justify-content: center; }
+  .hp-btn { display: inline-flex; align-items: center; padding: 13px 26px; border-radius: var(--r-md); font-family: var(--font-sans); font-size: 15px; font-weight: var(--fw-semibold); border: 1px solid transparent; }
+  .hp-btn--primary { background: var(--c-accent); color: var(--c-accent-fg); box-shadow: 0 8px 24px -8px rgba(0, 79, 203, 0.4); }
+  .hp-btn--primary:hover { color: var(--c-accent-fg); box-shadow: 0 12px 32px -8px rgba(0, 79, 203, 0.53); }
+  .hp-btn--ghost { background: var(--c-surface); color: var(--c-text); border-color: var(--c-border-strong); }
+  .hp-btn--ghost:hover { border-color: var(--c-accent); color: var(--c-accent); }
+  .hp-btn--white { background: #fff; color: var(--c-text); }
+  .hp-btn--white:hover { color: var(--c-accent); }
+  .hp-btn--outline { border-color: rgba(255, 255, 255, 0.27); color: #fff; }
+  .hp-btn--outline:hover { border-color: #fff; color: #fff; }
+
+  /* Hero */
+  .hp-hero { position: relative; overflow: hidden; padding-block: var(--sp-28) var(--sp-20); background: linear-gradient(180deg, var(--c-bg) 0%, var(--c-surface-2) 100%); }
+  .hp-hero__glow { position: absolute; top: -180px; right: -120px; width: 560px; height: 560px; border-radius: 50%; background: radial-gradient(circle, rgba(157, 43, 107, 0.12), transparent 65%); }
+  .hp-hero__grid { position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: var(--sp-12); align-items: center; }
+  .hp-badge { display: inline-flex; align-items: center; gap: var(--sp-2); padding: 5px 12px; border-radius: var(--r-pill); border: 1px solid var(--c-border-badge); background: rgba(255, 255, 255, 0.8); font-family: var(--font-mono); font-size: 12px; color: var(--c-accent); margin-bottom: var(--sp-6); }
+  .hp-badge__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c-accent); animation: hp-pulse 2.4s ease-in-out infinite; }
+  .hp-hero__h1 { font-family: var(--font-display); font-size: var(--fs-hero); line-height: 1.05; font-weight: var(--fw-bold); letter-spacing: -0.03em; margin: 0 0 var(--sp-5); max-width: 12ch; }
+  .hp-hero__sub { font-size: var(--fs-18); line-height: 1.55; color: var(--c-text-muted); margin: 0 0 var(--sp-8); max-width: 54ch; text-wrap: pretty; }
+  /* Stat trio: one line on tablet/desktop (matches the prototype). The gap is
+     tight enough that all three fit in the hero's left column on wide screens;
+     flex-wrap only kicks in on phones where they genuinely can't fit. */
+  .hp-stats { display: flex; gap: var(--sp-3); margin-top: var(--sp-10); flex-wrap: wrap; }
+  .hp-stats > div:not(.hp-stats__div) { white-space: nowrap; }
+  @media (max-width: 560px) { .hp-stats__div { display: none; } }
+  .hp-stats__n { font-family: var(--font-display); font-size: var(--fs-24); font-weight: var(--fw-bold); }
+  .hp-stats__l { font-size: 12.5px; color: var(--c-text-subtle); }
+  .hp-stats__div { width: 1px; background: var(--c-border-soft); align-self: stretch; }
+  .hp-hero__visual { position: relative; height: 480px; min-width: 0; max-width: 100%; overflow: hidden; }
+  .hp-net { position: absolute; inset: -6% -4%; width: 108%; height: 112%; transform-origin: center; animation: hp-net-drift 26s ease-in-out infinite; }
+  .hp-net__lines line { stroke: #2b3990; stroke-opacity: 0.28; stroke-width: 1; }
+  .hp-net__nodes circle { fill: #2b3990; fill-opacity: 0.7; animation: hp-twinkle 5s ease-in-out infinite; }
+  .hp-net__nodes circle:nth-child(3n) { animation-duration: 7s; animation-delay: -2s; }
+  .hp-net__nodes circle:nth-child(3n + 1) { animation-duration: 6s; animation-delay: -4s; }
+  .hp-glass { position: absolute; border-radius: var(--r-lg); background: rgba(255, 255, 255, 0.91); backdrop-filter: blur(10px); border: 1px solid #fff; box-shadow: var(--sh-3); }
+  .hp-glass--1 { top: 36px; right: 12px; width: 234px; padding: 14px 16px; animation: hp-floaty 7s ease-in-out infinite; }
+  .hp-glass--2 { bottom: 96px; left: 0; width: 220px; padding: 14px 16px; animation: hp-floaty2 8s ease-in-out infinite; }
+  .hp-glass--chip { bottom: 8px; right: 64px; padding: 10px 16px; background: var(--c-text); color: #fff; font-family: var(--font-mono); font-size: 12px; font-weight: var(--fw-medium); animation: hp-floaty 6s ease-in-out 1s infinite; }
+  .hp-glass__head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+  .hp-glass__ic { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; font-weight: var(--fw-semibold); }
+  .hp-glass__ic--a { background: rgba(0, 79, 203, 0.08); color: var(--c-accent); }
+  .hp-glass__ic--m { background: rgba(157, 43, 107, 0.08); color: var(--c-accent-2); }
+  .hp-glass__name { font-size: 12.5px; font-weight: var(--fw-semibold); }
+  .hp-glass__tag { margin-left: auto; font-family: var(--font-mono); font-size: 10px; font-weight: var(--fw-medium); }
+  .hp-glass__tag--on { color: var(--c-success); }
+  .hp-glass__body { font-size: 12px; line-height: 1.5; color: var(--c-text-muted); }
+  .hp-glass__body strong { color: var(--c-text); }
+  .hp-glass__ok { color: var(--c-success-dark); }
+
+  /* Marquee */
+  .hp-marquee { padding-block: var(--sp-8); border-block: 1px solid var(--c-border); background: var(--c-surface); overflow: hidden; }
+  .hp-marquee__label { text-align: center; font-family: var(--font-mono); font-size: 11.5px; letter-spacing: var(--ls-eyebrow); color: var(--c-text-subtle); margin-bottom: var(--sp-5); }
+  .hp-marquee__track { display: flex; width: max-content; animation: hp-marquee 32s linear infinite; }
+  .hp-marquee__set { display: flex; gap: var(--sp-16); align-items: center; padding-right: var(--sp-16); }
+  .hp-firm { display: flex; align-items: center; gap: 9px; opacity: 0.75; }
+  .hp-firm__mark { width: 20px; height: 20px; border-radius: 5px; background: var(--c-text-faint); opacity: 0.5; flex: none; }
+  .hp-firm__name { font-family: var(--font-display); font-size: 16px; font-weight: var(--fw-semibold); letter-spacing: -0.01em; color: var(--c-text-faint); white-space: nowrap; }
+
+  /* Split (problem/security) */
+  .hp-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: var(--sp-16); align-items: center; }
+  .hp-collapse { display: flex; flex-direction: column; }
+  .hp-dashed { padding: 13px 18px; border-radius: var(--r-md); border: 1px dashed var(--c-border-strong); color: var(--c-text-subtle); font-size: 14px; font-weight: var(--fw-medium); background: var(--c-surface); margin-bottom: var(--sp-3); }
+  .hp-collapse__arrow { align-self: center; margin: var(--sp-3) 0; color: var(--c-accent-2); font-family: var(--font-display); font-size: 18px; font-weight: var(--fw-semibold); }
+  .hp-punch { padding: 20px 22px; border-radius: var(--r-lg); color: #fff; background: var(--c-accent); box-shadow: 0 18px 44px -16px rgba(0, 79, 203, 0.47); }
+  .hp-punch__t { font-family: var(--font-display); font-size: 16px; font-weight: var(--fw-semibold); margin-bottom: var(--sp-1); }
+  .hp-punch__b { font-size: 13.5px; line-height: 1.55; color: #e6e4ff; }
+
+  /* Agents grid */
+  .hp-agents__head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-6); margin-bottom: var(--sp-10); }
+  .hp-agents__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--sp-4); }
+  .hp-agent { display: block; padding: 26px 24px; border-radius: var(--r-xl); border: 1px solid var(--c-border); background: var(--c-bg); color: var(--c-text); transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease; }
+  .hp-agent:hover { transform: translateY(-4px); box-shadow: var(--sh-3); color: var(--c-text); }
+  .hp-agent--a:hover { border-color: rgba(0, 79, 203, 0.33); }
+  .hp-agent--m:hover { border-color: rgba(157, 43, 107, 0.33); }
+  .hp-agent--t:hover { border-color: rgba(31, 182, 205, 0.33); }
+  .hp-agent__ic { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-family: var(--font-mono); font-size: 15px; font-weight: var(--fw-semibold); margin-bottom: var(--sp-4); }
+  .hp-agent__ic--a { background: rgba(0, 79, 203, 0.07); color: var(--c-accent); }
+  .hp-agent__ic--m { background: rgba(157, 43, 107, 0.07); color: var(--c-accent-2); }
+  .hp-agent__ic--t { background: rgba(31, 182, 205, 0.08); color: var(--c-accent-3-deep); }
+  .hp-agent__t { font-family: var(--font-display); font-size: 17px; font-weight: var(--fw-semibold); margin-bottom: 7px; }
+  .hp-agent__b { font-size: 13.5px; line-height: 1.55; color: var(--c-text-muted); }
+
+  /* Mission control */
+  .hp-mc { position: relative; overflow: hidden; padding-block: var(--sp-24); background: linear-gradient(180deg, #0b1022, #28211a); color: #fff; }
+  .hp-mc__glow { position: absolute; top: -160px; left: 35%; width: 640px; height: 400px; background: radial-gradient(ellipse, rgba(0, 79, 203, 0.18), transparent 70%); }
+  .hp-mc__head { position: relative; text-align: center; max-width: 42rem; margin: 0 auto var(--sp-12); }
+  .hp-dash { position: relative; border-radius: var(--r-xl); background: var(--c-dark-bg); border: 1px solid var(--c-dark-surface); box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.6); overflow: hidden; }
+  .hp-dash__bar { display: flex; align-items: center; gap: var(--sp-2); padding: 12px 18px; border-bottom: 1px solid var(--c-dark-surface); }
+  .hp-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c-dark-surface-2); }
+  .hp-dash__title { margin-left: var(--sp-2); font-family: var(--font-mono); font-size: 12px; color: var(--c-dark-text-muted); }
+  .hp-dash__live { margin-left: auto; display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--c-success-dark); }
+  .hp-dash__pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--c-success-dark); animation: hp-pulse 2s infinite; }
+  .hp-dash__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+  .hp-dash__left { padding: 22px 24px; border-right: 1px solid var(--c-dark-surface); }
+  .hp-dash__right { padding: 22px 24px; }
+  .hp-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); margin-bottom: var(--sp-5); }
+  .hp-tile { padding: 14px; border-radius: var(--r-lg); background: #141b38; }
+  .hp-tile__k { font-family: var(--font-mono); font-size: 10.5px; color: var(--c-dark-text-muted); margin-bottom: var(--sp-2); }
+  .hp-tile__skel { height: 22px; width: 60%; border-radius: 5px; background: linear-gradient(90deg, var(--c-dark-surface), var(--c-dark-surface-2)); }
+  .hp-dash__cap { font-family: var(--font-mono); font-size: 11px; color: var(--c-dark-text-muted); margin-bottom: var(--sp-3); }
+  .hp-chart { display: flex; align-items: flex-end; gap: 7px; height: 110px; }
+  .hp-bar { flex: 1; border-radius: 4px 4px 0 0; }
+  .hp-bar--a { background: var(--c-dark-surface-2); }
+  .hp-bar--b { background: var(--c-accent-active); }
+  .hp-bar--c { background: var(--c-accent); }
+  .hp-bar--d { background: #5b6bff; }
+  .hp-bar--e { background: var(--c-accent-2); }
+  .hp-bar--h0 { height: 34%; } .hp-bar--h1 { height: 42%; } .hp-bar--h2 { height: 38%; }
+  .hp-bar--h3 { height: 52%; } .hp-bar--h4 { height: 47%; } .hp-bar--h5 { height: 60%; }
+  .hp-bar--h6 { height: 56%; } .hp-bar--h7 { height: 70%; } .hp-bar--h8 { height: 64%; }
+  .hp-bar--h9 { height: 78%; } .hp-bar--h10 { height: 84%; } .hp-bar--h11 { height: 80%; }
+  .hp-bar--h12 { height: 92%; } .hp-bar--h13 { height: 100%; }
+  .hp-feed { display: flex; flex-direction: column; gap: var(--sp-3); }
+  .hp-feed__row { display: flex; gap: var(--sp-2); align-items: flex-start; }
+  .hp-feed__ic { flex: none; width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; font-family: var(--font-mono); font-size: 10px; font-weight: var(--fw-semibold); }
+  .hp-feed__ic--a { background: rgba(0, 79, 203, 0.13); color: var(--c-link-dark); }
+  .hp-feed__ic--m { background: rgba(157, 43, 107, 0.13); color: #e08ab8; }
+  .hp-feed__ic--t { background: rgba(31, 182, 205, 0.13); color: #5fd7e8; }
+  .hp-feed__ic--g { background: rgba(121, 255, 176, 0.13); color: var(--c-success-dark); }
+  .hp-feed__txt { font-size: 12.5px; line-height: 1.5; color: #c6cce4; }
+  .hp-feed__ok { color: var(--c-success-dark); }
+  .hp-feed__time { font-family: var(--font-mono); font-size: 10.5px; color: var(--c-dark-text-muted); margin-top: 2px; }
+
+  /* Architecture */
+  .hp-arch { display: flex; flex-direction: column; align-items: stretch; }
+  .hp-arch__row { display: flex; justify-content: center; }
+  .hp-arch__mc { padding: 14px 28px; border-radius: var(--r-lg); background: var(--c-text); color: #fff; font-family: var(--font-display); font-size: 14px; font-weight: var(--fw-semibold); box-shadow: 0 12px 30px -12px rgba(16, 19, 34, 0.4); }
+  .hp-arch__mc span { font-family: var(--font-sans); font-size: 12px; font-weight: var(--fw-regular); color: var(--c-dark-text-soft); }
+  .hp-flow { display: block; width: 100%; height: 26px; }
+  .hp-flow__l { stroke-width: 0.5; stroke-dasharray: 1.6 1.2; animation: hp-dashflow 1.4s linear infinite; }
+  .hp-flow__l--m { stroke: var(--c-accent-2); }
+  .hp-flow__l--b { stroke: var(--c-accent); }
+  .hp-flow__l--t { stroke: var(--c-accent-3); }
+  .hp-arch__agents { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: var(--sp-2); }
+  .hp-arch__agent { padding: 12px 8px; text-align: center; border-radius: var(--r-md); background: var(--c-surface); font-size: 12.5px; font-weight: var(--fw-medium); color: var(--c-text); }
+  .hp-arch__agent--b { border: 1px solid rgba(0, 79, 203, 0.2); }
+  .hp-arch__agent--m { border: 1px solid rgba(157, 43, 107, 0.2); }
+  .hp-arch__agent--t { border: 1px solid rgba(31, 182, 205, 0.27); }
+  .hp-arch__layers { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: var(--sp-2); }
+  .hp-arch__layer { padding: 16px; border-radius: var(--r-lg); background: linear-gradient(135deg, rgba(0, 79, 203, 0.05), rgba(157, 43, 107, 0.05)); border: 1px solid var(--c-border-badge); }
+  .hp-arch__lt { font-family: var(--font-display); font-size: 13.5px; font-weight: var(--fw-semibold); margin-bottom: var(--sp-1); }
+  .hp-arch__lb { font-size: 12px; line-height: 1.5; color: var(--c-text-muted); }
+  .hp-arch__int { padding: 16px 20px; border-radius: var(--r-lg); background: var(--c-surface); border: 1px solid var(--c-border); display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; justify-content: center; }
+  .hp-arch__intlabel { font-family: var(--font-mono); font-size: 11px; font-weight: var(--fw-semibold); color: var(--c-text-subtle); margin-right: var(--sp-2); }
+  .hp-chip { padding: 5px 12px; border-radius: var(--r-pill); background: var(--c-surface-2); font-size: 12px; font-weight: var(--fw-medium); color: var(--c-text-muted); }
+
+  /* Capabilities + Why table */
+  .hp-cap__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-4); }
+  .hp-cap { padding: 20px; border-radius: var(--r-lg); border: 1px solid var(--c-border); background: var(--c-bg); }
+  .hp-cap__t { font-family: var(--font-display); font-size: 14.5px; font-weight: var(--fw-semibold); margin-bottom: var(--sp-1); }
+  .hp-cap__b { font-size: 12.5px; line-height: 1.5; color: var(--c-text-muted); }
+  .hp-why-scroll { margin-top: var(--sp-12); overflow-x: auto; }
+  .hp-why { min-width: 520px; border-radius: var(--r-xl); border: 1px solid var(--c-border); overflow: hidden; }
+  .hp-why__head, .hp-why__row { display: grid; grid-template-columns: 1.4fr 1fr 1fr; }
+  .hp-why__head { background: var(--c-bg); border-bottom: 1px solid var(--c-border); }
+  .hp-why__hk { padding: 14px 20px; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.1em; color: var(--c-text-subtle); }
+  .hp-why__hl { padding: 14px 20px; font-size: 13px; font-weight: var(--fw-semibold); color: var(--c-text-subtle); }
+  .hp-why__ha { padding: 14px 20px; font-size: 13px; font-weight: var(--fw-semibold); color: var(--c-accent); }
+  .hp-why__row { border-bottom: 1px solid var(--c-surface-2); }
+  .hp-why__row:last-child { border-bottom: none; }
+  .hp-why__k { padding: 13px 20px; font-size: 13.5px; font-weight: var(--fw-medium); }
+  .hp-why__legacy { padding: 13px 20px; font-size: 13px; color: var(--c-text-subtle); }
+  .hp-why__aramo { padding: 13px 20px; font-size: 13px; font-weight: var(--fw-medium); color: var(--c-text); }
+
+  /* Industries + quote */
+  .hp-ind__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-4); }
+  .hp-ind { padding: 22px 20px; border-radius: var(--r-lg); background: var(--c-surface); border: 1px solid var(--c-border); }
+  .hp-ind__t { font-family: var(--font-display); font-size: 15px; font-weight: var(--fw-semibold); margin-bottom: var(--sp-1); }
+  .hp-ind__b { font-size: 12.5px; line-height: 1.5; color: var(--c-text-muted); }
+  .hp-quote__wrap { margin-top: var(--sp-16); display: flex; justify-content: center; }
+  .hp-quote { max-width: 680px; margin: 0; padding: 34px 38px; border-radius: var(--r-xl); background: var(--c-surface); border: 1px solid var(--c-border); text-align: center; }
+  .hp-quote__q { font-family: var(--font-display); font-size: 19px; line-height: 1.6; color: var(--c-text); margin: 0 0 var(--sp-6); font-weight: var(--fw-regular); }
+  .hp-quote__cap { display: flex; align-items: center; justify-content: center; gap: var(--sp-3); }
+  .hp-quote__av { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, rgba(0, 79, 203, 0.2), rgba(157, 43, 107, 0.2)); }
+  .hp-quote__name { display: block; font-size: 13px; font-weight: var(--fw-semibold); text-align: left; }
+  .hp-quote__role { display: block; font-size: 12px; color: var(--c-text-subtle); text-align: left; }
+
+  /* Security band */
+  .hp-sec { padding-block: var(--sp-24); background: var(--c-dark-bg-deep); color: #fff; }
+  .hp-sec__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-3); }
+  .hp-sec__chip { padding: 18px 14px; border-radius: var(--r-lg); background: var(--c-dark-bg); border: 1px solid var(--c-dark-surface); text-align: center; font-family: var(--font-display); font-size: 14px; font-weight: var(--fw-semibold); }
+
+  /* Pricing */
+  .hp-price { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--sp-4); align-items: stretch; }
+  .hp-tier { position: relative; padding: 30px 28px; border-radius: var(--r-xl); border: 1px solid var(--c-border); background: var(--c-bg); display: flex; flex-direction: column; }
+  .hp-tier--featured { border: 2px solid var(--c-accent); background: var(--c-surface); box-shadow: 0 24px 60px -24px rgba(0, 79, 203, 0.33); }
+  .hp-tier__flag { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); padding: 4px 14px; border-radius: var(--r-pill); background: var(--grad-cta); color: #fff; font-family: var(--font-mono); font-size: 11px; font-weight: var(--fw-semibold); }
+  .hp-tier__name { font-family: var(--font-display); font-size: 16px; font-weight: var(--fw-semibold); margin-bottom: var(--sp-1); }
+  .hp-tier__desc { font-size: 13px; color: var(--c-text-subtle); margin-bottom: var(--sp-5); }
+  .hp-tier__price { margin-bottom: var(--sp-5); }
+  .hp-tier__amt { font-family: var(--font-display); font-size: 28px; font-weight: var(--fw-bold); }
+  .hp-tier__per { font-size: 13px; color: var(--c-text-subtle); }
+  .hp-tier__list { display: flex; flex-direction: column; gap: var(--sp-2); font-size: 13.5px; color: var(--c-text-muted); margin-bottom: var(--sp-6); }
+  .hp-tier__cta { margin-top: auto; text-align: center; padding: 11px; border-radius: var(--r-md); font-size: 14px; font-weight: var(--fw-semibold); }
+  .hp-tier__cta--ghost { border: 1px solid var(--c-border-strong); color: var(--c-text); }
+  .hp-tier__cta--ghost:hover { border-color: var(--c-accent); color: var(--c-accent); }
+  .hp-tier__cta--solid { background: var(--c-accent); color: #fff; }
+  .hp-tier__cta--solid:hover { color: #fff; box-shadow: 0 10px 26px -8px rgba(0, 79, 203, 0.53); }
+  .hp-price__note { text-align: center; margin-top: var(--sp-6); font-size: 13px; color: var(--c-text-subtle); }
+
+  /* Closing */
+  .hp-closing { position: relative; overflow: hidden; padding: var(--sp-28) var(--pad-x); background: linear-gradient(135deg, #0b1022 0%, #171a4a 55%, #31207a 100%); color: #fff; text-align: center; }
+  .hp-closing__glow { position: absolute; bottom: -220px; left: 50%; transform: translateX(-50%); width: 820px; height: 420px; background: radial-gradient(ellipse, rgba(157, 43, 107, 0.25), transparent 70%); }
+  .hp-closing__inner { position: relative; }
+  .hp-closing__h2 { font-family: var(--font-display); font-size: clamp(2.5rem, 4.4vw, 3.75rem); line-height: 1.06; font-weight: var(--fw-bold); letter-spacing: -0.03em; margin: 0 0 var(--sp-3); }
+  .hp-closing__sub { font-size: 17px; color: var(--c-dark-text-cta); margin: 0 0 var(--sp-8); }
+
+  /* Responsive — column counts are handled by the auto-fit grids above; these
+     blocks only carry the non-grid mobile adjustments. */
+  @media (max-width: 960px) {
+    .hp-hero__grid, .hp-split { gap: var(--sp-10); }
+    .hp-hero__visual { height: 400px; }
+    .hp-price { max-width: 34rem; margin-inline: auto; }
+    .hp-agents__head { flex-direction: column; align-items: flex-start; gap: var(--sp-4); }
+  }
+  @media (max-width: 720px) {
+    .hp-dash__left { border-right: none; border-bottom: 1px solid var(--c-dark-surface); }
+  }
+  @media (max-width: 600px) {
+    .hp-section, .hp-mc, .hp-sec { padding-block: var(--sp-16); }
+    .hp-hero { padding-block: var(--sp-16) var(--sp-12); }
+    .hp-h2 { font-size: var(--fs-36); }
   }
 </style>
