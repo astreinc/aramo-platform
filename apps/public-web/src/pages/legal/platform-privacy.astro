@@ -1,105 +1,80 @@
 ---
 import LegalLayout from '../../layouts/LegalLayout.astro';
 ---
-
 <LegalLayout
-  title="Platform & Candidate-Data Privacy Notice — Aramo"
-  description="How the Aramo platform handles candidate and client data: our controller/processor roles, the data we handle and why, consent-gated portability, assessments with reasons (never a score), retention, security, and your rights."
-  heading="Platform & Candidate-Data Privacy Notice"
+  title="Platform and Candidate-Data Privacy Notice"
+  description="This notice describes how Astre Consulting Services Inc., operating Aramo, handles personal information in the Aramo platform."
+  heading="Platform and Candidate-Data Privacy Notice"
 >
-  <h2>Who we are and our role</h2>
-  <p>
-    The Aramo platform is operated by Astre Consulting Services Inc. Our role
-    depends on how data reaches us:
-  </p>
+  <p>This notice describes how Astre Consulting Services Inc., operating Aramo, handles personal information in the Aramo platform. Aramo is a business-to-business recruiting and staffing platform. It is not a consumer job board and does not sell platform access to job seekers.</p>
+
+  <h2>1. Our roles</h2>
+
+  <h3>1.1 Customer-directed processing</h3>
+  <p>When a staffing, consulting, or IT-services firm uses its Aramo workspace to collect or process candidate, client, requisition, submittal, interview, placement, or related information, that firm determines the business purpose and means of processing. The firm acts as controller or business, and Astre acts as its processor or service provider, subject to the customer agreement and the firm’s instructions.</p>
+
+  <h3>1.2 Candidate-direct processing</h3>
+  <p>Astre acts as controller for limited candidate-direct relationships that Aramo determines and administers, such as direct identity verification, portable credentials, a direct privacy request, or a candidate-authorized cross-firm consent grant. This notice addresses those activities in addition to explaining our processor role.</p>
+
+  <h2>2. Information processed</h2>
   <ul>
-    <li>
-      When a staffing firm uses Aramo to run its hiring, that firm decides how
-      candidate data is used. The firm is the <strong>data controller</strong>,
-      and Aramo acts as its <strong>processor</strong>.
-    </li>
-    <li>
-      When a candidate provides information directly to the platform under their
-      own consent — for verification or portable credentials — Aramo is the
-      <strong>controller</strong> of that relationship.
-    </li>
+    <li>Identification and contact information, such as name, email address, phone number, and professional profile details.</li>
+    <li>Professional history and work product, including resumes, roles, skills, qualifications, work samples, and related records.</li>
+    <li>Recruiting workflow information, including requisitions, submissions, interviews, placements, communications, notes, and status history.</li>
+    <li>Verification and evidence records, including verified-email attestations, employment corroborations, eligibility or clearance attestations, provenance, and evidence status.</li>
+    <li>Consent, preference, identity-verification, and audit records.</li>
+    <li>Workspace account and security information, including authentication, role, permission, device, and activity information.</li>
+    <li>Location or geography information supplied for business purposes, such as addresses or work locations.</li>
   </ul>
 
-  <h2>What data the platform handles</h2>
+  <h2>3. Sources</h2>
+  <p>Information may come from the candidate, an Aramo customer, the customer’s client, tenant-connected sourcing channels, verification interactions, public or customer-authorized professional sources, service providers, and platform activity. The customer is responsible for ensuring it has authority and an appropriate legal basis to submit and use customer-directed data.</p>
+
+  <h2>4. Purposes</h2>
   <ul>
-    <li><strong>Identification and contact details.</strong></li>
-    <li>
-      <strong>Professional history and work product</strong> — roles,
-      submittals, resumes, and related records.
-    </li>
-    <li>
-      <strong>Verification and evidence artifacts</strong> — the records that
-      stand behind an assessment.
-    </li>
-    <li><strong>Consent and preference records.</strong></li>
+    <li>Provide and administer customer workspaces and recruiting workflows.</li>
+    <li>Ingest, organize, deduplicate within permitted boundaries, and maintain candidate records.</li>
+    <li>Support identity verification, evidence capture, and evidence-graded assessments.</li>
+    <li>Generate AI-assisted extraction, summaries, drafts, and recommendations for human review.</li>
+    <li>Maintain tenant isolation, security, auditability, support, and service integrity.</li>
+    <li>Comply with customer instructions, contracts, law, rights requests, and legal process.</li>
+    <li>For candidate-direct processing, administer consent, verification, portable credentials, and candidate-authorized features.</li>
   </ul>
 
-  <h2>Why we handle it</h2>
-  <p>
-    To operate the staffing firm’s hiring workflow, to resolve and verify
-    identity, and to produce evidence-graded assessments.
-  </p>
+  <h2>5. Human decision-making and AI</h2>
+  <p>Aramo uses AI-assisted tools for tasks such as evidence extraction, assessment drafting, and agent reasoning. These tools propose or assist; they do not make the final decision to submit, reject, interview, hire, or place a person. A human user must make each such decision.</p>
+  <p>Aramo does not create a general numeric score, grade, or rank of a person. It presents evidence-linked, dimension-specific assessments intended to help an authorized human understand the basis and limitations of information. Customers remain responsible for lawful employment decisions, required notices, accommodations, validation, bias audits, and human review applicable to their use.</p>
 
-  <h2>Consent and portability</h2>
-  <p>
-    This is the part that makes Aramo different. Signals about a candidate
-    activate across firms <strong>only with that candidate’s consent</strong>.
-    Verification a candidate has earned is portable only where the candidate
-    chooses to carry it. When a candidate consents to share, that consent is
-    specific to the destination, written in plain language, and can be withdrawn
-    up to the moment of transfer.
-  </p>
+  <h2>6. Tenant isolation and cross-tenant identity controls</h2>
+  <p>Each customer’s candidate and client data is maintained within that customer’s tenant boundary. Channel-sourced candidate data is not pooled, commingled, or disclosed across customers. Aramo maintains a limited, PII-free cross-reference layer using cryptographic fingerprints and evidence references. It contains no names, resumes, contact information, government identifiers, or tenant identifiers.</p>
+  <p>A deterministic fingerprint may indicate that the same person appears in more than one tenant, but Aramo does not disclose that signal to a customer unless the individual activates a candidate-direct relationship and gives the required consent. Aramo does not use probabilistic cross-tenant identity matching. Non-deterministic record merges require human approval and recorded provenance.</p>
 
-  <h2>Assessments, not scores</h2>
-  <p>
-    Aramo assesses evidence across dimensions and shows the reasons behind each
-    result. People are <strong>never</strong> given a numeric score, a grade, or
-    a rank. Automated processing proposes; a person decides every submittal and
-    hiring action.
-  </p>
+  <h2>7. Model training</h2>
+  <p>Customer and candidate data processed in a tenant workspace is not used to train models shared across Aramo customers. Service providers may process data only to provide contracted services, subject to applicable terms and safeguards.</p>
 
-  <h2>Retention and deletion</h2>
-  <p>
-    We keep platform data under the staffing firm’s direction and applicable law,
-    and we honor candidate rights — including deletion requests — as the law
-    provides.
-  </p>
+  <h2>8. Disclosures and subprocessors</h2>
+  <p>We disclose personal information to subprocessors that help provide Aramo, including infrastructure, authentication, storage, email, AI-processing, and location-service providers. The current list is published in the <a href="/legal/subprocessors">Aramo Subprocessor List</a>. We may also disclose information at a customer’s direction, to comply with law, protect rights or safety, investigate abuse, or complete a corporate transaction subject to appropriate safeguards.</p>
 
-  <h2>Security commitments</h2>
-  <p>
-    Tenant isolation so one firm’s data never feeds another’s, encryption in
-    transit, and least-privilege access. We describe our commitments here without
-    disclosing internal architecture.
-  </p>
+  <h2>9. Retention</h2>
+  <p>For customer-directed data, the customer controls the retention period subject to its agreement, instructions, legal obligations, and sourcing-channel restrictions. At the end of services, we delete or return customer personal data as required by the applicable agreement, unless law permits or requires continued retention. Candidate-direct records are retained only as long as reasonably necessary for the disclosed purpose, to maintain consent and audit evidence, resolve disputes, protect the service, and comply with law. Specific records may be retained longer when necessary to establish, exercise, or defend legal claims.</p>
 
-  <h2>Subprocessors</h2>
-  <p>
-    We use a short, vetted list of vendors to run the platform. See our current
-    <a href="/legal/subprocessors">Subprocessor List</a>.
-  </p>
+  <h2>10. Privacy rights</h2>
 
-  <h2>Your rights and how to exercise them</h2>
-  <p>
-    Where your staffing firm is the controller, exercise your rights through that
-    firm — we help them respond. Where Aramo is the controller (data you gave us
-    directly), write to <a href="mailto:hello@aramo.ai">hello@aramo.ai</a>.
-  </p>
+  <h3>10.1 Customer-directed data</h3>
+  <p>If your information was submitted or used by a staffing or consulting firm in its Aramo workspace, that firm is ordinarily the controller. Direct your request to the firm. We assist the firm in responding as required by law and contract.</p>
 
-  <h2>Changes</h2>
-  <p>We update this page and the version line below when this notice changes.</p>
+  <h3>10.2 Candidate-direct data</h3>
+  <p>For information Astre controls directly, you may contact <a href="mailto:hello@aramo.ai">hello@aramo.ai</a> to request access, correction, deletion, or a copy, or to withdraw a consent where applicable. Depending on applicable law, you may also have a right to appeal a denied request or opt out of certain processing. We do not sell personal information or use it for targeted advertising.</p>
 
-  <h2>Governing law</h2>
-  <p>This notice is governed by the laws of [STATE — counsel].</p>
+  <h2>11. Security</h2>
+  <p>Aramo uses tenant isolation, encryption in transit, least-privilege access, role-based access controls, customer-configured SSO/SAML capabilities, and audit logs of agent and user actions. Security practices evolve, and no security program can eliminate all risk. This notice does not represent that Aramo holds any security certification.</p>
 
-  <h2>Contact</h2>
-  <p>
-    Questions about platform data? Write to <a href="mailto:hello@aramo.ai"
-      >hello@aramo.ai</a
-    >.
-  </p>
+  <h2>12. United States processing</h2>
+  <p>Aramo currently serves United States business customers and uses United States regions for its listed subprocessors. Information may be processed in the United States, where privacy laws may differ from those in other jurisdictions.</p>
+
+  <h2>13. Contact and complaints</h2>
+  <p>Email privacy questions or candidate-direct requests to <a href="mailto:hello@aramo.ai">hello@aramo.ai</a>. If your request concerns a customer’s workspace, identify the relevant firm so we can route or assist appropriately. You may also contact the appropriate regulator or attorney general where applicable.</p>
+
+  <h2>14. Changes</h2>
+  <p>We may update this notice to reflect product, legal, or operational changes. The posted version and effective date govern from publication, subject to any additional notice required by contract or law.</p>
 </LegalLayout>

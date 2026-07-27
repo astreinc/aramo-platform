@@ -1,47 +1,53 @@
 ---
 import LegalLayout from '../../layouts/LegalLayout.astro';
 ---
-
 <LegalLayout
-  title="Subprocessor List — Aramo"
-  description="The vendors that process personal data on Aramo's behalf, with their role and region. Infrastructure that touches no personal data is not listed."
-  heading="Subprocessor List"
+  title="Aramo Subprocessor List"
+  description="This list identifies third parties that may process personal data to provide Aramo or the public Website."
+  heading="Aramo Subprocessor List"
 >
-  <p>
-    These are the vendors that process personal data on Aramo’s behalf, with
-    their role and region. Infrastructure tools that do not touch personal data —
-    for example, code hosting — are not listed.
-  </p>
+  <p>This list identifies third parties that may process personal data to provide Aramo or the public Website. A vendor is included when it may receive or access personal data in providing a service to Astre. Vendors used only for source code or development workflows and that do not process customer or candidate personal data are not listed.</p>
 
   <table>
     <thead>
       <tr>
-        <th scope="col">Subprocessor</th>
-        <th scope="col">Role</th>
-        <th scope="col">Region</th>
+        <th>Subprocessor</th>
+        <th>Service</th>
+        <th>Data / purpose</th>
+        <th>Region</th>
       </tr>
     </thead>
     <tbody>
       <tr>
-        <td>Amazon Web Services</td>
-        <td>Hosting, storage, email delivery, and identity services</td>
+        <td>Amazon Web Services, Inc.</td>
+        <td>Cloud infrastructure</td>
+        <td>Hosting and compute; object storage; tenant authentication; DNS; queues; transactional and intake email delivery. May process platform data and intake email in transit.</td>
         <td>United States</td>
       </tr>
       <tr>
-        <td>Anthropic</td>
-        <td>AI-assisted processing</td>
+        <td>Anthropic, PBC</td>
+        <td>AI processing</td>
+        <td>AI-assisted evidence extraction, assessment drafting, and agent reasoning. May process candidate and professional information submitted for the requested operation.</td>
         <td>United States</td>
       </tr>
       <tr>
-        <td>Google</td>
-        <td>Location and places services</td>
+        <td>Google LLC</td>
+        <td>Location services</td>
+        <td>Address, place, and geography intelligence. May receive location queries, including limited person-adjacent or work-location data.</td>
+        <td>United States</td>
+      </tr>
+      <tr>
+        <td>Microsoft Corporation (Microsoft 365)</td>
+        <td>Business communications</td>
+        <td>Company mailbox and correspondence, including public Website form submissions delivered to <a href="mailto:hello@aramo.ai">hello@aramo.ai</a>.</td>
         <td>United States</td>
       </tr>
     </tbody>
   </table>
 
-  <p>
-    We will update this page before adding subprocessors that process personal
-    data.
-  </p>
+  <h2>Updates</h2>
+  <p>Astre intends to update this list before a new subprocessor begins processing customer, candidate, or visitor personal data. Customer notification and objection rights, if any, are governed by the applicable customer agreement.</p>
+
+  <h2>Questions</h2>
+  <p>Questions about subprocessors may be sent to <a href="mailto:hello@aramo.ai">hello@aramo.ai</a>.</p>
 </LegalLayout>
