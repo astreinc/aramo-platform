@@ -1,84 +1,46 @@
 ---
-// LegalLayout (PUB-4) — shared frame for the four legal documents. Renders the
-// R-PUB4-3 DRAFT band (unmissable, above the fold), the document heading, the
-// slotted sections in a readable legal register, and the footer version line.
-// Tokens-only, zero client JS.
+// LegalLayout (PUB-LGL) — shared frame for the in-effect legal documents. The
+// counsel-signed Legal Set v1.0 is published: the R-PUB4-3 DRAFT band is GONE
+// (these are in-effect documents), replaced by the effective-date/version line
+// under the heading. Tokens-only, zero client JS.
 import BaseLayout from './BaseLayout.astro';
 
 interface Props {
   title: string;
   description: string;
   heading: string;
+  effectiveDate?: string;
+  version?: string;
 }
-const { title, description, heading } = Astro.props;
-const lastUpdated = '2026-07-23';
+const {
+  title,
+  description,
+  heading,
+  effectiveDate = '2026-07-26',
+  version = '1.0',
+} = Astro.props;
 ---
 
 <BaseLayout title={title} description={description}>
   <div class="legal">
-    <!-- R-PUB4-3 DRAFT band -->
-    <div class="legal-draft" role="note" aria-label="Draft notice">
-      <span class="legal-draft__tag">Draft</span>
-      <p class="legal-draft__text">
-        <strong>Pending legal review.</strong> This document is a draft prepared
-        for counsel review. It has not been reviewed or approved by counsel, is
-        not legal advice, and is not yet in effect.
-      </p>
-    </div>
-
     <article class="legal-doc">
       <h1 class="legal-doc__title">{heading}</h1>
-      <slot />
-      <p class="legal-doc__version">
-        Last updated: {lastUpdated} · Version 1.0-draft
+      <p class="legal-doc__effective">
+        Effective date: {effectiveDate} · Version {version}
       </p>
+      <slot />
     </article>
   </div>
 </BaseLayout>
 
 <style is:global>
   /* Global (not scoped) so the built legal HTML carries no `[data-astro-cid]`
-     attribute selectors — keeps the R-PUB4 bracket-enumeration grep clean. The
+     attribute selectors — keeps the bracket-enumeration grep clean. The
      .legal-* classes are legal-page-only, so global scope leaks nothing. */
   .legal {
     max-width: var(--w-prose);
     margin-inline: auto;
     padding: var(--sp-16) var(--sp-6) var(--sp-20);
-  }
-  /* DRAFT band — above the fold, unmissable. */
-  .legal-draft {
-    display: flex;
-    gap: var(--sp-3);
-    align-items: flex-start;
-    background: var(--c-danger-soft);
-    border: 1px solid var(--c-danger-border);
-    border-left: 4px solid var(--c-danger);
-    border-radius: var(--r-md);
-    padding: var(--sp-4) var(--sp-5);
-    margin-bottom: var(--sp-8);
-  }
-  .legal-draft__tag {
-    flex: none;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-size: var(--fs-14);
-    font-weight: var(--fw-semibold);
-    color: var(--c-danger);
-    background: var(--c-surface);
-    border: 1px solid var(--c-danger-border);
-    border-radius: var(--r-sm);
-    padding: 2px var(--sp-2);
-    margin-top: 2px;
-  }
-  .legal-draft__text {
-    margin: 0;
-    font-size: var(--fs-16);
-    line-height: var(--lh-normal);
-    color: var(--c-danger);
-  }
-  .legal-draft__text strong {
-    color: var(--c-danger);
-    font-weight: var(--fw-semibold);
   }
 
   /* Document typography — readable legal register. */
@@ -88,7 +50,17 @@ const lastUpdated = '2026-07-23';
     font-weight: var(--fw-semibold);
     letter-spacing: -0.02em;
     color: var(--c-text);
-    margin: 0 0 var(--sp-6);
+    margin: 0 0 var(--sp-3);
+  }
+  /* Effective-date / version line — replaces the retired DRAFT band. */
+  .legal-doc__effective {
+    margin: 0 0 var(--sp-8);
+    padding-bottom: var(--sp-4);
+    border-bottom: 1px solid var(--c-border);
+    font-family: var(--font-mono);
+    font-size: var(--fs-14);
+    letter-spacing: 0.02em;
+    color: var(--c-text-subtle);
   }
   .legal-doc h2 {
     font-size: var(--fs-20);
@@ -96,6 +68,13 @@ const lastUpdated = '2026-07-23';
     font-weight: var(--fw-semibold);
     color: var(--c-text);
     margin: var(--sp-8) 0 var(--sp-3);
+  }
+  .legal-doc h3 {
+    font-size: var(--fs-16);
+    line-height: var(--lh-tight);
+    font-weight: var(--fw-semibold);
+    color: var(--c-text);
+    margin: var(--sp-5) 0 var(--sp-2);
   }
   .legal-doc p {
     font-size: var(--fs-16);
@@ -120,6 +99,15 @@ const lastUpdated = '2026-07-23';
   .legal-doc a {
     color: var(--c-accent);
   }
+  /* Callout for the source blockquote notes (e.g. the Cookie statement posture). */
+  .legal-doc .legal-note {
+    margin: 0 0 var(--sp-4);
+    padding: var(--sp-4) var(--sp-5);
+    background: var(--c-surface-2);
+    border-left: 3px solid var(--c-accent);
+    border-radius: var(--r-sm);
+    color: var(--c-text-muted);
+  }
   .legal-doc table {
     width: 100%;
     border-collapse: collapse;
@@ -142,12 +130,5 @@ const lastUpdated = '2026-07-23';
   }
   .legal-doc td {
     color: var(--c-text-muted);
-  }
-  .legal-doc__version {
-    margin: var(--sp-10) 0 0 !important;
-    padding-top: var(--sp-4);
-    border-top: 1px solid var(--c-border);
-    font-size: var(--fs-14) !important;
-    color: var(--c-text-subtle) !important;
   }
 </style>
