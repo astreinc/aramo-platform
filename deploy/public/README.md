@@ -12,8 +12,9 @@ here is invoked by a step below). The site ships as **one baked image**
 | `Dockerfile` | Multi-stage build: Astro dist + holding page + `nginx.conf` baked | CI (`.github/workflows/deploy-public-staging.yml`) → GHCR |
 | `nginx.conf` | Hardened front-door (TLS/HSTS/CSP; :80 ACME+redirect; :443 apex holding / www redirect / staging site) | **baked into the image** |
 | `holding/` | Apex holding page (`index.html` + `style.css`) | **baked into the image** |
-| `docker-compose.public.yml` | The nginx service **+ the `public-intake` service** | the `docker compose up` step below |
-| `verify-csp-hashes.mjs` | CSP-hash drift gate (asserts the built inline-script hashes equal the nginx CSP allow-list) | a `RUN` step in `Dockerfile` — the image build IS the gate |
+| `docker-compose.public.yml` | The nginx service **+ the `public-intake` service** (both pin `:staging`; json-file log caps) | the `docker compose up` step below |
+| `verify-csp-hashes.mjs` | CSP-hash drift gate + **attribute ratchet** (no inline `style=`/`on*=`/`javascript:` in built HTML) | a `RUN` step in `Dockerfile` — the image build IS the gate |
+| `logrotate-aramo` | 30-day host log-rotation policy for the container json logs (privacy-policy retention) | copied to `/etc/logrotate.d/` during bring-up |
 | `README.md` | This runbook | you are here |
 
 The intake handler ships as a **second baked image**
@@ -33,11 +34,58 @@ runtime inputs are the mounted TLS certs and the staging htpasswd.
 - The PUB-6 launch flip = route the apex to the full site, drop basic-auth,
   retire `staging` — an nginx.conf change, i.e. an image rebuild.
 
+## FRESH-BOX CHECKLIST (full rebuild, start to finish)
+
+Run top-to-bottom on a brand-new **or rebuilt** instance (a `bundle_id` change,
+blueprint change, or manual rebuild wipes the box). **DNS + the static IP survive
+a rebuild** — they live in Terraform, not on the box; everything below is what
+the box itself loses. **Nothing is built on the box** — images come from GHCR.
+
+0. **SSH in.** The operator's IP is allow-listed by TF `ssh_cidr`; Lightsail
+   **browser SSH** always works as a fallback if that IP is stale.
+1. **Swap FIRST — MANDATORY, before any `docker pull`.** → *Step 0: swap.*
+2. **`apt update && apt upgrade`**, then **install Docker + the compose plugin.**
+   → *Base packages.*
+3. **Runtime dirs** `/srv/aramo-public/{certbot,auth}`. → *One-time host bring-up.*
+4. **Staging htpasswd.** → *One-time host bring-up.*
+5. **Host `.env`** — all **7** intake vars + the manually-minted SES key. → *Intake handler.*
+6. **Initial cert** — certbot **standalone, before nginx starts.** → *Initial TLS certificate.*
+7. **GHCR login (under `sudo`)**, then **pull `:staging`.** → *Start the site.*
+8. **`docker compose up -d`.** → *Start the site.*
+9. **Install `logrotate-aramo`** → `/etc/logrotate.d/`. → *Log rotation.*
+10. **Renewal cron/timer.** → *Renewal.*
+11. **Landed-proof.** → *Landed-proof assertion.*
+
+## Step 0: swap (MANDATORY, before any docker pull)
+
+The `micro_3_0` box has **1 GB RAM**. A `docker pull`/`up` of the two images
+without swap can OOM-kill mid-operation and leave a half-broken host — create
+swap **first**, and persist it so it survives a reboot:
+
+```sh
+sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab   # survive reboot
+free -h   # confirm Swap: 1.0Gi
+```
+
+## Base packages
+
+```sh
+sudo apt update && sudo apt -y upgrade        # patch the base image on bring-up
+sudo apt -y install docker.io docker-compose-v2 apache2-utils certbot
+sudo systemctl enable --now docker
+```
+
+**Builds on the box are FORBIDDEN** — the box only ever `pull`s pre-built images
+from GHCR (CI builds them). Never run `docker build` / `nx build` on the
+instance; a 1 GB box can't build the site and it defeats the baked-image model.
+
 ## One-time host bring-up
 
 1. **Provision the host** (Terraform, PR-1b `infrastructure/environments/public-site`)
    and point DNS at its static IP (the Terraform records do this).
-2. **Install Docker + compose plugin** on the host.
+2. **Swap + base packages** — the two sections above (do these first).
 3. **Create the runtime directories** the compose mounts expect:
 
    ```sh
@@ -68,11 +116,23 @@ This writes the cert to `/etc/letsencrypt/live/aramo.ai/` (one cert, three SANs)
 
 ## Start the site
 
+The compose runs under `sudo` (root), so **GHCR login must be under the same
+`sudo`** — a login as the normal user leaves root unauthenticated and the pull
+of the private images fails:
+
 ```sh
+# GHCR PAT with read:packages; log in AS ROOT (same context the compose runs in)
+echo "$GHCR_PAT" | sudo docker login ghcr.io -u <github-user> --password-stdin
+
 cd deploy/public
-sudo docker compose -f docker-compose.public.yml pull
+sudo docker compose -f docker-compose.public.yml pull   # pulls :staging (see below)
 sudo docker compose -f docker-compose.public.yml up -d
 ```
+
+**Image tag:** the compose pins **`:staging`** for both images (the staging
+workflow publishes `:staging` + a per-SHA tag on every build). `:latest` is
+reserved for the future production-release flip — PUB-6 decides the tag scheme
+at launch (D-PUB-TAG-1).
 
 ## Intake handler (PUB-5)
 
@@ -157,6 +217,33 @@ sudo certbot renew \
 ```
 
 The deploy-hook reloads nginx so the renewed cert is picked up.
+
+## Log rotation (30-day retention)
+
+The published **Website Privacy Policy** commits to keeping server logs for
+**30 days**, then deleting them — policy, config, and practice must agree.
+nginx and the intake handler log to stdout/stderr, which Docker captures as
+json-file logs on the host. Install the rotation policy during bring-up:
+
+```sh
+sudo cp deploy/public/logrotate-aramo /etc/logrotate.d/aramo
+sudo chown root:root /etc/logrotate.d/aramo && sudo chmod 644 /etc/logrotate.d/aramo
+sudo logrotate --debug /etc/logrotate.d/aramo   # dry-run: confirm it parses
+```
+
+This rotates daily and keeps **30 days** (deleting older) via `copytruncate`
+(Docker holds the log fd open). The compose `logging` caps (`max-size: 20m`,
+`max-file: 7`) are a **separate, size-based** disk-fill backstop — belt and
+suspenders: logrotate is the *time*-based 30-day guarantee the policy requires;
+the compose caps are the hard *disk* ceiling.
+
+## Changing the instance size (bundle)
+
+`bundle_id` is `micro_3_0` (1 GB RAM). **Changing the bundle REBUILDS the
+instance** — host state (Docker, images, certs, `.env`, swap) is **wiped**. The
+**static IP + DNS survive** (they're Terraform-managed, not on the box). After a
+bundle change `terraform apply`, re-run the **FRESH-BOX CHECKLIST** above from
+step 0 to bring the box back.
 
 ## Landed-proof assertion (run after `up`)
 

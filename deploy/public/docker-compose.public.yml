@@ -13,9 +13,19 @@
 # README.md — that runbook is the deploy path until Terraform user-data
 # automates it.
 
+# Image tag (D-PUB-TAG-1): both services pin `:staging`. The staging workflow
+# (.github/workflows/deploy-public-staging.yml) publishes `:staging` + a per-SHA
+# tag on every build; `:latest` is intentionally NOT used here — it is reserved
+# for the future production-release flip, whose tag scheme PUB-6 decides at
+# launch. Pulling `:staging` is what this host runs today.
+#
+# Container logs (item 4): both services cap json-file logs (max-size × max-file)
+# so a chatty log can never fill the box's disk. Time-based 30-day retention —
+# the published privacy-policy commitment — is enforced separately by
+# deploy/public/logrotate-aramo (installed to /etc/logrotate.d/ during bring-up).
 services:
   public-web:
-    image: ghcr.io/astreinc/aramo-public-web:latest
+    image: ghcr.io/astreinc/aramo-public-web:staging
     container_name: aramo-public-web
     restart: unless-stopped
     ports:
@@ -25,6 +35,11 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /srv/aramo-public/certbot:/var/www/certbot
       - /srv/aramo-public/auth:/etc/nginx/auth:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '7'
 
   # PUB-5 — intake handler (form → SES). Compose-network only (NO published
   # ports); nginx proxies /intake/ to public-intake:3000. Every env var is
@@ -33,9 +48,14 @@ services:
   # empty value). The runbook enumerates all seven. AWS creds are the narrow
   # SES-send key (TF-created user, PO-created key — R-PUB5-3), never the box's.
   public-intake:
-    image: ghcr.io/astreinc/aramo-public-intake:latest
+    image: ghcr.io/astreinc/aramo-public-intake:staging
     container_name: aramo-public-intake
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '7'
     environment:
       - AWS_ACCESS_KEY_ID
       - AWS_SECRET_ACCESS_KEY

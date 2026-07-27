@@ -1,0 +1,27 @@
+# deploy/public/logrotate-aramo — host logrotate policy for the Aramo public-site
+# containers (PR-D item 4; ratified 30-day log retention, counsel brief §2.1).
+#
+# WHY: the published Website Privacy Policy commits to keeping server logs for
+# 30 days and then deleting them. Policy, config, and PRACTICE must agree — this
+# file is the practice. nginx (public-web) sends its access/error logs to
+# stdout/stderr, which Docker captures as json-file logs on the host; the intake
+# handler does the same. This rotates those daily and keeps 30 days, deleting
+# older. The compose `logging` caps (max-size × max-file) are a separate,
+# size-based disk-fill backstop; THIS file is the time-based retention guarantee.
+#
+# INSTALL (bring-up runbook): copy to /etc/logrotate.d/aramo (root-owned, 0644).
+# logrotate's daily cron then enforces it. `copytruncate` is required because
+# Docker holds the log file descriptor open — logrotate copies then truncates in
+# place rather than renaming out from under the daemon.
+
+/var/lib/docker/containers/*/*-json.log {
+  daily
+  rotate 30
+  missingok
+  notifempty
+  compress
+  delaycompress
+  copytruncate
+  dateext
+  su root root
+}

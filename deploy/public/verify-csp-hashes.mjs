@@ -16,6 +16,10 @@
 // HTML equals the set of hashes in that nginx CSP directive — EXACTLY — and
 // exits non-zero (with named-page diagnostics) on any drift.
 //
+// PR-D item 5 adds an ATTRIBUTE RATCHET: the gate also fails on any element
+// `style=""` attribute, `on*=` event handler, or `javascript:` URL in the built
+// HTML — surfaces the strict CSP already blocks at runtime, now caught at build.
+//
 // It runs inside the image build (deploy/public/Dockerfile), where dist/ and
 // nginx.conf are both present — so the image build IS the gate.
 import { createHash } from 'node:crypto';
@@ -108,9 +112,40 @@ for (const surface of SURFACES) {
   summaries.push({ surface, found });
 }
 
+// --- Attribute ratchet (PR-D item 5) ---------------------------------------
+// The strict CSP has no 'unsafe-inline'/'unsafe-hashes' for style-src and no
+// inline-handler allowance, so element `style=""` attributes, `on*=` event
+// handlers, and `javascript:` URLs are already blocked at RUNTIME. This ratchet
+// fails the IMAGE BUILD if any appear in the built HTML — catching a regression
+// at build time instead of silently shipping a broken (CSP-blocked) surface.
+// The site is clean today; this locks that in.
+const ATTR_BANS = [
+  { label: 'inline event handler (on*=)', re: /\son[a-z]+\s*=\s*["']/gi },
+  { label: 'inline style attribute (style=)', re: /\sstyle\s*=\s*["']/gi },
+  {
+    label: 'javascript: URL',
+    re: /(?:href|src|action|xlink:href)\s*=\s*["']\s*javascript:/gi,
+  },
+];
+let ratchetHits = 0;
+for (const file of pages) {
+  const html = readFileSync(file, 'utf8');
+  for (const ban of ATTR_BANS) {
+    const hits = html.match(ban.re);
+    if (hits) {
+      ok = false;
+      ratchetHits += hits.length;
+      const samples = [...new Set(hits.map((h) => h.trim()))].slice(0, 3);
+      console.error(
+        `CSP ATTRIBUTE RATCHET — ${ban.label} found in ${file.replace(`${DIST}/`, '')} (${hits.length}×): ${samples.join(' , ')}`,
+      );
+    }
+  }
+}
+
 if (!ok) {
   console.error(
-    '\nUpdate the CSP hash set(s) in deploy/public/nginx.conf to match the built output (RETEST-WHEN Astro is upgraded).',
+    '\nHash drift → update the CSP hash set(s) in deploy/public/nginx.conf to match\nthe built output (RETEST-WHEN Astro is upgraded). Attribute-ratchet hits →\nremove the inline style/handler/javascript: URL (use classes / external CSS;\nnever add unsafe-inline).',
   );
   process.exit(1);
 }
@@ -121,3 +156,6 @@ for (const { surface, found } of summaries) {
   );
   for (const [h, ps] of found) console.log(`  ${h}  (${ps.length} page(s))`);
 }
+console.log(
+  `CSP attribute ratchet OK — no inline style/on*=/javascript: attributes in ${pages.length} built page(s).`,
+);
