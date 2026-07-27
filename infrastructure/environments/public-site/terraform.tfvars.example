@@ -1,11 +1,16 @@
 # Aramo PUB-1 PR-1b — example variables for the public-site environment.
-# Copy to terraform.tfvars (gitignored) before `terraform init`. Every value
-# below is already the module default; override only if the account/region
-# convention differs.
+# Copy to terraform.tfvars (gitignored) before `terraform init`. Values below
+# are the module defaults except ssh_cidr, which is REQUIRED (no default).
 
 aws_region          = "us-east-1"
 environment         = "public-site"
 availability_zone   = "us-east-1a"
 blueprint_id        = "ubuntu_24_04"
-bundle_id           = "nano_3_0"
+bundle_id           = "micro_3_0"
 ses_identity_domain = "aramo.ai"
+
+# D-PUB-SSH-1 — REQUIRED, no default. Set to YOUR CURRENT public IP as a /32
+# (find it with `curl -s ifconfig.me`); update it when your IP changes. This is
+# the only CIDR allowed to SSH; Lightsail browser SSH always works as a
+# fallback. An unset ssh_cidr fails the apply loudly.
+ssh_cidr = "203.0.113.4/32"

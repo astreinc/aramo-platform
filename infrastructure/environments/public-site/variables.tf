@@ -23,9 +23,16 @@ variable "blueprint_id" {
 }
 
 variable "bundle_id" {
-  description = "Lightsail bundle (instance size). nano_3_0 is the smallest current-generation bundle."
+  description = "Lightsail bundle (instance size). micro_3_0 (1 GB RAM). CHANGING THIS REBUILDS THE INSTANCE — host state is wiped, static IP + DNS survive; follow the bring-up runbook after apply."
   type        = string
-  default     = "nano_3_0"
+  default     = "micro_3_0"
+}
+
+# D-PUB-SSH-1 — required, no default (apply fails loudly if unset rather than
+# silently leaving SSH unmanaged). Set to the operator's current IP /32.
+variable "ssh_cidr" {
+  description = "CIDR allowed to reach SSH (22/tcp), e.g. \"203.0.113.4/32\". Required — no default. Lightsail browser SSH still works regardless (fallback)."
+  type        = string
 }
 
 variable "ses_identity_domain" {

@@ -15,6 +15,7 @@ module "public_site" {
   availability_zone = var.availability_zone
   blueprint_id      = var.blueprint_id
   bundle_id         = var.bundle_id
+  ssh_cidr          = var.ssh_cidr
   tags              = local.common_tags
 }
 

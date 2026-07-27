@@ -40,9 +40,11 @@ resource "aws_lightsail_static_ip_attachment" "this" {
   instance_name  = aws_lightsail_instance.this.name
 }
 
-# Only 80 + 443 are exposed (HTTP for ACME + the https redirect; HTTPS for the
-# site). SSH (22) stays on Lightsail's default per-instance firewall for the
-# operator; it is intentionally NOT opened to the world here.
+# 80 + 443 are open to the world (HTTP for ACME + the https redirect; HTTPS for
+# the site). SSH (22) is restricted (D-PUB-SSH-1): reachable only from the
+# operator's CIDR (var.ssh_cidr — required, no default) plus Lightsail's browser
+# SSH ("lightsail-connect" alias) as an always-available fallback, so a stale or
+# wrong ssh_cidr never fully locks the operator out.
 resource "aws_lightsail_instance_public_ports" "this" {
   instance_name = aws_lightsail_instance.this.name
 
@@ -56,5 +58,13 @@ resource "aws_lightsail_instance_public_ports" "this" {
     protocol  = "tcp"
     from_port = 443
     to_port   = 443
+  }
+
+  port_info {
+    protocol          = "tcp"
+    from_port         = 22
+    to_port           = 22
+    cidrs             = [var.ssh_cidr]
+    cidr_list_aliases = ["lightsail-connect"]
   }
 }
