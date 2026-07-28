@@ -44,6 +44,14 @@
 # are interpolated from the same POSTGRES_* vars that configure the postgres
 # service, so they cannot drift. See .env.prod.example for the full env surface.
 
+# Pin the compose PROJECT NAME (E17) — the FIRST top-level key. Without it, an
+# invocation with no `-p`/COMPOSE_PROJECT_NAME defaults the project to the
+# working-directory name, which collides a second parallel stack (and its
+# fresh-empty pgdata) against the running one. Pinned here, `-p` becomes a
+# redundant belt, never load-bearing. The named volumes below are therefore
+# addressed as `aramo-singlebox_<volume>` (E16b).
+name: aramo-singlebox
+
 services:
   # ── Front-Door Migration (ADR-0023) — nginx front door + certbot DNS-01 ───────
   # nginx is the single ingress on 80/443 (it replaced the retired front door at
@@ -58,13 +66,18 @@ services:
     container_name: aramo-prod-nginx
     restart: unless-stopped
     environment:
-      # The four ${NGINX_*} vars (Ruling 1), bare-name passthrough. Unset → the
-      # template's local defaults (D-AUTH-PLATFORM-HOSTS-1 defect class: an
-      # unpassed var silently reverts to local on the box).
-      - NGINX_TENANT_SERVER_NAME
-      - NGINX_ADMIN_SERVER_NAME
-      - NGINX_PORTAL_SERVER_NAME
-      - NGINX_CERT_DIR
+      # The four NGINX_* vars — DEFAULTED interpolations (E19). The old bare-name
+      # passthrough claimed "unset → the template's local defaults" — that was
+      # FALSE: envsubst has NO defaults, so an unset var was left as a literal
+      # `${NGINX_CERT_DIR}` and crashed nginx ([emerg] unknown "nginx_cert_dir"
+      # variable, the 2026-07-26 window). `${VAR:-default}` makes the var
+      # ALWAYS-DEFINED in the container, so envsubst always substitutes. These
+      # values are the operator-facing belt; the image ENV (deploy/nginx/Dockerfile,
+      # Ruling A) is the authoritative floor — defaults now live in both places.
+      - NGINX_TENANT_SERVER_NAME=${NGINX_TENANT_SERVER_NAME:-localhost}
+      - NGINX_ADMIN_SERVER_NAME=${NGINX_ADMIN_SERVER_NAME:-admin.localhost}
+      - NGINX_PORTAL_SERVER_NAME=${NGINX_PORTAL_SERVER_NAME:-portal.localhost}
+      - NGINX_CERT_DIR=${NGINX_CERT_DIR:-/etc/letsencrypt/live/aramo.ai}
     ports:
       - '80:80'
       - '443:443'
@@ -83,13 +96,19 @@ services:
       - platform-admin
     # Reload loop (Ruling 4): pick up a renewed cert every 6h without a restart.
     # NO docker socket mounted anywhere (rejected: root-equivalent surface).
+    # E18: the inner exec chains through the image's ENTRYPOINT
+    # (/docker-entrypoint.sh nginx …). That entrypoint gates its template-render
+    # scripts (envsubst → conf.d) on `$1 == nginx`; a bare `exec nginx …` here
+    # made $1 the wrapper /bin/sh, so the render was SKIPPED → empty conf.d →
+    # nginx served nothing (the 2026-07-26 window; this line is the proven
+    # hot-fix). conf-check assertion (i) pins this shape.
     command:
       - /bin/sh
       - -c
       - |
         trap exit TERM
         while :; do sleep 6h & wait $${!}; nginx -s reload; done &
-        exec nginx -g 'daemon off;'
+        exec /docker-entrypoint.sh nginx -g 'daemon off;'
 
   # certbot DNS-01 sidecar — owns the *.aramo.ai WILDCARD cert (no apex SAN,
   # PR-0b R4). Renew-loop ONLY; INITIAL issuance is a cutover-runbook step (PR-3):

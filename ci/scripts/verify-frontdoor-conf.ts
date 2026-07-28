@@ -16,6 +16,12 @@
 //   (f') post-flip front-door invariant (PR-3, inverting PR-2's inertness (f)):
 //       nginx is the live front door — it HAS ports 80/443, NO `profiles:` entry
 //       remains anywhere in compose, and no retired-front-door service exists.
+//   (g) compose top-level `name: aramo-singlebox` is present (E17 — the pinned
+//       project name that kills the directory-name default-project collision).
+//   (h) all four NGINX_* entries use the `${VAR:-default}` shape with EXACTLY the
+//       Ruling-1 defaults (E19 — always-defined so envsubst never leaves a literal).
+//   (i) the nginx command chains through `/docker-entrypoint.sh nginx` (E18 — the
+//       inner exec must re-enter the image entrypoint so the template renders).
 //
 // PATH-COUPLING (standing lesson): this script references files by literal path.
 // Any future move of deploy/nginx/** or the constants file must grep for it.
@@ -183,6 +189,34 @@ function checkRepo(): Issue[] {
   const p443 = (compose.match(/-\s*['"]443:443['"]/g) ?? []).length;
   if (p80 !== 1) issues.push({ where: COMPOSE, reason: `(f′) expected exactly one service publishing 80:80, found ${p80}` });
   if (p443 !== 1) issues.push({ where: COMPOSE, reason: `(f′) expected exactly one service publishing 443:443, found ${p443}` });
+
+  // (g) compose top-level project name pinned (E17). Presence of the exact name
+  // is what matters (YAML is key-order-insensitive to the engine); the Dockerfile
+  // ENV + this pin together make the collision structurally impossible.
+  if (!/^name:\s*aramo-singlebox\s*$/m.test(compose)) {
+    issues.push({ where: COMPOSE, reason: '(g) top-level `name: aramo-singlebox` not found (E17 project-name pin)' });
+  }
+
+  // (h) the four NGINX_* entries use the ${VAR:-default} shape with EXACTLY the
+  // Ruling-1 defaults (E19). Exact-string match: a changed default fails the wall.
+  const nginxDefaults: Array<[string, string]> = [
+    ['NGINX_TENANT_SERVER_NAME', 'localhost'],
+    ['NGINX_ADMIN_SERVER_NAME', 'admin.localhost'],
+    ['NGINX_PORTAL_SERVER_NAME', 'portal.localhost'],
+    ['NGINX_CERT_DIR', '/etc/letsencrypt/live/aramo.ai'],
+  ];
+  for (const [varName, def] of nginxDefaults) {
+    const needle = `${varName}=\${${varName}:-${def}}`;
+    if (nginxSvc === null || !nginxSvc.includes(needle)) {
+      issues.push({ where: COMPOSE, reason: `(h) nginx environment missing defaulted interpolation "${needle}"` });
+    }
+  }
+
+  // (i) the nginx command chains through the image entrypoint (E18): the inner
+  // exec must be `/docker-entrypoint.sh nginx …`, not a bare `nginx …`.
+  if (nginxSvc === null || !nginxSvc.includes('/docker-entrypoint.sh nginx')) {
+    issues.push({ where: COMPOSE, reason: '(i) nginx command does not chain through /docker-entrypoint.sh nginx (E18)' });
+  }
 
   return issues;
 }

@@ -83,6 +83,17 @@ COPY deploy/nginx/templates/aramo.conf.template /etc/nginx/templates/aramo.conf.
 # Only the four ${NGINX_*} vars are substituted; every nginx runtime var ($host,
 # $uri, $scheme, …) is left literal.
 ENV NGINX_ENVSUBST_FILTER=^NGINX_
+# E19 defense-in-depth: image-level defaults make an unset var structurally
+# impossible on EVERY run path (compose, bare `docker run`, the boot smoke).
+# The official entrypoint's envsubst substitutes only DEFINED vars — an unset
+# NGINX_* would otherwise be left as a literal `${NGINX_*}` and crash nginx
+# ([emerg] unknown "nginx_cert_dir" variable — the 2026-07-26 window, E19). The
+# image is now AUTHORITATIVE for the defaults; compose `${VAR:-default}` remains
+# the operator-facing belt (D-FRONTDOOR-CUTOVER-1 Ruling A).
+ENV NGINX_TENANT_SERVER_NAME=localhost \
+    NGINX_ADMIN_SERVER_NAME=admin.localhost \
+    NGINX_PORTAL_SERVER_NAME=portal.localhost \
+    NGINX_CERT_DIR=/etc/letsencrypt/live/aramo.ai
 # Drop the base image's default server so only our block is included.
 RUN rm -f /etc/nginx/conf.d/default.conf
 

@@ -193,6 +193,17 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/aramo-${{ matrix.name }}:latest
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      # Front-door BOOT smoke (D-FRONTDOOR-CUTOVER-1 R3) — nginx leg ONLY, right
+      # after its build. Loads the just-built image locally (cache-fast; same gha
+      # scope) and boots it the way production does, catching E18/E19 that nginx -t
+      # and conf-check cannot see. A SKIPPED smoke on the nginx leg is a finding.
+      - name: Boot smoke (nginx front door — E18/E19)
+        if: ${{ matrix.name == 'nginx' && fromJSON(needs.changes.outputs.docker)['nginx'] == 'true' }}
+        run: |
+          docker buildx build --load \
+            --cache-from type=gha,scope=nginx \
+            -f deploy/nginx/Dockerfile -t aramo/nginx:local .
+          bash ci/scripts/frontdoor-boot-smoke.sh aramo/nginx:local
       - name: No-op (context unchanged on PR)
         if: ${{ fromJSON(needs.changes.outputs.docker)[matrix.name] != 'true' }}
         run: echo "::notice::${{ matrix.name }} image context unchanged on this PR — build skipped (merge queue rebuilds it)."
