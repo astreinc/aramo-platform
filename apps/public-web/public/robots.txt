@@ -1,0 +1,6 @@
+# Aramo public site (PUB-6 R-PUB6-4). Launch posture: allow all; no analytics,
+# no crawl-sensitive paths. Sitemap is generated at build by @astrojs/sitemap.
+User-agent: *
+Allow: /
+
+Sitemap: https://aramo.ai/sitemap-index.xml

@@ -1,11 +1,22 @@
 ---
+// PUB-6 R-PUB6-7 — custom 404 in v2.0 tokens; nginx error_page 404 wires it on
+// both the apex and staging server blocks. Zero client JS, tokens-only, no
+// inline style/handler (CSP attribute ratchet + DDR §2 scan cover this page).
 import BaseLayout from '../layouts/BaseLayout.astro';
 ---
 
-<BaseLayout title="Page not found — Aramo" description="Page not found.">
-  <div class="error-page">
+<BaseLayout
+  title="Page not found — Aramo"
+  description="The page you were looking for could not be found."
+  noindex={true}
+>
+  <section class="error-page">
+    <p class="error-page__code">404</p>
     <h1>Page not found</h1>
-    <p>The page you were looking for is not here.</p>
-    <p><a href="/">Back to home</a></p>
-  </div>
+    <p>The page you were looking for doesn't exist or may have moved.</p>
+    <div class="error-page__actions">
+      <a class="btn btn--primary" href="/">Back to home</a>
+      <a class="btn btn--ghost" href="/platform">Explore the platform</a>
+    </div>
+  </section>
 </BaseLayout>

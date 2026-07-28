@@ -190,7 +190,7 @@ main :where(p) {
   margin: 0 0 var(--sp-4);
 }
 
-/* Error / 404 shell treatment */
+/* Error / 404 shell treatment (PUB-6 R-PUB6-7) */
 .error-page {
   text-align: center;
   padding: var(--sp-24) var(--sp-6);
@@ -202,6 +202,22 @@ main :where(p) {
 .error-page :where(p) {
   margin-inline: auto;
   max-width: var(--w-prose);
+}
+.error-page__code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-64, 4rem);
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--c-accent);
+  margin: 0 0 var(--sp-4);
+}
+.error-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  justify-content: center;
+  margin-top: var(--sp-8);
 }
 
 /* ---- Footer (four columns + brand) ---- */

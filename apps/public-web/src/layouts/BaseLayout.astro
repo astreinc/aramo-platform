@@ -15,6 +15,10 @@ interface Props {
   description?: string;
   ogType?: string;
   noindex?: boolean;
+  // PUB-6 R-PUB6-4: structured-data object (JSON-LD) injected on the landing
+  // page only. Rendered as an inline application/ld+json block whose sha256 is
+  // allow-listed in the apex CSP (deploy/public/nginx.conf) — see verify-csp.
+  jsonLd?: unknown;
 }
 
 const {
@@ -22,10 +26,12 @@ const {
   description = 'Aramo — the system of record for verified talent. Enterprise ATS, Verified Talent Graph, and AI agents on one platform.',
   ogType = 'website',
   noindex = false,
+  jsonLd,
 } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site);
-const ogImage = new URL('/og-placeholder.svg', Astro.site);
+// PUB-6 R-PUB6-5: site-wide default social card (raster, v2.0 tokens).
+const ogImage = new URL('/og-default.png', Astro.site);
 
 // Primary nav (R-PUB35-2). /platform + /agents are new pages built in PR-C —
 // they 404 in-branch until then (accepted per the PR-A directive note). The
@@ -83,11 +89,27 @@ const FOOTER = [
     {noindex && <meta name="robots" content="noindex" />}
     <link rel="canonical" href={canonical} />
 
+    {/* PUB-6 R-PUB6-5: favicon set derived from the ratified logo mark. */}
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <meta property="og:site_name" content="Aramo" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content={ogType} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Aramo — the system of record for verified talent" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+
+    {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
 
     <title>{title}</title>
   </head>

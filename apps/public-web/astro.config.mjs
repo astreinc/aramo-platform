@@ -31,7 +31,14 @@ export default defineConfig({
     // R-PUB35-9: /company retires into /contact.
     '/company': '/contact',
   },
-  integrations: [react(), sitemap()],
+  // PUB-6 R-PUB6-4: sitemap covers public content routes only. Retired routes
+  // (the `redirects` above) are already excluded by @astrojs/sitemap; the filter
+  // additionally drops the two noindex utility pages (/404, /thanks) so the
+  // sitemap == the indexable set. Legal pages are included (public in effect).
+  integrations: [
+    react(),
+    sitemap({ filter: (page) => !/\/(404|thanks)\/?$/.test(page) }),
+  ],
   // CSP-completeness (R-PUB5-7 / D-PUB5-CSP-STYLE-1): the hardened CSP has a
   // strict `script-src` (hash-allowlisted) and NO `style-src`, so inline styles
   // fall back to `default-src 'self'` and are blocked. Astro's default
