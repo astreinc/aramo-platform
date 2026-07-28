@@ -115,7 +115,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - uses: nrwl/nx-set-shas@v4
+      - uses: nrwl/nx-set-shas@v5
         if: github.event_name == 'pull_request'
       - name: lint (affected on PR, all otherwise)
         run: |
@@ -139,7 +139,7 @@ jobs:
           cache: npm
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run prisma:generate
-      - uses: nrwl/nx-set-shas@v4
+      - uses: nrwl/nx-set-shas@v5
         if: github.event_name == 'pull_request'
       - name: build (affected on PR, all otherwise)
         run: |
@@ -222,7 +222,7 @@ jobs:
           cache: npm
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run prisma:generate
-      - uses: nrwl/nx-set-shas@v4
+      - uses: nrwl/nx-set-shas@v5
         if: github.event_name == 'pull_request'
       - name: test:unit (affected on PR, all otherwise)
         run: |
@@ -464,7 +464,7 @@ jobs:
           cache: npm
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run prisma:generate
-      - uses: nrwl/nx-set-shas@v4
+      - uses: nrwl/nx-set-shas@v5
         if: github.event_name == 'pull_request'
       - name: integration (affected serial on PR, full serial otherwise)
         env:
