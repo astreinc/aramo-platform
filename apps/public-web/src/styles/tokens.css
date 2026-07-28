@@ -29,7 +29,7 @@
   /* Text */
   --c-text: #2d2d2d; /* ink — headings */
   --c-text-muted: #595959; /* body */
-  --c-text-subtle: #767676; /* muted */
+  --c-text-subtle: #6d6d6d; /* muted — PUB-6 R-PUB6-6: #767676→#6d6d6d for WCAG AA (5.0:1 on surface; was 4.39) */
   --c-text-faint: #9aa0b0; /* marquee / faintest */
 
   /* Primary blue */
@@ -46,7 +46,7 @@
   /* Accent teal — third agent-accent in the export rotation (Interview /
      Rediscovery cards, integration flow). Extracted from the ratified export. */
   --c-accent-3: #1fb6cd;
-  --c-accent-3-deep: #149bb0;
+  --c-accent-3-deep: #0c7484; /* PUB-6 R-PUB6-6: #149bb0→#0c7484, teal text AA on light tint (4.9:1; was 2.97) */
 
   /* Logo mark — the single coral ray (DDR §3 burst/kolam motif) */
   --c-logo-coral: #d97757;
@@ -60,7 +60,7 @@
   --c-dark-surface: #232b4d;
   --c-dark-surface-2: #2c3560;
   --c-dark-text: #ffffff;
-  --c-dark-text-muted: #6b76a8;
+  --c-dark-text-muted: #868fbb; /* PUB-6 R-PUB6-6: #6b76a8→#868fbb, muted-on-dark AA (5.4:1 on #141b38; was 3.85) */
   --c-dark-text-soft: #9aa3c0; /* dark-section body copy */
   --c-dark-text-cta: #b7bede; /* dark CTA-band sub */
 

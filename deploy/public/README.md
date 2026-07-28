@@ -26,13 +26,16 @@ the image. Changing any of them requires an image **rebuild + container
 recreate** — not a live edit (the `deploy/caddy` image precedent). The only
 runtime inputs are the mounted TLS certs and the staging htpasswd.
 
-## Serving posture (G0-R3)
+## Serving posture (G0-R3 + PUB-6 flip)
 
-- `aramo.ai` + `www.aramo.ai` → public **holding page** (apex serves it; www
-  301s to the apex).
-- `staging.aramo.ai` → the **full Astro site** behind HTTP basic-auth.
-- The PUB-6 launch flip = route the apex to the full site, drop basic-auth,
-  retire `staging` — an nginx.conf change, i.e. an image rebuild.
+- `aramo.ai` → the **full Astro site**, PUBLIC (no basic-auth) — PUB-6 R-PUB6-1
+  flip (was the holding page). Custom 404; the holding page is retained only as
+  the 50x maintenance fallback (R-PUB6-7).
+- `www.aramo.ai` → 301 to the apex (R-PUB6-2; apex is canonical everywhere).
+- `staging.aramo.ai` → the **same full Astro site** behind HTTP basic-auth —
+  UNCHANGED at launch and kept as the auth-gated preview **forever** (R-PUB6-1).
+- One baked image serves both apex and staging; the nginx server block
+  differentiates (R-PUB6-3 — tag scheme unchanged at launch).
 
 ## FRESH-BOX CHECKLIST (full rebuild, start to finish)
 
@@ -248,15 +251,59 @@ step 0 to bring the box back.
 ## Landed-proof assertion (run after `up`)
 
 ```sh
-# apex holding page — 200 + HSTS
+# apex — 200 + HSTS, serving the full site (PUB-6 flip)
 curl -sI https://aramo.ai | grep -E '^HTTP/|[Ss]trict-[Tt]ransport-[Ss]ecurity'
 #   expect: HTTP/2 200
 #           strict-transport-security: max-age=31536000
+curl -s https://aramo.ai | grep -o 'system of record'   # expect: system of record
 
 # staging — gated by basic-auth
 curl -sI https://staging.aramo.ai | grep -E '^HTTP/'
 #   expect: HTTP/2 401
 ```
 
-If the apex returns 200 with the HSTS header and staging returns 401, the deploy
-is live and correctly gated.
+If the apex returns 200 with the HSTS header AND serves the v2.0 hero, and
+staging returns 401, the deploy is live and correctly gated.
+
+## Launch runbook — production release (PUB-6 §3)
+
+Launch is a **deliberate PO act**, not an automatic deploy. Because one baked
+image serves both apex and staging (R-PUB6-3), there is **nothing extra to
+deploy for the apex** — the flip config ships in the image, so the moment the
+box runs the launch build the apex serves the full site. Sequence:
+
+1. **Dispatch the build** off the merged `public-site` HEAD:
+   `deploy-public-staging` (GitHub Actions) → publishes `:staging` + per-SHA
+   tags to GHCR → wait for BUILD-GREEN.
+2. **On the box** (see *Start the site* for GHCR-login-under-sudo):
+   ```sh
+   cd deploy/public
+   sudo docker compose -f docker-compose.public.yml pull   # :staging
+   sudo docker compose -f docker-compose.public.yml up -d
+   ```
+3. **PO GO/NO-GO — the release act.** On GO the apex is already live (step 2's
+   `up -d`). Run the launch proof set:
+   ```sh
+   curl -s  https://aramo.ai | grep -o 'system of record'        # 200 hero
+   curl -sI https://www.aramo.ai | grep -i location               # 301 → https://aramo.ai/
+   curl -sI https://aramo.ai/legal/privacy                        # 200 (public)
+   curl -s  https://aramo.ai/legal/privacy | grep -ci 'DRAFT'     # 0
+   curl -sI https://aramo.ai/sitemap-index.xml                    # 200
+   curl -sI https://aramo.ai/nope-404                             # 404 (custom page)
+   curl -si -X POST https://aramo.ai/intake/contact -d '…'        # 303 → /thanks + mail lands
+   ```
+4. **Post-launch same-day:** submit `https://aramo.ai/sitemap-index.xml` to
+   Google Search Console; file the Indeed partner application with the now-public
+   `https://aramo.ai/legal/privacy`; enable the uptime checks below.
+
+## Uptime monitoring (R-PUB6-8)
+
+Operator task (not repo code). Configure any free-tier external monitor
+(UptimeRobot, Better Stack, etc.) with two HTTP(S) checks — alerts to
+**hello@aramo.ai**:
+
+- `https://aramo.ai` — expect **200** (the public site).
+- `https://staging.aramo.ai` — expect **401** (basic-auth challenge proves the
+  gate is up; a 200 or 5xx here is the alert condition).
+
+A 5xx on the apex surfaces the 50x holding fallback; the monitor still flags it.

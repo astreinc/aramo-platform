@@ -51,11 +51,42 @@ const INDUSTRIES = [
 ];
 
 const SECURITY = ['Tenant isolation', 'Least-privilege access', 'SSO / SAML', 'RBAC', 'Encryption in transit', 'Audit Logs'];
+
+// PUB-6 R-PUB6-4 — landing-page structured data. Organization + WebSite only;
+// properties limited to name / url / logo / contactPoint (hello@aramo.ai) per
+// directive — NO invented properties (no aggregateRating, no postal address
+// until the PO supplies one). Rendered inline by BaseLayout; its sha256 is
+// allow-listed in the apex CSP script-src (deploy/public/nginx.conf).
+const JSONLD = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': 'https://aramo.ai/#organization',
+      name: 'Aramo',
+      url: 'https://aramo.ai/',
+      logo: 'https://aramo.ai/logo-aramo.png',
+      contactPoint: {
+        '@type': 'ContactPoint',
+        contactType: 'customer support',
+        email: 'hello@aramo.ai',
+      },
+    },
+    {
+      '@type': 'WebSite',
+      '@id': 'https://aramo.ai/#website',
+      name: 'Aramo',
+      url: 'https://aramo.ai/',
+      publisher: { '@id': 'https://aramo.ai/#organization' },
+    },
+  ],
+};
 ---
 
 <BaseLayout
   title="Aramo — the system of record for verified talent"
   description="Aramo unifies your ATS and every sourcing channel into one evidence-backed Talent Graph, with AI agents that do the legwork. Your team makes every call."
+  jsonLd={JSONLD}
 >
   <!-- HERO -->
   <section class="hp-hero">
@@ -502,9 +533,12 @@ const SECURITY = ['Tenant isolation', 'Least-privilege access', 'SSO / SAML', 'R
   .hp-marquee__label { text-align: center; font-family: var(--font-mono); font-size: 11.5px; letter-spacing: var(--ls-eyebrow); color: var(--c-text-subtle); margin-bottom: var(--sp-5); }
   .hp-marquee__track { display: flex; width: max-content; animation: hp-marquee 32s linear infinite; }
   .hp-marquee__set { display: flex; gap: var(--sp-16); align-items: center; padding-right: var(--sp-16); }
-  .hp-firm { display: flex; align-items: center; gap: 9px; opacity: 0.75; }
+  /* PUB-6 R-PUB6-6: marquee firm names were --c-text-faint@0.75 → 1.98:1 (fail).
+     Now --c-text-subtle at full opacity (≈5:1, AA); still the quietest text on
+     the page. The decorative mark square keeps its faded treatment. */
+  .hp-firm { display: flex; align-items: center; gap: 9px; }
   .hp-firm__mark { width: 20px; height: 20px; border-radius: 5px; background: var(--c-text-faint); opacity: 0.5; flex: none; }
-  .hp-firm__name { font-family: var(--font-display); font-size: 16px; font-weight: var(--fw-semibold); letter-spacing: -0.01em; color: var(--c-text-faint); white-space: nowrap; }
+  .hp-firm__name { font-family: var(--font-display); font-size: 16px; font-weight: var(--fw-semibold); letter-spacing: -0.01em; color: var(--c-text-subtle); white-space: nowrap; }
 
   /* Split (problem/security) */
   .hp-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: var(--sp-16); align-items: center; }
