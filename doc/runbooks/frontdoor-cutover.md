@@ -1,4 +1,4 @@
-# Front-Door cutover runbook v2 — the RE-CUT (Caddy → nginx, ADR-0023)
+# Front-Door cutover runbook v2.1 — the RE-CUT (Caddy → nginx, ADR-0023)
 
 The operator procedure that flips the single-box front door from Caddy to nginx +
 certbot wildcard TLS. **Run from the box, inside a scheduled window.** Merging any
@@ -12,6 +12,11 @@ command + image-level ENV defaults + the CI boot smoke). The wildcard cert issue
 in that window is **still valid** (to 2026-10-24) — this re-cut is **verify-only**
 on the cert. The portal host that had no working TLS under the old front door is
 covered by the wildcard and comes up on the flip (called out in step 6).
+**v2.1** closes E22 (the 2026-07-28 window recreated the app containers but never
+ran the DB migrate, so two merged migrations went unapplied and requisitions
+500'd): step 4a below adds the DB-backup + migrate gate, and the RELEASE
+CLASSIFICATION note directly under the Box-ops laws binds this window to
+`RELEASE-box.md` STEP 2 (backup) and STEP 3 (migrate).
 
 **Box-ops laws (in force throughout the window and the 7-day soak):**
 - Builds run **sequentially**, joined with `&&`; verify each exit 0 before recreate.
@@ -21,6 +26,18 @@ covered by the wildcard and comes up on the flip (called out in step 6).
   soak ends — the rollback capital).
 - Every ad-hoc `docker run -v` names the volume with its real **`aramo-singlebox_`**
   project prefix (E16b) — the compose project is pinned to `aramo-singlebox`.
+
+**RELEASE CLASSIFICATION (E22 — read before step 1):** this procedure **rebuilds**
+application images at step 3 and **recreates** the app containers (`api`,
+`auth-service`, `platform-admin`) at step 5 (`docker compose up -d --remove-orphans`).
+Recreating an application container **is a release**, whatever the window is
+labelled — so `doc/runbooks/RELEASE-box.md` **STEP 2 (DB backup)** and **STEP 3
+(migrate)** apply and are executed at **step 4a** below (between the cert verify and
+the flip). Step 7's standing release smokes are the other half of that same
+obligation. E22 happened because the last window was framed as an infra operation
+and this gate was skipped: two migrations merged after the box's prior migrate run
+went unapplied, and requisitions returned 500 until `migrate-prod.sh` was run
+manually. Do not treat "front-door cutover" as exempt from the release procedure.
 
 Each step is gated on the previous. **HALT** means stop and report — never improvise.
 
@@ -97,6 +114,37 @@ and the real prefixed volume name) — **not needed while a valid cert exists:**
 #  and HALT on any mismatch before the flip.)
 ```
 
+## 4a. DB backup + MIGRATE (the E22 gate — before the flip, after the build)
+
+This window recreates app containers (step 5), so it ships app code — the DB must
+be migrated to match **before** the flip. This is `RELEASE-box.md` STEP 2 + STEP 3,
+executed here.
+
+**Backup first — `deploy/migrate-prod.sh` does NOT take its own backup.** The dump
+is manual and is taken here (every `pre-migration-backup-*.sql` on the box was taken
+by hand):
+
+```
+docker exec aramo-prod-postgres sh -c 'pg_dump "$DATABASE_URL"' > /opt/aramo/pre-migration-backup-$(date +%Y%m%d-%H%M%S).sql
+# VERIFY SIZE before migrating: this command fails SILENTLY producing a 0-byte file if
+# DATABASE_URL is not present in that shell — a 0-byte / trivially-small file is NOT a backup.
+ls -l /opt/aramo/pre-migration-backup-*.sql | tail -1
+```
+
+**Then migrate:**
+
+```
+bash deploy/migrate-prod.sh
+```
+
+Applied migrations are recorded in the house ledger **`_local_migrations`** (via
+`db:sync:local`) — **not** Prisma's `_prisma_migrations`, which does not exist in
+this database. An operator checking `_prisma_migrations` will wrongly conclude the
+migrate did not run.
+
+**GATE:** the run applies the expected migration(s) **OR** reports already-applied
+(N==M) — **both pass**. On **ERROR**, **HALT** — do NOT flip onto a half-migrated DB.
+
 ## 5. The flip (explicit two-step — seconds of downtime, inside the window)
 
 The compose project name is now pinned in-file (`name: aramo-singlebox`) — no `-p`
@@ -130,6 +178,12 @@ front door first, then bring the new stack up.
   bucket (distinct `X-Forwarded-For` → distinct budget keys).
 - **Access-log X-Forwarded-For sanity:** `docker logs aramo-prod-nginx` shows the
   real client IP forwarded, not the proxy peer.
+- **Post-migration application read (proves step 4a took):** read an application
+  surface whose table this batch **migrated** — an authenticated list/detail page
+  backed by a table in the shipped migration range → **200 with data**, not a 500.
+  (E22's signature was exactly this read 500'ing because the migrate was skipped;
+  a clean read here is the migrate gate's end-to-end proof, not just the script's
+  N==M report.)
 
 ## 7. Standing release smokes (this deploy ships app code — PR-1 goes live here)
 

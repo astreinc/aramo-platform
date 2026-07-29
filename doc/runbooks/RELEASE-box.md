@@ -1,6 +1,6 @@
-# Aramo — Box Deploy Runbook v2.1
+# Aramo — Box Deploy Runbook v2.2
 
-**Status:** Canonical operational runbook — v2.1
+**Status:** Canonical operational runbook — v2.2
 **Scope:** Planned-window deploys to the single prod box (`/opt/aramo`), build-on-box model
 **Operating model:** `origin/main` = continuously integrated; production = deliberately released on
 planned windows. The box is NOT expected to track every head — deploy a *known* commit in a managed
@@ -10,6 +10,12 @@ window.
 *[v2.1 INVERSION, per PO ruling: the repo-tracked file is now the source of truth — matching the six
 sibling runbooks already in `doc/runbooks/`. OneDrive is the mirror. This reverses v2.0's
 declaration.]*
+
+**Changelog v2.1 → v2.2**
+- **E22 guardrail (HARD STOPS):** any window that rebuilds/recreates an application container is a
+  release and runs this procedure — STEP 2 and STEP 3 included — regardless of what it is called.
+- **STEP 2 dump-first correction:** `migrate-prod.sh` does NOT self-dump; the pre-migration backup is
+  always taken explicitly here, and its size verified (the 0-byte silent-failure caveat).
 
 **Changelog v2.0 → v2.1**
 - **Canonical-home inverted** (repo canonical / OneDrive mirror); filed as `doc/runbooks/RELEASE-box.md`
@@ -95,14 +101,18 @@ git log --oneline -1
 report.** Do NOT proceed on the wrong code.
 
 ### STEP 2 — DB BACKUP (precondition for migrate)
-Before any migration, **confirm a fresh DB backup exists.** `migrate-prod.sh` may take one
-automatically — confirm it did. If it does NOT, take one explicitly:
+Before any migration, **take a fresh DB backup here — `migrate-prod.sh` does NOT take one.** The
+script has no self-dump; every `pre-migration-backup-*.sql` on the box was taken manually. Take it
+explicitly:
 ```
 docker exec aramo-prod-postgres sh -c 'pg_dump "$DATABASE_URL"' > /opt/aramo/pre-migration-backup-$(date +%Y%m%d-%H%M%S).sql
-# verify the dump completed (non-trivial size, ends cleanly)
+# VERIFY SIZE before STEP 3: this command fails SILENTLY producing a 0-byte file if DATABASE_URL is
+# not present in that shell — a 0-byte / trivially-small file is NOT a backup.
+ls -l /opt/aramo/pre-migration-backup-*.sql | tail -1
 ```
-**GATE:** a verified, complete pre-migration backup must exist before STEP 3. A failed migration
-with no backup is the one genuinely unrecoverable scenario. (Skip only if RUN_MIGRATE=no.)
+**GATE:** a verified, complete pre-migration backup — **NON-ZERO size** (per the caveat above) —
+must exist before STEP 3. A failed migration with no backup is the one genuinely unrecoverable
+scenario. (Skip only if RUN_MIGRATE=no.)
 
 ### STEP 3 — MIGRATE (only if RUN_MIGRATE=yes)
 ```
@@ -198,6 +208,13 @@ endpoint, a routing change, a UI element). Prove the *change*, not just that the
 ---
 
 ## HARD STOPS / GUARDRAILS (always)
+- **Any window that rebuilds or recreates an application container** (`api`, `auth-service`,
+  `platform-admin`, or any service whose image bakes the SPA) **IS a release — run THIS procedure,
+  STEP 2 (backup) and STEP 3 (migrate) included — regardless of what the window is called or what
+  motivated it.** An infra-labelled window (a Terraform apply, a compose edit, an image bump, a
+  front-door cutover) is still a release the moment it recreates app containers. (E22: the 2026-07-28
+  front-door cutover recreated the app containers without migrating; two merged migrations went
+  unapplied and requisitions returned 500 until `migrate-prod.sh` was run manually.)
 - **NEVER** run bare `npx nx` on the box (rewrites `nx.json`, EACCES on root-owned generated files).
   Containers only.
 - Do **NOT** touch Terraform / Route53 / the firewall in a routine deploy — separate deliberate ops.
