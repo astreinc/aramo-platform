@@ -66,6 +66,8 @@
   --brand-strong: #163a6b;
   --brand-accent: #2e73c9;
   --brand-tint: #e7f0fa;
+  --brand-hover: #3355E0;
+  --brand-ondark: #7FB0FF;
 
   --rail: #122a47;
   --rail-hover: #1e3c5e;
@@ -73,6 +75,8 @@
   --rail-strong: #ffffff;
   --rail-av-bg: #244a74;
   --rail-av-text: #cfe0f4;
+  --rail-label: #95A6E5;
+  --rail-badge: rgba(255, 255, 255, 0.14);
 
   --canvas: #f4f6fa;
   --ink: #1b2730;

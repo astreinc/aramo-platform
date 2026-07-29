@@ -11,11 +11,12 @@
  * MUST define — ats-web supplies it via ui/theme.css; platform-web supplies its
  * own copy with the platform accent in PR-2). These CSS custom properties are
  * consumed by the rules below and are NOT defined here (tokens stay per-app):
- *   accent/brand : --brand, --brand-strong, --brand-accent, --brand-tint
+ *   accent/brand : --brand, --brand-strong, --brand-accent, --brand-tint,
+ *                  --brand-hover, --brand-ondark
  *   surfaces/ink : --canvas, --ink, --muted, --faint, --elev,
  *                  --surface, --surface-2, --line, --line-2
  *   rail         : --rail, --rail-text, --rail-strong, --rail-hover,
- *                  --rail-av-bg, --rail-av-text
+ *                  --rail-av-bg, --rail-av-text, --rail-label, --rail-badge
  *   semantics    : --hot/--hot-tint, --ok/--ok-tint, --warn/--warn-tint,
  *                  --info/--info-tint, --danger/--danger-tint
  *   type/radius  : --font-mono, --r-sm, --r-md, --r-lg
