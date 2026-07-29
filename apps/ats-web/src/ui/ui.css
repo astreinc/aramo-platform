@@ -2272,11 +2272,11 @@ button.rc-link-action {
 .rc-rt__row {
   display: grid;
   grid-template-columns:
-    minmax(220px, 1.6fr) minmax(196px, 1fr) minmax(150px, 0.9fr)
-    minmax(120px, 0.8fr) 96px 104px;
+    minmax(220px, 1.4fr) minmax(240px, 1.15fr) minmax(130px, 0.8fr)
+    90px 110px 100px;
   gap: 0 14px;
   align-items: center;
-  padding: 11px 16px;
+  padding: 12px 16px;
 }
 
 .rc-rt__head { border-bottom: 1px solid var(--line); }
@@ -2296,28 +2296,41 @@ button.rc-link-action {
 
 .rc-rt__row:first-of-type { border-top: none; }
 
-.rc-rt__row:hover { background: var(--surface-2); }
+.rc-rt__row:hover { background: var(--brand-tint); }
 
-.rc-rt__row--hot { box-shadow: inset 3px 0 0 var(--hot); }
+/* Hot rows carry a "Hot" badge next to the title (mockup grammar), not a
+   row-level left bar — the prototype has no hot-row edge treatment. */
 
 /* Requisition cell */
 
 .rc-rt__req { min-width: 0; }
 
+.rc-rt__top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
 .rc-rt__title {
-  font-size: 0.9rem;
-  font-weight: 700;
+  font-size: 0.845rem;
+  font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--brand);
   text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .rc-rt__title:hover { color: var(--brand-strong); }
 
-.rc-rt__title svg { width: 13px; height: 13px; color: var(--hot); }
+.rc-rt__hot {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--hot);
+  background: var(--hot-tint);
+  border-radius: 20px;
+  padding: 2px 8px;
+}
 
 .rc-rt__title:focus-visible {
   outline: 2px solid var(--brand-accent);
@@ -2341,10 +2354,9 @@ button.rc-link-action {
 .rc-rt__stats {
   display: inline-flex;
   align-items: center;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  background: var(--canvas);
   border-radius: var(--r-md);
-  padding: 6px 2px;
+  padding: 7px 4px;
 }
 
 .rc-stat {
@@ -2358,7 +2370,11 @@ button.rc-link-action {
 
 .rc-stat + .rc-stat { border-left: 1px solid var(--line); }
 
-.rc-stat b { font-size: 0.9rem; font-weight: 700; color: var(--ink); }
+.rc-stat b { font-size: 0.845rem; font-weight: 700; color: var(--ink); }
+
+/* Lead metric (In pipeline) carries the brand accent — the prototype's
+   first stat is brand-blue. */
+.rc-stat--lead b { color: var(--brand); }
 
 .rc-stat__l { font-size: 0.66rem; color: var(--muted); }
 
@@ -2372,8 +2388,7 @@ button.rc-link-action {
   width: 84px;
   border-radius: 3px;
   overflow: hidden;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  background: var(--line);
   flex: none;
 }
 
@@ -2391,15 +2406,6 @@ button.rc-link-action {
 /* Owner / Updated / Status cells */
 
 .rc-rt__owner { display: flex; align-items: center; gap: 7px; min-width: 0; }
-
-.rc-rt__ownernm {
-  font-size: 0.76rem;
-  color: var(--muted);
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 .rc-rt__upd { font-size: 0.76rem; color: var(--muted); }
 
