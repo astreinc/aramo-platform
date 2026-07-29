@@ -32,10 +32,10 @@
   --c-text-subtle: #93a0a8; /* faint */
 
   /* Accent → Portal Teal */
-  --c-accent: #0f766e;
-  --c-accent-hover: #0b5a54;
-  --c-accent-active: #08443f;
-  --c-accent-soft: #e4f3f0; /* brand-tint */
+  --c-accent: #022AC0;
+  --c-accent-hover: #3355E0;
+  --c-accent-active: #011665;
+  --c-accent-soft: #E8EDFB; /* brand-tint */
   --c-accent-fg: #ffffff;
 
   /* States (semantics held identical to the other consoles) */
@@ -45,7 +45,7 @@
   --c-success: #1f7a4d;
   --c-success-soft: #e6f2ea;
   --c-success-border: #c5e2cf;
-  --c-focus-ring: #17a398; /* brand-accent */
+  --c-focus-ring: #3355E0; /* brand-accent */
 
   /* Type — same families as the other consoles */
   --font-sans: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
@@ -64,20 +64,20 @@
   /* ── 2. The fe-foundation ui.css token-variable CONTRACT ── */
 
   /* accent/brand — Portal Teal */
-  --brand: #0f766e;
-  --brand-strong: #0b5a54;
-  --brand-accent: #17a398;
-  --brand-tint: #e4f3f0;
+  --brand: #022AC0;
+  --brand-strong: #011F8D;
+  --brand-accent: #3355E0;
+  --brand-tint: #E8EDFB;
   --brand-hover: #3355E0;
   --brand-ondark: #7FB0FF;
 
   /* rail — deep teal-charcoal (vs ats-web navy #122a47, platform violet #221a3a) */
-  --rail: #123430;
-  --rail-hover: #1c4a44;
-  --rail-text: #9cc7c1;
+  --rail: #022AC0;
+  --rail-hover: rgba(255, 255, 255, 0.08);
+  --rail-text: #D9DFF6;
   --rail-strong: #ffffff;
-  --rail-av-bg: #0b5a54;
-  --rail-av-text: #cdeae6;
+  --rail-av-bg: #3555CD;
+  --rail-av-text: #FFFFFF;
   --rail-label: #95A6E5;
   --rail-badge: rgba(255, 255, 255, 0.14);
 
