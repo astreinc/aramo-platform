@@ -32,10 +32,10 @@
   --c-text-subtle: #93a0a8; /* faint */
 
   /* Accent → Confident Blue brand */
-  --c-accent: #1f4e8c;
-  --c-accent-hover: #163a6b;
-  --c-accent-active: #122a47;
-  --c-accent-soft: #e7f0fa; /* brand-tint */
+  --c-accent: #022AC0;
+  --c-accent-hover: #3355E0;
+  --c-accent-active: #011665;
+  --c-accent-soft: #E8EDFB; /* brand-tint */
   --c-accent-fg: #ffffff;
 
   /* States (semantics held close to the locked palette) */
@@ -45,7 +45,7 @@
   --c-success: #1f7a4d;
   --c-success-soft: #e6f2ea;
   --c-success-border: #c5e2cf;
-  --c-focus-ring: #2e73c9; /* brand-accent */
+  --c-focus-ring: #3355E0; /* brand-accent */
 
   /* Type — Hanken Grotesk (UI) + IBM Plex Mono (IDs/codes/timestamps) */
   --font-sans: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
@@ -62,19 +62,19 @@
   --sh-3: 0 8px 28px rgba(20, 35, 48, 0.12), 0 2px 6px rgba(20, 35, 48, 0.06);
 
   /* ── 2. New Confident Blue namespace (app-layer components) ── */
-  --brand: #1f4e8c;
-  --brand-strong: #163a6b;
-  --brand-accent: #2e73c9;
-  --brand-tint: #e7f0fa;
+  --brand: #022AC0;
+  --brand-strong: #011F8D;
+  --brand-accent: #3355E0;
+  --brand-tint: #E8EDFB;
   --brand-hover: #3355E0;
   --brand-ondark: #7FB0FF;
 
-  --rail: #122a47;
-  --rail-hover: #1e3c5e;
-  --rail-text: #a7bbd4;
+  --rail: #022AC0;
+  --rail-hover: rgba(255, 255, 255, 0.08);
+  --rail-text: #D9DFF6;
   --rail-strong: #ffffff;
-  --rail-av-bg: #244a74;
-  --rail-av-text: #cfe0f4;
+  --rail-av-bg: #3555CD;
+  --rail-av-text: #FFFFFF;
   --rail-label: #95A6E5;
   --rail-badge: rgba(255, 255, 255, 0.14);
 

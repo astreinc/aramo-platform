@@ -1623,7 +1623,7 @@ button.rc-link-action {
 
 .rc-view__ct { font-size: .72rem; color: var(--faint); font-variant-numeric: tabular-nums; }
 
-.rc-view.on .rc-view__ct { color: #cfe0f4; }
+.rc-view.on .rc-view__ct { color: var(--rail-av-text); }
 
 /* Save current view — dashed affordance (no backend yet → disabled stub). */
 
@@ -2651,7 +2651,7 @@ select.rc-input { appearance: none; padding-right: 28px; }
 .rc-skill {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 0.76rem; font-weight: 600; color: var(--brand-strong);
-  background: var(--brand-tint); border: 1px solid #cfe0f4; border-radius: 20px; padding: 4px 6px 4px 10px;
+  background: var(--brand-tint); border: 1px solid var(--line-2); border-radius: 20px; padding: 4px 6px 4px 10px;
 }
 
 .rc-skill__x { border: none; background: none; color: var(--brand); cursor: pointer; display: grid; place-items: center; padding: 0; }
