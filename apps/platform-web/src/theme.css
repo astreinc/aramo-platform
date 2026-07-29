@@ -69,6 +69,8 @@
   --brand-strong: #45307c;
   --brand-accent: #7c5cc9;
   --brand-tint: #efeafc;
+  --brand-hover: #3355E0;
+  --brand-ondark: #7FB0FF;
 
   /* rail — deep violet-charcoal (vs ats-web navy #122a47) */
   --rail: #221a3a;
@@ -77,6 +79,8 @@
   --rail-strong: #ffffff;
   --rail-av-bg: #45307c;
   --rail-av-text: #ddd0f5;
+  --rail-label: #91939C;
+  --rail-badge: rgba(255, 255, 255, 0.14);
 
   /* surfaces/ink — identical to ats-web */
   --canvas: #f4f6fa;

@@ -68,6 +68,8 @@
   --brand-strong: #0b5a54;
   --brand-accent: #17a398;
   --brand-tint: #e4f3f0;
+  --brand-hover: #3355E0;
+  --brand-ondark: #7FB0FF;
 
   /* rail — deep teal-charcoal (vs ats-web navy #122a47, platform violet #221a3a) */
   --rail: #123430;
@@ -76,6 +78,8 @@
   --rail-strong: #ffffff;
   --rail-av-bg: #0b5a54;
   --rail-av-text: #cdeae6;
+  --rail-label: #95A6E5;
+  --rail-badge: rgba(255, 255, 255, 0.14);
 
   /* surfaces/ink — identical to the other consoles */
   --canvas: #f4f6fa;
