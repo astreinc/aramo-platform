@@ -2160,12 +2160,12 @@ button.rc-link-action {
 
 .rc-filelist__meta { margin-left: auto; color: var(--faint); font-size: 0.78rem; }
 
-/* ─────────────── Requisitions list — card-row grammar (mockup parity) ───────────────
- * The Requisitions list rebuilt to the enterprise mockup's card grammar: a
- * "needs-attention" banner, a richer filter bar (scope chips + native selects),
- * and stacked requisition rows carrying a meta strip + owner cell + a RESERVED
- * (disabled) AI-matching seam. All data is real/derived — no mocks. Token-based
- * throughout; the `--soon` pill is a non-interactive seam (no match engine yet). */
+/* ─────────────── Requisitions list — table grammar (Requisitions.dc.html) ───────────────
+ * The Requisitions list rebuilt to the prototype's TABLE grammar: a
+ * "needs-attention" banner, a filter bar (scope chips + native selects), and a
+ * columnar table (Requisition · Talent · Pipeline · Owner · Updated · Status).
+ * All data is real/derived — no mocks. Token-based throughout. Match/Matches is
+ * NOT on this surface (PR-REQ R1: the reserved seam lives on the detail page). */
 
 /* needs-attention banner */
 
@@ -2259,139 +2259,151 @@ button.rc-link-action {
 
 .rc-listmeta b { color: var(--ok); }
 
-/* requisition rows */
+/* requisition table — Requisitions.dc.html column grammar
+ * Requisition · Talent · Pipeline · Owner · Updated · Status. A horizontal
+ * scroller keeps the columns intact on narrow viewports (mockup parity:
+ * overflow-x + a min-width inner). All colour is token-based. */
 
-.rc-reqs { display: flex; flex-direction: column; gap: 10px; }
+.rc-rt__scroll { overflow-x: auto; }
 
-.rc-reqrow {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--elev);
-  transition: border-color 0.12s;
-}
+.rc-rt { min-width: 940px; }
 
-.rc-reqrow:hover { border-color: var(--line-2); }
-
-.rc-reqrow--focused { border-left: 3px solid var(--hot); }
-
-.rc-reqrow__main {
+.rc-rt__head,
+.rc-rt__row {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 14px;
-  padding: 14px 16px;
+  grid-template-columns:
+    minmax(220px, 1.6fr) minmax(196px, 1fr) minmax(150px, 0.9fr)
+    minmax(120px, 0.8fr) 96px 104px;
+  gap: 0 14px;
   align-items: center;
+  padding: 11px 16px;
 }
 
-.rc-reqrow__l { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.rc-rt__head { border-bottom: 1px solid var(--line); }
 
-.rc-reqrow__top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rc-rt__hc {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
 
-.rc-reqrow__title {
-  font-size: 0.96rem;
+.rc-rt__row {
+  border-top: 1px solid var(--line);
+  transition: background 0.12s;
+}
+
+.rc-rt__row:first-of-type { border-top: none; }
+
+.rc-rt__row:hover { background: var(--surface-2); }
+
+.rc-rt__row--hot { box-shadow: inset 3px 0 0 var(--hot); }
+
+/* Requisition cell */
+
+.rc-rt__req { min-width: 0; }
+
+.rc-rt__title {
+  font-size: 0.9rem;
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: var(--ink);
+  color: var(--brand);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.rc-reqrow__title:hover { color: var(--brand-strong); }
+.rc-rt__title:hover { color: var(--brand-strong); }
 
-.rc-reqrow__title svg { width: 14px; height: 14px; color: var(--hot); }
+.rc-rt__title svg { width: 13px; height: 13px; color: var(--hot); }
 
-.rc-reqrow__title:focus-visible {
+.rc-rt__title:focus-visible {
   outline: 2px solid var(--brand-accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-.rc-reqrow__client { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
-
-.rc-reqrow__rid { font-size: 0.72rem; color: var(--faint); }
-
-.rc-reqrow__meta {
+.rc-rt__sub {
+  margin-top: 3px;
   display: flex;
-  align-items: center;
-  gap: 16px;
   flex-wrap: wrap;
-  font-size: 0.78rem;
-  color: var(--muted);
+  align-items: center;
+  font-size: 0.74rem;
+  color: var(--faint);
 }
 
-.rc-rm { display: inline-flex; align-items: center; gap: 6px; }
+.rc-rt__dot { margin: 0 6px; color: var(--line-2); }
 
-.rc-rm svg { width: 13px; height: 13px; color: var(--faint); }
+/* Talent stat block (R2: total in pipeline + Submitted + Interview) */
 
-.rc-rm b { color: var(--ink); font-weight: 600; }
-
-.rc-pipebar {
-  width: 84px;
-  height: 6px;
-  border-radius: 20px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  overflow: hidden;
-  display: flex;
-}
-
-.rc-pipebar i { height: 100%; display: block; }
-
-.rc-pipebar i.is-sub { background: var(--brand); }
-
-.rc-pipebar i.is-active { background: var(--brand-accent); }
-
-.rc-reqrow__r { display: flex; align-items: center; gap: 14px; flex: none; }
-
-.rc-owner { display: flex; align-items: center; gap: 7px; }
-
-.rc-owner__nm { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
-
-/* reserved AI-matching seam — disabled, non-interactive (no match engine yet) */
-
-.rc-apill {
+.rc-rt__stats {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: var(--r-md);
-  font-size: 0.78rem;
-  font-weight: 600;
-  border: 1px dashed var(--line-2);
   background: var(--surface-2);
-  color: var(--faint);
-  cursor: not-allowed;
-  white-space: nowrap;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 6px 2px;
 }
 
-.rc-apill svg { width: 14px; height: 14px; }
+.rc-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 0 12px;
+  min-width: 44px;
+}
 
-.rc-reqrow__chev {
-  width: 20px;
-  height: 20px;
-  color: var(--faint);
+.rc-stat + .rc-stat { border-left: 1px solid var(--line); }
+
+.rc-stat b { font-size: 0.9rem; font-weight: 700; color: var(--ink); }
+
+.rc-stat__l { font-size: 0.66rem; color: var(--muted); }
+
+/* Pipeline distribution bar (the 6-bucket funnel, segmented) */
+
+.rc-rt__pipe { display: flex; align-items: center; gap: 9px; }
+
+.rc-distbar {
+  display: flex;
+  height: 5px;
+  width: 84px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
   flex: none;
-  display: grid;
-  place-items: center;
 }
 
-.rc-reqrow__chev:hover { color: var(--brand-strong); }
+.rc-distseg { display: block; height: 100%; }
 
-.rc-reqrow__chev svg { width: 18px; height: 18px; }
+.rc-distseg--sourced { background: var(--line-2); }
+.rc-distseg--qualifying { background: var(--info); }
+.rc-distseg--submitted { background: var(--brand); }
+.rc-distseg--interview { background: var(--brand-accent); }
+.rc-distseg--offer { background: var(--warn); }
+.rc-distseg--placed { background: var(--ok); }
 
-.rc-reqrow__chev:focus-visible {
-  outline: 2px solid var(--brand-accent);
-  outline-offset: 2px;
-  border-radius: 4px;
+.rc-distbar__n { font-size: 0.74rem; color: var(--muted); }
+
+/* Owner / Updated / Status cells */
+
+.rc-rt__owner { display: flex; align-items: center; gap: 7px; min-width: 0; }
+
+.rc-rt__ownernm {
+  font-size: 0.76rem;
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-@media (max-width: 720px) {
-.rc-reqrow__main { grid-template-columns: 1fr; }
-.rc-reqrow__r { justify-content: flex-start; }
-}
+.rc-rt__upd { font-size: 0.76rem; color: var(--muted); }
+
+.rc-rt__status { display: flex; }
 
 /* ═══════════════ Add-Talent (intake rebuild — mockup parity) ═══════════════ */
 

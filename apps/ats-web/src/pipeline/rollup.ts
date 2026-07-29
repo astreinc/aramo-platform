@@ -4,7 +4,7 @@
 // actor's visible requisitions); grouped by requisition_id client-side so the
 // surfaces share ONE call, not N+1, and can never drift on the bucket rules.
 
-import { funnelBucket } from '../ui';
+import { funnelBucket, funnelCounts, type FunnelBucketKey } from '../ui';
 
 import { CLOSED_STATUSES, type PipelineStatus, type PipelineView } from './types';
 
@@ -32,4 +32,34 @@ export function rollupByRequisition(
     };
   }
   return byReq;
+}
+
+// Per-requisition FUNNEL breakdown — the 6-bucket {label,count} cells the
+// Requisitions list's stat block + distribution bar both read. Same ONE
+// /v1/pipelines call, grouped by requisition_id (never N+1); the bucket rules
+// live once in stage-map's funnelCounts so this can't drift from the detail
+// ribbon. `total` is every pipeline entry on the req (matches the detail
+// sidecard's "In pipeline"). A req with no entries is simply absent from the
+// map — the caller renders an all-zero funnel.
+export interface ReqFunnel {
+  readonly total: number;
+  readonly cells: readonly {
+    key: FunnelBucketKey;
+    label: string;
+    count: number;
+  }[];
+}
+
+export function funnelByRequisition(
+  pipelines: readonly PipelineView[],
+): Record<string, ReqFunnel> {
+  const byReq: Record<string, PipelineStatus[]> = {};
+  for (const p of pipelines) {
+    (byReq[p.requisition_id] ??= []).push(p.status);
+  }
+  const out: Record<string, ReqFunnel> = {};
+  for (const [reqId, statuses] of Object.entries(byReq)) {
+    out[reqId] = { total: statuses.length, cells: funnelCounts(statuses) };
+  }
+  return out;
 }
