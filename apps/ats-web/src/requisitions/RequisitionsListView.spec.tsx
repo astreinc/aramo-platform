@@ -96,6 +96,29 @@ function mockFetch(items: readonly RequisitionView[]) {
   );
 }
 
+// A per-endpoint mock so company names + pipelines resolve for real.
+function mockEndpoints(opts: {
+  reqs: readonly RequisitionView[];
+  companies?: ReadonlyArray<{ id: string; name: string }>;
+  pipelines?: ReadonlyArray<{ id: string; requisition_id: string; status: string }>;
+  roster?: ReadonlyArray<{ user_id: string; display_name: string }>;
+}) {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = typeof input === 'string' ? input : (input as Request).url;
+    const body = url.includes('/v1/pipelines')
+      ? { items: opts.pipelines ?? [] }
+      : url.includes('/v1/tenant/users')
+        ? { items: opts.roster ?? [] }
+        : url.includes('/v1/companies')
+          ? { items: opts.companies ?? [] }
+          : { items: opts.reqs };
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+}
+
 function renderList(props = {}) {
   return render(
     <MemoryRouter>
@@ -124,8 +147,6 @@ describe('RequisitionsListView', () => {
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    // The title link (the chevron is a second, descriptively-labelled link to
-    // the same detail — selecting by the exact title name targets the title).
     expect(
       screen.getByRole('link', { name: 'Senior Engineer' }),
     ).toHaveAttribute('href', '/requisitions/req-open');
@@ -155,7 +176,6 @@ describe('RequisitionsListView', () => {
   });
 
   it('default "My reqs" shows the whole visible payload for a non-read:all principal (server already scoped it)', async () => {
-    // No read:all → isMine is true for every visible row → "My reqs" == "All".
     mockFetch([OPEN, HOLD]);
     renderList();
     await waitFor(() =>
@@ -164,7 +184,6 @@ describe('RequisitionsListView', () => {
     expect(
       screen.getByRole('button', { name: 'My reqs' }),
     ).toHaveAttribute('aria-pressed', 'true');
-    // Both visible (active) reqs render — not blanked by the owner-field test.
     expect(screen.getByText('Mid Engineer')).toBeInTheDocument();
   });
 
@@ -184,16 +203,13 @@ describe('RequisitionsListView', () => {
         exp: 0,
       },
     });
-    // Default My reqs + read:all → only the owned row.
     await waitFor(() => expect(screen.getByText('My Req')).toBeInTheDocument());
     expect(screen.queryByText('Their Req')).not.toBeInTheDocument();
-    // "All" reveals the tenant-wide row.
     fireEvent.click(screen.getByRole('button', { name: 'All' }));
     expect(screen.getByText('Their Req')).toBeInTheDocument();
   });
 
   it('"Needs sourcing" filters to active reqs with an empty pipeline', async () => {
-    // OPEN has no pipeline rows in the mock → active count 0 → needs sourcing.
     mockFetch([OPEN]);
     renderList();
     await waitFor(() =>
@@ -201,15 +217,6 @@ describe('RequisitionsListView', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Needs sourcing' }));
     expect(screen.getByText('Senior Engineer')).toBeInTheDocument();
-  });
-
-  it('"Matches — coming with Aramo Core" chip is rendered DISABLED (no count, R10 seam)', async () => {
-    mockFetch([OPEN]);
-    renderList();
-    const chip = await screen.findByRole('button', {
-      name: /Matches — coming with Aramo Core/,
-    });
-    expect(chip).toBeDisabled();
   });
 
   it('the scoped search filters by title', async () => {
@@ -276,74 +283,120 @@ describe('RequisitionsListView', () => {
     ).toHaveAttribute('href', '/requisitions/new');
   });
 
-  it('parity: Pipeline/Submitted counts (one /v1/pipelines call, grouped) + Recruiter name (roster)', async () => {
+  // ── PR-REQ rulings ──
+
+  it('R2: Talent stat block shows total in pipeline + Submitted + Interview from one /v1/pipelines call', async () => {
     const REQ = makeReq('req-r', 'Platform Engineer', 'active', {
       recruiter_id: 'usr-1',
     });
-    const PIPELINES = [
-      { id: 'p1', requisition_id: 'req-r', status: 'no_contact' },
-      { id: 'p2', requisition_id: 'req-r', status: 'submitted' },
-      { id: 'p3', requisition_id: 'req-r', status: 'interviewing' },
-      { id: 'p4', requisition_id: 'req-r', status: 'placed' },
-    ];
-    const ROSTER = {
-      items: [
-        {
-          user_id: 'usr-1',
-          email: 'p@x.test',
-          display_name: 'Priya Recruiter',
-          is_active: true,
-        },
+    mockEndpoints({
+      reqs: [REQ],
+      companies: [{ id: 'co-1', name: 'Northwind' }],
+      roster: [{ user_id: 'usr-1', display_name: 'Priya Recruiter' }],
+      pipelines: [
+        { id: 'p1', requisition_id: 'req-r', status: 'no_contact' }, // sourced
+        { id: 'p2', requisition_id: 'req-r', status: 'submitted' }, // submitted
+        { id: 'p3', requisition_id: 'req-r', status: 'interviewing' }, // interview
+        { id: 'p4', requisition_id: 'req-r', status: 'placed' }, // placed
       ],
-    };
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : (input as Request).url;
-      const body = url.includes('/v1/pipelines')
-        ? { items: PIPELINES }
-        : url.includes('/v1/tenant/users')
-          ? ROSTER
-          : url.includes('/v1/companies')
-            ? { items: [{ id: 'co-1', name: 'Northwind' }] }
-            : { items: [REQ] };
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
     });
     renderList();
     await waitFor(() =>
       expect(screen.getByText('Platform Engineer')).toBeInTheDocument(),
     );
-    // Recruiter resolved via the roster.
+    // Recruiter resolves via the roster; the stat block uses FUNNEL_BUCKETS names.
     await waitFor(() =>
       expect(screen.getByText('Priya Recruiter')).toBeInTheDocument(),
     );
-    // active = 4 minus the placed (terminal) = 3; submitted+ = submitted +
-    // interviewing + placed = 3.
-    const cells = screen.getAllByText('3');
-    expect(cells.length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('In pipeline')).toBeInTheDocument();
+    expect(screen.getByText('Submitted')).toBeInTheDocument();
+    expect(screen.getByText('Interview')).toBeInTheDocument();
+    // total in pipeline = 4 (every entry) → appears in the stat block AND the
+    // distribution-bar total.
+    expect(screen.getAllByText('4').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('R1: NO Match/Matches affordance on the list surface (reserved seam is detail-only)', async () => {
+    mockFetch([OPEN, HOT]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
+    );
+    // No disabled "Matches" filter chip, no per-row "AI matching" seam, no
+    // "coming with Aramo Core" copy — Match/Matches lives only on the detail.
+    expect(screen.queryByText(/coming with Aramo Core/i)).toBeNull();
+    expect(screen.queryByText(/AI matching/i)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /match/i }),
+    ).toBeNull();
+  });
+
+  it('R4: the identity sub-line renders external_req_id when present and reads cleanly when absent', async () => {
+    const WITH = makeReq('req-w', 'With Code', 'active', {
+      external_req_id: 'VMS-9',
+    });
+    mockEndpoints({
+      reqs: [WITH],
+      companies: [{ id: 'co-1', name: 'Northwind' }],
+    });
+    const { unmount } = renderList();
+    const withTitle = await screen.findByRole('link', { name: 'With Code' });
+    // Scope to the requisition cell's sub-line (company name also appears in
+    // the client-filter <option>, so a global getByText would be ambiguous).
+    const withSub = withTitle
+      .closest('.rc-rt__req')
+      ?.querySelector('.rc-rt__sub');
+    expect(withSub?.textContent).toContain('VMS-9');
+    expect(withSub?.textContent).toContain('Northwind');
+    unmount();
+    vi.restoreAllMocks();
+
+    // Absent (the common case for a manually-created req): the sub-line still
+    // renders the company with NO dangling leading separator.
+    const WITHOUT = makeReq('req-x', 'No Code', 'active');
+    mockEndpoints({
+      reqs: [WITHOUT],
+      companies: [{ id: 'co-1', name: 'Northwind' }],
+    });
+    renderList();
+    const title = await screen.findByRole('link', { name: 'No Code' });
+    expect(screen.queryByText('null')).toBeNull();
+    const sub = title.closest('.rc-rt__req')?.querySelector('.rc-rt__sub');
+    expect(sub?.textContent ?? '').toContain('Northwind');
+    expect((sub?.textContent ?? '').trim().startsWith('·')).toBe(false);
+  });
+
+  it('R5: the summary line uses only real enum values (active / on hold / closed), no derived "open"', async () => {
+    mockFetch([OPEN, HOLD, CLOSED]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText('1 active · 1 on hold · 1 closed'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the real 6-value status pill (On hold renders, not collapsed to a 3-bucket)', async () => {
+    mockFetch([HOLD]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Mid Engineer')).toBeInTheDocument(),
+    );
+    // The status PILL (the status-filter <option> also carries the label).
+    expect(
+      screen.getByText('On hold', { selector: '.rc-pill' }),
+    ).toBeInTheDocument();
   });
 
   it('shows "Unassigned" in the owner cell and offers no reassign action', async () => {
-    // OPEN has recruiter_id + owner_id null.
     mockFetch([OPEN]);
     renderList();
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
     expect(screen.getByText('Unassigned')).toBeInTheDocument();
-    // Reassignment is deferred — no assign control on the surface.
     expect(screen.queryByRole('button', { name: /assign/i })).toBeNull();
-  });
-
-  it('renders the AI-matching seam DISABLED with the fixed coming-soon label', async () => {
-    mockFetch([OPEN]);
-    renderList();
-    const pill = await screen.findByRole('button', { name: /AI matching/i });
-    expect(pill).toBeDisabled();
-    // Pinning the exact label proves the reserved seam surfaces no ordinal
-    // verdict vocabulary (no tiers/verdicts) — it is a non-functional seam.
-    expect(pill).toHaveTextContent('AI matching — coming with Aramo Core');
   });
 
   it('surfaces a needs-attention banner for hot requisitions', async () => {
