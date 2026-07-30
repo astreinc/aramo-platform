@@ -33,10 +33,10 @@
   --c-text-faint: #9aa0b0; /* marquee / faintest */
 
   /* Primary blue */
-  --c-accent: #004fcb;
-  --c-accent-hover: #003da0; /* link hover */
-  --c-accent-active: #3d49a0; /* primary-hover family */
-  --c-accent-soft: #e9eefc; /* soft blue fill */
+  --c-accent: #022AC0;
+  --c-accent-hover: #3355E0; /* link hover — PR-B brand ramp (was #003da0) */
+  --c-accent-active: #011665; /* pressed state of the accent — PR-B ramp v1.2 §4 (was #3d49a0) */
+  --c-accent-soft: #E8EDFB; /* soft blue fill (wash) — PR-B brand ramp (was #e9eefc) */
   --c-accent-fg: #ffffff;
 
   /* Accent magenta (eyebrows, highlights — used sparingly) */
@@ -78,10 +78,10 @@
   --c-danger: #b91c1c;
   --c-danger-soft: #fef2f2;
   --c-danger-border: #fecaca;
-  --c-focus-ring: #004fcb;
+  --c-focus-ring: #022AC0;
 
   /* ===== SIGNATURE GRADIENTS (DDR §3) ===== */
-  --grad-cta: linear-gradient(120deg, #004fcb, #9d2b6b);
+  --grad-cta: linear-gradient(120deg, #022AC0, #9d2b6b);
   --grad-dark-card: linear-gradient(120deg, #2d2d2d, #1c1f45);
 
   /* ===== TYPE (DDR §3) ===== */
