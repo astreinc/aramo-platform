@@ -486,10 +486,12 @@ function RequisitionRow({
     >
       {/* Requisition */}
       <div className="rc-rt__req">
-        <Link to={detailHref} className="rc-rt__title">
-          {req.title}
-          {req.is_hot ? <Icons.IconFlame aria-label="Hot" /> : null}
-        </Link>
+        <div className="rc-rt__top">
+          <Link to={detailHref} className="rc-rt__title">
+            {req.title}
+          </Link>
+          {req.is_hot ? <span className="rc-rt__hot">Hot</span> : null}
+        </div>
         {idParts.length > 0 ? (
           <div className="rc-rt__sub">
             {idParts.map((part, i) => (
@@ -504,7 +506,7 @@ function RequisitionRow({
 
       {/* Talent — R2 stat block: total in pipeline + Submitted + Interview */}
       <div className="rc-rt__stats">
-        <span className="rc-stat">
+        <span className="rc-stat rc-stat--lead">
           <b className="num">{total}</b>
           <span className="rc-stat__l">In pipeline</span>
         </span>
@@ -537,17 +539,11 @@ function RequisitionRow({
       </div>
 
       {/* Owner */}
-      <div className="rc-rt__owner">
+      <div className="rc-rt__owner" title={owner ?? 'Unassigned'}>
         {owner != null ? (
-          <>
-            <Avatar name={owner} size="sm" />
-            <span className="rc-rt__ownernm">{owner}</span>
-          </>
+          <Avatar name={owner} size="sm" />
         ) : (
-          <>
-            <Avatar initials="?" size="sm" />
-            <span className="rc-rt__ownernm">Unassigned</span>
-          </>
+          <Avatar initials="?" size="sm" />
         )}
       </div>
 

@@ -304,9 +304,10 @@ describe('RequisitionsListView', () => {
     await waitFor(() =>
       expect(screen.getByText('Platform Engineer')).toBeInTheDocument(),
     );
-    // Recruiter resolves via the roster; the stat block uses FUNNEL_BUCKETS names.
+    // Recruiter resolves via the roster; the owner cell is avatar-only (mockup
+    // parity), so the resolved name is carried on the cell's title tooltip.
     await waitFor(() =>
-      expect(screen.getByText('Priya Recruiter')).toBeInTheDocument(),
+      expect(screen.getByTitle('Priya Recruiter')).toBeInTheDocument(),
     );
     expect(screen.getByText('In pipeline')).toBeInTheDocument();
     expect(screen.getByText('Submitted')).toBeInTheDocument();
@@ -389,13 +390,15 @@ describe('RequisitionsListView', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows "Unassigned" in the owner cell and offers no reassign action', async () => {
+  it('shows the unassigned state in the owner cell and offers no reassign action', async () => {
     mockFetch([OPEN]);
     renderList();
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    expect(screen.getByText('Unassigned')).toBeInTheDocument();
+    // Owner cell is avatar-only (mockup parity); the unassigned state is carried
+    // on the cell's title tooltip, and there is no reassign affordance.
+    expect(screen.getByTitle('Unassigned')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /assign/i })).toBeNull();
   });
 
