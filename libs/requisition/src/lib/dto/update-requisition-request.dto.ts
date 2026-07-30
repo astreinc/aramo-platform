@@ -20,7 +20,9 @@ export interface UpdateRequisitionRequestDto {
   notes?: string | null;
   is_hot?: boolean;
   openings?: number;
-  openings_available?: number;
+  // openings_available is intentionally NOT writable via the API (PR-0b-1).
+  // A PATCH carrying it is ignored; the counter is mutated ONLY by pipeline
+  // placement transitions.
   start_date?: string | null;
   city?: string | null;
   state?: string | null;

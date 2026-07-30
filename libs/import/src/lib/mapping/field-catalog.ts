@@ -165,7 +165,10 @@ const REQUISITION_CATALOG: readonly FieldCatalogEntry[] = [
   // surface for the legacy pair. Use the structured columns (pay_rate_*,
   // bill_rate_*, salary_amount, salary_currency, placement_fee_*) instead.
   { field: 'openings',    type: 'int',    required: false, example: '3',               synonyms: ['openings', 'positions', 'headcount', 'slots', 'count'] },
-  { field: 'openings_available', type: 'int', required: false, example: '2',           synonyms: ['openingsavailable', 'available', 'openpositions'] },
+  // PR-0b-1: openings_available removed as an importable field — it is a
+  // derived availability counter, not an authored value. Import sets only
+  // `openings`; availability initialises to it and is thereafter mutated
+  // only by pipeline placement transitions.
   { field: 'start_date',  type: 'date',   required: false, example: '2026-08-01',      synonyms: ['startdate', 'start', 'datestart', 'begindate'] },
   { field: 'city',        type: 'string', required: false, example: 'Boston',          synonyms: ['city', 'town', 'location', 'jobcity'] },
   { field: 'state',       type: 'string', required: false, example: 'MA',              synonyms: ['state', 'province'] },
