@@ -83,3 +83,58 @@ model StoredPolicyVersion {
   @@index([tenant_id, package_name, effective_from])
   @@schema("policy_store")
 }
+
+// PolicyDecisionRecord — decision provenance (ADR-0024 §D17a). One APPEND-ONLY
+// row per policy resolution, for EVERY outcome (ALLOW · DENY ·
+// REQUIRES_OVERRIDE · ALLOW_WITH_AUDIT) — a denial is the most important thing
+// to keep explainable months later. There is NO update path and NO delete
+// path: a decision record is history.
+//
+// `policy_version` + `rule_id` are REQUIRED (never nullable) — a record that
+// cannot be traced to the rule that produced it is not provenance. For a
+// no-match resolved by the package's default_disposition, `rule_id` carries
+// the engine's `__default__` provenance marker (emitted by the evaluator).
+//
+// `inputs` is a JSONB snapshot of the PolicyContext AS EVALUATED, and is
+// PII-FREE by construction: resource/action identifiers, declared/derived
+// state and resolved capability booleans only (see decision-inputs.ts). No
+// domain nouns — the identifiers are opaque strings this library never reads.
+model PolicyDecisionRecord {
+  // Surrogate id, UUID v7 generated app-side.
+  id String @id @db.Uuid
+
+  // Tenant that owns this decision. Every retrieval is keyed by tenant_id.
+  tenant_id String @db.Uuid
+
+  // The verdict (§D9 vocabulary: ALLOW | DENY | REQUIRES_OVERRIDE |
+  // ALLOW_WITH_AUDIT). Stored as text — the engine owns the enum.
+  decision String
+
+  // The policy version that evaluated it, and the id of the rule that
+  // produced the verdict (or `__default__` for a default-disposition
+  // no-match). Both REQUIRED.
+  policy_version String
+  rule_id        String
+
+  // The reason code the verdict carried.
+  reason_code String
+
+  // The registered resource/action identifiers the decision governed
+  // (opaque; §D5).
+  resource String
+  action   String
+
+  // PII-free snapshot of the evaluated context (see decision-inputs.ts).
+  inputs Json
+
+  // Who, from where, when, and which command this record belongs to.
+  actor_id       String
+  origin         String // ui | agent | integration (§D8)
+  correlation_id String
+  occurred_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  // Group one command's records; tenant-scoped time-ordered reads.
+  @@index([tenant_id, correlation_id])
+  @@index([tenant_id, occurred_at])
+  @@schema("policy_store")
+}
