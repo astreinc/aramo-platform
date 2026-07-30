@@ -1,0 +1,85 @@
+// Per-module Prisma schema for the `policy-store` library — ADR-0024 PR-2
+// (§D7 "storage is a separate library", §D17b "Policy versioning").
+//
+// Per Architecture v2.1 §7 (Schema-per-Module data architecture) and
+// doc/05-conventions.md "Database Conventions". Cross-schema references
+// elsewhere in the program are UUID-only without FK constraints (§7.3);
+// this library holds no cross-schema references at all — a stored policy
+// version is self-contained (its definition is an opaque, checksummed
+// PolicyPackage blob).
+//
+// SCOPE (PR-2 directive): storage · versioning · publication · tenant
+// retrieval · caching. It never evaluates a policy, NO decision model, NO domain
+// nouns. The single entity is the versioned policy definition record whose
+// column set is D17b verbatim: definition · version · effective_from ·
+// effective_to · published_by · checksum.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["policy_store"]
+}
+
+// StoredPolicyVersion — one immutable, published version of one policy
+// package for one tenant. D17b field set:
+//
+//   definition      → the serialized PolicyPackage (opaque to this lib;
+//                     typed as @aramo/policy-engine PolicyPackage at the
+//                     TypeScript boundary, persisted as JSONB)
+//   version         → the package's declared version string
+//   effective_from  → inclusive lower bound of the activity window
+//   effective_to    → exclusive upper bound; NULL = currently open/active
+//   published_by    → actor UUID that published this version
+//   checksum        → SHA-256 hex over the canonical serialization of the
+//                     definition; integrity guard against a tampered row
+//
+// Immutability is enforced by contract (the store never UPDATEs an existing
+// row's definition/checksum) and by the (tenant_id, package_name, version)
+// uniqueness below: a re-publication must carry a new version string, which
+// inserts a new row rather than mutating an existing one. Non-overlapping
+// windows per (tenant_id, package_name) are maintained by the publish path,
+// which closes the prior open version's effective_to to the new
+// effective_from — so at most one version is active at any instant.
+model StoredPolicyVersion {
+  // Surrogate id, UUID generated app-side (uuid.v7()); Postgres 17 has no
+  // native uuidv7() function (the job-domain PR-2 precedent).
+  id String @id @db.Uuid
+
+  // Tenant that owns this policy version. Tenant isolation is a query
+  // predicate: every retrieval is keyed by tenant_id first. UUID-only
+  // reference to identity.Tenant, no FK (§7.3).
+  tenant_id String @db.Uuid
+
+  // The policy package identifier (PolicyPackage.name). Domain-neutral —
+  // policy-store never interprets it.
+  package_name String
+
+  // The package's declared version string (PolicyPackage.version).
+  version String
+
+  // The serialized PolicyPackage. Opaque JSONB; this library never
+  // evaluates it.
+  definition Json
+
+  // SHA-256 hex of the canonical serialization of `definition`.
+  checksum String
+
+  // Activity window. from inclusive, to exclusive; NULL to = open/active.
+  effective_from DateTime  @db.Timestamptz(6)
+  effective_to   DateTime? @db.Timestamptz(6)
+
+  // Publication provenance.
+  published_by String   @db.Uuid
+  published_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // A version string is unique per (tenant, package): the immutability +
+  // "republish creates a new version" contract.
+  @@unique([tenant_id, package_name, version])
+  // Tenant-scoped, package-scoped, time-ordered retrieval.
+  @@index([tenant_id, package_name, effective_from])
+  @@schema("policy_store")
+}
