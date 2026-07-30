@@ -46,6 +46,7 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 | [0018](0018-background-jobs-substrate.md) | Background Jobs Substrate (BullMQ Pattern Standardization, 4 Aramo Core Jobs, PL-66 Category 5 Ratification, Deferrals) | Accepted | 2026-05-27 |
 | [0019](0019-manual-recruiter-rating-r10-boundary.md) | Manual Recruiter Rating and the R10 Boundary | **Rejected** | 2026-06-16 |
 | [0020](0020-build-for-tenant-50-governing-principle.md) | **Build For Tenant #50 (Astre Is The Test Harness)** — governing principle (see above) | **Accepted — LOCKED** | 2026-06-26 |
+| [0024](0024-business-policy-engine.md) | Business Policy Engine | **Accepted — LOCKED** | 2026-07-30 |
 
 ## When to write an ADR
 
