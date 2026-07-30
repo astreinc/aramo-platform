@@ -61,10 +61,19 @@ export function MoveToMenu({ from, disabled, onSubmit }: MoveToMenuProps) {
 
   return (
     <RadixPopover.Root open={open} onOpenChange={setOpen}>
-      <RadixPopover.Trigger asChild>
-        <Button variant="secondary" size="sm" disabled={disabled}>
-          Move to…
-        </Button>
+      {/* Defect #6: the trigger must be an element Radix can attach its
+          anchor ref to. `asChild` around the fe-foundation Button (a
+          non-forwardRef function component) dropped the ref, so the Popper
+          never positioned the content and it stayed hidden — the recruiter
+          saw nothing. Render Radix's own native <button> instead, carrying
+          the exact tc-button classes Button emits (secondary + sm) so the
+          appearance is unchanged. fe-foundation is untouched. */}
+      <RadixPopover.Trigger
+        type="button"
+        className="tc-button tc-button--secondary tc-button--sm"
+        disabled={disabled}
+      >
+        Move to…
       </RadixPopover.Trigger>
       <RadixPopover.Portal>
         <RadixPopover.Content
