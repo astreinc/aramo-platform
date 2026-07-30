@@ -24,3 +24,5 @@ export type {
 } from './lib/decision-record-store.js';
 export { snapshotPolicyInputs } from './lib/decision-inputs.js';
 export type { PolicyDecisionInputs } from './lib/decision-inputs.js';
+export { insertPolicyDecisionRecordInTx } from './lib/insert-decision-record.js';
+export type { InsertPolicyDecisionRecordInput } from './lib/insert-decision-record.js';
