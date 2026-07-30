@@ -35,7 +35,7 @@
   /* Primary blue */
   --c-accent: #022AC0;
   --c-accent-hover: #3355E0; /* link hover — PR-B brand ramp (was #003da0) */
-  --c-accent-active: #3d49a0; /* primary-hover family */
+  --c-accent-active: #011665; /* pressed state of the accent — PR-B ramp v1.2 §4 (was #3d49a0) */
   --c-accent-soft: #E8EDFB; /* soft blue fill (wash) — PR-B brand ramp (was #e9eefc) */
   --c-accent-fg: #ffffff;
 
