@@ -111,6 +111,11 @@ export default defineConfig({
       // boundary evaluator. Mirrors the tsconfig.base.json @aramo/policy-engine
       // path so vitest resolves it once PR-2/PR-3 consumers import it.
       '@aramo/policy-engine': resolve(root, 'libs/policy-engine/src/index.ts'),
+      // PR-2 policy-store (ADR-0024 §D7/§D17b) — persistence/versioning for
+      // policy packages. Mirrors the tsconfig.base.json @aramo/policy-store
+      // path so vitest resolves it for future consumers; its own tests import
+      // it by relative path.
+      '@aramo/policy-store': resolve(root, 'libs/policy-store/src/index.ts'),
       // PR-A1c §2 — new leaf lib hosting the recordUsage helper. Mirrors
       // tsconfig.base.json @aramo/metering alias so vitest runtime
       // resolves the helper from engagement + submittal repos (the two
