@@ -37,17 +37,20 @@ describe('§D10 composeWithAuthorization — the authorization × policy table',
     });
   }
 
-  it('an authorization DENY never grants authority — it drops effects and capabilities', () => {
+  it('an authorization DENY never grants authority — it drops the override capability but RETAINS effects (R1)', () => {
     const policyDecision = mkDecision('REQUIRES_OVERRIDE', {
       required_capabilities: ['cap.x'],
-      effects: [{ kind: 'WRITE_AUDIT' }],
+      effects: [{ kind: 'WRITE_AUDIT' }, { kind: 'NOTIFY_ROLE', params: { role: 'compliance' } }],
     });
     const result = composeWithAuthorization('DENY', policyDecision);
     expect(result.decision).toBe('DENY');
     expect(result.reason_code).toBe('AUTHORIZATION_DENIED');
+    // Override is moot on a hard authorization denial …
     expect(result.required_capabilities).toEqual([]);
-    expect(result.effects).toEqual([]);
     expect(result.override_required).toBe(false);
+    // … but the obligations survive — audit + notify the refused attempt (R1).
+    expect(result.effects.map((e) => e.kind).sort()).toEqual(['NOTIFY_ROLE', 'WRITE_AUDIT']);
+    expect(result.audit_required).toBe(true);
   });
 
   it('an authorization ALLOW preserves the policy decision exactly', () => {

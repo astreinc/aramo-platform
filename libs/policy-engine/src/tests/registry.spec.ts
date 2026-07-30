@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { evaluate } from '../lib/evaluate.js';
 import { PolicyEngineError } from '../lib/errors.js';
 import { isRegisteredEffectKind, validatePackage } from '../lib/registry.js';
-import type { Rule } from '../lib/types.js';
+import type { PolicyPackage, Rule } from '../lib/types.js';
 
 import { ctx, pkg } from './_helpers.js';
 
@@ -88,6 +88,33 @@ describe('§D5/§D11 validatePackage — structural invariants', () => {
     };
     try {
       validatePackage(pkg([bad]));
+      expect.unreachable('should have thrown');
+    } catch (e) {
+      expect((e as PolicyEngineError).code).toBe('MALFORMED_RULE');
+    }
+  });
+
+  it('R3 — rejects a package that omits default_disposition', () => {
+    const noDefault = {
+      name: 'p',
+      version: 'v1',
+      registry: { resources: ['DOC'], actions: ['CREATE'] },
+      rules: [],
+    } as unknown as PolicyPackage;
+    try {
+      validatePackage(noDefault);
+      expect.unreachable('should have thrown');
+    } catch (e) {
+      expect((e as PolicyEngineError).code).toBe('MISSING_DEFAULT_DISPOSITION');
+    }
+  });
+
+  it('R3 — rejects a default_disposition that is REQUIRES_OVERRIDE without a capability', () => {
+    const badDefault = pkg([], {
+      default_disposition: { decision: 'REQUIRES_OVERRIDE', reason_code: 'X' },
+    });
+    try {
+      validatePackage(badDefault);
       expect.unreachable('should have thrown');
     } catch (e) {
       expect((e as PolicyEngineError).code).toBe('MALFORMED_RULE');

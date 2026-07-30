@@ -27,6 +27,24 @@ function ruleToDecision(pkg: PolicyPackage, rule: Rule): PolicyDecision {
   });
 }
 
+// R3 — the no-match outcome is the package's OWN declared default disposition.
+// The engine has no global default.
+function dispositionToDecision(pkg: PolicyPackage): PolicyDecision {
+  const d = pkg.default_disposition;
+  const required_capabilities =
+    d.decision === 'REQUIRES_OVERRIDE' && d.required_capability
+      ? [d.required_capability]
+      : [];
+  return finalize({
+    decision: d.decision,
+    reason_code: d.reason_code,
+    required_capabilities,
+    effects: d.effects ?? [],
+    warnings: [],
+    provenance: [{ policy_version: pkg.version, rule_id: '__default__' }],
+  });
+}
+
 // ── The single-package evaluator (ADR §D7) ──────────────────────────────────
 // evaluate(package, context) → decision. STATELESS and PURE: it reads only its
 // two arguments, mutates neither, and consults no clock, storage, or tenant
@@ -36,8 +54,9 @@ function ruleToDecision(pkg: PolicyPackage, rule: Rule): PolicyDecision {
 //   2. Select every rule matching (resource, action) whose condition holds
 //      against the immutable context snapshot.
 //   3. Compose the matched rules most-restrictive-wins (§D12). No match → the
-//      package is silent → ALLOW (policy adds no restriction; authorization is
-//      composed separately via composeWithAuthorization, §D10).
+//      package's OWN declared default_disposition (R3 — there is no global
+//      default). Authorization is composed separately (composeWithAuthorization,
+//      §D10).
 //
 // The evaluator NEVER branches on the meaning of a resource, action, or key —
 // they are opaque data. Package structural validity (registered effect kinds,
@@ -73,5 +92,8 @@ export function evaluate(
     }
   }
 
-  return composePolicyDecisions(matched);
+  // R3: no rule matched -> the package's declared default disposition.
+  const decisions =
+    matched.length > 0 ? matched : [dispositionToDecision(pkg)];
+  return composePolicyDecisions(decisions);
 }

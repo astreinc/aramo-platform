@@ -1,6 +1,8 @@
 import { PolicyEngineError } from './errors.js';
 import {
   EFFECT_KINDS,
+  type Decision,
+  type Effect,
   type EffectKind,
   type PolicyPackage,
 } from './types.js';
@@ -28,17 +30,68 @@ export function isRegisteredAction(
   return pkg.registry.actions.includes(action);
 }
 
-// §D5 + §D9 static validation of an authored package. The engine holds
+// Shared outcome invariants (§D9/§D11), applied to every rule AND to the
+// package's default disposition: effect kinds are registered, and
+// required_capability is present IFF the decision is REQUIRES_OVERRIDE.
+function assertOutcomeValid(
+  label: string,
+  outcome: {
+    decision: Decision;
+    required_capability?: string;
+    effects?: readonly Effect[];
+  },
+): void {
+  for (const effect of outcome.effects ?? []) {
+    if (!isRegisteredEffectKind(effect.kind)) {
+      throw new PolicyEngineError(
+        'UNREGISTERED_EFFECT',
+        `${label} carries an unregistered effect kind "${effect.kind}"`,
+        { where: label, effect_kind: effect.kind },
+      );
+    }
+  }
+  const isOverride = outcome.decision === 'REQUIRES_OVERRIDE';
+  const hasCapability =
+    outcome.required_capability !== undefined && outcome.required_capability !== '';
+  if (isOverride && !hasCapability) {
+    throw new PolicyEngineError(
+      'MALFORMED_RULE',
+      `${label} is REQUIRES_OVERRIDE but names no required_capability (§D11)`,
+      { where: label },
+    );
+  }
+  if (!isOverride && hasCapability) {
+    throw new PolicyEngineError(
+      'MALFORMED_RULE',
+      `${label} names a required_capability but its decision is not REQUIRES_OVERRIDE`,
+      { where: label, decision: outcome.decision },
+    );
+  }
+}
+
+// §D5 + §D9 + R3 static validation of an authored package. The engine holds
 // identifiers as DATA and never branches on their meaning; validation only
 // checks membership + structural invariants:
+//   - the package DECLARES a no-match default disposition (R3 — no global
+//     default exists; a package that omits it is rejected here),
 //   - every rule's resource/action is in the package's declared allowlist,
-//   - every effect kind is registered (closed set),
-//   - required_capability is present IFF the rule's decision is
-//     REQUIRES_OVERRIDE (§D9/§D11 — the engine NAMES the capability),
-//   - no override rule leaves the capability blank, and no non-override rule
-//     names one.
+//   - every effect kind (rules AND default) is registered (closed set),
+//   - required_capability is present IFF the decision is REQUIRES_OVERRIDE
+//     (§D9/§D11 — the engine NAMES the capability), for rules AND the default.
 // Throws PolicyEngineError on the first violation. Pure; mutates nothing.
 export function validatePackage(pkg: PolicyPackage): void {
+  if (
+    pkg.default_disposition === undefined ||
+    pkg.default_disposition === null
+  ) {
+    throw new PolicyEngineError(
+      'MISSING_DEFAULT_DISPOSITION',
+      `Package "${pkg.name}" declares no default_disposition (R3 — the engine has no global default)`,
+      { package: pkg.name },
+    );
+  }
+  assertOutcomeValid('default_disposition', pkg.default_disposition);
+
   const resources = new Set(pkg.registry.resources);
   const actions = new Set(pkg.registry.actions);
 
@@ -57,31 +110,6 @@ export function validatePackage(pkg: PolicyPackage): void {
         { rule_id: rule.id, action: rule.action },
       );
     }
-    for (const effect of rule.effects ?? []) {
-      if (!isRegisteredEffectKind(effect.kind)) {
-        throw new PolicyEngineError(
-          'UNREGISTERED_EFFECT',
-          `Rule "${rule.id}" carries an unregistered effect kind "${effect.kind}"`,
-          { rule_id: rule.id, effect_kind: effect.kind },
-        );
-      }
-    }
-    const isOverride = rule.decision === 'REQUIRES_OVERRIDE';
-    const hasCapability =
-      rule.required_capability !== undefined && rule.required_capability !== '';
-    if (isOverride && !hasCapability) {
-      throw new PolicyEngineError(
-        'MALFORMED_RULE',
-        `Rule "${rule.id}" is REQUIRES_OVERRIDE but names no required_capability (§D11)`,
-        { rule_id: rule.id },
-      );
-    }
-    if (!isOverride && hasCapability) {
-      throw new PolicyEngineError(
-        'MALFORMED_RULE',
-        `Rule "${rule.id}" names a required_capability but its decision is not REQUIRES_OVERRIDE`,
-        { rule_id: rule.id, decision: rule.decision },
-      );
-    }
+    assertOutcomeValid(`rule "${rule.id}"`, rule);
   }
 }

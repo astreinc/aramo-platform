@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { composePolicyDecisions } from '../lib/compose.js';
+import {
+  composePolicyDecisions,
+  unionEffects,
+} from '../lib/compose.js';
+import { PolicyEngineError } from '../lib/errors.js';
 
 import { mkDecision } from './_helpers.js';
 
-// ADR §D12 — multi-package composition.
+// ADR §D12 (amended R1/R2/R3) — multi-package composition.
 describe('§D12 composePolicyDecisions — most restrictive wins', () => {
   it('DENY beats every other verdict', () => {
     const out = composePolicyDecisions([
@@ -33,10 +37,13 @@ describe('§D12 composePolicyDecisions — most restrictive wins', () => {
     expect(out.audit_required).toBe(true);
   });
 
-  it('an empty set is ALLOW (policy adds no restriction)', () => {
-    const out = composePolicyDecisions([]);
-    expect(out.decision).toBe('ALLOW');
-    expect(out.reason_code).toBe('NO_POLICY');
+  it('R3 — an empty set is a caller error (no global default): it throws', () => {
+    try {
+      composePolicyDecisions([]);
+      expect.unreachable('should have thrown');
+    } catch (e) {
+      expect((e as PolicyEngineError).code).toBe('EMPTY_COMPOSITION');
+    }
   });
 
   it('reason_code is deterministic — the first contributor at the winning level', () => {
@@ -48,7 +55,7 @@ describe('§D12 composePolicyDecisions — most restrictive wins', () => {
   });
 });
 
-describe('§D12 — effects union + dedupe', () => {
+describe('§D12 — effects union + dedupe (R2)', () => {
   it('unions distinct effect kinds', () => {
     const out = composePolicyDecisions([
       mkDecision('ALLOW_WITH_AUDIT', { effects: [{ kind: 'WRITE_AUDIT' }] }),
@@ -67,18 +74,36 @@ describe('§D12 — effects union + dedupe', () => {
     expect(out.effects).toHaveLength(1);
   });
 
-  it('fails closed on conflicting effects — same kind, differing params → DENY', () => {
+  it('R2 — same kind with DIFFERENT params both survive (union, not conflict)', () => {
     const out = composePolicyDecisions([
-      mkDecision('ALLOW_WITH_AUDIT', { effects: [{ kind: 'SHOW_BANNER', params: { text: 'a' } }] }),
-      mkDecision('ALLOW_WITH_AUDIT', { effects: [{ kind: 'SHOW_BANNER', params: { text: 'b' } }] }),
+      mkDecision('ALLOW_WITH_AUDIT', { effects: [{ kind: 'NOTIFY_ROLE', params: { role: 'manager' } }] }),
+      mkDecision('ALLOW_WITH_AUDIT', { effects: [{ kind: 'NOTIFY_ROLE', params: { role: 'compliance' } }] }),
     ]);
-    expect(out.decision).toBe('DENY');
-    expect(out.reason_code).toBe('POLICY_EFFECT_CONFLICT');
-    expect(out.effects).toEqual([]);
+    expect(out.decision).toBe('ALLOW_WITH_AUDIT');
+    expect(out.effects).toHaveLength(2);
+    expect(out.effects.map((e) => (e.params as { role: string }).role).sort()).toEqual([
+      'compliance',
+      'manager',
+    ]);
+  });
+
+  it('R2 — the fail-closed guard still fires for a GENUINELY incompatible kind', () => {
+    // No kind in the closed set is un-satisfiable twice, so this branch is
+    // unreachable in production; exercise it with a synthetic exclusive kind.
+    const exclusive = new Set<string>(['SHOW_BANNER']);
+    const union = unionEffects(
+      [
+        { kind: 'SHOW_BANNER', params: { text: 'a' } },
+        { kind: 'SHOW_BANNER', params: { text: 'b' } },
+      ],
+      exclusive,
+    );
+    expect(union.conflict).toBe(true);
+    expect(union.effects).toEqual([]);
   });
 });
 
-describe('§D12 — override capabilities', () => {
+describe('§D12 — override capabilities + R1 (DENY retains effects)', () => {
   it('requires ALL capabilities when several packages REQUIRES_OVERRIDE', () => {
     const out = composePolicyDecisions([
       mkDecision('REQUIRES_OVERRIDE', { required_capabilities: ['cap.a'] }),
@@ -89,13 +114,25 @@ describe('§D12 — override capabilities', () => {
     expect([...out.required_capabilities].sort()).toEqual(['cap.a', 'cap.b']);
   });
 
-  it('a DENY contributor moots override capabilities (fail-closed refusal)', () => {
+  it('R1 — a DENY RETAINS effects (audit + notify still discharged on refusal)', () => {
     const out = composePolicyDecisions([
-      mkDecision('REQUIRES_OVERRIDE', { required_capabilities: ['cap.a'] }),
-      mkDecision('DENY'),
+      mkDecision('DENY', { reason_code: 'HARD_NO', effects: [{ kind: 'WRITE_AUDIT' }, { kind: 'NOTIFY_ROLE', params: { role: 'compliance' } }] }),
+      mkDecision('ALLOW'),
     ]);
     expect(out.decision).toBe('DENY');
+    expect(out.effects.map((e) => e.kind).sort()).toEqual(['NOTIFY_ROLE', 'WRITE_AUDIT']);
+    expect(out.audit_required).toBe(true);
+    // Override capabilities are moot on a hard DENY.
     expect(out.required_capabilities).toEqual([]);
-    expect(out.effects).toEqual([]);
+  });
+
+  it('R1 — a DENY contributor keeps a co-matched package’s effects too', () => {
+    const out = composePolicyDecisions([
+      mkDecision('REQUIRES_OVERRIDE', { required_capabilities: ['cap.a'], effects: [{ kind: 'WRITE_AUDIT' }] }),
+      mkDecision('DENY', { reason_code: 'HARD_NO' }),
+    ]);
+    expect(out.decision).toBe('DENY');
+    expect(out.effects.map((e) => e.kind)).toEqual(['WRITE_AUDIT']);
+    expect(out.required_capabilities).toEqual([]);
   });
 });

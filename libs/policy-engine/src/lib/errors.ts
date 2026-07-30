@@ -8,7 +8,9 @@ export type PolicyEngineErrorCode =
   | 'UNREGISTERED_RESOURCE'
   | 'UNREGISTERED_ACTION'
   | 'UNREGISTERED_EFFECT'
-  | 'MALFORMED_RULE';
+  | 'MALFORMED_RULE'
+  | 'MISSING_DEFAULT_DISPOSITION'
+  | 'EMPTY_COMPOSITION';
 
 export class PolicyEngineError extends Error {
   readonly code: PolicyEngineErrorCode;

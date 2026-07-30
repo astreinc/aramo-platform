@@ -130,10 +130,22 @@ export interface PolicyRegistry {
   readonly actions: readonly string[];
 }
 
+// §D-amendment R3 — a package MUST declare its own no-match disposition. The
+// engine has NO global default; a package that omits this is rejected at
+// registration. Same outcome shape as a rule (minus the condition): a
+// REQUIRES_OVERRIDE default must name a capability; effects must be registered.
+export interface DefaultDisposition {
+  readonly decision: Decision;
+  readonly reason_code: string;
+  readonly required_capability?: string;
+  readonly effects?: readonly Effect[];
+}
+
 export interface PolicyPackage {
   readonly name: string;
   readonly version: string;
   readonly registry: PolicyRegistry;
+  readonly default_disposition: DefaultDisposition;
   readonly rules: readonly Rule[];
 }
 

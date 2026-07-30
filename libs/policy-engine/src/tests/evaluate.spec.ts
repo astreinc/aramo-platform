@@ -6,10 +6,30 @@ import type { Rule } from '../lib/types.js';
 import { ctx, pkg } from './_helpers.js';
 
 describe('evaluate — single-package rule selection', () => {
-  it('a package with no matching rule is silent → ALLOW', () => {
+  it('R3 — no match falls to the package default; a declared-ALLOW package → ALLOW', () => {
     const out = evaluate(pkg([]), ctx());
     expect(out.decision).toBe('ALLOW');
-    expect(out.reason_code).toBe('NO_POLICY');
+    expect(out.reason_code).toBe('DEFAULT_ALLOW');
+    expect(out.provenance).toEqual([{ policy_version: 'v1', rule_id: '__default__' }]);
+  });
+
+  it('R3 — a declared-DENY package with no match → DENY', () => {
+    const denyByDefault = pkg([], {
+      default_disposition: { decision: 'DENY', reason_code: 'DEFAULT_DENY' },
+    });
+    const out = evaluate(denyByDefault, ctx());
+    expect(out.decision).toBe('DENY');
+    expect(out.reason_code).toBe('DEFAULT_DENY');
+  });
+
+  it('R3 — a matching rule takes precedence over the default disposition', () => {
+    const denyByDefault = pkg(
+      [{ id: 'r', resource: 'DOC', action: 'CREATE', decision: 'ALLOW_WITH_AUDIT', reason_code: 'MATCHED' }],
+      { default_disposition: { decision: 'DENY', reason_code: 'DEFAULT_DENY' } },
+    );
+    const out = evaluate(denyByDefault, ctx());
+    expect(out.decision).toBe('ALLOW_WITH_AUDIT');
+    expect(out.reason_code).toBe('MATCHED');
   });
 
   it('matches on resource AND action', () => {

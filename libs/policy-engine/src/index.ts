@@ -16,6 +16,7 @@ export type {
   Predicate,
   Rule,
   PolicyRegistry,
+  DefaultDisposition,
   PolicyPackage,
   DecisionProvenance,
   PolicyDecision,

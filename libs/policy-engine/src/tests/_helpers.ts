@@ -37,6 +37,9 @@ export function pkg(
       resources: ['DOC', 'WIDGET'],
       actions: ['CREATE', 'DELETE', 'PUBLISH'],
     },
+    // R3 — every package declares its own no-match default; tests override it
+    // where they need DENY.
+    default_disposition: { decision: 'ALLOW', reason_code: 'DEFAULT_ALLOW' },
     rules,
     ...overrides,
   };
