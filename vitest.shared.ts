@@ -107,6 +107,10 @@ export default defineConfig({
       '@aramo/job-distribution': resolve(root, 'libs/job-distribution/src/index.ts'),
       '@aramo/job-domain': resolve(root, 'libs/job-domain/src/index.ts'),
       '@aramo/matching': resolve(root, 'libs/matching/src/index.ts'),
+      // PR-1 policy-engine (ADR-0024 §D7) — the stateless, dependency-free
+      // boundary evaluator. Mirrors the tsconfig.base.json @aramo/policy-engine
+      // path so vitest resolves it once PR-2/PR-3 consumers import it.
+      '@aramo/policy-engine': resolve(root, 'libs/policy-engine/src/index.ts'),
       // PR-A1c §2 — new leaf lib hosting the recordUsage helper. Mirrors
       // tsconfig.base.json @aramo/metering alias so vitest runtime
       // resolves the helper from engagement + submittal repos (the two

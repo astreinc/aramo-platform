@@ -1,0 +1,30 @@
+{
+  "name": "policy-engine",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/policy-engine/src",
+  "projectType": "library",
+  "tags": ["scope:boundary"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/policy-engine",
+        "main": "libs/policy-engine/src/index.ts",
+        "tsConfig": "libs/policy-engine/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/policy-engine/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/policy-engine"
+      }
+    }
+  }
+}
