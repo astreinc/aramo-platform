@@ -413,7 +413,10 @@ export class RequisitionRepository {
         notes: input.notes ?? null,
         is_hot: input.is_hot ?? false,
         openings: input.openings ?? 1,
-        openings_available: input.openings_available ?? input.openings ?? 1,
+        // PR-0b-1: availability initialises to the authored opening count.
+        // openings_available is no longer a write DTO field; pipeline
+        // placement transitions are its only mutator thereafter.
+        openings_available: input.openings ?? 1,
         start_date: input.start_date === undefined ? null : new Date(input.start_date),
         city: input.city ?? null,
         state: input.state ?? null,
@@ -474,7 +477,10 @@ export class RequisitionRepository {
         notes: input.notes ?? null,
         is_hot: input.is_hot ?? false,
         openings: input.openings ?? 1,
-        openings_available: input.openings_available ?? input.openings ?? 1,
+        // PR-0b-1: availability initialises to the authored opening count.
+        // openings_available is no longer a write DTO field; pipeline
+        // placement transitions are its only mutator thereafter.
+        openings_available: input.openings ?? 1,
         start_date: input.start_date === undefined ? null : new Date(input.start_date),
         city: input.city ?? null,
         state: input.state ?? null,
@@ -569,7 +575,8 @@ export class RequisitionRepository {
     if (i.notes !== undefined) data['notes'] = i.notes;
     if (i.is_hot !== undefined) data['is_hot'] = i.is_hot;
     if (i.openings !== undefined) data['openings'] = i.openings;
-    if (i.openings_available !== undefined) data['openings_available'] = i.openings_available;
+    // PR-0b-1: openings_available is NOT PATCH-writable — pipeline placement
+    // transitions are its only mutator. A body carrying it is ignored.
     if (i.start_date !== undefined) data['start_date'] = i.start_date === null ? null : new Date(i.start_date);
     if (i.city !== undefined) data['city'] = i.city;
     if (i.state !== undefined) data['state'] = i.state;

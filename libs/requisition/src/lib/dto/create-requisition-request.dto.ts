@@ -24,7 +24,9 @@ export interface CreateRequisitionRequestDto {
   notes?: string;
   is_hot?: boolean;
   openings?: number;
-  openings_available?: number;
+  // openings_available is intentionally NOT writable via the API (PR-0b-1).
+  // It is an availability counter mutated ONLY by pipeline placement
+  // transitions; on create it initialises to `openings`.
   start_date?: string;
   city?: string;
   state?: string;
