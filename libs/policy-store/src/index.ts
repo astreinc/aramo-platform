@@ -15,3 +15,12 @@ export type { PublishPolicyVersionInput, ResolvedPolicyVersion } from './lib/typ
 export { canonicalSerialize, computeChecksum, checksumMatches } from './lib/checksum.js';
 export { isEffectiveAt, selectEffectiveAt } from './lib/window.js';
 export type { EffectiveWindow } from './lib/window.js';
+
+// Decision provenance (ADR-0024 §D17a) — append-only write API.
+export { PolicyDecisionRecordStore } from './lib/decision-record-store.js';
+export type {
+  RecordPolicyDecisionInput,
+  PolicyDecisionRecord,
+} from './lib/decision-record-store.js';
+export { snapshotPolicyInputs } from './lib/decision-inputs.js';
+export type { PolicyDecisionInputs } from './lib/decision-inputs.js';
