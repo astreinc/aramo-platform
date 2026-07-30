@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from 'react';
+import { forwardRef, type ButtonHTMLAttributes } from 'react';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 type ButtonSize = 'sm' | 'md' | 'lg';
@@ -20,15 +20,13 @@ const sizeClass: Record<ButtonSize, string> = {
   lg: 'tc-button--lg',
 };
 
-export function Button({
-  variant = 'primary',
-  size = 'md',
-  type = 'button',
-  className,
-  ...rest
-}: ButtonProps) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { variant = 'primary', size = 'md', type = 'button', className, ...rest },
+  ref,
+) {
   const classes = ['tc-button', variantClass[variant], sizeClass[size], className]
     .filter(Boolean)
     .join(' ');
-  return <button type={type} className={classes} {...rest} />;
-}
+  return <button ref={ref} type={type} className={classes} {...rest} />;
+});
+Button.displayName = 'Button';
