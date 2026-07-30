@@ -450,6 +450,23 @@ TIER2_EXCLUDES=(
   # contains NONE of it. Product source (TrustProposalsView.tsx / types.ts) stays
   # clean — never excluded.
   "apps/ats-web/src/trust-proposals/TrustProposalsView.spec.tsx"
+  # R-REPOMAP-3 (Lead ruling, D-REPOMAP-2 build): the three generated repo-map
+  # artifacts. They carry Tier-2 tokens because their job is to ENUMERATE tracked
+  # file paths — the canonical `outreach-*` engagement files (each already
+  # individually excluded above) appear in files.json as path strings. A path
+  # inventory, never entity vocabulary; Rule 5 forbids `outreach` as an ENTITY
+  # NAME, which a filename listing does not do.
+  # Safe as an exclusion because doc/generated/ is byte-verified by
+  # `repo-map:check` on every PR — nothing hand-authored survives there.
+  # THREE NAMED FILES, deliberately not a doc/generated/** glob: a wildcard
+  # would silently cover future hand-written content in that directory.
+  # No matching eslint.config.mjs entry: the no-restricted-syntax vocabulary
+  # rule is scoped to apps/**+libs/** *.{ts,tsx,js,jsx}, so it cannot fire on
+  # doc/generated/*.json. Single-surface exclusion, same asymmetry precedent as
+  # the libs/auth-storage/src/lib/host-auth-profile.seed.ts entry above.
+  "doc/generated/repo-map.projects.json"
+  "doc/generated/repo-map.files.json"
+  "doc/generated/repo-map.coupling.json"
 )
 
 # =============================================================================
