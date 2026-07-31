@@ -528,11 +528,13 @@
     ],
     "@aramo/pipeline": [
       "AddTalentPolicyService",
+      "NO_POLICY_PUBLISHED_REASON",
       "PIPELINE_STATUS_VALUES",
       "PipelineController",
       "PipelineModule",
       "PipelinePrismaService",
       "PipelineRepository",
+      "REQUISITION_LIFECYCLE_PACKAGE_NAME",
       "canTransition",
       "isPipelineStatus",
       "legalNextStates"
@@ -2877,6 +2879,12 @@
     "@aramo/outbox-publisher": [{ "project": "api", "status": "production" }],
     "@aramo/pipeline": [
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-lifecycle-package.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "reporting", "status": "production" },
@@ -2886,16 +2894,11 @@
     "@aramo/policy-engine": [
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
+        "from": "apps/api/src/tests/requisition-lifecycle-package.spec.ts",
         "project": "api",
         "status": "excluded"
       },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/policy-sourcing-add.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
+      { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/pipeline/src/tests/add-talent-policy-mapping.spec.ts",
@@ -2924,7 +2927,24 @@
       { "project": "policy-store", "status": "production" }
     ],
     "@aramo/policy-store": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-retrieval.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/publish-lifecycle-package.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
+      {
+        "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
       { "project": "pipeline", "status": "production" }
     ],
     "@aramo/portal": [{ "project": "api", "status": "production" }],

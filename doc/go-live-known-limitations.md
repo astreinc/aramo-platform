@@ -10,6 +10,35 @@ trust implication. Reviewed at each go-live gate.
 
 ---
 
+## ⛔ Policy Engine (ADR-0024) — BLOCKING
+
+### No tenant may be provisioned until PR-4a-2 lands
+**2026-07-31 · PR-4a (feat/policy-runtime-retrieval).** Add-to-pipeline
+(`REQUISITION_TALENT · ADD`) is now governed by a policy package **retrieved per
+tenant** from policy-store, and PR-4a **fails closed**: a tenant with **no
+published package** has every add-talent command DENY'd (403 `POLICY_DENIED`,
+`reason_code = NO_POLICY_PUBLISHED`). The deploy seed
+(`deploy/seed-prod.sh` STAGE C → `prisma:seed-policy-lifecycle`) publishes the
+package **only for the seed-time (Astre) tenant**. A tenant provisioned **after**
+seed time has a **non-functional add-talent path from creation**.
+
+**BLOCKING CONSTRAINT: No new tenant may be provisioned until PR-4a-2 wires the
+lifecycle-package publish into the tenant-provisioning path.** Astre is the only
+live tenant, so this is currently theoretical — it stops being theoretical the
+moment a second tenant is created.
+
+**Risk:** a second tenant created before PR-4a-2 cannot add talent to any
+requisition (fail-closed 403) until its package is manually published.
+
+**Fix:** PR-4a-2 (both parts — same concern, a tenant without a package):
+(1) tenant-provisioning publishes the default lifecycle package; (2) startup
+detection — a cross-schema anti-join of `identity.Tenant` against active
+`policy_store` packages **LOGS LOUD** for any tenant lacking one. **NEVER
+fail-boot:** one package-less tenant must not stop the API from starting — a
+config gap must not become a total outage.
+
+---
+
 ## Companies
 
 ### off_limits: display-only, enforcement deferred

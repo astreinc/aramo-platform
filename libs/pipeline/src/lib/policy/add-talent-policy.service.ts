@@ -1,28 +1,36 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { evaluate, type Origin, type PolicyContext, type PolicyPackage } from '@aramo/policy-engine';
-import { snapshotPolicyInputs, type InsertPolicyDecisionRecordInput } from '@aramo/policy-store';
+import { Injectable } from '@nestjs/common';
+import { evaluate, type Decision, type Origin, type PolicyContext } from '@aramo/policy-engine';
+import { PolicyStore, snapshotPolicyInputs, type InsertPolicyDecisionRecordInput } from '@aramo/policy-store';
 import { RequisitionRepository } from '@aramo/requisition';
 
 import { scopesToCapabilities } from './capability-adapter.js';
 import { isDecisionAllowed } from './decision-mapping.js';
 
-// AddTalentPolicyService — the PR-3 policy call for REQUISITION_TALENT · ADD.
+// AddTalentPolicyService — the policy call for REQUISITION_TALENT · ADD, shared
+// by both command boundaries (PipelineController + SourcingController).
+//
+// ADR-0024 §D2/§D7/§D17b — PR-4a: the governing package is DATA, RETRIEVED per
+// tenant from policy-store at decision time (getActiveVersion — point-in-time,
+// checksum-verified), NOT an in-code constant. A tenant needing different rules
+// is a data operation (publish a new version), never a deploy. The PR-3
+// in-code scaffold package + its DI token are DELETED.
+//
 // It reads the requisition's declared status (§D13b), builds the PolicyContext
 // from the principal's resolved scopes (§D10 booleans, never roles), evaluates
-// the lifecycle package, and returns the verdict plus the full §D17a
-// provenance record the caller will persist. It performs NO write and never
-// mutates — the engine participates in the decision; the controller/repository
-// own the mutation.
-//
-// PR-3 RULING: REQUIRES_OVERRIDE is treated as DENY (the override framework is
-// PR-4). Handled in decision-mapping.isDecisionAllowed, exhaustive over the
-// closed Decision union.
+// the retrieved package, and returns the verdict plus the full §D17a provenance
+// record. It performs NO write and never mutates.
 
-// DI token for the governing policy package (the PR-4 per-tenant seam). Bound
-// to the permissive REQUISITION_LIFECYCLE_PACKAGE in PipelineModule; a test
-// overrides it to exercise DENY / REQUIRES_OVERRIDE (the shipped package is
-// all-ALLOW).
-export const REQUISITION_ADD_POLICY_PACKAGE = 'REQUISITION_ADD_POLICY_PACKAGE';
+// The package identifier this consumer governs. One package per (tenant, name).
+export const REQUISITION_LIFECYCLE_PACKAGE_NAME = 'requisition-lifecycle';
+
+// FAIL-CLOSED sentinels (the no-published-package refusal). An unconfigured
+// tenant must not be silently ungoverned — that is R3's fail-open in a new
+// disguise — so no package resolves to DENY. The provenance still records the
+// refusal, keyed by a distinct reason_code; the version/rule are marked
+// explicitly as "no policy" rather than faked.
+export const NO_POLICY_PUBLISHED_REASON = 'NO_POLICY_PUBLISHED';
+const NO_POLICY_VERSION = '__none__';
+const NO_POLICY_RULE_ID = '__no_policy__';
 
 export interface AddTalentPolicyInput {
   readonly tenant_id: string;
@@ -34,11 +42,11 @@ export interface AddTalentPolicyInput {
 }
 
 export interface AddTalentPolicyOutcome {
-  /** true for ALLOW / ALLOW_WITH_AUDIT; false for DENY / REQUIRES_OVERRIDE. */
+  /** true for ALLOW / ALLOW_WITH_AUDIT; false for DENY / REQUIRES_OVERRIDE / no-policy. */
   readonly allowed: boolean;
   /** Client-visible reason for a refusal (the ONLY engine detail exposed on 403). */
   readonly reason_code: string;
-  /** The §D17a record to persist — carries the engine's REAL verdict. */
+  /** The §D17a record to persist — carries the REAL verdict + stored version. */
   readonly provenance: InsertPolicyDecisionRecordInput;
 }
 
@@ -46,7 +54,7 @@ export interface AddTalentPolicyOutcome {
 export class AddTalentPolicyService {
   constructor(
     private readonly requisitions: RequisitionRepository,
-    @Inject(REQUISITION_ADD_POLICY_PACKAGE) private readonly pkg: PolicyPackage,
+    private readonly policyStore: PolicyStore,
   ) {}
 
   async decide(input: AddTalentPolicyInput): Promise<AddTalentPolicyOutcome> {
@@ -60,9 +68,6 @@ export class AddTalentPolicyService {
       resource: 'REQUISITION_TALENT',
       action: 'ADD',
       resource_state: {
-        // Declared status (§D13b). A missing requisition contributes no status
-        // (no rule matches → default_disposition); PR-3 is permissive so this
-        // is ALLOW either way.
         declared: status === null ? {} : { status },
         derived: {},
       },
@@ -73,21 +78,45 @@ export class AddTalentPolicyService {
       attributes: {},
     };
 
-    const decision = evaluate(this.pkg, context);
-    const head = decision.provenance[0];
-
-    const provenance: InsertPolicyDecisionRecordInput = {
+    const base = {
       tenant_id: input.tenant_id,
-      decision: decision.decision, // the engine's REAL verdict, not the mapped allow/deny
-      policy_version: head?.policy_version ?? this.pkg.version,
-      rule_id: head?.rule_id ?? '__default__',
-      reason_code: decision.reason_code,
       resource: context.resource,
       action: context.action,
       inputs: snapshotPolicyInputs(context),
       actor_id: input.actor_id,
       origin: input.origin,
       correlation_id: input.correlation_id,
+    };
+
+    // Retrieve the tenant's active package (checksum-verified inside the store).
+    const resolved = await this.policyStore.getActiveVersion(
+      input.tenant_id,
+      REQUISITION_LIFECYCLE_PACKAGE_NAME,
+    );
+
+    if (resolved === null) {
+      // FAIL CLOSED — no published package = DENY (§D10; R3 fail-open guard).
+      const provenance: InsertPolicyDecisionRecordInput = {
+        ...base,
+        decision: 'DENY' as Decision,
+        policy_version: NO_POLICY_VERSION,
+        rule_id: NO_POLICY_RULE_ID,
+        reason_code: NO_POLICY_PUBLISHED_REASON,
+      };
+      return { allowed: false, reason_code: NO_POLICY_PUBLISHED_REASON, provenance };
+    }
+
+    const decision = evaluate(resolved.definition, context);
+    const head = decision.provenance[0];
+
+    const provenance: InsertPolicyDecisionRecordInput = {
+      ...base,
+      decision: decision.decision, // the engine's REAL verdict, not the mapped allow/deny
+      // The STORED version (§D17b) — a real published version string, not a
+      // hardcoded one; the rule_id comes from the checksum-verified package.
+      policy_version: resolved.version,
+      rule_id: head?.rule_id ?? '__default__',
+      reason_code: decision.reason_code,
     };
 
     return { allowed: isDecisionAllowed(decision.decision), reason_code: decision.reason_code, provenance };

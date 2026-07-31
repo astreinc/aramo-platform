@@ -7,11 +7,11 @@ import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { exportSPKI, generateKeyPair, SignJWT, type CryptoKey, type KeyObject } from 'jose';
-import type { PolicyPackage } from '@aramo/policy-engine';
 
 import { AppModule } from '../app.module.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 
 // ADR-0024 PR-3 — the first policy-engine consumer, E2E over REQUISITION_TALENT
 // · ADD (POST /v1/pipelines). Real Postgres 17; skipped unless
@@ -51,36 +51,11 @@ const MIGRATIONS = [
   'libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql',
 ].map(M);
 
-// TEST-ONLY denying package. The SHIPPED requisition-lifecycle package is
-// PERMISSIVE (every state ALLOW) — production cannot currently produce DENY or
-// REQUIRES_OVERRIDE. This fixture is injected via the REQUISITION_ADD_POLICY_PACKAGE
-// DI token ONLY to reach those decision branches; it is not evidence the
-// shipped matrix is restrictive (the real matrix publishes in PR-4).
-const DENY_PACKAGE: PolicyPackage = {
-  name: 'test-restrictive',
-  version: '9.9.9',
-  registry: { resources: ['REQUISITION_TALENT'], actions: ['ADD'] },
-  default_disposition: { decision: 'ALLOW', reason_code: 'DEFAULT_ALLOW' },
-  rules: [
-    {
-      id: 'deny-closed',
-      resource: 'REQUISITION_TALENT',
-      action: 'ADD',
-      when: [{ source: 'declared', key: 'status', op: 'eq', value: 'closed' }],
-      decision: 'DENY',
-      reason_code: 'LIFECYCLE_ADD_DENIED',
-    },
-    {
-      id: 'override-full',
-      resource: 'REQUISITION_TALENT',
-      action: 'ADD',
-      when: [{ source: 'declared', key: 'status', op: 'eq', value: 'full' }],
-      decision: 'REQUIRES_OVERRIDE',
-      reason_code: 'LIFECYCLE_ADD_OVERRIDE',
-      required_capability: 'requisition.override.lifecycle',
-    },
-  ],
-};
+// PR-4a — the package is RETRIEVED from policy-store, not overridden via a DI
+// token (deleted). ALLOW tests publish the real lifecycle package for their
+// tenant; the DENY here is the ONLY denial the shipped configuration can
+// produce — the fail-closed no-published-package path. Restrictive-rule DENY
+// (closed → DENY, full → REQUIRES_OVERRIDE) arrives in PR-4c.
 
 const SIX_STATES = ['active', 'on_hold', 'full', 'closed', 'canceled', 'lead'] as const;
 
@@ -127,14 +102,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return id;
     }
 
-    async function buildApp(overridePackage?: PolicyPackage): Promise<INestApplication> {
-      let builder = Test.createTestingModule({ imports: [AppModule] });
-      if (overridePackage !== undefined) {
-        // Override the DI token by its string value — no production export /
-        // reshape of AddTalentPolicyService is needed to reach the branch.
-        builder = builder.overrideProvider('REQUISITION_ADD_POLICY_PACKAGE').useValue(overridePackage);
-      }
-      const mod: TestingModule = await builder.compile();
+    async function buildApp(): Promise<INestApplication> {
+      const mod: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
       const app = mod.createNestApplication();
       app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
       await app.init();
@@ -173,6 +142,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          ON CONFLICT DO NOTHING`,
         [TENANT],
       );
+      // PR-4a — the package is now RETRIEVED from policy-store; publish it for
+      // this tenant so ALLOW resolves instead of failing closed.
+      await publishLifecyclePackage(url, TENANT);
 
       const kp = await generateKeyPair(ALG);
       signingKey = kp.privateKey as SignKey;
@@ -248,44 +220,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
     });
 
-    describe('test-only restrictive package (DI-token override)', () => {
-      let app: INestApplication;
-      beforeAll(async () => { app = await buildApp(DENY_PACKAGE); });
-      afterAll(async () => { await app?.close(); });
-
-      it('DENY → 403 POLICY_DENIED (reason_code ONLY), no pipeline row, provenance recorded', async () => {
-        const req = await seedRequisition('closed');
-        const jwt = await signJwt(ADD_SCOPES);
-        const res = await postAdd(app, jwt, req);
-        expect(res.status).toBe(403);
-        const body = (await res.json()) as { error?: { code?: string; details?: Record<string, unknown> } };
-        expect(body.error?.code).toBe('POLICY_DENIED');
-        // reason_code exposed (in details); NO engine internals leaked.
-        expect(body.error?.details?.reason_code).toBe('LIFECYCLE_ADD_DENIED');
-        expect(JSON.stringify(body)).not.toContain('deny-closed'); // rule_id
-        expect(JSON.stringify(body)).not.toContain('9.9.9'); // policy_version
-        expect(await pipelineCount(req)).toBe(0);
-        const rec = (await db.query(
-          `SELECT decision, reason_code FROM policy_store."PolicyDecisionRecord" WHERE reason_code='LIFECYCLE_ADD_DENIED' ORDER BY occurred_at DESC LIMIT 1`,
-        )).rows;
-        expect(rec).toHaveLength(1);
-        expect(rec[0].decision).toBe('DENY');
-      });
-
-      it('REQUIRES_OVERRIDE → 403 (treated as DENY in PR-3), no row, provenance records the REAL verdict', async () => {
-        const req = await seedRequisition('full');
-        const jwt = await signJwt(ADD_SCOPES);
-        const res = await postAdd(app, jwt, req);
-        expect(res.status).toBe(403);
-        const body = (await res.json()) as { error?: { code?: string } };
-        expect(body.error?.code).toBe('POLICY_DENIED');
-        expect(await pipelineCount(req)).toBe(0);
-        const rec = (await db.query(
-          `SELECT decision FROM policy_store."PolicyDecisionRecord" WHERE reason_code='LIFECYCLE_ADD_OVERRIDE' ORDER BY occurred_at DESC LIMIT 1`,
-        )).rows;
-        expect(rec).toHaveLength(1);
-        expect(rec[0].decision).toBe('REQUIRES_OVERRIDE'); // engine's real verdict recorded, not the mapped deny
-      });
-    });
+    // The DENY / REQUIRES_OVERRIDE describes moved to the fail-closed path in
+    // policy-retrieval.integration.spec.ts: PR-4a deletes the DI-token override,
+    // and restrictive-rule DENY (closed → DENY, full → REQUIRES_OVERRIDE) is
+    // PR-4c. The only denial the shipped config produces now is no-published-
+    // package fail-closed, covered there.
   },
 );

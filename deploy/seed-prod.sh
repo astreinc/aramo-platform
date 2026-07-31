@@ -124,6 +124,26 @@ run_seed() {
     npm run prisma:seed-astre
 }
 
+# STAGE C — publish the requisition-lifecycle policy package (ADR-0024 §D2/§D7,
+# PR-4a). Same network/DB/image recipe as run_seed. Idempotent: a no-op if the
+# tenant already has this version. WITHOUT this the app fails closed (no
+# published package = DENY), so an unseeded box would refuse every add-to-
+# pipeline.
+#
+# ⛔ RESIDUAL GAP (BLOCKING — doc/go-live-known-limitations.md): this publishes
+# ONLY for the seed-time (Astre) tenant. A tenant provisioned AFTER seed time
+# has NO package → PR-4a fails closed → EVERY add-talent command for it DENYs
+# from creation. NO NEW TENANT MAY BE PROVISIONED until PR-4a-2 wires the
+# lifecycle-package publish into the tenant-provisioning path.
+run_seed_policy() {
+  docker run --rm \
+    --network "$NETWORK" \
+    -v "$ARAMO_DIR":/repo -w /repo \
+    -e DATABASE_URL="$DBURL" \
+    "$NODE_IMAGE" \
+    npm run prisma:seed-policy-lifecycle
+}
+
 # Read-only assertion query, run via psql in postgres:17 (the node image has no
 # psql). Strips the ?schema= suffix psql rejects (as db-sync-local.sh does).
 # Tables are PascalCase-quoted + schema-qualified (identity."Tenant").
@@ -165,6 +185,9 @@ main() {
 
   echo "[seed] STAGE B — running the Astre seed (idempotent, on-network)…"
   run_seed
+
+  echo "[seed] STAGE C — publishing the requisition-lifecycle policy package (idempotent)…"
+  run_seed_policy
 
   # GATE: confirm the seed actually landed the Astre tenant + backfilled domain.
   # A silently-failed seed (or a wrong DB) would NOT satisfy this, and the deploy

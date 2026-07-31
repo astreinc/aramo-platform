@@ -4,15 +4,12 @@ import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
 import { RequisitionModule } from '@aramo/requisition';
+import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/policy-store';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { PipelineController } from './pipeline.controller.js';
 import { PipelineRepository } from './pipeline.repository.js';
-import {
-  AddTalentPolicyService,
-  REQUISITION_ADD_POLICY_PACKAGE,
-} from './policy/add-talent-policy.service.js';
-import { REQUISITION_LIFECYCLE_PACKAGE } from './policy/requisition-lifecycle.package.js';
+import { AddTalentPolicyService } from './policy/add-talent-policy.service.js';
 
 // PipelineModule — PR-A5a Gate 5 ATS Batch 4a (the state machine).
 //
@@ -39,7 +36,12 @@ import { REQUISITION_LIFECYCLE_PACKAGE } from './policy/requisition-lifecycle.pa
     PrismaService,
     PipelineRepository,
     AddTalentPolicyService,
-    { provide: REQUISITION_ADD_POLICY_PACKAGE, useValue: REQUISITION_LIFECYCLE_PACKAGE },
+    // ADR-0024 PR-4a — runtime policy retrieval. PolicyStore (reading the
+    // policy_store schema through its own PrismaService) replaces the deleted
+    // in-code package DI token; the package is now published DATA, retrieved
+    // per tenant at decision time.
+    PolicyStorePrismaService,
+    PolicyStore,
   ],
   exports: [PipelineRepository, AddTalentPolicyService],
 })

@@ -22,6 +22,7 @@ import {
 import { AppModule } from '../app.module.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 
 // PR-A5a Gate 5 — ATS Batch 4a (pipeline state machine + activity)
 // integration spec; PR-A5b-1 Gate 5 extends section (D) with the
@@ -450,6 +451,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
       // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
       await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_ATS);
+      await publishLifecyclePackage(url, TENANT_ATS);
       await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_NOT_ATS);
 
       // Entitle TENANT_ATS to `ats` so JwtAuthGuard → EntitlementGuard
