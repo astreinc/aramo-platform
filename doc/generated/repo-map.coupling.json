@@ -10291,6 +10291,48 @@
       "to": "tools/local-run-link.sh"
     },
     {
+      "from": "doc/directives/00-DIRECTIVE-STANDARD.md",
+      "line": 5,
+      "status": "unscoped",
+      "to": "doc/02-claude-code-discipline.md"
+    },
+    {
+      "from": "doc/directives/00-DIRECTIVE-STANDARD.md",
+      "line": 75,
+      "status": "unscoped",
+      "to": "doc/02-claude-code-discipline.md"
+    },
+    {
+      "from": "doc/directives/00-DIRECTIVE-STANDARD.md",
+      "line": 5,
+      "status": "unscoped",
+      "to": "doc/05-conventions.md"
+    },
+    {
+      "from": "doc/directives/00-DIRECTIVE-STANDARD.md",
+      "line": 5,
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/directives/00-DIRECTIVE-STANDARD.md",
+      "line": 75,
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/directives/00-DIRECTIVE-STANDARD.md",
+      "line": 76,
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/directives/00-DIRECTIVE-STANDARD.md",
+      "line": 112,
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
       "from": "doc/directives/D-REPOMAP-1-Directive-v1_1-LOCKED.md",
       "line": 36,
       "status": "unscoped",
