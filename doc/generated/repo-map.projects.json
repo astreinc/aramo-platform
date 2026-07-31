@@ -763,247 +763,2515 @@
     ]
   },
   "importedBy": {
-    "@aramo/activity": ["api", "pipeline", "reporting"],
-    "@aramo/ai-draft": ["engagement", "requisition", "talent-extraction"],
-    "@aramo/api": ["aramo-pact-provider"],
-    "@aramo/attachment": ["api"],
+    "@aramo/activity": [
+      { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      { "project": "api", "status": "production" },
+      { "project": "pipeline", "status": "production" },
+      { "project": "reporting", "status": "production" }
+    ],
+    "@aramo/ai-draft": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      { "project": "engagement", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/requisition-intake.service.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      { "project": "requisition", "status": "production" },
+      { "project": "talent-extraction", "status": "production" }
+    ],
+    "@aramo/api": [
+      {
+        "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      }
+    ],
+    "@aramo/attachment": [{ "project": "api", "status": "production" }],
     "@aramo/audit": [],
     "@aramo/auth": [
-      "activity",
-      "api",
-      "attachment",
-      "auth-core",
-      "auth-service",
-      "authorization",
-      "calendar",
-      "company",
-      "consent",
-      "contact",
-      "engagement",
-      "entitlement",
-      "examination",
-      "export",
-      "identity",
-      "import",
-      "ingestion",
-      "pipeline",
-      "platform-admin",
-      "portal",
-      "reporting",
-      "requisition",
-      "saved-list",
-      "submittal",
-      "talent-record",
-      "task",
-      "visibility"
+      { "project": "activity", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/examine.controller.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-preset.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tenant-write-freeze.interceptor.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      { "project": "attachment", "status": "production" },
+      { "project": "auth-core", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.site-axis.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-auth-profile.behaviour-parity.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/authorization/src/tests/roles.guard.spec.ts",
+        "project": "authorization",
+        "status": "excluded"
+      },
+      { "project": "authorization", "status": "production" },
+      { "project": "calendar", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/company/src/tests/company-search-paged.spec.ts",
+        "project": "company",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/company/src/tests/d4a.controller.read.spec.ts",
+        "project": "company",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/company/src/tests/search-pr1.spec.ts",
+        "project": "company",
+        "status": "excluded"
+      },
+      { "project": "company", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent.controller.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent.service.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/cookie-auth.integration.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      { "project": "consent", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/contact/src/tests/contact-search-paged.spec.ts",
+        "project": "contact",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/contact/src/tests/search-pr1.spec.ts",
+        "project": "contact",
+        "status": "excluded"
+      },
+      { "project": "contact", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      { "project": "engagement", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/entitlement/src/tests/entitlement.guard.spec.ts",
+        "project": "entitlement",
+        "status": "excluded"
+      },
+      { "project": "entitlement", "status": "production" },
+      { "project": "examination", "status": "production" },
+      { "project": "export", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/d4a.controller.read.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/platform-dashboard.service.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/tenant-user-management.controller.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      { "project": "identity", "status": "production" },
+      { "project": "import", "status": "production" },
+      { "project": "ingestion", "status": "production" },
+      { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/tenant-lifecycle.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      { "project": "platform-admin", "status": "production" },
+      { "project": "portal", "status": "production" },
+      { "project": "reporting", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/search-pr1.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      { "project": "requisition", "status": "production" },
+      { "project": "saved-list", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.controller.unit.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      { "project": "submittal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/search-pr1.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/search-pr2-resume.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      { "project": "talent-record", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/task/src/tests/task-assignee-binding.di.spec.ts",
+        "project": "task",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/task/src/tests/task.spec.ts",
+        "project": "task",
+        "status": "excluded"
+      },
+      { "project": "task", "status": "production" },
+      { "project": "visibility", "status": "production" }
     ],
-    "@aramo/auth-core": ["auth-service"],
-    "@aramo/auth-service": ["aramo-pact-provider"],
-    "@aramo/auth-storage": ["api", "auth-core", "auth-service"],
+    "@aramo/auth-core": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.controller.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.site-axis.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/cookie-verifier.service.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-auth-profile.behaviour-parity.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-auth-profile.test-fixtures.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-base-resolver.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/identity-audit-sink.adapter.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/jwks.service.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/jwt-issuer.service.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-login.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-login.oracle-resistance.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-login.service.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/refresh-orchestrator.service.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/session-orchestrator.service.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/session-scope-parity.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/trust-proxy-budget.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      { "project": "auth-service", "status": "production" }
+    ],
+    "@aramo/auth-service": [
+      {
+        "from": "pact/provider/src/verify.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      }
+    ],
+    "@aramo/auth-storage": [
+      { "project": "api", "status": "production" },
+      { "project": "auth-core", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.controller.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.site-axis.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-auth-profile.behaviour-parity.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-auth-profile.fail-open.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-auth-profile.resolver-seed-parity.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-auth-profile.slug-null-agreement.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-auth-profile.test-fixtures.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-resolver.empty-registry.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/identity-audit-sink.adapter.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-login.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/refresh-orchestrator.service.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/session-orchestrator.service.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      { "project": "auth-service", "status": "production" }
+    ],
     "@aramo/authorization": [
-      "activity",
-      "api",
-      "attachment",
-      "auth-service",
-      "calendar",
-      "company",
-      "consent",
-      "contact",
-      "engagement",
-      "export",
-      "identity",
-      "import",
-      "pipeline",
-      "platform-admin",
-      "portal",
-      "reporting",
-      "requisition",
-      "saved-list",
-      "submittal",
-      "talent-record",
-      "task"
+      { "project": "activity", "status": "production" },
+      { "project": "api", "status": "production" },
+      { "project": "attachment", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.site-axis.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-login.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      { "project": "calendar", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/company/src/tests/address-lookup.controller.spec.ts",
+        "project": "company",
+        "status": "excluded"
+      },
+      { "project": "company", "status": "production" },
+      { "project": "consent", "status": "production" },
+      { "project": "contact", "status": "production" },
+      { "project": "engagement", "status": "production" },
+      { "project": "export", "status": "production" },
+      { "project": "identity", "status": "production" },
+      { "project": "import", "status": "production" },
+      { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/tenant-lifecycle.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      { "project": "platform-admin", "status": "production" },
+      { "project": "portal", "status": "production" },
+      { "project": "reporting", "status": "production" },
+      { "project": "requisition", "status": "production" },
+      { "project": "saved-list", "status": "production" },
+      { "project": "submittal", "status": "production" },
+      { "project": "talent-record", "status": "production" },
+      { "project": "task", "status": "production" }
     ],
-    "@aramo/calendar": ["api", "reporting"],
-    "@aramo/canonicalization": ["api", "outbox-publisher"],
-    "@aramo/cold-ingest-extraction": ["api"],
+    "@aramo/calendar": [
+      { "project": "api", "status": "production" },
+      { "project": "reporting", "status": "production" }
+    ],
+    "@aramo/canonicalization": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
+        "project": "outbox-publisher",
+        "status": "excluded"
+      },
+      { "project": "outbox-publisher", "status": "production" }
+    ],
+    "@aramo/cold-ingest-extraction": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/common": [
-      "activity",
-      "ai-draft",
-      "api",
-      "aramo-pact-provider",
-      "attachment",
-      "auth",
-      "auth-core",
-      "auth-service",
-      "auth-storage",
-      "authorization",
-      "calendar",
-      "canonicalization",
-      "cold-ingest-extraction",
-      "company",
-      "consent",
-      "contact",
-      "engagement",
-      "entitlement",
-      "evidence",
-      "examination",
-      "export",
-      "identity",
-      "identity-index",
-      "import",
-      "ingestion",
-      "mailer",
-      "matching",
-      "object-storage",
-      "outbox-publisher",
-      "pipeline",
-      "platform-admin",
-      "portal",
-      "reporting",
-      "requisition",
-      "resume-parse",
-      "saved-list",
-      "settings",
-      "skills-taxonomy",
-      "sourced-talent",
-      "submittal",
-      "talent-reconcile",
-      "talent-record",
-      "talent-trust",
-      "task"
+      { "from": "tools/send-mailer-proof.ts", "project": "(unscoped)", "status": "unscoped" },
+      { "project": "activity", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/ai-draft/src/tests/ai-draft.integration.spec.ts",
+        "project": "ai-draft",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/ai-draft/src/tests/ai-draft.repository.spec.ts",
+        "project": "ai-draft",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/ai-draft/src/tests/ai-draft.service.spec.ts",
+        "project": "ai-draft",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/ai-draft/src/tests/anthropic.provider.spec.ts",
+        "project": "ai-draft",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/ai-draft/src/tests/secret-cache.service.spec.ts",
+        "project": "ai-draft",
+        "status": "excluded"
+      },
+      { "project": "ai-draft", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/indeed-apply-webhook.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/outreach-send.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tenant-write-freeze.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tenant-write-freeze.interceptor.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr2b-b2b-admit-arrivals.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
+        "from": "pact/provider/src/verify.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      { "project": "attachment", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/auth/src/tests/jwt-auth.guard.spec.ts",
+        "project": "auth",
+        "status": "excluded"
+      },
+      { "project": "auth", "status": "production" },
+      { "project": "auth-core", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.controller.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.site-axis.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-login-adapters.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-login.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      { "project": "auth-service", "status": "production" },
+      { "project": "auth-storage", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/authorization/src/tests/roles.guard.spec.ts",
+        "project": "authorization",
+        "status": "excluded"
+      },
+      { "project": "authorization", "status": "production" },
+      { "project": "calendar", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/canonicalization/src/tests/canonicalization.integration.spec.ts",
+        "project": "canonicalization",
+        "status": "excluded"
+      },
+      { "project": "canonicalization", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/cold-ingest-extraction/src/tests/cold-ingest-extraction.service.spec.ts",
+        "project": "cold-ingest-extraction",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/cold-ingest-extraction/src/tests/no-llm-boundary.spec.ts",
+        "project": "cold-ingest-extraction",
+        "status": "excluded"
+      },
+      { "project": "cold-ingest-extraction", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/company/src/tests/address-lookup.controller.spec.ts",
+        "project": "company",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/company/src/tests/company-search-paged.spec.ts",
+        "project": "company",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/company/src/tests/d4a.controller.read.spec.ts",
+        "project": "company",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/company/src/tests/d4a.service.read.spec.ts",
+        "project": "company",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/company/src/tests/search-pr1.spec.ts",
+        "project": "company",
+        "status": "excluded"
+      },
+      { "project": "company", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent.controller.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent.refusal-action-locked.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent.repository.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      { "project": "consent", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/contact/src/tests/contact-search-paged.spec.ts",
+        "project": "contact",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/contact/src/tests/search-pr1.spec.ts",
+        "project": "contact",
+        "status": "excluded"
+      },
+      { "project": "contact", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement-event.repository.integration.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement-event.repository.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.repository.integration.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.repository.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      { "project": "engagement", "status": "production" },
+      { "project": "entitlement", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.integration.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.unit.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      { "project": "evidence", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/examination/src/tests/examination.repository.unit.spec.ts",
+        "project": "examination",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/examination/src/tests/no-llm-boundary.spec.ts",
+        "project": "examination",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/examination/src/tests/override.controller.unit.spec.ts",
+        "project": "examination",
+        "status": "excluded"
+      },
+      { "project": "examination", "status": "production" },
+      { "project": "export", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/audit-query.service.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/d4a-reads.service-repo.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/d4a.controller.read.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/domain-verification-state-machine.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/financials-gate-binding.di.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/identity-audit.service.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/identity.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/invite-s2-three-state.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/seed-platform-owner.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/seed-scrub.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/tenant-profile.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/tenant-user-management.controller.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      { "project": "identity", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity-index/src/tests/identity-index.integration.spec.ts",
+        "project": "identity-index",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/import/src/tests/no-llm-boundary.spec.ts",
+        "project": "import",
+        "status": "excluded"
+      },
+      { "project": "import", "status": "production" },
+      { "project": "ingestion", "status": "production" },
+      { "project": "mailer", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/matching/src/tests/no-llm-boundary.spec.ts",
+        "project": "matching",
+        "status": "excluded"
+      },
+      { "project": "matching", "status": "production" },
+      { "project": "object-storage", "status": "production" },
+      { "project": "outbox-publisher", "status": "production" },
+      { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-invitation.service.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/tenant-lifecycle.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      { "project": "platform-admin", "status": "production" },
+      { "project": "portal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/company-metrics.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/recruiter-metrics.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      { "project": "reporting", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/compensation-edit-gate.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/financial-edit-gate.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/profile-read.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/requisition-intake.service.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/search-pr1.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/status-edit-gate.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      { "project": "requisition", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/resume-parse/src/tests/no-llm-boundary.spec.ts",
+        "project": "resume-parse",
+        "status": "excluded"
+      },
+      { "project": "resume-parse", "status": "production" },
+      { "project": "saved-list", "status": "production" },
+      { "project": "settings", "status": "production" },
+      { "project": "skills-taxonomy", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sourced-talent/src/tests/sourced-talent.integration.spec.ts",
+        "project": "sourced-talent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.controller.unit.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.repository.integration.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.repository.unit.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/talent-submittal-event.repository.integration.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/talent-submittal-event.repository.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      { "project": "submittal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-reconcile/src/tests/no-llm-boundary.spec.ts",
+        "project": "talent-reconcile",
+        "status": "excluded"
+      },
+      { "project": "talent-reconcile", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/search-pr1.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      { "project": "talent-record", "status": "production" },
+      { "project": "talent-trust", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/task/src/tests/task-assignee-binding.di.spec.ts",
+        "project": "task",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/task/src/tests/task.spec.ts",
+        "project": "task",
+        "status": "excluded"
+      },
+      { "project": "task", "status": "production" }
     ],
     "@aramo/company": [
-      "api",
-      "contact",
-      "export",
-      "import",
-      "reporting",
-      "saved-list",
-      "visibility"
+      { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/identity-module-split.di.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/contact/src/tests/contact-search-paged.spec.ts",
+        "project": "contact",
+        "status": "excluded"
+      },
+      { "project": "contact", "status": "production" },
+      { "project": "export", "status": "production" },
+      { "project": "import", "status": "production" },
+      { "project": "reporting", "status": "production" },
+      { "project": "saved-list", "status": "production" },
+      { "project": "visibility", "status": "production" }
     ],
     "@aramo/consent": [
-      "api",
-      "engagement",
-      "examination",
-      "ingestion",
-      "outbox-publisher",
-      "portal",
-      "submittal"
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      { "project": "engagement", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/examination/src/tests/override.controller.unit.spec.ts",
+        "project": "examination",
+        "status": "excluded"
+      },
+      { "project": "examination", "status": "production" },
+      { "project": "ingestion", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
+        "project": "outbox-publisher",
+        "status": "excluded"
+      },
+      { "project": "outbox-publisher", "status": "production" },
+      { "project": "portal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.controller.unit.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.repository.integration.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      { "project": "submittal", "status": "production" }
     ],
-    "@aramo/contact": ["api", "export", "import", "reporting", "saved-list", "visibility"],
+    "@aramo/contact": [
+      { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      { "project": "api", "status": "production" },
+      { "project": "export", "status": "production" },
+      { "project": "import", "status": "production" },
+      { "project": "reporting", "status": "production" },
+      { "project": "saved-list", "status": "production" },
+      { "project": "visibility", "status": "production" }
+    ],
     "@aramo/engagement": [
-      "api",
-      "aramo-platform-web",
-      "aramo-portal-web",
-      "auth-core",
-      "evidence",
-      "matching",
-      "outbox-publisher",
-      "platform-admin",
-      "submittal"
+      { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/platform-negative-control/**",
+        "from": "apps/platform-web/src/platform-negative-control/platform-imports-ats.fixture.ts",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/portal-negative-control/**",
+        "from": "apps/portal-web/src/portal-negative-control/portal-imports-ats.fixture.ts",
+        "project": "aramo-portal-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/auth-negative-control/**",
+        "from": "libs/auth-core/src/auth-negative-control/auth-imports-ats.fixture.ts",
+        "project": "auth-core",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.integration.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.unit.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      { "project": "evidence", "status": "production" },
+      {
+        "excludedBy": "src/i15-negative-control/**",
+        "from": "libs/matching/src/i15-negative-control/cip-imports-ats.fixture.ts",
+        "project": "matching",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
+        "project": "outbox-publisher",
+        "status": "excluded"
+      },
+      { "project": "outbox-publisher", "status": "production" },
+      {
+        "excludedBy": "src/platform-negative-control/**",
+        "from": "apps/platform-admin/src/platform-negative-control/platform-imports-ats.fixture.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.repository.integration.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      }
     ],
     "@aramo/entitlement": [
-      "activity",
-      "api",
-      "attachment",
-      "calendar",
-      "company",
-      "contact",
-      "export",
-      "identity",
-      "import",
-      "pipeline",
-      "platform-admin",
-      "portal",
-      "reporting",
-      "requisition",
-      "saved-list",
-      "talent-record",
-      "task"
+      { "project": "activity", "status": "production" },
+      { "project": "api", "status": "production" },
+      { "project": "attachment", "status": "production" },
+      { "project": "calendar", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/company/src/tests/address-lookup.controller.spec.ts",
+        "project": "company",
+        "status": "excluded"
+      },
+      { "project": "company", "status": "production" },
+      { "project": "contact", "status": "production" },
+      { "project": "export", "status": "production" },
+      { "project": "identity", "status": "production" },
+      { "project": "import", "status": "production" },
+      { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/tenant-lifecycle.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      { "project": "platform-admin", "status": "production" },
+      { "project": "portal", "status": "production" },
+      { "project": "reporting", "status": "production" },
+      { "project": "requisition", "status": "production" },
+      { "project": "saved-list", "status": "production" },
+      { "project": "talent-record", "status": "production" },
+      { "project": "task", "status": "production" }
     ],
     "@aramo/events": [],
-    "@aramo/evidence": ["api", "submittal"],
-    "@aramo/examination": ["api", "engagement", "evidence", "matching", "submittal"],
-    "@aramo/export": ["api"],
-    "@aramo/fe-foundation": ["aramo-ats-web", "aramo-platform-web", "aramo-portal-web"],
-    "@aramo/field-masking": ["api", "identity", "job-distribution"],
+    "@aramo/evidence": [
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.controller.unit.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.repository.integration.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.repository.unit.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      { "project": "submittal", "status": "production" }
+    ],
+    "@aramo/examination": [
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.repository.integration.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.repository.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      { "project": "engagement", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.integration.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.unit.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      { "project": "evidence", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/matching/src/tests/match-queue.integration.spec.ts",
+        "project": "matching",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/matching/src/tests/matching.persistence.integration.spec.ts",
+        "project": "matching",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/matching/src/tests/matching.service.spec.ts",
+        "project": "matching",
+        "status": "excluded"
+      },
+      { "project": "matching", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.repository.integration.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.repository.unit.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      { "project": "submittal", "status": "production" }
+    ],
+    "@aramo/export": [{ "project": "api", "status": "production" }],
+    "@aramo/fe-foundation": [
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/admin/AdminGate.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/admin/admin-access.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/admin/admin-assignments-route.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/admin/admin-consent-route.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/admin/admin-org-route.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/admin/admin-settings-route.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/admin/admin-teams-route.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/admin/admin-users-route.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/assignments/CompanyAssignmentsView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/assignments/RequisitionAssignmentsView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/assignments/TeamClientsView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/assignments/error-messages.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/companies/CompaniesListView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/companies/CompanyDetailView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/components/InlineEditField.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/contacts/ContactDetailView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/contacts/ContactsListView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/dashboard/DashboardView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/engagement/EngagementDetailView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/identity-advisories/IdentityAdvisoriesView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/org/AddEdgeDialog.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/org/OrgHierarchyView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/org/error-messages.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/portal-disputes/PortalDisputesView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisitions/NewRequisitionView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisitions/ProfileWorkbenchPanel.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisitions/RequisitionDetailView.cockpit.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisitions/RequisitionDetailView.pipeline.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/routes/InvitationAcceptPage.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/routes/VerifyEmailConfirmPage.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/search/SearchView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/SettingsShell.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/SettingsView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/domain/DomainVerificationPanel.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/profile/TenantProfileForm.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/sections/ComplianceSection.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/sites/SiteDialog.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/sites/SitesPanel.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/shell/RecruiterShell.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/sourcing/SourcingPoolView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/talent/TalentDetailView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/talent/components/TrustPanel.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/task/task.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/teams/CreateTeamDialog.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/teams/TeamMembersView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/teams/TeamsListView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/teams/error-messages.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/trust-proposals/TrustProposalsView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/ui/atoms.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/users/DisableConfirmDialog.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/users/InviteDialog.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/users/RoleAssignEditor.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/users/UsersListView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/users/error-messages.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/users/users-api.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      { "project": "aramo-ats-web", "status": "production" },
+      { "project": "aramo-platform-web", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/portal-web/src/disputes/DisputesListView.spec.tsx",
+        "project": "aramo-portal-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/portal-web/src/notice/NoticeView.spec.tsx",
+        "project": "aramo-portal-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/portal-web/src/records/RecordDetailView.spec.tsx",
+        "project": "aramo-portal-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/portal-web/src/rights/RightsView.spec.tsx",
+        "project": "aramo-portal-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/portal-web/src/verifications/VerificationsView.spec.tsx",
+        "project": "aramo-portal-web",
+        "status": "excluded"
+      },
+      { "project": "aramo-portal-web", "status": "production" }
+    ],
+    "@aramo/field-masking": [
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/d5-non-invertibility.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      { "project": "identity", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/job-distribution/src/tests/channel-posting-payload.builder.spec.ts",
+        "project": "job-distribution",
+        "status": "excluded"
+      }
+    ],
     "@aramo/identity": [
-      "api",
-      "aramo-pact-provider",
-      "auth-service",
-      "company",
-      "platform-admin",
-      "portal",
-      "visibility"
+      { "from": "tools/enable-e2e-recruiter.ts", "project": "(unscoped)", "status": "unscoped" },
+      { "from": "tools/link-e2e-recruiter-sub.ts", "project": "(unscoped)", "status": "unscoped" },
+      { "from": "tools/provision-e2e-recruiter.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/domain-verification.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/identity-module-split.di.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tenant-write-freeze.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tenant-write-freeze.interceptor.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
+        "from": "pact/provider/src/verify.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.controller.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/auth.site-axis.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-auth-profile.resolver-seed-parity.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-auth-profile.slug-null-agreement.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-auth-profile.test-fixtures.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/host-base-resolver.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/identity-audit-sink.adapter.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/identity-host-context.adapter.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/identity-principal-directory.adapter.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-login.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/refresh-orchestrator.service.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/session-orchestrator.service.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/session-scope-parity.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      { "project": "auth-service", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/company/src/tests/d4a.service.read.spec.ts",
+        "project": "company",
+        "status": "excluded"
+      },
+      { "project": "company", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/tenant-lifecycle.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      { "project": "platform-admin", "status": "production" },
+      { "project": "portal", "status": "production" },
+      { "project": "visibility", "status": "production" }
     ],
-    "@aramo/identity-index": ["api", "auth-service", "canonicalization", "talent-record"],
-    "@aramo/import": ["api"],
-    "@aramo/ingestion": ["api", "canonicalization", "cold-ingest-extraction"],
-    "@aramo/job-distribution": ["api"],
-    "@aramo/job-domain": ["api", "engagement", "examination", "requisition"],
-    "@aramo/mailer": ["api", "auth-service", "identity"],
-    "@aramo/matching": ["api"],
-    "@aramo/metering": ["engagement", "pipeline", "submittal"],
+    "@aramo/identity-index": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-batch4b-talent-link.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-login-adapters.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-login.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      { "project": "auth-service", "status": "production" },
+      { "project": "canonicalization", "status": "production" },
+      { "project": "talent-record", "status": "production" }
+    ],
+    "@aramo/import": [{ "project": "api", "status": "production" }],
+    "@aramo/ingestion": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      { "project": "canonicalization", "status": "production" },
+      { "project": "cold-ingest-extraction", "status": "production" }
+    ],
+    "@aramo/job-distribution": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/job-distribution-sync.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/job-distribution-sync.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
+    "@aramo/job-domain": [
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.repository.integration.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.repository.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      { "project": "engagement", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/examination/src/tests/examination-live-list.integration.spec.ts",
+        "project": "examination",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/examination/src/tests/examination-live-list.spec.ts",
+        "project": "examination",
+        "status": "excluded"
+      },
+      { "project": "examination", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/profile-confirm-keying.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/profile-read.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      { "project": "requisition", "status": "production" }
+    ],
+    "@aramo/mailer": [
+      { "from": "tools/send-mailer-proof.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/invite-s2-public-accept.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr3-b2-email-verification.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-login-adapters.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-login.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      { "project": "auth-service", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/tenant-user-lifecycle.service.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      { "project": "identity", "status": "production" }
+    ],
+    "@aramo/matching": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/derive-matching-input.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
+    "@aramo/metering": [
+      { "project": "engagement", "status": "production" },
+      { "project": "pipeline", "status": "production" },
+      { "project": "submittal", "status": "production" }
+    ],
     "@aramo/object-storage": [
-      "api",
-      "aramo-pact-provider",
-      "attachment",
-      "resume-parse",
-      "talent-record"
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      { "project": "attachment", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/resume-parse/src/tests/resume-parse.integration.spec.ts",
+        "project": "resume-parse",
+        "status": "excluded"
+      },
+      { "project": "resume-parse", "status": "production" },
+      { "project": "talent-record", "status": "production" }
     ],
-    "@aramo/outbox-publisher": ["api"],
-    "@aramo/pipeline": ["api", "export", "reporting", "visibility"],
-    "@aramo/platform-trust": ["api"],
-    "@aramo/policy-engine": ["api", "pipeline", "policy-store"],
-    "@aramo/policy-store": ["pipeline"],
-    "@aramo/portal": ["api"],
-    "@aramo/portal-identity": ["api", "auth-service", "portal"],
-    "@aramo/reporting": ["api"],
+    "@aramo/outbox-publisher": [{ "project": "api", "status": "production" }],
+    "@aramo/pipeline": [
+      { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      { "project": "api", "status": "production" },
+      { "project": "export", "status": "production" },
+      { "project": "reporting", "status": "production" },
+      { "project": "visibility", "status": "production" }
+    ],
+    "@aramo/platform-trust": [{ "project": "api", "status": "production" }],
+    "@aramo/policy-engine": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/add-talent-policy-mapping.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
+      { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/policy-store/src/tests/decision-inputs.spec.ts",
+        "project": "policy-store",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/policy-store/src/tests/decision-record.integration.spec.ts",
+        "project": "policy-store",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/policy-store/src/tests/policy-store.integration.spec.ts",
+        "project": "policy-store",
+        "status": "excluded"
+      },
+      { "project": "policy-store", "status": "production" }
+    ],
+    "@aramo/policy-store": [{ "project": "pipeline", "status": "production" }],
+    "@aramo/portal": [{ "project": "api", "status": "production" }],
+    "@aramo/portal-identity": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/portal-p4b-rtbf.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-identity-repository.adapter.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/portal-login.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      { "project": "auth-service", "status": "production" },
+      { "project": "portal", "status": "production" }
+    ],
+    "@aramo/reporting": [{ "project": "api", "status": "production" }],
     "@aramo/requisition": [
-      "api",
-      "export",
-      "import",
-      "pipeline",
-      "reporting",
-      "saved-list",
-      "visibility"
+      { "from": "tools/enable-e2e-recruiter.ts", "project": "(unscoped)", "status": "unscoped" },
+      { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/job-distribution-sync.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      { "project": "export", "status": "production" },
+      { "project": "import", "status": "production" },
+      { "project": "pipeline", "status": "production" },
+      { "project": "reporting", "status": "production" },
+      { "project": "saved-list", "status": "production" },
+      { "project": "visibility", "status": "production" }
     ],
     "@aramo/resume-parse": [
-      "api",
-      "aramo-pact-provider",
-      "cold-ingest-extraction",
-      "talent-record"
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      { "project": "cold-ingest-extraction", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/search-pr2-resume.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      { "project": "talent-record", "status": "production" }
     ],
-    "@aramo/saved-list": ["api", "reporting"],
-    "@aramo/settings": ["api", "reporting"],
-    "@aramo/skills-taxonomy": ["api"],
-    "@aramo/sourced-talent": ["api"],
-    "@aramo/submittal": ["api", "outbox-publisher"],
+    "@aramo/saved-list": [
+      { "project": "api", "status": "production" },
+      { "project": "reporting", "status": "production" }
+    ],
+    "@aramo/settings": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/identity-module-split.di.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      { "project": "reporting", "status": "production" }
+    ],
+    "@aramo/skills-taxonomy": [{ "project": "api", "status": "production" }],
+    "@aramo/sourced-talent": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
+    "@aramo/submittal": [
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
+        "project": "outbox-publisher",
+        "status": "excluded"
+      },
+      { "project": "outbox-publisher", "status": "production" }
+    ],
     "@aramo/talent": [],
-    "@aramo/talent-evidence": ["api", "evidence", "submittal", "talent-extraction"],
-    "@aramo/talent-extraction": ["api"],
-    "@aramo/talent-reconcile": ["api"],
+    "@aramo/talent-evidence": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr4-b2-claims-routing.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr7-b1-credential-routing.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.integration.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/evidence/src/tests/evidence.repository.unit.spec.ts",
+        "project": "evidence",
+        "status": "excluded"
+      },
+      { "project": "evidence", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/submittal/src/tests/submittal.repository.integration.spec.ts",
+        "project": "submittal",
+        "status": "excluded"
+      },
+      { "project": "talent-extraction", "status": "production" }
+    ],
+    "@aramo/talent-extraction": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr4-b2-claims-routing.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr7-b1-credential-routing.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
+    "@aramo/talent-reconcile": [{ "project": "api", "status": "production" }],
     "@aramo/talent-record": [
-      "api",
-      "attachment",
-      "engagement",
-      "export",
-      "import",
-      "portal",
-      "reporting",
-      "saved-list",
-      "talent-reconcile"
+      { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-anchor-producer.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-preset.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-record-enrichment.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      { "project": "attachment", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.controller.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.repository.integration.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.repository.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      { "project": "engagement", "status": "production" },
+      { "project": "export", "status": "production" },
+      { "project": "import", "status": "production" },
+      { "project": "portal", "status": "production" },
+      { "project": "reporting", "status": "production" },
+      { "project": "saved-list", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-reconcile/src/tests/reconcile-plan.spec.ts",
+        "project": "talent-reconcile",
+        "status": "excluded"
+      },
+      { "project": "talent-reconcile", "status": "production" }
     ],
     "@aramo/talent-trust": [
-      "api",
-      "canonicalization",
-      "cold-ingest-extraction",
-      "portal",
-      "talent-extraction",
-      "talent-reconcile"
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-anchor-producer.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr12-b1-proposals.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr12-b2-queue.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr14-b1-dossier-reads.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr14-b2-dossier.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr15-b1-dispute-resolution.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr3-b2-email-verification.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr4-b2-claims-routing.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr4-b3-consistency.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr5-b1-recompute-sweep.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr5-b2-continuity-thinness.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr6-b1-maintenance.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr7-b1-credential-routing.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr8-b1-renewal.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tr9-b1-reference-attestation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      { "project": "canonicalization", "status": "production" },
+      { "project": "cold-ingest-extraction", "status": "production" },
+      { "project": "portal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-extraction/src/tests/ledger-mapper.spec.ts",
+        "project": "talent-extraction",
+        "status": "excluded"
+      },
+      { "project": "talent-extraction", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-reconcile/src/tests/reconcile-plan.spec.ts",
+        "project": "talent-reconcile",
+        "status": "excluded"
+      },
+      { "project": "talent-reconcile", "status": "production" }
     ],
-    "@aramo/task": ["api"],
-    "@aramo/visibility": ["api"]
+    "@aramo/task": [
+      { "from": "tools/enable-e2e-recruiter.ts", "project": "(unscoped)", "status": "unscoped" },
+      { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      { "project": "api", "status": "production" }
+    ],
+    "@aramo/visibility": [{ "project": "api", "status": "production" }]
   },
   "projects": [
     {
