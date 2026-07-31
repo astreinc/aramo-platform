@@ -41,6 +41,6 @@ import { REQUISITION_LIFECYCLE_PACKAGE } from './policy/requisition-lifecycle.pa
     AddTalentPolicyService,
     { provide: REQUISITION_ADD_POLICY_PACKAGE, useValue: REQUISITION_LIFECYCLE_PACKAGE },
   ],
-  exports: [PipelineRepository],
+  exports: [PipelineRepository, AddTalentPolicyService],
 })
 export class PipelineModule {}

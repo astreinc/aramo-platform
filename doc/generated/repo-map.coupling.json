@@ -4774,6 +4774,27 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sourcing-policy-controller.spec.ts",
+      "line": 116,
+      "status": "excluded",
+      "to": "apps/api/src/talent-identity/sourcing.controller.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sourcing-policy-controller.spec.ts",
+      "line": 115,
+      "status": "excluded",
+      "to": "libs/pipeline/src/lib/pipeline.controller.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sourcing-policy-controller.spec.ts",
+      "line": 117,
+      "status": "excluded",
+      "to": "libs/pipeline/src/lib/pipeline.repository.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/submittal-confirm.negative-shape.spec.ts",
       "line": 46,
       "status": "excluded",
