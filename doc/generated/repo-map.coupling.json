@@ -197,15 +197,15 @@
     },
     {
       "from": "apps/api/src/policy/seed-lifecycle.ts",
-      "line": 22,
+      "line": 27,
       "status": "production",
       "to": "deploy/seed-prod.sh"
     },
     {
-      "from": "apps/api/src/policy/seed-lifecycle.ts",
-      "line": 8,
+      "from": "apps/api/src/policy/tenant-policy-coverage.repository.ts",
+      "line": 21,
       "status": "production",
-      "to": "doc/go-live-known-limitations.md"
+      "to": "libs/policy-store/src/lib/window.ts"
     },
     {
       "from": "apps/api/src/talent-anchor/erase-talent.command.ts",
@@ -8518,6 +8518,12 @@
       "to": "apps/platform-admin/tsconfig.app.json"
     },
     {
+      "from": "apps/platform-admin/src/app/platform/tenant-policy-provisioning.service.ts",
+      "line": 25,
+      "status": "production",
+      "to": "apps/api/src/policy/seed-lifecycle.ts"
+    },
+    {
       "excludedBy": "src/platform-negative-control/**",
       "from": "apps/platform-admin/src/platform-negative-control/platform-imports-ats.fixture.ts",
       "line": 13,
@@ -8541,9 +8547,16 @@
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
-      "line": 59,
+      "line": 60,
       "status": "excluded",
       "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/tenant-policy-provisioning.integration.spec.ts",
+      "line": 37,
+      "status": "excluded",
+      "to": "apps/api/src/policy/requisition-lifecycle.package.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -10664,45 +10677,45 @@
     },
     {
       "from": "doc/go-live-known-limitations.md",
-      "line": 21,
-      "status": "unscoped",
-      "to": "deploy/seed-prod.sh"
-    },
-    {
-      "from": "doc/go-live-known-limitations.md",
-      "line": 494,
+      "line": 498,
       "status": "unscoped",
       "to": "doc/auth-local-mock-idp-recon.md"
     },
     {
       "from": "doc/go-live-known-limitations.md",
-      "line": 516,
+      "line": 520,
       "status": "unscoped",
       "to": "doc/auth-mfa-recon.md"
     },
     {
       "from": "doc/go-live-known-limitations.md",
-      "line": 121,
+      "line": 125,
       "status": "unscoped",
       "to": "doc/runbooks/bootstrap-anthropic-secret.md"
     },
     {
       "from": "doc/go-live-known-limitations.md",
-      "line": 154,
+      "line": 158,
       "status": "unscoped",
       "to": "doc/runbooks/talent-rtbf-erasure.md"
     },
     {
       "from": "doc/go-live-known-limitations.md",
-      "line": 174,
+      "line": 178,
       "status": "unscoped",
       "to": "doc/runbooks/talent-rtbf-erasure.md"
     },
     {
       "from": "doc/go-live-known-limitations.md",
-      "line": 119,
+      "line": 123,
       "status": "unscoped",
       "to": "infrastructure/bootstrap/create-anthropic-secret.sh"
+    },
+    {
+      "from": "doc/go-live-known-limitations.md",
+      "line": 33,
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/tenant.service.ts"
     },
     {
       "from": "doc/integration-testing.md",

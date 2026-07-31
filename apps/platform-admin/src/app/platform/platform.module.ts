@@ -5,10 +5,15 @@ import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
 import { IdentityCoreModule } from '@aramo/identity';
+import {
+  PolicyStore,
+  PrismaService as PolicyStorePrismaService,
+} from '@aramo/policy-store';
 
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformInvitationService } from './platform-invitation.service.js';
+import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.service.js';
 
 // PlatformModule — wires the platform-admin app's HTTP surface +
 // orchestration. Imports:
@@ -40,6 +45,13 @@ import { PlatformInvitationService } from './platform-invitation.service.js';
   providers: [
     CognitoAdminService,
     PlatformInvitationService,
+    // ADR-0024 PR-4a-2 — policy-store access for the provisioning-time
+    // template copy (scope:platform → scope:boundary is wall-legal). PolicyStore
+    // takes the policy-store PrismaService (its own generated client; lazy
+    // DATABASE_URL resolution, distinct from the identity client already wired).
+    PolicyStorePrismaService,
+    PolicyStore,
+    TenantPolicyProvisioningService,
     { provide: APP_FILTER, useClass: AramoExceptionFilter },
   ],
 })

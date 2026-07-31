@@ -10,32 +10,36 @@ trust implication. Reviewed at each go-live gate.
 
 ---
 
-## ⛔ Policy Engine (ADR-0024) — BLOCKING
+## ✅ Policy Engine (ADR-0024) — tenant-freeze CLOSED by PR-4a-2
 
-### No tenant may be provisioned until PR-4a-2 lands
-**2026-07-31 · PR-4a (feat/policy-runtime-retrieval).** Add-to-pipeline
-(`REQUISITION_TALENT · ADD`) is now governed by a policy package **retrieved per
-tenant** from policy-store, and PR-4a **fails closed**: a tenant with **no
-published package** has every add-talent command DENY'd (403 `POLICY_DENIED`,
-`reason_code = NO_POLICY_PUBLISHED`). The deploy seed
-(`deploy/seed-prod.sh` STAGE C → `prisma:seed-policy-lifecycle`) publishes the
-package **only for the seed-time (Astre) tenant**. A tenant provisioned **after**
-seed time has a **non-functional add-talent path from creation**.
+### (CLOSED) No tenant may be provisioned until PR-4a-2 lands
+**Opened 2026-07-31 · PR-4a (feat/policy-runtime-retrieval). CLOSED 2026-07-31 ·
+PR-4a-2 (feat/policy-tenant-provisioning).** Add-to-pipeline
+(`REQUISITION_TALENT · ADD`) is governed by a policy package **retrieved per
+tenant** and PR-4a **fails closed** (no package → 403 `POLICY_DENIED`,
+`reason_code = NO_POLICY_PUBLISHED`). PR-4a-2 removed the freeze: tenant
+provisioning now publishes each new tenant's lifecycle package as a
+byte-identical copy of the platform-sentinel **template**
+(`apps/platform-admin` `TenantPolicyProvisioningService`, step 4 of the
+provisioning saga), and a bootstrap coverage guard (`apps/api`
+`TenantPolicyCoverageGuard`) LOGS LOUD for any active tenant still lacking one
+(**never fail-boots**). **The blocking constraint is lifted.**
 
-**BLOCKING CONSTRAINT: No new tenant may be provisioned until PR-4a-2 wires the
-lifecycle-package publish into the tenant-provisioning path.** Astre is the only
-live tenant, so this is currently theoretical — it stops being theoretical the
-moment a second tenant is created.
+### (OPEN) Future self-service tenant signup must invoke the same handout
+**2026-07-31 · PR-4a-2.** PR-4a-2 wires the lifecycle-package copy into the
+**only current** production tenant-creation path — the platform-admin
+provisioning saga (`provisionTenantAndInviteOwner`). `TenantService.provisionTenant`
+notes a *future* self-service signup caller that does not exist yet
+(`libs/identity/src/lib/tenant.service.ts`). **When that path is built it MUST
+also publish the tenant's requisition-lifecycle package** (call the same template
+copy) — otherwise a self-signed-up tenant is created with a fail-closed
+add-talent path, re-opening exactly the gap PR-4a-2 closed.
 
-**Risk:** a second tenant created before PR-4a-2 cannot add talent to any
-requisition (fail-closed 403) until its package is manually published.
+**Risk:** none today (no self-service signup path exists). Becomes real the moment
+one is built without the handout. The startup coverage guard is the safety net
+that would surface it — loudly, at boot — but the fix is to wire the handout in.
 
-**Fix:** PR-4a-2 (both parts — same concern, a tenant without a package):
-(1) tenant-provisioning publishes the default lifecycle package; (2) startup
-detection — a cross-schema anti-join of `identity.Tenant` against active
-`policy_store` packages **LOGS LOUD** for any tenant lacking one. **NEVER
-fail-boot:** one package-less tenant must not stop the API from starting — a
-config gap must not become a total outage.
+**Prerequisite for:** any future self-service tenant-signup feature.
 
 ---
 

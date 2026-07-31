@@ -13,7 +13,8 @@
       "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
       "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
       "@aramo/identity": ["../../dist/libs/identity/src/index.d.ts"],
-      "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"]
+      "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
+      "@aramo/policy-store": ["../../dist/libs/policy-store/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

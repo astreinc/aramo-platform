@@ -99,6 +99,9 @@ import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
 // SRC-1 PR-2 — the Indeed Apply inbound webhook (composition root; R13.5).
 import { IndeedApplyController } from './webhooks/indeed-apply.controller.js';
 import { IndeedApplyWebhookService } from './webhooks/indeed-apply.service.js';
+// ADR-0024 PR-4a-2 — startup policy-coverage guard (logs loud on any active
+// tenant missing its requisition-lifecycle package; never fail-boots).
+import { PolicyStartupModule } from './policy/policy-startup.module.js';
 
 @Module({
   imports: [
@@ -130,6 +133,9 @@ import { IndeedApplyWebhookService } from './webhooks/indeed-apply.service.js';
     // (pact provider) imports CommonModule but NOT this module, so its
     // pact-provider boot stays BullMQ-Worker-free.
     CrossSchemaConsistencyModule,
+    // ADR-0024 PR-4a-2 — bootstrap policy-coverage guard (pg-Pool anti-join,
+    // never fail-boots). Not Redis-gated: it runs on every boot.
+    PolicyStartupModule,
     EngagementModule,
     IngestionModule,
     MatchingModule,

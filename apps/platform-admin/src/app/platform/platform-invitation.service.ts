@@ -13,6 +13,7 @@ import {
 } from '@aramo/identity';
 
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
+import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.service.js';
 
 // PlatformInvitationService — orchestrates the cross-schema saga (Lead
 // ruling 7):
@@ -22,6 +23,11 @@ import { CognitoAdminService } from './cognito/cognito-admin.service.js';
 //      User + ExternalIdentity + Membership + MembershipRole, atomic.
 //   3. Entitlement tx (libs/entitlement) — grant {core, ats, portal}
 //      rows for the new tenant (provisioning case only).
+//   4. Policy (ADR-0024 PR-4a-2) — copy the platform TEMPLATE
+//      requisition-lifecycle package into the new tenant. Non-atomic with
+//      step 2 by design (the seams share no transaction — libs/identity is
+//      scope:shared and cannot reach policy-store); the startup coverage
+//      guard + PR-4a add-time fail-closed are the reconciling safety nets.
 //
 // Compensation:
 //   - Identity-tx failure (after Cognito returned a sub) -> AdminDeleteUser
@@ -75,6 +81,7 @@ export class PlatformInvitationService {
     private readonly tenantSvc: TenantService,
     private readonly identitySvc: IdentityService,
     private readonly entitlementRepo: EntitlementRepository,
+    private readonly policyProvisioning: TenantPolicyProvisioningService,
   ) {}
 
   async provisionTenantAndInviteOwner(args: {
@@ -230,6 +237,38 @@ export class PlatformInvitationService {
         {
           requestId: 'platform.provision',
           details: { tenant_id, reason: 'entitlement_grant_failed' },
+        },
+      );
+    }
+
+    // 4. Policy (ADR-0024 PR-4a-2) — publish the tenant's requisition-lifecycle
+    // package as a byte-identical copy of the platform template. Without it the
+    // tenant's add-talent path fails closed (PR-4a: no package = DENY), so the
+    // tenant would be live but non-functional. On failure -> SOFT-DISABLE (the
+    // same compensation class as the entitlement step, Lead ruling 7): a tenant
+    // that cannot add talent must be inert, not silently broken. The startup
+    // coverage guard (apps/api) and the add-time fail-closed are the reconciling
+    // safety nets for the non-atomic gap.
+    try {
+      await this.policyProvisioning.publishDefaultLifecyclePackage(tenant_id);
+    } catch (err) {
+      this.logger.warn(
+        `policy package publish failed; soft-disabling tenant ${tenant_id}: ${
+          (err as Error).message
+        }`,
+      );
+      await this.tenantSvc.deactivateTenant({
+        tenant_id,
+        actor_user_id: args.actor_user_id,
+        reason: 'policy_package_publish_failed',
+      });
+      throw new AramoError(
+        'INTERNAL_ERROR',
+        'Policy package publish failed; tenant soft-disabled',
+        500,
+        {
+          requestId: 'platform.provision',
+          details: { tenant_id, reason: 'policy_package_publish_failed' },
         },
       );
     }
