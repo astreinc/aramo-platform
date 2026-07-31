@@ -28,6 +28,8 @@ export {
 // mutation transaction.
 export {
   AddTalentPolicyService,
+  REQUISITION_LIFECYCLE_PACKAGE_NAME,
+  NO_POLICY_PUBLISHED_REASON,
   type AddTalentPolicyInput,
   type AddTalentPolicyOutcome,
 } from './lib/policy/add-talent-policy.service.js';

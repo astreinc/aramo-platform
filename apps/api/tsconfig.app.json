@@ -37,6 +37,7 @@
       "@aramo/object-storage": ["../../dist/libs/object-storage/src/index.d.ts"],
       "@aramo/outbox-publisher": ["../../dist/libs/outbox-publisher/src/index.d.ts"],
       "@aramo/pipeline": ["../../dist/libs/pipeline/src/index.d.ts"],
+      "@aramo/policy-engine": ["../../dist/libs/policy-engine/src/index.d.ts"],
       "@aramo/policy-store": ["../../dist/libs/policy-store/src/index.d.ts"],
       "@aramo/portal": ["../../dist/libs/portal/src/index.d.ts"],
       "@aramo/reporting": ["../../dist/libs/reporting/src/index.d.ts"],

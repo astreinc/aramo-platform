@@ -20,6 +20,13 @@ import {
   type KeyObject,
 } from 'jose';
 import { AppModule } from '@aramo/api';
+// ADR-0024 PR-4a — the /v1/pipelines + /v1/sourcing/pipeline replays now RETRIEVE
+// the lifecycle package and fail closed without it, so the verifier publishes one
+// for its tenant. The module-boundary wall forbids importing the apps/api test
+// helper across projects, so this uses @aramo-scope imports + an inline publish;
+// a default-ALLOW package suffices (the interactions assert the view, not the
+// provenance record) — the six-state matrix is the apps/api seed DATA.
+import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/policy-store';
 // PC-6 — resume mock-infra: overrideProvider(Class) needs the concrete class
 // (Gate-5 eslint amendment). Backends only; controllers stay live-verified.
 import { ObjectStorageService } from '@aramo/object-storage';
@@ -35,6 +42,7 @@ import { TENANT_COGNITO_PORT, AUDIT_FINANCIALS_GATE } from '@aramo/identity';
 // different hash. Single source of truth keeps the hash semantics
 // aligned between seed + lookup.
 import { hashCanonicalizedBody } from '@aramo/common';
+
 // M5 PR-6 §4.14 — string-DI-token literals overridden so the verify
 // harness doesn't need real Anthropic API + AWS Secrets Manager +
 // SES/SendGrid wiring. The strings here match the const values in
@@ -2884,6 +2892,31 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         [TENANT_ID],
       );
       await setup.end();
+
+      // ADR-0024 PR-4a — publish a default-ALLOW lifecycle package for the
+      // verifier tenant so the retrieval-based add-talent policy resolves ALLOW
+      // instead of failing closed on the /v1/pipelines + /v1/sourcing/pipeline
+      // replays. Inline (module-boundary wall forbids the apps/api helper here).
+      const policyPrisma = new PolicyStorePrismaService(url);
+      await policyPrisma.$connect();
+      try {
+        const policyStore = new PolicyStore(policyPrisma);
+        if ((await policyStore.getActiveVersion(TENANT_ID, 'requisition-lifecycle')) === null) {
+          await policyStore.publish({
+            tenant_id: TENANT_ID,
+            published_by: '00000000-0000-0000-0000-000000000000',
+            definition: {
+              name: 'requisition-lifecycle',
+              version: '1.0.0',
+              registry: { resources: ['REQUISITION_TALENT'], actions: ['ADD'] },
+              default_disposition: { decision: 'ALLOW', reason_code: 'PACT_LIFECYCLE_ALLOW' },
+              rules: [],
+            },
+          });
+        }
+      } finally {
+        await policyPrisma.onModuleDestroy();
+      }
 
       // Inline JWT signing per Amendment §2.2 — production issuer
       // 'Aramo Core Auth' so JwtAuthGuard accepts the token. Mirrors
