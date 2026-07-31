@@ -202,30 +202,179 @@ function ownerIndex(projects: Project[]): (file: string) => string | null {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Compile-scope classifier (Amendment R-REPOMAP-4)
+//
+// Classifies a tracked file by whether it is inside its owning project's build
+// tsconfig compile scope. This makes the map agree with the compiler by
+// construction (the R-REPOMAP-2 pattern) and lets a reader see WHY an edge is or
+// is not a real dependency — WITHOUT the map judging what a pattern means. The
+// negative-control fixtures are `excluded` by their own tsconfig.{lib,app}.json;
+// this reads that fact from the tsconfig, never a second hardcoded fixture list.
+// ---------------------------------------------------------------------------
+
+export type FileStatus = 'production' | 'excluded' | 'unscoped';
+export type Classification = { status: FileStatus; excludedBy?: string };
+type BuildScope = { root: string; include: string[]; exclude: string[] };
+
+// Self-contained tsconfig-style glob to RegExp. Deliberately NOT a dependency on
+// minimatch/picomatch: those are only transitive here, and relying on an
+// undeclared transitive is a lockfile-fragility hazard. Handles the tsconfig
+// include/exclude vocabulary: globstar across path segments, single star within
+// one segment, "?", and literals. Path-relative, slash-separated.
+export function globToRegExp(glob: string): RegExp {
+  let re = '^';
+  for (let i = 0; i < glob.length; i++) {
+    if (glob.startsWith('**/', i)) {
+      re += '(?:[^/]+/)*';
+      i += 2;
+    } else if (glob.startsWith('**', i)) {
+      re += '.*';
+      i += 1;
+    } else {
+      const c = glob[i]!;
+      if (c === '*') re += '[^/]*';
+      else if (c === '?') re += '[^/]';
+      else if (c === '{' || c === '}' || c === '[' || c === ']' || c === '(' || c === ')' || c === '!') {
+        // FAIL LOUD (R-REPOMAP-4 Ruling 3): brace expansion, char classes, extglob,
+        // and negation are NOT implemented. A silent non-match here would put a
+        // quarantined fixture into `production` and be trusted — the exact failure
+        // this exercise exists to prevent. Add support explicitly, never guess.
+        throw new Error(
+          `generate-repo-map: unsupported glob metacharacter '${c}' in tsconfig pattern "${glob}". ` +
+            `The compile-scope matcher handles *, **, ? and literals only.`,
+        );
+      } else if (/[^A-Za-z0-9/_-]/.test(c)) re += '\\' + c; // escape any regex-special literal
+      else re += c;
+    }
+  }
+  return new RegExp(re + '$');
+}
+
+const globCache = new Map<string, RegExp>();
+function globMatch(path: string, glob: string): boolean {
+  let re = globCache.get(glob);
+  if (re === undefined) {
+    re = globToRegExp(glob);
+    globCache.set(glob, re);
+  }
+  return re.test(path);
+}
+
+function parseJsonc(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    // tsconfig files may carry // and /* */ comments; strip and retry.
+    const stripped = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    return JSON.parse(stripped);
+  }
+}
+
+/** Each project's build tsconfig (tsconfig.lib.json | tsconfig.app.json)
+ *  include/exclude globs. include/exclude are NOT inherited via `extends`, so the
+ *  leaf build tsconfig is authoritative. */
+export function loadBuildScopes(projects: Project[]): Map<string, BuildScope> {
+  const scopes = new Map<string, BuildScope>();
+  for (const p of projects) {
+    if (p.root === '.') continue;
+    for (const name of ['tsconfig.lib.json', 'tsconfig.app.json']) {
+      const abs = join(REPO_ROOT, p.root, name);
+      if (!existsSync(abs)) continue;
+      let json: { include?: unknown; exclude?: unknown };
+      try {
+        json = parseJsonc(readFileSync(abs, 'utf8')) as typeof json;
+      } catch {
+        continue;
+      }
+      scopes.set(p.name, {
+        root: p.root,
+        include: Array.isArray(json.include) ? (json.include as string[]) : [],
+        exclude: Array.isArray(json.exclude) ? (json.exclude as string[]) : [],
+      });
+      break; // lib before app; first build tsconfig wins
+    }
+  }
+  return scopes;
+}
+
+/** Classify a tracked file against its owning project's compile scope. `excluded`
+ *  records the FIRST matching exclude glob verbatim — no judgment about what the
+ *  pattern means. A file in no project, or a project with no build tsconfig, is
+ *  `unscoped` (it compiles in nothing). */
+export function classifyFile(
+  file: string,
+  project: string | null,
+  scopes: Map<string, BuildScope>,
+): Classification {
+  if (project === null) return { status: 'unscoped' };
+  const scope = scopes.get(project);
+  if (scope === undefined) return { status: 'unscoped' };
+  const rel = file.startsWith(scope.root + '/') ? file.slice(scope.root.length + 1) : file;
+  for (const pat of scope.exclude) {
+    if (globMatch(rel, pat)) return { status: 'excluded', excludedBy: pat };
+  }
+  const included = scope.include.length === 0 || scope.include.some((pat) => globMatch(rel, pat));
+  return { status: included ? 'production' : 'unscoped' };
+}
+
 const IMPORT_ALIAS_RE = /(?:from|import|require)\s*\(?\s*['"](@aramo\/[A-Za-z0-9._-]+)['"]/g;
 
-/** Reverse index: alias → projects importing it (D-REPOMAP-1 §4.2). */
+// production edges omit `from` (deduped per project); excluded/unscoped keep it.
+export type ImportEdge = { from?: string; project: string; status: FileStatus; excludedBy?: string };
+
+/** Reverse index: alias → the import edges referencing it, each classified by the
+ *  importing file's compile scope (Amendment R-REPOMAP-4). Records every edge —
+ *  production, excluded (with the excluding pattern), or unscoped — and judges
+ *  none; a reader disposes. A cross-scope import that lands in an `excluded`
+ *  fixture is visibly not a real dependency. */
 export function computeImportedBy(
   aliases: Record<string, string>,
   projects: Project[],
   tracked: string[],
-): Record<string, string[]> {
+  scopes: Map<string, BuildScope>,
+): Record<string, ImportEdge[]> {
   const owner = ownerIndex(projects);
-  const acc: Record<string, Set<string>> = {};
-  for (const alias of Object.keys(aliases)) acc[alias] = new Set();
+  const prod: Record<string, Set<string>> = {}; // alias -> production project names (deduped)
+  const perFile: Record<string, Map<string, ImportEdge>> = {}; // alias -> from -> excluded|unscoped edge
+  for (const alias of Object.keys(aliases)) {
+    prod[alias] = new Set();
+    perFile[alias] = new Map();
+  }
   for (const rel of tracked) {
     if (!/\.(ts|tsx|js|jsx|mts|cts)$/.test(rel)) continue;
     if (!isTextFile(rel)) continue;
-    const text = readText(rel);
     const project = owner(rel);
-    if (project === null) continue;
+    const text = readText(rel);
+    const seenAlias = new Set<string>();
     for (const m of text.matchAll(IMPORT_ALIAS_RE)) {
       const alias = m[1]!;
-      if (acc[alias] !== undefined && alias !== `@aramo/${project}`) acc[alias].add(project);
+      if (prod[alias] === undefined) continue;
+      if (project !== null && alias === `@aramo/${project}`) continue; // self-import
+      if (seenAlias.has(alias)) continue; // one edge per (importing file, alias)
+      seenAlias.add(alias);
+      const cls = classifyFile(rel, project, scopes);
+      if (cls.status === 'production' && project !== null) {
+        prod[alias].add(project); // dedup per project — the specific file is recoverable
+      } else {
+        const edge: ImportEdge = { from: rel, project: project ?? '(unscoped)', status: cls.status };
+        if (cls.excludedBy !== undefined) edge.excludedBy = cls.excludedBy;
+        perFile[alias].set(rel, edge); // per file — file + pattern are the information
+      }
     }
   }
-  const out: Record<string, string[]> = {};
-  for (const alias of Object.keys(acc).sort()) out[alias] = [...acc[alias]!].sort();
+  const out: Record<string, ImportEdge[]> = {};
+  for (const alias of Object.keys(aliases).sort()) {
+    const edges: ImportEdge[] = [...prod[alias]!].map((project) => ({ project, status: 'production' as const }));
+    edges.push(...perFile[alias]!.values());
+    edges.sort(
+      (a, b) =>
+        byCodeUnit(a.project, b.project) ||
+        byCodeUnit(a.status, b.status) ||
+        byCodeUnit(a.from ?? '', b.from ?? ''),
+    );
+    out[alias] = edges;
+  }
   return out;
 }
 
@@ -233,18 +382,24 @@ export function computeImportedBy(
 // coupling.json — pathRefs
 // ---------------------------------------------------------------------------
 
-export type PathRef = { from: string; to: string; line: number };
+export type PathRef = { from: string; to: string; line: number; status: FileStatus; excludedBy?: string };
 
 const PATHLIKE_RE = /[A-Za-z0-9_@][A-Za-z0-9_@./-]*\/[A-Za-z0-9_@./-]*\.[A-Za-z0-9]+/g;
 
 /** Every file containing a string literal that matches another tracked path,
  *  as {from,to,line} (D-REPOMAP-1 §4.2 — the PR-5b path-coupling class). */
-export function computePathRefs(tracked: string[]): PathRef[] {
+export function computePathRefs(
+  tracked: string[],
+  projects: Project[],
+  scopes: Map<string, BuildScope>,
+): PathRef[] {
+  const owner = ownerIndex(projects);
   const trackedSet = new Set(tracked);
   const refs: PathRef[] = [];
   const seen = new Set<string>();
   for (const from of tracked) {
     if (!isTextFile(from)) continue;
+    const cls = classifyFile(from, owner(from), scopes);
     const lines = readText(from).split('\n');
     for (let i = 0; i < lines.length; i++) {
       const matches = lines[i]!.match(PATHLIKE_RE);
@@ -254,7 +409,9 @@ export function computePathRefs(tracked: string[]): PathRef[] {
         const key = `${from} ${cand} ${i + 1}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        refs.push({ from, to: cand, line: i + 1 });
+        const ref: PathRef = { from, to: cand, line: i + 1, status: cls.status };
+        if (cls.excludedBy !== undefined) ref.excludedBy = cls.excludedBy;
+        refs.push(ref);
       }
     }
   }
@@ -380,18 +537,19 @@ export function computeMap(): { projects: unknown; files: unknown; coupling: unk
   const tracked = listTrackedFiles();
   const projects = computeProjects(tracked);
   const { aliases, totals } = computeAliases();
+  const scopes = loadBuildScopes(projects);
 
   return {
     projects: {
       aliases,
       aliasTotals: totals,
       exports: computeExports(aliases),
-      importedBy: computeImportedBy(aliases, projects, tracked),
+      importedBy: computeImportedBy(aliases, projects, tracked, scopes),
       projects,
     },
     files: { files: tracked },
     coupling: {
-      pathRefs: computePathRefs(tracked),
+      pathRefs: computePathRefs(tracked, projects, scopes),
       ...computeScriptRefs(tracked),
     },
   };
@@ -428,6 +586,52 @@ function runSelfTest(): void {
   }
   if (extractExports("export const A = 1;\nexport { b as C };\nexport type T = X;").join(',') !== 'A,C,T') {
     throw new Error('self-test: export extraction wrong');
+  }
+
+  // glob matcher (R-REPOMAP-4)
+  const gm: [string, string, boolean][] = [
+    ['src/i15-negative-control/cip.fixture.ts', 'src/i15-negative-control/**', true],
+    ['src/lib/matcher.ts', 'src/i15-negative-control/**', false],
+    ['src/tests/x.spec.ts', 'src/tests/**/*', true],
+    ['src/tests/deep/x.ts', 'src/tests/**/*', true],
+    ['src/tests/x.spec.ts', '**/*.spec.ts', true],
+    ['src/lib/matcher.ts', 'src/**/*.ts', true],
+    ['src/lib/matcher.tsx', 'src/**/*.ts', false],
+    ['a.ts', 'src/**/*.ts', false],
+  ];
+  for (const [p, g, want] of gm) {
+    if (globMatch(p, g) !== want) throw new Error(`self-test: glob ${g} vs ${p} expected ${want}`);
+  }
+  // fail-loud on unsupported glob syntax (R-REPOMAP-4 Ruling 3)
+  for (const bad of ['src/{a,b}/**', 'src/[abc].ts', 'src/+(x)/**', 'src/!(y)/**']) {
+    let threw = false;
+    try {
+      globToRegExp(bad);
+    } catch {
+      threw = true;
+    }
+    if (!threw) throw new Error(`self-test: matcher must throw on unsupported glob "${bad}"`);
+  }
+
+  // compile-scope classifier (R-REPOMAP-4)
+  const scopes = new Map([
+    [
+      'matching',
+      { root: 'libs/matching', include: ['src/**/*.ts'], exclude: ['src/tests/**/*', '**/*.spec.ts', 'src/i15-negative-control/**'] },
+    ],
+  ]);
+  const fx = classifyFile('libs/matching/src/i15-negative-control/cip-imports-ats.fixture.ts', 'matching', scopes);
+  if (fx.status !== 'excluded' || fx.excludedBy !== 'src/i15-negative-control/**') {
+    throw new Error(`self-test: fixture should be excluded by its glob, got ${JSON.stringify(fx)}`);
+  }
+  if (classifyFile('libs/matching/src/lib/matcher.ts', 'matching', scopes).status !== 'production') {
+    throw new Error('self-test: lib source should be production');
+  }
+  if (classifyFile('libs/matching/src/tests/x.spec.ts', 'matching', scopes).status !== 'excluded') {
+    throw new Error('self-test: spec should be excluded');
+  }
+  if (classifyFile('deploy/pg-backup.sh', null, scopes).status !== 'unscoped') {
+    throw new Error('self-test: no-project file should be unscoped');
   }
   const c = canonical({ b: 1, a: [{ y: 2, x: 1 }] }) as Record<string, unknown>;
   if (JSON.stringify(c) !== '{"a":[{"x":1,"y":2}],"b":1}') throw new Error('self-test: canonical ordering wrong');
