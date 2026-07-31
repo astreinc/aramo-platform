@@ -9993,7 +9993,7 @@
       "to": "libs/common/src/lib/errors/error-codes.ts"
     },
     { "from": "openapi/common.yaml", "line": 672, "to": "openapi/ats.yaml" },
-    { "from": "openapi/common.yaml", "line": 2049, "to": "openapi/ats.yaml" },
+    { "from": "openapi/common.yaml", "line": 2050, "to": "openapi/ats.yaml" },
     { "from": "openapi/common.yaml", "line": 662, "to": "openapi/auth.yaml" },
     { "from": "openapi/platform.yaml", "line": 548, "to": "openapi/common.yaml" },
     { "from": "openapi/portal.yaml", "line": 354, "to": "ci/scripts/verify-portal-refusal.ts" },

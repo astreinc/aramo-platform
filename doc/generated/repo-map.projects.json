@@ -562,6 +562,7 @@
       "canonicalSerialize",
       "checksumMatches",
       "computeChecksum",
+      "insertPolicyDecisionRecordInTx",
       "isEffectiveAt",
       "selectEffectiveAt",
       "snapshotPolicyInputs"
@@ -953,7 +954,7 @@
     "@aramo/outbox-publisher": ["api"],
     "@aramo/pipeline": ["api", "export", "reporting", "visibility"],
     "@aramo/platform-trust": ["api"],
-    "@aramo/policy-engine": ["policy-store"],
+    "@aramo/policy-engine": ["pipeline", "policy-store"],
     "@aramo/policy-store": [],
     "@aramo/portal": ["api"],
     "@aramo/portal-identity": ["api", "auth-service", "portal"],
