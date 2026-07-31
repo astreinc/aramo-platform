@@ -3328,6 +3328,21 @@
       "to": "libs/settings/src/tests/settings.integration.spec.ts"
     },
     {
+      "from": "apps/api/src/tests/sourcing-policy-controller.spec.ts",
+      "line": 116,
+      "to": "apps/api/src/talent-identity/sourcing.controller.ts"
+    },
+    {
+      "from": "apps/api/src/tests/sourcing-policy-controller.spec.ts",
+      "line": 115,
+      "to": "libs/pipeline/src/lib/pipeline.controller.ts"
+    },
+    {
+      "from": "apps/api/src/tests/sourcing-policy-controller.spec.ts",
+      "line": 117,
+      "to": "libs/pipeline/src/lib/pipeline.repository.ts"
+    },
+    {
       "from": "apps/api/src/tests/submittal-confirm.negative-shape.spec.ts",
       "line": 46,
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"

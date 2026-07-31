@@ -74,6 +74,37 @@ describe('SourcingService.promoteAndAddToPipeline', () => {
     });
   });
 
+  // ADR-0024 PR-3b THREADING PROOF — the risk this PR introduces is that the
+  // §D17a provenance record the policy service produced survives the hop
+  // controller -> promoteAndAddToPipeline -> PipelineRepository.create. Assert
+  // create() receives the SAME record object (not undefined, not a
+  // reconstruction). create()'s in-tx atomicity itself is a property of
+  // create(), already proven in PR-3.
+  it('threads the provenance record through to create() UNCHANGED (same object)', async () => {
+    const { service, create } = make();
+    const PROVENANCE = {
+      tenant_id: TENANT,
+      decision: 'ALLOW',
+      policy_version: '1.0.0',
+      rule_id: 'add-talent-active',
+      reason_code: 'LIFECYCLE_ADD_ALLOWED',
+      resource: 'REQUISITION_TALENT',
+      action: 'ADD',
+      inputs: { resource: 'REQUISITION_TALENT', action: 'ADD', declared: {}, derived: {}, capabilities: {} },
+      actor_id: 'actor-1',
+      origin: 'ui' as const,
+      correlation_id: 'corr-1',
+    };
+    await service.promoteAndAddToPipeline(REF, REQ_ID, { provenance: PROVENANCE });
+    expect(create).toHaveBeenCalledWith({
+      tenant_id: TENANT,
+      input: { talent_record_id: RECORD_ID, requisition_id: REQ_ID },
+      provenance: PROVENANCE,
+    });
+    // The SAME record, not a reconstruction — identity, not deep-equality.
+    expect((create.mock.calls[0]![0] as { provenance: unknown }).provenance).toBe(PROVENANCE);
+  });
+
   it('gate deferral (deferred_unresolved_identity) → short-circuit, NO pipeline write', async () => {
     const { service, create } = make({ promoteOutcome: { status: 'deferred_unresolved_identity' } });
     const result = await service.promoteAndAddToPipeline(REF, REQ_ID);

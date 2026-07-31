@@ -20,3 +20,14 @@ export {
   type CreatePipelineRequestDto,
   type TransitionPipelineRequestDto,
 } from './lib/dto/index.js';
+
+// ADR-0024 PR-3b — the REQUISITION_TALENT · ADD policy call, now consumed by a
+// SECOND command boundary (SourcingController.addToPipeline) in addition to
+// PipelineController.create. Exported so the sourcing surface reuses the ONE
+// service (no duplication); its provenance record is threaded through the
+// mutation transaction.
+export {
+  AddTalentPolicyService,
+  type AddTalentPolicyInput,
+  type AddTalentPolicyOutcome,
+} from './lib/policy/add-talent-policy.service.js';

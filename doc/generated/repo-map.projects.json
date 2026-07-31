@@ -527,6 +527,7 @@
       "OutboxPublisherProcessor"
     ],
     "@aramo/pipeline": [
+      "AddTalentPolicyService",
       "PIPELINE_STATUS_VALUES",
       "PipelineController",
       "PipelineModule",
@@ -955,7 +956,7 @@
     "@aramo/pipeline": ["api", "export", "reporting", "visibility"],
     "@aramo/platform-trust": ["api"],
     "@aramo/policy-engine": ["api", "pipeline", "policy-store"],
-    "@aramo/policy-store": ["pipeline"],
+    "@aramo/policy-store": ["api", "pipeline"],
     "@aramo/portal": ["api"],
     "@aramo/portal-identity": ["api", "auth-service", "portal"],
     "@aramo/reporting": ["api"],
