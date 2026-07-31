@@ -10543,6 +10543,102 @@
       "to": "doc/directives/D-REPOMAP-1-Directive-v1_1-LOCKED.md"
     },
     {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 26,
+      "status": "unscoped",
+      "to": "ci/scripts/ci-integration.sh"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 28,
+      "status": "unscoped",
+      "to": "ci/scripts/ci-integration.sh"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 30,
+      "status": "unscoped",
+      "to": "ci/scripts/ci-integration.sh"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 59,
+      "status": "unscoped",
+      "to": "ci/scripts/ci-integration.sh"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 88,
+      "status": "unscoped",
+      "to": "ci/scripts/ci-integration.sh"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 135,
+      "status": "unscoped",
+      "to": "ci/scripts/ci-integration.sh"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 27,
+      "status": "unscoped",
+      "to": "ci/scripts/prepush.ts"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 89,
+      "status": "unscoped",
+      "to": "ci/scripts/prepush.ts"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 136,
+      "status": "unscoped",
+      "to": "ci/scripts/prepush.ts"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 34,
+      "status": "unscoped",
+      "to": "deploy/seed-prod.sh"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 97,
+      "status": "unscoped",
+      "to": "deploy/seed-prod.sh"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 13,
+      "status": "unscoped",
+      "to": "doc/directives/00-DIRECTIVE-STANDARD.md"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 13,
+      "status": "unscoped",
+      "to": "doc/directives/D-REPOMAP-2-Directive-Amendment-v1_4-LOCKED.md"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 36,
+      "status": "unscoped",
+      "to": "doc/integration-testing.md"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 77,
+      "status": "unscoped",
+      "to": "doc/integration-testing.md"
+    },
+    {
+      "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
+      "line": 99,
+      "status": "unscoped",
+      "to": "doc/integration-testing.md"
+    },
+    {
       "from": "doc/go-live-known-limitations.md",
       "line": 465,
       "status": "unscoped",
