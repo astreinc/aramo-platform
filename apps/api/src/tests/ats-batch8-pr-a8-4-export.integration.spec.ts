@@ -114,6 +114,16 @@ const PIPELINE_INIT = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
 );
+// ADR-0024 PR-3 — POST /v1/pipelines writes §D17a provenance into
+// policy_store."PolicyDecisionRecord" in the create transaction.
+const POLICY_STORE_INIT = resolve(
+  ROOT,
+  'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql',
+);
+const POLICY_DECISION_RECORD = resolve(
+  ROOT,
+  'libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql',
+);
 // metering: PipelineRepository.transition writes a UsageEvent row in
 // the same tx. We don't transition pipelines here, but the table must
 // exist for the schema to be valid.
@@ -333,6 +343,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_WORK_AUTH,
         TALENT_RECORD_SUPERSESSION,
         PIPELINE_INIT,
+        POLICY_STORE_INIT,
+        POLICY_DECISION_RECORD,
         METERING_INIT,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));

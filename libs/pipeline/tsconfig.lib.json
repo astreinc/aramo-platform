@@ -14,7 +14,9 @@
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
       "@aramo/metering": ["../../dist/libs/metering/src/index.d.ts"],
-      "@aramo/policy-engine": ["../../dist/libs/policy-engine/src/index.d.ts"]
+      "@aramo/policy-engine": ["../../dist/libs/policy-engine/src/index.d.ts"],
+      "@aramo/policy-store": ["../../dist/libs/policy-store/src/index.d.ts"],
+      "@aramo/requisition": ["../../dist/libs/requisition/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

@@ -955,11 +955,19 @@
     "@aramo/pipeline": ["api", "export", "reporting", "visibility"],
     "@aramo/platform-trust": ["api"],
     "@aramo/policy-engine": ["pipeline", "policy-store"],
-    "@aramo/policy-store": [],
+    "@aramo/policy-store": ["pipeline"],
     "@aramo/portal": ["api"],
     "@aramo/portal-identity": ["api", "auth-service", "portal"],
     "@aramo/reporting": ["api"],
-    "@aramo/requisition": ["api", "export", "import", "reporting", "saved-list", "visibility"],
+    "@aramo/requisition": [
+      "api",
+      "export",
+      "import",
+      "pipeline",
+      "reporting",
+      "saved-list",
+      "visibility"
+    ],
     "@aramo/resume-parse": [
       "api",
       "aramo-pact-provider",

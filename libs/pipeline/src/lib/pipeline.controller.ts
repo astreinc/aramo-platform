@@ -26,6 +26,7 @@ import type { PipelineStatusHistoryView } from './dto/pipeline-status-history.vi
 import type { PipelineView } from './dto/pipeline.view.js';
 import type { TransitionPipelineRequestDto } from './dto/transition-pipeline-request.dto.js';
 import { PipelineRepository } from './pipeline.repository.js';
+import { AddTalentPolicyService } from './policy/add-talent-policy.service.js';
 
 // PipelineController — PR-A5a Gate 5 ATS Batch 4a (the state machine).
 //
@@ -49,7 +50,10 @@ import { PipelineRepository } from './pipeline.repository.js';
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
 export class PipelineController {
-  constructor(private readonly pipelineRepository: PipelineRepository) {}
+  constructor(
+    private readonly pipelineRepository: PipelineRepository,
+    private readonly addTalentPolicy: AddTalentPolicyService,
+  ) {}
 
   @Get()
   @HttpCode(HttpStatus.OK)
@@ -122,10 +126,39 @@ export class PipelineController {
   async create(
     @AuthContext() authContext: AuthContextType,
     @Body() body: CreatePipelineRequestDto,
+    @RequestId() requestId: string,
   ): Promise<PipelineView> {
+    // ADR-0024 §D10 — the policy call runs AFTER authorization (the guard chain
+    // above) and BEFORE the write. It is placed at the CONTROLLER, never the
+    // repository: a repository-level call would also gate repointTalentRecordRefs
+    // (identity-merge reconciliation), which must not be recruiter-policy-gated.
+    const outcome = await this.addTalentPolicy.decide({
+      tenant_id: authContext.tenant_id,
+      requisition_id: body.requisition_id,
+      scopes: authContext.scopes,
+      actor_id: authContext.sub,
+      origin: 'ui',
+      correlation_id: requestId,
+    });
+
+    if (!outcome.allowed) {
+      // DENY (or REQUIRES_OVERRIDE, treated as DENY in PR-3): no mutation.
+      // Record provenance standalone, then refuse with the reason_code ONLY —
+      // never rule_id / policy_version / any engine internal.
+      await this.pipelineRepository.recordDecision(outcome.provenance);
+      throw new AramoError(
+        'POLICY_DENIED',
+        'The requisition lifecycle policy denied this command',
+        403,
+        { requestId, details: { reason_code: outcome.reason_code } },
+      );
+    }
+
+    // ALLOW: the pipeline row and its provenance record commit atomically.
     return this.pipelineRepository.create({
       tenant_id: authContext.tenant_id,
       input: body,
+      provenance: outcome.provenance,
     });
   }
 

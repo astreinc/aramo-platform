@@ -2,6 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { insertActivityInTx } from '@aramo/activity';
 import { recordUsage } from '@aramo/metering';
+import {
+  insertPolicyDecisionRecordInTx,
+  type InsertPolicyDecisionRecordInput,
+} from '@aramo/policy-store';
 
 import type { PipelineView } from './dto/pipeline.view.js';
 import type { PipelineStatusHistoryView } from './dto/pipeline-status-history.view.js';
@@ -225,19 +229,40 @@ export class PipelineRepository {
   async create(args: {
     tenant_id: string;
     input: CreatePipelineRequestDto;
+    // ADR-0024 §D17a — when a policy decision governed this add (the
+    // recruiter-console path), its provenance record commits INSIDE the same
+    // transaction as the pipeline row: atomic (§D10 fail-closed). If the
+    // provenance write fails, the pipeline row is rolled back and the command
+    // fails closed. Omitted on the still-ungated sourcing path (PR-3b).
+    provenance?: InsertPolicyDecisionRecordInput;
   }): Promise<PipelineView> {
     // Initial state hard-coded to `no_contact` per directive §2 /
     // state-machine proof initial-state invariant. Body cannot override.
-    const row = await this.prisma.pipeline.create({
-      data: {
-        tenant_id: args.tenant_id,
-        site_id: args.input.site_id ?? null,
-        talent_record_id: args.input.talent_record_id,
-        requisition_id: args.input.requisition_id,
-        status: 'no_contact',
-      },
+    const row = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.pipeline.create({
+        data: {
+          tenant_id: args.tenant_id,
+          site_id: args.input.site_id ?? null,
+          talent_record_id: args.input.talent_record_id,
+          requisition_id: args.input.requisition_id,
+          status: 'no_contact',
+        },
+      });
+      if (args.provenance !== undefined) {
+        // Cross-schema, same-tx write (mirrors insertActivityInTx).
+        await insertPolicyDecisionRecordInTx(tx, args.provenance);
+      }
+      return created;
     });
     return projectView(row as PipelineRow);
+  }
+
+  // Standalone §D17a provenance write for a DENY: there is no mutation to be
+  // atomic with, so the record is written on its own. A failed provenance
+  // write here does not change the outcome — denial is already the safe
+  // result (§D10).
+  async recordDecision(provenance: InsertPolicyDecisionRecordInput): Promise<void> {
+    await insertPolicyDecisionRecordInTx(this.prisma, provenance);
   }
 
   async delete(args: {
