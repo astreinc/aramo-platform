@@ -789,6 +789,7 @@
     "doc/auth-local-mock-idp-recon.md",
     "doc/auth-mfa-recon.md",
     "doc/auth-reconcile-spine-recon.md",
+    "doc/directives/00-DIRECTIVE-STANDARD.md",
     "doc/directives/D-REPOMAP-1-Directive-v1_1-LOCKED.md",
     "doc/directives/D-REPOMAP-2-Directive-Amendment-v1_4-LOCKED.md",
     "doc/directives/D-REPOMAP-2-Directive-v1_0-LOCKED.md",
