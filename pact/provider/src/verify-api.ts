@@ -410,6 +410,18 @@ const PIPELINE_INIT_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
 );
+// ADR-0024 PR-3 — the ats-web POST /v1/pipelines consumer interaction (201)
+// replays through the policy call, which writes §D17a provenance into
+// policy_store."PolicyDecisionRecord" in the create transaction. Provider
+// verification needs the policy_store schema + table (init creates the schema).
+const POLICY_STORE_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql',
+);
+const POLICY_DECISION_RECORD_MIGRATION = resolve(
+  ROOT,
+  'libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql',
+);
 // PC-5a — ats-web Gate-2a desk (company + contact CRUD spine + D4a). The
 // company schema (Company + CompanyDepartment + the two D4a join tables +
 // the field-expansion columns CompanyView/the facets read) and the contact
@@ -2764,6 +2776,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // PC-4 — activity + pipeline for the talent-records enrichment reads.
         ACTIVITY_INIT_MIGRATION,
         PIPELINE_INIT_MIGRATION,
+        POLICY_STORE_INIT_MIGRATION,
+        POLICY_DECISION_RECORD_MIGRATION,
         // PC-5a — company + contact desk. Company init CREATEs the schema +
         // Company + CompanyDepartment; the authz migration adds the two D4a
         // join tables (UserClientAssignment, TeamClientOwnership); the field-

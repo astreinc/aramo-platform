@@ -95,6 +95,17 @@ const PIPELINE_INIT = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
 );
+// ADR-0024 PR-3 — POST /v1/pipelines now writes §D17a provenance into
+// policy_store."PolicyDecisionRecord" in the create transaction, so this
+// spec's DB needs the policy_store schema + table (init creates the schema).
+const POLICY_STORE_INIT = resolve(
+  ROOT,
+  'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql',
+);
+const POLICY_DECISION_RECORD = resolve(
+  ROOT,
+  'libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql',
+);
 const CALENDAR_INIT = resolve(
   ROOT,
   'libs/calendar/prisma/migrations/20260602120000_init_calendar_model/migration.sql',
@@ -302,6 +313,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_SUPERSESSION,
         ACTIVITY_INIT,
         PIPELINE_INIT,
+        POLICY_STORE_INIT,
+        POLICY_DECISION_RECORD,
         CALENDAR_INIT,
         SAVED_LIST_INIT,
         SAVED_LIST_LIST_KIND,

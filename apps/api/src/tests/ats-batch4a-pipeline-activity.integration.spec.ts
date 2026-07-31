@@ -119,6 +119,17 @@ const PIPELINE_INIT = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
 );
+// ADR-0024 PR-3 — POST /v1/pipelines writes §D17a provenance into
+// policy_store."PolicyDecisionRecord" in the create transaction (init creates
+// the schema).
+const POLICY_STORE_INIT = resolve(
+  ROOT,
+  'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql',
+);
+const POLICY_DECISION_RECORD = resolve(
+  ROOT,
+  'libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql',
+);
 // PR-A8-1 — additive back-reference columns on requisition +
 // talent_record. The Prisma client's RETURNING projection includes
 // import_batch_id; absent in DB → 500 INTERNAL_ERROR on POST create.
@@ -197,6 +208,8 @@ const MIGRATIONS = [
   TALENT_RECORD_SUPERSESSION,
   ACTIVITY_INIT,
   PIPELINE_INIT,
+  POLICY_STORE_INIT,
+  POLICY_DECISION_RECORD,
 ];
 
 const ISSUER = 'Aramo Core Auth';
