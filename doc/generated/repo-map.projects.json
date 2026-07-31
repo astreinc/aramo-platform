@@ -527,6 +527,7 @@
       "OutboxPublisherProcessor"
     ],
     "@aramo/pipeline": [
+      "AddTalentPolicyService",
       "PIPELINE_STATUS_VALUES",
       "PipelineController",
       "PipelineModule",
@@ -1334,6 +1335,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/outreach-send.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/sourcing-policy-controller.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2885,6 +2892,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-sourcing-add.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/pipeline/src/tests/add-talent-policy-mapping.spec.ts",
         "project": "pipeline",
         "status": "excluded"
@@ -2910,7 +2923,10 @@
       },
       { "project": "policy-store", "status": "production" }
     ],
-    "@aramo/policy-store": [{ "project": "pipeline", "status": "production" }],
+    "@aramo/policy-store": [
+      { "project": "api", "status": "production" },
+      { "project": "pipeline", "status": "production" }
+    ],
     "@aramo/portal": [{ "project": "api", "status": "production" }],
     "@aramo/portal-identity": [
       {

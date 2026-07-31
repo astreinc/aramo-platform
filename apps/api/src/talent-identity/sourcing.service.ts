@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PipelineRepository } from '@aramo/pipeline';
+import type { InsertPolicyDecisionRecordInput } from '@aramo/policy-store';
 import { SavedListRepository } from '@aramo/saved-list';
 import {
   deriveTrustStatements,
@@ -198,7 +199,12 @@ export class SourcingService {
   async promoteAndAddToPipeline(
     subjectRef: SubjectRef,
     requisitionId: string,
-    opts?: { requestId?: string },
+    // ADR-0024 PR-3b — `provenance` is an OPAQUE §D17a record the command
+    // boundary (SourcingController) already produced from an ALLOW decision.
+    // The service does not inspect it, does not know about capabilities,
+    // decisions or the engine; it only threads it into the pipeline write so
+    // the provenance commits INSIDE the same mutation transaction.
+    opts?: { requestId?: string; provenance?: InsertPolicyDecisionRecordInput },
   ): Promise<SourcingResult> {
     const outcome = await this.promotion.promoteSubject(subjectRef, opts);
     if (!isPromoted(outcome)) return { status: outcome.status };
@@ -209,6 +215,7 @@ export class SourcingService {
       const pipeline = await this.pipelines.create({
         tenant_id: subjectRef.tenant_id,
         input: { talent_record_id, requisition_id: requisitionId },
+        ...(opts?.provenance === undefined ? {} : { provenance: opts.provenance }),
       });
       pipeline_id = pipeline.id;
     } catch (err) {
