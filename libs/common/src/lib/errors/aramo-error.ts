@@ -84,6 +84,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   PORTAL_DISPUTE_NOT_OPEN: 422,
   // Portal P3b — reinvestigation extension already used.
   PORTAL_DISPUTE_EXTENSION_USED: 422,
+  POLICY_DENIED: 403,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

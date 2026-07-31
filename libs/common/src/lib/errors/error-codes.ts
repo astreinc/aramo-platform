@@ -367,6 +367,13 @@ export const ERROR_CODES = [
   // Portal P3b — the single reinvestigation extension (+15d) was already taken.
   // HTTP 422.
   'PORTAL_DISPUTE_EXTENSION_USED',
+  // ADR-0024 PR-3 — the requisition-lifecycle policy engine refused a governed
+  // command (REQUISITION_TALENT · ADD). HTTP 403. The response carries the
+  // policy reason_code ONLY; rule_id / policy_version / engine internals are
+  // never leaked to the client. Distinct from the scope-axis
+  // INSUFFICIENT_PERMISSIONS (authorization) — this is a business-policy
+  // refusal that runs AFTER authorization.
+  'POLICY_DENIED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

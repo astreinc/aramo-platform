@@ -1646,6 +1646,7 @@ components:
         - DISPUTE_OUTCOME_INVALID
         - PORTAL_DISPUTE_NOT_OPEN
         - PORTAL_DISPUTE_EXTENSION_USED
+        - POLICY_DENIED
 
     ErrorObject:
       type: object

@@ -365,6 +365,18 @@ export class RequisitionRepository {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  // Minimal tenant-scoped declared-status read (ADR-0024 §D13b input for the
+  // policy engine). No visibility predicate: the declared status is a fact of
+  // the requisition, not an actor-scoped view. Returns null if the requisition
+  // does not exist in the tenant.
+  async findStatusById(args: { tenant_id: string; id: string }): Promise<RequisitionStatus | null> {
+    const row = await this.prisma.requisition.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+      select: { status: true },
+    });
+    return row === null ? null : (row.status as RequisitionStatus);
+  }
+
   // -------------------------------------------------------------------------
   // Write path
   // -------------------------------------------------------------------------
