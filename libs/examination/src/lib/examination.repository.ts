@@ -1,8 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 import { AramoError, createAramoLogger, type AramoLogger } from '@aramo/common';
-import { JobDomainRepository } from '@aramo/job-domain';
 
+import {
+  REQUISITION_STATE_READER,
+  type RequisitionStateReader,
+} from './requisition-state-reader.port.js';
 import type { ExaminationOverrideView } from './dto/create-override-request.dto.js';
 import {
   projectFullView,
@@ -211,7 +214,10 @@ const TIERS_AFTER: Record<ExaminationTierValue, ExaminationTierValue[]> = {
 export class ExaminationRepository {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly jobDomain: JobDomainRepository,
+    // T1-a — the requisition-lifecycle port (wall-legal; apps/api binds the
+    // ATS-backed adapter). Replaces the retired job_domain.Requisition reader.
+    @Inject(REQUISITION_STATE_READER)
+    private readonly requisitionState: RequisitionStateReader,
   ) {}
 
   async createSnapshot(
@@ -293,8 +299,8 @@ export class ExaminationRepository {
   // DELETE; the PR-1 immutability trigger is never reached.
   //
   // Behavior (directive §4.1):
-  //   1. Load the Requisition by req_id via JobDomainRepository.
-  //      findRequisitionById. Verify state='active' AND tenant_id matches.
+  //   1. Confirm the requisition is ACTIVE in this tenant via the
+  //      RequisitionStateReader port (T1-a; ATS-backed adapter in apps/api).
   //      If absent / inactive / tenant-mismatched, return [] (NOT an
   //      exception — tenant mismatch is a security-posture recovery from a
   //      multi-tenant routing bug, not an error path).
@@ -312,11 +318,15 @@ export class ExaminationRepository {
   async findActiveReqLiveList(
     input: FindActiveReqLiveListInput,
   ): Promise<TalentJobExaminationSummaryView[]> {
-    // Step 1 — load and validate the Requisition.
-    const requisition = await this.jobDomain.findRequisitionById(input.req_id);
-    if (requisition === null) return [];
-    if (requisition.state !== 'active') return [];
-    if (requisition.tenant_id !== input.tenant_id) return [];
+    // Step 1 — validate the Requisition is ACTIVE in this tenant via the
+    // RequisitionStateReader port (T1-a). isActive folds the old three checks
+    // (existence + tenant + state='active') into one tenant-scoped read against
+    // the authoritative ATS requisition, so a requisition closed in the ATS is
+    // correctly absent from the Live List. req_id is the shared-UUID R, which is
+    // also the examination.job_id filtered below.
+    if (!(await this.requisitionState.isActive(input.tenant_id, input.req_id))) {
+      return [];
+    }
 
     // Step 2 — Ruling 7 clamp. Default 50 when omitted; floor 1; cap 200.
     const limit = Math.min(
@@ -340,7 +350,9 @@ export class ExaminationRepository {
     // distinct.
     const baseWhere = {
       tenant_id: input.tenant_id,
-      job_id: requisition.job_id,
+      // job_id === req_id under the shared-UUID alignment (was
+      // requisition.job_id off the retired mirror, which equalled req_id).
+      job_id: input.req_id,
       lifecycle_state: 'active',
     };
     const whereClause =

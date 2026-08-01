@@ -205,6 +205,12 @@ const JOB_DOMAIN_INIT_MIGRATION = resolve(
   ROOT,
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
 );
+// T1-a — drop the retired job_domain.Requisition table + enum (Job +
+// GoldenProfile remain). Provider states seed requisition.Requisition instead.
+const JOB_DOMAIN_DROP_REQUISITION_MIGRATION = resolve(
+  ROOT,
+  'libs/job-domain/prisma/migrations/20260801130000_drop_job_domain_requisition/migration.sql',
+);
 // Fix-Slice-Final-Drop — the talent (Core husk) schema is retired; no provider
 // state seeds or reads talent.Talent, so its init migration is no longer applied.
 // 4e-engagement-key — engagement.talent_id now references
@@ -813,7 +819,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // truncate them at the start of every interaction so a prior
       // interaction's data doesn't leak forward.
       await c.query('TRUNCATE TABLE examination."TalentJobExamination" CASCADE');
-      await c.query('TRUNCATE TABLE job_domain."Requisition" CASCADE');
+      // T1-a — job_domain.Requisition retired; the ATS requisition is truncated
+      // with the rest of the requisition schema elsewhere in this reset.
       // Fix-Slice-Final-Drop: the Core husk (talent.Talent + overlay) is
       // dropped; no provider state seeds it (nothing reads it post-fix-sequence).
       // 4e-engagement-key — engagement.talent_id references TalentRecord.
@@ -1170,10 +1177,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
          ON CONFLICT (id) DO NOTHING`,
         [ATSW_JOB_ID, TENANT_ID],
       );
+      // T1-a — the ATS requisition the engagement-create contract validates
+      // (requisition_id = ATSW_REQUISITION_ID). $3::text/$4 are inert fixture
+      // fillers (title/company_id); only id + tenant + active status matter.
       await c.query(
-        `INSERT INTO job_domain."Requisition"
-           (id, tenant_id, job_id, recruiter_id, state)
-         VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState")`,
+        `INSERT INTO requisition."Requisition"
+           (id, tenant_id, title, company_id, status)
+         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus")`,
         [ATSW_REQUISITION_ID, TENANT_ID, ATSW_JOB_ID, PACT_RECRUITER_ACTOR_ID],
       );
     }
@@ -2160,10 +2170,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         `INSERT INTO job_domain."Job" (id, tenant_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
         [ATSW_SUB_JOB_ID, TENANT_ID],
       );
+      // T1-a — the ATS requisition the match-list resolves. The GET
+      // /v1/jobs/{job_id}/matches path value IS the shared-UUID job id
+      // (ATSW_SUB_JOB_ID = examination.job_id), so the requisition id is that
+      // same value (the retired mirror's distinct ATSW_SUB_REQ_ID is gone).
       await c.query(
-        `INSERT INTO job_domain."Requisition" (id, tenant_id, job_id, recruiter_id, state)
-         VALUES ($1,$2,$3,$4,'active'::job_domain."RequisitionState") ON CONFLICT DO NOTHING`,
-        [ATSW_SUB_REQ_ID, TENANT_ID, ATSW_SUB_JOB_ID, PACT_RECRUITER_ACTOR_ID],
+        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
+         VALUES ($1,$2,$3::text,$4,'active'::requisition."RequisitionStatus") ON CONFLICT DO NOTHING`,
+        [ATSW_SUB_JOB_ID, TENANT_ID, ATSW_SUB_JOB_ID, PACT_RECRUITER_ACTOR_ID],
       );
       await seedAtsWebTalentRecord(c, {
         id: PACT_TALENT_ID,
@@ -2464,13 +2478,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       }
 
       const goldenId = '55551111-0000-7000-8000-0000000000aa';
-      const reqId = '55552222-0000-7000-8000-0000000000aa';
+      // T1-a — the ATS requisition keyed on the shared-UUID job id (== the
+      // examination's job_id), replacing the retired mirror.
       await c.query(
-        `INSERT INTO job_domain."Requisition"
-           (id, tenant_id, job_id, recruiter_id, state)
-         VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState")
+        `INSERT INTO requisition."Requisition"
+           (id, tenant_id, title, company_id, status)
+         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus")
          ON CONFLICT DO NOTHING`,
-        [reqId, TENANT_ID, params.jobId, RECRUITER_ID],
+        [params.jobId, TENANT_ID, params.jobId, RECRUITER_ID],
       );
       await insertExaminationRow(c, {
         id: params.examinationId,
@@ -2704,6 +2719,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // search path is set up).
         EXAMINATION_OVERRIDE_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
+        // T1-a — applied right after the job-domain init so the retired
+        // Requisition table + enum are gone before any provider state runs.
+        JOB_DOMAIN_DROP_REQUISITION_MIGRATION,
         // 4e-engagement-key — talent_record schema (engagement.talent_id).
         ...TALENT_RECORD_MIGRATIONS,
         // M4 PR-3 §4.8 — evidence + talent-evidence + submittal

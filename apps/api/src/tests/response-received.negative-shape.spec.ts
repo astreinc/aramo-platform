@@ -48,6 +48,7 @@ const MIGRATIONS = [
   M('libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql'),
   M('libs/examination/prisma/migrations/20260521120000_add_live_list_index/migration.sql'),
   M('libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql'),
+  M('libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql'),
   M('libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql'),
   M('libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql'),
   M('libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql'),
@@ -161,8 +162,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [JOB_ID, TENANT_ID],
       );
       await setup.query(
-        `INSERT INTO job_domain."Requisition" (id, tenant_id, job_id, recruiter_id, state)
-         VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState")`,
+        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
+         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus")`,
         [REQ_ID, TENANT_ID, JOB_ID, RECRUITER_ID],
       );
       // M5 PR-9b — full SCOPE_DEPENDENCY_CHAIN granted so /outreach

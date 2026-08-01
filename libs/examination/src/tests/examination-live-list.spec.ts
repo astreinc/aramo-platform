@@ -1,46 +1,40 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { JobDomainRepository, RequisitionRow } from '@aramo/job-domain';
 
 import {
   ExaminationRepository,
   type FindActiveReqLiveListInput,
   type TalentJobExaminationRow,
 } from '../lib/examination.repository.js';
+import type { RequisitionStateReader } from '../lib/requisition-state-reader.port.js';
 
 // M3 PR-7 §4.4 unit tests for findActiveReqLiveList — the per-active-req
 // Live List query.
 //
+// T1-a: the requisition precondition is now the RequisitionStateReader port
+// (isActive), not the retired job_domain.Requisition mirror. isActive folds
+// the old three checks (existence + tenant + state='active') into one boolean,
+// so "not found", "inactive" and "tenant-mismatch" all present as isActive=false.
+// Under the shared-UUID alignment the examination filter keys on job_id ===
+// req_id (was requisition.job_id off the mirror, which equalled req_id).
+//
 // Discipline (directive §2 Rulings 1, 3, 4, 6, 7 — verified by these tests):
-//   - Ruling 1 (pull-side): no entity / no BullMQ / no event involved; tests
-//     mock the JobDomainRepository and PrismaService surfaces only.
-//   - Ruling 3 (PR-6 projection reused): tests assert the returned rows are
-//     Summary-shaped (the PR-6 projection output shape).
-//   - Ruling 4 (no engagement-state filter): tests verify the query filter
-//     carries lifecycle_state='active' but NO engagement_state field.
-//   - Ruling 6 (Summary-only): the projection produces Summary; no Full
-//     fields appear.
-//   - Ruling 7 (limit clamp): default 50 when omitted; floor 1 on values <1;
-//     hard cap 200 on values >200; explicit 1/200 pass through.
+//   - Ruling 1 (pull-side): no entity / no BullMQ / no event; tests mock the
+//     RequisitionStateReader port and PrismaService surfaces only.
+//   - Ruling 3 (PR-6 projection reused): returned rows are Summary-shaped.
+//   - Ruling 4 (no engagement-state filter): filter carries lifecycle_state=
+//     'active' but NO engagement_state field.
+//   - Ruling 6 (Summary-only): the projection produces Summary; no Full fields.
+//   - Ruling 7 (limit clamp): default 50; floor 1; hard cap 200.
 //
 // Integration round-trip (real Postgres) is exercised by
 // examination-live-list.integration.spec.ts.
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
-const TENANT_B = '22222222-2222-7222-8222-222222222222';
 const REQ_ID = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
-const JOB_ID = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
+// Under the shared-UUID alignment the examination's job_id IS the requisition
+// id R (== req_id). The Live List filters examinations by job_id = req_id.
+const JOB_ID = REQ_ID;
 const TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
-
-function activeReq(overrides: Partial<RequisitionRow> = {}): RequisitionRow {
-  return {
-    id: REQ_ID,
-    tenant_id: TENANT_A,
-    job_id: JOB_ID,
-    recruiter_id: 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb',
-    state: 'active',
-    ...overrides,
-  };
-}
 
 function makeRow(overrides: Partial<TalentJobExaminationRow> = {}): TalentJobExaminationRow {
   return {
@@ -82,13 +76,14 @@ interface FindManyCall {
 }
 
 function makeRepo(opts: {
-  requisition: RequisitionRow | null;
+  // Whether the requisition is an active requisition in this tenant.
+  isActive: boolean;
   rows?: TalentJobExaminationRow[];
 }): { repo: ExaminationRepository; call: FindManyCall } {
-  const findReqSpy = vi.fn<(id: string) => Promise<RequisitionRow | null>>(
-    async () => opts.requisition,
-  );
-  const jobDomain = { findRequisitionById: findReqSpy } as unknown as JobDomainRepository;
+  const isActiveSpy = vi.fn<
+    (tenant_id: string, requisition_id: string) => Promise<boolean>
+  >(async () => opts.isActive);
+  const requisitionState = { isActive: isActiveSpy } as unknown as RequisitionStateReader;
 
   const call: FindManyCall = {
     args: {},
@@ -103,44 +98,29 @@ function makeRepo(opts: {
   } as unknown as ConstructorParameters<typeof ExaminationRepository>[0];
 
   return {
-    repo: new ExaminationRepository(prisma, jobDomain),
+    repo: new ExaminationRepository(prisma, requisitionState),
     call,
   };
 }
 
 describe('findActiveReqLiveList — Requisition-precondition contract (Ruling 1 + 4)', () => {
-  it('returns [] when the requisition is not found', async () => {
-    const { repo, call } = makeRepo({ requisition: null });
+  it('returns [] when the requisition is not active (missing / inactive / cross-tenant → isActive=false)', async () => {
+    const { repo, call } = makeRepo({ isActive: false });
     const result = await repo.findActiveReqLiveList({ tenant_id: TENANT_A, req_id: REQ_ID });
     expect(result).toEqual([]);
-    // Prisma must NOT be called when the requisition is absent.
-    expect(call.args).toEqual({});
-  });
-
-  it("returns [] when the requisition's state is 'inactive'", async () => {
-    const { repo, call } = makeRepo({ requisition: activeReq({ state: 'inactive' }) });
-    const result = await repo.findActiveReqLiveList({ tenant_id: TENANT_A, req_id: REQ_ID });
-    expect(result).toEqual([]);
-    expect(call.args).toEqual({});
-  });
-
-  it('returns [] when the tenant_id does NOT match the requisition (security posture, not an exception)', async () => {
-    const { repo, call } = makeRepo({ requisition: activeReq({ tenant_id: TENANT_B }) });
-    const result = await repo.findActiveReqLiveList({ tenant_id: TENANT_A, req_id: REQ_ID });
-    expect(result).toEqual([]);
-    // No Prisma call — short-circuited before the query.
+    // Prisma must NOT be called when the requisition is not active.
     expect(call.args).toEqual({});
   });
 });
 
 describe('findActiveReqLiveList — query shape (Ruling 3 + 4 + 6)', () => {
-  it('filters by (tenant_id, job_id, lifecycle_state="active") and orders by (tier asc, rank_ordinal asc, id asc)', async () => {
-    const { repo, call } = makeRepo({ requisition: activeReq(), rows: [makeRow()] });
+  it('filters by (tenant_id, job_id=req_id, lifecycle_state="active") and orders by (tier asc, rank_ordinal asc, id asc)', async () => {
+    const { repo, call } = makeRepo({ isActive: true, rows: [makeRow()] });
     await repo.findActiveReqLiveList({ tenant_id: TENANT_A, req_id: REQ_ID });
 
     expect(call.args.where).toEqual({
       tenant_id: TENANT_A,
-      job_id: JOB_ID,
+      job_id: REQ_ID,
       lifecycle_state: 'active',
     });
     expect(call.args.orderBy).toEqual([
@@ -151,7 +131,7 @@ describe('findActiveReqLiveList — query shape (Ruling 3 + 4 + 6)', () => {
   });
 
   it('carries NO engagement_state filter (Ruling 4 — deferred to M5 / F20)', async () => {
-    const { repo, call } = makeRepo({ requisition: activeReq(), rows: [] });
+    const { repo, call } = makeRepo({ isActive: true, rows: [] });
     await repo.findActiveReqLiveList({ tenant_id: TENANT_A, req_id: REQ_ID });
 
     const where = call.args.where as Record<string, unknown>;
@@ -160,7 +140,7 @@ describe('findActiveReqLiveList — query shape (Ruling 3 + 4 + 6)', () => {
 
   it('projects each row through PR-6 projectSummaryView — returned shape is Summary, not Full (Ruling 3 + 6)', async () => {
     const { repo } = makeRepo({
-      requisition: activeReq(),
+      isActive: true,
       rows: [
         makeRow({
           id: '00000000-0000-7000-8000-000000000001',
@@ -197,7 +177,7 @@ describe('findActiveReqLiveList — query shape (Ruling 3 + 4 + 6)', () => {
 
 describe('findActiveReqLiveList — Ruling 7 limit clamp', () => {
   async function callWith(limit: number | undefined): Promise<number> {
-    const { repo, call } = makeRepo({ requisition: activeReq(), rows: [] });
+    const { repo, call } = makeRepo({ isActive: true, rows: [] });
     const input: FindActiveReqLiveListInput = { tenant_id: TENANT_A, req_id: REQ_ID };
     if (limit !== undefined) input.limit = limit;
     await repo.findActiveReqLiveList(input);
@@ -235,7 +215,7 @@ describe('findActiveReqLiveList — Ruling 7 limit clamp', () => {
 
 describe('findActiveReqLiveList — keyset cursor (Ruling 1 / pull-side pagination)', () => {
   it('applies the (tier, rank_ordinal, id) > cursor OR-chain predicate when cursor is provided', async () => {
-    const { repo, call } = makeRepo({ requisition: activeReq(), rows: [] });
+    const { repo, call } = makeRepo({ isActive: true, rows: [] });
     await repo.findActiveReqLiveList({
       tenant_id: TENANT_A,
       req_id: REQ_ID,
@@ -248,15 +228,8 @@ describe('findActiveReqLiveList — keyset cursor (Ruling 1 / pull-side paginati
 
     const where = call.args.where as Record<string, unknown>;
     expect(where['tenant_id']).toBe(TENANT_A);
-    expect(where['job_id']).toBe(JOB_ID);
+    expect(where['job_id']).toBe(REQ_ID);
     expect(where['lifecycle_state']).toBe('active');
-    // The keyset predicate is an OR-chain over (tier ∈ tiers-after-cursor),
-    // (tier == c.tier AND rank_ordinal > c.rank_ordinal), and (tier == c.tier
-    // AND rank_ordinal == c.rank_ordinal AND id > c.id) — the SQL-equivalent
-    // of the (tier, rank_ordinal, id) > cursor lexical comparison. The first
-    // branch uses Prisma's `in` filter over the explicit list of tiers
-    // strictly after cursor.tier (Prisma 7 enum filters don't support `gt`);
-    // for cursor WORTH_CONSIDERING that list is ['STRETCH'].
     expect(where['OR']).toEqual([
       { tier: { in: ['STRETCH'] } },
       { AND: [{ tier: 'WORTH_CONSIDERING' }, { rank_ordinal: { gt: 7 } }] },
@@ -271,7 +244,7 @@ describe('findActiveReqLiveList — keyset cursor (Ruling 1 / pull-side paginati
   });
 
   it('cursor at the last tier (STRETCH) → branch-1 in-list is empty (no tiers strictly after STRETCH)', async () => {
-    const { repo, call } = makeRepo({ requisition: activeReq(), rows: [] });
+    const { repo, call } = makeRepo({ isActive: true, rows: [] });
     await repo.findActiveReqLiveList({
       tenant_id: TENANT_A,
       req_id: REQ_ID,
@@ -288,7 +261,7 @@ describe('findActiveReqLiveList — keyset cursor (Ruling 1 / pull-side paginati
   });
 
   it('cursor at the first tier (ENTRUSTABLE) → branch-1 in-list is [WORTH_CONSIDERING, STRETCH]', async () => {
-    const { repo, call } = makeRepo({ requisition: activeReq(), rows: [] });
+    const { repo, call } = makeRepo({ isActive: true, rows: [] });
     await repo.findActiveReqLiveList({
       tenant_id: TENANT_A,
       req_id: REQ_ID,
@@ -305,7 +278,7 @@ describe('findActiveReqLiveList — keyset cursor (Ruling 1 / pull-side paginati
   });
 
   it('omits the OR-chain when no cursor is provided (first page)', async () => {
-    const { repo, call } = makeRepo({ requisition: activeReq(), rows: [] });
+    const { repo, call } = makeRepo({ isActive: true, rows: [] });
     await repo.findActiveReqLiveList({ tenant_id: TENANT_A, req_id: REQ_ID });
 
     const where = call.args.where as Record<string, unknown>;
@@ -315,8 +288,9 @@ describe('findActiveReqLiveList — keyset cursor (Ruling 1 / pull-side paginati
 
 describe('findActiveReqLiveList — write-path discipline (Ruling 1 — read-only)', () => {
   it('issues no UPDATE / updateMany — the projection is read-only', async () => {
-    const findReq = vi.fn<(id: string) => Promise<RequisitionRow | null>>(async () => activeReq());
-    const jobDomain = { findRequisitionById: findReq } as unknown as JobDomainRepository;
+    const requisitionState = {
+      isActive: vi.fn(async () => true),
+    } as unknown as RequisitionStateReader;
 
     const findMany = vi.fn(async () => [makeRow()] as never);
     const update = vi.fn();
@@ -325,7 +299,7 @@ describe('findActiveReqLiveList — write-path discipline (Ruling 1 — read-onl
       talentJobExamination: { findMany, update, updateMany },
     } as unknown as ConstructorParameters<typeof ExaminationRepository>[0];
 
-    const repo = new ExaminationRepository(prisma, jobDomain);
+    const repo = new ExaminationRepository(prisma, requisitionState);
     // Exercise several configurations.
     await repo.findActiveReqLiveList({ tenant_id: TENANT_A, req_id: REQ_ID });
     await repo.findActiveReqLiveList({ tenant_id: TENANT_A, req_id: REQ_ID, limit: 10 });
