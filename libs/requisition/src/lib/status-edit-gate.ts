@@ -34,8 +34,15 @@ import { AramoError } from '@aramo/common';
 const REQUISITION_EDIT = 'requisition:edit' as const;
 const REQUISITION_EDIT_STATUS = 'requisition:edit:status' as const;
 
-// The single field a status-only editor may write.
-export const STATUS_ONLY_ALLOWED_FIELDS = ['status'] as const;
+// The fields a status-only editor may include. `status` is the only CONTENT
+// field they may write. `version` (Track 1 T1-b, R4) is NOT content — it is
+// the optimistic-concurrency token, consumed by update() as the expected
+// version for the compare-and-swap and never written as row data. A status-
+// only editor guarding their status change with the expected version is doing
+// exactly the right thing, so the concurrency token is transparent to this
+// subset-restrict gate (allowing it does NOT widen what content they can
+// mutate — version never lands in the update `data`).
+export const STATUS_ONLY_ALLOWED_FIELDS = ['status', 'version'] as const;
 
 export function assertStatusOnlyEditScope(args: {
   input: Record<string, unknown>;

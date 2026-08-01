@@ -531,6 +531,13 @@ const REQUISITION_PUBLISH_SURFACE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260721000000_add_publish_surface/migration.sql',
 );
+// Track 1 T1-b — additive `version` optimistic-concurrency column. The
+// regenerated client SELECTs it on every requisition read/write served during
+// verification; absent in DB → 500 (the hardcoded-migration-list footgun).
+const REQUISITION_VERSION_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260801120000_add_version_to_requisition/migration.sql',
+);
 // PC-5d — ats-web Gate-2a desk (task + attachment, the final increment). task
 // init CREATEs the schema + Task + the TaskStatus enum ('open','done'); the
 // workspace-fields migration ALTERs the enum (+in_progress/waiting/cancelled)
@@ -2843,6 +2850,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         REQUISITION_DROP_LEGACY_COMP_MIGRATION,
         REQUISITION_RATE_TYPE_MIGRATION,
         REQUISITION_PUBLISH_SURFACE_MIGRATION,
+        REQUISITION_VERSION_MIGRATION,
         // PC-5d — task + attachment (final desk increment). task init +
         // workspace-fields (enum extension + source column); attachment init.
         // All self-contained (CREATE SCHEMA in init), no FK.

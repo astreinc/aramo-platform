@@ -31,13 +31,18 @@ const baseRow = new Proxy(
 describe('PR-0b-1 — openings_available is not PATCH-writable', () => {
   it('does not write openings_available on update, but still writes legitimate fields', async () => {
     let capturedData: Record<string, unknown> | undefined;
+    // Track 1 T1-b — the write path is now a versioned compare-and-swap:
+    // findFirst (existence) → updateMany (the CAS carrying the field payload)
+    // → findFirstOrThrow (re-read for the view). The payload assertions still
+    // key on the updateMany data (which additionally carries the version bump).
     const fakePrisma = {
       requisition: {
         findFirst: async () => ({ id: 'req-1' }),
-        update: async (args: { data: Record<string, unknown> }) => {
+        updateMany: async (args: { data: Record<string, unknown> }) => {
           capturedData = args.data;
-          return baseRow;
+          return { count: 1 };
         },
+        findFirstOrThrow: async () => baseRow,
       },
     };
 

@@ -752,15 +752,83 @@ export class RequisitionRepository {
       enforce: true,
       is_hot: args.input.is_hot,
     });
+    // Track 1 T1-b (R1/R3/R4) — the write is a versioned compare-and-swap.
+    // args.input.version is the caller's expected version: present → the CAS
+    // guards on it (a mismatch is a stale write → 409); absent → the update is
+    // unguarded (additive posture) but STILL increments. The version bump lives
+    // inside casUpdate, so both the plain and the SET_PRIORITY $transaction path
+    // increment identically; in the tx path a stale-write 409 rolls back the
+    // provenance insert with the mutation.
+    const expectedVersion = args.input.version;
     const row =
       setPriorityProvenance === null
-        ? await this.prisma.requisition.update({ where: { id: args.id }, data })
+        ? await this.casUpdate(this.prisma, {
+            tenant_id: args.tenant_id,
+            id: args.id,
+            expectedVersion,
+            data,
+            requestId: args.requestId,
+          })
         : await this.prisma.$transaction(async (tx) => {
-            const updated = await tx.requisition.update({ where: { id: args.id }, data });
+            const updated = await this.casUpdate(tx, {
+              tenant_id: args.tenant_id,
+              id: args.id,
+              expectedVersion,
+              data,
+              requestId: args.requestId,
+            });
             await insertPolicyDecisionRecordInTx(tx, setPriorityProvenance);
             return updated;
           });
     return projectView(row as RequisitionRow);
+  }
+
+  // Track 1 T1-b (ruling R1) — the optimistic-concurrency compare-and-swap.
+  // Adds the version bump to `data` so EVERY successful update increments
+  // (R1/R3 — a stale write is stale regardless of which field it targets) and,
+  // when `expectedVersion` is supplied, guards the WHERE on it. A zero-row
+  // result is a STALE WRITE: the caller has already existence-checked the row
+  // in tenant, so the only way an id+tenant+version WHERE matches nothing is a
+  // version mismatch — someone else changed the row. That is a distinct,
+  // registered error (REQUISITION_VERSION_CONFLICT, 409, R2), never a generic
+  // 409 and never silent last-write-wins. `expectedVersion` undefined (R4) →
+  // no version predicate → unguarded update that still increments. Runs on the
+  // passed client (PrismaService or a $transaction client) so it composes with
+  // the SET_PRIORITY provenance insert.
+  private async casUpdate(
+    client: Prisma.TransactionClient,
+    args: {
+      tenant_id: string;
+      id: string;
+      expectedVersion: number | undefined;
+      data: Record<string, unknown>;
+      requestId: string;
+    },
+  ): Promise<RequisitionRow> {
+    const where: Prisma.RequisitionWhereInput = {
+      id: args.id,
+      tenant_id: args.tenant_id,
+      ...(args.expectedVersion !== undefined ? { version: args.expectedVersion } : {}),
+    };
+    const result = await client.requisition.updateMany({
+      where,
+      data: {
+        ...args.data,
+        version: { increment: 1 },
+      } as Prisma.RequisitionUpdateManyMutationInput,
+    });
+    if (result.count === 0) {
+      throw new AramoError(
+        'REQUISITION_VERSION_CONFLICT',
+        'The requisition was modified by another request; reload and retry',
+        409,
+        { requestId: args.requestId, details: { id: args.id } },
+      );
+    }
+    const row = await client.requisition.findFirstOrThrow({
+      where: { id: args.id, tenant_id: args.tenant_id },
+    });
+    return row as RequisitionRow;
   }
 
   // Job-Module LB-2 — stamp the GoldenProfile seam onto the requisition.
@@ -785,9 +853,16 @@ export class RequisitionRepository {
         details: { id: args.id },
       });
     }
-    const row = await this.prisma.requisition.update({
-      where: { id: args.id },
+    // Track 1 T1-b (R3) — stampGoldenProfileId increments the version like any
+    // other successful update; NO exemption. It is not a client-supplied CAS
+    // caller, so it passes no expectedVersion (unguarded), but the token still
+    // bumps so a concurrent PATCH holding the old version sees the change.
+    const row = await this.casUpdate(this.prisma, {
+      tenant_id: args.tenant_id,
+      id: args.id,
+      expectedVersion: undefined,
       data: { golden_profile_id: args.golden_profile_id },
+      requestId: args.requestId,
     });
     return projectView(row as RequisitionRow);
   }

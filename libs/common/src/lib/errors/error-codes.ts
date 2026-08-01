@@ -382,6 +382,16 @@ export const ERROR_CODES = [
   // SUBMITTAL_ALREADY_CONFIRMED / IMPORT_ALREADY_REVERTED).
   'ACTIVITY_NOT_REDACTABLE',
   'ACTIVITY_ALREADY_REDACTED',
+  // Track 1 T1-b (ruling R2) — optimistic-concurrency stale-write refusal on
+  // requisition.Requisition. The PATCH (or any versioned update) supplied an
+  // expected `version` that no longer matches the stored row: someone else
+  // changed it since the caller read it. HTTP 409. A DISTINCT registered code,
+  // never a generic 409 and never silent last-write-wins — the caller must be
+  // able to tell "someone else changed this" from "your request was malformed"
+  // (VALIDATION_ERROR) or "not found" (NOT_FOUND). Mirrors the state-conflict
+  // 409 family (SUBMITTAL_ALREADY_CONFIRMED / IMPORT_ALREADY_REVERTED). ADDITIVE
+  // this PR: fires ONLY when a caller opts in by supplying a version.
+  'REQUISITION_VERSION_CONFLICT',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

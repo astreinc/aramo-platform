@@ -1649,6 +1649,7 @@ components:
         - POLICY_DENIED
         - ACTIVITY_NOT_REDACTABLE
         - ACTIVITY_ALREADY_REDACTED
+        - REQUISITION_VERSION_CONFLICT
 
     ErrorObject:
       type: object
