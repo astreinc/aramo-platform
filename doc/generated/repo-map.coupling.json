@@ -9056,7 +9056,7 @@
     },
     {
       "from": "ci/scripts/prepush.ts",
-      "line": 137,
+      "line": 138,
       "status": "unscoped",
       "to": "ci/scripts/verify-frontdoor-conf.ts"
     },
@@ -10598,6 +10598,12 @@
       "to": "scripts/verify-vocabulary.sh"
     },
     {
+      "from": "doc/adr/0024-amendment-a1-capacity-binding-and-corrections.md",
+      "line": 105,
+      "status": "unscoped",
+      "to": "doc/03-refusal-layer.md"
+    },
+    {
       "from": "doc/adr/0024-business-policy-engine.md",
       "line": 312,
       "status": "unscoped",
@@ -10608,6 +10614,18 @@
       "line": 7,
       "status": "unscoped",
       "to": "libs/requisition/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/adr/0027-client-talent-restriction-r10-compatibility.md",
+      "line": 7,
+      "status": "unscoped",
+      "to": "doc/03-refusal-layer.md"
+    },
+    {
+      "from": "doc/adr/0027-client-talent-restriction-r10-compatibility.md",
+      "line": 139,
+      "status": "unscoped",
+      "to": "doc/03-refusal-layer.md"
     },
     {
       "from": "doc/adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md",
@@ -10672,7 +10690,7 @@
     { "from": "doc/adr/README.md", "line": 3, "status": "unscoped", "to": "doc/04-risks.md" },
     {
       "from": "doc/adr/README.md",
-      "line": 59,
+      "line": 61,
       "status": "unscoped",
       "to": "doc/06-lead-review-checklist.md"
     },
@@ -15405,6 +15423,24 @@
       "to": "libs/task/tsconfig.lib.json"
     },
     {
+      "from": "libs/tenant-reset/prisma/schema.prisma",
+      "line": 5,
+      "status": "unscoped",
+      "to": "doc/05-conventions.md"
+    },
+    {
+      "from": "libs/tenant-reset/project.json",
+      "line": 13,
+      "status": "unscoped",
+      "to": "libs/tenant-reset/src/index.ts"
+    },
+    {
+      "from": "libs/tenant-reset/project.json",
+      "line": 14,
+      "status": "unscoped",
+      "to": "libs/tenant-reset/tsconfig.lib.json"
+    },
+    {
       "from": "libs/visibility/project.json",
       "line": 13,
       "status": "unscoped",
@@ -16016,6 +16052,12 @@
       "line": 27,
       "status": "unscoped",
       "to": "libs/task/prisma/schema.prisma"
+    },
+    {
+      "from": "package.json",
+      "line": 24,
+      "status": "unscoped",
+      "to": "libs/tenant-reset/prisma/schema.prisma"
     },
     { "from": "package.json", "line": 38, "status": "unscoped", "to": "openapi/ats.yaml" },
     { "from": "package.json", "line": 39, "status": "unscoped", "to": "openapi/ats.yaml" },
@@ -17969,49 +18011,55 @@
     },
     {
       "from": "tsconfig.base.json",
-      "line": 77,
+      "line": 78,
       "status": "unscoped",
       "to": "libs/talent-evidence/src/index.ts"
     },
     {
       "from": "tsconfig.base.json",
-      "line": 78,
+      "line": 79,
       "status": "unscoped",
       "to": "libs/talent-extraction/src/index.ts"
     },
     {
       "from": "tsconfig.base.json",
-      "line": 79,
+      "line": 80,
       "status": "unscoped",
       "to": "libs/talent-reconcile/src/index.ts"
     },
     {
       "from": "tsconfig.base.json",
-      "line": 80,
+      "line": 81,
       "status": "unscoped",
       "to": "libs/talent-record/src/index.ts"
     },
     {
       "from": "tsconfig.base.json",
-      "line": 81,
+      "line": 82,
       "status": "unscoped",
       "to": "libs/talent-trust/src/index.ts"
     },
     {
       "from": "tsconfig.base.json",
-      "line": 76,
+      "line": 77,
       "status": "unscoped",
       "to": "libs/talent/src/index.ts"
     },
     {
       "from": "tsconfig.base.json",
-      "line": 82,
+      "line": 83,
       "status": "unscoped",
       "to": "libs/task/src/index.ts"
     },
     {
       "from": "tsconfig.base.json",
-      "line": 83,
+      "line": 76,
+      "status": "unscoped",
+      "to": "libs/tenant-reset/src/index.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "line": 84,
       "status": "unscoped",
       "to": "libs/visibility/src/index.ts"
     },
@@ -18311,49 +18359,55 @@
     },
     {
       "from": "vitest.shared.ts",
-      "line": 188,
+      "line": 192,
       "status": "unscoped",
       "to": "libs/talent-evidence/src/index.ts"
     },
     {
       "from": "vitest.shared.ts",
-      "line": 191,
+      "line": 195,
       "status": "unscoped",
       "to": "libs/talent-extraction/src/index.ts"
     },
     {
       "from": "vitest.shared.ts",
-      "line": 199,
+      "line": 203,
       "status": "unscoped",
       "to": "libs/talent-reconcile/src/index.ts"
     },
     {
       "from": "vitest.shared.ts",
-      "line": 195,
+      "line": 199,
       "status": "unscoped",
       "to": "libs/talent-record/src/index.ts"
     },
     {
       "from": "vitest.shared.ts",
-      "line": 202,
+      "line": 206,
       "status": "unscoped",
       "to": "libs/talent-trust/src/index.ts"
     },
     {
       "from": "vitest.shared.ts",
-      "line": 187,
+      "line": 191,
       "status": "unscoped",
       "to": "libs/talent/src/index.ts"
     },
     {
       "from": "vitest.shared.ts",
-      "line": 207,
+      "line": 211,
       "status": "unscoped",
       "to": "libs/task/src/index.ts"
     },
     {
       "from": "vitest.shared.ts",
-      "line": 212,
+      "line": 190,
+      "status": "unscoped",
+      "to": "libs/tenant-reset/src/index.ts"
+    },
+    {
+      "from": "vitest.shared.ts",
+      "line": 216,
       "status": "unscoped",
       "to": "libs/visibility/src/index.ts"
     },
@@ -18381,8 +18435,8 @@
       "references": [
         { "kind": "prose", "line": 315, "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "line": 325, "path": ".github/workflows/ci.yml" },
-        { "kind": "npm-run", "line": 130, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 130, "path": "ci/scripts/prepush.ts" },
+        { "kind": "npm-run", "line": 131, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 131, "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "line": 225, "path": "ci/scripts/verify-ats-refusal.ts" },
         { "kind": "prose", "line": 228, "path": "ci/scripts/verify-ats-refusal.ts" }
       ]
@@ -18407,12 +18461,12 @@
         { "kind": "prose", "line": 25, "path": ".github/workflows/deploy-public-staging.yml" },
         { "kind": "prose", "line": 16, "path": "ci/scripts/frontdoor-boot-smoke.sh" },
         { "kind": "prose", "line": 13, "path": "ci/scripts/prepush.ts" },
-        { "kind": "nx-target", "line": 93, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 113, "path": "ci/scripts/prepush.ts" },
-        { "kind": "nx-target", "line": 114, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 158, "path": "ci/scripts/prepush.ts" },
+        { "kind": "nx-target", "line": 94, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 114, "path": "ci/scripts/prepush.ts" },
+        { "kind": "nx-target", "line": 115, "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "line": 159, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 165, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 160, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 166, "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "line": 15, "path": "deploy/migrate-prod.sh" },
         { "kind": "prose", "line": 19, "path": "deploy/migrate-prod.sh" },
         { "kind": "prose", "line": 137, "path": "deploy/migrate-prod.sh" },
@@ -18479,8 +18533,8 @@
       "references": [
         { "kind": "prose", "line": 371, "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "line": 381, "path": ".github/workflows/ci.yml" },
-        { "kind": "npm-run", "line": 124, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 124, "path": "ci/scripts/prepush.ts" },
+        { "kind": "npm-run", "line": 125, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 125, "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "line": 137, "path": "ci/scripts/verify-error-codes.ts" },
         { "kind": "prose", "line": 140, "path": "ci/scripts/verify-error-codes.ts" }
       ]
@@ -18498,8 +18552,8 @@
       "references": [
         { "kind": "prose", "line": 397, "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "line": 407, "path": ".github/workflows/ci.yml" },
-        { "kind": "prose", "line": 126, "path": "ci/scripts/prepush.ts" },
-        { "kind": "npm-run", "line": 127, "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "line": 127, "path": "ci/scripts/prepush.ts" },
+        { "kind": "npm-run", "line": 128, "path": "ci/scripts/prepush.ts" }
       ]
     },
     {
@@ -18507,8 +18561,8 @@
       "references": [
         { "kind": "prose", "line": 328, "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "line": 338, "path": ".github/workflows/ci.yml" },
-        { "kind": "npm-run", "line": 131, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 131, "path": "ci/scripts/prepush.ts" },
+        { "kind": "npm-run", "line": 132, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 132, "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "line": 290, "path": "ci/scripts/verify-ingestion-refusal.ts" },
         { "kind": "prose", "line": 293, "path": "ci/scripts/verify-ingestion-refusal.ts" }
       ]
@@ -18523,10 +18577,10 @@
         { "kind": "nx-target", "line": 123, "path": ".github/workflows/ci.yml" },
         { "kind": "nx-target", "line": 125, "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "line": 13, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 93, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 102, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 113, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 94, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 103, "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "line": 114, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 115, "path": "ci/scripts/prepush.ts" },
         { "kind": "script-body", "line": 19, "path": "package.json" },
         { "kind": "script-body", "line": 39, "path": "package.json" }
       ]
@@ -18545,8 +18599,8 @@
         { "kind": "npm-run", "line": 299, "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "line": 117, "path": "ci/scripts/compare-spec-to-openapi.ts" },
         { "kind": "prose", "line": 120, "path": "ci/scripts/compare-spec-to-openapi.ts" },
-        { "kind": "npm-run", "line": 149, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 149, "path": "ci/scripts/prepush.ts" }
+        { "kind": "npm-run", "line": 150, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 150, "path": "ci/scripts/prepush.ts" }
       ]
     },
     {
@@ -18555,8 +18609,8 @@
         { "kind": "prose", "line": 249, "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "line": 259, "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "line": 9, "path": "ci/scripts/prepush.ts" },
-        { "kind": "npm-run", "line": 148, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 148, "path": "ci/scripts/prepush.ts" }
+        { "kind": "npm-run", "line": 149, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 149, "path": "ci/scripts/prepush.ts" }
       ]
     },
     {
@@ -18564,8 +18618,8 @@
       "references": [
         { "kind": "prose", "line": 236, "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "line": 246, "path": ".github/workflows/ci.yml" },
-        { "kind": "npm-run", "line": 147, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 147, "path": "ci/scripts/prepush.ts" }
+        { "kind": "npm-run", "line": 148, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 148, "path": "ci/scripts/prepush.ts" }
       ]
     },
     {
@@ -18575,8 +18629,8 @@
         { "kind": "prose", "line": 422, "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "line": 427, "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "line": 428, "path": ".github/workflows/ci.yml" },
-        { "kind": "npm-run", "line": 152, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 152, "path": "ci/scripts/prepush.ts" }
+        { "kind": "npm-run", "line": 153, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 153, "path": "ci/scripts/prepush.ts" }
       ]
     },
     {
@@ -18584,8 +18638,8 @@
       "references": [
         { "kind": "prose", "line": 444, "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "line": 460, "path": ".github/workflows/ci.yml" },
-        { "kind": "npm-run", "line": 153, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 153, "path": "ci/scripts/prepush.ts" }
+        { "kind": "npm-run", "line": 154, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 154, "path": "ci/scripts/prepush.ts" }
       ]
     },
     {
@@ -18593,8 +18647,8 @@
       "references": [
         { "kind": "prose", "line": 302, "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "line": 312, "path": ".github/workflows/ci.yml" },
-        { "kind": "npm-run", "line": 129, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 129, "path": "ci/scripts/prepush.ts" },
+        { "kind": "npm-run", "line": 130, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 130, "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "line": 408, "path": "ci/scripts/verify-portal-refusal.ts" },
         { "kind": "prose", "line": 411, "path": "ci/scripts/verify-portal-refusal.ts" }
       ]
@@ -18603,8 +18657,8 @@
       "name": "prepush",
       "references": [
         { "kind": "prose", "line": 6, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 90, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 182, "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "line": 91, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 183, "path": "ci/scripts/prepush.ts" }
       ]
     },
     {
@@ -18665,11 +18719,11 @@
         { "kind": "prose", "line": 59, "path": "ci/scripts/check-version-sync.ts" },
         { "kind": "prose", "line": 98, "path": "ci/scripts/frontdoor-boot-smoke.sh" },
         { "kind": "prose", "line": 13, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 75, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 86, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 93, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 113, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 76, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 87, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 94, "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "line": 114, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 115, "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "line": 9, "path": "ci/scripts/verify-error-codes.ts" },
         { "kind": "prose", "line": 60, "path": "ci/scripts/verify-error-codes.ts" },
         { "kind": "prose", "line": 74, "path": "ci/scripts/verify-frontdoor-conf.ts" },
@@ -18724,8 +18778,8 @@
       "name": "verify:vocabulary",
       "references": [
         { "kind": "prose", "line": 275, "path": ".github/workflows/ci.yml" },
-        { "kind": "npm-run", "line": 123, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 123, "path": "ci/scripts/prepush.ts" },
+        { "kind": "npm-run", "line": 124, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 124, "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "line": 19, "path": "scripts/verify-vocabulary.sh" }
       ]
     },
@@ -18736,9 +18790,9 @@
         { "kind": "npm-run", "line": 368, "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "line": 152, "path": "ci/scripts/check-version-sync.ts" },
         { "kind": "prose", "line": 155, "path": "ci/scripts/check-version-sync.ts" },
-        { "kind": "prose", "line": 98, "path": "ci/scripts/prepush.ts" },
-        { "kind": "npm-run", "line": 132, "path": "ci/scripts/prepush.ts" },
-        { "kind": "prose", "line": 132, "path": "ci/scripts/prepush.ts" }
+        { "kind": "prose", "line": 99, "path": "ci/scripts/prepush.ts" },
+        { "kind": "npm-run", "line": 133, "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "line": 133, "path": "ci/scripts/prepush.ts" }
       ]
     }
   ],

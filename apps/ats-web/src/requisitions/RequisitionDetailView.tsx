@@ -27,6 +27,7 @@ import {
   Card,
   DataTable,
   EntityCell,
+  ExpandableText,
   FilterChip,
   Icons,
   ProgressMini,
@@ -673,7 +674,11 @@ function PipelinePanel({
   const feedItems: ActivityFeedItem[] = activities.slice(0, 6).map((a) => ({
     id: a.id,
     text:
-      a.notes != null && a.notes !== '' ? truncate(a.notes, 64) : activityLabel(a.type),
+      a.notes != null && a.notes !== '' ? (
+        <ExpandableText text={a.notes} limit={64} />
+      ) : (
+        activityLabel(a.type)
+      ),
     when: relativeTime(a.created_at),
   }));
 

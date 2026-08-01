@@ -86,6 +86,7 @@ export { ProgressMini } from './ProgressMini';
 export { AttestCheckbox } from './AttestCheckbox';
 export { Toolbar, FilterChip, ScopedSearch } from './Toolbar';
 export { ActivityFeed, type ActivityFeedItem } from './ActivityFeed';
+export { ExpandableText } from './ExpandableText';
 export { ReservedSeam } from './ReservedSeam';
 
 // ── Stage projection (single source: ../pipeline/types) ──

@@ -34,6 +34,7 @@ const INTEGRATION_ROOTS = [
   'libs/canonicalization',
   'libs/identity-index',
   'libs/portal-identity',
+  'libs/tenant-reset',
 ];
 
 function run(cmd: string): void {

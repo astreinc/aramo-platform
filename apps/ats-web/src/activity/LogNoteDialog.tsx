@@ -88,7 +88,8 @@ export function LogNoteDialog({ requisitionId, onSaved }: LogNoteDialogProps) {
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            rows={5}
+            rows={8}
+            style={{ resize: 'vertical', minHeight: '160px' }}
             disabled={submitting}
           />
         </FormField>

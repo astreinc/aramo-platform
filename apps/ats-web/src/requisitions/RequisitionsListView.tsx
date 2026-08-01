@@ -213,7 +213,15 @@ export function RequisitionsListView({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const rows = items.filter((r) => {
-      if (!showClosed && isClosedStatus(r.status)) return false;
+      // D1-a — the default closed-hide is a DEFAULT, not an override. It hides
+      // terminal statuses (full/closed/canceled) from the unfiltered list, but
+      // an explicit status selection below is authoritative: picking Closed /
+      // Full / Canceled in the dropdown must surface those rows even while the
+      // "Show closed" chip is off. So the default only applies when no explicit
+      // status is chosen. (The chip↔dropdown model itself is D1-b.)
+      if (!showClosed && statusFilter === '' && isClosedStatus(r.status)) {
+        return false;
+      }
       if (mode === 'hot' && !r.is_hot) return false;
       if (mode === 'mine' && !isMine(r)) return false;
       if (mode === 'aging' && !isAging(r)) return false;

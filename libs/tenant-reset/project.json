@@ -1,0 +1,30 @@
+{
+  "name": "tenant-reset",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/tenant-reset/src",
+  "projectType": "library",
+  "tags": ["scope:boundary"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/tenant-reset",
+        "main": "libs/tenant-reset/src/index.ts",
+        "tsConfig": "libs/tenant-reset/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/tenant-reset/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/tenant-reset"
+      }
+    }
+  }
+}

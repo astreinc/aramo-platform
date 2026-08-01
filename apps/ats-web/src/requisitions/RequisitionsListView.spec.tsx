@@ -164,6 +164,33 @@ describe('RequisitionsListView', () => {
     expect(screen.getByText('Architect')).toBeInTheDocument();
   });
 
+  it('D1-a: selecting a terminal status in the dropdown reveals those reqs even with "Show closed" off', async () => {
+    mockFetch([OPEN, CLOSED, FILLED]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
+    );
+    // Default view hides the closed req (Show closed is off).
+    expect(screen.queryByText('Junior Engineer')).not.toBeInTheDocument();
+
+    // Explicitly filter to "closed" via the dropdown — the chip stays OFF.
+    fireEvent.change(screen.getByLabelText('Filter by status'), {
+      target: { value: 'closed' },
+    });
+    // The closed req now surfaces; the explicit status is authoritative, so the
+    // active + filled rows are excluded (by the status filter, not hidden).
+    expect(screen.getByText('Junior Engineer')).toBeInTheDocument();
+    expect(screen.queryByText('Senior Engineer')).not.toBeInTheDocument();
+    expect(screen.queryByText('Architect')).not.toBeInTheDocument();
+
+    // "full" is also a terminal status (the surprising one) — it works too.
+    fireEvent.change(screen.getByLabelText('Filter by status'), {
+      target: { value: 'full' },
+    });
+    expect(screen.getByText('Architect')).toBeInTheDocument();
+    expect(screen.queryByText('Junior Engineer')).not.toBeInTheDocument();
+  });
+
   it('"Hot" filters to hot requisitions', async () => {
     mockFetch([OPEN, HOT]);
     renderList();
