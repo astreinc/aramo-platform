@@ -6,9 +6,6 @@ export type {
   JobRow,
   CreateGoldenProfileInput,
   GoldenProfileRow,
-  CreateRequisitionInput,
-  RequisitionRow,
-  RequisitionStateValue,
 } from './lib/job-domain.repository.js';
 // Job-Module (Part 2 / R4) — the typed, matching-aligned GoldenProfile
 // content shape + the storage projection helpers.

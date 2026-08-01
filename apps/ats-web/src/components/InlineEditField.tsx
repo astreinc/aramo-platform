@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { InlineAlert, useToast } from '@aramo/fe-foundation';
 
 // PR-A2 P2 — the net-new, reusable INLINE-EDIT primitive (consumer layer;
@@ -38,6 +38,10 @@ interface InlineEditFieldProps {
   // edits the raw value.
   readonly format?: (value: string) => string;
   readonly multiline?: boolean;
+  // D-COCKPIT-GRID-1: an unbounded free-text field claims its own grid row
+  // (`grid-column: 1 / -1`). Cockpit-scoped — the consumer opts in; a field in
+  // a non-grid panel (ProfileWorkbench) leaves this false and owns its width.
+  readonly fullWidth?: boolean;
   readonly testId?: string;
 }
 
@@ -50,22 +54,45 @@ export function InlineEditField({
   placeholder,
   format,
   multiline = false,
+  fullWidth = false,
   testId,
 }: InlineEditFieldProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // D-COCKPIT-GRID-1: multiline read display clamps to 3 lines; the reveal
+  // toggles the clamp off (never swaps content). `overflowing` gates the reveal
+  // so it never appears on a value that already fits — defaults true so it
+  // still renders where no layout is measurable (jsdom: scrollHeight 0), which
+  // is what the unit specs exercise.
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(true);
   const toast = useToast();
   // Guards a blur-after-cancel from re-triggering a commit.
   const cancellingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const valueRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
     // Keep the draft in sync when the upstream value changes while not editing
-    // (e.g. a sibling field's save returns a fresh masked view).
-    if (!editing) setDraft(value ?? '');
+    // (e.g. a sibling field's save returns a fresh masked view). Collapse the
+    // reveal on a fresh value so a long prior value doesn't stay expanded.
+    if (!editing) {
+      setDraft(value ?? '');
+      setExpanded(false);
+    }
   }, [value, editing]);
+
+  useLayoutEffect(() => {
+    // Measure whether the clamped value overflows 3 lines. Only meaningful while
+    // clamped (multiline, read, collapsed). jsdom has no layout engine
+    // (scrollHeight 0) — don't act on a measurement we couldn't take.
+    if (!multiline || editing || expanded) return;
+    const el = valueRef.current;
+    if (el === null || el.scrollHeight === 0) return;
+    setOverflowing(el.scrollHeight > el.clientHeight + 1);
+  }, [multiline, editing, expanded, value]);
 
   useEffect(() => {
     if (editing && inputRef.current !== null) inputRef.current.focus();
@@ -113,24 +140,44 @@ export function InlineEditField({
   }
 
   if (!editing) {
-    const display =
-      value !== null && value !== ''
-        ? format !== undefined
-          ? format(value)
-          : value
-        : EMPTY_DISPLAY;
+    const hasValue = value !== null && value !== '';
+    const display = hasValue
+      ? format !== undefined
+        ? format(value as string)
+        : (value as string)
+      : EMPTY_DISPLAY;
+    const rootClass = fullWidth
+      ? 'inline-edit inline-edit--unbounded'
+      : 'inline-edit';
+    const valueClamp =
+      multiline && hasValue && !expanded ? ' inline-edit__value--clamp' : '';
+    const reveal =
+      multiline && hasValue && (overflowing || expanded) ? (
+        <button
+          type="button"
+          className="inline-edit__reveal"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((e) => !e)}
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      ) : null;
     if (!canEdit) {
       return (
-        <div className="inline-edit" data-testid={testId}>
+        <div className={rootClass} data-testid={testId}>
           <span className="inline-edit__label">{label}</span>
-          <span className="inline-edit__value inline-edit__value--readonly">
+          <span
+            ref={valueRef}
+            className={`inline-edit__value inline-edit__value--readonly${valueClamp}`}
+          >
             {display}
           </span>
+          {reveal}
         </div>
       );
     }
     return (
-      <div className="inline-edit" data-testid={testId}>
+      <div className={rootClass} data-testid={testId}>
         <span className="inline-edit__label">{label}</span>
         <button
           type="button"
@@ -138,17 +185,25 @@ export function InlineEditField({
           onClick={beginEdit}
           aria-label={`Edit ${label}`}
         >
-          <span className="inline-edit__value">{display}</span>
+          <span ref={valueRef} className={`inline-edit__value${valueClamp}`}>
+            {display}
+          </span>
           <span className="inline-edit__pencil" aria-hidden="true">
             ✎
           </span>
         </button>
+        {reveal}
       </div>
     );
   }
 
   return (
-    <div className="inline-edit inline-edit--editing" data-testid={testId}>
+    <div
+      className={`inline-edit inline-edit--editing${
+        fullWidth ? ' inline-edit--unbounded' : ''
+      }`}
+      data-testid={testId}
+    >
       <span className="inline-edit__label">{label}</span>
       <div className="inline-edit__editor">
         {multiline ? (

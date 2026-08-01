@@ -31,15 +31,9 @@ const MIGRATION_PATH = resolve(
 );
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
-const TENANT_B = '22222222-2222-7222-8222-222222222222';
 const JOB_A = '00000000-0000-7000-8000-00000000000a';
 const JOB_B = '00000000-0000-7000-8000-00000000000b';
 const GOLDEN_A = '00000000-0000-7000-8000-00000000000c';
-const REQ_A = '00000000-0000-7000-8000-00000000000d';
-const REQ_B = '00000000-0000-7000-8000-00000000000e';
-const REQ_C = '00000000-0000-7000-8000-00000000000f';
-const RECRUITER_A = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
-const UNREFERENCED_JOB = '00000000-0000-7000-8000-deadbeef0000';
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'JobDomainRepository — schema integration (real Postgres 17)',
@@ -115,104 +109,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(read?.critical_skills).toEqual(['typescript', 'node']);
     });
 
-    it('persists and reads back a Requisition carrying its job_id + recruiter_id (anchors 1, 4, 5, 7)', async () => {
-      const created = await repo.createRequisition({
-        id: REQ_A,
-        tenant_id: TENANT_A,
-        job_id: JOB_A,
-        recruiter_id: RECRUITER_A,
-        state: 'active',
-      });
-
-      expect(created.id).toBe(REQ_A);
-      expect(created.job_id).toBe(JOB_A);
-      expect(created.recruiter_id).toBe(RECRUITER_A);
-      expect(created.state).toBe('active');
-
-      const read = await repo.findRequisitionById(REQ_A);
-      expect(read).not.toBeNull();
-      expect(read?.job_id).toBe(JOB_A);
-      expect(read?.recruiter_id).toBe(RECRUITER_A);
-      expect(read?.state).toBe('active');
-    });
-
-    it('accepts both active and inactive Requisition state values (anchor 4)', async () => {
-      const inactive = await repo.createRequisition({
-        id: REQ_B,
-        tenant_id: TENANT_A,
-        job_id: JOB_A,
-        recruiter_id: RECRUITER_A,
-        state: 'inactive',
-      });
-      expect(inactive.state).toBe('inactive');
-
-      const reread = await repo.findRequisitionById(REQ_B);
-      expect(reread?.state).toBe('inactive');
-    });
-
-    it('findActiveRequisitionByJobId returns the active requisition for (tenant_id, job_id) (PR-8 §4.2)', async () => {
-      // (TENANT_A, JOB_A) has REQ_A (active) and REQ_B (inactive) seeded
-      // earlier in this describe block. The bridge method must return the
-      // active one.
-      const found = await repo.findActiveRequisitionByJobId({
-        tenant_id: TENANT_A,
-        job_id: JOB_A,
-      });
-      expect(found).not.toBeNull();
-      expect(found?.id).toBe(REQ_A);
-      expect(found?.state).toBe('active');
-    });
-
-    it('findActiveRequisitionByJobId returns null on tenant mismatch (PR-8 §4.2 — security posture)', async () => {
-      const found = await repo.findActiveRequisitionByJobId({
-        tenant_id: TENANT_B,
-        job_id: JOB_A,
-      });
-      expect(found).toBeNull();
-    });
-
-    it('findActiveRequisitionByJobId returns null when only inactive requisitions exist (PR-8 §4.2)', async () => {
-      // Create a tenant + job pair with only an inactive requisition.
-      const TENANT_C = '33333333-3333-7333-8333-333333333333';
-      const JOB_C = '00000000-0000-7000-8000-0000000000ab';
-      await repo.createRequisition({
-        id: '00000000-0000-7000-8000-00000000abcd',
-        tenant_id: TENANT_C,
-        job_id: JOB_C,
-        recruiter_id: RECRUITER_A,
-        state: 'inactive',
-      });
-      const found = await repo.findActiveRequisitionByJobId({
-        tenant_id: TENANT_C,
-        job_id: JOB_C,
-      });
-      expect(found).toBeNull();
-    });
-
-    it('findActiveRequisitionByJobId returns null for an unknown (tenant_id, job_id) (PR-8 §4.2)', async () => {
-      const found = await repo.findActiveRequisitionByJobId({
-        tenant_id: TENANT_A,
-        job_id: '00000000-0000-7000-8000-deadbeef9999',
-      });
-      expect(found).toBeNull();
-    });
-
-    it('allows a Requisition.job_id that does not exist in Job (no FK; anchor 5)', async () => {
-      // The migration emits zero FOREIGN KEY constraints — a Requisition
-      // may reference an unknown job_id without insert failure. The
-      // application layer (and Architecture §9's weekly consistency-check
-      // job) is responsible for referential integrity; the schema is not.
-      const created = await repo.createRequisition({
-        id: REQ_C,
-        tenant_id: TENANT_B,
-        job_id: UNREFERENCED_JOB,
-        recruiter_id: RECRUITER_A,
-        state: 'active',
-      });
-      expect(created.job_id).toBe(UNREFERENCED_JOB);
-
-      const noSuchJob = await repo.findJobById(UNREFERENCED_JOB);
-      expect(noSuchJob).toBeNull();
-    });
+    // T1-a — the Requisition round-trip / findActiveRequisitionByJobId cases
+    // were removed with the model. Job + GoldenProfile round-trips above remain.
   },
 );

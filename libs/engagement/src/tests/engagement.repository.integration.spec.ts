@@ -11,10 +11,7 @@ import {
   ExaminationRepository,
   PrismaService as ExaminationPrismaService,
 } from '@aramo/examination';
-import {
-  JobDomainRepository,
-  PrismaService as JobDomainPrismaService,
-} from '@aramo/job-domain';
+import type { RequisitionRepository } from '@aramo/requisition';
 import {
   TalentRecordRepository,
   TalentRecordPrismaService,
@@ -23,6 +20,16 @@ import {
 import { EngagementRepository } from '../lib/engagement.repository.js';
 import { EngagementEventRepository } from '../lib/engagement-event.repository.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
+
+// T1-a — Pattern-A requisition validation is stubbed via RequisitionRepository
+// .findStatusById (tenant-scoped). A requisition registered by seedRequisition
+// reports 'active'; anything else reports null (not-in-tenant). No job_domain
+// mirror is seeded — the mirror is retired.
+const ACTIVE_REQS = new Set<string>();
+const requisitionRepositoryStub = {
+  findStatusById: async ({ tenant_id, id }: { tenant_id: string; id: string }) =>
+    ACTIVE_REQS.has(`${tenant_id}:${id}`) ? 'active' : null,
+} as unknown as RequisitionRepository;
 
 // M5 PR-1 §4.9 + M5 PR-3 §4.6 — integration spec for libs/engagement.
 //
@@ -68,10 +75,6 @@ const METERING_INIT_MIGRATION_PATH = resolve(
 const TALENT_MIGRATION_PATH = resolve(
   __dirname,
   '../../../talent/prisma/migrations/20260516085014_init_talent_model/migration.sql',
-);
-const JOB_DOMAIN_MIGRATION_PATH = resolve(
-  __dirname,
-  '../../../job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
 );
 const EXAMINATION_INIT_MIGRATION_PATH = resolve(
   __dirname,
@@ -140,7 +143,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let container: StartedPostgreSqlContainer;
     let prisma: PrismaService;
     let talentRecordPrisma: TalentRecordPrismaService;
-    let jobDomainPrisma: JobDomainPrismaService;
     let examPrisma: ExaminationPrismaService;
     let repo: EngagementRepository;
     let setupClient: PrismaService;
@@ -158,7 +160,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(METERING_INIT_MIGRATION_PATH, 'utf8'),
         readFileSync(TALENT_MIGRATION_PATH, 'utf8'),
         ...TALENT_RECORD_MIGRATION_PATHS.map((p) => readFileSync(p, 'utf8')),
-        readFileSync(JOB_DOMAIN_MIGRATION_PATH, 'utf8'),
         readFileSync(EXAMINATION_INIT_MIGRATION_PATH, 'utf8'),
       ];
 
@@ -174,22 +175,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       prisma = new PrismaService(url);
       await prisma.$connect();
-      jobDomainPrisma = new JobDomainPrismaService(url);
-      await jobDomainPrisma.$connect();
       examPrisma = new ExaminationPrismaService(url);
       await examPrisma.$connect();
       talentRecordPrisma = new TalentRecordPrismaService(url);
       await talentRecordPrisma.$connect();
 
       const talentRecordRepo = new TalentRecordRepository(talentRecordPrisma);
-      const jobDomainRepo = new JobDomainRepository(jobDomainPrisma);
       const examRepo = new ExaminationRepository(examPrisma, undefined as never);
       const engagementEventRepo = new EngagementEventRepository(prisma, makeMockLogger());
       repo = new EngagementRepository(
         prisma,
         engagementEventRepo,
         talentRecordRepo,
-        jobDomainRepo,
+        requisitionRepositoryStub,
         examRepo,
         makeMockLogger(),
       );
@@ -258,18 +256,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_A,
       });
 
-      // Job + Requisition (TENANT_A).
-      await seedJob(setupClient, { id: JOB_ID, tenant_id: TENANT_A });
-      await seedRequisition(setupClient, {
-        id: REQUISITION_A,
-        tenant_id: TENANT_A,
-        job_id: JOB_ID,
-      });
-      await seedRequisition(setupClient, {
-        id: REQUISITION_B,
-        tenant_id: TENANT_A,
-        job_id: JOB_ID,
-      });
+      // Register the ATS requisitions (TENANT_A) as active for the stub.
+      seedRequisition({ id: REQUISITION_A, tenant_id: TENANT_A });
+      seedRequisition({ id: REQUISITION_B, tenant_id: TENANT_A });
 
       // Examination (TENANT_A) + cross-tenant Examination for Pattern B.
       await seedExamination(setupClient, {
@@ -329,7 +318,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setupClient?.$disconnect();
       await prisma?.$disconnect();
       await talentRecordPrisma?.$disconnect();
-      await jobDomainPrisma?.$disconnect();
       await examPrisma?.$disconnect();
       await container?.stop();
     });
@@ -544,11 +532,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Seed a TENANT_B requisition; lookup from TENANT_A finds the row
       // but row.tenant_id mismatch → refuse.
       const reqTenantB = 'cccccccc-cccc-7ccc-8ccc-ccccccccc000';
-      await seedRequisition(setupClient, {
-        id: reqTenantB,
-        tenant_id: TENANT_B,
-        job_id: JOB_ID,
-      });
+      // Registered active in TENANT_B; the create below runs in TENANT_A, so the
+      // tenant-scoped stub returns null for (TENANT_A, reqTenantB) → refusal.
+      seedRequisition({ id: reqTenantB, tenant_id: TENANT_B });
       const promise = repo.createEngagement({
         id: CREATE_REQ_XTENANT_ID,
         event_id: '00000000-0000-7000-8000-eeeec0000004',
@@ -801,33 +787,10 @@ async function seedTalentOverlay(
   );
 }
 
-async function seedJob(
-  client: PrismaService,
-  opts: { id: string; tenant_id: string },
-): Promise<void> {
-  await client.$executeRawUnsafe(
-    `INSERT INTO job_domain."Job" (id, tenant_id) VALUES (
-       '${opts.id}'::uuid, '${opts.tenant_id}'::uuid
-     ) ON CONFLICT (id) DO NOTHING`,
-  );
-}
-
-async function seedRequisition(
-  client: PrismaService,
-  opts: { id: string; tenant_id: string; job_id: string },
-): Promise<void> {
-  // Ensure parent Job exists (FK requirement).
-  await seedJob(client, { id: opts.job_id, tenant_id: opts.tenant_id });
-  const recruiterId = 'ffffffff-ffff-7fff-8fff-ffffffffffff';
-  await client.$executeRawUnsafe(
-    `INSERT INTO job_domain."Requisition" (id, tenant_id, job_id, recruiter_id, state) VALUES (
-       '${opts.id}'::uuid,
-       '${opts.tenant_id}'::uuid,
-       '${opts.job_id}'::uuid,
-       '${recruiterId}'::uuid,
-       'active'::job_domain."RequisitionState"
-     )`,
-  );
+// T1-a — register an ATS requisition as active for the stubbed
+// RequisitionRepository (no DB write; the mirror is retired).
+function seedRequisition(opts: { id: string; tenant_id: string }): void {
+  ACTIVE_REQS.add(`${opts.tenant_id}:${opts.id}`);
 }
 
 async function seedExamination(

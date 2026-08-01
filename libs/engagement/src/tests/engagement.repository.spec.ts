@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import type { ExaminationRepository } from '@aramo/examination';
-import type { JobDomainRepository } from '@aramo/job-domain';
+import type { RequisitionRepository } from '@aramo/requisition';
 import type { TalentRecordRepository } from '@aramo/talent-record';
 
 import {
@@ -37,7 +37,7 @@ function makeSpyLogger(): AramoLogger & { log: ReturnType<typeof vi.fn> } {
 //
 // Vitest mocks PrismaService.talentJobEngagement +
 // .talentEngagementEvent + .$transaction. Cross-schema validator deps
-// (talentRecordRepository, jobDomainRepository, examinationRepository) are
+// (talentRecordRepository, requisitionRepository, examinationRepository) are
 // mocked per-test for the three-pattern validator design (Amendment
 // v1.1 §2). Integration tests against real Postgres + real repositories
 // live in engagement.repository.integration.spec.ts.
@@ -162,12 +162,12 @@ function makeMockTalentRecordRepo(): TalentRecordRepository & {
   } as unknown as TalentRecordRepository & { findById: ReturnType<typeof vi.fn> };
 }
 
-function makeMockJobDomainRepo(): JobDomainRepository & {
-  findRequisitionById: ReturnType<typeof vi.fn>;
+function makeMockRequisitionRepo(): RequisitionRepository & {
+  findStatusById: ReturnType<typeof vi.fn>;
 } {
   return {
-    findRequisitionById: vi.fn(),
-  } as unknown as JobDomainRepository & { findRequisitionById: ReturnType<typeof vi.fn> };
+    findStatusById: vi.fn(),
+  } as unknown as RequisitionRepository & { findStatusById: ReturnType<typeof vi.fn> };
 }
 
 function makeMockExaminationRepo(): ExaminationRepository & {
@@ -194,7 +194,7 @@ describe('EngagementRepository — read surface (M5 PR-1)', () => {
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
       makeMockTalentRecordRepo(),
-      makeMockJobDomainRepo(),
+      makeMockRequisitionRepo(),
       makeMockExaminationRepo(),
       logger,
     );
@@ -324,7 +324,7 @@ describe('EngagementRepository — read surface (M5 PR-1)', () => {
 describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
   let prisma: MockPrismaService;
   let talentRecordRepo: ReturnType<typeof makeMockTalentRecordRepo>;
-  let jobDomainRepo: ReturnType<typeof makeMockJobDomainRepo>;
+  let requisitionRepo: ReturnType<typeof makeMockRequisitionRepo>;
   let examRepo: ReturnType<typeof makeMockExaminationRepo>;
   let logger: ReturnType<typeof makeSpyLogger>;
   let repo: EngagementRepository;
@@ -341,14 +341,14 @@ describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
   beforeEach(() => {
     prisma = makeMockPrisma();
     talentRecordRepo = makeMockTalentRecordRepo();
-    jobDomainRepo = makeMockJobDomainRepo();
+    requisitionRepo = makeMockRequisitionRepo();
     examRepo = makeMockExaminationRepo();
     logger = makeSpyLogger();
     repo = new EngagementRepository(
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
       talentRecordRepo,
-      jobDomainRepo,
+      requisitionRepo,
       examRepo,
       logger,
     );
@@ -363,13 +363,9 @@ describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
       first_name: 'Pact',
       last_name: 'Talent',
     });
-    jobDomainRepo.findRequisitionById.mockResolvedValue({
-      id: REQUISITION_A,
-      tenant_id: TENANT_A,
-      job_id: 'job-id',
-      recruiter_id: 'recruiter-id',
-      state: 'active',
-    });
+    // T1-a — Pattern A validates via RequisitionRepository.findStatusById
+    // (tenant-scoped): a non-null status means the requisition exists in tenant.
+    requisitionRepo.findStatusById.mockResolvedValue('active');
     examRepo.findById.mockResolvedValue({ id: EXAM_A, tenant_id: TENANT_A });
     prisma.$transaction.mockResolvedValue([makeRow(), makeEventRow()]);
   }
@@ -387,7 +383,10 @@ describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
       tenant_id: TENANT_A,
       id: TALENT_A,
     });
-    expect(jobDomainRepo.findRequisitionById).toHaveBeenCalledWith(REQUISITION_A);
+    expect(requisitionRepo.findStatusById).toHaveBeenCalledWith({
+      tenant_id: TENANT_A,
+      id: REQUISITION_A,
+    });
     expect(examRepo.findById).toHaveBeenCalledWith(EXAM_A);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
 
@@ -411,13 +410,13 @@ describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
       expect(e.context.details?.['field']).toBe('talent_id');
     }
     expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(jobDomainRepo.findRequisitionById).not.toHaveBeenCalled();
+    expect(requisitionRepo.findStatusById).not.toHaveBeenCalled();
     expect(examRepo.findById).not.toHaveBeenCalled();
   });
 
   it('Pattern A refusal — requisition null → ENGAGEMENT_REFERENCE_NOT_FOUND 422 with field=requisition_id', async () => {
     arrangeAllValid();
-    jobDomainRepo.findRequisitionById.mockResolvedValue(null);
+    requisitionRepo.findStatusById.mockResolvedValue(null);
     await expect(repo.createEngagement(validInput)).rejects.toMatchObject({
       code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
       statusCode: 422,
@@ -433,13 +432,9 @@ describe('EngagementRepository.createEngagement (M5 PR-3 unit)', () => {
 
   it('Pattern A refusal — requisition cross-tenant → ENGAGEMENT_REFERENCE_NOT_FOUND 422', async () => {
     arrangeAllValid();
-    jobDomainRepo.findRequisitionById.mockResolvedValue({
-      id: REQUISITION_A,
-      tenant_id: TENANT_B,  // wrong tenant
-      job_id: 'job-id',
-      recruiter_id: 'recruiter-id',
-      state: 'active',
-    });
+    // T1-a — findStatusById is tenant-scoped, so a requisition that exists only
+    // in another tenant returns null for this tenant (the cross-tenant refusal).
+    requisitionRepo.findStatusById.mockResolvedValue(null);
     await expect(repo.createEngagement(validInput)).rejects.toMatchObject({
       code: 'ENGAGEMENT_REFERENCE_NOT_FOUND',
       statusCode: 422,
@@ -534,7 +529,7 @@ describe('EngagementRepository.transitionState (M5 PR-3 unit)', () => {
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
       makeMockTalentRecordRepo(),
-      makeMockJobDomainRepo(),
+      makeMockRequisitionRepo(),
       makeMockExaminationRepo(),
       logger,
     );
@@ -638,7 +633,7 @@ describe('EngagementRepository.draftOutreach (Outreach Draft/Preview unit)', () 
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
       makeMockTalentRecordRepo(),
-      makeMockJobDomainRepo(),
+      makeMockRequisitionRepo(),
       makeMockExaminationRepo(),
       logger,
     );
@@ -752,7 +747,7 @@ describe('EngagementRepository.sendOutreach (Outreach Draft/Preview unit)', () =
       prisma as unknown as PrismaService,
       eventRepo,
       makeMockTalentRecordRepo(),
-      makeMockJobDomainRepo(),
+      makeMockRequisitionRepo(),
       makeMockExaminationRepo(),
       logger,
     );
@@ -898,7 +893,7 @@ describe('EngagementRepository.recordResponse (M5 PR-7 unit)', () => {
       prisma as unknown as PrismaService,
       eventRepo,
       makeMockTalentRecordRepo(),
-      makeMockJobDomainRepo(),
+      makeMockRequisitionRepo(),
       makeMockExaminationRepo(),
       logger,
     );
@@ -1059,7 +1054,7 @@ describe('EngagementRepository.recordConversationStarted (M5 PR-8a unit)', () =>
       prisma as unknown as PrismaService,
       makeMockEngagementEventRepo(),
       makeMockTalentRecordRepo(),
-      makeMockJobDomainRepo(),
+      makeMockRequisitionRepo(),
       makeMockExaminationRepo(),
       logger,
     );

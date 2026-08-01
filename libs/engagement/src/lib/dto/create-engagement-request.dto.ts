@@ -6,7 +6,7 @@ import { IsOptional, IsUUID } from 'class-validator';
 //   - talent_id: required UUID (Pattern C lookup via TalentRepository
 //     .findOverlayByTenant; overlay absence → ENGAGEMENT_REFERENCE_NOT_FOUND).
 //   - requisition_id: required UUID (Pattern A lookup via
-//     JobDomainRepository.findRequisitionById + tenant cross-check).
+//     RequisitionRepository.findStatusById; null = not in tenant → T1-a).
 //   - examination_id: optional UUID (Pattern B lookup via
 //     ExaminationRepository.findById + tenant cross-check; nullable per
 //     PR-1 substrate — engagement may exist before examination is

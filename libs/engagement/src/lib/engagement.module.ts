@@ -4,7 +4,7 @@ import { AuthModule } from '@aramo/auth';
 import { createAramoLogger } from '@aramo/common';
 import { ConsentModule } from '@aramo/consent';
 import { ExaminationModule } from '@aramo/examination';
-import { JobDomainModule } from '@aramo/job-domain';
+import { RequisitionModule } from '@aramo/requisition';
 import { TalentRecordModule } from '@aramo/talent-record';
 
 import { DELIVERY_PROVIDER_TOKEN } from './delivery/tokens.js';
@@ -63,7 +63,10 @@ import { PrismaService } from './prisma/prisma.service.js';
     // talent-record does NOT import engagement. (The dead Core TalentModule
     // edge was removed in 4e-rest.)
     TalentRecordModule,
-    JobDomainModule,
+    // T1-a — Pattern-A requisition validator now reads the ATS requisition
+    // (RequisitionRepository.findStatusById) instead of the retired
+    // job_domain.Requisition mirror. New scope:ats → scope:ats edge (wall-legal).
+    RequisitionModule,
     ExaminationModule,
     AiDraftModule,
   ],
