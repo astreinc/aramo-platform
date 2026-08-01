@@ -3,52 +3,98 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
-import { validatePackage } from '@aramo/policy-engine';
+import { evaluate, validatePackage, type Decision, type PolicyContext } from '@aramo/policy-engine';
 import { REQUISITION_LIFECYCLE_PACKAGE_NAME } from '@aramo/pipeline';
 
 import { REQUISITION_LIFECYCLE_PACKAGE } from '../policy/requisition-lifecycle.package.js';
 
 const ROOT = resolve(__dirname, '../../../..');
+const OVERRIDE_CAP = 'requisition.override.submittal_closed';
 
-// PR-4a — the lifecycle package is now DATA (apps/api), published to
-// policy-store. Same six-ALLOW matrix the PR-3 scaffold carried (no behaviour
-// change); the restrictive matrix is PR-4c.
+// ADR-0024 PR-4c — the RESTRICTIVE MATRIX v2.0.0, published as DATA. This spec
+// re-declares the directive's matrix INDEPENDENTLY (it must not trust the table
+// it is checking) and evaluates every cell through the engine against the
+// package DATA — the fast, exhaustive DATA proof; the E2E proves it published +
+// retrieved.
 
-describe('REQUISITION_LIFECYCLE_PACKAGE (seed DATA) — permissive, structurally valid', () => {
-  it('passes the engine shape validation (as PolicyStore.publish will)', () => {
+const ACTION: Readonly<Record<string, string>> = {
+  REQUISITION_TALENT: 'ADD',
+  REQUISITION_SUBMITTAL: 'CREATE',
+  REQUISITION_NOTE: 'ADD',
+  REQUISITION_DOCUMENT: 'ADD',
+};
+
+// Independent copy of the directive matrix (state × resource → decision).
+const EXPECTED: Readonly<Record<string, Readonly<Record<string, Decision>>>> = {
+  active: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'ALLOW', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
+  on_hold: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
+  full: { REQUISITION_TALENT: 'REQUIRES_OVERRIDE', REQUISITION_SUBMITTAL: 'REQUIRES_OVERRIDE', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'REQUIRES_OVERRIDE' },
+  closed: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY' },
+  canceled: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY' },
+  lead: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
+};
+
+function contextFor(status: string, resource: string): PolicyContext {
+  return {
+    tenant_id: 't',
+    resource,
+    action: ACTION[resource]!,
+    resource_state: { declared: { status }, derived: {} },
+    principal_capabilities: {},
+    request_metadata: { correlation_id: 'c', origin: 'ui' },
+    environment: 'test',
+    time: new Date('2026-01-01T00:00:00Z').toISOString(),
+    attributes: {},
+  };
+}
+
+describe('REQUISITION_LIFECYCLE_PACKAGE v2.0.0 — restrictive matrix DATA', () => {
+  it('is a structurally valid package (as PolicyStore.publish will require), v2.0.0, named for the retrieval key, default ALLOW', () => {
     expect(() => validatePackage(REQUISITION_LIFECYCLE_PACKAGE)).not.toThrow();
-  });
-
-  it('is named for the package the consumer retrieves', () => {
     expect(REQUISITION_LIFECYCLE_PACKAGE.name).toBe(REQUISITION_LIFECYCLE_PACKAGE_NAME);
-  });
-
-  it('declares one ALLOW row for each of the six requisition states', () => {
-    const states = REQUISITION_LIFECYCLE_PACKAGE.rules.map((r) => r.when?.[0]?.value);
-    expect(states.sort()).toEqual(['active', 'canceled', 'closed', 'full', 'lead', 'on_hold']);
-    expect(REQUISITION_LIFECYCLE_PACKAGE.rules.every((r) => r.decision === 'ALLOW')).toBe(true);
+    expect(REQUISITION_LIFECYCLE_PACKAGE.version).toBe('2.0.0');
     expect(REQUISITION_LIFECYCLE_PACKAGE.default_disposition.decision).toBe('ALLOW');
   });
 
-  it('governs exactly REQUISITION_TALENT · ADD', () => {
-    expect(REQUISITION_LIFECYCLE_PACKAGE.registry.resources).toEqual(['REQUISITION_TALENT']);
-    expect(REQUISITION_LIFECYCLE_PACKAGE.registry.actions).toEqual(['ADD']);
+  it('governs the four resource·action pairs (Add / Submit / Note / Document)', () => {
+    expect([...REQUISITION_LIFECYCLE_PACKAGE.registry.resources].sort()).toEqual([
+      'REQUISITION_DOCUMENT',
+      'REQUISITION_NOTE',
+      'REQUISITION_SUBMITTAL',
+      'REQUISITION_TALENT',
+    ]);
+    expect([...REQUISITION_LIFECYCLE_PACKAGE.registry.actions].sort()).toEqual(['ADD', 'CREATE']);
+  });
+
+  // EVERY cell (24), evaluated through the engine against the package DATA.
+  for (const [status, row] of Object.entries(EXPECTED)) {
+    for (const [resource, expected] of Object.entries(row)) {
+      it(`cell ${status} · ${resource} -> ${expected}`, () => {
+        const decision = evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, resource));
+        expect(decision.decision).toBe(expected);
+        if (expected === 'REQUIRES_OVERRIDE') {
+          // §D11 — override rows name the capability and require a reason.
+          expect(decision.required_capabilities).toEqual([OVERRIDE_CAP]);
+          expect(decision.reason_required).toBe(true);
+        }
+      });
+    }
+  }
+
+  it('Note is ALLOW in EVERY state, including the terminal closed/canceled (the ruling most likely to be "fixed" by mistake)', () => {
+    for (const status of ['active', 'on_hold', 'full', 'closed', 'canceled', 'lead']) {
+      expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, 'REQUISITION_NOTE')).decision, `note·${status}`).toBe('ALLOW');
+    }
   });
 });
 
 describe('scaffold is GONE (PR-4a deleted the in-code package)', () => {
-  // The load-bearing half is "nothing imports it" — a live import of a deleted
-  // file would not compile anyway. The existence check is a cheap corroboration.
   it('libs/pipeline no longer defines or references the requisition-lifecycle package', () => {
-    // git grep exits 1 (no matches) — that is the pass. Any hit is a stray ref.
     let matches = '';
     try {
-      matches = execFileSync('git', ['grep', '-l', 'requisition-lifecycle.package', '--', 'libs/pipeline'], {
-        cwd: ROOT,
-        encoding: 'utf8',
-      });
+      matches = execFileSync('git', ['grep', '-l', 'requisition-lifecycle.package', '--', 'libs/pipeline'], { cwd: ROOT, encoding: 'utf8' });
     } catch {
-      matches = ''; // exit 1 = zero matches
+      matches = '';
     }
     expect(matches.trim()).toBe('');
   });

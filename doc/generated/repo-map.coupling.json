@@ -190,6 +190,12 @@
       "to": "openapi/auth.yaml"
     },
     {
+      "from": "apps/api/src/policy/requisition-lifecycle.package.ts",
+      "line": 24,
+      "status": "production",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
       "from": "apps/api/src/policy/seed-lifecycle.ts",
       "line": 4,
       "status": "production",
@@ -4037,56 +4043,56 @@
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
-      "line": 43,
+      "line": 42,
       "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
-      "line": 48,
+      "line": 47,
       "status": "excluded",
       "to": "libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
-      "line": 50,
+      "line": 49,
       "status": "excluded",
       "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
-      "line": 51,
+      "line": 50,
       "status": "excluded",
       "to": "libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
-      "line": 44,
+      "line": 43,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
-      "line": 45,
+      "line": 44,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
-      "line": 46,
+      "line": 45,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
-      "line": 47,
+      "line": 46,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql"
     },
