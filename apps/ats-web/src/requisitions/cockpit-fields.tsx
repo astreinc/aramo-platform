@@ -2,6 +2,7 @@ import {
   InlineEditField,
   InlineSelectField,
 } from '../components/InlineEditField';
+import { formatDate } from '../format/date';
 
 import {
   DURATION_UNIT_VALUES,
@@ -111,7 +112,15 @@ export function CockpitFieldRow({
 
   // DERIVED comp views + any never-editable field: canEdit is false by
   // bucket, so the primitive renders a read-only display.
-  const value = raw === null || raw === undefined ? null : String(raw);
+  // D2 (#14): a `date` field's raw value arrives as a full ISO string; reduce
+  // it to YYYY-MM-DD so the read display is clean and the `type="date"` editor
+  // (which requires exactly that shape) is not left blank/broken.
+  const value =
+    raw === null || raw === undefined
+      ? null
+      : field.kind === 'date'
+        ? formatDate(String(raw))
+        : String(raw);
   const isNumber = field.kind === 'number';
   return (
     <InlineEditField

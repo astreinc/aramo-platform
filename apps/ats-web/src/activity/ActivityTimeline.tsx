@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Card, InlineAlert } from '@aramo/fe-foundation';
 
+import { formatDate } from '../format/date';
+
 import { listActivities } from './activity-api';
 import { timelineErrorMessage } from './error-messages';
 import type { ActivityView } from './types';
@@ -82,7 +84,7 @@ export function ActivityTimeline({
                 <p className="timeline__notes">{a.notes}</p>
               ) : null}
               <time className="timeline__time" dateTime={a.created_at}>
-                {a.created_at}
+                {formatDate(a.created_at)}
               </time>
             </div>
           </Card>
