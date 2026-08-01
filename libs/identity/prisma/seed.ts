@@ -288,6 +288,9 @@ export const SEED_IDS = {
     // free scope id after 0xaf domain (append-don't-renumber): 0xb0. Granted via
     // IDENTITY_RESOLVE_SEED_BUNDLES (tenant_admin + tenant_owner; RoleScope 0x970+).
     'identity:resolve': '01900000-0000-7000-8000-0000000000b0',
+    // D3b — Charter §4 Amendment activity redaction. Next clear scope-id after
+    // the 0xb0..0xb4 / 0xf0 run (append-don't-renumber): 0xc0.
+    'activity:redact': '01900000-0000-7000-8000-0000000000c0',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1695,6 +1698,34 @@ const IDENTITY_RESOLVE_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => 
   return map;
 })();
 
+// D3b — Charter §4 Amendment activity redaction. `activity:redact` granted to
+// the oversight tier (PO ruling (b): admin + supervisory). Author-or-scope: any
+// author redacts their own note without this scope; the scope is the
+// cross-author path for a lead reviewing their pod's feed.
+export const ACTIVITY_REDACT_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_owner', ['activity:redact']],
+  ['tenant_admin', ['activity:redact']],
+  ['recruiting_manager', ['activity:redact']],
+  ['lead_recruiter', ['activity:redact']],
+];
+
+// Deterministic RoleScope row ids for the 4 activity:redact grants. Next clear
+// range after IDENTITY_RESOLVE's 0x970..0x972 (append-don't-renumber): 0x980+.
+const ACTIVITY_REDACT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x980;
+  for (const [role, scopes] of ACTIVITY_REDACT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -1974,6 +2005,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:sites'], 'tenant:admin:sites', 'Manage sites/branches (CRUD /v1/tenant/sites) — the org STRUCTURE: sub-tenant branch partitions + the parent/child branch hierarchy. DEDICATED scope (Lead ruling): kept distinct from tenant:admin:settings (config) and tenant:admin:profile (legal identity) so the admin taxonomy stays coherent and sites stay separable later. Emits identity.site.created/updated/deactivated (field names only). Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:admin:domain'], 'tenant:admin:domain', 'Prove DNS-TXT ownership of the tenant\'s locked domain (GET/POST /v1/tenant/domain-verification + /check) — request a verification token, publish it in a DNS TXT record, and have Aramo resolve+match it to mark the domain VERIFIED. INFORMATIONAL in P2b (gates nothing — P1\'s invite domain-lock works regardless of verification status). DEDICATED scope: kept distinct from settings/profile/sites so the admin taxonomy stays coherent. Emits identity.domain.verification.requested/verified. Granted to tenant_admin + tenant_owner ONLY (NOT recruiters). NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['identity:resolve'], 'identity:resolve', 'Resolve a within-tenant same-human MATCH ADVISORY (TR-2a-3): approve (execute the pointer-only merge of two ResolutionSubjects), dismiss (not the same human), or reverse (un-merge). POST /v1/talent/identity/advisories/:id/{approve,dismiss,reverse} + GET the reviewer queue. PRIVILEGED, tenant-scoped data-governance — NOT recruiter self-serve. Merging a contradicted advisory requires an explicit acknowledgment + justification (audited on the advisory). Granted to tenant_admin + tenant_owner ONLY. NO scope.created audit event (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['activity:redact'], 'activity:redact', 'Redact a logged note (Charter §4 Amendment — redact-never-delete): clear the note body while author, timestamp and row survive, recording who/when/why. POST /v1/activities/:id/redact. Author-or-scope: any author redacts their own note without this scope; the scope is the CROSS-author path for the oversight tier (a lead reviewing their pod\'s feed). Granted to tenant_owner + tenant_admin + recruiting_manager + lead_recruiter. NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:user:read:directory'], 'tenant:user:read:directory', 'Resolve user_id → display_name for ANY tenant user INCLUDING inactive/departed (GET /v1/tenant/users/directory). The name-resolution half of the two-jobs split: distinct from tenant:user:read:assignable (the active-only assignable picker) because authorship/ownership/assignee names in list+detail views must still render for departed users (historical integrity). Minimal {user_id, display_name} ONLY — name lookup, NOT a roster, NOT admin data (no email/status/roles/audit). Batch-capable (?user_ids=). Granted to the 10 list-view viewers (the 9 work-assigning roles + finance, who reads the requisition/talent lists). NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:user:read:assignable'], 'tenant:user:read:assignable', 'Read the MINIMAL assignable-user roster (GET /v1/tenant/users/assignable) — id + display_name of ACTIVE tenant members only, for the assign-a-teammate pickers (task / requisition / pod). The recruiter-tier counterpart to tenant:admin:user-manage: it serves a deliberately narrow roster (least-data), NOT the admin UserView (no email/status/roles/audit). The users analogue of company:read for the company-assign picker. Granted to the 9 work-assigning operational roles (the task:read/:write tier: tenant_owner, tenant_admin, account_manager, recruiting_manager, recruiter, lead_recruiter, back_office, delivery_manager, sourcer). NO scope.created audit event (scope-seed precedent).');
 
@@ -2319,6 +2351,24 @@ export async function runIdentitySeed(
       const rsId = IDENTITY_RESOLVE_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`TR-2a-3 Identity-Resolve-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // D3b — Charter §4 Amendment activity:redact grants (4 rows; tenant_owner +
+  // tenant_admin + recruiting_manager + lead_recruiter). Range 0x980+.
+  for (const [roleKey, scopeKeys] of ACTIVITY_REDACT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = ACTIVITY_REDACT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`D3b Activity-Redact-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

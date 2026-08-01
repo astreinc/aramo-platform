@@ -227,6 +227,41 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/activity-redaction.integration.spec.ts",
+      "line": 47,
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/activity-redaction.integration.spec.ts",
+      "line": 51,
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/activity-redaction.integration.spec.ts",
+      "line": 43,
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/activity-redaction.integration.spec.ts",
+      "line": 55,
+      "status": "excluded",
+      "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/activity-redaction.integration.spec.ts",
+      "line": 59,
+      "status": "excluded",
+      "to": "libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/advisory-resolution.integration.spec.ts",
       "line": 38,
       "status": "excluded",
@@ -1110,7 +1145,14 @@
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 112,
+      "line": 100,
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "line": 119,
       "status": "excluded",
       "to": "libs/calendar/prisma/migrations/20260602120000_init_calendar_model/migration.sql"
     },
@@ -1124,7 +1166,7 @@
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 136,
+      "line": 143,
       "status": "excluded",
       "to": "libs/company/prisma/migrations/20260603140100_add_import_batch_id_to_company/migration.sql"
     },
@@ -1159,14 +1201,14 @@
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 140,
+      "line": 147,
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260603140100_add_import_batch_id_to_contact/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 144,
+      "line": 151,
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql"
     },
@@ -1180,28 +1222,28 @@
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 129,
+      "line": 136,
       "status": "excluded",
       "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 97,
+      "line": 104,
       "status": "excluded",
       "to": "libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 104,
+      "line": 111,
       "status": "excluded",
       "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 108,
+      "line": 115,
       "status": "excluded",
       "to": "libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql"
     },
@@ -1215,49 +1257,49 @@
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 148,
+      "line": 155,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 153,
+      "line": 160,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 161,
+      "line": 168,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 167,
+      "line": 174,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260618120000_add_rate_type_subk_runmatch/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 171,
+      "line": 178,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260721000000_add_publish_surface/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 116,
+      "line": 123,
       "status": "excluded",
       "to": "libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 121,
+      "line": 128,
       "status": "excluded",
       "to": "libs/saved-list/prisma/migrations/20260706130000_add_list_kind_tenant_bench/migration.sql"
     },
@@ -1278,35 +1320,35 @@
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 175,
+      "line": 182,
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 181,
+      "line": 188,
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260615000000_talent_stated_fields/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 186,
+      "line": 193,
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260630140000_overlay_fold_cluster_id/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 191,
+      "line": 198,
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260702120000_add_work_authorization_to_talent_record/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
-      "line": 197,
+      "line": 204,
       "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql"
     },
@@ -8489,6 +8531,13 @@
       "to": "apps/ats-web/vite.config.ts"
     },
     {
+      "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/activity/redaction-drift.spec.ts",
+      "line": 16,
+      "status": "excluded",
+      "to": "libs/activity/src/lib/dto/redaction-reason.ts"
+    },
+    {
       "from": "apps/ats-web/src/assignments/types.ts",
       "line": 7,
       "status": "production",
@@ -15479,7 +15528,7 @@
       "to": "libs/common/src/lib/errors/error-codes.ts"
     },
     { "from": "openapi/common.yaml", "line": 672, "status": "unscoped", "to": "openapi/ats.yaml" },
-    { "from": "openapi/common.yaml", "line": 2050, "status": "unscoped", "to": "openapi/ats.yaml" },
+    { "from": "openapi/common.yaml", "line": 2052, "status": "unscoped", "to": "openapi/ats.yaml" },
     { "from": "openapi/common.yaml", "line": 662, "status": "unscoped", "to": "openapi/auth.yaml" },
     {
       "from": "openapi/platform.yaml",
@@ -16140,7 +16189,7 @@
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 3295,
+      "line": 3305,
       "status": "unscoped",
       "to": "apps/api/src/main.ts"
     },
@@ -16149,6 +16198,12 @@
       "line": 421,
       "status": "unscoped",
       "to": "libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "line": 430,
+      "status": "unscoped",
+      "to": "libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -16164,49 +16219,49 @@
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 541,
+      "line": 550,
       "status": "unscoped",
       "to": "libs/attachment/prisma/migrations/20260602120000_init_attachment_model/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 687,
+      "line": 696,
       "status": "unscoped",
       "to": "libs/calendar/prisma/migrations/20260602120000_init_calendar_model/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 453,
+      "line": 462,
       "status": "unscoped",
       "to": "libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 457,
+      "line": 466,
       "status": "unscoped",
       "to": "libs/company/prisma/migrations/20260603140100_add_import_batch_id_to_company/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 461,
+      "line": 470,
       "status": "unscoped",
       "to": "libs/company/prisma/migrations/20260604000000_add_authz_assignment_ownership/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 465,
+      "line": 474,
       "status": "unscoped",
       "to": "libs/company/prisma/migrations/20260611000000_add_company_field_expansion/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 469,
+      "line": 478,
       "status": "unscoped",
       "to": "libs/company/prisma/migrations/20260611120000_add_company_address_place_ref/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 473,
+      "line": 482,
       "status": "unscoped",
       "to": "libs/company/prisma/migrations/20260616000000_add_company_off_limits/migration.sql"
     },
@@ -16230,25 +16285,25 @@
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 2946,
+      "line": 2956,
       "status": "unscoped",
       "to": "libs/consent/src/tests/cookie-auth.integration.spec.ts"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 477,
+      "line": 486,
       "status": "unscoped",
       "to": "libs/contact/prisma/migrations/20260601160000_init_contact_model/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 481,
+      "line": 490,
       "status": "unscoped",
       "to": "libs/contact/prisma/migrations/20260603140100_add_import_batch_id_to_contact/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 485,
+      "line": 494,
       "status": "unscoped",
       "to": "libs/contact/prisma/migrations/20260618120000_add_contact_list_surface_fields/migration.sql"
     },
@@ -16392,7 +16447,7 @@
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 681,
+      "line": 690,
       "status": "unscoped",
       "to": "libs/import/prisma/migrations/20260603140000_init_import_model/migration.sql"
     },
@@ -16476,79 +16531,79 @@
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 425,
+      "line": 434,
       "status": "unscoped",
       "to": "libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 433,
+      "line": 442,
       "status": "unscoped",
       "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 437,
+      "line": 446,
       "status": "unscoped",
       "to": "libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 728,
+      "line": 737,
       "status": "unscoped",
       "to": "libs/portal-identity/prisma/migrations/20260714120000_init_portal_identity/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 499,
+      "line": 508,
       "status": "unscoped",
       "to": "libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 503,
+      "line": 512,
       "status": "unscoped",
       "to": "libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 507,
+      "line": 516,
       "status": "unscoped",
       "to": "libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 511,
+      "line": 520,
       "status": "unscoped",
       "to": "libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 515,
+      "line": 524,
       "status": "unscoped",
       "to": "libs/requisition/prisma/migrations/20260612120000_drop_legacy_requisition_comp/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 519,
+      "line": 528,
       "status": "unscoped",
       "to": "libs/requisition/prisma/migrations/20260618120000_add_rate_type_subk_runmatch/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 523,
+      "line": 532,
       "status": "unscoped",
       "to": "libs/requisition/prisma/migrations/20260721000000_add_publish_surface/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 670,
+      "line": 679,
       "status": "unscoped",
       "to": "libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 674,
+      "line": 683,
       "status": "unscoped",
       "to": "libs/saved-list/prisma/migrations/20260706130000_add_list_kind_tenant_bench/migration.sql"
     },
@@ -16656,145 +16711,145 @@
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 3000,
+      "line": 3010,
       "status": "unscoped",
       "to": "libs/talent-record/src/lib/talent-record.controller.ts"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 554,
+      "line": 563,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 558,
+      "line": 567,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 562,
+      "line": 571,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 566,
+      "line": 575,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 570,
+      "line": 579,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 574,
+      "line": 583,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260706120000_ats_ref_partial_unique/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 578,
+      "line": 587,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260706160000_sourcing_pool_keyset_index/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 582,
+      "line": 591,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 586,
+      "line": 595,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 590,
+      "line": 599,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 594,
+      "line": 603,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 603,
+      "line": 612,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 607,
+      "line": 616,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 617,
+      "line": 626,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260708120000_tr3_b1_verification_request/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 625,
+      "line": 634,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 632,
+      "line": 641,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 640,
+      "line": 649,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 647,
+      "line": 656,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 654,
+      "line": 663,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 660,
+      "line": 669,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260715120000_p3a_portal_dispute_substrate/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 666,
+      "line": 675,
       "status": "unscoped",
       "to": "libs/talent-trust/prisma/migrations/20260716120000_p3b_dispute_disposition/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 533,
+      "line": 542,
       "status": "unscoped",
       "to": "libs/task/prisma/migrations/20260609140000_init_task_model/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
-      "line": 537,
+      "line": 546,
       "status": "unscoped",
       "to": "libs/task/prisma/migrations/20260617120000_task_workspace_fields/migration.sql"
     },

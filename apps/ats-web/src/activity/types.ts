@@ -39,6 +39,13 @@ export interface ActivityView {
   readonly notes: string | null;
   readonly created_by_id: string | null;
   readonly created_at: string;
+  // Redaction (Charter §4 Amendment). redacted_at non-null = the note body was
+  // cleared; the row, author and timestamp survive. redaction_reason free text
+  // is present for the recruiter audit but is NEVER rendered (§8).
+  readonly redacted_at: string | null;
+  readonly redacted_by: string | null;
+  readonly redaction_reason_code: string | null;
+  readonly redaction_reason: string | null;
 }
 
 export interface ActivityListResponse {

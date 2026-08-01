@@ -27,8 +27,15 @@ describe('Search PR-1 — scope catalog parity', () => {
     // appended tenant:user:read:directory (84→85); Domain-Enforcement P2b
     // appended tenant:admin:domain (85→86); TR-2a-3 appended identity:resolve (86→87);
     // Company-Fields appended company:read_commercial (87→88); Portal P3a appended
-    // 3 scopes portal:verification:read + portal:dispute:{read,write} (88→91).
-    expect(SEED_SCOPE_KEYS).toHaveLength(91);
+    // 3 scopes portal:verification:read + portal:dispute:{read,write} (88→91);
+    // D3b Charter §4 Amendment appended activity:redact (91→92).
+    expect(SEED_SCOPE_KEYS).toHaveLength(92);
+  });
+
+  it('D3b — activity:redact is in the catalog exactly once', () => {
+    expect(SEED_SCOPE_KEYS.filter((k) => k === 'activity:redact')).toHaveLength(
+      1,
+    );
   });
 
   it('the 3 NEW per-entity search scopes are in the catalog', () => {

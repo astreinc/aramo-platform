@@ -6,6 +6,7 @@ import { Tabs, type TabItem } from '@aramo/fe-foundation';
 import { listActivities } from '../activity/activity-api';
 import { ActivityTimeline } from '../activity/ActivityTimeline';
 import { LogNoteDialog } from '../activity/LogNoteDialog';
+import { isRedacted, redactedNoteLabel } from '../activity/redaction';
 import type { ActivityView } from '../activity/types';
 import { getCompany } from '../companies/companies-api';
 import { getContact } from '../contacts/contacts-api';
@@ -629,7 +630,14 @@ function PipelinePanel({
       render: (p) => {
         const la = lastByPipeline[p.id];
         if (la !== undefined) {
-          const text = la.notes != null && la.notes !== '' ? la.notes : activityLabel(la.type);
+          const text = isRedacted(la)
+            ? redactedNoteLabel(
+                la.redacted_at,
+                la.redacted_by !== null ? (userNames[la.redacted_by] ?? null) : null,
+              )
+            : la.notes != null && la.notes !== ''
+              ? la.notes
+              : activityLabel(la.type);
           return (
             <span className="last">
               {truncate(text, 32)} · <span className="mono">{relativeTime(la.created_at)}</span>
@@ -673,12 +681,16 @@ function PipelinePanel({
 
   const feedItems: ActivityFeedItem[] = activities.slice(0, 6).map((a) => ({
     id: a.id,
-    text:
-      a.notes != null && a.notes !== '' ? (
-        <ExpandableText text={a.notes} limit={64} />
-      ) : (
-        activityLabel(a.type)
-      ),
+    text: isRedacted(a)
+      ? redactedNoteLabel(
+          a.redacted_at,
+          a.redacted_by !== null ? (userNames[a.redacted_by] ?? null) : null,
+        )
+      : a.notes != null && a.notes !== '' ? (
+          <ExpandableText text={a.notes} limit={64} />
+        ) : (
+          activityLabel(a.type)
+        ),
     when: relativeTime(a.created_at),
   }));
 

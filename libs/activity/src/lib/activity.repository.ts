@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { VisibilityContextShape } from '@aramo/common';
+import { AramoError, type VisibilityContextShape } from '@aramo/common';
 
 import type { ActivityView } from './dto/activity.view.js';
 import type { ActivityType } from './dto/activity-type.js';
@@ -26,6 +26,10 @@ interface ActivityRow {
   notes: string | null;
   created_by_id: string | null;
   created_at: Date;
+  redacted_at: Date | null;
+  redacted_by: string | null;
+  redaction_reason_code: string | null;
+  redaction_reason: string | null;
 }
 
 function projectView(row: ActivityRow): ActivityView {
@@ -39,6 +43,10 @@ function projectView(row: ActivityRow): ActivityView {
     notes: row.notes,
     created_by_id: row.created_by_id,
     created_at: row.created_at.toISOString(),
+    redacted_at: row.redacted_at === null ? null : row.redacted_at.toISOString(),
+    redacted_by: row.redacted_by,
+    redaction_reason_code: row.redaction_reason_code,
+    redaction_reason: row.redaction_reason,
   };
 }
 
@@ -66,6 +74,71 @@ export class ActivityRepository {
         subject_id: args.input.subject_id ?? null,
         notes: args.input.notes ?? null,
         created_by_id: args.created_by_id,
+      },
+    });
+    return projectView(row as ActivityRow);
+  }
+
+  // -------------------------------------------------------------------------
+  // Redaction — the ONLY update path (Charter §4 Amendment). redact-never-delete.
+  //
+  // Posture (§6): this is the single controlled update method on the repository.
+  // It writes ONLY the four redaction columns and clears `notes`; the explicit
+  // `data` object cannot touch any other column. R3 (type='note' only) and R5
+  // (no re-redact) are enforced HERE, server-side and defence-in-depth — a
+  // direct call rejects a non-note or an already-redacted row, not just the
+  // controller. There is no un-redact method: once written these columns are
+  // never cleared. (The pre-existing `repointTalentRecordRefs` remains the only
+  // other write, a raw-SQL subject_id repoint for TR-2a identity merge — it is
+  // not a Prisma update surface.)
+  // -------------------------------------------------------------------------
+
+  async redact(args: {
+    tenant_id: string;
+    id: string;
+    redacted_by: string;
+    redaction_reason_code: string;
+    redaction_reason: string;
+    requestId: string;
+  }): Promise<ActivityView> {
+    const existing = await this.prisma.activity.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+    });
+    if (existing === null) {
+      throw new AramoError('NOT_FOUND', 'Activity not found in tenant', 404, {
+        requestId: args.requestId,
+        details: { id: args.id },
+      });
+    }
+    // R3 — only recruiter-authored notes are redactable. System activity
+    // (pipeline_status_change etc.) records what happened; redacting it would
+    // falsify history. Enforced server-side, never by hiding a button.
+    if (existing.type !== 'note') {
+      throw new AramoError(
+        'ACTIVITY_NOT_REDACTABLE',
+        'Only note activity can be redacted',
+        422,
+        { requestId: args.requestId, details: { id: args.id, type: existing.type } },
+      );
+    }
+    // R5 — irreversible and single-shot. An already-redacted row is never
+    // re-redacted (and there is no un-redact path anywhere).
+    if (existing.redacted_at !== null) {
+      throw new AramoError(
+        'ACTIVITY_ALREADY_REDACTED',
+        'Activity is already redacted',
+        409,
+        { requestId: args.requestId, details: { id: args.id } },
+      );
+    }
+    const row = await this.prisma.activity.update({
+      where: { id: args.id },
+      data: {
+        notes: null,
+        redacted_at: new Date(),
+        redacted_by: args.redacted_by,
+        redaction_reason_code: args.redaction_reason_code,
+        redaction_reason: args.redaction_reason,
       },
     });
     return projectView(row as ActivityRow);

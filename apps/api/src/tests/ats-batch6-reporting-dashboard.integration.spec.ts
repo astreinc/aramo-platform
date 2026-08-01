@@ -92,6 +92,13 @@ const ACTIVITY_INIT = resolve(
   ROOT,
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
 );
+// Charter §4 Amendment — additive redaction columns; the regenerated activity
+// client projects them on every Activity SELECT, so the reporting/dashboard
+// reads 500 without this migration applied.
+const ACTIVITY_REDACTION = resolve(
+  ROOT,
+  'libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql',
+);
 const PIPELINE_INIT = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
@@ -313,6 +320,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_WORK_AUTH,
         TALENT_RECORD_SUPERSESSION,
         ACTIVITY_INIT,
+        ACTIVITY_REDACTION,
         PIPELINE_INIT,
         POLICY_STORE_INIT,
         POLICY_DECISION_RECORD,
