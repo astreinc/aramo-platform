@@ -204,8 +204,11 @@ const EXAMINATION_OVERRIDE_MIGRATION = resolve(
 const JOB_DOMAIN_INIT_MIGRATION = resolve(
   ROOT,
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
-  // T1-a — drop the retired job_domain.Requisition table + enum (Job +
-  // GoldenProfile remain). Provider states seed requisition.Requisition instead.
+);
+// T1-a — drop the retired job_domain.Requisition table + enum (Job +
+// GoldenProfile remain). Provider states seed requisition.Requisition instead.
+const JOB_DOMAIN_DROP_REQUISITION_MIGRATION = resolve(
+  ROOT,
   'libs/job-domain/prisma/migrations/20260801130000_drop_job_domain_requisition/migration.sql',
 );
 // Fix-Slice-Final-Drop — the talent (Core husk) schema is retired; no provider
@@ -2716,6 +2719,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // search path is set up).
         EXAMINATION_OVERRIDE_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
+        // T1-a — applied right after the job-domain init so the retired
+        // Requisition table + enum are gone before any provider state runs.
+        JOB_DOMAIN_DROP_REQUISITION_MIGRATION,
         // 4e-engagement-key — talent_record schema (engagement.talent_id).
         ...TALENT_RECORD_MIGRATIONS,
         // M4 PR-3 §4.8 — evidence + talent-evidence + submittal
