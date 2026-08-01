@@ -10,32 +10,23 @@ trust implication. Reviewed at each go-live gate.
 
 ---
 
-## ⛔ Policy Engine (ADR-0024) — BLOCKING: publish is not live until restart
+## ✅ Policy Engine (ADR-0024) — cache-staleness CLOSED by PR-4d
 
-### No policy version publishes live without an api restart until PR-4d lands
-**2026-08-01 · PR-4c (feat/policy-restrictive-matrix), fix tracked in PR-4d.**
-`PolicyStore`'s active-version cache is **invalidate-only, with NO TTL** and no
-cross-process invalidation (`libs/policy-store/src/lib/policy-store.ts:44` — a
-plain `Map`; `publish()` evicts the key at `:147` but only on the instance that
-publishes; `getActiveVersion` serves the cached open-window entry indefinitely,
-`:165` + `window.ts:24`). A version published by the seed (deploy STAGE C) or by
-another api instance is **invisible to a running api process until that process
-restarts**. ADR §D2 says a rule change is a DATA operation; today it is a data
-operation **plus a restart**, and under multiple instances each serves whatever
-it last cached — "which version is in force" is not answerable at runtime.
+### (CLOSED) No policy version publishes live without an api restart
+**Opened 2026-08-01 · PR-4c (feat/policy-restrictive-matrix). CLOSED 2026-08-01 ·
+PR-4d (feat/policy-cache-ttl).** `PolicyStore`'s active-version cache was
+invalidate-only with no TTL, so a version published by the seed or another
+instance was invisible to a running api until restart. PR-4d gives the cache a
+**bounded TTL** (env-overridable, default 30s; a TTL of 0 or unbounded is
+rejected at construction) — publish-time eviction still makes the publishing
+instance immediate, and every other reader picks up a new version within the
+TTL. The in-force version is answerable at runtime **without a DB query** via an
+INFO cache-load log (tenant · package · version · checksum). **The blocking rule
+is lifted** — a publish now takes effect within the TTL without a restart.
 
-**BLOCKING RULE: No policy version may be published to a LIVE tenant until PR-4d
-lands, UNLESS the publish is immediately followed by an api restart in the same
-window.** A normal container deploy (new image → restart) satisfies this; a
-standalone seed/publish run against a running fleet does not.
-
-**Risk:** a restrictive-matrix publish (PR-4c v2.0.0) that reaches the DB without
-an api restart leaves the live api enforcing the OLD version — recruiters keep
-the old permissions and "which rules are in force" differs per instance.
-
-**Fix:** PR-4d (registered; builds after PR-4c merges) — make in-force version
-answerable/bounded at runtime (short TTL vs version-check-on-read vs explicit
-invalidation broadcast; Lead to rule after the cost recon).
+**Follow-up (not blocking):** a debug/health surface exposing per-instance cache
+state is deferred to when a second api instance is real (same trigger as the
+rejected invalidation-broadcast); the load-log answers it for one container.
 
 ---
 
