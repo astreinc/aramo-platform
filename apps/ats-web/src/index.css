@@ -208,6 +208,42 @@ button {
   font-size: var(--fs-12);
 }
 
+/* D-COCKPIT-GRID-1 (DDR §6 bounded-height contract) — an UNBOUNDED free-text
+   field claims its own grid row instead of leaving a lopsided hole. Applied by
+   the cockpit consumer only (fullWidth); ProfileWorkbench owns its own width. */
+.inline-edit--unbounded {
+  grid-column: 1 / -1;
+}
+
+/* Bounded-height read display: a multiline free-text value clamps to a fixed
+   THREE lines (measured — v1.6 §2.1) with a reveal; the clamp is a property of
+   the primitive, so every multiline consumer inherits it. Removed when the
+   reveal expands (inline-edit__value--clamp dropped). */
+.inline-edit__value--clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.inline-edit__reveal {
+  align-self: flex-start;
+  margin-top: var(--sp-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--c-accent);
+  font: inherit;
+  font-size: var(--fs-12);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+
+.inline-edit__reveal:hover {
+  text-decoration: underline;
+}
+
 /* chips */
 .inline-chips__list {
   display: inline-flex;

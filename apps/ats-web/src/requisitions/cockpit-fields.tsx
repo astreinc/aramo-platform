@@ -122,13 +122,17 @@ export function CockpitFieldRow({
         ? formatDate(String(raw))
         : String(raw);
   const isNumber = field.kind === 'number';
+  // D-COCKPIT-GRID-1: the free-text cockpit fields are the unbounded ones — they
+  // get the multiline editor + clamp AND claim their own grid row (fullWidth).
+  const isFreeText = field.key === 'description' || field.key === 'notes';
   return (
     <InlineEditField
       label={field.label}
       value={value}
       canEdit={canEdit}
       type={isNumber ? 'number' : field.kind === 'date' ? 'date' : 'text'}
-      multiline={field.key === 'description' || field.key === 'notes'}
+      multiline={isFreeText}
+      fullWidth={isFreeText}
       testId={testId}
       onSave={(next) =>
         onSave(field.key, next === null ? null : isNumber ? Number(next) : next)
