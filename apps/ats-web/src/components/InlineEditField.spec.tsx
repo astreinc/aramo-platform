@@ -177,3 +177,88 @@ describe('InlineChipInput', () => {
     );
   });
 });
+
+// D-COCKPIT-GRID-1 (DDR §6 bounded-height contract). jsdom has no layout engine,
+// so these assert only what it can see — class presence, the span applied to
+// unbounded fields and not to bounded ones, and the reveal toggling state. The
+// clamp *rendering* (exactly three lines) and the marooned-Owner fix are verified
+// in a real browser, not here.
+describe('InlineEditField — bounded-height contract (D-COCKPIT-GRID-1)', () => {
+  const LONG =
+    'A fairly long description that would run past three lines in a narrow cockpit cell and needs the reveal.';
+  const valueOf = (root: HTMLElement) =>
+    root.querySelector('.inline-edit__value') as HTMLElement;
+
+  it('multiline + fullWidth → root claims the row and the value clamps, with a reveal', () => {
+    render(
+      <InlineEditField
+        label="Description"
+        value={LONG}
+        canEdit
+        multiline
+        fullWidth
+        testId="f"
+        onSave={vi.fn()}
+      />,
+    );
+    const root = screen.getByTestId('f');
+    expect(root.classList.contains('inline-edit--unbounded')).toBe(true);
+    expect(valueOf(root).classList.contains('inline-edit__value--clamp')).toBe(
+      true,
+    );
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+  });
+
+  it('reveal toggles the clamp off and back — content is reachable, never swapped', () => {
+    render(
+      <InlineEditField
+        label="Description"
+        value={LONG}
+        canEdit
+        multiline
+        fullWidth
+        testId="f"
+        onSave={vi.fn()}
+      />,
+    );
+    const root = screen.getByTestId('f');
+    expect(valueOf(root).classList.contains('inline-edit__value--clamp')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(valueOf(root).classList.contains('inline-edit__value--clamp')).toBe(false);
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(valueOf(root).classList.contains('inline-edit__value--clamp')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+  });
+
+  it('a bounded (non-fullWidth, single-line) field neither spans nor clamps nor reveals', () => {
+    render(
+      <InlineEditField
+        label="Title"
+        value="Short"
+        canEdit
+        testId="f"
+        onSave={vi.fn()}
+      />,
+    );
+    const root = screen.getByTestId('f');
+    expect(root.classList.contains('inline-edit--unbounded')).toBe(false);
+    expect(valueOf(root).classList.contains('inline-edit__value--clamp')).toBe(false);
+    expect(screen.queryByRole('button', { name: /show more/i })).toBeNull();
+  });
+
+  it('an empty multiline field shows no reveal — nothing to expand', () => {
+    render(
+      <InlineEditField
+        label="Notes"
+        value={null}
+        canEdit
+        multiline
+        fullWidth
+        testId="f"
+        onSave={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /show more/i })).toBeNull();
+  });
+});
