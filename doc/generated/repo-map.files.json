@@ -560,6 +560,8 @@
     "apps/ats-web/src/ui/AttestCheckbox.spec.tsx",
     "apps/ats-web/src/ui/AttestCheckbox.tsx",
     "apps/ats-web/src/ui/Card.tsx",
+    "apps/ats-web/src/ui/ExpandableText.spec.tsx",
+    "apps/ats-web/src/ui/ExpandableText.tsx",
     "apps/ats-web/src/ui/HotToggle.spec.tsx",
     "apps/ats-web/src/ui/HotToggle.tsx",
     "apps/ats-web/src/ui/ProgressMini.tsx",

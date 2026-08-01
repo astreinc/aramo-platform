@@ -140,19 +140,28 @@ export function TaskDialog({
       }
     >
       {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
-      <FormField label="Title">
+      <FormField
+        label="Title"
+        helper="A short, action-oriented summary — e.g. “Call Priya about the offer”."
+      >
         <input
           aria-label="Title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          placeholder="What needs doing?"
           autoComplete="off"
         />
       </FormField>
-      <FormField label="Description">
+      <FormField
+        label="Description"
+        helper="Optional — add context, links, or the next step."
+      >
         <textarea
           aria-label="Description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          rows={4}
+          placeholder="Optional details…"
         />
       </FormField>
       <FormField label="Due date">
