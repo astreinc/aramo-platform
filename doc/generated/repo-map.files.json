@@ -151,6 +151,7 @@
     "apps/api/src/tests/outreach-send.negative-shape.spec.ts",
     "apps/api/src/tests/override-create.negative-shape.spec.ts",
     "apps/api/src/tests/policy-add-talent.integration.spec.ts",
+    "apps/api/src/tests/policy-matrix.integration.spec.ts",
     "apps/api/src/tests/policy-override.integration.spec.ts",
     "apps/api/src/tests/policy-retrieval.integration.spec.ts",
     "apps/api/src/tests/policy-sourcing-add.integration.spec.ts",

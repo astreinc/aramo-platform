@@ -2905,6 +2905,12 @@
     "@aramo/policy-engine": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-matrix.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-lifecycle-package.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2938,6 +2944,12 @@
       { "project": "policy-store", "status": "production" }
     ],
     "@aramo/policy-store": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-matrix.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/policy-override.integration.spec.ts",

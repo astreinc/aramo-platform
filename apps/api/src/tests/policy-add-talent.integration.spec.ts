@@ -18,13 +18,12 @@ import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 // ARAMO_RUN_INTEGRATION=1.
 //
 // Proves: (1) an ALLOW add creates the pipeline row AND a §D17a
-// PolicyDecisionRecord carrying the REAL policy_version + rule_id; (2) all six
-// declared states ALLOW under the shipped permissive package and the write
-// happens in each; (3) a provenance-write failure on ALLOW rolls the pipeline
-// row back (atomic, §D10) — the transaction wrap's central claim; (4) DENY and
-// REQUIRES_OVERRIDE (the latter treated as DENY, PR-3 ruling) refuse with 403
-// POLICY_DENIED carrying reason_code ONLY, write no pipeline row, and still
-// record provenance.
+// PolicyDecisionRecord carrying the REAL policy_version + rule_id; (2) PR-4c —
+// the ADD column of the RESTRICTIVE MATRIX v2.0.0 (active/on_hold/lead ALLOW;
+// full REQUIRES_OVERRIDE → 403 without the capability; closed/canceled DENY →
+// 403); (3) a provenance-write failure on ALLOW rolls the pipeline row back
+// (atomic, §D10). The override-capability path + the Submit/Note/Document
+// columns live in policy-matrix.integration.spec.ts.
 
 type SignKey = CryptoKey | KeyObject;
 
@@ -184,21 +183,32 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           [ACTOR],
         )).rows;
         expect(recs).toHaveLength(1);
-        expect(recs[0].policy_version).toBe('1.0.0');
+        expect(recs[0].policy_version).toBe('2.0.0'); // PR-4c restrictive matrix
         expect(recs[0].rule_id).toBe('add-talent-active');
       });
 
-      it('all six declared states ALLOW and the pipeline row is created in each', async () => {
-        const jwt = await signJwt(ADD_SCOPES);
+      // PR-4c — the ADD column of the restrictive matrix. active/on_hold/lead
+      // ALLOW (201 + row); full → REQUIRES_OVERRIDE, which without the override
+      // capability refuses (403); closed/canceled → DENY (403). The override
+      // capability path + the Submit/Note/Document columns are in the matrix E2E.
+      it('the ADD column of the restrictive matrix is enforced per state', async () => {
+        const jwt = await signJwt(ADD_SCOPES); // no override capability
+        const expectAllow = new Set(['active', 'on_hold', 'lead']);
         for (const status of SIX_STATES) {
           const req = await seedRequisition(status);
           const res = await postAdd(app, jwt, req);
-          expect(res.status, `state=${status}`).toBe(201);
-          expect(await pipelineCount(req), `state=${status} row`).toBe(1);
-          const rec = (await db.query(
-            `SELECT rule_id FROM policy_store."PolicyDecisionRecord" WHERE actor_id=$1 ORDER BY occurred_at DESC LIMIT 1`, [ACTOR],
-          )).rows[0];
-          expect(rec.rule_id, `state=${status} rule`).toBe(`add-talent-${status}`);
+          if (expectAllow.has(status)) {
+            expect(res.status, `state=${status}`).toBe(201);
+            expect(await pipelineCount(req), `state=${status} row`).toBe(1);
+            const rec = (await db.query(
+              `SELECT rule_id FROM policy_store."PolicyDecisionRecord" WHERE actor_id=$1 ORDER BY occurred_at DESC LIMIT 1`, [ACTOR],
+            )).rows[0];
+            expect(rec.rule_id, `state=${status} rule`).toBe(`add-talent-${status}`);
+          } else {
+            // full (REQUIRES_OVERRIDE, no capability) + closed/canceled (DENY) → 403.
+            expect(res.status, `state=${status}`).toBe(403);
+            expect(await pipelineCount(req), `state=${status} no row`).toBe(0);
+          }
         }
       });
 
