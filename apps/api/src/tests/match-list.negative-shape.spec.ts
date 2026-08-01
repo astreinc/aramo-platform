@@ -82,6 +82,11 @@ const JOB_DOMAIN_INIT_MIGRATION = resolve(
   ROOT,
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
 );
+// T1-a — ATS requisition schema (the match-list / submittal validators read it).
+const REQUISITION_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-negative-shape-audience';
@@ -142,15 +147,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         EXAMINATION_INIT_MIGRATION,
         EXAMINATION_LIVE_LIST_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
+        REQUISITION_INIT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
 
       // Seed an active Requisition + three ranked Summary examinations.
       await setup.query(
-        `INSERT INTO job_domain."Requisition" (id, tenant_id, job_id, recruiter_id, state)
-         VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState")`,
-        [REQ_ID, TENANT_ID, JOB_ID, RECRUITER_ID],
+        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
+         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus")`,
+        // T1-a — the port resolves the requisition by the {job_id} path value
+        // (shared-UUID R), so the ATS requisition id IS JOB_ID (not the mirror's
+        // distinct REQ_ID, which the two-hop indirection is retired with).
+        [JOB_ID, TENANT_ID, JOB_ID, RECRUITER_ID],
       );
 
       const tiers = ['ENTRUSTABLE', 'WORTH_CONSIDERING', 'STRETCH'] as const;

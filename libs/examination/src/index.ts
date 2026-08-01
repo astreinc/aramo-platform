@@ -1,5 +1,11 @@
 export { ExaminationModule } from './lib/examination.module.js';
 export { ExaminationRepository } from './lib/examination.repository.js';
+// T1-a — ports-and-adapters: examination declares the requisition-state port;
+// apps/api provides the adapter. See requisition-state-reader.port.ts.
+export {
+  REQUISITION_STATE_READER,
+  type RequisitionStateReader,
+} from './lib/requisition-state-reader.port.js';
 export type {
   CreateExaminationSnapshotInput,
   TalentJobExaminationRow,

@@ -3,18 +3,20 @@ import { describe, expect, it } from 'vitest';
 import { MatchListController } from '../lib/match-list.controller.js';
 import type { ExaminationRepository, ExaminationTierValue } from '../lib/examination.repository.js';
 import type { TalentJobExaminationSummaryView } from '../lib/examination-full.types.js';
+import type { RequisitionStateReader } from '../lib/requisition-state-reader.port.js';
 
 // M3 PR-8 §4.8 — controller unit tests with mocked ExaminationRepository
-// and JobDomainRepository. Verifies the eight-step behavior in §4.1:
-// auth check, UUID validation, limit parsing, cursor decoding, repository
-// wiring, response envelope shape, empty-list on no active requisition.
+// and the RequisitionStateReader port (T1-a; was JobDomainRepository).
+// Verifies the eight-step behavior in §4.1: auth check, UUID validation,
+// limit parsing, cursor decoding, repository wiring, response envelope shape,
+// empty-list on no active requisition. Under the shared-UUID alignment the
+// {job_id} path value IS the requisition id, so req_id === job_id.
 //
 // Integration end-to-end (AppModule compile + HTTP request + JSON shape
 // match) lives in match-list.negative-shape.spec.ts.
 
 const TENANT_ID = '11111111-1111-7111-8111-111111111111';
 const JOB_ID = '22222222-2222-7222-8222-222222222222';
-const REQ_ID = '33333333-3333-7333-8333-333333333333';
 const TALENT_ID_1 = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const TALENT_ID_2 = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
 const EXAM_ID_1 = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
@@ -71,14 +73,14 @@ function mockExamRepo(
   } as unknown as ExaminationRepository;
 }
 
-function mockJobDomainRepo(
-  returns: { id: string; tenant_id: string; job_id: string; recruiter_id: string; state: 'active' | 'inactive' } | null,
+function mockRequisitionState(
+  isActive: boolean,
   capture?: { calls: unknown[] },
-) {
+): RequisitionStateReader {
   return {
-    findActiveRequisitionByJobId: async (input: unknown) => {
-      capture?.calls.push(input);
-      return returns;
+    isActive: async (tenant_id: string, requisition_id: string) => {
+      capture?.calls.push({ tenant_id, requisition_id });
+      return isActive;
     },
   };
 }
@@ -87,8 +89,7 @@ describe('MatchListController — eight-step behavior', () => {
   it('step 1 — 403 INSUFFICIENT_PERMISSIONS when consumer_type !== "recruiter"', async () => {
     const controller = new MatchListController(
       mockExamRepo([]),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mockJobDomainRepo(null) as any,
+      mockRequisitionState(false),
     );
     await expect(
       controller.listMatches(JOB_ID, undefined, undefined, recruiterAuth({ consumer_type: 'portal' }), 'req-1'),
@@ -101,8 +102,7 @@ describe('MatchListController — eight-step behavior', () => {
   it('step 2 — 400 INVALID_REQUEST when job_id is not a UUID', async () => {
     const controller = new MatchListController(
       mockExamRepo([]),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mockJobDomainRepo(null) as any,
+      mockRequisitionState(false),
     );
     await expect(
       controller.listMatches('not-a-uuid', undefined, undefined, recruiterAuth(), 'req-1'),
@@ -116,8 +116,7 @@ describe('MatchListController — eight-step behavior', () => {
   it('step 3 — 400 INVALID_REQUEST on non-integer limit', async () => {
     const controller = new MatchListController(
       mockExamRepo([]),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mockJobDomainRepo(null) as any,
+      mockRequisitionState(false),
     );
     await expect(
       controller.listMatches(JOB_ID, 'abc', undefined, recruiterAuth(), 'req-1'),
@@ -131,8 +130,7 @@ describe('MatchListController — eight-step behavior', () => {
   it('step 3 — 400 INVALID_REQUEST when limit < 1', async () => {
     const controller = new MatchListController(
       mockExamRepo([]),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mockJobDomainRepo(null) as any,
+      mockRequisitionState(false),
     );
     await expect(
       controller.listMatches(JOB_ID, '0', undefined, recruiterAuth(), 'req-1'),
@@ -142,8 +140,7 @@ describe('MatchListController — eight-step behavior', () => {
   it('step 4 — 400 INVALID_REQUEST on malformed cursor (bad base64/JSON)', async () => {
     const controller = new MatchListController(
       mockExamRepo([]),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mockJobDomainRepo(null) as any,
+      mockRequisitionState(false),
     );
     await expect(
       controller.listMatches(JOB_ID, undefined, '!!!not-valid!!!', recruiterAuth(), 'req-1'),
@@ -156,8 +153,7 @@ describe('MatchListController — eight-step behavior', () => {
   it('step 4 — 400 INVALID_REQUEST on cursor with wrong fields', async () => {
     const controller = new MatchListController(
       mockExamRepo([]),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mockJobDomainRepo(null) as any,
+      mockRequisitionState(false),
     );
     const badCursor = Buffer.from(JSON.stringify({ tier: 'NOT_A_TIER', rank_ordinal: 0, id: TALENT_ID_1 })).toString('base64');
     await expect(
@@ -169,8 +165,7 @@ describe('MatchListController — eight-step behavior', () => {
     const examCalls: { calls: unknown[] } = { calls: [] };
     const controller = new MatchListController(
       mockExamRepo([], examCalls),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mockJobDomainRepo(null) as any,
+      mockRequisitionState(false),
     );
     const result = await controller.listMatches(JOB_ID, undefined, undefined, recruiterAuth(), 'req-1');
     expect(result.data).toEqual([]);
@@ -188,16 +183,17 @@ describe('MatchListController — eight-step behavior', () => {
     const jobCalls: { calls: unknown[] } = { calls: [] };
     const controller = new MatchListController(
       mockExamRepo([], examCalls),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mockJobDomainRepo({ id: REQ_ID, tenant_id: TENANT_ID, job_id: JOB_ID, recruiter_id: 'r', state: 'active' }, jobCalls) as any,
+      mockRequisitionState(true, jobCalls),
     );
     const cursorPayload = { tier: 'WORTH_CONSIDERING' as const, rank_ordinal: 5, id: EXAM_ID_1 };
     const cursorStr = Buffer.from(JSON.stringify(cursorPayload)).toString('base64');
 
     await controller.listMatches(JOB_ID, '25', cursorStr, recruiterAuth(), 'req-1');
-    expect(jobCalls.calls).toEqual([{ tenant_id: TENANT_ID, job_id: JOB_ID }]);
+    // The port is asked isActive(tenant_id, requisition_id=path job_id); the
+    // Live List is then keyed req_id === job_id (shared-UUID).
+    expect(jobCalls.calls).toEqual([{ tenant_id: TENANT_ID, requisition_id: JOB_ID }]);
     expect(examCalls.calls).toEqual([
-      { tenant_id: TENANT_ID, req_id: REQ_ID, limit: 25, cursor: cursorPayload },
+      { tenant_id: TENANT_ID, req_id: JOB_ID, limit: 25, cursor: cursorPayload },
     ]);
   });
 
@@ -208,8 +204,7 @@ describe('MatchListController — eight-step behavior', () => {
     ];
     const controller = new MatchListController(
       mockExamRepo(rows),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mockJobDomainRepo({ id: REQ_ID, tenant_id: TENANT_ID, job_id: JOB_ID, recruiter_id: 'r', state: 'active' }) as any,
+      mockRequisitionState(true),
     );
     const result = await controller.listMatches(JOB_ID, '10', undefined, recruiterAuth(), 'req-1');
     expect(result.data).toHaveLength(2);
@@ -228,8 +223,7 @@ describe('MatchListController — eight-step behavior', () => {
     ];
     const controller = new MatchListController(
       mockExamRepo(rows),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mockJobDomainRepo({ id: REQ_ID, tenant_id: TENANT_ID, job_id: JOB_ID, recruiter_id: 'r', state: 'active' }) as any,
+      mockRequisitionState(true),
     );
     const result = await controller.listMatches(JOB_ID, '2', undefined, recruiterAuth(), 'req-1');
     expect(result.pagination.has_more).toBe(true);
@@ -248,8 +242,7 @@ describe('MatchListController — eight-step behavior', () => {
     const cursorStr = Buffer.from(JSON.stringify(cursorPayload)).toString('base64');
     const controller = new MatchListController(
       mockExamRepo([]),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mockJobDomainRepo({ id: REQ_ID, tenant_id: TENANT_ID, job_id: JOB_ID, recruiter_id: 'r', state: 'active' }) as any,
+      mockRequisitionState(true),
     );
     const result = await controller.listMatches(JOB_ID, undefined, cursorStr, recruiterAuth(), 'req-1');
     expect(result.pagination.cursor).toBe(cursorStr);
@@ -259,8 +252,7 @@ describe('MatchListController — eight-step behavior', () => {
     const rows = [makeSummary(EXAM_ID_1, TALENT_ID_1, 'ENTRUSTABLE', 1)];
     const controller = new MatchListController(
       mockExamRepo(rows),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mockJobDomainRepo({ id: REQ_ID, tenant_id: TENANT_ID, job_id: JOB_ID, recruiter_id: 'r', state: 'active' }) as any,
+      mockRequisitionState(true),
     );
     const result = await controller.listMatches(JOB_ID, undefined, undefined, recruiterAuth(), 'req-1');
     const item = result.data[0]!;

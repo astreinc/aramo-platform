@@ -3,14 +3,18 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
-import { JobDomainRepository } from '@aramo/job-domain';
 
+import {
+  REQUISITION_STATE_READER,
+  type RequisitionStateReader,
+} from './requisition-state-reader.port.js';
 import { ExaminationRepository, type ExaminationTierValue } from './examination.repository.js';
 import type { TalentJobExaminationSummaryView } from './examination-full.types.js';
 
@@ -76,7 +80,10 @@ interface MatchListResponseDto {
 export class MatchListController {
   constructor(
     private readonly examinationRepository: ExaminationRepository,
-    private readonly jobDomainRepository: JobDomainRepository,
+    // T1-a — requisition-lifecycle port (apps/api binds the ATS-backed adapter);
+    // replaces the retired job_domain.Requisition reader.
+    @Inject(REQUISITION_STATE_READER)
+    private readonly requisitionState: RequisitionStateReader,
   ) {}
 
   @Get(':job_id/matches')
@@ -101,13 +108,15 @@ export class MatchListController {
     // Step 4 — cursor decoding (base64+JSON of { tier, rank_ordinal, id }).
     const cursor = this.parseCursor(cursorRaw, requestId);
 
-    // Step 5 — resolve the active Requisition for (tenant_id, job_id).
-    const requisition = await this.jobDomainRepository.findActiveRequisitionByJobId({
-      tenant_id: authContext.tenant_id,
+    // Step 5 — confirm the requisition is ACTIVE in this tenant via the
+    // RequisitionStateReader port (T1-a). The {job_id} path value IS the
+    // requisition id R (shared-UUID); an inactive/closed/missing requisition
+    // yields the empty-list response (not 404) — directive §4.1 step 5 + step 7.
+    const active = await this.requisitionState.isActive(
+      authContext.tenant_id,
       job_id,
-    });
-    if (requisition === null) {
-      // Empty-list response (not 404) — directive §4.1 step 5 + step 7.
+    );
+    if (!active) {
       return {
         data: [],
         pagination: {
@@ -120,10 +129,11 @@ export class MatchListController {
     }
 
     // Step 6 — list query against PR-7's findActiveReqLiveList. The
-    // repository internally clamps limit [1,200], default 50.
+    // repository internally clamps limit [1,200], default 50. req_id === the
+    // path job_id (shared-UUID R).
     const rows = await this.examinationRepository.findActiveReqLiveList({
       tenant_id: authContext.tenant_id,
-      req_id: requisition.id,
+      req_id: job_id,
       ...(limit !== undefined ? { limit } : {}),
       ...(cursor !== undefined ? { cursor } : {}),
     });

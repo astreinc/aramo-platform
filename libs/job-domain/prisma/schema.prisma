@@ -41,15 +41,12 @@ datasource db {
   schemas  = ["job_domain"]
 }
 
-// RequisitionState — closed enum per anchor (4). Two values; recruiter
-// capacity language (Group 2) counts "active reqs", and the Live List
-// glossary line is "per active req".
-enum RequisitionState {
-  active
-  inactive
-
-  @@schema("job_domain")
-}
+// T1-a — the RequisitionState enum + Requisition model were RETIRED. The
+// mirror's `state` had no updater (written once as 'active'), so a requisition
+// closed in the ATS still read active through it (the live defect). The ATS
+// requisition (requisition.Requisition) is now the sole lifecycle authority,
+// read by the CIP Live List / match-list via the RequisitionStateReader port.
+// See migration 20260801130000_drop_job_domain_requisition.
 
 // Job — anchor (1) addressable entity; the value referenced by
 // libs/examination.job_id and the `/v1/jobs/{job_id}` path key. Field-level
@@ -109,32 +106,6 @@ model GoldenProfile {
   @@schema("job_domain")
 }
 
-// Requisition — anchor (4) carries an active/inactive lifecycle state;
-// anchor (7) carries a recruiter association. Live List (PR-6, out of
-// scope) reads `state = active` to enumerate; recruiter capacity (Group 2)
-// counts a recruiter's active reqs.
-model Requisition {
-  // UUID v7 generated app-side. Anchor (1).
-  id           String           @id @db.Uuid
-
-  // Cross-schema. Anchor (5) — UUID-only, no FK.
-  tenant_id    String           @db.Uuid
-
-  // Cross-schema reference to Job. Anchor (5).
-  job_id       String           @db.Uuid
-
-  // Cross-schema reference to identity.Actor/recruiter. Anchor (7) —
-  // UUID-only, no FK.
-  recruiter_id String           @db.Uuid
-
-  // Anchor (4) — active/inactive lifecycle state. PR-6's Live List
-  // filter (`per active req`) reads this column.
-  state        RequisitionState
-
-  // Lookups: by tenant; by tenant+recruiter (recruiter capacity, Group 2
-  // ~5.2 active reqs per recruiter); by tenant+job (a requisition's job).
-  @@index([tenant_id])
-  @@index([tenant_id, recruiter_id])
-  @@index([tenant_id, job_id])
-  @@schema("job_domain")
-}
+// Requisition (model + RequisitionState enum) RETIRED in T1-a — see the note
+// above where the enum was and migration 20260801130000_drop_job_domain_
+// requisition. Job + GoldenProfile remain the live examine-flow spine.

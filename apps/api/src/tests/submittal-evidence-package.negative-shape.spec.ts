@@ -75,6 +75,11 @@ const JOB_DOMAIN_INIT_MIGRATION = resolve(
   ROOT,
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
 );
+// T1-a — ATS requisition schema (the match-list / submittal validators read it).
+const REQUISITION_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
+);
 const TALENT_EVIDENCE_INIT_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
@@ -227,6 +232,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         EXAMINATION_INIT_MIGRATION,
         EXAMINATION_LIVE_LIST_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
+        REQUISITION_INIT_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
         TALENT_EVIDENCE_TR7_MIGRATION,
         EVIDENCE_INIT_MIGRATION,
@@ -245,8 +251,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Seed the active requisition + the Entrustable examination pinned
       // by the draft submittal we'll create at request time.
       await setup.query(
-        `INSERT INTO job_domain."Requisition" (id, tenant_id, job_id, recruiter_id, state)
-         VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState")`,
+        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
+         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus")`,
         [
           '22221111-0000-7000-8000-0000000000a7',
           TENANT_ID,

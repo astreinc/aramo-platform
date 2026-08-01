@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import { ExaminationRepository } from '@aramo/examination';
-import { JobDomainRepository } from '@aramo/job-domain';
+import { RequisitionRepository } from '@aramo/requisition';
 import { recordUsage } from '@aramo/metering';
 import { TalentRecordRepository } from '@aramo/talent-record';
 
@@ -309,8 +309,10 @@ export class EngagementRepository {
     // against the tenant-scoped TalentRecord. (The dead Core TalentRepository
     // was removed in 4e-rest — Core retirement.)
     private readonly talentRecordRepository: TalentRecordRepository,
-    // M5 PR-3 — Pattern A (Requisition) cross-schema validator dep.
-    private readonly jobDomainRepository: JobDomainRepository,
+    // M5 PR-3 — Pattern A (Requisition) cross-schema validator dep. T1-a
+    // re-pointed this from the retired job_domain.Requisition mirror to the
+    // authoritative ATS RequisitionRepository (scope:ats → scope:ats, wall-legal).
+    private readonly requisitionRepository: RequisitionRepository,
     // M5 PR-3 — Pattern B (Examination) cross-schema validator dep.
     private readonly examinationRepository: ExaminationRepository,
     @Inject('EngagementRepositoryLogger')
@@ -597,8 +599,16 @@ export class EngagementRepository {
     }
 
     // ---- Step 2b: Pattern A — Requisition (app-layer tenant check) ----
-    const requisition = await this.jobDomainRepository.findRequisitionById(input.requisition_id);
-    if (requisition === null || requisition.tenant_id !== input.tenant_id) {
+    // T1-a — validate against the ATS requisition directly. findStatusById is
+    // tenant-scoped: null means the requisition does not exist in this tenant
+    // (byte-identical outcome to the old mirror existence + tenant check). Any
+    // stored status counts as "exists" — engagement create never gated on the
+    // requisition's lifecycle state, and that is preserved.
+    const requisitionStatus = await this.requisitionRepository.findStatusById({
+      tenant_id: input.tenant_id,
+      id: input.requisition_id,
+    });
+    if (requisitionStatus === null) {
       this.logRefused('ENGAGEMENT_REFERENCE_NOT_FOUND', input, 'requisition_id');
       throw new AramoError(
         'ENGAGEMENT_REFERENCE_NOT_FOUND',

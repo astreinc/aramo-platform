@@ -4,16 +4,31 @@ import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
+import { Global, Module } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
-import { ExaminationRepository, PrismaService } from '@aramo/examination';
+import {
+  ExaminationRepository,
+  PrismaService,
+  REQUISITION_STATE_READER,
+} from '@aramo/examination';
 
 import { MatchingModule } from '../lib/matching.module.js';
 import { MATCH_QUEUE_NAME } from '../lib/match-queue.constants.js';
 import { MatchingService } from '../lib/matching.service.js';
 
 import { entrustablePass } from './_input-factory.js';
+
+// T1-a — @Global stub for libs/examination's RequisitionStateReader port. Its
+// exports reach every module in the test app (incl. the transitively-imported
+// ExaminationModule), which the plain @Module / overrideProvider path cannot.
+@Global()
+@Module({
+  providers: [{ provide: REQUISITION_STATE_READER, useValue: { isActive: async () => false } }],
+  exports: [REQUISITION_STATE_READER],
+})
+class StubRequisitionStateModule {}
 
 // M3 PR-3 §4.9 — match-queue integration test. Brings up Postgres + Redis
 // testcontainers, boots MatchingModule under Nest DI (so BullModule
@@ -76,7 +91,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // writes to the testcontainer Postgres rather than constructing a
       // second connection from process.env.DATABASE_URL.
       moduleRef = await Test.createTestingModule({
-        imports: [MatchingModule],
+        // T1-a — MatchingModule transitively imports ExaminationModule, whose
+        // MatchListController injects the RequisitionStateReader port. This
+        // standalone bootstrap has no apps/api adapter, so a @Global stub module
+        // supplies the token app-wide (the Live List is never exercised by this
+        // queue-worker test). @Global is required so ExaminationModule's own
+        // providers/controllers can resolve it — overrideProvider cannot inject
+        // a token no module provides.
+        imports: [MatchingModule, StubRequisitionStateModule],
       })
         .overrideProvider(PrismaService)
         .useValue(prisma)

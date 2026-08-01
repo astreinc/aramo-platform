@@ -51,6 +51,9 @@ import { TalentRecordModule, ResumeReindexModule } from '@aramo/talent-record';
 import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
+// T1-a — composition-root binding of libs/examination's RequisitionStateReader
+// port to the ATS RequisitionRepository adapter (@Global; the wall-legal seam).
+import { RequisitionStateReaderModule } from './requisition-state/requisition-state-reader.module.js';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantWriteFreezeInterceptor } from './tenant-write-freeze/tenant-write-freeze.interceptor.js';
 import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
@@ -303,6 +306,9 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // available to the orchestrator's DI in app.module.
     EvidenceModule,
     ExaminationModule,
+    // T1-a — binds REQUISITION_STATE_READER (@Global) so the CIP Live List /
+    // match-list resolve requisition lifecycle state from the ATS requisition.
+    RequisitionStateReaderModule,
     // T2-2a — canonicalization orchestrator (NEW leaf lib). Lead-authored
     // per Aramo-T2-2a-Canonicalization-Orchestration-Directive-v1_0-LOCKED.md.
     // Service-only at T2-2a (no controller). Imported here BEFORE

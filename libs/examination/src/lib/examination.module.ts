@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { ConsentModule } from '@aramo/consent';
-import { JobDomainModule } from '@aramo/job-domain';
 
 import { ExaminationRepository } from './examination.repository.js';
 import { MatchListController } from './match-list.controller.js';
@@ -13,11 +12,12 @@ import { PrismaService } from './prisma/prisma.service.js';
 // M3 PR-8 (match-list HTTP endpoint) + M4 PR-5 (override-create endpoint).
 //
 // PR-7 §2 Ruling 2: extend libs/examination (no new lib). PR-7's
-// findActiveReqLiveList consumes JobDomainRepository.findRequisitionById to
-// verify the requisition is active and tenant-scoped — JobDomainModule is
-// imported here so ExaminationRepository can inject JobDomainRepository
-// (consumer-side; PR-7 added no JobDomainRepository method, PR-8 adds
-// findActiveRequisitionByJobId for the controller's job_id → req_id bridge).
+// findActiveReqLiveList verifies the requisition is active and tenant-scoped.
+// T1-a retired the job_domain.Requisition mirror this used to read; the check
+// now goes through the RequisitionStateReader port (requisition-state-reader.
+// port.ts), whose ATS-backed adapter apps/api binds at the composition root, so
+// examination no longer imports @aramo/job-domain at all (the CIP⊥ATS wall
+// holds by construction — the port is a plain interface in this lib).
 //
 // PR-8 §4.3: AuthModule is added to imports so the new MatchListController
 // can use class-level JwtAuthGuard. MatchListController is the first
@@ -29,7 +29,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 // table per Ruling 7). OverrideController is the second HTTP controller
 // in libs/examination; it is registered here alongside MatchListController.
 @Module({
-  imports: [AuthModule, ConsentModule, JobDomainModule],
+  imports: [AuthModule, ConsentModule],
   controllers: [MatchListController, OverrideController],
   providers: [PrismaService, ExaminationRepository],
   exports: [ExaminationRepository],
