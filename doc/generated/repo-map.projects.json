@@ -298,6 +298,7 @@
       "ExaminationModule",
       "ExaminationRepository",
       "PrismaService",
+      "REQUISITION_STATE_READER",
       "projectFullView",
       "projectSummaryView"
     ],
@@ -2778,32 +2779,6 @@
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.repository.integration.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/engagement/src/tests/engagement.repository.spec.ts",
-        "project": "engagement",
-        "status": "excluded"
-      },
-      { "project": "engagement", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/examination/src/tests/examination-live-list.integration.spec.ts",
-        "project": "examination",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/examination/src/tests/examination-live-list.spec.ts",
-        "project": "examination",
-        "status": "excluded"
-      },
-      { "project": "examination", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/profile-confirm-keying.spec.ts",
         "project": "requisition",
         "status": "excluded"
@@ -3070,6 +3045,19 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.repository.integration.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/engagement/src/tests/engagement.repository.spec.ts",
+        "project": "engagement",
+        "status": "excluded"
+      },
+      { "project": "engagement", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "pipeline", "status": "production" },

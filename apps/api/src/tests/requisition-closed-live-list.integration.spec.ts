@@ -23,40 +23,35 @@ import { AppModule } from '../app.module.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
-// Gate-1 G1-B keying correction — the FE-VISIBILITY end-to-end proof G1-B
-// deferred (shared-UUID alignment: Job.id = GoldenProfile.job_id =
-// examination.job_id = the ATS requisition id R). End-to-end against a
-// Postgres 17 testcontainer:
+// T1-a — job_domain.Requisition retirement (LIVE DEFECT proof).
 //
-//   1. Boot apps/api AppModule with the requisition + job-domain +
-//      talent-record + talent-evidence + examination migrations.
-//   2. Seed the POST-confirmProfile state under shared-UUID keying:
-//        - job_domain.Job(id = R)
-//        - job_domain.GoldenProfile(id = GP, job_id = R, backend_engineer,
-//          critical_skills = ['TypeScript'])
-//        - job_domain.Requisition MIRROR(id = R, job_id = R, state=active)
-//          — the row the Live List resolves through (what confirmProfile now
-//          mints; unit-proven in libs/requisition profile-confirm-keying.spec).
-//        - requisition.Requisition(id = R, golden_profile_id = GP) — the ATS req.
-//        - talent_record.TalentRecord(id = T, work_authorization, contact).
-//        - talent_evidence.TalentSkillEvidence(talent = T, 'TypeScript',
-//          source=declared) — pre-seeded so examine's lazy extraction is
-//          SKIPPED (exists-check > 0), keeping the boot LLM-free.
-//   3. POST /v1/examinations { talent_id: T, requisition_id: R } (recruiter
-//      JWT) → mints a TalentJobExamination with job_id = R.
-//   4. GET /v1/jobs/R/matches (same recruiter JWT) → RETURNS the minted
-//      examination. This is the close of the Gate-1 matching loop: a real
-//      (req, talent) pairing is examined and becomes FE-visible.
+// The defect this test exists to expose: `job_domain.Requisition.state` is
+// written once as 'active' and has NO updater. A requisition CLOSED in the ATS
+// (`requisition.Requisition.status = 'closed'`) still reads `active` through the
+// job_domain mirror — so the match-list surfaces a closed requisition's matches
+// as if it were open.
+//
+// The seeded state mirrors production AFTER a close: the ATS requisition is
+// `closed`, but the job_domain mirror is still `active` (it was minted active at
+// confirmProfile and never touched again). GET /v1/jobs/R/matches MUST return an
+// empty list — a closed requisition has no live matches.
+//
+//   - Against CURRENT code (match-list resolves through job_domain.Requisition):
+//     the stale-active mirror is found, the examination is returned → this test
+//     FAILS. That failure IS the defect.
+//   - After T1-a (match-list resolves the ACTIVE requisition through the
+//     RequisitionStateReader port, backed by requisition.Requisition.status):
+//     the closed requisition is not active → empty list → this test PASSES.
 //
 // Gated on ARAMO_RUN_INTEGRATION=1. Hosted in apps/api/src/tests/ (AppModule
-// owner) for the same Nx-cycle reason as match-list.negative-shape.spec.ts.
+// owner) for the same Nx-cycle reason as examine-live-list.integration.spec.ts.
 
 type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
 
 // Migration set — per-schema chronological order (cross-schema is UUID-only,
-// no FK, so schema interleaving is free).
+// no FK, so schema interleaving is free). Mirrors examine-live-list's set.
 const MIGRATIONS = [
   // requisition (ATS)
   'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
@@ -69,6 +64,9 @@ const MIGRATIONS = [
   'libs/requisition/prisma/migrations/20260721000000_add_publish_surface/migration.sql',
   // job-domain
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
+  // T1-a — drop the retired job_domain.Requisition table + enum so this proof
+  // runs against the true post-retirement schema (Job + GoldenProfile remain).
+  'libs/job-domain/prisma/migrations/20260801130000_drop_job_domain_requisition/migration.sql',
   // talent-record
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
   'libs/talent-record/prisma/migrations/20260603020000_add_core_talent_link_to_talent_record/migration.sql',
@@ -84,8 +82,7 @@ const MIGRATIONS = [
   // talent-evidence
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql',
-  // talent-trust — TR-4 B2: examine Step-4b now routes declared CLAIMS into the
-  // trust ledger, so the examine flow needs the talent_trust schema present.
+  // talent-trust
   'libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql',
   'libs/talent-trust/prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
   'libs/talent-trust/prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
@@ -111,12 +108,12 @@ const MIGRATIONS = [
 ].map((p) => resolve(ROOT, p));
 
 const ISSUER = 'Aramo Core Auth';
-const AUDIENCE = 'aramo-examine-live-list-audience';
+const AUDIENCE = 'aramo-requisition-closed-live-list-audience';
 const ALG = 'RS256';
 
 const TENANT_ID = '11111111-1111-7111-8111-111111111111';
 // R — the shared UUID: ATS requisition id = job_domain Job.id = GoldenProfile.job_id
-// = the job-domain Requisition mirror id/job_id = examination.job_id.
+// = examination.job_id.
 const R = '22222222-2222-7222-8222-222222222222';
 const GP_ID = '44444444-4444-7444-8444-444444444444';
 const RECRUITER_ID = '00000000-0000-0000-0000-0000000000bb';
@@ -125,7 +122,7 @@ const TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 const SKILL_ID = '99999999-9999-7999-8999-999999999999';
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'Gate-1 G1-B keying correction — examine → GET /v1/jobs/R/matches (FE-visibility end-to-end)',
+  'T1-a live defect — a requisition CLOSED in the ATS is not active to the match-list',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -144,11 +141,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
 
-      // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
-      // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
       await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_ID);
 
-      // Seed the post-confirmProfile state under shared-UUID keying.
       // job_domain.Job(id = R)
       await setup.query(
         `INSERT INTO job_domain."Job" (id, tenant_id) VALUES ($1, $2)`,
@@ -177,16 +171,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           ['TypeScript'],
         ],
       );
-      // T1-a — the ATS requisition (id = R) is the sole lifecycle authority the
-      // Live List / match-list resolve through the RequisitionStateReader port;
-      // status defaults to 'active'. (The retired job_domain.Requisition mirror
-      // seed was removed — this ATS row replaces it.)
+      // requisition.Requisition (ATS) — id = R, golden_profile_id = GP, and
+      // CLOSED. This is the authoritative lifecycle state; the match-list must
+      // honour it.
       await setup.query(
         `INSERT INTO requisition."Requisition"
-           (id, tenant_id, title, company_id, golden_profile_id)
-         VALUES ($1, $2, $3, $4, $5)`,
+           (id, tenant_id, title, company_id, golden_profile_id, status)
+         VALUES ($1, $2, $3, $4, $5, 'closed'::requisition."RequisitionStatus")`,
         [R, TENANT_ID, 'Senior Backend Engineer', COMPANY_ID, GP_ID],
       );
+      // NOTE: pre-T1-a a stale-active job_domain.Requisition mirror was seeded
+      // here to reproduce the defect (RED). Post-T1-a the mirror is retired and
+      // the match-list resolves the ATS requisition's status via the port, so
+      // the closed requisition below is correctly not-active with no mirror.
       // talent_record.TalentRecord — declared work_authorization + contact.
       await setup.query(
         `INSERT INTO talent_record."TalentRecord"
@@ -197,8 +194,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [TALENT_ID, TENANT_ID],
       );
       // Pre-seed one declared TalentSkillEvidence so examine's lazy extraction
-      // is SKIPPED (exists-check > 0) — keeps the boot LLM-free and matches the
-      // critical skill 'TypeScript' (name ↔ surface_form normalized overlap).
+      // is SKIPPED (exists-check > 0) — keeps the boot LLM-free.
       await setup.query(
         `INSERT INTO talent_evidence."TalentSkillEvidence"
            (id, talent_id, tenant_id, skill_id, surface_form, source, created_at)
@@ -263,7 +259,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     }, 60_000);
 
-    it('examine mints an examination keyed job_id = R (shared-UUID alignment)', async () => {
+    it('examine still mints an examination for the (talent, R) pair (status-agnostic)', async () => {
       const res = await fetch(`http://127.0.0.1:${port}/v1/examinations`, {
         method: 'POST',
         headers: {
@@ -273,20 +269,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         body: JSON.stringify({ talent_id: TALENT_ID, requisition_id: R }),
       });
       expect(res.status).toBe(201);
-      const body = (await res.json()) as {
-        examination_id: string;
-        talent_id: string;
-        job_id: string;
-        tier: string;
-        live_list_visible: boolean;
-      };
-      expect(body.talent_id).toBe(TALENT_ID);
-      expect(body.job_id).toBe(R); // examination.job_id = golden.job_id = R
-      expect(body.live_list_visible).toBe(true);
-      expect(typeof body.examination_id).toBe('string');
+      const body = (await res.json()) as { job_id: string };
+      expect(body.job_id).toBe(R);
     });
 
-    it('GET /v1/jobs/R/matches RETURNS the minted examination (FE-visible)', async () => {
+    it('GET /v1/jobs/R/matches returns EMPTY — a closed requisition has no live matches', async () => {
       const res = await fetch(`http://127.0.0.1:${port}/v1/jobs/${R}/matches`, {
         method: 'GET',
         headers: { Authorization: `Bearer ${recruiterJwt}` },
@@ -296,12 +283,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         data: Array<Record<string, unknown>>;
       };
       expect(Array.isArray(body.data)).toBe(true);
-      // The examine-minted examination is now visible in the Live List — the
-      // close of the Gate-1 matching loop the mint-only G1-B deferred.
-      expect(body.data.length).toBeGreaterThanOrEqual(1);
-      const match = body.data.find((m) => m['talent_id'] === TALENT_ID);
-      expect(match, 'the examine-minted examination is absent from GET matches').toBeDefined();
-      expect(match?.['job_id']).toBe(R);
+      // The defect: a requisition closed in the ATS must NOT surface its
+      // examinations. Against current code the stale-active job_domain mirror
+      // makes this list non-empty — that failure is the defect this PR fixes.
+      expect(body.data.length).toBe(0);
     });
   },
 );

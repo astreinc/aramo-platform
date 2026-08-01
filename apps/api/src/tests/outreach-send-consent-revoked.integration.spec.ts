@@ -66,6 +66,7 @@ const MIGRATIONS = [
   M('libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql'),
   M('libs/examination/prisma/migrations/20260521120000_add_live_list_index/migration.sql'),
   M('libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql'),
+  M('libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql'),
   M('libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql'),
   M('libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql'),
   M('libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql'),
@@ -197,9 +198,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [JOB_ID_A, TENANT_A, JOB_ID_B, TENANT_B],
       );
       await setup.query(
-        `INSERT INTO job_domain."Requisition" (id, tenant_id, job_id, recruiter_id, state)
-         VALUES ($1, $2, $3, $4, 'active'::job_domain."RequisitionState"),
-                ($5, $6, $7, $8, 'active'::job_domain."RequisitionState")`,
+        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
+         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus"),
+                ($5, $6, $7::text, $8, 'active'::requisition."RequisitionStatus")`,
         [
           REQ_A, TENANT_A, JOB_ID_A, RECRUITER_A,
           REQ_B, TENANT_B, JOB_ID_B, RECRUITER_B,

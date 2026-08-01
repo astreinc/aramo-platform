@@ -3,33 +3,32 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import {
-  JobDomainRepository,
-  PrismaService as JobDomainPrismaService,
-} from '@aramo/job-domain';
 
 import {
   ExaminationRepository,
   type CreateExaminationSnapshotInput,
 } from '../lib/examination.repository.js';
+import type { RequisitionStateReader } from '../lib/requisition-state-reader.port.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 // M3 PR-7 §4.4 integration test. Spins up a Postgres testcontainer, applies
-// PR-1's examination init migration AND PR-7's add-live-list-index
-// migration, then applies PR-4's job-domain init migration, then seeds:
-//   - one active Requisition + one inactive Requisition (same tenant) +
-//     one mismatched-tenant active Requisition;
-//   - a set of TalentJobExamination rows with mixed (tier, rank_ordinal,
-//     lifecycle_state) for the active req's job_id, plus a row at the same
-//     rank_ordinal but a later id (tiebreaker test), plus a row for a
-//     different job_id (must be excluded).
+// PR-1's examination init migration AND PR-7's add-live-list-index migration,
+// then seeds a set of TalentJobExamination rows with mixed (tier, rank_ordinal,
+// lifecycle_state) under the active requisition id (shared-UUID: job_id ===
+// req_id), plus a row at the same rank_ordinal but a later id (tiebreaker),
+// plus a row for a different job_id (must be excluded).
+//
+// T1-a: the requisition precondition is the RequisitionStateReader port, stubbed
+// here (the ATS-backed adapter is tested in apps/api). The stub reports only
+// REQ_ACTIVE in TENANT_A as active — so inactive / cross-tenant / unknown reqs
+// present as isActive=false. No job_domain.Requisition mirror is seeded.
 //
 // Asserts:
 //   - findActiveReqLiveList for the active req returns only
-//     lifecycle_state='active' rows for the correct job_id, ordered by
-//     (tier ASC, rank_ordinal ASC, id ASC) — including the id tiebreaker.
-//   - findActiveReqLiveList for the inactive req returns [].
-//   - findActiveReqLiveList for the tenant-mismatched req returns [].
+//     lifecycle_state='active' rows for the correct job_id (= req_id), ordered
+//     by (tier ASC, rank_ordinal ASC, id ASC) — including the id tiebreaker.
+//   - findActiveReqLiveList for a not-active req (inactive / cross-tenant /
+//     unknown) returns [].
 //   - The PR-1 immutability trigger is never reached: a Prisma update spy
 //     records zero invocations across multiple findActiveReqLiveList calls.
 
@@ -40,10 +39,6 @@ const PR1_EXAMINATION_MIGRATION = resolve(
 const PR7_LIVE_LIST_INDEX_MIGRATION = resolve(
   __dirname,
   '../../prisma/migrations/20260521120000_add_live_list_index/migration.sql',
-);
-const PR4_JOB_DOMAIN_MIGRATION = resolve(
-  __dirname,
-  '../../../job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
 );
 
 function splitDdl(sql: string): string[] {
@@ -70,12 +65,11 @@ function splitDdl(sql: string): string[] {
 }
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
-const TENANT_B = '22222222-2222-7222-8222-222222222222';
 const TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
-const JOB_ACTIVE = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
+// Shared-UUID: the examinations' job_id IS the active requisition id
+// (REQ_ACTIVE, below). JOB_OTHER is a different job the filter must exclude.
 const JOB_OTHER = 'ccccccc1-cccc-7ccc-8ccc-ccccccccccc1';
 const GOLDEN = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
-const RECRUITER = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
 
 const REQ_ACTIVE = 'eeeeeeee-eeee-7eee-8eee-000000000001';
 const REQ_INACTIVE = 'eeeeeeee-eeee-7eee-8eee-000000000002';
@@ -101,7 +95,7 @@ function baseSnapshot(
     id: EXAM_E1,
     tenant_id: TENANT_A,
     talent_id: TALENT_ID,
-    job_id: JOB_ACTIVE,
+    job_id: REQ_ACTIVE,
     golden_profile_id: GOLDEN,
     trigger: 'initial_match',
     tier: 'ENTRUSTABLE',
@@ -134,16 +128,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   () => {
     let container: StartedPostgreSqlContainer;
     let examinationPrisma: PrismaService;
-    let jobDomainPrisma: JobDomainPrismaService;
     let repo: ExaminationRepository;
+
+    // T1-a — stub the RequisitionStateReader port. Only REQ_ACTIVE in TENANT_A
+    // is an active requisition; every other (req, tenant) reports inactive.
+    const requisitionState: RequisitionStateReader = {
+      isActive: async (tenant_id: string, requisition_id: string) =>
+        tenant_id === TENANT_A && requisition_id === REQ_ACTIVE,
+    };
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
 
-      // Apply migrations in chronological order: PR-1 init, PR-7 index,
-      // PR-4 job-domain init. The PR-1 init uses a $$ ... $$ trigger body,
-      // so splitDdl is dollar-quote-aware.
+      // Apply migrations in chronological order: PR-1 init, PR-7 index. The
+      // PR-1 init uses a $$ ... $$ trigger body, so splitDdl is dollar-quote-
+      // aware. No job-domain schema is needed — the requisition precondition
+      // is the stubbed port.
       const examSetup = new PrismaService(url);
       await examSetup.$connect();
       for (const stmt of splitDdl(readFileSync(PR1_EXAMINATION_MIGRATION, 'utf8'))) {
@@ -158,45 +159,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       await examSetup.$disconnect();
 
-      const jobSetup = new JobDomainPrismaService(url);
-      await jobSetup.$connect();
-      for (const stmt of splitDdl(readFileSync(PR4_JOB_DOMAIN_MIGRATION, 'utf8'))) {
-        const t = stmt.trim();
-        if (t.length === 0) continue;
-        await jobSetup.$executeRawUnsafe(t);
-      }
-      await jobSetup.$disconnect();
-
       examinationPrisma = new PrismaService(url);
       await examinationPrisma.$connect();
-      jobDomainPrisma = new JobDomainPrismaService(url);
-      await jobDomainPrisma.$connect();
 
-      const jobDomainRepo = new JobDomainRepository(jobDomainPrisma);
-      repo = new ExaminationRepository(examinationPrisma, jobDomainRepo);
-
-      // Seed Requisitions.
-      await jobDomainRepo.createRequisition({
-        id: REQ_ACTIVE,
-        tenant_id: TENANT_A,
-        job_id: JOB_ACTIVE,
-        recruiter_id: RECRUITER,
-        state: 'active',
-      });
-      await jobDomainRepo.createRequisition({
-        id: REQ_INACTIVE,
-        tenant_id: TENANT_A,
-        job_id: JOB_ACTIVE,
-        recruiter_id: RECRUITER,
-        state: 'inactive',
-      });
-      await jobDomainRepo.createRequisition({
-        id: REQ_TENANT_B,
-        tenant_id: TENANT_B,
-        job_id: JOB_ACTIVE,
-        recruiter_id: RECRUITER,
-        state: 'active',
-      });
+      repo = new ExaminationRepository(examinationPrisma, requisitionState);
 
       // Seed examinations.
       await repo.createSnapshot(baseSnapshot({ id: EXAM_E1, tier: 'ENTRUSTABLE', rank_ordinal: 1 }));
@@ -234,7 +200,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }, 180_000);
 
     afterAll(async () => {
-      await jobDomainPrisma?.$disconnect();
       await examinationPrisma?.$disconnect();
       await container?.stop();
     });

@@ -7,7 +7,13 @@ import { PrismaService } from './prisma/prisma.service.js';
 // Surface scope (closed, per the PR-1 entity-foundation precedent):
 //   - createJob / findJobById
 //   - createGoldenProfile / findGoldenProfileById
-//   - createRequisition / findRequisitionById
+//
+// T1-a retired the Requisition surface (createRequisition /
+// findRequisitionById / findActiveRequisitionByJobId) and the model itself —
+// the mirror's `state` had no updater, so a requisition closed in the ATS still
+// read active through it. The ATS requisition (requisition.Requisition) is now
+// the sole lifecycle authority, read via the RequisitionStateReader port. Job +
+// GoldenProfile stay — the live examine-flow spine.
 //
 // Read-and-create only. No update / delete / list / filter methods are
 // exposed — those are speculative until a consumer (PR-5 / PR-6 / PR-7)
@@ -26,8 +32,6 @@ import { PrismaService } from './prisma/prisma.service.js';
 // JSON-serialisable value (`unknown`) and forwards it to Prisma opaquely
 // — the same opaque-Json pattern PR-1's ExaminationRepository uses for
 // its nine analytical fields.
-
-export type RequisitionStateValue = 'active' | 'inactive';
 
 // ---- Job ---------------------------------------------------------------
 
@@ -63,24 +67,6 @@ export interface GoldenProfileRow {
   experience: unknown;
   constraints: unknown;
   critical_skills: string[];
-}
-
-// ---- Requisition -------------------------------------------------------
-
-export interface CreateRequisitionInput {
-  id: string;
-  tenant_id: string;
-  job_id: string;
-  recruiter_id: string;
-  state: RequisitionStateValue;
-}
-
-export interface RequisitionRow {
-  id: string;
-  tenant_id: string;
-  job_id: string;
-  recruiter_id: string;
-  state: RequisitionStateValue;
 }
 
 @Injectable()
@@ -153,46 +139,4 @@ export class JobDomainRepository {
     return this.findGoldenProfileById(input.id);
   }
 
-  // ---- Requisition ----------------------------------------------------
-
-  async createRequisition(input: CreateRequisitionInput): Promise<RequisitionRow> {
-    const created = await this.prisma.requisition.create({
-      data: {
-        id: input.id,
-        tenant_id: input.tenant_id,
-        job_id: input.job_id,
-        recruiter_id: input.recruiter_id,
-        state: input.state,
-      },
-    });
-    return created as RequisitionRow;
-  }
-
-  async findRequisitionById(id: string): Promise<RequisitionRow | null> {
-    const row = await this.prisma.requisition.findUnique({ where: { id } });
-    return (row as RequisitionRow | null) ?? null;
-  }
-
-  // M3 PR-8 §4.2 — locate the active Requisition for a (tenant_id, job_id)
-  // pair. Returns the first row matching tenant_id + job_id + state='active'
-  // or null. The match-list endpoint's path uses {job_id} while PR-7's
-  // findActiveReqLiveList consumes {req_id}; this method bridges the gap
-  // without touching the PR-7 contract.
-  //
-  // The business invariant (at most one active requisition per
-  // (tenant_id, job_id)) is enforced upstream — this method does not
-  // re-assert it.
-  async findActiveRequisitionByJobId(input: {
-    tenant_id: string;
-    job_id: string;
-  }): Promise<RequisitionRow | null> {
-    const row = await this.prisma.requisition.findFirst({
-      where: {
-        tenant_id: input.tenant_id,
-        job_id: input.job_id,
-        state: 'active',
-      },
-    });
-    return (row as RequisitionRow | null) ?? null;
-  }
 }
