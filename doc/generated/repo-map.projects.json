@@ -591,6 +591,7 @@
       "REQUISITION_STATUS_VALUES",
       "RequisitionAssignmentRepository",
       "RequisitionController",
+      "RequisitionLifecycleEventStore",
       "RequisitionModule",
       "RequisitionPrismaService",
       "RequisitionRepository",
@@ -2997,6 +2998,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/job-distribution-sync.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-lifecycle-event.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

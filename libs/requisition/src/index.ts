@@ -7,6 +7,15 @@ export {
 export { RequisitionAssignmentRepository } from './lib/requisition-assignment.repository.js';
 export { PrismaService as RequisitionPrismaService } from './lib/prisma/prisma.service.js';
 
+// ADR-0024 §D17c — append-only lifecycle mutation history (write API only;
+// PR-5 wires the consumer).
+export {
+  RequisitionLifecycleEventStore,
+  type RecordRequisitionLifecycleEventInput,
+  type RequisitionLifecycleEvent,
+  type RequisitionLifecycleOrigin,
+} from './lib/requisition-lifecycle-event.store.js';
+
 export {
   REQUISITION_STATUS_VALUES,
   isRequisitionStatus,

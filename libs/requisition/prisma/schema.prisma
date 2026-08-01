@@ -328,3 +328,63 @@ model RequisitionAssignment {
 
   @@schema("requisition")
 }
+
+// RequisitionLifecycleOrigin — where a governed transition was initiated
+// (§D17c / §D8). A closed set, stored as a Postgres enum.
+enum RequisitionLifecycleOrigin {
+  ui
+  agent
+  integration
+
+  @@schema("requisition")
+}
+
+// RequisitionLifecycleEvent — ADR-0024 §D17c. APPEND-ONLY lifecycle mutation
+// history: WHAT changed (previous → next status), by WHOM, from WHERE, and —
+// when governed — WHICH policy decision permitted it. §D17a provenance records
+// why a command was permitted; this records whether/how the state change was
+// applied. This is the requisition entity's FIRST change log; the entity is
+// otherwise reference CRUD with no history.
+//
+// NOT event sourcing — lifecycle status transitions only; no general
+// field-level change history (that stays absent). Append-only: the write API
+// (RequisitionLifecycleEventStore) exposes insert + reads and NO update or
+// delete path — this is history, not state. PR-0c ships the model + write API;
+// PR-5 emits records from the transition executor. No consumer / controller /
+// endpoint / NestJS module here.
+model RequisitionLifecycleEvent {
+  // Surrogate id, UUID v7 generated app-side (mirrors PolicyDecisionRecord).
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+  // Logical ref to Requisition.id (same schema) — kept a bare UUID, NOT an FK
+  // relation, so the history survives requisition deletion: it records what
+  // happened, it is not live state.
+  requisition_id String @db.Uuid
+
+  // WHAT changed — both REQUIRED. A record that cannot say what changed is not
+  // history (§D17c).
+  previous_status RequisitionStatus
+  next_status     RequisitionStatus
+
+  // WHO initiated it, and from WHERE.
+  actor_id String
+  origin   RequisitionLifecycleOrigin
+
+  // The reason code the transition carried.
+  reason_code String
+
+  // Cross-schema logical ref to policy_store.PolicyDecisionRecord.id
+  // (Architecture §7.3 — cross-schema refs are UUID-only, NO FK). Nullable
+  // ONLY because a transition may predate policy governance; the caller
+  // supplies it whenever a decision exists.
+  policy_decision_id String? @db.Uuid
+
+  occurred_at    DateTime @default(now()) @db.Timestamptz(6)
+  correlation_id String
+
+  // Group one command's records; tenant/requisition-scoped, time-ordered reads.
+  @@index([tenant_id, requisition_id, occurred_at], map: "RequisitionLifecycleEvent_tenant_req_occurred_idx")
+  @@index([tenant_id, correlation_id], map: "RequisitionLifecycleEvent_tenant_correlation_idx")
+  @@schema("requisition")
+}
