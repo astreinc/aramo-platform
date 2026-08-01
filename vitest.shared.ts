@@ -184,6 +184,10 @@ export default defineConfig({
       // the alias lands now for template parity + fix-slice-2's cross-lib wiring.
       '@aramo/sourced-talent': resolve(root, 'libs/sourced-talent/src/index.ts'),
       '@aramo/submittal': resolve(root, 'libs/submittal/src/index.ts'),
+      // Track-0 (Tenant Reset & Archive) — the reset engine + append-only
+      // ResetBatch store. Mirrors the tsconfig.base.json @aramo/tenant-reset
+      // alias so vitest runtime resolves the apps/api integration spec import.
+      '@aramo/tenant-reset': resolve(root, 'libs/tenant-reset/src/index.ts'),
       '@aramo/talent': resolve(root, 'libs/talent/src/index.ts'),
       '@aramo/talent-evidence': resolve(root, 'libs/talent-evidence/src/index.ts'),
       // Gate-1 G1-A — talent-extraction (declared-evidence production; 3rd

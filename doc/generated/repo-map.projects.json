@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 56, "total": 58 },
+  "aliasTotals": { "apps": 2, "libs": 57, "total": 59 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -58,6 +58,7 @@
     "@aramo/talent-record": "libs/talent-record/src/index.ts",
     "@aramo/talent-trust": "libs/talent-trust/src/index.ts",
     "@aramo/task": "libs/task/src/index.ts",
+    "@aramo/tenant-reset": "libs/tenant-reset/src/index.ts",
     "@aramo/visibility": "libs/visibility/src/index.ts"
   },
   "exports": {
@@ -762,6 +763,19 @@
       "isTaskSource",
       "isTaskStatus",
       "isTaskType"
+    ],
+    "@aramo/tenant-reset": [
+      "ACTIVITY_SCOPE_PREDICATE",
+      "ArchiveLocationRequiredError",
+      "FileArchiveSink",
+      "PrismaService",
+      "RESET_REASON",
+      "RerunRefusedError",
+      "ResetBatchStore",
+      "TenantAssertionError",
+      "TenantResetService",
+      "checksumArchive",
+      "serializeArchive"
     ],
     "@aramo/visibility": [
       "MAX_MANAGEMENT_DEPTH",
@@ -3381,6 +3395,15 @@
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       { "project": "api", "status": "production" }
     ],
+    "@aramo/tenant-reset": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tenant-reset.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/visibility": [{ "project": "api", "status": "production" }]
   },
   "projects": [
@@ -3844,6 +3867,13 @@
       "root": "libs/task",
       "sourceRoot": "libs/task/src",
       "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "tenant-reset",
+      "root": "libs/tenant-reset",
+      "sourceRoot": "libs/tenant-reset/src",
+      "tags": ["scope:boundary"],
       "targets": ["build", "lint", "test"]
     },
     {
