@@ -73,6 +73,7 @@
       "@aramo/skills-taxonomy": ["libs/skills-taxonomy/src/index.ts"],
       "@aramo/sourced-talent": ["libs/sourced-talent/src/index.ts"],
       "@aramo/submittal": ["libs/submittal/src/index.ts"],
+      "@aramo/tenant-reset": ["libs/tenant-reset/src/index.ts"],
       "@aramo/talent": ["libs/talent/src/index.ts"],
       "@aramo/talent-evidence": ["libs/talent-evidence/src/index.ts"],
       "@aramo/talent-extraction": ["libs/talent-extraction/src/index.ts"],
