@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 60 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2 + 1 TR-4-B1 + 1 TR-4-B3 + 2 PC-Inc2-lifecycle + 1 TR-12-B1 + 3 TR-15-B1 + 1 Portal-P3a + 1 Portal-P3b + 1 ADR-0024-PR-3a)', () => {
+  it('ERROR_CODES contains the 61 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2 + 1 TR-4-B1 + 1 TR-4-B3 + 2 PC-Inc2-lifecycle + 1 TR-12-B1 + 3 TR-15-B1 + 1 Portal-P3a + 1 Portal-P3b + 1 ADR-0024-PR-3a + 1 Track1-T1-b)', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -111,6 +111,9 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // Portal P3b — reinvestigation extension already used (422).
       'PORTAL_DISPUTE_EXTENSION_USED',
       'POLICY_DENIED',
+      // Track 1 T1-b — 1 optimistic-concurrency stale-write refusal on
+      // requisition.Requisition (versioned update, version mismatch → 409).
+      'REQUISITION_VERSION_CONFLICT',
     ]);
   });
 });

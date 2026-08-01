@@ -385,9 +385,14 @@ describe('assertCompensationEditScopes — (e) all 3 write paths invoke the gate
     expect(repoSrc).toContain('assertCompensationEditScopes');
   });
 
+  // Track 1 T1-b — the update() DB write is now performed inside the
+  // casUpdate() helper (versioned compare-and-swap), so the write call site in
+  // update()'s body is `this.casUpdate(` rather than a direct
+  // `prisma.requisition.update(`. The proof is unchanged in intent: the comp
+  // edit-gate still fires BEFORE the write is dispatched.
   for (const [method, write] of [
     ['create', 'prisma.requisition.create('],
-    ['update', 'prisma.requisition.update('],
+    ['update', 'casUpdate('],
     ['createForImport', 'prisma.requisition.create('],
   ] as const) {
     it(`${method}() invokes assertCompensationEditScopes BEFORE ${write}`, () => {

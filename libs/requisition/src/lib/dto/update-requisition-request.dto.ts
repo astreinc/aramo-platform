@@ -10,6 +10,17 @@ import type { RequisitionStatus } from './requisition-status.js';
 // nullable-clearable (`T | null`) to follow the existing PATCH
 // semantics: omitted → unchanged; explicit `null` → cleared.
 export interface UpdateRequisitionRequestDto {
+  // ---- Optimistic concurrency (Track 1 T1-b, ruling R4) ----------------
+  // The caller's expected row version for the compare-and-swap. OPTIONAL and
+  // additive: absent → the update is unguarded (last-write-wins, the prior
+  // behaviour) but the stored version STILL increments; present → the update
+  // path guards on it and a mismatch is a stale write (409
+  // REQUISITION_VERSION_CONFLICT). This is a control token, NOT a writable
+  // content field — it is never spread into the Prisma update `data` and is
+  // NOT nullable-clearable. T1-e makes it MANDATORY for governed transitions;
+  // this PR keeps it optional so no existing caller breaks.
+  version?: number;
+
   title?: string;
   contact_id?: string | null;
   company_department_id?: string | null;

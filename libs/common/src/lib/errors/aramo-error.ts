@@ -85,6 +85,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // Portal P3b — reinvestigation extension already used.
   PORTAL_DISPUTE_EXTENSION_USED: 422,
   POLICY_DENIED: 403,
+  // Track 1 T1-b (R2) — optimistic-concurrency stale-write on requisition (409).
+  REQUISITION_VERSION_CONFLICT: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

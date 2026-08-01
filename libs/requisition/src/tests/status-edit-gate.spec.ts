@@ -77,8 +77,33 @@ describe('PR-A1 status-only edit gate', () => {
     const e = caught as AramoError;
     expect(e.code).toBe('INSUFFICIENT_PERMISSIONS');
     expect(e.context.details?.['reason']).toBe('status_only_edit_field_violation');
-    expect(e.context.details?.['allowed_fields']).toEqual(['status']);
+    // Track 1 T1-b — `version` joined `status` as a permitted key (the
+    // concurrency token is not a content field); the allowed set reflects both.
+    expect(e.context.details?.['allowed_fields']).toEqual(['status', 'version']);
     expect(e.context.details?.['attempted_fields']).toEqual(['title']);
+  });
+
+  it('status-only holder — status + version (the T1-b concurrency token) passes', () => {
+    // A status-only editor guarding their status change with the expected
+    // version is doing exactly the right thing; the token is transparent to
+    // this subset-restrict gate (T1-b R4).
+    expect(() =>
+      assertStatusOnlyEditScope({
+        input: { status: 'on_hold', version: 3 },
+        scopes: STATUS_ONLY,
+        requestId: REQUEST_ID,
+      }),
+    ).not.toThrow();
+  });
+
+  it('status-only holder — version WITHOUT status alone passes (token, not content)', () => {
+    expect(() =>
+      assertStatusOnlyEditScope({
+        input: { version: 3 },
+        scopes: STATUS_ONLY,
+        requestId: REQUEST_ID,
+      }),
+    ).not.toThrow();
   });
 
   it('status-only holder — non-status field WITHOUT status is still rejected', () => {

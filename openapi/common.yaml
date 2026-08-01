@@ -1647,6 +1647,7 @@ components:
         - PORTAL_DISPUTE_NOT_OPEN
         - PORTAL_DISPUTE_EXTENSION_USED
         - POLICY_DENIED
+        - REQUISITION_VERSION_CONFLICT
 
     ErrorObject:
       type: object
