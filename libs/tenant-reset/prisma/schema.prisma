@@ -1,0 +1,87 @@
+// Per-module Prisma schema for the `tenant-reset` module — Track-0
+// (Tenant Reset & Archive, Directive v1.0 LOCKED §2.1).
+//
+// Per Architecture v2.0/v2.1 §7.1 (Schema-per-Module data architecture)
+// and doc/05-conventions.md "Database Conventions". Cross-schema
+// references are UUID-only without FK constraints (§7.3) — `tenant_id`
+// references identity.Tenant by UUID only (no Prisma FK).
+//
+// This schema owns exactly ONE table: ResetBatch — the append-only
+// administrative record of a tenant reset (§2.1). It is NOT a
+// requisition-domain schema; the reset itself operates on the
+// requisition-domain schemas via fully-qualified raw SQL (the
+// erase-talent precedent), never Prisma model imports, so this lib
+// crosses no nx boundary (scope:boundary).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["tenant_reset"]
+}
+
+// ResetBatch — the append-only administrative record of one tenant
+// reset (§2.1). APPEND-ONLY BY CONSTRUCTION: there is no update path
+// and no delete path (the store exposes `record` + reads only; asserted
+// by test per §6). A dry-run records a batch too (§2.1): a dry run that
+// leaves no trace cannot be cited as the evidence that preceded a real
+// run.
+//
+// One row captures the whole outcome — started_at/completed_at are both
+// known when the row is appended (at step 11), so no row is ever
+// mutated. `result` is the terminal disposition of that single append.
+model ResetBatch {
+  // Identity. UUID v7 generated app-side (matches the outbox/lifecycle
+  // precedent — no native uuidv7() in Postgres 17).
+  id String @id @db.Uuid
+
+  // The tenant this reset targeted (identity.Tenant by UUID — §7.3).
+  tenant_id String @db.Uuid
+
+  // The frozen reason code for the enterprise requisition-model reset.
+  reason String
+
+  // The human who authorised the reset — NOT the executing process
+  // (§2.1). Recorded for a dry run too (the operator who previewed).
+  approved_by String
+
+  // The reset window.
+  started_at   DateTime  @db.Timestamptz
+  completed_at DateTime? @db.Timestamptz
+
+  // The immutable archive of everything deleted, and its checksum
+  // (§2.1). Null for a dry run (no archive is written) and for a run
+  // that ABORTED before export.
+  archive_location String?
+  archive_checksum String?
+
+  // Exact counts, before and after, per entity (§2.1). Shape:
+  // { "<schema.\"Table\">": { "before": <n>, "after": <n> }, ... }
+  // plus a "preserved" sub-object for the untouched entities.
+  rows_by_entity Json
+
+  // The SHA the tool ran at (§2.1) — supplied at run time, never
+  // defaulted from source control.
+  execution_commit String
+
+  // A dry run records a batch too (§2.1).
+  dry_run Boolean
+
+  // The terminal disposition of this append (§2.1).
+  //   COMPLETED — dry run finished, or a real run committed.
+  //   ABORTED   — a gate (archive checksum / count mismatch, §3.6)
+  //               refused; NO deletes ran.
+  //   FAILED    — the delete transaction errored and rolled back.
+  result String
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  // The re-run refusal reads the most recent completed real run
+  // (§4 — a completed non-dry-run batch blocks another until
+  // explicitly overridden).
+  @@index([tenant_id, dry_run, result, created_at])
+  @@schema("tenant_reset")
+}
