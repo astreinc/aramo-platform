@@ -33,3 +33,18 @@ export {
   type AddTalentPolicyInput,
   type AddTalentPolicyOutcome,
 } from './lib/policy/add-talent-policy.service.js';
+// ADR-0024 §D11 (PR-4b) — the un-collapsed disposition + the two-pass override
+// resolution (shared by both command boundaries) + the closed reason-code set.
+export {
+  toEnforcementDisposition,
+  type EnforcementDisposition,
+} from './lib/policy/decision-mapping.js';
+export {
+  resolveAddTalentOutcome,
+  type OverrideResolution,
+} from './lib/policy/override-resolution.js';
+export {
+  VALID_OVERRIDE_REASON_CODES,
+  isOverrideReasonCode,
+  type OverrideReasonCode,
+} from './lib/policy/override-reason-codes.js';

@@ -1,21 +1,26 @@
 import type { Decision } from '@aramo/policy-engine';
 
-// The PR-3 decision→enforcement mapping (ADR-0024). ALLOW / ALLOW_WITH_AUDIT
-// permit the write; DENY / REQUIRES_OVERRIDE refuse it (PR-3 RULING —
-// REQUIRES_OVERRIDE is treated as DENY; the override framework is PR-4).
+// The decision → enforcement disposition mapping (ADR-0024 §D9/§D11).
+//
+// PR-4b UN-COLLAPSES REQUIRES_OVERRIDE. Previously (PR-3) it was folded into
+// DENY because no override framework existed; now it is a distinct THIRD state
+// the command boundary resolves via the two-pass flow (membership test + reason
+// capture). ALLOW / ALLOW_WITH_AUDIT permit the write; DENY refuses it;
+// REQUIRES_OVERRIDE is neither — it is override-eligible.
+//
 // Exhaustive over the closed Decision union: an unhandled kind throws rather
 // than silently permitting.
-//
-// PR-3a: inert. Nothing routes through this yet — the consumer (controller /
-// repository) that calls it lands in PR-3.
-export function isDecisionAllowed(decision: Decision): boolean {
+export type EnforcementDisposition = 'ALLOW' | 'DENY' | 'REQUIRES_OVERRIDE';
+
+export function toEnforcementDisposition(decision: Decision): EnforcementDisposition {
   switch (decision) {
     case 'ALLOW':
     case 'ALLOW_WITH_AUDIT':
-      return true;
+      return 'ALLOW';
     case 'DENY':
+      return 'DENY';
     case 'REQUIRES_OVERRIDE':
-      return false;
+      return 'REQUIRES_OVERRIDE';
     default: {
       const exhaustive: never = decision;
       throw new Error(`unhandled decision kind: ${String(exhaustive)}`);

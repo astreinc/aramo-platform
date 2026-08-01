@@ -14,7 +14,11 @@ import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { AramoError, RequestId } from '@aramo/common';
-import { AddTalentPolicyService, PipelineRepository } from '@aramo/pipeline';
+import {
+  AddTalentPolicyService,
+  PipelineRepository,
+  resolveAddTalentOutcome,
+} from '@aramo/pipeline';
 import type { SubjectRef } from '@aramo/talent-trust';
 
 import {
@@ -104,15 +108,43 @@ export class SourcingController {
       correlation_id: requestId,
     });
 
-    if (!outcome.allowed) {
-      // No promotion, no add. Record provenance standalone; refuse with the
-      // reason_code ONLY.
-      await this.pipelineRepository.recordDecision(outcome.provenance);
+    // ADR-0024 §D11 (PR-4b) — the SAME two-pass override resolution as the
+    // pipeline boundary (reused, not duplicated): membership test against the
+    // frozen scope set + reason capture. Same original proposal (§D6).
+    const resolution = resolveAddTalentOutcome(
+      outcome,
+      authContext.scopes,
+      dto.override_reason_code,
+    );
+
+    if (resolution.kind === 'DENY') {
+      // DENY, or REQUIRES_OVERRIDE with the capability absent: no promotion, no
+      // add. Record provenance standalone; refuse with the reason_code ONLY.
+      await this.pipelineRepository.recordDecision(resolution.provenance);
       throw new AramoError(
         'POLICY_DENIED',
         'The requisition lifecycle policy denied this command',
         403,
-        { requestId, details: { reason_code: outcome.reason_code } },
+        { requestId, details: { reason_code: resolution.reason_code } },
+      );
+    }
+    if (resolution.kind === 'REASON_REQUIRED') {
+      throw new AramoError(
+        'OVERRIDE_INVALID',
+        'This command requires an override reason',
+        422,
+        { requestId, details: { reason: 'override_reason_required' } },
+      );
+    }
+    if (resolution.kind === 'REASON_INVALID') {
+      throw new AramoError(
+        'OVERRIDE_INVALID',
+        'Unrecognised override reason code',
+        422,
+        {
+          requestId,
+          details: { reason: 'override_reason_code_invalid', value: resolution.value },
+        },
       );
     }
 
@@ -121,9 +153,10 @@ export class SourcingController {
       ref_type: dto.ref_type,
       ref_id: dto.ref_id,
     };
-    // ALLOW: thread the provenance so it commits INSIDE the pipeline write's tx.
+    // ALLOW or OVERRIDE: thread the provenance so it commits INSIDE the pipeline
+    // write's tx (for an OVERRIDE it carries the reason_code + capability).
     const result = await this.sourcing.promoteAndAddToPipeline(subjectRef, dto.requisition_id, {
-      provenance: outcome.provenance,
+      provenance: resolution.provenance,
     });
     // Track-wide invariant: a mutation never commits without its provenance
     // (create() commits it in-tx); provenance MAY exist without a mutation.
@@ -132,7 +165,7 @@ export class SourcingController {
     // standalone. The deferral is a promotion-layer outcome, not a policy one:
     // the recorded decision stays the engine's ALLOW.
     if (result.pipeline_id == null) {
-      await this.pipelineRepository.recordDecision(outcome.provenance);
+      await this.pipelineRepository.recordDecision(resolution.provenance);
     }
     return result;
   }

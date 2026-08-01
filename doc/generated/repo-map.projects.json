@@ -535,9 +535,13 @@
       "PipelinePrismaService",
       "PipelineRepository",
       "REQUISITION_LIFECYCLE_PACKAGE_NAME",
+      "VALID_OVERRIDE_REASON_CODES",
       "canTransition",
+      "isOverrideReasonCode",
       "isPipelineStatus",
-      "legalNextStates"
+      "legalNextStates",
+      "resolveAddTalentOutcome",
+      "toEnforcementDisposition"
     ],
     "@aramo/platform-trust": [
       "DORMANT_LINK_STATUSES",
@@ -2934,6 +2938,12 @@
       { "project": "policy-store", "status": "production" }
     ],
     "@aramo/policy-store": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-override.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/policy-retrieval.integration.spec.ts",

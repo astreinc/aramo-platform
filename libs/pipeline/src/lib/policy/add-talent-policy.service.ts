@@ -4,7 +4,7 @@ import { PolicyStore, snapshotPolicyInputs, type InsertPolicyDecisionRecordInput
 import { RequisitionRepository } from '@aramo/requisition';
 
 import { scopesToCapabilities } from './capability-adapter.js';
-import { isDecisionAllowed } from './decision-mapping.js';
+import { toEnforcementDisposition, type EnforcementDisposition } from './decision-mapping.js';
 
 // AddTalentPolicyService — the policy call for REQUISITION_TALENT · ADD, shared
 // by both command boundaries (PipelineController + SourcingController).
@@ -42,10 +42,22 @@ export interface AddTalentPolicyInput {
 }
 
 export interface AddTalentPolicyOutcome {
-  /** true for ALLOW / ALLOW_WITH_AUDIT; false for DENY / REQUIRES_OVERRIDE / no-policy. */
-  readonly allowed: boolean;
+  /**
+   * The enforcement disposition (§D11, un-collapsed in PR-4b):
+   *   ALLOW             — ALLOW / ALLOW_WITH_AUDIT; proceed.
+   *   DENY              — DENY / no-policy fail-closed; refuse.
+   *   REQUIRES_OVERRIDE — override-eligible; the command boundary runs the
+   *                       two-pass membership + reason resolution.
+   */
+  readonly disposition: EnforcementDisposition;
   /** Client-visible reason for a refusal (the ONLY engine detail exposed on 403). */
   readonly reason_code: string;
+  /**
+   * The capability(ies) the engine NAMED for an override (§D11). Non-empty only
+   * when disposition === 'REQUIRES_OVERRIDE'; the boundary tests membership of
+   * these against the principal's frozen scope set. Never resolved here.
+   */
+  readonly required_capabilities: readonly string[];
   /** The §D17a record to persist — carries the REAL verdict + stored version. */
   readonly provenance: InsertPolicyDecisionRecordInput;
 }
@@ -103,7 +115,12 @@ export class AddTalentPolicyService {
         rule_id: NO_POLICY_RULE_ID,
         reason_code: NO_POLICY_PUBLISHED_REASON,
       };
-      return { allowed: false, reason_code: NO_POLICY_PUBLISHED_REASON, provenance };
+      return {
+        disposition: 'DENY',
+        reason_code: NO_POLICY_PUBLISHED_REASON,
+        required_capabilities: [],
+        provenance,
+      };
     }
 
     const decision = evaluate(resolved.definition, context);
@@ -119,6 +136,11 @@ export class AddTalentPolicyService {
       reason_code: decision.reason_code,
     };
 
-    return { allowed: isDecisionAllowed(decision.decision), reason_code: decision.reason_code, provenance };
+    return {
+      disposition: toEnforcementDisposition(decision.decision),
+      reason_code: decision.reason_code,
+      required_capabilities: decision.required_capabilities,
+      provenance,
+    };
   }
 }
