@@ -235,6 +235,12 @@ export const SEED_SCOPE_KEYS = [
   // TR-2a-3 — privileged within-tenant identity-resolution (same-human advisory
   // merge / dismiss / un-merge). tenant_admin + tenant_owner ONLY (NOT recruiters).
   'identity:resolve',                   // tenant_admin + tenant_owner (DEDICATED; approve/dismiss/reverse a same-human match advisory — the merge action)
+  // D3b — Charter §4 Amendment activity redaction. author-OR-scope: any author
+  // redacts their own note; this scope grants cross-author redaction to the
+  // oversight tier. NOT admin-only — a lead reviewing their pod's feed is the
+  // one who spots a note that shouldn't be there. Redaction is auditable and
+  // reversible-never, not destructive; it is not gated like *:delete.
+  'activity:redact',                    // tenant_owner + tenant_admin + recruiting_manager + lead_recruiter
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

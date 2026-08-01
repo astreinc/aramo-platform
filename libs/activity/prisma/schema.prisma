@@ -70,6 +70,18 @@ model Activity {
 
   created_at DateTime @default(now()) @db.Timestamptz
 
+  // Redaction (Charter §4 Amendment — Activity Redaction Fields v1.0 LOCKED).
+  // redact-never-delete: on redaction the `notes` body is cleared while the row
+  // survives. Written by exactly one operation (redact()) and never otherwise
+  // mutated — no un-redact, no re-redact. redacted_at is the predicate.
+  // Cross-schema UUID ref, NO FK (§7.3). DELIBERATELY UNINDEXED (§4/§8):
+  // filtering/faceting/sorting by redaction status is prohibited — it would
+  // turn an audit fact into a browsable list of removed content.
+  redacted_at           DateTime? @db.Timestamptz
+  redacted_by           String?   @db.Uuid
+  redaction_reason_code String?
+  redaction_reason      String?
+
   // Indexes — the dominant "activity for subject X" lookup + the
   // tenant-recent stream for the activity log read endpoint.
   @@index([tenant_id, subject_type, subject_id])

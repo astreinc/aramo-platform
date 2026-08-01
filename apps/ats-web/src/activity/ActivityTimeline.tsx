@@ -4,6 +4,7 @@ import { Card, InlineAlert } from '@aramo/fe-foundation';
 import { formatDate } from '../format/date';
 
 import { listActivities } from './activity-api';
+import { isRedacted, redactedNoteLabel } from './redaction';
 import { timelineErrorMessage } from './error-messages';
 import type { ActivityView } from './types';
 
@@ -80,7 +81,11 @@ export function ActivityTimeline({
           <Card>
             <div className="timeline__entry">
               <p className="timeline__kind">{labelFor(a.type)}</p>
-              {a.notes !== null && a.notes !== '' ? (
+              {isRedacted(a) ? (
+                <p className="timeline__notes timeline__notes--redacted">
+                  {redactedNoteLabel(a.redacted_at, null)}
+                </p>
+              ) : a.notes !== null && a.notes !== '' ? (
                 <p className="timeline__notes">{a.notes}</p>
               ) : null}
               <time className="timeline__time" dateTime={a.created_at}>

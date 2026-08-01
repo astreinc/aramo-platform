@@ -420,6 +420,15 @@ const ACTIVITY_INIT_MIGRATION = resolve(
   ROOT,
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
 );
+// Charter §4 Amendment — additive redaction columns on activity.Activity. The
+// regenerated activity client projects redacted_at / redacted_by /
+// redaction_reason_code / redaction_reason on every Activity SELECT (the
+// ats-web activity-list interaction runs findMany); absent in DB → 500 on the
+// activity read. Applied after ACTIVITY_INIT_MIGRATION (it ALTERs that table).
+const ACTIVITY_REDACTION_MIGRATION = resolve(
+  ROOT,
+  'libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql',
+);
 const PIPELINE_INIT_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
@@ -2808,6 +2817,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         SETTINGS_INIT_MIGRATION,
         // PC-4 — activity + pipeline for the talent-records enrichment reads.
         ACTIVITY_INIT_MIGRATION,
+        ACTIVITY_REDACTION_MIGRATION,
         PIPELINE_INIT_MIGRATION,
         POLICY_STORE_INIT_MIGRATION,
         POLICY_DECISION_RECORD_MIGRATION,
