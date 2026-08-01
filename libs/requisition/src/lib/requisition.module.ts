@@ -4,8 +4,13 @@ import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
 import { JobDomainModule } from '@aramo/job-domain';
+import {
+  PolicyStore,
+  PrismaService as PolicyStorePrismaService,
+} from '@aramo/policy-store';
 
 import { PrismaService } from './prisma/prisma.service.js';
+import { SetPriorityPolicyService } from './policy/set-priority-policy.service.js';
 import { RequisitionAssignmentRepository } from './requisition-assignment.repository.js';
 import { RequisitionController } from './requisition.controller.js';
 import { RequisitionIntakeService } from './requisition-intake.service.js';
@@ -40,6 +45,12 @@ import { RequisitionRepository } from './requisition.repository.js';
   controllers: [RequisitionController],
   providers: [
     PrismaService,
+    // ADR-0024 PR-7 — the SET_PRIORITY policy gate (R1, repository floor). The
+    // policy-store PrismaService is its OWN generated client (lazy DATABASE_URL),
+    // distinct from the requisition client above.
+    PolicyStorePrismaService,
+    PolicyStore,
+    SetPriorityPolicyService,
     RequisitionRepository,
     RequisitionAssignmentRepository,
     RequisitionProfileService,

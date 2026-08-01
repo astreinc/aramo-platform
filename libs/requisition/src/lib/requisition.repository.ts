@@ -1,8 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AramoError, type VisibilityContextShape } from '@aramo/common';
+import {
+  insertPolicyDecisionRecordInTx,
+  type InsertPolicyDecisionRecordInput,
+} from '@aramo/policy-store';
 
 import { Prisma } from '../../prisma/generated/client/client.js';
 
+import { SetPriorityPolicyService } from './policy/set-priority-policy.service.js';
 import { assertCompensationEditScopes } from './compensation-edit-gate.js';
 import { computeDerivedViews } from './compensation-views.js';
 import { assertFinancialEditScopes } from './field-group-edit-gate.js';
@@ -363,7 +368,53 @@ export interface PublishableRequisitionRow {
 export class RequisitionRepository {
   private readonly logger = new Logger(RequisitionRepository.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // ADR-0024 PR-7 (R1) — SET_PRIORITY gate at the repository floor
+    // (D-AUTHZ-COMP-WRITE-1: the deepest layer all write paths traverse).
+    private readonly setPriorityPolicy: SetPriorityPolicyService,
+  ) {}
+
+  // PR-7 — the REQUISITION · SET_PRIORITY gate. Called ONLY when is_hot is being
+  // set TRUE (R3 — clearing is_hot is cleanup, never governed; "false" is not a
+  // rule). Returns the §D17a provenance to persist in the write transaction, or
+  // null when not governed. `enforce` (create/update): a DENY records the refusal
+  // standalone and throws 403 POLICY_DENIED. Import passes enforce=false — it
+  // RECORDS the decision (so the exemption is visible) but proceeds regardless
+  // (R2: import is a bulk historical load, not the operation the matrix governs).
+  private async gateSetPriority(args: {
+    tenant_id: string;
+    status: string;
+    scopes: readonly string[];
+    actor_id: string;
+    requestId: string;
+    enforce: boolean;
+    is_hot?: boolean;
+  }): Promise<InsertPolicyDecisionRecordInput | null> {
+    if (args.is_hot !== true) return null; // R3 — only ASSERTING priority is governed
+    const outcome = await this.setPriorityPolicy.decide({
+      tenant_id: args.tenant_id,
+      status: args.status,
+      scopes: args.scopes,
+      actor_id: args.actor_id,
+      origin: 'ui',
+      correlation_id: args.requestId,
+    });
+    if (args.enforce && outcome.disposition === 'DENY') {
+      // No mutation. Record the refusal standalone (provenance may exist without
+      // a mutation), refuse with the reason_code ONLY.
+      await this.prisma.$transaction((tx) =>
+        insertPolicyDecisionRecordInTx(tx, outcome.provenance),
+      );
+      throw new AramoError(
+        'POLICY_DENIED',
+        'The requisition lifecycle policy denied this priority change',
+        403,
+        { requestId: args.requestId, details: { reason_code: outcome.reason_code } },
+      );
+    }
+    return outcome.provenance;
+  }
 
   // Minimal tenant-scoped declared-status read (ADR-0024 §D13b input for the
   // policy engine). No visibility predicate: the declared status is a fact of
@@ -410,35 +461,53 @@ export class RequisitionRepository {
       scopes: args.scopes,
       requestId: args.requestId,
     });
-    const row = await this.prisma.requisition.create({
-      data: {
-        tenant_id,
-        site_id: input.site_id ?? null,
-        title: input.title,
-        company_id: input.company_id,
-        contact_id: input.contact_id ?? null,
-        company_department_id: input.company_department_id ?? null,
-        status: input.status ?? 'active',
-        type: input.type ?? null,
-        duration: input.duration ?? null,
-        description: input.description ?? null,
-        notes: input.notes ?? null,
-        is_hot: input.is_hot ?? false,
-        openings: input.openings ?? 1,
-        // PR-0b-1: availability initialises to the authored opening count.
-        // openings_available is no longer a write DTO field; pipeline
-        // placement transitions are its only mutator thereafter.
-        openings_available: input.openings ?? 1,
-        start_date: input.start_date === undefined ? null : new Date(input.start_date),
-        city: input.city ?? null,
-        state: input.state ?? null,
-        recruiter_id: input.recruiter_id ?? entered_by_id,
-        owner_id: input.owner_id ?? entered_by_id,
-        entered_by_id,
-        ...buildCompensationCreateData(input),
-        ...buildEnterpriseCreateData(input),
-      },
+    const data: Prisma.RequisitionUncheckedCreateInput = {
+      tenant_id,
+      site_id: input.site_id ?? null,
+      title: input.title,
+      company_id: input.company_id,
+      contact_id: input.contact_id ?? null,
+      company_department_id: input.company_department_id ?? null,
+      status: input.status ?? 'active',
+      type: input.type ?? null,
+      duration: input.duration ?? null,
+      description: input.description ?? null,
+      notes: input.notes ?? null,
+      is_hot: input.is_hot ?? false,
+      openings: input.openings ?? 1,
+      // PR-0b-1: availability initialises to the authored opening count.
+      // openings_available is no longer a write DTO field; pipeline
+      // placement transitions are its only mutator thereafter.
+      openings_available: input.openings ?? 1,
+      start_date: input.start_date === undefined ? null : new Date(input.start_date),
+      city: input.city ?? null,
+      state: input.state ?? null,
+      recruiter_id: input.recruiter_id ?? entered_by_id,
+      owner_id: input.owner_id ?? entered_by_id,
+      entered_by_id,
+      ...buildCompensationCreateData(input),
+      ...buildEnterpriseCreateData(input),
+    };
+    // PR-7 (R1) — SET_PRIORITY gate. Governed only when is_hot is set TRUE (R3).
+    // On DENY (closed/canceled) it throws 403 and no row is written; on ALLOW the
+    // row + its provenance commit atomically.
+    const setPriorityProvenance = await this.gateSetPriority({
+      tenant_id,
+      status: input.status ?? 'active',
+      scopes: args.scopes,
+      actor_id: entered_by_id,
+      requestId: args.requestId,
+      enforce: true,
+      is_hot: input.is_hot,
     });
+    const row =
+      setPriorityProvenance === null
+        ? await this.prisma.requisition.create({ data })
+        : await this.prisma.$transaction(async (tx) => {
+            const created = await tx.requisition.create({ data });
+            await insertPolicyDecisionRecordInTx(tx, setPriorityProvenance);
+            return created;
+          });
     return projectView(row as RequisitionRow);
   }
 
@@ -474,36 +543,57 @@ export class RequisitionRepository {
       scopes: args.scopes,
       requestId: args.requestId,
     });
-    const row = await this.prisma.requisition.create({
-      data: {
-        tenant_id,
-        site_id: input.site_id ?? null,
-        title: input.title,
-        company_id: input.company_id,
-        contact_id: input.contact_id ?? null,
-        company_department_id: input.company_department_id ?? null,
-        status: input.status ?? 'active',
-        type: input.type ?? null,
-        duration: input.duration ?? null,
-        description: input.description ?? null,
-        notes: input.notes ?? null,
-        is_hot: input.is_hot ?? false,
-        openings: input.openings ?? 1,
-        // PR-0b-1: availability initialises to the authored opening count.
-        // openings_available is no longer a write DTO field; pipeline
-        // placement transitions are its only mutator thereafter.
-        openings_available: input.openings ?? 1,
-        start_date: input.start_date === undefined ? null : new Date(input.start_date),
-        city: input.city ?? null,
-        state: input.state ?? null,
-        recruiter_id: input.recruiter_id ?? entered_by_id,
-        owner_id: input.owner_id ?? entered_by_id,
-        entered_by_id,
-        import_batch_id,
-        ...buildCompensationCreateData(input),
-        ...buildEnterpriseCreateData(input),
-      },
+    const data: Prisma.RequisitionUncheckedCreateInput = {
+      tenant_id,
+      site_id: input.site_id ?? null,
+      title: input.title,
+      company_id: input.company_id,
+      contact_id: input.contact_id ?? null,
+      company_department_id: input.company_department_id ?? null,
+      status: input.status ?? 'active',
+      type: input.type ?? null,
+      duration: input.duration ?? null,
+      description: input.description ?? null,
+      notes: input.notes ?? null,
+      is_hot: input.is_hot ?? false,
+      openings: input.openings ?? 1,
+      // PR-0b-1: availability initialises to the authored opening count.
+      // openings_available is no longer a write DTO field; pipeline
+      // placement transitions are its only mutator thereafter.
+      openings_available: input.openings ?? 1,
+      start_date: input.start_date === undefined ? null : new Date(input.start_date),
+      city: input.city ?? null,
+      state: input.state ?? null,
+      recruiter_id: input.recruiter_id ?? entered_by_id,
+      owner_id: input.owner_id ?? entered_by_id,
+      entered_by_id,
+      import_batch_id,
+      ...buildCompensationCreateData(input),
+      ...buildEnterpriseCreateData(input),
+    };
+    // PR-7 (R2) — IMPORT is EXEMPT from SET_PRIORITY enforcement: an import is a
+    // bulk historical load ("what WAS"), not the operation the lifecycle matrix
+    // governs ("what is being DONE"). Gating uniformly would fail a whole import
+    // over one terminal-req row, with hand-editing the source file as the only
+    // remedy. So enforce=false: we still RECORD the SET_PRIORITY decision (so the
+    // exemption is visible, not invisible) and the row proceeds regardless.
+    const setPriorityProvenance = await this.gateSetPriority({
+      tenant_id,
+      status: input.status ?? 'active',
+      scopes: args.scopes,
+      actor_id: entered_by_id,
+      requestId: args.requestId,
+      enforce: false,
+      is_hot: input.is_hot,
     });
+    const row =
+      setPriorityProvenance === null
+        ? await this.prisma.requisition.create({ data })
+        : await this.prisma.$transaction(async (tx) => {
+            const created = await tx.requisition.create({ data });
+            await insertPolicyDecisionRecordInTx(tx, setPriorityProvenance);
+            return created;
+          });
     return projectView(row as RequisitionRow);
   }
 
@@ -530,6 +620,8 @@ export class RequisitionRepository {
     input: UpdateRequisitionRequestDto;
     // D-AUTHZ-COMP-WRITE-1 — the initiating actor's scopes.
     scopes: readonly string[];
+    // PR-7 — the acting principal, for the SET_PRIORITY §D17a provenance.
+    actor_id: string;
     requestId: string;
   }): Promise<RequisitionView> {
     // PR-A1 Requisition-Gating Rework — the status-only edit gate fires
@@ -565,7 +657,7 @@ export class RequisitionRepository {
     });
     const existing = await this.prisma.requisition.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (existing === null) {
       throw new AramoError(
@@ -647,10 +739,27 @@ export class RequisitionRepository {
     if (i.min_pay_rate !== undefined) data['min_pay_rate'] = i.min_pay_rate;
     if (i.max_pay_rate !== undefined) data['max_pay_rate'] = i.max_pay_rate;
 
-    const row = await this.prisma.requisition.update({
-      where: { id: args.id },
-      data,
+    // PR-7 (R1/R3) — SET_PRIORITY gate on update, governed ONLY when is_hot is
+    // being set TRUE. Effective status = the PATCH's new status if provided, else
+    // the existing one. On DENY (closed/canceled) → 403, no mutation; on ALLOW
+    // the update + its provenance commit atomically.
+    const setPriorityProvenance = await this.gateSetPriority({
+      tenant_id: args.tenant_id,
+      status: (args.input.status ?? existing.status) as string,
+      scopes: args.scopes,
+      actor_id: args.actor_id,
+      requestId: args.requestId,
+      enforce: true,
+      is_hot: args.input.is_hot,
     });
+    const row =
+      setPriorityProvenance === null
+        ? await this.prisma.requisition.update({ where: { id: args.id }, data })
+        : await this.prisma.$transaction(async (tx) => {
+            const updated = await tx.requisition.update({ where: { id: args.id }, data });
+            await insertPolicyDecisionRecordInTx(tx, setPriorityProvenance);
+            return updated;
+          });
     return projectView(row as RequisitionRow);
   }
 

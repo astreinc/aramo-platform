@@ -183,7 +183,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           [ACTOR],
         )).rows;
         expect(recs).toHaveLength(1);
-        expect(recs[0].policy_version).toBe('2.0.0'); // PR-4c restrictive matrix
+        expect(recs[0].policy_version).toBe('3.0.0'); // PR-7 (v3.0.0)
         expect(recs[0].rule_id).toBe('add-talent-active');
       });
 

@@ -13,7 +13,9 @@
       "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
-      "@aramo/job-domain": ["../../dist/libs/job-domain/src/index.d.ts"]
+      "@aramo/job-domain": ["../../dist/libs/job-domain/src/index.d.ts"],
+      "@aramo/policy-engine": ["../../dist/libs/policy-engine/src/index.d.ts"],
+      "@aramo/policy-store": ["../../dist/libs/policy-store/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

@@ -156,7 +156,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const noop = (): undefined => undefined;
       const logger = { log: noop, warn: noop, error: noop, debug: noop };
       service = new JobDistributionSyncService(
-        new RequisitionRepository(reqPrisma) as never,
+        new RequisitionRepository(reqPrisma, {} as never) as never,
         postingStates as never,
         connector as never,
         tokens as never,

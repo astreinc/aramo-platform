@@ -22,16 +22,19 @@ const ACTION: Readonly<Record<string, string>> = {
   REQUISITION_SUBMITTAL: 'CREATE',
   REQUISITION_NOTE: 'ADD',
   REQUISITION_DOCUMENT: 'ADD',
+  REQUISITION: 'SET_PRIORITY', // PR-7
 };
 
 // Independent copy of the directive matrix (state × resource → decision).
+// PR-7 adds REQUISITION · SET_PRIORITY: active/on_hold/full/lead ALLOW,
+// closed/canceled DENY (priority on a terminal requisition is meaningless).
 const EXPECTED: Readonly<Record<string, Readonly<Record<string, Decision>>>> = {
-  active: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'ALLOW', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
-  on_hold: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
-  full: { REQUISITION_TALENT: 'REQUIRES_OVERRIDE', REQUISITION_SUBMITTAL: 'REQUIRES_OVERRIDE', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'REQUIRES_OVERRIDE' },
-  closed: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY' },
-  canceled: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY' },
-  lead: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
+  active: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'ALLOW', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW', REQUISITION: 'ALLOW' },
+  on_hold: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW', REQUISITION: 'ALLOW' },
+  full: { REQUISITION_TALENT: 'REQUIRES_OVERRIDE', REQUISITION_SUBMITTAL: 'REQUIRES_OVERRIDE', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'REQUIRES_OVERRIDE', REQUISITION: 'ALLOW' },
+  closed: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY', REQUISITION: 'DENY' },
+  canceled: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY', REQUISITION: 'DENY' },
+  lead: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW', REQUISITION: 'ALLOW' },
 };
 
 function contextFor(status: string, resource: string): PolicyContext {
@@ -48,22 +51,23 @@ function contextFor(status: string, resource: string): PolicyContext {
   };
 }
 
-describe('REQUISITION_LIFECYCLE_PACKAGE v2.0.0 — restrictive matrix DATA', () => {
-  it('is a structurally valid package (as PolicyStore.publish will require), v2.0.0, named for the retrieval key, default ALLOW', () => {
+describe('REQUISITION_LIFECYCLE_PACKAGE v3.0.0 — restrictive matrix DATA', () => {
+  it('is a structurally valid package (as PolicyStore.publish will require), v3.0.0, named for the retrieval key, default ALLOW', () => {
     expect(() => validatePackage(REQUISITION_LIFECYCLE_PACKAGE)).not.toThrow();
     expect(REQUISITION_LIFECYCLE_PACKAGE.name).toBe(REQUISITION_LIFECYCLE_PACKAGE_NAME);
-    expect(REQUISITION_LIFECYCLE_PACKAGE.version).toBe('2.0.0');
+    expect(REQUISITION_LIFECYCLE_PACKAGE.version).toBe('3.0.0');
     expect(REQUISITION_LIFECYCLE_PACKAGE.default_disposition.decision).toBe('ALLOW');
   });
 
-  it('governs the four resource·action pairs (Add / Submit / Note / Document)', () => {
+  it('governs the five resource·action pairs (Add / Submit / Note / Document / SetPriority)', () => {
     expect([...REQUISITION_LIFECYCLE_PACKAGE.registry.resources].sort()).toEqual([
+      'REQUISITION',
       'REQUISITION_DOCUMENT',
       'REQUISITION_NOTE',
       'REQUISITION_SUBMITTAL',
       'REQUISITION_TALENT',
     ]);
-    expect([...REQUISITION_LIFECYCLE_PACKAGE.registry.actions].sort()).toEqual(['ADD', 'CREATE']);
+    expect([...REQUISITION_LIFECYCLE_PACKAGE.registry.actions].sort()).toEqual(['ADD', 'CREATE', 'SET_PRIORITY']);
   });
 
   // EVERY cell (24), evaluated through the engine against the package DATA.
