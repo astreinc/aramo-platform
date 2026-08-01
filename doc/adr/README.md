@@ -47,6 +47,8 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 | [0019](0019-manual-recruiter-rating-r10-boundary.md) | Manual Recruiter Rating and the R10 Boundary | **Rejected** | 2026-06-16 |
 | [0020](0020-build-for-tenant-50-governing-principle.md) | **Build For Tenant #50 (Astre Is The Test Harness)** — governing principle (see above) | **Accepted — LOCKED** | 2026-06-26 |
 | [0024](0024-business-policy-engine.md) | Business Policy Engine | **Accepted — LOCKED** | 2026-07-30 |
+| [0024-A1](0024-amendment-a1-capacity-binding-and-corrections.md) | Amendment A1 — Capacity Binding and Vocabulary Corrections (amends ADR-0024) | **Accepted — LOCKED** | 2026-08-01 |
+| [0027](0027-client-talent-restriction-r10-compatibility.md) | Client-Scoped Talent Restriction and the R10 Boundary | **Accepted — LOCKED** | 2026-08-01 |
 
 ## When to write an ADR
 

@@ -10171,6 +10171,12 @@
       "to": "scripts/verify-vocabulary.sh"
     },
     {
+      "from": "doc/adr/0024-amendment-a1-capacity-binding-and-corrections.md",
+      "line": 105,
+      "status": "unscoped",
+      "to": "doc/03-refusal-layer.md"
+    },
+    {
       "from": "doc/adr/0024-business-policy-engine.md",
       "line": 312,
       "status": "unscoped",
@@ -10181,6 +10187,18 @@
       "line": 7,
       "status": "unscoped",
       "to": "libs/requisition/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/adr/0027-client-talent-restriction-r10-compatibility.md",
+      "line": 7,
+      "status": "unscoped",
+      "to": "doc/03-refusal-layer.md"
+    },
+    {
+      "from": "doc/adr/0027-client-talent-restriction-r10-compatibility.md",
+      "line": 139,
+      "status": "unscoped",
+      "to": "doc/03-refusal-layer.md"
     },
     {
       "from": "doc/adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md",
@@ -10245,7 +10263,7 @@
     { "from": "doc/adr/README.md", "line": 3, "status": "unscoped", "to": "doc/04-risks.md" },
     {
       "from": "doc/adr/README.md",
-      "line": 59,
+      "line": 61,
       "status": "unscoped",
       "to": "doc/06-lead-review-checklist.md"
     },
