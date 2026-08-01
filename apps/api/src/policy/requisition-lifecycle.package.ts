@@ -77,12 +77,43 @@ const RULES: PolicyPackage['rules'] = Object.entries(MATRIX).flatMap(([status, r
   }),
 );
 
+// PR-7 — REQUISITION · SET_PRIORITY (the is_hot flag). Priority is a team-wide
+// operational attribute; this governs WHEN it may be ASSERTED, keyed on the
+// declared status. active/on_hold/full/lead ALLOW; closed/canceled DENY
+// (priority on a terminal requisition is meaningless). Clearing (is_hot → false)
+// is NOT a governed operation — the caller evaluates SET_PRIORITY only when
+// is_hot is being set TRUE (R3); "false" is never encoded as a rule.
+const SET_PRIORITY_MATRIX: Readonly<Record<string, Decision>> = {
+  active: 'ALLOW',
+  on_hold: 'ALLOW',
+  full: 'ALLOW',
+  closed: 'DENY',
+  canceled: 'DENY',
+  lead: 'ALLOW',
+};
+const SET_PRIORITY_RULES: PolicyPackage['rules'] = Object.entries(SET_PRIORITY_MATRIX).map(
+  ([status, decision]) => ({
+    id: `set-priority-${status}`,
+    resource: 'REQUISITION',
+    action: 'SET_PRIORITY',
+    when: [{ source: 'declared' as const, key: 'status', op: 'eq' as const, value: status }],
+    decision,
+    reason_code: `LIFECYCLE_SET_PRIORITY_${REASON_SUFFIX[decision]}`,
+  }),
+);
+
 export const REQUISITION_LIFECYCLE_PACKAGE: PolicyPackage = {
   name: REQUISITION_LIFECYCLE_PACKAGE_NAME,
-  version: '2.0.0',
+  version: '3.0.0',
   registry: {
-    resources: ['REQUISITION_TALENT', 'REQUISITION_SUBMITTAL', 'REQUISITION_NOTE', 'REQUISITION_DOCUMENT'],
-    actions: ['ADD', 'CREATE'],
+    resources: [
+      'REQUISITION_TALENT',
+      'REQUISITION_SUBMITTAL',
+      'REQUISITION_NOTE',
+      'REQUISITION_DOCUMENT',
+      'REQUISITION',
+    ],
+    actions: ['ADD', 'CREATE', 'SET_PRIORITY'],
   },
   // R3 — a package MUST declare its own no-match disposition. ALLOW (permissive
   // by default; the matrix restricts the specific governed cells).
@@ -90,5 +121,5 @@ export const REQUISITION_LIFECYCLE_PACKAGE: PolicyPackage = {
     decision: 'ALLOW',
     reason_code: 'LIFECYCLE_ALLOWED_DEFAULT',
   },
-  rules: RULES,
+  rules: [...RULES, ...SET_PRIORITY_RULES],
 };

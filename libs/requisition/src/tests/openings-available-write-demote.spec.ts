@@ -41,7 +41,9 @@ describe('PR-0b-1 — openings_available is not PATCH-writable', () => {
       },
     };
 
-    const repo = new RequisitionRepository(fakePrisma as never);
+    // PR-7 — the SET_PRIORITY policy service is a 2nd ctor arg; this PATCH sets
+    // no is_hot, so the gate short-circuits (R3) and the service is never called.
+    const repo = new RequisitionRepository(fakePrisma as never, {} as never);
 
     await repo.update({
       tenant_id: 'tenant-1',
@@ -51,6 +53,7 @@ describe('PR-0b-1 — openings_available is not PATCH-writable', () => {
         openings_available: 999,
       } as unknown as UpdateRequisitionRequestDto,
       scopes: ['requisition:edit'],
+      actor_id: 'actor-1',
       requestId: 'test-req',
     });
 

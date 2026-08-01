@@ -2897,6 +2897,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // verifier tenant so the retrieval-based add-talent policy resolves ALLOW
       // instead of failing closed on the /v1/pipelines + /v1/sourcing/pipeline
       // replays. Inline (module-boundary wall forbids the apps/api helper here).
+      // PR-7 — the requisition-update pact sets is_hot=true, which the write
+      // floor now routes through REQUISITION·SET_PRIORITY; the registry must
+      // declare that pair or evaluate() throws UNREGISTERED_RESOURCE (500).
+      // rules stay empty so the stub resolves the default ALLOW (the pact
+      // asserts a 200 success, not a specific matrix cell).
       const policyPrisma = new PolicyStorePrismaService(url);
       await policyPrisma.$connect();
       try {
@@ -2908,7 +2913,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             definition: {
               name: 'requisition-lifecycle',
               version: '1.0.0',
-              registry: { resources: ['REQUISITION_TALENT'], actions: ['ADD'] },
+              registry: { resources: ['REQUISITION_TALENT', 'REQUISITION'], actions: ['ADD', 'SET_PRIORITY'] },
               default_disposition: { decision: 'ALLOW', reason_code: 'PACT_LIFECYCLE_ALLOW' },
               rules: [],
             },

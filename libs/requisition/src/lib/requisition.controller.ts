@@ -236,6 +236,7 @@ export class RequisitionController {
       id,
       input: body,
       scopes: authContext.scopes,
+      actor_id: authContext.sub,
       requestId,
     });
   }
