@@ -33,9 +33,14 @@ const PROVENANCE = {
 };
 
 function make(over: { allowed?: boolean; serviceResult?: unknown } = {}) {
+  // PR-4b — the outcome is now disposition-based (ALLOW/DENY/REQUIRES_OVERRIDE);
+  // these unit cases cover the ALLOW/DENY threading, so map the boolean to a
+  // disposition. (The REQUIRES_OVERRIDE two-pass is covered by
+  // override-resolution.spec.ts + the policy-override E2E.)
   const decide = vi.fn().mockResolvedValue({
-    allowed: over.allowed ?? true,
+    disposition: (over.allowed ?? true) ? 'ALLOW' : 'DENY',
     reason_code: PROVENANCE.reason_code,
+    required_capabilities: [],
     provenance: PROVENANCE,
   });
   const promoteAndAddToPipeline = vi.fn().mockResolvedValue(

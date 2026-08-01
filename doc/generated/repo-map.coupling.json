@@ -4793,21 +4793,21 @@
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/sourcing-policy-controller.spec.ts",
-      "line": 116,
+      "line": 121,
       "status": "excluded",
       "to": "apps/api/src/talent-identity/sourcing.controller.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/sourcing-policy-controller.spec.ts",
-      "line": 115,
+      "line": 120,
       "status": "excluded",
       "to": "libs/pipeline/src/lib/pipeline.controller.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/sourcing-policy-controller.spec.ts",
-      "line": 117,
+      "line": 122,
       "status": "excluded",
       "to": "libs/pipeline/src/lib/pipeline.repository.ts"
     },
@@ -14491,6 +14491,12 @@
       "line": 42,
       "status": "production",
       "to": "libs/pipeline/src/lib/pipeline-state.ts"
+    },
+    {
+      "from": "libs/pipeline/src/lib/policy/override-reason-codes.ts",
+      "line": 10,
+      "status": "production",
+      "to": "libs/examination/src/lib/dto/create-override-request.dto.ts"
     },
     {
       "from": "libs/platform-trust/prisma/schema.prisma",

@@ -1,4 +1,4 @@
-import { IsIn, IsUUID } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
 
 // Promotion-Trigger slice-A — the two sourcer-trigger request bodies. The
 // subject is addressed by its pre-promotion L2 ref (SOURCED_TALENT ref_id = the
@@ -17,6 +17,13 @@ export class AddToPipelineRequestDto {
 
   @IsUUID()
   requisition_id!: string;
+
+  // ADR-0024 §D11 (PR-4b) — operator override reason code; REQUIRED only when the
+  // policy verdict is REQUIRES_OVERRIDE (closed-set check at the controller
+  // boundary → OVERRIDE_INVALID 422). Optional at the transport layer.
+  @IsOptional()
+  @IsString()
+  override_reason_code?: string;
 }
 
 export class SaveToBenchRequestDto {

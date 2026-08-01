@@ -20,6 +20,18 @@ export interface PolicyDecisionInputs {
   readonly declared: Readonly<Record<string, unknown>>;
   readonly derived: Readonly<Record<string, unknown>>;
   readonly capabilities: Readonly<Record<string, boolean>>;
+  // ADR-0024 §D11 (PR-4b) — set ONLY when a REQUIRES_OVERRIDE decision was
+  // satisfied: the operator's override reason_code and the capability(ies) that
+  // satisfied the engine-named requirement. Both are PII-free (a closed-set
+  // reason code + resolved capability identifiers), so they honour the
+  // whitelist above. Written into the EXISTING `inputs` jsonb of
+  // PolicyDecisionRecord — NO schema change. Absent on ordinary ALLOW/DENY
+  // records; snapshotPolicyInputs never sets it — the pipeline override path
+  // attaches it before the record is written.
+  readonly override?: {
+    readonly reason_code: string | null;
+    readonly capabilities: readonly string[];
+  };
 }
 
 /** Build the PII-free `inputs` snapshot from an evaluated PolicyContext. */
