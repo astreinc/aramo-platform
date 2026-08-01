@@ -10683,51 +10683,45 @@
     },
     {
       "from": "doc/go-live-known-limitations.md",
-      "line": 527,
+      "line": 518,
       "status": "unscoped",
       "to": "doc/auth-local-mock-idp-recon.md"
     },
     {
       "from": "doc/go-live-known-limitations.md",
-      "line": 549,
+      "line": 540,
       "status": "unscoped",
       "to": "doc/auth-mfa-recon.md"
     },
     {
       "from": "doc/go-live-known-limitations.md",
-      "line": 154,
+      "line": 145,
       "status": "unscoped",
       "to": "doc/runbooks/bootstrap-anthropic-secret.md"
     },
     {
       "from": "doc/go-live-known-limitations.md",
-      "line": 187,
+      "line": 178,
       "status": "unscoped",
       "to": "doc/runbooks/talent-rtbf-erasure.md"
     },
     {
       "from": "doc/go-live-known-limitations.md",
-      "line": 207,
+      "line": 198,
       "status": "unscoped",
       "to": "doc/runbooks/talent-rtbf-erasure.md"
     },
     {
       "from": "doc/go-live-known-limitations.md",
-      "line": 152,
+      "line": 143,
       "status": "unscoped",
       "to": "infrastructure/bootstrap/create-anthropic-secret.sh"
     },
     {
       "from": "doc/go-live-known-limitations.md",
-      "line": 62,
+      "line": 53,
       "status": "unscoped",
       "to": "libs/identity/src/lib/tenant.service.ts"
-    },
-    {
-      "from": "doc/go-live-known-limitations.md",
-      "line": 18,
-      "status": "unscoped",
-      "to": "libs/policy-store/src/lib/policy-store.ts"
     },
     {
       "from": "doc/integration-testing.md",

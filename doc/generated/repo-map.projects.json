@@ -2946,6 +2946,12 @@
     "@aramo/policy-store": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/policy-cache-ttl.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/policy-matrix.integration.spec.ts",
         "project": "api",
         "status": "excluded"

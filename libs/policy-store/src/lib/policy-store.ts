@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 import { PolicyEngineError, validatePackage, type PolicyPackage } from '@aramo/policy-engine';
 
@@ -33,15 +33,42 @@ interface StoredRow {
   published_at: Date;
 }
 
+// ADR-0024 PR-4d — the active-version cache carries a TTL so a version published
+// by the seed or ANOTHER instance becomes effective on a RUNNING api within a
+// bounded window. Publish-time eviction still makes the publishing instance
+// immediate; the TTL bounds every other reader. Env-overridable (tests); a TTL
+// of 0 (a query per decision, defeating the cache) or unbounded (the
+// stale-forever defect) is REJECTED at construction.
+const DEFAULT_CACHE_TTL_MS = 30_000;
+const MIN_CACHE_TTL_MS = 1; // the floor — anything <= 0 or non-finite is invalid
+
+function resolveCacheTtlMs(): number {
+  const raw = process.env['ARAMO_POLICY_CACHE_TTL_MS'];
+  if (raw === undefined || raw === '') return DEFAULT_CACHE_TTL_MS;
+  const ms = Number(raw);
+  if (!Number.isFinite(ms) || ms < MIN_CACHE_TTL_MS) {
+    throw new Error(
+      `ARAMO_POLICY_CACHE_TTL_MS must be a finite number >= ${MIN_CACHE_TTL_MS}ms — a TTL of 0 or unbounded reintroduces the cache-staleness defect (got "${raw}")`,
+    );
+  }
+  return ms;
+}
+
+interface CachedVersion {
+  readonly value: ResolvedPolicyVersion;
+  readonly cachedAt: number;
+}
+
 @Injectable()
 export class PolicyStore {
-  // Cache of the current active version per (tenant, package). A hit is
-  // re-validated against the present instant on every read, and every
-  // publish invalidates the key — so a stale read is impossible: a version
-  // whose window has closed (by a later publication or by the passage of
-  // time past its effective_to) never satisfies isEffectiveAt(now) and is
-  // re-queried.
-  private readonly currentCache = new Map<string, ResolvedPolicyVersion>();
+  // Cache of the current active version per (tenant, package). A hit is served
+  // only if it is BOTH still window-effective at the present instant AND younger
+  // than the TTL; otherwise it is re-read from the DB. Every publish evicts the
+  // key on THIS instance (immediate for the publisher). The TTL bounds staleness
+  // for a version published elsewhere (seed / another instance).
+  private readonly currentCache = new Map<string, CachedVersion>();
+  private readonly ttlMs = resolveCacheTtlMs();
+  private readonly logger = new Logger(PolicyStore.name);
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -163,8 +190,8 @@ export class PolicyStore {
 
     if (isCurrent) {
       const cached = this.currentCache.get(PolicyStore.cacheKey(tenantId, packageName));
-      if (cached && isEffectiveAt(cached, instant)) {
-        return cached;
+      if (cached && isEffectiveAt(cached.value, instant) && Date.now() - cached.cachedAt <= this.ttlMs) {
+        return cached.value;
       }
     }
 
@@ -177,7 +204,12 @@ export class PolicyStore {
 
     const resolved = PolicyStore.toResolved(active);
     if (isCurrent) {
-      this.currentCache.set(PolicyStore.cacheKey(tenantId, packageName), resolved);
+      this.currentCache.set(PolicyStore.cacheKey(tenantId, packageName), { value: resolved, cachedAt: Date.now() });
+      // Inspectability (PR-4d): the in-force version is answerable at runtime
+      // from the log, without a DB query.
+      this.logger.log(
+        `policy cache load: tenant=${tenantId} package=${packageName} version=${resolved.version} checksum=${resolved.checksum}`,
+      );
     }
     return resolved;
   }
