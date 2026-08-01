@@ -45,6 +45,10 @@ interface Mocks {
   entitlementRepo: {
     grantCapabilities: ReturnType<typeof vi.fn>;
   };
+  // ADR-0024 PR-4a-2 — step 4 (the requisition-lifecycle template copy).
+  policyProvisioning: {
+    publishDefaultLifecyclePackage: ReturnType<typeof vi.fn>;
+  };
 }
 
 function makeMocks(): Mocks {
@@ -73,6 +77,9 @@ function makeMocks(): Mocks {
     entitlementRepo: {
       grantCapabilities: vi.fn(),
     },
+    policyProvisioning: {
+      publishDefaultLifecyclePackage: vi.fn(),
+    },
   };
 }
 
@@ -82,6 +89,7 @@ function buildService(mocks: Mocks): PlatformInvitationService {
     mocks.tenantSvc as never,
     mocks.identitySvc as never,
     mocks.entitlementRepo as never,
+    mocks.policyProvisioning as never,
   );
 }
 
@@ -149,6 +157,11 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
       tenant_id: 'tenant-x',
       capabilities: ['core', 'ats', 'portal'],
     });
+    // ADR-0024 PR-4a-2 (step 4) — the new tenant's requisition-lifecycle package
+    // is published (template copy) as part of provisioning.
+    expect(
+      mocks.policyProvisioning.publishDefaultLifecyclePackage,
+    ).toHaveBeenCalledWith('tenant-x');
     // Compensation paths NOT invoked.
     expect(mocks.cognito.adminDeleteUser).not.toHaveBeenCalled();
     expect(mocks.tenantSvc.deactivateTenant).not.toHaveBeenCalled();
@@ -166,6 +179,52 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
       capabilities: ['core', 'ats', 'portal'],
       invitation_sent: true,
     });
+  });
+
+  it('step 4 (ADR-0024 PR-4a-2): a policy-package publish failure soft-disables the tenant and throws INTERNAL_ERROR (created-and-flagged, not deleted)', async () => {
+    const mocks = makeMocks();
+    mocks.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);
+    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['role-id-tenant-owner']);
+    mocks.cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'cog-sub-9' });
+    mocks.tenantSvc.provisionTenant.mockResolvedValue({
+      id: 'tenant-y',
+      name: 'BrokenCo',
+      is_active: true,
+      created_at: '',
+      updated_at: '',
+    });
+    mocks.identitySvc.createUserFromInvitation.mockResolvedValue({
+      user: { id: 'u', email: 'o@b.io', display_name: null, is_active: true, deactivated_at: null, created_at: '', updated_at: '' },
+      membership_id: 'm',
+    });
+    mocks.entitlementRepo.grantCapabilities.mockResolvedValue(undefined);
+    // Step 4 fails — e.g. no template published for the sentinel.
+    mocks.policyProvisioning.publishDefaultLifecyclePackage.mockRejectedValue(
+      new Error('policy_template_missing'),
+    );
+
+    const svc = buildService(mocks);
+    await expect(
+      svc.provisionTenantAndInviteOwner({
+        name: 'BrokenCo',
+        owner_email: 'o@b.io',
+        actor_user_id: 'sa',
+        request_id: TEST_REQUEST_ID,
+        invite_owner: true,
+      }),
+    ).rejects.toMatchObject({ code: 'INTERNAL_ERROR' });
+
+    // The tenant was CREATED (step 2) then SOFT-DISABLED (step 4 compensation) —
+    // created-and-flagged (is_active=false), NOT deleted. The Cognito + identity
+    // rows stay durable; the tenant is inert until a package is published.
+    expect(mocks.tenantSvc.deactivateTenant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenant_id: 'tenant-y',
+        reason: 'policy_package_publish_failed',
+      }),
+    );
+    // The owner-invite emission never runs after a step-4 failure.
+    expect(mocks.tenantSvc.recordOwnerInviteSent).not.toHaveBeenCalled();
   });
 
   it('invite_owner=false (create-now-invite-later): Cognito SUPPRESSed, no owner_invite.sent, invitation_sent=false; tenant still provisioned', async () => {

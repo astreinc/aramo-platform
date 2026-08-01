@@ -30,6 +30,7 @@ import {
 import { CognitoAdminService } from '../app/platform/cognito/cognito-admin.service.js';
 import { PlatformController } from '../app/platform/platform.controller.js';
 import { PlatformInvitationService } from '../app/platform/platform-invitation.service.js';
+import { TenantPolicyProvisioningService } from '../app/platform/tenant-policy-provisioning.service.js';
 
 import { generateTestKeyPair } from './test-keys.js';
 
@@ -252,6 +253,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         controllers: [PlatformController],
         providers: [
           PlatformInvitationService,
+          // ADR-0024 PR-4a-2 — stub the template-copy dep; this spec does not
+          // provision, so no PolicyStore/template is exercised.
+          {
+            provide: TenantPolicyProvisioningService,
+            useValue: { publishDefaultLifecyclePackage: async () => undefined },
+          },
           CognitoAdminService,
           { provide: APP_FILTER, useClass: AramoExceptionFilter },
         ],

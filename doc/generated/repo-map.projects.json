@@ -948,6 +948,12 @@
         "project": "platform-admin",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/tenant-policy-provisioning.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
       { "project": "platform-admin", "status": "production" },
       { "project": "portal", "status": "production" },
       { "project": "reporting", "status": "production" },
@@ -2939,13 +2945,26 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/tenant-policy-coverage.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "from": "pact/provider/src/verify-api.ts",
         "project": "aramo-pact-provider",
         "status": "unscoped"
       },
-      { "project": "pipeline", "status": "production" }
+      { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/tenant-policy-provisioning.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      { "project": "platform-admin", "status": "production" }
     ],
     "@aramo/portal": [{ "project": "api", "status": "production" }],
     "@aramo/portal-identity": [
