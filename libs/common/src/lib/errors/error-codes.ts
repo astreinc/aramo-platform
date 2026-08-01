@@ -374,6 +374,14 @@ export const ERROR_CODES = [
   // INSUFFICIENT_PERMISSIONS (authorization) — this is a business-policy
   // refusal that runs AFTER authorization.
   'POLICY_DENIED',
+  // Charter §4 Amendment — Activity Redaction. ACTIVITY_NOT_REDACTABLE (HTTP
+  // 422): redact refused because the activity is not a note (R3 — system
+  // activity records what happened and is never redactable; mirrors
+  // SUBMITTAL_STATE_INVALID). ACTIVITY_ALREADY_REDACTED (HTTP 409): the row is
+  // already redacted and redaction is single-shot/irreversible (R5; mirrors
+  // SUBMITTAL_ALREADY_CONFIRMED / IMPORT_ALREADY_REVERTED).
+  'ACTIVITY_NOT_REDACTABLE',
+  'ACTIVITY_ALREADY_REDACTED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

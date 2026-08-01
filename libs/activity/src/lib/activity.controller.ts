@@ -22,6 +22,8 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import type { ActivityView } from './dto/activity.view.js';
 import type { CreateActivityRequestDto } from './dto/create-activity-request.dto.js';
+import type { RedactActivityRequestDto } from './dto/redact-activity-request.dto.js';
+import { isRedactionReasonCode } from './dto/redaction-reason.js';
 import { ActivityRepository } from './activity.repository.js';
 
 // ActivityController — PR-A5a Gate 5 ATS Batch 4a (sidecar to pipeline).
@@ -110,6 +112,76 @@ export class ActivityController {
       tenant_id: authContext.tenant_id,
       created_by_id: authContext.sub,
       input: body,
+    });
+  }
+
+  // Charter §4 Amendment — redact a logged note (redact-never-delete).
+  //
+  // R1 authorization is author-OR-scope, which @RequireScopes cannot express
+  // (it is scope-alone): the note's author may always redact their own, and an
+  // `activity:redact` holder (a lead reviewing their pod's feed) may redact
+  // another's. Neither → 403. R3 (type='note') and R5 (no re-redact) are
+  // enforced in the repository, server-side. R2 (both reason fields mandatory,
+  // code in the closed vocabulary) is validated here.
+  @Post(':id/redact')
+  @HttpCode(HttpStatus.OK)
+  async redact(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Body() body: RedactActivityRequestDto,
+    @RequestId() requestId: string,
+  ): Promise<ActivityView> {
+    const existing = await this.activityRepository.findById({
+      tenant_id: authContext.tenant_id,
+      id,
+    });
+    if (existing === null) {
+      throw new AramoError('NOT_FOUND', 'Activity not found in tenant', 404, {
+        requestId,
+        details: { id },
+      });
+    }
+    // R1 — author OR activity:redact scope. Never scope-alone.
+    const isAuthor =
+      existing.created_by_id !== null &&
+      existing.created_by_id === authContext.sub;
+    const hasRedactScope = authContext.scopes.includes('activity:redact');
+    if (!isAuthor && !hasRedactScope) {
+      throw new AramoError(
+        'INSUFFICIENT_PERMISSIONS',
+        'Redaction requires being the note author or holding activity:redact',
+        403,
+        { requestId, details: { id } },
+      );
+    }
+    // R2 — both the code and the free text are mandatory; the code must be a
+    // member of the §3 closed vocabulary.
+    if (!isRedactionReasonCode(body?.redaction_reason_code)) {
+      throw new AramoError(
+        'INVALID_REQUEST',
+        'redaction_reason_code must be a valid redaction reason',
+        400,
+        { requestId, details: { id } },
+      );
+    }
+    if (
+      typeof body.redaction_reason !== 'string' ||
+      body.redaction_reason.trim() === ''
+    ) {
+      throw new AramoError(
+        'INVALID_REQUEST',
+        'redaction_reason free text is required',
+        400,
+        { requestId, details: { id } },
+      );
+    }
+    return this.activityRepository.redact({
+      tenant_id: authContext.tenant_id,
+      id,
+      redacted_by: authContext.sub,
+      redaction_reason_code: body.redaction_reason_code,
+      redaction_reason: body.redaction_reason.trim(),
+      requestId,
     });
   }
 }
