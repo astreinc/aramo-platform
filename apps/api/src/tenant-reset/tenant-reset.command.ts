@@ -186,7 +186,10 @@ async function main(): Promise<void> {
     }
   } finally {
     await client.end();
-    await prisma.$disconnect();
+    // onModuleDestroy() is the lib's declared lifecycle hook (it calls
+    // $disconnect internally); $disconnect is inherited from PrismaClient
+    // and not surfaced on the emitted PrismaService .d.ts.
+    await prisma.onModuleDestroy();
   }
 }
 
