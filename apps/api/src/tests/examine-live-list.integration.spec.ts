@@ -72,6 +72,7 @@ const MIGRATIONS = [
   'libs/requisition/prisma/migrations/20260801120000_add_version_to_requisition/migration.sql',
   // PR-17 — additive onsite_days_per_week column (missing -> 500 on requisition reads/writes).
   'libs/requisition/prisma/migrations/20260802140000_add_onsite_days_to_requisition/migration.sql',
+  'libs/requisition/prisma/migrations/20260802180000_add_requisition_number/migration.sql',
   // PR-14 — additive user_requisition_state table (missing -> 500 on enriched requisition list/get).
   'libs/requisition/prisma/migrations/20260802160000_add_user_requisition_state/migration.sql',
   // job-domain
@@ -190,8 +191,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // seed was removed — this ATS row replaces it.)
       await setup.query(
         `INSERT INTO requisition."Requisition"
-           (id, tenant_id, title, company_id, golden_profile_id)
-         VALUES ($1, $2, $3, $4, $5)`,
+           (id, tenant_id, title, company_id, golden_profile_id, requisition_number)
+         VALUES ($1, $2, $3, $4, $5, 1000)`,
         [R, TENANT_ID, 'Senior Backend Engineer', COMPANY_ID, GP_ID],
       );
       // talent_record.TalentRecord — declared work_authorization + contact.

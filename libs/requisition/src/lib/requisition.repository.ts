@@ -206,6 +206,7 @@ interface RequisitionRow {
   tenant_id: string;
   site_id: string | null;
   title: string;
+  requisition_number: number;
   company_id: string;
   contact_id: string | null;
   company_department_id: string | null;
@@ -306,6 +307,7 @@ function projectView(row: RequisitionRow): RequisitionView {
     tenant_id: row.tenant_id,
     site_id: row.site_id,
     title: row.title,
+    requisition_number: row.requisition_number,
     company_id: row.company_id,
     contact_id: row.contact_id,
     company_department_id: row.company_department_id,
@@ -460,6 +462,29 @@ export class RequisitionRepository {
     });
   }
 
+  // PR-15 — allocate the next per-tenant requisition_number INSIDE the create
+  // transaction. A single atomic statement: the ON CONFLICT path row-locks
+  // RequisitionNumberSequence for this tenant, increments, and returns — so two
+  // racing creates serialise on that one row and receive DISTINCT numbers, with
+  // no held-open window (the reason this is preferred over SELECT … FOR UPDATE).
+  // A brand-new tenant has no row; the INSERT seeds it at 1000 (first REQ-1000).
+  // next_value stores the LAST number handed out. `tx` shares the caller's
+  // transaction, so a rollback of the create rolls back the allocation too
+  // (a burned number would only ever be a gap, which is allowed — never reused).
+  private async allocateRequisitionNumberInTx(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+  ): Promise<number> {
+    const rows = await tx.$queryRaw<Array<{ next_value: number }>>`
+      INSERT INTO "requisition"."RequisitionNumberSequence" ("tenant_id", "next_value")
+      VALUES (${tenantId}::uuid, 1000)
+      ON CONFLICT ("tenant_id") DO UPDATE
+        SET "next_value" = "requisition"."RequisitionNumberSequence"."next_value" + 1
+      RETURNING "next_value"
+    `;
+    return rows[0]!.next_value;
+  }
+
   // PR-7 — the REQUISITION · SET_PRIORITY gate. Called ONLY when is_hot is being
   // set TRUE (R3 — clearing is_hot is cleanup, never governed; "false" is not a
   // rule). Returns the §D17a provenance to persist in the write transaction, or
@@ -553,7 +578,9 @@ export class RequisitionRepository {
       value: input.onsite_days_per_week ?? null,
       requestId: args.requestId,
     });
-    const data: Prisma.RequisitionUncheckedCreateInput = {
+    // PR-15 — requisition_number is allocated inside the create transaction
+    // (below), so it is intentionally omitted here and spread in at the insert.
+    const data: Omit<Prisma.RequisitionUncheckedCreateInput, 'requisition_number'> = {
       tenant_id,
       site_id: input.site_id ?? null,
       title: input.title,
@@ -596,7 +623,10 @@ export class RequisitionRepository {
     // lifecycle event (R1: previous_status NULL) commit atomically, alongside
     // the optional SET_PRIORITY provenance.
     const row = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.requisition.create({ data });
+      // PR-15 — allocate the per-tenant number in the SAME transaction, then
+      // spread it into the insert (assigned at create, never after).
+      const requisition_number = await this.allocateRequisitionNumberInTx(tx, tenant_id);
+      const created = await tx.requisition.create({ data: { ...data, requisition_number } });
       if (setPriorityProvenance !== null) {
         await insertPolicyDecisionRecordInTx(tx, setPriorityProvenance);
       }
@@ -655,7 +685,9 @@ export class RequisitionRepository {
       value: input.onsite_days_per_week ?? null,
       requestId: args.requestId,
     });
-    const data: Prisma.RequisitionUncheckedCreateInput = {
+    // PR-15 — requisition_number is allocated inside the create transaction
+    // (below), so it is intentionally omitted here and spread in at the insert.
+    const data: Omit<Prisma.RequisitionUncheckedCreateInput, 'requisition_number'> = {
       tenant_id,
       site_id: input.site_id ?? null,
       title: input.title,
@@ -701,7 +733,10 @@ export class RequisitionRepository {
     // T1-c — import is still a create, so it emits a create event (R1:
     // previous_status NULL) with origin=integration (R4). Atomic with the row.
     const row = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.requisition.create({ data });
+      // PR-15 — an imported requisition is still a requisition; allocate its
+      // per-tenant number in the same transaction.
+      const requisition_number = await this.allocateRequisitionNumberInTx(tx, tenant_id);
+      const created = await tx.requisition.create({ data: { ...data, requisition_number } });
       if (setPriorityProvenance !== null) {
         await insertPolicyDecisionRecordInTx(tx, setPriorityProvenance);
       }

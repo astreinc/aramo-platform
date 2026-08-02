@@ -152,7 +152,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [REQ_B, T2],
       ] as const) {
         await db.query(
-          `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id) VALUES ($1::uuid,$2::uuid,'Engineer',$3::uuid)`,
+          `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, requisition_number) VALUES ($1::uuid,$2::uuid,'Engineer',$3::uuid, (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2::uuid))`,
           [id, tenant, COMPANY],
         );
       }

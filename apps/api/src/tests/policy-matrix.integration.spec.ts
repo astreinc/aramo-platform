@@ -88,7 +88,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
     async function seedRequisition(status: string): Promise<string> {
       const id = uuid();
-      await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status) VALUES ($1,$2,$3,$4,$5::"requisition"."RequisitionStatus")`, [id, TENANT, `req-${status}`, uuid(), status]);
+      await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,$3,$4,$5::"requisition"."RequisitionStatus", (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [id, TENANT, `req-${status}`, uuid(), status]);
       return id;
     }
     function baseUrl(): string {
@@ -181,7 +181,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // v1.0.0 published first, active window; make a decision under it.
       await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '1.0.0' }, published_by: SYSTEM_PUBLISHER, effective_from: new Date('2026-01-01T00:00:00Z') });
       const req = uuid();
-      await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status) VALUES ($1,$2,'r',$3,'active')`, [req, T, uuid()]);
+      await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,'r',$3,'active', (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [req, T, uuid()]);
       const jwt = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, scopes: ['pipeline:add'] })
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
       expect((await postPipeline(jwt, req)).status).toBe(201);

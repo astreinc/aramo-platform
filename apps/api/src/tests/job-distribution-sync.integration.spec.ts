@@ -194,10 +194,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         `INSERT INTO requisition."Requisition"
           (id, tenant_id, title, company_id, status, openings, public_listing,
            advertised_pay_min, advertised_pay_max, advertised_pay_period, advertised_pay_currency,
-           city, state, job_type, work_arrangement, created_at, updated_at)
+           city, state, job_type, work_arrangement, created_at, updated_at, requisition_number)
          VALUES ($1,$2,$3,$4,$5::requisition."RequisitionStatus",2,true,
            80.00,120.00,$6::requisition."RatePeriod",'USD',
-           'Austin','TX','FULL_TIME','REMOTE', now(), now())`,
+           'Austin','TX','FULL_TIME','REMOTE', now(), now(),
+           (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`,
         [reqId, tenantId, title, '99999999-9999-4999-8999-999999999999', 'active', 'HOURLY'],
       );
     }

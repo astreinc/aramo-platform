@@ -24,6 +24,9 @@ export interface RequisitionView {
   tenant_id: string;
   site_id: string | null;
   title: string;
+  // PR-15 — per-tenant internal number; renders as REQ-{number} (prefix is
+  // presentation-only). Immutable, never reused.
+  requisition_number: number;
   company_id: string;
   contact_id: string | null;
   company_department_id: string | null;

@@ -91,8 +91,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     async function seedRequisition(title: string): Promise<string> {
       const id = uuidv7();
       await db.query(
-        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id)
-         VALUES ($1::uuid, $2::uuid, $3, $4::uuid)`,
+        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, requisition_number)
+         VALUES ($1::uuid, $2::uuid, $3, $4::uuid, (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2::uuid))`,
         [id, TENANT_A, title, COMPANY_A],
       );
       return id;

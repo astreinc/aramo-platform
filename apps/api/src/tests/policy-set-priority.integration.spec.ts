@@ -66,7 +66,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
     async function seedReq(status: string, isHot = false): Promise<string> {
       const id = uuid();
-      await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, site_id, title, company_id, status, is_hot) VALUES ($1,$2,$3,$4,$5,$6::"requisition"."RequisitionStatus",$7)`, [id, TENANT, SITE, `r-${status}`, uuid(), status, isHot]);
+      // Allocate requisition_number from the same per-tenant sequence the app
+      // uses (this tenant is ALSO written via POST /v1/requisitions and
+      // createForImport), so seeded rows never collide with app-allocated ones.
+      await db.query(`WITH seq AS (
+          INSERT INTO requisition."RequisitionNumberSequence" (tenant_id, next_value)
+          VALUES ($2::uuid, 1000)
+          ON CONFLICT (tenant_id) DO UPDATE SET next_value = requisition."RequisitionNumberSequence".next_value + 1
+          RETURNING next_value
+        )
+        INSERT INTO requisition."Requisition" (id, tenant_id, site_id, title, company_id, status, is_hot, requisition_number)
+        SELECT $1,$2,$3,$4,$5,$6::"requisition"."RequisitionStatus",$7, (SELECT next_value FROM seq)`, [id, TENANT, SITE, `r-${status}`, uuid(), status, isHot]);
       return id;
     }
     async function patchHot(token: string, id: string, isHot: boolean): Promise<Response> {

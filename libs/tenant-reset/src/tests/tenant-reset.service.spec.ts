@@ -324,6 +324,9 @@ describe('TenantResetService — happy path + delete ordering (§2.2 / §3.8)', 
       'DELETE FROM pipeline."Pipeline"',
       'DELETE FROM requisition."RequisitionAssignment"',
       'DELETE FROM requisition."Requisition"',
+      // PR-15 — the internal-number allocator is cleared so a reset tenant
+      // restarts at REQ-1000.
+      'DELETE FROM requisition."RequisitionNumberSequence"',
     ];
     expect(pg.deletes.map((d) => d.split(' WHERE ')[0])).toEqual(expectedOrder);
 

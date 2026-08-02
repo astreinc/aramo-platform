@@ -137,6 +137,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           await setup.query(t);
         }
       }
+      // PR-15 — the requisition_number column/sequence. Applied as a single
+      // whole-file query (NOT via splitDdl) because its comment prose contains
+      // semicolons that the naive splitter would break statements on.
+      await setup.query(
+        readFileSync(
+          M('libs/requisition/prisma/migrations/20260802180000_add_requisition_number/migration.sql'),
+          'utf8',
+        ),
+      );
 
       // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
       // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
@@ -158,8 +167,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [JOB_ID, TENANT_ID],
       );
       await setup.query(
-        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
-         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus")`,
+        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number)
+         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus", 1000)`,
         [REQ_ID, TENANT_ID, JOB_ID, RECRUITER_ID],
       );
       await setup.end();

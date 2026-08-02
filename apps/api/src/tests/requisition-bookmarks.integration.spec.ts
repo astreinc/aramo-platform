@@ -64,6 +64,9 @@ const MIGRATIONS = [
   mig('20260802140000_add_onsite_days_to_requisition'),
   mig('20260802120000_lifecycle_previous_status_nullable'),
   mig('20260802160000_add_user_requisition_state'),
+  // PR-15 — internal requisition_number (NOT NULL) + the allocator table; the
+  // create path allocates from it, so a POST /requisitions 500s without it.
+  mig('20260802180000_add_requisition_number'),
 ];
 
 const ISSUER = 'Aramo Core Auth';
