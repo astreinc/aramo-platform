@@ -62,14 +62,14 @@ describe('Search PR-1 — requisition ?q= scope-gate (controller)', () => {
     const { ctl } = makeController();
     const auth = makeAuthContext(['requisition:read']);
     await expect(
-      ctl.list(auth, undefined, undefined, 'engineer', REQUEST_ID, makeReq()),
+      ctl.list(auth, undefined, undefined, 'engineer', undefined, REQUEST_ID, makeReq()),
     ).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
   });
 
   it('q present WITH requisition:search → repo called with the trimmed term', async () => {
     const { ctl, repo } = makeController();
     const auth = makeAuthContext(['requisition:read', 'requisition:search']);
-    await ctl.list(auth, undefined, undefined, ' engineer ', REQUEST_ID, makeReq());
+    await ctl.list(auth, undefined, undefined, ' engineer ', undefined, REQUEST_ID, makeReq());
     expect(repo.listForActor).toHaveBeenCalledWith(
       expect.objectContaining({ tenant_id: TENANT_ID, q: 'engineer' }),
     );
@@ -78,7 +78,7 @@ describe('Search PR-1 — requisition ?q= scope-gate (controller)', () => {
   it('no q → repo called with q undefined (backward-compat; no gate)', async () => {
     const { ctl, repo } = makeController();
     const auth = makeAuthContext(['requisition:read']);
-    await ctl.list(auth, undefined, undefined, undefined, REQUEST_ID, makeReq());
+    await ctl.list(auth, undefined, undefined, undefined, undefined, REQUEST_ID, makeReq());
     expect(repo.listForActor).toHaveBeenCalledWith(
       expect.objectContaining({ q: undefined }),
     );

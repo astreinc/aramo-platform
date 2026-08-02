@@ -113,6 +113,12 @@ export interface RequisitionView {
   // --- AI golden-profile link (read-only on the form; set by the
   // profile/confirm flow). ---
   readonly golden_profile_id: string | null;
+
+  // --- PR-14 (Track C) — personal bookmark state (this user only) ---
+  // PERSONAL: whether the CURRENT user has bookmarked this requisition.
+  // Distinct from is_hot (team-wide HOT pill); the star must never toggle
+  // is_hot. Never reflects another user's state.
+  readonly bookmarked: boolean;
 }
 
 // Hand-mirrored from libs/requisition/src/lib/dto/rate-type.ts (RATE_TYPE_

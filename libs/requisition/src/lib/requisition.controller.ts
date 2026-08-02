@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -41,6 +42,7 @@ import type {
 import type { RequisitionAssignmentView } from './dto/requisition-assignment.view.js';
 import type { RequisitionProfileView } from './dto/requisition-profile.view.js';
 import type { RequisitionView } from './dto/requisition.view.js';
+import type { SetBookmarkRequestDto } from './dto/set-bookmark-request.dto.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
 import { RequisitionAssignmentRepository } from './requisition-assignment.repository.js';
 import { RequisitionIntakeService } from './requisition-intake.service.js';
@@ -99,6 +101,9 @@ export class RequisitionController {
     @Query('site_id') siteIdFromQuery: string | undefined,
     @Query('company_id') companyIdFromQuery: string | undefined,
     @Query('q') q: string | undefined,
+    // PR-14 — "My Bookmarks" filter. `?bookmarked=true` narrows to the
+    // CALLER's own bookmarked requisitions (personal; never another user's).
+    @Query('bookmarked') bookmarkedFilter: string | undefined,
     @RequestId() requestId: string,
     @Req() req: Request,
   ): Promise<{ items: RequisitionView[] }> {
@@ -118,6 +123,7 @@ export class RequisitionController {
       site_id: siteIdFromQuery,
       company_id: companyIdFromQuery,
       q: searchTerm,
+      bookmarked_only: bookmarkedFilter === 'true',
     });
     return { items };
   }
@@ -253,6 +259,56 @@ export class RequisitionController {
     await this.requisitionRepository.delete({
       tenant_id: authContext.tenant_id,
       id,
+      requestId,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // PR-14 (Track C) — personal bookmark toggle
+  // -------------------------------------------------------------------------
+  //
+  // A PERSONAL mark (caller × requisition): invisible to every other user and
+  // with ZERO effect on ranking or sort order for anyone else. This is NOT the
+  // team-wide is_hot "Hot" pill (a star must NEVER toggle is_hot — that would
+  // silently re-prioritise the requisition for the whole team) and NOT a
+  // Watch/notification (a future concept).
+  //
+  // Gated on requisition:read + @RequireSiteMatch + the class-level
+  // JwtAuthGuard/EntitlementGuard('ats')/RolesGuard chain: any user who can
+  // READ a requisition may bookmark it for themselves. No team/admin write
+  // scope (requisition:edit/…) is required or appropriate — a read-only
+  // recruiter still bookmarks their own view.
+  //
+  // Idempotent SET semantics (not a blind flip): the body carries the desired
+  // state, so repeated PUTs converge (the directive's "toggle is idempotent"
+  // test). Visibility-scoped in-service — bookmarking a requisition outside the
+  // actor's visible set (or in another tenant) → 404, mirroring GET-by-id.
+  @Put(':id/bookmark')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('requisition:read')
+  @RequireSiteMatch()
+  async setBookmark(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Body() body: SetBookmarkRequestDto,
+    @RequestId() requestId: string,
+    @Req() req: Request,
+  ): Promise<RequisitionView> {
+    if (typeof body?.bookmarked !== 'boolean') {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'bookmarked must be a boolean',
+        400,
+        { requestId, details: { field: 'bookmarked' } },
+      );
+    }
+    const visibility = await req.resolveVisibility!();
+    return this.requisitionRepository.setBookmark({
+      tenant_id: authContext.tenant_id,
+      actor_user_id: authContext.sub,
+      id,
+      bookmarked: body.bookmarked,
+      visibility,
       requestId,
     });
   }
