@@ -67,6 +67,7 @@ const MIGRATIONS = [
   'libs/requisition/prisma/migrations/20260801120000_add_version_to_requisition/migration.sql',
   // PR-17 — additive onsite_days_per_week column (missing -> 500 on requisition reads/writes).
   'libs/requisition/prisma/migrations/20260802140000_add_onsite_days_to_requisition/migration.sql',
+  'libs/requisition/prisma/migrations/20260802180000_add_requisition_number/migration.sql',
   // job-domain
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
   // T1-a — drop the retired job_domain.Requisition table + enum so this proof
@@ -181,8 +182,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // honour it.
       await setup.query(
         `INSERT INTO requisition."Requisition"
-           (id, tenant_id, title, company_id, golden_profile_id, status)
-         VALUES ($1, $2, $3, $4, $5, 'closed'::requisition."RequisitionStatus")`,
+           (id, tenant_id, title, company_id, golden_profile_id, status, requisition_number)
+         VALUES ($1, $2, $3, $4, $5, 'closed'::requisition."RequisitionStatus", 1000)`,
         [R, TENANT_ID, 'Senior Backend Engineer', COMPANY_ID, GP_ID],
       );
       // NOTE: pre-T1-a a stale-active job_domain.Requisition mirror was seeded

@@ -91,6 +91,10 @@ const DELETE_INVENTORY: readonly DeleteStep[] = [
   // §2.2.6 — Requisitions (assignment child first — cascades, deleted explicitly).
   { item: 6, label: `requisition."RequisitionAssignment"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   { item: 6, label: `requisition."Requisition"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  // PR-15 — the internal-number allocator. Must be cleared so the tenant's first
+  // recreated requisition restarts at REQ-1000 (PO timing ruling). Without this,
+  // the counter survives and the next create silently continues (e.g. REQ-1043).
+  { item: 6, label: `requisition."RequisitionNumberSequence"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
 ];
 
 // The freeze (§3.3): the requisition-domain workflow tables, locked ACCESS
@@ -103,6 +107,9 @@ const LOCK_TABLES: readonly string[] = [
   `requisition."Requisition"`,
   `requisition."RequisitionAssignment"`,
   `requisition."RequisitionLifecycleEvent"`,
+  // PR-15 — freeze the allocator too, so no concurrent create re-seeds the
+  // counter row mid-reset (it is deleted in the same transaction).
+  `requisition."RequisitionNumberSequence"`,
   `pipeline."Pipeline"`,
   `pipeline."PipelineStatusHistory"`,
   `engagement."TalentJobEngagement"`,

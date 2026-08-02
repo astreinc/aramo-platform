@@ -417,6 +417,11 @@ export function RequisitionDetailView({
             <Link to={`/companies/${req.company_id}`}>
               {companyName ?? 'Company'}
             </Link>
+            {/* PR-15 — the internal number is the primary human-readable id
+                (REQ-{number}; the prefix is presentation-only). external_req_id
+                (the VMS identifier) renders after it as secondary metadata, and
+                only when present — a requisition without one still renders. */}
+            <span className="mono">· REQ-{req.requisition_number}</span>
             {req.external_req_id !== null ? (
               <span className="mono">· {req.external_req_id}</span>
             ) : null}

@@ -66,6 +66,7 @@ function baseView(extra: Record<string, unknown> = {}): Record<string, unknown> 
     tenant_id: 't',
     site_id: null,
     title: 'Senior Engineer',
+    requisition_number: 1000,
     company_id: 'co-1',
     contact_id: null,
     company_department_id: null,
@@ -289,5 +290,42 @@ describe('RequisitionDetailView — PR-17 hybrid onsite frequency', () => {
     const field = screen.getByTestId('cockpit-field-onsite_days_per_week');
     expect(field).toBeInTheDocument();
     expect(field).toHaveTextContent('3');
+  });
+});
+
+describe('RequisitionDetailView — PR-15 internal requisition number', () => {
+  it('renders the internal number as REQ-{number} (presentation-only prefix)', async () => {
+    installFetch(() => ({
+      status: 200,
+      body: baseView({ requisition_number: 1000, external_req_id: null }),
+    }));
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    await screen.findByRole('heading', { name: /Senior Engineer/ });
+    expect(document.body.textContent).toContain('REQ-1000');
+  });
+
+  it('R4 — a requisition with NO external_req_id still renders correctly (REQ-{number} present)', async () => {
+    installFetch(() => ({
+      status: 200,
+      body: baseView({ requisition_number: 1042, external_req_id: null }),
+    }));
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    // Renders without error and shows the internal number.
+    expect(await screen.findByRole('heading', { name: /Senior Engineer/ })).toBeInTheDocument();
+    expect(document.body.textContent).toContain('REQ-1042');
+  });
+
+  it('where both exist, the internal number is primary and external_req_id renders as secondary', async () => {
+    installFetch(() => ({
+      status: 200,
+      body: baseView({ requisition_number: 1007, external_req_id: 'VMS-88' }),
+    }));
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    await screen.findByRole('heading', { name: /Senior Engineer/ });
+    const text = document.body.textContent ?? '';
+    expect(text).toContain('REQ-1007');
+    expect(text).toContain('VMS-88');
+    // Internal number appears before the external identifier in the header.
+    expect(text.indexOf('REQ-1007')).toBeLessThan(text.indexOf('VMS-88'));
   });
 });

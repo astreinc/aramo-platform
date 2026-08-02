@@ -559,6 +559,14 @@ const REQUISITION_ONSITE_DAYS_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260802140000_add_onsite_days_to_requisition/migration.sql',
 );
+// PR-15 — internal requisition_number (NOT NULL) + RequisitionNumberSequence
+// allocator table. The regenerated client SELECTs requisition_number on every
+// requisition read/write, and create allocates from the sequence table; both
+// absent in DB → 500 (the hardcoded-migration-list footgun).
+const REQUISITION_NUMBER_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802180000_add_requisition_number/migration.sql',
+);
 // PC-5d — ats-web Gate-2a desk (task + attachment, the final increment). task
 // init CREATEs the schema + Task + the TaskStatus enum ('open','done'); the
 // workspace-fields migration ALTERs the enum (+in_progress/waiting/cancelled)
@@ -1219,8 +1227,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // fillers (title/company_id); only id + tenant + active status matter.
       await c.query(
         `INSERT INTO requisition."Requisition"
-           (id, tenant_id, title, company_id, status)
-         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus")`,
+           (id, tenant_id, title, company_id, status, requisition_number)
+         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus",
+                 (SELECT COALESCE(MAX(requisition_number), 999) + 1 FROM requisition."Requisition" WHERE tenant_id = $2))`,
         [ATSW_REQUISITION_ID, TENANT_ID, ATSW_JOB_ID, PACT_RECRUITER_ACTOR_ID],
       );
     }
@@ -1547,8 +1556,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       params: { id: string; title: string; companyId: string },
     ): Promise<void> {
       await c.query(
-        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id)
-         VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, requisition_number)
+         VALUES ($1,$2,$3,$4,
+                 (SELECT COALESCE(MAX(requisition_number), 999) + 1 FROM requisition."Requisition" WHERE tenant_id = $2))
+         ON CONFLICT (id) DO NOTHING`,
         [params.id, TENANT_ID, params.title, params.companyId],
       );
     }
@@ -2212,8 +2223,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // (ATSW_SUB_JOB_ID = examination.job_id), so the requisition id is that
       // same value (the retired mirror's distinct ATSW_SUB_REQ_ID is gone).
       await c.query(
-        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
-         VALUES ($1,$2,$3::text,$4,'active'::requisition."RequisitionStatus") ON CONFLICT DO NOTHING`,
+        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number)
+         VALUES ($1,$2,$3::text,$4,'active'::requisition."RequisitionStatus",
+                 (SELECT COALESCE(MAX(requisition_number), 999) + 1 FROM requisition."Requisition" WHERE tenant_id = $2)) ON CONFLICT DO NOTHING`,
         [ATSW_SUB_JOB_ID, TENANT_ID, ATSW_SUB_JOB_ID, PACT_RECRUITER_ACTOR_ID],
       );
       await seedAtsWebTalentRecord(c, {
@@ -2519,8 +2531,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // examination's job_id), replacing the retired mirror.
       await c.query(
         `INSERT INTO requisition."Requisition"
-           (id, tenant_id, title, company_id, status)
-         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus")
+           (id, tenant_id, title, company_id, status, requisition_number)
+         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus",
+                 (SELECT COALESCE(MAX(requisition_number), 999) + 1 FROM requisition."Requisition" WHERE tenant_id = $2))
          ON CONFLICT DO NOTHING`,
         [params.jobId, TENANT_ID, params.jobId, RECRUITER_ID],
       );
@@ -2876,6 +2889,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         REQUISITION_LIFECYCLE_EVENT_MIGRATION,
         REQUISITION_VERSION_MIGRATION,
         REQUISITION_ONSITE_DAYS_MIGRATION,
+        REQUISITION_NUMBER_MIGRATION,
         REQUISITION_LIFECYCLE_NULLABLE_MIGRATION,
         // PC-5d — task + attachment (final desk increment). task init +
         // workspace-fields (enum extension + source column); attachment init.

@@ -200,6 +200,10 @@ const REQUISITION_ONSITE_DAYS_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260802140000_add_onsite_days_to_requisition/migration.sql',
 );
+const REQUISITION_NUMBER_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802180000_add_requisition_number/migration.sql',
+);
 const TASK_INIT = resolve(
   ROOT,
   'libs/task/prisma/migrations/20260609140000_init_task_model/migration.sql',
@@ -553,7 +557,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         REQUISITION_JOB_MODULE_FIELDS,
         REQUISITION_RATE_TYPE_SUBK,
         REQUISITION_PUBLISH_SURFACE_MIGRATION,
-        REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION,
+        REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION,
         REQUISITION_LIFECYCLE_NULLABLE_MIGRATION,
         TASK_INIT,
         TASK_WORKSPACE_FIELDS,

@@ -102,6 +102,13 @@ model Requisition {
   // Required identification.
   title String
 
+  // PR-15 — human-readable per-tenant internal number, assigned at create
+  // inside the same transaction from RequisitionNumberSequence (starts at 1000).
+  // IMMUTABLE (no update path, not in the Update DTO) and NEVER reused. The
+  // `REQ-` prefix is presentation-only and is NOT stored. Orthogonal to
+  // external_req_id (the VMS identifier); where both exist this is primary.
+  requisition_number Int
+
   // Cross-schema logical references (Architecture §7.3 — UUID-only, no FK).
   company_id            String  @db.Uuid
   contact_id            String? @db.Uuid
@@ -307,6 +314,27 @@ model Requisition {
   @@index([tenant_id, import_batch_id])
   @@index([tenant_id, job_type])
   @@index([tenant_id, source_system])
+  // PR-15 — DB-enforced per-tenant uniqueness of the internal number, so the
+  // "concurrent creates get distinct numbers" invariant holds even if the
+  // allocator were ever bypassed. Also serves REQ-{number} lookups.
+  @@unique([tenant_id, requisition_number])
+
+  @@schema("requisition")
+}
+
+// PR-15 — per-tenant monotonic allocator for requisition_number. One row per
+// tenant; next_value holds the LAST allocated number. Allocation is a single
+// atomic statement inside the create transaction:
+//   INSERT ... VALUES (tenant, 1000)
+//   ON CONFLICT (tenant_id) DO UPDATE SET next_value = next_value + 1
+//   RETURNING next_value
+// The ON CONFLICT path row-locks within one statement, so two racing creates
+// serialize and receive distinct numbers with no held-open window (chosen over
+// SELECT … FOR UPDATE for exactly that reason). T0 (tenant-reset) clears this
+// table so a reset tenant's first recreated requisition restarts at REQ-1000.
+model RequisitionNumberSequence {
+  tenant_id  String @id @db.Uuid
+  next_value Int
 
   @@schema("requisition")
 }
