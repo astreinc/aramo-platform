@@ -376,9 +376,12 @@ model RequisitionLifecycleEvent {
   // happened, it is not live state.
   requisition_id String @db.Uuid
 
-  // WHAT changed — both REQUIRED. A record that cannot say what changed is not
-  // history (§D17c).
-  previous_status RequisitionStatus
+  // WHAT changed. next_status is REQUIRED — every event has a destination.
+  // previous_status is NULLABLE (T1-c R1): a CREATE emits an event with no
+  // predecessor status — the first status a requisition ever has is part of
+  // its history but has nothing before it. It is null ONLY on a create; every
+  // update-driven transition carries a non-null previous_status.
+  previous_status RequisitionStatus?
   next_status     RequisitionStatus
 
   // WHO initiated it, and from WHERE.

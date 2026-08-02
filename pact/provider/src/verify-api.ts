@@ -531,6 +531,20 @@ const REQUISITION_PUBLISH_SURFACE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260721000000_add_publish_surface/migration.sql',
 );
+// PR-0c (§D17c) — the append-only RequisitionLifecycleEvent table + its
+// RequisitionLifecycleOrigin enum (self-contained in the requisition schema,
+// policy_decision_id is a bare UUID with no FK). T1-c wires create/update to
+// write it, so provider interactions that drive POST/PATCH /requisitions would
+// 500 without the table. The T1-c ALTER then widens previous_status to nullable
+// (R1: a create event has no predecessor status).
+const REQUISITION_LIFECYCLE_EVENT_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260731120000_add_requisition_lifecycle_event/migration.sql',
+);
+const REQUISITION_LIFECYCLE_NULLABLE_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802120000_lifecycle_previous_status_nullable/migration.sql',
+);
 // Track 1 T1-b — additive `version` optimistic-concurrency column. The
 // regenerated client SELECTs it on every requisition read/write served during
 // verification; absent in DB → 500 (the hardcoded-migration-list footgun).
@@ -2850,7 +2864,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         REQUISITION_DROP_LEGACY_COMP_MIGRATION,
         REQUISITION_RATE_TYPE_MIGRATION,
         REQUISITION_PUBLISH_SURFACE_MIGRATION,
+        // T1-c — lifecycle event table (CREATE); T1-b — version column; then the
+        // T1-c ALTER (nullable previous_status) LAST so it follows the CREATE.
+        REQUISITION_LIFECYCLE_EVENT_MIGRATION,
         REQUISITION_VERSION_MIGRATION,
+        REQUISITION_LIFECYCLE_NULLABLE_MIGRATION,
         // PC-5d — task + attachment (final desk increment). task init +
         // workspace-fields (enum extension + source column); attachment init.
         // All self-contained (CREATE SCHEMA in init), no FK.
