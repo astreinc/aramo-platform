@@ -217,7 +217,7 @@ export function RequisitionsListView({
       // terminal statuses (full/closed/canceled) from the unfiltered list, but
       // an explicit status selection below is authoritative: picking Closed /
       // Full / Canceled in the dropdown must surface those rows even while the
-      // "Show closed" chip is off. So the default only applies when no explicit
+      // "Include closed" chip is off. So the default only applies when no explicit
       // status is chosen. (The chip↔dropdown model itself is D1-b.)
       if (!showClosed && statusFilter === '' && isClosedStatus(r.status)) {
         return false;
@@ -348,14 +348,14 @@ export function RequisitionsListView({
           <FilterChip active={mode === 'aging'} onClick={() => setMode('aging')}>
             Aging
           </FilterChip>
-          {/* Intentional divergence from the mockup: "Show closed" stays an
+          {/* Intentional divergence from the mockup: "Include closed" stays an
               explicit chip (the mockup folds closed into the status dropdown —
               not worth the churn). */}
           <FilterChip
             active={showClosed}
             onClick={() => setShowClosed((s) => !s)}
           >
-            Show closed
+            Include closed
           </FilterChip>
           <span className="rc-toolbar__sep" />
           <select
