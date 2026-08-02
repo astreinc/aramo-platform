@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { v7 as uuidv7 } from 'uuid';
 import { AramoError, type VisibilityContextShape } from '@aramo/common';
 import {
   insertPolicyDecisionRecordInTx,
@@ -18,6 +19,7 @@ import type { RequisitionCompensationModel } from './dto/requisition-compensatio
 import type { RequisitionView } from './dto/requisition.view.js';
 import type { RequisitionStatus } from './dto/requisition-status.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
+import type { RecordRequisitionLifecycleEventInput } from './requisition-lifecycle-event.store.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // RequisitionRepository — write + read surface for Requisition.
@@ -364,6 +366,15 @@ export interface PublishableRequisitionRow {
   updated_at: string;
 }
 
+// T1-c — pre-governance lifecycle reason codes. These events carry a NULL
+// policy_decision_id (no policy decision governs them yet); the null id — not
+// the reason_code — is §D17c's canonical "ungoverned" marker. T1-e's governed
+// transitions supersede these with the policy's own reason_code. reason_code is
+// NOT NULL, so a value is always required; these name the mechanical operation.
+const LIFECYCLE_REASON_CREATED = 'REQUISITION_CREATED';
+const LIFECYCLE_REASON_IMPORTED = 'REQUISITION_IMPORTED';
+const LIFECYCLE_REASON_STATUS_CHANGED = 'STATUS_CHANGED';
+
 @Injectable()
 export class RequisitionRepository {
   private readonly logger = new Logger(RequisitionRepository.name);
@@ -374,6 +385,33 @@ export class RequisitionRepository {
     // (D-AUTHZ-COMP-WRITE-1: the deepest layer all write paths traverse).
     private readonly setPriorityPolicy: SetPriorityPolicyService,
   ) {}
+
+  // T1-c — emit ONE lifecycle event inside the caller's transaction. The event
+  // row commits IFF the mutation commits (R3, fail-closed): `tx` is the SAME
+  // requisition Prisma client the status change runs on, so
+  // requisitionLifecycleEvent.create shares its transaction — no cross-schema
+  // raw SQL (contrast insertPolicyDecisionRecordInTx, which is raw ONLY because
+  // it writes policy_store's client). This is the sole lifecycle write path
+  // wired from the domain; it appends, never updates or deletes (§D17c).
+  private async recordLifecycleEventInTx(
+    tx: Prisma.TransactionClient,
+    input: RecordRequisitionLifecycleEventInput,
+  ): Promise<void> {
+    await tx.requisitionLifecycleEvent.create({
+      data: {
+        id: uuidv7(),
+        tenant_id: input.tenant_id,
+        requisition_id: input.requisition_id,
+        previous_status: input.previous_status,
+        next_status: input.next_status,
+        actor_id: input.actor_id,
+        origin: input.origin,
+        reason_code: input.reason_code,
+        policy_decision_id: input.policy_decision_id ?? null,
+        correlation_id: input.correlation_id,
+      },
+    });
+  }
 
   // PR-7 — the REQUISITION · SET_PRIORITY gate. Called ONLY when is_hot is being
   // set TRUE (R3 — clearing is_hot is cleanup, never governed; "false" is not a
@@ -500,14 +538,27 @@ export class RequisitionRepository {
       enforce: true,
       is_hot: input.is_hot,
     });
-    const row =
-      setPriorityProvenance === null
-        ? await this.prisma.requisition.create({ data })
-        : await this.prisma.$transaction(async (tx) => {
-            const created = await tx.requisition.create({ data });
-            await insertPolicyDecisionRecordInTx(tx, setPriorityProvenance);
-            return created;
-          });
+    // T1-c — a create ALWAYS runs in a transaction now: the row and its
+    // lifecycle event (R1: previous_status NULL) commit atomically, alongside
+    // the optional SET_PRIORITY provenance.
+    const row = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.requisition.create({ data });
+      if (setPriorityProvenance !== null) {
+        await insertPolicyDecisionRecordInTx(tx, setPriorityProvenance);
+      }
+      await this.recordLifecycleEventInTx(tx, {
+        tenant_id,
+        requisition_id: created.id,
+        previous_status: null, // R1 — the created status has no predecessor.
+        next_status: (created as RequisitionRow).status,
+        actor_id: entered_by_id,
+        origin: 'ui',
+        reason_code: LIFECYCLE_REASON_CREATED,
+        policy_decision_id: null, // T1-e supplies one.
+        correlation_id: args.requestId,
+      });
+      return created;
+    });
     return projectView(row as RequisitionRow);
   }
 
@@ -586,14 +637,26 @@ export class RequisitionRepository {
       enforce: false,
       is_hot: input.is_hot,
     });
-    const row =
-      setPriorityProvenance === null
-        ? await this.prisma.requisition.create({ data })
-        : await this.prisma.$transaction(async (tx) => {
-            const created = await tx.requisition.create({ data });
-            await insertPolicyDecisionRecordInTx(tx, setPriorityProvenance);
-            return created;
-          });
+    // T1-c — import is still a create, so it emits a create event (R1:
+    // previous_status NULL) with origin=integration (R4). Atomic with the row.
+    const row = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.requisition.create({ data });
+      if (setPriorityProvenance !== null) {
+        await insertPolicyDecisionRecordInTx(tx, setPriorityProvenance);
+      }
+      await this.recordLifecycleEventInTx(tx, {
+        tenant_id,
+        requisition_id: created.id,
+        previous_status: null, // R1 — an imported create has no predecessor.
+        next_status: (created as RequisitionRow).status,
+        actor_id: entered_by_id,
+        origin: 'integration', // R4 — a bulk load must show where a status came from.
+        reason_code: LIFECYCLE_REASON_IMPORTED,
+        policy_decision_id: null, // T1-e supplies one.
+        correlation_id: args.requestId,
+      });
+      return created;
+    });
     return projectView(row as RequisitionRow);
   }
 
@@ -752,12 +815,33 @@ export class RequisitionRepository {
       enforce: true,
       is_hot: args.input.is_hot,
     });
+    // T1-c R2 — emit a lifecycle event ONLY on an ACTUAL status change: a PATCH
+    // that omits status, or sets it to its current value, records nothing.
+    // previous_status is the pre-update status — never null on an update; a
+    // create is the only path that produces a null previous_status.
+    const statusChanges =
+      args.input.status !== undefined && args.input.status !== existing.status;
     const row =
-      setPriorityProvenance === null
+      setPriorityProvenance === null && !statusChanges
         ? await this.prisma.requisition.update({ where: { id: args.id }, data })
         : await this.prisma.$transaction(async (tx) => {
             const updated = await tx.requisition.update({ where: { id: args.id }, data });
-            await insertPolicyDecisionRecordInTx(tx, setPriorityProvenance);
+            if (setPriorityProvenance !== null) {
+              await insertPolicyDecisionRecordInTx(tx, setPriorityProvenance);
+            }
+            if (statusChanges) {
+              await this.recordLifecycleEventInTx(tx, {
+                tenant_id: args.tenant_id,
+                requisition_id: args.id,
+                previous_status: existing.status as RequisitionStatus,
+                next_status: args.input.status as RequisitionStatus,
+                actor_id: args.actor_id,
+                origin: 'ui',
+                reason_code: LIFECYCLE_REASON_STATUS_CHANGED,
+                policy_decision_id: null, // T1-e supplies one.
+                correlation_id: args.requestId,
+              });
+            }
             return updated;
           });
     return projectView(row as RequisitionRow);

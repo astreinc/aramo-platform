@@ -24,8 +24,12 @@ export type RequisitionLifecycleOrigin = 'ui' | 'agent' | 'integration';
 export interface RecordRequisitionLifecycleEventInput {
   readonly tenant_id: string;
   readonly requisition_id: string;
-  /** WHAT changed — both required; a record that cannot say what changed is not history. */
-  readonly previous_status: RequisitionStatus;
+  /**
+   * WHAT changed. next_status is always present. previous_status is null ONLY
+   * on a create (T1-c R1) — the first status has no predecessor; every
+   * update-driven transition carries a non-null previous_status.
+   */
+  readonly previous_status: RequisitionStatus | null;
   readonly next_status: RequisitionStatus;
   readonly actor_id: string;
   readonly origin: RequisitionLifecycleOrigin;
@@ -47,7 +51,8 @@ export interface RequisitionLifecycleEvent {
   readonly id: string;
   readonly tenant_id: string;
   readonly requisition_id: string;
-  readonly previous_status: RequisitionStatus;
+  /** Null only for a create event (T1-c R1). */
+  readonly previous_status: RequisitionStatus | null;
   readonly next_status: RequisitionStatus;
   readonly actor_id: string;
   readonly origin: RequisitionLifecycleOrigin;
@@ -61,7 +66,7 @@ interface EventRow {
   id: string;
   tenant_id: string;
   requisition_id: string;
-  previous_status: string;
+  previous_status: string | null;
   next_status: string;
   actor_id: string;
   origin: string;
@@ -80,7 +85,10 @@ export class RequisitionLifecycleEventStore {
       id: row.id,
       tenant_id: row.tenant_id,
       requisition_id: row.requisition_id,
-      previous_status: row.previous_status as RequisitionStatus,
+      previous_status:
+        row.previous_status === null
+          ? null
+          : (row.previous_status as RequisitionStatus),
       next_status: row.next_status as RequisitionStatus,
       actor_id: row.actor_id,
       origin: row.origin as RequisitionLifecycleOrigin,

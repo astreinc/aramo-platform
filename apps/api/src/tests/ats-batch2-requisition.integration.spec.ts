@@ -88,6 +88,17 @@ const REQUISITION_PUBLISH_SURFACE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260721000000_add_publish_surface/migration.sql',
 );
+// T1-c — lifecycle event table (CREATE) + previous_status nullable ALTER; the
+// requisition create/update paths now write it inside their transaction, so a
+// POST/PATCH /requisitions in this spec 500s without the table present.
+const REQUISITION_LIFECYCLE_EVENT_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260731120000_add_requisition_lifecycle_event/migration.sql',
+);
+const REQUISITION_LIFECYCLE_NULLABLE_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802120000_lifecycle_previous_status_nullable/migration.sql',
+);
 // PR-A1 Requisition-Gating Rework — DROPs the legacy rate_max/salary columns.
 // Must apply AFTER the init migration that created them (and after the comp
 // fields migration) so the column-existence proof below reflects the drop.
@@ -193,7 +204,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new Client({ connectionString: url });
       await setupClient.connect();
 
-      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION]) {
+      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 

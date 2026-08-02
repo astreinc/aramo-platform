@@ -176,6 +176,17 @@ const REQUISITION_PUBLISH_SURFACE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260721000000_add_publish_surface/migration.sql',
 );
+// T1-c — lifecycle event table (CREATE) + previous_status nullable ALTER; the
+// requisition create/update paths now write it inside their transaction, so a
+// POST/PATCH /requisitions in this spec 500s without the table present.
+const REQUISITION_LIFECYCLE_EVENT_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260731120000_add_requisition_lifecycle_event/migration.sql',
+);
+const REQUISITION_LIFECYCLE_NULLABLE_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802120000_lifecycle_previous_status_nullable/migration.sql',
+);
 const TASK_INIT = resolve(
   ROOT,
   'libs/task/prisma/migrations/20260609140000_init_task_model/migration.sql',
@@ -529,6 +540,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         REQUISITION_JOB_MODULE_FIELDS,
         REQUISITION_RATE_TYPE_SUBK,
         REQUISITION_PUBLISH_SURFACE_MIGRATION,
+        REQUISITION_LIFECYCLE_EVENT_MIGRATION,
+        REQUISITION_LIFECYCLE_NULLABLE_MIGRATION,
         TASK_INIT,
         TASK_WORKSPACE_FIELDS,
       ]) {
