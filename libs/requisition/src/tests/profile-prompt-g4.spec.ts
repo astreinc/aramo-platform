@@ -94,6 +94,7 @@ function viewWithCommercialData(): RequisitionView {
     min_pay_rate: 'PAYSENTINEL_8888',
     max_pay_rate: 'PAYSENTINEL_8888',
     golden_profile_id: null,
+    bookmarked: false,
   };
 }
 

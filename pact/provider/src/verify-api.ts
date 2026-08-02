@@ -559,6 +559,11 @@ const REQUISITION_ONSITE_DAYS_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260802140000_add_onsite_days_to_requisition/migration.sql',
 );
+
+const REQUISITION_USER_STATE_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802160000_add_user_requisition_state/migration.sql',
+);
 // PC-5d — ats-web Gate-2a desk (task + attachment, the final increment). task
 // init CREATEs the schema + Task + the TaskStatus enum ('open','done'); the
 // workspace-fields migration ALTERs the enum (+in_progress/waiting/cancelled)
@@ -2877,6 +2882,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         REQUISITION_VERSION_MIGRATION,
         REQUISITION_ONSITE_DAYS_MIGRATION,
         REQUISITION_LIFECYCLE_NULLABLE_MIGRATION,
+        REQUISITION_USER_STATE_MIGRATION,
         // PC-5d — task + attachment (final desk increment). task init +
         // workspace-fields (enum extension + source column); attachment init.
         // All self-contained (CREATE SCHEMA in init), no FK.

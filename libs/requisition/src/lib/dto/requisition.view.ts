@@ -112,4 +112,13 @@ export interface RequisitionView {
   // ---- The seam (LB-2 / R3) — read-only; stamped by the mint, never
   // settable via create/update. NULL until a profile is generated+confirmed.
   golden_profile_id: string | null;
+
+  // ---- PR-14 (Track C) — personal bookmark state (per calling user) -----
+  // PERSONAL: reflects ONLY whether the CALLING user has bookmarked this
+  // requisition. Never exposes another user's state, and never affects
+  // ranking or sort order for anyone else. Enriched in the actor-scoped read
+  // paths (listForActor / findByIdForActor); other projectView callers
+  // (create / update / admin / import) return false — those responses are
+  // not the bookmark-state read surface.
+  bookmarked: boolean;
 }
