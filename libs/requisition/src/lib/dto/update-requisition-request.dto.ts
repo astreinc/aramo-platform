@@ -62,6 +62,11 @@ export interface UpdateRequisitionRequestDto {
   seniority_level?: string | null;
   headcount_reason?: string | null;
   work_arrangement?: string | null;
+  // PR-17 — hybrid onsite frequency (1-4; null clears). Server rejects a value
+  // when the effective work_arrangement is not 'hybrid', and any value outside
+  // 1-4; and NULLS it automatically when work_arrangement changes away from
+  // 'hybrid' (even if this field is not in the PATCH).
+  onsite_days_per_week?: number | null;
   travel_percent?: number | null;
   relocation_offered?: boolean;
   work_authorization?: string | null;

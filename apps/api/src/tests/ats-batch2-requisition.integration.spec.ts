@@ -106,6 +106,12 @@ const REQUISITION_VERSION_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260801120000_add_version_to_requisition/migration.sql',
 );
+// PR-17 — additive onsite_days_per_week column; regenerated client SELECTs it
+// on every requisition read/write (missing -> 500).
+const REQUISITION_ONSITE_DAYS_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802140000_add_onsite_days_to_requisition/migration.sql',
+);
 // PR-A1 Requisition-Gating Rework — DROPs the legacy rate_max/salary columns.
 // Must apply AFTER the init migration that created them (and after the comp
 // fields migration) so the column-existence proof below reflects the drop.
@@ -211,7 +217,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new Client({ connectionString: url });
       await setupClient.connect();
 
-      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION]) {
+      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 

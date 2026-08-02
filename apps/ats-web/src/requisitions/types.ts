@@ -80,6 +80,8 @@ export interface RequisitionView {
   readonly seniority_level: string | null;
   readonly headcount_reason: string | null;
   readonly work_arrangement: string | null;
+  // PR-17 — hybrid onsite frequency; null unless work_arrangement = 'hybrid'.
+  readonly onsite_days_per_week: number | null;
   readonly travel_percent: number | null;
   readonly relocation_offered: boolean | null;
   readonly work_authorization: string | null;
@@ -193,6 +195,7 @@ export interface CreateRequisitionRequest {
   readonly seniority_level?: string;
   readonly headcount_reason?: string;
   readonly work_arrangement?: string;
+  readonly onsite_days_per_week?: number;
   readonly travel_percent?: number;
   readonly relocation_offered?: boolean;
   readonly work_authorization?: string;
@@ -271,6 +274,7 @@ export interface UpdateRequisitionRequest {
   readonly seniority_level?: string | null;
   readonly headcount_reason?: string | null;
   readonly work_arrangement?: string | null;
+  readonly onsite_days_per_week?: number | null;
   readonly travel_percent?: number | null;
   readonly relocation_offered?: boolean | null;
   readonly work_authorization?: string | null;

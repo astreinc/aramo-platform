@@ -133,6 +133,9 @@ function buildEnterpriseCreateData(
     seniority_level: input.seniority_level ?? null,
     headcount_reason: input.headcount_reason ?? null,
     work_arrangement: input.work_arrangement ?? null,
+    // PR-17 — hybrid onsite frequency. Mapped as-is; the null-unless-hybrid +
+    // 1-4 invariant is asserted in create/createForImport BEFORE this runs.
+    onsite_days_per_week: input.onsite_days_per_week ?? null,
     travel_percent: input.travel_percent ?? null,
     relocation_offered: input.relocation_offered ?? false,
     work_authorization: input.work_authorization ?? null,
@@ -159,6 +162,43 @@ function buildEnterpriseCreateData(
     min_pay_rate: input.min_pay_rate ?? null,
     max_pay_rate: input.max_pay_rate ?? null,
   };
+}
+
+// PR-17 — the server-side floor for onsite_days_per_week (directive: "Enforced
+// server-side, not by the form"). onsite frequency is meaningful ONLY for a
+// hybrid work arrangement and only in 1-4; 0 (remote) and 5 (onsite) are
+// work_arrangement values, not frequencies. Null is always acceptable — an
+// unknown hybrid frequency, or any non-hybrid arrangement. Throws
+// VALIDATION_ERROR (400); returns void when acceptable. `work_arrangement` is
+// the EFFECTIVE arrangement (post-update on the update path).
+function assertOnsiteDaysPerWeekValid(args: {
+  work_arrangement: string | null;
+  value: number | null;
+  requestId: string;
+}): void {
+  if (args.value === null) return;
+  if (args.work_arrangement !== 'hybrid') {
+    throw new AramoError(
+      'VALIDATION_ERROR',
+      'onsite_days_per_week is only valid when work_arrangement is hybrid',
+      400,
+      {
+        requestId: args.requestId,
+        details: { field: 'onsite_days_per_week', reason: 'not_hybrid' },
+      },
+    );
+  }
+  if (!Number.isInteger(args.value) || args.value < 1 || args.value > 4) {
+    throw new AramoError(
+      'VALIDATION_ERROR',
+      'onsite_days_per_week must be a whole number between 1 and 4',
+      400,
+      {
+        requestId: args.requestId,
+        details: { field: 'onsite_days_per_week', reason: 'out_of_range' },
+      },
+    );
+  }
 }
 
 interface RequisitionRow {
@@ -207,6 +247,7 @@ interface RequisitionRow {
   seniority_level: string | null;
   headcount_reason: string | null;
   work_arrangement: string | null;
+  onsite_days_per_week: number | null;
   travel_percent: number | null;
   relocation_offered: boolean;
   work_authorization: string | null;
@@ -305,6 +346,7 @@ function projectView(row: RequisitionRow): RequisitionView {
     seniority_level: row.seniority_level,
     headcount_reason: row.headcount_reason,
     work_arrangement: row.work_arrangement,
+    onsite_days_per_week: row.onsite_days_per_week,
     travel_percent: row.travel_percent,
     relocation_offered: row.relocation_offered,
     work_authorization: row.work_authorization,
@@ -499,6 +541,13 @@ export class RequisitionRepository {
       scopes: args.scopes,
       requestId: args.requestId,
     });
+    // PR-17 — reject a non-null onsite frequency unless work_arrangement is
+    // hybrid, and reject any value outside 1-4. Server-side floor, before persist.
+    assertOnsiteDaysPerWeekValid({
+      work_arrangement: input.work_arrangement ?? null,
+      value: input.onsite_days_per_week ?? null,
+      requestId: args.requestId,
+    });
     const data: Prisma.RequisitionUncheckedCreateInput = {
       tenant_id,
       site_id: input.site_id ?? null,
@@ -592,6 +641,13 @@ export class RequisitionRepository {
     assertFinancialEditScopes({
       input: input as unknown as Record<string, unknown>,
       scopes: args.scopes,
+      requestId: args.requestId,
+    });
+    // PR-17 — same onsite-frequency floor as create(); an import is still a
+    // write and must not persist an out-of-domain onsite value.
+    assertOnsiteDaysPerWeekValid({
+      work_arrangement: input.work_arrangement ?? null,
+      value: input.onsite_days_per_week ?? null,
       requestId: args.requestId,
     });
     const data: Prisma.RequisitionUncheckedCreateInput = {
@@ -720,7 +776,9 @@ export class RequisitionRepository {
     });
     const existing = await this.prisma.requisition.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
-      select: { id: true, status: true },
+      // PR-17 — work_arrangement is read so the onsite-frequency rule can key
+      // off the EFFECTIVE arrangement (existing value when the PATCH omits it).
+      select: { id: true, status: true, work_arrangement: true },
     });
     if (existing === null) {
       throw new AramoError(
@@ -771,6 +829,34 @@ export class RequisitionRepository {
     if (i.seniority_level !== undefined) data['seniority_level'] = i.seniority_level;
     if (i.headcount_reason !== undefined) data['headcount_reason'] = i.headcount_reason;
     if (i.work_arrangement !== undefined) data['work_arrangement'] = i.work_arrangement;
+    // PR-17 — onsite frequency + its coupling to work_arrangement. effectiveWA
+    // is the arrangement AFTER this update (the PATCH's value if present, else
+    // the existing one).
+    //   (1) field in the PATCH → validate against effectiveWA (reject a non-null
+    //       value off-hybrid, and any value outside 1-4), then write it.
+    //   (2) field NOT in the PATCH but work_arrangement is changing to a
+    //       non-hybrid value → NULL it (a hybrid frequency is meaningless once
+    //       the arrangement is no longer hybrid; stale data must not survive the
+    //       transition).
+    {
+      const effectiveWorkArrangement =
+        i.work_arrangement !== undefined
+          ? i.work_arrangement
+          : existing.work_arrangement;
+      if (i.onsite_days_per_week !== undefined) {
+        assertOnsiteDaysPerWeekValid({
+          work_arrangement: effectiveWorkArrangement,
+          value: i.onsite_days_per_week,
+          requestId: args.requestId,
+        });
+        data['onsite_days_per_week'] = i.onsite_days_per_week;
+      } else if (
+        i.work_arrangement !== undefined &&
+        i.work_arrangement !== 'hybrid'
+      ) {
+        data['onsite_days_per_week'] = null;
+      }
+    }
     if (i.travel_percent !== undefined) data['travel_percent'] = i.travel_percent;
     if (i.relocation_offered !== undefined) data['relocation_offered'] = i.relocation_offered;
     if (i.work_authorization !== undefined) data['work_authorization'] = i.work_authorization;
