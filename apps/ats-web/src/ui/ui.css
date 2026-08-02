@@ -2338,6 +2338,43 @@ button.rc-link-action {
   border-radius: 4px;
 }
 
+/* PR-14 — personal bookmark star on a list row. Distinct from .rc-rt__hot
+   (the team-wide HOT pill): a muted outline star that fills brand when the
+   CURRENT user has bookmarked. It never affects is_hot, ranking/sort, or
+   another user's view. */
+.rc-rt__bm {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 6px;
+  line-height: 0;
+}
+
+.rc-rt__bm svg { width: 15px; height: 15px; }
+
+.rc-rt__bm:hover { color: var(--brand); background: var(--surface-2); }
+
+.rc-rt__bm--on { color: var(--brand); }
+
+.rc-rt__bm--on svg { fill: currentColor; }
+
+.rc-rt__bm:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 1px;
+}
+
+/* PR-14 — detail-header bookmark button on-state (base .rc-hbtn). Brand
+   accent + filled icon when the current user has bookmarked. */
+.rc-hbtn--on { color: var(--brand); border-color: var(--brand); }
+
+.rc-hbtn--on svg { fill: currentColor; }
+
 .rc-rt__sub {
   margin-top: 3px;
   display: flex;

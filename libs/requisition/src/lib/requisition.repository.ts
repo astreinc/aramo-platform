@@ -381,6 +381,11 @@ function projectView(row: RequisitionRow): RequisitionView {
     advertised_pay_currency: row.advertised_pay_currency,
     // Job-Module LB-2 — the seam (read-only).
     golden_profile_id: row.golden_profile_id,
+    // PR-14 — personal bookmark state. False by default here; the
+    // actor-scoped read paths (listForActor / findByIdForActor) enrich it
+    // per calling user. projectView has no actor context, so it cannot
+    // resolve this on its own.
+    bookmarked: false,
   };
 }
 
@@ -1117,6 +1122,12 @@ export class RequisitionRepository {
   async listForActor(args: {
     tenant_id: string;
     visibility: VisibilityContextShape;
+    // PR-14 — "My Bookmarks" filter. When true, NARROWS to requisitions the
+    // caller has personally bookmarked (ANDs a relation-EXISTS on the caller's
+    // own state row within the visible set — never widens visibility, never
+    // reads another user's bookmarks). The caller identity comes from
+    // visibility.actor_user_id (the authenticated actor).
+    bookmarked_only?: boolean;
     site_id?: string;
     company_id?: string;
     // Search PR-1 — optional ILIKE-contains quick-search over `title`
@@ -1139,12 +1150,30 @@ export class RequisitionRepository {
         ...(args.q === undefined
           ? {}
           : { title: { contains: args.q, mode: 'insensitive' } }),
+        // PR-14 — "My Bookmarks": a correlated EXISTS on the CALLER's own
+        // bookmarked state row. ANDs as a sibling of the visibility union —
+        // narrows within the visible set, never widens it.
+        ...(args.bookmarked_only
+          ? {
+              user_requisition_state: {
+                some: {
+                  user_id: args.visibility.actor_user_id,
+                  bookmarked_at: { not: null },
+                },
+              },
+            }
+          : {}),
         ...buildVisibilityWhere(args.visibility),
       },
       orderBy: { created_at: 'desc' },
       take: limit,
     });
-    return (rows as RequisitionRow[]).map(projectView);
+    const views = (rows as RequisitionRow[]).map(projectView);
+    return this.enrichBookmarked(
+      args.tenant_id,
+      args.visibility.actor_user_id,
+      views,
+    );
   }
 
   /**
@@ -1168,7 +1197,111 @@ export class RequisitionRepository {
         ...buildVisibilityWhere(args.visibility),
       },
     });
-    return row === null ? null : projectView(row as RequisitionRow);
+    if (row === null) return null;
+    // PR-14 — enrich the personal `bookmarked` flag for the calling user
+    // (visibility.actor_user_id).
+    const enriched = await this.enrichBookmarked(
+      args.tenant_id,
+      args.visibility.actor_user_id,
+      [projectView(row as RequisitionRow)],
+    );
+    return enriched[0] ?? null;
+  }
+
+  // -------------------------------------------------------------------------
+  // PR-14 (Track C) — personal bookmark state
+  // -------------------------------------------------------------------------
+
+  /**
+   * Enrich a set of views with the CALLING user's personal `bookmarked` flag.
+   * One indexed lookup on user_requisition_state (leads with
+   * (tenant_id, user_id)) resolves every row. Reads ONLY the actor's own
+   * rows — a bookmark is never visible to another user.
+   */
+  private async enrichBookmarked(
+    tenant_id: string,
+    actor_user_id: string,
+    views: RequisitionView[],
+  ): Promise<RequisitionView[]> {
+    if (views.length === 0) return views;
+    const bookmarked = await this.prisma.userRequisitionState.findMany({
+      where: {
+        tenant_id,
+        user_id: actor_user_id,
+        requisition_id: { in: views.map((v) => v.id) },
+        bookmarked_at: { not: null },
+      },
+      select: { requisition_id: true },
+    });
+    const bookmarkedIds = new Set(bookmarked.map((b) => b.requisition_id));
+    return views.map((v) => ({ ...v, bookmarked: bookmarkedIds.has(v.id) }));
+  }
+
+  /**
+   * Set (idempotently) the calling user's bookmark state for a requisition.
+   *
+   * PERSONAL: writes only the actor's own state row; never touches is_hot
+   * (team-wide) and never affects ranking or sort for anyone else. Idempotent
+   * SET semantics — the caller supplies the desired state, so repeated calls
+   * converge and re-bookmarking preserves the original bookmarked_at.
+   *
+   * Visibility-scoped: bookmarking a requisition outside the actor's visible
+   * set (or in another tenant) returns 404 — the same contract as the read
+   * paths, so a bookmark cannot be used to probe for hidden rows.
+   */
+  async setBookmark(args: {
+    tenant_id: string;
+    actor_user_id: string;
+    id: string;
+    bookmarked: boolean;
+    visibility: VisibilityContextShape;
+    requestId: string;
+  }): Promise<RequisitionView> {
+    const view = await this.findByIdForActor({
+      tenant_id: args.tenant_id,
+      id: args.id,
+      visibility: args.visibility,
+    });
+    if (view === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'Requisition not found in tenant (or not visible to actor)',
+        404,
+        { requestId: args.requestId, details: { id: args.id } },
+      );
+    }
+    const locator = {
+      tenant_id_user_id_requisition_id: {
+        tenant_id: args.tenant_id,
+        user_id: args.actor_user_id,
+        requisition_id: args.id,
+      },
+    };
+    const existing = await this.prisma.userRequisitionState.findUnique({
+      where: locator,
+      select: { bookmarked_at: true },
+    });
+    // Un-bookmarking a row that is already absent/not-bookmarked is a no-op
+    // (no empty row is created) — idempotent.
+    if (!args.bookmarked && (existing === null || existing.bookmarked_at === null)) {
+      return { ...view, bookmarked: false };
+    }
+    // Re-bookmarking preserves the first bookmarked_at (idempotent — no
+    // observable change on repeat); un-bookmarking clears it.
+    const bookmarked_at = args.bookmarked
+      ? existing?.bookmarked_at ?? new Date()
+      : null;
+    await this.prisma.userRequisitionState.upsert({
+      where: locator,
+      create: {
+        tenant_id: args.tenant_id,
+        user_id: args.actor_user_id,
+        requisition_id: args.id,
+        bookmarked_at,
+      },
+      update: { bookmarked_at },
+    });
+    return { ...view, bookmarked: args.bookmarked };
   }
 
   /**

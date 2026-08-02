@@ -29,7 +29,7 @@ import {
   type PillTone,
 } from '../ui';
 
-import { listRequisitions } from './requisitions-api';
+import { listRequisitions, setRequisitionBookmark } from './requisitions-api';
 import { listErrorMessage } from './error-messages';
 import {
   isClosedStatus,
@@ -62,9 +62,14 @@ import {
 // RULED OUT of this surface (not mocked, not stubbed):
 //   • Match/Matches (R1) — the reserved seam lives on the DETAIL page only;
 //     it never appears in a list row and is never a disabled number slot.
-//   • Star/favorite (R6) — no per-user favorite field exists (Charter §4).
 //   • Per-talent "source" / next-step / "New" count (R6/R7) — no contract
 //     source; omitted, no placeholder column.
+//
+// PR-14 (Track C) UPDATE: a per-user personal bookmark field now DOES exist
+// (user_requisition_state.bookmarked_at, enriched onto RequisitionView.bookmarked
+// per calling user). The bookmark star below is PERSONAL — it never toggles
+// is_hot (the team-wide HOT pill) and is invisible to other users. This
+// supersedes the earlier "no per-user favorite field" note for R6.
 //
 // DEFERRED (unbacked — see go-live-known-limitations.md): a server-side
 // owner-IS-NULL "Unassigned" filter, "Team" scope, and owner reassignment.
@@ -88,7 +93,13 @@ const STATUS_TONE: Record<RequisitionStatus, PillTone> = {
   canceled: 'danger',
 };
 
-type FilterMode = 'mine' | 'all' | 'hot' | 'needs_sourcing' | 'aging';
+type FilterMode =
+  | 'mine'
+  | 'all'
+  | 'hot'
+  | 'bookmarked'
+  | 'needs_sourcing'
+  | 'aging';
 type SortKey = 'focus' | 'aging' | 'pipeline' | 'new';
 
 // A requisition is "aging" (needs-attention) when it has been open a while
@@ -210,6 +221,22 @@ export function RequisitionsListView({
   const needsSourcing = (r: RequisitionView): boolean =>
     !isClosedStatus(r.status) && (pipelineCounts[r.id]?.active ?? 0) === 0;
 
+  // PR-14 — personal bookmark toggle. Optimistic: flip the local row first,
+  // call the server, revert on failure. This is a PERSONAL mark on the
+  // CALLER's own state — it never touches is_hot and never affects another
+  // user's view. The star reads the enriched `bookmarked` field the BE returns
+  // per calling user.
+  const toggleBookmark = (id: string, next: boolean): void => {
+    setItems((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, bookmarked: next } : r)),
+    );
+    void setRequisitionBookmark(id, next).catch(() => {
+      setItems((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, bookmarked: !next } : r)),
+      );
+    });
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const rows = items.filter((r) => {
@@ -223,6 +250,10 @@ export function RequisitionsListView({
         return false;
       }
       if (mode === 'hot' && !r.is_hot) return false;
+      // PR-14 — "Bookmarked" narrows to the caller's own bookmarks (the
+      // enriched personal field). Client-side over the already-loaded set,
+      // consistent with the other derived modes.
+      if (mode === 'bookmarked' && !r.bookmarked) return false;
       if (mode === 'mine' && !isMine(r)) return false;
       if (mode === 'aging' && !isAging(r)) return false;
       if (mode === 'needs_sourcing' && !needsSourcing(r)) return false;
@@ -340,6 +371,12 @@ export function RequisitionsListView({
             Hot
           </FilterChip>
           <FilterChip
+            active={mode === 'bookmarked'}
+            onClick={() => setMode('bookmarked')}
+          >
+            Bookmarked
+          </FilterChip>
+          <FilterChip
             active={mode === 'needs_sourcing'}
             onClick={() => setMode('needs_sourcing')}
           >
@@ -440,6 +477,7 @@ export function RequisitionsListView({
                     companyName={companyNames[r.company_id]}
                     funnel={funnels[r.id]}
                     ownerName={ownerName(r, userNames)}
+                    onToggleBookmark={toggleBookmark}
                   />
                 ))}
               </div>
@@ -456,6 +494,7 @@ interface RequisitionRowProps {
   readonly companyName: string | undefined;
   readonly funnel: ReqFunnel | undefined;
   readonly ownerName: string | null;
+  readonly onToggleBookmark: (id: string, next: boolean) => void;
 }
 
 function RequisitionRow({
@@ -463,6 +502,7 @@ function RequisitionRow({
   companyName,
   funnel,
   ownerName: owner,
+  onToggleBookmark,
 }: RequisitionRowProps) {
   const detailHref = `/requisitions/${req.id}`;
   const total = funnel?.total ?? 0;
@@ -499,6 +539,18 @@ function RequisitionRow({
             {req.title}
           </Link>
           {req.is_hot ? <span className="rc-rt__hot">Hot</span> : null}
+          {/* PR-14 — personal bookmark star. NOT the team-wide HOT pill; this
+              never toggles is_hot and is invisible to other users. */}
+          <button
+            type="button"
+            className={`rc-rt__bm${req.bookmarked ? ' rc-rt__bm--on' : ''}`}
+            aria-pressed={req.bookmarked}
+            aria-label={req.bookmarked ? 'Remove bookmark' : 'Bookmark'}
+            title={req.bookmarked ? 'Remove bookmark' : 'Bookmark'}
+            onClick={() => onToggleBookmark(req.id, !req.bookmarked)}
+          >
+            <Icons.IconBookmark aria-hidden="true" />
+          </button>
         </div>
         {idParts.length > 0 ? (
           <div className="rc-rt__sub">

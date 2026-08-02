@@ -51,6 +51,7 @@ import { ProfileWorkbenchPanel } from './ProfileWorkbenchPanel';
 import {
   getRequisition,
   listRequisitionAttachments,
+  setRequisitionBookmark,
   updateRequisition,
 } from './requisitions-api';
 import { detailErrorMessage } from './error-messages';
@@ -397,6 +398,18 @@ export function RequisitionDetailView({
     });
   }
 
+  // PR-14 — personal bookmark toggle (optimistic). PERSONAL to the caller;
+  // never touches is_hot (the team-wide HOT pill) and never affects another
+  // user's view.
+  const toggleBookmark = (): void => {
+    if (req === null) return;
+    const next = !req.bookmarked;
+    setReq({ ...req, bookmarked: next });
+    void setRequisitionBookmark(req.id, next).catch(() => {
+      setReq((prev) => (prev === null ? prev : { ...prev, bookmarked: !next }));
+    });
+  };
+
   return (
     <section>
       <div className="rc-dhead">
@@ -428,6 +441,18 @@ export function RequisitionDetailView({
           </div>
         </div>
         <div className="rc-dhead__actions">
+          {/* PR-14 — personal bookmark. NOT the team-wide HOT pill; never
+              toggles is_hot, invisible to other users. */}
+          <button
+            type="button"
+            className={`rc-hbtn${req.bookmarked ? ' rc-hbtn--on' : ''}`}
+            aria-pressed={req.bookmarked}
+            aria-label={req.bookmarked ? 'Remove bookmark' : 'Bookmark'}
+            onClick={toggleBookmark}
+          >
+            <Icons.IconBookmark />
+            {req.bookmarked ? 'Bookmarked' : 'Bookmark'}
+          </button>
           {canLogNote ? (
             <LogNoteDialog requisitionId={req.id} onSaved={refresh} />
           ) : null}

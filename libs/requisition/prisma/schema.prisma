@@ -305,6 +305,10 @@ model Requisition {
   // Intra-schema relation to the assignment join.
   assignments RequisitionAssignment[]
 
+  // PR-14 (Track C) — personal per-user state (bookmarks). Intra-schema
+  // relation so every user's state row cascades on requisition delete.
+  user_requisition_state UserRequisitionState[]
+
   // Indexes — every query leads with tenant_id; the (tenant, status)
   // index serves the dominant "active reqs in tenant" filter.
   @@index([tenant_id, status])
@@ -374,6 +378,53 @@ model RequisitionAssignment {
   // the repository).
   @@unique([requisition_id, user_id])
 
+  @@schema("requisition")
+}
+
+// UserRequisitionState — PR-14 (Track C). The single per-user personal-state
+// row, keyed (tenant, user, requisition). PERSONAL: never visible to another
+// user, and never affects ranking or sort order for anyone else. Three
+// INDEPENDENT concepts must not be conflated (directive rulings):
+//   - is_hot  — requisition-scoped, TEAM-WIDE, the HOT pill (a star must
+//               NEVER toggle is_hot — that would silently re-prioritise the
+//               requisition for the whole team).
+//   - bookmark — user × requisition, PERSONAL (this table's bookmarked_at).
+//   - watch    — notifications, a FUTURE concept (not modelled here).
+//
+// One personal-state table, not two: PR-16 adds last_viewed_at ADDITIVELY to
+// THIS table — do NOT create that column here. Table name is
+// `user_requisition_state` (@@map) per ADR-0024 §D19 as corrected by
+// Amendment A6 — NOT `user_requisition_bookmark`.
+//
+// Intra-schema FK to Requisition with onDelete: Cascade (mirrors
+// RequisitionAssignment): deleting a requisition removes every user's state
+// row for it. user_id is a cross-schema logical ref to identity.User
+// (UUID-only, no FK per §7.3).
+model UserRequisitionState {
+  // Identity.
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Parent requisition (intra-schema FK — cascades on delete).
+  requisition_id String      @db.Uuid
+  requisition    Requisition @relation(fields: [requisition_id], references: [id], onDelete: Cascade)
+
+  // The owning user (UUID-only logical ref to identity.User).
+  user_id String @db.Uuid
+
+  // Bookmark state: null = not bookmarked; a timestamp = the moment it was
+  // bookmarked. A nullable column (not a boolean) so PR-16's last_viewed_at
+  // can live on the same row without a separate presence flag.
+  bookmarked_at DateTime? @db.Timestamptz
+
+  // The dominant "my bookmarks in this tenant" read path leads with
+  // (tenant_id, user_id).
+  @@index([tenant_id, user_id])
+
+  // One personal-state row per (tenant, user, requisition).
+  @@unique([tenant_id, user_id, requisition_id])
+
+  @@map("user_requisition_state")
   @@schema("requisition")
 }
 

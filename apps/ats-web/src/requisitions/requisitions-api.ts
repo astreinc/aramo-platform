@@ -27,20 +27,40 @@ import type {
 // with the A3/D4b visibility predicate — no client-side filter, no
 // truncation banner.
 export async function listRequisitions(
-  params?: { company_id?: string },
+  params?: { company_id?: string; bookmarked?: boolean },
 ): Promise<RequisitionListResponse> {
+  const search = new URLSearchParams();
   const companyId = params?.company_id;
-  if (companyId === undefined || companyId === '') {
-    return apiClient.get<RequisitionListResponse>('/v1/requisitions');
+  if (companyId !== undefined && companyId !== '') {
+    search.set('company_id', companyId);
   }
-  const search = new URLSearchParams({ company_id: companyId });
+  // PR-14 — "My Bookmarks": the server narrows to the caller's own
+  // bookmarked requisitions (personal; never another user's).
+  if (params?.bookmarked === true) {
+    search.set('bookmarked', 'true');
+  }
+  const qs = search.toString();
   return apiClient.get<RequisitionListResponse>(
-    `/v1/requisitions?${search.toString()}`,
+    qs === '' ? '/v1/requisitions' : `/v1/requisitions?${qs}`,
   );
 }
 
 export async function getRequisition(id: string): Promise<RequisitionView> {
   return apiClient.get<RequisitionView>(`/v1/requisitions/${id}`);
+}
+
+// PR-14 (Track C) — personal bookmark toggle. Idempotent SET: pass the
+// DESIRED state. PERSONAL and invisible to other users; this NEVER toggles
+// is_hot (the team-wide HOT pill). Returns the updated RequisitionView with
+// its `bookmarked` flag reflecting the new state.
+export async function setRequisitionBookmark(
+  id: string,
+  bookmarked: boolean,
+): Promise<RequisitionView> {
+  return apiClient.put<RequisitionView>(
+    `/v1/requisitions/${encodeURIComponent(id)}/bookmark`,
+    { bookmarked },
+  );
 }
 
 // Requisition attachments (the detail Attachments tab). GET /v1/attachments
