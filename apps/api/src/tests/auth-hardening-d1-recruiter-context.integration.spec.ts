@@ -187,6 +187,13 @@ const REQUISITION_LIFECYCLE_NULLABLE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260802120000_lifecycle_previous_status_nullable/migration.sql',
 );
+// Track 1 T1-b — additive `version` optimistic-concurrency column. The
+// regenerated client SELECTs it on every requisition read/write; absent in
+// DB → 500 INTERNAL_ERROR (the hardcoded-migration-list footgun).
+const REQUISITION_VERSION_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260801120000_add_version_to_requisition/migration.sql',
+);
 const TASK_INIT = resolve(
   ROOT,
   'libs/task/prisma/migrations/20260609140000_init_task_model/migration.sql',
@@ -540,7 +547,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         REQUISITION_JOB_MODULE_FIELDS,
         REQUISITION_RATE_TYPE_SUBK,
         REQUISITION_PUBLISH_SURFACE_MIGRATION,
-        REQUISITION_LIFECYCLE_EVENT_MIGRATION,
+        REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION,
         REQUISITION_LIFECYCLE_NULLABLE_MIGRATION,
         TASK_INIT,
         TASK_WORKSPACE_FIELDS,

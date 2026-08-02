@@ -3040,6 +3040,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-concurrency.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-lifecycle-event.integration.spec.ts",
         "project": "api",
         "status": "excluded"

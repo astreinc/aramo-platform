@@ -275,6 +275,20 @@ model Requisition {
   created_at DateTime @default(now()) @db.Timestamptz
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
 
+  // ---- Optimistic concurrency (Track 1 T1-b, ruling R1) ---------------
+  // The row-concurrency token. Monotonic integer, incremented by the
+  // repository on EVERY successful update (not only status changes — a
+  // stale write is stale regardless of which field it targets). This is
+  // NOT updated_at: updated_at is a write-time @updatedAt stamp, not
+  // monotonic under clock skew and not a contract. version is the CAS
+  // predicate — the update path guards on WHERE version = <expected> and
+  // a zero-row result signals a stale write (REQUISITION_VERSION_CONFLICT).
+  // ADDITIVE (R4): a caller that supplies no expected version updates
+  // unguarded but still increments. T1-e makes it mandatory for governed
+  // transitions. NOT NULL DEFAULT 0 so existing rows + raw-SQL seeds that
+  // omit the column (pact provider) stay valid.
+  version Int @default(0)
+
   // Intra-schema relation to the assignment join.
   assignments RequisitionAssignment[]
 

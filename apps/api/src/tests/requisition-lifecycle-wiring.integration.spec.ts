@@ -328,5 +328,40 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // the rolled-back create left neither row nor event.
       expect(rows).toHaveLength(0);
     });
+
+    // T1-b × T1-c composition — the interaction neither PR could cover alone.
+    // The version compare-and-swap (T1-b) runs FIRST inside the update
+    // transaction; a stale-version write matches zero rows and throws
+    // REQUISITION_VERSION_CONFLICT before recordLifecycleEventInTx is reached.
+    // A rejected write that still recorded history would produce a lifecycle
+    // event for a status change that never happened — this proves it does not.
+    it('a stale-version update fails the CAS and writes NO lifecycle event', async () => {
+      const created = await createReq(); // version 0; 1 create event
+      // Supply a STALE expected version with a real status change.
+      let caught: unknown;
+      try {
+        await repo.update({
+          tenant_id: TENANT_A,
+          id: created.id,
+          input: { status: 'closed', version: 99 } as never, // 99 !== current (0)
+          scopes: ['requisition:edit'],
+          actor_id: ACTOR_2,
+          requestId: uuidv7(),
+        });
+      } catch (err) {
+        caught = err;
+      }
+      expect((caught as { code?: string } | undefined)?.code).toBe(
+        'REQUISITION_VERSION_CONFLICT',
+      );
+
+      // The CAS matched zero rows → status unchanged …
+      const after = await repo.findByIdAdmin({ tenant_id: TENANT_A, id: created.id });
+      expect(after?.status).toBe('active');
+      // … and NO lifecycle event was written (only the original create survives).
+      const events = await store.listByRequisition(TENANT_A, created.id);
+      expect(events).toHaveLength(1);
+      expect(events[0]?.next_status).toBe('active');
+    });
   },
 );

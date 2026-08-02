@@ -545,6 +545,13 @@ const REQUISITION_LIFECYCLE_NULLABLE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260802120000_lifecycle_previous_status_nullable/migration.sql',
 );
+// Track 1 T1-b — additive `version` optimistic-concurrency column. The
+// regenerated client SELECTs it on every requisition read/write served during
+// verification; absent in DB → 500 (the hardcoded-migration-list footgun).
+const REQUISITION_VERSION_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260801120000_add_version_to_requisition/migration.sql',
+);
 // PC-5d — ats-web Gate-2a desk (task + attachment, the final increment). task
 // init CREATEs the schema + Task + the TaskStatus enum ('open','done'); the
 // workspace-fields migration ALTERs the enum (+in_progress/waiting/cancelled)
@@ -2857,9 +2864,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         REQUISITION_DROP_LEGACY_COMP_MIGRATION,
         REQUISITION_RATE_TYPE_MIGRATION,
         REQUISITION_PUBLISH_SURFACE_MIGRATION,
-        // T1-c — lifecycle event table (CREATE) then its previous_status
-        // nullable ALTER; create/update now write it inside their transaction.
+        // T1-c — lifecycle event table (CREATE); T1-b — version column; then the
+        // T1-c ALTER (nullable previous_status) LAST so it follows the CREATE.
         REQUISITION_LIFECYCLE_EVENT_MIGRATION,
+        REQUISITION_VERSION_MIGRATION,
         REQUISITION_LIFECYCLE_NULLABLE_MIGRATION,
         // PC-5d — task + attachment (final desk increment). task init +
         // workspace-fields (enum extension + source column); attachment init.

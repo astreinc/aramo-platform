@@ -385,14 +385,16 @@ describe('assertCompensationEditScopes — (e) all 3 write paths invoke the gate
     expect(repoSrc).toContain('assertCompensationEditScopes');
   });
 
-  // T1-c — create and createForImport now write inside a $transaction (so the
-  // requisition row and its lifecycle event commit atomically), so the write
-  // call is `tx.requisition.create(`, not `this.prisma.requisition.create(`.
-  // update still exposes `prisma.requisition.update(` on its no-op fast path.
-  // The gate still precedes the write in every path — the invariant this proves.
+  // T1-b + T1-c compose the write call sites:
+  //  - create / createForImport now write inside a $transaction (row + lifecycle
+  //    event commit atomically), so the call is `tx.requisition.create(`.
+  //  - update()'s DB write is the versioned compare-and-swap helper
+  //    `casUpdate(` (T1-b), which also carries the lifecycle emit (T1-c).
+  // The proof is unchanged in intent: the comp edit-gate fires BEFORE the write
+  // in every path.
   for (const [method, write] of [
     ['create', 'tx.requisition.create('],
-    ['update', 'prisma.requisition.update('],
+    ['update', 'casUpdate('],
     ['createForImport', 'tx.requisition.create('],
   ] as const) {
     it(`${method}() invokes assertCompensationEditScopes BEFORE ${write}`, () => {
