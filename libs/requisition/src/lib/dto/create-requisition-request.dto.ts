@@ -60,6 +60,9 @@ export interface CreateRequisitionRequestDto {
   seniority_level?: string;
   headcount_reason?: string;
   work_arrangement?: string;
+  // PR-17 — hybrid onsite frequency (1-4). Server rejects a value when
+  // work_arrangement is not 'hybrid', and any value outside 1-4.
+  onsite_days_per_week?: number;
   travel_percent?: number;
   relocation_offered?: boolean;
   work_authorization?: string;

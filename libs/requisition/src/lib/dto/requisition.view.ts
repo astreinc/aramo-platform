@@ -70,6 +70,9 @@ export interface RequisitionView {
   seniority_level: string | null;
   headcount_reason: string | null;
   work_arrangement: string | null;
+  // PR-17 — hybrid onsite frequency; null unless work_arrangement = 'hybrid'
+  // (and may be null even then, when the frequency is unknown).
+  onsite_days_per_week: number | null;
   travel_percent: number | null;
   relocation_offered: boolean;
   work_authorization: string | null;

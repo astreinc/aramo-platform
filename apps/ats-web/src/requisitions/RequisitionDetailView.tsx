@@ -476,7 +476,7 @@ function MetaStrip({
   readonly present: (key: string) => boolean;
 }) {
   const place = [req.city, req.state].filter(Boolean).join(', ');
-  const remote = remoteLabel(req.work_arrangement);
+  const remote = remoteLabel(req.work_arrangement, req.onsite_days_per_week);
   const filled = req.openings - req.openings_available;
   const showRate = present('max_pay_rate') && req.max_pay_rate !== null;
   return (
@@ -879,9 +879,19 @@ function DetailsPanel({
 
 // ── helpers ──
 
-function remoteLabel(workArrangement: string | null): string | null {
+function remoteLabel(
+  workArrangement: string | null,
+  onsiteDaysPerWeek: number | null,
+): string | null {
   if (workArrangement === 'remote') return 'Remote ok';
-  if (workArrangement === 'hybrid') return 'Hybrid';
+  if (workArrangement === 'hybrid') {
+    // PR-17 — append the onsite frequency ONLY when it is known. When null the
+    // label is plain "Hybrid" — never "Hybrid · ? days".
+    if (onsiteDaysPerWeek === null) return 'Hybrid';
+    return `Hybrid · ${onsiteDaysPerWeek} ${
+      onsiteDaysPerWeek === 1 ? 'day' : 'days'
+    } on-site`;
+  }
   if (workArrangement === 'onsite') return 'On-site';
   return null;
 }

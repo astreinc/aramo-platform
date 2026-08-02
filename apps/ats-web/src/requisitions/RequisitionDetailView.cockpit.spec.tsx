@@ -91,6 +91,7 @@ function baseView(extra: Record<string, unknown> = {}): Record<string, unknown> 
     seniority_level: null,
     headcount_reason: null,
     work_arrangement: null,
+    onsite_days_per_week: null,
     travel_percent: null,
     relocation_offered: false,
     work_authorization: null,
@@ -251,5 +252,42 @@ describe('RequisitionDetailView cockpit — backend is truth', () => {
     );
     // The PATCH was attempted (backend, not the FE, is the gate).
     expect(calls.some((c) => c.method === 'PATCH')).toBe(true);
+  });
+});
+
+describe('RequisitionDetailView — PR-17 hybrid onsite frequency', () => {
+  it('a hybrid requisition with onsite_days_per_week null renders plain "Hybrid" — never "· ? days"', async () => {
+    installFetch(() => ({
+      status: 200,
+      body: baseView({ work_arrangement: 'hybrid', onsite_days_per_week: null }),
+    }));
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    await screen.findByRole('heading', { name: /Senior Engineer/ });
+    // The location label reads "Hybrid" and carries no frequency suffix.
+    expect(document.body.textContent).toContain('Hybrid');
+    expect(document.body.textContent).not.toMatch(/on-site/i);
+    expect(document.body.textContent).not.toMatch(/\?\s*day/i);
+  });
+
+  it('a hybrid requisition with a known frequency renders "Hybrid · N days on-site"', async () => {
+    installFetch(() => ({
+      status: 200,
+      body: baseView({ work_arrangement: 'hybrid', onsite_days_per_week: 3 }),
+    }));
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    await screen.findByRole('heading', { name: /Senior Engineer/ });
+    expect(document.body.textContent).toContain('Hybrid · 3 days on-site');
+  });
+
+  it('the cockpit exposes an editable Onsite days / week field', async () => {
+    installFetch(() => ({
+      status: 200,
+      body: baseView({ work_arrangement: 'hybrid', onsite_days_per_week: 3 }),
+    }));
+    mount(makeSession(['requisition:read', 'requisition:edit']));
+    await openDetails();
+    const field = screen.getByTestId('cockpit-field-onsite_days_per_week');
+    expect(field).toBeInTheDocument();
+    expect(field).toHaveTextContent('3');
   });
 });

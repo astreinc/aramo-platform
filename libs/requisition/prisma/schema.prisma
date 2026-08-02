@@ -183,6 +183,12 @@ model Requisition {
 
   // Work arrangement.
   work_arrangement   String? // onsite | hybrid | remote
+  // PR-17 — hybrid onsite frequency. Meaningful ONLY when work_arrangement =
+  // 'hybrid'; valid 1-4 (0 = remote, 5 = onsite are work_arrangement values).
+  // Nullable by design (unknown frequency stays expressible); never defaulted,
+  // never back-filled. The null-unless-hybrid + 1-4 invariants are enforced at
+  // the RequisitionRepository floor, not the form.
+  onsite_days_per_week Int?
   travel_percent     Int?
   relocation_offered Boolean @default(false)
   work_authorization String? // constraint (us_citizen | gc | h1b_ok | any)

@@ -102,6 +102,9 @@ export const COCKPIT_FIELDS: readonly CockpitFieldDescriptor[] = [
 
   // --- Work arrangement (OPEN, enterprise) ---
   { key: 'work_arrangement', label: 'Work arrangement', bucket: 'OPEN', kind: 'select', section: 'work_arrangement' },
+  // PR-17 — hybrid onsite frequency (1-4). Server rejects a value off-hybrid and
+  // outside 1-4; the form does not gate it (enforced server-side).
+  { key: 'onsite_days_per_week', label: 'Onsite days / week', bucket: 'OPEN', kind: 'number', section: 'work_arrangement' },
   { key: 'travel_percent', label: 'Travel %', bucket: 'OPEN', kind: 'number', section: 'work_arrangement' },
   { key: 'relocation_offered', label: 'Relocation offered', bucket: 'OPEN', kind: 'switch', section: 'work_arrangement' },
   { key: 'work_authorization', label: 'Work authorization', bucket: 'OPEN', kind: 'select', section: 'work_arrangement' },

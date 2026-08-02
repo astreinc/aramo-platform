@@ -70,6 +70,8 @@ const MIGRATIONS = [
   // Track 1 T1-b — additive `version` optimistic-concurrency column; regenerated
   // client SELECTs it on every requisition read/write (missing → 500).
   'libs/requisition/prisma/migrations/20260801120000_add_version_to_requisition/migration.sql',
+  // PR-17 — additive onsite_days_per_week column (missing -> 500 on requisition reads/writes).
+  'libs/requisition/prisma/migrations/20260802140000_add_onsite_days_to_requisition/migration.sql',
   // job-domain
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
   // talent-record
