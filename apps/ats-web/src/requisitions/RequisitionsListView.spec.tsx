@@ -152,25 +152,25 @@ describe('RequisitionsListView', () => {
     ).toHaveAttribute('href', '/requisitions/req-open');
   });
 
-  it('reveals closed + filled requisitions when "Show closed" is toggled on', async () => {
+  it('reveals closed + filled requisitions when "Include closed" is toggled on', async () => {
     mockFetch([OPEN, CLOSED, FILLED]);
     renderList();
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
     expect(screen.queryByText('Junior Engineer')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Show closed' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Include closed' }));
     expect(screen.getByText('Junior Engineer')).toBeInTheDocument();
     expect(screen.getByText('Architect')).toBeInTheDocument();
   });
 
-  it('D1-a: selecting a terminal status in the dropdown reveals those reqs even with "Show closed" off', async () => {
+  it('D1-a: selecting a terminal status in the dropdown reveals those reqs even with "Include closed" off', async () => {
     mockFetch([OPEN, CLOSED, FILLED]);
     renderList();
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    // Default view hides the closed req (Show closed is off).
+    // Default view hides the closed req (Include closed is off).
     expect(screen.queryByText('Junior Engineer')).not.toBeInTheDocument();
 
     // Explicitly filter to "closed" via the dropdown — the chip stays OFF.
