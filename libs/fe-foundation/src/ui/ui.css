@@ -480,10 +480,12 @@
   font-size: 0.78rem;
 }
 
+/* DDR v1.0 §6 grammar caps avatars at ~34px; the prior 46px violated it.
+   Corrected to the 34px grammar value (font sized to fit the box, as --md). */
 .rc-av--lg {
-  width: 46px;
-  height: 46px;
-  font-size: 1rem;
+  width: 34px;
+  height: 34px;
+  font-size: 0.78rem;
 }
 
 .rc-ent {
