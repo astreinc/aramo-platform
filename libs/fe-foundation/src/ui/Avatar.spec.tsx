@@ -30,6 +30,17 @@ describe('Avatar', () => {
     expect(screen.getByText('NW')).toBeInTheDocument();
   });
 
+  it('maps each size to its rc-av--<size> grammar class', () => {
+    // The pixel value lives in ui.css (DDR v1.0 §6: ~34px avatars); jsdom has
+    // no box model, so this locks the class token the CSS rule keys on.
+    const { container: sm } = render(<Avatar name="A B" size="sm" />);
+    const { container: md } = render(<Avatar name="A B" size="md" />);
+    const { container: lg } = render(<Avatar name="A B" size="lg" />);
+    expect((sm.firstChild as HTMLElement).className).toContain('rc-av--sm');
+    expect((md.firstChild as HTMLElement).className).toContain('rc-av--md');
+    expect((lg.firstChild as HTMLElement).className).toContain('rc-av--lg');
+  });
+
   it('is deterministic in colour for a given name', () => {
     const { container: a } = render(<Avatar name="Sofia Ramos" />);
     const { container: b } = render(<Avatar name="Sofia Ramos" />);
