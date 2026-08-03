@@ -63,6 +63,7 @@ export default defineConfig({
       // PR-A2 Gate 5 — first ATS-domain leaves (company + contact). Mirrors
       // tsconfig.base.json aliases so vitest runtime resolves the AppModule
       // imports + cross-lib edge contact -> company in the integration specs.
+      '@aramo/client-talent-restriction': resolve(root, 'libs/client-talent-restriction/src/index.ts'),
       '@aramo/company': resolve(root, 'libs/company/src/index.ts'),
       '@aramo/contact': resolve(root, 'libs/contact/src/index.ts'),
       '@aramo/ai-draft': resolve(root, 'libs/ai-draft/src/index.ts'),

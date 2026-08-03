@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 64 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2 + 1 TR-4-B1 + 1 TR-4-B3 + 2 PC-Inc2-lifecycle + 1 TR-12-B1 + 3 TR-15-B1 + 1 Portal-P3a + 1 Portal-P3b + 1 ADR-0024-PR-3a + 2 D3b-activity-redaction + 1 Track1-T1-b + 1 Track1-T1-e)', () => {
+  it('ERROR_CODES contains the 66 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2 + 1 TR-4-B1 + 1 TR-4-B3 + 2 PC-Inc2-lifecycle + 1 TR-12-B1 + 3 TR-15-B1 + 1 Portal-P3a + 1 Portal-P3b + 1 ADR-0024-PR-3a + 2 D3b-activity-redaction + 1 Track1-T1-b + 1 Track1-T1-e + 2 Track3-E7-restriction)', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -120,6 +120,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // Track 1 T1-e — 1 gated-status server-side refusal (status-changing
       // PATCH into draft | pending_approval | archived → 422).
       'REQUISITION_STATUS_GATED',
+      'RESTRICTION_INVALID',
+      'RESTRICTION_ALREADY_CLOSED',
     ]);
   });
 });

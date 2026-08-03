@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 57, "total": 59 },
+  "aliasTotals": { "apps": 2, "libs": 58, "total": 60 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -13,6 +13,7 @@
     "@aramo/authorization": "libs/authorization/src/index.ts",
     "@aramo/calendar": "libs/calendar/src/index.ts",
     "@aramo/canonicalization": "libs/canonicalization/src/index.ts",
+    "@aramo/client-talent-restriction": "libs/client-talent-restriction/src/index.ts",
     "@aramo/cold-ingest-extraction": "libs/cold-ingest-extraction/src/index.ts",
     "@aramo/common": "libs/common/src/index.ts",
     "@aramo/company": "libs/company/src/index.ts",
@@ -172,6 +173,21 @@
       "CanonicalizationService",
       "CanonicalizationTriggerProcessor",
       "PrismaService"
+    ],
+    "@aramo/client-talent-restriction": [
+      "ASSERTED_BY_TYPE_VALUES",
+      "CLOSE_REASON_CODE_VALUES",
+      "ClientTalentRestrictionController",
+      "ClientTalentRestrictionModule",
+      "ClientTalentRestrictionRepository",
+      "PrismaService",
+      "RESTRICTION_TYPE_VALUES",
+      "SOURCE_SYSTEM_VALUES",
+      "isAssertedByType",
+      "isCloseReasonCode",
+      "isGovernedSourceReference",
+      "isRestrictionType",
+      "isSourceSystem"
     ],
     "@aramo/cold-ingest-extraction": [
       "COLD_INGEST_EXTRACTION_ACTOR",
@@ -869,6 +885,7 @@
       },
       { "project": "authorization", "status": "production" },
       { "project": "calendar", "status": "production" },
+      { "project": "client-talent-restriction", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/company/src/tests/company-search-paged.spec.ts",
@@ -1313,6 +1330,7 @@
       },
       { "project": "outbox-publisher", "status": "production" }
     ],
+    "@aramo/client-talent-restriction": [{ "project": "api", "status": "production" }],
     "@aramo/cold-ingest-extraction": [
       {
         "excludedBy": "src/tests/**/*",
@@ -1471,6 +1489,13 @@
         "status": "excluded"
       },
       { "project": "canonicalization", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/client-talent-restriction/src/tests/client-talent-restriction.repository.integration.spec.ts",
+        "project": "client-talent-restriction",
+        "status": "excluded"
+      },
+      { "project": "client-talent-restriction", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/cold-ingest-extraction/src/tests/cold-ingest-extraction.service.spec.ts",
@@ -3562,6 +3587,13 @@
       "name": "canonicalization",
       "root": "libs/canonicalization",
       "sourceRoot": "libs/canonicalization/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "client-talent-restriction",
+      "root": "libs/client-talent-restriction",
+      "sourceRoot": "libs/client-talent-restriction/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },
