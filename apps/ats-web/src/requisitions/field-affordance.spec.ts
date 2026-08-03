@@ -85,6 +85,14 @@ describe('PR-A2 field affordance — canEditBucket', () => {
     expect(derived).toEqual(['margin_amount', 'markup_percent', 'margin_percent']);
   });
 
+  it('the is_hot field is labelled "Priority" (recruiter-facing), keyed on the unchanged is_hot flag', () => {
+    // PR-REQ-LABELS — the team-wide priority signal reads "Priority" everywhere
+    // recruiter-facing. The underlying key/permission/CSS are unchanged (label
+    // only); the key stays is_hot so no schema/mode/permission moves.
+    const field = COCKPIT_FIELDS.find((f) => f.key === 'is_hot');
+    expect(field?.label).toBe('Priority');
+  });
+
   it('every cockpit field carries a known bucket + a section (table is well-formed)', () => {
     for (const f of COCKPIT_FIELDS) {
       expect(f.bucket).toBeDefined();

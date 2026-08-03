@@ -368,7 +368,7 @@ export function RequisitionsListView({
             All
           </FilterChip>
           <FilterChip active={mode === 'hot'} onClick={() => setMode('hot')}>
-            Hot
+            Priority
           </FilterChip>
           <FilterChip
             active={mode === 'bookmarked'}
@@ -511,10 +511,17 @@ function RequisitionRow({
   const cellLabel = (key: FunnelBucketKey, fallback: string): string =>
     funnel?.cells.find((c) => c.key === key)?.label ?? fallback;
 
-  // R4 — the identity sub-line renders whatever is present. external_req_id is
-  // absent for manually-created reqs; the line then reads "Company · Location"
-  // with no dangling separator.
+  // The identity sub-line. PR-15 self-consistency: the INTERNAL number is the
+  // primary human-readable id (rendered REQ-{number}, prefix presentation-only,
+  // always present) — it leads the line exactly as it does on the detail header.
+  // external_req_id (the VMS id, usually null) follows as secondary where
+  // present; then Company · Location. No dangling separator when either is absent.
   const idParts: ReactNode[] = [];
+  idParts.push(
+    <span key="reqno" className="mono">
+      REQ-{req.requisition_number}
+    </span>,
+  );
   if (req.external_req_id != null) {
     idParts.push(
       <span key="rid" className="mono">
@@ -538,7 +545,11 @@ function RequisitionRow({
           <Link to={detailHref} className="rc-rt__title">
             {req.title}
           </Link>
-          {req.is_hot ? <span className="rc-rt__hot">Hot</span> : null}
+          {/* Team-wide operational priority signal (is_hot). Recruiter-facing
+              label is "Priority"; the underlying flag/permission are unchanged. */}
+          {req.is_hot ? (
+            <span className="rc-rt__hot">Priority</span>
+          ) : null}
           {/* PR-14 — personal bookmark star. NOT the team-wide HOT pill; this
               never toggles is_hot and is invisible to other users. */}
           <button
@@ -658,7 +669,7 @@ function focusReason(
   counts: Record<string, ReqPipelineCount>,
 ): string {
   const age = daysOpen(r);
-  if (r.is_hot) return `hot · ${age}d open`;
+  if (r.is_hot) return `priority · ${age}d open`;
   const submitted = counts[r.id]?.submitted ?? 0;
   return `aging · ${age}d open, ${submitted} submitted`;
 }

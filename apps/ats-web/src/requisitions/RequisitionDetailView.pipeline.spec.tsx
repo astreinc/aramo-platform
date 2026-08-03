@@ -107,14 +107,19 @@ function mountDetail() {
 describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders the header: title, Hot + Open pills, company name link, REQ code', async () => {
+  it('renders the header: title, Priority + Open pills, company name link, REQ code', async () => {
     mockApi();
     mountDetail();
     expect(
       await screen.findByRole('heading', { name: /Senior Rust Engineer/ }),
     ).toBeInTheDocument();
-    // "Hot" appears as the header pill AND the talent-table column header.
-    expect(screen.getAllByText('Hot').length).toBeGreaterThan(0);
+    // The requisition priority signal renders as the "Priority" header pill.
+    expect(
+      screen.getByText('Priority', { selector: '.rc-pill' }),
+    ).toBeInTheDocument();
+    // Deliberate boundary: the talent-table "Hot" COLUMN HEADER is a DIFFERENT
+    // signal (per-talent, on a person) and keeps its own wording — NOT renamed.
+    expect(screen.getByText('Hot')).toBeInTheDocument();
     expect(screen.getByText('Open')).toBeInTheDocument();
     await waitFor(() =>
       expect(
