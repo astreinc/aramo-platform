@@ -49,7 +49,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const p of MIGRATIONS) await db.query(readFileSync(p, 'utf8'));
       prisma = new RequisitionPrismaService(url);
       await prisma.$connect();
-      repo = new RequisitionRepository(prisma, {} as never);
+      // T1-e — 3rd ctor arg (transition policy); never invoked here (no test
+      // changes status), so a throwing-absent stub is sufficient.
+      repo = new RequisitionRepository(prisma, {} as never, {} as never);
     }, 120_000);
 
     afterAll(async () => {

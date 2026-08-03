@@ -1650,6 +1650,7 @@ components:
         - ACTIVITY_NOT_REDACTABLE
         - ACTIVITY_ALREADY_REDACTED
         - REQUISITION_VERSION_CONFLICT
+        - REQUISITION_STATUS_GATED
 
     ErrorObject:
       type: object

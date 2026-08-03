@@ -173,7 +173,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [TENANT],
       )).rows;
       expect(rec).toHaveLength(1);
-      expect(rec[0].policy_version).toBe('4.0.0'); // T1-d (v4.0.0)
+      expect(rec[0].policy_version).toBe('5.0.0'); // T1-e (v5.0.0)
       expect(rec[0].rule_id).toBe('add-talent-open');
     });
   },

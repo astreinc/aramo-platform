@@ -184,7 +184,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           [ACTOR],
         )).rows;
         expect(recs).toHaveLength(1);
-        expect(recs[0].policy_version).toBe('4.0.0'); // T1-d (v4.0.0)
+        expect(recs[0].policy_version).toBe('5.0.0'); // T1-e (v5.0.0)
         expect(recs[0].rule_id).toBe('add-talent-open');
       });
 

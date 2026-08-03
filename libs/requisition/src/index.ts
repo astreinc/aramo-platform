@@ -6,6 +6,10 @@ export {
 } from './lib/requisition.repository.js';
 export { RequisitionAssignmentRepository } from './lib/requisition-assignment.repository.js';
 export { PrismaService as RequisitionPrismaService } from './lib/prisma/prisma.service.js';
+// T1-e — the governed-transition policy gate (a RequisitionRepository ctor dep).
+// Exported so integration specs that construct the repository directly can wire
+// a REAL instance (backed by @aramo/policy-store's PolicyStore).
+export { RequisitionTransitionPolicyService } from './lib/policy/requisition-transition-policy.service.js';
 
 // ADR-0024 §D17c — append-only lifecycle mutation history (write API only;
 // PR-5 wires the consumer).
@@ -18,8 +22,16 @@ export {
 
 export {
   RECRUITING_STATUS_VALUES,
+  GATED_RECRUITING_STATUS_VALUES,
+  SELECTABLE_RECRUITING_STATUS_VALUES,
   isRecruitingStatus,
+  isGatedRecruitingStatus,
   type RecruitingStatus,
+  TRANSITION_ACTIONS,
+  REQUISITION_RESOURCE,
+  ACTION_TARGET_STATUS,
+  governingActionForTarget,
+  type TransitionAction,
   type RequisitionView,
   emptyRequisitionProfileView,
   type RequisitionProfileView,

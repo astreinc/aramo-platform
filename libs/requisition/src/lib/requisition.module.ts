@@ -11,6 +11,7 @@ import {
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { SetPriorityPolicyService } from './policy/set-priority-policy.service.js';
+import { RequisitionTransitionPolicyService } from './policy/requisition-transition-policy.service.js';
 import { RequisitionAssignmentRepository } from './requisition-assignment.repository.js';
 import { RequisitionController } from './requisition.controller.js';
 import { RequisitionIntakeService } from './requisition-intake.service.js';
@@ -51,6 +52,9 @@ import { RequisitionRepository } from './requisition.repository.js';
     PolicyStorePrismaService,
     PolicyStore,
     SetPriorityPolicyService,
+    // T1-e — the governed-transition policy gate (§2.2), wired at the same
+    // repository floor as SET_PRIORITY. Shares the PolicyStore provider above.
+    RequisitionTransitionPolicyService,
     RequisitionRepository,
     RequisitionAssignmentRepository,
     RequisitionProfileService,

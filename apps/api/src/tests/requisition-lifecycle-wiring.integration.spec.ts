@@ -12,7 +12,11 @@ import {
   RequisitionLifecycleEventStore,
   RequisitionPrismaService,
   RequisitionRepository,
+  RequisitionTransitionPolicyService,
 } from '@aramo/requisition';
+import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/policy-store';
+
+import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 
 // Track 1 T1-c — the lifecycle-event WIRING against real Postgres. PR-0c shipped
 // the append-only store with no producer; this asserts every path that changes
@@ -43,7 +47,12 @@ function migrationsFor(lib: string): string[] {
     .sort()
     .map((n) => resolve(dir, n, 'migration.sql'));
 }
-const MIGRATIONS = [...migrationsFor('requisition')];
+// T1-e — status changes are now GOVERNED: update() routes through the
+// transition policy, which resolves the published requisition-lifecycle package
+// (policy_store schema) and records a §D17a decision the lifecycle event
+// references. So the wiring test now needs the policy-store schema + a published
+// package, not just the requisition schema.
+const MIGRATIONS = [...migrationsFor('requisition'), ...migrationsFor('policy-store')];
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'RequisitionRepository — lifecycle-event wiring (T1-c) — real Postgres 17',
@@ -51,6 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let container: StartedPostgreSqlContainer;
     let db: Client;
     let prisma: RequisitionPrismaService;
+    let storePrisma: PolicyStorePrismaService;
     let repo: RequisitionRepository;
     let store: RequisitionLifecycleEventStore;
 
@@ -60,15 +70,27 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       db = new Client({ connectionString: url });
       await db.connect();
       for (const p of MIGRATIONS) await db.query(readFileSync(p, 'utf8'));
+      // T1-e — publish the requisition-lifecycle package so the transition gate
+      // resolves ALLOW instead of failing closed (NO_POLICY_PUBLISHED → DENY).
+      await publishLifecyclePackage(url, TENANT_A);
       prisma = new RequisitionPrismaService(url);
       await prisma.$connect();
-      // Stub SetPriorityPolicyService — never called (no test sets is_hot).
-      repo = new RequisitionRepository(prisma, {} as never);
+      storePrisma = new PolicyStorePrismaService(url);
+      await storePrisma.$connect();
+      // Stub SetPriorityPolicyService — never called (no test sets is_hot). The
+      // transition policy is REAL (T1-e): every status-changing update routes
+      // through it, and the §D17a decision it records is what the lifecycle
+      // event's policy_decision_id references.
+      const transitionPolicy = new RequisitionTransitionPolicyService(
+        new PolicyStore(storePrisma),
+      );
+      repo = new RequisitionRepository(prisma, {} as never, transitionPolicy);
       store = new RequisitionLifecycleEventStore(prisma);
     }, 120_000);
 
     afterAll(async () => {
       await prisma?.onModuleDestroy();
+      await storePrisma?.onModuleDestroy();
       await db?.end();
       await container?.stop();
     }, 60_000);
@@ -118,7 +140,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.update({
         tenant_id: TENANT_A,
         id: created.id,
-        input: { status: 'on_hold' } as never,
+        input: { status: 'on_hold', version: 0 } as never,
         scopes: ['requisition:edit'],
         actor_id: ACTOR_2,
         requestId,
@@ -131,6 +153,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(upd?.next_status).toBe('on_hold');
       expect(upd?.actor_id).toBe(ACTOR_2);
       expect(upd?.correlation_id).toBe(requestId);
+      // T1-e (§2.2) — a GOVERNED transition (open → on_hold = PUT_ON_HOLD)
+      // carries the id of the §D17a decision the policy engine recorded.
+      expect(upd?.policy_decision_id).not.toBeNull();
     });
 
     it('update NOT touching status → ZERO events (R2)', async () => {
@@ -184,7 +209,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.update({
         tenant_id: TENANT_A,
         id: created.id,
-        input: { status: 'closed' } as never,
+        input: { status: 'closed', version: 0 } as never,
         scopes: ['requisition:edit'],
         actor_id: ACTOR_2,
         requestId: uuidv7(),
@@ -229,7 +254,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.update({
         tenant_id: TENANT_A,
         id: created.id,
-        input: { status: 'on_hold' } as never,
+        input: { status: 'on_hold', version: 0 } as never,
         scopes: ['requisition:edit'],
         actor_id: ACTOR_2,
         requestId: r2,
@@ -249,7 +274,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.update({
         tenant_id: TENANT_A,
         id: created.id,
-        input: { status: 'on_hold' } as never,
+        input: { status: 'on_hold', version: 0 } as never,
         scopes: ['requisition:edit'],
         actor_id: ACTOR_2,
         requestId: uuidv7(),
@@ -257,7 +282,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.update({
         tenant_id: TENANT_A,
         id: created.id,
-        input: { status: 'closed' } as never,
+        input: { status: 'closed', version: 1 } as never, // version bumped by event 2
         scopes: ['requisition:edit'],
         actor_id: ACTOR_2,
         requestId: uuidv7(),
@@ -286,7 +311,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         repo.update({
           tenant_id: TENANT_A,
           id: created.id,
-          input: { status: 'closed' } as never,
+          input: { status: 'closed', version: 0 } as never,
           scopes: ['requisition:edit'],
           actor_id: ACTOR_2,
           requestId: uuidv7(),

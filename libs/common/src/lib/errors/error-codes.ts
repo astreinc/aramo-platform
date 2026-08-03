@@ -392,6 +392,17 @@ export const ERROR_CODES = [
   // 409 family (SUBMITTAL_ALREADY_CONFIRMED / IMPORT_ALREADY_REVERTED). ADDITIVE
   // this PR: fires ONLY when a caller opts in by supplying a version.
   'REQUISITION_VERSION_CONFLICT',
+  // Track 1 T1-e (§2.3 / ruling R9) — a status-changing PATCH targeting a
+  // subsystem-GATED RecruitingStatus (draft | pending_approval | archived) is
+  // refused SERVER-SIDE, not by hiding the option in the UI. HTTP 422: the
+  // request is well-formed but the target status's subsystem does not exist
+  // yet. A DISTINCT registered code, never a generic 400 (VALIDATION_ERROR):
+  // the recruiter must be able to learn the status EXISTS in the value space
+  // but is not reachable today — details.status names the refused value.
+  // Distinct also from POLICY_DENIED (a governed-transition refusal that runs
+  // the policy engine); the gated set is unreachable by construction, so no
+  // package rule expresses reaching it.
+  'REQUISITION_STATUS_GATED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

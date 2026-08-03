@@ -86,6 +86,7 @@ function baseView(extra: Record<string, unknown> = {}): Record<string, unknown> 
     entered_by_id: null,
     created_at: '2026-06-01T00:00:00Z',
     updated_at: '2026-06-01T00:00:00Z',
+    version: 0, // T1-e — read-then-write concurrency token
     job_type: null,
     labor_category: null,
     role_family: null,

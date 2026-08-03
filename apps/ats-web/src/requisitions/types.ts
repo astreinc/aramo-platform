@@ -101,6 +101,10 @@ export interface RequisitionView {
   readonly entered_by_id: string | null;
   readonly created_at: string;
   readonly updated_at: string;
+  // Track 1 T1-e (§2.1) — the optimistic-concurrency token, surfaced on the read
+  // view so the client can read-then-write. MANDATORY on a status-changing PATCH
+  // (§2.4): saveField sends it back when the edited field is status.
+  readonly version: number;
   // Compensation surface (BE-masked for recruiter — present here so the
   // type system catches a future un-mask).
   readonly compensation_model: string | null;
@@ -292,6 +296,10 @@ export interface CreateRequisitionRequest {
 // `status` is freely editable (no transition guard); not nullable.
 // `site_id` is NOT in UPDATE (CREATE-only / immutable).
 export interface UpdateRequisitionRequest {
+  // T1-e (§2.4) — the expected row version. MANDATORY when `status` changes
+  // (the server refuses a status-changing PATCH without it); optional/additive
+  // otherwise, preserving the T1-b posture.
+  readonly version?: number;
   readonly title?: string;
   readonly contact_id?: string | null;
   readonly status?: RecruitingStatus;

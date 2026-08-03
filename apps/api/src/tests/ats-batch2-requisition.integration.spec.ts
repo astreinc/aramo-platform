@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
 
@@ -22,6 +22,7 @@ import {
 import { AppModule } from '../app.module.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 
 // PR-A3 Gate 5 — ATS Batch 2 (requisition + assignment-visibility) integration spec.
 //
@@ -229,6 +230,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION, resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql')]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
+
+      // T1-e — status changes are GOVERNED: a status-changing PATCH routes
+      // through the transition policy, which resolves the requisition-lifecycle
+      // package from policy_store. Apply that schema and publish the package for
+      // TENANT_ATS so the two status-PATCH-→-200 cases resolve ALLOW instead of
+      // failing closed. (Scope-refused PATCHes never reach the policy engine.)
+      const policyStoreDir = resolve(ROOT, 'libs/policy-store/prisma/migrations');
+      for (const n of readdirSync(policyStoreDir).filter((d) => /^\d/.test(d)).sort()) {
+        await setupClient.query(readFileSync(resolve(policyStoreDir, n, 'migration.sql'), 'utf8'));
+      }
+      await publishLifecyclePackage(url, TENANT_ATS);
 
       // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
       // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
@@ -844,7 +856,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             Authorization: `Bearer ${statusOnlyJwt_Ats_SiteA}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ status: 'closed' }),
+          // T1-e §2.4 — version is MANDATORY on a status-changing PATCH; the
+          // req was just created, so its version is 0.
+          body: JSON.stringify({ status: 'closed', version: 0 }),
         },
       );
       expect(patchRes.status).toBe(200);
@@ -912,7 +926,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ status: 'on_hold' }),
+          // T1-e §2.4 — version mandatory on a status change; fresh req = 0.
+          body: JSON.stringify({ status: 'on_hold', version: 0 }),
         },
       );
       expect(patchRes.status).toBe(200);

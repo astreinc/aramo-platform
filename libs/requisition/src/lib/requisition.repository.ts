@@ -9,6 +9,7 @@ import {
 import { Prisma } from '../../prisma/generated/client/client.js';
 
 import { SetPriorityPolicyService } from './policy/set-priority-policy.service.js';
+import { RequisitionTransitionPolicyService } from './policy/requisition-transition-policy.service.js';
 import { assertCompensationEditScopes } from './compensation-edit-gate.js';
 import { computeDerivedViews } from './compensation-views.js';
 import { assertFinancialEditScopes } from './field-group-edit-gate.js';
@@ -17,7 +18,8 @@ import type { CreateRequisitionRequestDto } from './dto/create-requisition-reque
 import type { RatePeriod } from './dto/rate-period.js';
 import type { RequisitionCompensationModel } from './dto/requisition-compensation-model.js';
 import type { RequisitionView } from './dto/requisition.view.js';
-import type { RecruitingStatus } from './dto/requisition-status.js';
+import { isGatedRecruitingStatus, type RecruitingStatus } from './dto/requisition-status.js';
+import { governingActionForTarget } from './dto/requisition-transitions.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
 import type { RecordRequisitionLifecycleEventInput } from './requisition-lifecycle-event.store.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -226,6 +228,10 @@ interface RequisitionRow {
   entered_by_id: string | null;
   created_at: Date;
   updated_at: Date;
+  // Track 1 T1-b — the optimistic-concurrency token. Present on every full-row
+  // read (create/list/get/casUpdate all read the whole row); T1-e projects it
+  // onto the view (§2.1) so a caller can read-then-write.
+  version: number;
   // Compensation-Field Modeling v1.1 §2 — structured comp surface.
   // Prisma deserializes Decimal columns to Prisma.Decimal instances;
   // projectView serializes them back to decimal strings for the
@@ -327,6 +333,8 @@ function projectView(row: RequisitionRow): RequisitionView {
     entered_by_id: row.entered_by_id,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
+    // T1-e §2.1 — surface the concurrency token so read-then-write is possible.
+    version: row.version,
     compensation_model: row.compensation_model,
     pay_rate_amount: decimalToFixed2(row.pay_rate_amount),
     pay_rate_currency: row.pay_rate_currency,
@@ -433,6 +441,9 @@ export class RequisitionRepository {
     // ADR-0024 PR-7 (R1) — SET_PRIORITY gate at the repository floor
     // (D-AUTHZ-COMP-WRITE-1: the deepest layer all write paths traverse).
     private readonly setPriorityPolicy: SetPriorityPolicyService,
+    // T1-e (§2.2) — the governed-transition gate, same repository floor. A
+    // status-changing update routes through it (R8 — no direct-set bypass).
+    private readonly transitionPolicy: RequisitionTransitionPolicyService,
   ) {}
 
   // T1-c — emit ONE lifecycle event inside the caller's transaction. The event
@@ -524,6 +535,87 @@ export class RequisitionRepository {
       );
     }
     return outcome.provenance;
+  }
+
+  // T1-e (§2.2 / R8) — the governed-transition gate. Called when a PATCH
+  // CHANGES status. Resolves the governing action from the TARGET status
+  // (CLOSE/REOPEN/PUT_ON_HOLD/CANCEL); if the target has no governing action
+  // (submittals_closed / lead — the R8 boundary ruling) the change is an
+  // ORDINARY edit and this returns null (no policy, no decision record). For a
+  // governed transition it evaluates the declared FROM status: on DENY it
+  // records the refusal standalone (§D17a) and throws POLICY_DENIED (reason
+  // code ONLY — never leak rule_id/version); on ALLOW it returns the provenance
+  // to persist in the write tx PLUS a caller-controlled decision id to thread
+  // into the lifecycle event (§2.2). Mirrors gateSetPriority.
+  private async gateTransition(args: {
+    tenant_id: string;
+    from_status: RecruitingStatus;
+    to_status: RecruitingStatus;
+    scopes: readonly string[];
+    actor_id: string;
+    requestId: string;
+  }): Promise<{ provenance: InsertPolicyDecisionRecordInput; decision_id: string } | null> {
+    const action = governingActionForTarget(args.to_status);
+    if (action === null) return null; // ungoverned ordinary edit (R8 boundary)
+    const outcome = await this.transitionPolicy.decide({
+      tenant_id: args.tenant_id,
+      action,
+      from_status: args.from_status,
+      scopes: args.scopes,
+      actor_id: args.actor_id,
+      origin: 'ui',
+      correlation_id: args.requestId,
+    });
+    if (outcome.disposition === 'DENY') {
+      // No mutation. Record the refusal standalone (provenance may exist without
+      // a mutation), refuse with the reason_code ONLY.
+      await this.prisma.$transaction((tx) =>
+        insertPolicyDecisionRecordInTx(tx, outcome.provenance),
+      );
+      throw new AramoError(
+        'POLICY_DENIED',
+        'The requisition lifecycle policy denied this transition',
+        403,
+        { requestId: args.requestId, details: { reason_code: outcome.reason_code } },
+      );
+    }
+    return { provenance: outcome.provenance, decision_id: uuidv7() };
+  }
+
+  // T1-e — persist the §D17a transition provenance with a CALLER-CONTROLLED id
+  // so the SAME id lands in RequisitionLifecycleEvent.policy_decision_id (§2.2).
+  // This mirrors @aramo/policy-store's insertPolicyDecisionRecordInTx byte-for-
+  // byte EXCEPT the id is supplied rather than generated internally: that helper
+  // generates its id and never returns it, and §5 prohibits changing policy-
+  // store to add an id parameter — so the insert is duplicated here (the sole
+  // divergence). Runs on the caller's tx client, so the record commits IFF the
+  // transition commits (a stale-version CAS abort writes neither — R4).
+  private async insertTransitionDecisionRecordInTx(
+    tx: Prisma.TransactionClient,
+    id: string,
+    input: InsertPolicyDecisionRecordInput,
+  ): Promise<void> {
+    const inputsJson = JSON.stringify(input.inputs);
+    await tx.$executeRaw`
+      INSERT INTO policy_store."PolicyDecisionRecord" (
+        id, tenant_id, decision, policy_version, rule_id, reason_code,
+        resource, action, inputs, actor_id, origin, correlation_id, occurred_at
+      ) VALUES (
+        ${id}::uuid,
+        ${input.tenant_id}::uuid,
+        ${input.decision},
+        ${input.policy_version},
+        ${input.rule_id},
+        ${input.reason_code},
+        ${input.resource},
+        ${input.action},
+        ${inputsJson}::jsonb,
+        ${input.actor_id},
+        ${input.origin},
+        ${input.correlation_id},
+        NOW()
+      )
+    `;
   }
 
   // Minimal tenant-scoped declared-status read (ADR-0024 §D13b input for the
@@ -828,6 +920,19 @@ export class RequisitionRepository {
         { requestId: args.requestId, details: { id: args.id } },
       );
     }
+    // T1-e (§2.3 / R9) — refuse a status-changing PATCH INTO a subsystem-gated
+    // status SERVER-SIDE, before the policy engine runs or any write. A distinct
+    // registered code (never a generic 400) that names the refused value so the
+    // recruiter learns the status EXISTS but its subsystem does not yet. The
+    // gated set is unreachable BY CONSTRUCTION — no package rule expresses it.
+    if (args.input.status !== undefined && isGatedRecruitingStatus(args.input.status)) {
+      throw new AramoError(
+        'REQUISITION_STATUS_GATED',
+        'That status is not available yet; its subsystem has not shipped',
+        422,
+        { requestId: args.requestId, details: { status: args.input.status } },
+      );
+    }
     const data: Record<string, unknown> = {};
     const i = args.input;
     if (i.title !== undefined) data['title'] = i.title;
@@ -947,17 +1052,52 @@ export class RequisitionRepository {
     // create is the only path that produces a null previous_status.
     const statusChanges =
       args.input.status !== undefined && args.input.status !== existing.status;
+    const expectedVersion = args.input.version;
+    // T1-e (§2.4) — version becomes MANDATORY the moment a PATCH changes status.
+    // Non-status updates keep the T1-b optional/additive posture (making it
+    // mandatory everywhere would break every existing caller for no benefit). A
+    // status-changing PATCH that omits version is refused BEFORE the policy
+    // engine runs and before any write. Generic VALIDATION_ERROR (a missing
+    // required control token), distinguished by details.reason — NOT the sibling
+    // REQUISITION_VERSION_CONFLICT, which means "you supplied a STALE version".
+    if (statusChanges && expectedVersion === undefined) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'version is required for a status-changing update',
+        400,
+        {
+          requestId: args.requestId,
+          details: { reason: 'version_required_for_status_change' },
+        },
+      );
+    }
+    // T1-e (§2.2 / R8) — route the status change through its GOVERNING action.
+    // Every status change is gated here: the four governed targets can be
+    // reached ONLY through their action (no direct-set bypass); ungoverned
+    // targets (submittals_closed / lead) return null and stay ordinary edits.
+    // On DENY gateTransition throws POLICY_DENIED before any write; on ALLOW it
+    // returns the §D17a provenance + the decision id to thread into the event.
+    const transitionGate = statusChanges
+      ? await this.gateTransition({
+          tenant_id: args.tenant_id,
+          from_status: existing.status as RecruitingStatus,
+          to_status: args.input.status as RecruitingStatus,
+          scopes: args.scopes,
+          actor_id: args.actor_id,
+          requestId: args.requestId,
+        })
+      : null;
     // Track 1 T1-b (R1/R3/R4) — the write is a versioned compare-and-swap via
     // casUpdate: args.input.version present → the CAS guards on it (a mismatch is
     // a stale write → 409); absent → unguarded (additive posture) but STILL
     // increments. The version bump lives inside casUpdate, so the plain and the
     // $transaction paths increment identically.
     //
-    // T1-b R3 ∧ T1-c R3 compose into ONE atomicity guarantee: casUpdate runs
-    // FIRST inside the transaction, so a stale-write 409 aborts BEFORE the
-    // lifecycle event (and any SET_PRIORITY provenance) is written — no event is
+    // T1-b R3 ∧ T1-c R3 ∧ T1-e R4 compose into ONE atomicity guarantee:
+    // casUpdate runs FIRST inside the transaction, so a stale-write 409 aborts
+    // BEFORE the lifecycle event, the SET_PRIORITY provenance, AND the
+    // transition provenance are written — no event and no decision record is
     // ever recorded for a status change that never committed.
-    const expectedVersion = args.input.version;
     const row =
       setPriorityProvenance === null && !statusChanges
         ? await this.casUpdate(this.prisma, {
@@ -975,11 +1115,20 @@ export class RequisitionRepository {
               data,
               requestId: args.requestId,
             });
-            // Guarded: the tx path is now taken when provenance exists OR the
-            // status changed, so provenance may be null here (a status-only
-            // update with no is_hot assertion).
+            // Guarded: the tx path is taken when SET_PRIORITY provenance exists
+            // OR the status changed, so provenance may be null here (a status-
+            // only update with no is_hot assertion).
             if (setPriorityProvenance !== null) {
               await insertPolicyDecisionRecordInTx(tx, setPriorityProvenance);
+            }
+            // T1-e — persist the governed-transition provenance with the id that
+            // the lifecycle event will carry (§2.2). Null for an ungoverned edit.
+            if (transitionGate !== null) {
+              await this.insertTransitionDecisionRecordInTx(
+                tx,
+                transitionGate.decision_id,
+                transitionGate.provenance,
+              );
             }
             if (statusChanges) {
               await this.recordLifecycleEventInTx(tx, {
@@ -990,7 +1139,8 @@ export class RequisitionRepository {
                 actor_id: args.actor_id,
                 origin: 'ui',
                 reason_code: LIFECYCLE_REASON_STATUS_CHANGED,
-                policy_decision_id: null, // T1-e supplies one.
+                // T1-e — the governed decision's id (null for an ungoverned edit).
+                policy_decision_id: transitionGate?.decision_id ?? null,
                 correlation_id: args.requestId,
               });
             }
