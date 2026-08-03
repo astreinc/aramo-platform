@@ -422,6 +422,22 @@ export const ERROR_CODES = [
   // mutation) is a CONFLICT — distinct 409 caller semantics from the 422
   // validation refusal, never a silent last-write-wins.
   'RESTRICTION_ALREADY_CLOSED',
+  // Track 3 / E1-a (PlacementProcess spine) — two distinct lifecycle refusals,
+  // kept as TWO codes (not one + details.reason) because they differ on BOTH
+  // axes the split-rule tests: HTTP status AND caller remedy — the same reason
+  // RESTRICTION_INVALID (422) and RESTRICTION_ALREADY_CLOSED (409) stayed two.
+  // PLACEMENT_STATE_INVALID (422): an illegal PlacementProcess state transition
+  // — the from-state has no such outgoing edge (e.g. the prohibited
+  // OFFER_ACCEPTED → READY_TO_START), or a non-state column mutation. Caller
+  // remedy: correct the requested transition. Mirrors SUBMITTAL_STATE_INVALID /
+  // ENGAGEMENT_STATE_INVALID (422). details.reason carries from_state/to_state.
+  'PLACEMENT_STATE_INVALID',
+  // PLACEMENT_ALREADY_LIVE (409): a second PlacementProcess was attempted for a
+  // (tenant_id, submittal_id) that already has a LIVE attempt (any non-terminal
+  // state, STARTED included as ENGAGED). A CONFLICT, not a validation error —
+  // submittal_id is deliberately non-unique, so this is enforced by the BEFORE
+  // INSERT guard, not a uniqueness constraint.
+  'PLACEMENT_ALREADY_LIVE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

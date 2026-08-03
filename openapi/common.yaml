@@ -1653,6 +1653,8 @@ components:
         - REQUISITION_STATUS_GATED
         - RESTRICTION_INVALID
         - RESTRICTION_ALREADY_CLOSED
+        - PLACEMENT_STATE_INVALID
+        - PLACEMENT_ALREADY_LIVE
 
     ErrorObject:
       type: object

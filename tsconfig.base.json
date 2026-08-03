@@ -65,6 +65,7 @@
       "@aramo/object-storage": ["libs/object-storage/src/index.ts"],
       "@aramo/outbox-publisher": ["libs/outbox-publisher/src/index.ts"],
       "@aramo/pipeline": ["libs/pipeline/src/index.ts"],
+      "@aramo/placement": ["libs/placement/src/index.ts"],
       "@aramo/portal": ["libs/portal/src/index.ts"],
       "@aramo/reporting": ["libs/reporting/src/index.ts"],
       "@aramo/requisition": ["libs/requisition/src/index.ts"],
