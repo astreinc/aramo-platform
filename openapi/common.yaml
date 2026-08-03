@@ -1651,6 +1651,8 @@ components:
         - ACTIVITY_ALREADY_REDACTED
         - REQUISITION_VERSION_CONFLICT
         - REQUISITION_STATUS_GATED
+        - RESTRICTION_INVALID
+        - RESTRICTION_ALREADY_CLOSED
 
     ErrorObject:
       type: object

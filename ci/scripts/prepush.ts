@@ -29,6 +29,7 @@ const INTEGRATION_ROOTS = [
   'apps/api',
   'libs/evidence',
   'libs/submittal',
+  'libs/client-talent-restriction',
   'libs/engagement',
   'libs/ai-draft',
   'libs/canonicalization',

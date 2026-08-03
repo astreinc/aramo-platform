@@ -40,6 +40,7 @@ import { SavedListModule } from '@aramo/saved-list';
 import { SettingsModule } from '@aramo/settings';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
 import { SubmittalModule } from '@aramo/submittal';
+import { ClientTalentRestrictionModule } from '@aramo/client-talent-restriction';
 // TR-2a-B3b — EvidenceModule + ExaminationModule imported so the record-reconcile
 // orchestrator can inject EvidenceRepository + ExaminationRepository (both were
 // only transitive deps of apps/api before this slice).
@@ -300,6 +301,9 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // §9.2 / Plan v1.5 §M5 Track A item 6 binding).
     SkillsTaxonomyModule,
     SubmittalModule,
+    // Track 3 / E7 (ADR-0027) — ClientTalentRestriction (record half of the
+    // house pattern; scoped routes only, no flat collection).
+    ClientTalentRestrictionModule,
     // TR-2a-B3b — the record-reconcile orchestrator injects EvidenceRepository +
     // ExaminationRepository (both operational holders swept on a both-promoted
     // merge). Their modules export the repos; importing them here makes them

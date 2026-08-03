@@ -7,7 +7,7 @@
 #
 # Every run is SERIAL (--no-file-parallelism) — harness hardening (CI-Velocity
 # PR-1): one Postgres container starts at a time, killing the saturation flake.
-# The roots list is the authoritative CI integration set (17); keep it in sync
+# The roots list is the authoritative CI integration set (18); keep it in sync
 # with any new ARAMO_RUN_INTEGRATION root the same slice it is added.
 set -euo pipefail
 
@@ -19,6 +19,7 @@ ROOTS=(
   libs/talent-evidence
   libs/evidence
   libs/submittal
+  libs/client-talent-restriction
   apps/api
   libs/engagement
   libs/ai-draft

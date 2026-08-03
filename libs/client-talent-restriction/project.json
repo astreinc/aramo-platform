@@ -1,0 +1,30 @@
+{
+  "name": "client-talent-restriction",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/client-talent-restriction/src",
+  "projectType": "library",
+  "tags": ["scope:ats"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/client-talent-restriction",
+        "main": "libs/client-talent-restriction/src/index.ts",
+        "tsConfig": "libs/client-talent-restriction/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/client-talent-restriction/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/client-talent-restriction"
+      }
+    }
+  }
+}

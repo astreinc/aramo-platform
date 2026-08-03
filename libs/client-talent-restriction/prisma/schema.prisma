@@ -1,0 +1,183 @@
+// Per-module Prisma schema for the `client-talent-restriction` module —
+// Track 3 / E7 (seam 1 of 6). Governed by ADR-0027 (Accepted — LOCKED)
+// and the E7 Directive v1.1 (four PO corrections + naming/routing).
+//
+// PG schema: `client_talent_restriction` per E7 §2b (NOT the generic
+// `restriction` namespace — the R10 boundary must stay visible everywhere
+// an engineer sees it). Schema-per-module per Architecture v2.0/v2.1
+// §7.1 + doc/05-conventions.md. Cross-schema references are UUID-only,
+// no FK (§7.3): `client_company_id` → company.Company; `talent_record_id`
+// → talent_record.TalentRecord.
+//
+// House pattern — RECORD HALF ONLY (E7 §5). This is a standing fact with
+// an effective window, not a workflow with transitions: NO outbox, NO
+// append-only event log. Immutability discipline is a column-scoped
+// BEFORE UPDATE trigger permitting exactly ONE degenerate edge (open →
+// closed, once). Consent's pure-ledger trigger was REJECTED at the §5
+// gate — an unconditional RAISE EXCEPTION cannot express "one column may
+// change, once", which would force the DELETE-and-reinsert R4 forbids.
+//
+// EFFECTIVE-WINDOW MODEL (Option B, D-E7-EFFECTIVE-TO-1 — authorized
+// additive shape amendment). Two DISTINCT business facts, never
+// conflated:
+//   - `scheduled_end_at`: the externally-asserted expiry KNOWN at
+//     creation. Nullable, IMMUTABLE, supplied at create. A scheduled end
+//     is NOT a closure — it needs no closure provenance.
+//   - `effective_to` (+ five closure-provenance columns): the actual
+//     business-effective ending recorded through an EXPLICIT close
+//     action. Closure-only — never set at create; set once, atomically,
+//     with the five provenance columns.
+// A restriction created with scheduled_end_at = Dec 31 may still be
+// closed early (client withdraws Sep 1): effective_to = Sep 1, and the
+// original scheduled_end_at is PRESERVED, not overwritten.
+//
+// active = effective_from <= now
+//   AND (scheduled_end_at IS NULL OR scheduled_end_at > now)
+//   AND (effective_to   IS NULL OR effective_to   > now)
+// The earliest applicable end controls validity without destroying
+// either fact. NO mutable is_active flag (derived, never stored).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["client_talent_restriction"]
+}
+
+// RestrictionType — closed registry per ADR-0027 §4. FIXED by the ADR;
+// a fifth value requires an ADR amendment (E7 §6). Const + type-guard
+// mirror lives at src/lib/client-talent-restriction-vocab.ts.
+enum RestrictionType {
+  CLIENT_DO_NOT_RESUBMIT
+  CLIENT_NOT_ELIGIBLE_FOR_REENGAGEMENT
+  CLIENT_SITE_ACCESS_RESTRICTED
+  VMS_SUBMITTAL_RESTRICTED
+
+  @@schema("client_talent_restriction")
+}
+
+// AssertedByType — WHO made the external assertion (E7 §3b correction 1).
+// The client asserted it — distinct from the channel it arrived through
+// (source_system) and from who typed it in (recorded_by).
+enum AssertedByType {
+  CLIENT
+  MSP
+  VMS
+  CLIENT_LEGAL_COMPLIANCE
+
+  @@schema("client_talent_restriction")
+}
+
+// SourceSystem — the CHANNEL through which the assertion arrived (E7 §3b
+// correction 1). NOT the asserter. Reused for `close_source_system`.
+enum SourceSystem {
+  FIELDGLASS
+  BEELINE
+  WORKDAY_VNDLY
+  COUPA
+  ORACLE
+  CLIENT_EMAIL
+  CLIENT_PORTAL
+  MANUAL_TRANSCRIPTION
+
+  @@schema("client_talent_restriction")
+}
+
+// CloseReasonCode — closed registry for WHY a restriction was explicitly
+// closed early (E7 §3b correction 3). Value set unspecified by the
+// directive — this minimal set is flagged for Lead ratification at
+// Gate-6 (a scheduled natural end is modelled by scheduled_end_at, NOT a
+// close, so no SCHEDULED_END value is needed here).
+enum CloseReasonCode {
+  CLIENT_WITHDRAWN
+  CLIENT_RESCINDED
+  SUPERSEDED_BY_NEW_ASSERTION
+  RECORDED_IN_ERROR
+
+  @@schema("client_talent_restriction")
+}
+
+// ClientTalentRestriction — an externally-asserted, client-scoped fact
+// that a specific talent is restricted at a specific client account.
+// R10-narrow: never portable, never a talent-population filter, never an
+// input to matching/scoring/Core (E7 R2/R3/R5/R6).
+model ClientTalentRestriction {
+  // Identity.
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Cross-schema references (Architecture §7.3 — UUID-only, no FK).
+  //   client_company_id → company.Company.id (the ONLY account this
+  //     applies to; §D4).
+  //   talent_record_id  → talent_record.TalentRecord.id (subject).
+  client_company_id String @db.Uuid
+  talent_record_id  String @db.Uuid
+
+  restriction_type RestrictionType
+
+  // WHO / HOW / WHO-TYPED-IT — three distinct facts (§3b correction 1).
+  //   asserted_by_type: WHO made the external assertion (REQUIRED, R1).
+  //   source_system:    the CHANNEL it arrived through (REQUIRED, R1).
+  //   recorded_by:      the Aramo user who transcribed it — NEVER the
+  //                     author of the judgement.
+  asserted_by_type                 AssertedByType
+  asserting_organization_reference String?
+  asserting_contact_reference      String?
+  source_system                    SourceSystem
+  // source_reference — REQUIRED at every layer (§3b correction 2). A
+  // governed reference to the source evidence (e.g. CLIENT_EMAIL:<id>),
+  // never free narrative text. NOT NULL here so the Prisma/DTO/API/tests/
+  // error-code layers all agree (the v1.0 ambiguity is closed).
+  source_reference String
+  // raw_source_value — OPTIONAL (divergence from ADR-0027's shape, PO-ruled).
+  // A VMS webhook assertion may carry no verbatim payload; requiring it would
+  // force a placeholder, which is worse than null. The governed
+  // source_reference already leads to the evidence.
+  raw_source_value String?
+  reason_code      String
+  recorded_by      String @db.Uuid
+
+  // Effective window (Option B).
+  effective_from DateTime  @db.Timestamptz
+  // scheduled_end_at — the asserted expiry KNOWN at creation. Nullable,
+  // IMMUTABLE post-insert (trigger-pinned). Distinct from effective_to.
+  scheduled_end_at DateTime? @db.Timestamptz
+  recorded_at      DateTime  @default(now()) @db.Timestamptz
+
+  // effective_to — the actual business-effective end, recorded ONLY by
+  // the explicit close action. NULL until close. Set once, atomically,
+  // together with the five closure-provenance columns below (§3b
+  // correction 3 + §5 trigger).
+  effective_to DateTime? @db.Timestamptz
+
+  // CLOSURE PROVENANCE — written ONCE, atomically with effective_to,
+  // then immutable. A closure with no actor/reason is not auditable.
+  //   closed_at:              when Aramo RECORDED the close (≠ effective_to).
+  //   closed_by:              the Aramo actor who recorded it.
+  //   close_reason_code:      closed registry (WHY closed early).
+  //   close_source_system:    channel the closure arrived through.
+  //   close_source_reference: governed reference to the closure evidence.
+  closed_at              DateTime?        @db.Timestamptz
+  closed_by              String?          @db.Uuid
+  close_reason_code      CloseReasonCode?
+  close_source_system    SourceSystem?
+  close_source_reference String?
+
+  // Idempotency identity (§3b correction 4): a same-source retry returns
+  // the existing record; different-source duplicates of the same type
+  // are PERMITTED (distinct externally-asserted facts). The unique index
+  // is the floor — the repository handles the lookup→create→reread race
+  // deliberately (the unique constraint is NOT the only mechanism).
+  @@unique([tenant_id, source_system, source_reference, restriction_type], name: "assertion_identity")
+
+  // Reads are ALWAYS client-and-talent-scoped (E7 R2/R3 — the query
+  // boundary is structural, not conventional). No index leads with
+  // talent_record_id alone: there is deliberately no cross-client
+  // per-talent lookup path.
+  @@index([tenant_id, client_company_id, talent_record_id])
+
+  @@schema("client_talent_restriction")
+}

@@ -403,6 +403,25 @@ export const ERROR_CODES = [
   // the policy engine); the gated set is unreachable by construction, so no
   // package rule expresses reaching it.
   'REQUISITION_STATUS_GATED',
+  // Track 3 / E7 (ADR-0027) — ClientTalentRestriction refusals. R10-narrow,
+  // client-scoped, never portable.
+  // RESTRICTION_INVALID (422): a single refusal covering ALL
+  // creation-validation cases (missing/invalid external asserter — R1's
+  // asserted_by_type/source_system/source_reference; an ungoverned
+  // source_reference / close_source_reference — free text rejected; an
+  // unregistered restriction_type — the R10 closed-registry tripwire; and an
+  // inconsistent effective window — scheduled_end_at not after effective_from
+  // at create, or at close effective_to before effective_from / after a
+  // scheduled end / closing an already naturally-expired restriction).
+  // details.reason names the specific case. Per-field codes were REJECTED:
+  // four parity surfaces each for no caller gain (PO ruling).
+  'RESTRICTION_INVALID',
+  // RESTRICTION_ALREADY_CLOSED (409): a close was attempted on a restriction
+  // whose effective_to is already set. Closure provenance is written ONCE and
+  // is immutable (E7 R4/R4b); a second close (or a trigger-rejected non-close
+  // mutation) is a CONFLICT — distinct 409 caller semantics from the 422
+  // validation refusal, never a silent last-write-wins.
+  'RESTRICTION_ALREADY_CLOSED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

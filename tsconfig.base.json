@@ -38,6 +38,7 @@
       "@aramo/canonicalization": ["libs/canonicalization/src/index.ts"],
       "@aramo/cold-ingest-extraction": ["libs/cold-ingest-extraction/src/index.ts"],
       "@aramo/common": ["libs/common/src/index.ts"],
+      "@aramo/client-talent-restriction": ["libs/client-talent-restriction/src/index.ts"],
       "@aramo/company": ["libs/company/src/index.ts"],
       "@aramo/consent": ["libs/consent/src/index.ts"],
       "@aramo/contact": ["libs/contact/src/index.ts"],
