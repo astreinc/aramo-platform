@@ -148,7 +148,7 @@ function emptyState(): FormState {
     title: '',
     company_id: '',
     contact_id: '',
-    status: 'active',
+    status: 'open',
     description: '',
     notes: '',
     is_hot: false,

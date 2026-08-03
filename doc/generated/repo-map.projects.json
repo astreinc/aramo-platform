@@ -594,7 +594,7 @@
     ],
     "@aramo/requisition": [
       "RATE_TYPE_VALUES",
-      "REQUISITION_STATUS_VALUES",
+      "RECRUITING_STATUS_VALUES",
       "RequisitionAssignmentRepository",
       "RequisitionController",
       "RequisitionLifecycleEventStore",
@@ -603,7 +603,7 @@
       "RequisitionRepository",
       "emptyRequisitionProfileView",
       "isRateType",
-      "isRequisitionStatus"
+      "isRecruitingStatus"
     ],
     "@aramo/resume-parse": ["ResumeParseModule", "ResumeParserService", "extractResumeText"],
     "@aramo/saved-list": [
