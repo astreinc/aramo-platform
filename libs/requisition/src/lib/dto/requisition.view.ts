@@ -47,6 +47,14 @@ export interface RequisitionView {
   created_at: string;
   updated_at: string;
 
+  // Track 1 T1-e (§2.1) — the optimistic-concurrency token, SURFACED on the
+  // read view so a caller can read-then-write. A control token, NOT content:
+  // not gated, not masked (§2.1). Until it is readable a caller cannot supply
+  // the version a governed transition now requires (§2.4), so surfacing it is
+  // T1-e's first deliverable. The stored column has existed since T1-b; this
+  // PR only projects it.
+  version: number;
+
   // v1.1 §2 — stored facts.
   compensation_model: RequisitionCompensationModel | null;
   pay_rate_amount: string | null;

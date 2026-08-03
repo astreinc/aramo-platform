@@ -77,7 +77,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           throw new Error('SetPriorityPolicyService.decide must not be called');
         },
       } as never;
-      repo = new RequisitionRepository(prisma, setPriorityStub);
+      // T1-e — the transition gate is likewise never reached: every update here
+      // changes title/city, not status, so gateTransition short-circuits before
+      // touching the policy service. A throwing stub proves it is not called.
+      const transitionStub = {
+        decide: async () => {
+          throw new Error('RequisitionTransitionPolicyService.decide must not be called');
+        },
+      } as never;
+      repo = new RequisitionRepository(prisma, setPriorityStub, transitionStub);
     }, 120_000);
 
     afterAll(async () => {

@@ -272,7 +272,16 @@ export function RequisitionDetailView({
 
   const saveField: SaveFieldFn = async (key, value) => {
     if (req === null) return;
-    const body = { [key]: value } as unknown as UpdateRequisitionRequest;
+    // T1-e (§2.4) — a status change is a governed transition and the server
+    // requires the expected version. Send the version we last read alongside
+    // the new status (read-then-write); other single-field edits keep the
+    // additive, version-optional posture. The response carries the incremented
+    // version, so setReq refreshes it for the next transition.
+    const body = (
+      key === 'status'
+        ? { status: value, version: req.version }
+        : { [key]: value }
+    ) as unknown as UpdateRequisitionRequest;
     setReq(await updateRequisition(req.id, body));
   };
 

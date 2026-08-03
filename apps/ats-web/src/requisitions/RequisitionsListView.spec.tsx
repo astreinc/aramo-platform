@@ -36,6 +36,7 @@ function makeReq(
     entered_by_id: null,
     created_at: '2026-06-01T00:00:00Z',
     updated_at: '2026-06-01T00:00:00Z',
+    version: 0, // T1-e — read-then-write concurrency token
     compensation_model: null,
     pay_rate_amount: null,
     pay_rate_currency: null,

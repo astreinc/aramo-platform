@@ -44,7 +44,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.end();
       prisma = new RequisitionPrismaService(url);
       await prisma.$connect();
-      repo = new RequisitionRepository(prisma, {} as never);
+      // T1-e — 3rd ctor arg (transition policy); never invoked (no status change).
+      repo = new RequisitionRepository(prisma, {} as never, {} as never);
     }, 120_000);
 
     afterAll(async () => {

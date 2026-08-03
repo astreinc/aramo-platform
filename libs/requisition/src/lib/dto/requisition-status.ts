@@ -47,3 +47,11 @@ export function isRecruitingStatus(value: unknown): value is RecruitingStatus {
     (RECRUITING_STATUS_VALUES as readonly string[]).includes(value)
   );
 }
+
+// Track 1 T1-e (§2.3 / R9) — is this status one a recruiter may NOT transition
+// INTO today? The write path uses this to refuse a gated target server-side
+// (REQUISITION_STATUS_GATED), independent of the transition-policy engine —
+// the gated set is unreachable BY CONSTRUCTION, not by a policy rule.
+export function isGatedRecruitingStatus(value: RecruitingStatus): boolean {
+  return (GATED_RECRUITING_STATUS_VALUES as readonly string[]).includes(value);
+}

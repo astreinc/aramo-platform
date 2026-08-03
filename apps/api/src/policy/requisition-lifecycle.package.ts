@@ -1,5 +1,10 @@
 import type { Decision, PolicyPackage } from '@aramo/policy-engine';
 import { REQUISITION_LIFECYCLE_PACKAGE_NAME } from '@aramo/pipeline';
+import {
+  TRANSITION_ACTIONS,
+  REQUISITION_RESOURCE,
+  type TransitionAction,
+} from '@aramo/requisition';
 
 // The requisition-lifecycle policy package — DATA (ADR-0024 §D2). This is the
 // SEED payload, not runtime code: published to policy-store (through
@@ -119,9 +124,70 @@ const SET_PRIORITY_RULES: PolicyPackage['rules'] = Object.entries(SET_PRIORITY_M
   }),
 );
 
+// T1-e (§2.2 / §4 Q3) — the GOVERNED TRANSITIONS. Four distinct actions, each
+// keyed on the requisition's declared FROM status (the SET_PRIORITY idiom): the
+// destination is IMPLIED by the action (CLOSE→closed, REOPEN→open,
+// PUT_ON_HOLD→on_hold, CANCEL→canceled), so a governed transition never needs a
+// two-value (from,to) key. Policy EVALUATES may-this-fire; the domain EXECUTES
+// (§D14). The action identifiers + resource are imported from @aramo/requisition
+// so the DATA here and the domain service share ONE definition (no bare-literal
+// port coupling — the T1-a lesson).
+//
+// The matrix is authored over ALL nine statuses even though several are
+// same-value (won't fire at runtime) or gated (unreachable): the package
+// default_disposition is ALLOW, so an UNLISTED (action, status) cell would
+// silently ALLOW — every cell is explicit to make the transition policy
+// auditable and fail-closed on terminal / gated FROM-states.
+//   - Terminal FROM-states (closed / canceled) DENY every transition except the
+//     legitimate REOPEN of a `closed` requisition; a `canceled` requisition is
+//     dead (recreate, never reopen).
+//   - Subsystem-gated FROM-states (draft / pending_approval / archived) DENY
+//     every transition (fail closed — a requisition cannot legitimately be in
+//     one today; §2.3 refuses transitions INTO them at the domain boundary).
+//   - `lead → open` is REOPEN = ALLOW (R5 — an ordinary recruiter action).
+const TRANSITION_MATRIX: Readonly<Record<TransitionAction, Readonly<Record<string, Decision>>>> = {
+  CLOSE: {
+    lead: 'ALLOW', open: 'ALLOW', on_hold: 'ALLOW', submittals_closed: 'ALLOW',
+    canceled: 'DENY', closed: 'DENY',
+    draft: 'DENY', pending_approval: 'DENY', archived: 'DENY',
+  },
+  REOPEN: {
+    lead: 'ALLOW', on_hold: 'ALLOW', submittals_closed: 'ALLOW', closed: 'ALLOW',
+    open: 'DENY', canceled: 'DENY',
+    draft: 'DENY', pending_approval: 'DENY', archived: 'DENY',
+  },
+  PUT_ON_HOLD: {
+    lead: 'ALLOW', open: 'ALLOW', submittals_closed: 'ALLOW',
+    on_hold: 'DENY', closed: 'DENY', canceled: 'DENY',
+    draft: 'DENY', pending_approval: 'DENY', archived: 'DENY',
+  },
+  CANCEL: {
+    lead: 'ALLOW', open: 'ALLOW', on_hold: 'ALLOW', submittals_closed: 'ALLOW',
+    canceled: 'DENY', closed: 'DENY',
+    draft: 'DENY', pending_approval: 'DENY', archived: 'DENY',
+  },
+};
+
+// Serialize the transition matrix into engine rules: one predicate per rule,
+// keyed on the declared FROM status — identical marshalling to the column /
+// SET_PRIORITY matrices above.
+const TRANSITION_RULES: PolicyPackage['rules'] = TRANSITION_ACTIONS.flatMap((action) =>
+  Object.entries(TRANSITION_MATRIX[action]).map(([status, decision]) => ({
+    id: `transition-${action.toLowerCase()}-${status}`,
+    resource: REQUISITION_RESOURCE,
+    action,
+    when: [{ source: 'declared' as const, key: 'status', op: 'eq' as const, value: status }],
+    decision,
+    reason_code: `LIFECYCLE_TRANSITION_${action}_${REASON_SUFFIX[decision]}`,
+  })),
+);
+
 export const REQUISITION_LIFECYCLE_PACKAGE: PolicyPackage = {
   name: REQUISITION_LIFECYCLE_PACKAGE_NAME,
-  version: '4.0.0',
+  // T1-e — version 5.0.0. New MAJOR: the four governed-transition actions are a
+  // new behavioural surface (§2.2). v4.0.0 stays in the store, window closed;
+  // earlier provenance still names 4.0.0 when re-read from the DB (§D17b).
+  version: '5.0.0',
   registry: {
     resources: [
       'REQUISITION_TALENT',
@@ -130,7 +196,10 @@ export const REQUISITION_LIFECYCLE_PACKAGE: PolicyPackage = {
       'REQUISITION_DOCUMENT',
       'REQUISITION',
     ],
-    actions: ['ADD', 'CREATE', 'SET_PRIORITY'],
+    // T1-e — the four governed-transition actions join ADD/CREATE/SET_PRIORITY.
+    // The engine REJECTS an unregistered action at evaluate time, so they MUST
+    // be registered for the transition gate to resolve.
+    actions: ['ADD', 'CREATE', 'SET_PRIORITY', ...TRANSITION_ACTIONS],
   },
   // R3 — a package MUST declare its own no-match disposition. ALLOW (permissive
   // by default; the matrix restricts the specific governed cells).
@@ -138,5 +207,5 @@ export const REQUISITION_LIFECYCLE_PACKAGE: PolicyPackage = {
     decision: 'ALLOW',
     reason_code: 'LIFECYCLE_ALLOWED_DEFAULT',
   },
-  rules: [...RULES, ...SET_PRIORITY_RULES],
+  rules: [...RULES, ...SET_PRIORITY_RULES, ...TRANSITION_RULES],
 };

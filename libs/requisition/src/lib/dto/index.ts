@@ -1,8 +1,18 @@
 export {
   RECRUITING_STATUS_VALUES,
+  GATED_RECRUITING_STATUS_VALUES,
+  SELECTABLE_RECRUITING_STATUS_VALUES,
   isRecruitingStatus,
+  isGatedRecruitingStatus,
   type RecruitingStatus,
 } from './requisition-status.js';
+export {
+  TRANSITION_ACTIONS,
+  REQUISITION_RESOURCE,
+  ACTION_TARGET_STATUS,
+  governingActionForTarget,
+  type TransitionAction,
+} from './requisition-transitions.js';
 export {
   RATE_PERIOD_VALUES,
   isRatePeriod,

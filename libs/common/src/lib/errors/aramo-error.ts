@@ -90,6 +90,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ACTIVITY_ALREADY_REDACTED: 409,
   // Track 1 T1-b (R2) — optimistic-concurrency stale-write on requisition (409).
   REQUISITION_VERSION_CONFLICT: 409,
+  // Track 1 T1-e (§2.3 / R9) — status-changing PATCH into a subsystem-gated
+  // status refused server-side (well-formed, target subsystem absent → 422).
+  REQUISITION_STATUS_GATED: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

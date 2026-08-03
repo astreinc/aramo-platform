@@ -53,15 +53,16 @@ function contextFor(status: string, resource: string): PolicyContext {
   };
 }
 
-describe('REQUISITION_LIFECYCLE_PACKAGE v4.0.0 — RecruitingStatus-keyed matrix DATA', () => {
-  it('is a structurally valid package (as PolicyStore.publish will require), v4.0.0, named for the retrieval key, default ALLOW', () => {
+describe('REQUISITION_LIFECYCLE_PACKAGE v5.0.0 — RecruitingStatus-keyed matrix DATA', () => {
+  it('is a structurally valid package (as PolicyStore.publish will require), v5.0.0, named for the retrieval key, default ALLOW', () => {
     expect(() => validatePackage(REQUISITION_LIFECYCLE_PACKAGE)).not.toThrow();
     expect(REQUISITION_LIFECYCLE_PACKAGE.name).toBe(REQUISITION_LIFECYCLE_PACKAGE_NAME);
-    expect(REQUISITION_LIFECYCLE_PACKAGE.version).toBe('4.0.0');
+    // T1-e — new MAJOR: the four governed-transition actions are a new surface.
+    expect(REQUISITION_LIFECYCLE_PACKAGE.version).toBe('5.0.0');
     expect(REQUISITION_LIFECYCLE_PACKAGE.default_disposition.decision).toBe('ALLOW');
   });
 
-  it('governs the five resource·action pairs (Add / Submit / Note / Document / SetPriority)', () => {
+  it('governs the five column resources + the four T1-e transition actions', () => {
     expect([...REQUISITION_LIFECYCLE_PACKAGE.registry.resources].sort()).toEqual([
       'REQUISITION',
       'REQUISITION_DOCUMENT',
@@ -69,7 +70,10 @@ describe('REQUISITION_LIFECYCLE_PACKAGE v4.0.0 — RecruitingStatus-keyed matrix
       'REQUISITION_SUBMITTAL',
       'REQUISITION_TALENT',
     ]);
-    expect([...REQUISITION_LIFECYCLE_PACKAGE.registry.actions].sort()).toEqual(['ADD', 'CREATE', 'SET_PRIORITY']);
+    // ADD/CREATE/SET_PRIORITY + T1-e CLOSE/REOPEN/PUT_ON_HOLD/CANCEL.
+    expect([...REQUISITION_LIFECYCLE_PACKAGE.registry.actions].sort()).toEqual([
+      'ADD', 'CANCEL', 'CLOSE', 'CREATE', 'PUT_ON_HOLD', 'REOPEN', 'SET_PRIORITY',
+    ]);
   });
 
   // EVERY cell (24), evaluated through the engine against the package DATA.
@@ -104,6 +108,57 @@ describe('REQUISITION_LIFECYCLE_PACKAGE v4.0.0 — RecruitingStatus-keyed matrix
       expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, 'REQUISITION_DOCUMENT')).decision, `document·${status}`).toBe('DENY');
       expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, 'REQUISITION_NOTE')).decision, `note·${status}`).toBe('ALLOW');
       expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, 'REQUISITION')).decision, `set-priority·${status}`).toBe('DENY');
+    }
+  });
+});
+
+// T1-e (§2.2) — the four governed-transition actions, keyed on the declared FROM
+// status. Re-declared INDEPENDENTLY (the spec must not trust the table it checks)
+// and evaluated through the engine against the package DATA.
+const EXPECTED_TRANSITIONS: Readonly<Record<string, Readonly<Record<string, Decision>>>> = {
+  CLOSE: { lead: 'ALLOW', open: 'ALLOW', on_hold: 'ALLOW', submittals_closed: 'ALLOW', canceled: 'DENY', closed: 'DENY', draft: 'DENY', pending_approval: 'DENY', archived: 'DENY' },
+  REOPEN: { lead: 'ALLOW', on_hold: 'ALLOW', submittals_closed: 'ALLOW', closed: 'ALLOW', open: 'DENY', canceled: 'DENY', draft: 'DENY', pending_approval: 'DENY', archived: 'DENY' },
+  PUT_ON_HOLD: { lead: 'ALLOW', open: 'ALLOW', submittals_closed: 'ALLOW', on_hold: 'DENY', closed: 'DENY', canceled: 'DENY', draft: 'DENY', pending_approval: 'DENY', archived: 'DENY' },
+  CANCEL: { lead: 'ALLOW', open: 'ALLOW', on_hold: 'ALLOW', submittals_closed: 'ALLOW', canceled: 'DENY', closed: 'DENY', draft: 'DENY', pending_approval: 'DENY', archived: 'DENY' },
+};
+
+function transitionContext(status: string, action: string): PolicyContext {
+  return {
+    tenant_id: 't',
+    resource: 'REQUISITION',
+    action,
+    resource_state: { declared: { status }, derived: {} },
+    principal_capabilities: {},
+    request_metadata: { correlation_id: 'c', origin: 'ui' },
+    environment: 'test',
+    time: new Date('2026-01-01T00:00:00Z').toISOString(),
+    attributes: {},
+  };
+}
+
+describe('REQUISITION_LIFECYCLE_PACKAGE v5.0.0 — governed transition matrices (T1-e)', () => {
+  for (const [action, row] of Object.entries(EXPECTED_TRANSITIONS)) {
+    for (const [status, expected] of Object.entries(row)) {
+      it(`transition ${action} from ${status} -> ${expected}`, () => {
+        const decision = evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext(status, action));
+        expect(decision.decision).toBe(expected);
+      });
+    }
+  }
+
+  it('R5 — lead → open (REOPEN from lead) is ALLOW, an ordinary recruiter action', () => {
+    expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('lead', 'REOPEN')).decision).toBe('ALLOW');
+  });
+
+  it('a closed requisition may be REOPENed but never re-CLOSEd or CANCELed', () => {
+    expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('closed', 'REOPEN')).decision).toBe('ALLOW');
+    expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('closed', 'CLOSE')).decision).toBe('DENY');
+    expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('closed', 'CANCEL')).decision).toBe('DENY');
+  });
+
+  it('a canceled requisition is terminal — every transition out of it DENIES', () => {
+    for (const action of ['CLOSE', 'REOPEN', 'PUT_ON_HOLD', 'CANCEL']) {
+      expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('canceled', action)).decision, `canceled·${action}`).toBe('DENY');
     }
   });
 });

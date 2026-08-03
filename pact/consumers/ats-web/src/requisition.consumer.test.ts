@@ -68,6 +68,9 @@ function requisitionView(
     title: like(opts.title ?? 'Senior Engineer'),
     company_id: uuid(REQ_COMPANY_ID),
     status: like('open'),
+    // T1-e (§2.1) — the concurrency token the client reads then supplies on a
+    // status-changing PATCH (read-then-write).
+    version: like(0),
     is_hot: opts.isHot === undefined ? like(false) : opts.isHot,
     openings: like(1),
     openings_available: like(1),
