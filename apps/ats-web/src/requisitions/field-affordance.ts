@@ -85,7 +85,9 @@ export const COCKPIT_FIELDS: readonly CockpitFieldDescriptor[] = [
   // --- Identity / core (OPEN) ---
   { key: 'title', label: 'Title', bucket: 'OPEN', kind: 'text', section: 'identity' },
   { key: 'status', label: 'Status', bucket: 'STATUS', kind: 'select', section: 'identity' },
-  { key: 'is_hot', label: 'Hot', bucket: 'OPEN', kind: 'switch', section: 'identity' },
+  // Recruiter-facing label is "Priority" (team-wide operational signal); the
+  // is_hot key, permission and CSS are unchanged — label text only.
+  { key: 'is_hot', label: 'Priority', bucket: 'OPEN', kind: 'switch', section: 'identity' },
   { key: 'openings', label: 'Openings', bucket: 'OPEN', kind: 'number', section: 'identity' },
   { key: 'start_date', label: 'Start date', bucket: 'OPEN', kind: 'date', section: 'identity' },
   { key: 'city', label: 'City', bucket: 'OPEN', kind: 'text', section: 'identity' },

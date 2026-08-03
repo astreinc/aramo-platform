@@ -418,7 +418,7 @@ export function RequisitionDetailView({
             {req.title}
             {req.is_hot ? (
               <StatusPill tone="hot" icon={<Icons.IconFlame />}>
-                Hot
+                Priority
               </StatusPill>
             ) : null}
             <StatusPill tone={STATUS_TONE[req.status]} dot>
