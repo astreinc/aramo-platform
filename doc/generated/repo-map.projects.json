@@ -593,15 +593,23 @@
       "ReportingService"
     ],
     "@aramo/requisition": [
+      "ACTION_TARGET_STATUS",
+      "GATED_RECRUITING_STATUS_VALUES",
       "RATE_TYPE_VALUES",
       "RECRUITING_STATUS_VALUES",
+      "REQUISITION_RESOURCE",
       "RequisitionAssignmentRepository",
       "RequisitionController",
       "RequisitionLifecycleEventStore",
       "RequisitionModule",
       "RequisitionPrismaService",
       "RequisitionRepository",
+      "RequisitionTransitionPolicyService",
+      "SELECTABLE_RECRUITING_STATUS_VALUES",
+      "TRANSITION_ACTIONS",
       "emptyRequisitionProfileView",
+      "governingActionForTarget",
+      "isGatedRecruitingStatus",
       "isRateType",
       "isRecruitingStatus"
     ],
@@ -2973,6 +2981,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/publish-lifecycle-package.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-lifecycle-wiring.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-transition.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

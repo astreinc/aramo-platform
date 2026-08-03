@@ -191,7 +191,7 @@
     },
     {
       "from": "apps/api/src/policy/requisition-lifecycle.package.ts",
-      "line": 33,
+      "line": 38,
       "status": "production",
       "to": "scripts/verify-vocabulary.sh"
     },
@@ -641,105 +641,105 @@
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 53,
+      "line": 54,
       "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 57,
+      "line": 58,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 64,
+      "line": 65,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 71,
+      "line": 72,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 79,
+      "line": 80,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 129,
+      "line": 130,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260612120000_drop_legacy_requisition_comp/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 85,
+      "line": 86,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260618120000_add_rate_type_subk_runmatch/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 89,
+      "line": 90,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260721000000_add_publish_surface/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 96,
+      "line": 97,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260731120000_add_requisition_lifecycle_event/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 107,
+      "line": 108,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260801120000_add_version_to_requisition/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 100,
+      "line": 101,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260802120000_lifecycle_previous_status_nullable/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 113,
+      "line": 114,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260802140000_add_onsite_days_to_requisition/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 122,
+      "line": 123,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260802160000_add_user_requisition_state/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 117,
+      "line": 118,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260802180000_add_requisition_number/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts",
-      "line": 229,
+      "line": 230,
       "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql"
     },
@@ -9287,13 +9287,13 @@
     },
     {
       "from": "apps/ats-web/src/requisitions/types.ts",
-      "line": 181,
+      "line": 185,
       "status": "production",
       "to": "libs/requisition/src/lib/dto/rate-period.ts"
     },
     {
       "from": "apps/ats-web/src/requisitions/types.ts",
-      "line": 169,
+      "line": 173,
       "status": "production",
       "to": "libs/requisition/src/lib/dto/rate-type.ts"
     },
@@ -15714,6 +15714,12 @@
       "to": "libs/identity/src/lib/dto/scope.dto.ts"
     },
     {
+      "from": "libs/requisition/src/lib/dto/requisition-transitions.ts",
+      "line": 12,
+      "status": "production",
+      "to": "apps/api/src/policy/requisition-lifecycle.package.ts"
+    },
+    {
       "excludedBy": "src/tests/**/*",
       "from": "libs/requisition/src/tests/compensation-edit-gate.spec.ts",
       "line": 351,
@@ -16080,7 +16086,7 @@
       "to": "libs/common/src/lib/errors/error-codes.ts"
     },
     { "from": "openapi/common.yaml", "line": 672, "status": "unscoped", "to": "openapi/ats.yaml" },
-    { "from": "openapi/common.yaml", "line": 2053, "status": "unscoped", "to": "openapi/ats.yaml" },
+    { "from": "openapi/common.yaml", "line": 2054, "status": "unscoped", "to": "openapi/ats.yaml" },
     { "from": "openapi/common.yaml", "line": 662, "status": "unscoped", "to": "openapi/auth.yaml" },
     {
       "from": "openapi/platform.yaml",
