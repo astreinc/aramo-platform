@@ -42,7 +42,7 @@ function makeCompany(overrides: Partial<CompanyView> = {}): CompanyView {
     entered_by_id: null,
     created_at: '2023-06-01T00:00:00Z',
     updated_at: '2026-06-01T00:00:00Z',
-    status: 'open',
+    status: 'active',
     description: 'A robotics automation firm.',
     industry: 'Robotics',
     country: null,
