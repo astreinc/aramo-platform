@@ -44,6 +44,7 @@ const MIGRATIONS = [
   'libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql',
   'libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql',
   'libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql',
+  'libs/requisition/prisma/migrations/20260802200000_recruiting_status_supersession/migration.sql',
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   // ADR-0024 PR-3 — the create transaction writes here.
   'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql',
@@ -56,7 +57,7 @@ const MIGRATIONS = [
 // produce — the fail-closed no-published-package path. Restrictive-rule DENY
 // (closed → DENY, full → REQUIRES_OVERRIDE) arrives in PR-4c.
 
-const SIX_STATES = ['active', 'on_hold', 'full', 'closed', 'canceled', 'lead'] as const;
+const SIX_STATES = ['open', 'on_hold', 'submittals_closed', 'closed', 'canceled', 'lead'] as const;
 
 let uuidCounter = 0;
 function uuid(): string {
@@ -95,7 +96,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const id = uuid();
       await db.query(
         `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
-         VALUES ($1, $2, $3, $4, $5::"requisition"."RequisitionStatus")`,
+         VALUES ($1, $2, $3, $4, $5::"requisition"."RecruitingStatus")`,
         [id, TENANT, `req-${status}`, uuid(), status],
       );
       return id;
@@ -172,7 +173,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       afterAll(async () => { await app?.close(); });
 
       it('an ALLOW add creates the pipeline row AND records provenance with the real version + rule_id', async () => {
-        const req = await seedRequisition('active');
+        const req = await seedRequisition('open');
         const jwt = await signJwt(ADD_SCOPES);
         const res = await postAdd(app, jwt, req);
         expect(res.status).toBe(201);
@@ -183,8 +184,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           [ACTOR],
         )).rows;
         expect(recs).toHaveLength(1);
-        expect(recs[0].policy_version).toBe('3.0.0'); // PR-7 (v3.0.0)
-        expect(recs[0].rule_id).toBe('add-talent-active');
+        expect(recs[0].policy_version).toBe('4.0.0'); // PR-7 (v4.0.0)
+        expect(recs[0].rule_id).toBe('add-talent-open');
       });
 
       // PR-4c — the ADD column of the restrictive matrix. active/on_hold/lead
@@ -193,7 +194,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // capability path + the Submit/Note/Document columns are in the matrix E2E.
       it('the ADD column of the restrictive matrix is enforced per state', async () => {
         const jwt = await signJwt(ADD_SCOPES); // no override capability
-        const expectAllow = new Set(['active', 'on_hold', 'lead']);
+        const expectAllow = new Set(['open', 'on_hold', 'lead']);
         for (const status of SIX_STATES) {
           const req = await seedRequisition(status);
           const res = await postAdd(app, jwt, req);
@@ -213,7 +214,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
 
       it('ATOMICITY: a provenance-write failure on ALLOW rolls back the pipeline row (no row persists)', async () => {
-        const req = await seedRequisition('active');
+        const req = await seedRequisition('open');
         const jwt = await signJwt(ADD_SCOPES);
         // Force the in-tx provenance INSERT to fail — AFTER tx.pipeline.create,
         // which is what makes this a rollback test and not a pre-write short

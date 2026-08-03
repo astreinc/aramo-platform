@@ -172,7 +172,7 @@ const REQUISITION_CATALOG: readonly FieldCatalogEntry[] = [
   { field: 'start_date',  type: 'date',   required: false, example: '2026-08-01',      synonyms: ['startdate', 'start', 'datestart', 'begindate'] },
   { field: 'city',        type: 'string', required: false, example: 'Boston',          synonyms: ['city', 'town', 'location', 'jobcity'] },
   { field: 'state',       type: 'string', required: false, example: 'MA',              synonyms: ['state', 'province'] },
-  { field: 'status',      type: 'string', required: false, example: 'active',          synonyms: ['status', 'state', 'jobstatus', 'requisitionstatus'] },
+  { field: 'status',      type: 'string', required: false, example: 'open',            synonyms: ['status', 'state', 'jobstatus', 'requisitionstatus'] },
   { field: 'is_hot',      type: 'boolean', required: false, example: 'true',           synonyms: ['ishot', 'hot', 'priority'] },
   { field: 'site_id',               type: 'string', required: false, example: '<uuid>', synonyms: [] },
   { field: 'contact_id',            type: 'string', required: false, example: '<uuid>', synonyms: [] },

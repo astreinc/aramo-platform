@@ -5,26 +5,36 @@
 // importing @aramo/requisition (a forbidden domain edge from
 // apps/ats-web).
 
+// T1-d — mirror of the BE RecruitingStatus enum, in the SAME lifecycle order.
+// This mirror is a SOURCE OF TRUTH (not a copy): a drift-guard spec
+// (recruiting-status-drift.spec.ts) reads the Prisma enum as text and asserts
+// this tuple equals it. Any BE enum change must land here too or the build fails.
 export const REQUISITION_STATUS_VALUES = [
-  'active',
-  'on_hold',
-  'full',
-  'closed',
-  'canceled',
+  'draft',
+  'pending_approval',
   'lead',
-] as const;
-export type RequisitionStatus = (typeof REQUISITION_STATUS_VALUES)[number];
-
-// Q2 ruling — the "my open reqs" framing. Closed = filled/closed/canceled.
-// Active = everything else (active + lead + on_hold — work the recruiter
-// can still touch).
-export const CLOSED_REQUISITION_STATUSES: readonly RequisitionStatus[] = [
-  'full',
+  'open',
+  'on_hold',
+  'submittals_closed',
   'closed',
   'canceled',
+  'archived',
+] as const;
+export type RecruitingStatus = (typeof REQUISITION_STATUS_VALUES)[number];
+
+// T1-d Q4 ruling — the "my open reqs" framing. Closed (terminal/retention) =
+// submittals_closed (inherits `full`'s membership) + closed + canceled +
+// archived. `lead` is NOT closed — it is pre-open, and hiding leads from the
+// default list would break the state T1-d preserves. `draft`/`pending_approval`
+// are inert (no rows reach them yet) so their closed-ness is moot today.
+export const CLOSED_REQUISITION_STATUSES: readonly RecruitingStatus[] = [
+  'submittals_closed',
+  'closed',
+  'canceled',
+  'archived',
 ];
 
-export function isClosedStatus(status: RequisitionStatus): boolean {
+export function isClosedStatus(status: RecruitingStatus): boolean {
   return (CLOSED_REQUISITION_STATUSES as readonly string[]).includes(status);
 }
 
@@ -43,7 +53,7 @@ export interface RequisitionView {
   readonly company_id: string;
   readonly contact_id: string | null;
   readonly company_department_id: string | null;
-  readonly status: RequisitionStatus;
+  readonly status: RecruitingStatus;
   readonly type: string | null;
   readonly duration: string | null;
   readonly description: string | null;
@@ -170,7 +180,7 @@ export interface CreateRequisitionRequest {
   readonly title: string;
   readonly company_id: string;
   readonly contact_id?: string;
-  readonly status?: RequisitionStatus;
+  readonly status?: RecruitingStatus;
   readonly description?: string;
   readonly notes?: string;
   readonly is_hot?: boolean;
@@ -252,7 +262,7 @@ export interface CreateRequisitionRequest {
 export interface UpdateRequisitionRequest {
   readonly title?: string;
   readonly contact_id?: string | null;
-  readonly status?: RequisitionStatus;
+  readonly status?: RecruitingStatus;
   readonly description?: string | null;
   readonly notes?: string | null;
   readonly is_hot?: boolean;

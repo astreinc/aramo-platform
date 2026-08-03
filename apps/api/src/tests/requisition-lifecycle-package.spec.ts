@@ -26,15 +26,20 @@ const ACTION: Readonly<Record<string, string>> = {
 };
 
 // Independent copy of the directive matrix (state × resource → decision).
-// PR-7 adds REQUISITION · SET_PRIORITY: active/on_hold/full/lead ALLOW,
-// closed/canceled DENY (priority on a terminal requisition is meaningless).
+// T1-d re-key: active→open, full→submittals_closed (inherits full's row incl
+// the REQUIRES_OVERRIDE cells); lead unchanged; draft/pending_approval/archived
+// are present-but-inert → DENY on everything except Note. The REQUISITION column
+// is SET_PRIORITY: open/on_hold/submittals_closed/lead ALLOW, the rest DENY.
 const EXPECTED: Readonly<Record<string, Readonly<Record<string, Decision>>>> = {
-  active: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'ALLOW', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW', REQUISITION: 'ALLOW' },
+  open: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'ALLOW', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW', REQUISITION: 'ALLOW' },
   on_hold: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW', REQUISITION: 'ALLOW' },
-  full: { REQUISITION_TALENT: 'REQUIRES_OVERRIDE', REQUISITION_SUBMITTAL: 'REQUIRES_OVERRIDE', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'REQUIRES_OVERRIDE', REQUISITION: 'ALLOW' },
+  submittals_closed: { REQUISITION_TALENT: 'REQUIRES_OVERRIDE', REQUISITION_SUBMITTAL: 'REQUIRES_OVERRIDE', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'REQUIRES_OVERRIDE', REQUISITION: 'ALLOW' },
   closed: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY', REQUISITION: 'DENY' },
   canceled: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY', REQUISITION: 'DENY' },
   lead: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW', REQUISITION: 'ALLOW' },
+  draft: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY', REQUISITION: 'DENY' },
+  pending_approval: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY', REQUISITION: 'DENY' },
+  archived: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY', REQUISITION: 'DENY' },
 };
 
 function contextFor(status: string, resource: string): PolicyContext {
@@ -51,11 +56,11 @@ function contextFor(status: string, resource: string): PolicyContext {
   };
 }
 
-describe('REQUISITION_LIFECYCLE_PACKAGE v3.0.0 — restrictive matrix DATA', () => {
-  it('is a structurally valid package (as PolicyStore.publish will require), v3.0.0, named for the retrieval key, default ALLOW', () => {
+describe('REQUISITION_LIFECYCLE_PACKAGE v4.0.0 — restrictive matrix DATA (RecruitingStatus)', () => {
+  it('is a structurally valid package (as PolicyStore.publish will require), v4.0.0, named for the retrieval key, default ALLOW', () => {
     expect(() => validatePackage(REQUISITION_LIFECYCLE_PACKAGE)).not.toThrow();
     expect(REQUISITION_LIFECYCLE_PACKAGE.name).toBe(REQUISITION_LIFECYCLE_PACKAGE_NAME);
-    expect(REQUISITION_LIFECYCLE_PACKAGE.version).toBe('3.0.0');
+    expect(REQUISITION_LIFECYCLE_PACKAGE.version).toBe('4.0.0');
     expect(REQUISITION_LIFECYCLE_PACKAGE.default_disposition.decision).toBe('ALLOW');
   });
 
@@ -86,7 +91,7 @@ describe('REQUISITION_LIFECYCLE_PACKAGE v3.0.0 — restrictive matrix DATA', () 
   }
 
   it('Note is ALLOW in EVERY state, including the terminal closed/canceled (the ruling most likely to be "fixed" by mistake)', () => {
-    for (const status of ['active', 'on_hold', 'full', 'closed', 'canceled', 'lead']) {
+    for (const status of ['open', 'on_hold', 'submittals_closed', 'closed', 'canceled', 'lead', 'draft', 'pending_approval', 'archived']) {
       expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, 'REQUISITION_NOTE')).decision, `note·${status}`).toBe('ALLOW');
     }
   });

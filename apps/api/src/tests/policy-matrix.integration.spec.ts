@@ -40,9 +40,9 @@ const ACTION: Readonly<Record<string, string>> = {
   REQUISITION_TALENT: 'ADD', REQUISITION_SUBMITTAL: 'CREATE', REQUISITION_NOTE: 'ADD', REQUISITION_DOCUMENT: 'ADD',
 };
 const EXPECTED: Readonly<Record<string, Readonly<Record<string, Decision>>>> = {
-  active: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'ALLOW', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
+  open: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'ALLOW', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
   on_hold: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
-  full: { REQUISITION_TALENT: 'REQUIRES_OVERRIDE', REQUISITION_SUBMITTAL: 'REQUIRES_OVERRIDE', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'REQUIRES_OVERRIDE' },
+  submittals_closed: { REQUISITION_TALENT: 'REQUIRES_OVERRIDE', REQUISITION_SUBMITTAL: 'REQUIRES_OVERRIDE', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'REQUIRES_OVERRIDE' },
   closed: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY' },
   canceled: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY' },
   lead: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
@@ -88,7 +88,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
     async function seedRequisition(status: string): Promise<string> {
       const id = uuid();
-      await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,$3,$4,$5::"requisition"."RequisitionStatus", (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [id, TENANT, `req-${status}`, uuid(), status]);
+      await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,$3,$4,$5::"requisition"."RecruitingStatus", (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [id, TENANT, `req-${status}`, uuid(), status]);
       return id;
     }
     function baseUrl(): string {
@@ -140,7 +140,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('EVERY cell (24) evaluates per the matrix against the PUBLISHED + RETRIEVED package', async () => {
       const resolved = await store.getActiveVersion(TENANT, PKG_NAME);
-      expect(resolved?.version).toBe('3.0.0');
+      expect(resolved?.version).toBe('4.0.0');
       for (const [status, row] of Object.entries(EXPECTED)) {
         for (const [resource, expected] of Object.entries(row)) {
           const d = evaluate(resolved!.definition, contextFor(status, resource));
@@ -157,19 +157,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const withCap = ['pipeline:add', 'talent:source', OVERRIDE_CAP];
 
       it('active -> pipeline 201; closed -> 403 DENY', async () => {
-        expect((await postPipeline(await signJwt(base), await seedRequisition('active'))).status).toBe(201);
+        expect((await postPipeline(await signJwt(base), await seedRequisition('open'))).status).toBe(201);
         expect((await postPipeline(await signJwt(base), await seedRequisition('closed'))).status).toBe(403);
       });
 
       it('full + Add, capability ABSENT -> 403 DENY (pipeline + sourcing)', async () => {
-        expect((await postPipeline(await signJwt(base), await seedRequisition('full'))).status).toBe(403);
-        expect((await postSourcing(await signJwt(base), await seedRequisition('full'), 'replacement')).status).toBe(403);
+        expect((await postPipeline(await signJwt(base), await seedRequisition('submittals_closed'))).status).toBe(403);
+        expect((await postSourcing(await signJwt(base), await seedRequisition('submittals_closed'), 'replacement')).status).toBe(403);
       });
 
       it('full + Add, capability present + valid reason -> ALLOWS and mutates (pipeline 201; sourcing proceeds → 200 deferral)', async () => {
-        const reqP = await seedRequisition('full');
+        const reqP = await seedRequisition('submittals_closed');
         expect((await postPipeline(await signJwt(withCap), reqP, 'client_approved_overfill')).status).toBe(201);
-        const reqS = await seedRequisition('full');
+        const reqS = await seedRequisition('submittals_closed');
         expect((await postSourcing(await signJwt(withCap), reqS, 'duplicate_correction')).status).toBe(200);
       });
     });
@@ -181,7 +181,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // v1.0.0 published first, active window; make a decision under it.
       await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '1.0.0' }, published_by: SYSTEM_PUBLISHER, effective_from: new Date('2026-01-01T00:00:00Z') });
       const req = uuid();
-      await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,'r',$3,'active', (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [req, T, uuid()]);
+      await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,'r',$3,'open', (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [req, T, uuid()]);
       const jwt = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, scopes: ['pipeline:add'] })
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
       expect((await postPipeline(jwt, req)).status).toBe(201);

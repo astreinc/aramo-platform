@@ -40,7 +40,6 @@ import {
   Toolbar,
   funnelCounts,
   type ActivityFeedItem,
-  type PillTone,
   type TableColumn,
 } from '../ui';
 
@@ -56,7 +55,10 @@ import {
 } from './requisitions-api';
 import { detailErrorMessage } from './error-messages';
 import {
-  type RequisitionStatus,
+  RECRUITING_STATUS_LABEL as STATUS_LABEL,
+  RECRUITING_STATUS_TONE as STATUS_TONE,
+} from './status-display';
+import {
   type RequisitionView,
   type UpdateRequisitionRequest,
 } from './types';
@@ -97,24 +99,6 @@ const SECTION_ORDER: readonly CockpitSection[] = [
   'compensation',
   'financial',
 ];
-
-const STATUS_LABEL: Record<RequisitionStatus, string> = {
-  active: 'Open',
-  on_hold: 'On hold',
-  full: 'Full',
-  closed: 'Closed',
-  canceled: 'Canceled',
-  lead: 'Intake',
-};
-
-const STATUS_TONE: Record<RequisitionStatus, PillTone> = {
-  active: 'ok',
-  lead: 'neutral',
-  on_hold: 'warn',
-  full: 'brand',
-  closed: 'neutral',
-  canceled: 'danger',
-};
 
 const SUBMITTED_PLUS: readonly PipelineStatus[] = [
   'submitted',

@@ -1,7 +1,7 @@
 export {
   REQUISITION_STATUS_VALUES,
-  isRequisitionStatus,
-  type RequisitionStatus,
+  isRecruitingStatus,
+  type RecruitingStatus,
 } from './requisition-status.js';
 export {
   RATE_PERIOD_VALUES,

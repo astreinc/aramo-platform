@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@aramo/fe-foundation';
 
-import type { RequisitionStatus, RequisitionView } from '../requisitions/types';
+import type { RecruitingStatus, RequisitionView } from '../requisitions/types';
 
 import { CompanyDetailView } from './CompanyDetailView';
 import type { CompanyView, ContactView } from './types';
@@ -102,7 +102,7 @@ function makeContact(
 function makeReq(
   id: string,
   title: string,
-  status: RequisitionStatus = 'active',
+  status: RecruitingStatus = 'active',
 ): RequisitionView {
   return { id, title, company_id: 'co-1', status } as unknown as RequisitionView;
 }

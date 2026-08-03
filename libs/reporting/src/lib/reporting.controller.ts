@@ -22,7 +22,7 @@ import type {
   PipelineStageRollupView,
   PlacementCountReportView,
   RecruiterMetricsReportView,
-  RequisitionStatusRollupView,
+  RecruitingStatusRollupView,
   TenantCountsReportView,
 } from './dto/report.view.js';
 import { ReportingService } from './reporting.service.js';
@@ -78,7 +78,7 @@ export class ReportingController {
     @AuthContext() authContext: AuthContextType,
     @Query('site_id') siteIdFromQuery: string | undefined,
     @Req() req: Request,
-  ): Promise<RequisitionStatusRollupView> {
+  ): Promise<RecruitingStatusRollupView> {
     const visibility = await req.resolveVisibility!();
     return this.reportingService.getRequisitionRollup({
       tenant_id: authContext.tenant_id,

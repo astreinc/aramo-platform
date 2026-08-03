@@ -495,7 +495,7 @@ const CONTACT_LIST_SURFACE_MIGRATION = resolve(
 );
 // PC-5b — ats-web Gate-2a desk (requisition spine + profile-confirm +
 // assignments). Requisition init CREATEs the schema + Requisition +
-// RequisitionAssignment + the RequisitionStatus enum; the additive ALTERs add
+// RequisitionAssignment + the RecruitingStatus enum; the additive ALTERs add
 // the compensation / job-module / rate-type columns RequisitionView reads.
 // All FKs are intra-schema (RequisitionAssignment -> Requisition); every
 // cross-schema ref (company_id, golden_profile_id, …) is a plain UUID (§7.3),
@@ -570,6 +570,14 @@ const REQUISITION_NUMBER_MIGRATION = resolve(
 const REQUISITION_USER_STATE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260802160000_add_user_requisition_state/migration.sql',
+);
+// T1-d — supersede the RequisitionStatus enum with RecruitingStatus (active→open,
+// full→submittals_closed, +draft/pending_approval/archived, lead retained). Alters
+// the Requisition.status default AND the RequisitionLifecycleEvent columns, so it
+// must apply AFTER every migration that creates/uses the old enum + that table.
+const REQUISITION_RECRUITING_STATUS_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802200000_recruiting_status_supersession/migration.sql',
 );
 // PC-5d — ats-web Gate-2a desk (task + attachment, the final increment). task
 // init CREATEs the schema + Task + the TaskStatus enum ('open','done'); the
@@ -1232,7 +1240,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await c.query(
         `INSERT INTO requisition."Requisition"
            (id, tenant_id, title, company_id, status, requisition_number)
-         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus",
+         VALUES ($1, $2, $3::text, $4, 'open'::requisition."RecruitingStatus",
                  (SELECT COALESCE(MAX(requisition_number), 999) + 1 FROM requisition."Requisition" WHERE tenant_id = $2))`,
         [ATSW_REQUISITION_ID, TENANT_ID, ATSW_JOB_ID, PACT_RECRUITER_ACTOR_ID],
       );
@@ -2228,7 +2236,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // same value (the retired mirror's distinct ATSW_SUB_REQ_ID is gone).
       await c.query(
         `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number)
-         VALUES ($1,$2,$3::text,$4,'active'::requisition."RequisitionStatus",
+         VALUES ($1,$2,$3::text,$4,'open'::requisition."RecruitingStatus",
                  (SELECT COALESCE(MAX(requisition_number), 999) + 1 FROM requisition."Requisition" WHERE tenant_id = $2)) ON CONFLICT DO NOTHING`,
         [ATSW_SUB_JOB_ID, TENANT_ID, ATSW_SUB_JOB_ID, PACT_RECRUITER_ACTOR_ID],
       );
@@ -2536,7 +2544,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await c.query(
         `INSERT INTO requisition."Requisition"
            (id, tenant_id, title, company_id, status, requisition_number)
-         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus",
+         VALUES ($1, $2, $3::text, $4, 'open'::requisition."RecruitingStatus",
                  (SELECT COALESCE(MAX(requisition_number), 999) + 1 FROM requisition."Requisition" WHERE tenant_id = $2))
          ON CONFLICT DO NOTHING`,
         [params.jobId, TENANT_ID, params.jobId, RECRUITER_ID],
@@ -2896,6 +2904,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         REQUISITION_NUMBER_MIGRATION,
         REQUISITION_LIFECYCLE_NULLABLE_MIGRATION,
         REQUISITION_USER_STATE_MIGRATION,
+        // T1-d — RecruitingStatus supersession. LAST of the requisition set: it
+        // alters the enum + the lifecycle-event columns, so every prior migration
+        // that creates/uses them must already have run.
+        REQUISITION_RECRUITING_STATUS_MIGRATION,
         // PC-5d — task + attachment (final desk increment). task init +
         // workspace-fields (enum extension + source column); attachment init.
         // All self-contained (CREATE SCHEMA in init), no FK.

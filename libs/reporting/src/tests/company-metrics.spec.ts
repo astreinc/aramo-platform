@@ -51,10 +51,10 @@ describe('ReportingService.getCompanyMetrics', () => {
   it('folds reqs + pipeline counts per company; only requested companies', async () => {
     const { svc } = makeService({
       reqs: [
-        { id: 'r-a1', company_id: 'co-A', status: 'active', openings: 3, openings_available: 1 },
+        { id: 'r-a1', company_id: 'co-A', status: 'open', openings: 3, openings_available: 1 },
         { id: 'r-a2', company_id: 'co-A', status: 'closed', openings: 2, openings_available: 2 },
         { id: 'r-b1', company_id: 'co-B', status: 'on_hold', openings: 1, openings_available: 1 },
-        { id: 'r-z1', company_id: 'co-Z', status: 'active', openings: 9, openings_available: 0 },
+        { id: 'r-z1', company_id: 'co-Z', status: 'open', openings: 9, openings_available: 0 },
       ],
       placed: [{ requisition_id: 'r-a1', count: 1 }],
       submitted: [
@@ -112,8 +112,8 @@ describe('ReportingService.getCompanyPlacements', () => {
   it('lists placed pipelines at the company reqs with the req title joined', async () => {
     const { svc } = makeService({
       reqs: [
-        { id: 'r-a1', company_id: 'co-A', status: 'active', title: 'Rust Eng', openings: 1, openings_available: 0 },
-        { id: 'r-z1', company_id: 'co-Z', status: 'active', title: 'Other', openings: 1, openings_available: 1 },
+        { id: 'r-a1', company_id: 'co-A', status: 'open', title: 'Rust Eng', openings: 1, openings_available: 0 },
+        { id: 'r-z1', company_id: 'co-Z', status: 'open', title: 'Other', openings: 1, openings_available: 1 },
       ],
       placed: [],
       submitted: [],
@@ -134,7 +134,7 @@ describe('ReportingService.getCompanyPlacements', () => {
 
   it('returns [] when the company has no visible reqs', async () => {
     const { svc } = makeService({
-      reqs: [{ id: 'r-z1', company_id: 'co-Z', status: 'active', title: 'X', openings: 1, openings_available: 1 }],
+      reqs: [{ id: 'r-z1', company_id: 'co-Z', status: 'open', title: 'X', openings: 1, openings_available: 1 }],
       placed: [],
       submitted: [],
       placedRows: [],

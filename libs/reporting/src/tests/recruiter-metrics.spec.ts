@@ -56,7 +56,7 @@ const actor = {
 describe('ReportingService.getRecruiterMetrics', () => {
   it('computes value, prior-period delta, series + goal from real history transitions', async () => {
     const { svc } = makeService({
-      reqs: [{ id: 'r1', company_id: 'c1', status: 'active' }],
+      reqs: [{ id: 'r1', company_id: 'c1', status: 'open' }],
       pipelines: [
         { id: 'p1', requisition_id: 'r1', created_at: new Date('2026-06-15T12:00:00Z') },
         { id: 'p2', requisition_id: 'r1', created_at: new Date('2026-06-01T12:00:00Z') },
@@ -108,7 +108,7 @@ describe('ReportingService.getRecruiterMetrics', () => {
 
   it('returns null avg-time-to-submit when no submittals in the window (no fabrication)', async () => {
     const { svc } = makeService({
-      reqs: [{ id: 'r1', company_id: 'c1', status: 'active' }],
+      reqs: [{ id: 'r1', company_id: 'c1', status: 'open' }],
       pipelines: [
         { id: 'p1', requisition_id: 'r1', created_at: new Date('2026-06-15T12:00:00Z') },
       ],

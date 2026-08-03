@@ -5,7 +5,7 @@ export { ReportingService } from './lib/reporting.service.js';
 
 export type {
   TenantCountsReportView,
-  RequisitionStatusRollupView,
+  RecruitingStatusRollupView,
   PipelineStageRollupView,
   PlacementCountReportView,
   DashboardView,

@@ -86,6 +86,10 @@ import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
+const REQUISITION_RECRUITING_STATUS_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802200000_recruiting_status_supersession/migration.sql',
+);
 
 const ENTITLEMENT_INIT = resolve(
   ROOT,
@@ -211,6 +215,7 @@ const MIGRATIONS = [
   PIPELINE_INIT,
   POLICY_STORE_INIT,
   POLICY_DECISION_RECORD,
+  REQUISITION_RECRUITING_STATUS_MIGRATION,
 ];
 
 const ISSUER = 'Aramo Core Auth';
@@ -337,7 +342,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setupClient.query(
         `INSERT INTO requisition."Requisition"
          (id, tenant_id, site_id, title, company_id, openings, openings_available, status)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, 'A5b-boundary req', $4::uuid, $5, $5, 'active')
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 'A5b-boundary req', $4::uuid, $5, $5, 'open')
          ON CONFLICT (id) DO NOTHING`,
         [requisitionId, TENANT_ATS, SITE_A, COMPANY_ID, openings],
       );

@@ -22,7 +22,7 @@ const PROVENANCE = {
   tenant_id: TENANT,
   decision: 'ALLOW',
   policy_version: '1.0.0',
-  rule_id: 'add-talent-active',
+  rule_id: 'add-talent-open',
   reason_code: 'LIFECYCLE_ADD_ALLOWED',
   resource: 'REQUISITION_TALENT',
   action: 'ADD',
@@ -97,7 +97,7 @@ describe('SourcingController.addToPipeline — policy gate', () => {
     }
     const body = JSON.stringify(thrown?.context ?? {});
     expect(body).toContain('LIFECYCLE_ADD_ALLOWED'); // the reason_code (from the fixture)
-    expect(body).not.toContain('add-talent-active'); // rule_id
+    expect(body).not.toContain('add-talent-open'); // rule_id
     expect(body).not.toContain('1.0.0'); // policy_version
   });
 

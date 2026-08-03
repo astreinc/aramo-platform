@@ -1,6 +1,6 @@
 import type { RatePeriod } from './rate-period.js';
 import type { RequisitionCompensationModel } from './requisition-compensation-model.js';
-import type { RequisitionStatus } from './requisition-status.js';
+import type { RecruitingStatus } from './requisition-status.js';
 
 // RequisitionView — Compensation-Field Modeling v1.1 §2 + §3.
 //
@@ -30,7 +30,7 @@ export interface RequisitionView {
   company_id: string;
   contact_id: string | null;
   company_department_id: string | null;
-  status: RequisitionStatus;
+  status: RecruitingStatus;
   type: string | null;
   duration: string | null;
   description: string | null;

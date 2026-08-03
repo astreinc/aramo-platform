@@ -12,9 +12,10 @@ import type { RequisitionStateReader } from '@aramo/examination';
 // `isActive` folds the two facts the retired job_domain mirror carried
 // (existence-in-tenant + state) into a single tenant-scoped read:
 // findStatusById returns null for a missing or cross-tenant requisition and the
-// stored RequisitionStatus otherwise. Only 'active' is live; every other status
-// (closed / on_hold / full / canceled / lead) is not — which is exactly the
-// defect the mirror hid.
+// stored RecruitingStatus otherwise. Only 'open' is live (T1-d — the direct
+// rename of the former 'active'); every other status (lead / on_hold /
+// submittals_closed / closed / canceled / draft / pending_approval / archived)
+// is not — which is exactly the defect the mirror hid.
 @Injectable()
 export class RequisitionRepositoryStateReaderAdapter implements RequisitionStateReader {
   constructor(private readonly requisitionRepository: RequisitionRepository) {}
@@ -24,6 +25,6 @@ export class RequisitionRepositoryStateReaderAdapter implements RequisitionState
       tenant_id,
       id: requisition_id,
     });
-    return status === 'active';
+    return status === 'open';
   }
 }

@@ -74,7 +74,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }, 60_000);
 
     async function createReq(
-      status?: 'active' | 'on_hold' | 'full' | 'closed' | 'canceled' | 'lead',
+      status?: 'open' | 'on_hold' | 'submittals_closed' | 'closed' | 'canceled' | 'lead',
       requestId: string = uuidv7(),
     ) {
       return repo.create({
@@ -97,7 +97,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const events = await store.listByRequisition(TENANT_A, view.id);
       expect(events).toHaveLength(1);
       expect(events[0]?.previous_status).toBeNull(); // R1
-      expect(events[0]?.next_status).toBe('active'); // default created status
+      expect(events[0]?.next_status).toBe('open'); // default created status
       expect(events[0]?.origin).toBe('ui');
       expect(events[0]?.actor_id).toBe(ACTOR_1);
       expect(events[0]?.policy_decision_id).toBeNull(); // T1-e supplies one
@@ -127,7 +127,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const events = await store.listByRequisition(TENANT_A, created.id);
       expect(events).toHaveLength(2);
       const upd = events[1];
-      expect(upd?.previous_status).toBe('active');
+      expect(upd?.previous_status).toBe('open');
       expect(upd?.next_status).toBe('on_hold');
       expect(upd?.actor_id).toBe(ACTOR_2);
       expect(upd?.correlation_id).toBe(requestId);
@@ -154,7 +154,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.update({
         tenant_id: TENANT_A,
         id: created.id,
-        input: { status: 'active' } as never, // same value
+        input: { status: 'open' } as never, // same value
         scopes: ['requisition:edit'],
         actor_id: ACTOR_2,
         requestId: uuidv7(),
@@ -168,7 +168,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_A,
         entered_by_id: ACTOR_1,
         import_batch_id: uuidv7(),
-        input: { title: 'Imported role', company_id: COMPANY, status: 'active' } as never,
+        input: { title: 'Imported role', company_id: COMPANY, status: 'open' } as never,
         scopes: [],
         requestId: uuidv7(),
       });
@@ -176,7 +176,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(events).toHaveLength(1);
       expect(events[0]?.origin).toBe('integration'); // R4
       expect(events[0]?.previous_status).toBeNull(); // still a create
-      expect(events[0]?.next_status).toBe('active');
+      expect(events[0]?.next_status).toBe('open');
     });
 
     it('delete → ZERO new events, and PRIOR events for that requisition SURVIVE (R5)', async () => {
@@ -201,7 +201,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // …but its history survives (bare-UUID, no FK — R5).
       const after = await store.listByRequisition(TENANT_A, created.id);
       expect(after).toHaveLength(2);
-      expect(after.map((e) => e.next_status)).toEqual(['active', 'closed']);
+      expect(after.map((e) => e.next_status)).toEqual(['open', 'closed']);
     });
 
     it('deleteByImportBatch → prior events SURVIVE the bulk reversion (R5)', async () => {
@@ -210,7 +210,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_A,
         entered_by_id: ACTOR_1,
         import_batch_id: batch,
-        input: { title: 'Batch role', company_id: COMPANY, status: 'active' } as never,
+        input: { title: 'Batch role', company_id: COMPANY, status: 'open' } as never,
         scopes: [],
         requestId: uuidv7(),
       });
@@ -237,7 +237,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const g1 = await store.listByCorrelation(TENANT_A, r1);
       expect(g1).toHaveLength(1);
-      expect(g1[0]?.next_status).toBe('active'); // the create command
+      expect(g1[0]?.next_status).toBe('open'); // the create command
 
       const g2 = await store.listByCorrelation(TENANT_A, r2);
       expect(g2).toHaveLength(1);
@@ -295,14 +295,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       spy.mockRestore();
 
-      // Status rolled back to 'active' — the mutation never committed without
+      // Status rolled back to 'open' — the mutation never committed without
       // its lifecycle event.
       const after = await repo.findByIdAdmin({ tenant_id: TENANT_A, id: created.id });
-      expect(after?.status).toBe('active');
+      expect(after?.status).toBe('open');
       // …and no update event was written (only the original create survives).
       const events = await store.listByRequisition(TENANT_A, created.id);
       expect(events).toHaveLength(1);
-      expect(events[0]?.next_status).toBe('active');
+      expect(events[0]?.next_status).toBe('open');
     });
 
     it('ATOMICITY (R3) — when the event write fails on a create, NO requisition row is committed', async () => {
@@ -357,11 +357,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // The CAS matched zero rows → status unchanged …
       const after = await repo.findByIdAdmin({ tenant_id: TENANT_A, id: created.id });
-      expect(after?.status).toBe('active');
+      expect(after?.status).toBe('open');
       // … and NO lifecycle event was written (only the original create survives).
       const events = await store.listByRequisition(TENANT_A, created.id);
       expect(events).toHaveLength(1);
-      expect(events[0]?.next_status).toBe('active');
+      expect(events[0]?.next_status).toBe('open');
     });
   },
 );

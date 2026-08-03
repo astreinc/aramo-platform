@@ -7,10 +7,10 @@ import { listAllPipelines } from '../pipeline/pipeline-api';
 import { rollupByRequisition, type ReqPipelineCount } from '../pipeline/rollup';
 import { listRequisitions } from '../requisitions/requisitions-api';
 import {
-  isClosedStatus,
-  type RequisitionStatus,
-  type RequisitionView,
-} from '../requisitions/types';
+  RECRUITING_STATUS_LABEL as STATUS_LABEL,
+  RECRUITING_STATUS_TONE as STATUS_TONE,
+} from '../requisitions/status-display';
+import { isClosedStatus, type RequisitionView } from '../requisitions/types';
 import { listMyTasks } from '../task/task-api';
 import type { TaskOwnerType, TaskPriority, TaskType, TaskView } from '../task/types';
 import {
@@ -29,7 +29,6 @@ import {
   type ActionKind,
   type ActivityFeedItem,
   type FunnelBucketKey,
-  type PillTone,
   type TableColumn,
 } from '../ui';
 
@@ -39,7 +38,6 @@ import { KPI_ORDER, toKpiDisplay } from './kpi';
 import {
   ACTIVITY_TYPE_LABELS,
   CALENDAR_EVENT_TYPE_LABELS,
-  REQUISITION_STATUS_LABELS,
   type CalendarEventView,
   type DashboardView as DashboardViewModel,
   type PipelineRollupItem,
@@ -73,15 +71,6 @@ import {
 // reporting lib computes no per-recruiter windowed metric). So those are
 // HALTED: the desk renders only the backed, visibility-scoped current-state
 // counts as plain MetricCards (no sparkline, no goal bar, no "+2 vs last wk").
-
-const STATUS_TONE: Record<RequisitionStatus, PillTone> = {
-  active: 'ok',
-  lead: 'neutral',
-  on_hold: 'warn',
-  full: 'brand',
-  closed: 'neutral',
-  canceled: 'danger',
-};
 
 const OWNER_ROUTE: Record<TaskOwnerType, string | null> = {
   requisition: '/requisitions',
@@ -345,7 +334,7 @@ export function DashboardView({ session }: DashboardViewProps) {
           <StatusPill tone="hot">Hot</StatusPill>
         ) : (
           <StatusPill tone={STATUS_TONE[r.status]} dot>
-            {REQUISITION_STATUS_LABELS[r.status]}
+            {STATUS_LABEL[r.status]}
           </StatusPill>
         ),
     },

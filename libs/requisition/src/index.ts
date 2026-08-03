@@ -18,8 +18,8 @@ export {
 
 export {
   REQUISITION_STATUS_VALUES,
-  isRequisitionStatus,
-  type RequisitionStatus,
+  isRecruitingStatus,
+  type RecruitingStatus,
   type RequisitionView,
   emptyRequisitionProfileView,
   type RequisitionProfileView,

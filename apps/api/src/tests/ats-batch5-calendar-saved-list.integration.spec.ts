@@ -50,6 +50,10 @@ import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
+const REQUISITION_RECRUITING_STATUS_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802200000_recruiting_status_supersession/migration.sql',
+);
 
 const ENTITLEMENT_INIT = resolve(
   ROOT,
@@ -310,6 +314,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_OVERLAY_FOLD,
         TALENT_RECORD_WORK_AUTH,
         TALENT_RECORD_SUPERSESSION,
+        REQUISITION_RECRUITING_STATUS_MIGRATION,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }

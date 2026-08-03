@@ -75,7 +75,7 @@ const REQS = {
       title: 'Senior Rust Engineer',
       company_id: 'co-1',
       external_req_id: 'REQ-2041',
-      status: 'active',
+      status: 'open',
       is_hot: true,
       openings: 3,
       openings_available: 2,

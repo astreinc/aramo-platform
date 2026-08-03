@@ -46,6 +46,10 @@ import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
+const REQUISITION_RECRUITING_STATUS_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802200000_recruiting_status_supersession/migration.sql',
+);
 
 const IDENTITY_INIT = resolve(
   ROOT,
@@ -514,6 +518,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         REQUISITION_INIT,
         REQUISITION_IMPORT_BACK_REF,
         REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION,
+        REQUISITION_RECRUITING_STATUS_MIGRATION,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }

@@ -76,6 +76,10 @@ import { AppModule } from '../app.module.js';
 type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
+const REQUISITION_RECRUITING_STATUS_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802200000_recruiting_status_supersession/migration.sql',
+);
 
 // --- Migrations (union of the D4b visibility-matrix set + the Task model;
 // the recruiter "My X" reads run through requisitions + tasks, and the
@@ -566,6 +570,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION,
         TASK_INIT,
         TASK_WORKSPACE_FIELDS,
+        REQUISITION_RECRUITING_STATUS_MIGRATION,
       ]) {
         await db.query(readFileSync(p, 'utf8'));
       }

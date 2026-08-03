@@ -22,7 +22,7 @@ import type {
   PlacementCountReportView,
   RecruiterMetricKey,
   RecruiterMetricView,
-  RequisitionStatusRollupView,
+  RecruitingStatusRollupView,
   TenantCountsReportView,
 } from './dto/report.view.js';
 
@@ -260,7 +260,7 @@ export class ReportingService {
 
   async getRequisitionRollup(
     actor: ActorContext,
-  ): Promise<RequisitionStatusRollupView> {
+  ): Promise<RecruitingStatusRollupView> {
     const [total, by_status] = await Promise.all([
       this.requisitionRepository.countForActor({
         tenant_id: actor.tenant_id,
@@ -350,7 +350,7 @@ export class ReportingService {
         openings: 0,
         filled: 0,
       };
-      if (r.status === 'active' || r.status === 'on_hold') e.open_reqs += 1;
+      if (r.status === 'open' || r.status === 'on_hold') e.open_reqs += 1;
       e.openings += r.openings;
       e.filled += Math.max(0, r.openings - r.openings_available);
       agg.set(r.company_id, e);

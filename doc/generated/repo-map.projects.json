@@ -603,7 +603,7 @@
       "RequisitionRepository",
       "emptyRequisitionProfileView",
       "isRateType",
-      "isRequisitionStatus"
+      "isRecruitingStatus"
     ],
     "@aramo/resume-parse": ["ResumeParseModule", "ResumeParserService", "extractResumeText"],
     "@aramo/saved-list": [

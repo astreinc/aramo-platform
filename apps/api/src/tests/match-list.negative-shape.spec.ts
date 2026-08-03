@@ -54,6 +54,10 @@ import { AppModule } from '../app.module.js';
 type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
+const REQUISITION_RECRUITING_STATUS_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802200000_recruiting_status_supersession/migration.sql',
+);
 const CONSENT_MIGRATION = resolve(
   ROOT,
   'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
@@ -148,6 +152,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         EXAMINATION_LIVE_LIST_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
         REQUISITION_INIT_MIGRATION,
+        REQUISITION_RECRUITING_STATUS_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -155,7 +160,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Seed an active Requisition + three ranked Summary examinations.
       await setup.query(
         `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
-         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus")`,
+         VALUES ($1, $2, $3::text, $4, 'open'::requisition."RecruitingStatus")`,
         // T1-a — the port resolves the requisition by the {job_id} path value
         // (shared-UUID R), so the ATS requisition id IS JOB_ID (not the mirror's
         // distinct REQ_ID, which the two-hop indirection is retired with).

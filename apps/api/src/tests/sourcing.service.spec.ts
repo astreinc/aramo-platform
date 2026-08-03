@@ -86,7 +86,7 @@ describe('SourcingService.promoteAndAddToPipeline', () => {
       tenant_id: TENANT,
       decision: 'ALLOW',
       policy_version: '1.0.0',
-      rule_id: 'add-talent-active',
+      rule_id: 'add-talent-open',
       reason_code: 'LIFECYCLE_ADD_ALLOWED',
       resource: 'REQUISITION_TALENT',
       action: 'ADD',

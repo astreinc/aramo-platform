@@ -1,7 +1,7 @@
 import type { ActivityView } from '@aramo/activity';
 import type { CalendarEventView } from '@aramo/calendar';
 import type { PipelineStatus } from '@aramo/pipeline';
-import type { RequisitionStatus } from '@aramo/requisition';
+import type { RecruitingStatus } from '@aramo/requisition';
 
 // PR-A7 — read-only view DTOs for the ATS-internal reporting surface.
 //
@@ -27,13 +27,13 @@ export interface TenantCountsReportView {
   activities: number;
 }
 
-// RequisitionStatusRollupView — per-RequisitionStatus bucket map for
+// RecruitingStatusRollupView — per-RecruitingStatus bucket map for
 // the caller's visibility set. Recruiter sees only assigned reqs
 // (`requisition:read:all` absent → assignments-some predicate);
 // tenant_admin sees tenant-wide.
-export interface RequisitionStatusRollupView {
+export interface RecruitingStatusRollupView {
   total: number;
-  by_status: Array<{ status: RequisitionStatus; count: number }>;
+  by_status: Array<{ status: RecruitingStatus; count: number }>;
 }
 
 // PipelineStageRollupView — per-PipelineStatus bucket map for the
@@ -68,7 +68,7 @@ export interface PlacementCountReportView {
 // annual_revenue_band instead).
 export interface CompanyMetricsView {
   company_id: string;
-  open_reqs: number; // status active|on_hold
+  open_reqs: number; // status open|on_hold
   active_placements: number; // pipeline placed
   submitted: number; // pipeline submitted|interviewing|offered
   openings: number; // sum of req openings
@@ -138,7 +138,7 @@ export interface RecruiterMetricsReportView {
 // recruiter UI doesn't have to N-round-trip on load.
 export interface DashboardView {
   tenant_counts: TenantCountsReportView;
-  requisition_rollup: RequisitionStatusRollupView;
+  requisition_rollup: RecruitingStatusRollupView;
   pipeline_rollup: PipelineStageRollupView;
   placement: PlacementCountReportView;
   upcoming_events: CalendarEventView[];

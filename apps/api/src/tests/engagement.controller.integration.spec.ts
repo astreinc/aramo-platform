@@ -61,6 +61,7 @@ const EXAM_LIVE_LIST = resolve(ROOT, 'libs/examination/prisma/migrations/2026052
 const JOB_DOMAIN_INIT = resolve(ROOT, 'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql');
 // T1-a — the ATS requisition schema (Pattern-A validation now reads it).
 const REQUISITION_INIT = resolve(ROOT, 'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql');
+const REQUISITION_RECRUITING_STATUS = resolve(ROOT, 'libs/requisition/prisma/migrations/20260802200000_recruiting_status_supersession/migration.sql');
 const TALENT_INIT = resolve(ROOT, 'libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql');
 const TALENT_EVIDENCE_INIT = resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql');
 const TALENT_EVIDENCE_TR7 = resolve(ROOT, 'libs/talent-evidence/prisma/migrations/20260714120000_tr7_b1_education_certification/migration.sql');
@@ -135,6 +136,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         EXAM_LIVE_LIST,
         JOB_DOMAIN_INIT,
         REQUISITION_INIT,
+        REQUISITION_RECRUITING_STATUS,
         TALENT_INIT,
         TALENT_EVIDENCE_INIT,
         TALENT_EVIDENCE_TR7,
@@ -187,7 +189,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await setupClient.query(
         `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
-         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus")`,
+         VALUES ($1, $2, $3::text, $4, 'open'::requisition."RecruitingStatus")`,
         [REQ_A, TENANT_A, JOB_ID, RECRUITER_A],
       );
 

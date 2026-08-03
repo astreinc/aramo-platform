@@ -47,6 +47,10 @@ import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
+const REQUISITION_RECRUITING_STATUS_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260802200000_recruiting_status_supersession/migration.sql',
+);
 const CONSENT_MIGRATION = resolve(
   ROOT,
   'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
@@ -250,6 +254,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SUBMITTAL_RENAME_MIGRATION,
         SUBMITTAL_OUTBOX_MIGRATION,
         METERING_INIT_MIGRATION,
+        REQUISITION_RECRUITING_STATUS_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -261,7 +266,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Seed the active requisition + Entrustable examination.
       await setup.query(
         `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
-         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus")`,
+         VALUES ($1, $2, $3::text, $4, 'open'::requisition."RecruitingStatus")`,
         [
           '22221111-0000-7000-8000-0000000000ac',
           TENANT_ID,

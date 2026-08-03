@@ -1,6 +1,6 @@
 export type {
   TenantCountsReportView,
-  RequisitionStatusRollupView,
+  RecruitingStatusRollupView,
   PipelineStageRollupView,
   PlacementCountReportView,
   DashboardView,
