@@ -16,6 +16,7 @@ function makeReq(
     tenant_id: 't',
     site_id: null,
     title,
+    requisition_number: 1000,
     company_id: 'co-1',
     contact_id: null,
     company_department_id: null,
@@ -191,13 +192,15 @@ describe('RequisitionsListView', () => {
     expect(screen.queryByText('Junior Engineer')).not.toBeInTheDocument();
   });
 
-  it('"Hot" filters to hot requisitions', async () => {
+  it('"Priority" filters to is_hot requisitions', async () => {
     mockFetch([OPEN, HOT]);
     renderList();
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Hot' }));
+    // The recruiter-facing label is "Priority" (the underlying is_hot flag and
+    // internal 'hot' filter mode are unchanged).
+    fireEvent.click(screen.getByRole('button', { name: 'Priority' }));
     expect(screen.getByText('Hot Role')).toBeInTheDocument();
     expect(screen.queryByText('Senior Engineer')).not.toBeInTheDocument();
   });
@@ -392,6 +395,56 @@ describe('RequisitionsListView', () => {
     const sub = title.closest('.rc-rt__req')?.querySelector('.rc-rt__sub');
     expect(sub?.textContent ?? '').toContain('Northwind');
     expect((sub?.textContent ?? '').trim().startsWith('·')).toBe(false);
+  });
+
+  it('the row sub-line leads with REQ-{requisition_number} (mono); external follows as secondary', async () => {
+    // PR-15 self-consistency: the internal number is the PRIMARY id on the row,
+    // exactly as on the detail header. It leads; external_req_id follows.
+    const R = makeReq('req-n', 'Numbered', 'active', {
+      requisition_number: 1042,
+      external_req_id: 'VMS-9',
+    });
+    mockEndpoints({
+      reqs: [R],
+      companies: [{ id: 'co-1', name: 'Northwind' }],
+    });
+    renderList();
+    const title = await screen.findByRole('link', { name: 'Numbered' });
+    const sub = title.closest('.rc-rt__req')?.querySelector('.rc-rt__sub');
+    const text = sub?.textContent ?? '';
+    expect(text).toContain('REQ-1042');
+    // Primary → it precedes the VMS id.
+    expect(text.indexOf('REQ-1042')).toBeLessThan(text.indexOf('VMS-9'));
+    // Rendered mono, matching the detail-header treatment.
+    expect(sub?.querySelector('.mono')?.textContent).toContain('REQ-1042');
+  });
+
+  it('a manually-created req (no external id) still leads with REQ-{number}', async () => {
+    const R = makeReq('req-m', 'Manual', 'active', {
+      requisition_number: 1007,
+      external_req_id: null,
+    });
+    mockEndpoints({
+      reqs: [R],
+      companies: [{ id: 'co-1', name: 'Northwind' }],
+    });
+    renderList();
+    const title = await screen.findByRole('link', { name: 'Manual' });
+    const sub = title.closest('.rc-rt__req')?.querySelector('.rc-rt__sub');
+    expect(sub?.textContent ?? '').toContain('REQ-1007');
+  });
+
+  it('the is_hot badge is labelled "Priority" (not "Hot", not a star)', async () => {
+    mockFetch([HOT]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText('Hot Role')).toBeInTheDocument(),
+    );
+    // Recruiter-facing team-wide priority signal — the row badge reads "Priority".
+    expect(
+      screen.getByText('Priority', { selector: '.rc-rt__hot' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Hot', { selector: '.rc-rt__hot' })).toBeNull();
   });
 
   it('R5: the summary line uses only real enum values (active / on hold / closed), no derived "open"', async () => {
