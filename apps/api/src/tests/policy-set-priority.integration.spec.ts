@@ -27,7 +27,7 @@ const TENANT = '01900000-0000-7000-8000-0000000000a7';
 const SITE = '33333333-3333-7333-8333-3333333333a7';
 const ACTOR = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaa7';
 const SYSTEM = '00000000-0000-0000-0000-000000000000';
-const ALLOW_STATES = ['active', 'on_hold', 'full', 'lead'];
+const ALLOW_STATES = ['open', 'on_hold', 'submittals_closed', 'lead'];
 const DENY_STATES = ['closed', 'canceled'];
 
 function migrationsFor(lib: string): string[] {
@@ -76,7 +76,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           RETURNING next_value
         )
         INSERT INTO requisition."Requisition" (id, tenant_id, site_id, title, company_id, status, is_hot, requisition_number)
-        SELECT $1,$2,$3,$4,$5,$6::"requisition"."RequisitionStatus",$7, (SELECT next_value FROM seq)`, [id, TENANT, SITE, `r-${status}`, uuid(), status, isHot]);
+        SELECT $1,$2,$3,$4,$5,$6::"requisition"."RecruitingStatus",$7, (SELECT next_value FROM seq)`, [id, TENANT, SITE, `r-${status}`, uuid(), status, isHot]);
       return id;
     }
     async function patchHot(token: string, id: string, isHot: boolean): Promise<Response> {
@@ -139,7 +139,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // provenance recorded for every governed decision (ALLOW + DENY), naming v3.0.0.
       const recs = await setPriorityRecords();
       expect(recs.length).toBeGreaterThanOrEqual(6);
-      expect(recs.every((r) => r.policy_version === '3.0.0')).toBe(true);
+      expect(recs.every((r) => r.policy_version === '4.0.0')).toBe(true);
       expect(recs.filter((r) => r.decision === 'DENY').length).toBeGreaterThanOrEqual(2);
     });
 
@@ -181,7 +181,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '1.0.0' }, published_by: SYSTEM, effective_from: new Date('2026-01-01T00:00:00Z') });
       const token = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, scopes: ['requisition:create'] })
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
-      expect((await fetch(`${baseUrl()}/v1/requisitions?site_id=${SITE}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'x', company_id: uuid(), status: 'active', site_id: SITE, is_hot: true }) })).status).toBe(201);
+      expect((await fetch(`${baseUrl()}/v1/requisitions?site_id=${SITE}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'x', company_id: uuid(), status: 'open', site_id: SITE, is_hot: true }) })).status).toBe(201);
       const first = (await db.query(`SELECT id, policy_version FROM policy_store."PolicyDecisionRecord" WHERE tenant_id=$1 AND action='SET_PRIORITY' ORDER BY occurred_at DESC LIMIT 1`, [T])).rows[0];
       expect(first.policy_version).toBe('1.0.0');
       await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '2.0.0' }, published_by: SYSTEM, effective_from: new Date('2026-06-01T00:00:00Z') });

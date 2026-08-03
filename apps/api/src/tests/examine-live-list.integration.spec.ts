@@ -75,6 +75,7 @@ const MIGRATIONS = [
   'libs/requisition/prisma/migrations/20260802180000_add_requisition_number/migration.sql',
   // PR-14 — additive user_requisition_state table (missing -> 500 on enriched requisition list/get).
   'libs/requisition/prisma/migrations/20260802160000_add_user_requisition_state/migration.sql',
+  'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql',
   // job-domain
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
   // talent-record
@@ -187,7 +188,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       // T1-a — the ATS requisition (id = R) is the sole lifecycle authority the
       // Live List / match-list resolve through the RequisitionStateReader port;
-      // status defaults to 'active'. (The retired job_domain.Requisition mirror
+      // status defaults to 'open'. (The retired job_domain.Requisition mirror
       // seed was removed — this ATS row replaces it.)
       await setup.query(
         `INSERT INTO requisition."Requisition"

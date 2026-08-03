@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from './prisma/prisma.service.js';
-import type { RequisitionStatus } from './dto/requisition-status.js';
+import type { RecruitingStatus } from './dto/requisition-status.js';
 
 // RequisitionLifecycleEventStore — the APPEND-ONLY write API for the
 // requisition entity's lifecycle mutation history (ADR-0024 §D17c). §D17a
@@ -29,8 +29,8 @@ export interface RecordRequisitionLifecycleEventInput {
    * on a create (T1-c R1) — the first status has no predecessor; every
    * update-driven transition carries a non-null previous_status.
    */
-  readonly previous_status: RequisitionStatus | null;
-  readonly next_status: RequisitionStatus;
+  readonly previous_status: RecruitingStatus | null;
+  readonly next_status: RecruitingStatus;
   readonly actor_id: string;
   readonly origin: RequisitionLifecycleOrigin;
   readonly reason_code: string;
@@ -52,8 +52,8 @@ export interface RequisitionLifecycleEvent {
   readonly tenant_id: string;
   readonly requisition_id: string;
   /** Null only for a create event (T1-c R1). */
-  readonly previous_status: RequisitionStatus | null;
-  readonly next_status: RequisitionStatus;
+  readonly previous_status: RecruitingStatus | null;
+  readonly next_status: RecruitingStatus;
   readonly actor_id: string;
   readonly origin: RequisitionLifecycleOrigin;
   readonly reason_code: string;
@@ -88,8 +88,8 @@ export class RequisitionLifecycleEventStore {
       previous_status:
         row.previous_status === null
           ? null
-          : (row.previous_status as RequisitionStatus),
-      next_status: row.next_status as RequisitionStatus,
+          : (row.previous_status as RecruitingStatus),
+      next_status: row.next_status as RecruitingStatus,
       actor_id: row.actor_id,
       origin: row.origin as RequisitionLifecycleOrigin,
       reason_code: row.reason_code,

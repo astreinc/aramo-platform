@@ -1,6 +1,6 @@
 import type { RatePeriod } from './rate-period.js';
 import type { RequisitionCompensationModel } from './requisition-compensation-model.js';
-import type { RequisitionStatus } from './requisition-status.js';
+import type { RecruitingStatus } from './requisition-status.js';
 
 // UpdateRequisitionRequestDto — PATCH /v1/requisitions/:id payload.
 // `status` is freely editable here per directive §4 (simple enum, NOT
@@ -24,7 +24,7 @@ export interface UpdateRequisitionRequestDto {
   title?: string;
   contact_id?: string | null;
   company_department_id?: string | null;
-  status?: RequisitionStatus;
+  status?: RecruitingStatus;
   type?: string | null;
   duration?: string | null;
   description?: string | null;

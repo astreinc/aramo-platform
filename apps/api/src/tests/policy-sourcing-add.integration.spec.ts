@@ -80,7 +80,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const id = uuid();
       await db.query(
         `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number)
-         VALUES ($1,$2,$3,$4,$5::"requisition"."RequisitionStatus", (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`,
+         VALUES ($1,$2,$3,$4,$5::"requisition"."RecruitingStatus", (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`,
         [id, tenant, `req-${status}`, uuid(), status],
       );
       return id;
@@ -142,7 +142,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }, 60_000);
 
     it('FAIL CLOSED — no published package → 403 POLICY_DENIED (reason_code only), no pipeline row, NO promotion, provenance recorded', async () => {
-      const req = await seedRequisition(TENANT_NP, 'active');
+      const req = await seedRequisition(TENANT_NP, 'open');
       const before = await talentRecordCount(TENANT_NP);
       const res = await postAdd(await signJwt(TENANT_NP), req);
       expect(res.status).toBe(403);
@@ -160,7 +160,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('ALLOW that DEFERS (unknown subject) → 200 deferral, no pipeline row, provenance decision=ALLOW with the STORED version/rule_id', async () => {
-      const req = await seedRequisition(TENANT, 'active');
+      const req = await seedRequisition(TENANT, 'open');
       const res = await postAdd(await signJwt(TENANT), req);
       expect(res.status).toBe(200);
       const body = (await res.json()) as { status?: string };
@@ -173,8 +173,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [TENANT],
       )).rows;
       expect(rec).toHaveLength(1);
-      expect(rec[0].policy_version).toBe('3.0.0'); // PR-7 (v3.0.0)
-      expect(rec[0].rule_id).toBe('add-talent-active');
+      expect(rec[0].policy_version).toBe('4.0.0'); // T1-d (v4.0.0)
+      expect(rec[0].rule_id).toBe('add-talent-open');
     });
   },
 );

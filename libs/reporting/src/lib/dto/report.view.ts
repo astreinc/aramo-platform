@@ -1,7 +1,7 @@
 import type { ActivityView } from '@aramo/activity';
 import type { CalendarEventView } from '@aramo/calendar';
 import type { PipelineStatus } from '@aramo/pipeline';
-import type { RequisitionStatus } from '@aramo/requisition';
+import type { RecruitingStatus } from '@aramo/requisition';
 
 // PR-A7 — read-only view DTOs for the ATS-internal reporting surface.
 //
@@ -27,13 +27,13 @@ export interface TenantCountsReportView {
   activities: number;
 }
 
-// RequisitionStatusRollupView — per-RequisitionStatus bucket map for
+// RequisitionStatusRollupView — per-RecruitingStatus bucket map for
 // the caller's visibility set. Recruiter sees only assigned reqs
 // (`requisition:read:all` absent → assignments-some predicate);
 // tenant_admin sees tenant-wide.
 export interface RequisitionStatusRollupView {
   total: number;
-  by_status: Array<{ status: RequisitionStatus; count: number }>;
+  by_status: Array<{ status: RecruitingStatus; count: number }>;
 }
 
 // PipelineStageRollupView — per-PipelineStatus bucket map for the

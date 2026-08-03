@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@aramo/fe-foundation';
 
-import type { RequisitionStatus, RequisitionView } from '../requisitions/types';
+import type { RecruitingStatus, RequisitionView } from '../requisitions/types';
 
 import { CompanyDetailView } from './CompanyDetailView';
 import type { CompanyView, ContactView } from './types';
@@ -42,7 +42,7 @@ function makeCompany(overrides: Partial<CompanyView> = {}): CompanyView {
     entered_by_id: null,
     created_at: '2023-06-01T00:00:00Z',
     updated_at: '2026-06-01T00:00:00Z',
-    status: 'active',
+    status: 'open',
     description: 'A robotics automation firm.',
     industry: 'Robotics',
     country: null,
@@ -102,7 +102,7 @@ function makeContact(
 function makeReq(
   id: string,
   title: string,
-  status: RequisitionStatus = 'active',
+  status: RecruitingStatus = 'open',
 ): RequisitionView {
   return { id, title, company_id: 'co-1', status } as unknown as RequisitionView;
 }
@@ -313,7 +313,7 @@ describe('CompanyDetailView (account hub)', () => {
       '/v1/companies/co-1': makeCompany(),
       '/v1/requisitions': {
         items: [
-          makeReq('r-1', 'Senior Engineer', 'active'),
+          makeReq('r-1', 'Senior Engineer', 'open'),
           makeReq('r-3', 'Closed Role', 'closed'),
           makeReq('r-4', 'Open Role', 'on_hold'),
         ],

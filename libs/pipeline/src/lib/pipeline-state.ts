@@ -4,7 +4,7 @@
 // === The state machine (directive §3 + Ruling 1) ===
 //
 // This is the new concept of PR-A5a. The PR-A2/A3/A4 leaves carried a
-// simple stored-status enum (RequisitionStatus etc.) with no transition
+// simple stored-status enum (RecruitingStatus etc.) with no transition
 // rules. Pipeline is the first ATS leaf with an ENFORCED state machine:
 //
 //   1. Initial state — every new Pipeline row is created at `no_contact`.

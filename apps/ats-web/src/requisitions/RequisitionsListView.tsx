@@ -33,8 +33,9 @@ import { listRequisitions, setRequisitionBookmark } from './requisitions-api';
 import { listErrorMessage } from './error-messages';
 import {
   isClosedStatus,
-  REQUISITION_STATUS_VALUES,
-  type RequisitionStatus,
+  RECRUITING_STATUS_LABELS,
+  SELECTABLE_RECRUITING_STATUS_VALUES,
+  type RecruitingStatus,
   type RequisitionView,
 } from './types';
 
@@ -75,22 +76,16 @@ import {
 // owner-IS-NULL "Unassigned" filter, "Team" scope, and owner reassignment.
 // The owner cell still DISPLAYS the real unassigned state; it offers no action.
 
-const STATUS_LABEL: Record<RequisitionStatus, string> = {
-  active: 'Active',
-  on_hold: 'On hold',
-  full: 'Full',
-  closed: 'Closed',
-  canceled: 'Canceled',
-  lead: 'Intake',
-};
-
-const STATUS_TONE: Record<RequisitionStatus, PillTone> = {
-  active: 'ok',
+const STATUS_TONE: Record<RecruitingStatus, PillTone> = {
   lead: 'neutral',
+  draft: 'neutral',
+  pending_approval: 'warn',
+  open: 'ok',
   on_hold: 'warn',
-  full: 'brand',
-  closed: 'neutral',
+  submittals_closed: 'brand',
   canceled: 'danger',
+  closed: 'neutral',
+  archived: 'neutral',
 };
 
 type FilterMode =
@@ -131,7 +126,7 @@ export function RequisitionsListView({
   // server-side owned-query — see the isMine docstring below.
   const [mode, setMode] = useState<FilterMode>('mine');
   const [client, setClient] = useState('');
-  const [statusFilter, setStatusFilter] = useState<RequisitionStatus | ''>('');
+  const [statusFilter, setStatusFilter] = useState<RecruitingStatus | ''>('');
   const [sort, setSort] = useState<SortKey>('focus');
   const [query, setQuery] = useState('');
 
@@ -297,9 +292,9 @@ export function RequisitionsListView({
     [filtered, pipelineCounts],
   );
 
-  // R5 — the summary line uses ONLY real enum values (active / on hold /
-  // closed). No derived "open" bucket, and no total implying these sum.
-  const activeCount = items.filter((r) => r.status === 'active').length;
+  // R5 — the summary line uses ONLY real enum values (open / on hold /
+  // closed). No derived bucket, and no total implying these sum.
+  const openCount = items.filter((r) => r.status === 'open').length;
   const onHoldCount = items.filter((r) => r.status === 'on_hold').length;
   const closedCount = items.filter((r) => r.status === 'closed').length;
   const readyCount = filtered.length;
@@ -311,7 +306,7 @@ export function RequisitionsListView({
         <div>
           <h1 className="rc-h1">Requisitions</h1>
           <p className="rc-sub">
-            {activeCount} active · {onHoldCount} on hold · {closedCount} closed
+            {openCount} open · {onHoldCount} on hold · {closedCount} closed
           </p>
         </div>
         {canCreate ? (
@@ -413,13 +408,13 @@ export function RequisitionsListView({
             aria-label="Filter by status"
             value={statusFilter}
             onChange={(e) =>
-              setStatusFilter(e.target.value as RequisitionStatus | '')
+              setStatusFilter(e.target.value as RecruitingStatus | '')
             }
           >
             <option value="">Any status</option>
-            {REQUISITION_STATUS_VALUES.map((s) => (
+            {SELECTABLE_RECRUITING_STATUS_VALUES.map((s) => (
               <option key={s} value={s}>
-                {STATUS_LABEL[s]}
+                {RECRUITING_STATUS_LABELS[s]}
               </option>
             ))}
           </select>
@@ -624,7 +619,7 @@ function RequisitionRow({
       {/* Status — the real 6-value enum (R5) */}
       <div className="rc-rt__status">
         <StatusPill tone={STATUS_TONE[req.status]} dot>
-          {STATUS_LABEL[req.status]}
+          {RECRUITING_STATUS_LABELS[req.status]}
         </StatusPill>
       </div>
     </article>

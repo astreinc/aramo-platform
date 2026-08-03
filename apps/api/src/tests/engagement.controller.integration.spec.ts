@@ -146,6 +146,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ENGAGEMENT_EVENT_LOG,
         ENGAGEMENT_OUTBOX,
         METERING_INIT,
+        resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
       ]) {
         const sql = readFileSync(p, 'utf8');
         for (const stmt of splitDdl(sql)) {
@@ -187,7 +188,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await setupClient.query(
         `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
-         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus")`,
+         VALUES ($1, $2, $3::text, $4, 'open'::requisition."RecruitingStatus")`,
         [REQ_A, TENANT_A, JOB_ID, RECRUITER_A],
       );
 

@@ -3,12 +3,12 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { RequisitionsListView } from './RequisitionsListView';
-import type { RequisitionStatus, RequisitionView } from './types';
+import type { RecruitingStatus, RequisitionView } from './types';
 
 function makeReq(
   id: string,
   title: string,
-  status: RequisitionStatus,
+  status: RecruitingStatus,
   extra: Partial<RequisitionView> = {},
 ): RequisitionView {
   return {
@@ -79,11 +79,11 @@ function makeReq(
   };
 }
 
-const OPEN = makeReq('req-open', 'Senior Engineer', 'active');
+const OPEN = makeReq('req-open', 'Senior Engineer', 'open');
 const HOLD = makeReq('req-hold', 'Mid Engineer', 'on_hold');
 const CLOSED = makeReq('req-closed', 'Junior Engineer', 'closed');
-const FILLED = makeReq('req-filled', 'Architect', 'full');
-const HOT = makeReq('req-hot', 'Hot Role', 'active', { is_hot: true });
+const FILLED = makeReq('req-filled', 'Architect', 'submittals_closed');
+const HOT = makeReq('req-hot', 'Hot Role', 'open', { is_hot: true });
 
 function mockFetch(items: readonly RequisitionView[]) {
   // The view also calls useSession + listCompanies + /v1/pipelines + roster;
@@ -184,9 +184,10 @@ describe('RequisitionsListView', () => {
     expect(screen.queryByText('Senior Engineer')).not.toBeInTheDocument();
     expect(screen.queryByText('Architect')).not.toBeInTheDocument();
 
-    // "full" is also a terminal status (the surprising one) — it works too.
+    // "submittals_closed" (the former "full") is also a terminal status (the
+    // surprising one) — it works too.
     fireEvent.change(screen.getByLabelText('Filter by status'), {
-      target: { value: 'full' },
+      target: { value: 'submittals_closed' },
     });
     expect(screen.getByText('Architect')).toBeInTheDocument();
     expect(screen.queryByText('Junior Engineer')).not.toBeInTheDocument();
@@ -218,8 +219,8 @@ describe('RequisitionsListView', () => {
   });
 
   it('"My reqs" narrows to owned/recruited rows for a read:all principal', async () => {
-    const MINE = makeReq('req-mine', 'My Req', 'active', { owner_id: 'u1' });
-    const THEIRS = makeReq('req-theirs', 'Their Req', 'active', {
+    const MINE = makeReq('req-mine', 'My Req', 'open', { owner_id: 'u1' });
+    const THEIRS = makeReq('req-theirs', 'Their Req', 'open', {
       owner_id: 'u2',
     });
     mockFetch([MINE, THEIRS]);
@@ -316,7 +317,7 @@ describe('RequisitionsListView', () => {
   // ── PR-REQ rulings ──
 
   it('R2: Talent stat block shows total in pipeline + Submitted + Interview from one /v1/pipelines call', async () => {
-    const REQ = makeReq('req-r', 'Platform Engineer', 'active', {
+    const REQ = makeReq('req-r', 'Platform Engineer', 'open', {
       recruiter_id: 'usr-1',
     });
     mockEndpoints({
@@ -363,7 +364,7 @@ describe('RequisitionsListView', () => {
   });
 
   it('R4: the identity sub-line renders external_req_id when present and reads cleanly when absent', async () => {
-    const WITH = makeReq('req-w', 'With Code', 'active', {
+    const WITH = makeReq('req-w', 'With Code', 'open', {
       external_req_id: 'VMS-9',
     });
     mockEndpoints({
@@ -384,7 +385,7 @@ describe('RequisitionsListView', () => {
 
     // Absent (the common case for a manually-created req): the sub-line still
     // renders the company with NO dangling leading separator.
-    const WITHOUT = makeReq('req-x', 'No Code', 'active');
+    const WITHOUT = makeReq('req-x', 'No Code', 'open');
     mockEndpoints({
       reqs: [WITHOUT],
       companies: [{ id: 'co-1', name: 'Northwind' }],
@@ -400,7 +401,7 @@ describe('RequisitionsListView', () => {
   it('the row sub-line leads with REQ-{requisition_number} (mono); external follows as secondary', async () => {
     // PR-15 self-consistency: the internal number is the PRIMARY id on the row,
     // exactly as on the detail header. It leads; external_req_id follows.
-    const R = makeReq('req-n', 'Numbered', 'active', {
+    const R = makeReq('req-n', 'Numbered', 'open', {
       requisition_number: 1042,
       external_req_id: 'VMS-9',
     });
@@ -420,7 +421,7 @@ describe('RequisitionsListView', () => {
   });
 
   it('a manually-created req (no external id) still leads with REQ-{number}', async () => {
-    const R = makeReq('req-m', 'Manual', 'active', {
+    const R = makeReq('req-m', 'Manual', 'open', {
       requisition_number: 1007,
       external_req_id: null,
     });
@@ -447,14 +448,14 @@ describe('RequisitionsListView', () => {
     expect(screen.queryByText('Hot', { selector: '.rc-rt__hot' })).toBeNull();
   });
 
-  it('R5: the summary line uses only real enum values (active / on hold / closed), no derived "open"', async () => {
+  it('R5: the summary line uses only real enum values (open / on hold / closed), no derived bucket', async () => {
     mockFetch([OPEN, HOLD, CLOSED]);
     renderList();
     await waitFor(() =>
       expect(screen.getByText('Senior Engineer')).toBeInTheDocument(),
     );
     expect(
-      screen.getByText('1 active · 1 on hold · 1 closed'),
+      screen.getByText('1 open · 1 on hold · 1 closed'),
     ).toBeInTheDocument();
   });
 

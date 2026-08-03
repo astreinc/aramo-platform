@@ -8,7 +8,7 @@ import { rollupByRequisition, type ReqPipelineCount } from '../pipeline/rollup';
 import { listRequisitions } from '../requisitions/requisitions-api';
 import {
   isClosedStatus,
-  type RequisitionStatus,
+  type RecruitingStatus,
   type RequisitionView,
 } from '../requisitions/types';
 import { listMyTasks } from '../task/task-api';
@@ -74,13 +74,16 @@ import {
 // HALTED: the desk renders only the backed, visibility-scoped current-state
 // counts as plain MetricCards (no sparkline, no goal bar, no "+2 vs last wk").
 
-const STATUS_TONE: Record<RequisitionStatus, PillTone> = {
-  active: 'ok',
+const STATUS_TONE: Record<RecruitingStatus, PillTone> = {
   lead: 'neutral',
+  draft: 'neutral',
+  pending_approval: 'warn',
+  open: 'ok',
   on_hold: 'warn',
-  full: 'brand',
-  closed: 'neutral',
+  submittals_closed: 'brand',
   canceled: 'danger',
+  closed: 'neutral',
+  archived: 'neutral',
 };
 
 const OWNER_ROUTE: Record<TaskOwnerType, string | null> = {

@@ -5,26 +5,68 @@
 // importing @aramo/requisition (a forbidden domain edge from
 // apps/ats-web).
 
-export const REQUISITION_STATUS_VALUES = [
-  'active',
-  'on_hold',
-  'full',
-  'closed',
-  'canceled',
+// T1-d — the RecruitingStatus declared lifecycle. MUST stay 1:1 with the BE
+// source libs/requisition/src/lib/dto/requisition-status.ts (RECRUITING_STATUS_
+// VALUES / GATED_RECRUITING_STATUS_VALUES); the recruiting-status-drift.spec.ts
+// reads that BE source and fails on any divergence (the PipelineStatus mirror +
+// drift-guard precedent). Former `active` -> `open`, former `full` ->
+// `submittals_closed`; `lead` retained as the functional intake state.
+export const RECRUITING_STATUS_VALUES = [
   'lead',
-] as const;
-export type RequisitionStatus = (typeof REQUISITION_STATUS_VALUES)[number];
-
-// Q2 ruling — the "my open reqs" framing. Closed = filled/closed/canceled.
-// Active = everything else (active + lead + on_hold — work the recruiter
-// can still touch).
-export const CLOSED_REQUISITION_STATUSES: readonly RequisitionStatus[] = [
-  'full',
-  'closed',
+  'draft',
+  'pending_approval',
+  'open',
+  'on_hold',
+  'submittals_closed',
   'canceled',
+  'closed',
+  'archived',
+] as const;
+export type RecruitingStatus = (typeof RECRUITING_STATUS_VALUES)[number];
+
+// Subsystem-gated values (directive §2, PO correction 1): their behaviour does
+// not exist yet, so a recruiter cannot transition INTO them — they are excluded
+// from the selectable set below (no filter chip, no select option). They remain
+// valid members so a future subsystem lights them up without a schema change.
+export const GATED_RECRUITING_STATUS_VALUES: readonly RecruitingStatus[] = [
+  'draft',
+  'pending_approval',
+  'archived',
 ];
 
-export function isClosedStatus(status: RequisitionStatus): boolean {
+// The values a recruiter may actually select / filter on today.
+export const SELECTABLE_RECRUITING_STATUS_VALUES: readonly RecruitingStatus[] =
+  RECRUITING_STATUS_VALUES.filter(
+    (v) => !(GATED_RECRUITING_STATUS_VALUES as readonly string[]).includes(v),
+  );
+
+// Q6 ruling — the ONE canonical status→label map. Every surface (list, detail,
+// dashboard rollup) consumes THIS; the prior 4-way copy drift (Active/Open,
+// Lead/Intake) was the defect T1-d closes. `lead` renders "Lead" (a state), NOT
+// "Intake" (a meeting).
+export const RECRUITING_STATUS_LABELS: Record<RecruitingStatus, string> = {
+  lead: 'Lead',
+  draft: 'Draft',
+  pending_approval: 'Pending approval',
+  open: 'Open',
+  on_hold: 'On hold',
+  submittals_closed: 'Submittals closed',
+  canceled: 'Canceled',
+  closed: 'Closed',
+  archived: 'Archived',
+};
+
+// Q2 ruling — the "my open reqs" framing. Closed = the former `full`
+// (submittals_closed) + closed + canceled + the terminal archived. Open =
+// everything else (open + lead + on_hold — work the recruiter can still touch).
+export const CLOSED_REQUISITION_STATUSES: readonly RecruitingStatus[] = [
+  'submittals_closed',
+  'closed',
+  'canceled',
+  'archived',
+];
+
+export function isClosedStatus(status: RecruitingStatus): boolean {
   return (CLOSED_REQUISITION_STATUSES as readonly string[]).includes(status);
 }
 
@@ -43,7 +85,7 @@ export interface RequisitionView {
   readonly company_id: string;
   readonly contact_id: string | null;
   readonly company_department_id: string | null;
-  readonly status: RequisitionStatus;
+  readonly status: RecruitingStatus;
   readonly type: string | null;
   readonly duration: string | null;
   readonly description: string | null;
@@ -170,7 +212,7 @@ export interface CreateRequisitionRequest {
   readonly title: string;
   readonly company_id: string;
   readonly contact_id?: string;
-  readonly status?: RequisitionStatus;
+  readonly status?: RecruitingStatus;
   readonly description?: string;
   readonly notes?: string;
   readonly is_hot?: boolean;
@@ -252,7 +294,7 @@ export interface CreateRequisitionRequest {
 export interface UpdateRequisitionRequest {
   readonly title?: string;
   readonly contact_id?: string | null;
-  readonly status?: RequisitionStatus;
+  readonly status?: RecruitingStatus;
   readonly description?: string | null;
   readonly notes?: string | null;
   readonly is_hot?: boolean;

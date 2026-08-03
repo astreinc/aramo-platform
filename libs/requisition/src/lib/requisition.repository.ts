@@ -17,7 +17,7 @@ import type { CreateRequisitionRequestDto } from './dto/create-requisition-reque
 import type { RatePeriod } from './dto/rate-period.js';
 import type { RequisitionCompensationModel } from './dto/requisition-compensation-model.js';
 import type { RequisitionView } from './dto/requisition.view.js';
-import type { RequisitionStatus } from './dto/requisition-status.js';
+import type { RecruitingStatus } from './dto/requisition-status.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
 import type { RecordRequisitionLifecycleEventInput } from './requisition-lifecycle-event.store.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -210,7 +210,7 @@ interface RequisitionRow {
   company_id: string;
   contact_id: string | null;
   company_department_id: string | null;
-  status: RequisitionStatus;
+  status: RecruitingStatus;
   type: string | null;
   duration: string | null;
   description: string | null;
@@ -530,12 +530,12 @@ export class RequisitionRepository {
   // policy engine). No visibility predicate: the declared status is a fact of
   // the requisition, not an actor-scoped view. Returns null if the requisition
   // does not exist in the tenant.
-  async findStatusById(args: { tenant_id: string; id: string }): Promise<RequisitionStatus | null> {
+  async findStatusById(args: { tenant_id: string; id: string }): Promise<RecruitingStatus | null> {
     const row = await this.prisma.requisition.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
       select: { status: true },
     });
-    return row === null ? null : (row.status as RequisitionStatus);
+    return row === null ? null : (row.status as RecruitingStatus);
   }
 
   // -------------------------------------------------------------------------
@@ -587,7 +587,7 @@ export class RequisitionRepository {
       company_id: input.company_id,
       contact_id: input.contact_id ?? null,
       company_department_id: input.company_department_id ?? null,
-      status: input.status ?? 'active',
+      status: input.status ?? 'open',
       type: input.type ?? null,
       duration: input.duration ?? null,
       description: input.description ?? null,
@@ -612,7 +612,7 @@ export class RequisitionRepository {
     // row + its provenance commit atomically.
     const setPriorityProvenance = await this.gateSetPriority({
       tenant_id,
-      status: input.status ?? 'active',
+      status: input.status ?? 'open',
       scopes: args.scopes,
       actor_id: entered_by_id,
       requestId: args.requestId,
@@ -694,7 +694,7 @@ export class RequisitionRepository {
       company_id: input.company_id,
       contact_id: input.contact_id ?? null,
       company_department_id: input.company_department_id ?? null,
-      status: input.status ?? 'active',
+      status: input.status ?? 'open',
       type: input.type ?? null,
       duration: input.duration ?? null,
       description: input.description ?? null,
@@ -723,7 +723,7 @@ export class RequisitionRepository {
     // exemption is visible, not invisible) and the row proceeds regardless.
     const setPriorityProvenance = await this.gateSetPriority({
       tenant_id,
-      status: input.status ?? 'active',
+      status: input.status ?? 'open',
       scopes: args.scopes,
       actor_id: entered_by_id,
       requestId: args.requestId,
@@ -985,8 +985,8 @@ export class RequisitionRepository {
               await this.recordLifecycleEventInTx(tx, {
                 tenant_id: args.tenant_id,
                 requisition_id: args.id,
-                previous_status: existing.status as RequisitionStatus,
-                next_status: args.input.status as RequisitionStatus,
+                previous_status: existing.status as RecruitingStatus,
+                next_status: args.input.status as RecruitingStatus,
                 actor_id: args.actor_id,
                 origin: 'ui',
                 reason_code: LIFECYCLE_REASON_STATUS_CHANGED,
@@ -1322,7 +1322,7 @@ export class RequisitionRepository {
   // SRC-2 PR-3 (DEV-E) — the distribution sweep's publishable read. SYSTEM-class
   // (no actor/visibility filter — the sweep is a tenant-agnostic background job),
   // mirroring findByIdAdmin's admin posture but for a list, filtered to the
-  // publishable predicate (status active AND public_listing). The `select` is a
+  // publishable predicate (status open AND public_listing). The `select` is a
   // strict allowlist: gated comp/financials columns are NOT selected, so they
   // cannot enter the sweep's memory (D5-by-construction). Ordered by updated_at so
   // a large first-tick backlog drains oldest-first; `limit` bounds the batch.
@@ -1333,7 +1333,7 @@ export class RequisitionRepository {
     const rows = await this.prisma.requisition.findMany({
       where: {
         tenant_id: args.tenant_id,
-        status: 'active',
+        status: 'open',
         public_listing: true,
       },
       select: {
@@ -1394,7 +1394,7 @@ export class RequisitionRepository {
   }
 
   // PR-A7 — actor-scoped per-status rollup for the reporting aggregator.
-  // Mirrors `countForActor` but groups by the RequisitionStatus enum so
+  // Mirrors `countForActor` but groups by the RecruitingStatus enum so
   // the reports endpoint can show a per-status bucket map. Prisma
   // groupBy with where preserves the same A3 predicate (`assignments:
   // { some: ... }`).
@@ -1402,7 +1402,7 @@ export class RequisitionRepository {
     tenant_id: string;
     visibility: VisibilityContextShape;
     site_id?: string;
-  }): Promise<Array<{ status: RequisitionStatus; count: number }>> {
+  }): Promise<Array<{ status: RecruitingStatus; count: number }>> {
     const rows = await this.prisma.requisition.groupBy({
       by: ['status'],
       where: {
@@ -1413,7 +1413,7 @@ export class RequisitionRepository {
       _count: { _all: true },
     });
     return rows.map((r) => ({
-      status: r.status as RequisitionStatus,
+      status: r.status as RecruitingStatus,
       count: r._count._all,
     }));
   }

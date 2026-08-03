@@ -350,7 +350,7 @@ export class ReportingService {
         openings: 0,
         filled: 0,
       };
-      if (r.status === 'active' || r.status === 'on_hold') e.open_reqs += 1;
+      if (r.status === 'open' || r.status === 'on_hold') e.open_reqs += 1;
       e.openings += r.openings;
       e.filled += Math.max(0, r.openings - r.openings_available);
       agg.set(r.company_id, e);

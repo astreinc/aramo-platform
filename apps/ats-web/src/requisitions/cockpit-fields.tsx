@@ -19,7 +19,7 @@ import {
   canEditBucket,
   type CockpitFieldDescriptor,
 } from './field-affordance';
-import { RATE_PERIOD_VALUES, REQUISITION_STATUS_VALUES } from './types';
+import { RATE_PERIOD_VALUES, SELECTABLE_RECRUITING_STATUS_VALUES } from './types';
 
 // PR-A2 P1 — the cockpit FIELD ROW renderer. Given a field descriptor + the
 // requisition payload + the actor's scopes, renders the right inline editor
@@ -40,7 +40,7 @@ const BOOLEAN_OPTIONS: Options = [
 ];
 
 const FIELD_OPTIONS: Readonly<Record<string, Options>> = {
-  status: REQUISITION_STATUS_VALUES.map((v) => ({ value: v, label: v })),
+  status: SELECTABLE_RECRUITING_STATUS_VALUES.map((v) => ({ value: v, label: v })),
   job_type: vocab(JOB_TYPE_VALUES),
   role_family: vocab(ROLE_FAMILY_VALUES),
   seniority_level: vocab(SENIORITY_LEVEL_VALUES),
