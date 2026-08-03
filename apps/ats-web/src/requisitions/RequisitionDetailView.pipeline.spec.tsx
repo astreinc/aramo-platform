@@ -28,7 +28,7 @@ const REQ = {
   company_id: 'co-1',
   contact_id: null,
   company_department_id: null,
-  status: 'active',
+  status: 'open',
   type: 'C2H',
   is_hot: true,
   openings: 3,

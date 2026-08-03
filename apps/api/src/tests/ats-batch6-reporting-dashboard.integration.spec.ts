@@ -361,6 +361,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SAVED_LIST_INIT,
         SAVED_LIST_LIST_KIND,
         METERING_INIT,
+        resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }

@@ -238,6 +238,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SUBMITTAL_RENAME_MIGRATION,
         SUBMITTAL_OUTBOX_MIGRATION,
         METERING_INIT_MIGRATION,
+        resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -250,7 +251,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // the draft submittal we'll create at request time.
       await setup.query(
         `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
-         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus")`,
+         VALUES ($1, $2, $3::text, $4, 'open'::requisition."RecruitingStatus")`,
         [
           '22221111-0000-7000-8000-0000000000ab',
           TENANT_ID,

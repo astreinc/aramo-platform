@@ -380,6 +380,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         POLICY_STORE_INIT,
         POLICY_DECISION_RECORD,
         METERING_INIT,
+        resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }

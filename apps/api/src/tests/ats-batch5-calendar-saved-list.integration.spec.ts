@@ -310,6 +310,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_OVERLAY_FOLD,
         TALENT_RECORD_WORK_AUTH,
         TALENT_RECORD_SUPERSESSION,
+        resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }

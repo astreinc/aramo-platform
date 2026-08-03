@@ -56,7 +56,8 @@ import {
 } from './requisitions-api';
 import { detailErrorMessage } from './error-messages';
 import {
-  type RequisitionStatus,
+  RECRUITING_STATUS_LABELS,
+  type RecruitingStatus,
   type RequisitionView,
   type UpdateRequisitionRequest,
 } from './types';
@@ -98,22 +99,16 @@ const SECTION_ORDER: readonly CockpitSection[] = [
   'financial',
 ];
 
-const STATUS_LABEL: Record<RequisitionStatus, string> = {
-  active: 'Open',
-  on_hold: 'On hold',
-  full: 'Full',
-  closed: 'Closed',
-  canceled: 'Canceled',
-  lead: 'Intake',
-};
-
-const STATUS_TONE: Record<RequisitionStatus, PillTone> = {
-  active: 'ok',
+const STATUS_TONE: Record<RecruitingStatus, PillTone> = {
   lead: 'neutral',
+  draft: 'neutral',
+  pending_approval: 'warn',
+  open: 'ok',
   on_hold: 'warn',
-  full: 'brand',
-  closed: 'neutral',
+  submittals_closed: 'brand',
   canceled: 'danger',
+  closed: 'neutral',
+  archived: 'neutral',
 };
 
 const SUBMITTED_PLUS: readonly PipelineStatus[] = [
@@ -422,7 +417,7 @@ export function RequisitionDetailView({
               </StatusPill>
             ) : null}
             <StatusPill tone={STATUS_TONE[req.status]} dot>
-              {STATUS_LABEL[req.status]}
+              {RECRUITING_STATUS_LABELS[req.status]}
             </StatusPill>
           </h1>
           <div className="rc-dhead__co">

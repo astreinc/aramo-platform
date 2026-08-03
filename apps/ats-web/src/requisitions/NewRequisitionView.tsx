@@ -63,10 +63,10 @@ import {
 import {
   RATE_PERIOD_VALUES,
   RATE_TYPE_VALUES,
-  REQUISITION_STATUS_VALUES,
+  SELECTABLE_RECRUITING_STATUS_VALUES,
   type CompensationModel,
   type CreateRequisitionRequest,
-  type RequisitionStatus,
+  type RecruitingStatus,
   type RequisitionView,
 } from './types';
 
@@ -124,7 +124,7 @@ interface BasicsFormState {
   title: string;
   company_id: string;
   contact_id: string;
-  status: RequisitionStatus;
+  status: RecruitingStatus;
   description: string; // the Job description (JD) — persists on create
   notes: string;
   is_hot: boolean;
@@ -148,7 +148,7 @@ function emptyState(): FormState {
     title: '',
     company_id: '',
     contact_id: '',
-    status: 'active',
+    status: 'open',
     description: '',
     notes: '',
     is_hot: false,
@@ -723,8 +723,8 @@ export function NewRequisitionView({ sessionOverride }: NewRequisitionViewProps)
                 <SelectField
                   label="Status"
                   value={state.status}
-                  options={REQUISITION_STATUS_VALUES}
-                  onChange={(v) => setField('status', v as RequisitionStatus)}
+                  options={SELECTABLE_RECRUITING_STATUS_VALUES}
+                  onChange={(v) => setField('status', v as RecruitingStatus)}
                 />
                 <div className="rc-ifield">
                   <label className="rc-ifield__lb">

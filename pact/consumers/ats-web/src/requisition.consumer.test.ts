@@ -27,7 +27,7 @@ import {
 //   - POST /v1/requisitions/:id/assignments (201, full row);
 //   - DELETE /v1/requisitions/:id/assignments/:user_id (204).
 //
-// illegal-state: 0-by-substrate (RequisitionStatus is a stored enum with no
+// illegal-state: 0-by-substrate (RecruitingStatus is a stored enum with no
 //   transition rules — the pipeline is the desk's only state machine, PC-5c).
 // idempotency: 0-by-substrate (no Idempotency-Key).
 // refusal: 0-by-ruling (framework scope/validation/not-found → hardening
@@ -67,7 +67,7 @@ function requisitionView(
     site_id: null,
     title: like(opts.title ?? 'Senior Engineer'),
     company_id: uuid(REQ_COMPANY_ID),
-    status: like('active'),
+    status: like('open'),
     is_hot: opts.isHot === undefined ? like(false) : opts.isHot,
     openings: like(1),
     openings_available: like(1),

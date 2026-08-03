@@ -50,7 +50,7 @@ const OVERRIDE_PACKAGE: PublishPolicyVersionInput['definition'] = {
       id: 'add-talent-active',
       resource: 'REQUISITION_TALENT',
       action: 'ADD',
-      when: [{ source: 'declared', key: 'status', op: 'eq', value: 'active' }],
+      when: [{ source: 'declared', key: 'status', op: 'eq', value: 'open' }],
       decision: 'ALLOW',
       reason_code: 'ACTIVE_ALLOWED',
     },
@@ -58,7 +58,7 @@ const OVERRIDE_PACKAGE: PublishPolicyVersionInput['definition'] = {
       id: 'add-talent-full',
       resource: 'REQUISITION_TALENT',
       action: 'ADD',
-      when: [{ source: 'declared', key: 'status', op: 'eq', value: 'full' }],
+      when: [{ source: 'declared', key: 'status', op: 'eq', value: 'submittals_closed' }],
       decision: 'REQUIRES_OVERRIDE',
       reason_code: 'SUBMITTAL_CLOSED_OVERRIDE_REQUIRED',
       required_capability: OVERRIDE_CAP,
@@ -116,7 +116,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     async function seedRequisition(status: string): Promise<string> {
       const id = uuid();
       await db.query(
-        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,$3,$4,$5::"requisition"."RequisitionStatus", (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`,
+        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,$3,$4,$5::"requisition"."RecruitingStatus", (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`,
         [id, TENANT, `req-${status}`, uuid(), status],
       );
       return id;
@@ -185,13 +185,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const withCap = ['pipeline:add', OVERRIDE_CAP];
 
       it('ALLOW path unchanged — active status still 201, row created (regression)', async () => {
-        const req = await seedRequisition('active');
+        const req = await seedRequisition('open');
         expect((await postPipeline(await signJwt(base), req)).status).toBe(201);
         expect(await pipelineCount(req)).toBe(1);
       });
 
       it('REQUIRES_OVERRIDE + capability ABSENT -> 403 POLICY_DENIED, no row, provenance records the attempt', async () => {
-        const req = await seedRequisition('full');
+        const req = await seedRequisition('submittals_closed');
         const res = await postPipeline(await signJwt(base), req, 'replacement');
         expect(res.status).toBe(403);
         const body = (await res.json()) as { error?: { code?: string; details?: { reason_code?: string } } };
@@ -202,7 +202,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
 
       it('REQUIRES_OVERRIDE + capability present + NO reason -> 422 OVERRIDE_INVALID, no row', async () => {
-        const req = await seedRequisition('full');
+        const req = await seedRequisition('submittals_closed');
         const res = await postPipeline(await signJwt(withCap), req);
         expect(res.status).toBe(422);
         expect(((await res.json()) as { error?: { code?: string } }).error?.code).toBe('OVERRIDE_INVALID');
@@ -210,7 +210,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
 
       it('REQUIRES_OVERRIDE + capability + INVALID reason code -> 422 OVERRIDE_INVALID, no row', async () => {
-        const req = await seedRequisition('full');
+        const req = await seedRequisition('submittals_closed');
         const res = await postPipeline(await signJwt(withCap), req, 'not_a_real_code');
         expect(res.status).toBe(422);
         expect(((await res.json()) as { error?: { code?: string } }).error?.code).toBe('OVERRIDE_INVALID');
@@ -218,7 +218,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
 
       it('FULL PATH — capability + valid reason -> 201; the ORIGINAL proposal is disposed; provenance carries reason_code + capability', async () => {
-        const req = await seedRequisition('full');
+        const req = await seedRequisition('submittals_closed');
         const res = await postPipeline(await signJwt(withCap), req, 'client_approved_overfill');
         expect(res.status).toBe(201); // same POST /v1/pipelines — no new endpoint (§D6)
         expect(await pipelineCount(req)).toBe(1); // the original add proposal proceeded
@@ -236,21 +236,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const withCap = ['talent:source', OVERRIDE_CAP];
 
       it('REQUIRES_OVERRIDE + capability ABSENT -> 403 POLICY_DENIED', async () => {
-        const req = await seedRequisition('full');
+        const req = await seedRequisition('submittals_closed');
         const res = await postSourcing(await signJwt(base), req, 'replacement');
         expect(res.status).toBe(403);
         expect(((await res.json()) as { error?: { code?: string } }).error?.code).toBe('POLICY_DENIED');
       });
 
       it('REQUIRES_OVERRIDE + capability + NO reason -> 422 OVERRIDE_INVALID', async () => {
-        const req = await seedRequisition('full');
+        const req = await seedRequisition('submittals_closed');
         const res = await postSourcing(await signJwt(withCap), req);
         expect(res.status).toBe(422);
         expect(((await res.json()) as { error?: { code?: string } }).error?.code).toBe('OVERRIDE_INVALID');
       });
 
       it('FULL PATH — capability + valid reason -> override satisfied, flow proceeds (200 deferral); provenance carries reason_code + capability', async () => {
-        const req = await seedRequisition('full');
+        const req = await seedRequisition('submittals_closed');
         const res = await postSourcing(await signJwt(withCap), req, 'duplicate_correction');
         expect(res.status).toBe(200); // the override resolved; promotion defers on the unknown subject
         const rec = await latestRecord();

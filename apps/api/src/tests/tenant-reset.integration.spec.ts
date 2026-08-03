@@ -165,7 +165,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.query(
         `INSERT INTO requisition."RequisitionLifecycleEvent"
            (id, tenant_id, requisition_id, previous_status, next_status, actor_id, origin, reason_code, correlation_id)
-         VALUES ($1::uuid,$2::uuid,$3::uuid,'active','on_hold','actor-1','ui','MANUAL_HOLD','corr-1')`,
+         VALUES ($1::uuid,$2::uuid,$3::uuid,'open','on_hold','actor-1','ui','MANUAL_HOLD','corr-1')`,
         [uuidv7(), T, REQ1],
       );
 

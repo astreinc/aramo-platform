@@ -1,14 +1,14 @@
 // Hand-mirrored from libs/reporting/src/lib/dto/report.view.ts. R-home
 // hand-mirrors instead of importing @aramo/reporting (a forbidden domain
 // edge per the FROZEN fe-foundation discipline). Three of the four nested
-// enums (RequisitionStatus / PipelineStatus / ActivityType) are REUSED
+// enums (RecruitingStatus / PipelineStatus / ActivityType) are REUSED
 // from the existing ats-web mirrors (not re-mirrored). The
 // fourth (CalendarEventType) is added here as a flat value-list — no
 // drift-spec per rule-of-three (flat-value mirrors carry no logic).
 
 import type { ActivityType } from '../activity/types';
 import type { PipelineStatus } from '../pipeline/types';
-import type { RequisitionStatus } from '../requisitions/types';
+import type { RecruitingStatus } from '../requisitions/types';
 
 // CalendarEventType — 6 closed-list values mirrored from
 // libs/calendar/src/lib/dto/calendar-event-type.ts. Flat value-list; no
@@ -44,16 +44,10 @@ export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
 };
 
 // Requisition status labels — the requisitions module mirrors the values
-// but no label map. The rollup display needs human-readable copy; this is
-// the home-local label table for the 6 closed values.
-export const REQUISITION_STATUS_LABELS: Record<RequisitionStatus, string> = {
-  active: 'Active',
-  on_hold: 'On hold',
-  full: 'Full',
-  closed: 'Closed',
-  canceled: 'Canceled',
-  lead: 'Lead',
-};
+// Q6 ruling — the rollup display reuses the ONE canonical label map (no local
+// copy; the prior 4-way drift is the defect T1-d closes). Re-exported under the
+// dashboard-local name so existing importers are unaffected.
+export { RECRUITING_STATUS_LABELS as REQUISITION_STATUS_LABELS } from '../requisitions/types';
 
 // TenantCountsReportView — 6 number fields.
 export interface TenantCountsReportView {
@@ -66,7 +60,7 @@ export interface TenantCountsReportView {
 }
 
 export interface RequisitionRollupItem {
-  readonly status: RequisitionStatus;
+  readonly status: RecruitingStatus;
   readonly count: number;
 }
 

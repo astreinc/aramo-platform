@@ -26,7 +26,7 @@ import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 // T1-a — job_domain.Requisition retirement (LIVE DEFECT proof).
 //
 // The defect this test exists to expose: `job_domain.Requisition.state` is
-// written once as 'active' and has NO updater. A requisition CLOSED in the ATS
+// written once as 'open' and has NO updater. A requisition CLOSED in the ATS
 // (`requisition.Requisition.status = 'closed'`) still reads `active` through the
 // job_domain mirror — so the match-list surfaces a closed requisition's matches
 // as if it were open.
@@ -70,6 +70,7 @@ const MIGRATIONS = [
   'libs/requisition/prisma/migrations/20260802180000_add_requisition_number/migration.sql',
   // PR-14 — additive user_requisition_state table (missing -> 500 on enriched requisition list/get).
   'libs/requisition/prisma/migrations/20260802160000_add_user_requisition_state/migration.sql',
+  'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql',
   // job-domain
   'libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql',
   // T1-a — drop the retired job_domain.Requisition table + enum so this proof
@@ -185,7 +186,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setup.query(
         `INSERT INTO requisition."Requisition"
            (id, tenant_id, title, company_id, golden_profile_id, status, requisition_number)
-         VALUES ($1, $2, $3, $4, $5, 'closed'::requisition."RequisitionStatus", 1000)`,
+         VALUES ($1, $2, $3, $4, $5, 'closed'::requisition."RecruitingStatus", 1000)`,
         [R, TENANT_ID, 'Senior Backend Engineer', COMPANY_ID, GP_ID],
       );
       // NOTE: pre-T1-a a stale-active job_domain.Requisition mirror was seeded

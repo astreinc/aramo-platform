@@ -40,9 +40,9 @@ const ACTION: Readonly<Record<string, string>> = {
   REQUISITION_TALENT: 'ADD', REQUISITION_SUBMITTAL: 'CREATE', REQUISITION_NOTE: 'ADD', REQUISITION_DOCUMENT: 'ADD',
 };
 const EXPECTED: Readonly<Record<string, Readonly<Record<string, Decision>>>> = {
-  active: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'ALLOW', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
+  open: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'ALLOW', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
   on_hold: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
-  full: { REQUISITION_TALENT: 'REQUIRES_OVERRIDE', REQUISITION_SUBMITTAL: 'REQUIRES_OVERRIDE', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'REQUIRES_OVERRIDE' },
+  submittals_closed: { REQUISITION_TALENT: 'REQUIRES_OVERRIDE', REQUISITION_SUBMITTAL: 'REQUIRES_OVERRIDE', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'REQUIRES_OVERRIDE' },
   closed: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY' },
   canceled: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY' },
   lead: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW' },
@@ -72,7 +72,7 @@ function contextFor(status: string, resource: string): PolicyContext {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'PR-4c restrictive matrix v2.0.0 — real published package (Postgres 17)',
+  'PR-4c RecruitingStatus matrix v4.0.0 — real published package (Postgres 17)',
   () => {
     let container: StartedPostgreSqlContainer;
     let db: Client;
@@ -88,7 +88,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
     async function seedRequisition(status: string): Promise<string> {
       const id = uuid();
-      await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,$3,$4,$5::"requisition"."RequisitionStatus", (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [id, TENANT, `req-${status}`, uuid(), status]);
+      await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,$3,$4,$5::"requisition"."RecruitingStatus", (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [id, TENANT, `req-${status}`, uuid(), status]);
       return id;
     }
     function baseUrl(): string {
@@ -114,7 +114,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       storePrisma = new PolicyStorePrismaService(url);
       await storePrisma.$connect();
       store = new PolicyStore(storePrisma);
-      // Publish the REAL restrictive matrix (v2.0.0) for this tenant.
+      // Publish the REAL RecruitingStatus matrix (v4.0.0) for this tenant.
       await store.publish({ tenant_id: TENANT, definition: REQUISITION_LIFECYCLE_PACKAGE, published_by: SYSTEM_PUBLISHER });
 
       const kp = await generateKeyPair(ALG);
@@ -140,7 +140,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('EVERY cell (24) evaluates per the matrix against the PUBLISHED + RETRIEVED package', async () => {
       const resolved = await store.getActiveVersion(TENANT, PKG_NAME);
-      expect(resolved?.version).toBe('3.0.0');
+      expect(resolved?.version).toBe('4.0.0');
       for (const [status, row] of Object.entries(EXPECTED)) {
         for (const [resource, expected] of Object.entries(row)) {
           const d = evaluate(resolved!.definition, contextFor(status, resource));
@@ -156,41 +156,41 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const base = ['pipeline:add', 'talent:source'];
       const withCap = ['pipeline:add', 'talent:source', OVERRIDE_CAP];
 
-      it('active -> pipeline 201; closed -> 403 DENY', async () => {
-        expect((await postPipeline(await signJwt(base), await seedRequisition('active'))).status).toBe(201);
+      it('open -> pipeline 201; closed -> 403 DENY', async () => {
+        expect((await postPipeline(await signJwt(base), await seedRequisition('open'))).status).toBe(201);
         expect((await postPipeline(await signJwt(base), await seedRequisition('closed'))).status).toBe(403);
       });
 
-      it('full + Add, capability ABSENT -> 403 DENY (pipeline + sourcing)', async () => {
-        expect((await postPipeline(await signJwt(base), await seedRequisition('full'))).status).toBe(403);
-        expect((await postSourcing(await signJwt(base), await seedRequisition('full'), 'replacement')).status).toBe(403);
+      it('submittals_closed + Add, capability ABSENT -> 403 DENY (pipeline + sourcing)', async () => {
+        expect((await postPipeline(await signJwt(base), await seedRequisition('submittals_closed'))).status).toBe(403);
+        expect((await postSourcing(await signJwt(base), await seedRequisition('submittals_closed'), 'replacement')).status).toBe(403);
       });
 
-      it('full + Add, capability present + valid reason -> ALLOWS and mutates (pipeline 201; sourcing proceeds → 200 deferral)', async () => {
-        const reqP = await seedRequisition('full');
+      it('submittals_closed + Add, capability present + valid reason -> ALLOWS and mutates (pipeline 201; sourcing proceeds → 200 deferral)', async () => {
+        const reqP = await seedRequisition('submittals_closed');
         expect((await postPipeline(await signJwt(withCap), reqP, 'client_approved_overfill')).status).toBe(201);
-        const reqS = await seedRequisition('full');
+        const reqS = await seedRequisition('submittals_closed');
         expect((await postSourcing(await signJwt(withCap), reqS, 'duplicate_correction')).status).toBe(200);
       });
     });
 
-    it('§D17b — a decision made under an earlier version still names it after v2.0.0 is republished (re-read from the DB)', async () => {
+    it('§D17b — a decision made under the superseded v3.0.0 still names it after the T1-d v4.0.0 is republished (re-read from the DB)', async () => {
       const T = '01900000-0000-7000-8000-0000000000f6';
       await ensureWriteFreezeTenant((s) => db.query(s), T);
       await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,'ats') ON CONFLICT DO NOTHING`, [T]);
-      // v1.0.0 published first, active window; make a decision under it.
-      await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '1.0.0' }, published_by: SYSTEM_PUBLISHER, effective_from: new Date('2026-01-01T00:00:00Z') });
+      // The superseded v3.0.0 published first, active window; make a decision under it.
+      await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '3.0.0' }, published_by: SYSTEM_PUBLISHER, effective_from: new Date('2026-01-01T00:00:00Z') });
       const req = uuid();
-      await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,'r',$3,'active', (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [req, T, uuid()]);
+      await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,'r',$3,'open', (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [req, T, uuid()]);
       const jwt = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, scopes: ['pipeline:add'] })
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
       expect((await postPipeline(jwt, req)).status).toBe(201);
       const first = (await db.query(`SELECT id, policy_version FROM policy_store."PolicyDecisionRecord" WHERE tenant_id=$1 ORDER BY occurred_at DESC LIMIT 1`, [T])).rows[0];
-      expect(first.policy_version).toBe('1.0.0');
-      // Republish v2.0.0 (later window); the earlier record must STILL name 1.0.0.
-      await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '2.0.0' }, published_by: SYSTEM_PUBLISHER, effective_from: new Date('2026-06-01T00:00:00Z') });
+      expect(first.policy_version).toBe('3.0.0');
+      // Republish v4.0.0 (later window); the earlier record must STILL name 3.0.0.
+      await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '4.0.0' }, published_by: SYSTEM_PUBLISHER, effective_from: new Date('2026-06-01T00:00:00Z') });
       const reread = (await db.query(`SELECT policy_version FROM policy_store."PolicyDecisionRecord" WHERE id=$1`, [first.id])).rows[0];
-      expect(reread.policy_version).toBe('1.0.0');
+      expect(reread.policy_version).toBe('3.0.0');
     });
   },
 );

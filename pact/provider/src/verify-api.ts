@@ -495,7 +495,7 @@ const CONTACT_LIST_SURFACE_MIGRATION = resolve(
 );
 // PC-5b — ats-web Gate-2a desk (requisition spine + profile-confirm +
 // assignments). Requisition init CREATEs the schema + Requisition +
-// RequisitionAssignment + the RequisitionStatus enum; the additive ALTERs add
+// RequisitionAssignment + the RecruitingStatus enum; the additive ALTERs add
 // the compensation / job-module / rate-type columns RequisitionView reads.
 // All FKs are intra-schema (RequisitionAssignment -> Requisition); every
 // cross-schema ref (company_id, golden_profile_id, …) is a plain UUID (§7.3),
@@ -1232,7 +1232,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await c.query(
         `INSERT INTO requisition."Requisition"
            (id, tenant_id, title, company_id, status, requisition_number)
-         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus",
+         VALUES ($1, $2, $3::text, $4, 'open'::requisition."RecruitingStatus",
                  (SELECT COALESCE(MAX(requisition_number), 999) + 1 FROM requisition."Requisition" WHERE tenant_id = $2))`,
         [ATSW_REQUISITION_ID, TENANT_ID, ATSW_JOB_ID, PACT_RECRUITER_ACTOR_ID],
       );
@@ -2228,7 +2228,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // same value (the retired mirror's distinct ATSW_SUB_REQ_ID is gone).
       await c.query(
         `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number)
-         VALUES ($1,$2,$3::text,$4,'active'::requisition."RequisitionStatus",
+         VALUES ($1,$2,$3::text,$4,'open'::requisition."RecruitingStatus",
                  (SELECT COALESCE(MAX(requisition_number), 999) + 1 FROM requisition."Requisition" WHERE tenant_id = $2)) ON CONFLICT DO NOTHING`,
         [ATSW_SUB_JOB_ID, TENANT_ID, ATSW_SUB_JOB_ID, PACT_RECRUITER_ACTOR_ID],
       );
@@ -2536,7 +2536,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await c.query(
         `INSERT INTO requisition."Requisition"
            (id, tenant_id, title, company_id, status, requisition_number)
-         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus",
+         VALUES ($1, $2, $3::text, $4, 'open'::requisition."RecruitingStatus",
                  (SELECT COALESCE(MAX(requisition_number), 999) + 1 FROM requisition."Requisition" WHERE tenant_id = $2))
          ON CONFLICT DO NOTHING`,
         [params.jobId, TENANT_ID, params.jobId, RECRUITER_ID],
@@ -2941,6 +2941,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         SAVED_LIST_LIST_KIND_MIGRATION,
         IMPORT_INIT_MIGRATION,
         CALENDAR_INIT_MIGRATION,
+        resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }

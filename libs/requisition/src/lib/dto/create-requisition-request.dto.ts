@@ -1,6 +1,6 @@
 import type { RatePeriod } from './rate-period.js';
 import type { RequisitionCompensationModel } from './requisition-compensation-model.js';
-import type { RequisitionStatus } from './requisition-status.js';
+import type { RecruitingStatus } from './requisition-status.js';
 
 // CreateRequisitionRequestDto — POST /v1/requisitions payload.
 // tenant_id is derived from AuthContext.tenant_id, never the body.
@@ -17,7 +17,7 @@ export interface CreateRequisitionRequestDto {
   site_id?: string;
   contact_id?: string;
   company_department_id?: string;
-  status?: RequisitionStatus;
+  status?: RecruitingStatus;
   type?: string;
   duration?: string;
   description?: string;

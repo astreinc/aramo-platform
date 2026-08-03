@@ -46,18 +46,33 @@ datasource db {
   schemas  = ["requisition"]
 }
 
-// RequisitionStatus — directive §4: a simple stored enum, recruiter-
-// editable via `requisition:edit`. NO transition rules; NO state-machine
-// trigger; NO event log. The pipeline state machine (Active→Placed→
-// openings decrement) lives at A5 — this enum is a status label, not a
-// workflow.
-enum RequisitionStatus {
-  active
-  on_hold
-  full
-  closed
-  canceled
+// RecruitingStatus — Track 1 T1-d supersession of the former
+// RequisitionStatus. The DECLARED lifecycle only — a human decision, stored,
+// recruiter-editable via `requisition:edit`. CapacityStatus (AVAILABLE /
+// FULLY_RESERVED / …) is DERIVED from reservations + consumptions and lands
+// in Track 4 — deliberately NOT here (Planning Package §3.1 / directive L2).
+//
+// Value crosswalk (PO ruling): former `active` -> `open`; former `full` ->
+// `submittals_closed` (the declared half of the old capacity/declaration
+// conflation, §3.1); `lead` retained as the functional intake state; the
+// other three (`on_hold`/`closed`/`canceled`) unchanged.
+//
+// Subsystem-gated (directive §2, PO correction 1): `draft`,
+// `pending_approval` and `archived` imply approval-workflow and retention
+// subsystems that do not exist yet. They EXIST in the type so the value
+// space is complete, but transitions INTO them are registered DISABLED (no
+// selectable option, no policy row) until their behaviour lands. Do not
+// ship a status whose behaviour does not exist.
+enum RecruitingStatus {
   lead
+  draft
+  pending_approval
+  open
+  on_hold
+  submittals_closed
+  canceled
+  closed
+  archived
 
   @@schema("requisition")
 }
@@ -114,8 +129,9 @@ model Requisition {
   contact_id            String? @db.Uuid
   company_department_id String? @db.Uuid
 
-  // Status (simple stored enum — directive §4).
-  status RequisitionStatus @default(active)
+  // Status (simple stored enum — directive §4). Default is the working
+  // `open` state (former `active`); T1-d supersession.
+  status RecruitingStatus @default(open)
 
   // Job-order metadata.
   type        String?
@@ -466,8 +482,8 @@ model RequisitionLifecycleEvent {
   // predecessor status — the first status a requisition ever has is part of
   // its history but has nothing before it. It is null ONLY on a create; every
   // update-driven transition carries a non-null previous_status.
-  previous_status RequisitionStatus?
-  next_status     RequisitionStatus
+  previous_status RecruitingStatus?
+  next_status     RecruitingStatus
 
   // WHO initiated it, and from WHERE.
   actor_id String

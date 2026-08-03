@@ -85,19 +85,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const rec = await store.record({
         tenant_id: TENANT_A,
         requisition_id: REQ_1,
-        previous_status: 'active',
+        previous_status: 'open',
         next_status: 'on_hold',
         actor_id: 'actor-1',
         origin: 'ui',
         reason_code: 'RECRUITER_HOLD',
         correlation_id: uuidv7(),
       });
-      expect(rec.previous_status).toBe('active');
+      expect(rec.previous_status).toBe('open');
       expect(rec.next_status).toBe('on_hold');
 
       const read = await store.getById(TENANT_A, rec.id);
       expect(read).not.toBeNull();
-      expect(read?.previous_status).toBe('active');
+      expect(read?.previous_status).toBe('open');
       expect(read?.next_status).toBe('on_hold');
       expect(read?.origin).toBe('ui');
     });
@@ -107,8 +107,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await store.record({
         tenant_id: TENANT_A,
         requisition_id: REQ_1,
-        previous_status: 'active',
-        next_status: 'full',
+        previous_status: 'open',
+        next_status: 'submittals_closed',
         actor_id: 'actor-1',
         origin: 'agent',
         reason_code: 'A',
@@ -118,7 +118,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await store.record({
         tenant_id: TENANT_A,
         requisition_id: REQ_2,
-        previous_status: 'active',
+        previous_status: 'open',
         next_status: 'closed',
         actor_id: 'actor-1',
         origin: 'agent',
@@ -129,7 +129,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const group = await store.listByCorrelation(TENANT_A, correlationId);
       expect(group).toHaveLength(2);
-      expect(group.map((e) => e.next_status)).toEqual(['full', 'closed']); // ordered
+      expect(group.map((e) => e.next_status)).toEqual(['submittals_closed', 'closed']); // ordered
     });
 
     it('policy_decision_id round-trips and links to a real PolicyDecisionRecord', async () => {
@@ -139,7 +139,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const rec = await store.record({
         tenant_id: TENANT_A,
         requisition_id: REQ_1,
-        previous_status: 'active',
+        previous_status: 'open',
         next_status: 'closed',
         actor_id: 'actor-1',
         origin: 'ui',
@@ -164,7 +164,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_A,
         requisition_id: REQ_2,
         previous_status: 'closed',
-        next_status: 'active',
+        next_status: 'open',
         actor_id: 'actor-1',
         origin: 'integration',
         reason_code: 'REOPEN_UNGOVERNED',
@@ -179,7 +179,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const rec = await store.record({
         tenant_id: TENANT_A,
         requisition_id: REQ_1,
-        previous_status: 'active',
+        previous_status: 'open',
         next_status: 'canceled',
         actor_id: 'actor-1',
         origin: 'ui',

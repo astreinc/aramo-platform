@@ -11,11 +11,11 @@ import { REQUISITION_LIFECYCLE_PACKAGE } from '../policy/requisition-lifecycle.p
 const ROOT = resolve(__dirname, '../../../..');
 const OVERRIDE_CAP = 'requisition.override.submittal_closed';
 
-// ADR-0024 PR-4c — the RESTRICTIVE MATRIX v2.0.0, published as DATA. This spec
-// re-declares the directive's matrix INDEPENDENTLY (it must not trust the table
-// it is checking) and evaluates every cell through the engine against the
-// package DATA — the fast, exhaustive DATA proof; the E2E proves it published +
-// retrieved.
+// ADR-0024 / T1-d — the RecruitingStatus-keyed matrix v4.0.0, published as DATA.
+// This spec re-declares the directive's matrix INDEPENDENTLY (it must not trust
+// the table it is checking) and evaluates every cell through the engine against
+// the package DATA — the fast, exhaustive DATA proof; the E2E proves it
+// published + retrieved.
 
 const ACTION: Readonly<Record<string, string>> = {
   REQUISITION_TALENT: 'ADD',
@@ -26,12 +26,14 @@ const ACTION: Readonly<Record<string, string>> = {
 };
 
 // Independent copy of the directive matrix (state × resource → decision).
-// PR-7 adds REQUISITION · SET_PRIORITY: active/on_hold/full/lead ALLOW,
-// closed/canceled DENY (priority on a terminal requisition is meaningless).
+// T1-d re-keys on RecruitingStatus: open (was active) / on_hold /
+// submittals_closed (was full) / closed / canceled / lead. PR-7's REQUISITION ·
+// SET_PRIORITY: open/on_hold/submittals_closed/lead ALLOW, closed/canceled DENY
+// (priority on a terminal requisition is meaningless). Gated states carry no row.
 const EXPECTED: Readonly<Record<string, Readonly<Record<string, Decision>>>> = {
-  active: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'ALLOW', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW', REQUISITION: 'ALLOW' },
+  open: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'ALLOW', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW', REQUISITION: 'ALLOW' },
   on_hold: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW', REQUISITION: 'ALLOW' },
-  full: { REQUISITION_TALENT: 'REQUIRES_OVERRIDE', REQUISITION_SUBMITTAL: 'REQUIRES_OVERRIDE', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'REQUIRES_OVERRIDE', REQUISITION: 'ALLOW' },
+  submittals_closed: { REQUISITION_TALENT: 'REQUIRES_OVERRIDE', REQUISITION_SUBMITTAL: 'REQUIRES_OVERRIDE', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'REQUIRES_OVERRIDE', REQUISITION: 'ALLOW' },
   closed: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY', REQUISITION: 'DENY' },
   canceled: { REQUISITION_TALENT: 'DENY', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'DENY', REQUISITION: 'DENY' },
   lead: { REQUISITION_TALENT: 'ALLOW', REQUISITION_SUBMITTAL: 'DENY', REQUISITION_NOTE: 'ALLOW', REQUISITION_DOCUMENT: 'ALLOW', REQUISITION: 'ALLOW' },
@@ -51,11 +53,11 @@ function contextFor(status: string, resource: string): PolicyContext {
   };
 }
 
-describe('REQUISITION_LIFECYCLE_PACKAGE v3.0.0 — restrictive matrix DATA', () => {
-  it('is a structurally valid package (as PolicyStore.publish will require), v3.0.0, named for the retrieval key, default ALLOW', () => {
+describe('REQUISITION_LIFECYCLE_PACKAGE v4.0.0 — RecruitingStatus-keyed matrix DATA', () => {
+  it('is a structurally valid package (as PolicyStore.publish will require), v4.0.0, named for the retrieval key, default ALLOW', () => {
     expect(() => validatePackage(REQUISITION_LIFECYCLE_PACKAGE)).not.toThrow();
     expect(REQUISITION_LIFECYCLE_PACKAGE.name).toBe(REQUISITION_LIFECYCLE_PACKAGE_NAME);
-    expect(REQUISITION_LIFECYCLE_PACKAGE.version).toBe('3.0.0');
+    expect(REQUISITION_LIFECYCLE_PACKAGE.version).toBe('4.0.0');
     expect(REQUISITION_LIFECYCLE_PACKAGE.default_disposition.decision).toBe('ALLOW');
   });
 
@@ -86,8 +88,22 @@ describe('REQUISITION_LIFECYCLE_PACKAGE v3.0.0 — restrictive matrix DATA', () 
   }
 
   it('Note is ALLOW in EVERY state, including the terminal closed/canceled (the ruling most likely to be "fixed" by mistake)', () => {
-    for (const status of ['active', 'on_hold', 'full', 'closed', 'canceled', 'lead']) {
+    for (const status of ['open', 'on_hold', 'submittals_closed', 'closed', 'canceled', 'lead']) {
       expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, 'REQUISITION_NOTE')).decision, `note·${status}`).toBe('ALLOW');
+    }
+  });
+
+  // T1-d subsystem-gate (Q5 ruling): the gated states are unreachable today and
+  // carry an EXPLICIT DENY-everything-except-Note row — a permissive default on
+  // an unreachable state is a future foothold, so we fail closed. Note stays
+  // ALLOW (compliance documentation is never blocked); SET_PRIORITY is DENY.
+  it('the subsystem-gated states (draft / pending_approval / archived) DENY everything except Note', () => {
+    for (const status of ['draft', 'pending_approval', 'archived']) {
+      expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, 'REQUISITION_TALENT')).decision, `add·${status}`).toBe('DENY');
+      expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, 'REQUISITION_SUBMITTAL')).decision, `submit·${status}`).toBe('DENY');
+      expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, 'REQUISITION_DOCUMENT')).decision, `document·${status}`).toBe('DENY');
+      expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, 'REQUISITION_NOTE')).decision, `note·${status}`).toBe('ALLOW');
+      expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, contextFor(status, 'REQUISITION')).decision, `set-priority·${status}`).toBe('DENY');
     }
   });
 });

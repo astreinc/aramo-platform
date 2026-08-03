@@ -67,6 +67,10 @@ const MIGRATIONS = [
   // PR-15 — internal requisition_number (NOT NULL) + the allocator table; the
   // create path allocates from it, so a POST /requisitions 500s without it.
   mig('20260802180000_add_requisition_number'),
+  // T1-d — RecruitingStatus supersession (last): the create path defaults
+  // status to 'open', which the old RequisitionStatus enum does not have, so a
+  // POST /requisitions 500s without it.
+  mig('20260803120000_recruiting_status_supersession'),
 ];
 
 const ISSUER = 'Aramo Core Auth';

@@ -17,9 +17,9 @@ export {
 } from './lib/requisition-lifecycle-event.store.js';
 
 export {
-  REQUISITION_STATUS_VALUES,
-  isRequisitionStatus,
-  type RequisitionStatus,
+  RECRUITING_STATUS_VALUES,
+  isRecruitingStatus,
+  type RecruitingStatus,
   type RequisitionView,
   emptyRequisitionProfileView,
   type RequisitionProfileView,

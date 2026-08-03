@@ -25,7 +25,7 @@ function outcome(partial: Partial<AddTalentPolicyOutcome>): AddTalentPolicyOutco
       inputs: {
         resource: 'REQUISITION_TALENT',
         action: 'ADD',
-        declared: { status: 'full' },
+        declared: { status: 'submittals_closed' },
         derived: {},
         capabilities: {},
       },

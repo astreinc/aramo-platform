@@ -146,6 +146,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           'utf8',
         ),
       );
+      // T1-d — the RecruitingStatus supersession, applied last (after init +
+      // add_requisition_number). Splitter-safe, but applied whole-file to match.
+      await setup.query(
+        readFileSync(
+          M('libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
+          'utf8',
+        ),
+      );
 
       // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
       // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
@@ -168,7 +176,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await setup.query(
         `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number)
-         VALUES ($1, $2, $3::text, $4, 'active'::requisition."RequisitionStatus", 1000)`,
+         VALUES ($1, $2, $3::text, $4, 'open'::requisition."RecruitingStatus", 1000)`,
         [REQ_ID, TENANT_ID, JOB_ID, RECRUITER_ID],
       );
       await setup.end();

@@ -36,7 +36,7 @@ function viewWithCommercialData(): RequisitionView {
     company_id: '00000000-0000-7000-8000-0000000000bb',
     contact_id: null,
     company_department_id: null,
-    status: 'active',
+    status: 'open',
     type: null,
     duration: null,
     description: null,

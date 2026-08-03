@@ -941,7 +941,7 @@ function AddToReqDialog({
     void listRequisitions()
       .then((r) => {
         if (cancelled) return;
-        setReqs(r.items.filter((x) => x.status === 'active'));
+        setReqs(r.items.filter((x) => x.status === 'open'));
         setLoading(false);
       })
       .catch(() => {

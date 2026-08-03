@@ -70,7 +70,7 @@ function baseView(extra: Record<string, unknown> = {}): Record<string, unknown> 
     company_id: 'co-1',
     contact_id: null,
     company_department_id: null,
-    status: 'active',
+    status: 'open',
     type: null,
     duration: null,
     description: null,
