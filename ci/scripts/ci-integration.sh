@@ -30,6 +30,7 @@ ROOTS=(
   apps/platform-admin
   apps/auth-service
   libs/tenant-reset
+  libs/placement
 )
 
 export ARAMO_RUN_INTEGRATION=1

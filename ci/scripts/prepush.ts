@@ -36,6 +36,7 @@ const INTEGRATION_ROOTS = [
   'libs/identity-index',
   'libs/portal-identity',
   'libs/tenant-reset',
+  'libs/placement',
 ];
 
 function run(cmd: string): void {
@@ -132,6 +133,10 @@ steps.push(['portal:refusal-check', () => run('npm run --silent portal:refusal-c
 steps.push(['ats:refusal-check', () => run('npm run --silent ats:refusal-check')]);
 steps.push(['ingestion:refusal-check', () => run('npm run --silent ingestion:refusal-check')]);
 steps.push(['version:sync-check', () => run('npm run --silent version:sync-check')]);
+// Track 3 E1-a §5c — the placement migration SQL is a generated artifact;
+// regenerate and byte-compare against the committed file (generate-and-compare
+// idiom, like repo-map:check / error-codes:check).
+steps.push(['placement:sql:check', () => run('npm run --silent placement:sql:check')]);
 // Front-Door PR-2 (Ruling 6) — the nginx conf-semantics wall. Unconditional
 // (refusal-check family): reads the template + compose + webhook constant fresh.
 steps.push([

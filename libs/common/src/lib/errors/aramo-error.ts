@@ -95,6 +95,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   REQUISITION_STATUS_GATED: 422,
   RESTRICTION_INVALID: 422,
   RESTRICTION_ALREADY_CLOSED: 409,
+  // Track 3 E1-a (PlacementProcess spine) — illegal transition (422) vs
+  // duplicate live attempt (409).
+  PLACEMENT_STATE_INVALID: 422,
+  PLACEMENT_ALREADY_LIVE: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

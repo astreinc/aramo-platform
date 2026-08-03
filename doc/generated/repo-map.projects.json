@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 58, "total": 60 },
+  "aliasTotals": { "apps": 2, "libs": 59, "total": 61 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -39,6 +39,7 @@
     "@aramo/object-storage": "libs/object-storage/src/index.ts",
     "@aramo/outbox-publisher": "libs/outbox-publisher/src/index.ts",
     "@aramo/pipeline": "libs/pipeline/src/index.ts",
+    "@aramo/placement": "libs/placement/src/index.ts",
     "@aramo/platform-trust": "libs/platform-trust/src/index.ts",
     "@aramo/policy-engine": "libs/policy-engine/src/index.ts",
     "@aramo/policy-store": "libs/policy-store/src/index.ts",
@@ -560,6 +561,24 @@
       "legalNextStates",
       "resolveAddTalentOutcome",
       "toEnforcementDisposition"
+    ],
+    "@aramo/placement": [
+      "DUPLICATE_GUARD_INACTIVE",
+      "INITIAL_STATE",
+      "LEGAL_TRANSITIONS",
+      "LIFECYCLE_POSITIONS",
+      "PLACEMENT_STATES",
+      "PlacementProcessEventRepository",
+      "PlacementRepository",
+      "PrismaService",
+      "STATE_POSITION",
+      "TRANSITIONS",
+      "TRANSITION_TERMINAL",
+      "buildPlacementMigrationModel",
+      "canTransition",
+      "canTransitionTyped",
+      "generatePlacementMigrationSql",
+      "lifecyclePositionOf"
     ],
     "@aramo/platform-trust": [
       "DORMANT_LINK_STATUSES",
@@ -1747,6 +1766,7 @@
       { "project": "object-storage", "status": "production" },
       { "project": "outbox-publisher", "status": "production" },
       { "project": "pipeline", "status": "production" },
+      { "project": "placement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
@@ -2929,6 +2949,7 @@
       { "project": "reporting", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
+    "@aramo/placement": [],
     "@aramo/platform-trust": [{ "project": "api", "status": "production" }],
     "@aramo/policy-engine": [
       {
@@ -3776,6 +3797,13 @@
       "name": "pipeline",
       "root": "libs/pipeline",
       "sourceRoot": "libs/pipeline/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "placement",
+      "root": "libs/placement",
+      "sourceRoot": "libs/placement/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },

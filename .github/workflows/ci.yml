@@ -393,6 +393,19 @@ jobs:
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run repo-map:check
 
+  placement-sql-check:
+    name: placement:sql:check
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm run placement:sql:check
+
   identity-index-privacy-wall:
     name: identity-index:privacy-wall
     runs-on: ubuntu-latest

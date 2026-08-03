@@ -1,0 +1,124 @@
+// Per-module Prisma schema for the `placement` module — Track 3 / E1-a
+// (PlacementProcess Spine, seam 2 of 6). Governed by
+// Aramo-Track3-E1a-PlacementProcess-Directive v1.3 LOCKED.
+//
+// IDENTITY CONTRACT (§11 — recorded in code, not only in the directive):
+//
+//   A PlacementProcess represents ONE commitment attempt for ONE talent
+//   against ONE requisition, originating from ONE submittal, at a specific
+//   point in time.
+//
+//   Multiple attempts are EXPECTED. Only ONE may be non-terminal (live) at a
+//   time — enforced by the BEFORE INSERT guard in the init migration, NOT by
+//   a uniqueness constraint. submittal_id is therefore deliberately NOT
+//   unique (a re-offer after fallthrough is a real workflow).
+//
+//   It does NOT represent: an application · a pipeline card · a matching
+//   outcome · a general engagement · an assignment. Lineage is submittal_id,
+//   never pipeline_id; naming is requisition_id, never job_id.
+//
+// PG schema: `placement` per Architecture §7.1 schema-per-module. Cross-schema
+// references are UUID-only, no FK (§7.3): submittal_id → submittal record;
+// requisition_id → requisition; talent_record_id → talent_record.TalentRecord.
+// The event-log FK to PlacementProcess is intra-schema and therefore permitted.
+//
+// The state machine (BEFORE INSERT + BEFORE UPDATE trigger) is a GENERATED
+// build artifact produced from the typed lifecycle registry
+// (src/lib/lifecycle) — see the init migration and src/lib/generator. The
+// migration SQL is never hand-edited; CI asserts byte-equality (§5c).
+//
+// id is a UUID v7 generated APP-SIDE (§2) — NO @default. A @default(uuid())
+// would emit a v4 gen_random_uuid(), defeating the time-ordered v7 intent.
+// There is deliberately NO updated_at (§2) — transition timestamps derive
+// from the append-only PlacementProcessEvent log.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["placement"]
+}
+
+// PlacementState — the closed 10-value lifecycle. The TypeScript registry
+// (src/lib/lifecycle/placement-lifecycle.ts) is the source of truth; this
+// enum mirrors its state order and the generated migration's enum.
+enum PlacementState {
+  OFFER_EXTENDED
+  OFFER_ACCEPTED
+  PRE_START
+  BLOCKED
+  READY_TO_START
+  STARTED
+  OFFER_DECLINED
+  OFFER_RESCINDED
+  NO_SHOW
+  FELL_THROUGH
+
+  @@schema("placement")
+}
+
+// PlacementEventType — closed-list event-log type. Mirrors the submittal /
+// engagement event-log substrate (one type at spine; richer types land with
+// consumers).
+enum PlacementEventType {
+  state_transition
+
+  @@schema("placement")
+}
+
+// PlacementProcess — the spine aggregate. See the identity contract above.
+model PlacementProcess {
+  // Identity. UUID v7 generated app-side — NO @default (§2).
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+
+  // Lineage (§1). NOT unique — many attempts per submittal.
+  submittal_id String @db.Uuid
+
+  // Denormalised (§3b) so a placement is readable at offer/capacity/reporting
+  // time without a cross-schema hop. UUID-only cross-schema refs, no FK (§7.3).
+  requisition_id   String @db.Uuid
+  talent_record_id String @db.Uuid
+
+  state PlacementState
+
+  // Snapshot creation timestamp. NO updated_at (§2).
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Intra-schema back-reference for the event-log FK (relation-only field).
+  events PlacementProcessEvent[]
+
+  // (tenant, submittal): duplicate-guard lookup + lineage read.
+  // (tenant, requisition) / (tenant, talent_record): offer/capacity/reporting.
+  @@index([tenant_id, submittal_id])
+  @@index([tenant_id, requisition_id])
+  @@index([tenant_id, talent_record_id])
+  @@schema("placement")
+}
+
+// PlacementProcessEvent — append-only, absolutely immutable audit log. No
+// update surface, no delete surface; both enforced by database triggers in the
+// init migration (§3). Mirrors TalentEngagementEvent.
+model PlacementProcessEvent {
+  // Identity. UUID v7 generated app-side — NO @default (§2).
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Intra-schema FK to PlacementProcess (permitted — §3, §7.3).
+  placement_process_id String           @db.Uuid
+  process              PlacementProcess @relation(fields: [placement_process_id], references: [id])
+
+  event_type    PlacementEventType
+  event_payload Json
+
+  // Snapshot creation timestamp. Whole row is immutable (trigger-enforced).
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id, placement_process_id])
+  @@index([placement_process_id, created_at])
+  @@schema("placement")
+}
