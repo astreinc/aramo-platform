@@ -14,7 +14,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { computeAliases, REPO_ROOT, renderAll } from './generate-repo-map';
+import { computeAliases, REPO_ROOT, renderAll, runSelfTest } from './generate-repo-map';
 
 function boundedDiff(expected: string, actual: string, context = 3): string {
   const e = expected.split('\n');
@@ -45,6 +45,17 @@ function boundedDiff(expected: string, actual: string, context = 3): string {
 async function main(): Promise<void> {
   const issues: string[] = [];
 
+  // 0. Generator self-test — pure invariants incl. D-REPOMAP-3 coupling
+  //    drift-immunity (identity is architectural, not textual: blank-line /
+  //    intra-file move / duplicate-occurrence stability for pathRefs AND
+  //    scripts[].references). Run here so it gates via repo-map:check, not only
+  //    under SELF_TEST=1.
+  try {
+    runSelfTest();
+  } catch (err) {
+    issues.push(`generator self-test failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   // 1. Drift check: regenerate and byte-compare.
   const rendered = await renderAll();
   for (const { rel, content } of rendered) {
@@ -66,10 +77,15 @@ async function main(): Promise<void> {
   };
   const pathKeys = new Set(Object.keys(tsconfig.compilerOptions?.paths ?? {}));
   const aliasKeys = new Set(Object.keys(aliases));
-  for (const k of aliasKeys) if (!pathKeys.has(k)) issues.push(`alias set-equality: emitted alias '${k}' not in tsconfig paths`);
-  for (const k of pathKeys) if (!aliasKeys.has(k)) issues.push(`alias set-equality: tsconfig path '${k}' missing from emitted aliases`);
+  for (const k of aliasKeys)
+    if (!pathKeys.has(k))
+      issues.push(`alias set-equality: emitted alias '${k}' not in tsconfig paths`);
+  for (const k of pathKeys)
+    if (!aliasKeys.has(k))
+      issues.push(`alias set-equality: tsconfig path '${k}' missing from emitted aliases`);
   for (const [k, target] of Object.entries(aliases)) {
-    if (!existsSync(join(REPO_ROOT, target))) issues.push(`alias resolvability: '${k}' → '${target}' does not resolve`);
+    if (!existsSync(join(REPO_ROOT, target)))
+      issues.push(`alias resolvability: '${k}' → '${target}' does not resolve`);
   }
 
   if (issues.length === 0) {

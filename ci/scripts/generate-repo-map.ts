@@ -50,7 +50,8 @@ export const OUT_FILES = {
 // **/prisma/generated/** exclusion (generated content is not indexed). Flagged
 // to Lead in the Gate-5 report as a determinism-required divergence from the
 // literal §4.2 exclusion list.
-const EXCLUDE_RE = /(^|\/)node_modules\/|(^|\/)dist\/|\/prisma\/generated\/|^package-lock\.json$|^doc\/generated\//;
+const EXCLUDE_RE =
+  /(^|\/)node_modules\/|(^|\/)dist\/|\/prisma\/generated\/|^package-lock\.json$|^doc\/generated\//;
 
 // Invocation-scan scope (Amendment v1.4 §1.4). .husky/** is included; its
 // absence is recorded as a finding rather than skipped silently.
@@ -61,7 +62,11 @@ const SCAN_DIRS = ['.github/workflows', 'deploy', 'tools', 'scripts', 'ci/script
 // ---------------------------------------------------------------------------
 
 function git(args: string[]): string {
-  return execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  return execFileSync('git', args, {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024 * 1024,
+  });
 }
 
 function readText(rel: string): string {
@@ -128,7 +133,10 @@ export function computeProjects(tracked: string[]): Project[] {
     } catch {
       continue;
     }
-    const name = typeof json['name'] === 'string' ? (json['name'] as string) : rel.replace(/\/project\.json$/, '');
+    const name =
+      typeof json['name'] === 'string'
+        ? (json['name'] as string)
+        : rel.replace(/\/project\.json$/, '');
     projects.push({
       name,
       root: rel === 'project.json' ? '.' : dirname(rel),
@@ -144,7 +152,10 @@ export function computeProjects(tracked: string[]): Project[] {
 }
 
 /** Aliases self-derived from tsconfig.base.json paths (Amendment v1.4 §2.2). */
-export function computeAliases(): { aliases: Record<string, string>; totals: Record<string, number> } {
+export function computeAliases(): {
+  aliases: Record<string, string>;
+  totals: Record<string, number>;
+} {
   const tsconfig = JSON.parse(readText('tsconfig.base.json')) as {
     compilerOptions?: { paths?: Record<string, string[]> };
   };
@@ -235,7 +246,15 @@ export function globToRegExp(glob: string): RegExp {
       const c = glob[i]!;
       if (c === '*') re += '[^/]*';
       else if (c === '?') re += '[^/]';
-      else if (c === '{' || c === '}' || c === '[' || c === ']' || c === '(' || c === ')' || c === '!') {
+      else if (
+        c === '{' ||
+        c === '}' ||
+        c === '[' ||
+        c === ']' ||
+        c === '(' ||
+        c === ')' ||
+        c === '!'
+      ) {
         // FAIL LOUD (R-REPOMAP-4 Ruling 3): brace expansion, char classes, extglob,
         // and negation are NOT implemented. A silent non-match here would put a
         // quarantined fixture into `production` and be trusted — the exact failure
@@ -244,7 +263,8 @@ export function globToRegExp(glob: string): RegExp {
           `generate-repo-map: unsupported glob metacharacter '${c}' in tsconfig pattern "${glob}". ` +
             `The compile-scope matcher handles *, **, ? and literals only.`,
         );
-      } else if (/[^A-Za-z0-9/_-]/.test(c)) re += '\\' + c; // escape any regex-special literal
+      } else if (/[^A-Za-z0-9/_-]/.test(c))
+        re += '\\' + c; // escape any regex-special literal
       else re += c;
     }
   }
@@ -321,7 +341,12 @@ export function classifyFile(
 const IMPORT_ALIAS_RE = /(?:from|import|require)\s*\(?\s*['"](@aramo\/[A-Za-z0-9._-]+)['"]/g;
 
 // production edges omit `from` (deduped per project); excluded/unscoped keep it.
-export type ImportEdge = { from?: string; project: string; status: FileStatus; excludedBy?: string };
+export type ImportEdge = {
+  from?: string;
+  project: string;
+  status: FileStatus;
+  excludedBy?: string;
+};
 
 /** Reverse index: alias → the import edges referencing it, each classified by the
  *  importing file's compile scope (Amendment R-REPOMAP-4). Records every edge —
@@ -357,7 +382,11 @@ export function computeImportedBy(
       if (cls.status === 'production' && project !== null) {
         prod[alias].add(project); // dedup per project — the specific file is recoverable
       } else {
-        const edge: ImportEdge = { from: rel, project: project ?? '(unscoped)', status: cls.status };
+        const edge: ImportEdge = {
+          from: rel,
+          project: project ?? '(unscoped)',
+          status: cls.status,
+        };
         if (cls.excludedBy !== undefined) edge.excludedBy = cls.excludedBy;
         perFile[alias].set(rel, edge); // per file — file + pattern are the information
       }
@@ -365,7 +394,10 @@ export function computeImportedBy(
   }
   const out: Record<string, ImportEdge[]> = {};
   for (const alias of Object.keys(aliases).sort()) {
-    const edges: ImportEdge[] = [...prod[alias]!].map((project) => ({ project, status: 'production' as const }));
+    const edges: ImportEdge[] = [...prod[alias]!].map((project) => ({
+      project,
+      status: 'production' as const,
+    }));
     edges.push(...perFile[alias]!.values());
     edges.sort(
       (a, b) =>
@@ -382,12 +414,39 @@ export function computeImportedBy(
 // coupling.json — pathRefs
 // ---------------------------------------------------------------------------
 
-export type PathRef = { from: string; to: string; line: number; status: FileStatus; excludedBy?: string };
+export type PathRef = { from: string; to: string; status: FileStatus; excludedBy?: string };
 
 const PATHLIKE_RE = /[A-Za-z0-9_@][A-Za-z0-9_@./-]*\/[A-Za-z0-9_@./-]*\.[A-Za-z0-9]+/g;
 
+/** Pure: the deduped path-coupling edges a single file's CONTENT produces, by
+ *  ARCHITECTURAL identity (from,to,status) — D-REPOMAP-3. Line-free; multiple
+ *  occurrences of the same (from,to) collapse to one edge, so a blank-line
+ *  insertion or an intra-file move does not change the output. Extracted so the
+ *  drift-immunity properties are unit-assertable in runSelfTest. */
+export function pathRefsForFile(
+  from: string,
+  lines: string[],
+  trackedSet: Set<string>,
+  cls: Classification,
+): PathRef[] {
+  const refs: PathRef[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < lines.length; i++) {
+    const matches = lines[i]!.match(PATHLIKE_RE);
+    if (matches === null) continue;
+    for (const cand of matches) {
+      if (cand === from || !trackedSet.has(cand) || seen.has(cand)) continue;
+      seen.add(cand);
+      const ref: PathRef = { from, to: cand, status: cls.status };
+      if (cls.excludedBy !== undefined) ref.excludedBy = cls.excludedBy;
+      refs.push(ref);
+    }
+  }
+  return refs;
+}
+
 /** Every file containing a string literal that matches another tracked path,
- *  as {from,to,line} (D-REPOMAP-1 §4.2 — the PR-5b path-coupling class). */
+ *  as {from,to,status} (D-REPOMAP-3 — architectural identity, line-free). */
 export function computePathRefs(
   tracked: string[],
   projects: Project[],
@@ -396,26 +455,15 @@ export function computePathRefs(
   const owner = ownerIndex(projects);
   const trackedSet = new Set(tracked);
   const refs: PathRef[] = [];
-  const seen = new Set<string>();
   for (const from of tracked) {
     if (!isTextFile(from)) continue;
     const cls = classifyFile(from, owner(from), scopes);
-    const lines = readText(from).split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      const matches = lines[i]!.match(PATHLIKE_RE);
-      if (matches === null) continue;
-      for (const cand of matches) {
-        if (cand === from || !trackedSet.has(cand)) continue;
-        const key = `${from} ${cand} ${i + 1}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const ref: PathRef = { from, to: cand, line: i + 1, status: cls.status };
-        if (cls.excludedBy !== undefined) ref.excludedBy = cls.excludedBy;
-        refs.push(ref);
-      }
-    }
+    refs.push(...pathRefsForFile(from, readText(from).split('\n'), trackedSet, cls));
   }
-  return refs.sort((a, b) => byCodeUnit(a.from, b.from) || byCodeUnit(a.to, b.to) || a.line - b.line);
+  return refs.sort(
+    (a, b) =>
+      byCodeUnit(a.from, b.from) || byCodeUnit(a.to, b.to) || byCodeUnit(a.status, b.status),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -423,7 +471,7 @@ export function computePathRefs(
 // ---------------------------------------------------------------------------
 
 export type RefKind = 'npm-run' | 'nx-target' | 'script-body' | 'prose';
-export type ScriptRef = { kind: RefKind; path: string; line: number };
+export type ScriptRef = { kind: RefKind; path: string };
 export type ScriptEntry = { name: string; references: ScriptRef[] };
 
 // Deterministic, locale-INDEPENDENT string order (D-REPOMAP-1 §4.4: output must
@@ -468,21 +516,34 @@ export type ScriptScan = {
   scanScope: { dirs: string[]; huskyPresent: boolean; files: number };
 };
 
+/** Pure: the deduped invocation references a single file's CONTENT produces for
+ *  one script `name`, by (kind,path) identity — D-REPOMAP-3, line-free. Multiple
+ *  occurrences of the same (kind,path) collapse; a blank-line insertion or an
+ *  intra-file move does not change the output. Unit-assertable in runSelfTest. */
+export function scriptRefsForFile(name: string, lines: string[], path: string): ScriptRef[] {
+  const out: ScriptRef[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < lines.length; i++) {
+    for (const at of tokenPositions(lines[i]!, name)) {
+      const kind = classifyOccurrence(lines[i]!, at);
+      const key = `${kind} ${path}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ kind, path });
+    }
+  }
+  return out;
+}
+
 export function computeScriptRefs(tracked: string[]): ScriptScan {
   const pkgText = readText('package.json');
   const pkg = JSON.parse(pkgText) as { scripts?: Record<string, string> };
   const scripts = pkg.scripts ?? {};
   const names = Object.keys(scripts).sort();
 
-  // package.json line index for each script name (for script-body provenance).
-  const pkgLines = pkgText.split('\n');
-  const scriptLine: Record<string, number> = {};
-  for (const name of names) {
-    const idx = pkgLines.findIndex((l) => new RegExp(`^\\s*"${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\s*:`).test(l));
-    if (idx !== -1) scriptLine[name] = idx + 1;
-  }
-
-  const scanFiles = tracked.filter((rel) => SCAN_DIRS.some((d) => rel === d || rel.startsWith(d + '/')));
+  const scanFiles = tracked.filter((rel) =>
+    SCAN_DIRS.some((d) => rel === d || rel.startsWith(d + '/')),
+  );
   const huskyPresent = tracked.some((rel) => rel.startsWith('.husky/'));
 
   const fileLines = new Map<string, string[]>();
@@ -495,14 +556,20 @@ export function computeScriptRefs(tracked: string[]): ScriptScan {
 
   for (const name of names) {
     const references: ScriptRef[] = [];
+    // D-REPOMAP-3: reference identity is (kind,path), not textual. Dedup so
+    // multiple occurrences of the same (kind,path) collapse to one reference and
+    // an unrelated line shift no longer changes canonical output.
+    const seenRef = new Set<string>();
+    const addRef = (kind: RefKind, path: string): void => {
+      const key = `${kind} ${path}`;
+      if (seenRef.has(key)) return;
+      seenRef.add(key);
+      references.push({ kind, path });
+    };
 
-    // (a) invocation scan across the six scope trees.
+    // (a) invocation scan across the six scope trees (line-free per-file dedup).
     for (const [rel, lines] of fileLines) {
-      for (let i = 0; i < lines.length; i++) {
-        for (const at of tokenPositions(lines[i]!, name)) {
-          references.push({ kind: classifyOccurrence(lines[i]!, at), path: rel, line: i + 1 });
-        }
-      }
+      for (const ref of scriptRefsForFile(name, lines, rel)) addRef(ref.kind, ref.path);
     }
 
     // (b) script-body: the name appearing inside ANOTHER script's command
@@ -511,11 +578,11 @@ export function computeScriptRefs(tracked: string[]): ScriptScan {
     for (const [owner, body] of Object.entries(scripts)) {
       if (owner === name) continue;
       if (tokenPositions(body, name).length > 0) {
-        references.push({ kind: 'script-body', path: 'package.json', line: scriptLine[owner] ?? 0 });
+        addRef('script-body', 'package.json');
       }
     }
 
-    references.sort((a, b) => byCodeUnit(a.path, b.path) || a.line - b.line || byCodeUnit(a.kind, b.kind));
+    references.sort((a, b) => byCodeUnit(a.path, b.path) || byCodeUnit(a.kind, b.kind));
     entries.push({ name, references });
 
     // unreferenced = zero references of a COUNTING kind (prose excluded).
@@ -568,12 +635,15 @@ export async function renderAll(): Promise<{ rel: string; content: string }[]> {
 // self-test + main
 // ---------------------------------------------------------------------------
 
-function runSelfTest(): void {
-  const line = "steps.push(['verify:vocabulary', () => run('npm run --silent verify:vocabulary')]);";
+export function runSelfTest(): void {
+  const line =
+    "steps.push(['verify:vocabulary', () => run('npm run --silent verify:vocabulary')]);";
   const pos = tokenPositions(line, 'verify:vocabulary');
   if (pos.length !== 2) throw new Error(`self-test: expected 2 tokens, got ${pos.length}`);
-  if (classifyOccurrence(line, pos[0]!) !== 'prose') throw new Error('self-test: first occurrence should be prose');
-  if (classifyOccurrence(line, pos[1]!) !== 'npm-run') throw new Error('self-test: flag-tolerant npm-run missed');
+  if (classifyOccurrence(line, pos[0]!) !== 'prose')
+    throw new Error('self-test: first occurrence should be prose');
+  if (classifyOccurrence(line, pos[1]!) !== 'npm-run')
+    throw new Error('self-test: flag-tolerant npm-run missed');
 
   if (tokenPositions('npm run format:check', 'format').length !== 0) {
     throw new Error('self-test: `format` wrongly matched inside `format:check`');
@@ -584,8 +654,43 @@ function runSelfTest(): void {
   if (classifyOccurrence('# -Fc custom format captures', '# -Fc custom '.length) !== 'prose') {
     throw new Error('self-test: comment word should classify prose');
   }
-  if (extractExports("export const A = 1;\nexport { b as C };\nexport type T = X;").join(',') !== 'A,C,T') {
+  if (
+    extractExports('export const A = 1;\nexport { b as C };\nexport type T = X;').join(',') !==
+    'A,C,T'
+  ) {
     throw new Error('self-test: export extraction wrong');
+  }
+
+  // D-REPOMAP-3 — coupling drift-immunity: identity is architectural, not
+  // textual. Every assertion below MUST fail against the pre-amendment generator
+  // (which keyed on line and emitted one record per textual occurrence).
+  {
+    // pathRefs — via pathRefsForFile.
+    const T = new Set(['a/one.ts', 'a/two.ts']);
+    const cls: Classification = { status: 'production' };
+    const pr = (ls: string[]): string => JSON.stringify(pathRefsForFile('a/from.ts', ls, T, cls));
+    const pbase = ['top', "x 'a/one.ts'", 'bottom'];
+    if (pr(pbase) !== pr(['top', '', "x 'a/one.ts'", 'bottom']))
+      throw new Error('self-test D-REPOMAP-3: blank-line changed pathRefs');
+    if (pr(pbase) !== pr(['top', 'bottom', 'mid', "x 'a/one.ts'"]))
+      throw new Error('self-test D-REPOMAP-3: intra-file move changed pathRefs');
+    if (JSON.parse(pr(["a 'a/one.ts'", "b 'a/one.ts'", "c 'a/one.ts'"])).length !== 1)
+      throw new Error('self-test D-REPOMAP-3: duplicate occurrence duplicated the pathRef edge');
+    if (JSON.parse(pr(["a 'a/one.ts'", "b 'a/two.ts'"])).length !== 2)
+      throw new Error('self-test D-REPOMAP-3: new relationship not recorded');
+    if (JSON.parse(pr(['nothing here'])).length !== 0)
+      throw new Error('self-test D-REPOMAP-3: delete-final did not remove the pathRef edge');
+
+    // scriptRefs — via scriptRefsForFile.
+    const sr = (ls: string[]): string =>
+      JSON.stringify(scriptRefsForFile('verify:vocabulary', ls, 'ci/scripts/x.ts'));
+    const sbase = ['top', 'npm run verify:vocabulary', 'bottom'];
+    if (sr(sbase) !== sr(['top', '', 'npm run verify:vocabulary', 'bottom']))
+      throw new Error('self-test D-REPOMAP-3: blank-line changed scriptRefs');
+    if (sr(sbase) !== sr(['top', 'bottom', 'npm run verify:vocabulary']))
+      throw new Error('self-test D-REPOMAP-3: intra-file move changed scriptRefs');
+    if (JSON.parse(sr(['npm run verify:vocabulary', 'npm run verify:vocabulary'])).length !== 1)
+      throw new Error('self-test D-REPOMAP-3: duplicate occurrence duplicated the scriptRef');
   }
 
   // glob matcher (R-REPOMAP-4)
@@ -617,14 +722,24 @@ function runSelfTest(): void {
   const scopes = new Map([
     [
       'matching',
-      { root: 'libs/matching', include: ['src/**/*.ts'], exclude: ['src/tests/**/*', '**/*.spec.ts', 'src/i15-negative-control/**'] },
+      {
+        root: 'libs/matching',
+        include: ['src/**/*.ts'],
+        exclude: ['src/tests/**/*', '**/*.spec.ts', 'src/i15-negative-control/**'],
+      },
     ],
   ]);
-  const fx = classifyFile('libs/matching/src/i15-negative-control/cip-imports-ats.fixture.ts', 'matching', scopes);
+  const fx = classifyFile(
+    'libs/matching/src/i15-negative-control/cip-imports-ats.fixture.ts',
+    'matching',
+    scopes,
+  );
   if (fx.status !== 'excluded' || fx.excludedBy !== 'src/i15-negative-control/**') {
     throw new Error(`self-test: fixture should be excluded by its glob, got ${JSON.stringify(fx)}`);
   }
-  if (classifyFile('libs/matching/src/lib/matcher.ts', 'matching', scopes).status !== 'production') {
+  if (
+    classifyFile('libs/matching/src/lib/matcher.ts', 'matching', scopes).status !== 'production'
+  ) {
     throw new Error('self-test: lib source should be production');
   }
   if (classifyFile('libs/matching/src/tests/x.spec.ts', 'matching', scopes).status !== 'excluded') {
@@ -634,7 +749,8 @@ function runSelfTest(): void {
     throw new Error('self-test: no-project file should be unscoped');
   }
   const c = canonical({ b: 1, a: [{ y: 2, x: 1 }] }) as Record<string, unknown>;
-  if (JSON.stringify(c) !== '{"a":[{"x":1,"y":2}],"b":1}') throw new Error('self-test: canonical ordering wrong');
+  if (JSON.stringify(c) !== '{"a":[{"x":1,"y":2}],"b":1}')
+    throw new Error('self-test: canonical ordering wrong');
   console.log('self-test ok: classifier, whole-token, export extraction, canonical ordering');
 }
 
