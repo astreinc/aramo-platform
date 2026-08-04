@@ -1,4 +1,7 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '@aramo/auth';
+import { AuthorizationModule } from '@aramo/authorization';
+import { EntitlementModule } from '@aramo/entitlement';
 import {
   DefinitionSetRepository,
   MaterializationIntentRepository,
@@ -21,6 +24,10 @@ import { READINESS_EVALUATOR, RealReadinessEvaluator } from './readiness-evaluat
 // Both libs export a class named PrismaService; they are DISTINCT class objects
 // (distinct DI tokens), so each repository binds to its own schema connection.
 @Module({
+  // The guarded controller lives in THIS sub-module (not AppModule), so the
+  // guard-providing modules must be imported here for @UseGuards(JwtAuthGuard,
+  // EntitlementGuard, RolesGuard) to resolve. Each is instantiated once app-wide.
+  imports: [AuthModule, AuthorizationModule, EntitlementModule],
   controllers: [PreStartRequirementController],
   providers: [
     PreStartPrismaService,
