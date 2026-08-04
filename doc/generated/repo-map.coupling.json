@@ -11638,6 +11638,24 @@
       "to": "doc/directives/D-REPOMAP-1-Directive-v1_1-LOCKED.md"
     },
     {
+      "from": "doc/directives/D-REPOMAP-3-Directive-v1_0-LOCKED.md",
+      "line": 141,
+      "status": "unscoped",
+      "to": "ci/scripts/generate-repo-map.ts"
+    },
+    {
+      "from": "doc/directives/D-REPOMAP-3-Directive-v1_0-LOCKED.md",
+      "line": 68,
+      "status": "unscoped",
+      "to": "ci/scripts/prepush.ts"
+    },
+    {
+      "from": "doc/directives/D-REPOMAP-3-Directive-v1_0-LOCKED.md",
+      "line": 148,
+      "status": "unscoped",
+      "to": "ci/scripts/verify-repo-map.ts"
+    },
+    {
       "from": "doc/directives/D-TESTINT-1-Directive-v1_0.md",
       "line": 26,
       "status": "unscoped",
