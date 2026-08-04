@@ -1,0 +1,228 @@
+// Per-module Prisma schema for the `pre-start-requirement` module — Track 3 / E2.
+// FIRST-WRITE of the canonical E2 bounded context (the lib does not exist on
+// main). Governed by Aramo-Track3-E2-PreStartRequirement-Directive v1.2.1 LOCKED
+// (§4 entities · §5 trigger · §14 A2 record-plus-audit lifecycle).
+//
+// BOUNDARY (directive LIB BOUNDARY): this library imports NO placement code,
+// performs NO PlacementProcess transition, stores NO placement lifecycle state
+// and NO placement-level is_blocked flag. It exposes readiness/blocking
+// assessment only. The guarded HTTP + cross-domain orchestration surface (the
+// readiness gate, the materialize saga) lives in apps/api by design.
+//
+//   placement_process_id — Opaque UUID reference to placement.PlacementProcess.
+//     No foreign key. No Prisma relation. No import dependency. Cross-schema per
+//     Architecture §7.3. E2 never resolves it against the placement schema.
+//
+// TRIGGER RULING (§5 finding): E1-a's §5c 14-edge SQL generator is
+// disproportionate here — E2's state model is a compact governed operational
+// state, not a second placement lifecycle. Triggers are HAND-WRITTEN (init
+// migration): column-scoped immutability on the Instance snapshot identity, and
+// append-only + update/delete-reject on PreStartRequirementAudit. Status moves
+// are guarded in the application layer, not by a DB transition matrix.
+//
+// All ids are UUID v7 generated app-side (uuid.v7()); Postgres 17 has no native
+// uuidv7() (the E1-a / policy-store precedent).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["pre_start_requirement"]
+}
+
+// =============================================================================
+// §4 — Definitions (published, versioned per the policy-store precedent)
+// =============================================================================
+
+// PreStartRequirementSet — published/versioned configuration applicable to a
+// scope. Publication lifecycle: draft -> published -> superseded (§4.1). At most
+// one open published set per (tenant, scope, scope_ref_id).
+//
+// SCOPE (§4b finding — TENANT-ONLY): `scope` ∈ SCOPE_TYPE_VALUES (only 'TENANT'
+// today; scope_ref_id == tenant_id). Client/requisition scopes and their
+// precedence are DEFERRED (ruled) — the (scope, scope_ref_id) columns are the
+// seam; no precedence resolution is implemented.
+model PreStartRequirementSet {
+  id           String @id @db.Uuid
+  tenant_id    String @db.Uuid
+  scope        String
+  scope_ref_id String @db.Uuid
+
+  version      String
+  // draft | published | superseded
+  state        String    @default("draft")
+  checksum     String
+  published_at DateTime? @db.Timestamptz(6)
+  published_by String?   @db.Uuid
+  // Supersession window: NULL effective_to = the currently-open published set.
+  effective_to DateTime? @db.Timestamptz(6)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  definitions PreStartRequirementDefinition[]
+
+  // Version unique per (tenant, scope) — republish creates a new version/row.
+  @@unique([tenant_id, scope, scope_ref_id, version])
+  @@index([tenant_id, scope, scope_ref_id, state])
+  @@schema("pre_start_requirement")
+}
+
+// PreStartRequirementDefinition — one configured obligation within a set (a ROW,
+// not a JSON blob — canonical §4). requirement_type is validated against the
+// closed registry (§4c); label is a custom display string and never a new type.
+model PreStartRequirementDefinition {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+  set_id    String @db.Uuid
+
+  requirement_type String
+  label            String
+  blocking         Boolean
+  owner_role       String?
+  sequence         Int
+  // NOT_WAIVABLE | CLIENT_AUTHORITY_ONLY | COMPLIANCE_AUTHORITY_ONLY | AUTHORIZED_INTERNAL
+  waiver_mode      String
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  set PreStartRequirementSet @relation(fields: [set_id], references: [id])
+
+  @@index([tenant_id, set_id, sequence])
+  @@schema("pre_start_requirement")
+}
+
+// =============================================================================
+// §4 — Instances (placement-bound immutable snapshots)
+// =============================================================================
+
+// PreStartRequirementInstance — a placement-bound immutable snapshot of ONE
+// configured requirement, materialized once at first PRE_START entry. The
+// snapshot identity fields are frozen at materialization and trigger-protected:
+//   definition_set_id, definition_set_version, definition_set_checksum,
+//   requirement_definition_id, requirement_type, label, blocking, owner_role,
+//   waiver_mode, placement_process_id.
+// waiver_mode is snapshotted deliberately: a waiver request is always evaluated
+// against the governing rule captured at materialization, NEVER a live join back
+// to the current definition. This closes the check-then-act race — an instance
+// materialized under NOT_WAIVABLE stays NOT_WAIVABLE even if the definition later
+// changes. status/completed_*/evidence_reference/updated_at move within the
+// compact governed state model (app-side guard). REOPENED (§14 A2) is a
+// privileged audited action, NOT a persisted status.
+model PreStartRequirementInstance {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+
+  // Opaque UUID reference to placement.PlacementProcess. No FK, no Prisma
+  // relation, no import dependency; cross-schema per §7.3.
+  placement_process_id String @db.Uuid
+
+  // Frozen binding to the governing set (idempotency + no re-version on recovery).
+  definition_set_id      String @db.Uuid
+  definition_set_version String
+  definition_set_checksum String
+  // The specific definition ROW this instance was materialized from (frozen).
+  requirement_definition_id String @db.Uuid
+
+  // Snapshot of the definition (frozen, trigger-protected).
+  requirement_type String
+  label            String
+  blocking         Boolean
+  owner_role       String?
+  waiver_mode      String
+
+  // Compact governed operational state (§14 A2). PENDING | IN_PROGRESS |
+  // SATISFIED | FAILED | WAIVED | CANCELED.
+  status       String  @default("PENDING")
+  completed_at DateTime? @db.Timestamptz(6)
+  completed_by String?   @db.Uuid
+  // Pointer ONLY (§4d). Never the check result / adverse-action content.
+  // Restricted references are gated by pre_start_requirement:read_restricted_evidence.
+  evidence_reference String?
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  audits PreStartRequirementAudit[]
+
+  // Idempotency floor: at most one instance per (tenant, placement, requirement_type).
+  @@unique([tenant_id, placement_process_id, requirement_type])
+  @@index([tenant_id, placement_process_id])
+  @@index([tenant_id, placement_process_id, blocking, status])
+  @@schema("pre_start_requirement")
+}
+
+// =============================================================================
+// Supporting entities
+// =============================================================================
+
+// PreStartMaterializationIntent — the durable reconciliation work record + the
+// per-placement idempotency root (unique per tenant + placement_process_id).
+//
+// PreStartMaterializationIntent exists because the E2 bounded context cannot
+// enumerate PlacementProcess records and must retain a durable internal work
+// record for materialization recovery. It remains necessary even after E1-b
+// makes placements enumerable. It is not an event-publishing outbox.
+//
+// status: pending -> resolved | quarantined. Bounded retries (NOT infinite): a
+// permanent configuration failure (no published set) quarantines immediately; a
+// transient failure retries up to the cap, then quarantines with a reason. A
+// quarantined placement stays fail-closed (no snapshot -> readiness refused).
+model PreStartMaterializationIntent {
+  id                   String @id @db.Uuid
+  tenant_id            String @db.Uuid
+  placement_process_id String @db.Uuid
+
+  scope        String
+  scope_ref_id String @db.Uuid
+
+  // pending | resolved | quarantined
+  status            String    @default("pending")
+  attempts          Int       @default(0)
+  quarantine_reason String?
+  last_attempt_at   DateTime? @db.Timestamptz(6)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@unique([tenant_id, placement_process_id])
+  @@index([status, last_attempt_at])
+  @@schema("pre_start_requirement")
+}
+
+// PreStartRequirementAudit — bounded immutable forensic provenance for
+// consequential requirement actions (§14 A2). Append-only; read-only after
+// insert (trigger-enforced UPDATE/DELETE rejection). It is NOT subscribable, NOT
+// drained, NOT replayed as the aggregate source, NOT an outbox, NOT a
+// cross-module integration surface.
+model PreStartRequirementAudit {
+  id        String @id @db.Uuid
+  tenant_id String @db.Uuid
+
+  requirement_instance_id String @db.Uuid
+
+  // SATISFIED | FAILED | WAIVED | CANCELED | REOPENED
+  action String
+
+  actor_id      String  @db.Uuid
+  actor_type    String
+  // Waiver authority (waiver_mode class) — required for WAIVED.
+  authority     String?
+  reason        String?
+  justification String?
+  source        String?
+
+  previous_status String
+  resulting_status String
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  instance PreStartRequirementInstance @relation(fields: [requirement_instance_id], references: [id])
+
+  @@index([tenant_id, requirement_instance_id])
+  @@index([requirement_instance_id, created_at])
+  @@schema("pre_start_requirement")
+}

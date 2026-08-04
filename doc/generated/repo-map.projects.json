@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 2, "libs": 59, "total": 61 },
+  "aliasTotals": { "apps": 2, "libs": 60, "total": 62 },
   "aliases": {
     "@aramo/activity": "libs/activity/src/index.ts",
     "@aramo/ai-draft": "libs/ai-draft/src/index.ts",
@@ -45,6 +45,7 @@
     "@aramo/policy-store": "libs/policy-store/src/index.ts",
     "@aramo/portal": "libs/portal/src/index.ts",
     "@aramo/portal-identity": "libs/portal-identity/src/index.ts",
+    "@aramo/pre-start-requirement": "libs/pre-start-requirement/src/index.ts",
     "@aramo/reporting": "libs/reporting/src/index.ts",
     "@aramo/requisition": "libs/requisition/src/index.ts",
     "@aramo/resume-parse": "libs/resume-parse/src/index.ts",
@@ -620,6 +621,35 @@
       "generatePortalLoginToken",
       "hashPortalLoginToken",
       "portalLoginExpiresAt"
+    ],
+    "@aramo/pre-start-requirement": [
+      "AUDIT_ACTION_VALUES",
+      "DefinitionSetRepository",
+      "MaterializationIntentRepository",
+      "PrismaService",
+      "REQUIREMENT_STATUS_VALUES",
+      "REQUIREMENT_TYPE_VALUES",
+      "RequirementInstanceRepository",
+      "SCOPE_TYPE_VALUES",
+      "SET_STATE_VALUES",
+      "WAIVER_AUTHORITY_VALUES",
+      "WAIVER_MODE_VALUES",
+      "canMoveStatus",
+      "canonicalizeDefinitions",
+      "checksumDefinitions",
+      "isAuditAction",
+      "isReopen",
+      "isRequirementDefinitionInput",
+      "isRequirementStatus",
+      "isRequirementType",
+      "isResolvedStatus",
+      "isScopeType",
+      "isSetState",
+      "isUnresolvedStatus",
+      "isWaiverAuthority",
+      "isWaiverMode",
+      "isWaiverPermitted",
+      "requiredAuthorityFor"
     ],
     "@aramo/reporting": [
       "DashboardController",
@@ -1413,6 +1443,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pre-start-requirement/waiver-authority.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/sourcing-policy-controller.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -1793,6 +1829,7 @@
       },
       { "project": "platform-admin", "status": "production" },
       { "project": "portal", "status": "production" },
+      { "project": "pre-start-requirement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/reporting/src/tests/company-metrics.spec.ts",
@@ -2949,7 +2986,7 @@
       { "project": "reporting", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
-    "@aramo/placement": [],
+    "@aramo/placement": [{ "project": "api", "status": "production" }],
     "@aramo/platform-trust": [{ "project": "api", "status": "production" }],
     "@aramo/policy-engine": [
       {
@@ -3087,6 +3124,21 @@
       },
       { "project": "auth-service", "status": "production" },
       { "project": "portal", "status": "production" }
+    ],
+    "@aramo/pre-start-requirement": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pre-start-requirement/placement-readiness-gate.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/pre-start-requirement/waiver-authority.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
     ],
     "@aramo/reporting": [{ "project": "api", "status": "production" }],
     "@aramo/requisition": [
@@ -3847,6 +3899,13 @@
       "root": "libs/portal-identity",
       "sourceRoot": "libs/portal-identity/src",
       "tags": ["scope:shared"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "pre-start-requirement",
+      "root": "libs/pre-start-requirement",
+      "sourceRoot": "libs/pre-start-requirement/src",
+      "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },
     {

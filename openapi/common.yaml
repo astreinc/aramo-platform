@@ -1655,6 +1655,8 @@ components:
         - RESTRICTION_ALREADY_CLOSED
         - PLACEMENT_STATE_INVALID
         - PLACEMENT_ALREADY_LIVE
+        - PRE_START_REQUIREMENT_INVALID
+        - PRE_START_NOT_READY
 
     ErrorObject:
       type: object

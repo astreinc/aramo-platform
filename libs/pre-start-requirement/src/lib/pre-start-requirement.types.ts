@@ -1,0 +1,181 @@
+// Repository I/O types for the pre-start-requirement module (Track 3 / E2).
+//
+// These are internal function-signature types, NOT HTTP DTOs. The guarded HTTP
+// surface + request/response DTOs live in apps/api (LIB BOUNDARY). They describe
+// what the repositories consume and return.
+
+import type {
+  RequirementDefinitionInput,
+  RequirementStatusValue,
+  RequirementTypeValue,
+  ScopeTypeValue,
+  SetStateValue,
+  WaiverModeValue,
+} from './pre-start-requirement-vocab.js';
+
+// A scope selector. TENANT-only today (§4b finding): scope === 'TENANT' and
+// scope_ref_id === tenant_id. The pair is the seam for future client/requisition
+// scopes; no precedence resolution is implemented.
+export type ScopeSelector = {
+  readonly scope: ScopeTypeValue;
+  readonly scope_ref_id: string;
+};
+
+// ---- Definition sets ----------------------------------------------------------
+
+export type CreateDraftSetInput = {
+  readonly tenant_id: string;
+  readonly scope: ScopeTypeValue;
+  readonly scope_ref_id: string;
+  readonly version: string;
+  readonly definitions: readonly RequirementDefinitionInput[];
+};
+
+export type EditDraftSetInput = {
+  readonly tenant_id: string;
+  readonly set_id: string;
+  readonly definitions: readonly RequirementDefinitionInput[];
+};
+
+export type PublishSetInput = {
+  readonly tenant_id: string;
+  readonly set_id: string;
+  readonly published_by: string;
+};
+
+export type DefinitionView = {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly set_id: string;
+  readonly requirement_type: RequirementTypeValue;
+  readonly label: string;
+  readonly blocking: boolean;
+  readonly owner_role: string | null;
+  readonly sequence: number;
+  readonly waiver_mode: WaiverModeValue;
+  readonly created_at: Date;
+};
+
+export type SetView = {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly scope: ScopeTypeValue;
+  readonly scope_ref_id: string;
+  readonly version: string;
+  readonly state: SetStateValue;
+  readonly checksum: string;
+  readonly published_at: Date | null;
+  readonly published_by: string | null;
+  readonly effective_to: Date | null;
+  readonly created_at: Date;
+  readonly updated_at: Date;
+  readonly definitions: readonly DefinitionView[];
+};
+
+// ---- Instances ----------------------------------------------------------------
+
+// Materialization is placement-scoped and idempotent. actor context is recorded
+// on the intent, not the instance snapshot.
+export type MaterializeInput = {
+  readonly tenant_id: string;
+  readonly placement_process_id: string;
+  readonly scope: ScopeTypeValue;
+  readonly scope_ref_id: string;
+};
+
+export type InstanceView = {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly placement_process_id: string;
+  readonly definition_set_id: string;
+  readonly definition_set_version: string;
+  readonly definition_set_checksum: string;
+  readonly requirement_definition_id: string;
+  readonly requirement_type: RequirementTypeValue;
+  readonly label: string;
+  readonly blocking: boolean;
+  readonly owner_role: string | null;
+  readonly waiver_mode: WaiverModeValue;
+  readonly status: RequirementStatusValue;
+  readonly completed_at: Date | null;
+  readonly completed_by: string | null;
+  readonly evidence_reference: string | null;
+  readonly created_at: Date;
+  readonly updated_at: Date;
+};
+
+// A non-waiver status move (SATISFIED / FAILED / CANCELED, or REOPENED back to
+// PENDING). Waivers use WaiveInput — waiver authority is evaluated separately
+// against the snapshotted waiver_mode.
+export type StatusMoveInput = {
+  readonly tenant_id: string;
+  readonly requirement_instance_id: string;
+  readonly to: RequirementStatusValue;
+  readonly actor_id: string;
+  readonly actor_type: string;
+  readonly reason?: string;
+  readonly justification?: string;
+  readonly source?: string;
+  readonly completed_by?: string;
+  readonly evidence_reference?: string;
+};
+
+// A waiver. authority is the waiver-authority class asserted by the caller;
+// it is validated against the instance's snapshotted waiver_mode (NOT the live
+// definition) before the move is permitted.
+export type WaiveInput = {
+  readonly tenant_id: string;
+  readonly requirement_instance_id: string;
+  readonly authority: string;
+  readonly actor_id: string;
+  readonly actor_type: string;
+  readonly justification: string;
+  readonly source?: string;
+};
+
+export type AuditView = {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly requirement_instance_id: string;
+  readonly action: string;
+  readonly actor_id: string;
+  readonly actor_type: string;
+  readonly authority: string | null;
+  readonly reason: string | null;
+  readonly justification: string | null;
+  readonly source: string | null;
+  readonly previous_status: RequirementStatusValue;
+  readonly resulting_status: RequirementStatusValue;
+  readonly created_at: Date;
+};
+
+// ---- Blocking assessment (the lib's readiness contribution) -------------------
+
+// The lib exposes assessment only — it never transitions the placement and never
+// stores a placement-level is_blocked flag. `materialized` is false when no
+// snapshot exists for the placement (fail-closed: the app-layer gate refuses).
+export type BlockingAssessment = {
+  readonly placement_process_id: string;
+  readonly materialized: boolean;
+  readonly total: number;
+  readonly unresolved_blocking: readonly InstanceView[];
+  readonly ready: boolean;
+};
+
+// ---- Materialization intent (reconciler work record) --------------------------
+
+export type IntentStatus = 'pending' | 'resolved' | 'quarantined';
+
+export type IntentView = {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly placement_process_id: string;
+  readonly scope: ScopeTypeValue;
+  readonly scope_ref_id: string;
+  readonly status: IntentStatus;
+  readonly attempts: number;
+  readonly quarantine_reason: string | null;
+  readonly last_attempt_at: Date | null;
+  readonly created_at: Date;
+  readonly updated_at: Date;
+};

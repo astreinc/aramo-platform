@@ -37,6 +37,7 @@ const INTEGRATION_ROOTS = [
   'libs/portal-identity',
   'libs/tenant-reset',
   'libs/placement',
+  'libs/pre-start-requirement',
 ];
 
 function run(cmd: string): void {
