@@ -138,19 +138,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('the trigger rejects raw mutation of each frozen snapshot column', async () => {
       const { tenant, placement } = await seedPlacement();
-      const [inst] = await instances.findByPlacement(tenant, placement);
+      const list = await instances.findByPlacement(tenant, placement);
+      // Pick the BACKGROUND_CHECK instance deliberately (blocking=true, version=v1,
+      // waiver_mode=NOT_WAIVABLE) so every value below is GUARANTEED distinct from
+      // the current one — the trigger uses IS DISTINCT FROM, so a no-op set of a
+      // frozen column to its SAME value is (correctly) allowed and must not be the
+      // thing under test.
+      const inst = list.find((i) => i.requirement_type === 'BACKGROUND_CHECK')!;
       const frozen: Array<[string, string]> = [
-        ['waiver_mode', `'AUTHORIZED_INTERNAL'`],
+        ['waiver_mode', `'AUTHORIZED_INTERNAL'`], // != NOT_WAIVABLE
         ['requirement_definition_id', `'${randomUUID()}'`],
-        ['definition_set_version', `'v2'`],
-        ['blocking', 'false'],
+        ['definition_set_version', `'v2'`], // != v1
+        ['blocking', 'false'], // != true
         ['placement_process_id', `'${randomUUID()}'`],
         ['tenant_id', `'${randomUUID()}'`],
       ];
       for (const [col, val] of frozen) {
         await expect(
           setupClient.$executeRawUnsafe(
-            `UPDATE pre_start_requirement."PreStartRequirementInstance" SET "${col}" = ${val} WHERE id = '${inst!.id}'`,
+            `UPDATE pre_start_requirement."PreStartRequirementInstance" SET "${col}" = ${val} WHERE id = '${inst.id}'`,
           ),
         ).rejects.toThrow(/immutable/);
       }
