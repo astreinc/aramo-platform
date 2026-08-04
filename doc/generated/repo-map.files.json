@@ -1692,6 +1692,7 @@
     "libs/identity/src/tests/role-catalog.spec.ts",
     "libs/identity/src/tests/role.repository.spec.ts",
     "libs/identity/src/tests/role.service.spec.ts",
+    "libs/identity/src/tests/scope-catalog-parity.spec.ts",
     "libs/identity/src/tests/search-pr1-seed.spec.ts",
     "libs/identity/src/tests/seed-platform-owner.integration.spec.ts",
     "libs/identity/src/tests/seed-scope-creation-parity.spec.ts",
