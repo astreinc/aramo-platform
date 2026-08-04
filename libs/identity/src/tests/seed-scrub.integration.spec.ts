@@ -55,8 +55,14 @@ const MIGRATION_SQL_PATHS = resolveIdentityMigrations(REPO_ROOT);
 // +3 scopes (89→92) and +3 portal-role grants (475→478). These are the numbers
 // the scrub must keep byte-identical.
 const CATALOG_ROLE_COUNT = 14;
-const CATALOG_SCOPE_COUNT = 92;
-const CATALOG_ROLE_SCOPE_COUNT = 478;
+// Track 3 / E2: +7 pre_start_requirement scopes → re-derived actual 100 (the prior
+// literal 92 was pre-existingly understated by 1: platform:tenant:lifecycle:manage
+// was added to SEED_IDS.scopes after this constant was last reconciled — F-2, not
+// reconciled here). +23 pre_start_requirement RoleScope rows.
+const CATALOG_SCOPE_COUNT = 100;
+// Re-derived actual 505 (prior literal 478 was pre-existingly understated by 4;
+// actual pre-change 482 + 23 pre_start_requirement grants = 505 — F-2).
+const CATALOG_ROLE_SCOPE_COUNT = 505;
 
 // Naive DDL splitter — mirrors identity.integration.spec.ts.
 function splitDdl(sql: string): string[] {

@@ -14,7 +14,7 @@ describe('Company-Fields v1.1 — company:read_commercial catalog parity', () =>
     ).toHaveLength(1);
   });
 
-  it('SEED_SCOPE_KEYS is 92 (88 + 3 Portal-P3a scopes + 1 D3b activity:redact)', () => {
-    expect(SEED_SCOPE_KEYS).toHaveLength(92);
+  it('SEED_SCOPE_KEYS is 99 (88 + 3 Portal-P3a + 1 D3b activity:redact + 7 Track3/E2 pre_start_requirement)', () => {
+    expect(SEED_SCOPE_KEYS).toHaveLength(99);
   });
 });

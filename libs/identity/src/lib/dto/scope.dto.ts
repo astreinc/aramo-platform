@@ -241,6 +241,17 @@ export const SEED_SCOPE_KEYS = [
   // one who spots a note that shouldn't be there. Redaction is auditable and
   // reversible-never, not destructive; it is not gated like *:delete.
   'activity:redact',                    // tenant_owner + tenant_admin + recruiting_manager + lead_recruiter
+  // Track 3 / E2 (Pre-Start Requirement) — SEVEN scopes (v1.2.1). read/act → the 8
+  // operational roles; configure/publish → tenant_admin + tenant_owner;
+  // waive_advisory → AM/RM/DM; waive_blocking + read_restricted_evidence are
+  // REGISTERED WITH ZERO GRANTS (§13c-1). NO scope.created (scope-seed precedent).
+  'pre_start_requirement:read',
+  'pre_start_requirement:act',
+  'pre_start_requirement:configure',
+  'pre_start_requirement:publish',
+  'pre_start_requirement:waive_advisory',
+  'pre_start_requirement:waive_blocking',
+  'pre_start_requirement:read_restricted_evidence',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 
