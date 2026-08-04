@@ -252,6 +252,7 @@ export const SEED_SCOPE_KEYS = [
   'pre_start_requirement:waive_advisory',
   'pre_start_requirement:waive_blocking',
   'pre_start_requirement:read_restricted_evidence',
+  'pre_start_requirement:reopen',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

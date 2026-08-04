@@ -59,9 +59,11 @@ const CATALOG_ROLE_COUNT = 14;
 // literal 92 was pre-existingly understated by 1: platform:tenant:lifecycle:manage
 // was added to SEED_IDS.scopes after this constant was last reconciled — F-2, not
 // reconciled here). +23 pre_start_requirement RoleScope rows.
-const CATALOG_SCOPE_COUNT = 100;
+// Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (zero-grant) → 101.
+const CATALOG_SCOPE_COUNT = 101;
 // Re-derived actual 505 (prior literal 478 was pre-existingly understated by 4;
 // actual pre-change 482 + 23 pre_start_requirement grants = 505 — F-2).
+// v1.2.2 reopen adds ZERO RoleScope rows (§13c-1) — UNCHANGED at 505.
 const CATALOG_ROLE_SCOPE_COUNT = 505;
 
 // Naive DDL splitter — mirrors identity.integration.spec.ts.

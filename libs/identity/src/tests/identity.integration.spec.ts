@@ -448,7 +448,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // this query excludes.)
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
-      expect(tenantScopes.length).toBe(96);
+      // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
+      expect(tenantScopes.length).toBe(97);
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
