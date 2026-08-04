@@ -172,6 +172,7 @@
     "apps/api/src/tests/portal-p4b-rtbf.integration.spec.ts",
     "apps/api/src/tests/portal-refusal.negative-shape.spec.ts",
     "apps/api/src/tests/pre-start-requirement/cancellation-and-route-boundary.spec.ts",
+    "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
     "apps/api/src/tests/pre-start-requirement/materialization-giveup.spec.ts",
     "apps/api/src/tests/pre-start-requirement/placement-readiness-gate.spec.ts",
     "apps/api/src/tests/pre-start-requirement/waiver-authority.spec.ts",
