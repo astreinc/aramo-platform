@@ -149,6 +149,10 @@ export default defineConfig({
       // apps/api AppModule import + the state-machine proof spec.
       '@aramo/pipeline': resolve(root, 'libs/pipeline/src/index.ts'),
       '@aramo/placement': resolve(root, 'libs/placement/src/index.ts'),
+      // Track 3 / E2 — pre-start-requirement leaf (scope:ats). Mirrors the
+      // tsconfig.base.json @aramo/pre-start-requirement alias so vitest runtime
+      // resolves the apps/api AppModule import + the integration specs.
+      '@aramo/pre-start-requirement': resolve(root, 'libs/pre-start-requirement/src/index.ts'),
       // PR-A7 Gate 5 — reporting + dashboard leaf (ATS-internal read
       // aggregator over the 8 ATS-side schemas; NO Core/engagement/
       // submittal read, the seam-exclusion is structural). Mirrors

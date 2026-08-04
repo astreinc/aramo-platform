@@ -438,6 +438,20 @@ export const ERROR_CODES = [
   // submittal_id is deliberately non-unique, so this is enforced by the BEFORE
   // INSERT guard, not a uniqueness constraint.
   'PLACEMENT_ALREADY_LIVE',
+  // Track 3 / E2 (Pre-Start Requirement) — TWO codes, split on the E7 rule:
+  // one validation code + one distinct fail-closed conflict a caller branches on.
+  // PRE_START_REQUIREMENT_INVALID (422): every domain validation refusal on a
+  // requirement or a definition set. details.reason discriminates:
+  // requirement_type_invalid | status_move_invalid | waiver_justification_required
+  // | definition_entry_invalid | definition_set_not_draft. Generic shape/missing-
+  // field failures stay class-validator 400 VALIDATION_ERROR (the examination split).
+  'PRE_START_REQUIREMENT_INVALID',
+  // PRE_START_NOT_READY (409): the fail-closed PRE_START → READY_TO_START refusal
+  // — a different OUTCOME, not a bad request. details.reason discriminates:
+  // materialization_absent (no snapshot yet — subsumes missing definition set) |
+  // blocking_unresolved (a blocking requirement is pending/failed). The one code
+  // a caller must be able to branch on to decide whether to wait or act.
+  'PRE_START_NOT_READY',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

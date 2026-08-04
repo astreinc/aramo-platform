@@ -11653,6 +11653,16 @@
       "to": "apps/api/src/tests/portal-refusal.negative-shape.spec.ts"
     },
     {
+      "from": "libs/pre-start-requirement/project.json",
+      "status": "unscoped",
+      "to": "libs/pre-start-requirement/src/index.ts"
+    },
+    {
+      "from": "libs/pre-start-requirement/project.json",
+      "status": "unscoped",
+      "to": "libs/pre-start-requirement/tsconfig.lib.json"
+    },
+    {
       "from": "libs/reporting/project.json",
       "status": "unscoped",
       "to": "libs/reporting/src/index.ts"
@@ -12062,6 +12072,11 @@
       "from": "package.json",
       "status": "unscoped",
       "to": "libs/portal-identity/prisma/schema.prisma"
+    },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/pre-start-requirement/prisma/schema.prisma"
     },
     { "from": "package.json", "status": "unscoped", "to": "libs/requisition/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/saved-list/prisma/schema.prisma" },
@@ -13446,6 +13461,11 @@
       "to": "libs/portal-identity/src/index.ts"
     },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/portal/src/index.ts" },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
+      "to": "libs/pre-start-requirement/src/index.ts"
+    },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/reporting/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/requisition/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/resume-parse/src/index.ts" },
@@ -13550,6 +13570,11 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/policy-store/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/portal-identity/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/portal/src/index.ts" },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/pre-start-requirement/src/index.ts"
+    },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/reporting/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/requisition/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/resume-parse/src/index.ts" },

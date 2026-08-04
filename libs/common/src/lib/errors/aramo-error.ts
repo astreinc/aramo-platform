@@ -99,6 +99,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // duplicate live attempt (409).
   PLACEMENT_STATE_INVALID: 422,
   PLACEMENT_ALREADY_LIVE: 409,
+  // Track 3 / E2 (Pre-Start Requirement) — one validation code (details.reason
+  // discriminator) + one fail-closed READY_TO_START conflict a caller branches on.
+  PRE_START_REQUIREMENT_INVALID: 422,
+  PRE_START_NOT_READY: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

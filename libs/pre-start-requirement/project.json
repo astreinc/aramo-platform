@@ -1,0 +1,30 @@
+{
+  "name": "pre-start-requirement",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/pre-start-requirement/src",
+  "projectType": "library",
+  "tags": ["scope:ats"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/pre-start-requirement",
+        "main": "libs/pre-start-requirement/src/index.ts",
+        "tsConfig": "libs/pre-start-requirement/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/pre-start-requirement/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/pre-start-requirement"
+      }
+    }
+  }
+}
