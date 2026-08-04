@@ -29,7 +29,8 @@ describe('Search PR-1 — scope catalog parity', () => {
     // Company-Fields appended company:read_commercial (87→88); Portal P3a appended
     // 3 scopes portal:verification:read + portal:dispute:{read,write} (88→91);
     // D3b Charter §4 Amendment appended activity:redact (91→92).
-    expect(SEED_SCOPE_KEYS).toHaveLength(92);
+    // Track 3 / E2 appended 7 pre_start_requirement scopes (92→99).
+    expect(SEED_SCOPE_KEYS).toHaveLength(99);
   });
 
   it('D3b — activity:redact is in the catalog exactly once', () => {

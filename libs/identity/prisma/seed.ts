@@ -291,6 +291,15 @@ export const SEED_IDS = {
     // D3b — Charter §4 Amendment activity redaction. Next clear scope-id after
     // the 0xb0..0xb4 / 0xf0 run (append-don't-renumber): 0xc0.
     'activity:redact': '01900000-0000-7000-8000-0000000000c0',
+    // Track 3 / E2 (Pre-Start Requirement) — SEVEN scopes (v1.2.1). Append after
+    // 0xc0 (append-don't-renumber): 0xc1..0xc7.
+    'pre_start_requirement:read': '01900000-0000-7000-8000-0000000000c1',
+    'pre_start_requirement:act': '01900000-0000-7000-8000-0000000000c2',
+    'pre_start_requirement:configure': '01900000-0000-7000-8000-0000000000c3',
+    'pre_start_requirement:publish': '01900000-0000-7000-8000-0000000000c4',
+    'pre_start_requirement:waive_advisory': '01900000-0000-7000-8000-0000000000c5',
+    'pre_start_requirement:waive_blocking': '01900000-0000-7000-8000-0000000000c6',
+    'pre_start_requirement:read_restricted_evidence': '01900000-0000-7000-8000-0000000000c7',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1726,6 +1735,39 @@ const ACTIVITY_REDACT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Track 3 / E2 (Pre-Start Requirement) — role grants (v1.2.1 §13c). EIGHT
+// grant-receiving roles, 23 RoleScope rows. `waive_blocking` and
+// `read_restricted_evidence` appear in NO bundle — REGISTERED WITH ZERO GRANTS
+// (§13c-1): a blocking waiver and screening-evidence access are granted only by a
+// named human decision, never inherited from a bundle.
+export const PRE_START_REQUIREMENT_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['recruiter', ['pre_start_requirement:read', 'pre_start_requirement:act']],
+  ['sourcer', ['pre_start_requirement:read', 'pre_start_requirement:act']],
+  ['lead_recruiter', ['pre_start_requirement:read', 'pre_start_requirement:act']],
+  ['account_manager', ['pre_start_requirement:read', 'pre_start_requirement:act', 'pre_start_requirement:waive_advisory']],
+  ['recruiting_manager', ['pre_start_requirement:read', 'pre_start_requirement:act', 'pre_start_requirement:waive_advisory']],
+  ['delivery_manager', ['pre_start_requirement:read', 'pre_start_requirement:act', 'pre_start_requirement:waive_advisory']],
+  ['tenant_admin', ['pre_start_requirement:read', 'pre_start_requirement:act', 'pre_start_requirement:configure', 'pre_start_requirement:publish']],
+  ['tenant_owner', ['pre_start_requirement:read', 'pre_start_requirement:act', 'pre_start_requirement:configure', 'pre_start_requirement:publish']],
+];
+
+// Deterministic RoleScope row ids for the 23 pre_start_requirement grants. Fresh
+// disjoint range after ACTIVITY_REDACT's 0x980..0x983 (append-don't-renumber): 0x990+.
+const PRE_START_REQUIREMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x990;
+  for (const [role, scopes] of PRE_START_REQUIREMENT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2008,6 +2050,17 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['activity:redact'], 'activity:redact', 'Redact a logged note (Charter §4 Amendment — redact-never-delete): clear the note body while author, timestamp and row survive, recording who/when/why. POST /v1/activities/:id/redact. Author-or-scope: any author redacts their own note without this scope; the scope is the CROSS-author path for the oversight tier (a lead reviewing their pod\'s feed). Granted to tenant_owner + tenant_admin + recruiting_manager + lead_recruiter. NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:user:read:directory'], 'tenant:user:read:directory', 'Resolve user_id → display_name for ANY tenant user INCLUDING inactive/departed (GET /v1/tenant/users/directory). The name-resolution half of the two-jobs split: distinct from tenant:user:read:assignable (the active-only assignable picker) because authorship/ownership/assignee names in list+detail views must still render for departed users (historical integrity). Minimal {user_id, display_name} ONLY — name lookup, NOT a roster, NOT admin data (no email/status/roles/audit). Batch-capable (?user_ids=). Granted to the 10 list-view viewers (the 9 work-assigning roles + finance, who reads the requisition/talent lists). NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['tenant:user:read:assignable'], 'tenant:user:read:assignable', 'Read the MINIMAL assignable-user roster (GET /v1/tenant/users/assignable) — id + display_name of ACTIVE tenant members only, for the assign-a-teammate pickers (task / requisition / pod). The recruiter-tier counterpart to tenant:admin:user-manage: it serves a deliberately narrow roster (least-data), NOT the admin UserView (no email/status/roles/audit). The users analogue of company:read for the company-assign picker. Granted to the 9 work-assigning operational roles (the task:read/:write tier: tenant_owner, tenant_admin, account_manager, recruiting_manager, recruiter, lead_recruiter, back_office, delivery_manager, sourcer). NO scope.created audit event (scope-seed precedent).');
+
+  // Track 3 / E2 (Pre-Start Requirement) — SEVEN scopes (v1.2.1). NO scope.created
+  // audit events (scope-seed precedent, §13d-1 F-1). Two are registered with zero
+  // default grants (§13c-1).
+  await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:read'], 'pre_start_requirement:read', 'Track 3 / E2 — view pre-start requirement instances and their status for a placement. Granted to the 8 operational roles (recruiter, sourcer, lead_recruiter, account_manager, recruiting_manager, delivery_manager, tenant_admin, tenant_owner). NO scope.created audit event (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:act'], 'pre_start_requirement:act', 'Track 3 / E2 — satisfy, fail or reopen a pre-start requirement instance (the operational work path). Granted to the 8 operational roles. NO scope.created audit event (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:configure'], 'pre_start_requirement:configure', 'Track 3 / E2 — create and edit DRAFT definition sets. Distinct from :publish at the capability/API/audit layers. Granted to tenant_admin + tenant_owner ONLY. NO scope.created audit event (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:publish'], 'pre_start_requirement:publish', 'Track 3 / E2 — publish a definition set (make it govern live placements). Kept separate from :configure so editing a draft is not authority to make it live (§13b); granted to tenant_admin + tenant_owner by default to avoid a fresh-tenant bootstrap deadlock (§14 A1). NO scope.created audit event (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:waive_advisory'], 'pre_start_requirement:waive_advisory', 'Track 3 / E2 — waive a NON-BLOCKING (advisory) requirement. Granted to account_manager + recruiting_manager + delivery_manager. Does NOT imply waive_blocking. NO scope.created audit event (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:waive_blocking'], 'pre_start_requirement:waive_blocking', 'Track 3 / E2 — waive a BLOCKING requirement (override a background check, drug screen or I-9 — a compliance act with legal exposure). REGISTERED WITH ZERO DEFAULT GRANTS (§13c-1): a tenant grants it explicitly to a named holder; a tenant with no holder cannot perform a blocking waiver, which is correct, not a gap. NO scope.created audit event (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:read_restricted_evidence'], 'pre_start_requirement:read_restricted_evidence', 'Track 3 / E2 — view evidence_reference for restricted requirement types (screening evidence). Gated independently of :read (§13b). REGISTERED WITH ZERO DEFAULT GRANTS (§13c-1): granted only by a named human decision, never inherited from a bundle. NO scope.created audit event (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -2369,6 +2422,24 @@ export async function runIdentitySeed(
       const rsId = ACTIVITY_REDACT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`D3b Activity-Redact-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Track 3 / E2 (Pre-Start Requirement) grants (23 rows; 8 roles). Range 0x990+.
+  // waive_blocking + read_restricted_evidence get NO rows (§13c-1, registered-unassigned).
+  for (const [roleKey, scopeKeys] of PRE_START_REQUIREMENT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = PRE_START_REQUIREMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`E2 Pre-Start-Requirement-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({
