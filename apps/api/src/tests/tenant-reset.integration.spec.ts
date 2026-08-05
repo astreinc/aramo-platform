@@ -99,6 +99,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return Number(r.rows[0]!.n);
     }
 
+    // Per-tenant counts across the five E2 pre-start tables.
+    async function countE2(tenant: string): Promise<Record<'set' | 'def' | 'inst' | 'intent' | 'audit', number>> {
+      const w = 'tenant_id=$1::uuid';
+      return {
+        set: await count('pre_start_requirement."PreStartRequirementSet"', w, [tenant]),
+        def: await count('pre_start_requirement."PreStartRequirementDefinition"', w, [tenant]),
+        inst: await count('pre_start_requirement."PreStartRequirementInstance"', w, [tenant]),
+        intent: await count('pre_start_requirement."PreStartMaterializationIntent"', w, [tenant]),
+        audit: await count('pre_start_requirement."PreStartRequirementAudit"', w, [tenant]),
+      };
+    }
+
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
       const uri = container.getConnectionUri();
@@ -230,6 +242,52 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         `INSERT INTO consent."TalentConsentEvent" (id, talent_record_id, tenant_id, scope, action, captured_method, consent_version, occurred_at) VALUES ($1::uuid,$2::uuid,$3::uuid,'profile_storage','granted','import','v1',now())`,
         [uuidv7(), TALENT, T],
       );
+
+      // ---- E2 pre-start requirement chain (T0 v1.1 §2.2.7) — one full chain
+      // per tenant: Set → Definition → Instance → Audit + MaterializationIntent.
+      // T's rows are deleted by the reset (via the reset-marker escape for the
+      // trigger-protected Instance/Audit); T2's must survive.
+      const seedE2 = async (tenant: string): Promise<void> => {
+        const setId = uuidv7();
+        const defId = uuidv7();
+        const instId = uuidv7();
+        const placementId = uuidv7();
+        await db.query(
+          `INSERT INTO pre_start_requirement."PreStartRequirementSet"
+             (id, tenant_id, scope, scope_ref_id, version, state, checksum)
+           VALUES ($1::uuid,$2::uuid,'TENANT',$2::uuid,'v1','published','deadbeef')`,
+          [setId, tenant],
+        );
+        await db.query(
+          `INSERT INTO pre_start_requirement."PreStartRequirementDefinition"
+             (id, tenant_id, set_id, requirement_type, label, blocking, sequence, waiver_mode)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,'BACKGROUND_CHECK','Background check',true,1,'NOT_WAIVABLE')`,
+          [defId, tenant, setId],
+        );
+        await db.query(
+          `INSERT INTO pre_start_requirement."PreStartRequirementInstance"
+             (id, tenant_id, placement_process_id, definition_set_id, definition_set_version,
+              definition_set_checksum, requirement_definition_id, requirement_type, label, blocking,
+              waiver_mode, status)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,'v1','deadbeef',$5::uuid,'BACKGROUND_CHECK',
+                   'Background check',true,'NOT_WAIVABLE','PENDING')`,
+          [instId, tenant, placementId, setId, defId],
+        );
+        await db.query(
+          `INSERT INTO pre_start_requirement."PreStartRequirementAudit"
+             (id, tenant_id, requirement_instance_id, action, actor_id, actor_type, previous_status, resulting_status)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,'FAILED',$4::uuid,'system','PENDING','FAILED')`,
+          [uuidv7(), tenant, instId, uuidv7()],
+        );
+        await db.query(
+          `INSERT INTO pre_start_requirement."PreStartMaterializationIntent"
+             (id, tenant_id, placement_process_id, scope, scope_ref_id, status)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,'TENANT',$2::uuid,'resolved')`,
+          [uuidv7(), tenant, placementId],
+        );
+      };
+      await seedE2(T);
+      await seedE2(T2);
     }, 300_000);
 
     afterAll(async () => {
@@ -292,6 +350,35 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         svc.execute(pg, opts({ tenantId: ghost, archiveLocation: resolve(archiveDir, 'ghost.json') })),
       ).rejects.toBeInstanceOf(TenantAssertionError);
       expect(existsSync(resolve(archiveDir, 'ghost.json'))).toBe(false);
+    });
+
+    // ---- E2 dry-run proof: counts included, no DELETE, no marker leaked -----
+    it('(E2-0) dry run includes E2 counts, mutates no E2 row, and leaks no marker', async () => {
+      const before = await countE2(T);
+      const report = await svc.dryRun(pg, opts());
+      const del = (label: string): number => report.deleted.find((d) => d.label === label)?.before ?? -1;
+      expect(del('pre_start_requirement."PreStartRequirementAudit"')).toBe(1);
+      expect(del('pre_start_requirement."PreStartRequirementInstance"')).toBe(1);
+      expect(del('pre_start_requirement."PreStartRequirementDefinition"')).toBe(1);
+      expect(del('pre_start_requirement."PreStartMaterializationIntent"')).toBe(1);
+      expect(del('pre_start_requirement."PreStartRequirementSet"')).toBe(1);
+      // Dry-run issued NO delete and set NO marker: E2 rows unchanged, and an
+      // ordinary DELETE is still rejected (no marker survived the dry-run).
+      expect(await countE2(T)).toEqual(before);
+      await expect(
+        db.query(`DELETE FROM pre_start_requirement."PreStartRequirementAudit" WHERE tenant_id=$1::uuid`, [T]),
+      ).rejects.toThrow(/not permitted/);
+    });
+
+    // ---- Six-part §2.4 proof, part 1: ordinary DELETE rejected BEFORE reset --
+    it('(E2-1) an ordinary DELETE of a trigger-protected E2 row is rejected before the reset', async () => {
+      await expect(
+        db.query(`DELETE FROM pre_start_requirement."PreStartRequirementAudit" WHERE tenant_id=$1::uuid`, [T]),
+      ).rejects.toThrow(/not permitted/);
+      await expect(
+        db.query(`DELETE FROM pre_start_requirement."PreStartRequirementInstance" WHERE tenant_id=$1::uuid`, [T]),
+      ).rejects.toThrow(/not permitted/);
+      expect((await countE2(T)).audit).toBe(1); // nothing deleted
     });
 
     // ---- (3) execute: scoped delete + preserve invariants + isolation ----
@@ -377,6 +464,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const full = await store.getById(T, real!.id);
       expect(full!.dry_run).toBe(false);
       expect(full!.archive_checksum).toBe(report.archive_checksum);
+    });
+
+    // ---- Six-part §2.4 proof, parts 2/3/4/5 — after the real reset ---------
+    it('(E2-2) governed reset removed all of T\'s E2 rows via the escape; bystander survives; marker gone', async () => {
+      // part 2 — the governed real reset (test 3, svc.execute) deleted every E2
+      // row for T, including the trigger-protected Instance + Audit.
+      expect(await countE2(T)).toEqual({ set: 0, def: 0, inst: 0, intent: 0, audit: 0 });
+      // part 3 — the bystander tenant's E2 chain is entirely intact.
+      expect(await countE2(T2)).toEqual({ set: 1, def: 1, inst: 1, intent: 1, audit: 1 });
+      // parts 4 + 5 — the marker was transaction-local and did NOT persist past
+      // commit: an ordinary DELETE of a surviving protected row is rejected again.
+      await expect(
+        db.query(`DELETE FROM pre_start_requirement."PreStartRequirementAudit" WHERE tenant_id=$1::uuid`, [T2]),
+      ).rejects.toThrow(/not permitted/);
+      await expect(
+        db.query(`DELETE FROM pre_start_requirement."PreStartRequirementInstance" WHERE tenant_id=$1::uuid`, [T2]),
+      ).rejects.toThrow(/not permitted/);
+      expect((await countE2(T2)).audit).toBe(1); // still protected, nothing deleted
     });
 
     // ---- (4) re-run is refused, not repeated (§4) ------------------------

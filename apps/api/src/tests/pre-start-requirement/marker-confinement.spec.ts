@@ -1,40 +1,57 @@
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-// Track 3 / E2 (T0 v1.1 §2.4) — the reset marker GUC name must stay confined.
+// Reset-marker confinement — EXACT-PATH, DEFAULT-DENY (T0 v1.1 §2.4).
 //
-// Allowed to name `app.tenant_reset` (BEFORE the tenant-reset service PR):
-//   - the canonical T0 directive (a .md, outside this .ts scan),
-//   - the E2 migration trigger definitions (a .sql, outside this .ts scan),
-//   - the dedicated E2 integration proof (a .spec.ts, excluded below).
-// After the reset PR, the tenant-reset service becomes an additional allowed path.
+// The reset GUC marker name is CONSTRUCTED from fragments below, so THIS file
+// never contains the literal string and therefore never needs to allowlist
+// itself (approval record §8D — "construct the token from fragments so it does
+// not match itself"). Every tracked file that names the marker MUST be one of
+// the EXACT repository paths in the allowlist. Everything else fails — no
+// directory/prefix/suffix wildcards, no broad test/CI exclusions.
 //
-// PROHIBITED: controllers, DTOs, request input, environment/config readers,
-// generic repositories/helpers, any unrelated production code.
-//
-// This scans ALL tracked PRODUCTION TypeScript (libs + apps, excluding *.spec.ts
-// and /tests/) and asserts the token appears in NONE — NOT a raw "only in two
-// files" allowlist (the canonical directive contains it too; this scan simply
-// never looks at .md / .sql / test files).
-const MARKER = 'app.tenant_reset';
+// The marker may appear ONLY in: the E2 trigger migration (defines the escape),
+// the dedicated E2 integration proof, the tenant-reset SERVICE (sets it), and
+// the tenant-reset six-part integration proof. It must NOT appear in controllers,
+// DTOs, request schemas, resolvers, env/config readers, generic repositories or
+// SQL helpers, or any unrelated production code, test, or fixture.
+const MARKER = ['app', 'tenant_reset'].join('.');
 
-describe('reset-marker confinement (§2.4)', () => {
-  it('app.tenant_reset does not appear in any production TypeScript', () => {
+const EXACT_ALLOWLIST = new Set<string>([
+  // E2 trigger migration — defines the exact-value escape.
+  'libs/pre-start-requirement/prisma/migrations/20260804090000_init_pre_start_requirement/migration.sql',
+  // Dedicated E2 integration proof — exercises the escape via raw SET LOCAL.
+  'libs/pre-start-requirement/src/tests/pre-start-requirement.repository.integration.spec.ts',
+  // The tenant-reset service — the ONLY production code that sets the marker.
+  'libs/tenant-reset/src/lib/tenant-reset.service.ts',
+]);
+
+describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {
+  it('every tracked file naming the reset marker is in the exact allowlist', () => {
     const root = execSync('git rev-parse --show-toplevel').toString().trim();
-    const files = execSync('git ls-files "libs/**/*.ts" "apps/**/*.ts"', { cwd: root, maxBuffer: 32 * 1024 * 1024 })
-      .toString()
-      .split('\n')
-      .filter((f) => f.length > 0 && !f.endsWith('.spec.ts') && !f.includes('/tests/'));
+    let occurrences: string[] = [];
+    try {
+      // git grep searches tracked file CONTENTS for the fixed string; the marker
+      // is passed as a runtime argument, never present in this file's source.
+      occurrences = execSync(`git grep -l -F -e ${JSON.stringify(MARKER)}`, {
+        cwd: root,
+        maxBuffer: 32 * 1024 * 1024,
+      })
+        .toString()
+        .split('\n')
+        .filter((f) => f.length > 0);
+    } catch {
+      // git grep exits non-zero when there are zero matches — treat as none.
+      occurrences = [];
+    }
 
-    const offenders = files.filter((f) => readFileSync(join(root, f), 'utf8').includes(MARKER));
-
+    const offenders = occurrences.filter((f) => !EXACT_ALLOWLIST.has(f));
     expect(
       offenders,
-      `app.tenant_reset must not appear in production code (only the E2 migration .sql, its ` +
-        `integration proof, and the canonical directive may name it). Offending files:\n  ${offenders.join('\n  ')}`,
+      `the reset marker appears outside the exact-path allowlist (default-deny). Offending exact paths:\n  ${offenders.join(
+        '\n  ',
+      )}`,
     ).toEqual([]);
   });
 });
