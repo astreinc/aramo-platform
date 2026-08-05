@@ -11502,6 +11502,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260803180000_init_placement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql"
     },
     {

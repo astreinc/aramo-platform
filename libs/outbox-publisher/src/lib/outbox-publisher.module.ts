@@ -9,6 +9,7 @@ import { CanonicalizationModule } from '@aramo/canonicalization';
 import { ConsentModule } from '@aramo/consent';
 import { EngagementModule } from '@aramo/engagement';
 import { SubmittalModule } from '@aramo/submittal';
+import { PlacementOutboxModule } from '@aramo/placement';
 
 import { OutboxPublisherProcessor } from './outbox-publisher.processor.js';
 import { OUTBOX_PUBLISHER_QUEUE_NAME } from './outbox-publisher.queue.constants.js';
@@ -51,6 +52,7 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from './outbox-publisher.queue.constants.
     EngagementModule,
     SubmittalModule,
     CanonicalizationModule,
+    PlacementOutboxModule,
     BullModule.forRootAsync({
       extraOptions: { manualRegistration: true },
       useFactory: (cfg: RedisConnectionConfig) => {

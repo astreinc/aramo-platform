@@ -24,6 +24,11 @@ interface PlacementProcessRow {
   requisition_id: string;
   talent_record_id: string;
   state: PlacementState;
+  offered_at: Date;
+  proposed_start_date: Date | null;
+  offer_expires_at: Date | null;
+  client_offer_reference: string | null;
+  offer_terms_summary: string | null;
   created_at: Date;
 }
 
@@ -35,9 +40,19 @@ function projectView(row: PlacementProcessRow): PlacementProcessView {
     requisition_id: row.requisition_id,
     talent_record_id: row.talent_record_id,
     state: row.state,
+    offered_at: row.offered_at,
+    proposed_start_date: row.proposed_start_date,
+    offer_expires_at: row.offer_expires_at,
+    client_offer_reference: row.client_offer_reference,
+    offer_terms_summary: row.offer_terms_summary,
     created_at: row.created_at,
   };
 }
+
+// The placement OutboxEvent types (9-c-2). Generic lifecycle events, NOT one per
+// outcome. Aggregate identity lives in the payload (house pattern).
+const OUTBOX_CREATED = 'placement.process.created';
+const OUTBOX_STATE_CHANGED = 'placement.process.state_changed';
 
 // The BEFORE INSERT / BEFORE UPDATE lifecycle trigger raises a named
 // check_violation. Detection is by the RAISE message substring (E7 precedent):
@@ -87,21 +102,64 @@ export class PlacementRepository {
       throw this.alreadyLive(input, requestId, live.id);
     }
 
+    // Offer snapshot (9-c-1). offered_at defaults to the server time of the offer
+    // fact. offer_expires_at, when present, must not precede offered_at.
+    const offered_at = input.offered_at ?? new Date();
+    if (input.offer_expires_at != null && input.offer_expires_at.getTime() < offered_at.getTime()) {
+      throw new AramoError('VALIDATION_ERROR', 'offer_expires_at must not precede offered_at', 400, {
+        requestId,
+        details: { field: 'offer_expires_at', offered_at, offer_expires_at: input.offer_expires_at },
+      });
+    }
+
     try {
-      const row = (await this.prisma.placementProcess.create({
-        data: {
-          id: uuidv7(),
-          tenant_id: input.tenant_id,
-          submittal_id: input.submittal_id,
-          requisition_id: input.requisition_id,
-          talent_record_id: input.talent_record_id,
-          state: INITIAL_STATE,
-        },
-      })) as PlacementProcessRow;
+      // Transactional outbox (9-c-2): the PlacementProcess row and its
+      // placement.process.created event commit atomically or not at all.
+      const row = await this.prisma.$transaction(async (tx) => {
+        const created = (await tx.placementProcess.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: input.tenant_id,
+            submittal_id: input.submittal_id,
+            requisition_id: input.requisition_id,
+            talent_record_id: input.talent_record_id,
+            state: INITIAL_STATE,
+            offered_at,
+            proposed_start_date: input.proposed_start_date ?? null,
+            offer_expires_at: input.offer_expires_at ?? null,
+            client_offer_reference: input.client_offer_reference ?? null,
+            offer_terms_summary: input.offer_terms_summary ?? null,
+          },
+        })) as PlacementProcessRow;
+        await tx.outboxEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: input.tenant_id,
+            event_type: OUTBOX_CREATED,
+            // Non-sensitive operational offer snapshot — NO commercial rates,
+            // restricted evidence, or authorization detail (9-c-2).
+            event_payload: {
+              placement_process_id: created.id,
+              tenant_id: created.tenant_id,
+              submittal_id: created.submittal_id,
+              requisition_id: created.requisition_id,
+              talent_record_id: created.talent_record_id,
+              state: created.state,
+              offered_at: created.offered_at.toISOString(),
+              proposed_start_date: created.proposed_start_date?.toISOString() ?? null,
+              offer_expires_at: created.offer_expires_at?.toISOString() ?? null,
+              client_offer_reference: created.client_offer_reference,
+              offer_terms_summary: created.offer_terms_summary,
+              occurred_at: created.created_at.toISOString(),
+            },
+          },
+        });
+        return created;
+      });
       return projectView(row);
     } catch (err) {
       // Race-safe floor: the BEFORE INSERT trigger rejected a concurrent
-      // second live attempt.
+      // second live attempt (rolls back the outbox row too).
       if (isDuplicateLiveViolation(err)) {
         throw this.alreadyLive(input, requestId, undefined);
       }
@@ -142,6 +200,26 @@ export class PlacementRepository {
             placement_process_id: input.placement_process_id,
             event_type: 'state_transition',
             event_payload: { from: current.state, to: input.to },
+          },
+        });
+        // Transactional outbox (9-c-2): a placement.process.state_changed event
+        // commits atomically with the state change. A rejected/illegal edge never
+        // reaches here, so no event is written for it.
+        await tx.outboxEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: input.tenant_id,
+            event_type: OUTBOX_STATE_CHANGED,
+            event_payload: {
+              placement_process_id: input.placement_process_id,
+              tenant_id: input.tenant_id,
+              submittal_id: current.submittal_id,
+              requisition_id: current.requisition_id,
+              talent_record_id: current.talent_record_id,
+              from_state: current.state,
+              to_state: input.to,
+              occurred_at: new Date().toISOString(),
+            },
           },
         });
         return u;

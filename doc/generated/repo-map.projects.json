@@ -570,6 +570,8 @@
       "LIFECYCLE_POSITIONS",
       "PLACEMENT_AUTHORITY_CLASSES",
       "PLACEMENT_STATES",
+      "PlacementOutboxModule",
+      "PlacementOutboxRepository",
       "PlacementProcessEventRepository",
       "PlacementRepository",
       "PrismaService",
@@ -2995,7 +2997,14 @@
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" }
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
+        "project": "outbox-publisher",
+        "status": "excluded"
+      },
+      { "project": "outbox-publisher", "status": "production" }
     ],
     "@aramo/platform-trust": [{ "project": "api", "status": "production" }],
     "@aramo/policy-engine": [

@@ -16,6 +16,8 @@ import { PlacementController } from '../placement/placement.controller.js';
 // caller must be given the exact class scope or the transition is refused.
 
 const INIT_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260803180000_init_placement_model/migration.sql');
+// E1-c — the additive offer-snapshot + OutboxEvent migration, applied AFTER init.
+const OFFER_OUTBOX_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql');
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const auth = (scopes: string[], tenant: string): any => ({ sub: 'u', tenant_id: tenant, actor_kind: 'user', consumer_type: 'tenant', scopes });
@@ -43,8 +45,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const url = container.getConnectionUri();
     setup = new PrismaService(url);
     await setup.$connect();
-    for (const s of splitDdl(readFileSync(INIT_MIGRATION, 'utf8'))) {
-      if (s.trim()) await setup.$executeRawUnsafe(s.trim());
+    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION]) {
+      for (const s of splitDdl(readFileSync(migration, 'utf8'))) {
+        if (s.trim()) await setup.$executeRawUnsafe(s.trim());
+      }
     }
     prisma = new PrismaService(url);
     await prisma.$connect();
@@ -128,5 +132,49 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const id = await make(t);
     expect((await ctrl.get(auth(['placement:read'], t), 'r', id)).id).toBe(id);
     await expect(ctrl.get(auth(['placement:read'], randomUUID()), 'r', id)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  });
+
+  // E1-c — the offer snapshot flows through the HTTP boundary (DTO ISO strings →
+  // Date at the controller) and is returned on the response view.
+  it('create accepts the offer snapshot and the response carries it back', async () => {
+    const t = randomUUID();
+    const v = await ctrl.create(auth(['placement:create'], t), 'r', {
+      submittal_id: randomUUID(),
+      requisition_id: randomUUID(),
+      talent_record_id: randomUUID(),
+      offered_at: '2026-08-05T12:00:00.000Z',
+      proposed_start_date: '2026-09-01',
+      offer_expires_at: '2026-08-12T12:00:00.000Z',
+      client_offer_reference: 'CLIENT-REF-99',
+      offer_terms_summary: 'Full-time, hybrid.',
+    });
+    expect(v.offered_at.toISOString()).toBe('2026-08-05T12:00:00.000Z');
+    expect(v.offer_expires_at?.toISOString()).toBe('2026-08-12T12:00:00.000Z');
+    expect(v.client_offer_reference).toBe('CLIENT-REF-99');
+    expect(v.offer_terms_summary).toBe('Full-time, hybrid.');
+    // The read surface returns the same snapshot.
+    const read = await ctrl.get(auth(['placement:read'], t), 'r', v.id);
+    expect(read.client_offer_reference).toBe('CLIENT-REF-99');
+  });
+
+  it('create without an offer snapshot defaults offered_at and nulls the optional fields', async () => {
+    const t = randomUUID();
+    const v = await ctrl.create(auth(['placement:create'], t), 'r', body());
+    expect(v.offered_at).toBeInstanceOf(Date);
+    expect(v.proposed_start_date).toBeNull();
+    expect(v.client_offer_reference).toBeNull();
+  });
+
+  it('an offer_expires_at before offered_at is refused (VALIDATION_ERROR 400)', async () => {
+    const t = randomUUID();
+    await expect(
+      ctrl.create(auth(['placement:create'], t), 'r', {
+        submittal_id: randomUUID(),
+        requisition_id: randomUUID(),
+        talent_record_id: randomUUID(),
+        offered_at: '2026-08-05T12:00:00.000Z',
+        offer_expires_at: '2026-08-04T12:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
   });
 });

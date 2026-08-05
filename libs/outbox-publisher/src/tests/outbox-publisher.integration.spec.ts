@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
+import { Global, Module } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
@@ -11,6 +12,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { PrismaService as CanonicalizationPrismaService } from '@aramo/canonicalization';
 import { PrismaService as ConsentPrismaService, OutboxPublisherRepository } from '@aramo/consent';
 import { PrismaService as EngagementPrismaService } from '@aramo/engagement';
+import { PrismaService as PlacementPrismaService } from '@aramo/placement';
 import { PrismaService as SubmittalPrismaService } from '@aramo/submittal';
 
 import { OutboxPublisherModule } from '../lib/outbox-publisher.module.js';
@@ -33,7 +35,7 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from '../lib/outbox-publisher.queue.const
 //         tenant_id + resolution_method + payload_id, no tier/score/
 //         rank/match).
 //
-// MIGRATIONS apply-list (10 files, dependency-ordered):
+// MIGRATIONS apply-list (12 files, dependency-ordered):
 //   1. libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql
 //   2. libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql
 //   3. libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql
@@ -44,6 +46,10 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from '../lib/outbox-publisher.queue.const
 //   8. libs/submittal/prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql
 //   9. libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql
 //  10. libs/canonicalization/prisma/migrations/20260603160000_init_canonicalization_schema/migration.sql
+//  11. libs/placement/prisma/migrations/20260803180000_init_placement_model/migration.sql
+//  12. libs/placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql
+//      (E1-c — the placement schema is the 5th drained namespace; its
+//      OutboxEvent table must exist or the placement drain fails the tick.)
 //
 // PL-66 Cat 5 contract: real Redis 7 + Postgres 17 testcontainers; no
 // mocks for the database or queue.
@@ -59,9 +65,29 @@ const MIGRATION_FILES: ReadonlyArray<readonly [string, string]> = [
   ['submittal-rename', '../../../submittal/prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql'],
   ['submittal-outbox', '../../../submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'],
   ['canonicalization-init', '../../../canonicalization/prisma/migrations/20260603160000_init_canonicalization_schema/migration.sql'],
+  ['placement-init', '../../../placement/prisma/migrations/20260803180000_init_placement_model/migration.sql'],
+  ['placement-offer-outbox', '../../../placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql'],
 ];
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
+
+// The multi-schema publisher graph transitively pulls in ExaminationModule
+// (SubmittalModule + EngagementModule both import it). ExaminationRepository
+// injects the REQUISITION_STATE_READER port, which — by design (T1-a, the
+// CIP⊥ATS wall) — is bound ONLY at the apps/api composition root via a @Global
+// module. This spec composes the publisher without apps/api, so it must supply
+// its own binding or the graph cannot boot. The publisher never touches
+// examination, so a trivial always-active stub suffices. Bound by the bare
+// string token so this leaf lib does not grow an @aramo/examination edge.
+// (Pre-existing gap: this binding was missing on main and libs/outbox-publisher
+// is absent from the CI integration ROOTs, so the boot failure went unrun —
+// registered as an E1-c finding.)
+@Global()
+@Module({
+  providers: [{ provide: 'REQUISITION_STATE_READER', useValue: { isActive: async () => true } }],
+  exports: ['REQUISITION_STATE_READER'],
+})
+class StubRequisitionStateReaderModule {}
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'OutboxPublisherProcessor — multi-schema integration (real Redis 7 + Postgres 17)',
@@ -72,6 +98,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let engagementPrisma: EngagementPrismaService;
     let submittalPrisma: SubmittalPrismaService;
     let canonicalizationPrisma: CanonicalizationPrismaService;
+    let placementPrisma: PlacementPrismaService;
     let moduleRef: TestingModule;
     let publisherQueue: Queue;
     let savedRedisUrl: string | undefined;
@@ -111,11 +138,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       engagementPrisma = new EngagementPrismaService(pgUrl);
       submittalPrisma = new SubmittalPrismaService(pgUrl);
       canonicalizationPrisma = new CanonicalizationPrismaService(pgUrl);
+      placementPrisma = new PlacementPrismaService(pgUrl);
       await Promise.all([
         consentPrisma.$connect(),
         engagementPrisma.$connect(),
         submittalPrisma.$connect(),
         canonicalizationPrisma.$connect(),
+        placementPrisma.$connect(),
       ]);
 
       savedRedisUrl = process.env['REDIS_URL'];
@@ -124,7 +153,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       process.env['DATABASE_URL'] = pgUrl;
 
       moduleRef = await Test.createTestingModule({
-        imports: [OutboxPublisherModule],
+        imports: [StubRequisitionStateReaderModule, OutboxPublisherModule],
       })
         .overrideProvider(ConsentPrismaService)
         .useValue(consentPrisma)
@@ -134,6 +163,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .useValue(submittalPrisma)
         .overrideProvider(CanonicalizationPrismaService)
         .useValue(canonicalizationPrisma)
+        .overrideProvider(PlacementPrismaService)
+        .useValue(placementPrisma)
         .compile();
 
       const app = moduleRef.createNestApplication();
@@ -165,6 +196,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         engagementPrisma?.$disconnect(),
         submittalPrisma?.$disconnect(),
         canonicalizationPrisma?.$disconnect(),
+        placementPrisma?.$disconnect(),
       ]);
       await Promise.all([redisContainer?.stop(), pgContainer?.stop()]);
     }, 60_000);
@@ -219,18 +251,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             } as never,
           },
         });
+        // E1-c — the 5th drained namespace.
+        await placementPrisma.outboxEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: TENANT_A,
+            event_type: 'placement.process.created',
+            event_payload: { placement_process_id: uuidv7(), idx: i } as never,
+          },
+        });
       }
 
       // Seed 1 already-published row per schema (4 total) to prove the
       // publisher does NOT re-stamp them.
       const prePublished: Record<
-        'consent' | 'engagement' | 'submittal' | 'canonicalization',
+        'consent' | 'engagement' | 'submittal' | 'canonicalization' | 'placement',
         string
       > = {
         consent: uuidv7(),
         engagement: uuidv7(),
         submittal: uuidv7(),
         canonicalization: uuidv7(),
+        placement: uuidv7(),
       };
       await consentPrisma.outboxEvent.create({
         data: {
@@ -273,6 +315,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           published_at: preExistingPublishedAt,
         },
       });
+      await placementPrisma.outboxEvent.create({
+        data: {
+          id: prePublished.placement,
+          tenant_id: TENANT_A,
+          event_type: 'placement.process.created',
+          event_payload: { placement_process_id: uuidv7(), idx: 'pre' } as never,
+          published_at: preExistingPublishedAt,
+        },
+      });
 
       await publisherQueue.add('tick', {});
 
@@ -296,6 +347,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         engagementPublished,
         submittalPublished,
         canonicalizationPublished,
+        placementPublished,
       ] = await Promise.all([
         consentPrisma.outboxEvent.findMany({
           where: { tenant_id: TENANT_A, published_at: { not: null } },
@@ -309,11 +361,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         canonicalizationPrisma.outboxEvent.findMany({
           where: { tenant_id: TENANT_A, published_at: { not: null } },
         }),
+        placementPrisma.outboxEvent.findMany({
+          where: { tenant_id: TENANT_A, published_at: { not: null } },
+        }),
       ]);
       expect(consentPublished).toHaveLength(3);
       expect(engagementPublished).toHaveLength(3);
       expect(submittalPublished).toHaveLength(3);
       expect(canonicalizationPublished).toHaveLength(3);
+      // E1-c — the placement drain published its 2 unpublished rows (+1 pre).
+      expect(placementPublished).toHaveLength(3);
 
       // T2-2b — R10-clean payload assertion on the drained
       // talent.canonicalized events: the published rows carry only
@@ -345,7 +402,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Assert: pre-existing published_at values are preserved on all 4
       // pre-published rows.
       for (const [schema, id] of Object.entries(prePublished) as ReadonlyArray<
-        ['consent' | 'engagement' | 'submittal' | 'canonicalization', string]
+        ['consent' | 'engagement' | 'submittal' | 'canonicalization' | 'placement', string]
       >) {
         const client =
           schema === 'consent'
@@ -354,7 +411,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
               ? engagementPrisma
               : schema === 'submittal'
                 ? submittalPrisma
-                : canonicalizationPrisma;
+                : schema === 'canonicalization'
+                  ? canonicalizationPrisma
+                  : placementPrisma;
         const row = await client.outboxEvent.findUnique({ where: { id } });
         expect(row?.published_at?.getTime(), `pre-published ${schema} row`).toBe(
           preExistingPublishedAt.getTime(),

@@ -6,6 +6,7 @@ import { CanonicalizationOutboxRepository } from '@aramo/canonicalization';
 import { OutboxPublisherRepository } from '@aramo/consent';
 import { EngagementOutboxRepository } from '@aramo/engagement';
 import { SubmittalOutboxRepository } from '@aramo/submittal';
+import { PlacementOutboxRepository } from '@aramo/placement';
 
 import {
   OUTBOX_PUBLISHER_BATCH_SIZE,
@@ -39,7 +40,7 @@ import {
 //     OUTBOX_PUBLISHER_BATCH_SIZE rows, oldest first.
 //   - markPublished bulk-stamps published_at on the drained rows.
 //   - Failures in one schema's drain do NOT abort the other schemas;
-//     each drain is wrapped so the tick attempts all four.
+//     each drain is wrapped so the tick attempts all five.
 //
 // Lifecycle mirrors libs/matching/src/lib/matching.processor.ts pattern
 // (ADR-0018 Decision 1): manualRegistration + onApplicationBootstrap gate
@@ -82,6 +83,7 @@ export class OutboxPublisherProcessor
     private readonly engagementOutbox: EngagementOutboxRepository,
     private readonly submittalOutbox: SubmittalOutboxRepository,
     private readonly canonicalizationOutbox: CanonicalizationOutboxRepository,
+    private readonly placementOutbox: PlacementOutboxRepository,
     private readonly registrar: BullRegistrar,
     private readonly redisConfig: RedisConnectionConfig,
     @Inject('OutboxPublisherProcessorLogger')
@@ -118,6 +120,13 @@ export class OutboxPublisherProcessor
       batchSize,
       job,
     );
+    // E1-c — the placement schema is the 5th drained namespace.
+    const placementCount = await this.drainSchema(
+      'placement',
+      this.placementOutbox,
+      batchSize,
+      job,
+    );
 
     this.logger.log({
       event: 'outbox_publisher_tick_completed',
@@ -127,13 +136,14 @@ export class OutboxPublisherProcessor
       engagement_published_count: engagementCount,
       submittal_published_count: submittalCount,
       canonicalization_published_count: canonicalizationCount,
+      placement_published_count: placementCount,
       total_published_count:
-        consentCount + engagementCount + submittalCount + canonicalizationCount,
+        consentCount + engagementCount + submittalCount + canonicalizationCount + placementCount,
     });
   }
 
   private async drainSchema(
-    schemaName: 'consent' | 'engagement' | 'submittal' | 'canonicalization',
+    schemaName: 'consent' | 'engagement' | 'submittal' | 'canonicalization' | 'placement',
     repo: OutboxRepositoryShape,
     batchSize: number,
     job: Job<OutboxPublisherTickInput>,

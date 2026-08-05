@@ -13,6 +13,7 @@
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
       "@aramo/engagement": ["../../dist/libs/engagement/src/index.d.ts"],
+      "@aramo/placement": ["../../dist/libs/placement/src/index.d.ts"],
       "@aramo/submittal": ["../../dist/libs/submittal/src/index.d.ts"]
     }
   },
