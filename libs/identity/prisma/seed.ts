@@ -301,6 +301,11 @@ export const SEED_IDS = {
     'pre_start_requirement:waive_blocking': '01900000-0000-7000-8000-0000000000c6',
     'pre_start_requirement:read_restricted_evidence': '01900000-0000-7000-8000-0000000000c7',
     'pre_start_requirement:reopen': '01900000-0000-7000-8000-0000000000c8',
+    'placement:read': '01900000-0000-7000-8000-0000000000c9',
+    'placement:create': '01900000-0000-7000-8000-0000000000ca',
+    'placement:transition': '01900000-0000-7000-8000-0000000000cb',
+    'placement:activate': '01900000-0000-7000-8000-0000000000cc',
+    'placement:terminate': '01900000-0000-7000-8000-0000000000cd',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -2063,6 +2068,17 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:waive_blocking'], 'pre_start_requirement:waive_blocking', 'Track 3 / E2 — waive a BLOCKING requirement (override a background check, drug screen or I-9 — a compliance act with legal exposure). REGISTERED WITH ZERO DEFAULT GRANTS (§13c-1): a tenant grants it explicitly to a named holder; a tenant with no holder cannot perform a blocking waiver, which is correct, not a gap. NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:read_restricted_evidence'], 'pre_start_requirement:read_restricted_evidence', 'Track 3 / E2 — view evidence_reference for restricted requirement types (screening evidence). Gated independently of :read (§13b). REGISTERED WITH ZERO DEFAULT GRANTS (§13c-1): granted only by a named human decision, never inherited from a bundle. NO scope.created audit event (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['pre_start_requirement:reopen'], 'pre_start_requirement:reopen', 'Track 3 / E2 — reopen a resolved/failed pre-start requirement instance back to PENDING (a privileged audited action; §13-R v1.2.2). Lifted OUT of :act because reopening reverses a recorded compliance outcome. REGISTERED WITH ZERO DEFAULT GRANTS (§13c-1): granted only by a named human decision, never inherited from a bundle — not to any recruiter role, configure/publish holders, tenant_admin, tenant_owner, waiver holders, auditor or super_admin. NO scope.created audit event (scope-seed precedent).');
+  // Track 3 / E1-b — PlacementProcess authorization (E1-b Approval Record §2). read
+  // gates GET, create gates POST /v1/placements; the generic transition route
+  // requires the class scope DERIVED from the target edge under the ratified
+  // classification. ALL FOUR non-read scopes ship with ZERO DEFAULT GRANTS — no
+  // ratified placement role matrix exists yet; an unassigned scope is recoverable,
+  // a silently broad grant is not. NO scope.created (scope-seed precedent).
+  await upsertScope(prisma, SEED_IDS.scopes['placement:read'], 'placement:read', 'Track 3 / E1-b — read a PlacementProcess (GET /v1/placements/:id). ZERO DEFAULT GRANTS: no ratified placement role matrix exists yet. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['placement:create'], 'placement:create', 'Track 3 / E1-b — create a PlacementProcess on the client-selection/offer fact (POST /v1/placements). ZERO DEFAULT GRANTS. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['placement:transition'], 'placement:transition', 'Track 3 / E1-b — ORDINARY non-terminal PlacementProcess progression (the 5 committed-tier edges: offer->accepted, accepted->pre_start, pre_start->ready_to_start, pre_start->blocked, blocked->pre_start). ZERO DEFAULT GRANTS. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['placement:activate'], 'placement:activate', 'Track 3 / E1-b — the edge that establishes the authoritative live/committed placement and CONSUMES CAPACITY (ready_to_start->started). Distinct authority from ordinary progression (§2). ZERO DEFAULT GRANTS. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['placement:terminate'], 'placement:terminate', 'Track 3 / E1-b — terminal/irreversible PlacementProcess termination (the 8 edges into OFFER_DECLINED/OFFER_RESCINDED/NO_SHOW/FELL_THROUGH). ZERO DEFAULT GRANTS. NO scope.created (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {

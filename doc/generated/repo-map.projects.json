@@ -568,6 +568,7 @@
       "INITIAL_STATE",
       "LEGAL_TRANSITIONS",
       "LIFECYCLE_POSITIONS",
+      "PLACEMENT_AUTHORITY_CLASSES",
       "PLACEMENT_STATES",
       "PlacementProcessEventRepository",
       "PlacementRepository",
@@ -578,6 +579,7 @@
       "buildPlacementMigrationModel",
       "canTransition",
       "canTransitionTyped",
+      "edgeAuthorityClass",
       "generatePlacementMigrationSql",
       "lifecyclePositionOf"
     ],
@@ -2986,7 +2988,15 @@
       { "project": "reporting", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
-    "@aramo/placement": [{ "project": "api", "status": "production" }],
+    "@aramo/placement": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/platform-trust": [{ "project": "api", "status": "production" }],
     "@aramo/policy-engine": [
       {

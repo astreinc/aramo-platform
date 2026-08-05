@@ -19,12 +19,15 @@ export {
   canTransition,
   canTransitionTyped,
   lifecyclePositionOf,
+  PLACEMENT_AUTHORITY_CLASSES,
+  edgeAuthorityClass,
 } from './lib/lifecycle/placement-lifecycle.js';
 export type {
   PlacementState,
   LifecyclePosition,
   LegalTarget,
   PlacementTransition,
+  PlacementAuthorityClass,
 } from './lib/lifecycle/placement-lifecycle.js';
 
 // SQL generator (§5c/§5d) — registry → typed AST → migration SQL.

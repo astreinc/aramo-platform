@@ -56,6 +56,7 @@ import { TaskModule } from '@aramo/task';
 // port to the ATS RequisitionRepository adapter (@Global; the wall-legal seam).
 import { RequisitionStateReaderModule } from './requisition-state/requisition-state-reader.module.js';
 import { PreStartRequirementModule } from './pre-start-requirement/pre-start-requirement.module.js';
+import { PlacementModule } from './placement/placement.module.js';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantWriteFreezeInterceptor } from './tenant-write-freeze/tenant-write-freeze.interceptor.js';
 import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
@@ -318,6 +319,8 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // apps/api composition root where the readiness gate wraps the placement
     // transition (the E2 lib never imports @aramo/placement).
     PreStartRequirementModule,
+    // Track 3 / E1-b — PlacementProcess guarded HTTP surface over the E1-a spine.
+    PlacementModule,
     // T2-2a — canonicalization orchestrator (NEW leaf lib). Lead-authored
     // per Aramo-T2-2a-Canonicalization-Orchestration-Directive-v1_0-LOCKED.md.
     // Service-only at T2-2a (no controller). Imported here BEFORE

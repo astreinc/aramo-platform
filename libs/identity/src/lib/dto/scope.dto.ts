@@ -258,6 +258,17 @@ export const SEED_SCOPE_KEYS = [
   'pre_start_requirement:waive_blocking',
   'pre_start_requirement:read_restricted_evidence',
   'pre_start_requirement:reopen',
+  // Track 3 / E1-b — PlacementProcess HTTP surface. Dedicated placement:* scopes
+  // (E1-b Approval Record §2 — no ATS-scope reuse). The transition route enforces
+  // the 14-edge matrix; the authority split is DERIVED from that matrix under the
+  // ratified classification: ordinary progression=transition, live/capacity=activate,
+  // terminal/irreversible=terminate. ALL FOUR non-read placement scopes ship with
+  // ZERO default grants (no ratified placement role matrix exists yet).
+  'placement:read',
+  'placement:create',
+  'placement:transition',
+  'placement:activate',
+  'placement:terminate',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 
