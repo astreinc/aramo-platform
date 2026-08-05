@@ -119,6 +119,11 @@ export const SEED_SCOPE_KEYS = [
   'platform:tenant:provision',  // super_admin only — create tenant + entitlement seed + Tenant-Owner invite
   'platform:tenant:read',       // super_admin only — list/read tenants for the platform view
   'platform:admin:invite',      // super_admin only — invite another platform admin (against the platform Cognito pool)
+  // F-2 reconciliation — Platform-Console Increment-2 PR-1 added this to
+  // PLATFORM_SCOPE_KEYS + SEED_IDS.scopes + upsertScope but never to this
+  // catalog, so SEED_SCOPE_KEYS drifted 1 below the id-map. Now reconciled;
+  // the scope-catalog parity guard no longer needs an exemption.
+  'platform:tenant:lifecycle:manage',  // super_admin only — suspend/reactivate/offboard/close operator endpoints
   // AUTHZ-D5 — 6 compensation:view:* scopes (the field-masking scope
   // family). The FINAL authorization PR — field-level masking of the
   // requisition read DTO's compensation surface (D4b masked WHICH
