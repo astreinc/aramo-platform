@@ -11,11 +11,16 @@ import { describe, expect, it } from 'vitest';
 // the EXACT repository paths in the allowlist. Everything else fails — no
 // directory/prefix/suffix wildcards, no broad test/CI exclusions.
 //
-// The marker may appear ONLY in: the E2 trigger migration (defines the escape),
-// the dedicated E2 integration proof, the tenant-reset SERVICE (sets it), and
-// the tenant-reset six-part integration proof. It must NOT appear in controllers,
-// DTOs, request schemas, resolvers, env/config readers, generic repositories or
-// SQL helpers, or any unrelated production code, test, or fixture.
+// THE RULE (PR-C prose alignment, PO Ruling): a file is allowlisted ONLY when it
+// CONTAINS THE LITERAL MARKER and has an authorized reason to. The blessed
+// literal-bearing files are the trigger migrations that DEFINE the exact-value
+// escape, the dedicated migration integration proofs that EXERCISE the escape via
+// raw SET LOCAL, and the tenant-reset SERVICE that SETS it. Behavioral proofs that
+// drive the reset through the service WITHOUT naming the literal (e.g. the
+// tenant-reset six-part integration proof) do NOT contain the string and therefore
+// do NOT need allowlisting. The marker must NOT appear in controllers, DTOs,
+// request schemas, resolvers, env/config readers, generic repositories or SQL
+// helpers, or any unrelated production code, test, or fixture.
 const MARKER = ['app', 'tenant_reset'].join('.');
 
 const EXACT_ALLOWLIST = new Set<string>([
@@ -25,6 +30,9 @@ const EXACT_ALLOWLIST = new Set<string>([
   'libs/pre-start-requirement/src/tests/pre-start-requirement.repository.integration.spec.ts',
   // The tenant-reset service — the ONLY production code that sets the marker.
   'libs/tenant-reset/src/lib/tenant-reset.service.ts',
+  // PR-C placement reset-escape migration — defines the exact-value escape on the
+  // placement OutboxEvent + PlacementProcessEvent DELETE-reject triggers.
+  'libs/placement/prisma/migrations/20260806090000_placement_tenant_reset_escape/migration.sql',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {
