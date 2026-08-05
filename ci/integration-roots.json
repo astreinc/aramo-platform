@@ -1,0 +1,46 @@
+{
+  "$comment": "CANONICAL integration-root registry (PR-B, Dev Execution Model v1.4 §12). The SINGLE source of truth for which Nx projects run the ARAMO_RUN_INTEGRATION lane. Every runner (ci-integration.sh, prepush.ts, package.json tests:integration) DERIVES from this file — no runner may embed its own root list or --root chain. The default-deny guard (ci/scripts/check-integration-roots.ts) proves this file covers every integration-bearing project. Counts are NEVER frozen here or in any runner; they are derived at runtime. Ordering is deterministic (ascending) and guard-enforced.",
+  "roots": [
+    "apps/api",
+    "apps/auth-service",
+    "apps/platform-admin",
+    "libs/ai-draft",
+    "libs/auth-storage",
+    "libs/canonicalization",
+    "libs/client-talent-restriction",
+    "libs/common",
+    "libs/consent",
+    "libs/engagement",
+    "libs/evidence",
+    "libs/examination",
+    "libs/identity",
+    "libs/identity-index",
+    "libs/ingestion",
+    "libs/job-domain",
+    "libs/matching",
+    "libs/metering",
+    "libs/object-storage",
+    "libs/outbox-publisher",
+    "libs/placement",
+    "libs/policy-store",
+    "libs/portal-identity",
+    "libs/pre-start-requirement",
+    "libs/resume-parse",
+    "libs/settings",
+    "libs/skills-taxonomy",
+    "libs/sourced-talent",
+    "libs/submittal",
+    "libs/talent-evidence",
+    "libs/talent-record",
+    "libs/talent-trust"
+  ],
+  "coverageAliases": [
+    {
+      "project": "libs/tenant-reset",
+      "coveredBy": "apps/api",
+      "proof": "apps/api/src/tests/tenant-reset.integration.spec.ts",
+      "reason": "tenant-reset integration proof is API-hosted; the lib owns no lib-local integration spec, so a --root libs/tenant-reset run is a no-op."
+    }
+  ],
+  "exemptions": []
+}

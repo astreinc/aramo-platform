@@ -26,6 +26,19 @@ export class S3ClientFactory {
     this.cached = new S3Client({
       region: config.region,
       forcePathStyle: config.forcePathStyle,
+      // AWS SDK JS v3 (≥3.729) defaults requestChecksumCalculation to
+      // 'WHEN_SUPPORTED', which injects x-amz-sdk-checksum-algorithm /
+      // x-amz-checksum-crc32 into PutObject and folds them into the presigned
+      // URL's SignedHeaders. Our presigned URLs are consumed by PLAIN HTTP
+      // clients (the ats-web browser PUT in talent-api.ts putResumeToStorage,
+      // and server-side fetch() GETs in resume-parse / talent-record) that do
+      // NOT send those headers → SignatureDoesNotMatch → uploads/downloads
+      // fail. Pin both to 'WHEN_REQUIRED' (the pre-3.729 behaviour) so presigned
+      // URLs stay usable by non-SDK clients. Caught by the A8-3a/A8-3b LocalStack
+      // integration proofs once libs/object-storage + libs/resume-parse were
+      // enrolled in CI (PR-B).
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
       ...(config.endpoint !== null ? { endpoint: config.endpoint } : {}),
     });
     return this.cached;

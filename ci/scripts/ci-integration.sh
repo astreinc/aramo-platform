@@ -7,56 +7,12 @@
 #
 # Every run is SERIAL (--no-file-parallelism) — harness hardening (CI-Velocity
 # PR-1): one Postgres container starts at a time, killing the saturation flake.
-# The roots list is the authoritative CI integration set (20); keep it in sync
-# with any new ARAMO_RUN_INTEGRATION root the same slice it is added.
+#
+# The roots are NOT listed here. This is a thin, jq-free wrapper over the single
+# serial executor ci/scripts/run-integration.ts, which reads the sole canonical
+# registry ci/integration-roots.json. The default-deny guard
+# (ci/scripts/check-integration-roots.ts) proves the registry covers every
+# integration-bearing project and that no runner embeds a divergent root list.
 set -euo pipefail
 
-ROOTS=(
-  libs/consent
-  libs/examination
-  libs/job-domain
-  libs/matching
-  libs/talent-evidence
-  libs/evidence
-  libs/submittal
-  libs/client-talent-restriction
-  apps/api
-  libs/engagement
-  libs/ai-draft
-  libs/identity-index
-  libs/ingestion
-  libs/talent-trust
-  libs/canonicalization
-  apps/platform-admin
-  apps/auth-service
-  libs/tenant-reset
-  libs/placement
-  libs/pre-start-requirement
-)
-
-export ARAMO_RUN_INTEGRATION=1
-
-TO_RUN=()
-if [ "${CI_AFFECTED:-0}" = "1" ]; then
-  AFFECTED=$(npx nx show projects --affected --base="${NX_BASE:?NX_BASE unset}" --head="${NX_HEAD:?NX_HEAD unset}" --json)
-  for r in "${ROOTS[@]}"; do
-    name=$(jq -r '.name' "$r/project.json")
-    if echo "$AFFECTED" | jq -e --arg n "$name" 'index($n) != null' >/dev/null; then
-      TO_RUN+=("$r")
-    fi
-  done
-  echo "::notice::PR lane — affected integration roots: ${TO_RUN[*]:-(none)}"
-else
-  TO_RUN=("${ROOTS[@]}")
-  echo "::notice::Full lane — all ${#ROOTS[@]} integration roots (serial)"
-fi
-
-if [ "${#TO_RUN[@]}" -eq 0 ]; then
-  echo "No affected integration roots — nothing to run."
-  exit 0
-fi
-
-for r in "${TO_RUN[@]}"; do
-  echo "▶ integration: $r"
-  npx vitest run --no-file-parallelism --root "$r"
-done
+exec node --import jiti/register ci/scripts/run-integration.ts

@@ -43,6 +43,7 @@
       "status": "unscoped",
       "to": "scripts/audit-check.sh"
     },
+    { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "ci/integration-roots.json" },
     {
       "from": ".github/workflows/ci.yml",
       "status": "unscoped",
@@ -8154,6 +8155,51 @@
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
+      "from": "ci/integration-roots.json",
+      "status": "unscoped",
+      "to": "apps/api/src/tests/tenant-reset.integration.spec.ts"
+    },
+    {
+      "from": "ci/integration-roots.json",
+      "status": "unscoped",
+      "to": "ci/scripts/check-integration-roots.ts"
+    },
+    {
+      "from": "ci/scripts/check-integration-roots.ts",
+      "status": "unscoped",
+      "to": "ci/integration-roots.json"
+    },
+    {
+      "from": "ci/scripts/check-integration-roots.ts",
+      "status": "unscoped",
+      "to": "ci/scripts/ci-integration.sh"
+    },
+    {
+      "from": "ci/scripts/check-integration-roots.ts",
+      "status": "unscoped",
+      "to": "ci/scripts/prepush.ts"
+    },
+    {
+      "from": "ci/scripts/check-integration-roots.ts",
+      "status": "unscoped",
+      "to": "ci/scripts/run-integration.ts"
+    },
+    {
+      "from": "ci/scripts/ci-integration.sh",
+      "status": "unscoped",
+      "to": "ci/integration-roots.json"
+    },
+    {
+      "from": "ci/scripts/ci-integration.sh",
+      "status": "unscoped",
+      "to": "ci/scripts/check-integration-roots.ts"
+    },
+    {
+      "from": "ci/scripts/ci-integration.sh",
+      "status": "unscoped",
+      "to": "ci/scripts/run-integration.ts"
+    },
+    {
       "from": "ci/scripts/generate-placement-sql.ts",
       "status": "unscoped",
       "to": "libs/placement/prisma/migrations/20260803180000_init_placement_model/migration.sql"
@@ -8164,9 +8210,25 @@
       "to": "libs/matching/src/i15-negative-control/cip-imports-ats.fixture.ts"
     },
     {
+      "from": "ci/scripts/integration-roots.ts",
+      "status": "unscoped",
+      "to": "ci/integration-roots.json"
+    },
+    { "from": "ci/scripts/prepush.ts", "status": "unscoped", "to": "ci/integration-roots.json" },
+    {
+      "from": "ci/scripts/prepush.ts",
+      "status": "unscoped",
+      "to": "ci/scripts/integration-roots.ts"
+    },
+    {
       "from": "ci/scripts/prepush.ts",
       "status": "unscoped",
       "to": "ci/scripts/verify-frontdoor-conf.ts"
+    },
+    {
+      "from": "ci/scripts/run-integration.ts",
+      "status": "unscoped",
+      "to": "ci/integration-roots.json"
     },
     { "from": "ci/scripts/verify-ats-refusal.ts", "status": "unscoped", "to": "openapi/ats.yaml" },
     {
@@ -12040,11 +12102,13 @@
     },
     { "from": "openapi/portal.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "apps/api/src/policy/seed-lifecycle.ts" },
+    { "from": "package.json", "status": "unscoped", "to": "ci/scripts/check-integration-roots.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/check-version-sync.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/compare-spec-to-openapi.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/generate-placement-sql.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/generate-repo-map.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/prepush.ts" },
+    { "from": "package.json", "status": "unscoped", "to": "ci/scripts/run-integration.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-ats-refusal.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-error-codes.ts" },
     {
@@ -13658,7 +13722,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 51,
+    "files": 54,
     "huskyPresent": false
   },
   "scripts": [
@@ -13678,8 +13742,10 @@
         { "kind": "nx-target", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/deploy-public-staging.yml" },
+        { "kind": "prose", "path": "ci/scripts/check-integration-roots.ts" },
         { "kind": "prose", "path": "ci/scripts/frontdoor-boot-smoke.sh" },
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
+        { "kind": "prose", "path": "ci/scripts/integration-roots.ts" },
         { "kind": "nx-target", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-placement-sql.ts" },
@@ -13845,7 +13911,14 @@
         { "kind": "prose", "path": "ci/scripts/verify-portal-refusal.ts" }
       ]
     },
-    { "name": "prepush", "references": [{ "kind": "prose", "path": "ci/scripts/prepush.ts" }] },
+    {
+      "name": "prepush",
+      "references": [
+        { "kind": "prose", "path": "ci/scripts/check-integration-roots.ts" },
+        { "kind": "prose", "path": "ci/scripts/integration-roots.ts" },
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+      ]
+    },
     {
       "name": "prisma:generate",
       "references": [
@@ -13901,10 +13974,12 @@
       "references": [
         { "kind": "nx-target", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/check-integration-roots.ts" },
         { "kind": "prose", "path": "ci/scripts/check-version-sync.ts" },
         { "kind": "prose", "path": "ci/scripts/frontdoor-boot-smoke.sh" },
         { "kind": "prose", "path": "ci/scripts/generate-placement-sql.ts" },
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
+        { "kind": "prose", "path": "ci/scripts/integration-roots.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-error-codes.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-frontdoor-conf.ts" },
@@ -13925,7 +14000,20 @@
     },
     {
       "name": "tests:integration",
-      "references": [{ "kind": "prose", "path": ".github/workflows/ci.yml" }]
+      "references": [
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/check-integration-roots.ts" },
+        { "kind": "prose", "path": "ci/scripts/integration-roots.ts" },
+        { "kind": "prose", "path": "ci/scripts/run-integration.ts" }
+      ]
+    },
+    {
+      "name": "tests:integration:check",
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": "ci/scripts/check-integration-roots.ts" },
+        { "kind": "npm-run", "path": "ci/scripts/prepush.ts" }
+      ]
     },
     {
       "name": "verify:vocabulary",
