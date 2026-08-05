@@ -107,6 +107,20 @@ const DELETE_INVENTORY: readonly DeleteStep[] = [
   { item: 7, label: `pre_start_requirement."PreStartRequirementDefinition"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   { item: 7, label: `pre_start_requirement."PreStartMaterializationIntent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   { item: 7, label: `pre_start_requirement."PreStartRequirementSet"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  // §2.2.8 (PR-C, PO Ruling 14-b) — the complete placement aggregate (Track 3),
+  // FK-safe + trigger-aware order: OutboxEvent → PlacementProcessEvent →
+  // PlacementProcess. PlacementProcessEvent has a Restrict FK to PlacementProcess,
+  // so it MUST precede the parent (omitting it fails the parent delete, not just a
+  // partial reset). OutboxEvent and PlacementProcessEvent carry BEFORE DELETE
+  // reject triggers with the exact-value `app.tenant_reset` escape added by
+  // migration 20260806090000_placement_tenant_reset_escape; the reset sets that
+  // marker before this loop. PlacementProcess has no delete trigger and deletes
+  // ordinarily once its event child is gone. Placement events are tenant-owned and
+  // NOT in the PRESERVE set (Ruling 14-b): append-only means immutable during
+  // ordinary use, not survival of a separately governed destructive reset.
+  { item: 8, label: `placement."OutboxEvent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  { item: 8, label: `placement."PlacementProcessEvent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  { item: 8, label: `placement."PlacementProcess"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
 ];
 
 // The freeze (§3.3): the requisition-domain workflow tables, locked ACCESS
@@ -134,6 +148,11 @@ const LOCK_TABLES: readonly string[] = [
   `pre_start_requirement."PreStartRequirementDefinition"`,
   `pre_start_requirement."PreStartMaterializationIntent"`,
   `pre_start_requirement."PreStartRequirementSet"`,
+  // §2.2.8 (PR-C) — freeze the complete placement aggregate for the reset
+  // transaction (all three tables are deleted in the same transaction).
+  `placement."OutboxEvent"`,
+  `placement."PlacementProcessEvent"`,
+  `placement."PlacementProcess"`,
 ];
 
 // The PRESERVE set (§2.2) — untouched, and verified untouched after. Every

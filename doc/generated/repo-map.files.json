@@ -1923,6 +1923,7 @@
     "libs/pipeline/vitest.config.ts",
     "libs/placement/prisma/migrations/20260803180000_init_placement_model/migration.sql",
     "libs/placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql",
+    "libs/placement/prisma/migrations/20260806090000_placement_tenant_reset_escape/migration.sql",
     "libs/placement/prisma/migrations/migration_lock.toml",
     "libs/placement/prisma/schema.prisma",
     "libs/placement/project.json",

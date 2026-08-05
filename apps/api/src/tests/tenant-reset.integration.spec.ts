@@ -68,6 +68,9 @@ async function allMigrations(db: Client): Promise<void> {
 // Target tenant (reset) and a bystander tenant (must be untouched).
 const T = '01900000-0000-7000-8000-0000000000a1';
 const T2 = '01900000-0000-7000-8000-0000000000b1';
+// A third tenant reserved for the PR-C forced-mid-reset-failure rollback proof
+// (its placement rows must SURVIVE unchanged after an injected failure).
+const T3 = '01900000-0000-7000-8000-0000000000c1';
 const REQ1 = '01900000-0000-7000-8000-0000000000a2';
 const REQ2 = '01900000-0000-7000-8000-0000000000a3';
 const REQ_B = '01900000-0000-7000-8000-0000000000b2';
@@ -90,6 +93,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let prisma: PrismaService;
     let svc: TenantResetService;
     let archiveDir: string;
+    // Captured from the real reset (test 3) so the placement post-reset proof can
+    // assert the report's exact per-table before/after counts + orphan checks.
+    let executeReportT: Awaited<ReturnType<TenantResetService['execute']>> | undefined;
+    const targetArchive = (): string => resolve(archiveDir, 'reset-T.json');
 
     async function count(table: string, where: string, params: unknown[]): Promise<number> {
       const r = await db.query<{ n: string }>(
@@ -108,6 +115,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         inst: await count('pre_start_requirement."PreStartRequirementInstance"', w, [tenant]),
         intent: await count('pre_start_requirement."PreStartMaterializationIntent"', w, [tenant]),
         audit: await count('pre_start_requirement."PreStartRequirementAudit"', w, [tenant]),
+      };
+    }
+
+    // Per-tenant counts across the three placement aggregate tables (PR-C).
+    async function countPlacement(
+      tenant: string,
+    ): Promise<Record<'outbox' | 'event' | 'process', number>> {
+      const w = 'tenant_id=$1::uuid';
+      return {
+        outbox: await count('placement."OutboxEvent"', w, [tenant]),
+        event: await count('placement."PlacementProcessEvent"', w, [tenant]),
+        process: await count('placement."PlacementProcess"', w, [tenant]),
       };
     }
 
@@ -133,6 +152,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const [id, name] of [
         [T, 'Target Co'],
         [T2, 'Bystander Co'],
+        [T3, 'Rollback Co'],
       ] as const) {
         await db.query(
           `INSERT INTO identity."Tenant" (id, name, updated_at) VALUES ($1::uuid,$2,now())`,
@@ -288,6 +308,40 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       };
       await seedE2(T);
       await seedE2(T2);
+
+      // ---- Placement aggregate (Track 3, PR-C §2.2.8) — one full chain per
+      // tenant: PlacementProcess → PlacementProcessEvent (Restrict child) +
+      // OutboxEvent. T's rows are deleted by the reset (OutboxEvent +
+      // PlacementProcessEvent via the reset-marker escape); T2's must survive;
+      // T3's exercise the forced-mid-reset-failure rollback proof. Cross-schema
+      // refs (submittal/requisition/talent) are UUID-only (no FK), so arbitrary
+      // ids are valid. offer_terms_summary carries the free-text PII whose local
+      // erasure the reset must demonstrate (Ruling 14-b).
+      const seedPlacement = async (tenant: string): Promise<string> => {
+        const ppId = uuidv7();
+        await db.query(
+          `INSERT INTO placement."PlacementProcess"
+             (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, offer_terms_summary)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'OFFER_EXTENDED', now(), $6)`,
+          [ppId, tenant, uuidv7(), uuidv7(), uuidv7(), `signing bonus note for ${tenant}`],
+        );
+        await db.query(
+          `INSERT INTO placement."PlacementProcessEvent"
+             (id, tenant_id, placement_process_id, event_type, event_payload)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,'state_transition', jsonb_build_object('to','OFFER_EXTENDED'))`,
+          [uuidv7(), tenant, ppId],
+        );
+        await db.query(
+          `INSERT INTO placement."OutboxEvent"
+             (id, tenant_id, event_type, event_payload)
+           VALUES ($1::uuid,$2::uuid,'placement.offer.extended', jsonb_build_object('placement_process_id',$3::uuid))`,
+          [uuidv7(), tenant, ppId],
+        );
+        return ppId;
+      };
+      await seedPlacement(T);
+      await seedPlacement(T2);
+      await seedPlacement(T3);
     }, 300_000);
 
     afterAll(async () => {
@@ -381,6 +435,43 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect((await countE2(T)).audit).toBe(1); // nothing deleted
     });
 
+    // ---- PR-C placement, BEFORE reset: ordinary rejection + RESTRICT + dry-run ----
+    it('(P-1) placement events reject ordinary mutation, RESTRICT holds, and dry-run is read-only', async () => {
+      // Existence — the target tenant has at least one row in each of the three
+      // placement tables (so the later deletion proof is non-vacuous).
+      const before = await countPlacement(T);
+      expect(before.outbox).toBeGreaterThanOrEqual(1);
+      expect(before.event).toBeGreaterThanOrEqual(1);
+      expect(before.process).toBeGreaterThanOrEqual(1);
+
+      // (1) ordinary OutboxEvent DELETE is rejected before reset (no marker set).
+      await expect(
+        db.query(`DELETE FROM placement."OutboxEvent" WHERE tenant_id=$1::uuid`, [T]),
+      ).rejects.toThrow(/append-only/);
+      // (2) ordinary PlacementProcessEvent DELETE is rejected before reset.
+      await expect(
+        db.query(`DELETE FROM placement."PlacementProcessEvent" WHERE tenant_id=$1::uuid`, [T]),
+      ).rejects.toThrow(/not permitted/);
+      // (3) a direct PlacementProcess delete is blocked while its Restrict child
+      // exists (foreign-key violation — the process cannot be removed out of order).
+      await expect(
+        db.query(`DELETE FROM placement."PlacementProcess" WHERE tenant_id=$1::uuid`, [T]),
+      ).rejects.toThrow(/foreign key|violates|still referenced/i);
+      expect(await countPlacement(T)).toEqual(before); // nothing deleted by any of the three
+
+      // (4/5/6) dry-run reports all three placement tables, mutates none, sets no marker.
+      const report = await svc.dryRun(pg, opts());
+      const del = (label: string): number => report.deleted.find((d) => d.label === label)?.before ?? -1;
+      expect(del('placement."OutboxEvent"')).toBe(before.outbox);
+      expect(del('placement."PlacementProcessEvent"')).toBe(before.event);
+      expect(del('placement."PlacementProcess"')).toBe(before.process);
+      expect(await countPlacement(T)).toEqual(before); // dry-run mutated nothing
+      // No marker leaked: an ordinary OutboxEvent DELETE is still rejected afterwards.
+      await expect(
+        db.query(`DELETE FROM placement."OutboxEvent" WHERE tenant_id=$1::uuid`, [T]),
+      ).rejects.toThrow(/append-only/);
+    });
+
     // ---- (3) execute: scoped delete + preserve invariants + isolation ----
     it('(3) execute deletes the §2.2 scope, preserves everything else, isolates the bystander', async () => {
       // Snapshot the preserved surfaces (must be identical after).
@@ -405,8 +496,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         usage: await count('metering."UsageEvent"', 'tenant_id=$1::uuid', [T2]),
       };
 
-      const archiveLocation = resolve(archiveDir, 'reset-T.json');
+      const archiveLocation = targetArchive();
       const report = await svc.execute(pg, opts({ archiveLocation }));
+      executeReportT = report; // captured for the placement post-reset proof (P-2)
 
       expect(report.result).toBe('COMPLETED');
       expect(report.archive_verified).toBe(true);
@@ -495,6 +587,143 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         db.query(`DELETE FROM pre_start_requirement."PreStartRequirementInstance" WHERE tenant_id=$1::uuid`, [T2]),
       ).rejects.toThrow(/not permitted/);
       expect((await countE2(T2)).audit).toBe(1); // still protected, nothing deleted
+    });
+
+    // ---- PR-C placement, AFTER reset: deletion, bystander, archive, marker gone ----
+    it('(P-2) governed reset deleted all of T\'s placement aggregate; bystander survives; archive + report cover all three', async () => {
+      const report = executeReportT;
+      expect(report, 'the real reset (test 3) must have run and been captured').toBeDefined();
+      const rep = report!;
+
+      // (11) the report carries exact before/after counts for all three placement
+      // tables; before >= 1 (non-vacuous — real rows existed) and after == 0.
+      const line = (label: string) => rep.deleted.find((d) => d.label === label)!;
+      for (const label of [
+        'placement."OutboxEvent"',
+        'placement."PlacementProcessEvent"',
+        'placement."PlacementProcess"',
+      ]) {
+        expect(line(label).before, `${label} before`).toBeGreaterThanOrEqual(1);
+        expect(line(label).after, `${label} after`).toBe(0);
+      }
+
+      // (7) every placement table is now empty for the target tenant.
+      expect(await countPlacement(T)).toEqual({ outbox: 0, event: 0, process: 0 });
+
+      // (8) the bystander tenant's placement aggregate is entirely intact.
+      expect(await countPlacement(T2)).toEqual({ outbox: 1, event: 1, process: 1 });
+
+      // (9/10) the archive exported all three placement tables and their pre-delete
+      // rows (checksum/readback already asserted in test 3 via archive_verified).
+      const archive = JSON.parse(readFileSync(targetArchive(), 'utf8')) as ArchivePayload;
+      expect(archive.entities['placement."OutboxEvent"']).toHaveLength(1);
+      expect(archive.entities['placement."PlacementProcessEvent"']).toHaveLength(1);
+      expect(archive.entities['placement."PlacementProcess"']).toHaveLength(1);
+      // The free-text offer PII is captured in the forensic archive before erasure.
+      expect(
+        (archive.entities['placement."PlacementProcess"'][0] as { offer_terms_summary: string }).offer_terms_summary,
+      ).toBe(`signing bonus note for ${T}`);
+
+      // (12) orphan verification reports zero remaining for each placement table.
+      const orphan = (label: string): number => rep.orphan_checks.find((o) => o.label === label)!.remaining;
+      expect(orphan('placement."OutboxEvent"')).toBe(0);
+      expect(orphan('placement."PlacementProcessEvent"')).toBe(0);
+      expect(orphan('placement."PlacementProcess"')).toBe(0);
+
+      // (13/14/15) the marker was transaction-local: after COMMIT an ordinary
+      // OutboxEvent / PlacementProcessEvent DELETE of the SURVIVING bystander rows
+      // is rejected again (the escape did not persist).
+      await expect(
+        db.query(`DELETE FROM placement."OutboxEvent" WHERE tenant_id=$1::uuid`, [T2]),
+      ).rejects.toThrow(/append-only/);
+      await expect(
+        db.query(`DELETE FROM placement."PlacementProcessEvent" WHERE tenant_id=$1::uuid`, [T2]),
+      ).rejects.toThrow(/not permitted/);
+      expect(await countPlacement(T2)).toEqual({ outbox: 1, event: 1, process: 1 });
+    });
+
+    // ---- PR-C placement, ROLLBACK: forced mid-reset failure is atomic ----
+    it('(P-3) a forced failure after a placement delete rolls back the whole placement aggregate', async () => {
+      // Capture stable identifiers AND values before execution (non-vacuous: prove
+      // the SAME rows and values survive, not merely that some rows exist after).
+      const beforeProcess = (
+        await db.query(
+          `SELECT id, tenant_id, state::text AS state, offer_terms_summary
+             FROM placement."PlacementProcess" WHERE tenant_id=$1::uuid ORDER BY id`,
+          [T3],
+        )
+      ).rows;
+      const beforeEvent = (
+        await db.query(
+          `SELECT id, tenant_id, placement_process_id, event_payload
+             FROM placement."PlacementProcessEvent" WHERE tenant_id=$1::uuid ORDER BY id`,
+          [T3],
+        )
+      ).rows;
+      const beforeOutbox = (
+        await db.query(
+          `SELECT id, tenant_id, event_type, event_payload
+             FROM placement."OutboxEvent" WHERE tenant_id=$1::uuid ORDER BY id`,
+          [T3],
+        )
+      ).rows;
+      expect(beforeProcess).toHaveLength(1);
+      expect(beforeEvent).toHaveLength(1);
+      expect(beforeOutbox).toHaveLength(1);
+
+      // Inject a BEFORE DELETE failure on PlacementProcess — the LAST table in the
+      // aggregate order — so OutboxEvent + PlacementProcessEvent delete first (at
+      // least one placement delete executes) and the aggregate then fails partway,
+      // forcing the whole reset transaction to roll back.
+      await db.query(
+        `CREATE FUNCTION placement.__prc_rollback_probe() RETURNS TRIGGER AS $probe$
+           BEGIN RAISE EXCEPTION 'injected mid-reset failure (test P-3)'; END;
+         $probe$ LANGUAGE plpgsql`,
+      );
+      await db.query(
+        `CREATE TRIGGER __trg_prc_rollback_probe BEFORE DELETE ON placement."PlacementProcess"
+           FOR EACH ROW EXECUTE FUNCTION placement.__prc_rollback_probe()`,
+      );
+      try {
+        await expect(
+          svc.execute(pg, opts({ tenantId: T3, archiveLocation: resolve(archiveDir, 'rollback-T3.json') })),
+        ).rejects.toThrow(/injected mid-reset failure/);
+
+        // (17/18) all three placement tables still hold the ORIGINAL rows, unchanged.
+        const afterProcess = (
+          await db.query(
+            `SELECT id, tenant_id, state::text AS state, offer_terms_summary
+               FROM placement."PlacementProcess" WHERE tenant_id=$1::uuid ORDER BY id`,
+            [T3],
+          )
+        ).rows;
+        const afterEvent = (
+          await db.query(
+            `SELECT id, tenant_id, placement_process_id, event_payload
+               FROM placement."PlacementProcessEvent" WHERE tenant_id=$1::uuid ORDER BY id`,
+            [T3],
+          )
+        ).rows;
+        const afterOutbox = (
+          await db.query(
+            `SELECT id, tenant_id, event_type, event_payload
+               FROM placement."OutboxEvent" WHERE tenant_id=$1::uuid ORDER BY id`,
+            [T3],
+          )
+        ).rows;
+        expect(afterProcess).toEqual(beforeProcess);
+        expect(afterEvent).toEqual(beforeEvent);
+        expect(afterOutbox).toEqual(beforeOutbox);
+      } finally {
+        // (21) guaranteed cleanup — remove the failure-injection artifacts.
+        await db.query(`DROP TRIGGER IF EXISTS __trg_prc_rollback_probe ON placement."PlacementProcess"`);
+        await db.query(`DROP FUNCTION IF EXISTS placement.__prc_rollback_probe()`);
+      }
+      // No residue: the injected trigger no longer exists.
+      const residue = await db.query(
+        `SELECT 1 FROM pg_trigger WHERE tgname='__trg_prc_rollback_probe'`,
+      );
+      expect(residue.rowCount).toBe(0);
     });
 
     // ---- (4) re-run is refused, not repeated (§4) ------------------------

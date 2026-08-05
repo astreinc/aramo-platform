@@ -3972,6 +3972,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260806090000_placement_tenant_reset_escape/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
       "to": "libs/pre-start-requirement/prisma/migrations/20260804090000_init_pre_start_requirement/migration.sql"
     },
     {
