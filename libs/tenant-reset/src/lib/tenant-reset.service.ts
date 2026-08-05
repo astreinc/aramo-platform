@@ -65,7 +65,7 @@ export const ACTIVITY_SCOPE_PREDICATE =
   `)`;
 
 interface DeleteStep {
-  /** The §2.2 item this belongs to (1..6). */
+  /** The §2.2 item this belongs to (1..7; 7 = E2 pre-start, T0 v1.1 §2.2.7). */
   readonly item: number;
   readonly label: string; // schema."Table"
   readonly where: string;
@@ -95,6 +95,18 @@ const DELETE_INVENTORY: readonly DeleteStep[] = [
   // recreated requisition restarts at REQ-1000 (PO timing ruling). Without this,
   // the counter survives and the next create silently continues (e.g. REQ-1043).
   { item: 6, label: `requisition."RequisitionNumberSequence"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  // §2.2.7 (T0 v1.1) — E2 pre-start requirement domain, FK-safe order:
+  // Audit (child of Instance) → Instance → Definition (child of Set) →
+  // MaterializationIntent (no FK) → Set. Audit + Instance carry BEFORE DELETE
+  // reject triggers with an exact-value `app.tenant_reset` escape; the reset
+  // sets that marker before this loop. Definition/Intent/Set have no delete
+  // trigger and delete ordinarily. All are archived + verified + counted through
+  // the same DELETE_INVENTORY machinery.
+  { item: 7, label: `pre_start_requirement."PreStartRequirementAudit"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  { item: 7, label: `pre_start_requirement."PreStartRequirementInstance"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  { item: 7, label: `pre_start_requirement."PreStartRequirementDefinition"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  { item: 7, label: `pre_start_requirement."PreStartMaterializationIntent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  { item: 7, label: `pre_start_requirement."PreStartRequirementSet"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
 ];
 
 // The freeze (§3.3): the requisition-domain workflow tables, locked ACCESS
@@ -116,6 +128,12 @@ const LOCK_TABLES: readonly string[] = [
   `engagement."TalentEngagementEvent"`,
   `engagement."TalentSubmittalRecord"`,
   `engagement."TalentSubmittalEvent"`,
+  // §2.2.7 (T0 v1.1) — freeze the E2 pre-start tables for the reset transaction.
+  `pre_start_requirement."PreStartRequirementAudit"`,
+  `pre_start_requirement."PreStartRequirementInstance"`,
+  `pre_start_requirement."PreStartRequirementDefinition"`,
+  `pre_start_requirement."PreStartMaterializationIntent"`,
+  `pre_start_requirement."PreStartRequirementSet"`,
 ];
 
 // The PRESERVE set (§2.2) — untouched, and verified untouched after. Every
@@ -553,6 +571,14 @@ export class TenantResetService {
       await pg.query('BEGIN');
       await pg.query(`LOCK TABLE ${LOCK_TABLES.join(', ')} IN ACCESS EXCLUSIVE MODE`);
       frozen = true;
+
+      // T0 v1.1 §2.4 — authorise the E2 protected DELETEs (Instance + Audit carry
+      // BEFORE DELETE reject triggers with an exact-value escape). SET LOCAL only,
+      // on THIS reset connection, inside THIS transaction, cleared automatically at
+      // COMMIT / ROLLBACK. Set here — after the freeze, before any DELETE. Dry-run
+      // never reaches this path and never sets the marker (canonical T0 §3:
+      // "DRY RUN = ZERO mutations"; ARCHITECTURE_HALT resolved in favour of T0).
+      await pg.query(`SET LOCAL app.tenant_reset = 'authorized'`);
 
       // §3.4 COUNT BEFORE.
       deletedBefore = await this.countDeleted(pg, opts.tenantId, scope);

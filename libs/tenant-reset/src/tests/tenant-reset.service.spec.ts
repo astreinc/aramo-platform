@@ -327,6 +327,13 @@ describe('TenantResetService — happy path + delete ordering (§2.2 / §3.8)', 
       // PR-15 — the internal-number allocator is cleared so a reset tenant
       // restarts at REQ-1000.
       'DELETE FROM requisition."RequisitionNumberSequence"',
+      // §2.2.7 (T0 v1.1) — E2 pre-start, FK-safe: Audit → Instance → Definition
+      // → MaterializationIntent → Set.
+      'DELETE FROM pre_start_requirement."PreStartRequirementAudit"',
+      'DELETE FROM pre_start_requirement."PreStartRequirementInstance"',
+      'DELETE FROM pre_start_requirement."PreStartRequirementDefinition"',
+      'DELETE FROM pre_start_requirement."PreStartMaterializationIntent"',
+      'DELETE FROM pre_start_requirement."PreStartRequirementSet"',
     ];
     expect(pg.deletes.map((d) => d.split(' WHERE ')[0])).toEqual(expectedOrder);
 
