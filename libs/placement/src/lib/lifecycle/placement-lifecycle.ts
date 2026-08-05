@@ -149,3 +149,24 @@ export function canTransitionTyped<From extends PlacementState>(
 export function lifecyclePositionOf(state: PlacementState): LifecyclePosition {
   return STATE_POSITION[state];
 }
+
+// ---------------------------------------------------------------------------
+// Authority class of an edge (E1-b Approval Record §2) — DERIVED from the target
+// state's lifecycle POSITION, not independently authored. The transition route
+// requires the placement:<class> scope this returns.
+//   TERMINAL target  -> 'terminate'  (terminal / irreversible termination)
+//   ENGAGED target   -> 'activate'   (establishes the live/committed placement,
+//                                      consumes capacity — READY_TO_START->STARTED)
+//   otherwise        -> 'transition' (ordinary non-terminal progression)
+// This is a total function over the 14 legal edges; deriving it is applying a
+// ratified classification to grounded facts (Execution Model §13), not policy.
+// ---------------------------------------------------------------------------
+export const PLACEMENT_AUTHORITY_CLASSES = ['transition', 'activate', 'terminate'] as const;
+export type PlacementAuthorityClass = (typeof PLACEMENT_AUTHORITY_CLASSES)[number];
+
+export function edgeAuthorityClass(_from: PlacementState, to: PlacementState): PlacementAuthorityClass {
+  const pos = STATE_POSITION[to];
+  if (pos === 'TERMINAL') return 'terminate';
+  if (pos === 'ENGAGED') return 'activate';
+  return 'transition';
+}

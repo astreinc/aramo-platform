@@ -14,7 +14,7 @@ describe('Company-Fields v1.1 — company:read_commercial catalog parity', () =>
     ).toHaveLength(1);
   });
 
-  it('SEED_SCOPE_KEYS is 101 (100 + 1 F-2 reconciliation: platform:tenant:lifecycle:manage into the catalog)', () => {
-    expect(SEED_SCOPE_KEYS).toHaveLength(101);
+  it('SEED_SCOPE_KEYS is 106 (101 + 5 Track3/E1-b placement scopes)', () => {
+    expect(SEED_SCOPE_KEYS).toHaveLength(106);
   });
 });

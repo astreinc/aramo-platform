@@ -1584,6 +1584,148 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/placements:
+    post:
+      operationId: createPlacement
+      summary: Create a PlacementProcess on the client-selection/offer fact (Track 3 / E1-b).
+      description: |
+        Creates a PlacementProcess in the initial `OFFER_EXTENDED` state.
+        tenant_id is derived from the JWT. Requires the `placement:create`
+        scope. Refusals:
+          - 409 PLACEMENT_ALREADY_LIVE — a live PlacementProcess already
+            exists for this (tenant, submittal).
+          - 403 INSUFFICIENT_PERMISSIONS — caller lacks `placement:create`.
+          - 400 VALIDATION_ERROR — body fails schema validation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlacementRequest'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacementProcess'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: A live placement already exists for this (tenant, submittal).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
+  /v1/placements/{id}/transition:
+    post:
+      operationId: transitionPlacement
+      summary: Governed PlacementProcess transition; the 14-edge matrix enforces legality (E1-b).
+      description: |
+        One generic transition route — the target state is in the body and
+        the canonical 14-edge matrix (DB-trigger-enforced) owns legality.
+        Authorization is DATA-dependent on the edge's authority class
+        (Approval Record §2): ordinary progression requires
+        `placement:transition`, the live/capacity edge
+        (READY_TO_START -> STARTED) requires `placement:activate`, and any
+        edge into a terminal state requires `placement:terminate`. All
+        placement scopes ship with zero default grants (fail-closed).
+        Refusals:
+          - 422 PLACEMENT_STATE_INVALID — the requested edge is not one of
+            the 14 legal transitions from the current state.
+          - 403 INSUFFICIENT_PERMISSIONS — caller lacks the edge's class scope.
+          - 404 NOT_FOUND — no PlacementProcess for this (tenant, id).
+          - 400 VALIDATION_ERROR — `to` is not a known placement state.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitionPlacementRequest'
+      responses:
+        '200':
+          description: Transitioned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacementProcess'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions for the edge's authority class.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          description: Illegal state transition.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
+  /v1/placements/{id}:
+    get:
+      operationId: getPlacement
+      summary: Read a PlacementProcess (Track 3 / E1-b).
+      description: |
+        Returns the PlacementProcess for the JWT's tenant. Requires the
+        `placement:read` scope. Refusals:
+          - 404 NOT_FOUND — no PlacementProcess for this (tenant, id).
+          - 403 INSUFFICIENT_PERMISSIONS — caller lacks `placement:read`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacementProcess'
+        '403':
+          description: Insufficient permissions.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -1594,6 +1736,76 @@ components:
       bearerFormat: JWT
 
   schemas:
+    # Track 3 / E1-b — PlacementProcess HTTP surface.
+    CreatePlacementRequest:
+      type: object
+      additionalProperties: false
+      required: [submittal_id, requisition_id, talent_record_id]
+      properties:
+        submittal_id:
+          type: string
+          format: uuid
+        requisition_id:
+          type: string
+          format: uuid
+        talent_record_id:
+          type: string
+          format: uuid
+    TransitionPlacementRequest:
+      type: object
+      additionalProperties: false
+      required: [to]
+      properties:
+        to:
+          type: string
+          description: The target placement state; the 14-edge matrix enforces legality.
+          enum:
+            - OFFER_EXTENDED
+            - OFFER_ACCEPTED
+            - PRE_START
+            - BLOCKED
+            - READY_TO_START
+            - STARTED
+            - OFFER_DECLINED
+            - OFFER_RESCINDED
+            - NO_SHOW
+            - FELL_THROUGH
+    PlacementProcess:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, submittal_id, requisition_id, talent_record_id, state, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        submittal_id:
+          type: string
+          format: uuid
+        requisition_id:
+          type: string
+          format: uuid
+        talent_record_id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum:
+            - OFFER_EXTENDED
+            - OFFER_ACCEPTED
+            - PRE_START
+            - BLOCKED
+            - READY_TO_START
+            - STARTED
+            - OFFER_DECLINED
+            - OFFER_RESCINDED
+            - NO_SHOW
+            - FELL_THROUGH
+        created_at:
+          type: string
+          format: date-time
     # M3 PR-8 §4.4 — match-list response envelope. The endpoint emits
     # TalentJobExaminationSummary items only (Full is NOT referenced from
     # this endpoint — see directive §4.4). additionalProperties: false plus
