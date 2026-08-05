@@ -37,6 +37,13 @@ export class PlacementController {
         submittal_id: body.submittal_id,
         requisition_id: body.requisition_id,
         talent_record_id: body.talent_record_id,
+        // E1-c offer snapshot — the DTO carries ISO strings (IsDateString); the
+        // repository I/O type is Date-typed, so convert at the HTTP boundary.
+        offered_at: body.offered_at != null ? new Date(body.offered_at) : undefined,
+        proposed_start_date: body.proposed_start_date != null ? new Date(body.proposed_start_date) : undefined,
+        offer_expires_at: body.offer_expires_at != null ? new Date(body.offer_expires_at) : undefined,
+        client_offer_reference: body.client_offer_reference,
+        offer_terms_summary: body.offer_terms_summary,
       },
       requestId,
     );

@@ -1751,6 +1751,24 @@ components:
         talent_record_id:
           type: string
           format: uuid
+        # E1-c initial offer snapshot (9-c-1) — all optional. offered_at defaults
+        # to the server time of the offer fact when omitted; offer_expires_at, when
+        # present, must not precede offered_at.
+        offered_at:
+          type: string
+          format: date-time
+        proposed_start_date:
+          type: string
+          format: date
+        offer_expires_at:
+          type: string
+          format: date-time
+        client_offer_reference:
+          type: string
+          maxLength: 255
+        offer_terms_summary:
+          type: string
+          maxLength: 2000
     TransitionPlacementRequest:
       type: object
       additionalProperties: false
@@ -1773,7 +1791,7 @@ components:
     PlacementProcess:
       type: object
       additionalProperties: false
-      required: [id, tenant_id, submittal_id, requisition_id, talent_record_id, state, created_at]
+      required: [id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, proposed_start_date, offer_expires_at, client_offer_reference, offer_terms_summary, created_at]
       properties:
         id:
           type: string
@@ -1803,6 +1821,23 @@ components:
             - OFFER_RESCINDED
             - NO_SHOW
             - FELL_THROUGH
+        # E1-c offer snapshot (9-c-1). offered_at is always set; the rest are
+        # nullable operational fields (3.1 union-null, never nullable:true).
+        offered_at:
+          type: string
+          format: date-time
+        proposed_start_date:
+          type: [string, 'null']
+          format: date
+        offer_expires_at:
+          type: [string, 'null']
+          format: date-time
+        client_offer_reference:
+          type: [string, 'null']
+          maxLength: 255
+        offer_terms_summary:
+          type: [string, 'null']
+          maxLength: 2000
         created_at:
           type: string
           format: date-time

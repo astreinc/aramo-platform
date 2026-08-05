@@ -4,6 +4,10 @@
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export { PlacementRepository } from './lib/placement.repository.js';
 export { PlacementProcessEventRepository } from './lib/placement-process-event.repository.js';
+// E1-c — placement outbox drain surface + its module (consumed by outbox-publisher).
+export { PlacementOutboxRepository } from './lib/placement-outbox.repository.js';
+export type { UnpublishedOutboxEvent } from './lib/placement-outbox.repository.js';
+export { PlacementOutboxModule } from './lib/placement-outbox.module.js';
 
 // Typed lifecycle registry — the single source of truth for the state machine
 // (the migration SQL is generated from it).

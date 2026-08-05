@@ -11,6 +11,13 @@ export type CreatePlacementInput = {
   readonly submittal_id: string;
   readonly requisition_id: string;
   readonly talent_record_id: string;
+  // Initial offer snapshot (E1-c 9-c-1). offered_at defaults to the server time
+  // of the offer fact when omitted; the rest are nullable operational fields.
+  readonly offered_at?: Date;
+  readonly proposed_start_date?: Date | null;
+  readonly offer_expires_at?: Date | null;
+  readonly client_offer_reference?: string | null;
+  readonly offer_terms_summary?: string | null;
 };
 
 export type TransitionPlacementInput = {
@@ -26,6 +33,11 @@ export type PlacementProcessView = {
   readonly requisition_id: string;
   readonly talent_record_id: string;
   readonly state: PlacementState;
+  readonly offered_at: Date;
+  readonly proposed_start_date: Date | null;
+  readonly offer_expires_at: Date | null;
+  readonly client_offer_reference: string | null;
+  readonly offer_terms_summary: string | null;
   readonly created_at: Date;
 };
 
