@@ -179,10 +179,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // it into this focused authz scope-seed would balloon the manually-
       // reviewed authz surface.
       expect(scopes.map((s) => s.key)).toEqual([
-        // Settings-D3 reconciliation — full scope catalog (incl. 3 platform:*): 82 scopes
-        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites +tenant:user:read:assignable +tenant:user:read:directory; reconciles to roleScope.count=468).
         'activity:create',
         'activity:read',
+        'activity:redact',
         'attachment:create',
         'attachment:delete',
         'attachment:read',
@@ -231,14 +230,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:change-status',
         'pipeline:read',
         'pipeline:remove',
+        'placement:activate',
+        'placement:create',
+        'placement:read',
+        'placement:terminate',
+        'placement:transition',
         'platform:admin:invite',
         'platform:tenant:lifecycle:manage',
         'platform:tenant:provision',
         'platform:tenant:read',
         'portal:consent:read',
         'portal:consent:write',
+        'portal:dispute:read',
+        'portal:dispute:write',
         'portal:profile:edit',
         'portal:profile:read',
+        'portal:verification:read',
+        'pre_start_requirement:act',
+        'pre_start_requirement:configure',
+        'pre_start_requirement:publish',
+        'pre_start_requirement:read',
+        'pre_start_requirement:read_restricted_evidence',
+        'pre_start_requirement:reopen',
+        'pre_start_requirement:waive_advisory',
+        'pre_start_requirement:waive_blocking',
         'report:read',
         'requisition:assign',
         'requisition:create',
@@ -348,7 +363,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   tenant_owner + tenant_admin; DOMAIN_ADMIN_SEED_BUNDLES @ 0x960).
       //   470 → 472 = +2 TR-2a-3 (identity:resolve × tenant_owner +
       //   tenant_admin; IDENTITY_RESOLVE_SEED_BUNDLES @ 0x970).
-      expect(roleScopes).toBe(475);
+      // PR-B HK-INTEGRATION-SPEC-COMP-STALE reconciliation: the role-bundle
+      // snapshots in tests 10/14/17 were caught up to the merged-seed truth
+      // (libs/identity was never in the CI integration lane, so they drifted).
+      // The total roleScope rows follow: 505 (all deltas are governed, in-catalog
+      // scopes from merged tracks — placement/pre-start/portal-dispute/
+      // activity:redact — with no privilege leaks and no removals).
+      expect(roleScopes).toBe(505);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -643,7 +664,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // no-change PATCH). The company table is not in this identity-only
     // testcontainer, so no Company-row assertion is made here.
 
-    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (47 scopes post AUTHZ-D4a)', async () => {
+    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (84 scopes; PR-B HK-INTEGRATION-SPEC-COMP-STALE reconciliation to merged-seed truth)', async () => {
       const scopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
@@ -653,10 +674,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // (recruiter+ includes tenant_admin). 37 + 6 = 43.
       // AUTHZ-D4a: tenant_admin gains the 4 team-model scopes. 43 + 4 = 47.
       expect(sorted).toEqual([
-        // Settings-D3 reconciliation — tenant_admin resolved scope set: 74 scopes
-        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites +tenant:user:read:assignable +tenant:user:read:directory; reconciles to roleScope.count=468).
         'activity:create',
         'activity:read',
+        'activity:redact',
         'attachment:create',
         'attachment:delete',
         'attachment:read',
@@ -705,6 +725,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:change-status',
         'pipeline:read',
         'pipeline:remove',
+        'pre_start_requirement:act',
+        'pre_start_requirement:configure',
+        'pre_start_requirement:publish',
+        'pre_start_requirement:read',
         'report:read',
         'requisition:assign',
         'requisition:create',
@@ -877,17 +901,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Test 17 — scope catalog correctness
     // -----------------------------------------------------------------
 
-    it('test 17 — scope catalog correctness: 12-role staffing catalog per AUTHZ-1b + AUTHZ-D4a (tenant_admin 47, recruiter 30 [PR-A1: -requisition:edit], candidate 4, tenant_owner 47, account_manager 35, sourcer 14, finance 6, auditor 5, recruiting_manager 33, delivery_manager 12, lead_recruiter 31, back_office 12)', async () => {
+    it('test 17 — scope catalog correctness: 12-role staffing catalog per AUTHZ-1b + AUTHZ-D4a (PR-B HK-INTEGRATION-SPEC-COMP-STALE reconciliation to merged-seed truth — tenant_admin 84, recruiter 46, candidate 7, tenant_owner 84, account_manager 62, sourcer 25, finance 10, auditor 5, recruiting_manager 56, delivery_manager 33, lead_recruiter 53, back_office 25)', async () => {
       // tenant_admin scope set (47 post AUTHZ-D4a; 43 + 4 team-model scopes)
       const adminScopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
       });
       expect([...adminScopes].sort()).toEqual([
-        // Settings-D3 reconciliation — tenant_admin scope set: 74 scopes
-        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites +tenant:user:read:assignable +tenant:user:read:directory; reconciles to roleScope.count=468).
         'activity:create',
         'activity:read',
+        'activity:redact',
         'attachment:create',
         'attachment:delete',
         'attachment:read',
@@ -936,6 +959,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:change-status',
         'pipeline:read',
         'pipeline:remove',
+        'pre_start_requirement:act',
+        'pre_start_requirement:configure',
+        'pre_start_requirement:publish',
+        'pre_start_requirement:read',
         'report:read',
         'requisition:assign',
         'requisition:create',
@@ -978,8 +1005,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       const recruiterKeys = [...new Set(recruiterRoleScopes.map((r) => r.scope.key))].sort();
       expect(recruiterKeys).toEqual([
-        // HK-INTEGRATION-SPEC-COMP-STALE reconciliation — recruiter bundle: 43 scopes
-        // (42 + §5 Auth-Hardening D4's tenant:user:read:assignable).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -1010,6 +1035,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
+        'pre_start_requirement:act',
+        'pre_start_requirement:read',
         'report:read',
         'requisition:create',
         'requisition:read',
@@ -1022,9 +1049,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'talent:search',
         'task:read',
         'task:write',
-        // §5 Auth-Hardening D4 — recruiter gains the minimal assignable-roster
-        // read (GET /v1/tenant/users/assignable). NOT the admin user-manage
-        // scope; the recruiter-tier roster read for the assign pickers.
         'tenant:user:read:assignable',
         'tenant:user:read:directory',
       ].sort());
@@ -1080,8 +1104,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(candidateKeys).toEqual([
         'portal:consent:read',
         'portal:consent:write',
+        'portal:dispute:read',
+        'portal:dispute:write',
         'portal:profile:edit',
         'portal:profile:read',
+        'portal:verification:read',
       ]);
 
       // ====================================================================
@@ -1109,10 +1136,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // tenant_owner — 47 scopes (post-AUTHZ-D4a; 43 + 4 team-model scopes).
       // Owner = Admin scope set incl. the AUTHZ-D4a top-tier additions.
       await expectRoleScopes('tenant_owner', [
-        // Settings-D3 reconciliation — tenant_owner = tenant_admin set: 74 scopes
-        // (verbatim testcontainer truth; +tenant:admin:profile +tenant:admin:sites +tenant:user:read:assignable +tenant:user:read:directory; reconciles to roleScope.count=468).
         'activity:create',
         'activity:read',
+        'activity:redact',
         'attachment:create',
         'attachment:delete',
         'attachment:read',
@@ -1161,6 +1187,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:change-status',
         'pipeline:read',
         'pipeline:remove',
+        'pre_start_requirement:act',
+        'pre_start_requirement:configure',
+        'pre_start_requirement:publish',
+        'pre_start_requirement:read',
         'report:read',
         'requisition:assign',
         'requisition:create',
@@ -1199,8 +1229,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // delegations: user/membership mgmt, requisition:assign, and the
       // D4a client-ownership mechanisms.
       await expectRoleScopes('account_manager', [
-        // HK-INTEGRATION-SPEC-COMP-STALE reconciliation — account_manager bundle: 57 scopes
-        // (verbatim testcontainer truth; reconciles to roleScope.count=443).
         'activity:create',
         'activity:read',
         'attachment:create',
@@ -1237,6 +1265,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
+        'pre_start_requirement:act',
+        'pre_start_requirement:read',
+        'pre_start_requirement:waive_advisory',
         'report:read',
         'requisition:assign',
         'requisition:create',
@@ -1266,8 +1297,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Adds talents, manages the pipeline-sourcing surface, reads
       // requisitions/companies/contacts to source against.
       await expectRoleScopes('sourcer', [
-        // HK-INTEGRATION-SPEC-COMP-STALE reconciliation — sourcer bundle: 19 scopes
-        // (verbatim testcontainer truth; reconciles to roleScope.count=443).
         'activity:create',
         'activity:read',
         'auth:session:read',
@@ -1281,6 +1310,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
+        'pre_start_requirement:act',
+        'pre_start_requirement:read',
         'requisition:read',
         'requisition:search',
         'talent:create',
@@ -1299,8 +1330,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // yet exist on the entities; D5 wires the mask matrix after they're
       // modeled.
       await expectRoleScopes('finance', [
-        // HK-INTEGRATION-SPEC-COMP-STALE reconciliation — finance bundle: 9 scopes
-        // (verbatim testcontainer truth; reconciles to roleScope.count=443).
         'activity:create',
         'activity:read',
         'auth:session:read',
@@ -1310,8 +1339,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:search',
         'submittal:approve',
         'talent:read',
-        // §5 Auth-Hardening D4b — finance reads the requisition/talent lists →
-        // gains the name-resolver scope (NOT assignable; finance doesn't assign).
         'tenant:user:read:directory',
       ]);
 
@@ -1322,9 +1349,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // not the operational data. report:read + audit-log:read deferred
       // to the Reporting/Audit DDR.
       await expectRoleScopes('auditor', [
-        'activity:read', 'auth:session:read',
+        'activity:read',
+        'auth:session:read',
         'consent:decision-log:read',
-        'identity:tenant:read', 'identity:user:read',
+        'identity:tenant:read',
+        'identity:user:read',
       ]);
 
       // recruiting_manager — 33 scopes (Recruiter's 31 + tenant:admin:
@@ -1333,10 +1362,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // (user-manage + org:manage are the Axis-1 management operations);
       // team-tier visibility at D4b (NOT a see-all scope here).
       await expectRoleScopes('recruiting_manager', [
-        // HK-INTEGRATION-SPEC-COMP-STALE reconciliation — recruiting_manager bundle: 50 scopes
-        // (verbatim testcontainer truth; reconciles to roleScope.count=443).
         'activity:create',
         'activity:read',
+        'activity:redact',
         'attachment:create',
         'attachment:delete',
         'attachment:read',
@@ -1368,6 +1396,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
+        'pre_start_requirement:act',
+        'pre_start_requirement:read',
+        'pre_start_requirement:waive_advisory',
         'report:read',
         'requisition:create',
         'requisition:edit',
@@ -1394,8 +1425,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // read:all — team-oversight visibility comes from D4b, NOT a
       // see-all scope (AUTHZ-1b §2 ruling).
       await expectRoleScopes('delivery_manager', [
-        // HK-INTEGRATION-SPEC-COMP-STALE reconciliation — delivery_manager bundle: 28 scopes
-        // (verbatim testcontainer truth; reconciles to roleScope.count=443).
         'activity:create',
         'activity:read',
         'attachment:read',
@@ -1415,6 +1444,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'examination:read',
         'import:read',
         'pipeline:read',
+        'pre_start_requirement:act',
+        'pre_start_requirement:read',
+        'pre_start_requirement:waive_advisory',
         'report:read',
         'requisition:edit:status',
         'requisition:read',
@@ -1432,10 +1464,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // purely team-tier visibility via D4b (Axis-1 mid-tier); no
       // operational delta from Recruiter (AUTHZ-1b §2 ruling).
       await expectRoleScopes('lead_recruiter', [
-        // HK-INTEGRATION-SPEC-COMP-STALE reconciliation — lead_recruiter bundle: 48 scopes
-        // (verbatim testcontainer truth; reconciles to roleScope.count=443).
         'activity:create',
         'activity:read',
+        'activity:redact',
         'attachment:create',
         'attachment:delete',
         'attachment:read',
@@ -1466,6 +1497,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
+        'pre_start_requirement:act',
+        'pre_start_requirement:read',
         'report:read',
         'requisition:create',
         'requisition:edit',
@@ -1491,8 +1524,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // the role ultimately needs DO NOT EXIST yet — gap-and-noted to
       // a future Onboarding/Operations DDR (AUTHZ-1b §2 ruling).
       await expectRoleScopes('back_office', [
-        // HK-INTEGRATION-SPEC-COMP-STALE reconciliation — back_office bundle: 23 scopes
-        // (verbatim testcontainer truth; reconciles to roleScope.count=443).
         'activity:create',
         'activity:read',
         'attachment:read',

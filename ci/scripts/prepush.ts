@@ -2,6 +2,8 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { getRoots } from './integration-roots';
+
 // CI-Velocity PR-1 (Aramo-CI-Velocity-Directive-v1_0-LOCKED §PR-1) — the COMPUTED
 // prepush. The diff→verification mapping is computed from Nx's dependency graph +
 // path rules, NOT remembered. It supersedes-in-mechanism the six interim run-set
@@ -18,27 +20,12 @@ import { resolve } from 'node:path';
 const BASE = 'origin/main';
 const ROOT = resolve(__dirname, '..', '..');
 
-// The integration roots (ARAMO_RUN_INTEGRATION=1). Each is run iff its Nx project
-// is in the affected set (a dep change propagates through the graph).
-const INTEGRATION_ROOTS = [
-  'libs/consent',
-  'libs/examination',
-  'libs/job-domain',
-  'libs/matching',
-  'libs/talent-evidence',
-  'apps/api',
-  'libs/evidence',
-  'libs/submittal',
-  'libs/client-talent-restriction',
-  'libs/engagement',
-  'libs/ai-draft',
-  'libs/canonicalization',
-  'libs/identity-index',
-  'libs/portal-identity',
-  'libs/tenant-reset',
-  'libs/placement',
-  'libs/pre-start-requirement',
-];
+// The integration roots (ARAMO_RUN_INTEGRATION=1) come from the single canonical
+// registry ci/integration-roots.json via ci/scripts/integration-roots.ts — NO
+// embedded list here (the coverage guard fails the build if one reappears). Each
+// is run iff its Nx project is in the affected set (a dep change propagates
+// through the graph).
+const INTEGRATION_ROOTS = getRoots();
 
 function run(cmd: string): void {
   execSync(cmd, { cwd: ROOT, stdio: 'inherit' });
@@ -134,6 +121,10 @@ steps.push(['portal:refusal-check', () => run('npm run --silent portal:refusal-c
 steps.push(['ats:refusal-check', () => run('npm run --silent ats:refusal-check')]);
 steps.push(['ingestion:refusal-check', () => run('npm run --silent ingestion:refusal-check')]);
 steps.push(['version:sync-check', () => run('npm run --silent version:sync-check')]);
+// PR-B §12 — default-deny integration-root coverage guard. Proves every
+// integration-bearing project is enrolled in ci/integration-roots.json and that
+// no runner embeds a divergent root list. Unconditional (never affected-scoped).
+steps.push(['integration-roots:check', () => run('npm run --silent tests:integration:check')]);
 // Track 3 E1-a §5c — the placement migration SQL is a generated artifact;
 // regenerate and byte-compare against the committed file (generate-and-compare
 // idiom, like repo-map:check / error-codes:check).
