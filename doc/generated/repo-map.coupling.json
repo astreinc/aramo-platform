@@ -3838,6 +3838,18 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-offer-openapi-conformance.spec.ts",
+      "status": "excluded",
+      "to": "openapi/ats.yaml"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
       "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
@@ -11503,6 +11515,12 @@
       "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
       "status": "excluded",
       "to": "libs/placement/prisma/migrations/20260803180000_init_placement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/outbox-publisher/src/tests/outbox-publisher.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
