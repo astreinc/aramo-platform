@@ -364,7 +364,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('create commits exactly one placement.process.created outbox event carrying the snapshot', async () => {
       const offered_at = new Date('2026-08-05T09:30:00.000Z');
-      const input = baseInput({ offered_at, client_offer_reference: 'REF-OUT', proposed_start_date: null, offer_expires_at: null });
+      // Supply offer_terms_summary so the assertion below genuinely proves it is
+      // EXCLUDED from the event payload even when it is set on the aggregate.
+      const input = baseInput({
+        offered_at,
+        client_offer_reference: 'REF-OUT',
+        offer_terms_summary: 'SENSITIVE recruiter-authored free text — must not leak into the event',
+        proposed_start_date: null,
+        offer_expires_at: null,
+      });
       const v = await repo.createPlacement(input, 'outc');
       const rows = await outboxRowsFor(v.id);
       expect(rows).toHaveLength(1);
@@ -383,6 +391,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(p['offer_expires_at']).toBeNull();
       expect(p['client_offer_reference']).toBe('REF-OUT');
       expect(typeof p['occurred_at']).toBe('string');
+      // PR-A regression guard — offer_terms_summary is DELIBERATELY ABSENT from the
+      // created-event payload (recruiter free text must never enter the append-only,
+      // non-reset-covered OutboxEvent). It stays on the aggregate.
+      expect(Object.prototype.hasOwnProperty.call(p, 'offer_terms_summary')).toBe(false);
+      expect(p['offer_terms_summary']).toBeUndefined();
+      const reread = await repo.findById(input.tenant_id, v.id);
+      expect(reread?.offer_terms_summary).toBe(input.offer_terms_summary);
     });
 
     // ---- proof 3: a rejected (duplicate-live) create writes NEITHER row nor event ----
@@ -506,6 +521,146 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // markPublished's published_at IS NULL filter excludes an already-drained row.
       const again = await outbox.markPublished({ event_ids: [eventId], published_at: new Date() });
       expect(again).toBe(0);
+    });
+
+    // ---- proof 11 (PR-A): mid-transaction outbox-insert failure rolls back the
+    //      whole aggregate mutation. The failure is forced AT THE OUTBOX INSERT
+    //      BOUNDARY (not pre-tx, not via unrelated validation) by a TEST-ONLY
+    //      BEFORE INSERT trigger installed only inside this harness and dropped in
+    //      guaranteed cleanup. The production immutability trigger is never touched.
+
+    // Distinctive sentinel tenant IDs — the 'dead' hextet cannot collide with the
+    // randomUUID() fixtures used everywhere else in this suite.
+    const SENTINEL_CREATE = '00000000-dead-7000-8000-00000000000a';
+    const SENTINEL_TRANSITION = '00000000-dead-7000-8000-00000000000b';
+
+    // Install a BEFORE INSERT trigger that raises for exactly the two sentinel
+    // (event_type, tenant) pairs — forcing the OutboxEvent insert (and only that
+    // insert) to fail. Idempotent so the two proofs are order-independent.
+    async function installSentinelOutboxTrigger(): Promise<void> {
+      await setupClient.$executeRawUnsafe(
+        `CREATE OR REPLACE FUNCTION placement.force_outbox_insert_fail()
+         RETURNS TRIGGER AS $$
+         BEGIN
+           IF (NEW."event_type" = 'placement.process.created' AND NEW."tenant_id" = '${SENTINEL_CREATE}')
+              OR (NEW."event_type" = 'placement.process.state_changed' AND NEW."tenant_id" = '${SENTINEL_TRANSITION}')
+           THEN
+             RAISE EXCEPTION 'forced outbox insert failure (test sentinel)';
+           END IF;
+           RETURN NEW;
+         END;
+         $$ LANGUAGE plpgsql;`,
+      );
+      await setupClient.$executeRawUnsafe(
+        `DROP TRIGGER IF EXISTS trg_test_force_outbox_fail ON placement."OutboxEvent";`,
+      );
+      await setupClient.$executeRawUnsafe(
+        `CREATE TRIGGER trg_test_force_outbox_fail
+           BEFORE INSERT ON placement."OutboxEvent"
+           FOR EACH ROW EXECUTE FUNCTION placement.force_outbox_insert_fail();`,
+      );
+    }
+
+    async function dropSentinelOutboxTrigger(): Promise<void> {
+      await setupClient.$executeRawUnsafe(
+        `DROP TRIGGER IF EXISTS trg_test_force_outbox_fail ON placement."OutboxEvent";`,
+      );
+      await setupClient.$executeRawUnsafe(
+        `DROP FUNCTION IF EXISTS placement.force_outbox_insert_fail();`,
+      );
+    }
+
+    // Assert the production append-only triggers are present and unchanged.
+    async function productionImmutabilityTriggers(): Promise<string[]> {
+      const rows = await prisma.$queryRawUnsafe<Array<{ tgname: string }>>(
+        `SELECT tgname FROM pg_trigger
+          WHERE tgrelid = 'placement."OutboxEvent"'::regclass AND NOT tgisinternal
+          ORDER BY tgname`,
+      );
+      return rows.map((r) => r.tgname);
+    }
+
+    async function countPlacementRows(tenantId: string): Promise<number> {
+      const r = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
+        `SELECT COUNT(*)::bigint AS count FROM placement."PlacementProcess" WHERE tenant_id = '${tenantId}'`,
+      );
+      return Number(r[0].count);
+    }
+    async function countOutboxRows(tenantId: string, eventType: string): Promise<number> {
+      const r = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
+        `SELECT COUNT(*)::bigint AS count FROM placement."OutboxEvent" WHERE tenant_id = '${tenantId}' AND event_type = '${eventType}'`,
+      );
+      return Number(r[0].count);
+    }
+
+    it('Case A — a create whose OutboxEvent insert fails at the boundary rolls back BOTH writes (no PlacementProcess, no OutboxEvent)', async () => {
+      const before = await productionImmutabilityTriggers();
+      expect(before).toEqual(['trg_reject_outbox_delete', 'trg_reject_outbox_update']);
+
+      // Control: the same-shaped input under a NON-sentinel tenant succeeds and
+      // writes both rows — proving the aggregate mutation is otherwise valid and
+      // that the only difference is the forced outbox failure.
+      const controlInput = baseInput({ client_offer_reference: 'CASE-A-CONTROL' });
+      const control = await repo.createPlacement(controlInput, 'caseA-control');
+      expect(await countPlacementRows(controlInput.tenant_id)).toBe(1);
+      expect(await countOutboxRows(controlInput.tenant_id, 'placement.process.created')).toBe(1);
+
+      await installSentinelOutboxTrigger();
+      try {
+        const input = baseInput({ tenant_id: SENTINEL_CREATE, client_offer_reference: 'CASE-A' });
+        // The rejection must originate at the OUTBOX INSERT (sentinel message),
+        // not from the pre-tx duplicate guard or offer validation.
+        await expect(repo.createPlacement(input, 'caseA')).rejects.toThrow(
+          /forced outbox insert failure \(test sentinel\)/,
+        );
+        // Both writes rolled back: no PlacementProcess row, no OutboxEvent row.
+        expect(await countPlacementRows(SENTINEL_CREATE)).toBe(0);
+        expect(await countOutboxRows(SENTINEL_CREATE, 'placement.process.created')).toBe(0);
+      } finally {
+        await dropSentinelOutboxTrigger();
+      }
+
+      // Production triggers remain present and unchanged; the control aggregate is
+      // untouched by the rollback (no cross-tenant residue).
+      expect(await productionImmutabilityTriggers()).toEqual(before);
+      expect((await repo.findById(controlInput.tenant_id, control.id))?.state).toBe('OFFER_EXTENDED');
+    });
+
+    it('Case B — a transition whose OutboxEvent insert fails rolls back the state mutation + event, leaving the aggregate and its created row intact', async () => {
+      const before = await productionImmutabilityTriggers();
+      expect(before).toEqual(['trg_reject_outbox_delete', 'trg_reject_outbox_update']);
+
+      // Create succeeds (the created event does NOT match the transition sentinel),
+      // so an otherwise-valid aggregate exists before the forced transition failure.
+      const input = baseInput({ tenant_id: SENTINEL_TRANSITION });
+      const created = await repo.createPlacement(input, 'caseB-create');
+      const stateBefore = created.state;
+      expect(stateBefore).toBe('OFFER_EXTENDED');
+      expect(await countOutboxRows(SENTINEL_TRANSITION, 'placement.process.created')).toBe(1);
+
+      await installSentinelOutboxTrigger();
+      try {
+        // Legal transition; its state_changed outbox insert hits the sentinel.
+        await expect(
+          repo.transition({ tenant_id: SENTINEL_TRANSITION, placement_process_id: created.id, to: 'OFFER_ACCEPTED' }, 'caseB'),
+        ).rejects.toThrow(/forced outbox insert failure \(test sentinel\)/);
+
+        // State mutation rolled back — original state preserved.
+        const reread = await repo.findById(SENTINEL_TRANSITION, created.id);
+        expect(reread).not.toBeNull();
+        expect(reread?.state).toBe(stateBefore);
+        // No state_changed outbox row, and the PlacementProcessEvent append rolled back too.
+        expect(await countOutboxRows(SENTINEL_TRANSITION, 'placement.process.state_changed')).toBe(0);
+        expect((await events.listEvents(SENTINEL_TRANSITION, created.id)).length).toBe(0);
+        // Distinguish "transition rolled back" from "whole aggregate disappeared":
+        // the aggregate row still exists AND its earlier created event is intact.
+        expect(await countPlacementRows(SENTINEL_TRANSITION)).toBe(1);
+        expect(await countOutboxRows(SENTINEL_TRANSITION, 'placement.process.created')).toBe(1);
+      } finally {
+        await dropSentinelOutboxTrigger();
+      }
+
+      expect(await productionImmutabilityTriggers()).toEqual(before);
     });
   },
 );

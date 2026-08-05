@@ -137,7 +137,11 @@ export class PlacementRepository {
             tenant_id: input.tenant_id,
             event_type: OUTBOX_CREATED,
             // Non-sensitive operational offer snapshot — NO commercial rates,
-            // restricted evidence, or authorization detail (9-c-2).
+            // restricted evidence, or authorization detail (9-c-2). offer_terms_summary
+            // is DELIBERATELY EXCLUDED (PR-A correction): it is recruiter-authored free
+            // text tied to a named individual, and placement.OutboxEvent is append-only
+            // + not tenant-reset-covered, so copying it here would make it permanent.
+            // It stays on the PlacementProcess row; it must never enter this payload.
             event_payload: {
               placement_process_id: created.id,
               tenant_id: created.tenant_id,
@@ -149,7 +153,6 @@ export class PlacementRepository {
               proposed_start_date: created.proposed_start_date?.toISOString() ?? null,
               offer_expires_at: created.offer_expires_at?.toISOString() ?? null,
               client_offer_reference: created.client_offer_reference,
-              offer_terms_summary: created.offer_terms_summary,
               occurred_at: created.created_at.toISOString(),
             },
           },
