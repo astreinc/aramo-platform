@@ -413,6 +413,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(report.freeze_engaged).toBe(true);
       expect(report.freeze_released).toBe(true);
 
+      // NON-VACUOUS escape proof (T0 v1.1 §2.4): the report's `before` counts are
+      // captured at execute() time, inside the same transaction that then deleted
+      // them. Assert at least one trigger-protected Audit AND Instance row EXISTED
+      // (before >= 1) and went to zero — so the reset-marker escape demonstrably
+      // deleted real protected rows, not an empty table. (Without the marker the
+      // BEFORE DELETE trigger would have raised and the whole reset would have
+      // ABORTED with zero deletes.)
+      const before = (label: string): number => report.deleted.find((d) => d.label === label)!.before;
+      expect(before('pre_start_requirement."PreStartRequirementAudit"')).toBeGreaterThanOrEqual(1);
+      expect(before('pre_start_requirement."PreStartRequirementInstance"')).toBeGreaterThanOrEqual(1);
+      expect(await count('pre_start_requirement."PreStartRequirementAudit"', 'tenant_id=$1::uuid', [T])).toBe(0);
+      expect(await count('pre_start_requirement."PreStartRequirementInstance"', 'tenant_id=$1::uuid', [T])).toBe(0);
+
       // Every §2.2 deleted entity is now zero for the tenant.
       expect(await count('requisition."Requisition"', 'tenant_id=$1::uuid', [T])).toBe(0);
       expect(await count('requisition."RequisitionAssignment"', 'tenant_id=$1::uuid', [T])).toBe(0);
