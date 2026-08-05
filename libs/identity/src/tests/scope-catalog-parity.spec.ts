@@ -82,14 +82,11 @@ const PROTECTED_ZERO_GRANT_SCOPES = [
   'pre_start_requirement:reopen',
 ] as const;
 
-// SEED_SCOPE_KEYS is a CURATED catalog, not the full id-map: one platform id
-// (platform:tenant:lifecycle:manage) lives in SEED_IDS.scopes but not in
-// SEED_SCOPE_KEYS (a pre-existing, documented F-2 divergence — NOT reconciled
-// here). This narrow allowlist lets the reverse-direction guard catch any NEW
-// declared-id-without-a-catalog-key while tolerating that one documented entry.
-const KNOWN_CATALOG_EXEMPT = ['platform:tenant:lifecycle:manage'];
+// F-2 CLOSED: platform:tenant:lifecycle:manage is now in SEED_SCOPE_KEYS, so the
+// catalog and the id-map are a STRICT bijection — no exemption remains. Any NEW
+// declared-id-without-a-catalog-key (or vice versa) now fails outright.
 
-// ---- catalog ↔ id-map bijection (with the one documented exemption) ----------
+// ---- catalog ↔ id-map STRICT bijection ---------------------------------------
 
 describe('scope catalog ↔ id-map', () => {
   it('every SEED_SCOPE_KEYS key has exactly one SEED_IDS.scopes entry', () => {
@@ -98,9 +95,9 @@ describe('scope catalog ↔ id-map', () => {
     expect(missing, `catalog keys with no id: ${missing.join(', ')}`).toEqual([]);
   });
 
-  it('no declared id without a catalog key (except the documented F-2 exemption)', () => {
+  it('no declared id without a catalog key (strict — no exemptions)', () => {
     const catalog = new Set<string>(SEED_SCOPE_KEYS);
-    const dangling = declaredScopeKeys.filter((k) => !catalog.has(k) && !KNOWN_CATALOG_EXEMPT.includes(k));
+    const dangling = declaredScopeKeys.filter((k) => !catalog.has(k));
     expect(dangling, `declared ids absent from the catalog: ${dangling.join(', ')}`).toEqual([]);
   });
 
