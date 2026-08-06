@@ -155,8 +155,15 @@ export function lifecyclePositionOf(state: PlacementState): LifecyclePosition {
 // state's lifecycle POSITION, not independently authored. The transition route
 // requires the placement:<class> scope this returns.
 //   TERMINAL target  -> 'terminate'  (terminal / irreversible termination)
-//   ENGAGED target   -> 'activate'   (establishes the live/committed placement,
-//                                      consumes capacity — READY_TO_START->STARTED)
+//   ENGAGED target   -> 'activate'   (asserts the placement has STARTED — the
+//                                      live/committed start assertion,
+//                                      READY_TO_START->STARTED. Capacity wiring
+//                                      is currently DEFERRED / not implemented:
+//                                      this edge is capacity-inert today — it
+//                                      does not decrement requisition openings
+//                                      or call any capacity path. The scope
+//                                      follows the business meaning of asserting
+//                                      a start, not a present side effect.)
 //   otherwise        -> 'transition' (ordinary non-terminal progression)
 // This is a total function over the 14 legal edges; deriving it is applying a
 // ratified classification to grounded facts (Execution Model §13), not policy.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PLACEMENT_SEED_BUNDLES } from '../../prisma/seed.js';
+import { AUTHZ1_BUNDLES, PLACEMENT_SEED_BUNDLES } from '../../prisma/seed.js';
 
 // Track 3 / E1-b — THE PLACEMENT ROLE-MATRIX GATE (unit tier).
 //
@@ -97,5 +97,36 @@ describe('Placement role matrix — grant table (unit)', () => {
     const pairs = PLACEMENT_SEED_BUNDLES.flatMap(([r, s]) => s.map((sc) => `${r}:${sc}`));
     expect(pairs).toHaveLength(18);
     expect(new Set(pairs).size).toBe(18);
+  });
+});
+
+// recruiting_manager is called out by name (Gate-6 FIX_NOW): a management-tier
+// role sitting ABOVE recruiter operationally (Recruiter's set + tenant:admin:
+// user-manage per AUTHZ-1b) that a reader might expect to hold placement
+// authority. Its zero-placement posture must be shown to be INTENTIONAL — not an
+// accidental omission (the role is real and actively granted) and not an
+// inheritance artifact (grants do NOT flow up the role hierarchy from recruiter).
+describe('Placement role matrix — recruiting_manager is intentionally excluded', () => {
+  const rmAuthz1 = AUTHZ1_BUNDLES.filter(([r]) => r === 'recruiting_manager').flatMap(([, s]) => s);
+  const rmPlacement = placementScopesFor('recruiting_manager');
+
+  it('recruiting_manager is a real, actively-granted role (holds management scopes) — so absence is not an inactive-role artifact', () => {
+    expect(rmAuthz1.length).toBeGreaterThan(0);
+    expect(rmAuthz1).toContain('tenant:admin:user-manage');
+  });
+
+  it('recruiting_manager receives ZERO placement scopes and is absent from PLACEMENT_SEED_BUNDLES by design', () => {
+    expect(rmPlacement).toEqual([]);
+    expect(PLACEMENT_SEED_BUNDLES.map(([r]) => r)).not.toContain('recruiting_manager');
+  });
+
+  it('the zero-placement posture is deliberate, NOT hierarchy inheritance: recruiting_manager sits above recruiter yet inherits none of recruiter’s placement grants', () => {
+    // recruiter IS granted placement (below) — if grants flowed up the tier,
+    // recruiting_manager would carry them. It does not.
+    expect(placementScopesFor('recruiter')).toEqual(RECRUITER_THREE);
+    expect(rmPlacement).toEqual([]);
+    // And it holds none of the manager-tier placement scopes either.
+    expect(rmPlacement).not.toContain('placement:activate');
+    expect(rmPlacement).not.toContain('placement:terminate');
   });
 });
