@@ -10,7 +10,25 @@ import { PlacementRepository } from '../lib/placement.repository.js';
 import { PlacementProcessEventRepository } from '../lib/placement-process-event.repository.js';
 import { PlacementOutboxRepository } from '../lib/placement-outbox.repository.js';
 import { LEGAL_TRANSITIONS, type PlacementState } from '../lib/lifecycle/placement-lifecycle.js';
+import {
+  PLACEMENT_REASONS,
+  REASON_DETAIL_MAX,
+  isGovernedTerminalTarget,
+  type PlacementReasonDefinition,
+} from '../lib/reasons/placement-reason-registry.js';
 import type { CreatePlacementInput } from '../lib/placement-process.types.js';
+
+// E3 — a transition into a governed terminal state now REQUIRES a reason. This
+// helper returns a valid OPTIONAL reason code for a governed target (no detail
+// needed) and {} for a non-governed target, so path-walking tests spread it on
+// every hop unconditionally.
+function reasonForTarget(target: PlacementState): { reason_code?: string } {
+  if (!isGovernedTerminalTarget(target)) return {};
+  const def = PLACEMENT_REASONS.find(
+    (r) => r.status === 'active' && r.detailPolicy === 'OPTIONAL' && r.allowedTargets.includes(target),
+  );
+  return def ? { reason_code: def.code } : {};
+}
 
 // Track 3 / E1-a — integration spec (real Postgres 17). One migration applies
 // the whole placement schema (new schema, no cross-lib deps). Proves the
@@ -26,6 +44,13 @@ const INIT_MIGRATION_PATH = resolve(
 const OFFER_OUTBOX_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql',
+);
+// E3 — the additive fallthrough/terminal reason-evidence columns on
+// PlacementProcessEvent (curated migration list: the Prisma client now selects
+// these columns, so every placement-DB spec must apply this migration).
+const REASON_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql',
 );
 
 // Known transition path to reach each from-state from the initial
@@ -70,8 +95,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       setupClient = new PrismaService(url);
       await setupClient.$connect();
-      // Apply the init migration then the additive E1-c migration, in order.
-      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH]) {
+      // Apply the init migration then the additive E1-c and E3 migrations, in order.
+      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH]) {
         const sql = readFileSync(path, 'utf8');
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
@@ -100,7 +125,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const created = await repo.createPlacement(input, 'drive');
       let id = created.id;
       for (const to of PATH_TO[state]) {
-        const v = await repo.transition({ tenant_id: input.tenant_id, placement_process_id: id, to }, 'drive');
+        const v = await repo.transition(
+          { tenant_id: input.tenant_id, placement_process_id: id, to, ...reasonForTarget(to) },
+          'drive',
+        );
         expect(v.state).toBe(to);
         id = v.id;
       }
@@ -127,9 +155,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           const v = await repo.transition({ tenant_id: input.tenant_id, placement_process_id: id, to }, 'setup');
           id = v.id;
         }
-        // exercise the edge
+        // exercise the edge (a governed terminal target now requires a reason)
         const moved = await repo.transition(
-          { tenant_id: input.tenant_id, placement_process_id: id, to: edge.to },
+          { tenant_id: input.tenant_id, placement_process_id: id, to: edge.to, ...reasonForTarget(edge.to) },
           'edge',
         );
         expect(moved.state).toBe(edge.to);
@@ -237,7 +265,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const input = baseInput(shared);
         const created = await repo.createPlacement(input, `re-${terminal}-a`);
         for (const to of PATH_TO[terminal]) {
-          await repo.transition({ tenant_id: shared.tenant_id, placement_process_id: created.id, to }, 'walk');
+          await repo.transition(
+            { tenant_id: shared.tenant_id, placement_process_id: created.id, to, ...reasonForTarget(to) },
+            'walk',
+          );
         }
         // first attempt is now terminal — a second attempt is permitted.
         const second = await repo.createPlacement(baseInput(shared), `re-${terminal}-b`);
@@ -533,17 +564,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // randomUUID() fixtures used everywhere else in this suite.
     const SENTINEL_CREATE = '00000000-dead-7000-8000-00000000000a';
     const SENTINEL_TRANSITION = '00000000-dead-7000-8000-00000000000b';
+    // E3 — a third sentinel tenant for the reason-BEARING terminal-transition
+    // rollback proof (Case C).
+    const SENTINEL_REASON = '00000000-dead-7000-8000-00000000000c';
 
-    // Install a BEFORE INSERT trigger that raises for exactly the two sentinel
+    // Install a BEFORE INSERT trigger that raises for exactly the three sentinel
     // (event_type, tenant) pairs — forcing the OutboxEvent insert (and only that
-    // insert) to fail. Idempotent so the two proofs are order-independent.
+    // insert) to fail. Idempotent so the proofs are order-independent.
     async function installSentinelOutboxTrigger(): Promise<void> {
       await setupClient.$executeRawUnsafe(
         `CREATE OR REPLACE FUNCTION placement.force_outbox_insert_fail()
          RETURNS TRIGGER AS $$
          BEGIN
            IF (NEW."event_type" = 'placement.process.created' AND NEW."tenant_id" = '${SENTINEL_CREATE}')
-              OR (NEW."event_type" = 'placement.process.state_changed' AND NEW."tenant_id" = '${SENTINEL_TRANSITION}')
+              OR (NEW."event_type" = 'placement.process.state_changed' AND NEW."tenant_id" IN ('${SENTINEL_TRANSITION}', '${SENTINEL_REASON}'))
            THEN
              RAISE EXCEPTION 'forced outbox insert failure (test sentinel)';
            END IF;
@@ -662,6 +696,278 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       expect(await productionImmutabilityTriggers()).toEqual(before);
     });
+
+    // ================= E3 — fallthrough/terminal reason evidence ===============
+    // Proofs derive their reason fixtures FROM the registry (never hard-code a
+    // business code), so a future PO re-ruling of the taxonomy is a data swap.
+
+    const OPTIONAL_DEF: PlacementReasonDefinition = PLACEMENT_REASONS.find(
+      (r) => r.status === 'active' && r.detailPolicy === 'OPTIONAL',
+    )!;
+    const REQUIRED_DEF: PlacementReasonDefinition = PLACEMENT_REASONS.find(
+      (r) => r.status === 'active' && r.detailPolicy === 'REQUIRED',
+    )!;
+    const PROHIBITED_DEF: PlacementReasonDefinition = PLACEMENT_REASONS.find(
+      (r) => r.status === 'active' && r.detailPolicy === 'PROHIBITED',
+    )!;
+
+    // Drive a fresh placement to a governed terminal `target`, applying the reason
+    // ONLY on the final (governed) edge — intermediates carry no reason. Returns id.
+    async function driveToTerminalWithReason(
+      target: PlacementState,
+      tenant: string,
+      reason: { reason_code?: string | null; reason_detail?: string | null },
+      overrides: Partial<CreatePlacementInput> = {},
+    ): Promise<string> {
+      const input = baseInput({ tenant_id: tenant, ...overrides });
+      const created = await repo.createPlacement(input, 'e3-create');
+      let id = created.id;
+      const path = PATH_TO[target];
+      for (let i = 0; i < path.length - 1; i++) {
+        const v = await repo.transition({ tenant_id: tenant, placement_process_id: id, to: path[i]! }, 'e3-mid');
+        id = v.id;
+      }
+      const final = await repo.transition(
+        { tenant_id: tenant, placement_process_id: id, to: target, ...reason },
+        'e3-final',
+      );
+      expect(final.state).toBe(target);
+      return id;
+    }
+
+    // ---- §14.3-4 + §14.5/C1: valid reason persists on the event; outbox carries
+    //      reason_code + reason_label_snapshot but NEVER reason_detail ----
+
+    it('a valid reason persists reason_code + label snapshot + detail on the event, and the outbox carries code + label but NOT detail (C1)', async () => {
+      const target = REQUIRED_DEF.allowedTargets[0]!; // REQUIRED code → detail present
+      const tenant = randomUUID();
+      const detail = 'the specific missing distinction, in the operator words';
+      const id = await driveToTerminalWithReason(target, tenant, {
+        reason_code: REQUIRED_DEF.code,
+        reason_detail: detail,
+      });
+
+      // Event evidence: all three reason columns persisted (detail on the aggregate).
+      const log = await events.listEvents(tenant, id);
+      const terminalEvt = log[log.length - 1]!;
+      expect(terminalEvt.reason_code).toBe(REQUIRED_DEF.code);
+      expect(terminalEvt.reason_label_snapshot).toBe(REQUIRED_DEF.label);
+      expect(terminalEvt.reason_detail).toBe(detail);
+
+      // Outbox evidence: the state_changed row carries code + label + to_state, and
+      // NO reason_detail under ANY key (C1 — the hard prohibition).
+      const rows = await outboxRowsFor(id);
+      const changed = rows.filter((r) => r.event_type === 'placement.process.state_changed');
+      const payload = changed[changed.length - 1]!.event_payload;
+      expect(payload['reason_code']).toBe(REQUIRED_DEF.code);
+      expect(payload['reason_label_snapshot']).toBe(REQUIRED_DEF.label);
+      expect(payload['to_state']).toBe(target);
+      expect(Object.prototype.hasOwnProperty.call(payload, 'reason_detail')).toBe(false);
+      expect(payload['reason_detail']).toBeUndefined();
+      // And the detail text does not appear under any other payload key.
+      expect(JSON.stringify(payload).includes(detail)).toBe(false);
+    });
+
+    // ---- §14.6-8: detail policy behaviour end-to-end ----
+
+    it('OPTIONAL detail succeeds both present (persisted, normalised) and absent (null); outbox never carries detail', async () => {
+      const target = OPTIONAL_DEF.allowedTargets[0]!;
+      // Present.
+      const withDetail = await driveToTerminalWithReason(target, randomUUID(), {
+        reason_code: OPTIONAL_DEF.code,
+        reason_detail: '  spaced   out  ',
+      });
+      const wLog = await events.listEvents(await tenantOf(withDetail), withDetail);
+      expect(wLog[wLog.length - 1]!.reason_detail).toBe('spaced out');
+      // Absent.
+      const noDetail = await driveToTerminalWithReason(target, randomUUID(), { reason_code: OPTIONAL_DEF.code });
+      const nLog = await events.listEvents(await tenantOf(noDetail), noDetail);
+      expect(nLog[nLog.length - 1]!.reason_code).toBe(OPTIONAL_DEF.code);
+      expect(nLog[nLog.length - 1]!.reason_detail).toBeNull();
+    });
+
+    it('REQUIRED detail succeeds with valid normalised input', async () => {
+      const target = REQUIRED_DEF.allowedTargets[0]!;
+      const tenant = randomUUID();
+      const id = await driveToTerminalWithReason(target, tenant, {
+        reason_code: REQUIRED_DEF.code,
+        reason_detail: '   needs    text   ',
+      });
+      const log = await events.listEvents(tenant, id);
+      expect(log[log.length - 1]!.reason_detail).toBe('needs text');
+    });
+
+    it('PROHIBITED detail succeeds only when absent, and persists a null detail (data-classification: the finding never lands here)', async () => {
+      const target = PROHIBITED_DEF.allowedTargets[0]!;
+      const tenant = randomUUID();
+      const id = await driveToTerminalWithReason(target, tenant, { reason_code: PROHIBITED_DEF.code });
+      const log = await events.listEvents(tenant, id);
+      const evt = log[log.length - 1]!;
+      expect(evt.reason_code).toBe(PROHIBITED_DEF.code);
+      expect(evt.reason_label_snapshot).toBe(PROHIBITED_DEF.label);
+      expect(evt.reason_detail).toBeNull();
+    });
+
+    // ---- §14.9: legacy / non-governed events read as null reason (not a code) ----
+
+    it('a non-governed transition writes null reason evidence, and the read view reports null (legacy-null tolerance)', async () => {
+      const tenant = randomUUID();
+      const input = baseInput({ tenant_id: tenant });
+      const created = await repo.createPlacement(input, 'e3-legacy');
+      // OFFER_EXTENDED -> OFFER_ACCEPTED is non-governed; carries no reason.
+      await repo.transition({ tenant_id: tenant, placement_process_id: created.id, to: 'OFFER_ACCEPTED' }, 'e3-ng');
+      const log = await events.listEvents(tenant, created.id);
+      expect(log).toHaveLength(1);
+      expect(log[0]!.reason_code).toBeNull();
+      expect(log[0]!.reason_label_snapshot).toBeNull();
+      expect(log[0]!.reason_detail).toBeNull();
+    });
+
+    // ---- §15: negative proofs — every refusal is PLACEMENT_REASON_INVALID 422 and
+    //      NON-VACUOUS (placement exists, edge exists, state/event/outbox unchanged) ----
+
+    // Snapshot {state, event count, per-tenant outbox count} to prove non-vacuity.
+    async function reasonSnapshot(tenant: string, id: string): Promise<{ state: string | null; events: number; outbox: number }> {
+      const p = await prisma.placementProcess.findFirst({ where: { id, tenant_id: tenant } });
+      const evCount = (await events.listEvents(tenant, id)).length;
+      const r = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
+        `SELECT COUNT(*)::bigint AS count FROM placement."OutboxEvent" WHERE tenant_id = '${tenant}'`,
+      );
+      return { state: p?.state ?? null, events: evCount, outbox: Number(r[0]!.count) };
+    }
+
+    // A governed terminal target reachable directly from OFFER_EXTENDED, and a
+    // reason code NOT allowed for it (for the wrong-target proof).
+    const GOV_TARGET = OPTIONAL_DEF.allowedTargets[0]!; // e.g. OFFER_DECLINED
+    const WRONG_CODE = PLACEMENT_REASONS.find(
+      (r) => r.status === 'active' && !r.allowedTargets.includes(GOV_TARGET),
+    )!;
+
+    type Case = { name: string; reason: { reason_code?: string | null; reason_detail?: string | null }; expect: string };
+    const NEGATIVE_CASES: Case[] = [
+      { name: 'governed target with no reason code', reason: {}, expect: 'reason_required' },
+      { name: 'unknown reason code', reason: { reason_code: 'no_such_code_xyz' }, expect: 'reason_unknown' },
+      { name: 'a label supplied instead of a code', reason: { reason_code: OPTIONAL_DEF.label }, expect: 'reason_unknown' },
+      { name: 'a reason valid for a different target', reason: { reason_code: WRONG_CODE.code }, expect: 'reason_wrong_target' },
+      { name: 'REQUIRED detail missing', reason: { reason_code: REQUIRED_DEF.code }, expect: 'detail_required' },
+      { name: 'REQUIRED detail whitespace-only', reason: { reason_code: REQUIRED_DEF.code, reason_detail: '     ' }, expect: 'detail_required' },
+      { name: 'PROHIBITED detail present', reason: { reason_code: PROHIBITED_DEF.code, reason_detail: 'a finding' }, expect: 'detail_prohibited' },
+      { name: 'overlong detail', reason: { reason_code: OPTIONAL_DEF.code, reason_detail: 'x'.repeat(REASON_DETAIL_MAX + 1) }, expect: 'detail_too_long' },
+    ];
+
+    for (const c of NEGATIVE_CASES) {
+      it(`rejects: ${c.name} → PLACEMENT_REASON_INVALID 422 (non-vacuous: state/event/outbox unchanged)`, async () => {
+        const tenant = randomUUID();
+        const created = await repo.createPlacement(baseInput({ tenant_id: tenant }), 'e3-neg');
+        // For the PROHIBITED/wrong-target cases the target must accept the code's
+        // policy shape; drive to that code's own governed target.
+        const target =
+          c.expect === 'detail_prohibited'
+            ? PROHIBITED_DEF.allowedTargets[0]!
+            : c.expect === 'detail_required'
+              ? REQUIRED_DEF.allowedTargets[0]!
+              : GOV_TARGET;
+        // Drive intermediates (no reason) so the failing edge is the governed one
+        // and the placement + edge genuinely exist (non-vacuity).
+        let id = created.id;
+        const path = PATH_TO[target];
+        for (let i = 0; i < path.length - 1; i++) {
+          const v = await repo.transition({ tenant_id: tenant, placement_process_id: id, to: path[i]! }, 'e3-neg-mid');
+          id = v.id;
+        }
+        const before = await reasonSnapshot(tenant, id);
+        await expect(
+          repo.transition({ tenant_id: tenant, placement_process_id: id, to: target, ...c.reason }, 'e3-neg-final'),
+        ).rejects.toMatchObject({ code: 'PLACEMENT_REASON_INVALID', statusCode: 422, context: { details: { reason: c.expect } } });
+        // Non-vacuous: nothing moved — no state change, no event append, no outbox row.
+        expect(await reasonSnapshot(tenant, id)).toEqual(before);
+      });
+    }
+
+    it('rejects reason input supplied for a NON-governed transition → reason_on_non_governed_target (non-vacuous)', async () => {
+      const tenant = randomUUID();
+      const created = await repo.createPlacement(baseInput({ tenant_id: tenant }), 'e3-ng-neg');
+      const before = await reasonSnapshot(tenant, created.id);
+      await expect(
+        repo.transition(
+          { tenant_id: tenant, placement_process_id: created.id, to: 'OFFER_ACCEPTED', reason_code: OPTIONAL_DEF.code },
+          'e3-ng-neg',
+        ),
+      ).rejects.toMatchObject({
+        code: 'PLACEMENT_REASON_INVALID',
+        statusCode: 422,
+        context: { details: { reason: 'reason_on_non_governed_target' } },
+      });
+      expect(await reasonSnapshot(tenant, created.id)).toEqual(before);
+    });
+
+    // ---- §16: Case C — a reason-BEARING terminal transition whose outbox insert
+    //      fails rolls back the state + the reason-bearing event + the outbox; no
+    //      partial reason evidence remains ----
+
+    it('Case C — a reason-bearing terminal transition whose OutboxEvent insert fails rolls back state + reason event + outbox (no partial reason evidence)', async () => {
+      const before = await productionImmutabilityTriggers();
+      expect(before).toEqual(['trg_reject_outbox_delete', 'trg_reject_outbox_update']);
+
+      const target = REQUIRED_DEF.allowedTargets[0]!;
+      const input = baseInput({ tenant_id: SENTINEL_REASON });
+      const created = await repo.createPlacement(input, 'caseC-create');
+      const stateBefore = created.state;
+      // Drive any intermediates (non-sentinel event types don't match the trigger's
+      // state_changed clause for this tenant... actually they DO — so terminal must
+      // be directly reachable). Choose a target directly reachable from the current
+      // state to keep the single failing edge governed.
+      // OFFER_EXTENDED reaches OFFER_DECLINED / OFFER_RESCINDED directly; pick one
+      // that REQUIRED_DEF is allowed for, else fall back to the code's own target.
+      const directTarget: PlacementState = REQUIRED_DEF.allowedTargets.includes('OFFER_DECLINED')
+        ? 'OFFER_DECLINED'
+        : REQUIRED_DEF.allowedTargets.includes('OFFER_RESCINDED')
+          ? 'OFFER_RESCINDED'
+          : target;
+
+      await installSentinelOutboxTrigger();
+      try {
+        await expect(
+          repo.transition(
+            {
+              tenant_id: SENTINEL_REASON,
+              placement_process_id: created.id,
+              to: directTarget,
+              reason_code: REQUIRED_DEF.code,
+              reason_detail: 'this detail must not survive the rollback',
+            },
+            'caseC',
+          ),
+        ).rejects.toThrow(/forced outbox insert failure \(test sentinel\)/);
+
+        // State reverted; NO reason-bearing event; NO state_changed outbox row.
+        const reread = await repo.findById(SENTINEL_REASON, created.id);
+        expect(reread?.state).toBe(stateBefore);
+        expect(await countOutboxRows(SENTINEL_REASON, 'placement.process.state_changed')).toBe(0);
+        const log = await events.listEvents(SENTINEL_REASON, created.id);
+        expect(log.length).toBe(0);
+        // No partial reason evidence anywhere on the event log for this aggregate.
+        const anyReason = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
+          `SELECT COUNT(*)::bigint AS count FROM placement."PlacementProcessEvent"
+             WHERE tenant_id = '${SENTINEL_REASON}' AND reason_code IS NOT NULL`,
+        );
+        expect(Number(anyReason[0]!.count)).toBe(0);
+        // Aggregate + created event intact (distinguishes rollback from vanish).
+        expect(await countPlacementRows(SENTINEL_REASON)).toBe(1);
+        expect(await countOutboxRows(SENTINEL_REASON, 'placement.process.created')).toBe(1);
+      } finally {
+        await dropSentinelOutboxTrigger();
+      }
+      expect(await productionImmutabilityTriggers()).toEqual(before);
+    });
+
+    // Helper: recover a placement's tenant for the OPTIONAL both-present/absent proof.
+    async function tenantOf(id: string): Promise<string> {
+      const row = await prisma.$queryRawUnsafe<{ tenant_id: string }[]>(
+        `SELECT tenant_id FROM placement."PlacementProcess" WHERE id = '${id}' LIMIT 1`,
+      );
+      return row[0]!.tenant_id;
+    }
   },
 );
 

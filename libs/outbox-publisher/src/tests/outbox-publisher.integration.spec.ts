@@ -67,6 +67,7 @@ const MIGRATION_FILES: ReadonlyArray<readonly [string, string]> = [
   ['canonicalization-init', '../../../canonicalization/prisma/migrations/20260603160000_init_canonicalization_schema/migration.sql'],
   ['placement-init', '../../../placement/prisma/migrations/20260803180000_init_placement_model/migration.sql'],
   ['placement-offer-outbox', '../../../placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql'],
+  ['placement-reason', '../../../placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql'],
 ];
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';

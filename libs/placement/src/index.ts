@@ -40,6 +40,31 @@ export {
   buildPlacementMigrationModel,
 } from './lib/generator/placement-sql-generator.js';
 
+// E3 — the fallthrough/terminal reason registry (code-backed, PO-ratified) and
+// its taxonomy-neutral classifier.
+export {
+  PLACEMENT_REASONS,
+  REASON_DETAIL_POLICIES,
+  REASON_STATUSES,
+  REASON_DETAIL_MAX,
+  REASON_REJECTION_REASONS,
+  GOVERNED_TERMINAL_TARGETS,
+  isGovernedTerminalTarget,
+  getReason,
+  activeReasonsForTarget,
+  normalizeReasonDetail,
+  classifyTransitionReason,
+} from './lib/reasons/placement-reason-registry.js';
+export type {
+  PlacementReasonDefinition,
+  ReasonDetailPolicy,
+  ReasonStatus,
+  ReasonEvidence,
+  ReasonRejectionReason,
+  ReasonClassification,
+  ClassifyReasonInput,
+} from './lib/reasons/placement-reason-registry.js';
+
 // Repository I/O types (not HTTP DTOs — §7).
 export type {
   CreatePlacementInput,

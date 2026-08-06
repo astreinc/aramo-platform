@@ -9,6 +9,11 @@ import {
   INITIAL_STATE,
   type PlacementState,
 } from './lifecycle/placement-lifecycle.js';
+import {
+  classifyTransitionReason,
+  type ReasonClassification,
+  type ReasonEvidence,
+} from './reasons/placement-reason-registry.js';
 import type {
   CreatePlacementInput,
   PlacementProcessView,
@@ -190,6 +195,20 @@ export class PlacementRepository {
       throw this.stateInvalid(current.state, input.to, requestId, input.placement_process_id);
     }
 
+    // E3 — validate the reason evidence BEFORE any mutation. A governed terminal
+    // target requires a valid canonical reason code; a non-governed edge must
+    // carry none. Authorization (placement:terminate) is enforced upstream at the
+    // controller, so a caller lacking terminate is already refused before here.
+    const classification = classifyTransitionReason({
+      to: input.to,
+      reason_code: input.reason_code,
+      reason_detail: input.reason_detail,
+    });
+    if (!classification.ok) {
+      throw this.reasonInvalid(classification, current.state, input, requestId);
+    }
+    const evidence: ReasonEvidence | null = classification.evidence;
+
     try {
       const updated = await this.prisma.$transaction(async (tx) => {
         const u = (await tx.placementProcess.update({
@@ -203,11 +222,27 @@ export class PlacementRepository {
             placement_process_id: input.placement_process_id,
             event_type: 'state_transition',
             event_payload: { from: current.state, to: input.to },
+            // E3 — reason evidence columns. Null for a non-governed transition.
+            // reason_detail (PII-bearing, tenant-owned) is persisted HERE only; it
+            // is deliberately excluded from the outbox payload below (§13/C1).
+            reason_code: evidence?.reason_code ?? null,
+            reason_label_snapshot: evidence?.reason_label_snapshot ?? null,
+            reason_detail: evidence?.reason_detail ?? null,
           },
         });
         // Transactional outbox (9-c-2): a placement.process.state_changed event
         // commits atomically with the state change. A rejected/illegal edge never
         // reaches here, so no event is written for it.
+        //
+        // E3 / C1 — for a governed terminal transition the outbox carries EXACTLY
+        // reason_code + reason_label_snapshot alongside the existing to_state
+        // (= target_state). It NEVER carries reason_detail, under ANY detail
+        // policy: reason_detail is recruiter-authored free text about a named
+        // individual and placement.OutboxEvent is append-only + immutable — the
+        // same evidence/privacy class as offer_terms_summary (PR #574). A
+        // downstream consumer holding placement_process_id retrieves tenant-owned
+        // detail through the governed placement read surface, where a tenant reset
+        // can remove it.
         await tx.outboxEvent.create({
           data: {
             id: uuidv7(),
@@ -221,6 +256,11 @@ export class PlacementRepository {
               talent_record_id: current.talent_record_id,
               from_state: current.state,
               to_state: input.to,
+              // Present only for a governed terminal transition; reason_detail is
+              // NEVER included (C1).
+              ...(evidence !== null
+                ? { reason_code: evidence.reason_code, reason_label_snapshot: evidence.reason_label_snapshot }
+                : {}),
               occurred_at: new Date().toISOString(),
             },
           },
@@ -259,6 +299,29 @@ export class PlacementRepository {
         },
       },
     );
+  }
+
+  // E3 — map a reason-classification rejection to the single registered code
+  // PLACEMENT_REASON_INVALID (422), with details.reason as the discriminator (the
+  // E7 RESTRICTION_INVALID precedent). Raised BEFORE the transaction, so a reason
+  // refusal leaves the state, event log, and outbox untouched.
+  private reasonInvalid(
+    rejection: Extract<ReasonClassification, { ok: false }>,
+    from: PlacementState,
+    input: TransitionPlacementInput,
+    requestId: string,
+  ): AramoError {
+    return new AramoError('PLACEMENT_REASON_INVALID', `Invalid placement reason evidence: ${rejection.reason}`, 422, {
+      requestId,
+      details: {
+        placement_process_id: input.placement_process_id,
+        from_state: from,
+        to_state: input.to,
+        reason: rejection.reason,
+        ...(rejection.reason_code !== undefined ? { reason_code: rejection.reason_code } : {}),
+        ...(rejection.length !== undefined ? { detail_length: rejection.length } : {}),
+      },
+    });
   }
 
   private stateInvalid(

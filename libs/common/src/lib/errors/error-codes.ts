@@ -452,6 +452,27 @@ export const ERROR_CODES = [
   // blocking_unresolved (a blocking requirement is pending/failed). The one code
   // a caller must be able to branch on to decide whether to wait or act.
   'PRE_START_NOT_READY',
+  // Track 3 / E3 (Placement Fallthrough Reason Registry) — ONE reason-validation
+  // refusal covering every governed terminal/fallthrough reason-evidence case,
+  // discriminated by details.reason (the E7 RESTRICTION_INVALID precedent — per-
+  // field codes were REJECTED for no caller gain). HTTP 422: the request is well-
+  // formed but the reason evidence is invalid for the requested transition.
+  // details.reason ∈ {
+  //   reason_required           — a governed terminal target with no reason code;
+  //   reason_unknown            — a code not in the canonical registry (a label is
+  //                               never accepted as a code);
+  //   reason_retired            — a code whose registry status is not active;
+  //   reason_wrong_target       — a known code not allowed for this target state;
+  //   detail_required           — REQUIRED-detail reason with absent/whitespace text;
+  //   detail_prohibited         — PROHIBITED-detail reason supplied with detail text;
+  //   detail_too_long           — normalised detail exceeds the registry maximum;
+  //   reason_on_non_governed_target — reason input supplied for a non-governed edge.
+  // }
+  // Reason CODE is mandatory for every governed transition; reason DETAIL is
+  // governed by that code's detail policy. Authorization (placement:terminate) is
+  // enforced BEFORE this at the controller, so a recruiter lacking terminate is
+  // refused 403 regardless of a valid reason.
+  'PLACEMENT_REASON_INVALID',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

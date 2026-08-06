@@ -1657,6 +1657,7 @@ components:
         - PLACEMENT_ALREADY_LIVE
         - PRE_START_REQUIREMENT_INVALID
         - PRE_START_NOT_READY
+        - PLACEMENT_REASON_INVALID
 
     ErrorObject:
       type: object
