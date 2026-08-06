@@ -64,7 +64,7 @@ const CATALOG_SCOPE_COUNT = 106; // +5 Track3/E1-b placement scopes
 // Re-derived actual 505 (prior literal 478 was pre-existingly understated by 4;
 // actual pre-change 482 + 23 pre_start_requirement grants = 505 — F-2).
 // v1.2.2 reopen adds ZERO RoleScope rows (§13c-1) — UNCHANGED at 505.
-const CATALOG_ROLE_SCOPE_COUNT = 505;
+const CATALOG_ROLE_SCOPE_COUNT = 523; // +18 Track3/E1-b placement role matrix
 
 // Naive DDL splitter — mirrors identity.integration.spec.ts.
 function splitDdl(sql: string): string[] {

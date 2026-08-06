@@ -4,9 +4,20 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { Reflector } from '@nestjs/core';
 import { PlacementRepository, PrismaService } from '@aramo/placement';
+import { RolesGuard } from '@aramo/authorization';
 
 import { PlacementController } from '../placement/placement.controller.js';
+
+// The placement scope-sets a principal carries under the ratified role matrix
+// (Placement-Role-Matrix seam). Mirrors PLACEMENT_SEED_BUNDLES; the seed→scope
+// binding (which role resolves to which set) is proven against the real seed in
+// libs/identity placement-role-matrix.spec.ts + identity.integration test 17.
+// Here we prove the OTHER half: fed to the real placement authorization
+// boundary, each set allows/denies the right authority classes.
+const RECRUITER_PLACEMENT = ['placement:read', 'placement:create', 'placement:transition'];
+const MANAGER_PLACEMENT = ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate'];
 
 // Track 3 / E1-b — the guarded PlacementProcess surface at the controller + repo
 // level against real Postgres 17. The JWT/guard layer is covered by app-module-di
@@ -176,5 +187,129 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
         offer_expires_at: '2026-08-04T12:00:00.000Z',
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+  });
+
+  // ─── Placement role matrix — authorization-boundary proofs ────────────────
+  // The scope-sets are the ratified per-role placement bundles (above). These
+  // reach the REAL in-handler authorization boundary (edgeAuthorityClass +
+  // scope check) for transition / activate / terminate, and prove denial is
+  // NON-VACUOUS: the protected state, event log, and outbox are unchanged.
+
+  // {state, per-placement event count, per-tenant outbox count}. A fresh random
+  // tenant per test isolates the outbox count to this placement's writes.
+  async function snapshot(tenant: string, id: string): Promise<{ state: string | null; events: number; outbox: number }> {
+    const p = await prisma.placementProcess.findFirst({ where: { id, tenant_id: tenant } });
+    const events = await prisma.placementProcessEvent.count({ where: { placement_process_id: id } });
+    const outbox = await prisma.outboxEvent.count({ where: { tenant_id: tenant } });
+    return { state: p?.state ?? null, events, outbox };
+  }
+
+  it('matrix: RECRUITER set drives the ordinary edges to READY_TO_START but is DENIED activate (state/event/outbox unchanged)', async () => {
+    const t = randomUUID();
+    const id = await ctrl.create(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    // Ordinary-progression edges are all `transition` class — the recruiter set holds them.
+    await ctrl.transition(auth(RECRUITER_PLACEMENT, t), 'r', id, { to: 'OFFER_ACCEPTED' });
+    await ctrl.transition(auth(RECRUITER_PLACEMENT, t), 'r', id, { to: 'PRE_START' });
+    await ctrl.transition(auth(RECRUITER_PLACEMENT, t), 'r', id, { to: 'READY_TO_START' });
+    const before = await snapshot(t, id);
+    expect(before.state).toBe('READY_TO_START');
+    // The live activation edge (READY_TO_START -> STARTED) is `activate` class — recruiter lacks it.
+    await expect(ctrl.transition(auth(RECRUITER_PLACEMENT, t), 'r', id, { to: 'STARTED' })).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { authority_class: 'activate', required_scope: 'placement:activate' } },
+    });
+    // Non-vacuity: nothing moved.
+    expect(await snapshot(t, id)).toEqual(before);
+  });
+
+  it('matrix: RECRUITER set is DENIED a terminal edge (terminate), state/event/outbox unchanged', async () => {
+    const t = randomUUID();
+    const id = await ctrl.create(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    const before = await snapshot(t, id);
+    expect(before.state).toBe('OFFER_EXTENDED');
+    await expect(ctrl.transition(auth(RECRUITER_PLACEMENT, t), 'r', id, { to: 'OFFER_DECLINED' })).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { authority_class: 'terminate', required_scope: 'placement:terminate' } },
+    });
+    expect(await snapshot(t, id)).toEqual(before);
+  });
+
+  it('matrix: MANAGER set (account_manager/tenant_admin/tenant_owner) CAN activate the live edge', async () => {
+    const t = randomUUID();
+    const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_ACCEPTED' });
+    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'PRE_START' });
+    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'READY_TO_START' });
+    const live = await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED' });
+    expect(live.state).toBe('STARTED');
+  });
+
+  it('matrix: MANAGER set CAN terminate (a terminal edge)', async () => {
+    const t = randomUUID();
+    const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    const done = await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_DECLINED' });
+    expect(done.state).toBe('OFFER_DECLINED');
+  });
+
+  it('matrix: read is tenant-isolated after authorization — a placement:read grant in tenant A does not read tenant B', async () => {
+    const tenantA = randomUUID();
+    const tenantB = randomUUID();
+    const id = await ctrl.create(auth(MANAGER_PLACEMENT, tenantA), 'r', body()).then((v) => v.id);
+    // Same authorized scope, different tenant → least-visibility 404 (NOT the row).
+    await expect(ctrl.get(auth(['placement:read'], tenantB), 'r', id)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    // Sanity: within tenant A the read succeeds.
+    expect((await ctrl.get(auth(['placement:read'], tenantA), 'r', id)).id).toBe(id);
+  });
+});
+
+// The read / create authority classes are guard-enforced (@RequireScopes +
+// RolesGuard), not checked in-handler. This block drives the REAL RolesGuard
+// against the REAL PlacementController route metadata (via a live Reflector),
+// so it proves the actual read/create boundary — no DB, runs in every lane.
+describe('E1-b placement matrix — read/create guard boundary (real RolesGuard + real route metadata)', () => {
+  const guard = new RolesGuard(new Reflector());
+
+  function ctx(handler: (...a: unknown[]) => unknown, scopes: string[]): unknown {
+    const request = {
+      authContext: { sub: 'u', tenant_id: randomUUID(), actor_kind: 'user', consumer_type: 'tenant', scopes },
+      requestId: 'r',
+      params: {},
+      query: {},
+    };
+    return {
+      getHandler: () => handler,
+      getClass: () => PlacementController,
+      switchToHttp: () => ({ getRequest: () => request, getResponse: () => ({}), getNext: () => ({}) }),
+    };
+  }
+
+  const read = PlacementController.prototype.get as unknown as (...a: unknown[]) => unknown;
+  const create = PlacementController.prototype.create as unknown as (...a: unknown[]) => unknown;
+
+  function denial(handler: (...a: unknown[]) => unknown, scopes: string[]): unknown {
+    let err: unknown;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    try { guard.canActivate(ctx(handler, scopes) as any); } catch (e) { err = e; }
+    return err;
+  }
+
+  it('GET /v1/placements/:id requires placement:read — WITH it passes; WITHOUT it is 403 INSUFFICIENT_PERMISSIONS', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(guard.canActivate(ctx(read, ['placement:read']) as any)).toBe(true);
+    expect(denial(read, [])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+  });
+
+  it('POST /v1/placements requires placement:create — WITH it passes; WITHOUT it is 403 INSUFFICIENT_PERMISSIONS', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(guard.canActivate(ctx(create, ['placement:create']) as any)).toBe(true);
+    expect(denial(create, [])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+  });
+
+  it('a no-placement-grant principal (e.g. super_admin / any role outside the matrix) is denied read AND create', () => {
+    const noPlacement = ['requisition:read', 'talent:read']; // scopes a non-matrix role might carry — none are placement:*
+    expect(denial(read, noPlacement)).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS' });
+    expect(denial(create, noPlacement)).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS' });
   });
 });

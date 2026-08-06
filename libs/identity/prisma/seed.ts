@@ -1774,6 +1774,46 @@ const PRE_START_REQUIREMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = ((
   return map;
 })();
 
+// Track 3 / E1-b (PlacementProcess) — the ratified placement role matrix.
+// FOUR grant-receiving roles, 18 RoleScope rows; the five placement scopes
+// were REGISTERED WITH ZERO GRANTS at E1-b (no matrix existed yet). Matrix
+// (Placement-Role-Matrix seam):
+//   - recruiter: read + create + transition (operational placement work; the
+//     ordinary-progression edges). NO activate, NO terminate.
+//   - account_manager: recruiter's three + activate + terminate. activate
+//     asserts a placement has STARTED; terminate covers consequential/terminal
+//     outcomes (incl. OFFER_RESCINDED). Both follow the business meaning, not
+//     the (currently capacity-inert) implementation.
+//   - tenant_admin: the full five.
+//   - tenant_owner: mirrors tenant_admin (Owner = Admin scope set, position-only
+//     distinction — the same invariant every scope family upholds). NOT the
+//     "SaaS Owner"; the platform/SaaS operator role (super_admin) receives NONE.
+// super_admin and every other tenant-operational role receive ZERO placement
+// grants (fail-closed; no prose-hierarchy inheritance).
+export const PLACEMENT_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['recruiter', ['placement:read', 'placement:create', 'placement:transition']],
+  ['account_manager', ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate']],
+  ['tenant_admin', ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate']],
+  ['tenant_owner', ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate']],
+];
+
+// Deterministic RoleScope row ids for the 18 placement grants. Fresh disjoint
+// range after PRE_START_REQUIREMENT's 0x990..0x9a6 (append-don't-renumber): 0xa00+.
+const PLACEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xa00;
+  for (const [role, scopes] of PLACEMENT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2458,6 +2498,26 @@ export async function runIdentitySeed(
       const rsId = PRE_START_REQUIREMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`E2 Pre-Start-Requirement-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Track 3 / E1-b (PlacementProcess) placement role-matrix grants (18 rows;
+  // 4 roles). Range 0xa00+. recruiter gets read/create/transition; account_
+  // manager/tenant_admin/tenant_owner get the full five. super_admin + every
+  // other role get NO rows (fail-closed; no prose-hierarchy inheritance).
+  for (const [roleKey, scopeKeys] of PLACEMENT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = PLACEMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`E1-b Placement-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({
