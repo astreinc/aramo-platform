@@ -567,6 +567,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // E3 — a third sentinel tenant for the reason-BEARING terminal-transition
     // rollback proof (Case C).
     const SENTINEL_REASON = '00000000-dead-7000-8000-00000000000c';
+    // E3 corrective (§16) — a fourth sentinel tenant for the EVENT-INSERT-failure
+    // rollback proof (Case D). Distinct injection point from Case A/B/C (which all
+    // force the OutboxEvent insert): here the PlacementProcessEvent insert itself
+    // fails, after the process-state update.
+    const SENTINEL_EVENT_FAIL = '00000000-dead-7000-8000-00000000000d';
 
     // Install a BEFORE INSERT trigger that raises for exactly the three sentinel
     // (event_type, tenant) pairs — forcing the OutboxEvent insert (and only that
@@ -959,6 +964,140 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await dropSentinelOutboxTrigger();
       }
       expect(await productionImmutabilityTriggers()).toEqual(before);
+    });
+
+    // ---- §16 corrective (Case D) — a reason-BEARING terminal transition whose
+    //      PlacementProcessEvent INSERT fails (the second injection point §16
+    //      requires, distinct from the OutboxEvent-insert failure of Case A/B/C).
+    //      The atomicity boundary under test is the $transaction wrapping the
+    //      process-state update + event insert + outbox insert: if the event
+    //      insert fails, the state update MUST roll back. RED-first was planted at
+    //      that boundary (unwrapping the $transaction), not by removing the
+    //      sentinel — removing the sentinel proves nothing.
+
+    // Force the PlacementProcessEvent insert to fail for exactly the governed
+    // terminal event under SENTINEL_EVENT_FAIL. Keyed on reason_code IS NOT NULL,
+    // so the earlier NON-governed transition (null reason) inserts its event
+    // normally and builds the prior history this proof relies on. Distinct
+    // function/trigger names from the outbox sentinel — no collision.
+    async function installSentinelEventTrigger(): Promise<void> {
+      await setupClient.$executeRawUnsafe(
+        `CREATE OR REPLACE FUNCTION placement.force_event_insert_fail()
+         RETURNS TRIGGER AS $$
+         BEGIN
+           IF NEW."tenant_id" = '${SENTINEL_EVENT_FAIL}' AND NEW."reason_code" IS NOT NULL THEN
+             RAISE EXCEPTION 'forced event insert failure (test sentinel)';
+           END IF;
+           RETURN NEW;
+         END;
+         $$ LANGUAGE plpgsql;`,
+      );
+      await setupClient.$executeRawUnsafe(
+        `DROP TRIGGER IF EXISTS trg_test_force_event_fail ON placement."PlacementProcessEvent";`,
+      );
+      await setupClient.$executeRawUnsafe(
+        `CREATE TRIGGER trg_test_force_event_fail
+           BEFORE INSERT ON placement."PlacementProcessEvent"
+           FOR EACH ROW EXECUTE FUNCTION placement.force_event_insert_fail();`,
+      );
+    }
+    async function dropSentinelEventTrigger(): Promise<void> {
+      await setupClient.$executeRawUnsafe(
+        `DROP TRIGGER IF EXISTS trg_test_force_event_fail ON placement."PlacementProcessEvent";`,
+      );
+      await setupClient.$executeRawUnsafe(
+        `DROP FUNCTION IF EXISTS placement.force_event_insert_fail();`,
+      );
+    }
+    // The production immutability triggers on the event log (BEFORE UPDATE/DELETE
+    // reject). Asserted unchanged around the test-only BEFORE INSERT sentinel.
+    async function productionEventTriggers(): Promise<string[]> {
+      const rows = await prisma.$queryRawUnsafe<Array<{ tgname: string }>>(
+        `SELECT tgname FROM pg_trigger
+          WHERE tgrelid = 'placement."PlacementProcessEvent"'::regclass AND NOT tgisinternal
+          ORDER BY tgname`,
+      );
+      return rows.map((r) => r.tgname);
+    }
+    async function countEventRows(tenantId: string, placementId: string): Promise<number> {
+      const r = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
+        `SELECT COUNT(*)::bigint AS count FROM placement."PlacementProcessEvent"
+           WHERE tenant_id = '${tenantId}' AND placement_process_id = '${placementId}'`,
+      );
+      return Number(r[0]!.count);
+    }
+
+    it('Case D — a reason-bearing terminal transition whose PlacementProcessEvent INSERT fails rolls back the state + emits no event/outbox/reason, and the PRIOR event history survives', async () => {
+      const beforeEvtTriggers = await productionEventTriggers();
+      expect(beforeEvtTriggers.length).toBeGreaterThan(0); // production immutability triggers exist
+
+      // Build an aggregate WITH prior history: create, then one NON-governed
+      // transition (null reason → sentinel does not fire) that appends event #1.
+      const input = baseInput({ tenant_id: SENTINEL_EVENT_FAIL });
+      const created = await repo.createPlacement(input, 'caseD-create');
+      await repo.transition(
+        { tenant_id: SENTINEL_EVENT_FAIL, placement_process_id: created.id, to: 'OFFER_ACCEPTED' },
+        'caseD-prior',
+      );
+      const stateBefore = 'OFFER_ACCEPTED';
+      const priorEvents = await events.listEvents(SENTINEL_EVENT_FAIL, created.id);
+      expect(priorEvents).toHaveLength(1);
+      expect(priorEvents[0]!.event_payload).toEqual({ from: 'OFFER_EXTENDED', to: 'OFFER_ACCEPTED' });
+      const outboxStateChangedBefore = await countOutboxRows(SENTINEL_EVENT_FAIL, 'placement.process.state_changed');
+      expect(outboxStateChangedBefore).toBe(1); // the prior transition's state_changed
+
+      // A governed terminal target reachable from OFFER_ACCEPTED (OFFER_RESCINDED
+      // / FELL_THROUGH), with a valid reason so the event carries reason_code and
+      // the sentinel fires on ITS event insert.
+      const target: PlacementState = 'FELL_THROUGH';
+      const reason = reasonForTarget(target); // an active OPTIONAL code for FELL_THROUGH
+      expect(reason.reason_code).toBeDefined();
+
+      await installSentinelEventTrigger();
+      try {
+        await expect(
+          repo.transition(
+            { tenant_id: SENTINEL_EVENT_FAIL, placement_process_id: created.id, to: target, ...reason },
+            'caseD',
+          ),
+        ).rejects.toThrow(/forced event insert failure \(test sentinel\)/);
+
+        // The state update rolled back — EXACTLY the original state (§14 req 2),
+        // not merely "not the target".
+        const reread = await repo.findById(SENTINEL_EVENT_FAIL, created.id);
+        expect(reread).not.toBeNull();
+        expect(reread?.state).toBe(stateBefore);
+
+        // No NEW event: the prior history survives intact, and nothing was appended.
+        const afterEvents = await events.listEvents(SENTINEL_EVENT_FAIL, created.id);
+        expect(afterEvents).toHaveLength(1);
+        expect(afterEvents[0]!.id).toBe(priorEvents[0]!.id);
+        expect(afterEvents[0]!.event_payload).toEqual({ from: 'OFFER_EXTENDED', to: 'OFFER_ACCEPTED' });
+        expect(await countEventRows(SENTINEL_EVENT_FAIL, created.id)).toBe(1);
+
+        // No NEW state_changed outbox row for the failed terminal transition.
+        expect(await countOutboxRows(SENTINEL_EVENT_FAIL, 'placement.process.state_changed')).toBe(
+          outboxStateChangedBefore,
+        );
+
+        // No partial reason evidence anywhere for this aggregate.
+        const partial = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
+          `SELECT COUNT(*)::bigint AS count FROM placement."PlacementProcessEvent"
+             WHERE tenant_id = '${SENTINEL_EVENT_FAIL}'
+               AND (reason_code IS NOT NULL OR reason_label_snapshot IS NOT NULL OR reason_detail IS NOT NULL)`,
+        );
+        expect(Number(partial[0]!.count)).toBe(0);
+
+        // The aggregate itself still exists (rollback ≠ aggregate vanished).
+        expect(await countPlacementRows(SENTINEL_EVENT_FAIL)).toBe(1);
+      } finally {
+        // GUARANTEED cleanup — runs on assertion failure or transition throw too.
+        await dropSentinelEventTrigger();
+      }
+
+      // Production immutability triggers on the event log are unchanged by the
+      // test-only sentinel (installed and dropped, leaving no residue).
+      expect(await productionEventTriggers()).toEqual(beforeEvtTriggers);
     });
 
     // Helper: recover a placement's tenant for the OPTIONAL both-present/absent proof.
