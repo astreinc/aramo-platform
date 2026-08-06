@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { Reflector } from '@nestjs/core';
-import { PlacementRepository, PrismaService, PLACEMENT_REASONS } from '@aramo/placement';
+import { PlacementProcessEventRepository, PlacementRepository, PrismaService, PLACEMENT_REASONS } from '@aramo/placement';
 import { RolesGuard } from '@aramo/authorization';
 
 import { PlacementController } from '../placement/placement.controller.js';
@@ -42,6 +42,14 @@ const REASON_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/m
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const auth = (scopes: string[], tenant: string): any => ({ sub: 'u', tenant_id: tenant, actor_kind: 'user', consumer_type: 'tenant', scopes });
 
+// E1-d — the read routes take a Request and resolve the actor's visible
+// requisition set (attached by the global VisibilityInterceptor in the real
+// app). These direct-call proofs exercise transition authorization, not
+// visibility, so they pass a see-all request (null ⇒ unrestricted); the
+// visibility 404 behaviour is proven in placement-read.integration.spec.ts.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const reqSeeAll: any = { resolveVisibleRequisitionIds: async () => null };
+
 function splitDdl(sql: string): string[] {
   const out: string[] = [];
   let cur = '';
@@ -72,7 +80,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     }
     prisma = new PrismaService(url);
     await prisma.$connect();
-    ctrl = new PlacementController(new PlacementRepository(prisma));
+    ctrl = new PlacementController(new PlacementRepository(prisma), new PlacementProcessEventRepository(prisma));
   }, 120_000);
 
   afterAll(async () => {
@@ -150,8 +158,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   it('get is tenant-isolated and 404s a foreign/absent id', async () => {
     const t = randomUUID();
     const id = await make(t);
-    expect((await ctrl.get(auth(['placement:read'], t), 'r', id)).id).toBe(id);
-    await expect(ctrl.get(auth(['placement:read'], randomUUID()), 'r', id)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    expect((await ctrl.get(auth(['placement:read'], t), 'r', id, reqSeeAll)).id).toBe(id);
+    await expect(ctrl.get(auth(['placement:read'], randomUUID()), 'r', id, reqSeeAll)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
   });
 
   // E1-c — the offer snapshot flows through the HTTP boundary (DTO ISO strings →
@@ -173,7 +181,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     expect(v.client_offer_reference).toBe('CLIENT-REF-99');
     expect(v.offer_terms_summary).toBe('Full-time, hybrid.');
     // The read surface returns the same snapshot.
-    const read = await ctrl.get(auth(['placement:read'], t), 'r', v.id);
+    const read = await ctrl.get(auth(['placement:read'], t), 'r', v.id, reqSeeAll);
     expect(read.client_offer_reference).toBe('CLIENT-REF-99');
   });
 
@@ -267,9 +275,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const tenantB = randomUUID();
     const id = await ctrl.create(auth(MANAGER_PLACEMENT, tenantA), 'r', body()).then((v) => v.id);
     // Same authorized scope, different tenant → least-visibility 404 (NOT the row).
-    await expect(ctrl.get(auth(['placement:read'], tenantB), 'r', id)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    await expect(ctrl.get(auth(['placement:read'], tenantB), 'r', id, reqSeeAll)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
     // Sanity: within tenant A the read succeeds.
-    expect((await ctrl.get(auth(['placement:read'], tenantA), 'r', id)).id).toBe(id);
+    expect((await ctrl.get(auth(['placement:read'], tenantA), 'r', id, reqSeeAll)).id).toBe(id);
   });
 
   // ─── E3 — reason evidence at the HTTP boundary ────────────────────────────
