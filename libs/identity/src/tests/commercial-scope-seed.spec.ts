@@ -14,7 +14,7 @@ describe('Company-Fields v1.1 — company:read_commercial catalog parity', () =>
     ).toHaveLength(1);
   });
 
-  it('SEED_SCOPE_KEYS is 106 (101 + 5 Track3/E1-b placement scopes)', () => {
-    expect(SEED_SCOPE_KEYS).toHaveLength(106);
+  it('SEED_SCOPE_KEYS is 107 (101 + 5 Track3/E1-b placement scopes + 1 Track3/E4 placement:replace)', () => {
+    expect(SEED_SCOPE_KEYS).toHaveLength(107);
   });
 });

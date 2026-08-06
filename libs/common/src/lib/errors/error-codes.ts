@@ -473,6 +473,20 @@ export const ERROR_CODES = [
   // enforced BEFORE this at the controller, so a recruiter lacking terminate is
   // refused 403 regardless of a valid reason.
   'PLACEMENT_REASON_INVALID',
+  // Track 3 / E4 (Replacement Authorization) — ONE replacement-linkage refusal,
+  // discriminated by details.reason (the E7 RESTRICTION_INVALID / E3 precedent —
+  // per-field codes rejected). HTTP 422: the request is well-formed but the named
+  // predecessor is not a valid one to replace. details.reason ∈ {
+  //   predecessor_not_found     — no predecessor in this tenant+requisition with
+  //                               that id (cross-tenant and cross-requisition both
+  //                               fold here — least-visibility);
+  //   predecessor_not_terminal  — the predecessor exists but is not in a pre-start
+  //                               TERMINAL state (DUPLICATE_GUARD_INACTIVE).
+  // }
+  // Authorization (placement:create AND placement:replace, a conjunction) is
+  // enforced BEFORE this at the controller, so a caller lacking placement:replace
+  // is refused 403 regardless of predecessor validity.
+  'PLACEMENT_REPLACEMENT_INVALID',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

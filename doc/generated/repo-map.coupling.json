@@ -3851,6 +3851,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260808120000_placement_replacement_link/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/placement-offer-openapi-conformance.spec.ts",
       "status": "excluded",
       "to": "openapi/ats.yaml"
@@ -3878,6 +3884,12 @@
       "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
       "status": "excluded",
       "to": "libs/placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260808120000_placement_replacement_link/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -12650,6 +12662,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260808120000_placement_replacement_link/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

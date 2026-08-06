@@ -94,6 +94,29 @@ export class PlacementRepository {
   // OFFER_EXTENDED (§4). Rejects a second LIVE attempt for the same
   // (tenant_id, submittal_id) — PLACEMENT_ALREADY_LIVE (409).
   async createPlacement(input: CreatePlacementInput, requestId: string): Promise<PlacementProcessView> {
+    // E4 — replacement lineage validation (§5). When replaces_placement_process_id
+    // is present, this attempt is a replacement. Authorization (placement:create
+    // AND placement:replace) was already enforced upstream at the controller (§3);
+    // here we validate the linkage. The predecessor must exist in THIS tenant, be
+    // in a pre-start TERMINAL state (DUPLICATE_GUARD_INACTIVE — the SAME derived
+    // set the one-live guard releases on; §A4, no second list), and share the
+    // requisition. There is no FK (§4.2): this create-time check is the SOLE
+    // referential-integrity mechanism. Cross-tenant and cross-requisition both
+    // fold to predecessor_not_found (least-visibility; the two-discriminator set
+    // is {predecessor_not_found, predecessor_not_terminal} — §5).
+    const replacesId = input.replaces_placement_process_id ?? null;
+    if (replacesId !== null) {
+      const predecessor = (await this.prisma.placementProcess.findFirst({
+        where: { tenant_id: input.tenant_id, id: replacesId },
+      })) as PlacementProcessRow | null;
+      if (predecessor === null || predecessor.requisition_id !== input.requisition_id) {
+        throw this.replacementInvalid('predecessor_not_found', input, replacesId, requestId);
+      }
+      if (!(DUPLICATE_GUARD_INACTIVE as readonly PlacementState[]).includes(predecessor.state)) {
+        throw this.replacementInvalid('predecessor_not_terminal', input, replacesId, requestId);
+      }
+    }
+
     // Pre-emptive guard: a live attempt is any state NOT in
     // DUPLICATE_GUARD_INACTIVE (STARTED is ENGAGED, still live).
     const live = (await this.prisma.placementProcess.findFirst({
@@ -134,6 +157,8 @@ export class PlacementRepository {
             offer_expires_at: input.offer_expires_at ?? null,
             client_offer_reference: input.client_offer_reference ?? null,
             offer_terms_summary: input.offer_terms_summary ?? null,
+            // E4 — replacement lineage, written once at INSERT (§4/§5).
+            replaces_placement_process_id: replacesId,
           },
         })) as PlacementProcessRow;
         await tx.outboxEvent.create({
@@ -370,6 +395,30 @@ export class PlacementRepository {
         },
       },
     );
+  }
+
+  // E4 — map a replacement-linkage rejection to the single registered code
+  // PLACEMENT_REPLACEMENT_INVALID (422), with details.reason as the discriminator
+  // (the E7 RESTRICTION_INVALID / E3 PLACEMENT_REASON_INVALID precedent). Raised
+  // BEFORE the one-live guard and the transaction, so a rejected replacement
+  // leaves the state, event log, and outbox untouched. Cross-tenant and
+  // cross-requisition both surface as predecessor_not_found (least-visibility).
+  private replacementInvalid(
+    reason: 'predecessor_not_found' | 'predecessor_not_terminal',
+    input: CreatePlacementInput,
+    replacesId: string,
+    requestId: string,
+  ): AramoError {
+    return new AramoError('PLACEMENT_REPLACEMENT_INVALID', `Invalid placement replacement: ${reason}`, 422, {
+      requestId,
+      details: {
+        tenant_id: input.tenant_id,
+        submittal_id: input.submittal_id,
+        requisition_id: input.requisition_id,
+        replaces_placement_process_id: replacesId,
+        reason,
+      },
+    });
   }
 
   // E3 — map a reason-classification rejection to the single registered code

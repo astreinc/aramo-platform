@@ -72,6 +72,16 @@ export class PlacementController {
 
   // Create on the explicit client-selection/offer fact (initial state
   // OFFER_EXTENDED). Duplicate live attempt → PLACEMENT_ALREADY_LIVE (409).
+  //
+  // E4 — replacement is a CONJUNCTION, evaluated at this one point. The route
+  // always requires placement:create (the static guard above). When
+  // replaces_placement_process_id is PRESENT the request ALSO requires
+  // placement:replace — checked imperatively here (data-dependent, like the
+  // transition edge scope), NEVER a fallback where holding either passes. This is
+  // what stops placement:replace becoming an alternative general creation
+  // permission (§3). A create-only principal with the field present is refused
+  // 403 here BEFORE any mutation; the eligibility validation (422) runs later in
+  // the repository, so authorization strictly precedes linkage validation.
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @RequireScopes('placement:create')
@@ -80,6 +90,12 @@ export class PlacementController {
     @RequestId() requestId: string,
     @Body() body: CreatePlacementDto,
   ) {
+    if (body.replaces_placement_process_id != null && !auth.scopes.includes('placement:replace')) {
+      throw new AramoError('INSUFFICIENT_PERMISSIONS', 'a replacement placement requires the placement:replace scope', 403, {
+        requestId,
+        details: { required_scope: 'placement:replace', replaces_placement_process_id: body.replaces_placement_process_id },
+      });
+    }
     return this.placements.createPlacement(
       {
         tenant_id: auth.tenant_id,
@@ -93,6 +109,8 @@ export class PlacementController {
         offer_expires_at: body.offer_expires_at != null ? new Date(body.offer_expires_at) : undefined,
         client_offer_reference: body.client_offer_reference,
         offer_terms_summary: body.offer_terms_summary,
+        // E4 — replacement lineage; the repository validates and persists it (§5).
+        replaces_placement_process_id: body.replaces_placement_process_id,
       },
       requestId,
     );

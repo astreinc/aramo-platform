@@ -233,6 +233,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:activate',
         'placement:create',
         'placement:read',
+        'placement:replace',
         'placement:terminate',
         'placement:transition',
         'platform:admin:invite',
@@ -374,7 +375,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   BUNDLES @ 0xa00): recruiter × 3 (read/create/transition) + account_
       //   manager × 5 + tenant_admin × 5 + tenant_owner × 5. super_admin and
       //   every other role gain nothing (fail-closed, no inheritance).
-      expect(roleScopes).toBe(523);
+      //   523 → 526 = +3 Track3/E4 placement:replace (account_manager,
+      //   tenant_admin, tenant_owner; recruiter and all others gain nothing —
+      //   Owner=Admin mirror, no inheritance).
+      expect(roleScopes).toBe(526);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -475,7 +479,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(102); // +5 Track3/E1-b placement scopes (non-platform)
+      expect(tenantScopes.length).toBe(103); // +5 Track3/E1-b placement scopes + 1 Track3/E4 placement:replace (all non-platform)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -733,6 +737,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:activate',
         'placement:create',
         'placement:read',
+        'placement:replace',
         'placement:terminate',
         'placement:transition',
         'pre_start_requirement:act',
@@ -972,6 +977,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:activate',
         'placement:create',
         'placement:read',
+        'placement:replace',
         'placement:terminate',
         'placement:transition',
         'pre_start_requirement:act',
@@ -1225,6 +1231,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:activate',
         'placement:create',
         'placement:read',
+        'placement:replace',
         'placement:terminate',
         'placement:transition',
         'pre_start_requirement:act',
@@ -1308,6 +1315,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:activate',
         'placement:create',
         'placement:read',
+        'placement:replace',
         'placement:terminate',
         'placement:transition',
         'pre_start_requirement:act',

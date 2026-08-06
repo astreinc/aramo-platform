@@ -269,6 +269,10 @@ export const SEED_SCOPE_KEYS = [
   'placement:transition',
   'placement:activate',
   'placement:terminate',
+  // Track 3 / E4 — replacement authorization; granted (E4 matrix) to
+  // account_manager/tenant_admin/tenant_owner, required in conjunction with
+  // placement:create for a replacement create.
+  'placement:replace',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 
