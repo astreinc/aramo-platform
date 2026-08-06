@@ -366,10 +366,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // PR-B HK-INTEGRATION-SPEC-COMP-STALE reconciliation: the role-bundle
       // snapshots in tests 10/14/17 were caught up to the merged-seed truth
       // (libs/identity was never in the CI integration lane, so they drifted).
-      // The total roleScope rows follow: 505 (all deltas are governed, in-catalog
-      // scopes from merged tracks — placement/pre-start/portal-dispute/
-      // activity:redact — with no privilege leaks and no removals).
-      expect(roleScopes).toBe(505);
+      // The total roleScope rows follow: 505 pre-placement-matrix (all deltas
+      // governed, in-catalog scopes from merged tracks — pre-start/portal-
+      // dispute/activity:redact — with no privilege leaks and no removals; the
+      // five placement scopes were in-catalog but ZERO-GRANT at this point).
+      //   505 → 523 = +18 Track3/E1-b Placement role matrix (PLACEMENT_SEED_
+      //   BUNDLES @ 0xa00): recruiter × 3 (read/create/transition) + account_
+      //   manager × 5 + tenant_admin × 5 + tenant_owner × 5. super_admin and
+      //   every other role gain nothing (fail-closed, no inheritance).
+      expect(roleScopes).toBe(523);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -664,7 +669,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // no-change PATCH). The company table is not in this identity-only
     // testcontainer, so no Company-row assertion is made here.
 
-    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (84 scopes; PR-B HK-INTEGRATION-SPEC-COMP-STALE reconciliation to merged-seed truth)', async () => {
+    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (89 scopes; PR-B HK-INTEGRATION-SPEC-COMP-STALE reconciliation to merged-seed truth + Track3/E1-b placement matrix)', async () => {
       const scopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
@@ -725,6 +730,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:change-status',
         'pipeline:read',
         'pipeline:remove',
+        'placement:activate',
+        'placement:create',
+        'placement:read',
+        'placement:terminate',
+        'placement:transition',
         'pre_start_requirement:act',
         'pre_start_requirement:configure',
         'pre_start_requirement:publish',
@@ -901,7 +911,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Test 17 — scope catalog correctness
     // -----------------------------------------------------------------
 
-    it('test 17 — scope catalog correctness: 12-role staffing catalog per AUTHZ-1b + AUTHZ-D4a (PR-B HK-INTEGRATION-SPEC-COMP-STALE reconciliation to merged-seed truth — tenant_admin 84, recruiter 46, candidate 7, tenant_owner 84, account_manager 62, sourcer 25, finance 10, auditor 5, recruiting_manager 56, delivery_manager 33, lead_recruiter 53, back_office 25)', async () => {
+    it('test 17 — scope catalog correctness: 12-role staffing catalog per AUTHZ-1b + AUTHZ-D4a + Track3/E1-b placement matrix (tenant_admin 89, recruiter 49, candidate 7, tenant_owner 89, account_manager 67, sourcer 25, finance 10, auditor 5, recruiting_manager 56, delivery_manager 33, lead_recruiter 53, back_office 25)', async () => {
       // tenant_admin scope set (47 post AUTHZ-D4a; 43 + 4 team-model scopes)
       const adminScopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
@@ -959,6 +969,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:change-status',
         'pipeline:read',
         'pipeline:remove',
+        'placement:activate',
+        'placement:create',
+        'placement:read',
+        'placement:terminate',
+        'placement:transition',
         'pre_start_requirement:act',
         'pre_start_requirement:configure',
         'pre_start_requirement:publish',
@@ -1035,6 +1050,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
+        'placement:create',
+        'placement:read',
+        'placement:transition',
         'pre_start_requirement:act',
         'pre_start_requirement:read',
         'report:read',
@@ -1187,6 +1205,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:change-status',
         'pipeline:read',
         'pipeline:remove',
+        'placement:activate',
+        'placement:create',
+        'placement:read',
+        'placement:terminate',
+        'placement:transition',
         'pre_start_requirement:act',
         'pre_start_requirement:configure',
         'pre_start_requirement:publish',
@@ -1265,6 +1288,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:add-activity',
         'pipeline:change-status',
         'pipeline:read',
+        'placement:activate',
+        'placement:create',
+        'placement:read',
+        'placement:terminate',
+        'placement:transition',
         'pre_start_requirement:act',
         'pre_start_requirement:read',
         'pre_start_requirement:waive_advisory',

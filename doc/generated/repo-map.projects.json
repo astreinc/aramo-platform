@@ -1295,6 +1295,12 @@
     ],
     "@aramo/authorization": [
       { "project": "activity", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       { "project": "attachment", "status": "production" },
       {
