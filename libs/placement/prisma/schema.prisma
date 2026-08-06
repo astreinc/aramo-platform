@@ -126,6 +126,19 @@ model PlacementProcessEvent {
   event_type    PlacementEventType
   event_payload Json
 
+  // Track 3 / E3 — governed terminal/fallthrough reason evidence. Nullable:
+  // present only for a transition into a governed terminal state, absent (null)
+  // for every other transition and for all legacy pre-E3 events. The registry is
+  // code-backed (src/lib/reasons); these columns are the authoritative historical
+  // evidence and survive later registry label changes (reason_label_snapshot).
+  // reason_detail is PII-bearing free text (tenant-owned) and NEVER enters the
+  // outbox (§13/C1). Additive migration 20260807120000; the immutability trigger
+  // means the columns are written once, at insert. Two DB CHECKs enforce the
+  // structural invariants (code<->label paired; detail requires code).
+  reason_code           String?
+  reason_label_snapshot String?
+  reason_detail         String?
+
   // Snapshot creation timestamp. Whole row is immutable (trigger-enforced).
   created_at DateTime @default(now()) @db.Timestamptz(6)
 

@@ -103,6 +103,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // discriminator) + one fail-closed READY_TO_START conflict a caller branches on.
   PRE_START_REQUIREMENT_INVALID: 422,
   PRE_START_NOT_READY: 409,
+  // Track 3 / E3 — governed terminal/fallthrough reason-evidence refusal (one
+  // code, details.reason discriminator). Well-formed request, invalid reason.
+  PLACEMENT_REASON_INVALID: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

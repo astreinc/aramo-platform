@@ -24,6 +24,12 @@ export type TransitionPlacementInput = {
   readonly tenant_id: string;
   readonly placement_process_id: string;
   readonly to: PlacementState;
+  // E3 — governed terminal/fallthrough reason evidence. reason_code is required
+  // (validated) for a transition into a governed terminal state and must be
+  // absent for a non-governed edge; reason_detail is governed by the code's
+  // detail policy. Both snake_case (repository serialization convention).
+  readonly reason_code?: string | null;
+  readonly reason_detail?: string | null;
 };
 
 export type PlacementProcessView = {
@@ -47,6 +53,13 @@ export type PlacementProcessEventView = {
   readonly placement_process_id: string;
   readonly event_type: 'state_transition';
   readonly event_payload: unknown;
+  // E3 — reason evidence. Null for non-governed transitions and legacy pre-E3
+  // events (a null here is legacy/non-governed absence, NEVER a canonical reason).
+  // reason_detail is tenant-owned PII-bearing free text; a read surface must gate
+  // its exposure to roles already permitted to see placement evidence (E1-d).
+  readonly reason_code: string | null;
+  readonly reason_label_snapshot: string | null;
+  readonly reason_detail: string | null;
   readonly created_at: Date;
 };
 

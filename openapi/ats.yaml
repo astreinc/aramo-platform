@@ -1643,9 +1643,17 @@ paths:
         (READY_TO_START -> STARTED) requires `placement:activate`, and any
         edge into a terminal state requires `placement:terminate`. All
         placement scopes ship with zero default grants (fail-closed).
+        A transition into a governed terminal state (OFFER_DECLINED,
+        OFFER_RESCINDED, NO_SHOW, FELL_THROUGH) additionally requires a canonical
+        `reason_code` (Track 3 / E3); `reason_detail` is governed by that code's
+        detail policy. Reason input on a non-governed edge is refused.
         Refusals:
           - 422 PLACEMENT_STATE_INVALID — the requested edge is not one of
             the 14 legal transitions from the current state.
+          - 422 PLACEMENT_REASON_INVALID — the reason evidence is invalid for the
+            transition (details.reason discriminates: reason_required |
+            reason_unknown | reason_retired | reason_wrong_target | detail_required
+            | detail_prohibited | detail_too_long | reason_on_non_governed_target).
           - 403 INSUFFICIENT_PERMISSIONS — caller lacks the edge's class scope.
           - 404 NOT_FOUND — no PlacementProcess for this (tenant, id).
           - 400 VALIDATION_ERROR — `to` is not a known placement state.
@@ -1788,6 +1796,22 @@ components:
             - OFFER_RESCINDED
             - NO_SHOW
             - FELL_THROUGH
+        reason_code:
+          type: [string, 'null']
+          description: >
+            Track 3 / E3 — the canonical fallthrough/terminal reason code. REQUIRED
+            for a transition into a governed terminal state (OFFER_DECLINED,
+            OFFER_RESCINDED, NO_SHOW, FELL_THROUGH); must be absent for any
+            non-governed edge. Must be a stable code from the platform-canonical
+            reason registry — a display label is never accepted.
+        reason_detail:
+          type: [string, 'null']
+          maxLength: 2000
+          description: >
+            Track 3 / E3 — optional free-text reason detail, governed by the
+            reason code's detail policy (REQUIRED | OPTIONAL | PROHIBITED). Never
+            enters the placement outbox event (append-only, cross-consumer): it is
+            retained only on the tenant-owned placement event evidence.
     PlacementProcess:
       type: object
       additionalProperties: false

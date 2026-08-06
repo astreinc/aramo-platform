@@ -8,6 +8,10 @@ import { PLACEMENT_STATES } from '@aramo/placement';
 // operational metadata only (NO commercial rates / restricted evidence).
 const CLIENT_OFFER_REFERENCE_MAX = 255;
 const OFFER_TERMS_SUMMARY_MAX = 2000;
+// E3 — reason-detail bound; matches the repository REASON_DETAIL_MAX registry
+// constant (the shared recruiter-justification convention). The DTO cap is a
+// cheap wire guard; the registry classifier is the authoritative policy gate.
+const REASON_DETAIL_MAX = 2000;
 
 export class CreatePlacementDto {
   @IsUUID()
@@ -51,4 +55,19 @@ export class CreatePlacementDto {
 export class TransitionPlacementDto {
   @IsIn(PLACEMENT_STATES as readonly string[])
   to!: string;
+
+  // E3 — governed terminal/fallthrough reason evidence. Optional at the wire:
+  // a transition into a governed terminal state REQUIRES reason_code and a
+  // non-governed edge must omit it — both enforced by the registry classifier in
+  // the repository (PLACEMENT_REASON_INVALID, 422), not by class-validator, so the
+  // closed reason vocabulary survives. snake_case matches the create DTO's
+  // serialization convention. A stable code only — a display label is rejected.
+  @IsOptional()
+  @IsString()
+  reason_code?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(REASON_DETAIL_MAX)
+  reason_detail?: string;
 }

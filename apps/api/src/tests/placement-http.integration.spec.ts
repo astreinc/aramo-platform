@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { Reflector } from '@nestjs/core';
-import { PlacementRepository, PrismaService } from '@aramo/placement';
+import { PlacementRepository, PrismaService, PLACEMENT_REASONS } from '@aramo/placement';
 import { RolesGuard } from '@aramo/authorization';
 
 import { PlacementController } from '../placement/placement.controller.js';
@@ -19,6 +19,13 @@ import { PlacementController } from '../placement/placement.controller.js';
 const RECRUITER_PLACEMENT = ['placement:read', 'placement:create', 'placement:transition'];
 const MANAGER_PLACEMENT = ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate'];
 
+// E3 — a governed terminal transition now requires a canonical reason. Derive a
+// valid OPTIONAL code for OFFER_DECLINED from the registry (no detail needed), so
+// the proofs stay taxonomy-neutral.
+const DECLINE_REASON = PLACEMENT_REASONS.find(
+  (r) => r.status === 'active' && r.detailPolicy === 'OPTIONAL' && r.allowedTargets.includes('OFFER_DECLINED'),
+)!.code;
+
 // Track 3 / E1-b — the guarded PlacementProcess surface at the controller + repo
 // level against real Postgres 17. The JWT/guard layer is covered by app-module-di
 // + the shared guard specs; here we drive the controller with a constructed
@@ -29,6 +36,8 @@ const MANAGER_PLACEMENT = ['placement:read', 'placement:create', 'placement:tran
 const INIT_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260803180000_init_placement_model/migration.sql');
 // E1-c — the additive offer-snapshot + OutboxEvent migration, applied AFTER init.
 const OFFER_OUTBOX_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql');
+// E3 — the additive reason-evidence columns (curated migration list).
+const REASON_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql');
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const auth = (scopes: string[], tenant: string): any => ({ sub: 'u', tenant_id: tenant, actor_kind: 'user', consumer_type: 'tenant', scopes });
@@ -56,7 +65,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const url = container.getConnectionUri();
     setup = new PrismaService(url);
     await setup.$connect();
-    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION]) {
+    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION]) {
       for (const s of splitDdl(readFileSync(migration, 'utf8'))) {
         if (s.trim()) await setup.$executeRawUnsafe(s.trim());
       }
@@ -107,7 +116,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
       code: 'INSUFFICIENT_PERMISSIONS',
       context: { details: { authority_class: 'terminate', required_scope: 'placement:terminate' } },
     });
-    const done = await ctrl.transition(auth(['placement:terminate'], t), 'r', id, { to: 'OFFER_DECLINED' });
+    const done = await ctrl.transition(auth(['placement:terminate'], t), 'r', id, { to: 'OFFER_DECLINED', reason_code: DECLINE_REASON });
     expect(done.state).toBe('OFFER_DECLINED');
   });
 
@@ -246,10 +255,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     expect(live.state).toBe('STARTED');
   });
 
-  it('matrix: MANAGER set CAN terminate (a terminal edge)', async () => {
+  it('matrix: MANAGER set (account_manager/tenant_admin/tenant_owner) CAN terminate with a valid reason (a terminal edge)', async () => {
     const t = randomUUID();
     const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
-    const done = await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_DECLINED' });
+    const done = await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_DECLINED', reason_code: DECLINE_REASON });
     expect(done.state).toBe('OFFER_DECLINED');
   });
 
@@ -261,6 +270,72 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     await expect(ctrl.get(auth(['placement:read'], tenantB), 'r', id)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
     // Sanity: within tenant A the read succeeds.
     expect((await ctrl.get(auth(['placement:read'], tenantA), 'r', id)).id).toBe(id);
+  });
+
+  // ─── E3 — reason evidence at the HTTP boundary ────────────────────────────
+
+  // Authorization is enforced in the controller BEFORE the repository validates
+  // the reason, so a recruiter attempting a terminal edge is refused 403 EVEN
+  // WITH a valid reason — the reason never gets a chance to matter. Non-vacuous:
+  // state/event/outbox unchanged.
+  it('E3: RECRUITER attempting a terminal edge WITH a valid reason is still 403 (authz precedes reason); state/event/outbox unchanged', async () => {
+    const t = randomUUID();
+    const id = await ctrl.create(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    const before = await snapshot(t, id);
+    await expect(
+      ctrl.transition(auth(RECRUITER_PLACEMENT, t), 'r', id, { to: 'OFFER_DECLINED', reason_code: DECLINE_REASON }),
+    ).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { authority_class: 'terminate', required_scope: 'placement:terminate' } },
+    });
+    expect(await snapshot(t, id)).toEqual(before);
+  });
+
+  // An authorized terminal transition MISSING the required reason is refused by
+  // the reason gate (422), not authorization. Non-vacuous: nothing moved.
+  it('E3: an authorized terminal transition with NO reason_code → 422 PLACEMENT_REASON_INVALID (reason_required); nothing moved', async () => {
+    const t = randomUUID();
+    const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    const before = await snapshot(t, id);
+    await expect(
+      ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_DECLINED' }),
+    ).rejects.toMatchObject({
+      code: 'PLACEMENT_REASON_INVALID',
+      statusCode: 422,
+      context: { details: { reason: 'reason_required' } },
+    });
+    expect(await snapshot(t, id)).toEqual(before);
+  });
+
+  // Reason input on a NON-governed edge is refused (422), even when authorized.
+  it('E3: a non-governed transition carrying a reason_code → 422 PLACEMENT_REASON_INVALID (reason_on_non_governed_target)', async () => {
+    const t = randomUUID();
+    const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    const before = await snapshot(t, id);
+    await expect(
+      ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_ACCEPTED', reason_code: DECLINE_REASON }),
+    ).rejects.toMatchObject({
+      code: 'PLACEMENT_REASON_INVALID',
+      statusCode: 422,
+      context: { details: { reason: 'reason_on_non_governed_target' } },
+    });
+    expect(await snapshot(t, id)).toEqual(before);
+  });
+
+  // A cross-tenant terminal transition attempt (valid reason, valid scope in the
+  // WRONG tenant) resolves to least-visibility 404 — the placement is invisible,
+  // so neither reason nor authorization is reached.
+  it('E3: a cross-tenant terminal transition attempt (valid reason) is 404 (least-visibility), and the real placement is untouched', async () => {
+    const owner = randomUUID();
+    const intruder = randomUUID();
+    const id = await ctrl.create(auth(MANAGER_PLACEMENT, owner), 'r', body()).then((v) => v.id);
+    const before = await snapshot(owner, id);
+    await expect(
+      ctrl.transition(auth(MANAGER_PLACEMENT, intruder), 'r', id, { to: 'OFFER_DECLINED', reason_code: DECLINE_REASON }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    // The owner's placement is untouched.
+    expect(await snapshot(owner, id)).toEqual(before);
   });
 });
 

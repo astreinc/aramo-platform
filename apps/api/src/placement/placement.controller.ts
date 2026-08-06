@@ -76,8 +76,17 @@ export class PlacementController {
         details: { placement_process_id: id, from_state: current.state, to_state: body.to, authority_class: cls, required_scope: required },
       });
     }
+    // Authorization has passed above; the reason evidence (E3) is validated in
+    // the repository BEFORE any mutation. reason_code is required for a governed
+    // terminal edge and must be absent for a non-governed one (registry classifier).
     return this.placements.transition(
-      { tenant_id: auth.tenant_id, placement_process_id: id, to: body.to as PlacementState },
+      {
+        tenant_id: auth.tenant_id,
+        placement_process_id: id,
+        to: body.to as PlacementState,
+        reason_code: body.reason_code ?? null,
+        reason_detail: body.reason_detail ?? null,
+      },
       requestId,
     );
   }

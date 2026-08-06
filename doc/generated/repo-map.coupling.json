@@ -3845,6 +3845,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/placement-offer-openapi-conformance.spec.ts",
       "status": "excluded",
       "to": "openapi/ats.yaml"
@@ -11664,6 +11670,11 @@
       "from": "libs/placement/src/lib/generator/placement-sql-generator.ts",
       "status": "production",
       "to": "ci/scripts/verify-placement-sql.ts"
+    },
+    {
+      "from": "libs/placement/src/lib/reasons/placement-reason-registry.ts",
+      "status": "production",
+      "to": "scripts/verify-vocabulary.sh"
     },
     {
       "excludedBy": "src/tests/**/*",

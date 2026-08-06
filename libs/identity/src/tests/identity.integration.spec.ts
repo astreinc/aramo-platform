@@ -1129,6 +1129,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'portal:verification:read',
       ]);
 
+      // Track 3 / E3 (§11 amendment) — EXPLICIT, NAMED placement-exclusion proof.
+      // `candidate` is the SINGLE canonical portal-facing bundle (its all-portal
+      // composition is proven structurally in portal-role-scope-parity.spec.ts).
+      // It must resolve to ZERO placement:* scopes, and this assertion NAMES the
+      // role, so any future placement grant to the portal bundle fails HERE and
+      // identifies the exact leaked bundle — not a generic "all other roles" sweep.
+      // reason_detail (E3 PII-bearing evidence) is only reachable via a placement
+      // scope, so zero placement scopes ⇒ the portal principal can reach no
+      // placement reason discovery, read, or event evidence.
+      expect(
+        candidateKeys.filter((k) => k.startsWith('placement:')),
+        'the candidate/portal bundle must carry ZERO placement:* scopes (E3 §11)',
+      ).toEqual([]);
+      // The portal bundle is exactly the seven portal:* scopes above — no
+      // placement:read / :transition / :activate / :terminate / :create leaked in.
+      expect(candidateKeys.every((k) => k.startsWith('portal:'))).toBe(true);
+
       // ====================================================================
       // AUTHZ-1 / AUTHZ-1b — 9 staffing-tenant role bundles (assembled
       // from the live 47-scope catalog; no new scope keys added). Bundle
