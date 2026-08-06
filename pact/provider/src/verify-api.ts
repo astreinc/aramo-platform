@@ -777,6 +777,22 @@ const PORTAL_IDENTITY_MIGRATION = resolve(
   'libs/portal-identity/prisma/migrations/20260714120000_init_portal_identity/migration.sql',
 );
 
+// E1-d — the placement schema (spine + offer/outbox + reason cols). The
+// ats-web placement.consumer pact reads /v1/placements* whose regenerated
+// client SELECTs these columns; all three apply here.
+const PLACEMENT_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260803180000_init_placement_model/migration.sql',
+);
+const PLACEMENT_OFFER_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql',
+);
+const PLACEMENT_REASON_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql',
+);
+
 // Constants used by the consent-read given-states (and formerly the retired
 // thin consumer). The talent uuid matches the value the consumer tests
 // use; the recruiter actor uuid matches the audit-row value the pacts
@@ -922,6 +938,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // here per interaction. Activity is standalone (no FK).
       await c.query('TRUNCATE TABLE pipeline."Pipeline" CASCADE');
       await c.query('TRUNCATE TABLE activity."Activity" CASCADE');
+      // E1-d — placement read pacts seed PlacementProcess + PlacementProcessEvent.
+      // TRUNCATE PlacementProcess CASCADE also clears its event/outbox children
+      // (FK placement_process_id). Cleared per interaction so a prior placement
+      // state does not shadow the empty-collection / not-found interactions.
+      await c.query('TRUNCATE TABLE placement."PlacementProcess" CASCADE');
       // PC-5d — task + attachment (no FK; standalone truncates). The
       // attachment 'talent' owner lives in talent_record."TalentRecord",
       // already truncated above.
@@ -2942,6 +2963,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         IMPORT_INIT_MIGRATION,
         CALENDAR_INIT_MIGRATION,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
+        // E1-d — placement schema for the ats-web placement.consumer pacts.
+        PLACEMENT_INIT_MIGRATION,
+        PLACEMENT_OFFER_MIGRATION,
+        PLACEMENT_REASON_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -3150,6 +3175,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // the existing decision-log happy-path interaction stays green under
           // the new gate. Additive; inert for prior interactions. COUPLING FLAG.
           'consent:decision-log:read',
+          // E1-d — placement read scope so the ats-web placement.consumer
+          // interactions pass RolesGuard on GET /v1/placements*. requisition:
+          // read:all (above) short-circuits the visibility resolver to see-all.
+          // Additive; inert for prior interactions.
+          'placement:read',
         ],
       })
         .setProtectedHeader({ alg: ALG })
@@ -3401,6 +3431,68 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // consumer pacts (no token-free re-authoring needed beyond what the
     // consumer tests already produced).
     const stateHandlers: Record<string, () => Promise<void>> = {
+      // ===== E1-d placement read pacts (ats-web placement.consumer) =====
+      // Fixture UUIDs mirror pact/consumers/ats-web/src/placement.consumer.test.ts.
+      // The placement is seeded under TENANT_ID (the JWT tenant); requisition:
+      // read:all makes it see-all, so requisition_id is not filter-relevant.
+      'an ats-web reader and a placement exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await c.query(
+            `INSERT INTO placement."PlacementProcess"
+               (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
+             VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'OFFER_EXTENDED','2026-08-01T00:00:00Z','2026-08-01T00:00:00Z')`,
+            [
+              '00000000-0000-7000-8000-9ace00000001',
+              TENANT_ID,
+              '00000000-0000-7000-8000-50b000000001',
+              '00000000-0000-7000-8000-4e9000000001',
+              '00000000-0000-7000-8000-7a1e00000001',
+            ],
+          );
+        });
+      },
+      'an ats-web reader and no placements exist': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+      'an ats-web reader and no placement exists for the requested id': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+      'an ats-web reader and a placement with a governed-terminal and a legacy event exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            const pid = '00000000-0000-7000-8000-9ace00000001';
+            await c.query(
+              `INSERT INTO placement."PlacementProcess"
+                 (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
+               VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'OFFER_EXTENDED','2026-08-01T00:00:00Z','2026-08-01T00:00:00Z')`,
+              [
+                pid,
+                TENANT_ID,
+                '00000000-0000-7000-8000-50b000000001',
+                '00000000-0000-7000-8000-4e9000000001',
+                '00000000-0000-7000-8000-7a1e00000001',
+              ],
+            );
+            // Legacy (non-governed) event first, then the governed-terminal one;
+            // the read orders by created_at asc, matching the pact array order.
+            await c.query(
+              `INSERT INTO placement."PlacementProcessEvent"
+                 (id, tenant_id, placement_process_id, event_type, event_payload, reason_code, reason_label_snapshot, reason_detail, created_at)
+               VALUES
+                 ($1::uuid,$3::uuid,$4::uuid,'state_transition','{"from":"OFFER_EXTENDED","to":"OFFER_ACCEPTED"}'::jsonb,NULL,NULL,NULL,'2026-08-01T12:00:00Z'),
+                 ($2::uuid,$3::uuid,$4::uuid,'state_transition','{"from":"OFFER_EXTENDED","to":"OFFER_DECLINED"}'::jsonb,'other','Other','operational note','2026-08-02T00:00:00Z')`,
+              [
+                '00000000-0000-7000-8000-e0e000000002',
+                '00000000-0000-7000-8000-e0e000000001',
+                TENANT_ID,
+                pid,
+              ],
+            );
+          });
+        },
+
       // ===== PR-14 ingestion pacts =====
       'a recruiter session and a prohibited source value at the wire':
         async () => {

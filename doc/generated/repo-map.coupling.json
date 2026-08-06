@@ -3857,6 +3857,30 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260803180000_init_placement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
       "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
@@ -7852,6 +7876,27 @@
       "from": "apps/ats-web/src/pipeline/types.ts",
       "status": "production",
       "to": "libs/talent-record/src/lib/dto/talent-record.view.ts"
+    },
+    {
+      "from": "apps/ats-web/src/placement/placement-api.ts",
+      "status": "production",
+      "to": "pact/consumers/ats-web/src/placement.consumer.test.ts"
+    },
+    {
+      "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/placement/placement-matrix-drift.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/src/lib/lifecycle/placement-lifecycle.ts"
+    },
+    {
+      "from": "apps/ats-web/src/placement/types.ts",
+      "status": "production",
+      "to": "libs/placement/src/lib/lifecycle/placement-lifecycle.ts"
+    },
+    {
+      "from": "apps/ats-web/src/placement/types.ts",
+      "status": "production",
+      "to": "libs/placement/src/lib/placement-process.types.ts"
     },
     {
       "from": "apps/ats-web/src/requisitions/compensation-visibility.ts",
@@ -12262,6 +12307,11 @@
       "to": "libs/engagement/src/lib/engagement-state.ts"
     },
     {
+      "from": "pact/consumers/ats-web/src/placement.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/placement/placement-api.ts"
+    },
+    {
       "from": "pact/consumers/ats-web/src/submittal.consumer.test.ts",
       "status": "unscoped",
       "to": "apps/ats-web/src/submittals/submittals-api.ts"
@@ -12589,6 +12639,21 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260803180000_init_placement_model/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
     },
     {
@@ -12885,6 +12950,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/task/prisma/migrations/20260617120000_task_workspace_fields/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "pact/consumers/ats-web/src/placement.consumer.test.ts"
     },
     {
       "from": "pact/provider/src/verify.ts",

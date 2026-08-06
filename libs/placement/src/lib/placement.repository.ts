@@ -285,6 +285,77 @@ export class PlacementRepository {
     return row === null ? null : projectView(row);
   }
 
+  // E1-d / D-3 — visibility-scoped item read. Placement inherits its
+  // requisition's visibility: the actor sees a placement only when its
+  // requisition_id is in the pre-resolved visible set (VisibilityResolver,
+  // via the controller). null ⇒ see_all_requisition ⇒ unrestricted (falls
+  // back to the tenant-only findById). A tenant-present-but-not-visible row
+  // returns null here → the controller maps null to 404 (never 403): the
+  // scope passed, so existence must not be disclosed. Mirrors
+  // PipelineRepository.findByIdForActor (libs/pipeline).
+  async findByIdForActor(args: {
+    tenant_id: string;
+    id: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+  }): Promise<PlacementProcessView | null> {
+    if (args.visible_requisition_ids !== null) {
+      const row = (await this.prisma.placementProcess.findFirst({
+        where: {
+          tenant_id: args.tenant_id,
+          id: args.id,
+          requisition_id: { in: Array.from(args.visible_requisition_ids) },
+        },
+      })) as PlacementProcessRow | null;
+      return row === null ? null : projectView(row);
+    }
+    return this.findById(args.tenant_id, args.id);
+  }
+
+  // E1-d / Scope A — the placement collection read. Tenant-isolated and
+  // actor-visibility-scoped over the three indexed axes (requisition_id,
+  // submittal_id, talent_record_id — the init-migration indexes). Ordering is
+  // deterministic with a STABLE tie-breaker (created_at desc, then id asc) so
+  // the board renders the same order across equal-timestamp rows and across
+  // pages. Bounded at 200 (house cap). The projection is PlacementProcessView,
+  // which carries NO reason fields — reason evidence never enters a collection
+  // response (D-1/D-2; asserted by Proof 4). No new persistence.
+  async listForActor(args: {
+    tenant_id: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    requisition_id?: string;
+    submittal_id?: string;
+    talent_record_id?: string;
+    limit?: number;
+  }): Promise<PlacementProcessView[]> {
+    const limit = Math.min(args.limit ?? 50, 200);
+    const where: Record<string, unknown> = { tenant_id: args.tenant_id };
+    if (args.visible_requisition_ids !== null) {
+      where['requisition_id'] = { in: Array.from(args.visible_requisition_ids) };
+    }
+    if (args.requisition_id !== undefined) {
+      // Narrow to ONE requisition; AND with the visibility set (never widen).
+      if (
+        args.visible_requisition_ids !== null &&
+        !args.visible_requisition_ids.has(args.requisition_id)
+      ) {
+        return [];
+      }
+      where['requisition_id'] = args.requisition_id;
+    }
+    if (args.submittal_id !== undefined) {
+      where['submittal_id'] = args.submittal_id;
+    }
+    if (args.talent_record_id !== undefined) {
+      where['talent_record_id'] = args.talent_record_id;
+    }
+    const rows = (await this.prisma.placementProcess.findMany({
+      where,
+      orderBy: [{ created_at: 'desc' }, { id: 'asc' }],
+      take: limit,
+    })) as PlacementProcessRow[];
+    return rows.map(projectView);
+  }
+
   private alreadyLive(input: CreatePlacementInput, requestId: string, existingId: string | undefined): AramoError {
     return new AramoError(
       'PLACEMENT_ALREADY_LIVE',

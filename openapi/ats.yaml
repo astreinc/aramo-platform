@@ -1585,6 +1585,58 @@ paths:
         - BearerAuth: []
 
   /v1/placements:
+    get:
+      operationId: listPlacements
+      summary: List PlacementProcesses for the tenant (Track 3 / E1-d).
+      description: |
+        Returns the tenant's PlacementProcesses, newest first with a stable
+        `id` tie-breaker, bounded at 200. Optional narrowing by the indexed
+        axes `requisition_id`, `submittal_id`, `talent_record_id`. Requires
+        the `ats` capability and the `placement:read` scope, and is scoped to
+        the actor's visible requisition set (a placement on a requisition the
+        actor cannot see is simply absent — never disclosed).
+
+        The collection projection carries the placement lifecycle `state` only;
+        it deliberately exposes NO fallthrough/terminal reason evidence
+        (`reason_code`, `reason_label_snapshot`, `reason_detail`) — reason
+        evidence is available only on the per-placement event timeline
+        (`GET /v1/placements/{id}/events`). Refusals:
+          - 403 TENANT_CAPABILITY_NOT_ENTITLED — tenant lacks `ats`.
+          - 403 INSUFFICIENT_PERMISSIONS — caller lacks `placement:read`.
+      parameters:
+        - name: requisition_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: submittal_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: talent_record_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacementProcessList'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
     post:
       operationId: createPlacement
       summary: Create a PlacementProcess on the client-selection/offer fact (Track 3 / E1-b).
@@ -1703,11 +1755,17 @@ paths:
   /v1/placements/{id}:
     get:
       operationId: getPlacement
-      summary: Read a PlacementProcess (Track 3 / E1-b).
+      summary: Read a PlacementProcess (Track 3 / E1-b, guard-aligned E1-d).
       description: |
-        Returns the PlacementProcess for the JWT's tenant. Requires the
-        `placement:read` scope. Refusals:
-          - 404 NOT_FOUND — no PlacementProcess for this (tenant, id).
+        Returns the PlacementProcess for the JWT's tenant. Requires the `ats`
+        capability and the `placement:read` scope, and is scoped to the actor's
+        visible requisition set. A placement that does not exist in the tenant
+        OR is not visible to the actor returns 404 (never 403 — the scope
+        passed, so existence is not disclosed). No reason evidence is returned
+        on this item read; use `GET /v1/placements/{id}/events` for the reason
+        timeline. Refusals:
+          - 404 NOT_FOUND — no PlacementProcess for this (tenant, id) or not visible.
+          - 403 TENANT_CAPABILITY_NOT_ENTITLED — tenant lacks `ats`.
           - 403 INSUFFICIENT_PERMISSIONS — caller lacks `placement:read`.
       parameters:
         - name: id
@@ -1724,7 +1782,49 @@ paths:
               schema:
                 $ref: '#/components/schemas/PlacementProcess'
         '403':
-          description: Insufficient permissions.
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/placements/{id}/events:
+    get:
+      operationId: listPlacementEvents
+      summary: Read a PlacementProcess event/reason timeline (Track 3 / E1-d).
+      description: |
+        Returns the append-only state-transition events for the placement,
+        oldest first with a stable `id` tie-breaker. This is the authorized
+        detail surface for fallthrough/terminal reason evidence: `reason_code`,
+        `reason_label_snapshot` and permitted `reason_detail` are returned HERE
+        and on no broader surface. Legacy or non-governed events carry null
+        reason fields (a null is genuine absence, never a reason reconstructed
+        from state). `reason_detail` is null by construction for a reason code
+        whose registry policy prohibits detail.
+
+        The placement is first loaded under the same guard as the item read
+        (capability `ats`, scope `placement:read`, actor visibility) — a
+        not-found/not-visible placement returns 404 before any event is read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacementProcessEventList'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
           content:
             application/json:
               schema:
@@ -1865,6 +1965,66 @@ components:
         created_at:
           type: string
           format: date-time
+    # E1-d — the placement collection envelope. Items carry NO reason evidence.
+    PlacementProcessList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlacementProcess'
+    # E1-d — a single append-only state-transition event, the authorized detail
+    # surface for reason evidence. reason_* are null for legacy/non-governed
+    # events (3.1 union-null, never nullable:true).
+    PlacementProcessEvent:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, placement_process_id, event_type, event_payload, reason_code, reason_label_snapshot, reason_detail, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        placement_process_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          enum:
+            - state_transition
+        event_payload:
+          type: object
+          additionalProperties: false
+          required: [from, to]
+          properties:
+            from:
+              type: string
+            to:
+              type: string
+        reason_code:
+          type: [string, 'null']
+        reason_label_snapshot:
+          type: [string, 'null']
+        reason_detail:
+          type: [string, 'null']
+          maxLength: 2000
+        created_at:
+          type: string
+          format: date-time
+    # E1-d — the placement event/reason timeline envelope.
+    PlacementProcessEventList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlacementProcessEvent'
     # M3 PR-8 §4.4 — match-list response envelope. The endpoint emits
     # TalentJobExaminationSummary items only (Full is NOT referenced from
     # this endpoint — see directive §4.4). additionalProperties: false plus

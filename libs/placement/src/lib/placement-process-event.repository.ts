@@ -42,9 +42,13 @@ export class PlacementProcessEventRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async listEvents(tenant_id: string, placement_process_id: string): Promise<PlacementProcessEventView[]> {
+    // E1-d — deterministic event ordering with a STABLE tie-breaker (created_at
+    // asc, then id asc). The append-only log can carry two events at the same
+    // timestamp; the id tie-break keeps the timeline order fixed for the read
+    // surface and its Pact contract.
     const rows = (await this.prisma.placementProcessEvent.findMany({
       where: { tenant_id, placement_process_id },
-      orderBy: { created_at: 'asc' },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
     })) as PlacementProcessEventRow[];
     return rows.map(projectEventView);
   }
