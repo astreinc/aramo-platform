@@ -12,11 +12,11 @@ import { AUTHZ1_BUNDLES, PLACEMENT_SEED_BUNDLES } from '../../prisma/seed.js';
 // leaks a placement scope, and every non-granted role resolves to none) is
 // proven against the real seed in identity.integration.spec.ts test 17.
 //
-// LOCKED matrix:
-//   recruiter        → read + create + transition            (NOT activate/terminate)
-//   account_manager  → read + create + transition + activate + terminate
-//   tenant_admin     → read + create + transition + activate + terminate
-//   tenant_owner     → read + create + transition + activate + terminate  (Owner = Admin)
+// LOCKED matrix (E1-b five scopes + E4 placement:replace):
+//   recruiter        → read + create + transition                       (NOT activate/terminate/replace)
+//   account_manager  → read + create + transition + activate + terminate + replace
+//   tenant_admin     → read + create + transition + activate + terminate + replace
+//   tenant_owner     → read + create + transition + activate + terminate + replace  (Owner = Admin)
 // super_admin (the platform / "SaaS Owner" operator) and every other tenant
 // role receive NOTHING (no prose-hierarchy inheritance).
 
@@ -26,9 +26,10 @@ const PLACEMENT_SCOPES = [
   'placement:transition',
   'placement:activate',
   'placement:terminate',
+  'placement:replace',
 ] as const;
 
-const FULL_FIVE = [...PLACEMENT_SCOPES].sort();
+const FULL_SIX = [...PLACEMENT_SCOPES].sort();
 const RECRUITER_THREE = ['placement:create', 'placement:read', 'placement:transition'];
 
 function placementScopesFor(role: string): string[] {
@@ -45,29 +46,31 @@ describe('Placement role matrix — grant table (unit)', () => {
     );
   });
 
-  it('grants ONLY the five placement scopes (no scope outside the catalog subset)', () => {
+  it('grants ONLY the six placement scopes (no scope outside the catalog subset)', () => {
     const granted = new Set(PLACEMENT_SEED_BUNDLES.flatMap(([, s]) => s));
     for (const scope of granted) {
       expect(PLACEMENT_SCOPES).toContain(scope);
     }
   });
 
-  it('recruiter → read + create + transition, and NOT activate/terminate', () => {
+  it('recruiter → read + create + transition, and NOT activate/terminate/replace', () => {
     expect(placementScopesFor('recruiter')).toEqual(RECRUITER_THREE);
     expect(placementScopesFor('recruiter')).not.toContain('placement:activate');
     expect(placementScopesFor('recruiter')).not.toContain('placement:terminate');
+    expect(placementScopesFor('recruiter')).not.toContain('placement:replace');
   });
 
-  it('account_manager → the full five (incl. activate + terminate)', () => {
-    expect(placementScopesFor('account_manager')).toEqual(FULL_FIVE);
+  it('account_manager → the full six (incl. activate + terminate + replace)', () => {
+    expect(placementScopesFor('account_manager')).toEqual(FULL_SIX);
+    expect(placementScopesFor('account_manager')).toContain('placement:replace');
   });
 
-  it('tenant_admin → the full five', () => {
-    expect(placementScopesFor('tenant_admin')).toEqual(FULL_FIVE);
+  it('tenant_admin → the full six', () => {
+    expect(placementScopesFor('tenant_admin')).toEqual(FULL_SIX);
   });
 
-  it('tenant_owner → the full five AND mirrors tenant_admin (Owner = Admin scope set)', () => {
-    expect(placementScopesFor('tenant_owner')).toEqual(FULL_FIVE);
+  it('tenant_owner → the full six AND mirrors tenant_admin (Owner = Admin scope set)', () => {
+    expect(placementScopesFor('tenant_owner')).toEqual(FULL_SIX);
     expect(placementScopesFor('tenant_owner')).toEqual(placementScopesFor('tenant_admin'));
   });
 
@@ -93,10 +96,10 @@ describe('Placement role matrix — grant table (unit)', () => {
     }
   });
 
-  it('yields exactly 18 role-scope pairs (3 + 5 + 5 + 5), with no duplicate pair', () => {
+  it('yields exactly 21 role-scope pairs (3 + 6 + 6 + 6), with no duplicate pair', () => {
     const pairs = PLACEMENT_SEED_BUNDLES.flatMap(([r, s]) => s.map((sc) => `${r}:${sc}`));
-    expect(pairs).toHaveLength(18);
-    expect(new Set(pairs).size).toBe(18);
+    expect(pairs).toHaveLength(21);
+    expect(new Set(pairs).size).toBe(21);
   });
 });
 
@@ -128,5 +131,6 @@ describe('Placement role matrix — recruiting_manager is intentionally excluded
     // And it holds none of the manager-tier placement scopes either.
     expect(rmPlacement).not.toContain('placement:activate');
     expect(rmPlacement).not.toContain('placement:terminate');
+    expect(rmPlacement).not.toContain('placement:replace');
   });
 });

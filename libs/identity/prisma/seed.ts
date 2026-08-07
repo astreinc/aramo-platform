@@ -306,6 +306,7 @@ export const SEED_IDS = {
     'placement:transition': '01900000-0000-7000-8000-0000000000cb',
     'placement:activate': '01900000-0000-7000-8000-0000000000cc',
     'placement:terminate': '01900000-0000-7000-8000-0000000000cd',
+    'placement:replace': '01900000-0000-7000-8000-0000000000ce',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1775,32 +1776,35 @@ const PRE_START_REQUIREMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = ((
 })();
 
 // Track 3 / E1-b (PlacementProcess) — the ratified placement role matrix.
-// FOUR grant-receiving roles, 18 RoleScope rows; the five placement scopes
-// were REGISTERED WITH ZERO GRANTS at E1-b (no matrix existed yet). Matrix
-// (Placement-Role-Matrix seam):
+// FOUR grant-receiving roles, 21 RoleScope rows. Placement scopes were
+// REGISTERED WITH ZERO GRANTS at E1-b; the #577 matrix granted the first five,
+// and Track 3 / E4 adds the sixth, placement:replace.
 //   - recruiter: read + create + transition (operational placement work; the
-//     ordinary-progression edges). NO activate, NO terminate.
-//   - account_manager: recruiter's three + activate + terminate. activate
-//     asserts a placement has STARTED; terminate covers consequential/terminal
-//     outcomes (incl. OFFER_RESCINDED). Both follow the business meaning, not
-//     the (currently capacity-inert) implementation.
-//   - tenant_admin: the full five.
+//     ordinary-progression edges). NO activate, NO terminate, NO replace.
+//   - account_manager: recruiter's three + activate + terminate + replace.
+//     activate asserts a placement has STARTED; terminate covers consequential/
+//     terminal outcomes (incl. OFFER_RESCINDED); replace authorizes creating a
+//     successor placement against a terminal predecessor (E4 — a conjunction
+//     with create, never an alternative creation path). All follow the business
+//     meaning, not the (currently capacity-inert) implementation.
+//   - tenant_admin: the full six.
 //   - tenant_owner: mirrors tenant_admin (Owner = Admin scope set, position-only
 //     distinction — the same invariant every scope family upholds). NOT the
 //     "SaaS Owner"; the platform/SaaS operator role (super_admin) receives NONE.
 // super_admin and every other tenant-operational role receive ZERO placement
-// grants (fail-closed; no prose-hierarchy inheritance).
+// grants (fail-closed; no prose-hierarchy inheritance). recruiting_manager: zero.
 export const PLACEMENT_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
   ['recruiter', ['placement:read', 'placement:create', 'placement:transition']],
-  ['account_manager', ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate']],
-  ['tenant_admin', ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate']],
-  ['tenant_owner', ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate']],
+  ['account_manager', ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate', 'placement:replace']],
+  ['tenant_admin', ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate', 'placement:replace']],
+  ['tenant_owner', ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate', 'placement:replace']],
 ];
 
-// Deterministic RoleScope row ids for the 18 placement grants. Fresh disjoint
-// range after PRE_START_REQUIREMENT's 0x990..0x9a6 (append-don't-renumber): 0xa00+.
+// Deterministic RoleScope row ids for the 21 placement grants (E4: +3 replace).
+// Fresh disjoint range after PRE_START_REQUIREMENT's 0x990..0x9a6
+// (append-don't-renumber the earlier families): 0xa00+.
 const PLACEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0xa00;
@@ -2119,6 +2123,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['placement:transition'], 'placement:transition', 'Track 3 / E1-b — ORDINARY non-terminal PlacementProcess progression (the 5 committed-tier edges: offer->accepted, accepted->pre_start, pre_start->ready_to_start, pre_start->blocked, blocked->pre_start). ZERO DEFAULT GRANTS. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['placement:activate'], 'placement:activate', 'Track 3 / E1-b — the edge that establishes the authoritative live/committed placement and CONSUMES CAPACITY (ready_to_start->started). Distinct authority from ordinary progression (§2). ZERO DEFAULT GRANTS. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['placement:terminate'], 'placement:terminate', 'Track 3 / E1-b — terminal/irreversible PlacementProcess termination (the 8 edges into OFFER_DECLINED/OFFER_RESCINDED/NO_SHOW/FELL_THROUGH). ZERO DEFAULT GRANTS. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['placement:replace'], 'placement:replace', 'Track 3 / E4 — authorize CREATING a replacement PlacementProcess against a terminal predecessor (POST /v1/placements with replaces_placement_process_id). Required IN CONJUNCTION with placement:create, never as an alternative creation path (§3). GRANTED (E4 ratified matrix) to account_manager, tenant_admin and tenant_owner only; recruiter, super_admin, recruiting_manager and all others ZERO (Owner=Admin mirror). NO scope.created (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -2508,10 +2513,11 @@ export async function runIdentitySeed(
     }
   }
 
-  // Track 3 / E1-b (PlacementProcess) placement role-matrix grants (18 rows;
+  // Track 3 / E1-b + E4 (PlacementProcess) placement role-matrix grants (21 rows;
   // 4 roles). Range 0xa00+. recruiter gets read/create/transition; account_
-  // manager/tenant_admin/tenant_owner get the full five. super_admin + every
-  // other role get NO rows (fail-closed; no prose-hierarchy inheritance).
+  // manager/tenant_admin/tenant_owner get the full six (E4 adds placement:replace).
+  // super_admin + every other role get NO rows (fail-closed; no prose-hierarchy
+  // inheritance).
   for (const [roleKey, scopeKeys] of PLACEMENT_SEED_BUNDLES) {
     const role_id = roleIdForKey(roleKey);
     for (const scopeKey of scopeKeys) {

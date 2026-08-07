@@ -1658,6 +1658,7 @@ components:
         - PRE_START_REQUIREMENT_INVALID
         - PRE_START_NOT_READY
         - PLACEMENT_REASON_INVALID
+        - PLACEMENT_REPLACEMENT_INVALID
 
     ErrorObject:
       type: object

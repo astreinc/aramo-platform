@@ -17,7 +17,7 @@ import { PlacementController } from '../placement/placement.controller.js';
 // Here we prove the OTHER half: fed to the real placement authorization
 // boundary, each set allows/denies the right authority classes.
 const RECRUITER_PLACEMENT = ['placement:read', 'placement:create', 'placement:transition'];
-const MANAGER_PLACEMENT = ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate'];
+const MANAGER_PLACEMENT = ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate', 'placement:replace'];
 
 // E3 — a governed terminal transition now requires a canonical reason. Derive a
 // valid OPTIONAL code for OFFER_DECLINED from the registry (no detail needed), so
@@ -38,6 +38,8 @@ const INIT_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/mig
 const OFFER_OUTBOX_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql');
 // E3 — the additive reason-evidence columns (curated migration list).
 const REASON_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql');
+// E4 — additive replacement-lineage column; the Prisma client now selects it.
+const REPLACEMENT_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260808120000_placement_replacement_link/migration.sql');
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const auth = (scopes: string[], tenant: string): any => ({ sub: 'u', tenant_id: tenant, actor_kind: 'user', consumer_type: 'tenant', scopes });
@@ -73,7 +75,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const url = container.getConnectionUri();
     setup = new PrismaService(url);
     await setup.$connect();
-    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION]) {
+    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION]) {
       for (const s of splitDdl(readFileSync(migration, 'utf8'))) {
         if (s.trim()) await setup.$executeRawUnsafe(s.trim());
       }
@@ -345,6 +347,157 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     // The owner's placement is untouched.
     expect(await snapshot(owner, id)).toEqual(before);
   });
+
+  // ── Track 3 / E4 — replacement authorization + linkage ────────────────────
+  // Create a terminal predecessor to replace: create (OFFER_EXTENDED) then
+  // terminate into OFFER_DECLINED with a valid governed reason. Returns its id.
+  async function makeTerminalPredecessor(tenant: string, requisitionId: string): Promise<string> {
+    const created = await ctrl.create(auth(['placement:create'], tenant), 'r', {
+      submittal_id: randomUUID(),
+      requisition_id: requisitionId,
+      talent_record_id: randomUUID(),
+    });
+    await ctrl.transition(auth(['placement:terminate'], tenant), 'r', created.id, {
+      to: 'OFFER_DECLINED',
+      reason_code: DECLINE_REASON,
+    });
+    return created.id;
+  }
+
+  // P-authz-1 (mandatory, load-bearing — the direction that actually guards the
+  // conjunction): a create-only principal that supplies replaces_* is refused at
+  // the handler BEFORE any mutation. Nothing is inserted.
+  it('E4 / P-authz-1: create-only principal + replaces present → 403 placement:replace, nothing inserted', async () => {
+    const t = randomUUID();
+    const req = randomUUID();
+    const predecessor = await makeTerminalPredecessor(t, req);
+    const countBefore = await prisma.placementProcess.count({ where: { tenant_id: t } });
+    await expect(
+      ctrl.create(auth(['placement:create'], t), 'r', {
+        submittal_id: randomUUID(),
+        requisition_id: req,
+        talent_record_id: randomUUID(),
+        replaces_placement_process_id: predecessor,
+      }),
+    ).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { required_scope: 'placement:replace' } },
+    });
+    expect(await prisma.placementProcess.count({ where: { tenant_id: t } })).toBe(countBefore);
+  });
+
+  // P-authz-3 + P-link: with BOTH create and replace (MANAGER set) and a valid
+  // terminal predecessor, the replacement create SUCCEEDS, persists replaces =
+  // predecessor.id, and leaves the predecessor row byte-untouched. The successor
+  // is on a DIFFERENT submittal (R2) — the one-live guard never engages.
+  it('E4 / P-authz-3 + P-link: create+replace with a valid terminal predecessor succeeds, persists the pointer, predecessor untouched', async () => {
+    const t = randomUUID();
+    const req = randomUUID();
+    const predecessor = await makeTerminalPredecessor(t, req);
+    const predBefore = await prisma.placementProcess.findFirst({ where: { tenant_id: t, id: predecessor } });
+    const successor = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', {
+      submittal_id: randomUUID(),
+      requisition_id: req,
+      talent_record_id: randomUUID(),
+      replaces_placement_process_id: predecessor,
+    });
+    expect(successor.state).toBe('OFFER_EXTENDED');
+    // The response projection carries NO replaces field (§2 — request-only).
+    expect(successor).not.toHaveProperty('replaces_placement_process_id');
+    // The pointer is persisted on the successor row (read at the DB boundary).
+    const row = (await prisma.placementProcess.findFirst({
+      where: { tenant_id: t, id: successor.id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    })) as any;
+    expect(row.replaces_placement_process_id).toBe(predecessor);
+    // The predecessor row is byte-untouched.
+    expect(await prisma.placementProcess.findFirst({ where: { tenant_id: t, id: predecessor } })).toEqual(predBefore);
+  });
+
+  // P-valid-1 (T-cyc-1): a NON-terminal predecessor is refused. This is the
+  // invariant (INV-1) that, with the frozen-terminal invariant (INV-2), makes a
+  // replacement cycle structurally impossible — asserted, not walked.
+  it('E4 / P-valid-1 (T-cyc-1): predecessor NON-terminal → 422 predecessor_not_terminal, nothing inserted', async () => {
+    const t = randomUUID();
+    const req = randomUUID();
+    const live = await ctrl.create(auth(['placement:create'], t), 'r', {
+      submittal_id: randomUUID(),
+      requisition_id: req,
+      talent_record_id: randomUUID(),
+    });
+    const countBefore = await prisma.placementProcess.count({ where: { tenant_id: t } });
+    await expect(
+      ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', {
+        submittal_id: randomUUID(),
+        requisition_id: req,
+        talent_record_id: randomUUID(),
+        replaces_placement_process_id: live.id,
+      }),
+    ).rejects.toMatchObject({
+      code: 'PLACEMENT_REPLACEMENT_INVALID',
+      statusCode: 422,
+      context: { details: { reason: 'predecessor_not_terminal' } },
+    });
+    expect(await prisma.placementProcess.count({ where: { tenant_id: t } })).toBe(countBefore);
+  });
+
+  // P-valid-2: an absent predecessor → predecessor_not_found; and both a
+  // cross-tenant and a cross-requisition predecessor FOLD to not_found
+  // (least-visibility; the two-discriminator set is honoured).
+  it('E4 / P-valid-2: absent predecessor → 422 predecessor_not_found', async () => {
+    const t = randomUUID();
+    await expect(
+      ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', {
+        submittal_id: randomUUID(),
+        requisition_id: randomUUID(),
+        talent_record_id: randomUUID(),
+        replaces_placement_process_id: randomUUID(),
+      }),
+    ).rejects.toMatchObject({
+      code: 'PLACEMENT_REPLACEMENT_INVALID',
+      statusCode: 422,
+      context: { details: { reason: 'predecessor_not_found' } },
+    });
+  });
+
+  it('E4 / P-valid-2: cross-tenant predecessor folds to predecessor_not_found (least-visibility)', async () => {
+    const owner = randomUUID();
+    const intruder = randomUUID();
+    const req = randomUUID();
+    const pred = await makeTerminalPredecessor(owner, req);
+    await expect(
+      ctrl.create(auth(MANAGER_PLACEMENT, intruder), 'r', {
+        submittal_id: randomUUID(),
+        requisition_id: req,
+        talent_record_id: randomUUID(),
+        replaces_placement_process_id: pred,
+      }),
+    ).rejects.toMatchObject({
+      code: 'PLACEMENT_REPLACEMENT_INVALID',
+      statusCode: 422,
+      context: { details: { reason: 'predecessor_not_found' } },
+    });
+  });
+
+  it('E4 / P-valid-2: cross-requisition predecessor folds to predecessor_not_found', async () => {
+    const t = randomUUID();
+    const reqA = randomUUID();
+    const reqB = randomUUID();
+    const pred = await makeTerminalPredecessor(t, reqA);
+    await expect(
+      ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', {
+        submittal_id: randomUUID(),
+        requisition_id: reqB,
+        talent_record_id: randomUUID(),
+        replaces_placement_process_id: pred,
+      }),
+    ).rejects.toMatchObject({
+      code: 'PLACEMENT_REPLACEMENT_INVALID',
+      statusCode: 422,
+      context: { details: { reason: 'predecessor_not_found' } },
+    });
+  });
 });
 
 // The read / create authority classes are guard-enforced (@RequireScopes +
@@ -394,5 +547,17 @@ describe('E1-b placement matrix — read/create guard boundary (real RolesGuard 
     const noPlacement = ['requisition:read', 'talent:read']; // scopes a non-matrix role might carry — none are placement:*
     expect(denial(read, noPlacement)).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS' });
     expect(denial(create, noPlacement)).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS' });
+  });
+
+  // E4 / P-authz-2 — the OTHER conjunction direction, via the static create
+  // guard. The harness synthesizes arbitrary scope sets, so the replace-only
+  // principal IS constructible (§9.1): a principal holding placement:replace
+  // WITHOUT placement:create is refused by the create guard, so placement:replace
+  // can never become an alternative general creation permission. (No seeded role
+  // is replace-only — every role granted replace also holds create — so this is
+  // the synthetic-scope proof, not a seeded-identity one.)
+  it('E4 / P-authz-2: a replace-ONLY principal is denied POST /v1/placements by the create guard (403)', () => {
+    expect(guard.canActivate(ctx(create, ['placement:create', 'placement:replace']) as any)).toBe(true); // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(denial(create, ['placement:replace'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
   });
 });

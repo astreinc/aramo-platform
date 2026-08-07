@@ -18,6 +18,12 @@ export type CreatePlacementInput = {
   readonly offer_expires_at?: Date | null;
   readonly client_offer_reference?: string | null;
   readonly offer_terms_summary?: string | null;
+  // E4 — replacement lineage. When present, this attempt replaces a terminal
+  // predecessor; the repository validates existence, tenant, requisition and
+  // pre-start-terminal eligibility (§5) and persists the pointer once at INSERT.
+  // Authorization for a replacement (placement:create AND placement:replace) is
+  // a conjunction enforced at the controller (§3).
+  readonly replaces_placement_process_id?: string | null;
 };
 
 export type TransitionPlacementInput = {

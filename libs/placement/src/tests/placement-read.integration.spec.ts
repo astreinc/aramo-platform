@@ -22,6 +22,8 @@ import type { CreatePlacementInput } from '../lib/placement-process.types.js';
 const INIT_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260803180000_init_placement_model/migration.sql');
 const OFFER_OUTBOX_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql');
 const REASON_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql');
+// E4 — additive replacement-lineage column; the Prisma client now selects it.
+const REPLACEMENT_MIGRATION_PATH = resolve(__dirname, '../../prisma/migrations/20260808120000_placement_replacement_link/migration.sql');
 
 // A governed-terminal reason for OFFER_DECLINED that ALLOWS detail (OPTIONAL
 // policy), so a reason-bearing event carries a non-null reason_detail — the
@@ -72,7 +74,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       setupClient = new PrismaService(url);
       await setupClient.$connect();
-      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH]) {
+      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH]) {
         for (const stmt of splitDdl(readFileSync(path, 'utf8'))) {
           const trimmed = stmt.trim();
           if (trimmed.length > 0) await setupClient.$executeRawUnsafe(trimmed);

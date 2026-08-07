@@ -106,6 +106,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // Track 3 / E3 — governed terminal/fallthrough reason-evidence refusal (one
   // code, details.reason discriminator). Well-formed request, invalid reason.
   PLACEMENT_REASON_INVALID: 422,
+  // Track 3 / E4 — replacement-linkage refusal (one code, details.reason
+  // discriminator). Well-formed request, invalid predecessor to replace.
+  PLACEMENT_REPLACEMENT_INVALID: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response
