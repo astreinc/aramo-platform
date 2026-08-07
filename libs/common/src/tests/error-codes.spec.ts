@@ -37,7 +37,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
     expect(yamlValues).toEqual([...ERROR_CODES]);
   });
 
-  it('ERROR_CODES contains the 72 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2 + 1 TR-4-B1 + 1 TR-4-B3 + 2 PC-Inc2-lifecycle + 1 TR-12-B1 + 3 TR-15-B1 + 1 Portal-P3a + 1 Portal-P3b + 1 ADR-0024-PR-3a + 2 D3b-activity-redaction + 1 Track1-T1-b + 1 Track1-T1-e + 2 Track3-E7-restriction + 2 Track3-E1a-placement + 2 Track3-E2-pre-start + 1 Track3-E3-placement-reason + 1 Track3-E4-placement-replacement)', () => {
+  it('ERROR_CODES contains the 74 codes (37 pre-AUTHZ-2 + 3 AUTHZ-2 + 1 AUTHZ-D4a + 1 TR-2a-B3a + 6 TR-6-B2 + 1 TR-3-B2 + 1 TR-4-B1 + 1 TR-4-B3 + 2 PC-Inc2-lifecycle + 1 TR-12-B1 + 3 TR-15-B1 + 1 Portal-P3a + 1 Portal-P3b + 1 ADR-0024-PR-3a + 2 D3b-activity-redaction + 1 Track1-T1-b + 1 Track1-T1-e + 2 Track3-E7-restriction + 2 Track3-E1a-placement + 2 Track3-E2-pre-start + 1 Track3-E3-placement-reason + 1 Track3-E4-placement-replacement + 2 Track3-E6-pipeline)', () => {
     expect(ERROR_CODES).toEqual([
       'AUTH_REQUIRED',
       'INVALID_TOKEN',
@@ -136,6 +136,11 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // Track 3 E4 — 1 replacement-linkage refusal (one code, details.reason
       // discriminator: predecessor_not_found | predecessor_not_terminal; 422).
       'PLACEMENT_REPLACEMENT_INVALID',
+      // Track 3 E6 — 1 pipeline one-live-episode refusal (Q-2; 409). Both the
+      // deterministic app-guard refusal and the exact-name race-floor translation.
+      'PIPELINE_EPISODE_ALREADY_LIVE',
+      // Track 3 E6 — 1 pre-flight reconciliation live/live refusal (A4, §5.2; 409).
+      'PIPELINE_RECONCILE_LIVE_CONFLICT',
     ]);
   });
 });

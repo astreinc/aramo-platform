@@ -189,6 +189,7 @@ export class PipelineController {
     return this.pipelineRepository.create({
       tenant_id: authContext.tenant_id,
       input: body,
+      requestId,
       provenance: resolution.provenance,
     });
   }

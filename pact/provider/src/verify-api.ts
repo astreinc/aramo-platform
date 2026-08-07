@@ -433,6 +433,11 @@ const PIPELINE_INIT_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
 );
+// Track 3 E6 — total unique -> live-scoped partial unique.
+const PIPELINE_E6_MIGRATION = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
+);
 // ADR-0024 PR-3 — the ats-web POST /v1/pipelines consumer interaction (201)
 // replays through the policy call, which writes §D17a provenance into
 // policy_store."PolicyDecisionRecord" in the create transaction. Provider
@@ -2883,6 +2888,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ACTIVITY_INIT_MIGRATION,
         ACTIVITY_REDACTION_MIGRATION,
         PIPELINE_INIT_MIGRATION,
+        PIPELINE_E6_MIGRATION,
         POLICY_STORE_INIT_MIGRATION,
         POLICY_DECISION_RECORD_MIGRATION,
         // PC-5a — company + contact desk. Company init CREATEs the schema +

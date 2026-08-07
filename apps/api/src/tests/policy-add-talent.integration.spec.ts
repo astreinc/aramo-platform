@@ -46,6 +46,8 @@ const MIGRATIONS = [
   'libs/requisition/prisma/migrations/20260611220000_job_module_requisition_fields/migration.sql',
   'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql',
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
+  // Track 3 E6 — total unique -> live-scoped partial unique.
+  'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
   // ADR-0024 PR-3 — the create transaction writes here.
   'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql',
   'libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql',
@@ -122,6 +124,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         method: 'POST',
         headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ talent_record_id: uuid(), requisition_id: requisitionId, site_id: SITE }),
+      });
+    }
+
+    // E6 B-http-one-live — POST for a SPECIFIC talent (not a fresh uuid), so a
+    // second call targets the SAME (tenant, talent, requisition) live triple.
+    async function postAddTalent(app: INestApplication, jwt: string, requisitionId: string, talentId: string): Promise<Response> {
+      return fetch(`${baseUrl(app)}/v1/pipelines?site_id=${SITE}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ talent_record_id: talentId, requisition_id: requisitionId, site_id: SITE }),
       });
     }
 
@@ -211,6 +223,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             expect(await pipelineCount(req), `state=${status} no row`).toBe(0);
           }
         }
+      });
+
+      // ---- E6 B-http-one-live (Q-2, §4.1) ----
+      // POST /v1/pipelines twice for the SAME live triple: the first creates the
+      // live episode (201); the second is refused deterministically with 409 +
+      // PIPELINE_EPISODE_ALREADY_LIVE (never a leaked Prisma/SQL uniqueness error),
+      // and NO second row persists. Uses the existing pipeline:add authority — no
+      // new scope.
+      it('B-http-one-live: a second POST for the same live triple is refused 409 PIPELINE_EPISODE_ALREADY_LIVE; no second row', async () => {
+        const req = await seedRequisition('open');
+        const jwt = await signJwt(ADD_SCOPES);
+        const talent = uuid();
+
+        const first = await postAddTalent(app, jwt, req, talent);
+        expect(first.status).toBe(201);
+        expect(await pipelineCount(req)).toBe(1);
+
+        const second = await postAddTalent(app, jwt, req, talent);
+        expect(second.status).toBe(409);
+        const body = (await second.json()) as { error?: { code?: string } };
+        expect(body.error?.code).toBe('PIPELINE_EPISODE_ALREADY_LIVE');
+
+        expect(await pipelineCount(req)).toBe(1); // no second row
       });
 
       it('ATOMICITY: a provenance-write failure on ALLOW rolls back the pipeline row (no row persists)', async () => {

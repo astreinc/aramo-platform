@@ -1863,7 +1863,6 @@
         "project": "reporting",
         "status": "excluded"
       },
-      { "project": "reporting", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/compensation-edit-gate.spec.ts",

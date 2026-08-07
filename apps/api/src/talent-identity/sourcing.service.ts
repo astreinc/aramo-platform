@@ -215,15 +215,18 @@ export class SourcingService {
       const pipeline = await this.pipelines.create({
         tenant_id: subjectRef.tenant_id,
         input: { talent_record_id, requisition_id: requisitionId },
+        ...(opts?.requestId === undefined ? {} : { requestId: opts.requestId }),
         ...(opts?.provenance === undefined ? {} : { provenance: opts.provenance }),
       });
       pipeline_id = pipeline.id;
     } catch (err) {
-      if (!isUniqueViolation(err)) throw err;
-      // Already in this pipeline — idempotent no-op (the @@unique held; the
-      // requisition-openings decrement rolled back with the failed insert).
+      // E6 Q-2 — idempotent no-op ONLY on the explicit one-live-episode refusal
+      // produced by the pipeline application guard (PIPELINE_EPISODE_ALREADY_LIVE).
+      // This deliberately does NOT catch a generic P2002/23505: E6 replaced the
+      // old bare-uniqueness reliance with a deterministic, exact refusal.
+      if (!isLiveEpisodeAlready(err)) throw err;
       this.logger.log(
-        `promoteAndAddToPipeline: talent ${talent_record_id} already in requisition ${requisitionId} pipeline (no-op)`,
+        `promoteAndAddToPipeline: talent ${talent_record_id} already has a live episode in requisition ${requisitionId} (idempotent no-op)`,
       );
     }
     return { status: outcome.status, talent_record_id, pipeline_id };
@@ -255,13 +258,15 @@ function isPromoted(
   return o.status === 'promoted' || o.status === 'already_promoted';
 }
 
-// Prisma unique-constraint violation (P2002) — the association already exists.
-function isUniqueViolation(err: unknown): boolean {
+// E6 Q-2 — the pipeline application guard's one-live-episode refusal
+// (PIPELINE_EPISODE_ALREADY_LIVE). The sourcing trigger treats this as an
+// idempotent no-op. Identified by the exact error code, NOT a generic P2002.
+function isLiveEpisodeAlready(err: unknown): boolean {
   return (
     typeof err === 'object' &&
     err !== null &&
     'code' in err &&
-    (err as { code?: unknown }).code === 'P2002'
+    (err as { code?: unknown }).code === 'PIPELINE_EPISODE_ALREADY_LIVE'
   );
 }
 

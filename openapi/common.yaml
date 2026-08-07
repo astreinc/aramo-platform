@@ -1659,6 +1659,8 @@ components:
         - PRE_START_NOT_READY
         - PLACEMENT_REASON_INVALID
         - PLACEMENT_REPLACEMENT_INVALID
+        - PIPELINE_EPISODE_ALREADY_LIVE
+        - PIPELINE_RECONCILE_LIVE_CONFLICT
 
     ErrorObject:
       type: object

@@ -19,11 +19,45 @@ export interface ReqPipelineCount {
 const TERMINAL = new Set<PipelineStatus>(CLOSED_STATUSES);
 const SUBMITTED_PLUS = new Set(['submitted', 'interview', 'offer', 'placed']);
 
+// E6 Q-4 — the live/terminal partition for the current-episode collapse. Matches
+// the server's `Pipeline_live_episode_key` predicate (the three true terminals);
+// `no_status` counts as non-terminal here so the collapse agrees with the server.
+const COLLAPSE_TERMINAL = new Set<PipelineStatus>([
+  'placed',
+  'not_in_consideration',
+  'client_declined',
+]);
+
+// E6 Q-4 — collapse coexisting episodes to ONE current episode per (talent,
+// requisition): the LIVE episode if any (Q-2 guarantees at most one), else the
+// latest terminal (created_at DESC, id DESC — deterministic). BUSINESS/person
+// views count the collapsed set so a re-entered talent is not double-counted;
+// episode/history timelines must NEVER call this (they show every episode).
+export function collapseToCurrentEpisode(
+  pipelines: readonly PipelineView[],
+): PipelineView[] {
+  const best = new Map<string, PipelineView>();
+  for (const p of pipelines) {
+    const key = `${p.talent_record_id} ${p.requisition_id}`;
+    const cur = best.get(key);
+    if (cur === undefined || preferEpisode(p, cur)) best.set(key, p);
+  }
+  return [...best.values()];
+}
+
+function preferEpisode(a: PipelineView, b: PipelineView): boolean {
+  const aLive = !COLLAPSE_TERMINAL.has(a.status);
+  const bLive = !COLLAPSE_TERMINAL.has(b.status);
+  if (aLive !== bLive) return aLive; // live wins over terminal
+  if (a.created_at !== b.created_at) return a.created_at > b.created_at; // latest
+  return a.id > b.id; // deterministic final tiebreak
+}
+
 export function rollupByRequisition(
   pipelines: readonly PipelineView[],
 ): Record<string, ReqPipelineCount> {
   const byReq: Record<string, ReqPipelineCount> = {};
-  for (const p of pipelines) {
+  for (const p of collapseToCurrentEpisode(pipelines)) {
     const cur = byReq[p.requisition_id] ?? { active: 0, submitted: 0 };
     byReq[p.requisition_id] = {
       active: cur.active + (TERMINAL.has(p.status) ? 0 : 1),
@@ -54,7 +88,10 @@ export function funnelByRequisition(
   pipelines: readonly PipelineView[],
 ): Record<string, ReqFunnel> {
   const byReq: Record<string, PipelineStatus[]> = {};
-  for (const p of pipelines) {
+  // E6 Q-4 — one current episode per (talent, req): `total` is the distinct-talent
+  // count on the req and each talent lands in exactly one funnel cell (its current
+  // stage), never once per historical episode.
+  for (const p of collapseToCurrentEpisode(pipelines)) {
     (byReq[p.requisition_id] ??= []).push(p.status);
   }
   const out: Record<string, ReqFunnel> = {};

@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { AramoError } from '@aramo/common';
 import { ConsentRepository } from '@aramo/consent';
 import { PipelineRepository } from '@aramo/pipeline';
 import { SubmittalRepository } from '@aramo/submittal';
@@ -212,6 +213,36 @@ export class RecordReconcileOrchestrator {
     // CASE 3 — BOTH promoted: R_S stays live, R_L is superseded, R_L→R_S swept.
     const recordS = survivorRef.ref_id;
     const recordL = mergedRef.ref_id;
+
+    // E6 §5.2 — PRE-FLIGHT live/live block (A4). Q-2 is absolute: a reconcile must
+    // NOT silently manufacture two live episodes for one (tenant, talent,
+    // requisition). This runs BEFORE ANY mutation — before the operation record,
+    // before supersede, before the sweep — so a live/live conflict mutates NOTHING.
+    // The refusal cannot live inside pipeline's sweep step (pipeline is a holder in
+    // the loop below, and the consent repoint + supersede run before that loop): a
+    // refusal there would leave earlier writes already persisted. On conflict we
+    // preserve both records and both histories and surface an enumerable conflict.
+    const liveConflicts = await this.pipeline.findLiveEpisodeConflicts({
+      tenant_id,
+      from_record_id: recordL,
+      to_record_id: recordS,
+    });
+    if (liveConflicts.length > 0) {
+      throw new AramoError(
+        'PIPELINE_RECONCILE_LIVE_CONFLICT',
+        'Reconciliation refused: both records hold a live pipeline episode for the same requisition',
+        409,
+        {
+          requestId: input.actor_id ?? 'record-reconcile',
+          details: {
+            requisition_ids: liveConflicts,
+            surviving_record_id: recordS,
+            superseded_record_id: recordL,
+          },
+        },
+      );
+    }
+
     const op =
       prior ??
       (await this.trustRepo.createMergeOperation({

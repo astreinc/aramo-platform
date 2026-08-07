@@ -59,6 +59,8 @@ const MIGRATIONS = [
   'libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql',
   // operational-holder schemas (init tables — the repoints are raw SQL over base cols).
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
+  // Track 3 E6 — total unique -> live-scoped partial unique (preserve-all reconcile).
+  'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
   'libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql',
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
   // + revoke columns + canonical 5-state rename (the current submittal trigger fn
@@ -193,14 +195,38 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return r.rows[0].talent_id;
     }
 
-    async function mkPipeline(recordId: string, reqId: string): Promise<string> {
+    async function mkPipeline(recordId: string, reqId: string, status = 'no_contact'): Promise<string> {
       const id = uuidv7();
       await db.query(
         `INSERT INTO pipeline."Pipeline" (id, tenant_id, talent_record_id, requisition_id, status, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'no_contact', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-        [id, TENANT, recordId, reqId],
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::"pipeline"."PipelineStatus", CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        [id, TENANT, recordId, reqId, status],
       );
       return id;
+    }
+
+    // Append a PipelineStatusHistory row (for byte-for-byte preservation proofs).
+    async function mkPipelineHistory(pipelineId: string, from: string, to: string): Promise<string> {
+      const id = uuidv7();
+      await db.query(
+        `INSERT INTO pipeline."PipelineStatusHistory" (id, tenant_id, pipeline_id, status_from, status_to, changed_by_id, changed_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::"pipeline"."PipelineStatus", $5::"pipeline"."PipelineStatus", $6::uuid, CURRENT_TIMESTAMP)`,
+        [id, TENANT, pipelineId, from, to, ACTOR],
+      );
+      return id;
+    }
+
+    async function pipelineTalentOf(pipelineId: string): Promise<string> {
+      const r = await db.query(`SELECT talent_record_id FROM pipeline."Pipeline" WHERE id = $1::uuid`, [pipelineId]);
+      return r.rows[0]?.talent_record_id as string;
+    }
+
+    async function pipelineHistoryRows(pipelineId: string): Promise<Array<{ id: string; status_from: string; status_to: string }>> {
+      const r = await db.query(
+        `SELECT id, status_from, status_to FROM pipeline."PipelineStatusHistory" WHERE pipeline_id = $1::uuid ORDER BY changed_at, id`,
+        [pipelineId],
+      );
+      return r.rows as Array<{ id: string; status_from: string; status_to: string }>;
     }
 
     async function mkTask(recordId: string): Promise<string> {
@@ -400,31 +426,107 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // ---- (c) collision rows removed-and-recorded --------------------------
 
-    it('(c) collision (pipeline): survivor-side wins, loser removed with content recorded', async () => {
+    // ==== E6 A4 PRESERVE-ALL reconciliation (Boundary 4) ====
+    // The pre-E6 collision-DELETE ("survivor wins, loser removed") is RETIRED. Post-
+    // E6 reconciliation preserves ALL pipeline episodes; a live/live collision is
+    // refused PRE-FLIGHT (Q-2); the partial live index is the backstop.
+
+    // ---- B-reconcile-terminal-terminal ----
+    // Two TERMINAL episodes, same requisition, across records → reconcile SUCCEEDS,
+    // BOTH ids survive under the survivor, BOTH histories survive.
+    it('B-reconcile-terminal-terminal: both terminal episodes survive and repoint to the survivor', async () => {
       const survivor = await mkSubject();
       const merged = await mkSubject();
       const reqId = uuidv7();
       const recordS = await promote(survivor);
       const recordL = await promote(merged);
-      // Both have a pipeline row for the SAME requisition → collision.
-      await mkPipeline(recordS, reqId);
-      const loser = await mkPipeline(recordL, reqId);
+      const pS = await mkPipeline(recordS, reqId, 'placed');
+      const pL = await mkPipeline(recordL, reqId, 'client_declined');
+      const hL = await mkPipelineHistory(pL, 'offered', 'client_declined');
       await mergePointer(survivor, merged);
 
       const op = await orchestrator.reconcile({
-        tenant_id: TENANT,
-        advisory_id: null,
-        surviving_subject_id: survivor,
-        merged_subject_id: merged,
-        actor_id: ACTOR,
+        tenant_id: TENANT, advisory_id: null,
+        surviving_subject_id: survivor, merged_subject_id: merged, actor_id: ACTOR,
       });
+      expect(op.status).toBe('COMPLETED');
 
-      // Loser row removed (survivor-side wins) + recorded in the operation.
-      const stillThere = await db.query(`SELECT id FROM pipeline."Pipeline" WHERE id = $1::uuid`, [loser]);
-      expect(stillThere.rowCount).toBe(0);
-      const collisions = op.collision_records.filter((c) => c.domain === 'pipeline');
-      expect(collisions.length).toBe(1);
-      expect((collisions[0]!.row as { id: string }).id).toBe(loser);
+      // BOTH rows survive by id; both now belong to the survivor record.
+      expect(await pipelineTalentOf(pS)).toBe(recordS);
+      expect(await pipelineTalentOf(pL)).toBe(recordS);
+      // No pipeline collision was recorded — nothing was deleted (preserve-all).
+      expect(op.collision_records.filter((c) => c.domain === 'pipeline').length).toBe(0);
+      // The loser's history survived byte-for-byte.
+      const hist = await pipelineHistoryRows(pL);
+      expect(hist.map((h) => h.id)).toEqual([hL]);
+      expect(hist[0]).toMatchObject({ status_from: 'offered', status_to: 'client_declined' });
+    });
+
+    // ---- B-reconcile-live-terminal ----
+    // One LIVE + one TERMINAL episode → succeeds; both survive; exactly one live
+    // remains (the partial index is satisfied — no live/live).
+    it('B-reconcile-live-terminal: both survive; exactly one live episode remains', async () => {
+      const survivor = await mkSubject();
+      const merged = await mkSubject();
+      const reqId = uuidv7();
+      const recordS = await promote(survivor);
+      const recordL = await promote(merged);
+      const pS = await mkPipeline(recordS, reqId, 'not_in_consideration'); // terminal
+      const pL = await mkPipeline(recordL, reqId, 'submitted');            // live
+      await mergePointer(survivor, merged);
+
+      const op = await orchestrator.reconcile({
+        tenant_id: TENANT, advisory_id: null,
+        surviving_subject_id: survivor, merged_subject_id: merged, actor_id: ACTOR,
+      });
+      expect(op.status).toBe('COMPLETED');
+      expect(await pipelineTalentOf(pS)).toBe(recordS);
+      expect(await pipelineTalentOf(pL)).toBe(recordS);
+      // Exactly one live episode for the triple after the merge.
+      const live = await db.query(
+        `SELECT count(*)::int n FROM pipeline."Pipeline"
+           WHERE tenant_id=$1::uuid AND talent_record_id=$2::uuid AND requisition_id=$3::uuid
+             AND status NOT IN ('placed','not_in_consideration','client_declined')`,
+        [TENANT, recordS, reqId],
+      );
+      expect(live.rows[0].n).toBe(1);
+    });
+
+    // ---- B-reconcile-live-live ----
+    // Two LIVE episodes, same requisition → reconciliation REFUSES pre-flight,
+    // ATOMICALLY: no talent record superseded, no pipeline row/history changed, NO
+    // OTHER DOMAIN mutated, and no operation record created.
+    it('B-reconcile-live-live: refuses ATOMICALLY before the sweep — no domain mutates', async () => {
+      const survivor = await mkSubject();
+      const merged = await mkSubject();
+      const reqId = uuidv7();
+      const recordS = await promote(survivor);
+      const recordL = await promote(merged);
+      const pS = await mkPipeline(recordS, reqId, 'submitted'); // live
+      const pL = await mkPipeline(recordL, reqId, 'qualifying'); // live → conflict
+      // A non-pipeline holder to prove NO OTHER DOMAIN mutates on refusal.
+      const eng = await mkEngagement(recordL, reqId);
+      await mergePointer(survivor, merged);
+
+      await expect(
+        orchestrator.reconcile({
+          tenant_id: TENANT, advisory_id: null,
+          surviving_subject_id: survivor, merged_subject_id: merged, actor_id: ACTOR,
+        }),
+      ).rejects.toMatchObject({ code: 'PIPELINE_RECONCILE_LIVE_CONFLICT' });
+
+      // NOTHING mutated: R_L still live, both pipeline rows unchanged, engagement
+      // still on R_L, and NO operation record was created.
+      expect(await recordStatus(recordL)).toBe('live');
+      expect(await pipelineTalentOf(pS)).toBe(recordS);
+      expect(await pipelineTalentOf(pL)).toBe(recordL);
+      expect(await engagementRecordOf(eng)).toBe(recordL);
+      const ops = await db.query(
+        `SELECT count(*)::int n FROM talent_trust."SubjectMergeOperation"
+           WHERE surviving_subject_id=$1::uuid AND merged_subject_id=$2::uuid`,
+        [survivor, merged],
+      );
+      expect(ops.rows[0].n).toBe(0);
     });
 
     // ---- (f) neither promoted → no phase 2 --------------------------------
@@ -506,15 +608,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // ---- (e) reversal ------------------------------------------------------
 
-    it('(e) reversal restores R_L live, re-points recorded rows back, re-creates collision rows, lists accretions', async () => {
+    it('(e) [B-reversal] reversal restores R_L live, re-points recorded rows back (preserve-all — no re-creation), lists accretions', async () => {
       const survivor = await mkSubject();
       const merged = await mkSubject();
       const reqId = uuidv7();
       const recordS = await promote(survivor);
       const recordL = await promote(merged);
       const eng = await mkEngagement(recordL, reqId);
-      await mkPipeline(recordS, reqId);
-      const loserPipeline = await mkPipeline(recordL, reqId); // collides
+      // E6 preserve-all: TERMINAL episodes coexist and repoint (no live/live). The
+      // loser row is PRESERVED on the forward sweep (never deleted) and repointed.
+      await mkPipeline(recordS, reqId, 'placed');
+      const loserPipeline = await mkPipeline(recordL, reqId, 'client_declined');
+      const loserHist = await mkPipelineHistory(loserPipeline, 'offered', 'client_declined');
       // TR-15 B2R — a credential holder must re-point back on reversal too.
       const edu = await mkEducation(recordL);
       const cert = await mkCertification(recordL);
@@ -545,9 +650,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // TR-15 B2R — the credential holders re-point BACK to R_L on reversal.
       expect(await talentIdOf('talent_evidence."TalentEducationEntry"', edu)).toBe(recordL);
       expect(await talentIdOf('talent_evidence."TalentCertificationEntry"', cert)).toBe(recordL);
-      // The removed collision pipeline row re-created (id restored).
-      const restored = await db.query(`SELECT id FROM pipeline."Pipeline" WHERE id = $1::uuid`, [loserPipeline]);
+      // B-no-collision-delete + B-history-preservation: preserve-all NEVER deleted
+      // the loser row — reversal repoints it BACK to R_L (no re-creation), and its
+      // PipelineStatusHistory survived byte-for-byte through forward + reverse.
+      const restored = await db.query(
+        `SELECT talent_record_id FROM pipeline."Pipeline" WHERE id = $1::uuid`,
+        [loserPipeline],
+      );
       expect(restored.rowCount).toBe(1);
+      expect(restored.rows[0].talent_record_id).toBe(recordL);
+      const histAfter = await pipelineHistoryRows(loserPipeline);
+      expect(histAfter.map((h) => h.id)).toEqual([loserHist]);
+      expect(histAfter[0]).toMatchObject({ status_from: 'offered', status_to: 'client_declined' });
       // Consent reconcile grant removed from R_S.
       expect(await effectiveGrantExists(recordS, 'contacting')).toBe(false);
       // The post-merge accretion is LISTED (not moved) for human triage.
