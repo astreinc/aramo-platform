@@ -1932,6 +1932,7 @@
     "libs/pipeline/src/tests/current-stage.spec.ts",
     "libs/pipeline/src/tests/override-resolution.spec.ts",
     "libs/pipeline/src/tests/pipeline-state.spec.ts",
+    "libs/pipeline/src/tests/pipeline-write-invariants.integration.spec.ts",
     "libs/pipeline/tsconfig.json",
     "libs/pipeline/tsconfig.lib.json",
     "libs/pipeline/vitest.config.ts",
