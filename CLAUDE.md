@@ -20,6 +20,11 @@ audits when directed or when a directive requires a recon phase.
 R-SYNC: sync forward after every main merge. R-DISC: full directive
 discipline per dev branch. R-CI: full gate on all PRs.
 
+## Memory
+Memory maintenance is governed by `Aramo-Memory-Hygiene-Rule-v1_0-LOCKED`
+(canonical: OneDrive Aramo/locked). Fresh-read before editing `MEMORY.md`;
+replace-in-place, never append narrative.
+
 ## Engineering laws
 - `ARAMO_RUN_INTEGRATION=1 nx run api` locally before every push
   (apps/api has migration consumers the isolated specs miss).
