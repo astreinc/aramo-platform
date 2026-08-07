@@ -1940,6 +1940,7 @@
     "libs/placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql",
     "libs/placement/prisma/migrations/20260806090000_placement_tenant_reset_escape/migration.sql",
     "libs/placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql",
+    "libs/placement/prisma/migrations/20260808120000_placement_replacement_link/migration.sql",
     "libs/placement/prisma/migrations/migration_lock.toml",
     "libs/placement/prisma/schema.prisma",
     "libs/placement/project.json",

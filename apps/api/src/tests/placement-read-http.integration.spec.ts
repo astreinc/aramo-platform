@@ -26,6 +26,8 @@ const ENTITLEMENT_INIT = resolve(ROOT, 'libs/entitlement/prisma/migrations/20260
 const PLACEMENT_INIT = resolve(ROOT, 'libs/placement/prisma/migrations/20260803180000_init_placement_model/migration.sql');
 const PLACEMENT_OFFER = resolve(ROOT, 'libs/placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql');
 const PLACEMENT_REASON = resolve(ROOT, 'libs/placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql');
+// E4 — additive replacement-lineage column; the Prisma client now selects it.
+const PLACEMENT_REPLACEMENT = resolve(ROOT, 'libs/placement/prisma/migrations/20260808120000_placement_replacement_link/migration.sql');
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-placement-read-http-spec';
@@ -66,7 +68,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-d Placement RE
     setupClient = new Client({ connectionString: url });
     await setupClient.connect();
 
-    for (const p of [ENTITLEMENT_INIT, PLACEMENT_INIT, PLACEMENT_OFFER, PLACEMENT_REASON]) {
+    for (const p of [ENTITLEMENT_INIT, PLACEMENT_INIT, PLACEMENT_OFFER, PLACEMENT_REASON, PLACEMENT_REPLACEMENT]) {
       await setupClient.query(readFileSync(p, 'utf8'));
     }
     // TENANT_ATS is entitled to 'ats' (the intended placement boundary).

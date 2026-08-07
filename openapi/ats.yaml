@@ -1643,10 +1643,15 @@ paths:
       description: |
         Creates a PlacementProcess in the initial `OFFER_EXTENDED` state.
         tenant_id is derived from the JWT. Requires the `placement:create`
-        scope. Refusals:
+        scope. When `replaces_placement_process_id` is present the request is a
+        replacement and ALSO requires the `placement:replace` scope (Track 3 /
+        E4 — a conjunction, never a fallback). Refusals:
           - 409 PLACEMENT_ALREADY_LIVE — a live PlacementProcess already
             exists for this (tenant, submittal).
-          - 403 INSUFFICIENT_PERMISSIONS — caller lacks `placement:create`.
+          - 403 INSUFFICIENT_PERMISSIONS — caller lacks `placement:create`, or
+            supplies `replaces_placement_process_id` without `placement:replace`.
+          - 422 PLACEMENT_REPLACEMENT_INVALID — the named predecessor is not a
+            valid one to replace (predecessor_not_found | predecessor_not_terminal).
           - 400 VALIDATION_ERROR — body fails schema validation.
       requestBody:
         required: true
@@ -1675,6 +1680,14 @@ paths:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '409':
           description: A live placement already exists for this (tenant, submittal).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: >
+            Replacement linkage invalid (Track 3 / E4) — the named predecessor is
+            not found in this tenant+requisition, or is not in a terminal state.
           content:
             application/json:
               schema:
@@ -1877,6 +1890,18 @@ components:
         offer_terms_summary:
           type: string
           maxLength: 2000
+        replaces_placement_process_id:
+          type: [string, 'null']
+          format: uuid
+          description: >
+            Track 3 / E4 — replacement lineage. When present, this create is a
+            replacement of a terminal predecessor and additionally requires the
+            placement:replace scope (a conjunction with placement:create). The
+            named predecessor must exist in the same tenant and requisition and be
+            in a pre-start terminal state (OFFER_DECLINED, OFFER_RESCINDED,
+            NO_SHOW, FELL_THROUGH); otherwise PLACEMENT_REPLACEMENT_INVALID (422).
+            Absent → an ordinary first creation. No predecessor reason is copied
+            onto the successor.
     TransitionPlacementRequest:
       type: object
       additionalProperties: false

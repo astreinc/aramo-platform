@@ -52,6 +52,13 @@ const REASON_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql',
 );
+// E4 — the additive replacement-lineage column + self-reference CHECK on
+// PlacementProcess (curated migration list: the Prisma client now selects
+// replaces_placement_process_id, so every placement-DB spec must apply this).
+const REPLACEMENT_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260808120000_placement_replacement_link/migration.sql',
+);
 
 // Known transition path to reach each from-state from the initial
 // OFFER_EXTENDED (the transitions to apply, in order).
@@ -96,7 +103,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new PrismaService(url);
       await setupClient.$connect();
       // Apply the init migration then the additive E1-c and E3 migrations, in order.
-      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH]) {
+      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH]) {
         const sql = readFileSync(path, 'utf8');
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
@@ -1107,6 +1114,95 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       return row[0]!.tenant_id;
     }
+
+    // ---- Track 3 / E4 — replacement lineage (repo + DB boundary) ----
+
+    // Read the raw row including replaces_placement_process_id (the projection
+    // deliberately omits it — §2 request-only, no response field).
+    async function rawRow(id: string): Promise<Record<string, unknown>> {
+      const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+        `SELECT * FROM placement."PlacementProcess" WHERE id = '${id}' LIMIT 1`,
+      );
+      return rows[0]!;
+    }
+
+    // P-cyc-3 (T-cyc-3): the self-reference CHECK (INV-3) rejects a row whose
+    // replaces_placement_process_id equals its own id — a depth-1 cycle is
+    // impossible at the DB. Plant is a raw INSERT (the repository never writes a
+    // self-pointer, so this exercises the constraint directly).
+    it('E4 / P-cyc-3 (DB CHECK): INSERT with replaces = id is rejected by PlacementProcess_replaces_not_self_chk', async () => {
+      const id = randomUUID();
+      await expect(
+        prisma.$executeRawUnsafe(
+          `INSERT INTO placement."PlacementProcess" ` +
+            `(id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, replaces_placement_process_id) ` +
+            `VALUES ('${id}', '${randomUUID()}', '${randomUUID()}', '${randomUUID()}', '${randomUUID()}', 'OFFER_EXTENDED', now(), '${id}')`,
+        ),
+      ).rejects.toThrow(/replaces_not_self_chk/);
+    });
+
+    // P-link (DB/repo write): a valid terminal predecessor is recorded on the
+    // successor row; the predecessor row is byte-untouched. The successor is on a
+    // DIFFERENT submittal (R2) — the one-live guard never engages.
+    it('E4 / P-link (repo boundary): the successor persists replaces = predecessor.id; predecessor untouched', async () => {
+      const tenant = randomUUID();
+      const req = randomUUID();
+      const predId = await driveTo('OFFER_DECLINED', baseInput({ tenant_id: tenant, requisition_id: req }));
+      const predBefore = await rawRow(predId);
+      const successor = await repo.createPlacement(
+        baseInput({ tenant_id: tenant, requisition_id: req, replaces_placement_process_id: predId }),
+        'succ',
+      );
+      // Response projection carries NO replaces field (§2).
+      expect(successor).not.toHaveProperty('replaces_placement_process_id');
+      expect((await rawRow(successor.id))['replaces_placement_process_id']).toBe(predId);
+      expect(await rawRow(predId)).toEqual(predBefore);
+    });
+
+    // P-valid-1 (T-cyc-1): a NON-terminal predecessor is refused at the repo
+    // validation boundary, BEFORE any mutation. This is INV-1 — with INV-2
+    // (frozen terminal rows) it makes a replacement cycle structurally impossible.
+    it('E4 / P-valid-1 (repo boundary, T-cyc-1): a NON-terminal predecessor → 422 predecessor_not_terminal', async () => {
+      const tenant = randomUUID();
+      const req = randomUUID();
+      const live = await repo.createPlacement(baseInput({ tenant_id: tenant, requisition_id: req }), 'live'); // OFFER_EXTENDED
+      await expect(
+        repo.createPlacement(
+          baseInput({ tenant_id: tenant, requisition_id: req, replaces_placement_process_id: live.id }),
+          'x',
+        ),
+      ).rejects.toMatchObject({
+        code: 'PLACEMENT_REPLACEMENT_INVALID',
+        statusCode: 422,
+        context: { details: { reason: 'predecessor_not_terminal' } },
+      });
+    });
+
+    // P-valid-2: an absent predecessor → predecessor_not_found (tenant-scoped
+    // lookup; cross-tenant/cross-requisition fold here — least-visibility).
+    it('E4 / P-valid-2 (repo boundary): an absent predecessor → 422 predecessor_not_found', async () => {
+      await expect(
+        repo.createPlacement(baseInput({ replaces_placement_process_id: randomUUID() }), 'x'),
+      ).rejects.toMatchObject({
+        code: 'PLACEMENT_REPLACEMENT_INVALID',
+        statusCode: 422,
+        context: { details: { reason: 'predecessor_not_found' } },
+      });
+    });
+
+    // T-cyc-2 (characterization, INV-2 — the frozen-predecessor invariant §4's
+    // acyclicity rests on): every UPDATE to a terminal-state row is rejected by
+    // the generated lifecycle trigger. Existing behaviour; reported as
+    // characterization, NOT reconstructed as RED-first.
+    it('E4 / T-cyc-2 (characterization): any UPDATE to a terminal placement is rejected by the lifecycle trigger', async () => {
+      const tenant = randomUUID();
+      const termId = await driveTo('OFFER_DECLINED', baseInput({ tenant_id: tenant }));
+      await expect(
+        prisma.$executeRawUnsafe(
+          `UPDATE placement."PlacementProcess" SET requisition_id = '${randomUUID()}' WHERE id = '${termId}'`,
+        ),
+      ).rejects.toThrow(/only the 14 legal state transitions/);
+    });
   },
 );
 

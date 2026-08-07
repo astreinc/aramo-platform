@@ -47,6 +47,16 @@ export class CreatePlacementDto {
   @IsString()
   @MaxLength(OFFER_TERMS_SUMMARY_MAX)
   offer_terms_summary?: string;
+
+  // E4 — replacement lineage. When present, this create is a replacement of a
+  // terminal predecessor: it additionally requires placement:replace (a
+  // conjunction with placement:create, enforced in the controller, §3), and the
+  // repository validates existence, tenant, requisition and pre-start-terminal
+  // eligibility (§5, PLACEMENT_REPLACEMENT_INVALID 422). Absent → an ordinary
+  // first creation, unchanged.
+  @IsOptional()
+  @IsUUID()
+  replaces_placement_process_id?: string;
 }
 
 // One generic transition route (E1-b §1): the target state is in the body and the

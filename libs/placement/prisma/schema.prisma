@@ -97,6 +97,17 @@ model PlacementProcess {
   client_offer_reference String?
   offer_terms_summary    String?
 
+  // Replacement lineage (E4). Nullable self-referential pointer to the terminal
+  // predecessor this attempt replaces; null for a first (non-replacement) attempt.
+  // DELIBERATELY a plain scalar with NO @relation / NO FK (§4.2): a self-FK
+  // RESTRICT would break the single-pass tenant-reset DELETE and ON DELETE SET
+  // NULL would UPDATE a frozen terminal predecessor (INV-2). Referential
+  // integrity rests entirely on the §5 create-time validation. Written once at
+  // INSERT; NOT pinned in the generated immutability trigger (§4.3 — a nullable
+  // column pinned via OLD = NEW is NULL not TRUE and would reject every
+  // first-placement transition). Additive migration 20260808120000.
+  replaces_placement_process_id String? @db.Uuid
+
   // Snapshot creation timestamp. NO updated_at (§2).
   created_at DateTime @default(now()) @db.Timestamptz(6)
 

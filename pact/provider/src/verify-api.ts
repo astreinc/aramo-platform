@@ -792,6 +792,11 @@ const PLACEMENT_REASON_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql',
 );
+// E4 — additive replacement-lineage column; the Prisma client now selects it.
+const PLACEMENT_REPLACEMENT_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260808120000_placement_replacement_link/migration.sql',
+);
 
 // Constants used by the consent-read given-states (and formerly the retired
 // thin consumer). The talent uuid matches the value the consumer tests
@@ -2967,6 +2972,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PLACEMENT_INIT_MIGRATION,
         PLACEMENT_OFFER_MIGRATION,
         PLACEMENT_REASON_MIGRATION,
+        PLACEMENT_REPLACEMENT_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
