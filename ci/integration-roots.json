@@ -21,6 +21,7 @@
     "libs/metering",
     "libs/object-storage",
     "libs/outbox-publisher",
+    "libs/pipeline",
     "libs/placement",
     "libs/policy-store",
     "libs/portal-identity",
