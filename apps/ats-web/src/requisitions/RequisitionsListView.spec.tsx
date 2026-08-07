@@ -102,13 +102,16 @@ function mockFetch(items: readonly RequisitionView[]) {
 function mockEndpoints(opts: {
   reqs: readonly RequisitionView[];
   companies?: ReadonlyArray<{ id: string; name: string }>;
-  pipelines?: ReadonlyArray<{ id: string; requisition_id: string; status: string }>;
+  pipelines?: ReadonlyArray<{ id: string; requisition_id: string; status: string; talent_record_id?: string }>;
   roster?: ReadonlyArray<{ user_id: string; display_name: string }>;
 }) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : (input as Request).url;
     const body = url.includes('/v1/pipelines')
-      ? { items: opts.pipelines ?? [] }
+      ? // E6 Q-4 — the rollup collapses by (talent, req); real /v1/pipelines always
+        // carries talent_record_id. Default each mock entry to a DISTINCT talent
+        // (its unique id) so entries stay distinct people unless a test sets it.
+        { items: (opts.pipelines ?? []).map((p) => ({ talent_record_id: p.id, ...p })) }
       : url.includes('/v1/tenant/users')
         ? { items: opts.roster ?? [] }
         : url.includes('/v1/companies')

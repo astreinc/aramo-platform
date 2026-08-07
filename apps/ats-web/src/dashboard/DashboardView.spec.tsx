@@ -120,11 +120,13 @@ const COMPANIES = {
   ],
 };
 
+// E6 Q-4 — the rollup collapses by (talent, req); real /v1/pipelines always
+// carries talent_record_id. Distinct talents keep three distinct entries.
 const PIPELINES = {
   items: [
-    { id: 'p1', requisition_id: 'req-1', status: 'no_contact' },
-    { id: 'p2', requisition_id: 'req-1', status: 'submitted' },
-    { id: 'p3', requisition_id: 'req-1', status: 'interviewing' },
+    { id: 'p1', talent_record_id: 't1', requisition_id: 'req-1', status: 'no_contact' },
+    { id: 'p2', talent_record_id: 't2', requisition_id: 'req-1', status: 'submitted' },
+    { id: 'p3', talent_record_id: 't3', requisition_id: 'req-1', status: 'interviewing' },
   ],
 };
 
