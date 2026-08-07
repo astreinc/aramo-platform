@@ -280,20 +280,14 @@ export class ReportingService {
     actor: ActorContext,
   ): Promise<PipelineStageRollupView> {
     const visibleReqIds = await this.resolveVisibleRequisitionIds(actor);
-    const [total, by_status] = await Promise.all([
-      this.pipelineRepository.count({
-        tenant_id: actor.tenant_id,
-        ...(visibleReqIds === undefined
-          ? {}
-          : { requisition_ids: visibleReqIds }),
-      }),
-      this.pipelineRepository.countByStatus({
-        tenant_id: actor.tenant_id,
-        ...(visibleReqIds === undefined
-          ? {}
-          : { requisition_ids: visibleReqIds }),
-      }),
-    ]);
+    // E6 Q-4 — by_status collapses each (talent, req) to its CURRENT episode; total
+    // is the distinct-triple count (sum of the collapsed buckets), NOT a raw row
+    // count, so a re-entered talent is counted once.
+    const by_status = await this.pipelineRepository.countByStatus({
+      tenant_id: actor.tenant_id,
+      ...(visibleReqIds === undefined ? {} : { requisition_ids: visibleReqIds }),
+    });
+    const total = by_status.reduce((sum, r) => sum + r.count, 0);
     return { total, by_status };
   }
 
@@ -301,12 +295,11 @@ export class ReportingService {
     actor: ActorContext,
   ): Promise<PlacementCountReportView> {
     const visibleReqIds = await this.resolveVisibleRequisitionIds(actor);
-    const placed_pipelines = await this.pipelineRepository.count({
+    // E6 Q-4 — distinct (talent, req) with a placed episode EXISTS (a placement is a
+    // fact about a human on a requisition, counted once even if re-placed).
+    const placed_pipelines = await this.pipelineRepository.countDistinctPlaced({
       tenant_id: actor.tenant_id,
-      status: 'placed',
-      ...(visibleReqIds === undefined
-        ? {}
-        : { requisition_ids: visibleReqIds }),
+      ...(visibleReqIds === undefined ? {} : { requisition_ids: visibleReqIds }),
     });
     return {
       placed_pipelines,
@@ -357,16 +350,20 @@ export class ReportingService {
     }
 
     const reqIds = inScope.map((r) => r.id);
+    // E6 Q-4 — dedupe by (talent, req). Placements use EXISTS(placed) (a placement
+    // is a fact); the submitted band uses CURRENT-episode (who is in it now).
     const [placedByReq, submittedByReq] = await Promise.all([
-      this.pipelineRepository.countByRequisition({
+      this.pipelineRepository.countDistinctByRequisition({
         tenant_id: actor.tenant_id,
         requisition_ids: reqIds,
         statuses: ['placed'],
+        mode: 'exists',
       }),
-      this.pipelineRepository.countByRequisition({
+      this.pipelineRepository.countDistinctByRequisition({
         tenant_id: actor.tenant_id,
         requisition_ids: reqIds,
         statuses: ['submitted', 'interviewing', 'offered'],
+        mode: 'current',
       }),
     ]);
     const foldByCompany = (
@@ -419,12 +416,23 @@ export class ReportingService {
       requisition_ids: inScope.map((r) => r.id),
       statuses: ['placed'],
     });
-    return placed.map((p) => ({
-      pipeline_id: p.id,
-      talent_record_id: p.talent_record_id,
-      requisition_id: p.requisition_id,
-      requisition_title: titleByReq.get(p.requisition_id) ?? 'Requisition',
-    }));
+    // E6 Q-4 — one placement per (talent, requisition). listByRequisitionsAndStatus
+    // orders by updated_at DESC, so the first row seen for a triple is the latest
+    // placed episode; drop any further placed episodes for the same triple.
+    const seen = new Set<string>();
+    return placed
+      .filter((p) => {
+        const key = `${p.talent_record_id} ${p.requisition_id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((p) => ({
+        pipeline_id: p.id,
+        talent_record_id: p.talent_record_id,
+        requisition_id: p.requisition_id,
+        requisition_title: titleByReq.get(p.requisition_id) ?? 'Requisition',
+      }));
   }
 
   // The tenant goal/target per metric (My Desk goal-progress bars). Reads the
@@ -545,24 +553,23 @@ export class ReportingService {
     ] = await Promise.all([
       this.getTenantCounts(actor),
       this.getRequisitionRollup(actor),
-      Promise.all([
-        this.pipelineRepository.count({
-          tenant_id: actor.tenant_id,
-          ...(visibleReqIds === undefined
-            ? {}
-            : { requisition_ids: visibleReqIds }),
-        }),
-        this.pipelineRepository.countByStatus({
-          tenant_id: actor.tenant_id,
-          ...(visibleReqIds === undefined
-            ? {}
-            : { requisition_ids: visibleReqIds }),
-        }),
-      ]).then(([total, by_status]) => ({ total, by_status })),
+      // E6 Q-4 — by_status is the CURRENT-episode collapse; total is the distinct-
+      // triple sum of those buckets (not a raw row count).
       this.pipelineRepository
-        .count({
+        .countByStatus({
           tenant_id: actor.tenant_id,
-          status: 'placed',
+          ...(visibleReqIds === undefined
+            ? {}
+            : { requisition_ids: visibleReqIds }),
+        })
+        .then((by_status) => ({
+          total: by_status.reduce((sum, r) => sum + r.count, 0),
+          by_status,
+        })),
+      // E6 Q-4 — distinct (talent, req) with a placed episode EXISTS.
+      this.pipelineRepository
+        .countDistinctPlaced({
+          tenant_id: actor.tenant_id,
           ...(visibleReqIds === undefined
             ? {}
             : { requisition_ids: visibleReqIds }),

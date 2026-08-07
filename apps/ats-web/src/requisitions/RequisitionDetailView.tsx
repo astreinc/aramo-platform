@@ -11,6 +11,7 @@ import type { ActivityView } from '../activity/types';
 import { getCompany } from '../companies/companies-api';
 import { getContact } from '../contacts/contacts-api';
 import { MoveToMenu } from '../pipeline/MoveToMenu';
+import { collapseToCurrentEpisode } from '../pipeline/rollup';
 import {
   listPipelinesForRequisition,
   transitionPipeline,
@@ -597,10 +598,19 @@ function PipelinePanel({
   const [activeOnly, setActiveOnly] = useState(false);
   const [query, setQuery] = useState('');
 
-  const cells = funnelCounts(pipelines.map((p) => p.status));
-  const submitted = pipelines.filter((p) =>
+  // E6 Q-4 — person summary counts (funnel, submitted, "N talent", "In pipeline")
+  // collapse coexisting episodes to one current episode per talent so a re-entered
+  // talent is counted once. The Talent DataTable below still lists every episode
+  // (a working/episode view). currentEpisodes is the shared, unit-tested collapse.
+  const currentEpisodes = useMemo(
+    () => collapseToCurrentEpisode(pipelines),
+    [pipelines],
+  );
+  const cells = funnelCounts(currentEpisodes.map((p) => p.status));
+  const submitted = currentEpisodes.filter((p) =>
     SUBMITTED_PLUS.includes(p.status),
   ).length;
+  const talentCount = currentEpisodes.length;
   const avgRate = averageStatedRate(pipelines, talents);
 
   const rows = pipelines.filter((p) => {
@@ -735,7 +745,7 @@ function PipelinePanel({
           <h2 className="rc-ribbon__h">
             Pipeline
             <span className="rc-ribbon__total">
-              {pipelines.length} talent · {req.openings - req.openings_available}{' '}
+              {talentCount} talent · {req.openings - req.openings_available}{' '}
               placed of {req.openings} openings
             </span>
           </h2>
@@ -787,7 +797,7 @@ function PipelinePanel({
           </div>
           <div className="rc-kv">
             <span className="rc-kv__k">In pipeline</span>
-            <span className="rc-kv__v num">{pipelines.length}</span>
+            <span className="rc-kv__v num">{talentCount}</span>
           </div>
           <div className="rc-kv">
             <span className="rc-kv__k">Submitted</span>

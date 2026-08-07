@@ -14,9 +14,27 @@ import {
   canTransition,
   ACTIVE_FLOW_STAGES,
   activeStageOrdinal,
+  TERMINAL_STATUSES,
   type PipelineStatus,
 } from './pipeline-state.js';
 import { PrismaService } from './prisma/prisma.service.js';
+
+// §4.1 race-floor identification — a concurrent insert that lost the race on the
+// LIVE-scoped partial unique surfaces a Prisma P2002 naming `Pipeline_live_episode_key`
+// SPECIFICALLY. This is deliberately narrow: E6 replaces the old generic-P2002
+// design, so an arbitrary uniqueness violation must NOT be swallowed here.
+function isLiveEpisodeIndexViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { code?: unknown; meta?: { target?: unknown }; message?: unknown };
+  if (e.code !== 'P2002') return false;
+  const target = e.meta?.target;
+  const named = 'Pipeline_live_episode_key';
+  const inTarget =
+    (typeof target === 'string' && target.includes(named)) ||
+    (Array.isArray(target) && target.some((t) => typeof t === 'string' && t.includes(named)));
+  const inMessage = typeof e.message === 'string' && e.message.includes(named);
+  return inTarget || inMessage;
+}
 
 // Segment 3 — the current-stage read-model shape (most-advanced ACTIVE
 // membership + which req). `null` from the accessor = the talent is in no
@@ -156,21 +174,27 @@ export class PipelineRepository {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  // TR-2a-B3b (DDR-3 §4) — OPERATIONAL re-point WITH COLLISION handling. Pipeline
-  // has @@unique([talent_record_id, requisition_id]), so a loser (from) row whose
-  // requisition_id already has a survivor (to) row is a DUPLICATE of one human's
-  // single fact: the survivor-side row wins, the loser-side row is removed with its
-  // FULL content recorded (deterministic, never leave-split — DDR-3 §4 collision
-  // rule). Non-colliding loser rows re-point straight. Atomic (one tx) so the
-  // delete+repoint is all-or-nothing; idempotent (a re-run matches no `from` rows).
-  // Returns affected-row identity + the removed collision rows (verbatim) for the
-  // operation-record checkpoint / reversal re-create.
+  // TR-2a-B3b (DDR-3 §4) + E6 A4 PRESERVE-ALL — OPERATIONAL re-point.
+  //
+  // Post-E6 Pipeline no longer has a TOTAL unique on (talent, requisition): multiple
+  // HISTORICAL episodes may coexist (Q-1). Reconciliation therefore PRESERVES ALL
+  // episodes — it re-points every `from` row to `to`, keeping row IDs and
+  // PipelineStatusHistory intact. It does NOT physically delete a "collision loser"
+  // and does NOT infer a duplicate from status/timestamps/site_id (A4 — the
+  // provenance to make that call does not exist in the substrate; inventing an
+  // identity is forbidden). `removed_rows` is therefore ALWAYS empty for pipeline.
+  //
+  // Q-2 safety: repointing a LIVE `from` row onto a `to` that already has a LIVE row
+  // for the same requisition would violate the partial live index. That live/live
+  // case is refused PRE-FLIGHT by the orchestrator BEFORE any sweep begins (§5.2),
+  // so by the time this runs no live/live collision remains. Atomic (one tx),
+  // idempotent (a re-run matches no `from` rows).
   async repointTalentRecordRefs(args: {
     tenant_id: string;
     from_record_id: string;
     to_record_id: string;
-    // Reversal (DDR-3 §6): re-point ONLY these specific rows (no collision logic —
-    // we are restoring exactly what the operation moved, not a fresh merge).
+    // Reversal (DDR-3 §6): re-point ONLY these specific rows (restoring exactly what
+    // the operation moved, by recorded id).
     only_ids?: string[];
   }): Promise<{ repointed_ids: string[]; removed_rows: unknown[] }> {
     if (args.only_ids && args.only_ids.length > 0) {
@@ -182,26 +206,40 @@ export class PipelineRepository {
       );
       return { repointed_ids: rows.map((r) => r.id), removed_rows: [] };
     }
-    return this.prisma.$transaction(async (tx) => {
-      // Collision losers: `from` rows whose requisition_id already has a `to` row.
-      const removed = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
-        `DELETE FROM "pipeline"."Pipeline"
-           WHERE talent_record_id = $1::uuid AND tenant_id = $2::uuid
-             AND requisition_id IN (
-               SELECT requisition_id FROM "pipeline"."Pipeline"
-               WHERE talent_record_id = $3::uuid AND tenant_id = $2::uuid)
-         RETURNING *`,
-        args.from_record_id, args.tenant_id, args.to_record_id,
-      );
-      // Re-point the non-colliding remainder.
-      const repointed = await tx.$queryRawUnsafe<Array<{ id: string }>>(
-        `UPDATE "pipeline"."Pipeline" SET talent_record_id = $1::uuid
-           WHERE talent_record_id = $2::uuid AND tenant_id = $3::uuid
-         RETURNING id`,
-        args.to_record_id, args.from_record_id, args.tenant_id,
-      );
-      return { repointed_ids: repointed.map((r) => r.id), removed_rows: removed };
-    });
+    // PRESERVE-ALL — re-point EVERY `from` row to `to`. No collision DELETE.
+    const repointed = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
+      `UPDATE "pipeline"."Pipeline" SET talent_record_id = $1::uuid
+         WHERE talent_record_id = $2::uuid AND tenant_id = $3::uuid
+       RETURNING id`,
+      args.to_record_id, args.from_record_id, args.tenant_id,
+    );
+    return { repointed_ids: repointed.map((r) => r.id), removed_rows: [] };
+  }
+
+  // E6 A4 — detect a LIVE/LIVE reconciliation conflict BEFORE any mutation. Returns
+  // the requisition_ids where BOTH the `from` and `to` records hold a LIVE episode:
+  // repointing would put two live episodes on one (tenant, talent, requisition)
+  // triple, which Q-2 forbids. The orchestrator refuses pre-flight on a non-empty
+  // result (§5.2); the partial live index is the backstop beneath.
+  async findLiveEpisodeConflicts(args: {
+    tenant_id: string;
+    from_record_id: string;
+    to_record_id: string;
+  }): Promise<string[]> {
+    const terminals = [...TERMINAL_STATUSES];
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ requisition_id: string }>>(
+      `SELECT DISTINCT a.requisition_id
+         FROM "pipeline"."Pipeline" a
+         JOIN "pipeline"."Pipeline" b
+           ON a.tenant_id = b.tenant_id AND a.requisition_id = b.requisition_id
+        WHERE a.tenant_id = $1::uuid
+          AND a.talent_record_id = $2::uuid
+          AND b.talent_record_id = $3::uuid
+          AND NOT (a.status::text = ANY($4::text[]))
+          AND NOT (b.status::text = ANY($4::text[]))`,
+      args.tenant_id, args.from_record_id, args.to_record_id, terminals,
+    );
+    return rows.map((r) => r.requisition_id);
   }
 
   // TR-2a-B3b (DDR-3 §6) — reversal re-creates the recorded-and-removed collision
@@ -229,6 +267,7 @@ export class PipelineRepository {
   async create(args: {
     tenant_id: string;
     input: CreatePipelineRequestDto;
+    requestId?: string;
     // ADR-0024 §D17a — when a policy decision governed this add (the
     // recruiter-console path), its provenance record commits INSIDE the same
     // transaction as the pipeline row: atomic (§D10 fail-closed). If the
@@ -238,23 +277,74 @@ export class PipelineRepository {
   }): Promise<PipelineView> {
     // Initial state hard-coded to `no_contact` per directive §2 /
     // state-machine proof initial-state invariant. Body cannot override.
-    const row = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.pipeline.create({
-        data: {
-          tenant_id: args.tenant_id,
-          site_id: args.input.site_id ?? null,
+    try {
+      const row = await this.prisma.$transaction(async (tx) => {
+        // E6 Q-2 — one-live-episode application guard (the deterministic path).
+        // At most one LIVE episode per (tenant, talent, requisition); terminal
+        // episodes are preserved history and do NOT occupy the slot. This is the
+        // documented refusal callers receive; the Pipeline_live_episode_key
+        // partial index is the race floor beneath it (translated below).
+        const live = await tx.pipeline.findFirst({
+          where: {
+            tenant_id: args.tenant_id,
+            talent_record_id: args.input.talent_record_id,
+            requisition_id: args.input.requisition_id,
+            status: { notIn: [...TERMINAL_STATUSES] },
+          },
+          select: { id: true },
+        });
+        if (live !== null) {
+          throw this.liveEpisodeError(args);
+        }
+        const created = await tx.pipeline.create({
+          data: {
+            tenant_id: args.tenant_id,
+            site_id: args.input.site_id ?? null,
+            talent_record_id: args.input.talent_record_id,
+            requisition_id: args.input.requisition_id,
+            status: 'no_contact',
+          },
+        });
+        if (args.provenance !== undefined) {
+          // Cross-schema, same-tx write (mirrors insertActivityInTx).
+          await insertPolicyDecisionRecordInTx(tx, args.provenance);
+        }
+        return created;
+      });
+      return projectView(row as PipelineRow);
+    } catch (err) {
+      // §4.1 race floor — a concurrent insert lost on Pipeline_live_episode_key.
+      // Translate that EXACT violation to the same deterministic refusal; never
+      // catch an arbitrary P2002/23505.
+      if (isLiveEpisodeIndexViolation(err)) {
+        throw this.liveEpisodeError(args);
+      }
+      throw err;
+    }
+  }
+
+  // E6 Q-2 — the one-live-episode refusal (409). Used by BOTH the deterministic
+  // pre-check and the race-floor translation, so the outward contract is identical
+  // whichever path fires.
+  private liveEpisodeError(args: {
+    tenant_id: string;
+    input: CreatePipelineRequestDto;
+    requestId?: string;
+  }): AramoError {
+    return new AramoError(
+      'PIPELINE_EPISODE_ALREADY_LIVE',
+      'A live pipeline episode already exists for this talent and requisition',
+      409,
+      {
+        // Controller always threads the real requestId; the sourcing path catches
+        // this error (idempotent no-op) so its sentinel never reaches a response.
+        requestId: args.requestId ?? 'pipeline-create',
+        details: {
           talent_record_id: args.input.talent_record_id,
           requisition_id: args.input.requisition_id,
-          status: 'no_contact',
         },
-      });
-      if (args.provenance !== undefined) {
-        // Cross-schema, same-tx write (mirrors insertActivityInTx).
-        await insertPolicyDecisionRecordInTx(tx, args.provenance);
-      }
-      return created;
-    });
-    return projectView(row as PipelineRow);
+      },
+    );
   }
 
   // Standalone §D17a provenance write for a DENY: there is no mutation to be
@@ -276,7 +366,7 @@ export class PipelineRepository {
     // transition; deleting it must give the slot back.
     const existing = await this.prisma.pipeline.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
-      select: { id: true, status: true, requisition_id: true },
+      select: { id: true, status: true, requisition_id: true, talent_record_id: true },
     });
     if (existing === null) {
       throw new AramoError(
@@ -290,17 +380,31 @@ export class PipelineRepository {
     // so history rows fall away with the parent (matches the
     // RequisitionAssignment precedent at A3).
     if (existing.status === 'placed') {
-      // PR-A5b-1 §4 — delete-restore. Atomic interactive tx so the
-      // pipeline delete and the cross-schema openings_available += 1
-      // commit together. If either step fails, neither lands.
+      // PR-A5b-1 §4 + E6 Q-3 (§6) — delete-restore, made boolean-idempotent.
+      // Atomic interactive tx so the pipeline delete and the cross-schema
+      // openings_available += 1 commit together. Restore ONLY on the TRUE->FALSE
+      // edge: this was the LAST placed episode for (tenant, talent, requisition).
+      // If another placed episode remains after this delete, capacity stays
+      // consumed (TRUE->TRUE, no change) — coexisting placed episodes (post-E6)
+      // must not over-restore.
       await this.prisma.$transaction(async (tx) => {
         await tx.pipeline.delete({ where: { id: args.id } });
-        await tx.$executeRaw`
-          UPDATE requisition."Requisition"
-          SET openings_available = openings_available + 1
-          WHERE id = ${existing.requisition_id}::uuid
-            AND tenant_id = ${args.tenant_id}::uuid
+        const others = await tx.$queryRaw<Array<{ n: bigint }>>`
+          SELECT count(*)::bigint AS n FROM pipeline."Pipeline"
+          WHERE tenant_id = ${args.tenant_id}::uuid
+            AND talent_record_id = ${existing.talent_record_id}::uuid
+            AND requisition_id = ${existing.requisition_id}::uuid
+            AND status = 'placed'::"pipeline"."PipelineStatus"
         `;
+        const remainingPlaced = Number(others[0]?.n ?? 0n);
+        if (remainingPlaced === 0) {
+          await tx.$executeRaw`
+            UPDATE requisition."Requisition"
+            SET openings_available = openings_available + 1
+            WHERE id = ${existing.requisition_id}::uuid
+              AND tenant_id = ${args.tenant_id}::uuid
+          `;
+        }
       });
       this.logger.log({
         event: 'pipeline_deleted_placed_openings_restored',
@@ -394,6 +498,7 @@ export class PipelineRepository {
     const note = args.note ?? null;
     const site_id = (current as PipelineRow).site_id ?? undefined;
     const requisition_id = (current as PipelineRow).requisition_id;
+    const talent_record_id = (current as PipelineRow).talent_record_id;
     const transitionNote =
       `pipeline ${fromStatus} -> ${args.to_status}` +
       (noteForActivity === null ? '' : `: ${noteForActivity}`);
@@ -439,28 +544,50 @@ export class PipelineRepository {
         //      The decrement writes ONLY requisition.openings_available
         //      — no Core table is read or written (the A5b boundary).
         if (args.to_status === 'placed') {
-          const decremented = await tx.$executeRaw`
-            UPDATE requisition."Requisition"
-            SET openings_available = openings_available - 1
-            WHERE id = ${requisition_id}::uuid
-              AND tenant_id = ${tenant_id}::uuid
-              AND openings_available > 0
+          // E6 Q-3 (§6) — capacity is a BOOLEAN predicate: openings are consumed
+          // iff at least one `placed` episode EXISTS for (tenant, talent,
+          // requisition). Decrement ONLY on the FALSE->TRUE edge — i.e. this is the
+          // FIRST placed episode for the triple. 4a already set THIS row to
+          // `placed`, so we count OTHER placed rows (id <> this one); zero others
+          // means the predicate just flipped false->true. Coexisting placed
+          // episodes (possible after the E6 drop) must NOT double-consume. The
+          // predicate read + the capacity mutation are in this same transaction.
+          const others = await tx.$queryRaw<Array<{ n: bigint }>>`
+            SELECT count(*)::bigint AS n FROM pipeline."Pipeline"
+            WHERE tenant_id = ${tenant_id}::uuid
+              AND talent_record_id = ${talent_record_id}::uuid
+              AND requisition_id = ${requisition_id}::uuid
+              AND status = 'placed'::"pipeline"."PipelineStatus"
+              AND id <> ${args.id}::uuid
           `;
-          if (decremented === 0) {
-            throw new AramoError(
-              'REQUISITION_NO_OPENINGS',
-              'Requisition has no available openings for placement',
-              409,
-              {
-                requestId: args.requestId,
-                details: {
-                  pipeline_id: args.id,
-                  requisition_id,
-                  to_status: 'placed',
+          const otherPlaced = Number(others[0]?.n ?? 0n);
+          if (otherPlaced === 0) {
+            // FALSE->TRUE — decrement with the optimistic over-capacity guard.
+            const decremented = await tx.$executeRaw`
+              UPDATE requisition."Requisition"
+              SET openings_available = openings_available - 1
+              WHERE id = ${requisition_id}::uuid
+                AND tenant_id = ${tenant_id}::uuid
+                AND openings_available > 0
+            `;
+            if (decremented === 0) {
+              throw new AramoError(
+                'REQUISITION_NO_OPENINGS',
+                'Requisition has no available openings for placement',
+                409,
+                {
+                  requestId: args.requestId,
+                  details: {
+                    pipeline_id: args.id,
+                    requisition_id,
+                    to_status: 'placed',
+                  },
                 },
-              },
-            );
+              );
+            }
           }
+          // else TRUE->TRUE: a placed episode already consumed capacity for this
+          // triple — no further decrement (idempotent).
         }
         return { updatedRow: updated, historyRow: history };
       },
@@ -698,27 +825,109 @@ export class PipelineRepository {
     });
   }
 
-  // PR-A7 — per-PipelineStatus rollup for the reporting aggregator.
-  // The optional requisition_ids list applies the upstream-resolved A3
-  // role-visibility predicate.
+  // PR-A7 + E6 Q-4 — per-PipelineStatus rollup for the reporting aggregator, as a
+  // BUSINESS (person) view: each (talent, requisition) is collapsed to its CURRENT
+  // episode (live if any, else latest terminal by created_at DESC, id DESC) and
+  // counted ONCE, in that current stage. A re-entered talent with a historical
+  // terminal episode plus a current live one is NOT double-counted (§7 / Q-4).
+  // For single-episode data (the only shape possible before E6) DISTINCT ON returns
+  // every row, so this is identical to the old groupBy. This is a BUSINESS helper —
+  // NEVER call it from an episode/history view (those must show all episodes).
+  // The optional requisition_ids list applies the upstream-resolved A3 predicate.
   async countByStatus(args: {
     tenant_id: string;
     requisition_ids?: readonly string[];
   }): Promise<Array<{ status: PipelineStatus; count: number }>> {
-    const rows = await this.prisma.pipeline.groupBy({
-      by: ['status'],
-      where: {
-        tenant_id: args.tenant_id,
-        ...(args.requisition_ids === undefined
-          ? {}
-          : { requisition_id: { in: [...args.requisition_ids] } }),
-      },
-      _count: { _all: true },
-    });
+    const terminals = [...TERMINAL_STATUSES];
+    const hasReqFilter = args.requisition_ids !== undefined;
+    const reqClause = hasReqFilter ? `AND requisition_id = ANY($3::uuid[])` : '';
+    const params: unknown[] = hasReqFilter
+      ? [args.tenant_id, terminals, [...args.requisition_ids!]]
+      : [args.tenant_id, terminals];
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ status: string; count: bigint }>>(
+      `SELECT status, count(*)::bigint AS count FROM (
+         SELECT DISTINCT ON (talent_record_id, requisition_id) status
+         FROM "pipeline"."Pipeline"
+         WHERE tenant_id = $1::uuid ${reqClause}
+         ORDER BY talent_record_id, requisition_id,
+                  (status::text = ANY($2::text[])) ASC,
+                  created_at DESC, id DESC
+       ) cur
+       GROUP BY status`,
+      ...params,
+    );
     return rows.map((r) => ({
       status: r.status as PipelineStatus,
-      count: r._count._all,
+      count: Number(r.count),
     }));
+  }
+
+  // E6 Q-4 — count DISTINCT (talent, requisition) triples that have a `placed`
+  // episode EXISTING (a placement is a fact about a human on a requisition, not a
+  // per-episode event). Coexisting placed episodes for one triple count ONCE.
+  // BUSINESS helper — not an episode view.
+  async countDistinctPlaced(args: {
+    tenant_id: string;
+    requisition_ids?: readonly string[];
+  }): Promise<number> {
+    const hasReqFilter = args.requisition_ids !== undefined;
+    const reqClause = hasReqFilter ? `AND requisition_id = ANY($2::uuid[])` : '';
+    const params: unknown[] = hasReqFilter
+      ? [args.tenant_id, [...args.requisition_ids!]]
+      : [args.tenant_id];
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+      `SELECT count(*)::bigint AS count FROM (
+         SELECT DISTINCT talent_record_id, requisition_id
+         FROM "pipeline"."Pipeline"
+         WHERE tenant_id = $1::uuid AND status = 'placed'::"pipeline"."PipelineStatus" ${reqClause}
+       ) t`,
+      ...params,
+    );
+    return Number(rows[0]?.count ?? 0n);
+  }
+
+  // E6 Q-4 — per-requisition distinct-triple counts for company metrics. `placed`
+  // uses EXISTS semantics (a placement is a fact); the funnel band {submitted,
+  // interviewing, offered} uses CURRENT-episode semantics (who is currently in that
+  // band). Both dedupe by (talent, requisition). BUSINESS helper — not an episode view.
+  async countDistinctByRequisition(args: {
+    tenant_id: string;
+    requisition_ids: readonly string[];
+    statuses: readonly PipelineStatus[];
+    mode: 'exists' | 'current';
+  }): Promise<Array<{ requisition_id: string; count: number }>> {
+    if (args.requisition_ids.length === 0 || args.statuses.length === 0) return [];
+    const terminals = [...TERMINAL_STATUSES];
+    const reqIds = [...args.requisition_ids];
+    const statuses = [...args.statuses];
+    let sql: string;
+    let params: unknown[];
+    if (args.mode === 'exists') {
+      // Distinct talents with an EXISTING episode in the status set, per req.
+      sql =
+        `SELECT requisition_id, count(DISTINCT talent_record_id)::bigint AS count
+           FROM "pipeline"."Pipeline"
+          WHERE tenant_id = $1::uuid
+            AND requisition_id = ANY($2::uuid[])
+            AND status::text = ANY($3::text[])
+          GROUP BY requisition_id`;
+      params = [args.tenant_id, reqIds, statuses];
+    } else {
+      // Distinct talents whose CURRENT episode is in the status set, per req.
+      sql =
+        `SELECT requisition_id, count(*)::bigint AS count FROM (
+           SELECT DISTINCT ON (talent_record_id, requisition_id) requisition_id, status
+             FROM "pipeline"."Pipeline"
+            WHERE tenant_id = $1::uuid AND requisition_id = ANY($2::uuid[])
+            ORDER BY talent_record_id, requisition_id,
+                     (status::text = ANY($4::text[])) ASC, created_at DESC, id DESC
+         ) cur
+         WHERE status::text = ANY($3::text[])
+         GROUP BY requisition_id`;
+      params = [args.tenant_id, reqIds, statuses, terminals];
+    }
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ requisition_id: string; count: bigint }>>(sql, ...params);
+    return rows.map((r) => ({ requisition_id: r.requisition_id, count: Number(r.count) }));
   }
 
   // Per-company metrics — group pipeline counts by requisition_id for a status

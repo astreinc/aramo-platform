@@ -109,6 +109,13 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // Track 3 / E4 — replacement-linkage refusal (one code, details.reason
   // discriminator). Well-formed request, invalid predecessor to replace.
   PLACEMENT_REPLACEMENT_INVALID: 422,
+  // Track 3 / E6 — pipeline one-live-episode refusal (Q-2). A live episode
+  // already exists for the (tenant, talent, requisition) triple. HTTP 409
+  // (state-conflict, mirrors PLACEMENT_ALREADY_LIVE).
+  PIPELINE_EPISODE_ALREADY_LIVE: 409,
+  // Track 3 / E6 (A4) — pre-flight reconciliation refusal: both records hold a
+  // live episode for one requisition. HTTP 409 (merge-time state conflict).
+  PIPELINE_RECONCILE_LIVE_CONFLICT: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

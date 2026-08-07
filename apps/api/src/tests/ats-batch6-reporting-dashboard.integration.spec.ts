@@ -103,6 +103,11 @@ const PIPELINE_INIT = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
 );
+// Track 3 E6 — total unique -> live-scoped partial unique (Q-4 projection collapse).
+const PIPELINE_E6 = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
+);
 // ADR-0024 PR-3 — POST /v1/pipelines now writes §D17a provenance into
 // policy_store."PolicyDecisionRecord" in the create transaction, so this
 // spec's DB needs the policy_store schema + table (init creates the schema).
@@ -355,6 +360,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ACTIVITY_INIT,
         ACTIVITY_REDACTION,
         PIPELINE_INIT,
+        PIPELINE_E6,
         POLICY_STORE_INIT,
         POLICY_DECISION_RECORD,
         CALENDAR_INIT,
@@ -804,6 +810,54 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         );
         expect(res.status, `${path} should return 200`).toBe(200);
       }
+    });
+
+    // ==== E6 B-projection (Q-4) — reporting must not double-count episodes ====
+    // Runs LAST: it seeds placed rows and would perturb the tenant-wide baseline
+    // that the earlier assertions (placement-count = 0, pipeline_rollup.total = 1)
+    // depend on. Two coexisting PLACED episodes for one (talent, requisition) —
+    // legal only post-E6 — must count as ONE placement end-to-end through apps/api.
+    it('B-projection: two placed episodes for one (talent, req) count as ONE placement (no double-count)', async () => {
+      const company = await postJson('/v1/companies', tenantAdminJwt, {
+        name: 'E6 Projection Co',
+        site_id: SITE_A,
+      });
+      const req = await postJson('/v1/requisitions', tenantAdminJwt, {
+        title: 'E6 projection req',
+        company_id: company.id,
+        site_id: SITE_A,
+      });
+      const talent = '01900000-0000-7000-8000-0000000000e6';
+      // Two coexisting placed episodes (raw insert bypasses the guard/transitions;
+      // the E6 partial index permits multiple terminal episodes for one triple).
+      for (let i = 0; i < 2; i += 1) {
+        await setupClient.query(
+          `INSERT INTO pipeline."Pipeline" (id, tenant_id, talent_record_id, requisition_id, status, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::uuid, 'placed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          [TENANT_ATS, talent, req.id],
+        );
+      }
+
+      // placement-count is tenant-wide; the baseline placed nothing, so the ONE
+      // distinct (talent, req) placement is the only one → 1, NOT 2 episodes.
+      const pc = await fetch(
+        `http://127.0.0.1:${port}/v1/reports/placement-count?site_id=${SITE_A}`,
+        { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } },
+      );
+      expect(pc.status).toBe(200);
+      const pcBody = (await pc.json()) as { placed_pipelines: number };
+      expect(pcBody.placed_pipelines).toBe(1); // distinct triple, not 2 episodes
+
+      // pipeline-rollup by_status counts this talent ONCE under placed.
+      const pr = await fetch(
+        `http://127.0.0.1:${port}/v1/reports/pipeline-rollup?site_id=${SITE_A}`,
+        { method: 'GET', headers: { Authorization: `Bearer ${tenantAdminJwt}` } },
+      );
+      const prBody = (await pr.json()) as {
+        by_status: Array<{ status: string; count: number }>;
+      };
+      const placed = prBody.by_status.find((s) => s.status === 'placed');
+      expect(placed?.count).toBe(1); // one talent placed, not two episodes
     });
   },
 );

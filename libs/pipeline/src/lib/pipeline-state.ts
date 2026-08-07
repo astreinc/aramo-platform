@@ -178,6 +178,26 @@ const LEGAL_TRANSITIONS: Record<PipelineStatus, readonly PipelineStatus[]> = {
   placed: [],
 };
 
+// TERMINAL_STATUSES — the live/terminal partition, DERIVED from the transition
+// map (a terminal state is one with NO legal outgoing transition). This is the
+// SEMANTIC SOURCE OF TRUTH for the partition; it is not a second hand-authored
+// list. The E6 migration duplicates this set as a LITERAL SQL predicate on the
+// `Pipeline_live_episode_key` partial unique index (a migration cannot import
+// this module), and the B-index-parity drift test holds the two equal — any
+// change to the partition here fails CI until a new migration updates the DB
+// invariant (directive E6 §3). `no_status` is NOT terminal (it has forward
+// edges), matching the migration predicate's live set.
+export const TERMINAL_STATUSES: readonly PipelineStatus[] = PIPELINE_STATUS_VALUES.filter(
+  (s) => LEGAL_TRANSITIONS[s].length === 0,
+);
+
+// isLive — a status occupies the single live-episode slot (Q-2) iff it is not
+// terminal. Mirrors the migration's WHERE predicate; both derive from the same
+// partition.
+export function isLiveStatus(status: PipelineStatus): boolean {
+  return LEGAL_TRANSITIONS[status].length !== 0;
+}
+
 /**
  * canTransition — the legal transition guard. Returns true iff the
  * matrix permits `from → to`.

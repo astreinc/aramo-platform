@@ -20,8 +20,12 @@ function makeService(opts: {
     listForActor: vi.fn().mockResolvedValue(opts.reqs),
   };
   const pipelineRepository = {
-    countByRequisition: vi.fn(async (args: { statuses: readonly string[] }) =>
-      args.statuses.includes('placed') ? opts.placed : opts.submitted,
+    // E6 Q-4 — getCompanyMetrics now dedupes by (talent, req): placed via
+    // mode:'exists', the submitted band via mode:'current'. The mock keys on the
+    // status set (placed → placed counts, else submitted counts).
+    countDistinctByRequisition: vi.fn(
+      async (args: { statuses: readonly string[]; mode: 'exists' | 'current' }) =>
+        args.statuses.includes('placed') ? opts.placed : opts.submitted,
     ),
     listByRequisitionsAndStatus: vi.fn(async () => opts.placedRows ?? []),
   };

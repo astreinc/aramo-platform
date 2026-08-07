@@ -3,8 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { SourcingService } from '../talent-identity/sourcing.service.js';
 
 // Unit coverage for the two sourcer triggers: promote-then-associate, gate-
-// deferral short-circuit, and idempotency (pipeline P2002 no-op; already-promoted
-// still associates).
+// deferral short-circuit, and idempotency. E6 (Q-2): the idempotent no-op now
+// comes from catching the pipeline application guard's EXACT one-live refusal
+// (PIPELINE_EPISODE_ALREADY_LIVE), NOT a generic P2002 — a bare P2002 propagates.
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const REF = { tenant_id: TENANT, ref_type: 'SOURCED_TALENT' as const, ref_id: 'payload-1' };
@@ -13,7 +14,7 @@ const RECORD_ID = 'rec-1';
 
 function make(parts: {
   promoteOutcome?: unknown;
-  pipelineThrows?: 'P2002' | 'other';
+  pipelineThrows?: 'P2002' | 'live' | 'other';
   poolRows?: unknown[];
   displayEvidence?: unknown[];
   subject?: unknown;
@@ -28,7 +29,13 @@ function make(parts: {
   const promotion = { promoteSubject } as never;
 
   const create = parts.pipelineThrows
-    ? vi.fn().mockRejectedValue(parts.pipelineThrows === 'P2002' ? { code: 'P2002' } : new Error('boom'))
+    ? vi.fn().mockRejectedValue(
+        parts.pipelineThrows === 'P2002'
+          ? { code: 'P2002' }
+          : parts.pipelineThrows === 'live'
+            ? { code: 'PIPELINE_EPISODE_ALREADY_LIVE' }
+            : new Error('boom'),
+      )
     : vi.fn().mockResolvedValue({ id: 'pipe-1' });
   const pipelines = { create } as never;
 
@@ -119,10 +126,23 @@ describe('SourcingService.promoteAndAddToPipeline', () => {
     expect(create).toHaveBeenCalled();
   });
 
-  it('duplicate pipeline (P2002) → idempotent no-op (no throw, pipeline_id null)', async () => {
-    const { service } = make({ pipelineThrows: 'P2002' });
+  // ---- E6 B-sourcing-idempotency (Q-2, §4) ----
+  // A live episode already exists → the pipeline application guard refuses with
+  // PIPELINE_EPISODE_ALREADY_LIVE, and the sourcing trigger treats THAT specific
+  // refusal as an idempotent no-op (no throw, pipeline_id null). The no-op comes
+  // from the explicit guard, not from generic uniqueness handling.
+  it('B-sourcing-idempotency: a live-episode guard refusal (PIPELINE_EPISODE_ALREADY_LIVE) → idempotent no-op (no throw, pipeline_id null)', async () => {
+    const { service } = make({ pipelineThrows: 'live' });
     const result = await service.promoteAndAddToPipeline(REF, REQ_ID);
     expect(result).toEqual({ status: 'promoted', talent_record_id: RECORD_ID, pipeline_id: null });
+  });
+
+  // §4.1 specificity — a bare Prisma P2002 is NO LONGER swallowed here (E6 replaced
+  // the generic-P2002 reliance): it propagates, so the ONLY idempotent path is the
+  // explicit guard refusal above.
+  it('a bare P2002 pipeline error propagates (not treated as the one-live no-op)', async () => {
+    const { service } = make({ pipelineThrows: 'P2002' });
+    await expect(service.promoteAndAddToPipeline(REF, REQ_ID)).rejects.toMatchObject({ code: 'P2002' });
   });
 
   it('a non-unique pipeline error propagates', async () => {

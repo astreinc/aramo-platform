@@ -11,9 +11,13 @@
 //
 // The application-layer state machine (libs/pipeline/src/lib/pipeline-
 // state.ts) enforces the legal transition matrix; the DB enum is the
-// closed-list substrate, and the @@unique([talent_record_id,
-// requisition_id]) constraint guarantees one Pipeline row per
-// (talent, req) pair.
+// closed-list substrate. Uniqueness is LIVE-SCOPED (Track 3 E6): the
+// live-scoped partial unique index `Pipeline_live_episode_key`
+// (tenant_id, talent_record_id, requisition_id WHERE status is live)
+// permits AT MOST ONE LIVE episode per triple while allowing multiple
+// historical (terminal) episodes to coexist. The partial index lives in
+// the E6 raw migration, not in this schema DSL (Prisma cannot express a
+// partial predicate); it is NOT an @@unique here.
 //
 // Refusals enforced structurally:
 //   - R10 — NO portal-forbidden numeric/ordinal fields. Pipeline carries
@@ -70,8 +74,10 @@ enum PipelineStatus {
 }
 
 // Pipeline — the (talent × requisition) join row carrying status.
-// One row per (talent_record_id, requisition_id) pair per the
-// @@unique constraint below.
+// Multiple HISTORICAL episodes may coexist for one (talent, req) pair
+// (Track 3 E6, Q-1); at most ONE LIVE episode is permitted per
+// (tenant, talent, req) triple, enforced by the live-scoped partial
+// unique `Pipeline_live_episode_key` in the E6 raw migration (Q-2).
 model Pipeline {
   // Identity.
   id        String  @id @default(uuid()) @db.Uuid
@@ -93,12 +99,14 @@ model Pipeline {
   // Intra-schema relation to the status-history audit.
   history PipelineStatusHistory[]
 
-  // One Pipeline per (talent, req) pair — a recruiter cannot enter the
-  // same talent into the same requisition twice. Re-entry after
-  // not_in_consideration / client_declined is via a delete + re-create
-  // (since both terminal-ish states are intentionally non-transitionable;
-  // see lib/pipeline-state.ts).
-  @@unique([talent_record_id, requisition_id])
+  // Live-scoped uniqueness (Track 3 E6): at most one LIVE episode per
+  // (tenant, talent, req) triple. A recruiter cannot open a second LIVE
+  // episode while one is live; once an episode reaches a terminal status
+  // (placed / not_in_consideration / client_declined) it releases the
+  // live slot and a fresh episode may be created, with the prior episode
+  // PRESERVED as history (Q-1). This is enforced by the partial unique
+  // index `Pipeline_live_episode_key` in the E6 migration — Prisma cannot
+  // express a partial (WHERE) predicate, so it is NOT an @@unique here.
 
   // Indexes — every query path leads with tenant_id.
   @@index([tenant_id, requisition_id])

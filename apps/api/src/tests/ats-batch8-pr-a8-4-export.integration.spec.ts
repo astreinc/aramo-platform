@@ -115,6 +115,11 @@ const PIPELINE_INIT = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
 );
+// Track 3 E6 — total unique -> live-scoped partial unique.
+const PIPELINE_E6 = resolve(
+  ROOT,
+  'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
+);
 // ADR-0024 PR-3 — POST /v1/pipelines writes §D17a provenance into
 // policy_store."PolicyDecisionRecord" in the create transaction.
 const POLICY_STORE_INIT = resolve(
@@ -377,6 +382,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_WORK_AUTH,
         TALENT_RECORD_SUPERSESSION,
         PIPELINE_INIT,
+        PIPELINE_E6,
         POLICY_STORE_INIT,
         POLICY_DECISION_RECORD,
         METERING_INIT,
