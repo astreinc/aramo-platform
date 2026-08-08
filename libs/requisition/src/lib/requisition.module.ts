@@ -4,6 +4,7 @@ import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
 import { JobDomainModule } from '@aramo/job-domain';
+import { PlacementCapacityModule } from '@aramo/placement';
 import {
   PolicyStore,
   PrismaService as PolicyStorePrismaService,
@@ -42,6 +43,10 @@ import { RequisitionRepository } from './requisition.repository.js';
     EntitlementModule,
     AiDraftModule,
     JobDomainModule,
+    // Track 4 / T4-B1 — PULL the placement-owned capacity projection (§4). Leaf
+    // w.r.t. requisition: placement has NO edge back (verified zero-outgoing),
+    // so lint:nx-boundaries stays acyclic. Read-only exposure; nothing removed.
+    PlacementCapacityModule,
   ],
   controllers: [RequisitionController],
   providers: [

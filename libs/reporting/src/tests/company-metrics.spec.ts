@@ -40,6 +40,7 @@ function makeService(opts: {
     requisitionRepository as never,
     pipelineRepository as never,
     stub, // tenantSettingRepository (unused by company-metrics)
+    stub, // capacity (T4-B1 access; company-metrics still uses the stored column)
   );
   return { svc, requisitionRepository, pipelineRepository };
 }

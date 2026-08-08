@@ -11,9 +11,10 @@ import {
   type PlacementProcessEventView,
   type PlacementProcessView,
   type PlacementState,
+  type ContractAssignmentEndReason,
 } from '@aramo/placement';
 
-import { CreatePlacementDto, TransitionPlacementDto } from './dto/placement.dto.js';
+import { CreatePlacementDto, EndAssignmentDto, TransitionPlacementDto } from './dto/placement.dto.js';
 
 // Track 3 / E1-b + E1-d — the guarded PlacementProcess HTTP surface. ONE generic
 // transition route (§1): the target is in the body and the canonical 14-edge
@@ -146,6 +147,19 @@ export class PlacementController {
     // Authorization has passed above; the reason evidence (E3) is validated in
     // the repository BEFORE any mutation. reason_code is required for a governed
     // terminal edge and must be absent for a non-governed one (registry classifier).
+    // Track 4 / T4-A1 — org snapshot for the forward STARTED -> ContractAssignment
+    // path, passed to the repository which materialises the assignment in the same
+    // transaction. INTERIM: caller-supplied; T4-D hardens this to a server-side
+    // derive from the requisition (the authoritative source), so the controller
+    // never trusts the wire for the org snapshot.
+    const assignment_context =
+      body.to === 'STARTED' && body.assignment_company_id != null
+        ? {
+            company_id: body.assignment_company_id,
+            site_id: body.assignment_site_id ?? null,
+            company_department_id: body.assignment_department_id ?? null,
+          }
+        : null;
     return this.placements.transition(
       {
         tenant_id: auth.tenant_id,
@@ -153,9 +167,31 @@ export class PlacementController {
         to: body.to as PlacementState,
         reason_code: body.reason_code ?? null,
         reason_detail: body.reason_detail ?? null,
+        assignment_context,
       },
       requestId,
     );
+  }
+
+  // Track 4 / T4-D — end the ContractAssignment of a STARTED placement (ACTIVE ->
+  // ENDED, with the ratified end reason). Gated by the DEDICATED assignment:end
+  // authority (mirrors the placement authoritative tier: AM/TA/TO, not recruiter) —
+  // NOT reused from placement:* or requisition:assign (§7). The repository writes
+  // the state flip and the placement.assignment.ended outbox event atomically.
+  @Post(':id/assignment/end')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('assignment:end')
+  async endAssignment(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: EndAssignmentDto,
+  ): Promise<{ ok: true }> {
+    await this.placements.endAssignment(
+      { tenant_id: auth.tenant_id, placement_process_id: id, end_reason: body.end_reason as ContractAssignmentEndReason },
+      requestId,
+    );
+    return { ok: true };
   }
 
   // E1-d / D-3 — item read aligned to the house pattern: actor-visibility

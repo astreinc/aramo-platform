@@ -262,8 +262,10 @@ export const SEED_SCOPE_KEYS = [
   // (E1-b Approval Record §2 — no ATS-scope reuse). The transition route enforces
   // the 14-edge matrix; the authority split is DERIVED from that matrix under the
   // ratified classification: ordinary progression=transition, live/capacity=activate,
-  // terminal/irreversible=terminate. ALL FOUR non-read placement scopes ship with
-  // ZERO default grants (no ratified placement role matrix exists yet).
+  // terminal/irreversible=terminate. Granted by the ratified #577 placement role
+  // matrix (PLACEMENT_SEED_BUNDLES): recruiter holds read/create/transition;
+  // account_manager/tenant_admin/tenant_owner additionally hold activate/terminate
+  // (+ replace, E4).
   'placement:read',
   'placement:create',
   'placement:transition',
@@ -273,6 +275,18 @@ export const SEED_SCOPE_KEYS = [
   // account_manager/tenant_admin/tenant_owner, required in conjunction with
   // placement:create for a replacement create.
   'placement:replace',
+  // Track 4 / T4-D — ContractAssignment authority (the authoritative post-start
+  // commitment). Dedicated family: reuse of requisition:assign / company:assign
+  // (user<->entity assignment) and generic placement:* is rejected as semantically
+  // wrong (§7). Role posture MIRRORS the placement authoritative tier
+  // (ASSIGNMENT_SEED_BUNDLES): read -> all four grant-receiving roles; create/
+  // update/end -> account_manager/tenant_admin/tenant_owner only (the tier holding
+  // placement:activate/terminate). recruiter does operational placement work, NOT
+  // authoritative post-start assignment mutation.
+  'assignment:read',
+  'assignment:create',
+  'assignment:update',
+  'assignment:end',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

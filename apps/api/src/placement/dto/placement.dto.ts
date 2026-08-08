@@ -80,4 +80,29 @@ export class TransitionPlacementDto {
   @IsString()
   @MaxLength(REASON_DETAIL_MAX)
   reason_detail?: string;
+
+  // Track 4 / T4-A1 — org snapshot for the forward STARTED -> ContractAssignment
+  // path. company_id is required by the repository ONLY for a transition to
+  // STARTED (the FORWARD provenance CHECK). INTERIM: caller-supplied here; T4-D
+  // hardens this to a SERVER-AUTHORITATIVE derive from the requisition (the
+  // controller reads the requisition org context rather than trusting the wire).
+  // Tracked as a T4-D boundary — do not treat this wire field as the final shape.
+  @IsOptional()
+  @IsUUID()
+  assignment_company_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  assignment_site_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  assignment_department_id?: string;
+}
+
+// Track 4 / T4-D — ending a ContractAssignment. The ratified end-reason taxonomy
+// (closed set) distinguishes the three business categories structurally.
+export class EndAssignmentDto {
+  @IsIn(['COMPLETED', 'WORKER_ENDED', 'CLIENT_ENDED'])
+  end_reason!: string;
 }

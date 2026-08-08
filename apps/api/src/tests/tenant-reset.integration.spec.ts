@@ -121,12 +121,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Per-tenant counts across the three placement aggregate tables (PR-C).
     async function countPlacement(
       tenant: string,
-    ): Promise<Record<'outbox' | 'event' | 'process', number>> {
+    ): Promise<Record<'outbox' | 'event' | 'process' | 'assignment', number>> {
       const w = 'tenant_id=$1::uuid';
       return {
         outbox: await count('placement."OutboxEvent"', w, [tenant]),
         event: await count('placement."PlacementProcessEvent"', w, [tenant]),
         process: await count('placement."PlacementProcess"', w, [tenant]),
+        // Track 4 / T4-F — the new ContractAssignment reset target.
+        assignment: await count('placement."ContractAssignment"', w, [tenant]),
       };
     }
 
@@ -336,6 +338,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
              (id, tenant_id, event_type, event_payload)
            VALUES ($1::uuid,$2::uuid,'placement.offer.extended', jsonb_build_object('placement_process_id',$3::uuid))`,
           [uuidv7(), tenant, ppId],
+        );
+        // Track 4 / T4-F — the authoritative ContractAssignment (a NEW tenant-owned
+        // reset target). T's is deleted by the reset; T2's must survive.
+        await db.query(
+          `INSERT INTO placement."ContractAssignment"
+             (id, tenant_id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, company_id)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid, now(), 'FORWARD', 'ACTIVE', $7::uuid)`,
+          [uuidv7(), tenant, ppId, uuidv7(), uuidv7(), uuidv7(), uuidv7()],
         );
         return ppId;
       };
@@ -601,23 +611,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const label of [
         'placement."OutboxEvent"',
         'placement."PlacementProcessEvent"',
+        'placement."ContractAssignment"',
         'placement."PlacementProcess"',
       ]) {
         expect(line(label).before, `${label} before`).toBeGreaterThanOrEqual(1);
         expect(line(label).after, `${label} after`).toBe(0);
       }
 
-      // (7) every placement table is now empty for the target tenant.
-      expect(await countPlacement(T)).toEqual({ outbox: 0, event: 0, process: 0 });
+      // (7) every placement table is now empty for the target tenant (incl. the
+      // Track 4 ContractAssignment reset target).
+      expect(await countPlacement(T)).toEqual({ outbox: 0, event: 0, process: 0, assignment: 0 });
 
       // (8) the bystander tenant's placement aggregate is entirely intact.
-      expect(await countPlacement(T2)).toEqual({ outbox: 1, event: 1, process: 1 });
+      expect(await countPlacement(T2)).toEqual({ outbox: 1, event: 1, process: 1, assignment: 1 });
 
-      // (9/10) the archive exported all three placement tables and their pre-delete
+      // (9/10) the archive exported all placement tables and their pre-delete
       // rows (checksum/readback already asserted in test 3 via archive_verified).
       const archive = JSON.parse(readFileSync(targetArchive(), 'utf8')) as ArchivePayload;
       expect(archive.entities['placement."OutboxEvent"']).toHaveLength(1);
       expect(archive.entities['placement."PlacementProcessEvent"']).toHaveLength(1);
+      expect(archive.entities['placement."ContractAssignment"']).toHaveLength(1);
       expect(archive.entities['placement."PlacementProcess"']).toHaveLength(1);
       // The free-text offer PII is captured in the forensic archive before erasure.
       expect(
@@ -628,6 +641,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const orphan = (label: string): number => rep.orphan_checks.find((o) => o.label === label)!.remaining;
       expect(orphan('placement."OutboxEvent"')).toBe(0);
       expect(orphan('placement."PlacementProcessEvent"')).toBe(0);
+      expect(orphan('placement."ContractAssignment"')).toBe(0);
       expect(orphan('placement."PlacementProcess"')).toBe(0);
 
       // (13/14/15) the marker was transaction-local: after COMMIT an ordinary
@@ -639,7 +653,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await expect(
         db.query(`DELETE FROM placement."PlacementProcessEvent" WHERE tenant_id=$1::uuid`, [T2]),
       ).rejects.toThrow(/not permitted/);
-      expect(await countPlacement(T2)).toEqual({ outbox: 1, event: 1, process: 1 });
+      expect(await countPlacement(T2)).toEqual({ outbox: 1, event: 1, process: 1, assignment: 1 });
     });
 
     // ---- PR-C placement, ROLLBACK: forced mid-reset failure is atomic ----

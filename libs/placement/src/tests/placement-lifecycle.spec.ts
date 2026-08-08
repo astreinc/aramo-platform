@@ -11,6 +11,7 @@ import {
   STATE_POSITION,
   TRANSITION_TERMINAL,
   TRANSITIONS,
+  isPlacementGuardReleased,
   type LifecyclePosition,
   type PlacementState,
 } from '../lib/lifecycle/placement-lifecycle.js';
@@ -137,5 +138,32 @@ describe('canTransitionTyped agrees with canTransition on legal edges', () => {
   it('accepts the mandatory PRE_START path at runtime', () => {
     expect(canTransitionTyped('OFFER_ACCEPTED', 'PRE_START')).toBe(true);
     expect(canTransitionTyped('PRE_START', 'READY_TO_START')).toBe(true);
+  });
+});
+
+// Track 4 / T4-C — G2 §3.4 B-predicate-separation. The one-live GUARD-RELEASE
+// predicate and E4 replacement eligibility (DUPLICATE_GUARD_INACTIVE) MUST remain
+// independently expressed. They diverge exactly at STARTED-with-ended-assignment:
+// the guard releases it, E4 does NOT. A plant that made guard-release reuse
+// DUPLICATE_GUARD_INACTIVE would make isPlacementGuardReleased('STARTED', true)
+// false, failing this proof — the RED that catches a re-unified predicate.
+describe('B-predicate-separation: guard-release is independent of E4 eligibility', () => {
+  it('STARTED with an ended assignment releases the guard but stays E4-ineligible', () => {
+    // Guard release: STARTED + ended assignment => released.
+    expect(isPlacementGuardReleased('STARTED', true)).toBe(true);
+    // STARTED without an ended assignment is still live (guard held).
+    expect(isPlacementGuardReleased('STARTED', false)).toBe(false);
+    // E4 eligibility is the SEPARATE set — STARTED is NOT in it (stays ineligible).
+    expect((DUPLICATE_GUARD_INACTIVE as readonly PlacementState[]).includes('STARTED')).toBe(false);
+    // The two predicates give DIFFERENT answers for STARTED-with-ended — the split.
+    expect(isPlacementGuardReleased('STARTED', true)).not.toBe(
+      (DUPLICATE_GUARD_INACTIVE as readonly PlacementState[]).includes('STARTED'),
+    );
+  });
+
+  it('terminal states release the guard AND are E4-eligible (the sets agree there)', () => {
+    for (const s of DUPLICATE_GUARD_INACTIVE) {
+      expect(isPlacementGuardReleased(s, false)).toBe(true);
+    }
   });
 });

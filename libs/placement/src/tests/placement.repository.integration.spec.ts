@@ -30,6 +30,14 @@ function reasonForTarget(target: PlacementState): { reason_code?: string } {
   return def ? { reason_code: def.code } : {};
 }
 
+// Track 4 / T4-A1 — a transition to STARTED materialises the forward
+// ContractAssignment, whose FORWARD provenance requires a company snapshot. This
+// helper supplies the caller-owned org context for a STARTED target and {} for
+// every other target, so path-walking tests spread it on every hop.
+function ctxForTarget(target: PlacementState): { assignment_context?: { company_id: string } } {
+  return target === 'STARTED' ? { assignment_context: { company_id: randomUUID() } } : {};
+}
+
 // Track 3 / E1-a — integration spec (real Postgres 17). One migration applies
 // the whole placement schema (new schema, no cross-lib deps). Proves the
 // directive tripwires end-to-end: the 14-edge BEFORE UPDATE matrix, the
@@ -58,6 +66,28 @@ const REASON_MIGRATION_PATH = resolve(
 const REPLACEMENT_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260808120000_placement_replacement_link/migration.sql',
+);
+// Track 4 / T4-A1 — the additive ContractAssignment table + forward-path enums.
+// The Prisma client now knows ContractAssignment and the STARTED transition
+// INSERTs into it, so every placement-DB spec that reaches STARTED must apply this.
+const CONTRACT_ASSIGNMENT_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260809120000_placement_contract_assignment/migration.sql',
+);
+// Track 4 / T4-C — ENDED lifecycle value + the assignment-aware one-live guard.
+// The create() pre-check now queries lifecycle_state='ENDED', and the guard trigger
+// is assignment-aware, so every placement-DB spec that creates placements must apply these.
+const ASSIGNMENT_ENDED_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260810100000_placement_assignment_ended_value/migration.sql',
+);
+const ASSIGNMENT_GUARD_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260810110000_placement_assignment_aware_guard/migration.sql',
+);
+const ASSIGNMENT_END_REASON_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260810120000_placement_assignment_end_reason/migration.sql',
 );
 
 // Known transition path to reach each from-state from the initial
@@ -103,7 +133,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new PrismaService(url);
       await setupClient.$connect();
       // Apply the init migration then the additive E1-c and E3 migrations, in order.
-      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH]) {
+      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, CONTRACT_ASSIGNMENT_MIGRATION_PATH, ASSIGNMENT_ENDED_MIGRATION_PATH, ASSIGNMENT_GUARD_MIGRATION_PATH, ASSIGNMENT_END_REASON_MIGRATION_PATH]) {
         const sql = readFileSync(path, 'utf8');
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
@@ -133,7 +163,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       let id = created.id;
       for (const to of PATH_TO[state]) {
         const v = await repo.transition(
-          { tenant_id: input.tenant_id, placement_process_id: id, to, ...reasonForTarget(to) },
+          { tenant_id: input.tenant_id, placement_process_id: id, to, ...reasonForTarget(to), ...ctxForTarget(to) },
           'drive',
         );
         expect(v.state).toBe(to);
@@ -164,7 +194,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }
         // exercise the edge (a governed terminal target now requires a reason)
         const moved = await repo.transition(
-          { tenant_id: input.tenant_id, placement_process_id: id, to: edge.to, ...reasonForTarget(edge.to) },
+          { tenant_id: input.tenant_id, placement_process_id: id, to: edge.to, ...reasonForTarget(edge.to), ...ctxForTarget(edge.to) },
           'edge',
         );
         expect(moved.state).toBe(edge.to);
@@ -289,7 +319,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const input = baseInput(shared);
       const created = await repo.createPlacement(input, 'started-a');
       for (const to of PATH_TO.STARTED) {
-        await repo.transition({ tenant_id: shared.tenant_id, placement_process_id: created.id, to }, 'walk');
+        await repo.transition({ tenant_id: shared.tenant_id, placement_process_id: created.id, to, ...ctxForTarget(to) }, 'walk');
       }
       await expect(repo.createPlacement(baseInput(shared), 'started-b')).rejects.toMatchObject({
         code: 'PLACEMENT_ALREADY_LIVE',
