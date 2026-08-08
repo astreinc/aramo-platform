@@ -22,6 +22,7 @@ import {
   RolesGuard,
 } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
+import { CapacityProjectionRepository, type CapacityProjection } from '@aramo/placement';
 
 import {
   validateCompensationInput,
@@ -80,6 +81,11 @@ export class RequisitionController {
     private readonly assignmentRepository: RequisitionAssignmentRepository,
     private readonly profileService: RequisitionProfileService,
     private readonly intakeService: RequisitionIntakeService,
+    // Track 4 / T4-B1 — the placement-owned capacity projection, PULLED via the
+    // declared requisition->placement edge (§4). Non-destructive: read-only, the
+    // stored openings_available column and its writers remain. Trailing param so
+    // existing construction sites are undisturbed.
+    private readonly capacity: CapacityProjectionRepository,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -137,7 +143,7 @@ export class RequisitionController {
     @Param('id') id: string,
     @RequestId() requestId: string,
     @Req() req: Request,
-  ): Promise<RequisitionView> {
+  ): Promise<RequisitionView & { capacity: CapacityProjection }> {
     const visibility = await req.resolveVisibility!();
     const view = await this.requisitionRepository.findByIdForActor({
       tenant_id: authContext.tenant_id,
@@ -155,7 +161,11 @@ export class RequisitionController {
         { requestId, details: { id } },
       );
     }
-    return view;
+    // Track 4 / T4-B1 — derived capacity PULLED from placement, returned
+    // ALONGSIDE the still-present stored openings_available (both authorities
+    // coexist; nothing removed until the T4-A2-gated T4-B2 cutover).
+    const capacity = await this.capacity.projectCapacity(authContext.tenant_id, id, view.openings);
+    return { ...view, capacity };
   }
 
   @Post()

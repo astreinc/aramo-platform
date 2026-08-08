@@ -36,7 +36,26 @@ export type TransitionPlacementInput = {
   // detail policy. Both snake_case (repository serialization convention).
   readonly reason_code?: string | null;
   readonly reason_detail?: string | null;
+  // Track 4 / T4-A1 — org/site snapshot for the forward STARTED ->
+  // ContractAssignment path. Supplied by the orchestrating caller (which holds
+  // requisition access), so libs/placement stays zero-outgoing-edge with no
+  // cross-schema read (§4: declare the dependency, never conceal it in raw SQL).
+  // Required on a transition to STARTED (company_id is snapshot-stored on the
+  // forward assignment); ignored for every other target.
+  readonly assignment_context?: AssignmentContext | null;
 };
+
+// Caller-supplied org snapshot for the forward STARTED -> ContractAssignment path.
+export type AssignmentContext = {
+  readonly company_id: string;
+  readonly site_id?: string | null;
+  readonly company_department_id?: string | null;
+};
+
+// Track 4 / T4-C — the ratified ending-reason taxonomy (closed set). COMPLETED =
+// normal completion; WORKER_ENDED = worker quit/resigned; CLIENT_ENDED =
+// employer/client ended. Distinguishes the three business categories structurally.
+export type ContractAssignmentEndReason = 'COMPLETED' | 'WORKER_ENDED' | 'CLIENT_ENDED';
 
 export type PlacementProcessView = {
   readonly id: string;

@@ -5,6 +5,7 @@ import type { VisibilityContextShape } from '@aramo/common';
 import { CompanyRepository } from '@aramo/company';
 import { ContactRepository } from '@aramo/contact';
 import { PipelineRepository } from '@aramo/pipeline';
+import { CapacityProjectionRepository, type CapacityProjection } from '@aramo/placement';
 import { RequisitionRepository } from '@aramo/requisition';
 import { SavedListRepository } from '@aramo/saved-list';
 import {
@@ -211,7 +212,25 @@ export class ReportingService {
     private readonly requisitionRepository: RequisitionRepository,
     private readonly pipelineRepository: PipelineRepository,
     private readonly tenantSettingRepository: TenantSettingRepository,
+    // Track 4 / T4-B1 — the placement-owned capacity projection, PULLED via the
+    // declared reporting->placement edge (§4). CASE A (exposure, not migration):
+    // the getCompanyMetrics `filled` aggregate STILL reads the stored
+    // openings_available; this only makes the derived value ACCESSIBLE. The batch
+    // migration (countActiveByRequisitionIds, one query) is T4-B2. Trailing param.
+    private readonly capacity: CapacityProjectionRepository,
   ) {}
+
+  // Track 4 / T4-B1 (CASE A access) — single-requisition derived capacity, PULLED
+  // from placement. Coexists with the stored openings_available the aggregates
+  // still consume; nothing is migrated here. The N-read aggregate shape belongs to
+  // T4-B2 as a batch projection owned by libs/placement, never a loop here.
+  async readRequisitionCapacity(
+    tenant_id: string,
+    requisition_id: string,
+    openings: number,
+  ): Promise<CapacityProjection> {
+    return this.capacity.projectCapacity(tenant_id, requisition_id, openings);
+  }
 
   // -------------------------------------------------------------------------
   // Individual report endpoints (each route on ReportingController calls one)

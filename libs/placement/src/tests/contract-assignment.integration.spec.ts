@@ -1,0 +1,330 @@
+import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+
+import { PrismaService } from '../lib/prisma/prisma.service.js';
+import { PlacementRepository } from '../lib/placement.repository.js';
+import { CapacityProjectionRepository } from '../lib/capacity/capacity-projection.repository.js';
+import { deriveCapacity } from '../lib/capacity/capacity-derivation.js';
+import type { CreatePlacementInput } from '../lib/placement-process.types.js';
+import type { PlacementState } from '../lib/lifecycle/placement-lifecycle.js';
+
+// Track 4 / T4-A1 — ContractAssignment authority + persistence + the forward
+// STARTED -> ContractAssignment path. Real Postgres 17. The migration set is the
+// four pre-Track-4 placement migrations PLUS the T4-A1 additive contract
+// assignment migration.
+//
+// Boundary proofs (Directive v1.0 §11):
+//   - T4-A persistence: STARTED produces NO authoritative assignment today ->
+//     exactly one persists after (non-vacuous: precondition 0, exact after 1).
+//   - T4-A idempotency: a second assignment for the same start fact is refused.
+
+const MIGRATIONS = [
+  '20260803180000_init_placement_model',
+  '20260805120000_placement_offer_and_outbox',
+  '20260807120000_placement_fallthrough_reason',
+  '20260808120000_placement_replacement_link',
+  '20260809120000_placement_contract_assignment',
+  '20260810100000_placement_assignment_ended_value',
+  '20260810110000_placement_assignment_aware_guard',
+  '20260810120000_placement_assignment_end_reason',
+].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
+
+// Path from OFFER_EXTENDED to READY_TO_START, then the START edge separately.
+const PATH_TO_READY: PlacementState[] = ['OFFER_ACCEPTED', 'PRE_START', 'READY_TO_START'];
+
+function baseInput(overrides: Partial<CreatePlacementInput> = {}): CreatePlacementInput {
+  return {
+    tenant_id: randomUUID(),
+    submittal_id: randomUUID(),
+    requisition_id: randomUUID(),
+    talent_record_id: randomUUID(),
+    ...overrides,
+  };
+}
+
+describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
+  'ContractAssignment — T4-A1 forward path (real Postgres 17)',
+  () => {
+    let container: StartedPostgreSqlContainer;
+    let setupClient: PrismaService;
+    let prisma: PrismaService;
+    let repo: PlacementRepository;
+    let capacity: CapacityProjectionRepository;
+
+    beforeAll(async () => {
+      container = await new PostgreSqlContainer('postgres:17').start();
+      const url = container.getConnectionUri();
+
+      setupClient = new PrismaService(url);
+      await setupClient.$connect();
+      for (const path of MIGRATIONS) {
+        const sql = readFileSync(path, 'utf8');
+        for (const stmt of splitDdl(sql)) {
+          const trimmed = stmt.trim();
+          if (trimmed.length === 0) continue;
+          await setupClient.$executeRawUnsafe(trimmed);
+        }
+      }
+
+      prisma = new PrismaService(url);
+      await prisma.$connect();
+      repo = new PlacementRepository(prisma);
+      capacity = new CapacityProjectionRepository(prisma);
+    }, 120_000);
+
+    afterAll(async () => {
+      await setupClient?.$disconnect();
+      await prisma?.$disconnect();
+      await container?.stop();
+    });
+
+    async function driveToReady(input: CreatePlacementInput): Promise<string> {
+      const created = await repo.createPlacement(input, 'drive');
+      let id = created.id;
+      for (const to of PATH_TO_READY) {
+        const v = await repo.transition({ tenant_id: input.tenant_id, placement_process_id: id, to }, 'drive');
+        id = v.id;
+      }
+      return id;
+    }
+
+    it('T4-A persistence: STARTED produces no assignment before, exactly one FORWARD/ACTIVE assignment after', async () => {
+      const input = baseInput();
+      const company_id = randomUUID();
+      const id = await driveToReady(input);
+
+      // PRECONDITION (non-vacuity): no authoritative assignment exists yet.
+      const before = await prisma.contractAssignment.findMany({
+        where: { tenant_id: input.tenant_id, placement_process_id: id },
+      });
+      expect(before).toHaveLength(0);
+
+      // The START edge, with the caller-supplied org snapshot.
+      const v = await repo.transition(
+        {
+          tenant_id: input.tenant_id,
+          placement_process_id: id,
+          to: 'STARTED',
+          assignment_context: { company_id },
+        },
+        'start',
+      );
+      expect(v.state).toBe('STARTED');
+
+      // EXACT after: exactly one authoritative assignment, FORWARD + ACTIVE, with
+      // the start fact and the org snapshot.
+      const after = await prisma.contractAssignment.findMany({
+        where: { tenant_id: input.tenant_id, placement_process_id: id },
+      });
+      expect(after).toHaveLength(1);
+      const a = after[0];
+      expect(a.provenance).toBe('FORWARD');
+      expect(a.lifecycle_state).toBe('ACTIVE');
+      expect(a.submittal_id).toBe(input.submittal_id);
+      expect(a.requisition_id).toBe(input.requisition_id);
+      expect(a.talent_record_id).toBe(input.talent_record_id);
+      expect(a.company_id).toBe(company_id);
+      expect(a.started_at).toBeInstanceOf(Date);
+    });
+
+    it('T4-A idempotency: a duplicate assignment for the same start fact is refused', async () => {
+      const input = baseInput();
+      const company_id = randomUUID();
+      const id = await driveToReady(input);
+      await repo.transition(
+        { tenant_id: input.tenant_id, placement_process_id: id, to: 'STARTED', assignment_context: { company_id } },
+        'start',
+      );
+
+      // The unique (tenant_id, placement_process_id) index makes a second
+      // materialisation of the same start fact impossible.
+      await expect(
+        prisma.contractAssignment.create({
+          data: {
+            id: randomUUID(),
+            tenant_id: input.tenant_id,
+            placement_process_id: id,
+            submittal_id: input.submittal_id,
+            requisition_id: input.requisition_id,
+            talent_record_id: input.talent_record_id,
+            started_at: new Date(),
+            provenance: 'FORWARD',
+            lifecycle_state: 'ACTIVE',
+            company_id,
+          },
+        }),
+      ).rejects.toThrow();
+
+      const rows = await prisma.contractAssignment.findMany({
+        where: { tenant_id: input.tenant_id, placement_process_id: id },
+      });
+      expect(rows).toHaveLength(1);
+    });
+
+    it('T4-B step 1b (CHARACTERIZATION): count/projection over ACTIVE assignments, tenant+requisition scoped', async () => {
+      const tenant_id = randomUUID();
+      const requisition_id = randomUUID();
+      const openings = 3;
+      // Two placements (distinct submittals/talents) on the SAME requisition ->
+      // two ACTIVE FORWARD assignments.
+      for (let i = 0; i < 2; i++) {
+        const input = baseInput({ tenant_id, requisition_id });
+        const id = await driveToReady(input);
+        await repo.transition(
+          { tenant_id, placement_process_id: id, to: 'STARTED', assignment_context: { company_id: randomUUID() } },
+          'start',
+        );
+      }
+      // A different requisition (same tenant) must NOT be counted for requisition_id.
+      const other = baseInput({ tenant_id });
+      const oid = await driveToReady(other);
+      await repo.transition(
+        { tenant_id, placement_process_id: oid, to: 'STARTED', assignment_context: { company_id: randomUUID() } },
+        'start',
+      );
+
+      const count = await capacity.countActiveByRequisition(tenant_id, requisition_id);
+      expect(count).toBe(2);
+
+      const proj = await capacity.projectCapacity(tenant_id, requisition_id, openings);
+      expect(proj).toEqual(deriveCapacity({ openings, consuming_count: 2 }));
+      expect(proj.capacity_balance).toBe(1);
+      expect(proj.openings_available).toBe(1);
+      expect(proj.capacity_status).toBe('AVAILABLE');
+    });
+
+    // ---- G2 boundaries (§3.4) — the assignment-aware guard + predicate split ----
+
+    // Drive a fresh placement (fixed tenant+submittal) to STARTED, creating its
+    // forward ACTIVE ContractAssignment; returns the placement id.
+    async function startPlacement(tenant_id: string, submittal_id: string): Promise<string> {
+      const input = baseInput({ tenant_id, submittal_id });
+      const id = await driveToReady(input);
+      await repo.transition(
+        { tenant_id, placement_process_id: id, to: 'STARTED', assignment_context: { company_id: randomUUID() } },
+        'start',
+      );
+      return id;
+    }
+
+    it('B-assignment-active-blocks-replacement-attempt: STARTED + ACTIVE assignment refuses a second attempt', async () => {
+      const tenant_id = randomUUID();
+      const submittal_id = randomUUID();
+      await startPlacement(tenant_id, submittal_id);
+      // A second attempt on the same (tenant, submittal) while the assignment is
+      // ACTIVE is refused — the guard is held.
+      await expect(
+        repo.createPlacement(baseInput({ tenant_id, submittal_id }), 'second'),
+      ).rejects.toMatchObject({ code: 'PLACEMENT_ALREADY_LIVE' });
+    });
+
+    it('B-assignment-ended-releases-placement-guard: STARTED + ENDED assignment permits a later attempt', async () => {
+      const tenant_id = randomUUID();
+      const submittal_id = randomUUID();
+      const first = await startPlacement(tenant_id, submittal_id);
+      // End the assignment (ACTIVE -> ENDED) — releases the one-live guard.
+      await repo.endAssignment({ tenant_id, placement_process_id: first, end_reason: 'WORKER_ENDED' }, 'end');
+      // A later attempt on the same (tenant, submittal) is now PERMITTED.
+      const second = await repo.createPlacement(baseInput({ tenant_id, submittal_id }), 'second');
+      expect(second.state).toBe('OFFER_EXTENDED');
+      expect(second.id).not.toBe(first);
+    });
+
+    it('B-e4-started-remains-ineligible: a STARTED predecessor whose assignment ENDED is STILL E4-ineligible', async () => {
+      const tenant_id = randomUUID();
+      const submittal_id = randomUUID();
+      const started = await startPlacement(tenant_id, submittal_id);
+      await repo.endAssignment({ tenant_id, placement_process_id: started, end_reason: 'CLIENT_ENDED' }, 'end');
+      // The guard is released (previous proof), but E4 replacement eligibility is a
+      // SEPARATE predicate: STARTED is not in DUPLICATE_GUARD_INACTIVE, so pointing
+      // replaces_placement_process_id at it is REFUSED (predecessor_not_terminal).
+      // This is the proof Track 4 did NOT widen E4 as a side effect.
+      const input = baseInput({ tenant_id, requisition_id: randomUUID(), replaces_placement_process_id: started });
+      // same requisition as the predecessor (E4 checks tenant + requisition)
+      const withSameReq = { ...input, requisition_id: (await repo.findById(tenant_id, started))!.requisition_id };
+      await expect(repo.createPlacement(withSameReq, 'e4')).rejects.toMatchObject({
+        code: 'PLACEMENT_REPLACEMENT_INVALID',
+        context: { details: { reason: 'predecessor_not_terminal' } },
+      });
+    });
+
+    it('ending taxonomy: the three ratified categories are recorded structurally, and ENDED requires one', async () => {
+      // Each ratified category is stored as the closed enum, not free text.
+      for (const reason of ['COMPLETED', 'WORKER_ENDED', 'CLIENT_ENDED'] as const) {
+        const tenant_id = randomUUID();
+        const submittal_id = randomUUID();
+        const id = await startPlacement(tenant_id, submittal_id);
+        await repo.endAssignment({ tenant_id, placement_process_id: id, end_reason: reason }, 'end');
+        const [row] = await prisma.contractAssignment.findMany({ where: { tenant_id, placement_process_id: id } });
+        expect(row.lifecycle_state).toBe('ENDED');
+        expect(row.end_reason).toBe(reason);
+      }
+
+      // The CHECK forbids an ENDED assignment with no reason (structural, not app-only).
+      const tenant_id = randomUUID();
+      const id = await startPlacement(tenant_id, randomUUID());
+      await expect(
+        prisma.contractAssignment.updateMany({
+          where: { tenant_id, placement_process_id: id, lifecycle_state: 'ACTIVE' },
+          data: { lifecycle_state: 'ENDED' }, // no end_reason
+        }),
+      ).rejects.toThrow();
+    });
+
+    it('T4-D audit/events: ending an assignment emits placement.assignment.ended atomically with the state flip', async () => {
+      const tenant_id = randomUUID();
+      const requisition_id = randomUUID();
+      const id = await startPlacement(tenant_id, randomUUID());
+      // Rebind the started placement to a known requisition for payload assertion.
+      // (startPlacement uses baseInput's random requisition; read it back.)
+      const req = (await repo.findById(tenant_id, id))!.requisition_id;
+
+      // PRECONDITION (non-vacuity): no ended-assignment event yet.
+      const before = await prisma.outboxEvent.findMany({
+        where: { tenant_id, event_type: 'placement.assignment.ended' },
+      });
+      expect(before).toHaveLength(0);
+
+      await repo.endAssignment({ tenant_id, placement_process_id: id, end_reason: 'COMPLETED' }, 'end');
+
+      // The state flip AND the event are both present (same transaction).
+      const [row] = await prisma.contractAssignment.findMany({ where: { tenant_id, placement_process_id: id } });
+      expect(row.lifecycle_state).toBe('ENDED');
+      const events = await prisma.outboxEvent.findMany({
+        where: { tenant_id, event_type: 'placement.assignment.ended' },
+      });
+      expect(events).toHaveLength(1);
+      const payload = events[0].event_payload as Record<string, unknown>;
+      expect(payload.placement_process_id).toBe(id);
+      expect(payload.requisition_id).toBe(req);
+      expect(payload.end_reason).toBe('COMPLETED');
+    });
+  },
+);
+
+function splitDdl(sql: string): string[] {
+  const out: string[] = [];
+  let current = '';
+  let inDollar = false;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (sql.startsWith('$$', i)) {
+      inDollar = !inDollar;
+      current += '$$';
+      i += 1;
+      continue;
+    }
+    if (ch === ';' && !inDollar) {
+      out.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim().length > 0) out.push(current);
+  return out;
+}

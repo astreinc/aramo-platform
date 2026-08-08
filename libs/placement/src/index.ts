@@ -69,7 +69,15 @@ export type {
 export type {
   CreatePlacementInput,
   TransitionPlacementInput,
+  AssignmentContext,
   PlacementProcessView,
   PlacementProcessEventView,
   StateTransitionPayload,
+  ContractAssignmentEndReason,
 } from './lib/placement-process.types.js';
+
+// Track 4 / T4-B — the placement-owned capacity projection (§4: consumers pull).
+export { PlacementCapacityModule } from './lib/placement-capacity.module.js';
+export { CapacityProjectionRepository } from './lib/capacity/capacity-projection.repository.js';
+export { deriveCapacity, CAPACITY_STATUSES } from './lib/capacity/capacity-derivation.js';
+export type { CapacityInput, CapacityProjection, CapacityStatus } from './lib/capacity/capacity-derivation.js';

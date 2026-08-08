@@ -125,8 +125,31 @@ export const TRANSITION_TERMINAL: readonly PlacementState[] =
 
 // DUPLICATE_GUARD_INACTIVE = TERMINAL only. A first attempt in any of these
 // states releases the one-live-attempt guard; STARTED does NOT (§5, §9).
+// This set ALSO defines E4 replacement-predecessor eligibility (placement.repository
+// §5). Track 4 / G2 (§3.2) deliberately does NOT widen it — see
+// isPlacementGuardReleased below for the SEPARATE one-live release predicate.
 export const DUPLICATE_GUARD_INACTIVE: readonly PlacementState[] =
   PLACEMENT_STATES.filter(isDuplicateGuardInactive);
+
+// Track 4 / T4-C (G2, §3.2) — THE PREDICATE SPLIT. The one-live GUARD-RELEASE
+// predicate is SEPARATE from E4 eligibility (DUPLICATE_GUARD_INACTIVE). A placement
+// releases the (tenant, submittal) one-live guard when it is pre-start TERMINAL,
+// OR when it is STARTED and its authoritative ContractAssignment has ENDED. E4
+// eligibility does NOT release on the latter — STARTED stays E4-ineligible. Sharing
+// one predicate would widen E4 as a side effect (the default outcome, forbidden).
+// The DB trigger (migration 20260810110000) is the authority; this mirrors it for
+// the structured pre-check.
+export function isPlacementGuardReleased(state: PlacementState, hasEndedAssignment: boolean): boolean {
+  if ((DUPLICATE_GUARD_INACTIVE as readonly PlacementState[]).includes(state)) return true;
+  return state === 'STARTED' && hasEndedAssignment;
+}
+
+// Track 4 / T4-C — the ContractAssignment lifecycle registry. One ratified edge:
+// ACTIVE -> ENDED (post-start completion or attrition). ENDED is terminal.
+export const CONTRACT_ASSIGNMENT_TRANSITIONS: Record<'ACTIVE' | 'ENDED', readonly ('ACTIVE' | 'ENDED')[]> = {
+  ACTIVE: ['ENDED'],
+  ENDED: [],
+};
 
 // ---------------------------------------------------------------------------
 // Runtime guard (defense-in-depth atop the DB trigger; §6). The DB trigger is

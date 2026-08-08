@@ -487,6 +487,14 @@ export const ERROR_CODES = [
   // enforced BEFORE this at the controller, so a caller lacking placement:replace
   // is refused 403 regardless of predecessor validity.
   'PLACEMENT_REPLACEMENT_INVALID',
+  // Track 4 / T4-A1 — a transition to STARTED refused because the caller supplied
+  // no assignment org context (company_id). The STARTED edge materialises the
+  // authoritative ContractAssignment, whose FORWARD provenance requires a company
+  // snapshot (a DB CHECK). HTTP 422: the request is well-formed but cannot start
+  // without the org snapshot. The snapshot is caller-supplied (§4 — placement
+  // performs no cross-schema requisition read), so this is a boundary validation,
+  // surfaced cleanly rather than as a raw check_violation rollback.
+  'PLACEMENT_START_CONTEXT_REQUIRED',
   'PIPELINE_EPISODE_ALREADY_LIVE',  // Track 3 E6 — pipeline create refused: a LIVE episode already exists for (tenant, talent_record_id, requisition_id). Q-2 one-live invariant. HTTP 409. This is BOTH the deterministic application-guard refusal (the controller path returns it to the caller) AND the exact-name translation of a race-floor `Pipeline_live_episode_key` partial-index violation (§4.1 — never a generic P2002/23505 catch). The sourcing path catches THIS SAME code and returns an idempotent no-op. Mirrors PLACEMENT_ALREADY_LIVE at the pipeline-episode layer.
   'PIPELINE_RECONCILE_LIVE_CONFLICT',  // Track 3 E6 (A4, §5.2) — record reconciliation refused PRE-FLIGHT: the surviving and merged talent records BOTH hold a LIVE pipeline episode for the same requisition, so repointing would put two live episodes on one triple (Q-2 violation). HTTP 409. The refusal is ATOMIC — it runs before any sweep step, so NO domain and NO record is mutated; details.requisition_ids enumerates the conflicting requisitions for explicit human resolution. Distinct from PIPELINE_EPISODE_ALREADY_LIVE (a single-write refusal) — this is a merge-time refusal.
 ] as const;

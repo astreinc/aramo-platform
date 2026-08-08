@@ -42,6 +42,7 @@ function makeService(opts: {
     requisitionRepository as never,
     pipelineRepository as never,
     tenantSettingRepository as never,
+    {} as never, // capacity (T4-B1 access; recruiter-metrics does not use it)
   );
   return { svc, requisitionRepository, pipelineRepository, tenantSettingRepository };
 }

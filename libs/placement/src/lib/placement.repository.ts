@@ -7,6 +7,7 @@ import {
   canTransition,
   DUPLICATE_GUARD_INACTIVE,
   INITIAL_STATE,
+  isPlacementGuardReleased,
   type PlacementState,
 } from './lifecycle/placement-lifecycle.js';
 import {
@@ -15,6 +16,7 @@ import {
   type ReasonEvidence,
 } from './reasons/placement-reason-registry.js';
 import type {
+  ContractAssignmentEndReason,
   CreatePlacementInput,
   PlacementProcessView,
   TransitionPlacementInput,
@@ -58,6 +60,8 @@ function projectView(row: PlacementProcessRow): PlacementProcessView {
 // outcome. Aggregate identity lives in the payload (house pattern).
 const OUTBOX_CREATED = 'placement.process.created';
 const OUTBOX_STATE_CHANGED = 'placement.process.state_changed';
+// Track 4 / T4-D — the ContractAssignment ending domain event.
+const OUTBOX_ASSIGNMENT_ENDED = 'placement.assignment.ended';
 
 // The BEFORE INSERT / BEFORE UPDATE lifecycle trigger raises a named
 // check_violation. Detection is by the RAISE message substring (E7 precedent):
@@ -117,17 +121,30 @@ export class PlacementRepository {
       }
     }
 
-    // Pre-emptive guard: a live attempt is any state NOT in
-    // DUPLICATE_GUARD_INACTIVE (STARTED is ENGAGED, still live).
-    const live = (await this.prisma.placementProcess.findFirst({
+    // Pre-emptive guard (Track 4 / T4-C, G2 §3.2) — ASSIGNMENT-AWARE. An attempt
+    // is any non-terminal placement for (tenant, submittal); it is still LIVE
+    // unless it is STARTED with an ENDED ContractAssignment (the SEPARATE
+    // guard-release predicate, distinct from E4's DUPLICATE_GUARD_INACTIVE). The
+    // DB trigger (20260810110000) is the authority; this returns the structured
+    // PLACEMENT_ALREADY_LIVE before the INSERT.
+    const attempts = (await this.prisma.placementProcess.findMany({
       where: {
         tenant_id: input.tenant_id,
         submittal_id: input.submittal_id,
         state: { notIn: [...DUPLICATE_GUARD_INACTIVE] },
       },
-    })) as PlacementProcessRow | null;
-    if (live !== null) {
-      throw this.alreadyLive(input, requestId, live.id);
+      select: { id: true, state: true },
+    })) as Array<{ id: string; state: PlacementState }>;
+    for (const a of attempts) {
+      const hasEndedAssignment =
+        a.state === 'STARTED' &&
+        (await this.prisma.contractAssignment.count({
+          where: { tenant_id: input.tenant_id, placement_process_id: a.id, lifecycle_state: 'ENDED' },
+        })) > 0;
+      // An attempt is live unless its guard is released (STARTED + ended assignment).
+      if (!isPlacementGuardReleased(a.state, hasEndedAssignment)) {
+        throw this.alreadyLive(input, requestId, a.id);
+      }
     }
 
     // Offer snapshot (9-c-1). offered_at defaults to the server time of the offer
@@ -234,6 +251,23 @@ export class PlacementRepository {
     }
     const evidence: ReasonEvidence | null = classification.evidence;
 
+    // Track 4 / T4-A1 — a transition to STARTED materialises the authoritative
+    // ContractAssignment, whose FORWARD provenance requires a company snapshot
+    // (the DB CHECK). Validate the caller supplied it BEFORE the tx, so a missing
+    // context is a clean 422, never a raw check_violation rollback (§4: the org
+    // snapshot is caller-supplied — placement performs no cross-schema read).
+    if (input.to === 'STARTED' && !input.assignment_context?.company_id) {
+      throw new AramoError(
+        'PLACEMENT_START_CONTEXT_REQUIRED',
+        'Starting a placement requires assignment org context (company_id)',
+        422,
+        {
+          requestId,
+          details: { placement_process_id: input.placement_process_id, reason: 'assignment_context_required' },
+        },
+      );
+    }
+
     try {
       const updated = await this.prisma.$transaction(async (tx) => {
         const u = (await tx.placementProcess.update({
@@ -290,6 +324,31 @@ export class PlacementRepository {
             },
           },
         });
+        // Track 4 / T4-A1 — the forward STARTED -> ContractAssignment path. When a
+        // placement starts, its authoritative post-start assignment is created in
+        // the SAME transaction (the §10 assignment/capacity atomicity foundation).
+        // start fact = now; provenance FORWARD; lifecycle ACTIVE; org snapshot is
+        // caller-supplied (no cross-schema read, §4). The unique
+        // (tenant_id, placement_process_id) index is the idempotency floor.
+        if (input.to === 'STARTED') {
+          const ctx = input.assignment_context;
+          await tx.contractAssignment.create({
+            data: {
+              id: uuidv7(),
+              tenant_id: input.tenant_id,
+              placement_process_id: input.placement_process_id,
+              submittal_id: current.submittal_id,
+              requisition_id: current.requisition_id,
+              talent_record_id: current.talent_record_id,
+              started_at: new Date(),
+              provenance: 'FORWARD',
+              lifecycle_state: 'ACTIVE',
+              company_id: ctx?.company_id ?? null,
+              site_id: ctx?.site_id ?? null,
+              company_department_id: ctx?.company_department_id ?? null,
+            },
+          });
+        }
         return u;
       });
       return projectView(updated);
@@ -301,6 +360,55 @@ export class PlacementRepository {
       }
       throw err;
     }
+  }
+
+  // Track 4 / T4-C — end the ContractAssignment of a STARTED placement (the ONE
+  // ratified assignment edge, ACTIVE -> ENDED). Post-start attrition/completion
+  // lives HERE, not as a new PlacementProcess edge (T4-Q1 — STARTED stays
+  // transition-terminal). Ending releases the one-live guard (G2) and, at T4-B2,
+  // capacity. Only an ACTIVE assignment transitions; a no-op returns NOT_FOUND so
+  // the caller cannot mistake an absent/already-ended assignment for a state flip.
+  async endAssignment(
+    input: { tenant_id: string; placement_process_id: string; end_reason: ContractAssignmentEndReason },
+    requestId: string,
+  ): Promise<void> {
+    // §10 / T4-D — the state flip and its domain event commit atomically or not at
+    // all: an assignment cannot end without its evidence, nor emit without ending.
+    await this.prisma.$transaction(async (tx) => {
+      const existing = (await tx.contractAssignment.findFirst({
+        where: { tenant_id: input.tenant_id, placement_process_id: input.placement_process_id, lifecycle_state: 'ACTIVE' },
+        select: { id: true, submittal_id: true, requisition_id: true, talent_record_id: true },
+      })) as { id: string; submittal_id: string; requisition_id: string; talent_record_id: string } | null;
+      if (existing === null) {
+        throw new AramoError('NOT_FOUND', 'No active ContractAssignment to end', 404, {
+          requestId,
+          details: { placement_process_id: input.placement_process_id, reason: 'active_assignment_not_found' },
+        });
+      }
+      await tx.contractAssignment.update({
+        where: { id: existing.id },
+        // The ratified ending reason is recorded structurally (COMPLETED /
+        // WORKER_ENDED / CLIENT_ENDED), atomically with the state flip.
+        data: { lifecycle_state: 'ENDED', end_reason: input.end_reason },
+      });
+      await tx.outboxEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: input.tenant_id,
+          event_type: OUTBOX_ASSIGNMENT_ENDED,
+          event_payload: {
+            assignment_id: existing.id,
+            placement_process_id: input.placement_process_id,
+            tenant_id: input.tenant_id,
+            submittal_id: existing.submittal_id,
+            requisition_id: existing.requisition_id,
+            talent_record_id: existing.talent_record_id,
+            end_reason: input.end_reason,
+            occurred_at: new Date().toISOString(),
+          },
+        },
+      });
+    });
   }
 
   async findById(tenant_id: string, id: string): Promise<PlacementProcessView | null> {
