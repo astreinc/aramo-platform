@@ -273,6 +273,68 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     expect(live.state).toBe('STARTED');
   });
 
+  // ---- T4-D assignment:read — the assignment-state read surface ----
+
+  async function driveToStarted(t: string, company_id = randomUUID()): Promise<string> {
+    const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
+    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_ACCEPTED' });
+    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'PRE_START' });
+    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'READY_TO_START' });
+    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED', assignment_company_id: company_id });
+    return id;
+  }
+  const readAuth = (t: string) => auth(['assignment:read'], t);
+
+  it('assignment:read read correctness — returns the FORWARD/ACTIVE assignment with exact provenance/state/started_at (non-vacuous: row exists)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const seeded = await prisma.contractAssignment.count({ where: { tenant_id: t, placement_process_id: id } });
+    expect(seeded).toBe(1); // non-vacuity
+    const res = await ctrl.getAssignment(readAuth(t), 'r', id, reqSeeAll);
+    expect(res.assignment).not.toBeNull();
+    expect(res.assignment!.placement_process_id).toBe(id);
+    expect(res.assignment!.provenance).toBe('FORWARD');
+    expect(res.assignment!.lifecycle_state).toBe('ACTIVE');
+    expect(res.assignment!.end_reason).toBeNull();
+    expect(res.assignment!.started_at).toBeInstanceOf(Date);
+  });
+
+  it('assignment:read ended — returns end_reason as the authoritative discriminator (COMPLETED/WORKER_ENDED/CLIENT_ENDED, never collapsed)', async () => {
+    for (const reason of ['COMPLETED', 'WORKER_ENDED', 'CLIENT_ENDED'] as const) {
+      const t = randomUUID();
+      const id = await driveToStarted(t);
+      await ctrl.endAssignment(auth([], t), 'r', id, { end_reason: reason });
+      const res = await ctrl.getAssignment(readAuth(t), 'r', id, reqSeeAll);
+      expect(res.assignment!.lifecycle_state).toBe('ENDED');
+      expect(res.assignment!.end_reason).toBe(reason);
+    }
+  });
+
+  it('assignment:read no-assignment — a placement with no ContractAssignment returns { assignment: null } (coherent absence, not error, not fabricated)', async () => {
+    const t = randomUUID();
+    const id = await ctrl.create(auth(RECRUITER_PLACEMENT, t), 'r', body()).then((v) => v.id); // OFFER_EXTENDED, never STARTED
+    const res = await ctrl.getAssignment(readAuth(t), 'r', id, reqSeeAll);
+    expect(res.assignment).toBeNull();
+  });
+
+  it('assignment:read tenant isolation — cross-tenant read is 404 (never 403)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    await expect(ctrl.getAssignment(readAuth(randomUUID()), 'r', id, reqSeeAll)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      statusCode: 404,
+    });
+  });
+
+  it('assignment:read no-capacity — the response carries NO capacity field (capacity stays A2/B2-gated; assert ABSENCE, C1-style)', async () => {
+    const t = randomUUID();
+    const id = await driveToStarted(t);
+    const res = await ctrl.getAssignment(readAuth(t), 'r', id, reqSeeAll);
+    expect(res.assignment).not.toBeNull();
+    expect('capacity' in (res.assignment as unknown as Record<string, unknown>)).toBe(false);
+    expect((res as unknown as Record<string, unknown>).capacity).toBeUndefined();
+  });
+
   it('matrix: MANAGER set (account_manager/tenant_admin/tenant_owner) CAN terminate with a valid reason (a terminal edge)', async () => {
     const t = randomUUID();
     const id = await ctrl.create(auth(MANAGER_PLACEMENT, t), 'r', body()).then((v) => v.id);
@@ -561,6 +623,15 @@ describe('E1-b placement matrix — read/create guard boundary (real RolesGuard 
       code: 'INSUFFICIENT_PERMISSIONS',
       statusCode: 403,
     });
+  });
+
+  it('T4-D: GET /v1/placements/:id/assignment requires assignment:read — WITH it passes; WITHOUT it 403; placement:read does NOT satisfy it (§7 no-reuse)', () => {
+    const getAssignment = PlacementController.prototype.getAssignment as unknown as (...a: unknown[]) => unknown;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(guard.canActivate(ctx(getAssignment, ['assignment:read']) as any)).toBe(true);
+    expect(denial(getAssignment, [])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    // placement:read (which guards the placement item/events reads) does NOT satisfy assignment:read.
+    expect(denial(getAssignment, ['placement:read'])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
   });
 
   it('a no-placement-grant principal (e.g. super_admin / any role outside the matrix) is denied read AND create', () => {

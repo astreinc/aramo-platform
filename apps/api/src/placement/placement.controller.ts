@@ -12,6 +12,7 @@ import {
   type PlacementProcessView,
   type PlacementState,
   type ContractAssignmentEndReason,
+  type ContractAssignmentView,
 } from '@aramo/placement';
 
 import { CreatePlacementDto, EndAssignmentDto, TransitionPlacementDto } from './dto/placement.dto.js';
@@ -253,5 +254,41 @@ export class PlacementController {
     }
     const items = await this.events.listEvents(auth.tenant_id, id);
     return { items };
+  }
+
+  // Track 4 / T4-D (assignment:read) — the authoritative ASSIGNMENT-STATE read for
+  // a placement: existence + lifecycle_state + end_reason + started_at + provenance.
+  // Dedicated sub-resource under the placement (single read path for assignment
+  // state — never embedded in the placement read, which stays on placement:read and
+  // the stored openings_available authority). CAPACITY IS DELIBERATELY ABSENT here
+  // (it remains A2/B2-gated). Guarded by assignment:read (mirrors assignment:end;
+  // placement:* does NOT satisfy it). Least-visibility: the placement is loaded
+  // through findByIdForActor FIRST (404 — never 403 — when absent, not visible, or
+  // cross-tenant), so this cannot probe existence; a visible placement with no
+  // ContractAssignment returns { assignment: null } (coherent absence, not an error).
+  @Get(':id/assignment')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('assignment:read')
+  @RequireSiteMatch()
+  async getAssignment(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ): Promise<{ assignment: ContractAssignmentView | null }> {
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const placement = await this.placements.findByIdForActor({
+      tenant_id: auth.tenant_id,
+      id,
+      visible_requisition_ids: visibleReqIds,
+    });
+    if (placement === null) {
+      throw new AramoError('NOT_FOUND', 'PlacementProcess not found in tenant (or not visible to actor)', 404, {
+        requestId,
+        details: { placement_process_id: id, reason: 'placement_process_not_found' },
+      });
+    }
+    const assignment = await this.placements.findAssignmentByPlacement(auth.tenant_id, id);
+    return { assignment };
   }
 }

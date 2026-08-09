@@ -1847,6 +1847,50 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/placements/{id}/assignment:
+    get:
+      operationId: getPlacementAssignment
+      summary: Read the authoritative ContractAssignment state for a placement (Track 4 / T4-D).
+      description: |
+        Returns the authoritative post-start assignment state for the placement:
+        existence, `lifecycle_state`, `end_reason` (the ratified discriminator —
+        COMPLETED / WORKER_ENDED / CLIENT_ENDED, never collapsed), `started_at` and
+        `provenance`. A placement with no ContractAssignment returns
+        `{ "assignment": null }` — a coherent absence, never a fabricated row.
+
+        Deliberately carries NO capacity value: capacity remains the stored
+        `openings_available` authority until the T4-B2 cutover, and derived capacity
+        is A2/B2-gated. This surface is assignment state only.
+
+        Guarded by capability `ats` and scope `assignment:read` (the dedicated
+        assignment authority — `placement:*` does NOT satisfy it). The placement is
+        first loaded under the actor-visibility predicate — a not-found/not-visible/
+        cross-tenant placement returns 404 (never 403) before any assignment is read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacementAssignmentResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -2050,6 +2094,52 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PlacementProcessEvent'
+    # Track 4 / T4-D — the authoritative assignment-state read view. Assignment
+    # state ONLY: no capacity field (capacity is A2/B2-gated), no org snapshot.
+    ContractAssignmentView:
+      type: object
+      additionalProperties: false
+      required: [id, placement_process_id, submittal_id, requisition_id, talent_record_id, started_at, provenance, lifecycle_state, end_reason]
+      properties:
+        id:
+          type: string
+          format: uuid
+        placement_process_id:
+          type: string
+          format: uuid
+        submittal_id:
+          type: string
+          format: uuid
+        requisition_id:
+          type: string
+          format: uuid
+        talent_record_id:
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
+        provenance:
+          type: string
+          enum: [FORWARD, BACKFILLED]
+        lifecycle_state:
+          # Null only for a BACKFILLED assignment of unknown lifecycle (§A3.1).
+          type: [string, 'null']
+          enum: [ACTIVE, ENDED, null]
+        end_reason:
+          # Present iff ENDED; the authoritative discriminator, never collapsed.
+          type: [string, 'null']
+          enum: [COMPLETED, WORKER_ENDED, CLIENT_ENDED, null]
+    PlacementAssignmentResponse:
+      type: object
+      additionalProperties: false
+      required: [assignment]
+      properties:
+        assignment:
+          # A coherent absence when the placement has no ContractAssignment.
+          oneOf:
+            - $ref: '#/components/schemas/ContractAssignmentView'
+            - type: 'null'
     # M3 PR-8 §4.4 — match-list response envelope. The endpoint emits
     # TalentJobExaminationSummary items only (Full is NOT referenced from
     # this endpoint — see directive §4.4). additionalProperties: false plus
