@@ -335,9 +335,11 @@ describe('TenantResetService — happy path + delete ordering (§2.2 / §3.8)', 
       'DELETE FROM pre_start_requirement."PreStartMaterializationIntent"',
       'DELETE FROM pre_start_requirement."PreStartRequirementSet"',
       // §2.2.8 (PR-C) — placement aggregate, FK-safe + trigger-aware:
-      // OutboxEvent → PlacementProcessEvent (Restrict child) → PlacementProcess.
+      // OutboxEvent → PlacementProcessEvent (Restrict child) → ContractAssignment
+      // (Track 4 / T4-F, child-before-parent) → PlacementProcess.
       'DELETE FROM placement."OutboxEvent"',
       'DELETE FROM placement."PlacementProcessEvent"',
+      'DELETE FROM placement."ContractAssignment"',
       'DELETE FROM placement."PlacementProcess"',
     ];
     expect(pg.deletes.map((d) => d.split(' WHERE ')[0])).toEqual(expectedOrder);

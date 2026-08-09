@@ -143,7 +143,7 @@ export class RequisitionController {
     @Param('id') id: string,
     @RequestId() requestId: string,
     @Req() req: Request,
-  ): Promise<RequisitionView & { capacity: CapacityProjection }> {
+  ): Promise<RequisitionView> {
     const visibility = await req.resolveVisibility!();
     const view = await this.requisitionRepository.findByIdForActor({
       tenant_id: authContext.tenant_id,
@@ -161,11 +161,20 @@ export class RequisitionController {
         { requestId, details: { id } },
       );
     }
-    // Track 4 / T4-B1 — derived capacity PULLED from placement, returned
-    // ALONGSIDE the still-present stored openings_available (both authorities
-    // coexist; nothing removed until the T4-A2-gated T4-B2 cutover).
-    const capacity = await this.capacity.projectCapacity(authContext.tenant_id, id, view.openings);
-    return { ...view, capacity };
+    // Track 4 / T4-B1 — derived capacity is NOT embedded here. The requisition
+    // detail read stays on the stored openings_available authority (the only
+    // user-facing capacity value until the T4-B2 cutover), and is NOT coupled to
+    // placement at runtime. The derived projection is PULLABLE via
+    // readCapacity() (the declared requisition->placement edge), unexposed to users.
+    return view;
+  }
+
+  // Track 4 / T4-B1 (access, not migration) — pull the placement-owned derived
+  // capacity for one requisition via the declared requisition->placement edge.
+  // Additive/unexposed: no route, not embedded in any user-facing response; the
+  // stored openings_available remains the user-facing authority until T4-B2.
+  async readCapacity(tenant_id: string, requisition_id: string, openings: number): Promise<CapacityProjection> {
+    return this.capacity.projectCapacity(tenant_id, requisition_id, openings);
   }
 
   @Post()

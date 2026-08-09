@@ -100,16 +100,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const auth = { tenant_id, sub: randomUUID(), scopes: ['requisition:read'] } as never;
       const req = { resolveVisibility: async () => ({}) } as never;
-      const res = await controller.get(auth, requisition_id, 'r', req);
 
-      // COEXISTENCE — the increment itself: stored column still present...
-      expect(res.openings_available).toBe(STORED_OPENINGS_AVAILABLE);
-      // ...AND the derived capacity reflects the REAL assignment exactly.
-      expect(res.capacity.openings).toBe(OPENINGS);
-      expect(res.capacity.capacity_balance).toBe(OPENINGS - 1); // 3 openings - 1 ACTIVE assignment
-      expect(res.capacity.openings_available).toBe(2);
-      expect(res.capacity.openings_reserved).toBe(0);
-      expect(res.capacity.capacity_status).toBe('AVAILABLE');
+      // COEXISTENCE — the stored authority is UNCHANGED and NOT coupled to placement:
+      // GET :id returns the stored openings_available and carries NO derived capacity
+      // field (derived capacity is additive/unexposed; the detail read never queries
+      // placement at runtime).
+      const view = await controller.get(auth, requisition_id, 'r', req);
+      expect(view.openings_available).toBe(STORED_OPENINGS_AVAILABLE);
+      expect((view as Record<string, unknown>).capacity).toBeUndefined();
+
+      // ...AND the derived capacity is PULLABLE via the declared edge, reflecting
+      // the REAL assignment exactly (access, not exposure).
+      const derived = await controller.readCapacity(tenant_id, requisition_id, OPENINGS);
+      expect(derived.openings).toBe(OPENINGS);
+      expect(derived.capacity_balance).toBe(OPENINGS - 1); // 3 openings - 1 ACTIVE assignment
+      expect(derived.openings_available).toBe(2);
+      expect(derived.openings_reserved).toBe(0);
+      expect(derived.capacity_status).toBe('AVAILABLE');
     });
   },
 );
