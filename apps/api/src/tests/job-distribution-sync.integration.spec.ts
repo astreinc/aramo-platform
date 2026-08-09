@@ -156,7 +156,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const noop = (): undefined => undefined;
       const logger = { log: noop, warn: noop, error: noop, debug: noop };
       service = new JobDistributionSyncService(
-        new RequisitionRepository(reqPrisma, {} as never, {} as never) as never,
+        // Track 4 / T4-B2 — 4th ctor arg (capacity projection). The sync path only
+        // calls listPublishableForChannelSync, which does NOT touch the capacity
+        // projection, so a bare stub is sufficient (repo is cast `as never`).
+        new RequisitionRepository(reqPrisma, {} as never, {} as never, {} as never) as never,
         postingStates as never,
         connector as never,
         tokens as never,

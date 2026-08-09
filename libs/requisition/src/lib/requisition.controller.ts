@@ -161,18 +161,19 @@ export class RequisitionController {
         { requestId, details: { id } },
       );
     }
-    // Track 4 / T4-B1 — derived capacity is NOT embedded here. The requisition
-    // detail read stays on the stored openings_available authority (the only
-    // user-facing capacity value until the T4-B2 cutover), and is NOT coupled to
-    // placement at runtime. The derived projection is PULLABLE via
-    // readCapacity() (the declared requisition->placement edge), unexposed to users.
+    // Track 4 / T4-B2 — the requisition detail read now returns the DERIVED
+    // openings_available (max(openings - active ContractAssignment count, 0)),
+    // sourced in the repository's projectView via the requisition->placement edge.
+    // The stored column was retired (§6). Only openings_available is surfaced;
+    // the richer derived-capacity fields (capacity_status/balance/reserved) stay
+    // unexposed until the derived-capacity UI ships.
     return view;
   }
 
-  // Track 4 / T4-B1 (access, not migration) — pull the placement-owned derived
-  // capacity for one requisition via the declared requisition->placement edge.
-  // Additive/unexposed: no route, not embedded in any user-facing response; the
-  // stored openings_available remains the user-facing authority until T4-B2.
+  // Track 4 — pull the full placement-owned derived capacity projection for one
+  // requisition via the declared requisition->placement edge (capacity_status,
+  // signed balance, etc.). Not embedded in the user-facing detail response, which
+  // carries only the derived openings_available.
   async readCapacity(tenant_id: string, requisition_id: string, openings: number): Promise<CapacityProjection> {
     return this.capacity.projectCapacity(tenant_id, requisition_id, openings);
   }

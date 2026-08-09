@@ -23,6 +23,7 @@ import { AppModule } from '../app.module.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
+import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 
 // PR-A8-4 Gate 5 — ATS-domain CSV export integration spec.
 //
@@ -387,6 +388,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         POLICY_DECISION_RECORD,
         METERING_INIT,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
+        // Track 4 T4-B2 — requisition read DERIVES openings_available from the
+        // placement-owned ACTIVE ContractAssignment population; placement schema required.
+        ...placementCapacityMigrations(ROOT),
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }

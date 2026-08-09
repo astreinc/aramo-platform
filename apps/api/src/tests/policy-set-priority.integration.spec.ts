@@ -14,6 +14,7 @@ import { AppModule } from '../app.module.js';
 import { REQUISITION_LIFECYCLE_PACKAGE } from '../policy/requisition-lifecycle.package.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 
 // ADR-0024 PR-7 — REQUISITION · SET_PRIORITY (is_hot). Real Postgres 17; skipped
 // unless ARAMO_RUN_INTEGRATION=1.
@@ -34,7 +35,14 @@ function migrationsFor(lib: string): string[] {
   const dir = resolve(ROOT, `libs/${lib}/prisma/migrations`);
   return readdirSync(dir).filter((n) => /^\d/.test(n)).sort().map((n) => resolve(dir, n, 'migration.sql'));
 }
-const MIGRATIONS = [...migrationsFor('entitlement'), ...migrationsFor('requisition'), ...migrationsFor('policy-store')];
+const MIGRATIONS = [
+  ...migrationsFor('entitlement'),
+  ...migrationsFor('requisition'),
+  ...migrationsFor('policy-store'),
+  // Track 4 T4-B2 — requisition read DERIVES openings_available from the
+  // placement-owned ACTIVE ContractAssignment population; placement schema required.
+  ...placementCapacityMigrations(ROOT),
+];
 
 let uuidCounter = 0;
 const uuid = (): string => `00000000-0000-7000-8000-${(++uuidCounter).toString(16).padStart(12, '0')}`;

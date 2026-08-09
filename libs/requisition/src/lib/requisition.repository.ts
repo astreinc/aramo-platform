@@ -5,6 +5,11 @@ import {
   insertPolicyDecisionRecordInTx,
   type InsertPolicyDecisionRecordInput,
 } from '@aramo/policy-store';
+// Track 4 / T4-B2 — capacity truth is DERIVED from the placement-owned ACTIVE
+// ContractAssignment population, PULLED via the declared requisition->placement
+// edge (§4). The stored openings_available column is no longer the reader source
+// (migrated here); it is dropped in the dedicated column-drop migration.
+import { CapacityProjectionRepository, deriveCapacity } from '@aramo/placement';
 
 import { Prisma } from '../../prisma/generated/client/client.js';
 
@@ -219,7 +224,9 @@ interface RequisitionRow {
   notes: string | null;
   is_hot: boolean;
   openings: number;
-  openings_available: number;
+  // T4-B2 §6 — stored openings_available RETIRED. Availability is derived
+  // (max(openings - active ContractAssignment count, 0)); the row no longer carries
+  // a physical column, and projectView receives the derived value as a parameter.
   start_date: Date | null;
   city: string | null;
   state: string | null;
@@ -295,7 +302,11 @@ function decimalToFixed2(value: Prisma.Decimal | null): string | null {
   return value === null ? null : value.toFixed(2);
 }
 
-function projectView(row: RequisitionRow): RequisitionView {
+// Track 4 / T4-B2 — openings_available is now supplied by the caller as the DERIVED
+// value (max(capacity_balance,0) from the placement projection), NOT read from the
+// stored column. projectView stays a pure sync mapper; the async capacity pull is
+// the caller's (projectViewWithCapacity for single rows; the batch path for lists).
+function projectView(row: RequisitionRow, openings_available: number): RequisitionView {
   // v1.1 §2.2 — derived views computed from the two stored facts.
   // The compute is the single canonical site (projectView is THE
   // row→view mapper for every read path: list, get-by-id, create,
@@ -324,7 +335,9 @@ function projectView(row: RequisitionRow): RequisitionView {
     notes: row.notes,
     is_hot: row.is_hot,
     openings: row.openings,
-    openings_available: row.openings_available,
+    // T4-B2 — the DERIVED available-openings value (caller-supplied), no longer the
+    // stored column. The response field survives; its authority is now placement.
+    openings_available,
     start_date: row.start_date === null ? null : row.start_date.toISOString(),
     city: row.city,
     state: row.state,
@@ -444,7 +457,28 @@ export class RequisitionRepository {
     // T1-e (§2.2) — the governed-transition gate, same repository floor. A
     // status-changing update routes through it (R8 — no direct-set bypass).
     private readonly transitionPolicy: RequisitionTransitionPolicyService,
+    // Track 4 / T4-B2 — the placement-owned capacity projection. projectView is
+    // THE single canonical row->view mapper; the reader cutover routes its
+    // openings_available through this pull (derived truth), never the stored
+    // column. Trailing param (ctor-ripple contained). PlacementCapacityModule is
+    // already imported by RequisitionModule (B1), so injection needs no new wiring.
+    private readonly capacity: CapacityProjectionRepository,
   ) {}
+
+  // Track 4 / T4-B2 — project ONE row to a view with the DERIVED openings_available
+  // pulled from placement (ACTIVE ContractAssignment count). The single-row read
+  // path (create/import/update/stamp/get/admin-get). List uses the batch variant.
+  private async projectViewWithCapacity(
+    tenant_id: string,
+    row: RequisitionRow,
+  ): Promise<RequisitionView> {
+    const { openings_available } = await this.capacity.projectCapacity(
+      tenant_id,
+      row.id,
+      row.openings,
+    );
+    return projectView(row, openings_available);
+  }
 
   // T1-c — emit ONE lifecycle event inside the caller's transaction. The event
   // row commits IFF the mutation commits (R3, fail-closed): `tx` is the SAME
@@ -686,10 +720,8 @@ export class RequisitionRepository {
       notes: input.notes ?? null,
       is_hot: input.is_hot ?? false,
       openings: input.openings ?? 1,
-      // PR-0b-1: availability initialises to the authored opening count.
-      // openings_available is no longer a write DTO field; pipeline
-      // placement transitions are its only mutator thereafter.
-      openings_available: input.openings ?? 1,
+      // T4-B2 §6 — no openings_available initializer: the stored column is retired;
+      // availability is derived from ContractAssignment consumption at read time.
       start_date: input.start_date === undefined ? null : new Date(input.start_date),
       city: input.city ?? null,
       state: input.state ?? null,
@@ -735,7 +767,7 @@ export class RequisitionRepository {
       });
       return created;
     });
-    return projectView(row as RequisitionRow);
+    return this.projectViewWithCapacity(tenant_id, row as RequisitionRow);
   }
 
   // PR-A8-1 — import-engine create. Mirrors create(); attributes the row
@@ -793,10 +825,8 @@ export class RequisitionRepository {
       notes: input.notes ?? null,
       is_hot: input.is_hot ?? false,
       openings: input.openings ?? 1,
-      // PR-0b-1: availability initialises to the authored opening count.
-      // openings_available is no longer a write DTO field; pipeline
-      // placement transitions are its only mutator thereafter.
-      openings_available: input.openings ?? 1,
+      // T4-B2 §6 — no openings_available initializer: the stored column is retired;
+      // availability is derived from ContractAssignment consumption at read time.
       start_date: input.start_date === undefined ? null : new Date(input.start_date),
       city: input.city ?? null,
       state: input.state ?? null,
@@ -845,7 +875,7 @@ export class RequisitionRepository {
       });
       return created;
     });
-    return projectView(row as RequisitionRow);
+    return this.projectViewWithCapacity(tenant_id, row as RequisitionRow);
   }
 
   // PR-A8-1 — import-engine reversion. Tenant-scoped deleteMany by the
@@ -1146,7 +1176,7 @@ export class RequisitionRepository {
             }
             return updated;
           });
-    return projectView(row as RequisitionRow);
+    return this.projectViewWithCapacity(args.tenant_id, row as RequisitionRow);
   }
 
   // Track 1 T1-b (ruling R1) — the optimistic-concurrency compare-and-swap.
@@ -1230,7 +1260,7 @@ export class RequisitionRepository {
       data: { golden_profile_id: args.golden_profile_id },
       requestId: args.requestId,
     });
-    return projectView(row as RequisitionRow);
+    return this.projectViewWithCapacity(args.tenant_id, row as RequisitionRow);
   }
 
   async delete(args: {
@@ -1318,7 +1348,21 @@ export class RequisitionRepository {
       orderBy: { created_at: 'desc' },
       take: limit,
     });
-    const views = (rows as RequisitionRow[]).map(projectView);
+    // T4-B2 — ONE set-oriented capacity read for the whole page (never N per-row
+    // reads in a loop). Each row's openings_available is the derived value; a
+    // requisition absent from the map has zero ACTIVE assignments (consuming 0).
+    const typedRows = rows as RequisitionRow[];
+    const activeByReq = await this.capacity.countActiveByRequisitionIds(
+      args.tenant_id,
+      typedRows.map((r) => r.id),
+    );
+    const views = typedRows.map((r) =>
+      projectView(
+        r,
+        deriveCapacity({ openings: r.openings, consuming_count: activeByReq.get(r.id) ?? 0 })
+          .openings_available,
+      ),
+    );
     return this.enrichBookmarked(
       args.tenant_id,
       args.visibility.actor_user_id,
@@ -1353,7 +1397,7 @@ export class RequisitionRepository {
     const enriched = await this.enrichBookmarked(
       args.tenant_id,
       args.visibility.actor_user_id,
-      [projectView(row as RequisitionRow)],
+      [await this.projectViewWithCapacity(args.tenant_id, row as RequisitionRow)],
     );
     return enriched[0] ?? null;
   }
@@ -1466,7 +1510,9 @@ export class RequisitionRepository {
     const row = await this.prisma.requisition.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
     });
-    return row === null ? null : projectView(row as RequisitionRow);
+    return row === null
+      ? null
+      : this.projectViewWithCapacity(args.tenant_id, row as RequisitionRow);
   }
 
   // SRC-2 PR-3 (DEV-E) — the distribution sweep's publishable read. SYSTEM-class

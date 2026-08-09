@@ -9,6 +9,7 @@ import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { RequisitionPrismaService, RequisitionRepository } from '@aramo/requisition';
+import { deriveCapacity } from '@aramo/placement';
 
 // PR-17 — hybrid onsite frequency, server-side floor + the work_arrangement
 // coupling, against real Postgres. onsite_days_per_week is meaningful ONLY when
@@ -51,7 +52,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await prisma.$connect();
       // T1-e — 3rd ctor arg (transition policy); never invoked here (no test
       // changes status), so a throwing-absent stub is sufficient.
-      repo = new RequisitionRepository(prisma, {} as never, {} as never);
+      // Track 4 / T4-B2 — 4th ctor arg (capacity projection). No ContractAssignment
+      // rows are seeded, so consuming_count is 0 and openings_available equals the
+      // requisition's total openings. Local stub avoids needing the placement schema.
+      const capacityStub = {
+        projectCapacity: async (_t: string, _r: string, openings: number) =>
+          deriveCapacity({ openings, consuming_count: 0 }),
+        countActiveByRequisitionIds: async () => new Map<string, number>(),
+      } as never;
+      repo = new RequisitionRepository(prisma, {} as never, {} as never, capacityStub);
     }, 120_000);
 
     afterAll(async () => {

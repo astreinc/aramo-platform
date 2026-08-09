@@ -182,10 +182,13 @@ model Requisition {
   salary_amount         Decimal? @db.Decimal(12, 2)
   salary_currency       String?
 
-  // Openings counts (stored fields; directive §4 — NO decrement logic
-  // at this batch; the pipeline at A5 will own placement -> decrement).
+  // Total openings on the requisition (stored authority). Track 4 / T4-B2 §6 —
+  // the former stored `openings_available` column was RETIRED (dropped) here:
+  // available-openings is now DERIVED, placement-owned
+  // (openings_available = max(openings - active ContractAssignment count, 0)); the
+  // public API field survives as that derived projection. Migration
+  // 20260811120000_t4b2_drop_openings_available.
   openings           Int @default(1)
-  openings_available Int @default(1)
 
   start_date DateTime? @db.Timestamptz
   city       String?

@@ -11769,6 +11769,30 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-capacity-authority-removed-b2.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-capacity-authority-removed-b2.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-capacity-authority-removed-b2.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-capacity-authority-removed-b2.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/pipeline/src/tests/pipeline-write-invariants.integration.spec.ts",
       "status": "excluded",
       "to": "ci/integration-roots.json"
@@ -12760,6 +12784,26 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260809120000_placement_contract_assignment/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260810100000_placement_assignment_ended_value/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260810110000_placement_assignment_aware_guard/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/migrations/20260810120000_placement_assignment_end_reason/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
     },
     {
@@ -12841,6 +12885,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/migrations/20260811120000_t4b2_drop_openings_available/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
