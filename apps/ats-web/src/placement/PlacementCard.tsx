@@ -7,7 +7,14 @@ import { PLACEMENT_STATE_LABELS, type PlacementView } from './types';
 // offers ONLY the transition actions the actor's scopes permit (allowedActions)
 // — a recruiter is never shown activate/terminate (Proof 8). It renders NO
 // reason evidence: reason code/label/detail live only on the event timeline
-// (D-1/D-2). Actions are display affordances; the write is a separate seam.
+// (D-1/D-2).
+//
+// Transition affordances render ONLY when the composition supplies an `onAction`
+// handler — i.e. iff there is a real authorized action capability behind them.
+// A surface that does not (yet) wire the placement transition-write seam mounts
+// this card WITHOUT `onAction`, and no dead/inert transition button is shown;
+// the placement information stays fully visible. When `onAction` IS supplied the
+// affordance behaviour is unchanged (scope-filtered, per-target).
 export interface PlacementCardProps {
   readonly placement: PlacementView;
   readonly pipelineStatus?: string | null;
@@ -33,19 +40,21 @@ export function PlacementCard({ placement, pipelineStatus = null, scopes, onActi
           Pipeline out of sync (shows “{r.pipelineStatus}”; placement is authoritative)
         </span>
       ) : null}
-      <div className="placement-card__actions">
-        {actions.map((a) => (
-          <button
-            key={a.to}
-            type="button"
-            className="placement-card__action"
-            data-authority-class={a.authorityClass}
-            onClick={() => onAction?.(a.to)}
-          >
-            {PLACEMENT_STATE_LABELS[a.to]}
-          </button>
-        ))}
-      </div>
+      {onAction !== undefined && actions.length > 0 ? (
+        <div className="placement-card__actions">
+          {actions.map((a) => (
+            <button
+              key={a.to}
+              type="button"
+              className="placement-card__action"
+              data-authority-class={a.authorityClass}
+              onClick={() => onAction(a.to)}
+            >
+              {PLACEMENT_STATE_LABELS[a.to]}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
