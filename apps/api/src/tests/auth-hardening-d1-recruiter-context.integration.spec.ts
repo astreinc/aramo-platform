@@ -23,6 +23,8 @@ import { TENANT_COGNITO_PORT, type TenantCognitoPort } from '@aramo/identity';
 
 import { AppModule } from '../app.module.js';
 
+import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
+
 // §5 Auth-Hardening Directive 1 — Recruiter login verified (the foundational
 // unblock). Baseline: main 9d528f6.
 //
@@ -567,6 +569,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TASK_INIT,
         TASK_WORKSPACE_FIELDS,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
+        // Track 4 T4-B2 — requisition read DERIVES openings_available from the
+        // placement-owned ACTIVE ContractAssignment population; placement schema required.
+        ...placementCapacityMigrations(ROOT),
       ]) {
         await db.query(readFileSync(p, 'utf8'));
       }

@@ -140,13 +140,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return id;
     }
 
-    async function openingsAvailable(reqId: string): Promise<number> {
-      const rows = await prisma.$queryRawUnsafe<{ openings_available: number }[]>(
-        `SELECT openings_available FROM requisition."Requisition" WHERE id = '${reqId}'`,
-      );
-      return Number(rows[0]!.openings_available);
-    }
-
     async function pipelineRowCount(tenant: string, talent: string, req: string): Promise<number> {
       const rows = await prisma.$queryRawUnsafe<{ n: number }[]>(
         `SELECT count(*)::int AS n FROM pipeline."Pipeline" ` +
@@ -248,91 +241,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await pipelineRowCount(tenant, talent, req)).toBe(1); // exactly one live row
     });
 
-    // ---- P-capacity — CHARACTERIZATION ONLY ----
-    // One row to `placed` decrements openings_available by EXACTLY one. §14
-    // non-vacuity: the BEFORE value is asserted to exist, and the AFTER value is
-    // asserted exactly one lower — not merely "decreased".
-    it('P-capacity [characterization]: one row transitioning to placed decrements openings_available by exactly one (N -> N-1)', async () => {
-      const tenant = randomUUID();
-      const N = 3;
-      const req = await seedRequisition(tenant, N);
-      const talent = randomUUID();
-
-      expect(await openingsAvailable(req)).toBe(N); // BEFORE exists and equals N
-
-      const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
-      await drive(tenant, p.id, PATH_TO_PLACED);
-
-      expect(await openingsAvailable(req)).toBe(N - 1); // exactly one lower
-    });
-
-    // ---- P-restore — CHARACTERIZATION ONLY ----
-    // Deleting a capacity-consuming placed row restores openings_available by
-    // EXACTLY one (the exact inverse of P-capacity).
-    it('P-restore [characterization]: deleting a placed row restores openings_available by exactly one (N-1 -> N)', async () => {
-      const tenant = randomUUID();
-      const N = 2;
-      const req = await seedRequisition(tenant, N);
-      const talent = randomUUID();
-
-      const p = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
-      await drive(tenant, p.id, PATH_TO_PLACED);
-      expect(await openingsAvailable(req)).toBe(N - 1);
-
-      await repo.delete({ tenant_id: tenant, id: p.id, requestId: 'l1' });
-      expect(await openingsAvailable(req)).toBe(N); // exact inverse
-    });
-
-    // ==== E6 — Q-3 CAPACITY IDEMPOTENCY (Boundary 3) ====
-    // Capacity is a BOOLEAN predicate: openings are consumed iff at least one
-    // placed episode EXISTS for (tenant, talent, requisition). Coexisting placed
-    // episodes (now possible post-drop) must consume openings EXACTLY ONCE.
-
-    // ---- B-capacity [E6] ----
-    // FALSE->TRUE = -1; TRUE->TRUE = no change. Two placed episodes for one triple
-    // consume openings EXACTLY ONCE: N -> N-1, NOT N-2.
-    it('B-capacity [E6]: two placed episodes for one triple consume openings exactly once (N -> N-1, not N-2)', async () => {
-      const tenant = randomUUID();
-      const N = 3;
-      const req = await seedRequisition(tenant, N);
-      const talent = randomUUID();
-
-      expect(await openingsAvailable(req)).toBe(N); // BEFORE exists and equals N
-
-      const p1 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
-      await drive(tenant, p1.id, PATH_TO_PLACED);
-      expect(await openingsAvailable(req)).toBe(N - 1); // FALSE->TRUE: exactly one lower
-
-      // Second placed episode for the SAME triple — the predicate is already TRUE,
-      // so this is TRUE->TRUE: NO further decrement.
-      const p2 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
-      await drive(tenant, p2.id, PATH_TO_PLACED);
-      expect(await openingsAvailable(req)).toBe(N - 1); // still exactly one lower, NOT N-2
-    });
-
-    // ---- B-capacity-restore [E6] ----
-    // TRUE->TRUE on removal = no change; TRUE->FALSE (last placed removed) = +1
-    // exactly once. Symmetric inverse of B-capacity.
-    it('B-capacity-restore [E6]: deleting one of two placed leaves capacity unchanged; deleting the last restores +1 exactly once', async () => {
-      const tenant = randomUUID();
-      const N = 2;
-      const req = await seedRequisition(tenant, N);
-      const talent = randomUUID();
-
-      const p1 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
-      await drive(tenant, p1.id, PATH_TO_PLACED);
-      const p2 = await repo.create({ tenant_id: tenant, input: { talent_record_id: talent, requisition_id: req } });
-      await drive(tenant, p2.id, PATH_TO_PLACED);
-      expect(await openingsAvailable(req)).toBe(N - 1); // one consume total for the triple
-
-      // Delete one placed episode while another placed remains — TRUE->TRUE, no change.
-      await repo.delete({ tenant_id: tenant, id: p1.id, requestId: 'b-cap' });
-      expect(await openingsAvailable(req)).toBe(N - 1); // unchanged
-
-      // Delete the LAST placed episode — TRUE->FALSE, restore +1 exactly once.
-      await repo.delete({ tenant_id: tenant, id: p2.id, requestId: 'b-cap' });
-      expect(await openingsAvailable(req)).toBe(N); // restored exactly once
-    });
+    // ==== Track 4 / T4-B2 §7 — CAPACITY PROOFS REMOVED FROM THIS SPEC ====
+    // P-capacity / P-restore / B-capacity / B-capacity-restore CHARACTERIZED the
+    // pre-B2 pipeline capacity coupling (the E6 boolean EXISTS(placed) ±1 decrement/
+    // restore of requisition.openings_available). B2 §7 REMOVED that mechanism:
+    // pipeline no longer writes requisition capacity (ContractAssignment is the sole
+    // consumption authority). Those four proofs are therefore obsolete and were
+    // removed here; the NEW authoritative behaviour (a `placed` transition / delete
+    // leaves capacity untouched, and the REQUISITION_NO_OPENINGS 409 gate is gone)
+    // is proven by pipeline-capacity-authority-removed-b2.integration.spec.ts. The
+    // remaining proofs below (uniqueness / projection collapse) are E6 concerns,
+    // unaffected by B2, and stay.
 
     // ==== E6 — Q-4 PROJECTION COLLAPSE (Boundary 5, repository layer) ====
     // ---- B-projection-repo [E6] ----

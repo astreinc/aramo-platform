@@ -1,0 +1,14 @@
+-- Track 4 / T4-B2 §6 — retire the LEGACY stored openings_available column.
+--
+-- Capacity availability is now DERIVED, owned by placement:
+--   openings_available = max(capacity_balance, 0)
+--   capacity_balance   = openings - active ContractAssignment consumption (signed)
+-- The stored column is vestigial after the B2 reader cutover + Pipeline-writer
+-- removal (no live reader; the decrement/restore/REQUISITION_NO_OPENINGS 409 are
+-- gone; only a create-time default remained). This is the DEDICATED, irreversible
+-- DROP required by the locked ordering — no other schema change rides with it, and
+-- no historical migration is mutated.
+--
+-- The PUBLIC API field openings_available is UNCHANGED — it continues to be
+-- returned as the derived projection. This retires physical storage only.
+ALTER TABLE "requisition"."Requisition" DROP COLUMN "openings_available";

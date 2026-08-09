@@ -89,7 +89,12 @@ describe('Search PR-1 — requisition ?q= WHERE construction (repo) — visibili
   it('q sets a single-column title filter that does NOT collide with the visibility OR', async () => {
     const { RequisitionRepository: Repo } = await import('../lib/requisition.repository.js');
     const findMany = vi.fn().mockResolvedValue([]);
-    const repo = new Repo({ requisition: { findMany } } as never);
+    const repo = new Repo(
+      { requisition: { findMany } } as never,
+      undefined as never,
+      undefined as never,
+      { countActiveByRequisitionIds: async () => new Map() } as never,
+    );
     await repo.listForActor({
       tenant_id: TENANT_ID,
       visibility: makeVisibility(),
@@ -110,7 +115,12 @@ describe('Search PR-1 — requisition ?q= WHERE construction (repo) — visibili
   it('no q → title filter absent; the visibility OR is unchanged', async () => {
     const { RequisitionRepository: Repo } = await import('../lib/requisition.repository.js');
     const findMany = vi.fn().mockResolvedValue([]);
-    const repo = new Repo({ requisition: { findMany } } as never);
+    const repo = new Repo(
+      { requisition: { findMany } } as never,
+      undefined as never,
+      undefined as never,
+      { countActiveByRequisitionIds: async () => new Map() } as never,
+    );
     await repo.listForActor({ tenant_id: TENANT_ID, visibility: makeVisibility() });
     const where = findMany.mock.calls[0][0].where;
     expect(where.title).toBeUndefined();

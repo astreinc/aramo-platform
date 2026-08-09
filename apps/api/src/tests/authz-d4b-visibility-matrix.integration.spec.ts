@@ -22,6 +22,7 @@ import {
 import { AppModule } from '../app.module.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 
 // AUTHZ-D4b — the composed visibility predicate + 6-entity cascade
 // (READ-SIDE). Proves the over/under-restriction matrix from the D4b
@@ -515,6 +516,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         REQUISITION_IMPORT_BACK_REF,
         REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
+        // Track 4 T4-B2 — requisition read DERIVES openings_available from the
+        // placement-owned ACTIVE ContractAssignment population; placement schema required.
+        ...placementCapacityMigrations(ROOT),
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }

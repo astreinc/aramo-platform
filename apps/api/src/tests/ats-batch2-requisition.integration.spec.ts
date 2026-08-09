@@ -23,6 +23,7 @@ import { AppModule } from '../app.module.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
+import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 
 // PR-A3 Gate 5 — ATS Batch 2 (requisition + assignment-visibility) integration spec.
 //
@@ -240,6 +241,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const n of readdirSync(policyStoreDir).filter((d) => /^\d/.test(d)).sort()) {
         await setupClient.query(readFileSync(resolve(policyStoreDir, n, 'migration.sql'), 'utf8'));
       }
+
+      // Track 4 T4-B2 — requisition read DERIVES openings_available from the
+      // placement-owned ACTIVE ContractAssignment population; placement schema required.
+      for (const p of placementCapacityMigrations(ROOT)) {
+        await setupClient.query(readFileSync(p, 'utf8'));
+      }
+
       await publishLifecyclePackage(url, TENANT_ATS);
 
       // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant

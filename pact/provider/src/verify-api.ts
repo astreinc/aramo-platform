@@ -802,6 +802,33 @@ const PLACEMENT_REPLACEMENT_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260808120000_placement_replacement_link/migration.sql',
 );
+// Track 4 — ContractAssignment (the consumption authority) + its lifecycle. Post
+// T4-B2 the requisition read DERIVES openings_available from the ACTIVE
+// ContractAssignment count, so the provider DB must carry this table or the
+// requisition GET (which the ats-web requisition pact verifies) would 500.
+const PLACEMENT_CONTRACT_ASSIGNMENT_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260809120000_placement_contract_assignment/migration.sql',
+);
+const PLACEMENT_ASSIGNMENT_ENDED_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260810100000_placement_assignment_ended_value/migration.sql',
+);
+const PLACEMENT_ASSIGNMENT_GUARD_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260810110000_placement_assignment_aware_guard/migration.sql',
+);
+const PLACEMENT_ASSIGNMENT_END_REASON_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260810120000_placement_assignment_end_reason/migration.sql',
+);
+// Track 4 / T4-B2 §6 — the dedicated stored openings_available DROP. Applied here so
+// the provider schema matches the retired-column reality; the requisition read is
+// derived and does not depend on the physical column.
+const REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260811120000_t4b2_drop_openings_available/migration.sql',
+);
 
 // Constants used by the consent-read given-states (and formerly the retired
 // thin consumer). The talent uuid matches the value the consumer tests
@@ -1613,8 +1640,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
 
     // PC-5c — pipeline + activity fixture ids. talent_record_id and
     // requisition_id on Pipeline are logical UUID refs (no FK), so a basic
-    // pipeline seed needs no parent rows; only the no-openings 409 case seeds
-    // a real requisition (openings_available forced to 0).
+    // pipeline seed needs no parent rows. (T4-B2 §7: the former no-openings 409
+    // case — which forced openings_available to 0 — was retired.)
     const ATSW_PIPE_ID = '00000000-0000-7000-8000-71be00000001';
     const ATSW_PIPE_OFFERED_ID = '00000000-0000-7000-8000-71be00000002';
     const ATSW_PIPE_TALENT_ID = '00000000-0000-7000-8000-7a1e00000001';
@@ -2979,6 +3006,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PLACEMENT_OFFER_MIGRATION,
         PLACEMENT_REASON_MIGRATION,
         PLACEMENT_REPLACEMENT_MIGRATION,
+        // Track 4 — ContractAssignment + lifecycle (the T4-B2 derived-capacity
+        // consumption authority the requisition read now counts).
+        PLACEMENT_CONTRACT_ASSIGNMENT_MIGRATION,
+        PLACEMENT_ASSIGNMENT_ENDED_MIGRATION,
+        PLACEMENT_ASSIGNMENT_GUARD_MIGRATION,
+        PLACEMENT_ASSIGNMENT_END_REASON_MIGRATION,
+        // T4-B2 §6 — retire the stored openings_available column (derived-only).
+        REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -5071,30 +5106,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         await withClient((c) => resetAllRows(c));
       },
 
-      // -- a pipeline at 'offered' whose linked requisition has zero available
-      // openings: offered->placed is legal but the placement decrement matches
-      // no rows -> REQUISITION_NO_OPENINGS 409.
-      'an ats-web recruiter and a pipeline in offered state with no requisition openings exist':
-        async () => {
-          await withClient(async (c) => {
-            await resetAllRows(c);
-            await seedAtsWebRequisition(c, {
-              id: ATSW_PIPE_FULL_REQ_ID,
-              title: 'Fully Placed Role',
-              companyId: ATSW_REQ_COMPANY_ID,
-            });
-            await c.query(
-              `UPDATE requisition."Requisition" SET openings_available = 0 WHERE id = $1`,
-              [ATSW_PIPE_FULL_REQ_ID],
-            );
-            await seedAtsWebPipeline(c, {
-              id: ATSW_PIPE_OFFERED_ID,
-              talentRecordId: ATSW_PIPE_TALENT_ID,
-              requisitionId: ATSW_PIPE_FULL_REQ_ID,
-              status: 'offered',
-            });
-          });
-        },
+      // Track 4 / T4-B2 §7 — the "no requisition openings -> REQUISITION_NO_OPENINGS
+      // 409" provider state was RETIRED alongside its consumer interaction. Pipeline
+      // no longer decrements requisition capacity (stored openings_available is
+      // dropped; over-capacity is a representable DERIVED state, not a 409 gate), so
+      // there is no full-requisition placement refusal to seed.
 
       // -- a seeded activity (activities list).
       'an ats-web recruiter and an activity exist': async () => {
