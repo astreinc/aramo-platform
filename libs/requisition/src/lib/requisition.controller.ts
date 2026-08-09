@@ -22,6 +22,7 @@ import {
   RolesGuard,
 } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
+import { CapacityProjectionRepository, type CapacityProjection } from '@aramo/placement';
 
 import {
   validateCompensationInput,
@@ -80,6 +81,11 @@ export class RequisitionController {
     private readonly assignmentRepository: RequisitionAssignmentRepository,
     private readonly profileService: RequisitionProfileService,
     private readonly intakeService: RequisitionIntakeService,
+    // Track 4 / T4-B1 — the placement-owned capacity projection, PULLED via the
+    // declared requisition->placement edge (§4). Non-destructive: read-only, the
+    // stored openings_available column and its writers remain. Trailing param so
+    // existing construction sites are undisturbed.
+    private readonly capacity: CapacityProjectionRepository,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -155,7 +161,20 @@ export class RequisitionController {
         { requestId, details: { id } },
       );
     }
+    // Track 4 / T4-B1 — derived capacity is NOT embedded here. The requisition
+    // detail read stays on the stored openings_available authority (the only
+    // user-facing capacity value until the T4-B2 cutover), and is NOT coupled to
+    // placement at runtime. The derived projection is PULLABLE via
+    // readCapacity() (the declared requisition->placement edge), unexposed to users.
     return view;
+  }
+
+  // Track 4 / T4-B1 (access, not migration) — pull the placement-owned derived
+  // capacity for one requisition via the declared requisition->placement edge.
+  // Additive/unexposed: no route, not embedded in any user-facing response; the
+  // stored openings_available remains the user-facing authority until T4-B2.
+  async readCapacity(tenant_id: string, requisition_id: string, openings: number): Promise<CapacityProjection> {
+    return this.capacity.projectCapacity(tenant_id, requisition_id, openings);
   }
 
   @Post()

@@ -40,6 +40,14 @@ const OFFER_OUTBOX_MIGRATION = resolve(__dirname, '../../../../libs/placement/pr
 const REASON_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql');
 // E4 — additive replacement-lineage column; the Prisma client now selects it.
 const REPLACEMENT_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260808120000_placement_replacement_link/migration.sql');
+// Track 4 / T4-A1 — the additive ContractAssignment table; the STARTED transition
+// INSERTs into it, so this HTTP spec (which activates placements) must apply it.
+const CONTRACT_ASSIGNMENT_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260809120000_placement_contract_assignment/migration.sql');
+// Track 4 / T4-C — ENDED lifecycle value + assignment-aware one-live guard (the
+// create() pre-check queries lifecycle_state='ENDED'; guard trigger is assignment-aware).
+const ASSIGNMENT_ENDED_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260810100000_placement_assignment_ended_value/migration.sql');
+const ASSIGNMENT_GUARD_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260810110000_placement_assignment_aware_guard/migration.sql');
+const ASSIGNMENT_END_REASON_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260810120000_placement_assignment_end_reason/migration.sql');
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const auth = (scopes: string[], tenant: string): any => ({ sub: 'u', tenant_id: tenant, actor_kind: 'user', consumer_type: 'tenant', scopes });
@@ -75,7 +83,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const url = container.getConnectionUri();
     setup = new PrismaService(url);
     await setup.$connect();
-    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION]) {
+    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION]) {
       for (const s of splitDdl(readFileSync(migration, 'utf8'))) {
         if (s.trim()) await setup.$executeRawUnsafe(s.trim());
       }
@@ -142,7 +150,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
       code: 'INSUFFICIENT_PERMISSIONS',
       context: { details: { authority_class: 'activate', required_scope: 'placement:activate' } },
     });
-    const live = await ctrl.transition(s, 'r', id, { to: 'STARTED' });
+    const live = await ctrl.transition(s, 'r', id, { to: 'STARTED', assignment_company_id: randomUUID() });
     expect(live.state).toBe('STARTED');
   });
 
@@ -261,7 +269,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_ACCEPTED' });
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'PRE_START' });
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'READY_TO_START' });
-    const live = await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED' });
+    const live = await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED', assignment_company_id: randomUUID() });
     expect(live.state).toBe('STARTED');
   });
 
@@ -523,6 +531,7 @@ describe('E1-b placement matrix — read/create guard boundary (real RolesGuard 
 
   const read = PlacementController.prototype.get as unknown as (...a: unknown[]) => unknown;
   const create = PlacementController.prototype.create as unknown as (...a: unknown[]) => unknown;
+  const endAssignment = PlacementController.prototype.endAssignment as unknown as (...a: unknown[]) => unknown;
 
   function denial(handler: (...a: unknown[]) => unknown, scopes: string[]): unknown {
     let err: unknown;
@@ -541,6 +550,17 @@ describe('E1-b placement matrix — read/create guard boundary (real RolesGuard 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(guard.canActivate(ctx(create, ['placement:create']) as any)).toBe(true);
     expect(denial(create, [])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+  });
+
+  it('T4-D: POST /v1/placements/:id/assignment/end requires assignment:end — WITH it passes; WITHOUT it 403; placement:* does NOT satisfy it (§7 no-reuse)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(guard.canActivate(ctx(endAssignment, ['assignment:end']) as any)).toBe(true);
+    expect(denial(endAssignment, [])).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    // The dedicated family is NOT satisfied by placement authority — reuse is rejected.
+    expect(denial(endAssignment, ['placement:terminate', 'placement:activate', 'placement:transition'])).toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+    });
   });
 
   it('a no-placement-grant principal (e.g. super_admin / any role outside the matrix) is denied read AND create', () => {

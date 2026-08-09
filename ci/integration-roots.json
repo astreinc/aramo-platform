@@ -26,6 +26,8 @@
     "libs/policy-store",
     "libs/portal-identity",
     "libs/pre-start-requirement",
+    "libs/reporting",
+    "libs/requisition",
     "libs/resume-parse",
     "libs/settings",
     "libs/skills-taxonomy",

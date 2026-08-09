@@ -120,6 +120,11 @@ const DELETE_INVENTORY: readonly DeleteStep[] = [
   // ordinary use, not survival of a separately governed destructive reset.
   { item: 8, label: `placement."OutboxEvent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   { item: 8, label: `placement."PlacementProcessEvent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  // Track 4 / T4-F — ContractAssignment (authoritative post-start commitment), a NEW
+  // tenant-owned placement table. NO FK to PlacementProcess (plain scalar §7.3) and
+  // NO delete-reject trigger → NO escape migration needed; deletes ordinarily.
+  // Positioned child-before-parent (logical child of PlacementProcess).
+  { item: 8, label: `placement."ContractAssignment"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   { item: 8, label: `placement."PlacementProcess"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
 ];
 
@@ -152,6 +157,7 @@ const LOCK_TABLES: readonly string[] = [
   // transaction (all three tables are deleted in the same transaction).
   `placement."OutboxEvent"`,
   `placement."PlacementProcessEvent"`,
+  `placement."ContractAssignment"`,
   `placement."PlacementProcess"`,
 ];
 

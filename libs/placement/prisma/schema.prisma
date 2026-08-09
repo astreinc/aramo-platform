@@ -177,3 +177,103 @@ model OutboxEvent {
   @@index([published_at])
   @@schema("placement")
 }
+
+// ContractAssignmentProvenance — Track 4 / T4-A1. The discriminator that makes
+// the forward/backfill split clean (v1.1 Amendment §A3). NOT a lifecycle state:
+// FORWARD = created when a placement started; BACKFILLED = materialised for a
+// historical STARTED row. Its whole purpose is to make a null lifecycle_state
+// mean ABSENCE-because-unknown (backfilled) rather than a set value.
+enum ContractAssignmentProvenance {
+  FORWARD
+  BACKFILLED
+
+  @@schema("placement")
+}
+
+// ContractAssignmentState — Track 4 / T4-A1. The post-start assignment
+// lifecycle. Ships ACTIVE (the only state a forward start produces); ending
+// states land with their ratified edges (T4-B / T4-C) as additive members.
+// Deliberately NO `UNKNOWN` member (Amendment §A3.1 / HALT 19) — a null
+// lifecycle_state with BACKFILLED provenance carries "unknown" as absence.
+enum ContractAssignmentState {
+  ACTIVE
+  // Track 4 / T4-C — the ratified ending state. An ENDED assignment releases both
+  // capacity (T4-B) and the placement one-live guard (G2). Attrition TYPE (quit /
+  // terminated / completed / client-ended) is captured as an ending reason, not as
+  // distinct lifecycle states — the ratified capacity/guard semantic is binary
+  // (active vs ended). Additive migration 20260810100000.
+  ENDED
+
+  @@schema("placement")
+}
+
+// Track 4 / T4-C — the ratified ending-reason taxonomy. An ENDED ContractAssignment
+// authoritatively distinguishes the three ratified business categories as a CLOSED
+// enum, never free text: COMPLETED (normal completion), WORKER_ENDED (worker quit /
+// resigned), CLIENT_ENDED (employer/client ended). ENDED rows require one; ACTIVE
+// rows carry none (CHECK, migration 20260810120000).
+enum ContractAssignmentEndReason {
+  COMPLETED
+  WORKER_ENDED
+  CLIENT_ENDED
+
+  @@schema("placement")
+}
+
+// ContractAssignment — Track 4 / T4-A1. The authoritative post-start assignment
+// record: the commitment record the recon proved absent (ADR-0024 PR-0b). Its
+// existence means this talent has an authoritative post-start assignment against
+// this requisition. Post-`STARTED` reality lives HERE, not in new PlacementProcess
+// edges (T4-Q1) — PlacementProcess remains transition-terminal at STARTED.
+//
+// Provenance-conditional (Amendment §A3.1, E3 precedent): a FORWARD row carries a
+// known lifecycle_state and org snapshot; a BACKFILLED row may carry neither.
+// The two DB CHECKs (in migration 20260809120000) enforce that in the substrate.
+// Cross-schema refs are UUID-only, no FK (§7.3). Additive migration; the
+// generator-owned init stays byte-identical (§4 additive ownership).
+model ContractAssignment {
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+
+  // Originating placement. Intra-schema but a plain scalar (no FK) for symmetry
+  // with the single-pass tenant-reset delete (same rationale as E4's replaces_*).
+  placement_process_id String @db.Uuid
+
+  // Lineage + denormalised read axes, mirroring PlacementProcess (§3b).
+  submittal_id     String @db.Uuid
+  requisition_id   String @db.Uuid
+  talent_record_id String @db.Uuid
+
+  // Authoritative start fact. Forward: set at the STARTED transition. Backfill:
+  // reconstructed from the immutable PlacementProcessEvent history (T4-A2).
+  started_at DateTime @db.Timestamptz(6)
+
+  provenance ContractAssignmentProvenance
+
+  // Nullable at schema (Amendment §A3.1). Required for FORWARD by CHECK; a null
+  // is admissible ONLY for BACKFILLED provenance — absence, not a canonical value.
+  lifecycle_state ContractAssignmentState?
+
+  // Org/site snapshot (§A3.3). company_id required for FORWARD by CHECK (current
+  // = historical at start); nullable for BACKFILLED (historical org not
+  // deterministically recoverable). site/department nullable throughout, as they
+  // are nullable on Requisition itself.
+  company_id            String? @db.Uuid
+  site_id               String? @db.Uuid
+  company_department_id String? @db.Uuid
+
+  // Track 4 / T4-C — the ratified ending reason. Nullable at schema; required for
+  // ENDED and forbidden otherwise (CHECK, migration 20260810120000). Distinguishes
+  // normal completion / worker-ended / client-ended structurally.
+  end_reason ContractAssignmentEndReason?
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Idempotency: at most one assignment per originating start fact.
+  @@unique([tenant_id, placement_process_id])
+  @@index([tenant_id, requisition_id])
+  @@index([tenant_id, submittal_id])
+  @@index([tenant_id, talent_record_id])
+  @@schema("placement")
+}

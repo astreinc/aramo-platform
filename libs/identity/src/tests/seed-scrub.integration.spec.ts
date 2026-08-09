@@ -60,11 +60,12 @@ const CATALOG_ROLE_COUNT = 14;
 // was added to SEED_IDS.scopes after this constant was last reconciled — F-2, not
 // reconciled here). +23 pre_start_requirement RoleScope rows.
 // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (zero-grant) → 101.
-const CATALOG_SCOPE_COUNT = 107; // +5 Track3/E1-b placement scopes; +1 Track3/E4 placement:replace
+const CATALOG_SCOPE_COUNT = 111; // +5 Track3/E1-b placement scopes; +1 Track3/E4 placement:replace; +4 Track4/T4-D assignment scopes
 // Re-derived actual 505 (prior literal 478 was pre-existingly understated by 4;
 // actual pre-change 482 + 23 pre_start_requirement grants = 505 — F-2).
 // v1.2.2 reopen adds ZERO RoleScope rows (§13c-1) — UNCHANGED at 505.
-const CATALOG_ROLE_SCOPE_COUNT = 526; // +18 Track3/E1-b placement role matrix; +3 Track3/E4 placement:replace (AM/admin/owner)
+// Track 4 / T4-D: +13 assignment role-matrix grants (read×4 + create/update/end×3) → 526→539.
+const CATALOG_ROLE_SCOPE_COUNT = 539; // +18 Track3/E1-b placement matrix; +3 Track3/E4 placement:replace; +13 Track4/T4-D assignment matrix
 
 // Naive DDL splitter — mirrors identity.integration.spec.ts.
 function splitDdl(sql: string): string[] {

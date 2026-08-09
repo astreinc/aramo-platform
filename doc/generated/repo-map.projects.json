@@ -564,6 +564,8 @@
       "toEnforcementDisposition"
     ],
     "@aramo/placement": [
+      "CAPACITY_STATUSES",
+      "CapacityProjectionRepository",
       "DUPLICATE_GUARD_INACTIVE",
       "GOVERNED_TERMINAL_TARGETS",
       "INITIAL_STATE",
@@ -572,6 +574,7 @@
       "PLACEMENT_AUTHORITY_CLASSES",
       "PLACEMENT_REASONS",
       "PLACEMENT_STATES",
+      "PlacementCapacityModule",
       "PlacementOutboxModule",
       "PlacementOutboxRepository",
       "PlacementProcessEventRepository",
@@ -589,6 +592,7 @@
       "canTransition",
       "canTransitionTyped",
       "classifyTransitionReason",
+      "deriveCapacity",
       "edgeAuthorityClass",
       "generatePlacementMigrationSql",
       "getReason",
@@ -3020,7 +3024,21 @@
         "project": "outbox-publisher",
         "status": "excluded"
       },
-      { "project": "outbox-publisher", "status": "production" }
+      { "project": "outbox-publisher", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/reporting/src/tests/capacity-projection-edge.integration.spec.ts",
+        "project": "reporting",
+        "status": "excluded"
+      },
+      { "project": "reporting", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/capacity-projection-edge.integration.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      { "project": "requisition", "status": "production" }
     ],
     "@aramo/platform-trust": [{ "project": "api", "status": "production" }],
     "@aramo/policy-engine": [
