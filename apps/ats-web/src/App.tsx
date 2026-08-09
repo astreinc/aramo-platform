@@ -24,6 +24,8 @@ import { InvitationAcceptPage } from './routes/InvitationAcceptPage';
 import { VerifyEmailConfirmPage } from './routes/VerifyEmailConfirmPage';
 import { LoginPage } from './routes/LoginPage';
 import { OrgHierarchyView } from './org/OrgHierarchyView';
+import { PlacementBoardView } from './placement/PlacementBoardView';
+import { PlacementDetailView } from './placement/PlacementDetailView';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
 import { RequisitionDetailView } from './requisitions/RequisitionDetailView';
 import { RequisitionsListView } from './requisitions/RequisitionsListView';
@@ -149,6 +151,28 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <RequisitionDetailView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="placements"
+                      element={
+                        <RouteGuard
+                          requireScope="placement:read"
+                          sessionStateOverride={state}
+                        >
+                          <PlacementBoardView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="placements/:placementId"
+                      element={
+                        <RouteGuard
+                          requireScope="placement:read"
+                          sessionStateOverride={state}
+                        >
+                          <PlacementDetailView />
                         </RouteGuard>
                       }
                     />

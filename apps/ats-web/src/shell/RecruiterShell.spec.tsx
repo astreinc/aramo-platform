@@ -44,6 +44,21 @@ describe('RecruiterShell', () => {
     expect(screen.queryByRole('link', { name: 'Tasks' })).not.toBeInTheDocument();
   });
 
+  // T4-E / E1-d — the Placements nav entry follows placement:read (least-
+  // visibility): visible to a placement-scoped principal, hidden otherwise.
+  it('shows the Placements nav entry only to a placement:read principal', () => {
+    renderShell(makeSession(['placement:read', 'requisition:read']));
+    expect(screen.getByRole('link', { name: 'Placements' })).toHaveAttribute(
+      'href',
+      '/placements',
+    );
+  });
+
+  it('hides the Placements nav entry from a principal without placement:read', () => {
+    renderShell(makeSession(['requisition:read', 'talent:read']));
+    expect(screen.queryByRole('link', { name: 'Placements' })).not.toBeInTheDocument();
+  });
+
   it('hosts the unified "Aramo" brand in the top bar as a home link (no tier label)', () => {
     renderShell(makeSession(['talent:read']));
     const brand = screen.getByRole('link', { name: /Aramo — home/ });

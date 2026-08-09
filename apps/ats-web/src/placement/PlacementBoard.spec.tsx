@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { PlacementCard } from './PlacementCard';
 import { PlacementEventTimeline } from './PlacementEventTimeline';
@@ -52,8 +52,10 @@ describe('PlacementCard — derived display, mismatch, action affordances (§10)
 
   it('a recruiter card never offers an activate or terminate action (§10 / Proof 8)', () => {
     // READY_TO_START → STARTED is activate-class; the terminal edges are
-    // terminate-class. A recruiter must see neither.
-    const { container } = render(<PlacementCard placement={placement({ state: 'READY_TO_START' })} scopes={RECRUITER} />);
+    // terminate-class. A recruiter (with a real action handler) must see neither.
+    const { container } = render(
+      <PlacementCard placement={placement({ state: 'READY_TO_START' })} scopes={RECRUITER} onAction={vi.fn()} />,
+    );
     const classes = Array.from(container.querySelectorAll('.placement-card__action')).map(
       (b) => b.getAttribute('data-authority-class'),
     );
@@ -61,12 +63,36 @@ describe('PlacementCard — derived display, mismatch, action affordances (§10)
     expect(classes).not.toContain('terminate');
   });
 
-  it('a manager card DOES offer the activate action from READY_TO_START', () => {
-    const { container } = render(<PlacementCard placement={placement({ state: 'READY_TO_START' })} scopes={MANAGER} />);
+  it('a manager card DOES offer the activate action from READY_TO_START (Proof C — onAction supplied)', () => {
+    const { container } = render(
+      <PlacementCard placement={placement({ state: 'READY_TO_START' })} scopes={MANAGER} onAction={vi.fn()} />,
+    );
     const classes = Array.from(container.querySelectorAll('.placement-card__action')).map(
       (b) => b.getAttribute('data-authority-class'),
     );
     expect(classes).toContain('activate');
+  });
+
+  // FIX_NOW (Option B) — no inert transition affordances. A card mounted WITHOUT
+  // an onAction handler (the composition does not wire the transition-write seam)
+  // shows the placement information but NO transition control.
+  it('A/B: without onAction, placement info renders but NO transition control is shown', () => {
+    const { container } = render(
+      <PlacementCard placement={placement({ state: 'READY_TO_START' })} scopes={MANAGER} />,
+    );
+    // Placement information stays visible…
+    expect(screen.getByTestId('placement-state').textContent).toBe('Ready to start');
+    // …and there is no dead/inert transition affordance.
+    expect(container.querySelectorAll('.placement-card__action')).toHaveLength(0);
+    expect(container.querySelector('.placement-card__actions')).toBeNull();
+  });
+
+  it('D: a STARTED card exposes no transition action even with onAction + full scopes', () => {
+    const { container } = render(
+      <PlacementCard placement={placement({ state: 'STARTED' })} scopes={MANAGER} onAction={vi.fn()} />,
+    );
+    expect(screen.getByTestId('placement-state').textContent).toBe('Started');
+    expect(container.querySelectorAll('.placement-card__action')).toHaveLength(0);
   });
 });
 

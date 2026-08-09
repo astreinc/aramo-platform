@@ -1,6 +1,8 @@
 import { apiClient } from '@aramo/fe-foundation';
 
 import type {
+  ContractAssignmentEndReason,
+  PlacementAssignmentResponse,
   PlacementEventListResponse,
   PlacementListResponse,
   PlacementView,
@@ -38,5 +40,32 @@ export async function getPlacement(id: string): Promise<PlacementView> {
 export async function listPlacementEvents(id: string): Promise<PlacementEventListResponse> {
   return apiClient.get<PlacementEventListResponse>(
     `/v1/placements/${encodeURIComponent(id)}/events`,
+  );
+}
+
+// Track 4 — the ContractAssignment read (assignment:read). Returns a coherent
+// { assignment: null } when no assignment has started for the placement (a real
+// absence, never a fabricated row). Capacity is deliberately absent from this
+// surface and is never re-derived here.
+export async function getPlacementAssignment(
+  id: string,
+): Promise<PlacementAssignmentResponse> {
+  return apiClient.get<PlacementAssignmentResponse>(
+    `/v1/placements/${encodeURIComponent(id)}/assignment`,
+  );
+}
+
+// Track 4 — end an ACTIVE ContractAssignment (assignment:end). The BE authorizes
+// this with the DEDICATED assignment:end scope (placement:* does NOT satisfy it)
+// and refuses a non-ACTIVE assignment with 404. end_reason is constrained to the
+// authoritative taxonomy. The caller re-reads the authoritative assignment after
+// success — the ENDED state is server truth, never manufactured on the client.
+export async function endPlacementAssignment(
+  id: string,
+  endReason: ContractAssignmentEndReason,
+): Promise<{ ok: true }> {
+  return apiClient.post<{ ok: true }>(
+    `/v1/placements/${encodeURIComponent(id)}/assignment/end`,
+    { end_reason: endReason },
   );
 }

@@ -94,6 +94,49 @@ test.describe.serial('ats-web live surfaces', () => {
     expect(errors, errors.join('\n')).toHaveLength(0);
   });
 
+  test('Placements: nav visibility, board reachability, board → detail composition (assignment panel, no END for read-only recruiter)', async ({
+    page,
+  }) => {
+    const errors = trackErrors(page);
+    await page.goto('/');
+    const nav = page.getByRole('navigation', { name: 'Primary' });
+    const placementsLink = nav.getByRole('link', { name: 'Placements' });
+
+    // Data-driven: the seeded recruiter holds placement:read, so the nav entry
+    // shows and the board is reachable. If a reduced-scope user is used instead,
+    // the route must ForbiddenState (the guard still bites).
+    if ((await placementsLink.count()) > 0) {
+      await placementsLink.click();
+      await expect(page.getByRole('heading', { name: 'Placements' })).toBeVisible();
+      const boardText = (await page.locator('main').first().innerText()) ?? '';
+      expect(boardText).not.toMatch(FULL_UUID);
+
+      // Drill into a placement if the tenant has one under real data; otherwise
+      // assert the coherent terminal empty state (resilient to an empty tenant).
+      const firstRow = page.locator('a[data-testid^="placement-row-"]').first();
+      if ((await firstRow.count()) > 0) {
+        await firstRow.click();
+        // Detail composition: placement state (PlacementCard) + history timeline.
+        await expect(page.getByTestId('placement-detail')).toBeVisible();
+        await expect(page.getByTestId('placement-state')).toBeVisible();
+        const detailText = (await page.locator('main').first().innerText()) ?? '';
+        expect(detailText).not.toMatch(FULL_UUID);
+        // The assignment lifecycle panel (assignment:read — the recruiter holds
+        // it) reaches a terminal state, never an indefinite spinner. The END
+        // control is ABSENT for this least-privilege recruiter (no assignment:end).
+        await expect(page.getByTestId('assignment-end-action')).toHaveCount(0);
+      } else {
+        await expect(page.getByText('No placements visible to you yet.')).toBeVisible();
+      }
+    } else {
+      await page.goto('/placements');
+      await expect(
+        page.getByText(/don.?t have access|forbidden|not authorized/i),
+      ).toBeVisible();
+    }
+    expect(errors, errors.join('\n')).toHaveLength(0);
+  });
+
   test('Talent list: pool framing + refusal-layer footer, no UUID leak', async ({
     page,
   }) => {

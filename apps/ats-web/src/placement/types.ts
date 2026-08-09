@@ -107,3 +107,61 @@ export interface PlacementEventView {
 export interface PlacementEventListResponse {
   readonly items: readonly PlacementEventView[];
 }
+
+// ── Track 4 — ContractAssignment lifecycle (assignment:read surface) ──
+// Hand-mirrored from libs/placement/src/lib/placement-process.types.ts
+// (ContractAssignmentView / ContractAssignmentEndReason). R1 hand-mirrors
+// instead of importing @aramo/placement (a forbidden domain edge — ADR-0017).
+// This is the read shape of GET /v1/placements/{id}/assignment; the response
+// envelope is { assignment: ContractAssignmentView | null }. Capacity is
+// DELIBERATELY ABSENT from this surface (it stays A2/B2-gated on the BE) and is
+// never re-derived on the client.
+
+export type ContractAssignmentProvenance = 'FORWARD' | 'BACKFILLED';
+
+export type ContractAssignmentLifecycleState = 'ACTIVE' | 'ENDED';
+
+// The authoritative ending taxonomy — never collapsed. The three reasons are a
+// product-meaningful distinction and each carries its own recruiter-facing
+// label; a UI must preserve the underlying discriminator.
+export const ASSIGNMENT_END_REASON_VALUES = [
+  'COMPLETED',
+  'WORKER_ENDED',
+  'CLIENT_ENDED',
+] as const;
+export type ContractAssignmentEndReason = (typeof ASSIGNMENT_END_REASON_VALUES)[number];
+
+export const ASSIGNMENT_END_REASON_LABELS: Record<ContractAssignmentEndReason, string> = {
+  COMPLETED: 'Completed',
+  WORKER_ENDED: 'Worker ended',
+  CLIENT_ENDED: 'Client ended',
+};
+
+export const ASSIGNMENT_LIFECYCLE_LABELS: Record<ContractAssignmentLifecycleState, string> = {
+  ACTIVE: 'Active',
+  ENDED: 'Ended',
+};
+
+export const ASSIGNMENT_PROVENANCE_LABELS: Record<ContractAssignmentProvenance, string> = {
+  FORWARD: 'Forward',
+  BACKFILLED: 'Backfilled',
+};
+
+// started_at is a Date on the BE; over JSON it arrives as an ISO string.
+// lifecycle_state is null only for a BACKFILLED assignment of unknown lifecycle
+// (§A3.1); end_reason is present iff ENDED.
+export interface ContractAssignmentView {
+  readonly id: string;
+  readonly placement_process_id: string;
+  readonly submittal_id: string;
+  readonly requisition_id: string;
+  readonly talent_record_id: string;
+  readonly started_at: string;
+  readonly provenance: ContractAssignmentProvenance;
+  readonly lifecycle_state: ContractAssignmentLifecycleState | null;
+  readonly end_reason: ContractAssignmentEndReason | null;
+}
+
+export interface PlacementAssignmentResponse {
+  readonly assignment: ContractAssignmentView | null;
+}
