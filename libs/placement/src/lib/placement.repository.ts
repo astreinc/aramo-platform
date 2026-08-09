@@ -17,6 +17,7 @@ import {
 } from './reasons/placement-reason-registry.js';
 import type {
   ContractAssignmentEndReason,
+  ContractAssignmentView,
   CreatePlacementInput,
   PlacementProcessView,
   TransitionPlacementInput,
@@ -409,6 +410,32 @@ export class PlacementRepository {
         },
       });
     });
+  }
+
+  // Track 4 / T4-D (assignment:read) — the authoritative assignment-state read for
+  // a placement. Returns null when no ContractAssignment exists for the placement
+  // (a coherent absence, NOT a fabricated row). Visibility is enforced by the
+  // caller loading the placement through findByIdForActor FIRST (house pattern).
+  // The unique (tenant_id, placement_process_id) index makes this at-most-one.
+  async findAssignmentByPlacement(
+    tenant_id: string,
+    placement_process_id: string,
+  ): Promise<ContractAssignmentView | null> {
+    const row = (await this.prisma.contractAssignment.findFirst({
+      where: { tenant_id, placement_process_id },
+      select: {
+        id: true,
+        placement_process_id: true,
+        submittal_id: true,
+        requisition_id: true,
+        talent_record_id: true,
+        started_at: true,
+        provenance: true,
+        lifecycle_state: true,
+        end_reason: true,
+      },
+    })) as ContractAssignmentView | null;
+    return row;
   }
 
   async findById(tenant_id: string, id: string): Promise<PlacementProcessView | null> {

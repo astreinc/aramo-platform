@@ -74,6 +74,7 @@ export type {
   PlacementProcessEventView,
   StateTransitionPayload,
   ContractAssignmentEndReason,
+  ContractAssignmentView,
 } from './lib/placement-process.types.js';
 
 // Track 4 / T4-B — the placement-owned capacity projection (§4: consumers pull).

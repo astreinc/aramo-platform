@@ -57,6 +57,26 @@ export type AssignmentContext = {
 // employer/client ended. Distinguishes the three business categories structurally.
 export type ContractAssignmentEndReason = 'COMPLETED' | 'WORKER_ENDED' | 'CLIENT_ENDED';
 
+// Track 4 / T4-D (assignment:read) — the authoritative assignment-state read view.
+// ASSIGNMENT STATE ONLY: existence + lifecycle_state + end_reason + started_at +
+// provenance + identity links. Deliberately NO capacity (capacity remains the
+// stored openings_available authority until B2; derived capacity is A2/B2-gated
+// and never exposed here) and NO org snapshot (a capacity-adjacent field).
+export type ContractAssignmentView = {
+  readonly id: string;
+  readonly placement_process_id: string;
+  readonly submittal_id: string;
+  readonly requisition_id: string;
+  readonly talent_record_id: string;
+  readonly started_at: Date;
+  readonly provenance: 'FORWARD' | 'BACKFILLED';
+  // Null only for a BACKFILLED assignment whose lifecycle is not known (§A3.1);
+  // a FORWARD assignment always carries one.
+  readonly lifecycle_state: 'ACTIVE' | 'ENDED' | null;
+  // Present iff ENDED; the authoritative discriminator, never collapsed.
+  readonly end_reason: ContractAssignmentEndReason | null;
+};
+
 export type PlacementProcessView = {
   readonly id: string;
   readonly tenant_id: string;
