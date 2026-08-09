@@ -1451,16 +1451,14 @@ components:
         (defense-in-depth; application-layer guard returns structured
         error before SQL UPDATE attempt). Mirrors M5 PR-3
         ENGAGEMENT_STATE_INVALID precedent.
-        PR-A5b-1 adds REQUISITION_NO_OPENINGS (HTTP 409) for the
-        pipeline-transition-to-`placed` over-capacity refusal: a
-        placement against a requisition whose openings_available has
-        been exhausted (== 0) refuses the entire transition tx
-        (Pipeline.status / PipelineStatusHistory / Activity /
-        UsageEvent all roll back). 409 (Conflict) — the request is
-        well-formed but conflicts with current resource state (the
-        slot is taken). The Lead-reviewed alternatives (silent floor
-        at 0, allow-and-go-negative-with-warning) were rejected as
-        data-integrity hazards.
+        REQUISITION_NO_OPENINGS (HTTP 409) is RESERVED but no longer
+        emitted: T4-B2 §7 retired the pipeline-transition-to-`placed`
+        over-capacity refusal. Pipeline no longer decrements requisition
+        capacity, the stored openings_available column was dropped (§6),
+        and over-capacity is now a representable DERIVED state
+        (signed capacity_balance < 0; public openings_available floors
+        at 0) rather than a transition-time 409. The code is retained in
+        the registry for compatibility.
         PR-A5b-2 adds TALENT_LINK_INVALID (HTTP 422) for the
         TalentRecord ↔ identity linker's cross-schema validation
         refusal. Failure modes share the code (distinguished by

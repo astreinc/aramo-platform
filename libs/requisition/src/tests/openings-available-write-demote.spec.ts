@@ -48,7 +48,17 @@ describe('PR-0b-1 — openings_available is not PATCH-writable', () => {
 
     // PR-7 — the SET_PRIORITY policy service is a 2nd ctor arg; this PATCH sets
     // no is_hot, so the gate short-circuits (R3) and the service is never called.
-    const repo = new RequisitionRepository(fakePrisma as never, {} as never, {} as never);
+    // T4-B2 — 4th ctor arg: the placement capacity projection. This PATCH proof
+    // never inspects the projected openings_available, so a fixed stub suffices.
+    const repo = new RequisitionRepository(fakePrisma as never, {} as never, {} as never, {
+      projectCapacity: async () => ({
+        openings: 0,
+        openings_reserved: 0,
+        capacity_balance: 0,
+        openings_available: 0,
+        capacity_status: 'AVAILABLE',
+      }),
+    } as never);
 
     await repo.update({
       tenant_id: 'tenant-1',

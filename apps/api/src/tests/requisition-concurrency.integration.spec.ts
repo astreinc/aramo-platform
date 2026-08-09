@@ -12,6 +12,7 @@ import {
   RequisitionRepository,
   RequisitionPrismaService,
 } from '@aramo/requisition';
+import { deriveCapacity } from '@aramo/placement';
 
 // Track 1 T1-b — optimistic concurrency on requisition.Requisition, exercised
 // against real Postgres 17. Lives in apps/api because libs/requisition is NOT
@@ -85,7 +86,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           throw new Error('RequisitionTransitionPolicyService.decide must not be called');
         },
       } as never;
-      repo = new RequisitionRepository(prisma, setPriorityStub, transitionStub);
+      // Track 4 / T4-B2 — 4th ctor arg (capacity projection). These specs seed
+      // NO ContractAssignment rows, so consuming_count is 0 and the derived
+      // openings_available equals the requisition's total openings. A local stub
+      // avoids needing the placement schema in this container.
+      const capacityStub = {
+        projectCapacity: async (_t: string, _r: string, openings: number) =>
+          deriveCapacity({ openings, consuming_count: 0 }),
+        countActiveByRequisitionIds: async () => new Map<string, number>(),
+      } as never;
+      repo = new RequisitionRepository(prisma, setPriorityStub, transitionStub, capacityStub);
     }, 120_000);
 
     afterAll(async () => {

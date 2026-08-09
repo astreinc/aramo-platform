@@ -13,6 +13,7 @@ import { AppModule } from '../app.module.js';
 import { REQUISITION_LIFECYCLE_PACKAGE } from '../policy/requisition-lifecycle.package.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 
 // Track 1 T1-e — GOVERNED REQUISITION TRANSITIONS, end-to-end against real
 // Postgres 17 through the full HTTP app. Skipped unless ARAMO_RUN_INTEGRATION=1.
@@ -48,6 +49,10 @@ const MIGRATIONS = [
   ...migrationsFor('entitlement'),
   ...migrationsFor('requisition'),
   ...migrationsFor('policy-store'),
+  // Track 4 T4-B2 — requisition read now DERIVES openings_available from the
+  // placement-owned ACTIVE ContractAssignment population; the placement schema
+  // must be present or the read 500s on a missing relation.
+  ...placementCapacityMigrations(ROOT),
 ];
 
 let uuidCounter = 0;

@@ -22,6 +22,7 @@ import {
 import { AppModule } from '../app.module.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 
 // PR-14 (Track C) — personal bookmarks integration spec (real Postgres 17).
 //
@@ -71,6 +72,9 @@ const MIGRATIONS = [
   // status to 'open', which the old RequisitionStatus enum does not have, so a
   // POST /requisitions 500s without it.
   mig('20260803120000_recruiting_status_supersession'),
+  // Track 4 T4-B2 — requisition read DERIVES openings_available from the
+  // placement-owned ACTIVE ContractAssignment population; placement schema required.
+  ...placementCapacityMigrations(ROOT),
 ];
 
 const ISSUER = 'Aramo Core Auth';

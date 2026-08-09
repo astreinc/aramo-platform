@@ -215,39 +215,12 @@ describe('ats-web → POST /v1/pipelines/:id/transition', () => {
       });
   });
 
-  // refusal — offered -> placed is legal, but the requisition has no openings.
-  it('returns 409 REQUISITION_NO_OPENINGS when placing into a full requisition', async () => {
-    const BODY = { to_status: 'placed' };
-    await provider
-      .addInteraction()
-      .given(
-        'an ats-web recruiter and a pipeline in offered state with no requisition openings exist',
-      )
-      .uponReceiving('a placement transition into a full requisition')
-      .withRequest('POST', `/v1/pipelines/${PIPE_OFFERED_ID}/transition`, (b) => {
-        b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody(
-          BODY,
-        );
-      })
-      .willRespondWith(409, (b) => {
-        b.jsonBody(
-          errorBody('REQUISITION_NO_OPENINGS', 'Requisition has no available openings for placement'),
-        );
-      })
-      .executeTest(async (mock) => {
-        const res = await fetch(
-          `${mock.url}/v1/pipelines/${PIPE_OFFERED_ID}/transition`,
-          {
-            method: 'POST',
-            headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
-            body: JSON.stringify(BODY),
-          },
-        );
-        expect(res.status).toBe(409);
-        const body = (await res.json()) as { error: { code: string } };
-        expect(body.error.code).toBe('REQUISITION_NO_OPENINGS');
-      });
-  });
+  // Track 4 / T4-B2 §7 — the "placing into a full requisition -> 409
+  // REQUISITION_NO_OPENINGS" interaction was RETIRED. Pipeline no longer owns
+  // requisition capacity: a `placed` transition never decrements openings and never
+  // refuses on over-capacity (over-capacity is a representable DERIVED state, not a
+  // pipeline-time gate). The interaction and its provider state are removed from the
+  // contract accordingly.
 });
 
 beforeAll(() => undefined);

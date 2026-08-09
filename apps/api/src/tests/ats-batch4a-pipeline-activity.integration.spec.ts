@@ -25,9 +25,21 @@ import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 
 // PR-A5a Gate 5 — ATS Batch 4a (pipeline state machine + activity)
-// integration spec; PR-A5b-1 Gate 5 extends section (D) with the
-// openings_available decrement + over-capacity refusal + delete-restore +
-// inverted no-Core-touch boundary.
+// integration spec.
+//
+// T4-B2 UPDATE (§7): the pipeline->requisition capacity coupling that
+// PR-A5b-1 once layered onto section (D) has been RETIRED. The
+// `placed`-transition decrement of requisition.openings_available, its
+// REQUISITION_NO_OPENINGS over-capacity 409 guard, AND the delete-
+// restore (+1) were all DELETED from the pipeline writer. Capacity
+// availability is now DERIVED (openings - active ContractAssignment
+// count); over-capacity is REPRESENTABLE and is never a pipeline-time
+// refusal. The `placed` transition is once again a FOUR-write atomic tx
+// (status + history + activity + metering) that leaves requisition
+// capacity UNTOUCHED. Accordingly the two former over-capacity tests
+// (PR-A5b-1 §5 (i) and (ii)/(iii)) are DELETED, and the placed-
+// transition test now proves capacity is NOT mutated (neither by the
+// transition nor by the subsequent delete).
 //
 // THE load-bearing state-machine proof (PR-A5a directive §4):
 //   1. Initial state: pipeline-add creates at `no_contact`.
@@ -41,30 +53,17 @@ import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 //      UsageEvent row. The tx never fired.
 //   4. No-op transition (same status): no history, no activity, no
 //      metering event.
-//   5. Placed transition (offered -> placed) — UPDATED by PR-A5b-1:
-//      reaches placed (status + history + activity + metering ALL
-//      written) AND ALSO decrements requisition.openings_available by
-//      exactly 1 (the new 5th write in the SAME interactive tx). The
-//      Core boundaries hold otherwise: no submittal."TalentSubmittal
-//      Record" row exists pre OR post (we never touched that table).
+//   5. Placed transition (offered -> placed) — T4-B2: reaches placed
+//      (status + history + activity + metering ALL written) and does
+//      NOT mutate requisition.openings_available (the B2 writer removal),
+//      and a subsequent delete does NOT restore any slot. The Core
+//      boundaries hold: no submittal."TalentSubmittalRecord" row exists
+//      pre OR post (we never touched that table).
 //
-// PR-A5b-1 §5 proofs (section D below):
-//   (i)   Over-capacity: a placement against openings_available == 0
-//         refuses with 409 REQUISITION_NO_OPENINGS, and the throw rolls
-//         back the entire transition tx (status + history + activity +
-//         metering all reverted).
-//   (ii)  Decrement: a successful placement decrements openings_available
-//         by exactly 1. The same requisition can be reused as a second-
-//         placement-on-the-same-req scenario: openings 1 → 0 (success)
-//         → 0 (over-capacity refusal).
-//   (iii) Delete-restore: deleting a placed pipeline restores the slot
-//         (+1), atomic with the delete (the symmetric inverse of the
-//         decrement).
-//   (iv)  Inverted no-Core-touch: only requisition.openings_available
-//         changes; talent.* / examination.* / submittal.* / job_domain.*
-//         schemas remain ABSENT (not even loaded into this container),
-//         so any write into them would have thrown long before the
-//         assertion. The strongest possible structural boundary proof.
+// Section (D) below retains ONLY the no-Core-touch structural boundary
+// proof: talent.* / examination.* / submittal.* / job_domain.* schemas
+// remain ABSENT (not even loaded into this container), so any write into
+// them would have thrown long before the assertion.
 //
 // Plus the A2 three-axis gating proofs on /v1/pipelines:
 //   - entitlement axis  — tenant without `ats` capability → 403
@@ -196,8 +195,12 @@ const TALENT_RECORD_SUPERSESSION = resolve(
 // Submittal & engagement migrations carry the submittal schema (the A5b
 // boundary asserts no submittal row is touched). We don't load them —
 // the absence proof works either way; counting rows in a non-existent
-// table would error. Instead, the boundary is asserted via the
-// requisition.openings_available delta + no requisition row mutation.
+// table would error. Instead, the boundary is asserted structurally via
+// information_schema (those schemas are never loaded into this
+// container). Note (T4-B2): the DROP-openings_available migration is
+// deliberately NOT in the MIGRATIONS list below, so the stored column
+// remains present in this container and can still be read to prove the
+// pipeline writer no longer mutates it.
 
 const MIGRATIONS = [
   ENTITLEMENT_INIT,
@@ -254,16 +257,6 @@ const TENANT_ADMIN_SCOPES = [
 const TALENT_RECORD_ID = '11111111-1111-7111-8111-1111111111aa';
 const REQUISITION_ID = '22222222-2222-7222-8222-2222222222bb';
 const COMPANY_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
-
-// PR-A5b-1: separate (talent, requisition) pairs for the new
-// over-capacity + atomicity proofs so they don't collide with the
-// shared A5a fixtures above.
-const TALENT_RECORD_ID_A5B1_FULL = '11111111-1111-7111-8111-1111111111bb';
-const REQUISITION_ID_A5B1_FULL = '22222222-2222-7222-8222-2222222222cc';
-const TALENT_RECORD_ID_A5B1_ROLLBACK =
-  '11111111-1111-7111-8111-1111111111cc';
-const REQUISITION_ID_A5B1_ROLLBACK =
-  '22222222-2222-7222-8222-2222222222dd';
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'PR-A5a ATS Batch 4a — pipeline state machine + activity proofs (real Postgres 17)',
@@ -384,29 +377,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return body;
     }
 
-    async function createPipelineFor(
-      jwt: string,
-      args: { talent_record_id: string; requisition_id: string },
-    ): Promise<{ id: string; status: string }> {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/v1/pipelines?site_id=${SITE_A}`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${jwt}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            talent_record_id: args.talent_record_id,
-            requisition_id: args.requisition_id,
-            site_id: SITE_A,
-          }),
-        },
-      );
-      const body = (await res.json()) as { id: string; status: string };
-      return body;
-    }
-
     async function walkToOffered(jwt: string, id: string): Promise<void> {
       for (const step of [
         'contacted',
@@ -470,17 +440,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [TENANT_ATS],
       );
 
-      // Seed a Requisition row so the A5b-boundary assertion has a
-      // concrete openings_available to compare against pre/post.
+      // Seed a Requisition row so the placed-transition test has a
+      // concrete openings_available to prove is UNTOUCHED pre/post (the
+      // T4-B2 writer removal — a `placed` transition no longer mutates
+      // requisition capacity). The over-capacity FULL/ROLLBACK fixtures
+      // were retired with the two deleted §5 over-capacity tests.
       await seedRequisitionWithOpenings(REQUISITION_ID, 3);
-      // PR-A5b-1 — additional fixtures:
-      //   FULL: openings=0 (no slot left) — exercises the over-capacity
-      //         refusal + atomic rollback proof.
-      //   ROLLBACK: openings=1 (one slot) — exercises the over-capacity
-      //         throw after a successful prior placement on the SAME
-      //         requisition (decrements to 0 → next placement refused).
-      await seedRequisitionWithOpenings(REQUISITION_ID_A5B1_FULL, 0);
-      await seedRequisitionWithOpenings(REQUISITION_ID_A5B1_ROLLBACK, 1);
 
       const kp = await generateKeyPair(ALG);
       const publicPem = await exportSPKI(kp.publicKey as never);
@@ -728,27 +693,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
     });
 
-    it('Placed transition (now PR-A5b-1): atomic 5-write — status + history + activity + metering + requisition.openings_available decrement; delete restores the slot', async () => {
-      // PR-A5b-1 §2 inverts the A5a Ruling 3 boundary: the placed
-      // transition NOW decrements requisition.openings_available by 1,
-      // composed into the SAME interactive tx as the other four writes.
-      // The other Core boundaries hold (no submittal / no Core write).
+    it('Placed transition (T4-B2): atomic 4-write — status + history + activity + metering; requisition.openings_available UNTOUCHED and delete does NOT restore', async () => {
+      // T4-B2 §7 retires the PR-A5b-1 capacity coupling: the placed
+      // transition is once again a FOUR-write tx (status + history +
+      // activity + metering) and does NOT mutate requisition capacity.
+      // Capacity availability is now DERIVED (openings - active
+      // ContractAssignment count); over-capacity is representable and is
+      // never a pipeline-time refusal. Here we prove the writer removal
+      // directly: openings_available is UNCHANGED by the placed
+      // transition AND by the subsequent delete (no restore).
       const openingsBefore = await readOpeningsAvailable(REQUISITION_ID);
 
       const created = await createPipeline(recruiterJwt_Ats_SiteA);
 
       // Walk the legal forward chain to offered, then to placed.
-      for (const step of [
-        'contacted',
-        'talent_responded',
-        'qualifying',
-        'submitted',
-        'interviewing',
-        'offered',
-      ]) {
-        const r = await transition(recruiterJwt_Ats_SiteA, created.id, step);
-        expect(r.status, `step ${step}`).toBe(200);
-      }
+      await walkToOffered(recruiterJwt_Ats_SiteA, created.id);
 
       const usageBeforePlaced = await countUsageEvents();
       const historyBeforePlaced = await countHistoryRows(created.id);
@@ -762,19 +721,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(placedRes.status).toBe(200);
       expect((placedRes.body as { status: string }).status).toBe('placed');
 
-      // 5-write atomicity confirmed for the placed transition.
+      // 4-write atomicity confirmed for the placed transition.
       expect(await readStatus(created.id)).toBe('placed');
       expect(await countHistoryRows(created.id)).toBe(historyBeforePlaced + 1);
       expect(await countActivityRows(created.id)).toBe(activityBeforePlaced + 1);
       expect(await countUsageEvents()).toBe(usageBeforePlaced + 1);
 
-      // PR-A5b-1: openings_available decremented by exactly 1 (the new
-      // §2 decrement, atomic with the four A5a writes).
+      // T4-B2: openings_available is UNTOUCHED — the `placed`-edge
+      // decrement writer was DELETED. (The stored column still exists in
+      // this container because the DROP migration is intentionally not
+      // applied here; it now reads exactly its seeded value.)
       const openingsAfterPlace = await readOpeningsAvailable(REQUISITION_ID);
-      expect(openingsAfterPlace).toBe(openingsBefore - 1);
+      expect(openingsAfterPlace).toBe(openingsBefore);
 
-      // PR-A5b-1 §4 — delete-restore. Deleting a placed pipeline frees
-      // the slot back. The cleanup DELETE also proves the restore.
+      // T4-B2: delete of a placed pipeline does NOT restore any slot —
+      // the delete-restore (+1) writer was DELETED. openings_available
+      // stays exactly where it was.
       await fetch(
         `http://127.0.0.1:${port}/v1/pipelines/${created.id}?site_id=${SITE_A}`,
         {
@@ -837,151 +799,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // -------------------------------------------------------------------------
-    // D) PR-A5b-1 — the openings_available decrement + over-capacity + atomic
-    //    rollback + delete-restore + NO-Core-touch boundary.
+    // D) NO-Core-touch structural boundary.
+    //    T4-B2 §7 RETIRED the PR-A5b-1 openings_available decrement +
+    //    over-capacity 409 + delete-restore proofs (those two tests were
+    //    deleted; the capacity coupling is gone and over-capacity is now
+    //    representable). Only the no-Core-touch boundary survives here.
     // -------------------------------------------------------------------------
 
-    it('A5b-1 over-capacity: placement against openings_available=0 refuses with 409 REQUISITION_NO_OPENINGS and rolls back the ENTIRE tx', async () => {
-      // FULL requisition seeded at openings=0. Walk a fresh pipeline to
-      // `offered` (legal — those transitions don't touch openings), then
-      // attempt `placed`: the over-capacity guard refuses, and the throw
-      // rolls back not only the decrement attempt but ALSO the pipeline
-      // status update, the history insert, the activity insert, and the
-      // metering event. None of the 5 writes land.
-      const created = await createPipelineFor(recruiterJwt_Ats_SiteA, {
-        talent_record_id: TALENT_RECORD_ID_A5B1_FULL,
-        requisition_id: REQUISITION_ID_A5B1_FULL,
-      });
-      await walkToOffered(recruiterJwt_Ats_SiteA, created.id);
-
-      const usageBefore = await countUsageEvents();
-      const historyBefore = await countHistoryRows(created.id);
-      const activityBefore = await countActivityRows(created.id);
-      const statusBefore = await readStatus(created.id);
-      const openingsBefore = await readOpeningsAvailable(
-        REQUISITION_ID_A5B1_FULL,
-      );
-      expect(openingsBefore).toBe(0);
-      expect(statusBefore).toBe('offered');
-
-      const r = await transition(
-        recruiterJwt_Ats_SiteA,
-        created.id,
-        'placed',
-      );
-      expect(r.status).toBe(409);
-      const body = r.body as { error: { code: string; details?: unknown } };
-      expect(body.error.code).toBe('REQUISITION_NO_OPENINGS');
-
-      // === The atomic-rollback proof (PR-A5b-1 §5.1 "forced
-      // transition-failure rolls back the decrement too" — here the
-      // decrement IS the failure, so the proof is symmetric: nothing
-      // upstream commits when the decrement leg throws). ===
-      expect(await readStatus(created.id)).toBe(statusBefore);
-      expect(await countHistoryRows(created.id)).toBe(historyBefore);
-      expect(await countActivityRows(created.id)).toBe(activityBefore);
-      expect(await countUsageEvents()).toBe(usageBefore);
-      // openings_available unchanged — the WHERE openings_available > 0
-      // predicate prevented the decrement from running at all.
-      expect(
-        await readOpeningsAvailable(REQUISITION_ID_A5B1_FULL),
-      ).toBe(0);
-
-      // Cleanup: the pipeline is at `offered` (non-placed), so DELETE
-      // takes the plain-A5a branch — no openings restore (was nothing
-      // to restore).
-      await fetch(
-        `http://127.0.0.1:${port}/v1/pipelines/${created.id}?site_id=${SITE_A}`,
-        {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
-        },
-      );
-      expect(
-        await readOpeningsAvailable(REQUISITION_ID_A5B1_FULL),
-      ).toBe(0);
-    });
-
-    it('A5b-1 decrement + delete-restore: placement N->N-1; delete of placed restores N-1->N (the same requisition reused for the over-capacity sequel)', async () => {
-      // ROLLBACK requisition seeded at openings=1.
-      // (1) Walk a pipeline to `placed` → openings 1 -> 0.
-      // (2) Attempt a second placement on the same req (different
-      //     talent) → over-capacity refusal (the FULL case at runtime).
-      // (3) Delete the placed pipeline → openings 0 -> 1 restored.
-      const openingsStart = await readOpeningsAvailable(
-        REQUISITION_ID_A5B1_ROLLBACK,
-      );
-      expect(openingsStart).toBe(1);
-
-      // (1) First placement: success; openings 1 -> 0.
-      const placedPipeline = await createPipelineFor(
-        recruiterJwt_Ats_SiteA,
-        {
-          talent_record_id: TALENT_RECORD_ID_A5B1_ROLLBACK,
-          requisition_id: REQUISITION_ID_A5B1_ROLLBACK,
-        },
-      );
-      await walkToOffered(recruiterJwt_Ats_SiteA, placedPipeline.id);
-      const placed = await transition(
-        recruiterJwt_Ats_SiteA,
-        placedPipeline.id,
-        'placed',
-      );
-      expect(placed.status).toBe(200);
-      expect(
-        await readOpeningsAvailable(REQUISITION_ID_A5B1_ROLLBACK),
-      ).toBe(0);
-
-      // (2) Second placement on a different talent_record but same
-      //     requisition: rejected (over-capacity, 0 slot left). Cross-
-      //     checks the same refusal from a runtime-incurred openings=0
-      //     state (not just the seeded one).
-      const secondTalentRecord =
-        '11111111-1111-7111-8111-1111111111dd';
-      const second = await createPipelineFor(recruiterJwt_Ats_SiteA, {
-        talent_record_id: secondTalentRecord,
-        requisition_id: REQUISITION_ID_A5B1_ROLLBACK,
-      });
-      await walkToOffered(recruiterJwt_Ats_SiteA, second.id);
-      const overCap = await transition(
-        recruiterJwt_Ats_SiteA,
-        second.id,
-        'placed',
-      );
-      expect(overCap.status).toBe(409);
-      expect((overCap.body as { error: { code: string } }).error.code).toBe(
-        'REQUISITION_NO_OPENINGS',
-      );
-      expect(
-        await readOpeningsAvailable(REQUISITION_ID_A5B1_ROLLBACK),
-      ).toBe(0);
-      // Cleanup the over-capacity-refused pipeline (non-placed: no
-      // restore).
-      await fetch(
-        `http://127.0.0.1:${port}/v1/pipelines/${second.id}?site_id=${SITE_A}`,
-        {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
-        },
-      );
-      expect(
-        await readOpeningsAvailable(REQUISITION_ID_A5B1_ROLLBACK),
-      ).toBe(0);
-
-      // (3) Delete the placed pipeline → openings restored 0 -> 1.
-      await fetch(
-        `http://127.0.0.1:${port}/v1/pipelines/${placedPipeline.id}?site_id=${SITE_A}`,
-        {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${tenantAdminJwt_Ats_SiteA}` },
-        },
-      );
-      expect(
-        await readOpeningsAvailable(REQUISITION_ID_A5B1_ROLLBACK),
-      ).toBe(openingsStart);
-    });
-
-    it('A5b-1 NO Core touch (inverted A5a boundary): a successful placement decrements ONLY requisition.openings_available — talent.* / examination.* / submittal.* / job_domain.* schemas remain absent', async () => {
+    it('NO Core touch boundary: pipeline placement touches ONLY pipeline / requisition / activity / metering — talent.* / examination.* / submittal.* / job_domain.* schemas remain absent', async () => {
       // The strongest possible boundary assertion: those four Core
       // schemas were never loaded into this test container, so any
       // write into any of them would have thrown a relation-does-not-
@@ -994,12 +819,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             ('talent', 'examination', 'submittal', 'job_domain')
           ORDER BY schema_name`,
       );
-      // A5a never loaded these schemas; A5b-1 never reaches for them
-      // either. The assertion: NONE of the four exist in this DB.
+      // These schemas are never loaded and the pipeline flow never
+      // reaches for them. The assertion: NONE of the four exist in this DB.
       expect(probe.rows.map((r) => r.schema_name)).toEqual([]);
 
-      // Sanity: the schemas A5b-1 DOES touch are present — pipeline,
-      // requisition, activity, metering.
+      // Sanity: the schemas the pipeline flow DOES touch are present —
+      // pipeline, requisition, activity, metering.
       const present = await setupClient.query<{ schema_name: string }>(
         `SELECT schema_name
            FROM information_schema.schemata

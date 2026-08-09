@@ -1858,9 +1858,10 @@ paths:
         `provenance`. A placement with no ContractAssignment returns
         `{ "assignment": null }` — a coherent absence, never a fabricated row.
 
-        Deliberately carries NO capacity value: capacity remains the stored
-        `openings_available` authority until the T4-B2 cutover, and derived capacity
-        is A2/B2-gated. This surface is assignment state only.
+        Deliberately carries NO capacity value: this surface is assignment state
+        only. Capacity availability is the derived `openings_available` on the
+        requisition resource (T4-B2 §6 retired the stored column; availability is
+        now `max(openings - active ContractAssignment count, 0)`).
 
         Guarded by capability `ats` and scope `assignment:read` (the dedicated
         assignment authority — `placement:*` does NOT satisfy it). The placement is

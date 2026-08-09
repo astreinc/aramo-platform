@@ -15,6 +15,7 @@ import {
   RequisitionTransitionPolicyService,
 } from '@aramo/requisition';
 import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/policy-store';
+import { deriveCapacity } from '@aramo/placement';
 
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 
@@ -84,7 +85,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const transitionPolicy = new RequisitionTransitionPolicyService(
         new PolicyStore(storePrisma),
       );
-      repo = new RequisitionRepository(prisma, {} as never, transitionPolicy);
+      // Track 4 / T4-B2 — 4th ctor arg (capacity projection). No ContractAssignment
+      // rows are seeded here, so consuming_count is 0 and openings_available equals
+      // the requisition's total openings. A local stub avoids needing the placement
+      // schema in this container.
+      const capacityStub = {
+        projectCapacity: async (_t: string, _r: string, openings: number) =>
+          deriveCapacity({ openings, consuming_count: 0 }),
+        countActiveByRequisitionIds: async () => new Map<string, number>(),
+      } as never;
+      repo = new RequisitionRepository(prisma, {} as never, transitionPolicy, capacityStub);
       store = new RequisitionLifecycleEventStore(prisma);
     }, 120_000);
 

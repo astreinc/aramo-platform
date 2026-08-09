@@ -360,13 +360,12 @@ export class PipelineRepository {
     id: string;
     requestId: string;
   }): Promise<void> {
-    // Read the row first to learn its status — the delete-restore branch
-    // (PR-A5b-1 §4) needs to know whether this pipeline ever consumed an
-    // openings slot. A `placed`-status row consumed one at the
-    // transition; deleting it must give the slot back.
+    // Existence check only. Track 4 / T4-B2 §7 — the delete-restore branch is gone
+    // (pipeline no longer owns capacity), so the row's status/req/talent are no
+    // longer needed to decide a capacity restore.
     const existing = await this.prisma.pipeline.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
-      select: { id: true, status: true, requisition_id: true, talent_record_id: true },
+      select: { id: true },
     });
     if (existing === null) {
       throw new AramoError(
@@ -379,43 +378,14 @@ export class PipelineRepository {
     // Intra-schema FK on PipelineStatusHistory uses ON DELETE CASCADE,
     // so history rows fall away with the parent (matches the
     // RequisitionAssignment precedent at A3).
-    if (existing.status === 'placed') {
-      // PR-A5b-1 §4 + E6 Q-3 (§6) — delete-restore, made boolean-idempotent.
-      // Atomic interactive tx so the pipeline delete and the cross-schema
-      // openings_available += 1 commit together. Restore ONLY on the TRUE->FALSE
-      // edge: this was the LAST placed episode for (tenant, talent, requisition).
-      // If another placed episode remains after this delete, capacity stays
-      // consumed (TRUE->TRUE, no change) — coexisting placed episodes (post-E6)
-      // must not over-restore.
-      await this.prisma.$transaction(async (tx) => {
-        await tx.pipeline.delete({ where: { id: args.id } });
-        const others = await tx.$queryRaw<Array<{ n: bigint }>>`
-          SELECT count(*)::bigint AS n FROM pipeline."Pipeline"
-          WHERE tenant_id = ${args.tenant_id}::uuid
-            AND talent_record_id = ${existing.talent_record_id}::uuid
-            AND requisition_id = ${existing.requisition_id}::uuid
-            AND status = 'placed'::"pipeline"."PipelineStatus"
-        `;
-        const remainingPlaced = Number(others[0]?.n ?? 0n);
-        if (remainingPlaced === 0) {
-          await tx.$executeRaw`
-            UPDATE requisition."Requisition"
-            SET openings_available = openings_available + 1
-            WHERE id = ${existing.requisition_id}::uuid
-              AND tenant_id = ${args.tenant_id}::uuid
-          `;
-        }
-      });
-      this.logger.log({
-        event: 'pipeline_deleted_placed_openings_restored',
-        tenant_id: args.tenant_id,
-        pipeline_id: args.id,
-        requisition_id: existing.requisition_id,
-      });
-      return;
-    }
-    // Non-placed delete: A5a behavior verbatim — the row never
-    // decremented openings, nothing to restore.
+    // Track 4 / T4-B2 §7 — PIPELINE CAPACITY AUTHORITY REMOVED. The former
+    // delete-restore (openings_available += 1 on the last-placed TRUE->FALSE edge)
+    // is GONE — the inverse of the removed decrement. A delete removes the
+    // recruiting fact ONLY and never restores requisition capacity, so `placed`
+    // and non-`placed` deletes are now identical. Capacity is released
+    // authoritatively by ENDING the owning ContractAssignment (placement-owned).
+    // Intra-schema PipelineStatusHistory falls away via ON DELETE CASCADE.
+    // Proven by pipeline-capacity-authority-removed-b2.integration.spec.ts.
     await this.prisma.pipeline.delete({ where: { id: args.id } });
   }
 
@@ -498,7 +468,6 @@ export class PipelineRepository {
     const note = args.note ?? null;
     const site_id = (current as PipelineRow).site_id ?? undefined;
     const requisition_id = (current as PipelineRow).requisition_id;
-    const talent_record_id = (current as PipelineRow).talent_record_id;
     const transitionNote =
       `pipeline ${fromStatus} -> ${args.to_status}` +
       (noteForActivity === null ? '' : `: ${noteForActivity}`);
@@ -537,58 +506,15 @@ export class PipelineRepository {
           tenant_id,
           event_type: 'pipeline.state_transition',
         });
-        // 4e — (PR-A5b-1) placement-only: decrement
-        //      requisition.openings_available with the optimistic
-        //      `> 0` guard. Row count 0 → over-capacity → throw
-        //      REQUISITION_NO_OPENINGS, which rolls back 4a-4d with 4e.
-        //      The decrement writes ONLY requisition.openings_available
-        //      — no Core table is read or written (the A5b boundary).
-        if (args.to_status === 'placed') {
-          // E6 Q-3 (§6) — capacity is a BOOLEAN predicate: openings are consumed
-          // iff at least one `placed` episode EXISTS for (tenant, talent,
-          // requisition). Decrement ONLY on the FALSE->TRUE edge — i.e. this is the
-          // FIRST placed episode for the triple. 4a already set THIS row to
-          // `placed`, so we count OTHER placed rows (id <> this one); zero others
-          // means the predicate just flipped false->true. Coexisting placed
-          // episodes (possible after the E6 drop) must NOT double-consume. The
-          // predicate read + the capacity mutation are in this same transaction.
-          const others = await tx.$queryRaw<Array<{ n: bigint }>>`
-            SELECT count(*)::bigint AS n FROM pipeline."Pipeline"
-            WHERE tenant_id = ${tenant_id}::uuid
-              AND talent_record_id = ${talent_record_id}::uuid
-              AND requisition_id = ${requisition_id}::uuid
-              AND status = 'placed'::"pipeline"."PipelineStatus"
-              AND id <> ${args.id}::uuid
-          `;
-          const otherPlaced = Number(others[0]?.n ?? 0n);
-          if (otherPlaced === 0) {
-            // FALSE->TRUE — decrement with the optimistic over-capacity guard.
-            const decremented = await tx.$executeRaw`
-              UPDATE requisition."Requisition"
-              SET openings_available = openings_available - 1
-              WHERE id = ${requisition_id}::uuid
-                AND tenant_id = ${tenant_id}::uuid
-                AND openings_available > 0
-            `;
-            if (decremented === 0) {
-              throw new AramoError(
-                'REQUISITION_NO_OPENINGS',
-                'Requisition has no available openings for placement',
-                409,
-                {
-                  requestId: args.requestId,
-                  details: {
-                    pipeline_id: args.id,
-                    requisition_id,
-                    to_status: 'placed',
-                  },
-                },
-              );
-            }
-          }
-          // else TRUE->TRUE: a placed episode already consumed capacity for this
-          // triple — no further decrement (idempotent).
-        }
+        // Track 4 / T4-B2 §7 — PIPELINE CAPACITY AUTHORITY REMOVED. The former
+        // `placed`-edge decrement of requisition.openings_available (the E6 boolean
+        // EXISTS(placed) ±1 mechanism, and its REQUISITION_NO_OPENINGS 409 over-
+        // capacity guard) is GONE. Capacity truth is now DERIVED from the ACTIVE
+        // ContractAssignment population (placement-owned); a pipeline `placed`
+        // transition is a recruiting fact and MUST NOT independently mutate
+        // requisition capacity. Over-capacity is a representable derived state
+        // (signed capacity_balance < 0), not a pipeline-time hard gate. Proven by
+        // pipeline-capacity-authority-removed-b2.integration.spec.ts.
         return { updatedRow: updated, historyRow: history };
       },
     );
@@ -599,10 +525,10 @@ export class PipelineRepository {
       pipeline_id: args.id,
       from_status: fromStatus,
       to_status: args.to_status,
+      requisition_id,
       history_id: (historyRow as PipelineStatusHistoryRow).id,
-      ...(args.to_status === 'placed'
-        ? { openings_decremented: true, requisition_id }
-        : {}),
+      // T4-B2 §7 — NO openings_decremented: a `placed` transition no longer
+      // mutates requisition capacity (that authority moved to ContractAssignment).
     });
     return projectView(updatedRow as PipelineRow);
   }

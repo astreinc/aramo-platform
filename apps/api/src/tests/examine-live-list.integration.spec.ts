@@ -22,6 +22,7 @@ import {
 import { AppModule } from '../app.module.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 
 // Gate-1 G1-B keying correction — the FE-VISIBILITY end-to-end proof G1-B
 // deferred (shared-UUID alignment: Job.id = GoldenProfile.job_id =
@@ -117,7 +118,10 @@ const MIGRATIONS = [
   // examination
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
   'libs/examination/prisma/migrations/20260521120000_add_live_list_index/migration.sql',
-].map((p) => resolve(ROOT, p));
+].map((p) => resolve(ROOT, p))
+  // Track 4 T4-B2 — requisition read DERIVES openings_available from the
+  // placement-owned ACTIVE ContractAssignment population; placement schema required.
+  .concat(placementCapacityMigrations(ROOT));
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-examine-live-list-audience';

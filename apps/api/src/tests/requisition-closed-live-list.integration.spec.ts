@@ -22,6 +22,7 @@ import {
 import { AppModule } from '../app.module.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 
 // T1-a — job_domain.Requisition retirement (LIVE DEFECT proof).
 //
@@ -114,7 +115,10 @@ const MIGRATIONS = [
   // examination
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
   'libs/examination/prisma/migrations/20260521120000_add_live_list_index/migration.sql',
-].map((p) => resolve(ROOT, p));
+].map((p) => resolve(ROOT, p))
+  // Track 4 T4-B2 — requisition read DERIVES openings_available from the
+  // placement-owned ACTIVE ContractAssignment population; placement schema required.
+  .concat(placementCapacityMigrations(ROOT));
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-requisition-closed-live-list-audience';

@@ -23,6 +23,7 @@ import { AppModule } from '../app.module.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
+import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 
 // PR-A7 Gate 5 — ATS-INTERNAL reporting + dashboard integration spec.
 //
@@ -368,6 +369,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SAVED_LIST_LIST_KIND,
         METERING_INIT,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
+        // Track 4 T4-B2 — requisition read DERIVES openings_available from the
+        // placement-owned ACTIVE ContractAssignment population; placement schema required.
+        ...placementCapacityMigrations(ROOT),
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
