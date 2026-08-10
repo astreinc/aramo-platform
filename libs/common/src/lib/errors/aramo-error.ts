@@ -120,6 +120,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // Track 3 / E6 (A4) — pre-flight reconciliation refusal: both records hold a
   // live episode for one requisition. HTTP 409 (merge-time state conflict).
   PIPELINE_RECONCILE_LIVE_CONFLICT: 409,
+  // Track 8 / T8-P1 — external-requisition identity conflict: another
+  // requisition already holds this (tenant_id, source_system, external_req_id).
+  // HTTP 409 (write-time identity conflict).
+  REQUISITION_EXTERNAL_IDENTITY_CONFLICT: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

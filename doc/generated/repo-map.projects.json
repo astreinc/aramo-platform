@@ -3100,6 +3100,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/external-identity.integration.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/openings-available-drop-b2.integration.spec.ts",
         "project": "requisition",
         "status": "excluded"
