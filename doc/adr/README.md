@@ -49,6 +49,7 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 | [0024](0024-business-policy-engine.md) | Business Policy Engine | **Accepted — LOCKED** | 2026-07-30 |
 | [0024-A1](0024-amendment-a1-capacity-binding-and-corrections.md) | Amendment A1 — Capacity Binding and Vocabulary Corrections (amends ADR-0024) | **Accepted — LOCKED** | 2026-08-01 |
 | [0027](0027-client-talent-restriction-r10-compatibility.md) | Client-Scoped Talent Restriction and the R10 Boundary | **Accepted — LOCKED** | 2026-08-01 |
+| [0029](0029-pipeline-boundary-modular-monolith.md) | Candidate Intelligence Pipeline Boundary: Modular Monolith, Extract When Forced (I15) — identifier corrected from provisional ADR-0017 under G-REC-1; ADR-0017 remains RDS Disaster Recovery Strategy | **Accepted — LOCKED** | 2026-06-30 |
 
 ## When to write an ADR
 

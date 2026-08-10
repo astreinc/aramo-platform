@@ -146,7 +146,7 @@ aramo-platform/
 No rendered architecture diagrams (`.drawio`/`.png`/`.mmd`) exist in-repo. The authoritative design/decision docs:
 
 - **`doc/adr/0016-rds-substrate-conventions.md`** + `doc/adr/Aramo-ADR-0016-…-LOCKED.md` — platform/tenant physical separation, Postgres 15.x.
-- **`doc/adr/0017-…`** (I15 CIP⊥ATS wall) · **`doc/adr/0018-background-jobs-substrate.md`** · **`doc/adr/0020-build-for-tenant-50-governing-principle.md`** (multi-tenant, not Astre-specific).
+- **`doc/adr/0029-pipeline-boundary-modular-monolith.md`** (I15 CIP⊥ATS wall) · **`doc/adr/0018-background-jobs-substrate.md`** · **`doc/adr/0020-build-for-tenant-50-governing-principle.md`** (multi-tenant, not Astre-specific).
 - **`doc/runbooks/{run-layer,local-run,singlebox-ops}.md`** — the containerized runtime + one-command local stack.
 - **`doc/step4-singlebox-runnable-prod-stack.md`** · **`doc/step4-deploy-substrate-recon.md`** — prod deploy shape.
 - **`doc/auth-{reconcile-spine,mfa,local-mock-idp}-recon.md`** — auth substrate + explicit MFA gap.

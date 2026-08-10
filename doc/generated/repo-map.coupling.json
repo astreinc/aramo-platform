@@ -9108,6 +9108,11 @@
       "status": "unscoped",
       "to": "libs/matching/src/lib/matching.processor.ts"
     },
+    {
+      "from": "doc/adr/Aramo-ADR-0029-Pipeline-Boundary-Modular-Monolith-v1_0-LOCKED.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
     { "from": "doc/adr/README.md", "status": "unscoped", "to": "doc/04-risks.md" },
     { "from": "doc/adr/README.md", "status": "unscoped", "to": "doc/06-lead-review-checklist.md" },
     { "from": "doc/adr/README.md", "status": "unscoped", "to": "openapi/ingestion.yaml" },
@@ -9357,6 +9362,686 @@
       "status": "unscoped",
       "to": "libs/identity/src/lib/tenant.service.ts"
     },
+    {
+      "from": "doc/governance/current/Aramo-Repository-Baseline.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/e2e/surfaces.spec.ts"
+    },
+    {
+      "from": "doc/governance/current/Aramo-Repository-Baseline.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/pipeline/error-messages.ts"
+    },
+    {
+      "from": "doc/governance/current/Aramo-Repository-Baseline.md",
+      "status": "unscoped",
+      "to": "ci/scripts/compare-spec-to-openapi.ts"
+    },
+    {
+      "from": "doc/governance/current/Aramo-Repository-Baseline.md",
+      "status": "unscoped",
+      "to": "deploy/migrate-prod.sh"
+    },
+    {
+      "from": "doc/governance/current/Aramo-Repository-Baseline.md",
+      "status": "unscoped",
+      "to": "doc/go-live-known-limitations.md"
+    },
+    {
+      "from": "doc/governance/current/Aramo-Repository-Baseline.md",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/governance/current/Aramo-Repository-Baseline.md",
+      "status": "unscoped",
+      "to": "libs/submittal/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/governance/current/Aramo-Repository-Baseline.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-01-governance.md",
+      "status": "unscoped",
+      "to": "ci/integration-roots.json"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-01-governance.md",
+      "status": "unscoped",
+      "to": "doc/01-locked-baselines.md"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-01-governance.md",
+      "status": "unscoped",
+      "to": "doc/adr/README.md"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-01-governance.md",
+      "status": "unscoped",
+      "to": "doc/architecture/aramo-enterprise-context-v2_1.md"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-01-governance.md",
+      "status": "unscoped",
+      "to": "doc/architecture/aramo-platform-console-enterprise-architecture.md"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-01-governance.md",
+      "status": "unscoped",
+      "to": "doc/directives/00-DIRECTIVE-STANDARD.md"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-01-governance.md",
+      "status": "unscoped",
+      "to": "doc/go-live-known-limitations.md"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-01-governance.md",
+      "status": "unscoped",
+      "to": "doc/governance/current/Aramo-Repository-Baseline.md"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-01-governance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-01-governance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-02-modules-domains.md",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/examine.controller.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-02-modules-domains.md",
+      "status": "unscoped",
+      "to": "apps/api/src/placement/placement.controller.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-02-modules-domains.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/sourcing.controller.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-02-modules-domains.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/identity-advisories/IdentityAdvisoriesView.spec.tsx"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-02-modules-domains.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/trust-proposals/TrustProposalsView.spec.tsx"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-02-modules-domains.md",
+      "status": "unscoped",
+      "to": "ci/integration-roots.json"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-02-modules-domains.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/tests/capacity-projection-edge.integration.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-02-modules-domains.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-02-modules-domains.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-02-modules-domains.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/tests/ats-batch2-requisition.integration.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/tests/requisition-concurrency.integration.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/audit/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/canonicalization/prisma/migrations/20260603160000_init_canonicalization_schema/migration.sql"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/canonicalization/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/consent/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/engagement/src/lib/engagement-event.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/identity-index/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/prisma/migrations/20260516130715_init_ingestion_model/migration.sql"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/outbox-publisher/src/lib/outbox-publisher.processor.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/migrations/20260811120000_t4b2_drop_openings_available/migration.sql"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/tests/capacity-agreement-b2.integration.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/submittal/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/talent/prisma/migrations/20260704160000_drop_core_talent/migration.sql"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/tenant-reset/src/lib/reset-batch.store.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "libs/tenant-reset/src/lib/tenant-reset.service.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "pact/consumers/ats-web/src/engagement.consumer.test.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-04-api-pact.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/platform-api.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-04-api-pact.md",
+      "status": "unscoped",
+      "to": "apps/portal-web/src/portal-api.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-04-api-pact.md",
+      "status": "unscoped",
+      "to": "ci/scripts/compare-spec-to-openapi.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-04-api-pact.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/auth/consumer.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-04-api-pact.md",
+      "status": "unscoped",
+      "to": "openapi/ats.yaml"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-04-api-pact.md",
+      "status": "unscoped",
+      "to": "openapi/auth.yaml"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-04-api-pact.md",
+      "status": "unscoped",
+      "to": "openapi/common.yaml"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-04-api-pact.md",
+      "status": "unscoped",
+      "to": "openapi/ingestion.yaml"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-04-api-pact.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-04-api-pact.md",
+      "status": "unscoped",
+      "to": "openapi/portal.yaml"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-04-api-pact.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-04-api-pact.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "apps/api/src/placement/placement.controller.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/record-reconcile.orchestrator.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/sourcing.controller.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/sourcing.service.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/pipeline/error-messages.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/placement/AssignmentLifecyclePanel.tsx"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/placement/placement-api.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform.controller.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-error-codes.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "libs/authorization/src/lib/require-scopes.decorator.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "libs/authorization/src/lib/roles.guard.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/aramo-error.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/error-codes.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "libs/common/src/tests/error-codes.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/role.dto.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/scope-catalog-parity.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/seed-scope-creation-parity.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline.repository.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "libs/placement/src/lib/placement.repository.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition.repository.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "openapi/common.yaml"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-05-scope-errors.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-06-frontend.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/e2e/surfaces.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-06-frontend.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/playwright.config.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-06-frontend.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/project.json"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-06-frontend.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/App.tsx"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-06-frontend.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/shell/RecruiterShell.tsx"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-06-frontend.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/main.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-06-frontend.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.tsx"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-06-frontend.md",
+      "status": "unscoped",
+      "to": "apps/portal-web/src/App.tsx"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/app.module.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/policy/seed-lifecycle.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/tenant-reset/tenant-reset.command.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/tests/tenant-reset.integration.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/e2e/surfaces.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/App.tsx"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "apps/auth-service/src/app/app.module.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/app.module.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "ci/integration-roots.json"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "ci/scripts/check-integration-roots.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "ci/scripts/ci-integration.sh"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "ci/scripts/frontdoor-boot-smoke.sh"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "ci/scripts/generate-repo-map.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "ci/scripts/prepush.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-error-codes.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-placement-sql.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-repo-map.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "deploy/migrate-prod.sh"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "deploy/systemd/singlebox-compose.sh"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "doc/go-live-known-limitations.md"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-box.md"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "libs/auth-storage/prisma/seed.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/error-codes.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed-astre.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/tests/capacity-projection-edge.integration.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/migrations/20260811120000_t4b2_drop_openings_available/migration.sql"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "openapi/ats.yaml"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "openapi/common.yaml"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-07-test-deploy.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
+      "status": "unscoped",
+      "to": "apps/api/src/app.module.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
+      "status": "unscoped",
+      "to": "libs/client-talent-restriction/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
+      "status": "unscoped",
+      "to": "libs/engagement/src/index.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/index.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/lib/reporting.service.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
+      "status": "unscoped",
+      "to": "libs/submittal/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
+      "status": "unscoped",
+      "to": "libs/submittal/src/tests/submittal.repository.integration.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-08-ledger.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
     { "from": "doc/integration-testing.md", "status": "unscoped", "to": "ci/scripts/prepush.ts" },
     {
       "from": "doc/m0-closure-record-draft.md",
@@ -9600,6 +10285,11 @@
       "from": "doc/platform-console/platform-console-architecture-inventory.md",
       "status": "unscoped",
       "to": "doc/adr/0020-build-for-tenant-50-governing-principle.md"
+    },
+    {
+      "from": "doc/platform-console/platform-console-architecture-inventory.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
     },
     {
       "from": "doc/platform-console/platform-console-architecture-inventory.md",

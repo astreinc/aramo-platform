@@ -2,7 +2,7 @@
 // requisition lifecycle state the Live List + match-list depend on.
 //
 // libs/examination is scope:cip and MUST NOT import scope:ats (the
-// Pipeline⊥ATS wall, ADR-0017/I15), so it cannot read requisition.Requisition
+// Pipeline⊥ATS wall, ADR-0029/I15), so it cannot read requisition.Requisition
 // directly. It DECLARES the narrow interface it needs; apps/api (untagged
 // composition root) provides the adapter backed by RequisitionRepository. The
 // dependency inverts and the wall holds by construction — the same pattern the

@@ -13,13 +13,13 @@
 import nx from '@nx/eslint-plugin';
 import importX from 'eslint-plugin-import-x';
 
-// I15 (ADR-0017) — the CIP(Pipeline)⊥ATS import wall, enforced by nx module
+// I15 (ADR-0029) — the CIP(Pipeline)⊥ATS import wall, enforced by nx module
 // boundaries via project scope tags (libs/<lib>/project.json "tags").
 //   - scope:cip MUST NOT import scope:ats  ← THE WALL
 //   - scope:ats MAY import scope:cip       ← the allowed direction (ATS consumes Pipeline)
 //   - scope:boundary spans neither cluster's workflow (job-domain, consent)
 //   - scope:shared is leaf infra (depends only on shared)
-// Platform-Console Increment-1 (ADR-0017 R-TAGS) adds the platform tier:
+// Platform-Console Increment-1 (ADR-0029 R-TAGS) adds the platform tier:
 //   - scope:platform is the Platform Console cluster (apps/platform-admin, the
 //     future apps/platform-web FE). It MUST NOT import scope:ats or scope:cip —
 //     the platform tier operates on the identity/tenant substrate only, never a

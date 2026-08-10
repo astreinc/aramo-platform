@@ -1,7 +1,7 @@
 // Hand-mirrored from libs/placement/src/lib/lifecycle/placement-lifecycle.ts
 // and libs/placement/src/lib/placement-process.types.ts (the BE sources of
 // truth). R1 hand-mirrors instead of importing @aramo/placement (a forbidden
-// domain edge — ADR-0017). Drift is caught by ./placement-matrix-drift.spec.ts,
+// domain edge — ADR-0029). Drift is caught by ./placement-matrix-drift.spec.ts,
 // which reads the BE source as text and asserts the state/position/transition
 // sets match.
 
@@ -111,7 +111,7 @@ export interface PlacementEventListResponse {
 // ── Track 4 — ContractAssignment lifecycle (assignment:read surface) ──
 // Hand-mirrored from libs/placement/src/lib/placement-process.types.ts
 // (ContractAssignmentView / ContractAssignmentEndReason). R1 hand-mirrors
-// instead of importing @aramo/placement (a forbidden domain edge — ADR-0017).
+// instead of importing @aramo/placement (a forbidden domain edge — ADR-0029).
 // This is the read shape of GET /v1/placements/{id}/assignment; the response
 // envelope is { assignment: ContractAssignmentView | null }. Capacity is
 // DELIBERATELY ABSENT from this surface (it stays A2/B2-gated on the BE) and is
