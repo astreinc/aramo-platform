@@ -226,10 +226,17 @@ model Requisition {
   extension_possible Boolean  @default(false)
   hours_per_week    Int?
 
-  // Source / VMS-readiness (thin stub — NOT the full VMS spec section;
-  // the source_system stub is the input to a future VMS ingestion PR).
-  source_system  String? // manual | fieldglass | beeline | oracle | coupa | email | api
-  external_req_id String?
+  // Source / VMS provenance (T8-P1 — VMS Integration Directive v1.0 §3-§5).
+  // The VMS is the external source; this Requisition is the canonical internal
+  // projection. source_system is a VALIDATED, EXTENSIBLE canonical lowercase
+  // provider key (dto/source-system.ts + external-identity-validation.ts) — NOT
+  // a closed Postgres enum (a new provider needs no migration). The external
+  // identity is the triple (tenant_id, source_system, external_req_id), enforced
+  // by the PARTIAL unique index `Requisition_external_identity_key` (T8-P1
+  // migration) WHEN BOTH provenance fields are present. Prisma cannot express a
+  // partial (WHERE) predicate, so it is NOT an @@unique here (E6 precedent).
+  source_system  String? // canonical lowercase provider key (e.g. manual | fieldglass | beeline | oracle | coupa)
+  external_req_id String? // opaque provider requisition id (case-preserved)
   imported_at    DateTime? @db.Timestamptz
 
   // ---- Requisition Record Spec Amendment v1.0 (New Requisition page) ----
