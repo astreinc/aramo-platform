@@ -1,7 +1,7 @@
 // PLATFORM⊥ATS NEGATIVE CONTROL — DO NOT IMPORT FROM PRODUCTION CODE.
 //
 // A deliberate, committed breach of the Platform⊥ATS import wall
-// (Platform-Console Increment-1, ADR-0017 R-TAGS): a scope:platform project
+// (Platform-Console Increment-1, ADR-0029 R-TAGS): a scope:platform project
 // (`platform-admin`) importing a scope:ats lib (`engagement`). It exists ONLY
 // to PROVE that @nx/enforce-module-boundaries rejects such an import — the
 // self-testing negative control for the platform tier, mirroring the I15

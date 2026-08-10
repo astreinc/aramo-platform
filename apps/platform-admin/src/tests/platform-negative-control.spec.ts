@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-// Platform-Console Increment-1 (ADR-0017 R-TAGS) — SELF-TESTING NEGATIVE
+// Platform-Console Increment-1 (ADR-0029 R-TAGS) — SELF-TESTING NEGATIVE
 // CONTROL for the Platform⊥ATS import wall. Mirrors the I15 CIP⊥ATS control:
 // it does not just assert the current tree is clean — it PROVES the enforcement
 // mechanism actually FIRES on a breach.

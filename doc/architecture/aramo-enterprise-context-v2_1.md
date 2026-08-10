@@ -8,7 +8,7 @@
 1. Job-board arrivals flow via the sourcing sibling service into the `sourced_talent` staging schema — never JobBoards → Core API. The sourcing service and its write path are TARGET-STATE (dashed): nothing writes arrivals today.
 2. Core API ↔ staging is split: the reader exists (admit-arrivals, TR-2b login-time re-link, solid); resolve-and-promote is fix-slice-2, not built (dashed).
 3. Portal API edge is `/v1/portal/*` ONLY (Caddy-scoped; no general `/v1` from the portal host).
-4. Core API remains THE HEART — ATS + Pipeline modular monolith with in-process BullMQ workers; no separate worker platform node (ADR-0017: extract only when forced).
+4. Core API remains THE HEART — ATS + Pipeline modular monolith with in-process BullMQ workers; no separate worker platform node (ADR-0029: extract only when forced).
 5. Platform console talks to platform-admin (`/platform/*`), never Core API — the admin host has no `/v1` route (R14).
 6. Secrets: AWS Secrets Manager is the primary key path; a documented box-only env fallback exists for the AI provider key (Single-Box Directive 2b).
 7. PartnerSSO stays dashed; the fail-closed trusted-IdP verifier mechanism exists in auth-core, but no partner IdP is wired.

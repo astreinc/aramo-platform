@@ -54,7 +54,7 @@ replace-in-place, never append narrative.
 - "Consumer count" ≠ "consumers verified by a given provider" —
   auth-service-consumer verifies against a separate provider; keep
   the two numbers distinct in any provider-verification work.
-- Pipeline⊥ATS wall (ADR-0017/I15): Pipeline libs never hard-import
+- Pipeline⊥ATS wall (ADR-0029/I15): Pipeline libs never hard-import
   ATS libs; cross L3 by UUID ref + versioned Pact-tested connector
   contract only; nx boundary tags CI-enforce this.
 - `identity_index` schema: NO `tenant_id` column, NO PII column, ever.

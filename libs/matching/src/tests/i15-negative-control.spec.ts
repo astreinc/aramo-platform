@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-// I15 (ADR-0017) — SELF-TESTING NEGATIVE CONTROL for the CIP(Pipeline)⊥ATS
+// I15 (ADR-0029) — SELF-TESTING NEGATIVE CONTROL for the CIP(Pipeline)⊥ATS
 // import wall. This is the guard the I14 privacy wall lacked: it does not just
 // assert the current tree is clean — it PROVES the enforcement mechanism
 // actually FIRES on a breach.
