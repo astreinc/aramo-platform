@@ -423,6 +423,39 @@ jobs:
       - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
       - run: npm run placement:sql:check
 
+  # GLH-1 (ATS Go-Live Hardening Charter v1.5) D — production env-passthrough parity.
+  # A var a container REQUIRES dropped from its compose passthrough, or a passthrough var
+  # absent from the .env.prod.example operator contract, is caught (D-AUTH-PLATFORM-HOSTS-1
+  # defect class). Config-only (compose + env-example); unconditional wall.
+  env-passthrough-check:
+    name: env:passthrough-check
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm run env:passthrough-check
+
+  # GLH-1 A+B — aggregate-gate membership wall. Pins build, verify-vocabulary, the GLH-1
+  # walls, and itself INTO deployment-gate.needs so a job that runs but does not gate merges
+  # cannot silently reappear. Unconditional wall.
+  aggregate-gate-check:
+    name: aggregate-gate:check
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
+      - run: npm run aggregate-gate:check
+
   identity-index-privacy-wall:
     name: identity-index:privacy-wall
     runs-on: ubuntu-latest
@@ -630,6 +663,10 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     needs:
+      - build # GLH-1 A — the CI-simulated nx build now gates merges
+      - verify-vocabulary # GLH-1 B — the trust-output vocabulary wall now gates merges
+      - env-passthrough-check # GLH-1 D — prod env-passthrough parity
+      - aggregate-gate-check # GLH-1 A+B — pins the above INTO this needs list
       - openapi-validate
       - openapi-lint
       - openapi-drift-check

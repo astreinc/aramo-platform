@@ -95,7 +95,9 @@ console.log(
 console.log(
   `▸ pact walls: ${pactFires ? 'consumer+provider (pact/ touched or api affected)' : 'skipped (no pact/api change)'}`,
 );
-console.log(`▸ nginx check: ${nginxTouched ? 'deploy/nginx touched — docker-build gate pointer' : 'skipped'} · frontdoor:conf-check always`);
+console.log(
+  `▸ nginx check: ${nginxTouched ? 'deploy/nginx touched — docker-build gate pointer' : 'skipped'} · frontdoor:conf-check always`,
+);
 console.log('═══════════════════════════════════════════\n');
 
 // ── Build the step list ──────────────────────────────────────────────────────
@@ -129,6 +131,11 @@ steps.push(['integration-roots:check', () => run('npm run --silent tests:integra
 // regenerate and byte-compare against the committed file (generate-and-compare
 // idiom, like repo-map:check / error-codes:check).
 steps.push(['placement:sql:check', () => run('npm run --silent placement:sql:check')]);
+// GLH-1 (ATS Go-Live Hardening Charter v1.5) — CI-integrity walls. Config-only, cheap,
+// unconditional. env:passthrough-check = prod compose/env parity; aggregate-gate:check =
+// deployment-gate.needs membership (build/verify-vocabulary/GLH walls stay required).
+steps.push(['env:passthrough-check', () => run('npm run --silent env:passthrough-check')]);
+steps.push(['aggregate-gate:check', () => run('npm run --silent aggregate-gate:check')]);
 // Front-Door PR-2 (Ruling 6) — the nginx conf-semantics wall. Unconditional
 // (refusal-check family): reads the template + compose + webhook constant fresh.
 steps.push([
