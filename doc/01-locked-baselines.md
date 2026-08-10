@@ -497,3 +497,22 @@ The M5 Track A item 6 "Architecture §9 background jobs scheduled (added v1.4 �
 - **Inside Aramo Core** category: in-process events; underlies "Talent updated → matching scheduled" trigger (PR-11 audit Axis A noted matching producer enqueue is currently TEST-ONLY; production trigger remains M6/M7 binding).
 - **Aramo Core → Extracted Services** category: Outbox → SNS → SQS pattern — PR-11 outbox publisher job is the FIRST half (outbox → publish); SNS/SQS dispatch is M6/M7 binding.
 - **Extracted Services → Aramo Core** category: synchronous REST API; NOT job-based; out of scope.
+
+## §14. Architecture §7 Data Architecture — Selection/Submittal topology anchor (T2-ARCH binding)
+
+**Authority:** `Aramo-Architecture-v2_2-v2_3-Selection-Submittal-Topology-LOCKED` (v2.3, supersedes v2.2 for §7.1/§4.1/§7.3) + `Aramo-T2-ARCH-Selection-Submittal-Architecture-Ruling-v1_0-LOCKED`. v2.2 is preserved unchanged. This anchor is a citable in-repo mirror per the PL-68 substrate-coherence convention (7th instance); it is **not** an independent architecture authority. Filing record: `Aramo-doc01-amendment-architecture-7-anchor-v1_0-LOCKED`.
+
+**Architecture v2.3 §7.1 Primary Database Model (verbatim, amended):**
+
+> Aramo Core owns one PostgreSQL database. Schemas are separated by module: consent, talent, skills, matching, examination, entrustability, evidence, **selection**, **submittal**, audit, auth. (11 schemas.)
+>
+> - `selection` schema owns the Selection workflow (`TalentSelection`, `TalentSelectionEvent`, `SelectionState`, `SelectionEventType`, Selection outbox). It is the rename of the prior `engagement` schema.
+> - `submittal` schema owns the Submittal workflow (`TalentSubmittalRecord`, `TalentSubmittalEvent`, `SubmittalState`, `SubmittalEventType`, their triggers/functions, and the existing submittal `OutboxEvent`).
+
+**Architecture v2.3 §4.1 (module structure, relevant delta):** the Engagement module becomes the **Selection module** (`libs/selection`); a distinct **Submittal module** (`libs/submittal`) is listed.
+
+**Architecture v2.3 §7.3 (FK reference names; policy unchanged):** `TalentJobEvidencePackage → TalentSelectionEvent` (was `TalentEngagementEvent`); `TalentJobEvidencePackage → TalentSubmittalRecord` (submittal schema). UUID-only cross-schema policy unchanged.
+
+**Prior state (historical, lineage):** v2.1/v2.2 §7.1 listed 10 schemas including `engagement`, without `selection` or `submittal`; Lead-Q-PR-8b1-A1 co-located the Submittal workflow tables in `engagement` as an M4 substrate exception — **superseded (schema-assignment portion)** by `Aramo-Supersession-Stamp-PR-8b1-A1-Submittal-Schema-v1_0-LOCKED`. Historical migrations and the PR-8b1 artifact are preserved unchanged; the change is realized by forward migration under the T2-ARCH ordered series.
+
+**Implementation status:** the topology above is the ratified TARGET. Track 2 implementation is NOT started; each increment (T2-PRE first) is separately authorized. This anchor records authority, not permission to begin.
