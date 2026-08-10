@@ -9515,6 +9515,11 @@
     {
       "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
       "status": "unscoped",
+      "to": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts"
+    },
+    {
+      "from": "doc/governance/recon/2026-08-09/SEG-03-persistence.md",
+      "status": "unscoped",
       "to": "apps/api/src/tests/requisition-concurrency.integration.spec.ts"
     },
     {
