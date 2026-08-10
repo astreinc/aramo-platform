@@ -28,6 +28,76 @@ import { governingActionForTarget } from './dto/requisition-transitions.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
 import type { RecordRequisitionLifecycleEventInput } from './requisition-lifecycle-event.store.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import {
+  assertExternalIdentityCoPresence,
+  canonicalizeSourceSystem,
+  resolveExternalIdentity,
+  validateExternalReqId,
+} from './external-identity-validation.js';
+
+// T8-P1 — a write that collides on the external-identity partial-unique index
+// (Requisition_external_identity_key) surfaces a Prisma P2002 naming THAT index
+// specifically. Deliberately narrow (mirrors E6's isLiveEpisodeIndexViolation):
+// an arbitrary uniqueness violation must NOT be swallowed as an identity
+// conflict — it is translated to the exact-name 409, never a generic P2002.
+const EXTERNAL_IDENTITY_INDEX = 'Requisition_external_identity_key';
+const EXTERNAL_IDENTITY_FIELDS = ['tenant_id', 'source_system', 'external_req_id'];
+function isExternalIdentityIndexViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as {
+    code?: unknown;
+    meta?: {
+      target?: unknown;
+      driverAdapterError?: {
+        cause?: { originalMessage?: unknown; constraint?: { fields?: unknown } };
+      };
+    };
+    message?: unknown;
+  };
+  if (e.code !== 'P2002') return false;
+  // Prisma <7 / non-adapter: meta.target names the index.
+  const target = e.meta?.target;
+  if (
+    (typeof target === 'string' && target.includes(EXTERNAL_IDENTITY_INDEX)) ||
+    (Array.isArray(target) &&
+      target.some((t) => typeof t === 'string' && t.includes(EXTERNAL_IDENTITY_INDEX)))
+  ) {
+    return true;
+  }
+  // Prisma 7 driver-adapter (PrismaPg): the violated constraint's name is in the
+  // cause's originalMessage; the columns are the exact external-identity triple.
+  // Keyed on the index name (never a generic P2002) with the field set as a
+  // corroborating cross-check.
+  const cause = e.meta?.driverAdapterError?.cause;
+  if (cause) {
+    if (
+      typeof cause.originalMessage === 'string' &&
+      cause.originalMessage.includes(EXTERNAL_IDENTITY_INDEX)
+    ) {
+      return true;
+    }
+    const fields = cause.constraint?.fields;
+    if (
+      Array.isArray(fields) &&
+      fields.length === EXTERNAL_IDENTITY_FIELDS.length &&
+      EXTERNAL_IDENTITY_FIELDS.every((f) => fields.includes(f))
+    ) {
+      return true;
+    }
+  }
+  // Fallback: the index name anywhere in the rendered message.
+  return typeof e.message === 'string' && e.message.includes(EXTERNAL_IDENTITY_INDEX);
+}
+
+// Build the typed 409 for an external-identity collision (T8-P1 REJECT contract).
+function externalIdentityConflict(requestId: string): AramoError {
+  return new AramoError(
+    'REQUISITION_EXTERNAL_IDENTITY_CONFLICT',
+    'A requisition with this external identity (source_system + external_req_id) already exists for this tenant',
+    409,
+    { requestId },
+  );
+}
 
 // RequisitionRepository — write + read surface for Requisition.
 // Reference CRUD (no metering, no event log, no state machine).
@@ -131,7 +201,13 @@ function buildCompensationCreateData(
 // upstream by assertFinancialEditScopes (presence-keyed) BEFORE this runs.
 function buildEnterpriseCreateData(
   input: CreateRequisitionRequestDto,
+  requestId: string,
 ): Record<string, unknown> {
+  // T8-P1 — canonicalize + validate the (source_system, external_req_id)
+  // external identity BEFORE persist. Storing the CANONICAL source_system is
+  // load-bearing: the partial-unique index keys on the stored value, so
+  // normalization is what makes 'Fieldglass' and 'fieldglass' one identity.
+  const identity = resolveExternalIdentity(input, requestId);
   return {
     // Enterprise role-content (un-gated).
     job_type: input.job_type ?? null,
@@ -151,8 +227,8 @@ function buildEnterpriseCreateData(
     duration_unit: input.duration_unit ?? null,
     extension_possible: input.extension_possible ?? false,
     hours_per_week: input.hours_per_week ?? null,
-    source_system: input.source_system ?? null,
-    external_req_id: input.external_req_id ?? null,
+    source_system: identity.source_system,
+    external_req_id: identity.external_req_id,
     imported_at: input.imported_at === undefined || input.imported_at === null ? null : new Date(input.imported_at),
     // Requisition Record Spec Amendment v1.0 — commercial classification +
     // the run-match intent flag (un-gated; additive). run_match_on_create is
@@ -729,7 +805,7 @@ export class RequisitionRepository {
       owner_id: input.owner_id ?? entered_by_id,
       entered_by_id,
       ...buildCompensationCreateData(input),
-      ...buildEnterpriseCreateData(input),
+      ...buildEnterpriseCreateData(input, args.requestId),
     };
     // PR-7 (R1) — SET_PRIORITY gate. Governed only when is_hot is set TRUE (R3).
     // On DENY (closed/canceled) it throws 403 and no row is written; on ALLOW the
@@ -766,6 +842,11 @@ export class RequisitionRepository {
         correlation_id: args.requestId,
       });
       return created;
+    }).catch((err) => {
+      // T8-P1 — translate the external-identity partial-unique violation to the
+      // exact-name 409; never swallow an arbitrary uniqueness error.
+      if (isExternalIdentityIndexViolation(err)) throw externalIdentityConflict(args.requestId);
+      throw err;
     });
     return this.projectViewWithCapacity(tenant_id, row as RequisitionRow);
   }
@@ -835,7 +916,7 @@ export class RequisitionRepository {
       entered_by_id,
       import_batch_id,
       ...buildCompensationCreateData(input),
-      ...buildEnterpriseCreateData(input),
+      ...buildEnterpriseCreateData(input, args.requestId),
     };
     // PR-7 (R2) — IMPORT is EXEMPT from SET_PRIORITY enforcement: an import is a
     // bulk historical load ("what WAS"), not the operation the lifecycle matrix
@@ -874,6 +955,11 @@ export class RequisitionRepository {
         correlation_id: args.requestId,
       });
       return created;
+    }).catch((err) => {
+      // T8-P1 — translate the external-identity partial-unique violation to the
+      // exact-name 409; never swallow an arbitrary uniqueness error.
+      if (isExternalIdentityIndexViolation(err)) throw externalIdentityConflict(args.requestId);
+      throw err;
     });
     return this.projectViewWithCapacity(tenant_id, row as RequisitionRow);
   }
@@ -940,7 +1026,9 @@ export class RequisitionRepository {
       where: { tenant_id: args.tenant_id, id: args.id },
       // PR-17 — work_arrangement is read so the onsite-frequency rule can key
       // off the EFFECTIVE arrangement (existing value when the PATCH omits it).
-      select: { id: true, status: true, work_arrangement: true },
+      // T8-P1 — source_system/external_req_id needed for the co-presence check
+      // against the EFFECTIVE external identity after a partial PATCH.
+      select: { id: true, status: true, work_arrangement: true, source_system: true, external_req_id: true },
     });
     if (existing === null) {
       throw new AramoError(
@@ -1040,8 +1128,30 @@ export class RequisitionRepository {
     if (i.duration_unit !== undefined) data['duration_unit'] = i.duration_unit;
     if (i.extension_possible !== undefined) data['extension_possible'] = i.extension_possible;
     if (i.hours_per_week !== undefined) data['hours_per_week'] = i.hours_per_week;
-    if (i.source_system !== undefined) data['source_system'] = i.source_system;
-    if (i.external_req_id !== undefined) data['external_req_id'] = i.external_req_id;
+    // T8-P1 — canonicalize + validate any external-identity change on PATCH,
+    // then enforce co-presence against the EFFECTIVE (post-PATCH) values. Only
+    // fields actually present in the PATCH are written (undefined → unchanged).
+    {
+      const nextSourceSystem =
+        i.source_system !== undefined
+          ? canonicalizeSourceSystem(i.source_system, args.requestId)
+          : undefined;
+      const nextExternalReqId =
+        i.external_req_id !== undefined
+          ? validateExternalReqId(i.external_req_id, args.requestId)
+          : undefined;
+      if (nextSourceSystem !== undefined) data['source_system'] = nextSourceSystem;
+      if (nextExternalReqId !== undefined) data['external_req_id'] = nextExternalReqId;
+      const effectiveSourceSystem =
+        nextSourceSystem !== undefined ? nextSourceSystem : existing.source_system;
+      const effectiveExternalReqId =
+        nextExternalReqId !== undefined ? nextExternalReqId : existing.external_req_id;
+      assertExternalIdentityCoPresence(
+        effectiveSourceSystem,
+        effectiveExternalReqId,
+        args.requestId,
+      );
+    }
     if (i.imported_at !== undefined) data['imported_at'] = i.imported_at === null ? null : new Date(i.imported_at);
     // Requisition Record Spec Amendment v1.0 — same PATCH semantics.
     if (i.rate_type !== undefined) data['rate_type'] = i.rate_type;
@@ -1206,13 +1316,22 @@ export class RequisitionRepository {
       tenant_id: args.tenant_id,
       ...(args.expectedVersion !== undefined ? { version: args.expectedVersion } : {}),
     };
-    const result = await client.requisition.updateMany({
-      where,
-      data: {
-        ...args.data,
-        version: { increment: 1 },
-      } as Prisma.RequisitionUpdateManyMutationInput,
-    });
+    let result: Prisma.BatchPayload;
+    try {
+      result = await client.requisition.updateMany({
+        where,
+        data: {
+          ...args.data,
+          version: { increment: 1 },
+        } as Prisma.RequisitionUpdateManyMutationInput,
+      });
+    } catch (err) {
+      // T8-P1 — a PATCH that moves the external identity onto an existing
+      // (tenant, source_system, external_req_id) collides on the partial-unique
+      // index; translate to the exact-name 409 (never a generic P2002).
+      if (isExternalIdentityIndexViolation(err)) throw externalIdentityConflict(args.requestId);
+      throw err;
+    }
     if (result.count === 0) {
       throw new AramoError(
         'REQUISITION_VERSION_CONFLICT',
