@@ -48,6 +48,8 @@
     "repo-map:check": "node --import jiti/register ci/scripts/verify-repo-map.ts",
     "placement:sql:generate": "node --import jiti/register ci/scripts/generate-placement-sql.ts",
     "placement:sql:check": "node --import jiti/register ci/scripts/verify-placement-sql.ts",
+    "env:passthrough-check": "node --import jiti/register ci/scripts/verify-env-passthrough.ts",
+    "aggregate-gate:check": "node --import jiti/register ci/scripts/verify-aggregate-gate.ts",
     "identity-index:privacy-wall": "vitest run --root libs/identity-index privacy-wall && vitest run --root libs/platform-trust privacy-wall",
     "verify:vocabulary": "bash scripts/verify-vocabulary.sh",
     "prepush": "node --import jiti/register ci/scripts/prepush.ts"
