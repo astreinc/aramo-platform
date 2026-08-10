@@ -58,9 +58,10 @@ Provider **`aramo-auth-service`** verifies **1** (auth-service-consumer, a separ
 
 **Track 4 is NOT complete** (create/update ops + transition-write UI + full deploy remain).
 
-## 5. Track 2 — Selection vocabulary alignment (grounded state)
+## 5. Track 2 — Selection canonicalization (T2-ARCH RATIFIED 2026-08-10; implementation NOT started)
 
-- **`engagement` is the legacy vocabulary for the Selection domain.** `libs/selection` does not exist; the domain lives in `libs/engagement`.
+- **T2-ARCH RATIFIED.** Canonical roots LOCKED: `libs/selection`, `TalentSelection`, `TalentSelectionEvent`, `SelectionState`, `SelectionEventType`, `/v1/selections*`, the three `selection:*` scopes (read, write, message-delivery). Physical topology: **`selection` schema owns Selection; `submittal` schema owns Submittal** (invalid hybrid `selection."TalentSubmittal*"` foreclosed). `engagement_event_refs`→`selection_event_refs` (Evidence-owned; ownership unchanged); `ENGAGEMENT_EVENT_REF_NOT_FOUND` stays Evidence-owned. Current architecture = **v2.3** (§7.1/§4.1/§7.3, supersedes v2.2 for those; §7 anchored in-repo at §14 of `doc/01-locked-baselines.md`); Ledger = **v1.8**; Lead-Q-PR-8b1-A1 schema-exception superseded. Authority: `Aramo-T2-ARCH-Selection-Submittal-Architecture-Ruling-v1_0-LOCKED`. **Implementation NOT started; each increment (T2-PRE first) separately authorized; R6 production preflight is a hard gate.**
+- **`engagement` is the legacy vocabulary for the Selection domain** (current substrate; canonicalization NOT yet implemented). `libs/selection` does not exist yet; the domain lives in `libs/engagement`.
 - **Export surface = 38 symbols (34 export statements)** — the historical "45+ exports" figure is **stale**.
 - **DeliveryProvider and the AI-draft / message-delivery domain are preserved** — that domain currently lives inside `libs/engagement` (no dedicated lib).
 - **`ats-web` is the sole implemented `/v1/engagements` consumer.**
@@ -135,7 +136,7 @@ demonstrated substrate. Contradictions are findings requiring disposition, never
 1. ~~Refresh Ledger~~ **DONE (G-REC-1):** Ledger v1.7 supersedes v1.6 at origin/main (#588/#589).
 2. ~~Rule on ADR-0017~~ **DONE (G-REC-1):** Pipeline-Boundary → ADR-0029; ADR-0017 remains RDS-DR.
 3. ~~Canonicalize T5–T10~~ **DONE (G-REC-1):** carried into Ledger v1.7 §5 as ACTIVE REMAINING PROGRAM.
-4. **Track 2 architecture ruling** — decide logical/physical canonical alignment vs the Selection/Submittal co-location; issue an architecture amendment before any implementation if desired ownership differs from active locked architecture.
+4. ~~Track 2 architecture ruling~~ **DONE (T2-ARCH, 2026-08-10):** `selection` owns Selection, `submittal` owns Submittal; Architecture amended via v2.3; Ledger v1.8; PR-8b1-A1 schema-exception superseded. **Next executable step = T2-PRE (production preflight), PENDING separate execution authorization; Track 2 implementation NOT started.**
 5. **Add the B2 migration-before-app constraint** to `doc/go-live-known-limitations.md`.
 6. **OpenAPI route↔handler drift gate** — author a bidirectional coverage check over the 172 undocumented routes.
 7. **Preflight production population** for any track that touches existing rows.

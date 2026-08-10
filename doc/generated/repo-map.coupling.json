@@ -9385,6 +9385,11 @@
     {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
       "status": "unscoped",
+      "to": "doc/01-locked-baselines.md"
+    },
+    {
+      "from": "doc/governance/current/Aramo-Repository-Baseline.md",
+      "status": "unscoped",
       "to": "doc/go-live-known-limitations.md"
     },
     {
