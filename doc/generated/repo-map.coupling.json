@@ -9363,6 +9363,11 @@
       "to": "libs/identity/src/lib/tenant.service.ts"
     },
     {
+      "from": "doc/governance/current/Aramo-ATS-Go-Live-Hardening-Charter-v1_5-Continuation.md",
+      "status": "unscoped",
+      "to": "ci/integration-roots.json"
+    },
+    {
       "from": "doc/governance/current/Aramo-Repository-Baseline.md",
       "status": "unscoped",
       "to": "apps/ats-web/e2e/surfaces.spec.ts"
@@ -12985,7 +12990,9 @@
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/generate-repo-map.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/prepush.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/run-integration.ts" },
+    { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-aggregate-gate.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-ats-refusal.ts" },
+    { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-env-passthrough.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-error-codes.ts" },
     {
       "from": "package.json",
@@ -14658,10 +14665,19 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 54,
+    "files": 56,
     "huskyPresent": false
   },
   "scripts": [
+    {
+      "name": "aggregate-gate:check",
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+      ]
+    },
     {
       "name": "ats:refusal-check",
       "references": [
@@ -14684,6 +14700,8 @@
         { "kind": "prose", "path": "ci/scripts/integration-roots.ts" },
         { "kind": "nx-target", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-env-passthrough.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-placement-sql.ts" },
         { "kind": "prose", "path": "deploy/migrate-prod.sh" },
         { "kind": "prose", "path": "deploy/nginx/Dockerfile" },
@@ -14707,6 +14725,15 @@
         { "kind": "prose", "path": "deploy/migrate-prod.test.sh" },
         { "kind": "prose", "path": "tools/db-sync-local.sh" },
         { "kind": "npm-run", "path": "tools/local-run-link.sh" }
+      ]
+    },
+    {
+      "name": "env:passthrough-check",
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
       ]
     },
     {
@@ -14917,6 +14944,7 @@
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "prose", "path": "ci/scripts/integration-roots.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-error-codes.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-frontdoor-conf.ts" },
         { "kind": "prose", "path": "deploy/migrate-prod.sh" },
