@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { AramoError, isIso4217Currency, isRatePeriod } from '@aramo/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
+import { deriveCommercialMetrics } from './commercial/commercial-metrics.js';
 import {
   canTransition,
   DUPLICATE_GUARD_INACTIVE,
@@ -16,6 +17,7 @@ import {
   type ReasonEvidence,
 } from './reasons/placement-reason-registry.js';
 import type {
+  AssignmentCommercialView,
   CommercialTermsInput,
   ContractAssignmentEndReason,
   ContractAssignmentView,
@@ -531,6 +533,87 @@ export class PlacementRepository {
       },
     })) as ContractAssignmentView | null;
     return row;
+  }
+
+  // Track 5 / T5-P2 — the CURRENT-effective commercial projection of the assignment
+  // on a placement. Reads the tenant-scoped ContractAssignment to resolve the
+  // assignment id + lineage, then the CURRENT effective AssignmentRateVersion
+  // (effective_from <= now AND (effective_to IS NULL OR effective_to > now)), and
+  // derives spread/margin/markup ON READ (deriveCommercialMetrics — never stored).
+  // Returns null on coherent absence: no assignment, or no active version. Visibility
+  // is enforced by the caller loading the placement through findByIdForActor FIRST
+  // (house pattern), so this can never reveal a non-visible row. NOTE: at-most-one
+  // active version is NOT a DB invariant (the only unique key is
+  // (tenant,assignment,effective_from); T6 owns overlap prevention). For T5-P1 data
+  // exactly one active version exists; the resolver is deterministic (latest
+  // effective_from wins) so a read never breaks on a hypothetical overlap.
+  async findAssignmentCommercialProjection(
+    tenant_id: string,
+    placement_process_id: string,
+    requestId: string,
+  ): Promise<AssignmentCommercialView | null> {
+    const assignment = await this.prisma.contractAssignment.findFirst({
+      where: { tenant_id, placement_process_id },
+      select: { id: true, requisition_id: true, talent_record_id: true },
+    });
+    if (assignment === null) return null;
+
+    const now = new Date();
+    // Fetch AT MOST TWO effective versions so overlap is DETECTED, not silently
+    // collapsed to a latest-wins winner. T5-P2 is read-side detection only; T6 owns
+    // prevention/correction. There is no DB invariant guaranteeing a single active
+    // version (only unique key = (tenant, assignment, effective_from)).
+    const active = await this.prisma.assignmentRateVersion.findMany({
+      where: {
+        tenant_id,
+        contract_assignment_id: assignment.id,
+        effective_from: { lte: now },
+        OR: [{ effective_to: null }, { effective_to: { gt: now } }],
+      },
+      orderBy: { effective_from: 'desc' },
+      take: 2,
+    });
+    const [version, ...rest] = active;
+    if (version === undefined) return null;
+    if (rest.length > 0) {
+      // >1 effective version = corrupt/ambiguous commercial state. FAIL CLOSED — a
+      // server-integrity error (INTERNAL_ERROR / 500, the registry convention), never
+      // a silently-chosen winner. NO mutation, NO effective_to repair, NO supersession;
+      // NO competing financial values in the payload (only the anchor + a count).
+      throw new AramoError(
+        'INTERNAL_ERROR',
+        'ambiguous commercial version state: more than one effective AssignmentRateVersion',
+        500,
+        {
+          requestId,
+          details: {
+            contract_assignment_id: assignment.id,
+            reason: 'commercial_version_ambiguity',
+            active_count: active.length,
+          },
+        },
+      );
+    }
+
+    const metrics = deriveCommercialMetrics(version.pay_rate_amount, version.bill_rate_amount);
+    return {
+      contract_assignment_id: assignment.id,
+      assignment_rate_version_id: version.id,
+      requisition_id: assignment.requisition_id,
+      talent_record_id: assignment.talent_record_id,
+      pay_rate_amount: version.pay_rate_amount.toFixed(2),
+      bill_rate_amount: version.bill_rate_amount.toFixed(2),
+      currency: version.currency,
+      rate_period: version.rate_period,
+      spread_amount: metrics.spread_amount,
+      margin_percent: metrics.margin_percent,
+      markup_percent: metrics.markup_percent,
+      effective_from: version.effective_from,
+      effective_to: version.effective_to,
+      change_reason: version.change_reason,
+      recorded_by: version.recorded_by,
+      created_at: version.created_at,
+    };
   }
 
   async findById(tenant_id: string, id: string): Promise<PlacementProcessView | null> {

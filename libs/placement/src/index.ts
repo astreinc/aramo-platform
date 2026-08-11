@@ -76,6 +76,7 @@ export type {
   StateTransitionPayload,
   ContractAssignmentEndReason,
   ContractAssignmentView,
+  AssignmentCommercialView,
 } from './lib/placement-process.types.js';
 
 // Track 4 / T4-B — the placement-owned capacity projection (§4: consumers pull).
@@ -83,3 +84,7 @@ export { PlacementCapacityModule } from './lib/placement-capacity.module.js';
 export { CapacityProjectionRepository } from './lib/capacity/capacity-projection.repository.js';
 export { deriveCapacity, CAPACITY_STATUSES } from './lib/capacity/capacity-derivation.js';
 export type { CapacityInput, CapacityProjection, CapacityStatus } from './lib/capacity/capacity-derivation.js';
+// Track 5 / T5-P2 — the canonical assignment commercial derivation (the ONE home
+// for spread/margin/markup; T9/reporting consumes it, like deriveCapacity).
+export { deriveCommercialMetrics } from './lib/commercial/commercial-metrics.js';
+export type { CommercialMetrics } from './lib/commercial/commercial-metrics.js';

@@ -600,6 +600,7 @@
       "canTransitionTyped",
       "classifyTransitionReason",
       "deriveCapacity",
+      "deriveCommercialMetrics",
       "edgeAuthorityClass",
       "generatePlacementMigrationSql",
       "getReason",

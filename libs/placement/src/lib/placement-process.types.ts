@@ -97,6 +97,32 @@ export type ContractAssignmentView = {
   readonly end_reason: ContractAssignmentEndReason | null;
 };
 
+// Track 5 / T5-P2 — the tenant-scoped, assignment:commercials:read-gated projection
+// of the CURRENT effective AssignmentRateVersion of a ContractAssignment. Stored
+// actuals (pay/bill/currency/period) plus the DEC-5 derived views (spread/margin/
+// markup), computed-on-read via deriveCommercialMetrics — NEVER stored. Money and
+// percentages are scale-2 decimal strings (money-at-boundary convention, never
+// float); margin_percent/markup_percent are null on a zero denominator (§7). This
+// is the T5->T9 commercial contract shape.
+export type AssignmentCommercialView = {
+  readonly contract_assignment_id: string;
+  readonly assignment_rate_version_id: string;
+  readonly requisition_id: string;
+  readonly talent_record_id: string;
+  readonly pay_rate_amount: string;
+  readonly bill_rate_amount: string;
+  readonly currency: string;
+  readonly rate_period: string;
+  readonly spread_amount: string;
+  readonly margin_percent: string | null;
+  readonly markup_percent: string | null;
+  readonly effective_from: Date;
+  readonly effective_to: Date | null;
+  readonly change_reason: string | null;
+  readonly recorded_by: string;
+  readonly created_at: Date;
+};
+
 export type PlacementProcessView = {
   readonly id: string;
   readonly tenant_id: string;
