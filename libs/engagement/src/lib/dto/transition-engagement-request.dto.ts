@@ -1,9 +1,8 @@
 import { IsIn, IsUUID } from 'class-validator';
-
 import {
-  ENGAGEMENT_STATE_VALUES,
-  type EngagementStateValue,
-} from '../engagement-state.js';
+  SELECTION_STATE_VALUES as ENGAGEMENT_STATE_VALUES,
+  type SelectionStateValue as EngagementStateValue,
+} from '@aramo/selection';
 
 // M5 PR-4 §4.2 — HTTP request DTO for POST /v1/engagements/{id}/transitions.
 //

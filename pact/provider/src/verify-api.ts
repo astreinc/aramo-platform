@@ -318,11 +318,11 @@ const TALENT_EVIDENCE_TR7_MIGRATION = resolve(
 // Required for M5 PR-4 engagement-* pact interactions.
 const ENGAGEMENT_INIT_MIGRATION = resolve(
   ROOT,
-  'libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql',
+  'libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql',
 );
 const ENGAGEMENT_EVENT_LOG_MIGRATION = resolve(
   ROOT,
-  'libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
+  'libs/selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql',
 );
 // M6 PR-2 §3 — engagement schema OutboxEvent. Applied AFTER the event-log
 // substrate (same schema namespace). Required by the engagement-* pact
@@ -331,14 +331,14 @@ const ENGAGEMENT_EVENT_LOG_MIGRATION = resolve(
 // migration, prisma.outboxEvent.create raises "relation does not exist".
 const ENGAGEMENT_OUTBOX_MIGRATION = resolve(
   ROOT,
-  'libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql',
+  'libs/selection/prisma/migrations/20260531000000_add_outbox_event/migration.sql',
 );
 // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
 // Required by the outreach draft + send pact interactions (the send path
 // reads a seeded outreach_drafted event for the cross-event-ref check).
 const ENGAGEMENT_OUTREACH_DRAFTED_MIGRATION = resolve(
   ROOT,
-  'libs/engagement/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql',
+  'libs/selection/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql',
 );
 // M6 PR-2 §3 — submittal schema OutboxEvent (in its own `submittal` PG
 // namespace; the migration includes CREATE SCHEMA IF NOT EXISTS). Applied
@@ -358,7 +358,15 @@ const SUBMITTAL_OUTBOX_MIGRATION = resolve(
 // of {this track, a concurrent pact track} to land rebases (--force-with-lease).
 const ENGAGEMENT_RECONCILE_REKEY_MIGRATION = resolve(
   ROOT,
-  'libs/engagement/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
+  'libs/selection/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
+);
+// T2-P2 — relocate + rename the engagement objects into the selection schema
+// (existence-guarded; moves whatever objects the prior engagement migrations
+// created). The engagement-* pact interactions now seed + run against
+// selection."TalentSelection" / selection."TalentSelectionEvent".
+const ENGAGEMENT_T2P2_MIGRATION = resolve(
+  ROOT,
+  'libs/selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql',
 );
 const EXAMINATION_RECONCILE_REKEY_MIGRATION = resolve(
   ROOT,
@@ -968,12 +976,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // M5 PR-4 — engagement-* state handlers seed TalentJobEngagement +
       // TalentEngagementEvent rows + the controller persists more on
       // create/transition. Truncate so prior runs don't leak.
-      await c.query('TRUNCATE TABLE engagement."TalentEngagementEvent" CASCADE');
-      await c.query('TRUNCATE TABLE engagement."TalentJobEngagement" CASCADE');
+      await c.query('TRUNCATE TABLE selection."TalentSelectionEvent" CASCADE');
+      await c.query('TRUNCATE TABLE selection."TalentSelection" CASCADE');
       // M6 PR-2 §3 — engagement + submittal OutboxEvent. Each state-
       // transition emit point now writes an outbox row inside the same
       // $transaction; truncate per interaction so prior runs don't leak.
-      await c.query('TRUNCATE TABLE engagement."OutboxEvent" CASCADE');
+      await c.query('TRUNCATE TABLE selection."OutboxEvent" CASCADE');
       await c.query('TRUNCATE TABLE submittal."OutboxEvent" CASCADE');
       // M5 PR-6 — outreach-send state handlers cause AiDraftService to
       // append audit-event rows for each generateDraft call. Truncate so
@@ -1324,9 +1332,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       params: { id: string; state: string },
     ): Promise<void> {
       await c.query(
-        `INSERT INTO engagement."TalentJobEngagement"
+        `INSERT INTO selection."TalentSelection"
            (id, tenant_id, talent_id, requisition_id, examination_id, state, created_at)
-         VALUES ($1, $2, $3, $4, NULL, $5::engagement."EngagementState", NOW())`,
+         VALUES ($1, $2, $3, $4, NULL, $5::selection."SelectionState", NOW())`,
         [params.id, TENANT_ID, PACT_TALENT_ID, ATSW_REQUISITION_ID, params.state],
       );
     }
@@ -1341,9 +1349,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       },
     ): Promise<void> {
       await c.query(
-        `INSERT INTO engagement."TalentEngagementEvent"
+        `INSERT INTO selection."TalentSelectionEvent"
            (id, tenant_id, engagement_id, event_type, event_payload, created_at)
-         VALUES ($1, $2, $3, $4::engagement."EngagementEventType", $5::jsonb, NOW())`,
+         VALUES ($1, $2, $3, $4::selection."SelectionEventType", $5::jsonb, NOW())`,
         [
           params.id,
           TENANT_ID,
@@ -2902,6 +2910,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // AFTER each schema's trigger-defining migrations; CREATE OR REPLACE FUNCTION
         // redefines the final trigger fn — GUC-off behaviour is unchanged).
         ENGAGEMENT_RECONCILE_REKEY_MIGRATION,
+        // T2-P2 — after all engagement-schema migrations; relocates + renames
+        // the objects into the selection schema (existence-guarded).
+        ENGAGEMENT_T2P2_MIGRATION,
         EXAMINATION_RECONCILE_REKEY_MIGRATION,
         SUBMITTAL_RECONCILE_REKEY_MIGRATION,
         SUBMITTAL_T2P1_MIGRATION,

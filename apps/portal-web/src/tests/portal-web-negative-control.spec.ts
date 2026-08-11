@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 // it PROVES the enforcement mechanism FIRES on a breach.
 //
 // The committed fixture (../portal-negative-control/portal-imports-ats.fixture.ts)
-// is a scope:portal file (this app) importing a scope:ats lib (`engagement`). We
+// is a scope:portal file (this app) importing a scope:ats lib (`selection`). We
 // lint it with `eslint --no-ignore` and assert @nx/enforce-module-boundaries
 // rejects it — a PORTAL→ATS import is CI-red.
 //

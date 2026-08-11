@@ -67,11 +67,13 @@ const TALENT_EVIDENCE_TR7 = resolve(ROOT, 'libs/talent-evidence/prisma/migration
 const EVIDENCE_INIT = resolve(ROOT, 'libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql');
 const SUBMITTAL_INIT = resolve(ROOT, 'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql');
 const SUBMITTAL_REVOKE = resolve(ROOT, 'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql');
-const ENGAGEMENT_INIT = resolve(ROOT, 'libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql');
-const ENGAGEMENT_EVENT_LOG = resolve(ROOT, 'libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql');
+const ENGAGEMENT_INIT = resolve(ROOT, 'libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql');
+const ENGAGEMENT_EVENT_LOG = resolve(ROOT, 'libs/selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql');
 // M6 PR-2 §3 — engagement + submittal OutboxEvent migrations required
 // because state-transition write methods now emit an in-tx outbox row.
-const ENGAGEMENT_OUTBOX = resolve(ROOT, 'libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql');
+const ENGAGEMENT_OUTBOX = resolve(ROOT, 'libs/selection/prisma/migrations/20260531000000_add_outbox_event/migration.sql');
+// T2-P2 — relocate + rename the engagement objects into the selection schema.
+const ENGAGEMENT_T2P2 = resolve(ROOT, 'libs/selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql');
 const SUBMITTAL_OUTBOX = resolve(ROOT, 'libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql');
 // T2-P1 — relocate Submittal persistence to the submittal schema (existence-guarded; safe on this subset).
 const SUBMITTAL_T2P1 = resolve(ROOT, 'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql');
@@ -148,6 +150,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ENGAGEMENT_INIT,
         ENGAGEMENT_EVENT_LOG,
         ENGAGEMENT_OUTBOX,
+        ENGAGEMENT_T2P2,
         METERING_INIT,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
       ]) {
@@ -264,7 +267,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(body.engagement.state).toBe('surfaced');
       // Verify event row exists.
       const evRows = await setupClient.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count FROM engagement."TalentEngagementEvent" WHERE engagement_id = $1::uuid`,
+        `SELECT COUNT(*)::text AS count FROM selection."TalentSelectionEvent" WHERE engagement_id = $1::uuid`,
         [body.engagement.id],
       );
       expect(Number(evRows.rows[0]?.count ?? 0)).toBe(1);
@@ -340,7 +343,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const engagementId = createBody.engagement.id;
 
       const evCountBefore = await setupClient.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count FROM engagement."TalentEngagementEvent" WHERE engagement_id = $1::uuid`,
+        `SELECT COUNT(*)::text AS count FROM selection."TalentSelectionEvent" WHERE engagement_id = $1::uuid`,
         [engagementId],
       );
       const before = Number(evCountBefore.rows[0]?.count ?? 0);
@@ -363,7 +366,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Atomicity: event row count unchanged.
       const evCountAfter = await setupClient.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count FROM engagement."TalentEngagementEvent" WHERE engagement_id = $1::uuid`,
+        `SELECT COUNT(*)::text AS count FROM selection."TalentSelectionEvent" WHERE engagement_id = $1::uuid`,
         [engagementId],
       );
       expect(Number(evCountAfter.rows[0]?.count ?? 0)).toBe(before);

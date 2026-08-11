@@ -26,6 +26,19 @@ import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { ConsentService, IdempotencyService } from '@aramo/consent';
 import { TalentRecordRepository } from '@aramo/talent-record';
 import { AiDraftService } from '@aramo/ai-draft';
+import {
+  SelectionRepository as EngagementRepository,
+  SelectionEventRepository as EngagementEventRepository,
+  canTransition,
+  DELIVERY_PROVIDER_TOKEN,
+} from '@aramo/selection';
+import type {
+  TalentSelectionView as TalentJobEngagementView,
+  DeliveryProvider,
+  DeliveryResult,
+  OutreachDraftedPayload,
+  OutreachSentPayload,
+} from '@aramo/selection';
 
 import type { CreateEngagementRequestDto } from './dto/create-engagement-request.dto.js';
 import type { CreateEngagementResponseDto } from './dto/create-engagement-response.dto.js';
@@ -37,21 +50,15 @@ import { OutreachDraftRequestDto } from './dto/outreach-draft-request.dto.js';
 import type { OutreachDraftResponseDto } from './dto/outreach-draft-response.dto.js';
 import { OutreachSendRequestDto } from './dto/outreach-send-request.dto.js';
 import type { OutreachSendResponseDto } from './dto/outreach-send-response.dto.js';
-import type { OutreachDraftedPayload } from './dto/outreach-drafted-payload.js';
-import type { OutreachSentPayload } from './dto/outreach-sent-payload.js';
 import { RecordResponseRequestDto } from './dto/record-response-request.dto.js';
 import type { RecordResponseResponseDto } from './dto/record-response-response.dto.js';
 import { RecordConversationStartedRequestDto } from './dto/record-conversation-started-request.dto.js';
 import type { RecordConversationStartedResponseDto } from './dto/record-conversation-started-response.dto.js';
-import type { TalentJobEngagementView } from './dto/talent-job-engagement.view.js';
-import type {
-  DeliveryProvider,
-  DeliveryResult,
-} from './delivery/delivery-provider.interface.js';
-import { DELIVERY_PROVIDER_TOKEN } from './delivery/tokens.js';
-import { EngagementEventRepository } from './engagement-event.repository.js';
-import { EngagementRepository } from './engagement.repository.js';
-import { canTransition } from './engagement-state.js';
+// T2-P2 — the Selection domain is canonical in @aramo/selection. This
+// frozen EngagementController delegates to it; the domain symbols are
+// imported under their engagement-surface aliases so the frozen
+// /v1/engagements controller body (and the engagement:* wire contract)
+// stays byte-identical pending the P3 atomic rename.
 
 // M5 PR-4 §4.1 — EngagementController.
 //

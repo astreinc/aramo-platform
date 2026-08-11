@@ -17,8 +17,8 @@ import {
   TalentRecordPrismaService,
 } from '@aramo/talent-record';
 
-import { EngagementRepository } from '../lib/engagement.repository.js';
-import { EngagementEventRepository } from '../lib/engagement-event.repository.js';
+import { SelectionRepository } from '../lib/selection.repository.js';
+import { SelectionEventRepository } from '../lib/selection-event.repository.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 // T1-a — Pattern-A requisition validation is stubbed via RequisitionRepository
@@ -36,7 +36,7 @@ const requisitionRepositoryStub = {
 // Brings up a Postgres 17 testcontainer, applies the engagement init
 // migration (PR-1) + the three cross-schema lib migrations needed for
 // PR-3 write-path validators (talent + job-domain + examination init),
-// constructs EngagementRepository with all real cross-schema deps wired,
+// constructs SelectionRepository with all real cross-schema deps wired,
 // and asserts:
 //   PR-1 read-path scope: 8 tests (findById round-trip, null on unknown,
 //     nullable examination_id projection, tenant-scoped lookups, sorted
@@ -62,6 +62,10 @@ const ENGAGEMENT_EVENT_LOG_MIGRATION_PATH = resolve(
 const ENGAGEMENT_OUTBOX_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260531000000_add_outbox_event/migration.sql',
+);
+const ENGAGEMENT_T2P2_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql',
 );
 // PR-A1c §4 — metering schema required because every metered transition
 // method (createEngagement / transitionState / recordOutreachSent /
@@ -138,13 +142,13 @@ const TRANSITION_XTENANT_ID = '00000000-0000-7000-8000-dddd00000004';
 const TRANSITION_XTENANT_EVENT_ID = '00000000-0000-7000-8000-eeeed0000004';
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'EngagementRepository — read + write integration (real Postgres 17)',
+  'SelectionRepository — read + write integration (real Postgres 17)',
   () => {
     let container: StartedPostgreSqlContainer;
     let prisma: PrismaService;
     let talentRecordPrisma: TalentRecordPrismaService;
     let examPrisma: ExaminationPrismaService;
-    let repo: EngagementRepository;
+    let repo: SelectionRepository;
     let setupClient: PrismaService;
 
     beforeAll(async () => {
@@ -156,6 +160,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(ENGAGEMENT_EVENT_LOG_MIGRATION_PATH, 'utf8'),
         // M6 PR-2 §3 — engagement OutboxEvent (same `engagement` namespace).
         readFileSync(ENGAGEMENT_OUTBOX_MIGRATION_PATH, 'utf8'),
+        readFileSync(ENGAGEMENT_T2P2_MIGRATION_PATH, 'utf8'),
         // PR-A1c §4 — metering schema (cross-schema in-tx UsageEvent INSERT).
         readFileSync(METERING_INIT_MIGRATION_PATH, 'utf8'),
         readFileSync(TALENT_MIGRATION_PATH, 'utf8'),
@@ -182,8 +187,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const talentRecordRepo = new TalentRecordRepository(talentRecordPrisma);
       const examRepo = new ExaminationRepository(examPrisma, undefined as never);
-      const engagementEventRepo = new EngagementEventRepository(prisma, makeMockLogger());
-      repo = new EngagementRepository(
+      const engagementEventRepo = new SelectionEventRepository(prisma, makeMockLogger());
+      repo = new SelectionRepository(
         prisma,
         engagementEventRepo,
         talentRecordRepo,
@@ -440,7 +445,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const eRow = await repo.findById(CREATE_HAPPY_ID);
       expect(eRow?.id).toBe(CREATE_HAPPY_ID);
       const evRows = await setupClient.$queryRawUnsafe<{ count: bigint }[]>(
-        `SELECT COUNT(*)::bigint AS count FROM engagement."TalentEngagementEvent" WHERE id = '${CREATE_HAPPY_EVENT_ID}'::uuid`,
+        `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE id = '${CREATE_HAPPY_EVENT_ID}'::uuid`,
       );
       expect(Number(evRows[0]?.count ?? 0n)).toBe(1);
     });
@@ -620,7 +625,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('transitionState legal (surfaced → evaluated): state updated + event appended atomically', async () => {
       const evRowsBefore = await setupClient.$queryRawUnsafe<{ count: bigint }[]>(
-        `SELECT COUNT(*)::bigint AS count FROM engagement."TalentEngagementEvent" WHERE engagement_id = '${TRANSITION_HAPPY_ID}'::uuid`,
+        `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE engagement_id = '${TRANSITION_HAPPY_ID}'::uuid`,
       );
       const beforeCount = Number(evRowsBefore[0]?.count ?? 0n);
 
@@ -637,7 +642,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
 
       const evRowsAfter = await setupClient.$queryRawUnsafe<{ count: bigint }[]>(
-        `SELECT COUNT(*)::bigint AS count FROM engagement."TalentEngagementEvent" WHERE engagement_id = '${TRANSITION_HAPPY_ID}'::uuid`,
+        `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE engagement_id = '${TRANSITION_HAPPY_ID}'::uuid`,
       );
       expect(Number(evRowsAfter[0]?.count ?? 0n)).toBe(beforeCount + 1);
     });
@@ -645,7 +650,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('transitionState illegal (surfaced → submitted): ENGAGEMENT_STATE_INVALID 422; NO state change + NO event appended', async () => {
       const stateBefore = await repo.findById(TRANSITION_ILLEGAL_ID);
       const evRowsBefore = await setupClient.$queryRawUnsafe<{ count: bigint }[]>(
-        `SELECT COUNT(*)::bigint AS count FROM engagement."TalentEngagementEvent" WHERE engagement_id = '${TRANSITION_ILLEGAL_ID}'::uuid`,
+        `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE engagement_id = '${TRANSITION_ILLEGAL_ID}'::uuid`,
       );
       const beforeCount = Number(evRowsBefore[0]?.count ?? 0n);
 
@@ -670,7 +675,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const stateAfter = await repo.findById(TRANSITION_ILLEGAL_ID);
       expect(stateAfter?.state).toBe(stateBefore?.state);
       const evRowsAfter = await setupClient.$queryRawUnsafe<{ count: bigint }[]>(
-        `SELECT COUNT(*)::bigint AS count FROM engagement."TalentEngagementEvent" WHERE engagement_id = '${TRANSITION_ILLEGAL_ID}'::uuid`,
+        `SELECT COUNT(*)::bigint AS count FROM selection."TalentSelectionEvent" WHERE engagement_id = '${TRANSITION_ILLEGAL_ID}'::uuid`,
       );
       expect(Number(evRowsAfter[0]?.count ?? 0n)).toBe(beforeCount);
     });
@@ -682,8 +687,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // reject.
       await expect(
         setupClient.$executeRawUnsafe(
-          `UPDATE engagement."TalentJobEngagement"
-             SET state = 'submitted'::engagement."EngagementState"
+          `UPDATE selection."TalentSelection"
+             SET state = 'submitted'::selection."SelectionState"
              WHERE id = '${TRANSITION_DBTRIG_ID}'::uuid`,
         ),
       ).rejects.toThrow(/Illegal engagement state transition/);
@@ -727,7 +732,7 @@ async function seedEngagement(
   },
 ): Promise<void> {
   await client.$executeRawUnsafe(
-    `INSERT INTO engagement."TalentJobEngagement" (
+    `INSERT INTO selection."TalentSelection" (
        id, tenant_id, talent_id, requisition_id, examination_id, state, created_at
      ) VALUES (
        '${opts.id}'::uuid,
@@ -735,7 +740,7 @@ async function seedEngagement(
        '${opts.talent_id}'::uuid,
        '${opts.requisition_id}'::uuid,
        ${opts.examination_id === null ? 'NULL' : `'${opts.examination_id}'::uuid`},
-       '${opts.state}'::engagement."EngagementState",
+       '${opts.state}'::selection."SelectionState",
        '${opts.created_at}'::timestamptz
      )`,
   );

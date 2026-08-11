@@ -1,5 +1,5 @@
-// EngagementState — closed-list runtime const tuple + derived type +
-// state-machine guard primitive for TalentJobEngagement (M5 PR-1).
+// SelectionState — closed-list runtime const tuple + derived type +
+// state-machine guard primitive for TalentSelection (M5 PR-1).
 //
 // Per M5 PR-1 Directive Amendment v1.1 §2 (11-state enum verbatim Group
 // 2 §2.3b Part 2 Loops 1-5) and §4 (canTransition 11x11 matrix, 10
@@ -14,7 +14,7 @@
 // discipline). HTTP-bound state-transition enforcement is M5 PR-4
 // territory; PR-1 ships the primitive only.
 
-export const ENGAGEMENT_STATE_VALUES = [
+export const SELECTION_STATE_VALUES = [
   'surfaced',
   'evaluated',
   'engaged',
@@ -28,7 +28,7 @@ export const ENGAGEMENT_STATE_VALUES = [
   'submitted',
 ] as const;
 
-export type EngagementStateValue = (typeof ENGAGEMENT_STATE_VALUES)[number];
+export type SelectionStateValue = (typeof SELECTION_STATE_VALUES)[number];
 
 // Legal transition matrix per Group 2 §2.3b Part 2 Loops 1-5
 // (Amendment v1.1 §3 / §4). 10 legal transitions; terminal states
@@ -43,12 +43,12 @@ export type EngagementStateValue = (typeof ENGAGEMENT_STATE_VALUES)[number];
 //   7. responded           -> in_conversation                    (Loop 4)
 //   8. in_conversation     -> not_interested                     (Loop 4 branch)
 //   9. in_conversation     -> ready_for_submittal                (Loop 4 branch)
-//  10. ready_for_submittal -> submitted                          (Loop 5 TalentJobEngagement)
+//  10. ready_for_submittal -> submitted                          (Loop 5 TalentSelection)
 export function canTransition(
-  from: EngagementStateValue,
-  to: EngagementStateValue,
+  from: SelectionStateValue,
+  to: SelectionStateValue,
 ): boolean {
-  const ALLOWED: Record<EngagementStateValue, EngagementStateValue[]> = {
+  const ALLOWED: Record<SelectionStateValue, SelectionStateValue[]> = {
     surfaced: ['evaluated'],
     evaluated: ['engaged', 'maybe', 'passed'],
     engaged: ['awaiting_response'],

@@ -2,7 +2,7 @@
 //
 // A deliberate, committed breach of the Platform⊥ATS import wall for the NEW
 // scope:platform FE app (Platform-Console Inc-2 PR-2 §3): apps/platform-web
-// (scope:platform) importing a scope:ats lib (@aramo/engagement). It exists ONLY
+// (scope:platform) importing a scope:ats lib (@aramo/selection). It exists ONLY
 // to PROVE that @nx/enforce-module-boundaries rejects such an import for
 // platform-web — the self-testing negative control, mirroring the platform-admin
 // control and the I15 CIP⊥ATS control.
@@ -19,6 +19,6 @@
 // graph, then lints THIS file with `eslint --no-ignore` and asserts the boundary
 // rule fires (CI-red on a PLATFORM→ATS breach). If this ever lints clean, the
 // wall is broken.
-import * as engagementAtsLib from '@aramo/engagement';
+import * as selectionAtsLib from '@aramo/selection';
 
-export const PLATFORM_WEB_NEGATIVE_CONTROL_REFERENCE = engagementAtsLib;
+export const PLATFORM_WEB_NEGATIVE_CONTROL_REFERENCE = selectionAtsLib;

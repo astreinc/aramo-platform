@@ -74,13 +74,14 @@ const MIGRATIONS = [
   M('libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql'),
-  M('libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql'),
-  M('libs/engagement/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql'),
+  M('libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql'),
+  M('libs/selection/prisma/migrations/20260525150000_add_engagement_event_log/migration.sql'),
   // M6 PR-2 §3 — engagement + submittal OutboxEvent migrations required
   // because state-transition write methods now emit an in-tx outbox row.
-  M('libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
+  M('libs/selection/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   // Outreach Draft/Preview Amendment v1.1 §3 — the outreach_drafted enum value.
-  M('libs/engagement/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql'),
+  M('libs/selection/prisma/migrations/20260609000000_add_outreach_drafted_event_type/migration.sql'),
+  M('libs/selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql'),
   M('libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   M('libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql'),
   M('libs/ai-draft/prisma/migrations/20260525170000_init/migration.sql'),
@@ -301,8 +302,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Each test arranges its own consent state; clear engagement +
       // event + idempotency + consent tables between tests so prior
       // state doesn't leak.
-      await setup.query('TRUNCATE TABLE engagement."TalentEngagementEvent" CASCADE');
-      await setup.query('TRUNCATE TABLE engagement."TalentJobEngagement" CASCADE');
+      await setup.query('TRUNCATE TABLE selection."TalentSelectionEvent" CASCADE');
+      await setup.query('TRUNCATE TABLE selection."TalentSelection" CASCADE');
       await setup.query('TRUNCATE TABLE consent."IdempotencyKey" CASCADE');
       await setup.query('TRUNCATE TABLE consent."TalentConsentEvent" CASCADE');
     });
@@ -404,7 +405,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     async function countEvents(engagementId: string): Promise<number> {
       const r = await setup.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count FROM engagement."TalentEngagementEvent"
+        `SELECT COUNT(*)::text AS count FROM selection."TalentSelectionEvent"
          WHERE engagement_id = $1::uuid`,
         [engagementId],
       );

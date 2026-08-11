@@ -4,6 +4,9 @@ import type { AuthContextType } from '@aramo/auth';
 import type { ConsentService, IdempotencyService } from '@aramo/consent';
 import type { TalentRecordRepository } from '@aramo/talent-record';
 import type { AiDraftService } from '@aramo/ai-draft';
+import type { DeliveryProvider } from '@aramo/selection';
+import type { SelectionRepository as EngagementRepository } from '@aramo/selection';
+import type { SelectionEventRepository as EngagementEventRepository } from '@aramo/selection';
 
 import { EngagementController } from '../lib/engagement.controller.js';
 import type { CreateEngagementRequestDto } from '../lib/dto/create-engagement-request.dto.js';
@@ -12,9 +15,6 @@ import type { OutreachSendRequestDto } from '../lib/dto/outreach-send-request.dt
 import type { RecordResponseRequestDto } from '../lib/dto/record-response-request.dto.js';
 import type { RecordConversationStartedRequestDto } from '../lib/dto/record-conversation-started-request.dto.js';
 import type { TransitionEngagementRequestDto } from '../lib/dto/transition-engagement-request.dto.js';
-import type { DeliveryProvider } from '../lib/delivery/delivery-provider.interface.js';
-import type { EngagementRepository } from '../lib/engagement.repository.js';
-import type { EngagementEventRepository } from '../lib/engagement-event.repository.js';
 
 // M5 PR-4 §4.11 — unit spec for EngagementController.
 //

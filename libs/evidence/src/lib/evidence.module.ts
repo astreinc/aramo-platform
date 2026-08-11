@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { createAramoLogger } from '@aramo/common';
-import { EngagementModule } from '@aramo/engagement';
+import { SelectionModule } from '@aramo/selection';
 import { ExaminationModule } from '@aramo/examination';
 import { TalentEvidenceModule } from '@aramo/talent-evidence';
 
@@ -14,8 +14,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 // EvidenceRepository. PR-2 extended with the buildPackage write path
 // and wired ExaminationModule + TalentEvidenceModule upstream deps.
 //
-// M5 PR-2 adds EngagementModule (directive §4.9) so the buildPackage
-// cross-schema validator can call EngagementEventRepository
+// M5 PR-2 adds SelectionModule (directive §4.9) so the buildPackage
+// cross-schema validator can call SelectionEventRepository
 // .findByTenantAndId for each engagement_event_refs entry. The
 // validator (directive §4.8 / Ruling 7) refuses with
 // ENGAGEMENT_EVENT_REF_NOT_FOUND when an entry is not found or is
@@ -29,7 +29,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 // M4-close HK-PR-4 — AramoLogger provider for EvidenceRepository
 // (Style A constructor DI; mirrors libs/submittal PR-9 PoC pattern).
 @Module({
-  imports: [EngagementModule, ExaminationModule, TalentEvidenceModule],
+  imports: [SelectionModule, ExaminationModule, TalentEvidenceModule],
   providers: [
     PrismaService,
     EvidenceRepository,

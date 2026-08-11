@@ -11,14 +11,14 @@ import { describe, expect, it } from 'vitest';
 //
 // The committed fixture (../i15-negative-control/cip-imports-ats.fixture.ts) is
 // a scope:cip file (this lib, `matching`) importing a scope:ats lib
-// (`engagement`). We lint it with `eslint --no-ignore` and assert
+// (`selection`). We lint it with `eslint --no-ignore` and assert
 // @nx/enforce-module-boundaries rejects it — a CIP→ATS import is CI-red.
 //
 // Isolation (so it never reds a real target):
 //   - eslint.config.mjs `ignores` ('**/i15-negative-control/**') keeps it out
 //     of the real lint:nx-boundaries gate.
 //   - libs/matching/tsconfig.lib.json `exclude` keeps it out of the build
-//     (matching's build tsconfig does not map @aramo/engagement → it must not
+//     (matching's build tsconfig does not map @aramo/selection → it must not
 //     be compiled). It stays committed, so it is in the nx project graph.
 //
 // The @nx/enforce-module-boundaries rule SKIPS silently when no cached project

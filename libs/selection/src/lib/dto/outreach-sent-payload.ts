@@ -1,4 +1,4 @@
-// M5 PR-6 §4.2 — typed event_payload shape for TalentEngagementEvent
+// M5 PR-6 §4.2 — typed event_payload shape for TalentSelectionEvent
 // rows of event_type='outreach_sent' (Ruling 5).
 //
 // Extended by the Outreach Draft/Preview Directive v1.0 / Amendment v1.1
@@ -28,7 +28,7 @@
 //   - source_draft_event_id: the outreach_drafted event this send was
 //     produced from. NEW — links sent → drafted.
 //
-// Stored as Postgres jsonb in event_payload. The TalentEngagementEvent
+// Stored as Postgres jsonb in event_payload. The TalentSelectionEvent
 // view typing (event_payload: unknown) is narrowed at consumption sites
 // (per M5 PR-2 design).
 

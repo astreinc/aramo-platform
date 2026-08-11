@@ -1,11 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { AramoLogger } from '@aramo/common';
 
-import type { EngagementEventTypeValue } from './engagement-event.js';
-import type { TalentEngagementEventView } from './dto/talent-engagement-event.view.js';
+import type { SelectionEventTypeValue } from './selection-event.js';
+import type { TalentSelectionEventView } from './dto/talent-selection-event.view.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
-// Repository for the TalentEngagementEvent model (M5 PR-2 directive
+// Repository for the TalentSelectionEvent model (M5 PR-2 directive
 // §4.5; amended Ruling 3 — 5 methods including findByTenantAndId for
 // cross-schema validator use).
 //
@@ -20,7 +20,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 //
 // Append-only architecture: appendEvent is the sole write path. The
 // table's BEFORE UPDATE trigger
-// (engagement.reject_engagement_event_update) enforces absolute
+// (selection.reject_selection_event_update) enforces absolute
 // immutability at the DB layer — even a deliberate prisma.update from
 // outside this repository would be rejected by Postgres. Belt-and-
 // suspenders alongside the trigger.
@@ -42,20 +42,20 @@ export interface AppendEventInput {
   id: string;
   tenant_id: string;
   engagement_id: string;
-  event_type: EngagementEventTypeValue;
+  event_type: SelectionEventTypeValue;
   event_payload: unknown;
 }
 
-interface TalentEngagementEventRow {
+interface TalentSelectionEventRow {
   id: string;
   tenant_id: string;
   engagement_id: string;
-  event_type: EngagementEventTypeValue;
+  event_type: SelectionEventTypeValue;
   event_payload: unknown;
   created_at: Date;
 }
 
-function projectView(row: TalentEngagementEventRow): TalentEngagementEventView {
+function projectView(row: TalentSelectionEventRow): TalentSelectionEventView {
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -67,14 +67,14 @@ function projectView(row: TalentEngagementEventRow): TalentEngagementEventView {
 }
 
 @Injectable()
-export class EngagementEventRepository {
+export class SelectionEventRepository {
   constructor(
     private readonly prisma: PrismaService,
     @Inject('EngagementEventRepositoryLogger')
     private readonly logger: AramoLogger,
   ) {}
 
-  async appendEvent(input: AppendEventInput): Promise<TalentEngagementEventView> {
+  async appendEvent(input: AppendEventInput): Promise<TalentSelectionEventView> {
     const startedAt = Date.now();
     this.logger.log({
       event: 'engagement_event.append_started',
@@ -82,7 +82,7 @@ export class EngagementEventRepository {
       engagement_id: input.engagement_id,
       event_type: input.event_type,
     });
-    const created = await this.prisma.talentEngagementEvent.create({
+    const created = await this.prisma.talentSelectionEvent.create({
       data: {
         id: input.id,
         tenant_id: input.tenant_id,
@@ -91,7 +91,7 @@ export class EngagementEventRepository {
         event_payload: input.event_payload as never,
       },
     });
-    const view = projectView(created as TalentEngagementEventRow);
+    const view = projectView(created as TalentSelectionEventRow);
     this.logger.log({
       event: 'engagement_event.appended',
       tenant_id: view.tenant_id,
@@ -103,12 +103,12 @@ export class EngagementEventRepository {
     return view;
   }
 
-  async findById(id: string): Promise<TalentEngagementEventView | null> {
+  async findById(id: string): Promise<TalentSelectionEventView | null> {
     const startedAt = Date.now();
-    const row = await this.prisma.talentEngagementEvent.findUnique({
+    const row = await this.prisma.talentSelectionEvent.findUnique({
       where: { id },
     });
-    const view = row === null ? null : projectView(row as TalentEngagementEventRow);
+    const view = row === null ? null : projectView(row as TalentSelectionEventRow);
     this.logger.log({
       event: 'engagement_event.findById',
       engagement_event_id: id,
@@ -120,13 +120,13 @@ export class EngagementEventRepository {
 
   async findByEngagementId(
     engagement_id: string,
-  ): Promise<TalentEngagementEventView[]> {
+  ): Promise<TalentSelectionEventView[]> {
     const startedAt = Date.now();
-    const rows = await this.prisma.talentEngagementEvent.findMany({
+    const rows = await this.prisma.talentSelectionEvent.findMany({
       where: { engagement_id },
       orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
     });
-    const views = (rows as TalentEngagementEventRow[]).map((r) => projectView(r));
+    const views = (rows as TalentSelectionEventRow[]).map((r) => projectView(r));
     this.logger.log({
       event: 'engagement_event.findByEngagementId',
       engagement_id,
@@ -139,16 +139,16 @@ export class EngagementEventRepository {
   async findByTenantAndEngagementId(input: {
     tenant_id: string;
     engagement_id: string;
-  }): Promise<TalentEngagementEventView[]> {
+  }): Promise<TalentSelectionEventView[]> {
     const startedAt = Date.now();
-    const rows = await this.prisma.talentEngagementEvent.findMany({
+    const rows = await this.prisma.talentSelectionEvent.findMany({
       where: {
         tenant_id: input.tenant_id,
         engagement_id: input.engagement_id,
       },
       orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
     });
-    const views = (rows as TalentEngagementEventRow[]).map((r) => projectView(r));
+    const views = (rows as TalentSelectionEventRow[]).map((r) => projectView(r));
     this.logger.log({
       event: 'engagement_event.findByTenantAndEngagementId',
       tenant_id: input.tenant_id,
@@ -162,12 +162,12 @@ export class EngagementEventRepository {
   async findByTenantAndId(input: {
     tenant_id: string;
     id: string;
-  }): Promise<TalentEngagementEventView | null> {
+  }): Promise<TalentSelectionEventView | null> {
     const startedAt = Date.now();
-    const row = await this.prisma.talentEngagementEvent.findFirst({
+    const row = await this.prisma.talentSelectionEvent.findFirst({
       where: { tenant_id: input.tenant_id, id: input.id },
     });
-    const view = row === null ? null : projectView(row as TalentEngagementEventRow);
+    const view = row === null ? null : projectView(row as TalentSelectionEventRow);
     this.logger.log({
       event: 'engagement_event.findByTenantAndId',
       tenant_id: input.tenant_id,

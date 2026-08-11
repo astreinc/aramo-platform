@@ -9,7 +9,7 @@ import { ENGAGEMENT_STATE_VALUES, type EngagementState } from './types';
 // Drift smoke spec (Amendment v1.1 / RULING 2, R7).
 //
 // The ats-web hand-mirrors the inline `const ALLOWED:` matrix in
-// libs/engagement/src/lib/engagement-state.ts's canTransition(). The BE
+// libs/selection/src/lib/selection-state.ts's canTransition(). The BE
 // source is the source of truth; this FE mirror is the UX (only-legal-
 // targets-offered in the transition control). To prevent silent drift if a
 // future PR changes the BE matrix, this spec reads the BE source as text,
@@ -23,7 +23,7 @@ import { ENGAGEMENT_STATE_VALUES, type EngagementState } from './types';
 
 const BE_SOURCE = resolve(
   __dirname,
-  '../../../../libs/engagement/src/lib/engagement-state.ts',
+  '../../../../libs/selection/src/lib/selection-state.ts',
 );
 
 function normalize(

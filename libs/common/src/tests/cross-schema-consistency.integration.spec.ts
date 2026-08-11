@@ -28,7 +28,7 @@ import { CrossSchemaConsistencyRepository } from '../lib/cross-schema-consistenc
 // MIGRATIONS list:
 //   libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql
 //   libs/talent/prisma/migrations/20260516085014_init_talent_model/migration.sql
-//   libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql
+//   libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql
 //   libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql
 //   libs/job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql
 
@@ -43,7 +43,8 @@ const MIGRATIONS: readonly string[] = [
   // exist. Init only (the orphan scan selects no TalentRecord columns).
   resolve(__dirname, '../../../talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql'),
   resolve(__dirname, '../../../job-domain/prisma/migrations/20260519100000_init_job_domain_model/migration.sql'),
-  resolve(__dirname, '../../../engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql'),
+  resolve(__dirname, '../../../selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql'),
+  resolve(__dirname, '../../../selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql'),
   resolve(__dirname, '../../../examination/prisma/migrations/20260517200000_init_examination_model/migration.sql'),
 ];
 

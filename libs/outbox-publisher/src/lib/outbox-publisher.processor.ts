@@ -4,7 +4,7 @@ import type { Job } from 'bullmq';
 import { type AramoLogger, RedisConnectionConfig } from '@aramo/common';
 import { CanonicalizationOutboxRepository } from '@aramo/canonicalization';
 import { OutboxPublisherRepository } from '@aramo/consent';
-import { EngagementOutboxRepository } from '@aramo/engagement';
+import { SelectionOutboxRepository } from '@aramo/selection';
 import { SubmittalOutboxRepository } from '@aramo/submittal';
 import { PlacementOutboxRepository } from '@aramo/placement';
 
@@ -80,7 +80,7 @@ export class OutboxPublisherProcessor
 {
   constructor(
     private readonly consentOutbox: OutboxPublisherRepository,
-    private readonly engagementOutbox: EngagementOutboxRepository,
+    private readonly engagementOutbox: SelectionOutboxRepository,
     private readonly submittalOutbox: SubmittalOutboxRepository,
     private readonly canonicalizationOutbox: CanonicalizationOutboxRepository,
     private readonly placementOutbox: PlacementOutboxRepository,

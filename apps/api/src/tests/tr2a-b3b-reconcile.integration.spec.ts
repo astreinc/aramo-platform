@@ -61,7 +61,7 @@ const MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql',
   // Track 3 E6 — total unique -> live-scoped partial unique (preserve-all reconcile).
   'libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql',
-  'libs/engagement/prisma/migrations/20260525120000_init_engagement_model/migration.sql',
+  'libs/selection/prisma/migrations/20260525120000_init_engagement_model/migration.sql',
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
   // + revoke columns + canonical 5-state rename (the current submittal trigger fn
   // the B3b amendment sits on references both).
@@ -78,7 +78,8 @@ const MIGRATIONS = [
   // TR-2a-B3b — the four Group-2 immutability reconcile-re-key trigger amendments
   // (GUC-gated exemption of the talent_id re-point). Applied AFTER each schema's
   // init so the CREATE OR REPLACE FUNCTION redefines the existing trigger fn.
-  'libs/engagement/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
+  'libs/selection/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
+  'libs/selection/prisma/migrations/20260813120000_t2p2_relocate_engagement_to_selection/migration.sql',
   'libs/examination/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
   'libs/submittal/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
   'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
@@ -181,7 +182,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     async function mkEngagement(recordId: string, reqId: string): Promise<string> {
       const id = uuidv7();
       await db.query(
-        `INSERT INTO engagement."TalentJobEngagement" (id, tenant_id, talent_id, requisition_id, state, created_at)
+        `INSERT INTO selection."TalentSelection" (id, tenant_id, talent_id, requisition_id, state, created_at)
          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'surfaced', CURRENT_TIMESTAMP)`,
         [id, TENANT, recordId, reqId],
       );
@@ -190,7 +191,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     async function engagementRecordOf(engId: string): Promise<string> {
       const r = await db.query(
-        `SELECT talent_id FROM engagement."TalentJobEngagement" WHERE id = $1::uuid`,
+        `SELECT talent_id FROM selection."TalentSelection" WHERE id = $1::uuid`,
         [engId],
       );
       return r.rows[0].talent_id;
@@ -601,7 +602,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await engagementRecordOf(eng)).toBe(recordS);
       // Exactly one engagement on R_S (not duplicated).
       const cnt = await db.query(
-        `SELECT COUNT(*)::int AS n FROM engagement."TalentJobEngagement" WHERE talent_id = $1::uuid`,
+        `SELECT COUNT(*)::int AS n FROM selection."TalentSelection" WHERE talent_id = $1::uuid`,
         [recordS],
       );
       expect(cnt.rows[0].n).toBe(1);
@@ -701,7 +702,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const sub = await mkSubmittal(rec);
       const ev = await mkEvidence(rec);
       const cases: Array<[string, string]> = [
-        ['engagement."TalentJobEngagement"', eng],
+        ['selection."TalentSelection"', eng],
         ['examination."TalentJobExamination"', exam],
         ['submittal."TalentSubmittalRecord"', sub],
         ['evidence."TalentJobEvidencePackage"', ev],

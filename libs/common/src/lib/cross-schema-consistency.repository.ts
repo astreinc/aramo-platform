@@ -11,7 +11,7 @@ import { Pool, type PoolClient } from 'pg';
 // Critical pairs (per audit Axis E Lead-Q-E1=(b) disposition):
 //   1. consent."TalentConsentEvent".talent_record_id ↔ talent_record."TalentRecord".id
 //      (Step-5 consent re-key — was talent."Talent".id before the re-key)
-//   2. engagement."TalentJobEngagement".talent_id ↔ talent_record."TalentRecord".id
+//   2. selection."TalentSelection".talent_id ↔ talent_record."TalentRecord".id
 //      (4e-engagement-key — was talent."Talent".id before the re-point)
 //   3. examination."TalentJobExamination".talent_id ↔ talent."Talent".id
 //   4. examination."TalentJobExamination".job_id ↔ job_domain."Job".id
@@ -63,15 +63,15 @@ const PAIRS = [
       'WHERE tr."id" IS NULL',
   },
   {
-    // 4e-engagement-key: engagement.talent_id now references
-    // talent_record.TalentRecord.id (the ATS heart), not Core talent.Talent.
-    // Re-pointed in lockstep with the engagement validator swap — without
-    // this the scanner would LEFT JOIN every engagement row to a NULL Core
-    // row and report 100% orphaned.
-    pair_id: 'engagement.TalentJobEngagement.talent_id->talent_record.TalentRecord',
+    // 4e-engagement-key + T2-P2: the Selection workflow's talent_id (was
+    // engagement.TalentJobEngagement, now selection.TalentSelection after the
+    // T2-P2 relocation) references talent_record.TalentRecord.id (the ATS
+    // heart), not Core talent.Talent. Without this the scanner would LEFT JOIN
+    // every selection row to a NULL Core row and report 100% orphaned.
+    pair_id: 'selection.TalentSelection.talent_id->talent_record.TalentRecord',
     sql:
       'SELECT tje."id" AS row_id, tje."talent_id" AS missing_foreign_id ' +
-      'FROM "engagement"."TalentJobEngagement" tje ' +
+      'FROM "selection"."TalentSelection" tje ' +
       'LEFT JOIN "talent_record"."TalentRecord" tr ON tr."id" = tje."talent_id" ' +
       'WHERE tr."id" IS NULL',
   },

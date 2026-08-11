@@ -7,7 +7,7 @@ import {
 } from '@aramo/common';
 import { CanonicalizationModule } from '@aramo/canonicalization';
 import { ConsentModule } from '@aramo/consent';
-import { EngagementModule } from '@aramo/engagement';
+import { SelectionModule } from '@aramo/selection';
 import { SubmittalModule } from '@aramo/submittal';
 import { PlacementOutboxModule } from '@aramo/placement';
 
@@ -40,7 +40,7 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from './outbox-publisher.queue.constants.
 //   - CommonModule — RedisConnectionConfig + AramoLogger.
 //   - ConsentModule — exports OutboxPublisherRepository (consent-side
 //     reader/writer; emission stays in libs/consent per Ruling 3).
-//   - EngagementModule — exports EngagementOutboxRepository.
+//   - SelectionModule — exports SelectionOutboxRepository.
 //   - SubmittalModule — exports SubmittalOutboxRepository.
 //   - CanonicalizationModule — exports CanonicalizationOutboxRepository
 //     (T2-2b: the 4th-schema drain edge; canonicalization is the leaf
@@ -49,7 +49,7 @@ import { OUTBOX_PUBLISHER_QUEUE_NAME } from './outbox-publisher.queue.constants.
   imports: [
     CommonModule,
     ConsentModule,
-    EngagementModule,
+    SelectionModule,
     SubmittalModule,
     CanonicalizationModule,
     PlacementOutboxModule,

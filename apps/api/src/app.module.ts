@@ -18,6 +18,7 @@ import { CompanyModule } from '@aramo/company';
 import { ConsentModule } from '@aramo/consent';
 import { ContactModule } from '@aramo/contact';
 import { EngagementModule } from '@aramo/engagement';
+import { SelectionModule } from '@aramo/selection';
 import { EntitlementModule } from '@aramo/entitlement';
 import { ExportModule } from '@aramo/export';
 import { IdentityModule, IdentityCoreModule } from '@aramo/identity';
@@ -143,6 +144,11 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // never fail-boots). Not Redis-gated: it runs on every boot.
     PolicyStartupModule,
     EngagementModule,
+    // T2-P2 — the canonical Selection domain. EngagementModule is the frozen
+    // /v1/engagements controller facade (which imports SelectionModule for its
+    // own controller); AppModule imports SelectionModule directly too so the
+    // relocated RecordReconcileOrchestrator can inject SelectionRepository.
+    SelectionModule,
     IngestionModule,
     MatchingModule,
     // Gate-1 G1-B — the examine endpoint's derivation reads GoldenProfile

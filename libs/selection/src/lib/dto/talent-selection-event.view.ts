@@ -1,6 +1,6 @@
-import type { EngagementEventTypeValue } from '../engagement-event.js';
+import type { SelectionEventTypeValue } from '../selection-event.js';
 
-// Typed view projection for TalentEngagementEvent reads (M5 PR-2
+// Typed view projection for TalentSelectionEvent reads (M5 PR-2
 // directive §4.4). The repository projects raw rows through this shape
 // on read; per-PR observability standard logs the canonical fields
 // visible here.
@@ -14,12 +14,12 @@ import type { EngagementEventTypeValue } from '../engagement-event.js';
 // `created_at` is surfaced as a Date — Postgres timestamptz values
 // flow through Prisma as Date instances and the application layer
 // formats to ISO-8601 strings at HTTP-response boundaries (M5 PR-4+
-// consumer). Mirrors TalentJobEngagementView.created_at shape.
-export interface TalentEngagementEventView {
+// consumer). Mirrors TalentSelectionView.created_at shape.
+export interface TalentSelectionEventView {
   id: string;
   tenant_id: string;
   engagement_id: string;
-  event_type: EngagementEventTypeValue;
+  event_type: SelectionEventTypeValue;
   event_payload: unknown;
   created_at: Date;
 }
