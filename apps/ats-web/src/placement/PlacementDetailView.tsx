@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 
 import { Card, CardHead, InlineAlert, PageHeader } from '../ui';
 
+import { AssignmentCommercialPanel } from './AssignmentCommercialPanel';
 import { AssignmentLifecyclePanel } from './AssignmentLifecyclePanel';
 import { getPlacement, listPlacementEvents } from './placement-api';
 import { PlacementCard } from './PlacementCard';
@@ -120,6 +121,7 @@ export function PlacementDetailView({
           </Card>
 
           <AssignmentLifecyclePanel placementId={placementId} sessionOverride={sessionOverride} />
+          <AssignmentCommercialPanel placementId={placementId} sessionOverride={sessionOverride} />
         </>
       )}
     </section>

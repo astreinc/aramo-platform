@@ -165,3 +165,34 @@ export interface ContractAssignmentView {
 export interface PlacementAssignmentResponse {
   readonly assignment: ContractAssignmentView | null;
 }
+
+// Track 5 / T5-P3 — the placement-detail commercial view for commercial-authorized
+// tenant roles. Hand-mirrored from the OpenAPI AssignmentCommercialView (ADR-0029: no
+// domain import). Money + percentages are decimal STRINGS returned by the T5-P2
+// projection (rendered verbatim — never recomputed client-side). effective_from /
+// effective_to / created_at are Dates on the BE; over JSON they arrive as ISO strings.
+// margin_percent / markup_percent are null on a zero denominator; effective_to is null
+// for the current (open) version. Internal identifiers are present in the contract but
+// are NOT rendered by the UI (T5-P3 R9).
+export interface AssignmentCommercialView {
+  readonly contract_assignment_id: string;
+  readonly assignment_rate_version_id: string;
+  readonly requisition_id: string;
+  readonly talent_record_id: string;
+  readonly pay_rate_amount: string;
+  readonly bill_rate_amount: string;
+  readonly currency: string;
+  readonly rate_period: string;
+  readonly spread_amount: string;
+  readonly margin_percent: string | null;
+  readonly markup_percent: string | null;
+  readonly effective_from: string;
+  readonly effective_to: string | null;
+  readonly change_reason: string | null;
+  readonly recorded_by: string;
+  readonly created_at: string;
+}
+
+export interface AssignmentCommercialResponse {
+  readonly commercials: AssignmentCommercialView | null;
+}
