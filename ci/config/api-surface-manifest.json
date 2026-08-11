@@ -49,6 +49,7 @@
     "libs/identity/src/lib/tenant-profile/tenant-profile.controller.ts": "AP",
     "libs/identity/src/lib/tenant-user/tenant-user-management.controller.ts": "AP",
     "libs/import/src/lib/import.controller.ts": "AP",
+    "libs/import/src/lib/requisition-import.controller.ts": "AP",
     "libs/ingestion/src/lib/ingestion.controller.ts": "AD",
     "libs/pipeline/src/lib/pipeline.controller.ts": "AP",
     "libs/portal/src/lib/portal.controller.ts": "AP",

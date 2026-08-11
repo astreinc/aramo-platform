@@ -8618,6 +8618,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "libs/import/src/lib/requisition-import.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "libs/ingestion/src/lib/ingestion.controller.ts"
     },
     {
@@ -13583,6 +13588,11 @@
       "to": "scripts/verify-vocabulary.sh"
     },
     {
+      "from": "pact/consumers/requisition-import-consumer/src/requisition-import.consumer.test.ts",
+      "status": "unscoped",
+      "to": "openapi/ats.yaml"
+    },
+    {
       "from": "pact/provider/src/state-handlers.ts",
       "status": "unscoped",
       "to": "pact/consumers/auth-service-consumer/src/auth.consumer.test.ts"
@@ -14011,6 +14021,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/requisition/prisma/migrations/20260811120000_t4b2_drop_openings_available/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/migrations/20260812130000_t8p1_requisition_external_identity_unique/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

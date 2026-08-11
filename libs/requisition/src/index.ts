@@ -42,7 +42,20 @@ export {
   RATE_TYPE_VALUES,
   isRateType,
   type RateType,
+  RATE_PERIOD_VALUES,
+  isRatePeriod,
+  type RatePeriod,
   type IntakeDraftRequestDto,
   type IntakeDraftResponseDto,
   type IntakeExtractedFields,
 } from './lib/dto/index.js';
+// T8-P1 external-identity canonicalization + validation — reused by the T8-P2
+// import framework (@aramo/import) to produce a canonical requisition DTO.
+export {
+  resolveExternalIdentity,
+  canonicalizeSourceSystem,
+  validateExternalReqId,
+  assertExternalIdentityCoPresence,
+  type ExternalIdentityInput,
+  type ResolvedExternalIdentity,
+} from './lib/external-identity-validation.js';

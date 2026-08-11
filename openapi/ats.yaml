@@ -1892,6 +1892,120 @@ paths:
       security:
         - BearerAuth: []
 
+  # Track 8 / T8-P2 — provider-neutral canonical requisition ingestion.
+  /v1/requisition-imports:
+    get:
+      operationId: listRequisitionImports
+      summary: List canonical requisition-import batches for the tenant (Track 8 / T8-P2).
+      description: |
+        Returns the tenant's requisition-import batches (ImportBatch rows with
+        target_entity=requisition), newest first, bounded at 200. Optional
+        narrowing by `site_id`. Requires the `ats` capability and the
+        `requisition:import:read` scope. tenant_id is derived from the JWT.
+      parameters:
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequisitionImportList'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+    post:
+      operationId: runRequisitionImport
+      summary: Run a provider-neutral canonical requisition import (Track 8 / T8-P2).
+      description: |
+        Validates + maps provider-neutral CanonicalRequisitionImportRecords and
+        creates requisitions through the governed import path, reusing the
+        reversible ImportBatch substrate. tenant_id is derived from the JWT.
+        Requires the `requisition:import:write` scope. CREATE-only,
+        transport-neutral, provider-neutral: no provider credential/config is
+        accepted. A re-imported external identity (tenant + source_system +
+        external_req_id) is deterministically rejected (recorded as a per-record
+        failure), never updated in place. Refusals:
+          - 400 VALIDATION_ERROR — the request envelope fails validation.
+          - 403 INSUFFICIENT_PERMISSIONS — caller lacks `requisition:import:write`.
+          - 422 IMPORT_THRESHOLD_EXCEEDED — per-record failures exceeded the
+            configured threshold; the whole batch was rolled back.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunRequisitionImportRequest'
+      responses:
+        '201':
+          description: Created (committed or partially_committed).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatchView'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Import rejected (failure threshold exceeded).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/requisition-imports/{id}:
+    get:
+      operationId: getRequisitionImport
+      summary: Get a canonical requisition-import batch by id (Track 8 / T8-P2).
+      description: |
+        Returns a single requisition-import batch in the tenant. A batch that is
+        absent or belongs to another tenant returns 404 (tenant-safe; existence
+        is never disclosed). Requires the `requisition:import:read` scope.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatchView'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
   /v1/placements/{id}/assignment/end:
     post:
       operationId: endPlacementAssignment
@@ -2521,3 +2635,122 @@ components:
         relation:
           type: string
           enum: [CORROBORATES, CONTRADICTS, SUPERSEDES]
+
+    # Track 8 / T8-P2 — canonical requisition ingestion schemas.
+    CanonicalRequisitionImportRecord:
+      type: object
+      additionalProperties: false
+      required: [source_system, external_req_id, title, openings, company_id]
+      properties:
+        source_system:
+          type: string
+          description: Canonical lowercase provider key (T8-P1); canonicalized + conflict-checked at persist.
+        external_req_id:
+          type: string
+          description: Opaque provider requisition id (case-preserved).
+        title:
+          type: string
+        openings:
+          type: integer
+          minimum: 0
+          description: Maps ONLY to the stored total openings authority; availability stays derived (T4-B2).
+        company_id:
+          type: string
+          format: uuid
+        external_status:
+          type: string
+          description: Adapter-supplied normalized internal RecruitingStatus token (case-insensitive); gated statuses are refused. Absent defaults to 'open'.
+        description:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        work_arrangement:
+          type: string
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        job_type:
+          type: string
+        contact_id:
+          type: string
+          format: uuid
+        imported_at:
+          type: string
+          format: date-time
+        bill_rate_amount:
+          type: string
+          description: Requisition-level bill rate (decimal string); write gated by compensation.
+        bill_rate_currency:
+          type: string
+        bill_rate_period:
+          type: string
+    RunRequisitionImportRequest:
+      type: object
+      additionalProperties: false
+      required: [source_label, records]
+      properties:
+        source_label:
+          type: string
+          description: Audit label for the batch (never a credential).
+        site_id:
+          type: string
+          format: uuid
+        records:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CanonicalRequisitionImportRecord'
+    ImportBatchView:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, imported_by_id, target_entity, source_filename, row_count, success_count, failure_count, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        site_id:
+          type: [string, 'null']
+          format: uuid
+        imported_by_id:
+          type: string
+          format: uuid
+        target_entity:
+          type: string
+          enum: [company, contact, requisition, talent_record]
+        source_filename:
+          type: string
+        row_count:
+          type: integer
+        success_count:
+          type: integer
+        failure_count:
+          type: integer
+        status:
+          type: string
+          enum: [pending, committed, partially_committed, rejected, reverted]
+        created_at:
+          type: string
+          format: date-time
+        committed_at:
+          type: [string, 'null']
+          format: date-time
+        reverted_at:
+          type: [string, 'null']
+          format: date-time
+    RequisitionImportList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportBatchView'

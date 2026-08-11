@@ -268,6 +268,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:edit',
         'requisition:edit:financials',
         'requisition:edit:status',
+        'requisition:import:read',
+        'requisition:import:write',
         'requisition:profile:edit',
         'requisition:profile:generate',
         'requisition:read',
@@ -384,10 +386,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   523 → 526 = +3 Track3/E4 placement:replace (account_manager,
       //   tenant_admin, tenant_owner; recruiter and all others gain nothing —
       //   Owner=Admin mirror, no inheritance).
+      // Track8/T8-P2: +7 requisition:import grants (read×4 + write×3) -> 546.
       // Track4/T4-D: +13 assignment role grants (read×4 + create/update/end×3) → 526 -> 539.
-      // Track5/T5-P1: +6 assignment:commercials:read/write grants (account_manager,
-      // tenant_admin, tenant_owner × 2 scopes) → 539 -> 545.
-      expect(roleScopes).toBe(545);
+      // Track5/T5-P1: +6 assignment:commercials grants -> 545. Track8/T8-P2: +7
+      // requisition:import grants (read x4 + write x3) -> 552.
+      expect(roleScopes).toBe(552);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -488,7 +491,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(109); // +5 Track3/E1-b placement + 1 Track3/E4 placement:replace + 4 Track4/T4-D assignment:* + 2 Track5/T5-P1 assignment:commercials:* (all non-platform)
+      expect(tenantScopes.length).toBe(111); // +5 placement + 1 placement:replace + 4 T4-D assignment + 2 T5-P1 assignment:commercials + 2 T8-P2 requisition:import (all non-platform)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -682,7 +685,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // no-change PATCH). The company table is not in this identity-only
     // testcontainer, so no Company-row assertion is made here.
 
-    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (95 scopes; PR-B HK-INTEGRATION-SPEC-COMP-STALE reconciliation to merged-seed truth + Track3/E1-b placement matrix + Track4/T4-D assignment family + Track5/T5-P1 assignment:commercials:read/write)', async () => {
+    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (97 scopes; Track4/T4-D assignment + Track5/T5-P1 assignment:commercials + Track8/T8-P2 requisition:import)', async () => {
       const scopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
@@ -691,8 +694,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // HK-IDENT-SCOPES: tenant_admin gained the 6 deferred ATS scopes
       // (recruiter+ includes tenant_admin). 37 + 6 = 43.
       // AUTHZ-D4a: tenant_admin gains the 4 team-model scopes. 43 + 4 = 47.
-      // Track4/T4-D: tenant_admin gains the 4 assignment:* scopes. 89 -> 93.
-      // Track5/T5-P1: tenant_admin gains assignment:commercials:read/write. 93 -> 95.
+      // Track4/T4-D: +4 assignment:* -> 93. Track5/T5-P1: +2 assignment:commercials
+      // -> 95. Track8/T8-P2: +2 requisition:import:* -> 97.
       expect(sorted).toEqual([
         'activity:create',
         'activity:read',
@@ -767,6 +770,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:delete',
         'requisition:edit',
         'requisition:edit:financials',
+        'requisition:import:read',
+        'requisition:import:write',
         'requisition:profile:edit',
         'requisition:profile:generate',
         'requisition:read',
@@ -933,7 +938,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Test 17 — scope catalog correctness
     // -----------------------------------------------------------------
 
-    it('test 17 — scope catalog correctness: 12-role staffing catalog per AUTHZ-1b + AUTHZ-D4a + Track3/E1-b placement matrix + Track4/T4-D assignment family + Track5/T5-P1 assignment:commercials (tenant_admin 95, recruiter 50, candidate 7, tenant_owner 95, account_manager 73, sourcer 25, finance 10, auditor 5, recruiting_manager 56, delivery_manager 33, lead_recruiter 53, back_office 25)', async () => {
+    it('test 17 — scope catalog correctness: 12-role staffing catalog + T5-P1 assignment:commercials + T8-P2 requisition:import (tenant_admin 97, recruiter 51, candidate 7, tenant_owner 97, account_manager 75, sourcer 25, finance 10, auditor 5, recruiting_manager 56, delivery_manager 33, lead_recruiter 53, back_office 25)', async () => {
       // tenant_admin scope set (47 post AUTHZ-D4a; 43 + 4 team-model scopes)
       const adminScopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
@@ -1013,6 +1018,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:delete',
         'requisition:edit',
         'requisition:edit:financials',
+        'requisition:import:read',
+        'requisition:import:write',
         'requisition:profile:edit',
         'requisition:profile:generate',
         'requisition:read',
@@ -1087,6 +1094,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pre_start_requirement:read',
         'report:read',
         'requisition:create',
+        'requisition:import:read',
         'requisition:read',
         'requisition:search',
         'submittal:approve',
@@ -1274,6 +1282,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:delete',
         'requisition:edit',
         'requisition:edit:financials',
+        'requisition:import:read',
+        'requisition:import:write',
         'requisition:profile:edit',
         'requisition:profile:generate',
         'requisition:read',
@@ -1363,6 +1373,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'requisition:edit',
         'requisition:edit:financials',
         'requisition:edit:status',
+        'requisition:import:read',
+        'requisition:import:write',
         'requisition:profile:edit',
         'requisition:profile:generate',
         'requisition:read',
