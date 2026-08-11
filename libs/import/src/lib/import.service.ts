@@ -24,6 +24,11 @@ import {
   type ImportEngineConfig,
 } from './import-config.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import type { RunRequisitionImportRequestDto } from './dto/canonical-requisition-import.dto.js';
+import {
+  mapCanonicalRequisition,
+  RequisitionImportMappingError,
+} from './requisition-import.mapper.js';
 
 // ImportService — the import ENGINE (PR-A8-1 Gate 5).
 //
@@ -383,6 +388,209 @@ export class ImportService {
     })) as ImportBatchRow;
 
     return projectBatchView(finalRow);
+  }
+
+  // -------------------------------------------------------------------------
+  // T8-P2 — provider-neutral canonical requisition ingestion (VMS Integration
+  // Directive v1.0). Reuses the SAME reversible substrate as runImport:
+  // ImportBatch (target_entity='requisition'), per-record ImportFailure, the
+  // threshold/partial-commit accounting, and the governed createForImport path
+  // (which carries T8-P1 external-identity conflict translation + the
+  // REQUISITION_IMPORTED lifecycle event). It differs from runImport ONLY in
+  // the front end: a typed CanonicalRequisitionImportRecord validated + mapped
+  // by the pure requisition-import mapper (transport-neutral, no CSV columns).
+  //
+  // ARCHITECTURE NOTE (directive §12): this is CREATE-only. An in-place UPDATE
+  // of an existing requisition has no reversible representation on the
+  // ImportBatch substrate (revert = hard delete by import_batch_id, no prior
+  // state captured), so that seam is HALTED — a re-import of an existing
+  // external identity is deterministically REJECTED by the T8-P1 partial-unique
+  // index (recorded as a per-record failure), never an in-place mutation.
+  async runCanonicalRequisitionImport(args: {
+    tenant_id: string;
+    imported_by_id: string;
+    input: RunRequisitionImportRequestDto;
+    scopes: readonly string[];
+    requestId: string;
+  }): Promise<ImportBatchView> {
+    const { tenant_id, imported_by_id, input } = args;
+
+    // 1. Create the batch (status: 'pending'). source_filename carries the
+    //    caller's audit label — never a credential.
+    const batch = (await this.prisma.importBatch.create({
+      data: {
+        tenant_id,
+        site_id: input.site_id ?? null,
+        imported_by_id,
+        target_entity: 'requisition',
+        source_filename: input.source_label,
+        row_count: input.records.length,
+        success_count: 0,
+        failure_count: 0,
+        status: 'pending',
+      },
+    })) as ImportBatchRow;
+
+    // 2. Per-record: map → createForImport, or record a bounded failure token.
+    let success_count = 0;
+    const failures: Array<{
+      row_number: number;
+      failure_reason: string;
+      offending_fields: string[];
+      original_row_data: unknown;
+    }> = [];
+
+    for (let i = 0; i < input.records.length; i++) {
+      const rowIndex = i + 1;
+      const record = input.records[i];
+      if (record === undefined) continue;
+
+      // 2a. Pure mapping/validation → CreateRequisitionRequestDto. A mapping
+      //     rejection (bounded token) is a per-record failure, never a throw.
+      let dto;
+      try {
+        dto = mapCanonicalRequisition(record, args.requestId);
+      } catch (err) {
+        if (err instanceof RequisitionImportMappingError) {
+          failures.push({
+            row_number: rowIndex,
+            failure_reason: err.token,
+            offending_fields: err.offending_fields,
+            original_row_data: record,
+          });
+          continue;
+        }
+        throw err;
+      }
+
+      // 2b. Governed create. A write refusal (external-identity conflict on
+      //     replay, insufficient compensation scope, etc.) is caught + recorded
+      //     as a per-record failure — the batch is not poisoned. AramoError.code
+      //     is a stable token; unknown errors get a generic token.
+      try {
+        await this.requisitionRepository.createForImport({
+          tenant_id,
+          entered_by_id: imported_by_id,
+          import_batch_id: batch.id,
+          input: dto as never,
+          scopes: args.scopes,
+          requestId: args.requestId,
+        });
+        success_count++;
+      } catch (err) {
+        const code =
+          err instanceof AramoError ? err.code : 'IMPORT_ERROR';
+        failures.push({
+          row_number: rowIndex,
+          failure_reason: code,
+          offending_fields: [],
+          original_row_data: record,
+        });
+      }
+    }
+
+    const failure_count = failures.length;
+
+    // 3. Persist per-record failure rows.
+    for (const f of failures) {
+      await this.prisma.importFailure.create({
+        data: {
+          tenant_id,
+          import_batch_id: batch.id,
+          row_number: f.row_number,
+          failure_reason: f.failure_reason,
+          offending_fields: f.offending_fields as unknown as object,
+          original_row_data: f.original_row_data as unknown as object,
+        },
+      });
+    }
+
+    // 4. Threshold → reject (roll back per-record commits) or commit/partial —
+    //    identical accounting to runImport.
+    const exceeded = thresholdExceeded(
+      input.records.length,
+      failure_count,
+      this.config.failure_threshold_pct,
+    );
+    if (exceeded) {
+      await this.deleteRowsForBatch({
+        tenant_id,
+        target: 'requisition',
+        batch_id: batch.id,
+      });
+      const updated = (await this.prisma.importBatch.update({
+        where: { id: batch.id },
+        data: {
+          row_count: input.records.length,
+          success_count: 0,
+          failure_count,
+          status: 'rejected',
+          committed_at: new Date(),
+        },
+      })) as ImportBatchRow;
+      throw new AramoError(
+        'IMPORT_THRESHOLD_EXCEEDED',
+        'Requisition import rejected: failure count exceeded the configured threshold',
+        422,
+        {
+          requestId: args.requestId,
+          details: {
+            import_batch_id: updated.id,
+            row_count: updated.row_count,
+            failure_count: updated.failure_count,
+            threshold_pct: this.config.failure_threshold_pct,
+          },
+        },
+      );
+    }
+
+    const final_status: ImportBatchStatus =
+      failure_count === 0 ? 'committed' : 'partially_committed';
+    const finalRow = (await this.prisma.importBatch.update({
+      where: { id: batch.id },
+      data: {
+        row_count: input.records.length,
+        success_count,
+        failure_count,
+        status: final_status,
+        committed_at: new Date(),
+      },
+    })) as ImportBatchRow;
+    return projectBatchView(finalRow);
+  }
+
+  // T8-P2 read surface — batches scoped to target_entity='requisition' only, so
+  // the /v1/requisition-imports admin surface never leaks other import targets.
+  async listRequisitionImports(args: {
+    tenant_id: string;
+    site_id?: string;
+    limit?: number;
+  }): Promise<ImportBatchView[]> {
+    const limit = Math.min(args.limit ?? 50, 200);
+    const rows = (await this.prisma.importBatch.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        target_entity: 'requisition',
+        ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+      },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+    })) as ImportBatchRow[];
+    return rows.map(projectBatchView);
+  }
+
+  async findRequisitionImportById(args: {
+    tenant_id: string;
+    id: string;
+  }): Promise<ImportBatchView | null> {
+    const row = (await this.prisma.importBatch.findFirst({
+      where: {
+        tenant_id: args.tenant_id,
+        id: args.id,
+        target_entity: 'requisition',
+      },
+    })) as ImportBatchRow | null;
+    return row === null ? null : projectBatchView(row);
   }
 
   // Per-target insert dispatch. The 4-way switch is exhaustive over

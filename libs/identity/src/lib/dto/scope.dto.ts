@@ -295,6 +295,14 @@ export const SEED_SCOPE_KEYS = [
   // disclosure (least visibility — assignment:read does NOT grant it).
   'assignment:commercials:read',
   'assignment:commercials:write',
+  // Track 8 / T8-P2 — provider-neutral canonical requisition ingestion (VMS
+  // Integration). Distinct from the generic CSV `import:*` family: this governs
+  // the external-system requisition ingestion surface (/v1/requisition-imports).
+  // read -> recruiter/account_manager/tenant_admin/tenant_owner (mirrors
+  // assignment:read); write -> account_manager/tenant_admin/tenant_owner only
+  // (authoritative-tier act, recruiter excluded — mirrors assignment:create).
+  'requisition:import:read',
+  'requisition:import:write',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

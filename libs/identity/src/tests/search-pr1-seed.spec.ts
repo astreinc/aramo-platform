@@ -31,8 +31,9 @@ describe('Search PR-1 — scope catalog parity', () => {
     // D3b Charter §4 Amendment appended activity:redact (91→92).
     // Track 3 / E2 appended 7 pre_start_requirement scopes (92→99); v1.2.2 +1 reopen (99→100).
     // Track 4 / T4-D appended 4 assignment scopes read/create/update/end (107→111).
-    // Track 5 / T5-P1 appended 2 assignment:commercials:read/write (111→113).
-    expect(SEED_SCOPE_KEYS).toHaveLength(113);
+    // Track 5 / T5-P1 appended 2 assignment:commercials:read/write (111->113).
+    // Track 8 / T8-P2 appended 2 requisition:import:read/write (113->115).
+    expect(SEED_SCOPE_KEYS).toHaveLength(115);
   });
 
   it('D3b — activity:redact is in the catalog exactly once', () => {

@@ -43,6 +43,11 @@
       "status": "unscoped",
       "to": "scripts/audit-check.sh"
     },
+    {
+      "from": ".github/workflows/ci.yml",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
     { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "ci/integration-roots.json" },
     {
       "from": ".github/workflows/ci.yml",
@@ -8386,6 +8391,286 @@
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/assignable-users.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/examine.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/me.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/public-invitation.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/public-verification.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/tenant-settings.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/placement/placement.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/pre-start-requirement/pre-start-requirement.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/advisory-resolution.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/contradiction-resolution.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/dispute-resolution.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/dossier.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/email-verification.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/portal-dispute-disposition.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/portal-notice.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/portal-rights.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/reference-attestation.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/sourcing.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/verification-proposal.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/webhooks/indeed-apply.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/activity/src/lib/activity.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/attachment/src/lib/attachment.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/auth.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/jwks.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/portal-auth.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/calendar/src/lib/calendar.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/client-talent-restriction/src/lib/client-talent-restriction.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/company/src/lib/address-lookup.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/company/src/lib/company.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/company/src/lib/d4a.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/consent/src/lib/consent.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/contact/src/lib/contact.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/engagement/src/lib/engagement.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/examination/src/lib/match-list.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/examination/src/lib/override.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/export/src/lib/export.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/audit/audit.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/d4a.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/domain-verification/domain-verification.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/role-catalog/role-catalog.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/sites/sites.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/tenant-profile/tenant-profile.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/tenant-user/tenant-user-management.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/import/src/lib/import.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/import/src/lib/requisition-import.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/ingestion/src/lib/ingestion.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/portal/src/lib/portal.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/reporting/src/lib/dashboard.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/reporting/src/lib/reporting.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/saved-list/src/lib/saved-list.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/submittal/src/lib/submittal.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-record.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/task/src/lib/task.controller.ts"
+    },
+    {
       "from": "ci/integration-roots.json",
       "status": "unscoped",
       "to": "apps/api/src/tests/tenant-reset.integration.spec.ts"
@@ -8445,6 +8730,11 @@
       "status": "unscoped",
       "to": "ci/integration-roots.json"
     },
+    {
+      "from": "ci/scripts/prepush.ts",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
     { "from": "ci/scripts/prepush.ts", "status": "unscoped", "to": "ci/integration-roots.json" },
     {
       "from": "ci/scripts/prepush.ts",
@@ -8460,6 +8750,11 @@
       "from": "ci/scripts/run-integration.ts",
       "status": "unscoped",
       "to": "ci/integration-roots.json"
+    },
+    {
+      "from": "ci/scripts/verify-api-contract-parity.ts",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
     },
     { "from": "ci/scripts/verify-ats-refusal.ts", "status": "unscoped", "to": "openapi/ats.yaml" },
     {
@@ -13105,6 +13400,11 @@
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/prepush.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/run-integration.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-aggregate-gate.ts" },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-api-contract-parity.ts"
+    },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-ats-refusal.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-env-passthrough.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/verify-error-codes.ts" },
@@ -13286,6 +13586,11 @@
       "from": "pact/consumers/ingestion-consumer/src/ingestion.consumer.test.ts",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "pact/consumers/requisition-import-consumer/src/requisition-import.consumer.test.ts",
+      "status": "unscoped",
+      "to": "openapi/ats.yaml"
     },
     {
       "from": "pact/provider/src/state-handlers.ts",
@@ -13716,6 +14021,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/requisition/prisma/migrations/20260811120000_t4b2_drop_openings_available/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/migrations/20260812130000_t8p1_requisition_external_identity_unique/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -14789,7 +15099,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 56,
+    "files": 57,
     "huskyPresent": false
   },
   "scripts": [
@@ -14840,6 +15150,15 @@
         { "kind": "prose", "path": "tools/local-stack.sh" },
         { "kind": "prose", "path": "tools/seed-e2e-data.ts" },
         { "kind": "prose", "path": "tools/send-mailer-proof.ts" }
+      ]
+    },
+    {
+      "name": "contract-parity:check",
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
+        { "kind": "prose", "path": "ci/scripts/prepush.ts" }
       ]
     },
     {
@@ -15069,6 +15388,7 @@
         { "kind": "prose", "path": "ci/scripts/integration-roots.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-api-contract-parity.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-error-codes.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-frontdoor-conf.ts" },
         { "kind": "prose", "path": "deploy/migrate-prod.sh" },
