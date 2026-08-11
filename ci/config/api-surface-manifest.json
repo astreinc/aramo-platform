@@ -1,0 +1,742 @@
+{
+  "$comment": "GLH-1-C ratified API surface classification (Charter v1.5). Governed=XP,AP,SS,AD,PZ must have OpenAPI parity or a transitionalUndocumented entry; IZ is exempt. NO XD class. Controller-keyed; routeOverrides for mixed-semantic controllers (method+path). transitionalUndocumented is a RATCHET: enumerated existing debt only; a NEW governed-undocumented route not listed FAILS. Enrolment edits require Architect authorization.",
+  "version": 1,
+  "governed": ["XP", "AP", "SS", "AD", "PZ"],
+  "exempt": ["IZ"],
+  "controllers": {
+    "apps/api/src/controllers/assignable-users.controller.ts": "AP",
+    "apps/api/src/controllers/examine.controller.ts": "AP",
+    "apps/api/src/controllers/me.controller.ts": "AP",
+    "apps/api/src/controllers/public-invitation.controller.ts": "PZ",
+    "apps/api/src/controllers/public-verification.controller.ts": "PZ",
+    "apps/api/src/controllers/tenant-settings.controller.ts": "AP",
+    "apps/api/src/placement/placement.controller.ts": "AP",
+    "apps/api/src/pre-start-requirement/pre-start-requirement.controller.ts": "AP",
+    "apps/api/src/talent-identity/advisory-resolution.controller.ts": "AP",
+    "apps/api/src/talent-identity/contradiction-resolution.controller.ts": "AP",
+    "apps/api/src/talent-identity/dispute-resolution.controller.ts": "AP",
+    "apps/api/src/talent-identity/dossier.controller.ts": "AP",
+    "apps/api/src/talent-identity/email-verification.controller.ts": "AP",
+    "apps/api/src/talent-identity/portal-dispute-disposition.controller.ts": "AP",
+    "apps/api/src/talent-identity/portal-notice.controller.ts": "PZ",
+    "apps/api/src/talent-identity/portal-rights.controller.ts": "AP",
+    "apps/api/src/talent-identity/reference-attestation.controller.ts": "AP",
+    "apps/api/src/talent-identity/sourcing.controller.ts": "AP",
+    "apps/api/src/talent-identity/verification-proposal.controller.ts": "AP",
+    "apps/api/src/webhooks/indeed-apply.controller.ts": "XP",
+    "apps/platform-admin/src/app/platform/platform.controller.ts": "AP",
+    "libs/activity/src/lib/activity.controller.ts": "AP",
+    "libs/attachment/src/lib/attachment.controller.ts": "AP",
+    "libs/auth-core/src/lib/auth.controller.ts": "SS",
+    "libs/auth-core/src/lib/jwks.controller.ts": "SS",
+    "libs/auth-core/src/lib/portal-auth.controller.ts": "SS",
+    "libs/calendar/src/lib/calendar.controller.ts": "AP",
+    "libs/client-talent-restriction/src/lib/client-talent-restriction.controller.ts": "AP",
+    "libs/company/src/lib/address-lookup.controller.ts": "AP",
+    "libs/company/src/lib/company.controller.ts": "AP",
+    "libs/company/src/lib/d4a.controller.ts": "AP",
+    "libs/consent/src/lib/consent.controller.ts": "AP",
+    "libs/contact/src/lib/contact.controller.ts": "AP",
+    "libs/engagement/src/lib/engagement.controller.ts": "AP",
+    "libs/examination/src/lib/match-list.controller.ts": "AP",
+    "libs/examination/src/lib/override.controller.ts": "AP",
+    "libs/export/src/lib/export.controller.ts": "AP",
+    "libs/identity/src/lib/audit/audit.controller.ts": "AP",
+    "libs/identity/src/lib/d4a.controller.ts": "AP",
+    "libs/identity/src/lib/domain-verification/domain-verification.controller.ts": "AP",
+    "libs/identity/src/lib/role-catalog/role-catalog.controller.ts": "AP",
+    "libs/identity/src/lib/sites/sites.controller.ts": "AP",
+    "libs/identity/src/lib/tenant-profile/tenant-profile.controller.ts": "AP",
+    "libs/identity/src/lib/tenant-user/tenant-user-management.controller.ts": "AP",
+    "libs/import/src/lib/import.controller.ts": "AP",
+    "libs/ingestion/src/lib/ingestion.controller.ts": "AD",
+    "libs/pipeline/src/lib/pipeline.controller.ts": "AP",
+    "libs/portal/src/lib/portal.controller.ts": "AP",
+    "libs/reporting/src/lib/dashboard.controller.ts": "AP",
+    "libs/reporting/src/lib/reporting.controller.ts": "AP",
+    "libs/requisition/src/lib/requisition.controller.ts": "AP",
+    "libs/saved-list/src/lib/saved-list.controller.ts": "AP",
+    "libs/submittal/src/lib/submittal.controller.ts": "AP",
+    "libs/talent-record/src/lib/talent-record.controller.ts": "AP",
+    "libs/task/src/lib/task.controller.ts": "AP"
+  },
+  "routeOverrides": [],
+  "transitionalUndocumented": [
+    {
+      "method": "GET",
+      "path": "/auth/portal/consume"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/portal/request-link"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/activities/*/redact"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/activities/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/activities"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/activities"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/address-lookup/autocomplete"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/address-lookup/details"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/attachments/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/attachments/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/attachments"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/attachments"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/calendar-events/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/calendar-events/*"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/calendar-events/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/calendar-events"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/calendar-events"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/clients/*/talent/*/restrictions/*/close"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/clients/*/talent/*/restrictions/current"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/clients/*/talent/*/restrictions/history"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/clients/*/talent/*/restrictions"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/companies/*/assignments/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/companies/*/assignments"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/companies/*/assignments"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/companies/*/departments/*"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/companies/*/departments/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/companies/*/departments"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/companies/*/departments"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/companies/*/team"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/companies/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/companies/*"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/companies/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/companies"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/companies"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/contacts/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/contacts/*"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/contacts/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/contacts"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/contacts"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/dashboard"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/email-verifications/confirm"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/examinations"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/imports/*/failures"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/imports/*/revert"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/imports/*"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/imports/suggest-mapping"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/imports"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/imports"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/invitations/accept"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/management/edges/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/management/edges"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/management/edges"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/me"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/pipelines/*/history"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/pipelines/*/transition"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/pipelines/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/pipelines/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/pipelines"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/pipelines"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/pre-start-requirement/placements/*/ready"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/pre-start-requirement/placements/*/requirements"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/pre-start-requirement/requirements/*/reopen"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/pre-start-requirement/requirements/*/status"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/pre-start-requirement/requirements/*/waive"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/pre-start-requirement/sets/*/publish"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/pre-start-requirement/sets/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/pre-start-requirement/sets/applicable"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/pre-start-requirement/sets"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/reports/company-metrics"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/reports/company-placements"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/reports/pipeline-rollup"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/reports/placement-count"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/reports/recruiter-metrics"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/reports/requisition-rollup"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/reports/tenant-counts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/requisitions/*/assignments/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/requisitions/*/assignments"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/requisitions/*/assignments"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/requisitions/*/bookmark"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/requisitions/*/profile/confirm"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/requisitions/*/profile/draft"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/requisitions/*/profile"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/requisitions/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/requisitions/*"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/requisitions/*"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/requisitions/intake"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/requisitions"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/requisitions"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/saved-lists/*/entries/*"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/saved-lists/*/entries"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/saved-lists/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/saved-lists/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/saved-lists"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/saved-lists"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sourcing/bench"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sourcing/pipeline"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sourcing/pool/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sourcing/pool"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/submittals"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/talent-records/*/email-verifications"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent-records/*/email-verifications"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/talent-records/*/link"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/talent-records/*/link"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent-records/*/link"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent-records/*/reference-attestations"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/talent-records/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/talent-records/*"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/talent-records/*"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent-records/draft-from-resume"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent-records/resume-upload-url"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/talent-records"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent-records"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent/identity/advisories/*/approve"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent/identity/advisories/*/dismiss"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent/identity/advisories/*/reverse"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/talent/identity/advisories"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent/identity/contradictions/*/resolve"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent/identity/disputes/*/raise"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent/identity/disputes/*/resolve"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent/identity/portal-disputes/*/correct"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent/identity/portal-disputes/*/extend"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent/identity/portal-disputes/*/request-info"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent/identity/portal-disputes/*/triage"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent/identity/portal-disputes/*/uphold"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/talent/identity/portal-disputes/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/talent/identity/portal-disputes"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent/identity/proposals/*/act"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/talent/identity/proposals/*/dismiss"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/talent/identity/proposals"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/tasks/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tasks/*"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/tasks/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tasks"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tasks"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/teams/*/clients/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/teams/*/clients"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/teams/*/clients"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/teams/*/members/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/teams/*/members"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/teams/*/members"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/teams"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/teams"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenant/assignable-users"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenant/audit-events"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenant/domain-verification/check"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenant/domain-verification"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenant/domain-verification"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenant/profile"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/tenant/profile"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenant/roles-catalog"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/tenant/settings/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenant/settings"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenant/sites/*/deactivate"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenant/sites/*/reactivate"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/tenant/sites/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenant/sites/*"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/tenant/sites/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenant/sites"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenant/sites"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenant/users/*/disable"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/tenant/users/*/email"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenant/users/*/enable"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenant/users/*/resend"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenant/users/*/revoke"
+    },
+    {
+      "method": "PATCH",
+      "path": "/v1/tenant/users/*/roles"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenant/users/*"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenant/users/directory"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/tenant/users/invitations"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/tenant/users"
+    }
+  ]
+}
