@@ -14,6 +14,12 @@ export type {
   ImportBatchView,
   ImportFailureView,
 } from './import-batch.view.js';
+export {
+  CANONICAL_REQUISITION_IMPORT_KEYS,
+  type CanonicalRequisitionImportRecord,
+  type RequisitionImportStatusMapping,
+  type RunRequisitionImportRequestDto,
+} from './canonical-requisition-import.dto.js';
 export type { SuggestMappingRequestDto } from './suggest-mapping-request.dto.js';
 export type {
   MappingConfidence,
