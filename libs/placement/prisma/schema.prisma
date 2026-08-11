@@ -277,3 +277,63 @@ model ContractAssignment {
   @@index([tenant_id, talent_record_id])
   @@schema("placement")
 }
+
+// AssignmentRateVersion — Track 5 / T5-P1. The person-specific, effective-dated
+// ACTUAL commercial terms of a ContractAssignment (Planning Package §5). T5-P1
+// writes ONLY the INITIAL version, created atomically with the FORWARD STARTED
+// ContractAssignment in the same transaction (Amendment A1 — never a committed
+// steady state with a started assignment lacking its initial terms). APPEND-ONLY:
+// an existing version is NEVER ordinarily UPDATEd (immutability trigger, migration
+// 20260810130000). Subsequent effective-dated versions (revisions/extensions) are
+// T6, not T5. Shared currency + rate_period value objects live in libs/common
+// (Amendment A2 — no placement->requisition edge). ONE currency governs both pay
+// and bill (Amendment A1-9; mixed-currency version rejected at the write boundary).
+// Derived spread/margin/markup are NOT stored — computed-on-read in T5-P2.
+// Cross-schema refs are UUID-only, no FK (§7.3), symmetric with the single-pass
+// tenant-reset delete.
+model AssignmentRateVersion {
+  id String @id @db.Uuid
+
+  tenant_id String @db.Uuid
+
+  // Anchor to the owning ContractAssignment. Intra-schema plain scalar (no FK)
+  // for symmetry with ContractAssignment.placement_process_id (§7.3).
+  contract_assignment_id String @db.Uuid
+
+  // Denormalised read/lineage axes, mirroring ContractAssignment — tenant-scoped
+  // reads (and the T5->T9 projection) without a cross-row join.
+  requisition_id   String @db.Uuid
+  talent_record_id String @db.Uuid
+
+  // ACTUAL person-specific commercial terms (Amendment A1-2 / A1-9). Decimal money,
+  // never float. currency + rate_period validated against the libs/common shared
+  // closed sets at the write boundary (VALIDATION_ERROR on miss). Stored as TEXT
+  // (NOT a Postgres enum — the ISO list evolves; A2-3). One currency governs BOTH
+  // pay and bill. Derived spread/margin/markup are NOT columns (T5-P2 read).
+  pay_rate_amount  Decimal @db.Decimal(12, 2)
+  bill_rate_amount Decimal @db.Decimal(12, 2)
+  currency         String
+  rate_period      String
+
+  // Effective-dating (Planning Package §5). effective_from = the ONE authoritative
+  // assignment-start instant shared with the assignment-start evidence (Amendment
+  // A1-8 — no per-layer wall-clock drift). The initial active version has NO
+  // effective_to; window-close belongs to T6.
+  effective_from DateTime  @db.Timestamptz(6)
+  effective_to   DateTime? @db.Timestamptz(6)
+
+  // Recording provenance (Planning Package §5 "approval provenance"). recorded_by
+  // = the Aramo user (JWT sub) who supplied the terms — same convention as
+  // client-talent-restriction.recorded_by. change_reason is an optional note.
+  recorded_by   String  @db.Uuid
+  change_reason String?
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Version-ready idempotency floor: keyed on the effective instant so T6 can add
+  // later versions, while a retry of the same atomic start cannot double-insert.
+  @@unique([tenant_id, contract_assignment_id, effective_from])
+  @@index([tenant_id, contract_assignment_id])
+  @@index([tenant_id, requisition_id])
+  @@schema("placement")
+}

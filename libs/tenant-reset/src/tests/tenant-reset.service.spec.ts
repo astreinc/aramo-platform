@@ -335,10 +335,12 @@ describe('TenantResetService — happy path + delete ordering (§2.2 / §3.8)', 
       'DELETE FROM pre_start_requirement."PreStartMaterializationIntent"',
       'DELETE FROM pre_start_requirement."PreStartRequirementSet"',
       // §2.2.8 (PR-C) — placement aggregate, FK-safe + trigger-aware:
-      // OutboxEvent → PlacementProcessEvent (Restrict child) → ContractAssignment
+      // OutboxEvent → PlacementProcessEvent (Restrict child) → AssignmentRateVersion
+      // (Track 5 / T5-P1, child-before-parent, delete-reject escape) → ContractAssignment
       // (Track 4 / T4-F, child-before-parent) → PlacementProcess.
       'DELETE FROM placement."OutboxEvent"',
       'DELETE FROM placement."PlacementProcessEvent"',
+      'DELETE FROM placement."AssignmentRateVersion"',
       'DELETE FROM placement."ContractAssignment"',
       'DELETE FROM placement."PlacementProcess"',
     ];

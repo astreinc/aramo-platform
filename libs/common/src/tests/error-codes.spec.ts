@@ -139,6 +139,9 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // Track 4 T4-A1 — 1 start-context refusal: STARTED needs the assignment org
       // snapshot (company_id) to materialise the FORWARD ContractAssignment (422).
       'PLACEMENT_START_CONTEXT_REQUIRED',
+      // Track 5 T5-P1 — 1 commercial-terms-required refusal (STARTED without the
+      // actual commercial terms; 422). Atomic — zero mutation.
+      'PLACEMENT_START_COMMERCIAL_TERMS_REQUIRED',
       // Track 3 E6 — 1 pipeline one-live-episode refusal (Q-2; 409). Both the
       // deterministic app-guard refusal and the exact-name race-floor translation.
       'PIPELINE_EPISODE_ALREADY_LIVE',

@@ -31,7 +31,13 @@ const MIGRATIONS = [
   '20260810100000_placement_assignment_ended_value',
   '20260810110000_placement_assignment_aware_guard',
   '20260810120000_placement_assignment_end_reason',
+  '20260810130000_t5_assignment_rate_version',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
+
+// Track 5 / T5-P1 — a FORWARD STARTED transition now materialises the initial
+// Assignment Rate Version in the same tx, so it requires the actual commercial
+// terms + the recording principal. A shared valid fixture for the T4 STARTED paths.
+const T5_TERMS = { pay_rate_amount: '80.00', bill_rate_amount: '120.00', currency: 'USD', rate_period: 'HOURLY' } as const;
 
 // Path from OFFER_EXTENDED to READY_TO_START, then the START edge separately.
 const PATH_TO_READY: PlacementState[] = ['OFFER_ACCEPTED', 'PRE_START', 'READY_TO_START'];
@@ -110,6 +116,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           placement_process_id: id,
           to: 'STARTED',
           assignment_context: { company_id },
+          commercial_terms: T5_TERMS,
+          recorded_by: randomUUID(),
         },
         'start',
       );
@@ -136,7 +144,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const company_id = randomUUID();
       const id = await driveToReady(input);
       await repo.transition(
-        { tenant_id: input.tenant_id, placement_process_id: id, to: 'STARTED', assignment_context: { company_id } },
+        { tenant_id: input.tenant_id, placement_process_id: id, to: 'STARTED', assignment_context: { company_id }, commercial_terms: T5_TERMS, recorded_by: randomUUID() },
         'start',
       );
 
@@ -175,7 +183,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const input = baseInput({ tenant_id, requisition_id });
         const id = await driveToReady(input);
         await repo.transition(
-          { tenant_id, placement_process_id: id, to: 'STARTED', assignment_context: { company_id: randomUUID() } },
+          { tenant_id, placement_process_id: id, to: 'STARTED', assignment_context: { company_id: randomUUID() }, commercial_terms: T5_TERMS, recorded_by: randomUUID() },
           'start',
         );
       }
@@ -183,7 +191,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const other = baseInput({ tenant_id });
       const oid = await driveToReady(other);
       await repo.transition(
-        { tenant_id, placement_process_id: oid, to: 'STARTED', assignment_context: { company_id: randomUUID() } },
+        { tenant_id, placement_process_id: oid, to: 'STARTED', assignment_context: { company_id: randomUUID() }, commercial_terms: T5_TERMS, recorded_by: randomUUID() },
         'start',
       );
 
@@ -205,7 +213,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const input = baseInput({ tenant_id, submittal_id });
       const id = await driveToReady(input);
       await repo.transition(
-        { tenant_id, placement_process_id: id, to: 'STARTED', assignment_context: { company_id: randomUUID() } },
+        { tenant_id, placement_process_id: id, to: 'STARTED', assignment_context: { company_id: randomUUID() }, commercial_terms: T5_TERMS, recorded_by: randomUUID() },
         'start',
       );
       return id;

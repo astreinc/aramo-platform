@@ -182,6 +182,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'activity:create',
         'activity:read',
         'activity:redact',
+        'assignment:commercials:read',
+        'assignment:commercials:write',
         'assignment:create',
         'assignment:end',
         'assignment:read',
@@ -383,7 +385,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   tenant_admin, tenant_owner; recruiter and all others gain nothing —
       //   Owner=Admin mirror, no inheritance).
       // Track4/T4-D: +13 assignment role grants (read×4 + create/update/end×3) → 526 -> 539.
-      expect(roleScopes).toBe(539);
+      // Track5/T5-P1: +6 assignment:commercials:read/write grants (account_manager,
+      // tenant_admin, tenant_owner × 2 scopes) → 539 -> 545.
+      expect(roleScopes).toBe(545);
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -484,7 +488,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(107); // +5 Track3/E1-b placement + 1 Track3/E4 placement:replace + 4 Track4/T4-D assignment:* (all non-platform)
+      expect(tenantScopes.length).toBe(109); // +5 Track3/E1-b placement + 1 Track3/E4 placement:replace + 4 Track4/T4-D assignment:* + 2 Track5/T5-P1 assignment:commercials:* (all non-platform)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -678,7 +682,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // no-change PATCH). The company table is not in this identity-only
     // testcontainer, so no Company-row assertion is made here.
 
-    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (93 scopes; PR-B HK-INTEGRATION-SPEC-COMP-STALE reconciliation to merged-seed truth + Track3/E1-b placement matrix + Track4/T4-D assignment family)', async () => {
+    it('test 14 — getScopesByUserAndTenant returns tenant_admin scope set (95 scopes; PR-B HK-INTEGRATION-SPEC-COMP-STALE reconciliation to merged-seed truth + Track3/E1-b placement matrix + Track4/T4-D assignment family + Track5/T5-P1 assignment:commercials:read/write)', async () => {
       const scopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
@@ -688,10 +692,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // (recruiter+ includes tenant_admin). 37 + 6 = 43.
       // AUTHZ-D4a: tenant_admin gains the 4 team-model scopes. 43 + 4 = 47.
       // Track4/T4-D: tenant_admin gains the 4 assignment:* scopes. 89 -> 93.
+      // Track5/T5-P1: tenant_admin gains assignment:commercials:read/write. 93 -> 95.
       expect(sorted).toEqual([
         'activity:create',
         'activity:read',
         'activity:redact',
+        'assignment:commercials:read',
+        'assignment:commercials:write',
         'assignment:create',
         'assignment:end',
         'assignment:read',
@@ -926,7 +933,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Test 17 — scope catalog correctness
     // -----------------------------------------------------------------
 
-    it('test 17 — scope catalog correctness: 12-role staffing catalog per AUTHZ-1b + AUTHZ-D4a + Track3/E1-b placement matrix + Track4/T4-D assignment family (tenant_admin 93, recruiter 50, candidate 7, tenant_owner 93, account_manager 71, sourcer 25, finance 10, auditor 5, recruiting_manager 56, delivery_manager 33, lead_recruiter 53, back_office 25)', async () => {
+    it('test 17 — scope catalog correctness: 12-role staffing catalog per AUTHZ-1b + AUTHZ-D4a + Track3/E1-b placement matrix + Track4/T4-D assignment family + Track5/T5-P1 assignment:commercials (tenant_admin 95, recruiter 50, candidate 7, tenant_owner 95, account_manager 73, sourcer 25, finance 10, auditor 5, recruiting_manager 56, delivery_manager 33, lead_recruiter 53, back_office 25)', async () => {
       // tenant_admin scope set (47 post AUTHZ-D4a; 43 + 4 team-model scopes)
       const adminScopes = await roleSvc.getScopesByUserAndTenant({
         user_id: SEED_IDS.user_admin,
@@ -936,6 +943,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'activity:create',
         'activity:read',
         'activity:redact',
+        'assignment:commercials:read',
+        'assignment:commercials:write',
         'assignment:create',
         'assignment:end',
         'assignment:read',
@@ -1195,6 +1204,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'activity:create',
         'activity:read',
         'activity:redact',
+        'assignment:commercials:read',
+        'assignment:commercials:write',
         'assignment:create',
         'assignment:end',
         'assignment:read',
@@ -1297,6 +1308,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await expectRoleScopes('account_manager', [
         'activity:create',
         'activity:read',
+        'assignment:commercials:read',
+        'assignment:commercials:write',
         'assignment:create',
         'assignment:end',
         'assignment:read',

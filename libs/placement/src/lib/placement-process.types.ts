@@ -43,6 +43,14 @@ export type TransitionPlacementInput = {
   // Required on a transition to STARTED (company_id is snapshot-stored on the
   // forward assignment); ignored for every other target.
   readonly assignment_context?: AssignmentContext | null;
+  // Track 5 / T5-P1 — the actual person-specific commercial terms materialised as
+  // the INITIAL Assignment Rate Version in the SAME transaction as the FORWARD
+  // STARTED ContractAssignment (Amendment A1). REQUIRED for a FORWARD transition
+  // to STARTED; supplying it on any other target is rejected (VALIDATION_ERROR).
+  // recorded_by is the acting principal (JWT sub) captured as the rate-version
+  // recording provenance. Both are ignored for non-STARTED targets.
+  readonly commercial_terms?: CommercialTermsInput | null;
+  readonly recorded_by?: string | null;
 };
 
 // Caller-supplied org snapshot for the forward STARTED -> ContractAssignment path.
@@ -50,6 +58,18 @@ export type AssignmentContext = {
   readonly company_id: string;
   readonly site_id?: string | null;
   readonly company_department_id?: string | null;
+};
+
+// Track 5 / T5-P1 — the actual commercial terms of the initial Assignment Rate
+// Version. Amounts are decimal strings (money-at-boundary convention, never
+// float). ONE currency governs BOTH pay and bill (Amendment A1-9; mixed-currency
+// is structurally impossible). currency + rate_period are validated against the
+// libs/common shared closed sets at the write boundary.
+export type CommercialTermsInput = {
+  readonly pay_rate_amount: string;
+  readonly bill_rate_amount: string;
+  readonly currency: string;
+  readonly rate_period: string;
 };
 
 // Track 4 / T4-C — the ratified ending-reason taxonomy (closed set). COMPLETED =

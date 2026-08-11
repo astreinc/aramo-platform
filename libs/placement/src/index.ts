@@ -70,6 +70,7 @@ export type {
   CreatePlacementInput,
   TransitionPlacementInput,
   AssignmentContext,
+  CommercialTermsInput,
   PlacementProcessView,
   PlacementProcessEventView,
   StateTransitionPayload,

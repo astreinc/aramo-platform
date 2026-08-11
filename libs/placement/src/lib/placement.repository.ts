@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
-import { AramoError } from '@aramo/common';
+import { AramoError, isIso4217Currency, isRatePeriod } from '@aramo/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import {
@@ -16,6 +16,7 @@ import {
   type ReasonEvidence,
 } from './reasons/placement-reason-registry.js';
 import type {
+  CommercialTermsInput,
   ContractAssignmentEndReason,
   ContractAssignmentView,
   CreatePlacementInput,
@@ -63,6 +64,18 @@ const OUTBOX_CREATED = 'placement.process.created';
 const OUTBOX_STATE_CHANGED = 'placement.process.state_changed';
 // Track 4 / T4-D — the ContractAssignment ending domain event.
 const OUTBOX_ASSIGNMENT_ENDED = 'placement.assignment.ended';
+// Track 5 / T5-P1 — the initial Assignment Rate Version creation domain event.
+// Identity/provenance ONLY (Amendment A2 §8): NEVER pay/bill/spread/margin/markup/
+// currency/rate_period. It announces that commercial state exists; the figures are
+// served by the protected read surface (T5-P2), never the append-only, non-reset-
+// covered outbox.
+const OUTBOX_RATE_VERSION_CREATED = 'placement.assignment.rate_version.created';
+
+// Track 5 / T5-P1 — a decimal money string (never a float): up to 10 integer
+// digits and up to 2 fractional, matching the Decimal(12,2) column. Defensive
+// repository guard (the HTTP DTO also validates) — the repo is called directly by
+// integration proofs, so the write boundary must not trust the amount format.
+const MONEY_12_2 = /^\d{1,10}(\.\d{1,2})?$/;
 
 // The BEFORE INSERT / BEFORE UPDATE lifecycle trigger raises a named
 // check_violation. Detection is by the RAISE message substring (E7 precedent):
@@ -269,6 +282,44 @@ export class PlacementRepository {
       );
     }
 
+    // Track 5 / T5-P1 — commercial-terms policy, validated BEFORE the transaction
+    // so a missing/invalid payload is a clean 422/400 with ZERO mutation
+    // (Amendment A1-3). Commercial terms belong ONLY to the FORWARD assignment-start
+    // seam: REQUIRED for STARTED, REJECTED for every other target (never silently
+    // discarded). currency/rate_period are checked against the libs/common shared
+    // closed sets; amounts against the Decimal(12,2) money shape. Company defaults
+    // and requisition targets are NEVER promoted here — only the explicit payload.
+    if (input.to === 'STARTED') {
+      const terms = input.commercial_terms;
+      if (!terms) {
+        throw new AramoError(
+          'PLACEMENT_START_COMMERCIAL_TERMS_REQUIRED',
+          'Starting a placement requires the actual commercial terms (pay_rate_amount, bill_rate_amount, currency, rate_period)',
+          422,
+          { requestId, details: { placement_process_id: input.placement_process_id, reason: 'commercial_terms_required' } },
+        );
+      }
+      if (!isIso4217Currency(terms.currency)) {
+        throw new AramoError('VALIDATION_ERROR', 'commercial_terms.currency must be an active ISO-4217 code', 400, { requestId, details: { field: 'commercial_terms.currency' } });
+      }
+      if (!isRatePeriod(terms.rate_period)) {
+        throw new AramoError('VALIDATION_ERROR', 'commercial_terms.rate_period is not a recognised rate period', 400, { requestId, details: { field: 'commercial_terms.rate_period' } });
+      }
+      if (!MONEY_12_2.test(terms.pay_rate_amount) || !MONEY_12_2.test(terms.bill_rate_amount)) {
+        throw new AramoError('VALIDATION_ERROR', 'commercial_terms pay/bill must be a non-negative Decimal(12,2) money string', 400, { requestId, details: { field: 'commercial_terms.amount' } });
+      }
+      if (!input.recorded_by) {
+        throw new AramoError('VALIDATION_ERROR', 'a recording principal (recorded_by) is required for commercial terms', 400, { requestId, details: { field: 'recorded_by' } });
+      }
+    } else if (input.commercial_terms != null) {
+      throw new AramoError('VALIDATION_ERROR', 'commercial_terms may only be supplied on a transition to STARTED', 400, { requestId, details: { field: 'commercial_terms', to_state: input.to } });
+    }
+
+    // ONE transaction-level effective instant (Amendment A1-8): the ContractAssignment
+    // start fact and the initial Assignment Rate Version effective_from share it, so
+    // no per-layer wall-clock call introduces micro-drift.
+    const startedAt = new Date();
+
     try {
       const updated = await this.prisma.$transaction(async (tx) => {
         const u = (await tx.placementProcess.update({
@@ -333,20 +384,64 @@ export class PlacementRepository {
         // (tenant_id, placement_process_id) index is the idempotency floor.
         if (input.to === 'STARTED') {
           const ctx = input.assignment_context;
+          const terms = input.commercial_terms as CommercialTermsInput;
+          const assignmentId = uuidv7();
           await tx.contractAssignment.create({
             data: {
-              id: uuidv7(),
+              id: assignmentId,
               tenant_id: input.tenant_id,
               placement_process_id: input.placement_process_id,
               submittal_id: current.submittal_id,
               requisition_id: current.requisition_id,
               talent_record_id: current.talent_record_id,
-              started_at: new Date(),
+              started_at: startedAt,
               provenance: 'FORWARD',
               lifecycle_state: 'ACTIVE',
               company_id: ctx?.company_id ?? null,
               site_id: ctx?.site_id ?? null,
               company_department_id: ctx?.company_department_id ?? null,
+            },
+          });
+          // Track 5 / T5-P1 — the INITIAL Assignment Rate Version, created in the
+          // SAME transaction (Amendment A1: there is NO committed steady state with
+          // a started FORWARD assignment lacking its initial actual terms).
+          // effective_from = the SAME startedAt as the assignment start (A1-8).
+          // Append-only; subsequent effective-dated versions are T6. Amounts are
+          // passed as decimal strings straight to the Decimal(12,2) column (no float).
+          const rateVersionId = uuidv7();
+          await tx.assignmentRateVersion.create({
+            data: {
+              id: rateVersionId,
+              tenant_id: input.tenant_id,
+              contract_assignment_id: assignmentId,
+              requisition_id: current.requisition_id,
+              talent_record_id: current.talent_record_id,
+              pay_rate_amount: terms.pay_rate_amount,
+              bill_rate_amount: terms.bill_rate_amount,
+              currency: terms.currency,
+              rate_period: terms.rate_period,
+              effective_from: startedAt,
+              recorded_by: input.recorded_by as string,
+              change_reason: null,
+            },
+          });
+          // Atomic audit/outbox (Amendment A2 §8): identity/provenance ONLY — NO
+          // pay/bill/spread/margin/markup/currency/rate_period. The outbox announces
+          // that commercial state exists; the figures are served by the protected
+          // read surface (T5-P2), never this append-only, non-reset-covered log.
+          await tx.outboxEvent.create({
+            data: {
+              id: uuidv7(),
+              tenant_id: input.tenant_id,
+              event_type: OUTBOX_RATE_VERSION_CREATED,
+              event_payload: {
+                tenant_id: input.tenant_id,
+                contract_assignment_id: assignmentId,
+                assignment_rate_version_id: rateVersionId,
+                requisition_id: current.requisition_id,
+                talent_record_id: current.talent_record_id,
+                effective_from: startedAt.toISOString(),
+              },
             },
           });
         }

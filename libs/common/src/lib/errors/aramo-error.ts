@@ -113,6 +113,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // materialise the FORWARD ContractAssignment. Well-formed request, missing
   // start context. HTTP 422.
   PLACEMENT_START_CONTEXT_REQUIRED: 422,
+  PLACEMENT_START_COMMERCIAL_TERMS_REQUIRED: 422,
   // Track 3 / E6 — pipeline one-live-episode refusal (Q-2). A live episode
   // already exists for the (tenant, talent, requisition) triple. HTTP 409
   // (state-conflict, mirrors PLACEMENT_ALREADY_LIVE).

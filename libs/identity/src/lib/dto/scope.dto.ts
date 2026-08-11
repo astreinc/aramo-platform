@@ -287,6 +287,14 @@ export const SEED_SCOPE_KEYS = [
   'assignment:create',
   'assignment:update',
   'assignment:end',
+  // Track 5 / T5-P1 — assignment commercial-terms (Assignment Rate Version)
+  // authority. Dedicated financial permissions (Amendment A2 DEC-4): NEVER
+  // satisfied by placement:*, requisition-financials, or the generic
+  // assignment:create/update. commercials:write is the second leg of the FORWARD
+  // STARTED conjunction; commercials:read independently governs financial
+  // disclosure (least visibility — assignment:read does NOT grant it).
+  'assignment:commercials:read',
+  'assignment:commercials:write',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

@@ -827,6 +827,12 @@ const PLACEMENT_ASSIGNMENT_END_REASON_MIGRATION = resolve(
   ROOT,
   'libs/placement/prisma/migrations/20260810120000_placement_assignment_end_reason/migration.sql',
 );
+// Track 5 / T5-P1 — the additive AssignmentRateVersion table. Applied so the
+// provider schema carries it; the STARTED path INSERTs the initial rate version.
+const PLACEMENT_ASSIGNMENT_RATE_VERSION_MIGRATION = resolve(
+  ROOT,
+  'libs/placement/prisma/migrations/20260810130000_t5_assignment_rate_version/migration.sql',
+);
 // Track 4 / T4-B2 §6 — the dedicated stored openings_available DROP. Applied here so
 // the provider schema matches the retired-column reality; the requisition read is
 // derived and does not depend on the physical column.
@@ -3018,6 +3024,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PLACEMENT_ASSIGNMENT_ENDED_MIGRATION,
         PLACEMENT_ASSIGNMENT_GUARD_MIGRATION,
         PLACEMENT_ASSIGNMENT_END_REASON_MIGRATION,
+        // Track 5 / T5-P1 — the additive AssignmentRateVersion table.
+        PLACEMENT_ASSIGNMENT_RATE_VERSION_MIGRATION,
         // T4-B2 §6 — retire the stored openings_available column (derived-only).
         REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION,
       ]) {

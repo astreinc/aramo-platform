@@ -31,6 +31,15 @@ export { CONTACT_CHANNELS } from './lib/types/contact-channel.js';
 export type { ContactChannel } from './lib/types/contact-channel.js';
 export { CONSENT_SCOPE_STATUSES } from './lib/types/consent-scope-status.js';
 export type { ConsentScopeStatus } from './lib/types/consent-scope-status.js';
+// Track 5 Amendment A2 — canonical shared backend value objects for commercial
+// terms (ISO-4217 currency + RatePeriod). Single backend home so libs/requisition
+// and libs/placement consume them without a placement->requisition edge.
+export { isIso4217Currency } from './lib/types/iso-4217-currency.js';
+export {
+  RATE_PERIOD_VALUES,
+  isRatePeriod,
+} from './lib/types/rate-period.js';
+export type { RatePeriod } from './lib/types/rate-period.js';
 // AUTHZ-D4b — structural VisibilityContext shape + Request augmentation
 // (see file header). Allows entity libs to consume the resolved context
 // without importing @aramo/visibility — the Gate-5 cycle-avoidance.

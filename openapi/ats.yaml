@@ -1982,6 +1982,51 @@ components:
             reason code's detail policy (REQUIRED | OPTIONAL | PROHIBITED). Never
             enters the placement outbox event (append-only, cross-consumer): it is
             retained only on the tenant-owned placement event evidence.
+        assignment_company_id:
+          type: [string, 'null']
+          format: uuid
+          description: >
+            Track 4 / T4-A1 — org snapshot for the forward STARTED ->
+            ContractAssignment path. REQUIRED (company_id) for a transition to
+            STARTED; ignored for every other target.
+        assignment_site_id:
+          type: [string, 'null']
+          format: uuid
+          description: Track 4 / T4-A1 — optional site snapshot for the STARTED path.
+        assignment_department_id:
+          type: [string, 'null']
+          format: uuid
+          description: Track 4 / T4-A1 — optional department snapshot for the STARTED path.
+        commercial_terms:
+          type: object
+          additionalProperties: false
+          required: [pay_rate_amount, bill_rate_amount, currency, rate_period]
+          description: >
+            Track 5 / T5-P1 — the actual person-specific commercial terms of the
+            INITIAL Assignment Rate Version, materialised in the same transaction
+            as the FORWARD STARTED ContractAssignment. REQUIRED for a transition to
+            STARTED (else PLACEMENT_START_COMMERCIAL_TERMS_REQUIRED, 422); supplying
+            it for any other target is rejected (VALIDATION_ERROR). ONE currency
+            governs both pay and bill. Derived margin/markup/spread are NOT here —
+            they are computed on read (T5-P2).
+          properties:
+            pay_rate_amount:
+              type: string
+              description: Decimal(12,2) money string (never a float); non-negative.
+            bill_rate_amount:
+              type: string
+              description: Decimal(12,2) money string (never a float); non-negative.
+            currency:
+              type: string
+              description: An active ISO-4217 currency code (uppercase).
+            rate_period:
+              type: string
+              enum:
+                - HOURLY
+                - DAILY
+                - WEEKLY
+                - MONTHLY
+                - ANNUAL
     PlacementProcess:
       type: object
       additionalProperties: false

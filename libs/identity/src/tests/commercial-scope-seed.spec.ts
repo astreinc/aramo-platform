@@ -14,7 +14,7 @@ describe('Company-Fields v1.1 — company:read_commercial catalog parity', () =>
     ).toHaveLength(1);
   });
 
-  it('SEED_SCOPE_KEYS is 111 (107 + 4 Track4/T4-D assignment scopes read/create/update/end)', () => {
-    expect(SEED_SCOPE_KEYS).toHaveLength(111);
+  it('SEED_SCOPE_KEYS is 113 (107 + 4 Track4/T4-D assignment + 2 Track5/T5-P1 assignment:commercials:read/write)', () => {
+    expect(SEED_SCOPE_KEYS).toHaveLength(113);
   });
 });

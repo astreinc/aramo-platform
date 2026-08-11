@@ -312,6 +312,9 @@ export const SEED_IDS = {
     'assignment:create': '01900000-0000-7000-8000-0000000000d0',
     'assignment:update': '01900000-0000-7000-8000-0000000000d1',
     'assignment:end': '01900000-0000-7000-8000-0000000000d2',
+    // Track 5 / T5-P1 — assignment commercial-terms authority family.
+    'assignment:commercials:read': '01900000-0000-7000-8000-0000000000d3',
+    'assignment:commercials:write': '01900000-0000-7000-8000-0000000000d4',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1834,13 +1837,16 @@ export const ASSIGNMENT_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
   ['recruiter', ['assignment:read']],
-  ['account_manager', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end']],
-  ['tenant_admin', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end']],
-  ['tenant_owner', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end']],
+  ['account_manager', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
+  ['tenant_admin', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
+  ['tenant_owner', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
 ];
 
-// Deterministic RoleScope row ids for the 13 assignment grants. Fresh disjoint
-// range 0xb00+ (append-don't-renumber; placement occupies 0xa00..0xa14).
+// Deterministic RoleScope row ids for the 19 assignment grants (13 Track-4 +
+// 6 Track-5 commercials read/write on account_manager/tenant_admin/tenant_owner).
+// Fresh disjoint range 0xb00+ (append-don't-renumber; placement occupies
+// 0xa00..0xa14). The generator iterates ASSIGNMENT_SEED_BUNDLES so the new grants
+// extend the map automatically.
 const ASSIGNMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0xb00;
@@ -2166,6 +2172,11 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['assignment:create'], 'assignment:create', 'Track 4 / T4-D — create an authoritative ContractAssignment (post-start commitment; the forward STARTED path and, gated separately, T4-A2 backfill). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (authoritative-tier act). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['assignment:update'], 'assignment:update', 'Track 4 / T4-D — update an authoritative ContractAssignment. GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['assignment:end'], 'assignment:end', 'Track 4 / T4-D — end a ContractAssignment (ACTIVE->ENDED, with the ratified end reason: normal completion / worker-ended / client-ended). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
+  // Track 5 / T5-P1 — assignment commercial-terms authority family. Dedicated
+  // financial permissions (Amendment A2 DEC-4): NEVER satisfied by placement:*,
+  // requisition-financials, or generic assignment:create/update. NO scope.created (scope-seed precedent).
+  await upsertScope(prisma, SEED_IDS.scopes['assignment:commercials:read'], 'assignment:commercials:read', 'Track 5 / T5-P1 — read the actual commercial terms (Assignment Rate Version: pay/bill/currency/period and derived margin) of a ContractAssignment. Independent financial-disclosure gate (least visibility: assignment:read does NOT grant it). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (financial data). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['assignment:commercials:write'], 'assignment:commercials:write', 'Track 5 / T5-P1 — record the initial actual commercial terms of a ContractAssignment. The SECOND leg of the FORWARD STARTED conjunction (required IN CONJUNCTION with placement:activate, never alone; placement:* and requisition-financials never substitute). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
