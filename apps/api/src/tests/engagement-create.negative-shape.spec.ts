@@ -59,6 +59,7 @@ const MIGRATIONS = [
   // which now emits an in-tx outbox row.
   M('libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
   M('libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql'),
+  M('libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql'),
   // PR-A1c §4 — metering schema required (in-tx UsageEvent INSERT in the
   // existing $transaction array; usage event recorded iff the domain tx commits).
   M('libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql'),

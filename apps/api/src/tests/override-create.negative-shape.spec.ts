@@ -107,6 +107,11 @@ const SUBMITTAL_REVOKE_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
 );
+// T2-P1 — relocate Submittal persistence engagement -> submittal schema.
+const SUBMITTAL_T2P1_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-override-create-neg-shape';
@@ -194,6 +199,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,
         SUBMITTAL_REVOKE_MIGRATION,
+        SUBMITTAL_T2P1_MIGRATION,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));

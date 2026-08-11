@@ -81,6 +81,7 @@ const MIGRATIONS = [
   'libs/engagement/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
   'libs/examination/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
   'libs/submittal/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
+  'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
   'libs/evidence/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
 ].map(M);
 
@@ -265,7 +266,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     async function mkSubmittal(recordId: string): Promise<string> {
       const id = uuidv7();
       await db.query(
-        `INSERT INTO engagement."TalentSubmittalRecord"
+        `INSERT INTO submittal."TalentSubmittalRecord"
            (id, tenant_id, talent_id, job_id, evidence_package_id, pinned_examination_id, state, created_by, created_at)
          VALUES ($1::uuid, $2::uuid, $3::uuid, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'created', $4::uuid, CURRENT_TIMESTAMP)`,
         [id, TENANT, recordId, ACTOR],
@@ -377,7 +378,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await engagementRecordOf(eng)).toBe(recordS);
       expect(await taskOwnerOf(task)).toBe(recordS);
       expect(await talentIdOf('examination."TalentJobExamination"', exam)).toBe(recordS);
-      expect(await talentIdOf('engagement."TalentSubmittalRecord"', sub)).toBe(recordS);
+      expect(await talentIdOf('submittal."TalentSubmittalRecord"', sub)).toBe(recordS);
       expect(await talentIdOf('evidence."TalentJobEvidencePackage"', ev)).toBe(recordS);
       // TR-15 B2R — the credential holders re-point to R_S like every other holder.
       expect(await talentIdOf('talent_evidence."TalentEducationEntry"', edu)).toBe(recordS);
@@ -702,7 +703,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const cases: Array<[string, string]> = [
         ['engagement."TalentJobEngagement"', eng],
         ['examination."TalentJobExamination"', exam],
-        ['engagement."TalentSubmittalRecord"', sub],
+        ['submittal."TalentSubmittalRecord"', sub],
         ['evidence."TalentJobEvidencePackage"', ev],
       ];
       for (const [tbl, id] of cases) {

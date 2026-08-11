@@ -34,15 +34,17 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // M6 PR-2 — adds the `submittal` PG schema namespace ALONGSIDE the
-  // existing `engagement` namespace that hosts TalentSubmittalRecord +
-  // TalentSubmittalEvent (per Lead-Q-PR-8b1-A1: submittal-prisma shares
-  // the engagement PG schema for those models). The `submittal` namespace
-  // hosts ONLY the new OutboxEvent table, avoiding a `engagement.OutboxEvent`
-  // collision with the engagement-prisma module's OutboxEvent table.
-  // Additive at the DB level: CREATE SCHEMA submittal + CREATE TABLE
-  // submittal."OutboxEvent" — nothing existing altered (Directive Ruling 4).
-  schemas  = ["engagement", "submittal"]
+  // T2-P1 (Track 2 / T2-ARCH R3+R4) — the Submittal module now owns its own
+  // `submittal` PG schema exclusively. All Submittal workflow objects
+  // (TalentSubmittalRecord, TalentSubmittalEvent, SubmittalState,
+  // SubmittalEventType, their immutability trigger functions) were relocated
+  // from the `engagement` schema to `submittal` by the forward migration
+  // 20260812120000_t2p1_relocate_submittal_to_submittal_schema. The OutboxEvent
+  // already lived in `submittal`. Lead-Q-PR-8b1-A1's engagement-schema
+  // co-location exception is SUPERSEDED for these objects (see
+  // Aramo-Supersession-Stamp-PR-8b1-A1-Submittal-Schema-v1_0-LOCKED). Historical
+  // migrations that created the objects in `engagement` are preserved unchanged.
+  schemas  = ["submittal"]
 }
 
 // SubmittalState — canonical 5-state machine per Group 2 §2.3b Loop 5
@@ -67,7 +69,7 @@ datasource db {
 //   - 'revoked' UNCHANGED (sibling lifecycle-exit).
 //
 // The column-scoped immutability trigger
-// (engagement.reject_submittal_record_update) encodes the canonical
+// (submittal.reject_submittal_record_update) encodes the canonical
 // 5-state matrix (4 mainline + 4 sibling-revoke = 8 legal transitions).
 // Terminal states `confirmed` and `revoked` have no outgoing
 // transitions. All other transitions raise check_violation.
@@ -79,7 +81,7 @@ enum SubmittalState {
   confirmed
   revoked
 
-  @@schema("engagement")
+  @@schema("submittal")
 }
 
 // M5 PR-8b1 — TalentSubmittalEvent event-log enum. Thin substrate per
@@ -87,13 +89,13 @@ enum SubmittalState {
 // richer event types (handoff_drafted, ready_for_review_marked,
 // submitted_to_ats_confirmed, confirmed_by_ats) deferred to future
 // consumer PRs. Closed-list; future event types added via explicit
-// directive amendment. Lives in the engagement PG schema per
-// Lead-Q-PR-8b1-A1 (the submittal Prisma module shares the engagement
-// schema with TalentSubmittalRecord and TalentJobEngagement).
+// directive amendment. Originally created in the engagement PG schema per
+// Lead-Q-PR-8b1-A1; relocated to the submittal PG schema per T2-P1
+// (alongside TalentSubmittalRecord + SubmittalState).
 enum SubmittalEventType {
   state_transition
 
-  @@schema("engagement")
+  @@schema("submittal")
 }
 
 // §2.6 — TalentSubmittalRecord (workflow entity referencing the immutable
@@ -167,7 +169,7 @@ model TalentSubmittalRecord {
   // FK. Relation-only field; no column added at the DB layer.
   events TalentSubmittalEvent[]
 
-  @@schema("engagement")
+  @@schema("submittal")
 }
 
 // M6 PR-2 — OutboxEvent (submittal schema). Per Architecture v2.0 §7.6,
@@ -250,5 +252,5 @@ model TalentSubmittalEvent {
   // index shape per Lead-Q-PR-8b1-A4.
   @@index([tenant_id, submittal_id])
   @@index([submittal_id, created_at])
-  @@schema("engagement")
+  @@schema("submittal")
 }

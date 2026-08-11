@@ -51,6 +51,11 @@ const SUBMITTAL_RENAME_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql',
 );
+// T2-P1 — relocate Submittal persistence engagement -> submittal schema.
+const SUBMITTAL_T2P1_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
+);
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
 const TENANT_B = '22222222-2222-7222-8222-222222222222';
@@ -88,6 +93,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // seedSubmittalRecord + event_payload fixtures align with the
         // post-rename enum values.
         readFileSync(SUBMITTAL_RENAME_MIGRATION_PATH, 'utf8'),
+        readFileSync(SUBMITTAL_T2P1_MIGRATION_PATH, 'utf8'),
       ];
 
       client = new PrismaService(url);
@@ -164,7 +170,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       await expect(
         client.$executeRawUnsafe(
-          `UPDATE engagement."TalentSubmittalEvent"
+          `UPDATE submittal."TalentSubmittalEvent"
              SET event_payload = '{"snippet":"changed"}'::jsonb
              WHERE id = '${id}'::uuid`,
         ),
@@ -177,13 +183,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const id = nextEventId();
       await expect(
         client.$executeRawUnsafe(
-          `INSERT INTO engagement."TalentSubmittalEvent" (
+          `INSERT INTO submittal."TalentSubmittalEvent" (
              id, tenant_id, submittal_id, event_type, event_payload
            ) VALUES (
              '${id}'::uuid,
              '${TENANT_A}'::uuid,
              '${SUBMITTAL_A}'::uuid,
-             'definitely_not_an_event_type'::engagement."SubmittalEventType",
+             'definitely_not_an_event_type'::submittal."SubmittalEventType",
              '{}'::jsonb
            )`,
         ),
@@ -250,7 +256,7 @@ async function seedSubmittalRecord(
   },
 ): Promise<void> {
   await client.$executeRawUnsafe(
-    `INSERT INTO engagement."TalentSubmittalRecord" (
+    `INSERT INTO submittal."TalentSubmittalRecord" (
        id, tenant_id, talent_id, job_id, evidence_package_id,
        pinned_examination_id, state, created_by
      ) VALUES (
@@ -260,7 +266,7 @@ async function seedSubmittalRecord(
        '${JOB}'::uuid,
        '${EVIDENCE_PKG}'::uuid,
        '${PINNED_EXAM}'::uuid,
-       'created'::engagement."SubmittalState",
+       'created'::submittal."SubmittalState",
        '${RECRUITER}'::uuid
      )`,
   );

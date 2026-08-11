@@ -73,6 +73,8 @@ const ENGAGEMENT_EVENT_LOG = resolve(ROOT, 'libs/engagement/prisma/migrations/20
 // because state-transition write methods now emit an in-tx outbox row.
 const ENGAGEMENT_OUTBOX = resolve(ROOT, 'libs/engagement/prisma/migrations/20260531000000_add_outbox_event/migration.sql');
 const SUBMITTAL_OUTBOX = resolve(ROOT, 'libs/submittal/prisma/migrations/20260531000000_add_outbox_event/migration.sql');
+// T2-P1 — relocate Submittal persistence to the submittal schema (existence-guarded; safe on this subset).
+const SUBMITTAL_T2P1 = resolve(ROOT, 'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql');
 // PR-A1c §4 — metering schema required (in-tx UsageEvent INSERT).
 const METERING_INIT = resolve(ROOT, 'libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql');
 
@@ -142,6 +144,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SUBMITTAL_INIT,
         SUBMITTAL_REVOKE,
         SUBMITTAL_OUTBOX,
+        SUBMITTAL_T2P1,
         ENGAGEMENT_INIT,
         ENGAGEMENT_EVENT_LOG,
         ENGAGEMENT_OUTBOX,

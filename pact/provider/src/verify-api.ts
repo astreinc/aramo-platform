@@ -368,6 +368,11 @@ const SUBMITTAL_RECONCILE_REKEY_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
 );
+// T2-P1 — relocate Submittal persistence engagement -> submittal schema.
+const SUBMITTAL_T2P1_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
+);
 const EVIDENCE_RECONCILE_REKEY_MIGRATION = resolve(
   ROOT,
   'libs/evidence/prisma/migrations/20260706240000_tr2a_b3b_reconcile_rekey_exemption/migration.sql',
@@ -935,8 +940,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // TRUNCATE here mirrors the engagement-side pattern (line ~308)
       // for clarity. No PR-8b1 state handlers append rows to this table
       // yet (substrate-only PR).
-      await c.query('TRUNCATE TABLE engagement."TalentSubmittalEvent" CASCADE');
-      await c.query('TRUNCATE TABLE engagement."TalentSubmittalRecord" CASCADE');
+      await c.query('TRUNCATE TABLE submittal."TalentSubmittalEvent" CASCADE');
+      await c.query('TRUNCATE TABLE submittal."TalentSubmittalRecord" CASCADE');
       await c.query('TRUNCATE TABLE evidence."TalentJobEvidencePackage" CASCADE');
       // M4 PR-5 — override-create state handlers seed an examination and
       // the controller persists override rows at request time. Truncate
@@ -1404,7 +1409,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // imports them. Fresh live seeds — NOT the dead ats-thin
     // seedSubmittalFixture/insertExaminationRow (kept untouched). All
     // tables here are already truncated by resetAllRows (examination,
-    // job_domain.Requisition, talent_record, engagement.TalentSubmittal*,
+    // job_domain.Requisition, talent_record, submittal.TalentSubmittal*,
     // evidence.TalentJobEvidencePackage, consent.IdempotencyKey) → NO new
     // TRUNCATE lines.
     // ===================================================================
@@ -2390,11 +2395,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       },
     ): Promise<void> {
       await c.query(
-        `INSERT INTO engagement."TalentSubmittalRecord"
+        `INSERT INTO submittal."TalentSubmittalRecord"
            (id, tenant_id, talent_id, job_id, evidence_package_id,
             pinned_examination_id, state, created_by,
             justification, failed_criterion_acknowledgments, confirmed_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7::engagement."SubmittalState",$8,$9,$10::jsonb,$11)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7::submittal."SubmittalState",$8,$9,$10::jsonb,$11)`,
         [
           params.submittalId,
           TENANT_ID,
@@ -2714,13 +2719,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           ? "'2026-05-22T13:00:00Z'::timestamptz"
           : 'NULL';
       await c.query(
-        `INSERT INTO engagement."TalentSubmittalRecord"
+        `INSERT INTO submittal."TalentSubmittalRecord"
            (id, tenant_id, talent_id, job_id, evidence_package_id,
             pinned_examination_id, state, created_by,
             justification, failed_criterion_acknowledgments,
             confirmed_at)
          VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
-                 $6::uuid, $7::engagement."SubmittalState", $8::uuid,
+                 $6::uuid, $7::submittal."SubmittalState", $8::uuid,
                  NULL, NULL, ${confirmedAt})`,
         [
           opts.submittalId,
@@ -2881,6 +2886,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ENGAGEMENT_RECONCILE_REKEY_MIGRATION,
         EXAMINATION_RECONCILE_REKEY_MIGRATION,
         SUBMITTAL_RECONCILE_REKEY_MIGRATION,
+        SUBMITTAL_T2P1_MIGRATION,
         EVIDENCE_RECONCILE_REKEY_MIGRATION,
         // M5 PR-6 §4.14 — ai-draft schema for outreach-send state
         // handlers. AiDraftService writes audit-event rows even when

@@ -80,8 +80,8 @@ const DELETE_INVENTORY: readonly DeleteStep[] = [
   //          verified archival export, which the execution order guarantees).
   { item: 2, label: `requisition."RequisitionLifecycleEvent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   // §2.2.3 — Submittals (event child first — Restrict FK).
-  { item: 3, label: `engagement."TalentSubmittalEvent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
-  { item: 3, label: `engagement."TalentSubmittalRecord"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  { item: 3, label: `submittal."TalentSubmittalEvent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
+  { item: 3, label: `submittal."TalentSubmittalRecord"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   // §2.2.4 — Selection (currently `engagement`) workflow rows (event child first).
   { item: 4, label: `engagement."TalentEngagementEvent"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   { item: 4, label: `engagement."TalentJobEngagement"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
@@ -145,8 +145,8 @@ const LOCK_TABLES: readonly string[] = [
   `pipeline."PipelineStatusHistory"`,
   `engagement."TalentJobEngagement"`,
   `engagement."TalentEngagementEvent"`,
-  `engagement."TalentSubmittalRecord"`,
-  `engagement."TalentSubmittalEvent"`,
+  `submittal."TalentSubmittalRecord"`,
+  `submittal."TalentSubmittalEvent"`,
   // §2.2.7 (T0 v1.1) — freeze the E2 pre-start tables for the reset transaction.
   `pre_start_requirement."PreStartRequirementAudit"`,
   `pre_start_requirement."PreStartRequirementInstance"`,
