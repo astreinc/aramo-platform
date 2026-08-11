@@ -145,6 +145,18 @@ export class PlacementController {
         details: { placement_process_id: id, from_state: current.state, to_state: body.to, authority_class: cls, required_scope: required },
       });
     }
+    // Track 5 / T5-P1 — the FORWARD STARTED path requires a CONJUNCTION: the
+    // edge scope above (placement:activate) AND assignment:commercials:write, since
+    // starting an assignment now materialises its initial actual commercial terms
+    // (Amendment A1-4). Enforced imperatively (data-dependent on to === STARTED),
+    // mirroring the E4 replacement conjunction. placement:* and requisition
+    // financials NEVER substitute; commercials:write alone NEVER authorises STARTED.
+    if (body.to === 'STARTED' && !auth.scopes.includes('assignment:commercials:write')) {
+      throw new AramoError('INSUFFICIENT_PERMISSIONS', 'starting an assignment requires the assignment:commercials:write scope (in conjunction with placement:activate)', 403, {
+        requestId,
+        details: { placement_process_id: id, to_state: body.to, required_scope: 'assignment:commercials:write' },
+      });
+    }
     // Authorization has passed above; the reason evidence (E3) is validated in
     // the repository BEFORE any mutation. reason_code is required for a governed
     // terminal edge and must be absent for a non-governed one (registry classifier).
@@ -169,6 +181,12 @@ export class PlacementController {
         reason_code: body.reason_code ?? null,
         reason_detail: body.reason_detail ?? null,
         assignment_context,
+        // Track 5 / T5-P1 — actual commercial terms + the recording principal
+        // (JWT sub). The repository REQUIRES commercial_terms for STARTED and
+        // REJECTS it otherwise, then materialises the initial Assignment Rate
+        // Version in the same transaction as the ContractAssignment.
+        commercial_terms: body.commercial_terms ?? null,
+        recorded_by: auth.sub,
       },
       requestId,
     );

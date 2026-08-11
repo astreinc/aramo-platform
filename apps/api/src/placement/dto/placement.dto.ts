@@ -1,5 +1,22 @@
-import { IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsDateString,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  MaxLength,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import { PLACEMENT_STATES } from '@aramo/placement';
+import { RATE_PERIOD_VALUES } from '@aramo/common';
+
+// Track 5 / T5-P1 — a decimal money string (never a float): up to 10 integer
+// digits and up to 2 fractional, matching the Decimal(12,2) storage column and
+// the money-at-boundary convention. Non-negative; the closed currency / rate
+// period sets are the libs/common shared value objects.
+const MONEY_12_2 = /^\d{1,10}(\.\d{1,2})?$/;
 
 // Track 3 / E1-b — HTTP request DTOs for the PlacementProcess surface. tenant_id
 // is server-derived from the JWT, never the body.
@@ -59,6 +76,31 @@ export class CreatePlacementDto {
   replaces_placement_process_id?: string;
 }
 
+// Track 5 / T5-P1 — the actual person-specific commercial terms of the initial
+// Assignment Rate Version, a cohesive nested value object (Amendment A2 §2, NOT
+// four unrelated top-level fields). REQUIRED for a FORWARD transition to STARTED;
+// supplying it on any other target is rejected (VALIDATION_ERROR — the repository
+// enforces the target-state policy). Amounts are decimal money strings (never
+// float). ONE currency governs BOTH pay and bill (Amendment A1-9). rate_period is
+// the libs/common shared closed set; currency is validated against the libs/common
+// ISO-4217 set at the repository write boundary.
+export class CommercialTermsDto {
+  @IsString()
+  @Matches(MONEY_12_2)
+  pay_rate_amount!: string;
+
+  @IsString()
+  @Matches(MONEY_12_2)
+  bill_rate_amount!: string;
+
+  @IsString()
+  @MaxLength(3)
+  currency!: string;
+
+  @IsIn(RATE_PERIOD_VALUES as readonly string[])
+  rate_period!: string;
+}
+
 // One generic transition route (E1-b §1): the target state is in the body and the
 // canonical 14-edge matrix enforces legality. `to` must be a known placement
 // state; an illegal EDGE is a domain refusal (PLACEMENT_STATE_INVALID, 422).
@@ -98,6 +140,16 @@ export class TransitionPlacementDto {
   @IsOptional()
   @IsUUID()
   assignment_department_id?: string;
+
+  // Track 5 / T5-P1 — actual commercial terms for the FORWARD STARTED path.
+  // Optional at the wire; the repository REQUIRES it for a transition to STARTED
+  // (PLACEMENT_START_COMMERCIAL_TERMS_REQUIRED, 422) and REJECTS it for any other
+  // target (VALIDATION_ERROR) — a target-state-dependent policy, so not expressible
+  // by class-validator alone.
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CommercialTermsDto)
+  commercial_terms?: CommercialTermsDto;
 }
 
 // Track 4 / T4-D — ending a ContractAssignment. The ratified end-reason taxonomy

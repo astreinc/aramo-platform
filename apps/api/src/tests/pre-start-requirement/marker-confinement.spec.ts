@@ -33,6 +33,10 @@ const EXACT_ALLOWLIST = new Set<string>([
   // PR-C placement reset-escape migration — defines the exact-value escape on the
   // placement OutboxEvent + PlacementProcessEvent DELETE-reject triggers.
   'libs/placement/prisma/migrations/20260806090000_placement_tenant_reset_escape/migration.sql',
+  // Track 5 / T5-P1 — the AssignmentRateVersion append-only migration: its
+  // DELETE-reject trigger carries the same exact-value escape so governed tenant
+  // reset can delete the child (registered in tenant-reset.service.ts).
+  'libs/placement/prisma/migrations/20260810130000_t5_assignment_rate_version/migration.sql',
 ]);
 
 describe('reset-marker confinement — exact-path default-deny (§2.4)', () => {

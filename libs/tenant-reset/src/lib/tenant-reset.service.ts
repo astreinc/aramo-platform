@@ -124,6 +124,12 @@ const DELETE_INVENTORY: readonly DeleteStep[] = [
   // tenant-owned placement table. NO FK to PlacementProcess (plain scalar §7.3) and
   // NO delete-reject trigger → NO escape migration needed; deletes ordinarily.
   // Positioned child-before-parent (logical child of PlacementProcess).
+  // Track 5 / T5-P1 — AssignmentRateVersion (initial actual commercial terms), a NEW
+  // tenant-owned placement table. Append-only WITH a delete-reject trigger carrying
+  // the exact-value `app.tenant_reset` escape (migration 20260810130000), so it
+  // deletes ONLY inside this governed reset. Positioned child-before-parent (logical
+  // child of ContractAssignment).
+  { item: 8, label: `placement."AssignmentRateVersion"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   { item: 8, label: `placement."ContractAssignment"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
   { item: 8, label: `placement."PlacementProcess"`, where: `tenant_id = $1::uuid`, scoping: 'tenant' },
 ];
@@ -157,6 +163,7 @@ const LOCK_TABLES: readonly string[] = [
   // transaction (all three tables are deleted in the same transaction).
   `placement."OutboxEvent"`,
   `placement."PlacementProcessEvent"`,
+  `placement."AssignmentRateVersion"`,
   `placement."ContractAssignment"`,
   `placement."PlacementProcess"`,
 ];

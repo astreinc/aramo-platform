@@ -34,8 +34,21 @@ function reasonForTarget(target: PlacementState): { reason_code?: string } {
 // ContractAssignment, whose FORWARD provenance requires a company snapshot. This
 // helper supplies the caller-owned org context for a STARTED target and {} for
 // every other target, so path-walking tests spread it on every hop.
-function ctxForTarget(target: PlacementState): { assignment_context?: { company_id: string } } {
-  return target === 'STARTED' ? { assignment_context: { company_id: randomUUID() } } : {};
+// Track 5 / T5-P1 — a FORWARD STARTED transition now also requires the actual
+// commercial terms + the recording principal (the initial Assignment Rate Version
+// is materialised in the same tx). Non-STARTED targets carry neither.
+function ctxForTarget(target: PlacementState): {
+  assignment_context?: { company_id: string };
+  commercial_terms?: { pay_rate_amount: string; bill_rate_amount: string; currency: string; rate_period: string };
+  recorded_by?: string;
+} {
+  return target === 'STARTED'
+    ? {
+        assignment_context: { company_id: randomUUID() },
+        commercial_terms: { pay_rate_amount: '80.00', bill_rate_amount: '120.00', currency: 'USD', rate_period: 'HOURLY' },
+        recorded_by: randomUUID(),
+      }
+    : {};
 }
 
 // Track 3 / E1-a — integration spec (real Postgres 17). One migration applies
@@ -89,6 +102,13 @@ const ASSIGNMENT_END_REASON_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260810120000_placement_assignment_end_reason/migration.sql',
 );
+// Track 5 / T5-P1 — the additive AssignmentRateVersion table (curated migration
+// list: the STARTED path now INSERTs the initial rate version, so every
+// placement-DB spec that reaches STARTED must apply this).
+const ASSIGNMENT_RATE_VERSION_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260810130000_t5_assignment_rate_version/migration.sql',
+);
 
 // Known transition path to reach each from-state from the initial
 // OFFER_EXTENDED (the transitions to apply, in order).
@@ -133,7 +153,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new PrismaService(url);
       await setupClient.$connect();
       // Apply the init migration then the additive E1-c and E3 migrations, in order.
-      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, CONTRACT_ASSIGNMENT_MIGRATION_PATH, ASSIGNMENT_ENDED_MIGRATION_PATH, ASSIGNMENT_GUARD_MIGRATION_PATH, ASSIGNMENT_END_REASON_MIGRATION_PATH]) {
+      for (const path of [INIT_MIGRATION_PATH, OFFER_OUTBOX_MIGRATION_PATH, REASON_MIGRATION_PATH, REPLACEMENT_MIGRATION_PATH, CONTRACT_ASSIGNMENT_MIGRATION_PATH, ASSIGNMENT_ENDED_MIGRATION_PATH, ASSIGNMENT_GUARD_MIGRATION_PATH, ASSIGNMENT_END_REASON_MIGRATION_PATH, ASSIGNMENT_RATE_VERSION_MIGRATION_PATH]) {
         const sql = readFileSync(path, 'utf8');
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();

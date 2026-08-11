@@ -17,7 +17,10 @@ import { PlacementController } from '../placement/placement.controller.js';
 // Here we prove the OTHER half: fed to the real placement authorization
 // boundary, each set allows/denies the right authority classes.
 const RECRUITER_PLACEMENT = ['placement:read', 'placement:create', 'placement:transition'];
-const MANAGER_PLACEMENT = ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate', 'placement:replace'];
+const MANAGER_PLACEMENT = ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate', 'placement:replace', 'assignment:commercials:write'];
+// Track 5 / T5-P1 — valid commercial terms for the FORWARD STARTED body (the
+// initial Assignment Rate Version is materialised in the same tx).
+const T5_TERMS = { pay_rate_amount: '80.00', bill_rate_amount: '120.00', currency: 'USD', rate_period: 'HOURLY' } as const;
 
 // E3 — a governed terminal transition now requires a canonical reason. Derive a
 // valid OPTIONAL code for OFFER_DECLINED from the registry (no detail needed), so
@@ -48,9 +51,12 @@ const CONTRACT_ASSIGNMENT_MIGRATION = resolve(__dirname, '../../../../libs/place
 const ASSIGNMENT_ENDED_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260810100000_placement_assignment_ended_value/migration.sql');
 const ASSIGNMENT_GUARD_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260810110000_placement_assignment_aware_guard/migration.sql');
 const ASSIGNMENT_END_REASON_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260810120000_placement_assignment_end_reason/migration.sql');
+// Track 5 / T5-P1 — the additive AssignmentRateVersion table; the STARTED transition
+// now INSERTs the initial rate version, so this HTTP spec (which activates placements) must apply it.
+const ASSIGNMENT_RATE_VERSION_MIGRATION = resolve(__dirname, '../../../../libs/placement/prisma/migrations/20260810130000_t5_assignment_rate_version/migration.sql');
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const auth = (scopes: string[], tenant: string): any => ({ sub: 'u', tenant_id: tenant, actor_kind: 'user', consumer_type: 'tenant', scopes });
+const auth = (scopes: string[], tenant: string): any => ({ sub: '01900000-0000-7000-8000-0000000000aa', tenant_id: tenant, actor_kind: 'user', consumer_type: 'tenant', scopes });
 
 // E1-d — the read routes take a Request and resolve the actor's visible
 // requisition set (attached by the global VisibilityInterceptor in the real
@@ -83,7 +89,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     const url = container.getConnectionUri();
     setup = new PrismaService(url);
     await setup.$connect();
-    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION]) {
+    for (const migration of [INIT_MIGRATION, OFFER_OUTBOX_MIGRATION, REASON_MIGRATION, REPLACEMENT_MIGRATION, CONTRACT_ASSIGNMENT_MIGRATION, ASSIGNMENT_ENDED_MIGRATION, ASSIGNMENT_GUARD_MIGRATION, ASSIGNMENT_END_REASON_MIGRATION, ASSIGNMENT_RATE_VERSION_MIGRATION]) {
       for (const s of splitDdl(readFileSync(migration, 'utf8'))) {
         if (s.trim()) await setup.$executeRawUnsafe(s.trim());
       }
@@ -141,7 +147,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
   it('the activate edge (READY_TO_START->STARTED) needs placement:activate', async () => {
     const t = randomUUID();
     const id = await make(t);
-    const s = auth(['placement:transition', 'placement:activate'], t);
+    const s = auth(['placement:transition', 'placement:activate', 'assignment:commercials:write'], t);
     await ctrl.transition(s, 'r', id, { to: 'OFFER_ACCEPTED' });
     await ctrl.transition(s, 'r', id, { to: 'PRE_START' });
     await ctrl.transition(s, 'r', id, { to: 'READY_TO_START' });
@@ -150,8 +156,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
       code: 'INSUFFICIENT_PERMISSIONS',
       context: { details: { authority_class: 'activate', required_scope: 'placement:activate' } },
     });
-    const live = await ctrl.transition(s, 'r', id, { to: 'STARTED', assignment_company_id: randomUUID() });
+    const live = await ctrl.transition(s, 'r', id, { to: 'STARTED', assignment_company_id: randomUUID(), commercial_terms: T5_TERMS });
     expect(live.state).toBe('STARTED');
+  });
+
+  it('T5-P1 — STARTED requires assignment:commercials:write IN CONJUNCTION with placement:activate; placement:* alone does NOT satisfy it', async () => {
+    const t = randomUUID();
+    const id = await make(t);
+    for (const to of ['OFFER_ACCEPTED', 'PRE_START', 'READY_TO_START'] as const) {
+      await ctrl.transition(auth(['placement:transition'], t), 'r', id, { to });
+    }
+    // Holds the edge scope (placement:activate) but NOT commercials:write → refused
+    // by the commercial conjunction, before any state change.
+    await expect(
+      ctrl.transition(auth(['placement:transition', 'placement:activate'], t), 'r', id, { to: 'STARTED', assignment_company_id: randomUUID(), commercial_terms: T5_TERMS }),
+    ).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { required_scope: 'assignment:commercials:write' } },
+    });
   });
 
   it('an illegal edge is refused by the matrix (PLACEMENT_STATE_INVALID 422) even with the scope', async () => {
@@ -269,7 +292,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_ACCEPTED' });
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'PRE_START' });
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'READY_TO_START' });
-    const live = await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED', assignment_company_id: randomUUID() });
+    const live = await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED', assignment_company_id: randomUUID(), commercial_terms: T5_TERMS });
     expect(live.state).toBe('STARTED');
   });
 
@@ -280,7 +303,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-b PlacementCon
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'OFFER_ACCEPTED' });
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'PRE_START' });
     await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'READY_TO_START' });
-    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED', assignment_company_id: company_id });
+    await ctrl.transition(auth(MANAGER_PLACEMENT, t), 'r', id, { to: 'STARTED', assignment_company_id: company_id, commercial_terms: T5_TERMS });
     return id;
   }
   const readAuth = (t: string) => auth(['assignment:read'], t);
