@@ -229,11 +229,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       // Submittal + event (T).
       await db.query(
-        `INSERT INTO engagement."TalentSubmittalRecord" (id, tenant_id, talent_id, job_id, evidence_package_id, pinned_examination_id, created_by) VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::uuid)`,
+        `INSERT INTO submittal."TalentSubmittalRecord" (id, tenant_id, talent_id, job_id, evidence_package_id, pinned_examination_id, created_by) VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::uuid)`,
         [SUB, T, TALENT, REQ1, uuidv7(), uuidv7(), uuidv7()],
       );
       await db.query(
-        `INSERT INTO engagement."TalentSubmittalEvent" (id, tenant_id, submittal_id, event_type, event_payload) VALUES ($1::uuid,$2::uuid,$3::uuid,'state_transition','{}'::jsonb)`,
+        `INSERT INTO submittal."TalentSubmittalEvent" (id, tenant_id, submittal_id, event_type, event_payload) VALUES ($1::uuid,$2::uuid,$3::uuid,'state_transition','{}'::jsonb)`,
         [uuidv7(), T, SUB],
       );
 
@@ -386,8 +386,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const del = (label: string): number => report.deleted.find((d) => d.label === label)!.before;
       expect(del('activity."Activity"')).toBe(2); // ONLY the 2 workflow rows
       expect(del('requisition."RequisitionLifecycleEvent"')).toBe(1);
-      expect(del('engagement."TalentSubmittalEvent"')).toBe(1);
-      expect(del('engagement."TalentSubmittalRecord"')).toBe(1);
+      expect(del('submittal."TalentSubmittalEvent"')).toBe(1);
+      expect(del('submittal."TalentSubmittalRecord"')).toBe(1);
       expect(del('engagement."TalentEngagementEvent"')).toBe(1);
       expect(del('engagement."TalentJobEngagement"')).toBe(1);
       expect(del('pipeline."PipelineStatusHistory"')).toBe(1);
@@ -536,8 +536,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await count('pipeline."PipelineStatusHistory"', 'tenant_id=$1::uuid', [T])).toBe(0);
       expect(await count('engagement."TalentJobEngagement"', 'tenant_id=$1::uuid', [T])).toBe(0);
       expect(await count('engagement."TalentEngagementEvent"', 'tenant_id=$1::uuid', [T])).toBe(0);
-      expect(await count('engagement."TalentSubmittalRecord"', 'tenant_id=$1::uuid', [T])).toBe(0);
-      expect(await count('engagement."TalentSubmittalEvent"', 'tenant_id=$1::uuid', [T])).toBe(0);
+      expect(await count('submittal."TalentSubmittalRecord"', 'tenant_id=$1::uuid', [T])).toBe(0);
+      expect(await count('submittal."TalentSubmittalEvent"', 'tenant_id=$1::uuid', [T])).toBe(0);
 
       // Activity is a SCOPED purge — the 2 workflow rows go, the 3 history rows stay.
       expect(

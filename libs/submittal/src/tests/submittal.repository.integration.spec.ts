@@ -92,6 +92,11 @@ const SUBMITTAL_OUTBOX_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260531000000_add_outbox_event/migration.sql',
 );
+// T2-P1 — relocate Submittal persistence engagement -> submittal schema.
+const SUBMITTAL_T2P1_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
+);
 // PR-A1c §4 — metering schema required because every metered submittal
 // transition (confirm / markReady / submitToAts / confirmAts /
 // revokeSubmittal) now emits a UsageEvent INSERT inside the existing
@@ -203,6 +208,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(SUBMITTAL_RENAME_MIGRATION_PATH, 'utf8'),
         // M6 PR-2 §3 — submittal OutboxEvent (new `submittal` PG schema).
         readFileSync(SUBMITTAL_OUTBOX_MIGRATION_PATH, 'utf8'),
+        // T2-P1 — relocate Submittal persistence engagement -> submittal schema.
+        readFileSync(SUBMITTAL_T2P1_MIGRATION_PATH, 'utf8'),
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT).
         readFileSync(METERING_INIT_MIGRATION_PATH, 'utf8'),
       ];
@@ -379,20 +386,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const view = await repo.createSubmittal(makeInput({ examination_id: ENT_EXAM_ID }));
       // Mainline 1: created -> handoff_draft.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'handoff_draft'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'handoff_draft'::submittal."SubmittalState"
            WHERE id = '${view.id}'::uuid`,
       );
       // Mainline 2: handoff_draft -> ready_for_review.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'ready_for_review'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'ready_for_review'::submittal."SubmittalState"
            WHERE id = '${view.id}'::uuid`,
       );
       // Mainline 3: ready_for_review -> submitted_to_ats with confirmed_at.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'submitted_to_ats'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T15:00:00Z'::timestamptz
            WHERE id = '${view.id}'::uuid`,
       );
@@ -406,7 +413,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Attempt to mutate tenant_id — should be rejected by the trigger.
       await expect(
         submittalPrisma.$executeRawUnsafe(
-          `UPDATE engagement."TalentSubmittalRecord"
+          `UPDATE submittal."TalentSubmittalRecord"
              SET tenant_id = '${TENANT_B}'::uuid
              WHERE id = '${view.id}'::uuid`,
         ),
@@ -646,14 +653,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
                  '{}'::jsonb, '{}'::jsonb, '[]'::jsonb)`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `INSERT INTO engagement."TalentSubmittalRecord"
+        `INSERT INTO submittal."TalentSubmittalRecord"
            (id, tenant_id, talent_id, job_id, evidence_package_id,
             pinned_examination_id, state, created_by)
          VALUES ('${stretchSubmittalId}'::uuid, '${TENANT_A}'::uuid,
                  '${TALENT_A}'::uuid, '${JOB_ID}'::uuid,
                  '${stretchPkgId}'::uuid,
                  '${STRETCH_EXAM_ID}'::uuid,
-                 'created'::engagement."SubmittalState",
+                 'created'::submittal."SubmittalState",
                  '${RECRUITER_ID}'::uuid)`,
       );
       try {
@@ -859,18 +866,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // confirmed_at populated per Ruling 6) via raw SQL through the
       // rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'handoff_draft'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'handoff_draft'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'ready_for_review'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'ready_for_review'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'submitted_to_ats'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -977,18 +984,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // ready_for_review -> submitted_to_ats with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'handoff_draft'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'handoff_draft'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'ready_for_review'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'ready_for_review'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'submitted_to_ats'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -1054,18 +1061,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // ready_for_review -> submitted_to_ats with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'handoff_draft'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'handoff_draft'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'ready_for_review'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'ready_for_review'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'submitted_to_ats'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -1082,7 +1089,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // raises.
       await expect(
         submittalPrisma.$executeRawUnsafe(
-          `UPDATE engagement."TalentSubmittalRecord"
+          `UPDATE submittal."TalentSubmittalRecord"
              SET revocation_justification = 'overwritten'
              WHERE id = '${draft.id}'::uuid`,
         ),
@@ -1118,25 +1125,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // ready_for_review -> submitted_to_ats with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'handoff_draft'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'handoff_draft'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'ready_for_review'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'ready_for_review'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'submitted_to_ats'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
       // Raw SQL submitted → revoked with all three columns atomic.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'revoked'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'revoked'::submittal."SubmittalState",
                revoked_at = '2026-05-23T15:00:00Z'::timestamptz,
                revoked_by = '00000000-0000-7000-8000-000000000bb2'::uuid,
                revocation_justification = 'Transition B raw allow'
@@ -1176,8 +1183,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await expect(
         submittalPrisma.$executeRawUnsafe(
-          `UPDATE engagement."TalentSubmittalRecord"
-             SET state = 'confirmed'::engagement."SubmittalState"
+          `UPDATE submittal."TalentSubmittalRecord"
+             SET state = 'confirmed'::submittal."SubmittalState"
              WHERE id = '${draft.id}'::uuid`,
         ),
       ).rejects.toThrow(/state machine permits only the canonical 5-state/);
@@ -1206,24 +1213,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // ready_for_review -> submitted_to_ats with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'handoff_draft'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'handoff_draft'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'ready_for_review'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'ready_for_review'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'submitted_to_ats'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'revoked'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'revoked'::submittal."SubmittalState",
                revoked_at = '2026-05-23T15:00:00Z'::timestamptz,
                revoked_by = '00000000-0000-7000-8000-000000000bb2'::uuid,
                revocation_justification = 'first revoke'
@@ -1231,8 +1238,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await expect(
         submittalPrisma.$executeRawUnsafe(
-          `UPDATE engagement."TalentSubmittalRecord"
-             SET state = 'handoff_draft'::engagement."SubmittalState"
+          `UPDATE submittal."TalentSubmittalRecord"
+             SET state = 'handoff_draft'::submittal."SubmittalState"
              WHERE id = '${draft.id}'::uuid`,
         ),
       ).rejects.toThrow(/state machine permits only the canonical 5-state/);
@@ -1261,24 +1268,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // ready_for_review -> submitted_to_ats with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'handoff_draft'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'handoff_draft'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'ready_for_review'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'ready_for_review'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'submitted_to_ats'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'revoked'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'revoked'::submittal."SubmittalState",
                revoked_at = '2026-05-23T15:00:00Z'::timestamptz,
                revoked_by = '00000000-0000-7000-8000-000000000bb2'::uuid,
                revocation_justification = 'first revoke'
@@ -1286,7 +1293,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await expect(
         submittalPrisma.$executeRawUnsafe(
-          `UPDATE engagement."TalentSubmittalRecord"
+          `UPDATE submittal."TalentSubmittalRecord"
              SET revocation_justification = 'second revoke'
              WHERE id = '${draft.id}'::uuid`,
         ),
@@ -1316,18 +1323,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // ready_for_review -> submitted_to_ats with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'handoff_draft'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'handoff_draft'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'ready_for_review'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'ready_for_review'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'submitted_to_ats'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -1336,7 +1343,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // so the trigger refuses.
       await expect(
         submittalPrisma.$executeRawUnsafe(
-          `UPDATE engagement."TalentSubmittalRecord"
+          `UPDATE submittal."TalentSubmittalRecord"
              SET confirmed_at = '2026-05-23T14:00:00Z'::timestamptz
              WHERE id = '${draft.id}'::uuid`,
         ),
@@ -1366,18 +1373,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // ready_for_review -> submitted_to_ats with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'handoff_draft'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'handoff_draft'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'ready_for_review'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'ready_for_review'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'submitted_to_ats'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -1385,8 +1392,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // requires all three to become non-NULL atomically.
       await expect(
         submittalPrisma.$executeRawUnsafe(
-          `UPDATE engagement."TalentSubmittalRecord"
-             SET state = 'revoked'::engagement."SubmittalState"
+          `UPDATE submittal."TalentSubmittalRecord"
+             SET state = 'revoked'::submittal."SubmittalState"
              WHERE id = '${draft.id}'::uuid`,
         ),
       ).rejects.toThrow(/state machine permits only the canonical 5-state/);
@@ -1415,18 +1422,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // ready_for_review -> submitted_to_ats with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'handoff_draft'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'handoff_draft'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'ready_for_review'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'ready_for_review'::submittal."SubmittalState"
            WHERE id = '${draft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'submitted_to_ats'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -1435,8 +1442,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // NEW.justification, so the trigger refuses.
       await expect(
         submittalPrisma.$executeRawUnsafe(
-          `UPDATE engagement."TalentSubmittalRecord"
-             SET state = 'revoked'::engagement."SubmittalState",
+          `UPDATE submittal."TalentSubmittalRecord"
+             SET state = 'revoked'::submittal."SubmittalState",
                  revoked_at = '2026-05-23T15:00:00Z'::timestamptz,
                  revoked_by = '00000000-0000-7000-8000-000000000bb2'::uuid,
                  revocation_justification = 'with justification mutation',
@@ -1452,18 +1459,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       // M5 PR-8b2: walk canonical chain to submitted_to_ats.
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'handoff_draft'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'handoff_draft'::submittal."SubmittalState"
            WHERE id = '${tenantBDraft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'ready_for_review'::engagement."SubmittalState"
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'ready_for_review'::submittal."SubmittalState"
            WHERE id = '${tenantBDraft.id}'::uuid`,
       );
       await submittalPrisma.$executeRawUnsafe(
-        `UPDATE engagement."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::engagement."SubmittalState",
+        `UPDATE submittal."TalentSubmittalRecord"
+           SET state = 'submitted_to_ats'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${tenantBDraft.id}'::uuid`,
       );
@@ -1616,6 +1623,82 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(evidencePackage?.match_justification).toBeDefined();
       expect(evidencePackage?.recruiter_contribution).toBeDefined();
     });
+
+    // =========================================================================
+    // T2-P1 §2 — catalog-ownership proof (real Postgres pg_catalog).
+    // =========================================================================
+    //
+    // The relocation migration (ALTER ... SET SCHEMA, OID-preserving) is the
+    // last submittal migration applied in beforeAll. This test asserts the
+    // catalog TRUTH the migration establishes: every relocated object — the 2
+    // tables, 2 enums, and 2 immutability trigger functions — now resolves to
+    // the `submittal` namespace, and ZERO remnants remain in `engagement`.
+    //
+    // D-1 chronology: this assertion is RED when the T2-P1 migration is absent
+    // from the beforeAll apply-list (objects resolve to `engagement`,
+    // remnant-count = 6) and GREEN once it is present. That RED is reproducible
+    // in THIS harness by removing SUBMITTAL_T2P1_MIGRATION_PATH from
+    // migrationSqls — it is not a claim about a disposable manual proof.
+    it('T2-P1: relocated objects are owned by the submittal schema; zero engagement remnants', async () => {
+      // Tables — expect exactly submittal.
+      const tableNs = (await setupClient.$queryRawUnsafe(
+        `SELECT c.relname AS name, n.nspname AS schema
+           FROM pg_class c
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE c.relname IN ('TalentSubmittalRecord', 'TalentSubmittalEvent')
+            AND c.relkind = 'r'
+          ORDER BY c.relname`,
+      )) as Array<{ name: string; schema: string }>;
+      expect(tableNs).toEqual([
+        { name: 'TalentSubmittalEvent', schema: 'submittal' },
+        { name: 'TalentSubmittalRecord', schema: 'submittal' },
+      ]);
+
+      // Enums — expect exactly submittal.
+      const enumNs = (await setupClient.$queryRawUnsafe(
+        `SELECT t.typname AS name, n.nspname AS schema
+           FROM pg_type t
+           JOIN pg_namespace n ON n.oid = t.typnamespace
+          WHERE t.typname IN ('SubmittalState', 'SubmittalEventType')
+            AND t.typtype = 'e'
+          ORDER BY t.typname`,
+      )) as Array<{ name: string; schema: string }>;
+      expect(enumNs).toEqual([
+        { name: 'SubmittalEventType', schema: 'submittal' },
+        { name: 'SubmittalState', schema: 'submittal' },
+      ]);
+
+      // Immutability trigger functions — expect exactly submittal.
+      const fnNs = (await setupClient.$queryRawUnsafe(
+        `SELECT p.proname AS name, n.nspname AS schema
+           FROM pg_proc p
+           JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE p.proname IN ('reject_submittal_record_update', 'reject_submittal_event_update')
+          ORDER BY p.proname`,
+      )) as Array<{ name: string; schema: string }>;
+      expect(fnNs).toEqual([
+        { name: 'reject_submittal_event_update', schema: 'submittal' },
+        { name: 'reject_submittal_record_update', schema: 'submittal' },
+      ]);
+
+      // Zero remnants in engagement across all three catalogs.
+      const remnants = (await setupClient.$queryRawUnsafe(
+        `SELECT COUNT(*)::int AS n FROM (
+           SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = 'engagement'
+               AND c.relname IN ('TalentSubmittalRecord', 'TalentSubmittalEvent')
+           UNION ALL
+           SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+             WHERE n.nspname = 'engagement'
+               AND t.typname IN ('SubmittalState', 'SubmittalEventType')
+           UNION ALL
+           SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+             WHERE n.nspname = 'engagement'
+               AND p.proname IN ('reject_submittal_record_update', 'reject_submittal_event_update')
+         ) remnant`,
+      )) as Array<{ n: number }>;
+      expect(remnants[0]?.n).toBe(0);
+    });
   },
 );
 
@@ -1697,7 +1780,7 @@ async function countSubmittalRowsByExam(
   examination_id: string,
 ): Promise<number> {
   const rows = (await client.$queryRawUnsafe(
-    `SELECT COUNT(*)::int AS n FROM engagement."TalentSubmittalRecord" WHERE pinned_examination_id = '${examination_id}'::uuid`,
+    `SELECT COUNT(*)::int AS n FROM submittal."TalentSubmittalRecord" WHERE pinned_examination_id = '${examination_id}'::uuid`,
   )) as Array<{ n: number }>;
   return rows[0]?.n ?? 0;
 }

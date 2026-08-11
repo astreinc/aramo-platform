@@ -44,9 +44,9 @@ Resolve them first (husk chain via `superseded_by_record_id`; cluster via
 DB-enforced):
 
 **Group A — operational holders (keyed by the record id):**
-`engagement."TalentSubmittalEvent"` → `engagement."TalentEngagementEvent"` →
+`submittal."TalentSubmittalEvent"` → `engagement."TalentEngagementEvent"` →
 `examination."ExaminationOverride"` (event children first) → `pipeline."Pipeline"`
-(cascades its status history) → `engagement."TalentSubmittalRecord"` →
+(cascades its status history) → `submittal."TalentSubmittalRecord"` →
 `evidence."TalentJobEvidencePackage"` → `engagement."TalentJobEngagement"` →
 `examination."TalentJobExamination"` → the seven `talent_evidence.*` tables
 (`TalentSkillEvidence`, `TalentWorkHistoryEntry`, `TalentContactMethod`,

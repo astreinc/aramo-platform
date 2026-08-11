@@ -53,12 +53,12 @@ interface ErasureStep {
 // PipelineStatusHistory → Pipeline; talent_record children → TalentRecord).
 const INVENTORY: ErasureStep[] = [
   // ---- GROUP A operational non-cascade EVENT children (delete before parents) ----
-  { label: 'engagement."TalentSubmittalEvent"', keyspace: 'record-child', where: `submittal_id IN (SELECT id FROM engagement."TalentSubmittalRecord" WHERE talent_id = ANY($1::uuid[]))` },
+  { label: 'submittal."TalentSubmittalEvent"', keyspace: 'record-child', where: `submittal_id IN (SELECT id FROM submittal."TalentSubmittalRecord" WHERE talent_id = ANY($1::uuid[]))` },
   { label: 'engagement."TalentEngagementEvent"', keyspace: 'record-child', where: `engagement_id IN (SELECT id FROM engagement."TalentJobEngagement" WHERE talent_id = ANY($1::uuid[]))` },
   { label: 'examination."ExaminationOverride"', keyspace: 'record-child', where: `examination_id IN (SELECT id FROM examination."TalentJobExamination" WHERE talent_id = ANY($1::uuid[]))` },
   // ---- GROUP A operational holders (record keyspace) ----
   { label: 'pipeline."Pipeline"', keyspace: 'record', where: `talent_record_id = ANY($1::uuid[])` }, // cascades PipelineStatusHistory
-  { label: 'engagement."TalentSubmittalRecord"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
+  { label: 'submittal."TalentSubmittalRecord"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   { label: 'evidence."TalentJobEvidencePackage"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   { label: 'engagement."TalentJobEngagement"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   { label: 'examination."TalentJobExamination"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },

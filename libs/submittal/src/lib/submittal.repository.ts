@@ -381,7 +381,7 @@ export class SubmittalRepository {
       // the column-scoped immutability trigger. SET LOCAL only here (grep-enumerable).
       await tx.$executeRawUnsafe(`SET LOCAL app.reconcile = 'on'`);
       const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
-        `UPDATE "engagement"."TalentSubmittalRecord" SET talent_id = $1::uuid
+        `UPDATE "submittal"."TalentSubmittalRecord" SET talent_id = $1::uuid
            WHERE talent_id = $2::uuid AND tenant_id = $3::uuid ${idFilter}
          RETURNING id`,
         ...params,
