@@ -8087,6 +8087,12 @@
       "to": "libs/reporting/src/lib/dto/report.view.ts"
     },
     {
+      "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/engagement/legal-transitions-drift.spec.ts",
+      "status": "excluded",
+      "to": "libs/selection/src/lib/selection-state.ts"
+    },
+    {
       "from": "apps/ats-web/src/engagement/types.ts",
       "status": "production",
       "to": "libs/engagement/src/lib/dto/outreach-draft-request.dto.ts"
