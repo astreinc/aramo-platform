@@ -43,7 +43,7 @@ function expectToken(fn: () => unknown, token: string): void {
 
 describe('mapCanonicalRequisition — happy path', () => {
   it('maps a valid record and canonicalizes source_system (T8-P1 identity)', () => {
-    const dto = mapCanonicalRequisition(base(), undefined, REQ);
+    const dto = mapCanonicalRequisition(base(), REQ);
     expect(dto.source_system).toBe('fieldglass'); // canonicalized
     expect(dto.external_req_id).toBe('REQ-1');
     expect(dto.title).toBe('Senior Engineer');
@@ -56,7 +56,7 @@ describe('mapCanonicalRequisition — happy path', () => {
   });
 
   it('never emits an openings_available field (capacity truth is derived — §8/G)', () => {
-    const dto = mapCanonicalRequisition(base({ openings: 5 }), undefined, REQ);
+    const dto = mapCanonicalRequisition(base({ openings: 5 }), REQ);
     expect(dto.openings).toBe(5);
     expect((dto as Record<string, unknown>)['openings_available']).toBeUndefined();
   });
@@ -64,46 +64,43 @@ describe('mapCanonicalRequisition — happy path', () => {
 
 describe('D — external identity', () => {
   it('rejects a blank/malformed source_system', () => {
-    expectToken(() => mapCanonicalRequisition(base({ source_system: 'field glass!' }), undefined, REQ), 'INVALID_EXTERNAL_IDENTITY');
+    expectToken(() => mapCanonicalRequisition(base({ source_system: 'field glass!' }), REQ), 'INVALID_EXTERNAL_IDENTITY');
   });
   it('rejects a missing external_req_id', () => {
-    expectToken(() => mapCanonicalRequisition(base({ external_req_id: '   ' }), undefined, REQ), 'INVALID_EXTERNAL_IDENTITY');
+    expectToken(() => mapCanonicalRequisition(base({ external_req_id: '   ' }), REQ), 'INVALID_EXTERNAL_IDENTITY');
   });
 });
 
-describe('E — lifecycle mapping (no gated bypass, §9)', () => {
-  it('maps an external status token via the supplied mapping', () => {
-    const dto = mapCanonicalRequisition(base({ external_status: 'ON_HOLD' }), { on_hold: 'on_hold' }, REQ);
-    expect(dto.status).toBe('on_hold');
+describe('E — lifecycle: normalized token validation (no gated bypass, §9)', () => {
+  it('accepts a normalized internal status token (case-insensitive)', () => {
+    expect(mapCanonicalRequisition(base({ external_status: 'ON_HOLD' }), REQ).status).toBe('on_hold');
+    expect(mapCanonicalRequisition(base({ external_status: 'closed' }), REQ).status).toBe('closed');
   });
   it('rejects a gated internal status (draft/pending_approval/archived) — import must not bypass the gate', () => {
-    expectToken(() => mapCanonicalRequisition(base({ external_status: 'X' }), { x: 'draft' }, REQ), 'GATED_STATUS_NOT_IMPORTABLE');
+    expectToken(() => mapCanonicalRequisition(base({ external_status: 'draft' }), REQ), 'GATED_STATUS_NOT_IMPORTABLE');
   });
-  it('rejects an unmapped external status token', () => {
-    expectToken(() => mapCanonicalRequisition(base({ external_status: 'WEIRD' }), { other: 'open' }, REQ), 'UNSUPPORTED_LIFECYCLE_STATUS');
-  });
-  it('rejects a mapping that targets a non-RecruitingStatus value', () => {
-    expectToken(() => mapCanonicalRequisition(base({ external_status: 'S' }), { s: 'not_a_status' }, REQ), 'UNSUPPORTED_LIFECYCLE_STATUS');
+  it('rejects a token that is not a RecruitingStatus', () => {
+    expectToken(() => mapCanonicalRequisition(base({ external_status: 'WEIRD' }), REQ), 'UNSUPPORTED_LIFECYCLE_STATUS');
   });
 });
 
 describe('F — openings maps only to the stored total capacity authority (§8)', () => {
   it('maps openings straight to the total; over-capacity-representable values are allowed', () => {
-    expect(mapCanonicalRequisition(base({ openings: 0 }), undefined, REQ).openings).toBe(0);
+    expect(mapCanonicalRequisition(base({ openings: 0 }), REQ).openings).toBe(0);
   });
   it('rejects a negative or non-integer openings', () => {
-    expectToken(() => mapCanonicalRequisition(base({ openings: -1 }), undefined, REQ), 'INVALID_OPENINGS');
-    expectToken(() => mapCanonicalRequisition(base({ openings: 2.5 }), undefined, REQ), 'INVALID_OPENINGS');
+    expectToken(() => mapCanonicalRequisition(base({ openings: -1 }), REQ), 'INVALID_OPENINGS');
+    expectToken(() => mapCanonicalRequisition(base({ openings: 2.5 }), REQ), 'INVALID_OPENINGS');
   });
 });
 
 describe('H — unsupported / person-specific fields rejected (§6/§7 T5 boundary)', () => {
   it('rejects an unknown key rather than silently discarding it', () => {
-    expectToken(() => mapCanonicalRequisition(base({ custom_blob: { a: 1 } } as never), undefined, REQ), 'UNSUPPORTED_FIELD');
+    expectToken(() => mapCanonicalRequisition(base({ custom_blob: { a: 1 } } as never), REQ), 'UNSUPPORTED_FIELD');
   });
   it('rejects a person/assignment-specific commercial term (T5-owned)', () => {
     // worker_pay_rate is assignment-economics, never a requisition field.
-    expectToken(() => mapCanonicalRequisition(base({ worker_pay_rate: '85.00' } as never), undefined, REQ), 'UNSUPPORTED_FIELD');
+    expectToken(() => mapCanonicalRequisition(base({ worker_pay_rate: '85.00' } as never), REQ), 'UNSUPPORTED_FIELD');
   });
 });
 
@@ -111,7 +108,6 @@ describe('I — req-level commercial maps to existing gated fields (§7)', () =>
   it('maps a requisition-level bill rate to the existing gated bill_rate_* fields', () => {
     const dto = mapCanonicalRequisition(
       base({ bill_rate_amount: '120.00', bill_rate_currency: 'USD', bill_rate_period: 'HOURLY' }),
-      undefined,
       REQ,
     );
     expect(dto.bill_rate_amount).toBe('120.00');
@@ -119,18 +115,18 @@ describe('I — req-level commercial maps to existing gated fields (§7)', () =>
     expect(dto.bill_rate_period).toBe('HOURLY');
   });
   it('rejects a malformed commercial decimal', () => {
-    expectToken(() => mapCanonicalRequisition(base({ bill_rate_amount: 'abc' }), undefined, REQ), 'INVALID_COMMERCIAL_VALUE');
+    expectToken(() => mapCanonicalRequisition(base({ bill_rate_amount: 'abc' }), REQ), 'INVALID_COMMERCIAL_VALUE');
   });
   it('rejects an invalid bill_rate_period (bounded, not an opaque enum error)', () => {
-    expectToken(() => mapCanonicalRequisition(base({ bill_rate_period: 'hour' }), undefined, REQ), 'INVALID_COMMERCIAL_VALUE');
+    expectToken(() => mapCanonicalRequisition(base({ bill_rate_period: 'hour' }), REQ), 'INVALID_COMMERCIAL_VALUE');
   });
 });
 
 describe('missing required fields', () => {
   it('rejects a missing title', () => {
-    expectToken(() => mapCanonicalRequisition(base({ title: '' }), undefined, REQ), 'MISSING_REQUIRED_FIELD');
+    expectToken(() => mapCanonicalRequisition(base({ title: '' }), REQ), 'MISSING_REQUIRED_FIELD');
   });
   it('rejects a missing company_id', () => {
-    expectToken(() => mapCanonicalRequisition(base({ company_id: '' }), undefined, REQ), 'MISSING_REQUIRED_FIELD');
+    expectToken(() => mapCanonicalRequisition(base({ company_id: '' }), REQ), 'MISSING_REQUIRED_FIELD');
   });
 });

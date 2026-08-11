@@ -200,10 +200,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = uuidv7();
       const batch = await run(tenant, {
         source_label: 'vms-E',
-        status_mapping: { active: 'on_hold', pipeline: 'draft' },
         records: [
-          { source_system: 'oracle', external_req_id: 'E-OK', title: 'ok', openings: 1, company_id: uuidv7(), external_status: 'active' },
-          { source_system: 'oracle', external_req_id: 'E-GATE', title: 'gate', openings: 1, company_id: uuidv7(), external_status: 'pipeline' },
+          { source_system: 'oracle', external_req_id: 'E-OK', title: 'ok', openings: 1, company_id: uuidv7(), external_status: 'on_hold' },
+          { source_system: 'oracle', external_req_id: 'E-GATE', title: 'gate', openings: 1, company_id: uuidv7(), external_status: 'draft' },
         ],
       });
       expect(batch.success_count).toBe(1);

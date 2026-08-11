@@ -449,7 +449,7 @@ export class ImportService {
       //     rejection (bounded token) is a per-record failure, never a throw.
       let dto;
       try {
-        dto = mapCanonicalRequisition(record, input.status_mapping, args.requestId);
+        dto = mapCanonicalRequisition(record, args.requestId);
       } catch (err) {
         if (err instanceof RequisitionImportMappingError) {
           failures.push({

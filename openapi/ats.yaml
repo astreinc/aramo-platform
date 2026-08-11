@@ -2547,7 +2547,7 @@ components:
           format: uuid
         external_status:
           type: string
-          description: Adapter-supplied external status token; resolved via status_mapping to an internal RecruitingStatus.
+          description: Adapter-supplied normalized internal RecruitingStatus token (case-insensitive); gated statuses are refused. Absent defaults to 'open'.
         description:
           type: string
         city:
@@ -2588,11 +2588,6 @@ components:
         site_id:
           type: string
           format: uuid
-        status_mapping:
-          type: object
-          additionalProperties:
-            type: string
-          description: external status token to internal RecruitingStatus (or the literal 'ignore').
         records:
           type: array
           minItems: 1

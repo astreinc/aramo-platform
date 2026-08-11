@@ -124,12 +124,6 @@ export class RequisitionImportController {
     if (body.site_id !== undefined && typeof body.site_id !== 'string') {
       reject('site_id', 'must be a string when present');
     }
-    if (
-      body.status_mapping !== undefined &&
-      (typeof body.status_mapping !== 'object' || body.status_mapping === null || Array.isArray(body.status_mapping))
-    ) {
-      reject('status_mapping', 'must be an object map when present');
-    }
     if (!Array.isArray(body.records)) reject('records', 'must be an array');
     if ((body.records as CanonicalRequisitionImportRecord[]).length === 0) {
       reject('records', 'must contain at least one record');

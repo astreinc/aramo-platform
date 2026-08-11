@@ -28,8 +28,10 @@ export interface CanonicalRequisitionImportRecord {
   openings: number; // maps ONLY to the stored TOTAL openings authority (§8)
   company_id: string; // account resolution input (UUID; cross-schema ref)
 
-  // Lifecycle — an adapter-supplied external status token, resolved to an
-  // internal RecruitingStatus via the request's status_mapping (§9).
+  // Lifecycle — an adapter-supplied NORMALIZED status token (§9). The connector
+  // owns the provider-specific status vocabulary and normalizes to an internal
+  // RecruitingStatus token (case-insensitive) before posting; the framework
+  // validates it and refuses gated statuses (no gate bypass). Absent → 'open'.
   external_status?: string;
 
   // Optional supported fields.
@@ -75,15 +77,10 @@ export const CANONICAL_REQUISITION_IMPORT_KEYS: readonly string[] = [
   'bill_rate_period',
 ];
 
-// external status token (lowercased) → internal RecruitingStatus, or the literal
-// 'ignore' to fall back to the default. Provider/transport-neutral.
-export type RequisitionImportStatusMapping = Record<string, string>;
-
 // POST /v1/requisition-imports request body.
 export interface RunRequisitionImportRequestDto {
   // Audit label (the ImportBatch.source_filename analog). NEVER a credential.
   source_label: string;
   site_id?: string;
-  status_mapping?: RequisitionImportStatusMapping;
   records: CanonicalRequisitionImportRecord[];
 }

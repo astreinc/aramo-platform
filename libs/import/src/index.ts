@@ -27,7 +27,6 @@ export {
   type ImportFailureView,
   CANONICAL_REQUISITION_IMPORT_KEYS,
   type CanonicalRequisitionImportRecord,
-  type RequisitionImportStatusMapping,
   type RunRequisitionImportRequestDto,
   type SuggestMappingRequestDto,
   type SuggestMappingResponseDto,

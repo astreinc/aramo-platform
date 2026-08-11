@@ -51,10 +51,6 @@ describe('RequisitionImportController — envelope validation (§20)', () => {
     await expect400(() => controller.run(AUTH, goodBody({ records: [] }), 'r'));
     await expect400(() => controller.run(AUTH, { source_label: 'x', records: 'nope' } as never, 'r'));
   });
-  it('rejects a non-object status_mapping', async () => {
-    const { controller } = make();
-    await expect400(() => controller.run(AUTH, goodBody({ status_mapping: ['a'] as never }), 'r'));
-  });
 });
 
 describe('RequisitionImportController — tenant safety (§20)', () => {

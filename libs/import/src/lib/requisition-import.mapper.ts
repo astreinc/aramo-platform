@@ -10,7 +10,6 @@ import {
 import {
   CANONICAL_REQUISITION_IMPORT_KEYS,
   type CanonicalRequisitionImportRecord,
-  type RequisitionImportStatusMapping,
 } from './dto/canonical-requisition-import.dto.js';
 
 // T8-P2 — provider-neutral canonical requisition mapper (VMS Integration
@@ -69,37 +68,31 @@ function isIsoDate(value: string): boolean {
   return !Number.isNaN(t);
 }
 
-// Resolve an adapter-supplied external status token into an internal
-// RecruitingStatus, honoring the request's status_mapping. Enforces the gated
-// wall the create path does not (§9).
+// Resolve the adapter-supplied NORMALIZED status token into an internal
+// RecruitingStatus (case-insensitive). The connector owns provider→internal
+// normalization; the framework validates the token and enforces the gated wall
+// the create path does not (§9). Absent → undefined (repository defaults 'open').
 function resolveStatus(
   record: CanonicalRequisitionImportRecord,
-  mapping: RequisitionImportStatusMapping | undefined,
 ): RecruitingStatus | undefined {
   const raw = record.external_status;
   if (raw === undefined || raw === null || raw === '') return undefined; // → default 'open'
   const token = raw.trim().toLowerCase();
-  const mapped = mapping?.[token];
-  if (mapped === undefined) {
-    fail('UNSUPPORTED_LIFECYCLE_STATUS', `no status mapping for external status '${raw}'`, ['external_status']);
+  if (!RECRUITING_STATUS_SET.has(token)) {
+    fail('UNSUPPORTED_LIFECYCLE_STATUS', `external_status '${raw}' is not a normalized RecruitingStatus token`, ['external_status']);
   }
-  if (mapped === 'ignore') return undefined; // → default 'open'
-  if (!RECRUITING_STATUS_SET.has(mapped)) {
-    fail('UNSUPPORTED_LIFECYCLE_STATUS', `status mapping target '${mapped}' is not a RecruitingStatus`, ['external_status']);
-  }
-  if (isGatedRecruitingStatus(mapped as RecruitingStatus)) {
+  if (isGatedRecruitingStatus(token as RecruitingStatus)) {
     // draft | pending_approval | archived — the subsystem has not shipped; an
     // import must not bypass the gate (createForImport does not refuse status).
-    fail('GATED_STATUS_NOT_IMPORTABLE', `status '${mapped}' is gated and cannot be imported`, ['external_status']);
+    fail('GATED_STATUS_NOT_IMPORTABLE', `status '${token}' is gated and cannot be imported`, ['external_status']);
   }
-  return mapped as RecruitingStatus;
+  return token as RecruitingStatus;
 }
 
 // Map a canonical record → CreateRequisitionRequestDto, or throw a
 // RequisitionImportMappingError with a bounded token.
 export function mapCanonicalRequisition(
   record: CanonicalRequisitionImportRecord,
-  statusMapping: RequisitionImportStatusMapping | undefined,
   requestId: string,
 ): CreateRequisitionRequestDto {
   // 1. Unknown-field rejection (§6/§7). Any key outside the canonical set —
@@ -151,7 +144,7 @@ export function mapCanonicalRequisition(
   }
 
   // 5. Lifecycle → internal RecruitingStatus (gated refused above).
-  const status = resolveStatus(record, statusMapping);
+  const status = resolveStatus(record);
 
   // 6. Requisition-level commercial (§7) — decimal-string validation; write is
   //    gated by compensation:* at createForImport.
