@@ -1892,6 +1892,265 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/placements/{id}/assignment/commercials:
+    get:
+      operationId: getPlacementAssignmentCommercials
+      summary: Read the commercial projection (rates + derived margin) of a placement's assignment (Track 5 / T5-P2).
+      description: |
+        Returns the CURRENT effective commercial terms of the placement's
+        ContractAssignment — the stored actuals (`pay_rate_amount`, `bill_rate_amount`,
+        `currency`, `rate_period`) plus the DEC-5 derived views (`spread_amount`,
+        `margin_percent`, `markup_percent`), computed on read. Money and percentages
+        are scale-2 decimal strings (never float); `margin_percent` / `markup_percent`
+        are null on a zero denominator (bill=0 / pay=0). A placement with no assignment
+        or no active commercial version returns `{ "commercials": null }` — a coherent
+        absence, never a fabricated row.
+
+        Guarded by scope `assignment:commercials:read` — a DEDICATED financial scope
+        that `assignment:read` / `placement:read` / `requisition:read` do NOT satisfy
+        (least-visibility). The placement is first loaded under the actor-visibility
+        predicate — a not-found / not-visible / cross-tenant placement returns 404
+        (never 403) before any commercial figure is read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentCommercialResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  # Track 8 / T8-P2 — provider-neutral canonical requisition ingestion.
+  /v1/requisition-imports:
+    get:
+      operationId: listRequisitionImports
+      summary: List canonical requisition-import batches for the tenant (Track 8 / T8-P2).
+      description: |
+        Returns the tenant's requisition-import batches (ImportBatch rows with
+        target_entity=requisition), newest first, bounded at 200. Optional
+        narrowing by `site_id`. Requires the `ats` capability and the
+        `requisition:import:read` scope. tenant_id is derived from the JWT.
+      parameters:
+        - name: site_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequisitionImportList'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+    post:
+      operationId: runRequisitionImport
+      summary: Run a provider-neutral canonical requisition import (Track 8 / T8-P2).
+      description: |
+        Validates + maps provider-neutral CanonicalRequisitionImportRecords and
+        creates requisitions through the governed import path, reusing the
+        reversible ImportBatch substrate. tenant_id is derived from the JWT.
+        Requires the `requisition:import:write` scope. CREATE-only,
+        transport-neutral, provider-neutral: no provider credential/config is
+        accepted. A re-imported external identity (tenant + source_system +
+        external_req_id) is deterministically rejected (recorded as a per-record
+        failure), never updated in place. Refusals:
+          - 400 VALIDATION_ERROR — the request envelope fails validation.
+          - 403 INSUFFICIENT_PERMISSIONS — caller lacks `requisition:import:write`.
+          - 422 IMPORT_THRESHOLD_EXCEEDED — per-record failures exceeded the
+            configured threshold; the whole batch was rolled back.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunRequisitionImportRequest'
+      responses:
+        '201':
+          description: Created (committed or partially_committed).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatchView'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Import rejected (failure threshold exceeded).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/requisition-imports/{id}:
+    get:
+      operationId: getRequisitionImport
+      summary: Get a canonical requisition-import batch by id (Track 8 / T8-P2).
+      description: |
+        Returns a single requisition-import batch in the tenant. A batch that is
+        absent or belongs to another tenant returns 404 (tenant-safe; existence
+        is never disclosed). Requires the `requisition:import:read` scope.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatchView'
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/placements/{id}/assignment/end:
+    post:
+      operationId: endPlacementAssignment
+      summary: End the ContractAssignment of a started placement (Track 4 / T4-D).
+      description: |
+        Transitions a placement's ContractAssignment ACTIVE -> ENDED with the ratified
+        end reason (COMPLETED / WORKER_ENDED / CLIENT_ENDED). Gated by the DEDICATED
+        `assignment:end` authority (capability `ats`) — `placement:*` does NOT satisfy it
+        (§7). The repository writes the state flip and the `placement.assignment.ended`
+        outbox event atomically. The placement is loaded under the actor-visibility
+        predicate first — a not-found / not-visible / cross-tenant placement returns 404
+        (never 403). Ending a non-ACTIVE assignment is refused with 409.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [end_reason]
+              properties:
+                end_reason:
+                  type: string
+                  enum: [COMPLETED, WORKER_ENDED, CLIENT_ENDED]
+      responses:
+        '200':
+          description: Assignment ended.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+                    enum: [true]
+        '403':
+          description: Insufficient permissions or tenant not entitled.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: The assignment is not in an ACTIVE state (already ended or never started).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+
+  /v1/webhooks/indeed/apply:
+    post:
+      operationId: indeedApplyWebhook
+      summary: Inbound Indeed Apply webhook (external partner, HMAC-authenticated).
+      description: |
+        External partner (Indeed) inbound webhook — surface class XP. There is NO Aramo
+        session and therefore NO bearer token; the SOLE authority is the `X-Indeed-Signature`
+        HMAC over the exact raw request body (R5). Ships DARK by construction: until the
+        webhook signing secret is provisioned the endpoint refuses all traffic with 503.
+        The raw body is preserved by a route-scoped raw parser and the consumed-field subset
+        is validated in the service, not by schema — so the request body is an opaque
+        Indeed-defined JSON document (the exact bytes that were signed).
+      security:
+        - IndeedHmacSignature: []
+      requestBody:
+        required: true
+        description: The raw Indeed Apply JSON payload (opaque; the signed bytes).
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Received and accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [received]
+                properties:
+                  received:
+                    type: boolean
+                    enum: [true]
+        '401':
+          description: Missing or invalid X-Indeed-Signature HMAC.
+        '503':
+          description: Webhook dark — signing secret not provisioned.
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -1900,6 +2159,17 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    # GLH-1-C FIX_NOW — the Indeed Apply webhook (XP) authenticates by HMAC signature,
+    # not a bearer token. This carries the COMPUTED signature header only; the shared
+    # signing secret (ARAMO_INDEED_APPLY_WEBHOOK_SECRET) is provisioned out-of-band and
+    # never appears here.
+    IndeedHmacSignature:
+      type: apiKey
+      in: header
+      name: X-Indeed-Signature
+      description: |
+        HMAC signature over the exact raw request body, computed and sent by Indeed. Not a
+        secret — the shared signing secret is provisioned out-of-band and never documented.
 
   schemas:
     # Track 3 / E1-b — PlacementProcess HTTP surface.
@@ -2186,6 +2456,72 @@ components:
           oneOf:
             - $ref: '#/components/schemas/ContractAssignmentView'
             - type: 'null'
+    # Track 5 / T5-P2 — the commercial projection of the CURRENT effective
+    # AssignmentRateVersion. Stored actuals + DEC-5 derived views (computed on read,
+    # never stored). Money + percentages are scale-2 decimal strings (never float);
+    # margin_percent / markup_percent are null on a zero denominator.
+    AssignmentCommercialView:
+      type: object
+      additionalProperties: false
+      required: [contract_assignment_id, assignment_rate_version_id, requisition_id, talent_record_id, pay_rate_amount, bill_rate_amount, currency, rate_period, spread_amount, margin_percent, markup_percent, effective_from, effective_to, change_reason, recorded_by, created_at]
+      properties:
+        contract_assignment_id:
+          type: string
+          format: uuid
+        assignment_rate_version_id:
+          type: string
+          format: uuid
+        requisition_id:
+          type: string
+          format: uuid
+        talent_record_id:
+          type: string
+          format: uuid
+        pay_rate_amount:
+          type: string
+          description: Decimal(12,2) money string (never a float).
+        bill_rate_amount:
+          type: string
+          description: Decimal(12,2) money string (never a float).
+        currency:
+          type: string
+          description: An active ISO-4217 currency code (uppercase).
+        rate_period:
+          type: string
+          enum: [HOURLY, DAILY, WEEKLY, MONTHLY, ANNUAL]
+        spread_amount:
+          type: string
+          description: bill - pay, scale-2 decimal string.
+        margin_percent:
+          # ((bill - pay) / bill) * 100; null when bill == 0.
+          type: [string, 'null']
+        markup_percent:
+          # ((bill - pay) / pay) * 100; null when pay == 0.
+          type: [string, 'null']
+        effective_from:
+          type: string
+          format: date-time
+        effective_to:
+          type: [string, 'null']
+          format: date-time
+        change_reason:
+          type: [string, 'null']
+        recorded_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+    AssignmentCommercialResponse:
+      type: object
+      additionalProperties: false
+      required: [commercials]
+      properties:
+        commercials:
+          # A coherent absence when the placement has no assignment / no active version.
+          oneOf:
+            - $ref: '#/components/schemas/AssignmentCommercialView'
+            - type: 'null'
     # M3 PR-8 §4.4 — match-list response envelope. The endpoint emits
     # TalentJobExaminationSummary items only (Full is NOT referenced from
     # this endpoint — see directive §4.4). additionalProperties: false plus
@@ -2409,3 +2745,122 @@ components:
         relation:
           type: string
           enum: [CORROBORATES, CONTRADICTS, SUPERSEDES]
+
+    # Track 8 / T8-P2 — canonical requisition ingestion schemas.
+    CanonicalRequisitionImportRecord:
+      type: object
+      additionalProperties: false
+      required: [source_system, external_req_id, title, openings, company_id]
+      properties:
+        source_system:
+          type: string
+          description: Canonical lowercase provider key (T8-P1); canonicalized + conflict-checked at persist.
+        external_req_id:
+          type: string
+          description: Opaque provider requisition id (case-preserved).
+        title:
+          type: string
+        openings:
+          type: integer
+          minimum: 0
+          description: Maps ONLY to the stored total openings authority; availability stays derived (T4-B2).
+        company_id:
+          type: string
+          format: uuid
+        external_status:
+          type: string
+          description: Adapter-supplied normalized internal RecruitingStatus token (case-insensitive); gated statuses are refused. Absent defaults to 'open'.
+        description:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        work_arrangement:
+          type: string
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        job_type:
+          type: string
+        contact_id:
+          type: string
+          format: uuid
+        imported_at:
+          type: string
+          format: date-time
+        bill_rate_amount:
+          type: string
+          description: Requisition-level bill rate (decimal string); write gated by compensation.
+        bill_rate_currency:
+          type: string
+        bill_rate_period:
+          type: string
+    RunRequisitionImportRequest:
+      type: object
+      additionalProperties: false
+      required: [source_label, records]
+      properties:
+        source_label:
+          type: string
+          description: Audit label for the batch (never a credential).
+        site_id:
+          type: string
+          format: uuid
+        records:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CanonicalRequisitionImportRecord'
+    ImportBatchView:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, imported_by_id, target_entity, source_filename, row_count, success_count, failure_count, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        site_id:
+          type: [string, 'null']
+          format: uuid
+        imported_by_id:
+          type: string
+          format: uuid
+        target_entity:
+          type: string
+          enum: [company, contact, requisition, talent_record]
+        source_filename:
+          type: string
+        row_count:
+          type: integer
+        success_count:
+          type: integer
+        failure_count:
+          type: integer
+        status:
+          type: string
+          enum: [pending, committed, partially_committed, rejected, reverted]
+        created_at:
+          type: string
+          format: date-time
+        committed_at:
+          type: [string, 'null']
+          format: date-time
+        reverted_at:
+          type: [string, 'null']
+          format: date-time
+    RequisitionImportList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportBatchView'

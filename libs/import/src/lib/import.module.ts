@@ -8,6 +8,7 @@ import { RequisitionModule } from '@aramo/requisition';
 import { TalentRecordModule } from '@aramo/talent-record';
 
 import { ImportController } from './import.controller.js';
+import { RequisitionImportController } from './requisition-import.controller.js';
 import { ImportService } from './import.service.js';
 import { MappingSuggestionService } from './mapping/mapping-suggestion.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -42,7 +43,7 @@ import { PrismaService } from './prisma/prisma.service.js';
     RequisitionModule,
     TalentRecordModule,
   ],
-  controllers: [ImportController],
+  controllers: [ImportController, RequisitionImportController],
   providers: [PrismaService, ImportService, MappingSuggestionService],
   exports: [ImportService, MappingSuggestionService],
 })

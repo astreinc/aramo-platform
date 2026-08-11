@@ -315,6 +315,10 @@ export const SEED_IDS = {
     // Track 5 / T5-P1 — assignment commercial-terms authority family.
     'assignment:commercials:read': '01900000-0000-7000-8000-0000000000d3',
     'assignment:commercials:write': '01900000-0000-7000-8000-0000000000d4',
+    // Track 8 / T8-P2 — canonical requisition ingestion scope family (d5/d6;
+    // d3/d4 consumed by T5-P1 assignment:commercials during R-SYNC).
+    'requisition:import:read': '01900000-0000-7000-8000-0000000000d5',
+    'requisition:import:write': '01900000-0000-7000-8000-0000000000d6',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -1860,6 +1864,36 @@ const ASSIGNMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// Track 8 / T8-P2 — canonical requisition ingestion role-matrix. read -> the
+// four requisition-adjacent roles (as assignment:read); write -> the
+// authoritative tier only (account_manager/tenant_admin/tenant_owner, recruiter
+// excluded — bulk external ingestion is a management act, mirrors
+// assignment:create). No wildcard widening.
+export const REQUISITION_IMPORT_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['recruiter', ['requisition:import:read']],
+  ['account_manager', ['requisition:import:read', 'requisition:import:write']],
+  ['tenant_admin', ['requisition:import:read', 'requisition:import:write']],
+  ['tenant_owner', ['requisition:import:read', 'requisition:import:write']],
+];
+
+// Deterministic RoleScope row ids for the 7 requisition-import grants. Fresh
+// disjoint range 0xc00+ (append-don't-renumber; assignment occupies 0xb00+).
+// DO NOT REORDER without bumping the offset.
+const REQUISITION_IMPORT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0xc00;
+  for (const [role, scopes] of REQUISITION_IMPORT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 interface IdentityPrismaClient {
   tenant: typeof PrismaClient.prototype.tenant;
   user: typeof PrismaClient.prototype.user;
@@ -2177,6 +2211,8 @@ export async function runIdentitySeed(
   // requisition-financials, or generic assignment:create/update. NO scope.created (scope-seed precedent).
   await upsertScope(prisma, SEED_IDS.scopes['assignment:commercials:read'], 'assignment:commercials:read', 'Track 5 / T5-P1 — read the actual commercial terms (Assignment Rate Version: pay/bill/currency/period and derived margin) of a ContractAssignment. Independent financial-disclosure gate (least visibility: assignment:read does NOT grant it). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (financial data). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['assignment:commercials:write'], 'assignment:commercials:write', 'Track 5 / T5-P1 — record the initial actual commercial terms of a ContractAssignment. The SECOND leg of the FORWARD STARTED conjunction (required IN CONJUNCTION with placement:activate, never alone; placement:* and requisition-financials never substitute). GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:import:read'], 'requisition:import:read', 'Track 8 / T8-P2 — read the canonical requisition-import batch history + per-record failures (GET /v1/requisition-imports, GET /v1/requisition-imports/:id). Provider-neutral external-system requisition ingestion; distinct from the generic CSV import:* family. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors assignment:read). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['requisition:import:write'], 'requisition:import:write', 'Track 8 / T8-P2 — run a canonical requisition import (POST /v1/requisition-imports): validate + map provider-neutral records through the governed createForImport path. GRANTED to account_manager, tenant_admin, tenant_owner only; recruiter excluded (bulk external ingestion is an authoritative-tier act, mirrors assignment:create). NO scope.created (scope-seed precedent).');
 
   // 7. RoleScope assignments — pre-AUTHZ-1 (88 rows: 13 + 12 + 52 + 11).
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
@@ -2596,6 +2632,25 @@ export async function runIdentitySeed(
       const rsId = ASSIGNMENT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`T4-D Assignment-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Track 8 / T8-P2 — canonical requisition-import role-matrix grants (7 rows;
+  // range 0xc00+). read -> the four requisition-adjacent roles; write -> the
+  // authoritative tier only (recruiter excluded).
+  for (const [roleKey, scopeKeys] of REQUISITION_IMPORT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = REQUISITION_IMPORT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`T8-P2 Requisition-Import-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

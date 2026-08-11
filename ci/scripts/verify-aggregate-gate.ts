@@ -25,14 +25,13 @@ const CI_YAML = resolve(ROOT, '.github', 'workflows', 'ci.yml');
 
 // The job IDs (NOT display names) that MUST remain members of deployment-gate.needs.
 // Keyed on GLH-1's mandate: build (A), verify-vocabulary (B), the env-passthrough wall
-// (D), and this wall itself (self-pin so the guard cannot be silently unhooked).
-// GLH-1 C (contract-parity) is NOT included — it is under ARCHITECTURE_HALT (no ratified
-// governed-public-surface authority; see the v1.5 continuation record). Add
-// 'contract-parity-check' here only when C is separately authorized and built.
+// (D), the contract-parity wall (C — now ratified and built), and this wall itself
+// (self-pin so the guard cannot be silently unhooked).
 export const REQUIRED_AGGREGATE_MEMBERS = [
   'build', // GLH-1 A — the CI-simulated nx build (catches the 3-place cross-lib wiring failure)
   'verify-vocabulary', // GLH-1 B — the trust-output vocabulary wall
   'env-passthrough-check', // GLH-1 D — prod env-passthrough parity
+  'contract-parity-check', // GLH-1-C — governed API route<->OpenAPI parity
   'aggregate-gate-check', // GLH-1 self-pin — this wall must itself gate merges
 ] as const;
 
@@ -84,10 +83,16 @@ function selftest(): void {
       'build',
       'verify-vocabulary',
       'env-passthrough-check',
+      'contract-parity-check',
       'aggregate-gate-check',
       'deployment-gate',
     ],
-    needs: ['verify-vocabulary', 'env-passthrough-check', 'aggregate-gate-check'], // `build` deliberately omitted
+    needs: [
+      'verify-vocabulary',
+      'env-passthrough-check',
+      'contract-parity-check',
+      'aggregate-gate-check',
+    ], // `build` deliberately omitted
   };
   const v = validateAggregateGate(fixture);
   const caughtBuild = v.some((x) => x.member === 'build' && x.reason === 'absent-from-needs');

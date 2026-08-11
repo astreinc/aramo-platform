@@ -446,6 +446,7 @@
       "purgeClusterViaExec"
     ],
     "@aramo/import": [
+      "CANONICAL_REQUISITION_IMPORT_KEYS",
       "IMPORT_BATCH_STATUS_VALUES",
       "IMPORT_TARGET_ENTITY_VALUES",
       "ImportController",
@@ -453,8 +454,11 @@
       "ImportPrismaService",
       "ImportService",
       "MappingSuggestionService",
+      "RequisitionImportController",
+      "RequisitionImportMappingError",
       "isImportTargetEntity",
       "loadImportEngineConfig",
+      "mapCanonicalRequisition",
       "thresholdExceeded"
     ],
     "@aramo/ingestion": [
@@ -588,6 +592,7 @@
       "canTransitionTyped",
       "classifyTransitionReason",
       "deriveCapacity",
+      "deriveCommercialMetrics",
       "edgeAuthorityClass",
       "generatePlacementMigrationSql",
       "getReason",
@@ -674,6 +679,7 @@
     "@aramo/requisition": [
       "ACTION_TARGET_STATUS",
       "GATED_RECRUITING_STATUS_VALUES",
+      "RATE_PERIOD_VALUES",
       "RATE_TYPE_VALUES",
       "RECRUITING_STATUS_VALUES",
       "REQUISITION_RESOURCE",
@@ -686,11 +692,16 @@
       "RequisitionTransitionPolicyService",
       "SELECTABLE_RECRUITING_STATUS_VALUES",
       "TRANSITION_ACTIONS",
+      "assertExternalIdentityCoPresence",
+      "canonicalizeSourceSystem",
       "emptyRequisitionProfileView",
       "governingActionForTarget",
       "isGatedRecruitingStatus",
+      "isRatePeriod",
       "isRateType",
-      "isRecruitingStatus"
+      "isRecruitingStatus",
+      "resolveExternalIdentity",
+      "validateExternalReqId"
     ],
     "@aramo/resume-parse": ["ResumeParseModule", "ResumeParserService", "extractResumeText"],
     "@aramo/saved-list": [
@@ -2817,7 +2828,15 @@
       { "project": "canonicalization", "status": "production" },
       { "project": "talent-record", "status": "production" }
     ],
-    "@aramo/import": [{ "project": "api", "status": "production" }],
+    "@aramo/import": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/t8p2-requisition-import.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/ingestion": [
       {
         "excludedBy": "src/tests/**/*",
@@ -3005,6 +3024,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-onsite-days.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/t8p2-requisition-import.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3251,6 +3276,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-onsite-days.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/t8p2-requisition-import.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4070,6 +4101,13 @@
       "sourceRoot": "libs/requisition/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "requisition-import-consumer-pact",
+      "root": "pact/consumers/requisition-import-consumer",
+      "sourceRoot": "pact/consumers/requisition-import-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
     },
     {
       "name": "resume-parse",

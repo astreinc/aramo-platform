@@ -13,6 +13,7 @@ import {
   type PlacementState,
   type ContractAssignmentEndReason,
   type ContractAssignmentView,
+  type AssignmentCommercialView,
 } from '@aramo/placement';
 
 import { CreatePlacementDto, EndAssignmentDto, TransitionPlacementDto } from './dto/placement.dto.js';
@@ -308,5 +309,40 @@ export class PlacementController {
     }
     const assignment = await this.placements.findAssignmentByPlacement(auth.tenant_id, id);
     return { assignment };
+  }
+
+  // Track 5 / T5-P2 — the commercial projection of a placement's assignment: the
+  // CURRENT effective AssignmentRateVersion (actuals) + DEC-5 derived margin/markup/
+  // spread, computed on read. Gated on assignment:commercials:read (a DEDICATED
+  // financial scope — NEVER satisfied by assignment:read / placement:read /
+  // requisition:read; least-visibility, Directive §4). The placement is loaded
+  // through findByIdForActor FIRST (404 — never 403 — when absent, cross-tenant, or
+  // not visible), so the commercial scope cannot probe existence nor reveal a hidden
+  // assignment (boundary O). A visible placement with no assignment or no active
+  // commercial version returns { commercials: null } (coherent absence, not an error).
+  @Get(':id/assignment/commercials')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('assignment:commercials:read')
+  @RequireSiteMatch()
+  async getAssignmentCommercials(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ): Promise<{ commercials: AssignmentCommercialView | null }> {
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    const placement = await this.placements.findByIdForActor({
+      tenant_id: auth.tenant_id,
+      id,
+      visible_requisition_ids: visibleReqIds,
+    });
+    if (placement === null) {
+      throw new AramoError('NOT_FOUND', 'PlacementProcess not found in tenant (or not visible to actor)', 404, {
+        requestId,
+        details: { placement_process_id: id, reason: 'placement_process_not_found' },
+      });
+    }
+    const commercials = await this.placements.findAssignmentCommercialProjection(auth.tenant_id, id, requestId);
+    return { commercials };
   }
 }

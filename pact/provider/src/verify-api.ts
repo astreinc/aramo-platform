@@ -764,6 +764,11 @@ const PROHIBITED_PACT = resolve(
 const PORTAL_THIN_PACT = resolve(ROOT, 'pact/pacts/portal-thin-aramo-core.json');
 // PC-1 — ats-web consumer, engagement domain (the only live FE, Lead R1).
 const ATS_WEB_PACT = resolve(ROOT, 'pact/pacts/ats-web-aramo-core.json');
+// T8-P2 — requisition-import consumer (the future T8-CONNECTOR ingestion side).
+const REQUISITION_IMPORT_PACT = resolve(
+  ROOT,
+  'pact/pacts/requisition-import-consumer-aramo-core.json',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-pact-provider-api-audience';
@@ -847,6 +852,13 @@ const PLACEMENT_ASSIGNMENT_RATE_VERSION_MIGRATION = resolve(
 const REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260811120000_t4b2_drop_openings_available/migration.sql',
+);
+// Track 8 / T8-P1 — the partial-unique external-identity index. Needed so the
+// T8-P2 requisition-import interaction's createForImport path (and its
+// conflict-on-replay behavior) matches production.
+const REQUISITION_EXTERNAL_IDENTITY_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20260812130000_t8p1_requisition_external_identity_unique/migration.sql',
 );
 
 // Constants used by the consent-read given-states (and formerly the retired
@@ -3039,6 +3051,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PLACEMENT_ASSIGNMENT_RATE_VERSION_MIGRATION,
         // T4-B2 §6 — retire the stored openings_available column (derived-only).
         REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION,
+        // T8-P1 — the external-identity partial-unique index (applied last;
+        // needs source_system/external_req_id columns from the job-module set).
+        REQUISITION_EXTERNAL_IDENTITY_MIGRATION,
       ]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
@@ -3196,6 +3211,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'requisition:edit',
           'requisition:profile:generate',
           'requisition:assign',
+          // T8-P2 — requisition-import consumer POSTs /v1/requisition-imports.
+          // requisition:import:write gates the run route; read gates the GET
+          // batch/list routes. Additive; inert for prior interactions.
+          'requisition:import:read',
+          'requisition:import:write',
           // PC-5c — pipeline state machine + activity RolesGuard
           // @RequireScopes. pipeline:change-status gates the transition
           // endpoint (the state machine); pipeline:remove omitted (DELETE is
@@ -3527,6 +3547,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       'an ats-web reader and no placements exist': async () => {
         await withClient((c) => resetAllRows(c));
       },
+      // T8-P2 — canonical requisition import. A fresh DB (resetAllRows truncates
+      // import.ImportBatch/ImportFailure + requisition.Requisition → no prior
+      // requisition for the external identity); the 'ats' entitlement +
+      // ACTIVE tenant persist (setup-seeded + requestFilter-backfilled), and
+      // accessJwt carries requisition:import:write. The POST then creates a
+      // committed batch via the governed createForImport path.
+      'a tenant entitled to ats with a caller holding requisition:import:write and no prior requisition for the external identity':
+        async () => {
+          await withClient((c) => resetAllRows(c));
+        },
       'an ats-web reader and no placement exists for the requested id': async () => {
         await withClient((c) => resetAllRows(c));
       },
@@ -6118,7 +6148,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
 
     it(
-      'verifies all interactions from the 4 aramo-core pacts',
+      'verifies all interactions from the 5 aramo-core pacts',
       async () => {
         const verifier = new Verifier({
           providerBaseUrl: `http://127.0.0.1:${port}`,
@@ -6127,6 +6157,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             PROHIBITED_PACT,
             PORTAL_THIN_PACT,
             ATS_WEB_PACT,
+            REQUISITION_IMPORT_PACT,
           ],
           stateHandlers,
           requestFilter: requestFilter as never,

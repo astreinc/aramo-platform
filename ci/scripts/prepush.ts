@@ -136,6 +136,9 @@ steps.push(['placement:sql:check', () => run('npm run --silent placement:sql:che
 // deployment-gate.needs membership (build/verify-vocabulary/GLH walls stay required).
 steps.push(['env:passthrough-check', () => run('npm run --silent env:passthrough-check')]);
 steps.push(['aggregate-gate:check', () => run('npm run --silent aggregate-gate:check')]);
+// GLH-1-C — governed API route<->OpenAPI parity (ci/config/api-surface-manifest.json). Cheap,
+// config+source only, unconditional.
+steps.push(['contract-parity:check', () => run('npm run --silent contract-parity:check')]);
 // Front-Door PR-2 (Ruling 6) — the nginx conf-semantics wall. Unconditional
 // (refusal-check family): reads the template + compose + webhook constant fresh.
 steps.push([
